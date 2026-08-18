@@ -1,0 +1,15 @@
+{
+  "target": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_good.md",
+  "passed": true,
+  "tool_availability": {
+    "proselint": "ok",
+    "vale": "missing",
+    "structure": "ok"
+  },
+  "by_tool": {},
+  "by_severity": {},
+  "errors": [
+    "vale: not installed"
+  ],
+  "findings": []
+}

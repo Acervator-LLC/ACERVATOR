@@ -1,0 +1,159 @@
+ACERVATOR — NOTICE OF INTELLECTUAL PROPERTY
+============================================
+
+TRADEMARKS
+----------
+"Acervator" (TM) Anthony L. Brown, 2025. All rights reserved.
+"Accumulation Trading" (TM) Anthony L. Brown, 2025.
+"Landing Strip Detection" (TM) Anthony L. Brown, 2025.
+"Smart Wire" (TM) Anthony L. Brown, 2025.
+"Harvest-Fold Cycle" (TM) Anthony L. Brown, 2025.
+"Ekthelius the Accumulator" (TM) Anthony L. Brown, 2025.
+
+PATENTS PENDING (if applicable)
+--------------------------------
+The following methods and systems may be subject to patent
+protection under United States and international patent law:
+
+1. Asymmetric harvest-fold trading cycle with structural
+   accumulation guarantee (Accumulation Trading method)
+
+2. Multi-timeframe phantom balance coordination with
+   hierarchical trade lock override
+
+3. Position-aware technical analysis signal reinterpretation
+   based on Bollinger Band proximity zones
+
+4. Landing Strip pattern detection using gradient-based
+   tightening analysis on Heikin-Ashi candles at Bollinger
+   Band extremes (derived from semiconductor metrology)
+
+5. Mean Reversion Inspector with three-layer gate architecture
+   and Boosted Fold mechanism
+
+6. Smart Wire cross-compounding network with provenance-tracked
+   capital routing between autonomous trading agents
+
+7. Targeting state machine (SEARCH/TRACK/FIRE) with adaptive
+   read rate and dynamic confidence thresholds
+
+COPYRIGHT
+---------
+All source code, documentation, trading strategies, algorithms,
+and associated materials:
+  Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator)
+  All rights reserved.
+
+THIRD-PARTY LICENSES
+--------------------
+This software uses the following open-source libraries, each
+under their respective licenses:
+
+  - PySide6: LGPL v3
+  - CCXT: MIT License
+  - ReportLab: BSD License
+  - NumPy: BSD License
+  - httpx: BSD License
+
+The use of these libraries does not transfer any ownership rights
+to the Acervator platform or its proprietary components.
+
+AI-ASSISTED DEVELOPMENT DISCLOSURE
+-----------------------------------
+Portions of this software were implemented with the assistance of
+Claude (Anthropic, Inc.), an AI language model. The AI served as
+an implementation tool under the creative direction and technical
+specification of the copyright holder, Anthony L. Brown.
+
+See the Product Manual, Chapter "Contribution Analysis," for a
+detailed accounting of human vs. AI contributions.
+
+SADP — STRUCTURED AI DEVELOPMENT PROTOCOL (Apache 2.0, with patent grant)
+-------------------------------------------------------------------------
+The Structured AI Development Protocol (SADP) and its supporting
+machinery are licensed under Apache License 2.0 (see LICENSE),
+which includes an explicit patent grant for the SADP layer.
+
+The SADP layer comprises (and is freely usable for any purpose):
+
+  * The 77-rule discipline layer with LOCK / UNLOCK / SUSPEND
+    semantics over the rule set.
+  * The EPISODIC_MEMORY ledger schema, EDIT_LOG forensic schema,
+    per-session HOP file format, and the cascade discipline
+    (CHANGELOG + MEM + EDIT_LOG + chronicle + zip).
+  * The PreToolUse release-readiness hook and the Stop-hook
+    session-end forensic backstop.
+  * doc_audit and doc_gap_audit instruments.
+  * The 8-step manual-rebuild protocol.
+  * Architectural fitness functions over the dependency graph.
+  * Token Timer grounding layer (cold_read / hypothesis /
+    fix_shipped triggers).
+  * QA-status unified dashboard pattern.
+  * AGENTS.md pointer convention and the auto-generated
+    AGENTS.md at repo root.
+  * SKILL.md packaging at sadp/SKILL.md (Anthropic Agent Skills
+    open standard).
+  * All tooling and supporting code in: tools/, .claude/hooks/,
+    sadp/, tests/, agents/, docs/audits/, docs/tools/.
+
+NOT a license to the patent-flagged Acervator trading inventions
+-----------------------------------------------------------------
+The trademarks and patent-flagged trading mechanisms listed
+above (Harvest-Fold Cycle, Landing Strip Detection, Smart Wire,
+Position-Aware TA, Spectre, MR Inspector, Targeting state
+machine, Proof of Accumulation, and the rest catalogued in
+docs/adr/ and sadp/EPISODIC_MEMORY.json with patent_flag=true)
+are NOT inside the Apache 2.0 grant on SADP. They remain
+proprietary per the COPYRIGHT and PATENTS PENDING sections
+above. Commercial or competitive implementation of those
+mechanisms requires a separate written license from the author.
+
+The SADP methodology can be freely used to govern AI-assisted
+development of trading systems that DO NOT implement the
+patent-flagged Acervator inventions. SADP is the governance
+layer; the trading inventions are the application layer.
+
+EXTERNAL PATTERNS ABSORBED INTO SADP (with credit)
+---------------------------------------------------
+SADP absorbed structural patterns from these community-
+developed AI development harnesses:
+
+  * Anthropic Code with Claude long-running-agents harness
+      https://github.com/anthropics/cwc-long-running-agents
+    Patterns: PreToolUse hook structure, separate evaluator
+    subagent from clean context, JSON-for-state Markdown-for-
+    narrative, file-based agent communication, commit-on-stop
+    backstop concept (SADP-flavored as forensic-log-not-commit).
+
+  * AGENTS.md open standard
+      https://agents.md/   https://github.com/agentsmd/agents.md
+    Pattern: single canonical agent-instructions file at repo
+    root with nearest-wins precedence.
+
+  * Anthropic Agent Skills specification
+      https://github.com/anthropics/skills
+      https://www.agensi.io/learn/agent-skills-open-standard
+    Pattern: SKILL.md packaging format for self-contained agent
+    capabilities.
+
+  * Cavekit / Cavemem ecosystem by Julius Brussee
+      https://github.com/JuliusBrussee/cavekit
+      https://github.com/JuliusBrussee/cavemem
+    Patterns: backprop reflex (test failures -> bug entries ->
+    invariants), fixed-section schema discipline, BM25 +
+    progressive-disclosure session memory retrieval. SADP did
+    NOT absorb Cavekit's minimalism — SADP's machinery is an
+    existing strength worth keeping.
+
+  * Harness Engineering discipline (community writeups)
+      https://github.com/ai-boost/awesome-harness-engineering
+      https://www.augmentcode.com/guides/harness-engineering-ai-coding-agents
+      arxiv:2603.05344
+
+The deep-research synthesis grounding these absorptions is at
+docs/audits/2026-06-01_sadp_augmentation_research.md.
+
+CONTACT
+-------
+For licensing, partnership, or legal inquiries:
+brownanan@icloud.com

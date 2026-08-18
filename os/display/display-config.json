@@ -1,0 +1,45 @@
+{
+  "_comment": "AcervatorOS mini display configuration.",
+  "_comment2": "I2C displays (SSD1306, HD44780) are auto-detected on startup.",
+  "_comment3": "SPI and non-standard displays must be declared here.",
+  "_comment4": "Set 'enabled': false to suppress a type even if detected.",
+
+  "displays": [
+    {
+      "_comment": "WaveShare e-Paper — uncomment and set model to enable",
+      "type":    "e_paper",
+      "enabled": false,
+      "model":   "epd2in13_V3",
+      "_models": "epd1in54_V2 | epd2in13_V3 | epd2in9_V2 | epd3in7 | epd4in2"
+    },
+    {
+      "_comment": "ST7789 TFT color display — uncomment to enable",
+      "type":    "tft_color",
+      "enabled": false,
+      "width":   "240",
+      "height":  "240"
+    },
+    {
+      "_comment": "SSD1351 color OLED — uncomment to enable",
+      "type":    "oled_color",
+      "enabled": false
+    }
+  ],
+
+  "message_filter": {
+    "_comment": "Set false to suppress a message type from ALL mini displays",
+    "trade_alert":    true,
+    "bot_state":      true,
+    "status_line":    true,
+    "price_ticker":   true,
+    "notification":   true,
+    "error":          true,
+    "startup_splash": true,
+    "chart_mini":     false,
+    "rich_text":      false,
+    "animation":      false
+  },
+
+  "price_ticker_interval_s": 30,
+  "_comment5": "Minimum seconds between PRICE_TICKER messages (prevents e-ink wear)"
+}

@@ -1,0 +1,1175 @@
+"""
+settings_dialog.py - Settings Menu Dialog v1.1
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Optional
+
+logger = logging.getLogger("acervator.gui")
+
+try:
+    from PySide6.QtWidgets import (
+        QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget,
+        QLabel, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox,
+        QCheckBox, QRadioButton, QGroupBox,
+        QPushButton, QSlider, QListWidget, QTextEdit,
+        QFormLayout, QDialogButtonBox, QApplication, QMessageBox,
+    )
+    from PySide6.QtCore import Qt, Signal
+    _HAS_QT = True
+except ImportError:
+    _HAS_QT = False
+from src.gui.qt_safe_events import safe_process_events  # v3.15.99 P4.1
+
+if _HAS_QT:
+
+    # v3.16.20 — equity-broker IDs that route to the Stock wing.
+    # MUST stay in sync with main_window._equity_exchange_ids;
+    # both lists are the single source of truth for "this id
+    # belongs to the stock layer."
+    EQUITY_EXCHANGE_IDS = {
+        "alpaca", "ibkr", "schwab", "tdameritrade",
+        "webull", "tastytrade", "fidelity", "etrade",
+        "interactivebrokers",
+    }
+
+    class SettingsDialog(QDialog):
+
+        settings_changed = Signal()
+
+        def __init__(self, settings_manager, status_log=None, parent=None,
+                     wing: str = "crypto"):
+            """v3.16.20 — wing-aware Settings dialog.
+
+            Parameters
+            ----------
+            wing : {"crypto", "stock"}
+                Which trading-mode wing the dialog was opened from.
+                Filters the Exchanges tab so the operator only sees
+                exchanges that belong to that wing:
+                  * crypto: the CCXT-supported list (binance, coinbase,
+                    kraken, etc.) — current behaviour
+                  * stock:  the planned equity-broker list (alpaca,
+                    ibkr, schwab, ...) with a "broker integration
+                    queued; not yet live" banner and the Add/Test
+                    buttons disabled
+                The "Configured Exchanges" list at the top of the tab
+                is also filtered to match — stock-wing operators no
+                longer see their crypto exchanges in the Stock
+                Settings, and vice versa.
+            """
+            super().__init__(parent)
+            self.setWindowTitle(
+                f"Settings — {wing.capitalize()} Wing"
+                if wing in ("crypto", "stock")
+                else "Settings")
+            self.setMinimumSize(700, 600)
+            self._sm = settings_manager
+            self._status_log = status_log
+            self._last_validation = None
+            self._wing = wing if wing in ("crypto", "stock") else "crypto"
+            self._setup_ui()
+            self._load_current()
+
+        def _setup_ui(self) -> None:
+            layout = QVBoxLayout(self)
+            tabs = QTabWidget()
+            tabs.addTab(self._create_user_tab(), "User")
+            tabs.addTab(self._create_exchange_tab(), "Exchanges")
+            tabs.addTab(self._create_trading_tab(), "Trading")
+            tabs.addTab(self._create_folding_tab(), "Profit Folding")
+            tabs.addTab(self._create_ta_tab(), "TA Indicators")
+            tabs.addTab(self._create_phantom_tab(), "Phantom Bots")
+            tabs.addTab(self._create_theme_tab(), "Theme")
+            tabs.addTab(self._create_logging_tab(), "Logging")
+            tabs.addTab(self._create_sound_tab(), "Sound")
+            tabs.addTab(self._create_sms_tab(), "SMS")
+            tabs.addTab(self._create_ai_monitor_tab(), "AI Monitor")
+            layout.addWidget(tabs)
+
+            btn_row = QHBoxLayout()
+            btn_row.addStretch()
+            self._cancel_btn = QPushButton("Cancel")
+            self._cancel_btn.clicked.connect(lambda: self.reject())
+            btn_row.addWidget(self._cancel_btn)
+            self._save_btn = QPushButton("Save")
+            self._save_btn.setProperty("accent", True)
+            self._save_btn.setStyleSheet("font-weight: bold; padding: 6px 24px;")
+            self._save_btn.clicked.connect(lambda: self._save())
+            btn_row.addWidget(self._save_btn)
+            layout.addLayout(btn_row)
+
+        # -- User tab ---
+        def _create_user_tab(self) -> QWidget:
+            w = QWidget()
+            form = QFormLayout(w)
+            self._username = QLineEdit()
+            form.addRow("Username:", self._username)
+            return w
+
+        # -- Exchange tab ---
+        def _create_exchange_tab(self) -> QWidget:
+            w = QWidget()
+            layout = QVBoxLayout(w)
+
+            # v3.16.20 — wing-aware banner + label
+            if self._wing == "stock":
+                _banner = QLabel(
+                    "<b>Stock Wing:</b> equity-broker integration is "
+                    "queued — no live brokers are wired up yet. The "
+                    "list below shows the planned brokers; Add / Test "
+                    "are disabled until the broker connectors ship. "
+                    "Use the Crypto Wing for active trading today."
+                )
+                _banner.setWordWrap(True)
+                _banner.setStyleSheet(
+                    "background: rgba(102, 153, 255, 30); "
+                    "color: #6699ff; border: 1px solid #6699ff55; "
+                    "padding: 8px; border-radius: 4px;"
+                )
+                layout.addWidget(_banner)
+
+            self._exchange_list = QListWidget()
+            _list_label = (
+                "Configured Stock Brokers:" if self._wing == "stock"
+                else "Configured Crypto Exchanges:"
+            )
+            layout.addWidget(QLabel(_list_label))
+            layout.addWidget(self._exchange_list)
+
+            add_group = QGroupBox(
+                "Add Stock Broker" if self._wing == "stock"
+                else "Add Crypto Exchange"
+            )
+            add_form = QFormLayout(add_group)
+
+            self._new_exchange = QComboBox()
+            from src.exchange.ccxt_connector import SUPPORTED_EXCHANGES, PASSPHRASE_EXCHANGES
+            self._passphrase_exchanges = PASSPHRASE_EXCHANGES
+
+            # v3.16.20 — populate the dropdown by wing.
+            # Stock wing: planned equity brokers (Alpaca, IBKR, etc.) —
+            #   listed for visibility, but Add/Test are disabled below.
+            # Crypto wing: CCXT-supported exchanges, current behaviour.
+            if self._wing == "stock":
+                for eid in sorted(EQUITY_EXCHANGE_IDS):
+                    self._new_exchange.addItem(
+                        f"{eid.capitalize()} (planned, not yet live)",
+                        eid,
+                    )
+            else:
+                for eid in sorted(SUPPORTED_EXCHANGES.keys()):
+                    label = eid.capitalize()
+                    if eid in PASSPHRASE_EXCHANGES:
+                        label += " (passphrase required)"
+                    self._new_exchange.addItem(label, eid)
+            self._new_exchange.currentIndexChanged.connect(self._on_exchange_changed)
+            add_form.addRow("Exchange:", self._new_exchange)
+
+            self._new_api_key = QLineEdit()
+            self._new_api_key.setPlaceholderText("API Key or organizations/.../.../apiKeys/...")
+            self._new_api_key.setToolTip("For Coinbase CDP keys, paste the full organizations/.../apiKeys/... string")
+            add_form.addRow("API Key:", self._new_api_key)
+
+            self._new_api_secret = QTextEdit()
+            self._new_api_secret.setMaximumHeight(60)
+            self._new_api_secret.setPlaceholderText(
+                "API Secret or EC Private Key (PEM format with \\n is OK)")
+            self._new_api_secret.setToolTip(
+                "For Coinbase CDP keys, paste the full PEM key including\n"
+                "-----BEGIN EC PRIVATE KEY----- and -----END EC PRIVATE KEY-----\n"
+                "Literal \\n characters will be auto-converted to newlines.")
+            add_form.addRow("API Secret:", self._new_api_secret)
+
+            self._pp_check = QCheckBox("This exchange uses an API passphrase")
+            self._pp_check.toggled.connect(
+                lambda on: self._new_passphrase.setVisible(on)
+            )
+            add_form.addRow(self._pp_check)
+
+            self._new_passphrase = QLineEdit()
+            self._new_passphrase.setEchoMode(QLineEdit.Password)
+            self._new_passphrase.setPlaceholderText("Passphrase set when creating API key")
+            self._new_passphrase.setVisible(False)
+            add_form.addRow("", self._new_passphrase)
+
+            btn_row = QHBoxLayout()
+            self._test_btn = QPushButton("Test Connection")
+            self._test_btn.clicked.connect(self._test_api_connection)
+            btn_row.addWidget(self._test_btn)
+
+            self._add_btn = QPushButton("Test and Add Exchange")
+            self._add_btn.setProperty("accent", True)
+            self._add_btn.clicked.connect(self._add_exchange)
+            btn_row.addWidget(self._add_btn)
+            add_form.addRow(btn_row)
+
+            self._api_feedback = QLabel("")
+            self._api_feedback.setWordWrap(True)
+            add_form.addRow(self._api_feedback)
+
+            # v3.16.20 — Stock wing: disable add/test affordances and
+            # surface the reason on hover. Inputs are disabled too so
+            # the operator doesn't waste effort typing creds for a
+            # broker connector that doesn't exist yet.
+            if self._wing == "stock":
+                _disabled_tip = (
+                    "Stock broker connector integration is queued; "
+                    "no live brokers ship yet. Use the Crypto Wing "
+                    "for active trading."
+                )
+                for _w in (self._test_btn, self._add_btn,
+                           self._new_api_key, self._new_api_secret,
+                           self._new_passphrase, self._pp_check):
+                    try:
+                        _w.setEnabled(False)
+                        _w.setToolTip(_disabled_tip)
+                    except Exception:  # R28-OK: defensive disable; tooltip is best-effort UX
+                        pass
+
+            layout.addWidget(add_group)
+
+            rm_btn = QPushButton("Remove Selected")
+            rm_btn.setProperty("danger", True)
+            rm_btn.clicked.connect(self._remove_exchange)
+            layout.addWidget(rm_btn)
+
+            self._on_exchange_changed()
+            return w
+
+        def _on_exchange_changed(self) -> None:
+            eid = self._new_exchange.currentData()
+            needs_pp = eid in self._passphrase_exchanges
+            self._pp_check.setChecked(needs_pp)
+            self._api_feedback.setText("")
+
+        def _test_api_connection(self):
+            eid = self._new_exchange.currentData()
+            key = self._new_api_key.text().strip()
+            secret = self._new_api_secret.toPlainText().strip()
+            pp = self._new_passphrase.text().strip() if self._pp_check.isChecked() else ""
+
+            if not key or not secret:
+                self._set_feedback("Enter API key and secret first.", "error")
+                return None
+
+            self._set_feedback(f"Testing connection to {eid.capitalize()}...", "info")
+            self._test_btn.setEnabled(False)
+            self._add_btn.setEnabled(False)
+            safe_process_events("legacy P4.1 site")
+
+            try:
+                from src.exchange.api_validator import validate_credentials
+                result = validate_credentials(eid, key, secret, pp)
+                if result.success:
+                    msg = result.message
+                    if result.details:
+                        msg += f"\nBalances: {result.details}"
+                    self._set_feedback(msg, "success")
+                    if self._status_log:
+                        self._status_log.log(result.message, "success")
+                        if result.details:
+                            self._status_log.log(f"Balances: {result.details}", "info")
+                    self._last_validation = result
+                    return result
+                else:
+                    msg = result.message
+                    if result.details:
+                        msg += f"\n{result.details}"
+                    self._set_feedback(msg, "error")
+                    if self._status_log:
+                        self._status_log.log(f"API failed ({eid}): {result.message}", "error")
+                    self._last_validation = None
+                    return None
+            except Exception as exc:
+                self._set_feedback(f"Test failed: {exc}", "error")
+                self._last_validation = None
+                return None
+            finally:
+                self._test_btn.setEnabled(True)
+                self._add_btn.setEnabled(True)
+
+        def _set_feedback(self, message: str, level: str = "info") -> None:
+            colors = {"info": "#00aaff", "success": "#00ff88", "warning": "#ffaa00", "error": "#ff3366"}
+            self._api_feedback.setText(message)
+            self._api_feedback.setStyleSheet(f"color: {colors.get(level, '#e0e0f0')};")
+
+        def _add_exchange(self) -> None:
+            # Prevent duplicate clicks
+            self._add_btn.setEnabled(False)
+            self._test_btn.setEnabled(False)
+            safe_process_events("legacy P4.1 site")
+
+            try:
+                eid = self._new_exchange.currentData()
+                key = self._new_api_key.text().strip()
+                secret = self._new_api_secret.toPlainText().strip()
+                pp = self._new_passphrase.text().strip() if self._pp_check.isChecked() else ""
+
+                if key and secret:
+                    result = self._test_api_connection()
+                    if result is None or not result.success:
+                        return
+
+                from src.core.settings import ExchangeConfig
+                config = ExchangeConfig(exchange_id=eid, display_name=eid.capitalize())
+
+                if key and secret:
+                    from src.core.encryption import encrypt
+                    master = f"qat_{self._sm.get('username', 'user')}_vault"
+                    config.api_key_enc = encrypt(key, master)
+                    config.api_secret_enc = encrypt(secret, master)
+                    if pp:
+                        config.passphrase_enc = encrypt(pp, master)
+
+                self._sm.add_exchange(config)
+                self._exchange_list.addItem(f"{eid.capitalize()} ({eid})")
+                self._new_api_key.clear()
+                self._new_api_secret.clear()
+                self._new_passphrase.clear()
+
+                has_creds = "with credentials (verified)" if key else "without credentials"
+                self._set_feedback(f"{eid.capitalize()} added {has_creds}.", "success")
+                if self._status_log:
+                    self._status_log.log(f"Exchange added: {eid.capitalize()} ({has_creds})", "success")
+                QMessageBox.information(
+                    self, "Exchange Added",
+                    f"{eid.capitalize()} has been added {has_creds}.\n"
+                    f"The exchange tab will appear in the main window.")
+                self.accept()
+            finally:
+                self._add_btn.setEnabled(True)
+                self._test_btn.setEnabled(True)
+
+        def _remove_exchange(self) -> None:
+            item = self._exchange_list.currentItem()
+            if not item:
+                self._set_feedback("Select an exchange to remove.", "warning")
+                return
+            text = item.text()
+            eid = text.split("(")[-1].rstrip(")")
+            self._sm.remove_exchange(eid)
+            self._exchange_list.takeItem(self._exchange_list.row(item))
+            self._set_feedback(f"{eid.capitalize()} removed.", "info")
+            if self._status_log:
+                self._status_log.log(f"Exchange removed: {eid}", "warning")
+
+        # -- Trading tab ---
+        def _create_trading_tab(self) -> QWidget:
+            w = QWidget()
+            form = QFormLayout(w)
+            self._pos_distance = QDoubleSpinBox()
+            self._pos_distance.setRange(1.0, 50.0)
+            self._pos_distance.setSuffix("%")
+            self._pos_distance.setDecimals(1)
+            form.addRow("Position Distance:", self._pos_distance)
+            self._increment_style = QComboBox()
+            self._increment_style.addItems(["linear", "logarithmic"])
+            form.addRow("Increment Style:", self._increment_style)
+            self._default_positions = QSpinBox()
+            self._default_positions.setRange(1, 100)
+            form.addRow("Default Positions:", self._default_positions)
+            self._default_balance = QDoubleSpinBox()
+            self._default_balance.setRange(1.0, 1000000.0)
+            self._default_balance.setPrefix("$")
+            self._default_balance.setDecimals(2)
+            form.addRow("Default Target Balance:", self._default_balance)
+            self._visibility = QComboBox()
+            self._visibility.addItems(["orderbook", "internal"])
+            form.addRow("Bot Visibility:", self._visibility)
+            self._aggressive = QCheckBox("Enable aggressive trading mode")
+            form.addRow(self._aggressive)
+            return w
+
+        # -- Profit Folding tab ---
+        def _create_folding_tab(self) -> QWidget:
+            w = QWidget()
+            layout = QVBoxLayout(w)
+            self._folding_active = QCheckBox("Profit Folding / Upward Distribution Active")
+            layout.addWidget(self._folding_active)
+
+            mode_group = QGroupBox("Distribution Mode")
+            mode_layout = QVBoxLayout(mode_group)
+            self._fold_equal = QRadioButton("Equal distribution")
+            self._fold_log = QRadioButton("Logarithmic distribution")
+            self._fold_equal.setChecked(True)
+            mode_layout.addWidget(self._fold_equal)
+            mode_layout.addWidget(self._fold_log)
+            layout.addWidget(mode_group)
+
+            fold_group = QGroupBox("Profit Folding Target")
+            fold_layout = QVBoxLayout(fold_group)
+            self._fold_all = QRadioButton("Fold to ALL buy positions")
+            self._fold_x = QRadioButton("Fold to X# of buy positions:")
+            self._fold_recent = QRadioButton("Fold to most recent buy positions")
+            self._fold_x_count = QSpinBox()
+            self._fold_x_count.setRange(1, 100)
+            self._fold_x_count.setValue(5)
+            self._fold_all.setChecked(True)
+            fold_layout.addWidget(self._fold_all)
+            x_row = QHBoxLayout()
+            x_row.addWidget(self._fold_x)
+            x_row.addWidget(self._fold_x_count)
+            fold_layout.addLayout(x_row)
+            fold_layout.addWidget(self._fold_recent)
+            layout.addWidget(fold_group)
+
+            dist_group = QGroupBox("Upward Distribution Target")
+            dist_layout = QVBoxLayout(dist_group)
+            self._dist_all = QRadioButton("Distribute to ALL sell positions")
+            self._dist_x = QRadioButton("Distribute to X# of sell positions:")
+            self._dist_recent = QRadioButton("Distribute to most recent sell positions")
+            self._dist_x_count = QSpinBox()
+            self._dist_x_count.setRange(1, 100)
+            self._dist_x_count.setValue(5)
+            self._dist_all.setChecked(True)
+            dist_layout.addWidget(self._dist_all)
+            dx_row = QHBoxLayout()
+            dx_row.addWidget(self._dist_x)
+            dx_row.addWidget(self._dist_x_count)
+            dist_layout.addLayout(dx_row)
+            dist_layout.addWidget(self._dist_recent)
+            layout.addWidget(dist_group)
+            layout.addStretch()
+            return w
+
+        # -- TA Indicator Weights tab ---
+        def _create_ta_tab(self) -> QWidget:
+            w = QWidget()
+            layout = QVBoxLayout(w)
+            layout.addWidget(QLabel("Adjust indicator weights in the voting engine."))
+            from src.trading.ta_engine import DEFAULT_WEIGHTS
+            self._ta_weight_sliders = {}
+            for ind_name, default_w in DEFAULT_WEIGHTS.items():
+                row = QHBoxLayout()
+                label = QLabel(f"{ind_name.replace('_', ' ').title()}:")
+                label.setMinimumWidth(140)
+                row.addWidget(label)
+                slider = QSlider(Qt.Horizontal)
+                slider.setRange(0, 200)
+                slider.setValue(int(default_w * 100))
+                row.addWidget(slider)
+                val_label = QLabel(f"{default_w:.2f}")
+                val_label.setMinimumWidth(40)
+                slider.valueChanged.connect(lambda v, lbl=val_label: lbl.setText(f"{v/100:.2f}"))
+                row.addWidget(val_label)
+                self._ta_weight_sliders[ind_name] = slider
+                layout.addLayout(row)
+            layout.addStretch()
+            return w
+
+        # -- Phantom Balance tab ---
+        def _create_phantom_tab(self) -> QWidget:
+            w = QWidget()
+            layout = QVBoxLayout(w)
+            self._phantoms_enabled = QCheckBox("Enable Phantom Balance Bots for Scrumming")
+            self._phantoms_enabled.setChecked(True)
+            layout.addWidget(self._phantoms_enabled)
+            layout.addWidget(QLabel("Default Phantom Timeframes:"))
+            self._phantom_tf_checks = {}
+            tf_grid = QHBoxLayout()
+            for tf in ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"]:
+                cb = QCheckBox(tf)
+                cb.setChecked(tf in ["5m", "15m", "1h", "4h", "1d"])
+                self._phantom_tf_checks[tf] = cb
+                tf_grid.addWidget(cb)
+            layout.addLayout(tf_grid)
+            lock_group = QGroupBox("Higher-TF Lock Settings")
+            lock_form = QFormLayout(lock_group)
+            self._lock_candles = QSpinBox()
+            self._lock_candles.setRange(1, 10)
+            self._lock_candles.setValue(2)
+            lock_form.addRow("Lock duration (candles):", self._lock_candles)
+            layout.addWidget(lock_group)
+            layout.addStretch()
+            return w
+
+        # -- Theme + Font tab ---
+        def _create_theme_tab(self) -> QWidget:
+            w = QWidget()
+            layout = QVBoxLayout(w)
+
+            # Theme selection
+            layout.addWidget(QLabel("Visual Theme:"))
+            self._theme_combo = QComboBox()
+            from src.gui.theme_engine import THEMES
+            for name, tokens in THEMES.items():
+                self._theme_combo.addItem(tokens.display_name, name)
+            layout.addWidget(self._theme_combo)
+
+            layout.addWidget(QLabel("Accent Color:"))
+            self._accent_color = QLineEdit()
+            self._accent_color.setPlaceholderText("#00ffcc")
+            layout.addWidget(self._accent_color)
+
+            # Font settings
+            font_group = QGroupBox("Font Settings")
+            font_form = QFormLayout(font_group)
+
+            self._font_family = QComboBox()
+            self._font_family.setEditable(True)
+            # Common monospace and UI fonts
+            fonts = [
+                "Segoe UI", "Consolas", "Cascadia Code", "Courier New",
+                "Arial", "Helvetica", "Roboto", "Fira Code",
+                "JetBrains Mono", "Source Code Pro", "Ubuntu", "Verdana",
+            ]
+            self._font_family.addItems(fonts)
+            self._font_family.setCurrentText("Segoe UI")
+            self._font_family.setToolTip("Font family for all application text")
+            font_form.addRow("Font Family:", self._font_family)
+
+            self._font_size = QSpinBox()
+            self._font_size.setRange(8, 24)
+            self._font_size.setValue(11)
+            self._font_size.setSuffix(" pt")
+            self._font_size.setToolTip("Base font size for all UI text")
+            font_form.addRow("Base Font Size:", self._font_size)
+
+            self._heading_size = QSpinBox()
+            self._heading_size.setRange(10, 32)
+            self._heading_size.setValue(14)
+            self._heading_size.setSuffix(" pt")
+            self._heading_size.setToolTip("Font size for headings and stat card values")
+            font_form.addRow("Heading Font Size:", self._heading_size)
+
+            self._log_font_size = QSpinBox()
+            self._log_font_size.setRange(8, 18)
+            self._log_font_size.setValue(10)
+            self._log_font_size.setSuffix(" pt")
+            self._log_font_size.setToolTip("Font size for Activity Log and API Log panels")
+            font_form.addRow("Log Font Size:", self._log_font_size)
+
+            self._font_preview = QLabel("The quick brown fox jumps over the lazy dog")
+            self._font_preview.setStyleSheet("padding: 8px; border: 1px solid #333;")
+            self._font_family.currentTextChanged.connect(self._update_font_preview)
+            self._font_size.valueChanged.connect(self._update_font_preview)
+            font_form.addRow("Preview:", self._font_preview)
+
+            layout.addWidget(font_group)
+            layout.addStretch()
+            return w
+
+        def _update_font_preview(self) -> None:
+            family = self._font_family.currentText()
+            size = self._font_size.value()
+            self._font_preview.setStyleSheet(
+                f"font-family: '{family}'; font-size: {size}pt; "
+                f"padding: 8px; border: 1px solid #333;"
+            )
+
+        # -- Logging tab ---
+        def _create_logging_tab(self) -> QWidget:
+            w = QWidget()
+            layout = QVBoxLayout(w)
+            self._ta_logging = QCheckBox("Log TA signal samples with all values and timestamps")
+            self._ta_logging.setChecked(True)
+            layout.addWidget(self._ta_logging)
+            self._highlight_trades = QCheckBox("Highlight entries near Scrumming Bot trades")
+            self._highlight_trades.setChecked(True)
+            layout.addWidget(self._highlight_trades)
+            layout.addWidget(QLabel("P/L Log Periodicity:"))
+            self._log_24h = QCheckBox("24 Hours")
+            self._log_24h.setChecked(True)
+            self._log_1w = QCheckBox("1 Week")
+            self._log_1w.setChecked(True)
+            self._log_1m = QCheckBox("1 Month")
+            self._log_1y = QCheckBox("1 Year")
+            layout.addWidget(self._log_24h)
+            layout.addWidget(self._log_1w)
+            layout.addWidget(self._log_1m)
+            layout.addWidget(self._log_1y)
+            layout.addStretch()
+            return w
+
+        # -- Sound tab ---
+        def _create_sound_tab(self) -> QWidget:
+            w = QWidget()
+            layout = QVBoxLayout(w)
+            self._sound_enabled = QCheckBox("Enable sound notifications")
+            self._sound_enabled.setChecked(True)
+            self._sound_enabled.setToolTip("Master switch for all audio notifications")
+            layout.addWidget(self._sound_enabled)
+
+            layout.addWidget(QLabel("Sound Events:"))
+            self._sound_buy = QCheckBox("Buy order fills (blurb + squirt tone)")
+            self._sound_buy.setChecked(True)
+            self._sound_buy.setToolTip("Plays a low bubbly rising tone when a buy order is filled")
+            layout.addWidget(self._sound_buy)
+
+            self._sound_sell = QCheckBox("Sell order fills (bell + jingle tone)")
+            self._sound_sell.setChecked(True)
+            self._sound_sell.setToolTip("Plays a high bright bell tone when a sell order is filled")
+            layout.addWidget(self._sound_sell)
+
+            self._sound_error = QCheckBox("Errors (alert tone)")
+            self._sound_error.setChecked(True)
+            layout.addWidget(self._sound_error)
+
+            self._sound_state = QCheckBox("Bot state changes (subtle click)")
+            self._sound_state.setChecked(True)
+            layout.addWidget(self._sound_state)
+
+            # MEM-236 — Fire SFX (sniper rifle shot) + Tracking beep toggles
+            self._sound_fire = QCheckBox(
+                "Scrum/Fold Fire (sniper rifle shot)")
+            self._sound_fire.setChecked(True)
+            self._sound_fire.setToolTip(
+                "Synthesized rifle shot plays when a scrum or fold\n"
+                "actually executes. Also plays on Manual Fire.")
+            layout.addWidget(self._sound_fire)
+
+            self._sound_track = QCheckBox(
+                "Tracking beeps (speeds up as bot closes on fire)")
+            self._sound_track.setChecked(True)
+            self._sound_track.setToolTip(
+                "Short beep paced by scrum phase:\n"
+                "  SEARCH = silent\n"
+                "  TRACK  = slow beep (800ms)\n"
+                "  FIRE   = fast beep (200ms)")
+            layout.addWidget(self._sound_track)
+
+            # MEM-238 — Profit + Drip SFX toggles
+            self._sound_profit = QCheckBox(
+                "P/L increase (coins dropping into bucket)")
+            self._sound_profit.setChecked(True)
+            self._sound_profit.setToolTip(
+                "Synthesized 3-coin bucket drop plays on any trade\n"
+                "event with realized profit > 0. Fires on grid and\n"
+                "scrumming bots alike.")
+            layout.addWidget(self._sound_profit)
+
+            self._sound_drip = QCheckBox(
+                "Accumulation (water drip)")
+            self._sound_drip.setChecked(True)
+            self._sound_drip.setToolTip(
+                "Water drip plays on FOLD events — the canonical\n"
+                "Acervator accumulation moment (buying back more asset\n"
+                "than was sold). Does not fire on SCRUM or DIST.")
+            layout.addWidget(self._sound_drip)
+
+            vol_row = QHBoxLayout()
+            vol_row.addWidget(QLabel("SFX Volume:"))
+            self._sound_volume = QSlider(Qt.Horizontal)
+            self._sound_volume.setRange(0, 100)
+            self._sound_volume.setValue(70)
+            vol_row.addWidget(self._sound_volume)
+            self._vol_label = QLabel("70%")
+            self._sound_volume.valueChanged.connect(
+                lambda v: self._vol_label.setText(f"{v}%"))
+            # MEM-236 — actually wire slider to sound engine. Prior
+            # implementation only updated the label; volume in
+            # SoundConfig stayed at its default 0.7 regardless of
+            # slider position. Must regenerate wav cache because
+            # volume is baked into the sample values at synth time.
+            self._sound_volume.valueChanged.connect(
+                self._on_sfx_volume_changed)
+            vol_row.addWidget(self._vol_label)
+            layout.addLayout(vol_row)
+
+            test_row = QHBoxLayout()
+            test_buy = QPushButton("Test Buy")
+            test_buy.clicked.connect(lambda: self._test_sound("buy"))
+            test_row.addWidget(test_buy)
+            test_sell = QPushButton("Test Sell")
+            test_sell.clicked.connect(lambda: self._test_sound("sell"))
+            test_row.addWidget(test_sell)
+            # MEM-236 — Test Fire + Test Track buttons
+            test_fire = QPushButton("Test Fire")
+            test_fire.setToolTip("Play the sniper rifle SFX.")
+            test_fire.clicked.connect(lambda: self._test_sound("fire"))
+            test_row.addWidget(test_fire)
+            test_track = QPushButton("Test Track")
+            test_track.setToolTip("Play one tracking beep.")
+            test_track.clicked.connect(lambda: self._test_sound("track"))
+            test_row.addWidget(test_track)
+            # MEM-238 — Test Profit + Test Drip buttons
+            test_profit = QPushButton("Test Profit")
+            test_profit.setToolTip("Play the coins-in-bucket SFX.")
+            test_profit.clicked.connect(lambda: self._test_sound("profit"))
+            test_row.addWidget(test_profit)
+            test_drip = QPushButton("Test Drip")
+            test_drip.setToolTip("Play the water-drip SFX.")
+            test_drip.clicked.connect(lambda: self._test_sound("drip"))
+            test_row.addWidget(test_drip)
+            layout.addLayout(test_row)
+
+            layout.addStretch()
+            return w
+
+        def _on_sfx_volume_changed(self, v: int) -> None:
+            """MEM-236 — Slider → SoundEngine live wiring.
+            Because sound wavs bake volume at synth time, we must
+            clear the cache and re-generate. The regen happens lazily
+            on next play(), so cost here is just clearing state."""
+            try:
+                from src.core.sound_engine import (
+                    get_sound_engine, SoundConfig)
+                se = get_sound_engine()
+                new_cfg = SoundConfig(
+                    enabled=self._sound_enabled.isChecked(),
+                    buy_sound=self._sound_buy.isChecked(),
+                    sell_sound=self._sound_sell.isChecked(),
+                    error_sound=self._sound_error.isChecked(),
+                    bot_state_sound=self._sound_state.isChecked(),
+                    fire_sound=self._sound_fire.isChecked(),
+                    track_sound=self._sound_track.isChecked(),
+                    profit_sound=self._sound_profit.isChecked(),  # MEM-238
+                    drip_sound=self._sound_drip.isChecked(),      # MEM-238
+                    volume=v / 100.0,
+                )
+                se.update_config(new_cfg)
+                # Force regen on next play
+                se._available = False
+                se._cache = {}
+            except Exception as _sf_exc:  # noqa: BLE001
+                logger.warning(
+                    "settings widget population failed — a field may show a default instead of its saved value: %s", _sf_exc)
+
+        def _test_sound(self, name: str) -> None:
+            from src.core.sound_engine import get_sound_engine
+            # Apply current UI state to the engine before playing so
+            # the operator hears the current slider volume.
+            self._on_sfx_volume_changed(self._sound_volume.value())
+            get_sound_engine().play(name)
+
+        # -- SMS tab ---
+        def _create_sms_tab(self) -> QWidget:
+            from PySide6.QtWidgets import QFormLayout as QFL, QScrollArea
+
+            # Scrollable container for all SMS settings
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+            inner = QWidget()
+            layout = QVBoxLayout(inner)
+            layout.setSpacing(8)
+
+            self._sms_enabled = QCheckBox("Enable SMS notifications")
+            self._sms_enabled.setToolTip("Send text messages to your phone for trading events")
+            layout.addWidget(self._sms_enabled)
+
+            provider_group = QGroupBox("SMS Provider")
+            pf = QFL(provider_group)
+            pf.setSpacing(6)
+            pf.setContentsMargins(8, 16, 8, 8)
+
+            self._sms_provider = QComboBox()
+            self._sms_provider.setMinimumHeight(28)
+            self._sms_provider.addItems(["Email-to-SMS Gateway", "Twilio API"])
+            pf.addRow("Provider:", self._sms_provider)
+
+            self._sms_phone = QLineEdit()
+            self._sms_phone.setMinimumHeight(28)
+            self._sms_phone.setPlaceholderText("+15551234567")
+            pf.addRow("Phone Number:", self._sms_phone)
+
+            sep = QLabel("Email Gateway Settings")
+            sep.setStyleSheet("color: #00cccc; font-weight: bold; margin-top: 6px;")
+            pf.addRow(sep)
+
+            self._sms_carrier = QComboBox()
+            self._sms_carrier.setMinimumHeight(28)
+            from src.core.sms_engine import CARRIER_GATEWAYS
+            for carrier in CARRIER_GATEWAYS:
+                self._sms_carrier.addItem(carrier)
+            pf.addRow("Carrier:", self._sms_carrier)
+
+            self._sms_gateway = QLineEdit()
+            self._sms_gateway.setMinimumHeight(28)
+            self._sms_gateway.setPlaceholderText("5551234567@vtext.com")
+            self._sms_gateway.setToolTip("Full email address for carrier SMS gateway")
+            pf.addRow("Gateway Email:", self._sms_gateway)
+
+            self._sms_smtp_user = QLineEdit()
+            self._sms_smtp_user.setMinimumHeight(28)
+            self._sms_smtp_user.setPlaceholderText("your.email@gmail.com")
+            pf.addRow("SMTP Username:", self._sms_smtp_user)
+
+            self._sms_smtp_pass = QLineEdit()
+            self._sms_smtp_pass.setMinimumHeight(28)
+            self._sms_smtp_pass.setEchoMode(QLineEdit.Password)
+            self._sms_smtp_pass.setPlaceholderText("App password (not regular password)")
+            pf.addRow("SMTP Password:", self._sms_smtp_pass)
+
+            layout.addWidget(provider_group)
+
+            events_group = QGroupBox("Notification Events")
+            ef = QFL(events_group)
+            ef.setSpacing(6)
+            ef.setContentsMargins(8, 16, 8, 8)
+            self._sms_buy = QCheckBox("Buy fills")
+            self._sms_buy.setChecked(True)
+            ef.addRow(self._sms_buy)
+            self._sms_sell = QCheckBox("Sell fills")
+            self._sms_sell.setChecked(True)
+            ef.addRow(self._sms_sell)
+            self._sms_state = QCheckBox("Bot state changes (start/stop/error)")
+            self._sms_state.setChecked(True)
+            ef.addRow(self._sms_state)
+            self._sms_errors = QCheckBox("API errors and failures")
+            self._sms_errors.setChecked(True)
+            ef.addRow(self._sms_errors)
+            self._sms_pl = QCheckBox("P/L threshold alerts")
+            ef.addRow(self._sms_pl)
+            self._sms_pl_amount = QDoubleSpinBox()
+            self._sms_pl_amount.setMinimumHeight(28)
+            self._sms_pl_amount.setRange(1, 100000)
+            self._sms_pl_amount.setValue(100)
+            self._sms_pl_amount.setPrefix("$")
+            ef.addRow("P/L threshold:", self._sms_pl_amount)
+            self._sms_balance = QCheckBox("Low balance warnings")
+            ef.addRow(self._sms_balance)
+            self._sms_connection = QCheckBox("Exchange connection status")
+            ef.addRow(self._sms_connection)
+
+            layout.addWidget(events_group)
+
+            rate_group = QGroupBox("Rate Limiting")
+            rf = QFL(rate_group)
+            rf.setSpacing(6)
+            rf.setContentsMargins(8, 16, 8, 8)
+            self._sms_max_hour = QSpinBox()
+            self._sms_max_hour.setMinimumHeight(28)
+            self._sms_max_hour.setRange(1, 100)
+            self._sms_max_hour.setValue(20)
+            rf.addRow("Max messages per hour:", self._sms_max_hour)
+            self._sms_cooldown = QSpinBox()
+            self._sms_cooldown.setMinimumHeight(28)
+            self._sms_cooldown.setRange(5, 300)
+            self._sms_cooldown.setValue(30)
+            self._sms_cooldown.setSuffix(" sec")
+            rf.addRow("Min time between messages:", self._sms_cooldown)
+            layout.addWidget(rate_group)
+
+            layout.addStretch()
+            scroll.setWidget(inner)
+            return scroll
+
+        # -- AI Monitor tab ---
+        def _create_ai_monitor_tab(self) -> QWidget:
+            from PySide6.QtWidgets import QScrollArea
+            QFL = QFormLayout
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            inner = QWidget()
+            layout = QVBoxLayout(inner)
+            layout.setSpacing(12)
+
+            # API Key
+            api_group = QGroupBox("Claude API Connection")
+            af = QFL(api_group)
+            af.setSpacing(6)
+            af.setContentsMargins(8, 16, 8, 8)
+
+            self._ai_api_key = QLineEdit()
+            self._ai_api_key.setMinimumHeight(28)
+            self._ai_api_key.setEchoMode(QLineEdit.Password)
+            self._ai_api_key.setPlaceholderText("sk-ant-api03-...")
+            af.addRow("Anthropic API Key:", self._ai_api_key)
+
+            self._ai_interval = QDoubleSpinBox()
+            self._ai_interval.setMinimumHeight(28)
+            self._ai_interval.setRange(0.5, 24.0)
+            self._ai_interval.setValue(4.0)
+            self._ai_interval.setSuffix(" hours")
+            self._ai_interval.setDecimals(1)
+            af.addRow("Check interval:", self._ai_interval)
+
+            layout.addWidget(api_group)
+
+            # Handshake Authentication
+            hs_group = QGroupBox("Handshake Authentication")
+            hf = QFL(hs_group)
+            hf.setSpacing(6)
+            hf.setContentsMargins(8, 16, 8, 8)
+
+            info = QLabel(
+                "The connect phrase is embedded in the system prompt sent to Claude.\n"
+                "The confirm phrase is what Claude must respond with to prove identity.\n"
+                "Change both phrases together. Keep them secret.")
+            info.setStyleSheet("color: #888; font-size: 10px;")
+            info.setWordWrap(True)
+            hf.addRow(info)
+
+            self._ai_connect_phrase = QLineEdit()
+            self._ai_connect_phrase.setMinimumHeight(28)
+            self._ai_connect_phrase.setPlaceholderText("acervator-heapbuilder-live")
+            hf.addRow("Connect phrase:", self._ai_connect_phrase)
+
+            self._ai_confirm_phrase = QLineEdit()
+            self._ai_confirm_phrase.setMinimumHeight(28)
+            self._ai_confirm_phrase.setPlaceholderText("the-heap-grows-by-accumulation")
+            hf.addRow("Confirm phrase:", self._ai_confirm_phrase)
+
+            layout.addWidget(hs_group)
+
+            # Monitor behavior
+            bh_group = QGroupBox("Monitor Behavior")
+            bf = QFL(bh_group)
+            bf.setSpacing(6)
+            bf.setContentsMargins(8, 16, 8, 8)
+
+            self._ai_enabled = QCheckBox("Enable AI Monitor feedback loop")
+            self._ai_enabled.setChecked(False)
+            bf.addRow(self._ai_enabled)
+
+            self._ai_auto_handshake = QCheckBox("Auto-handshake on first analysis")
+            self._ai_auto_handshake.setChecked(True)
+            bf.addRow(self._ai_auto_handshake)
+
+            self._ai_log_feedback = QCheckBox("Log AI feedback to trade journal")
+            self._ai_log_feedback.setChecked(True)
+            bf.addRow(self._ai_log_feedback)
+
+            layout.addWidget(bh_group)
+
+            # Status (read-only)
+            st_group = QGroupBox("Connection Status")
+            sf = QFL(st_group)
+            sf.setSpacing(4)
+            sf.setContentsMargins(8, 16, 8, 8)
+
+            self._ai_status = QLabel("Not connected")
+            self._ai_status.setStyleSheet("color: #888; font-weight: bold;")
+            sf.addRow("Status:", self._ai_status)
+
+            self._ai_hash = QLabel("—")
+            self._ai_hash.setStyleSheet("color: #666; font-family: Consolas;")
+            sf.addRow("Journal hash:", self._ai_hash)
+
+            self._ai_checks = QLabel("0")
+            sf.addRow("Checks completed:", self._ai_checks)
+
+            # Test button
+            self._ai_test_btn = QPushButton("Test Handshake")
+            self._ai_test_btn.setMinimumHeight(32)
+            self._ai_test_btn.setStyleSheet(
+                "background: #1a3a4a; color: #00ddff; border: 1px solid #00aacc; "
+                "border-radius: 4px; font-weight: bold;")
+            self._ai_test_btn.clicked.connect(self._test_ai_handshake)
+            sf.addRow(self._ai_test_btn)
+
+            layout.addWidget(st_group)
+
+            layout.addStretch()
+            scroll.setWidget(inner)
+            return scroll
+
+        def _test_ai_handshake(self):
+            """Trigger a test handshake (informational only — real handshake needs async)."""
+            key = self._ai_api_key.text().strip()
+            connect = self._ai_connect_phrase.text().strip()
+            confirm = self._ai_confirm_phrase.text().strip()
+            if not key:
+                self._ai_status.setText("No API key entered")
+                self._ai_status.setStyleSheet("color: #ff3366; font-weight: bold;")
+                return
+            if not connect or not confirm:
+                self._ai_status.setText("Phrases required")
+                self._ai_status.setStyleSheet("color: #ff3366; font-weight: bold;")
+                return
+            self._ai_status.setText("Settings saved — handshake runs on next bot cycle")
+            self._ai_status.setStyleSheet("color: #00ddff; font-weight: bold;")
+
+        # -- Load / Save ---
+        def _load_current(self) -> None:
+            if not self._sm:
+                return
+            self._username.setText(self._sm.get("username", ""))
+            self._pos_distance.setValue(self._sm.get("position_distance_pct", 2.0))
+            self._default_positions.setValue(self._sm.get("default_position_count", 10))
+            self._default_balance.setValue(self._sm.get("default_target_balance", 200.0))
+            self._accent_color.setText(self._sm.get("accent_color", "#00ffcc"))
+
+            # AI Monitor
+            ai = self._sm.get("ai_monitor", {})
+            self._ai_api_key.setText(ai.get("api_key", ""))
+            self._ai_interval.setValue(ai.get("interval_hours", 4.0))
+            self._ai_connect_phrase.setText(ai.get("connect_phrase", ""))
+            self._ai_confirm_phrase.setText(ai.get("confirm_phrase", ""))
+            self._ai_enabled.setChecked(ai.get("enabled", False))
+            self._ai_auto_handshake.setChecked(ai.get("auto_handshake", True))
+            self._ai_log_feedback.setChecked(ai.get("log_feedback", True))
+            theme = self._sm.get("theme", "cyberpunk_dark")
+            idx = self._theme_combo.findData(theme)
+            if idx >= 0:
+                self._theme_combo.setCurrentIndex(idx)
+            style = self._sm.get("increment_style", "linear")
+            idx = self._increment_style.findText(style)
+            if idx >= 0:
+                self._increment_style.setCurrentIndex(idx)
+            pf = self._sm.get("profit_folding", {})
+            self._folding_active.setChecked(pf.get("active", True))
+            # v3.16.20 — wing-filter the Configured Exchanges list so
+            # the Stock Wing only shows stock brokers (currently none)
+            # and the Crypto Wing only shows crypto exchanges. Single
+            # source of truth for the equity-id set is
+            # EQUITY_EXCHANGE_IDS (mirror of main_window's set).
+            for exch in self._sm.list_exchanges():
+                _eid = (exch.get("exchange_id", "") or "").lower()
+                _is_equity = _eid in EQUITY_EXCHANGE_IDS
+                if self._wing == "stock" and not _is_equity:
+                    continue
+                if self._wing == "crypto" and _is_equity:
+                    continue
+                self._exchange_list.addItem(
+                    f"{exch.get('display_name', '')} ({exch.get('exchange_id', '')})"
+                )
+
+        def _save(self) -> None:
+            """Save all settings and close. ALWAYS closes the dialog."""
+            import sys
+            print("[SETTINGS] _save called", file=sys.stderr, flush=True)
+
+            if not self._sm:
+                print("[SETTINGS] No settings manager, closing", file=sys.stderr, flush=True)
+                self.accept()
+                return
+
+            # Save each setting - errors printed to stderr but never block close
+            pairs = {
+                "username": lambda: self._username.text().strip(),
+                "position_distance_pct": lambda: self._pos_distance.value(),
+                "increment_style": lambda: self._increment_style.currentText(),
+                "default_position_count": lambda: self._default_positions.value(),
+                "default_target_balance": lambda: self._default_balance.value(),
+                "bot_visibility": lambda: self._visibility.currentText(),
+                "aggressive_trading": lambda: self._aggressive.isChecked(),
+                "theme": lambda: self._theme_combo.currentData(),
+                "accent_color": lambda: self._accent_color.text().strip(),
+                "font_family": lambda: self._font_family.currentText(),
+                "font_size": lambda: self._font_size.value(),
+                "heading_font_size": lambda: self._heading_size.value(),
+                "log_font_size": lambda: self._log_font_size.value(),
+            }
+            saved = 0
+            # v3.24.36 (C12) — collect failures instead of only printing
+            # them to stderr. Before this, a key that failed to save was
+            # reported nowhere the operator could see: stderr is not
+            # surfaced, and the status line below said
+            # "Settings saved (N groups)" at SUCCESS level regardless.
+            # Five keys failed on EVERY save (four font settings and
+            # ai_monitor, none of which existed as AppSettings fields),
+            # and the dialog closed looking like it had worked.
+            failed: list[str] = []
+            for key, getter in pairs.items():
+                try:
+                    self._sm.set(key, getter())
+                    saved += 1
+                except Exception as e:
+                    failed.append(f"{key} ({e})")
+                    print(f"[SETTINGS ERROR] {key}: {e}", file=sys.stderr, flush=True)
+
+            # Profit folding
+            try:
+                fold_target = "all_buy"
+                if self._fold_x.isChecked(): fold_target = "x_buy"
+                elif self._fold_recent.isChecked(): fold_target = "most_recent_buy"
+                dist_target = "all_sell"
+                if self._dist_x.isChecked(): dist_target = "x_sell"
+                elif self._dist_recent.isChecked(): dist_target = "most_recent_sell"
+                self._sm.set("profit_folding", {
+                    "active": self._folding_active.isChecked(),
+                    "mode": "logarithmic" if self._fold_log.isChecked() else "equal",
+                    "fold_target": fold_target,
+                    "fold_target_count": self._fold_x_count.value(),
+                    "distribute_target": dist_target,
+                    "distribute_target_count": self._dist_x_count.value(),
+                })
+                saved += 1
+            except Exception as e:
+                failed.append(f"profit_folding ({e})")
+                print(f"[SETTINGS ERROR] profit_folding: {e}", file=sys.stderr, flush=True)
+
+            # Data logging
+            try:
+                periods = []
+                if self._log_24h.isChecked(): periods.append("24h")
+                if self._log_1w.isChecked(): periods.append("1_week")
+                if self._log_1m.isChecked(): periods.append("1_month")
+                if self._log_1y.isChecked(): periods.append("1_year")
+                self._sm.set("data_logging", {
+                    "ta_signal_logging": self._ta_logging.isChecked(),
+                    "highlight_trade_proximity": self._highlight_trades.isChecked(),
+                    "active_periodicities": periods,
+                })
+                saved += 1
+            except Exception as e:
+                failed.append(f"data_logging ({e})")
+                print(f"[SETTINGS ERROR] data_logging: {e}", file=sys.stderr, flush=True)
+
+            # AI Monitor
+            try:
+                self._sm.set("ai_monitor", {
+                    "api_key": self._ai_api_key.text().strip(),
+                    "interval_hours": self._ai_interval.value(),
+                    "connect_phrase": self._ai_connect_phrase.text().strip(),
+                    "confirm_phrase": self._ai_confirm_phrase.text().strip(),
+                    "enabled": self._ai_enabled.isChecked(),
+                    "auto_handshake": self._ai_auto_handshake.isChecked(),
+                    "log_feedback": self._ai_log_feedback.isChecked(),
+                })
+                saved += 1
+            except Exception as e:
+                failed.append(f"ai_monitor ({e})")
+                print(f"[SETTINGS ERROR] ai_monitor: {e}", file=sys.stderr, flush=True)
+
+            # Emit signal
+            try:
+                self.settings_changed.emit()
+            except Exception as _sf_exc:  # noqa: BLE001
+                logger.warning(
+                    "settings save step failed — a field may not have persisted: %s", _sf_exc)
+
+            # Log to status
+            #
+            # v3.24.36 (C12) — a partial save is no longer reported as a
+            # success. This line previously read "Settings saved (N
+            # groups)." at SUCCESS level whether or not anything failed,
+            # so five keys silently vanishing looked identical to a
+            # clean save; only the count differed, and nobody knows what
+            # the count should be.
+            try:
+                if self._status_log:
+                    if failed:
+                        self._status_log.log(
+                            f"Settings PARTIALLY saved: {saved} ok, "
+                            f"{len(failed)} FAILED — {'; '.join(failed)}",
+                            "error")
+                    else:
+                        self._status_log.log(
+                            f"Settings saved ({saved} groups).", "success")
+            except Exception as _sf_exc:  # noqa: BLE001
+                logger.warning(
+                    "settings save step failed — a field may not have persisted: %s", _sf_exc)
+
+            print(f"[SETTINGS] Saved {saved} groups, closing dialog", file=sys.stderr, flush=True)
+
+            # v3.24.36 (C12) — surface a partial save to the operator.
+            # The status line above scrolls; this does not. A setting
+            # that silently fails to persist is indistinguishable from
+            # one that saved, and the operator re-enters it every
+            # session wondering why it never sticks.
+            #
+            # Deliberately AFTER everything else and wrapped: the
+            # "ALWAYS close" guarantee below is load-bearing and a
+            # message box must not be able to strand the dialog open.
+            if failed:
+                try:
+                    QMessageBox.warning(
+                        self, "Settings partially saved",
+                        f"{saved} setting group(s) saved, but "
+                        f"{len(failed)} FAILED and were discarded:\n\n"
+                        + "\n".join(f"  • {f}" for f in failed)
+                        + "\n\nThese values are NOT persisted and will "
+                          "revert when the dialog is reopened.")
+                except Exception as _mb_exc:  # noqa: BLE001
+                    logger.warning(
+                        "could not show partial-save warning: %s", _mb_exc)
+
+            # ALWAYS close the dialog - this line must execute no matter what
+            self.accept()

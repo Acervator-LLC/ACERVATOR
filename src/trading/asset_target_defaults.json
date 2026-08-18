@@ -1,0 +1,24 @@
+{
+  "_meta": {
+    "purpose": "Per-asset default target USD for NEW bots created via a topology-proposal Adopt handoff. Consumer: src/trading/topology_proposals.py. Design doc: docs/audits/2026-07-31_market_inspector_topology_proposals_design.md § 10 answer 2. Version: v3.23.67. Assets absent from `defaults` fall back to `fallback_usd`. Operator-editable — the runtime re-reads on each Proposal build.",
+    "fallback_usd": 25.0
+  },
+  "fallback_usd": 25.0,
+  "defaults": {
+    "BTC":   500.0,
+    "ETH":   500.0,
+    "SOL":   150.0,
+    "AVAX":  100.0,
+    "MATIC":  50.0,
+    "POL":    50.0,
+    "ARB":    50.0,
+    "OP":     50.0,
+    "LINK":  100.0,
+    "UNI":    75.0,
+    "AAVE":  100.0,
+    "DOGE":   50.0,
+    "LTC":    75.0,
+    "BCH":    75.0,
+    "XRP":    50.0
+  }
+}

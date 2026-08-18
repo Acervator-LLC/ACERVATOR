@@ -1,0 +1,13 @@
+{
+  "target": "docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_good.py",
+  "passed": true,
+  "tool_availability": {
+    "mypy": "ok",
+    "bandit": "ok",
+    "vulture": "ok"
+  },
+  "by_tool": {},
+  "by_severity": {},
+  "errors": [],
+  "findings": []
+}
