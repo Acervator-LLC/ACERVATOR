@@ -1,0 +1,145 @@
+{
+  "complete": true,
+  "created": "2026-08-16T05:33:39.365690+00:00",
+  "digest": "4a2b7e6327d90b760dbc1cc501a0cbb9c9d29edffc950f57dbc06a57033796d7",
+  "directive_set": "brief-seven+nosemgrep+mypy2+pylint-skip-file",
+  "entries": [
+    {
+      "archetypes": {
+        "tools.harness.coding_archetype": {
+          "by_severity": {
+            "info": 3,
+            "low": 566,
+            "medium": 550
+          },
+          "degraded": [],
+          "errors": [],
+          "failure": "",
+          "high": 0,
+          "module": "tools.harness.coding_archetype",
+          "passed": true,
+          "provenance": ".claude/hooks/archetype_gate.py:_pick_archetypes",
+          "ran": true
+        },
+        "tools.harness.ta_archetype": {
+          "by_severity": {
+            "low": 85
+          },
+          "degraded": [],
+          "errors": [],
+          "failure": "",
+          "high": 0,
+          "module": "tools.harness.ta_archetype",
+          "passed": true,
+          "provenance": ".claude/hooks/archetype_gate.py:_pick_archetypes",
+          "ran": true
+        },
+        "tools.harness.watchdog_archetype": {
+          "by_severity": {},
+          "degraded": [],
+          "errors": [],
+          "failure": "",
+          "high": 0,
+          "module": "tools.harness.watchdog_archetype",
+          "passed": true,
+          "provenance": "touchset: watchdog on every Python file (gate routes none)",
+          "ran": true
+        }
+      },
+      "directives": {
+        "by_kind": {
+          "noqa": 41,
+          "nosec": 1
+        },
+        "gated": true,
+        "scan": "tokenize-comment-pragmas",
+        "total": 42
+      },
+      "eol": "CRLF",
+      "eol_counts": {
+        "cr": 0,
+        "crlf": 15220,
+        "lf": 0
+      },
+      "is_code": true,
+      "path": "src/trading/scrumming_bot.py",
+      "routed": [
+        "tools.harness.coding_archetype",
+        "tools.harness.ta_archetype",
+        "tools.harness.watchdog_archetype"
+      ],
+      "sha256": "c9e70b12abb89e1a692a3d6b86aff672390a3f39dbe37c344db175744b0633ae",
+      "size": 843592
+    },
+    {
+      "archetypes": {
+        "tools.harness.coding_archetype": {
+          "by_severity": {
+            "info": 11,
+            "low": 191,
+            "medium": 137
+          },
+          "degraded": [],
+          "errors": [],
+          "failure": "",
+          "high": 0,
+          "module": "tools.harness.coding_archetype",
+          "passed": true,
+          "provenance": ".claude/hooks/archetype_gate.py:_pick_archetypes",
+          "ran": true
+        },
+        "tools.harness.ta_archetype": {
+          "by_severity": {
+            "low": 6
+          },
+          "degraded": [],
+          "errors": [],
+          "failure": "",
+          "high": 0,
+          "module": "tools.harness.ta_archetype",
+          "passed": true,
+          "provenance": ".claude/hooks/archetype_gate.py:_pick_archetypes",
+          "ran": true
+        },
+        "tools.harness.watchdog_archetype": {
+          "by_severity": {},
+          "degraded": [],
+          "errors": [],
+          "failure": "",
+          "high": 0,
+          "module": "tools.harness.watchdog_archetype",
+          "passed": true,
+          "provenance": "touchset: watchdog on every Python file (gate routes none)",
+          "ran": true
+        }
+      },
+      "directives": {
+        "by_kind": {},
+        "gated": true,
+        "scan": "tokenize-comment-pragmas",
+        "total": 0
+      },
+      "eol": "LF",
+      "eol_counts": {
+        "cr": 0,
+        "crlf": 0,
+        "lf": 1374
+      },
+      "is_code": true,
+      "path": "tests/test_autonomous_fold_price_gate.py",
+      "routed": [
+        "tools.harness.coding_archetype",
+        "tools.harness.ta_archetype",
+        "tools.harness.watchdog_archetype"
+      ],
+      "sha256": "be7d5721817adccbf08cbd42504583310346f364f85f7cbff6807b3dc4e922a8",
+      "size": 59602
+    }
+  ],
+  "git_head": "5405996436d1b0d3f14470a3e543e2b9b1a7d5ba",
+  "only": [],
+  "pin_version": 2,
+  "root": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27",
+  "routing_rule": ".claude/hooks/archetype_gate.py:_pick_archetypes",
+  "tool": "tools.touchset"
+}

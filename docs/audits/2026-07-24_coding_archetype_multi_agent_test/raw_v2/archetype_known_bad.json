@@ -1,0 +1,202 @@
+{
+  "target": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+  "passed": false,
+  "tool_availability": {
+    "ruff": "ok",
+    "mypy": "ok",
+    "pyright": "ok",
+    "bandit": "ok",
+    "vulture": "ok",
+    "semgrep": "ok"
+  },
+  "by_tool": {
+    "ruff": 15,
+    "mypy": 1,
+    "bandit": 3,
+    "vulture": 3
+  },
+  "by_severity": {
+    "low": 14,
+    "medium": 2,
+    "high": 6
+  },
+  "errors": [],
+  "findings": [
+    {
+      "tool": "ruff",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 1,
+      "rule_id": "INP001",
+      "message": "File `docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py` is part of an implicit namespace package. Add an `__init__.py`."
+    },
+    {
+      "tool": "ruff",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 1,
+      "rule_id": "CPY001",
+      "message": "Missing copyright notice at top of file"
+    },
+    {
+      "tool": "ruff",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 17,
+      "rule_id": "I001",
+      "message": "Import block is un-sorted or un-formatted"
+    },
+    {
+      "tool": "ruff",
+      "severity": "medium",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 17,
+      "rule_id": "F401",
+      "message": "`subprocess` imported but unused"
+    },
+    {
+      "tool": "ruff",
+      "severity": "high",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 20,
+      "rule_id": "S105",
+      "message": "Possible hardcoded password assigned to: \"DB_PASSWORD\""
+    },
+    {
+      "tool": "ruff",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 23,
+      "rule_id": "ANN201",
+      "message": "Missing return type annotation for public function `broken_types`"
+    },
+    {
+      "tool": "ruff",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 23,
+      "rule_id": "D103",
+      "message": "Missing docstring in public function"
+    },
+    {
+      "tool": "ruff",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 23,
+      "rule_id": "ANN001",
+      "message": "Missing type annotation for function argument `x`"
+    },
+    {
+      "tool": "ruff",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 23,
+      "rule_id": "ANN001",
+      "message": "Missing type annotation for function argument `y`"
+    },
+    {
+      "tool": "ruff",
+      "severity": "medium",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 24,
+      "rule_id": "F841",
+      "message": "Local variable `unused_local` is assigned to but never used"
+    },
+    {
+      "tool": "ruff",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 28,
+      "rule_id": "D103",
+      "message": "Missing docstring in public function"
+    },
+    {
+      "tool": "ruff",
+      "severity": "high",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 29,
+      "rule_id": "S101",
+      "message": "Use of `assert` detected"
+    },
+    {
+      "tool": "ruff",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 33,
+      "rule_id": "D103",
+      "message": "Missing docstring in public function"
+    },
+    {
+      "tool": "ruff",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 34,
+      "rule_id": "T201",
+      "message": "`print` found"
+    },
+    {
+      "tool": "ruff",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 35,
+      "rule_id": "T201",
+      "message": "`print` found"
+    },
+    {
+      "tool": "mypy",
+      "severity": "high",
+      "file": "docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 23,
+      "rule_id": "no-untyped-def",
+      "message": "Function is missing a type annotation"
+    },
+    {
+      "tool": "bandit",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 17,
+      "rule_id": "B404",
+      "message": "Consider possible security implications associated with the subprocess module."
+    },
+    {
+      "tool": "bandit",
+      "severity": "high",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 20,
+      "rule_id": "B105",
+      "message": "Possible hardcoded password: 'hunter2'"
+    },
+    {
+      "tool": "bandit",
+      "severity": "high",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 29,
+      "rule_id": "B101",
+      "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code."
+    },
+    {
+      "tool": "vulture",
+      "severity": "high",
+      "file": "docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 17,
+      "rule_id": "dead-code",
+      "message": "unused import 'subprocess'"
+    },
+    {
+      "tool": "vulture",
+      "severity": "low",
+      "file": "docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 20,
+      "rule_id": "dead-code",
+      "message": "unused variable 'DB_PASSWORD'"
+    },
+    {
+      "tool": "vulture",
+      "severity": "low",
+      "file": "docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "line": 24,
+      "rule_id": "dead-code",
+      "message": "unused variable 'unused_local'"
+    }
+  ]
+}

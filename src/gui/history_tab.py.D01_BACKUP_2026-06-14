@@ -1,0 +1,809 @@
+"""
+history_tab.py — Acervator History tab (v3.17.0 rebuild).
+─────────────────────────────────────────────────────────────────────
+Operator directive 2026-05-18:
+
+    "I am still not happy with the History tab. Clean out all code for
+     it to start fresh and make it so that it can pull trade histories
+     from current active exchanges."
+
+The prior `trade_history_tab.py` (~828 LOC) was built around a hybrid of
+local-ledger + connector-callback registration that drifted from
+exchange truth (operator's recurring complaint across Sessions 24-27).
+v3.17.0 starts fresh:
+
+  • Direct exchange-truth source: `exchange.get_my_trades()` per the
+    v3.16.46 API. Each tab refresh pulls live from each active exchange.
+  • Unified table across exchanges + symbols.
+  • Filters: date range, exchange, symbol, side, bot association.
+  • Pagination for large histories.
+  • CSV export of filtered view.
+  • Manual refresh + auto-refresh on tab activation.
+
+Implementation notes:
+  • Bot association: when a trade's symbol matches a registered bot's
+    `config.symbol`, the bot's ticker + last-4 of bot_id is appended in
+    the Bot column. Otherwise blank.
+  • Async fetch via `asyncio.run_coroutine_threadsafe` on the bot
+    manager's loop (same pattern as v3.16.54 manual fire button).
+  • Non-blocking: a QTimer polls the future and populates the table
+    when fetches complete. The dialog stays responsive.
+
+sadp: R28 (fail-loud display only), R44 (exchange truth)
+"""
+from __future__ import annotations
+
+import asyncio
+import csv
+import logging
+import time
+from datetime import datetime, timedelta, timezone
+from typing import Any, Optional
+
+try:
+    from PySide6.QtCore import Qt, QTimer, Signal
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import (
+        QAbstractItemView, QCheckBox, QComboBox, QDateTimeEdit, QFileDialog,
+        QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+        QMessageBox, QProgressBar, QPushButton, QSizePolicy,
+        QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    )  # v3.19.12 removed unused QSpacerItem
+    from PySide6.QtCore import QDateTime
+except ImportError:
+    # Headless / test environment fallback — methods still importable.
+    Qt = QTimer = Signal = QColor = None  # type: ignore
+    QWidget = object  # type: ignore
+
+logger = logging.getLogger("acervator.gui.history")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Helper: trade record normalization
+# ─────────────────────────────────────────────────────────────────────
+
+def _normalize_trade(trade: Any, exchange_id: str) -> Optional[dict]:
+    """Convert an exchange `Trade` dataclass (or dict from ccxt fallback)
+    into a row dict ready for the unified table.
+
+    Returns None if the trade is malformed.
+    """
+    if trade is None:
+        return None
+    try:
+        # Dataclass path
+        tid = str(getattr(trade, "id", "") or "")
+        symbol = str(getattr(trade, "symbol", "") or "")
+        side_obj = getattr(trade, "side", None)
+        # OrderSide enum or string
+        if hasattr(side_obj, "value"):
+            side = str(side_obj.value).upper()
+        elif side_obj is not None:
+            side = str(side_obj).upper()
+        else:
+            side = ""
+        # Normalize BUY/SELL spellings (some exchanges use buy/sell lc)
+        if "BUY" in side or "B" == side:
+            side = "BUY"
+        elif "SELL" in side or "S" == side:
+            side = "SELL"
+        amount = float(getattr(trade, "amount", 0) or 0)
+        price = float(getattr(trade, "price", 0) or 0)
+        fee = float(getattr(trade, "fee", 0) or 0)
+        fee_ccy = str(getattr(trade, "fee_currency", "") or "")
+        ts = float(getattr(trade, "timestamp", 0) or 0)
+    except Exception:
+        # Dict path (defensive — ccxt returns dicts in some flows)
+        if isinstance(trade, dict):
+            tid = str(trade.get("id", "") or "")
+            symbol = str(trade.get("symbol", "") or "")
+            side = str(trade.get("side", "") or "").upper()
+            try:
+                amount = float(trade.get("amount", 0) or 0)
+                price = float(trade.get("price", 0) or 0)
+                fee_obj = trade.get("fee", {}) or {}
+                fee = float((fee_obj.get("cost") if isinstance(
+                    fee_obj, dict) else fee_obj) or 0)
+                fee_ccy = str((fee_obj.get("currency")
+                               if isinstance(fee_obj, dict)
+                               else "") or "")
+                ts_raw = trade.get("timestamp", 0)
+                # ccxt uses milliseconds; if value looks like ms, convert
+                ts = float(ts_raw or 0)
+                if ts > 10_000_000_000:  # ms threshold
+                    ts /= 1000.0
+            except Exception:
+                return None
+        else:
+            return None
+
+    if not symbol or amount <= 0 or price <= 0:
+        return None
+
+    cost = amount * price
+    return {
+        "id": tid,
+        "exchange": exchange_id,
+        "symbol": symbol,
+        "side": side,
+        "amount": amount,
+        "price": price,
+        "cost": cost,
+        "fee": fee,
+        "fee_currency": fee_ccy,
+        "timestamp": ts,
+        "datetime": (datetime.fromtimestamp(ts, tz=timezone.utc)
+                     if ts > 0 else None),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# History fetcher — async pull from each active exchange
+# ─────────────────────────────────────────────────────────────────────
+
+async def _fetch_all_history(bot_manager, since_ts: float,
+                              limit_per_symbol: int = 500) -> list[dict]:
+    """Pull trade history from every active exchange + symbol.
+
+    Strategy:
+      1. Enumerate exchanges from bot_manager's bots (each bot has an
+         `.exchange` connector and `config.symbol`).
+      2. Deduplicate (exchange_id, symbol) pairs.
+      3. For each pair, `await exchange.get_my_trades(symbol, since)`.
+      4. Normalize results, merge, sort by timestamp desc.
+
+    Returns a list of normalized trade dicts (newest first).
+    Fail-soft per (exchange, symbol) — failures logged + skipped.
+    """
+    if bot_manager is None:
+        return []
+    # Build (exchange_id, exchange_obj, symbols) registry
+    by_exchange: dict[str, tuple[Any, set[str]]] = {}
+    try:
+        bots = list(getattr(bot_manager, "_bots", {}).values())
+    except Exception:
+        bots = []
+    for bot in bots:
+        try:
+            exch = getattr(bot, "exchange", None)
+            if exch is None:
+                continue
+            cfg = getattr(bot, "config", None)
+            if cfg is None:
+                continue
+            symbol = str(getattr(cfg, "symbol", "") or "")
+            if not symbol:
+                continue
+            # Use exchange_id from config if available, else type name
+            exch_id = str(getattr(cfg, "exchange_id", "") or "") or \
+                type(exch).__name__
+            if exch_id not in by_exchange:
+                by_exchange[exch_id] = (exch, set())
+            by_exchange[exch_id][1].add(symbol)
+        except Exception as _be:
+            logger.debug("history: bot enumeration entry skipped: %s", _be)
+
+    all_trades: list[dict] = []
+    for exch_id, (exch, symbols) in by_exchange.items():
+        if not hasattr(exch, "get_my_trades"):
+            logger.debug(
+                "history: exchange %s has no get_my_trades; skipping",
+                exch_id)
+            continue
+        for symbol in sorted(symbols):
+            try:
+                trades = await exch.get_my_trades(
+                    symbol=symbol,
+                    since=since_ts if since_ts > 0 else None,
+                    limit=limit_per_symbol)
+            except Exception as exc:
+                logger.warning(
+                    "history: get_my_trades(%s, %s) raised: %s",
+                    exch_id, symbol, exc)
+                continue
+            if not trades:
+                continue
+            for t in trades:
+                rec = _normalize_trade(t, exch_id)
+                if rec is not None:
+                    all_trades.append(rec)
+    # Newest first
+    all_trades.sort(key=lambda r: r.get("timestamp", 0), reverse=True)
+    return all_trades
+
+
+def _resolve_bot_label(bot_manager, exchange_id: str, symbol: str) -> str:
+    """Find the bot (if any) that matches this (exchange, symbol) pair.
+    Returns 'TICKER/last4' label, or empty string if no match.
+    """
+    if bot_manager is None:
+        return ""
+    try:
+        bots = list(getattr(bot_manager, "_bots", {}).values())
+    except Exception:
+        return ""
+    for bot in bots:
+        try:
+            cfg = getattr(bot, "config", None)
+            if cfg is None:
+                continue
+            if str(getattr(cfg, "symbol", "")) != symbol:
+                continue
+            bot_id = str(getattr(bot, "bot_id", "") or "")
+            ticker = str(getattr(cfg, "target_asset", "") or "")
+            if not ticker:
+                ticker = symbol.split("/")[0] if "/" in symbol else symbol
+            return f"{ticker}/{bot_id[-4:]}" if bot_id else ticker
+        except Exception:
+            continue
+    return ""
+
+
+# ─────────────────────────────────────────────────────────────────────
+# History tab widget
+# ─────────────────────────────────────────────────────────────────────
+
+class HistoryTab(QWidget):
+    """v3.17.0 — exchange-truth trade history tab.
+
+    Public surface (used by main_window):
+      • __init__(parent=None)
+      • set_bot_manager(bot_manager)
+      • refresh()  — manual refresh (called by tab-activated event)
+    """
+
+    PAGE_SIZE = 100
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._bot_manager = None
+        self._all_trades: list[dict] = []  # full unfiltered fetch
+        self._filtered: list[dict] = []    # post-filter view
+        self._page = 0
+        self._fetch_in_flight = False
+        self._last_fetched_ts: float = 0.0
+        self._build_ui()
+
+    # ── Public API ────────────────────────────────────────────────────
+    def set_bot_manager(self, bot_manager) -> None:
+        self._bot_manager = bot_manager
+
+    def refresh(self) -> None:
+        """Trigger an async fetch + re-render. Called from operator's
+        Refresh button and on tab-activated event."""
+        self._kick_async_fetch()
+
+    def get_history_callback(self):
+        """Backward-compat shim. The old TradeHistoryTab exposed a
+        push-callback that the connector invoked on each trade event
+        (`conn.set_history_callback(cb)` in main_window.py). The
+        v3.17.0 rebuild uses pull instead — `exchange.get_my_trades()`
+        on Refresh — so this callback is a no-op. Returning a no-op
+        lambda lets the existing connector wiring complete without
+        error during the transition. Safe to remove once all
+        `conn.set_history_callback(...)` call sites in main_window.py
+        are deleted (queued for v3.17.1+).
+        """
+        return lambda *_a, **_kw: None
+
+    # ── UI construction ───────────────────────────────────────────────
+    def _build_ui(self) -> None:
+        if QWidget is object:
+            return  # headless guard
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(8, 8, 8, 8)
+        outer.setSpacing(6)
+
+        # ── Filter bar ────────────────────────────────────────────────
+        filt = QGroupBox("Filters")
+        fl = QHBoxLayout(filt)
+        fl.setContentsMargins(8, 6, 8, 6)
+
+        # Date range
+        fl.addWidget(QLabel("From:"))
+        self._from_dt = QDateTimeEdit(
+            QDateTime.currentDateTime().addDays(-30))
+        self._from_dt.setCalendarPopup(True)
+        self._from_dt.setDisplayFormat("yyyy-MM-dd HH:mm")
+        self._from_dt.setMinimumWidth(150)
+        fl.addWidget(self._from_dt)
+
+        fl.addWidget(QLabel("To:"))
+        self._to_dt = QDateTimeEdit(QDateTime.currentDateTime())
+        self._to_dt.setCalendarPopup(True)
+        self._to_dt.setDisplayFormat("yyyy-MM-dd HH:mm")
+        self._to_dt.setMinimumWidth(150)
+        fl.addWidget(self._to_dt)
+
+        # Exchange filter
+        fl.addWidget(QLabel("Exchange:"))
+        self._exch_combo = QComboBox()
+        self._exch_combo.addItem("(all)")
+        self._exch_combo.setMinimumWidth(120)
+        fl.addWidget(self._exch_combo)
+
+        # Symbol filter
+        fl.addWidget(QLabel("Symbol:"))
+        self._sym_combo = QComboBox()
+        self._sym_combo.addItem("(all)")
+        self._sym_combo.setMinimumWidth(120)
+        fl.addWidget(self._sym_combo)
+
+        # Side filter
+        fl.addWidget(QLabel("Side:"))
+        self._side_combo = QComboBox()
+        self._side_combo.addItems(["(all)", "BUY", "SELL"])
+        fl.addWidget(self._side_combo)
+
+        fl.addStretch(1)
+
+        # Apply / Reset / Refresh buttons
+        self._apply_btn = QPushButton("Apply")
+        self._apply_btn.setToolTip(
+            "Apply current filters to the loaded history.")
+        self._apply_btn.clicked.connect(self._apply_filters)
+        fl.addWidget(self._apply_btn)
+
+        self._reset_btn = QPushButton("Reset")
+        self._reset_btn.setToolTip(
+            "Clear all filters and show full history.")
+        self._reset_btn.clicked.connect(self._reset_filters)
+        fl.addWidget(self._reset_btn)
+
+        self._refresh_btn = QPushButton("Refresh")
+        self._refresh_btn.setToolTip(
+            "Pull fresh trade history from every active exchange.")
+        self._refresh_btn.clicked.connect(self.refresh)
+        fl.addWidget(self._refresh_btn)
+
+        outer.addWidget(filt)
+
+        # ── Summary line ─────────────────────────────────────────────
+        self._summary = QLabel("No history loaded yet — click Refresh.")
+        self._summary.setStyleSheet("color: #aaa; padding: 2px 6px;")
+        outer.addWidget(self._summary)
+
+        # ── Trades table ─────────────────────────────────────────────
+        # v3.20.78 — added "Grade" column at index 10 backed by
+        # sadp._tools.trade_grader. Grading is on-demand and operator-
+        # visible; never feeds back into trading decisions.
+        self._table = QTableWidget()
+        self._table.setColumnCount(11)
+        self._table.setHorizontalHeaderLabels([
+            "Timestamp (UTC)", "Exchange", "Symbol", "Bot",
+            "Side", "Amount", "Price", "Cost USD",
+            "Fee", "Trade ID", "Grade"])
+        self._table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeToContents)
+        self._table.horizontalHeader().setStretchLastSection(False)
+        self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._table.setAlternatingRowColors(True)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        outer.addWidget(self._table, stretch=1)
+
+        # ── Footer bar (pagination + export) ─────────────────────────
+        foot = QHBoxLayout()
+        foot.setContentsMargins(0, 0, 0, 0)
+
+        self._prev_btn = QPushButton("◀ Prev")
+        self._prev_btn.clicked.connect(self._prev_page)
+        foot.addWidget(self._prev_btn)
+
+        self._page_label = QLabel("Page —")
+        self._page_label.setMinimumWidth(120)
+        self._page_label.setAlignment(Qt.AlignCenter)
+        foot.addWidget(self._page_label)
+
+        self._next_btn = QPushButton("Next ▶")
+        self._next_btn.clicked.connect(self._next_page)
+        foot.addWidget(self._next_btn)
+
+        foot.addStretch(1)
+
+        self._progress = QProgressBar()
+        self._progress.setMaximumWidth(150)
+        self._progress.setRange(0, 0)  # busy indeterminate
+        self._progress.setVisible(False)
+        foot.addWidget(self._progress)
+
+        self._export_btn = QPushButton("Export CSV…")
+        self._export_btn.setToolTip(
+            "Export the currently-filtered history view to a CSV file.")
+        self._export_btn.clicked.connect(self._export_csv)
+        foot.addWidget(self._export_btn)
+
+        outer.addLayout(foot)
+
+    # ── Async fetch + result handling ─────────────────────────────────
+    def _kick_async_fetch(self) -> None:
+        if QWidget is object:
+            return
+        if self._fetch_in_flight:
+            return
+        if self._bot_manager is None:
+            self._summary.setText(
+                "Bot manager unavailable — cannot fetch history.")
+            return
+        # Compute since_ts from the From filter (UTC unix seconds)
+        try:
+            qdt = self._from_dt.dateTime()
+            # Treat as local time, convert to UTC unix seconds
+            since_ts = qdt.toSecsSinceEpoch()
+        except Exception:
+            since_ts = time.time() - 30 * 86400
+
+        loop = getattr(self._bot_manager, "_async_loop", None)
+        if loop is None:
+            self._summary.setText(
+                "Async loop not ready — try again after platform starts.")
+            return
+
+        self._fetch_in_flight = True
+        self._progress.setVisible(True)
+        self._refresh_btn.setEnabled(False)
+        self._summary.setText("Fetching trade history from exchanges…")
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                _fetch_all_history(self._bot_manager, since_ts),
+                loop)
+        except Exception as exc:
+            self._fetch_in_flight = False
+            self._progress.setVisible(False)
+            self._refresh_btn.setEnabled(True)
+            self._summary.setText(f"Schedule failed: {exc}")
+            return
+
+        # Poll the future without blocking the GUI.
+        start_ts = time.monotonic()
+        poll_timer = QTimer(self)
+        poll_timer.setInterval(400)
+
+        def _check():
+            try:
+                if future.done():
+                    poll_timer.stop()
+                    self._fetch_in_flight = False
+                    self._progress.setVisible(False)
+                    self._refresh_btn.setEnabled(True)
+                    try:
+                        result = future.result(timeout=0.1)
+                    except Exception as rx:
+                        self._summary.setText(
+                            f"Fetch raised: {type(rx).__name__}: {rx}")
+                        logger.warning(
+                            "history fetch raised: %s", rx)
+                        return
+                    self._all_trades = list(result or [])
+                    self._last_fetched_ts = time.time()
+                    self._populate_filter_options()
+                    self._apply_filters()
+                    return
+                # 60s sanity timeout
+                if time.monotonic() - start_ts > 60.0:
+                    poll_timer.stop()
+                    self._fetch_in_flight = False
+                    self._progress.setVisible(False)
+                    self._refresh_btn.setEnabled(True)
+                    self._summary.setText(
+                        "Fetch timeout (60s). Exchange may be rate-"
+                        "limited; try again.")
+            except Exception as exc:
+                poll_timer.stop()
+                self._fetch_in_flight = False
+                self._progress.setVisible(False)
+                self._refresh_btn.setEnabled(True)
+                logger.warning(
+                    "history poll exception: %s", exc)
+
+        poll_timer.timeout.connect(_check)
+        poll_timer.start()
+
+    # ── Filter handling ──────────────────────────────────────────────
+    def _populate_filter_options(self) -> None:
+        """Refresh the exchange/symbol comboboxes from the loaded data."""
+        if QWidget is object:
+            return
+        # Exchanges
+        cur_exch = self._exch_combo.currentText()
+        self._exch_combo.blockSignals(True)
+        self._exch_combo.clear()
+        self._exch_combo.addItem("(all)")
+        for x in sorted({r["exchange"] for r in self._all_trades
+                         if r.get("exchange")}):
+            self._exch_combo.addItem(x)
+        idx = self._exch_combo.findText(cur_exch)
+        if idx >= 0:
+            self._exch_combo.setCurrentIndex(idx)
+        self._exch_combo.blockSignals(False)
+
+        # Symbols
+        cur_sym = self._sym_combo.currentText()
+        self._sym_combo.blockSignals(True)
+        self._sym_combo.clear()
+        self._sym_combo.addItem("(all)")
+        for s in sorted({r["symbol"] for r in self._all_trades
+                         if r.get("symbol")}):
+            self._sym_combo.addItem(s)
+        idx = self._sym_combo.findText(cur_sym)
+        if idx >= 0:
+            self._sym_combo.setCurrentIndex(idx)
+        self._sym_combo.blockSignals(False)
+
+    def _apply_filters(self) -> None:
+        if QWidget is object:
+            return
+        # v3.20.36 — operator-reported 2026-05-31: pressing Apply with
+        # a valid filter range produced "0 of 0 trades · no fetch yet"
+        # forever, because Apply only filters local data — it never
+        # triggers a fetch. The companion gap was that the History
+        # tab's documented "auto-refresh on tab activation" (file
+        # docstring line 21) was never wired in main_window. Together
+        # the two gaps meant the only path to a fetch was the operator
+        # explicitly clicking Refresh — but the natural UX intent of
+        # setting filters + clicking Apply is "show me those trades."
+        # Fix: if no prior fetch has occurred, treat Apply as
+        # implicit-Refresh-then-Apply. The fetch's completion handler
+        # already calls _apply_filters() recursively on success
+        # (_kick_async_fetch line ~477), so the filter pass runs
+        # automatically once data arrives.
+        if (self._last_fetched_ts == 0
+                and not self._fetch_in_flight
+                and self._bot_manager is not None):
+            logger.info(
+                "history: Apply pressed with no prior fetch; "
+                "kicking implicit fetch")
+            self._kick_async_fetch()
+            return
+        try:
+            from_ts = self._from_dt.dateTime().toSecsSinceEpoch()
+            to_ts = self._to_dt.dateTime().toSecsSinceEpoch()
+        except Exception:
+            from_ts, to_ts = 0, 0
+        exch_f = self._exch_combo.currentText()
+        sym_f = self._sym_combo.currentText()
+        side_f = self._side_combo.currentText()
+
+        out: list[dict] = []
+        for r in self._all_trades:
+            ts = float(r.get("timestamp", 0) or 0)
+            if from_ts > 0 and ts < from_ts:
+                continue
+            if to_ts > 0 and ts > to_ts:
+                continue
+            if exch_f != "(all)" and r.get("exchange") != exch_f:
+                continue
+            if sym_f != "(all)" and r.get("symbol") != sym_f:
+                continue
+            if side_f != "(all)" and r.get("side") != side_f:
+                continue
+            out.append(r)
+        self._filtered = out
+        self._page = 0
+        self._render_page()
+
+    def _reset_filters(self) -> None:
+        if QWidget is object:
+            return
+        self._from_dt.setDateTime(
+            QDateTime.currentDateTime().addDays(-30))
+        self._to_dt.setDateTime(QDateTime.currentDateTime())
+        self._exch_combo.setCurrentIndex(0)
+        self._sym_combo.setCurrentIndex(0)
+        self._side_combo.setCurrentIndex(0)
+        self._apply_filters()
+
+    # ── Pagination + rendering ───────────────────────────────────────
+    def _render_page(self) -> None:
+        if QWidget is object:
+            return
+        total = len(self._filtered)
+        max_page = max(0, (total - 1) // self.PAGE_SIZE)
+        if self._page > max_page:
+            self._page = max_page
+        if self._page < 0:
+            self._page = 0
+        start = self._page * self.PAGE_SIZE
+        end = min(start + self.PAGE_SIZE, total)
+        rows = self._filtered[start:end]
+
+        self._table.setRowCount(len(rows))
+        for row_i, r in enumerate(rows):
+            dt = r.get("datetime")
+            ts_str = (dt.strftime("%Y-%m-%d %H:%M:%S")
+                      if dt is not None else "—")
+            self._table.setItem(row_i, 0, QTableWidgetItem(ts_str))
+            self._table.setItem(row_i, 1, QTableWidgetItem(
+                str(r.get("exchange", ""))))
+            self._table.setItem(row_i, 2, QTableWidgetItem(
+                str(r.get("symbol", ""))))
+            bot_label = _resolve_bot_label(
+                self._bot_manager,
+                r.get("exchange", ""),
+                r.get("symbol", ""))
+            self._table.setItem(row_i, 3, QTableWidgetItem(bot_label))
+            side_item = QTableWidgetItem(str(r.get("side", "")))
+            if r.get("side") == "BUY":
+                side_item.setForeground(QColor("#00ff88"))
+            elif r.get("side") == "SELL":
+                side_item.setForeground(QColor("#ff5566"))
+            self._table.setItem(row_i, 4, side_item)
+            self._table.setItem(row_i, 5, QTableWidgetItem(
+                f"{r.get('amount', 0):,.8f}"))
+            self._table.setItem(row_i, 6, QTableWidgetItem(
+                f"${r.get('price', 0):,.8f}"))
+            self._table.setItem(row_i, 7, QTableWidgetItem(
+                f"${r.get('cost', 0):,.4f}"))
+            fee_str = (f"{r.get('fee', 0):,.6f} {r.get('fee_currency', '')}"
+                       if r.get("fee", 0) > 0 else "—")
+            self._table.setItem(row_i, 8, QTableWidgetItem(fee_str))
+            tid = str(r.get("id", ""))
+            self._table.setItem(row_i, 9, QTableWidgetItem(
+                tid[:16] + "…" if len(tid) > 16 else tid))
+            # v3.20.78 — Grade column (idx 10). On-demand grading via
+            # sadp._tools.trade_grader using context from the
+            # surrounding filtered trades (same asset/exchange) on
+            # this page. Read-only display; never feeds back into
+            # trading decisions.
+            grade_str = self._grade_row(row_i, rows, r)
+            grade_item = QTableWidgetItem(grade_str)
+            # Color by letter
+            if grade_str.startswith("A"):
+                grade_item.setForeground(QColor("#00ff88"))
+            elif grade_str.startswith("B"):
+                grade_item.setForeground(QColor("#88dd44"))
+            elif grade_str.startswith("C"):
+                grade_item.setForeground(QColor("#dddd44"))
+            elif grade_str.startswith("D"):
+                grade_item.setForeground(QColor("#ff9944"))
+            elif grade_str.startswith("F"):
+                grade_item.setForeground(QColor("#ff5566"))
+            self._table.setItem(row_i, 10, grade_item)
+
+        # Page label
+        if total == 0:
+            self._page_label.setText("No matches")
+        else:
+            self._page_label.setText(
+                f"Page {self._page + 1} / {max_page + 1} "
+                f"({total} trades)")
+        self._prev_btn.setEnabled(self._page > 0)
+        self._next_btn.setEnabled(self._page < max_page)
+
+        # Summary
+        if self._last_fetched_ts > 0:
+            age_s = int(time.time() - self._last_fetched_ts)
+            fetched_str = f"fetched {age_s}s ago"
+        else:
+            fetched_str = "no fetch yet"
+        total_loaded = len(self._all_trades)
+        buy_count = sum(1 for r in self._filtered if r.get("side") == "BUY")
+        sell_count = sum(1 for r in self._filtered if r.get("side") == "SELL")
+        buy_usd = sum(r.get("cost", 0) for r in self._filtered
+                      if r.get("side") == "BUY")
+        sell_usd = sum(r.get("cost", 0) for r in self._filtered
+                       if r.get("side") == "SELL")
+        self._summary.setText(
+            f"{total} of {total_loaded} trades shown · "
+            f"BUYs: {buy_count} (${buy_usd:,.2f}) · "
+            f"SELLs: {sell_count} (${sell_usd:,.2f}) · "
+            f"{fetched_str}")
+
+    # ── Trade grading (v3.20.78) ─────────────────────────────────────
+    def _grade_row(self, row_i: int, page_rows: list,
+                    r: dict) -> str:
+        """Grade a single trade row.
+
+        Uses the surrounding page-context for ref-price + future-price
+        proxies (this page's filtered rows of the same symbol). On-
+        demand, read-only — grade NEVER feeds back into trading
+        decisions. Returns the letter grade string or "—" on insufficient
+        context."""
+        try:
+            from sadp._tools.trade_grader import (
+                TradeRecord, PriceContext, grade_trade)
+        except Exception:
+            return "—"
+        symbol = str(r.get("symbol", ""))
+        side = str(r.get("side", "")).lower()  # BUY → buy / SELL → sell
+        price = float(r.get("price", 0) or 0)
+        qty = float(r.get("amount", 0) or 0)
+        if price <= 0 or qty <= 0 or side not in ("buy", "sell"):
+            return "—"
+        # Surrounding same-symbol rows on this page (before/after)
+        same_sym_prior_prices = []
+        same_sym_future_prices = []
+        for j, other in enumerate(page_rows):
+            if str(other.get("symbol", "")) != symbol:
+                continue
+            op = float(other.get("price", 0) or 0)
+            if op <= 0:
+                continue
+            if j < row_i:
+                same_sym_prior_prices.append(op)
+            elif j > row_i:
+                same_sym_future_prices.append(op)
+        # Ref price = median of last 5 prior same-symbol prices on
+        # this page; require at least 3 for sensible context
+        ref = None
+        if len(same_sym_prior_prices) >= 3:
+            import statistics
+            ref = statistics.median(same_sym_prior_prices[-5:])
+        rec = TradeRecord(
+            trade_id=str(r.get("id", "")),
+            timestamp=r.get("datetime"),
+            asset=symbol.split("/")[0] if "/" in symbol else symbol,
+            side=side,
+            price=price,
+            quantity=qty,
+            fee=float(r.get("fee", 0) or 0),
+        )
+        ctx = PriceContext(
+            ref_price_at_decision=ref,
+            future_prices=same_sym_future_prices[:10],
+            regime_tag="LIVE",
+        )
+        g = grade_trade(rec, ctx)
+        return g.overall
+
+    def _prev_page(self) -> None:
+        self._page -= 1
+        self._render_page()
+
+    def _next_page(self) -> None:
+        self._page += 1
+        self._render_page()
+
+    # ── CSV export ───────────────────────────────────────────────────
+    def _export_csv(self) -> None:
+        if QWidget is object:
+            return
+        if not self._filtered:
+            QMessageBox.information(
+                self, "No data", "Nothing to export — apply filters or "
+                                  "refresh first.")
+            return
+        default_name = (
+            f"acervator_history_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export trade history",
+            default_name, "CSV files (*.csv)")
+        if not path:
+            return
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow([
+                    "timestamp_utc", "exchange", "symbol", "bot",
+                    "side", "amount", "price", "cost_usd",
+                    "fee", "fee_currency", "trade_id"])
+                for r in self._filtered:
+                    dt = r.get("datetime")
+                    ts_str = (dt.strftime("%Y-%m-%d %H:%M:%S")
+                              if dt is not None else "")
+                    bot_label = _resolve_bot_label(
+                        self._bot_manager,
+                        r.get("exchange", ""),
+                        r.get("symbol", ""))
+                    w.writerow([
+                        ts_str,
+                        r.get("exchange", ""),
+                        r.get("symbol", ""),
+                        bot_label,
+                        r.get("side", ""),
+                        f"{r.get('amount', 0):.8f}",
+                        f"{r.get('price', 0):.8f}",
+                        f"{r.get('cost', 0):.4f}",
+                        f"{r.get('fee', 0):.6f}",
+                        r.get("fee_currency", ""),
+                        r.get("id", ""),
+                    ])
+            QMessageBox.information(
+                self, "Export complete",
+                f"Wrote {len(self._filtered)} rows to:\n{path}")
+        except Exception as exc:
+            logger.exception("CSV export raised")
+            QMessageBox.warning(
+                self, "Export failed",
+                f"Could not write CSV:\n\n{type(exc).__name__}: {exc}")

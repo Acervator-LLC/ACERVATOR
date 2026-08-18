@@ -1,0 +1,66 @@
+# Acervator — Docker Compose
+# Runs: bot daemon + optional monitoring stack
+# Copyright (c) 2025 Anthony L. Brown. All rights reserved.
+#
+# Usage:
+#   docker compose up -d                  # Start everything
+#   docker compose logs -f acervator      # Tail bot logs
+#   docker compose down                   # Stop everything
+#   docker compose pull && docker compose up -d  # Update
+
+version: "3.9"
+
+services:
+
+  # ── ACERVATOR BOT DAEMON ─────────────────────────────────────
+  acervator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: acervator
+    restart: unless-stopped
+    ports:
+      - "8080:8080"       # Status/health check endpoint
+    volumes:
+      - ./cloud/config.json:/app/cloud/config.json:ro
+      - acervator_logs:/app/logs
+      - acervator_reports:/app/reports
+    environment:
+      # API keys — set these in .env file (never commit .env to git)
+      - BINANCE_API_KEY=${BINANCE_API_KEY}
+      - BINANCE_API_SECRET=${BINANCE_API_SECRET}
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_API_SECRET=${ALPACA_API_SECRET}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── OPTIONAL: LOG VIEWER (Dozzle) ────────────────────────────
+  # Remove this block if you don't want a web log viewer
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: acervator_logs
+    restart: unless-stopped
+    ports:
+      - "9999:8080"       # Access at http://your-server:9999
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - DOZZLE_FILTER=name=acervator
+    profiles:
+      - monitoring        # Only starts with: docker compose --profile monitoring up
+
+volumes:
+  acervator_logs:
+  acervator_reports:

@@ -1,0 +1,110 @@
+{
+  "target": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_bad_widget.py",
+  "passed": false,
+  "tool_availability": {
+    "gui-static": "ok",
+    "ruff": "ok",
+    "bandit": "ok"
+  },
+  "by_tool": {
+    "gui-static": 5,
+    "ruff": 5,
+    "bandit": 1
+  },
+  "by_severity": {
+    "high": 5,
+    "medium": 4,
+    "low": 2
+  },
+  "errors": [],
+  "findings": [
+    {
+      "tool": "gui-static",
+      "severity": "high",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_bad_widget.py",
+      "line": 23,
+      "rule_id": "GUI001",
+      "message": "Qt widget class 'LegacyForm' does not call any of ['setAccessibleDescription', 'setAccessibleName', 'setToolTip', 'setWhatsThis'] on its widgets; accessibility APIs (screen readers, keyboard navigation) have no anchor to announce."
+    },
+    {
+      "tool": "gui-static",
+      "severity": "medium",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_bad_widget.py",
+      "line": 23,
+      "rule_id": "GUI002",
+      "message": "Qt widget class 'LegacyForm' has no docstring."
+    },
+    {
+      "tool": "gui-static",
+      "severity": "high",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_bad_widget.py",
+      "line": 32,
+      "rule_id": "GUI003",
+      "message": "setGeometry used without any QLayout \u2014 the widget will not respond to resize / high-DPI / accessibility scaling. Use QVBoxLayout / QHBoxLayout / QGridLayout."
+    },
+    {
+      "tool": "gui-static",
+      "severity": "high",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_bad_widget.py",
+      "line": 33,
+      "rule_id": "GUI003",
+      "message": "setGeometry used without any QLayout \u2014 the widget will not respond to resize / high-DPI / accessibility scaling. Use QVBoxLayout / QHBoxLayout / QGridLayout."
+    },
+    {
+      "tool": "gui-static",
+      "severity": "medium",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_bad_widget.py",
+      "line": 29,
+      "rule_id": "GUI004",
+      "message": "Interactive widget QLineEdit(...) instantiated without a parent argument; risks orphaned widget lifetime and layout ambiguity."
+    },
+    {
+      "tool": "ruff",
+      "severity": "high",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_bad_widget.py",
+      "line": 20,
+      "rule_id": "S105",
+      "message": "Possible hardcoded password assigned to: \"ADMIN_PASSWORD\""
+    },
+    {
+      "tool": "ruff",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_bad_widget.py",
+      "line": 23,
+      "rule_id": "D101",
+      "message": "Missing docstring in public class"
+    },
+    {
+      "tool": "ruff",
+      "severity": "medium",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_bad_widget.py",
+      "line": 25,
+      "rule_id": "ANN204",
+      "message": "Missing return type annotation for special method `__init__`"
+    },
+    {
+      "tool": "ruff",
+      "severity": "low",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_bad_widget.py",
+      "line": 25,
+      "rule_id": "D107",
+      "message": "Missing docstring in `__init__`"
+    },
+    {
+      "tool": "ruff",
+      "severity": "medium",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_bad_widget.py",
+      "line": 25,
+      "rule_id": "ANN001",
+      "message": "Missing type annotation for function argument `parent`"
+    },
+    {
+      "tool": "bandit",
+      "severity": "high",
+      "file": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27\\docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_bad_widget.py",
+      "line": 20,
+      "rule_id": "B105",
+      "message": "Possible hardcoded password: 'letmein'"
+    }
+  ]
+}

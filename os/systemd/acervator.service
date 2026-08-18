@@ -1,0 +1,70 @@
+[Unit]
+Description=Acervator Accumulation Trading Platform
+Documentation=https://github.com/yourusername/acervator
+# Must have network and time before we touch any exchange
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
+# Do not start if firewall failed
+After=ufw.service
+
+[Service]
+Type=simple
+User=__USER__
+Group=__USER__
+WorkingDirectory=__INSTALL_DIR__/src
+
+# ── Pre-flight checks ─────────────────────────────────────────────────
+# Verifies: NTP synchronised, USB key present (if hardware mode),
+#           exchange endpoints reachable.
+# Service will not start if preflight fails.
+ExecStartPre=/usr/local/bin/acervator-preflight.sh
+
+# ── Main process ──────────────────────────────────────────────────────
+ExecStart=__VENV_DIR__/bin/python3 __INSTALL_DIR__/src/main.py
+
+# ── Restart policy ───────────────────────────────────────────────────
+# Restart on crash or unexpected exit. Do NOT restart if we exit
+# cleanly (e.g. user closed the app intentionally).
+Restart=on-failure
+RestartSec=15s
+# Don't thrash — if we fail 5 times in 5 minutes, stop trying
+StartLimitInterval=300s
+StartLimitBurst=5
+
+# ── Output ────────────────────────────────────────────────────────────
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=acervator
+
+# ── Environment ───────────────────────────────────────────────────────
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+# Tell Qt to use the right display
+Environment=DISPLAY=:0
+# Wayland fallback
+Environment=WAYLAND_DISPLAY=wayland-0
+# Force Qt platform (X11 on Pi, auto on desktop)
+Environment=QT_QPA_PLATFORM=xcb
+# Disable Qt's own crash handler (let systemd handle it)
+Environment=QT_CRASH_OUTPUT=0
+
+# ── Security hardening ────────────────────────────────────────────────
+# Don't allow the process to gain new privileges
+NoNewPrivileges=true
+# Restrict device access
+DeviceAllow=/dev/ttyUSB0 rw
+DeviceAllow=/dev/ttyACM0 rw
+DeviceAllow=block-sd rw
+# Private /tmp
+PrivateTmp=true
+# Read-only /usr and /boot
+ProtectSystem=strict
+# Allow writes only to our specific directories
+ReadWritePaths=__INSTALL_DIR__ __LOG_DIR__ /home/__USER__
+# Don't allow modifying kernel tunables
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
