@@ -1,0 +1,100 @@
+{
+  "_comment": "Hook wiring. PreToolUse Write|Edit runs verify_release_gate (denies a banner-bump write without a fresh .release_ready.json sidecar from `python -m tools.harness.check_release_readiness`) then archetype_gate --pre (denies a write that introduces a high or critical archetype finding). PostToolUse Write|Edit runs archetype_gate, which reports the verdict. UserPromptSubmit runs prompt_router. Stop runs session_stop_backstop. The matcher is a REGEX ON THE TOOL NAME, so it also matches MultiEdit and NotebookEdit. Keep it loose on purpose: anything holding Write or Edit reaches the gate, and the gate grades Write, Edit and MultiEdit and refuses every other matching name out loud. Anchoring the matcher would let a future editing tool bypass the gate without ever reaching it. archetype_gate keeps no verdict cache; both sides of every comparison are measured on demand.",
+  "_timeouts_comment": "Every hook that shells out to an archetype carries an explicit timeout in SECONDS. Without one, Claude Code's default kills the hook and the gate fails open. Measured 2026-08-10: coding_archetype on src/trading/scrumming_bot.py takes 47-49s, and the gate runs every applicable archetype. archetype_gate caps itself below these numbers (PRE_BUDGET_S, POST_BUDGET_S), so it always returns a verdict before Claude Code can kill it.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/verify_release_gate.py",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "python .claude/hooks/archetype_gate.py --pre",
+            "timeout": 300
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/archetype_gate.py",
+            "timeout": 240
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/prompt_router.py",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/session_stop_backstop.py",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "Read(C:/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION)",
+      "Read(C:/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
+      "Read(//c/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
+      "Read(C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION)",
+      "Read(C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\**)",
+      "Edit(C:/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION)",
+      "Edit(C:/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
+      "Edit(//c/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
+      "Edit(C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION)",
+      "Edit(C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\**)",
+      "Write(C:/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION)",
+      "Write(C:/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
+      "Write(//c/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
+      "Write(C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION)",
+      "Write(C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\**)",
+      "Glob(C:/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION)",
+      "Glob(C:/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
+      "Glob(//c/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
+      "Glob(C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION)",
+      "Glob(C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\**)",
+      "Grep(C:/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION)",
+      "Grep(C:/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
+      "Grep(//c/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
+      "Grep(C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION)",
+      "Grep(C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\**)",
+      "Bash",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(:*)"
+    ],
+    "additionalDirectories": [
+      "C:/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION",
+      "C:/Users/brown/AppData/Local/Temp/claude"
+    ]
+  },
+  "skipDangerousModePermissionPrompt": true
+}

@@ -74,6 +74,7 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -82,12 +83,31 @@ from pathlib import Path
 MANIFEST_NAME = ".island.json"
 LEDGER_RELPATH = "tools/.island_ledger.jsonl"
 
-ISLANDS_ROOT = Path(
-    r"C:\Users\brown\AppData\Local\Temp\claude"
-    r"\C--Users-brown-OneDrive-Desktop-ACERTAVOR-PRODUCT-DOCUMENTATION"
-    r"-acervator-session25-CLOSE-hop5-v3-15-27"
-    r"\e918e69f-47d2-40e3-88e6-bea50b264478\scratchpad"
-)
+def _islands_root() -> Path:
+    """Where islands are forked. DERIVED, never hardcoded.
+
+    This was an absolute path to one machine's session scratchpad until
+    2026-08-16. On the move to the GitHub repo it still pointed at the old
+    tree, so every fork would have landed beside a repository that is no
+    longer the one being worked on — silently, because a fork succeeds either
+    way.
+
+    Three properties matter and each is why this is not simply `Path.cwd()`:
+      - OUTSIDE the repository, so an island is never committed by accident;
+      - STABLE across runs, so `status` and `promote` find the same fork;
+      - PER-REPOSITORY, so two checkouts do not share an island namespace.
+
+    `ACERVATOR_ISLANDS_ROOT` overrides it for anyone who wants islands on a
+    different disk.
+    """
+    override = os.environ.get("ACERVATOR_ISLANDS_ROOT")
+    if override:
+        return Path(override)
+    repo_name = Path(__file__).resolve().parent.parent.name
+    return Path(tempfile.gettempdir()) / "acervator_islands" / repo_name
+
+
+ISLANDS_ROOT = _islands_root()
 
 SKIP_DIR_NAMES = frozenset({
     ".git", "__pycache__", ".pytest_cache", ".venv", "node_modules",

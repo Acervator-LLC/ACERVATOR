@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,9 +31,11 @@ logger = logging.getLogger("acervator.migrate_stone_tablets")
 # Default source path — the session71 archive on the operator's
 # desktop where the June 2026 build landed. Overridable via --source.
 _DEFAULT_SRC = Path(
-    "C:/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/"
-    "acervator_session71_CLOSE_hop5_v3_22_73/"
-    "acervator_session71_CLOSE_hop5_v3_22_73/sadp/historical_data"
+    os.environ.get("ACERVATOR_TABLET_SOURCE")
+    or (Path(__file__).resolve().parent.parent.parent
+        / "acervator_session71_CLOSE_hop5_v3_22_73"
+        / "acervator_session71_CLOSE_hop5_v3_22_73"
+        / "sadp" / "historical_data")
 )
 
 
