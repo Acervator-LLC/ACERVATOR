@@ -60,7 +60,14 @@ from src.core.safe_url import (  # noqa: E402
 _CALL_SITES: tuple[tuple[str, dict], ...] = (
     ("src/core/notifications.py:317", {"timeout": 10}),
     ("src/core/sms_engine.py:131", {"timeout": 10}),
-    ("src/exchange/ccxt_connector.py:428", {"timeout": 15, "context": None}),
+    # RE-ANCHORED 2026-08-16, from :428. The pre-flight call did not
+    # move in the source; 57 lines of docstring went in ABOVE it when
+    # CCXTConnector.connect became a coroutine that actually yields.
+    # The kwarg shape is unchanged -- only the line number moved, and
+    # :485 was found by READING every `safe_urlopen(` occurrence in the
+    # file, not by adding 57 to the old number. This pin still asserts
+    # that `safe_urlopen(` is ON that line, which is its whole point.
+    ("src/exchange/ccxt_connector.py:485", {"timeout": 15, "context": None}),
     ("src/exchange/crypto_assets.py:369", {"timeout": 10}),
     ("src/exchange/market_data.py:116", {"timeout": 15}),
     ("src/gui/chart_data.py:230", {"timeout": 10}),
