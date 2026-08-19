@@ -163,9 +163,17 @@ unit; he said "in sequence" and meant it.
 
 ## RULES FOR EVERY UNIT HERE
 
-- **Island discipline.** Fork, edit there, promote when green. `promote` moves
-  `src/` and `tests/` only — `docs/EMITTER_IDENTIFICATION.md` is **invisible to
-  it** and must be hand-placed first. Declare every file at fork.
+- **Branch discipline. ISLANDS ARE RETIRED** — operator decision 2026-08-19, on
+  moving to GitHub. Cut a branch for the unit, never work on the branch he runs
+  from, and let merge or rebase refuse a stale change. **Use a `git worktree` so
+  his working tree stays runnable**, or do not have a unit checked out while he
+  is trading.
+- **`docs/EMITTER_IDENTIFICATION.md` NOW LANDS WITH THE CODE, and that is the
+  one thing this change makes easier.** Under islands `promote` moved `src/` and
+  `tests/` only, so the register was invisible to it and had to be hand-placed
+  first — a two-step landing with a half-changed tree in between. A commit is
+  atomic across every directory, so the register, the source and the tests go in
+  together. Put all three in the same commit; do not split them.
 - **One unit, one control.** Every extra control is another whole-suite run,
   serial, in one agent. Seven controls measured 17 runs and 231 minutes. Split;
   never delete a control to make the count work.
