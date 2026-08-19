@@ -320,8 +320,65 @@ class CCXTConnector(ExchangeInterface):
 
     # -- Connection lifecycle -------------------------------------------
     async def connect(self, api_key: str, api_secret: str, passphrase: str = "") -> None:
-        """Connect wrapper that delegates to sync_connect for reliability."""
-        self.sync_connect(api_key, api_secret, passphrase)
+        """Connect without holding the calling thread.
+
+        ``sync_connect`` is synchronous by design and by name, and its
+        contract is unchanged: :mod:`src.exchange.api_validator` calls it
+        directly and legitimately wants a blocking connect.
+
+        What was wrong here is that this coroutine *awaited nothing*.  It
+        called ``sync_connect`` inline, so awaiting it never yielded and
+        the caller's thread sat inside the entire connect.  Every
+        coroutine in this application runs on the Qt GUI thread (see the
+        pump timer in ``main.py``), so that is a frozen window.
+
+        THREE calls inside ``sync_connect`` block, not one:
+
+            the pre-flight ``safe_urlopen(..., timeout=15)``  up to  15 s
+            ``sync_exchange.load_markets()``                  up to  30 s
+                                                             x 3 attempts
+            ``time.sleep(2 * (attempt + 1))`` between attempts    2 s + 4 s
+
+        Worst case is therefore about 111 s, and wrapping only
+        ``load_markets`` would leave roughly 21 s of it on the caller.
+        The whole call moves instead, its body untouched.
+
+        The mechanism is this file's own, taken from :meth:`_call_sync`:
+        the single-worker ``_sync_executor`` plus ``run_in_executor``
+        with ``functools.partial``.  Reusing that executor is deliberate,
+        not incidental — MEM-220 exists because concurrent sync CCXT
+        calls on one instance produced Windows access violations, and
+        routing connect through the same one-worker queue keeps that
+        serialization true while a connect is in flight.
+
+        It deliberately does NOT route through :meth:`_call_sync`, whose
+        ``MEM_220_CALL_TIMEOUT_SEC`` is 25 s: a legitimate three-attempt
+        connect runs far longer than that, so borrowing the timeout would
+        turn a slow connect into a spurious ``TimeoutError``.  For the
+        same reason ``_sync_queue_depth`` is left alone — that counter is
+        cap accounting for ``_call_sync`` alone.
+
+        Exceptions are unchanged.  ``run_in_executor`` re-raises whatever
+        ``sync_connect`` raised, in the awaiting coroutine.
+        """
+        # Grab the executor under the lock, exactly as `_call_sync`
+        # does, so a `disconnect()` on another thread cannot shut it
+        # down between the check and the submit.
+        with self._sync_executor_lock:
+            executor = self._sync_executor
+            if executor is None:
+                raise RuntimeError(
+                    f"CCXTConnector({self._exchange_id}) has been "
+                    f"disconnected; cannot open a new connection."
+                )
+
+        import functools
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            executor,
+            functools.partial(
+                self.sync_connect, api_key, api_secret, passphrase),
+        )
 
     def sync_connect(
         self,
