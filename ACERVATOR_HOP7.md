@@ -13,13 +13,27 @@ never append.
 
 ## FIRST FIVE MINUTES
 
+**Do this once per clone, before anything else:**
+
 ```bash
-python -m tools.harness.check_release_readiness
+git config core.hooksPath .githooks
 ```
 
-Runs the whole suite itself. **Run it detached and read the exit code from a
-file** — never through a pipe. If it does not print `[OK]`, read the failures
-before touching anything.
+Without it the pre-push gate hook does not run and you can push ungated code.
+`.git/hooks/` does not travel with a clone — the same failure that left
+`.claude/` uncommitted. Check it with `git config --get core.hooksPath`.
+
+```bash
+python -m tools.gate
+```
+
+Runs the whole suite via `tools.harness.check_release_readiness` and, on
+success, stamps WHICH COMMIT it proved into `.gate_stamp.json`. **Run it
+detached and read the exit code from a file** — never through a pipe. If it
+does not print `[OK]`, read the failures before touching anything.
+
+Call the gate directly only when you want the verdict without a stamp; the
+wrapper is what `.githooks/pre-push` reads.
 
 ```bash
 python -m tools.queue_state
@@ -303,11 +317,10 @@ measured absent. Pass `--source` or set the variable; do not trust the default.
 
 ### STILL OUTSTANDING
 
-1. **NOT PUSHED.** `.claude/` is committed locally at **`ec6a63c`** — 18 files
-   tracked, 11 skills, 4 hooks, working tree clean. It has NOT reached
-   `origin`. Until it does, a clone still comes up with no gate, no skills and
-   no hooks, which is how this failure happened the first time. One `git push`
-   closes it.
+1. **RESOLVED 2026-08-19.** `.claude/` reached `origin` — 18 files, 11 skills,
+   4 hooks, on `current`. A fresh clone now gets a gate. **It still needs
+   `git config core.hooksPath .githooks` per clone**, or the pre-push gate does
+   not bind; see FIRST FIVE MINUTES.
 2. **`core.autocrlf` is `true` here** and was `false` in the old tree, with no
    `.gitattributes` in either. That flipped by default, not by decision. Now
    that islands are retired, nothing preserves per-file endings any more, so
@@ -320,12 +333,21 @@ measured absent. Pass `--source` or set the variable; do not trust the default.
    way in and CRLF is restored on a Windows checkout. The real exposure is a
    non-Windows clone, or a file that MUST stay LF — `build_mac.sh`,
    `run_acervator.sh` — being handed CRLF. A `.gitattributes` is what pins that.
-3. **CHOOSE `git worktree` OR ACCEPT THE WINDOW.** Islands left the working tree
-   alone; a branch checkout replaces it, and that tree is what his live launch
-   runs against 37 bots. Either units get a `git worktree` of their own, or no
-   unit may be checked out while he is running. Undecided as of 2026-08-19.
-4. **PUSH — see 1.** Nothing else below is reachable by a fresh clone until it
-   lands.
+3. **`git worktree` IS THE DEFAULT, decided 2026-08-19.** Islands left the
+   working tree alone; a branch checkout replaces it, and that tree is what his
+   live launch runs against 37 bots. Units take a `git worktree` of their own so
+   his tree never leaves `current`.
+4. **NO GITHUB-SIDE ENFORCEMENT IS AVAILABLE.** Measured 2026-08-19: branch
+   protection on a private repo under a free plan returns 403, *"Upgrade to
+   GitHub Pro or make this repository public."* No required status check
+   exists and nothing server-side prevents a direct push to `current`. The local
+   `.githooks/pre-push` is the ONLY mechanism — do not assume the server checks
+   anything. If the repo goes public (item 16's "open source later"),
+   revisit this: protection becomes free at that point.
+5. **`origin/main` IS A SEPARATE, UNRELATED HISTORY.** `Add files via upload`
+   plus five `Delete …zip` commits — the 2026-08-12 web-upload attempt. It
+   shares no commits with `current` and contains none of this work. Delete it or
+   keep it deliberately; leaving it will mislead a fresh clone.
 
 `dist/` and `build/` are gitignored and untracked — that earlier warning is
 resolved.
