@@ -265,14 +265,18 @@ for `migrate_stone_tablets.py` via `ACERVATOR_TABLET_SOURCE`.
 
 ### STILL OUTSTANDING
 
-1. **`.claude/` IS NOT COMMITTED.** Until it is, the next clone comes up with no
-   gate, no skills and no hooks — exactly this failure again. `.gitignore`
-   excludes only `.claude/worktrees/`, so it will commit.
+1. **NOT PUSHED.** `.claude/` is committed locally at **`ec6a63c`** — 18 files
+   tracked, 11 skills, 4 hooks, working tree clean. It has NOT reached
+   `origin`. Until it does, a clone still comes up with no gate, no skills and
+   no hooks, which is how this failure happened the first time. One `git push`
+   closes it.
 2. **`core.autocrlf` is `true` here** and was `false` in the old tree, with no
-   `.gitattributes` in either. That flipped by default, not by decision. The old
-   tree is mixed per file; decide deliberately before the next large diff.
+   `.gitattributes` in either. That flipped by default, not by decision, and 18
+   files had their endings rewritten on commit. The old tree is mixed per file.
+   Decide deliberately before the next large diff.
 3. **The gate has not been run in this repo.** The fixture pair proves the
-   harness is wired; only the gate proves the tree is green.
+   harness is wired; only the gate proves the tree is green. The last recorded
+   count, 6,923, is from the old tree.
 
 `dist/` and `build/` are gitignored and untracked — that earlier warning is
 resolved.
