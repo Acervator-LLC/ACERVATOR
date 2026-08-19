@@ -115,7 +115,7 @@ write code**; you referee. Report each one's own `passed`, never a delta.
 positive.
 
 `coding_archetype`, `ta_archetype`, `gui_archetype`, `docs_archetype`,
-`watchdog_archetype`, plus `tools/island.py`, `tools/touchset.py`,
+`watchdog_archetype`, plus `tools/touchset.py`,
 `tools/harness/check_release_readiness.py`, `claim_ledger`.
 
 **The missing-target trap is FIXED.** It used to report `passed=True`, exit 0 on
@@ -125,10 +125,33 @@ src/trading/NO_SUCH_FILE.py` now returns **exit 1, `passed=false`,
 empty report is not a clean one."* Assert `errors == []` anyway; it costs
 nothing.
 
-**Island discipline is mandatory.** Never edit the working tree. Fork, edit
-there, promote when green. `promote` moves **`src/` and `tests/` only** — a file
-under `docs/` or `tools/` is **invisible to it, not declined**, and must be
-hand-placed first. Declare every file at fork.
+**ISLANDS ARE RETIRED. GIT IS THE ISOLATION MECHANISM.** Operator decision,
+2026-08-19, on moving to GitHub. Work on a branch cut for the unit, never
+directly on the branch he runs from, and let merge or rebase refuse a stale
+change — which is the refusal `island promote` was built to imitate in the first
+place. `tools/island.py` and the 32 tests in
+`tests/test_island_promotion_refuses_stale.py` remain on disk; retiring the tool
+is its own unit, and deleting it today would take the gate red.
+
+**THE WORKING TREE IS STILL WHAT HIS LAUNCH RUNS.** This is the one property an
+island gave for free and a branch does not: checking out a branch REPLACES the
+tree he trades from. Use `git worktree add` so editing happens in a separate
+directory and his tree stays on his branch, or do not have a unit checked out
+while he is running. See STILL OUTSTANDING.
+
+**TWO PROTECTIONS THE SWITCH REMOVES. Name them, because prose does not bind.**
+
+- `promote` REFUSED `tools/harness/`, `.claude/`, config and version files by
+  design. Git refuses nothing. "Hands off the harness" is now a rule with no
+  mechanism behind it.
+- `promote` preserved each file's line endings. Git under `core.autocrlf=true`
+  does not, and this repo is mixed — 68 all-CRLF, 95 all-LF. See STILL
+  OUTSTANDING.
+
+**ONE CONSTRAINT THE SWITCH REMOVES, in your favour.** `promote` moved `src/`
+and `tests/` only, so a change touching `docs/` or `tools/` landed in two steps
+with a half-changed tree between them — measured twice in one unit, each costing
+a red gate. A commit is atomic across every directory. That hazard is gone.
 
 **Eleven skills** in `.claude/skills/`. Load `harness-law` and
 `unit-decomposition` before the first edit.
@@ -161,8 +184,7 @@ proposed guard in 90 seconds.
 **Two-sided control.** Show the check failing first. A fixture shaped like its
 own assertion cannot falsify it.
 
-**Never reconstruct a before-state by textual reversal.** Read it from git or a
-pristine island twin.
+**Never reconstruct a before-state by textual reversal.** Read it from git.
 
 **nan is truthy**, so `float(x) or 0.0` misses it, and every comparison against
 nan is False. `type(inf) is float` is True; `math.isfinite(10**400)` raises.
@@ -175,8 +197,20 @@ artefact. Never read an exit code through a pipe.
 
 ## CURRENT STATE
 
-**v3.25.8.** Run the gate for the test count — the last recorded figure was
-6,923 in the old tree and **has not been re-confirmed here**.
+**v3.25.8, gate GREEN in this repo.** First confirmed green here, 2026-08-19:
+
+    [OK] Release-ready (v3.25.8, 6916 tests)     exit 0
+
+Corroborated by the sidecar `.release_ready.json` it writes — `pytest`,
+`archetypes` and `claims` all `ran`, stamped `2026-08-19T19:57:02Z`. The exit
+code alone would not have been evidence; two independent artefacts agreeing is.
+
+**6,916 IS PASSED, NOT COLLECTED, AND THE THREE NUMBERS IN CIRCULATION ARE NOT
+IN CONFLICT.** `check_release_readiness.py:133` parses `(\d+)\s+passed`, so it
+reports passes. A full collection returns **6,938**; the 22-test gap is skips
+and xfails, which never enter that count. The old tree's **6,923** is a third
+measurement of a tree that has since changed. Do not read a drop between them as
+tests going missing.
 
 `dist/Acervator.exe` was at **3.25.6** while source is 3.25.8. The app's own
 stale-binary guard reports it. Run `python main.py` from source or rebuild.
@@ -255,13 +289,17 @@ old tree. **A prose checklist failed once; a script did not.**
 | memory | 55 entries at this repo's project key, `MEMORY.md` included |
 | `tools/queue_state.py`, `tools/migrate_harness.py` | present |
 | gate discriminates | known_bad **exit 1**, known_good **exit 0** |
-| hardcoded old-machine paths in `tools/` | **zero** |
+| hardcoded old-machine ABSOLUTE paths in `tools/` | **zero** |
 
-**`ISLANDS_ROOT` now derives** instead of pointing at the old machine —
-`%TEMP%/acervator_islands/<repo name>`. Outside the repo so islands are never
-committed, stable so `status` and `promote` find the same fork, per-repo so two
-checkouts do not collide. Override with `ACERVATOR_ISLANDS_ROOT`. Same treatment
-for `migrate_stone_tablets.py` via `ACERVATOR_TABLET_SOURCE`.
+**`ISLANDS_ROOT` derives** rather than pointing at the old machine —
+`%TEMP%/acervator_islands/<repo name>`, override `ACERVATOR_ISLANDS_ROOT`.
+**Historical as of 2026-08-19: islands are retired and nothing forks any more.**
+Recorded because the tool is still on disk and still passes its 32 tests.
+
+`migrate_stone_tablets.py` got the same treatment via `ACERVATOR_TABLET_SOURCE`,
+but note its DEFAULT is now a relative sibling lookup that **does not resolve on
+this machine** — `…/Documents/acervator_session71_CLOSE_hop5_v3_22_73/…/sadp/historical_data`,
+measured absent. Pass `--source` or set the variable; do not trust the default.
 
 ### STILL OUTSTANDING
 
@@ -271,12 +309,23 @@ for `migrate_stone_tablets.py` via `ACERVATOR_TABLET_SOURCE`.
    no hooks, which is how this failure happened the first time. One `git push`
    closes it.
 2. **`core.autocrlf` is `true` here** and was `false` in the old tree, with no
-   `.gitattributes` in either. That flipped by default, not by decision, and 18
-   files had their endings rewritten on commit. The old tree is mixed per file.
-   Decide deliberately before the next large diff.
-3. **The gate has not been run in this repo.** The fixture pair proves the
-   harness is wired; only the gate proves the tree is green. The last recorded
-   count, 6,923, is from the old tree.
+   `.gitattributes` in either. That flipped by default, not by decision. Now
+   that islands are retired, nothing preserves per-file endings any more, so
+   this stopped being cosmetic. **Measured 2026-08-19 across all 25 files in
+   `be6aa04..HEAD`: FIVE, not eighteen**, hold CRLF in the working tree and LF
+   in the committed blob — `archetype_gate.py`, `settings.json`,
+   `acervator/SKILL.md`, `unit-decomposition/SKILL.md`, `ACERVATOR_HOP7.md`.
+   The other 20 were already LF and passed through untouched. **And "rewritten"
+   is the wrong verb: nothing on disk changed.** The blob is normalised on the
+   way in and CRLF is restored on a Windows checkout. The real exposure is a
+   non-Windows clone, or a file that MUST stay LF — `build_mac.sh`,
+   `run_acervator.sh` — being handed CRLF. A `.gitattributes` is what pins that.
+3. **CHOOSE `git worktree` OR ACCEPT THE WINDOW.** Islands left the working tree
+   alone; a branch checkout replaces it, and that tree is what his live launch
+   runs against 37 bots. Either units get a `git worktree` of their own, or no
+   unit may be checked out while he is running. Undecided as of 2026-08-19.
+4. **PUSH — see 1.** Nothing else below is reachable by a fresh clone until it
+   lands.
 
 `dist/` and `build/` are gitignored and untracked — that earlier warning is
 resolved.
@@ -293,7 +342,7 @@ resolved.
 | the law, 11 skills | `.claude/skills/` |
 | audits and raw evidence | `docs/audits/` |
 | emitter register | `docs/EMITTER_IDENTIFICATION.md` + `tools/emitter_registry_check.py` |
-| promotion history, 56 entries | `tools/.island_ledger.jsonl` |
+| promotion history, 56 entries | `tools/.island_ledger.jsonl` — **frozen 2026-08-19**, islands retired; git history is the record from here |
 
 **Search the transcript rather than trusting a summary — including this one.**
 
