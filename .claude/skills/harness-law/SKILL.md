@@ -123,10 +123,18 @@ Never weaken a test or widen a tolerance to make something pass. If a
 test pins a retired contract, restate it to assert the SAME invariant
 more strongly, and say exactly what changed and why.
 
-## Island discipline
+## Branch discipline — islands retired 2026-08-19
 
-Edit and test on an isolated hard copy. Promote only after the gate is
-green on the island. The working tree is what the next launch runs.
+Work on a git branch, and gate before it lands. **The working tree is what
+his next launch runs, against real money.** Islands kept that tree
+untouched for free; a branch checkout REPLACES it, so either take a
+`git worktree` for the unit or do not have one checked out while he is
+running. See `development-island` for the full workflow.
+
+**One thing this cost you, and it lands in the section above.** Island
+`promote` mechanically REFUSED `tools/harness/`, `.claude/`, config and
+version files. Git refuses nothing. "Hands off the harness" now has no
+mechanism behind it — only this rule.
 
 ## FALSIFICATION
 
