@@ -71,3 +71,8 @@ id_rsa*
 
 # SADP deprecated 2026-08 - session backstop diffs, 71 MB, regenerable
 .sadp/
+
+# Written by tools/gate.py. Records WHICH COMMIT the gate proved, for the
+# pre-push hook. Never commit it: it is per-clone and committing it would
+# change the very sha it certifies.
+.gate_stamp.json

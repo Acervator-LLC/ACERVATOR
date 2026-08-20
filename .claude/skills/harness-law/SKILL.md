@@ -136,6 +136,63 @@ running. See `development-island` for the full workflow.
 version files. Git refuses nothing. "Hands off the harness" now has no
 mechanism behind it — only this rule.
 
+## THE FIFTH PERMANENT RULE: GATE, THEN LEAVE THE BRANCH
+
+Operator, 2026-08-19, verbatim:
+
+> "Code does not leave the branch or get merged until all gates are
+>  passing."
+
+**Gate green on the branch FIRST. Then push, then merge.** Never merge and
+then gate — a gate run after a merge measures a tree that is already on the
+default branch, and its verdict arrives too late to act on.
+
+**NO EXEMPTIONS, and the exemption is how this was already broken once.**
+Within an hour of islands being retired, a DOCUMENTATION branch was merged
+on the reasoning that markdown cannot affect pytest. That was inference,
+not measurement, and this repo refuses inference everywhere else. The
+reasoning also happened to be unverified at the time: `docs_archetype`'s
+hallucination rule resolves cited paths against the working directory, and
+the branch edited four documents full of file citations. Docs-only,
+one-line, obviously-inert — all of it gates.
+
+**RUN THE WRAPPER, NOT THE GATE DIRECTLY:**
+
+```bash
+python -m tools.gate
+```
+
+It calls `tools.harness.check_release_readiness` unmodified — `tools/harness/`
+stays untouched, per the rule above — and on success writes
+`.gate_stamp.json` recording WHICH COMMIT was proved.
+
+**Why a commit sha and not the sidecar.** `.release_ready.json` carries a
+version, a test count and a timestamp. None identifies a tree, so two
+different commits at v3.25.8 produce identical sidecars and a sidecar can
+never answer "was THIS commit gated?" The stamp can.
+
+**A green gate on a DIRTY tree is recorded as NOT STAMPED**, deliberately.
+It measured content that is in no commit, so stamping it would assert
+something false. Commit first, then gate.
+
+`.githooks/pre-push` refuses any push whose commit does not match the stamp.
+It is pinned by `tests/test_pre_push_gate_hook.py`, two-sided: blinding the
+hook fails 4 of its 6 tests.
+
+**IT ONLY BINDS IF THE CLONE POINTS AT IT**, once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`.git/hooks/` does not travel with a clone — the same failure that left
+`.claude/` uncommitted. Verify with `git config --get core.hooksPath`.
+
+GitHub-side branch protection is NOT available here: measured 2026-08-19,
+a private repo on a free plan returns *"Upgrade to GitHub Pro or make this
+repository public"*. The local hook is the only mechanism, so do not assume
+the server is checking anything.
+
 ## FALSIFICATION
 
 This skill is wrong if:

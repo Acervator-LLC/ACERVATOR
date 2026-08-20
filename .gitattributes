@@ -1,0 +1,71 @@
+# LINE ENDINGS — full consolidation on LF. Operator decision, 2026-08-19.
+#
+# WHY THIS EXISTS
+#
+# LF is the only style compatible with all three platforms. Windows tools,
+# Python, git, VS Code and PowerShell all read LF without complaint. A stray
+# carriage return is NOT ignored on Mac or Linux: it becomes part of the line's
+# content, so `#!/bin/sh<CR>` makes the system look for an interpreter literally
+# named `sh<CR>` and the failure reads "bad interpreter" without ever naming the
+# real cause.
+#
+# WHAT THIS CHANGES: NOTHING IN STORAGE.
+#
+# Measured 2026-08-19 across all 670 tracked text files: every blob was ALREADY
+# LF -- 667 LF, 3 with no newline at all, zero CRLF, zero mixed. The repository
+# was already consolidated; `core.autocrlf=true` normalised on the way in. This
+# file changes only what CHECKOUT writes to disk, so it produces no diff noise
+# and no blob moves by a byte.
+#
+# THE LIVE DEFECT IT CLOSES
+#
+# `autocrlf=true` converts on the way OUT. Measured in a fresh worktree, which
+# is a real checkout: `run_acervator.sh`, `build_mac.sh` and `os/install.sh` all
+# arrived CRLF. So every fresh clone on Windows got broken shell scripts. This
+# working tree escaped only because it was never checked out -- it is the
+# original folder that was `git init`-ed, so its files kept whatever endings
+# they already had.
+#
+# AND IT PROTECTS THE GATE ITSELF
+#
+# `.githooks/pre-push` is a shell script. On a fresh Windows clone it would have
+# arrived CRLF, failed with "bad interpreter", and the pre-push gate would have
+# stopped running SILENTLY -- the enforcement mechanism disabling itself on
+# exactly the machines that need it. The `.githooks` rule below is not
+# decoration.
+#
+# VERIFY, rather than trusting this comment:
+#   git ls-files --eol            # i/lf w/lf for every text file
+#   git add --renormalize . && git status --porcelain   # must be empty
+
+# Everything text: normalise in the index, hand out LF on checkout, everywhere.
+* text=auto eol=lf
+
+# Executable scripts, stated explicitly. A CR here does not produce a diff --
+# it produces a non-functioning program, so this must not depend on `text=auto`
+# guessing right.
+*.sh        text eol=lf
+.githooks/* text eol=lf
+
+# Binaries: never touched, never normalised, never diffed as text.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.icns binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.exe  binary
+*.dll  binary
+*.so   binary
+*.dylib binary
+*.pyd  binary
+*.ttf  binary
+*.otf  binary
+*.woff binary
+*.woff2 binary
+*.qm   binary
+*.wav  binary
+*.mp3  binary
