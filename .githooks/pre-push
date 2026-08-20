@@ -1,0 +1,69 @@
+#!/bin/sh
+# Refuse to push a commit the release gate has not proved.
+#
+# The operator's standard, 2026-08-19: "Code does not leave the branch or get
+# merged until all gates are passing." Island `promote` enforced that
+# mechanically until islands were retired; this restores the mechanism.
+#
+# This directory only runs if the clone points at it:
+#
+#     git config core.hooksPath .githooks
+#
+# `.git/hooks/` does not travel with a clone, which is the same failure that
+# left `.claude/` uncommitted. `.githooks/` is tracked, so it does.
+#
+# stdin, one line per ref being pushed:
+#     <local ref> <local sha> <remote ref> <remote sha>
+#
+# Bypass, for the case where the gate itself is what is broken:
+#     ACERVATOR_SKIP_GATE_HOOK=1 git push ...
+# It prints loudly. Use it to fix the harness, never to land work.
+
+set -u
+
+REPO=$(git rev-parse --show-toplevel) || exit 1
+STAMP="$REPO/.gate_stamp.json"
+ZERO='0000000000000000000000000000000000000000'
+
+if [ "${ACERVATOR_SKIP_GATE_HOOK:-}" = "1" ]; then
+    echo "[pre-push] *** GATE CHECK BYPASSED via ACERVATOR_SKIP_GATE_HOOK ***" >&2
+    echo "[pre-push] Nothing verified this push. Say so in the PR." >&2
+    exit 0
+fi
+
+fail() {
+    echo "" >&2
+    echo "[pre-push] REFUSED — $1" >&2
+    echo "" >&2
+    echo "  Run the gate, then push:" >&2
+    echo "      python -m tools.gate" >&2
+    echo "" >&2
+    echo "  It runs tools.harness.check_release_readiness and stamps the" >&2
+    echo "  commit only when the gate is green AND the tree is clean." >&2
+    echo "" >&2
+    exit 1
+}
+
+any_ref=0
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+    # A deletion pushes the null sha; there is nothing to gate.
+    [ "$local_sha" = "$ZERO" ] && continue
+    any_ref=1
+
+    [ -f "$STAMP" ] || fail "no .gate_stamp.json. This commit has never been gated."
+
+    stamped=$(sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([0-9a-f]*\)".*/\1/p' "$STAMP")
+    [ -n "$stamped" ] || fail "unreadable .gate_stamp.json (no commit field)."
+
+    if [ "$stamped" != "$local_sha" ]; then
+        echo "[pre-push] stamped : $stamped" >&2
+        echo "[pre-push] pushing : $local_sha" >&2
+        fail "the gate proved a DIFFERENT commit than the one being pushed."
+    fi
+done
+
+if [ "$any_ref" = "1" ]; then
+    echo "[pre-push] gate stamp matches the commit being pushed. Allowed."
+fi
+
+exit 0

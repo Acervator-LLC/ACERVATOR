@@ -124,8 +124,34 @@ Before grafting work between two branches:
    type demands. All must report `passed=true`, and assert `errors == []` — a
    green verdict with a populated `errors` list is not green.
 4. Commit source, tests and docs together, atomically.
-5. Gate: `python -m tools.harness.check_release_readiness`, detached, exit code
-   read from a FILE. Then `python -m tools.harness.claim_ledger check`.
+5. **Gate, BEFORE anything leaves the branch:** `python -m tools.gate`, detached,
+   exit code read from a FILE. Then `python -m tools.harness.claim_ledger check`.
+6. Push. `.githooks/pre-push` refuses a commit the gate has not stamped.
+7. Only then open the PR and merge.
+
+**STEPS 5 AND 7 ARE IN THAT ORDER AND THE ORDER IS THE RULE.** Operator,
+2026-08-19: *"Code does not leave the branch or get merged until all gates are
+passing."* Merging and then gating measures a tree that is already on the
+default branch, and the verdict arrives too late to act on. That happened once,
+within an hour of islands being retired, on a docs-only branch waved through on
+the reasoning that markdown cannot affect pytest. Reasoning is not measurement.
+No docs-only, one-line or obviously-inert exemption exists.
+
+`tools/gate.py` wraps `check_release_readiness` without modifying it, so
+`tools/harness/` stays untouched, and stamps the COMMIT it proved into
+`.gate_stamp.json`. The sidecar alone cannot do that: a version and a test count
+do not identify a tree, so two commits at the same version look identical to it.
+A green gate on a DIRTY tree is deliberately NOT stamped — it measured content
+that is in no commit.
+
+The hook binds only if the clone points at it, once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`.git/hooks/` does not travel with a clone. Neither did `.claude/`, and that cost
+a red gate and an afternoon. Verify with `git config --get core.hooksPath`.
 
 ## STEP 0: THE PRE-MORTEM. ATTACK THE DESIGN BEFORE YOU BUILD IT.
 
