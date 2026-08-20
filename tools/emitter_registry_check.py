@@ -135,6 +135,11 @@ class Pin:
     callee: str
     name: str
     dynamic: bool
+    # E9 — does this call site pass `actual` and `expected` as the SAME
+    # EXPRESSION? Compared by AST dump, so formatting and whitespace do
+    # not hide it and a textually different but equivalent expression is
+    # NOT claimed to be equal -- this reports only what it can prove.
+    vacuous_check: bool = False
     # E8 — does this call site pass `duration=`?
     #
     # Defaulted so any other construction of a Pin keeps working. Read
@@ -219,11 +224,17 @@ def collect_pins(src_root: Path, repo_root: Path) -> list[Pin]:
             name, dynamic = render_pin_name(node)
             has_duration = any(
                 kw.arg == "duration" for kw in node.keywords)
+            _kw = {k.arg: k.value for k in node.keywords if k.arg}
+            _act, _exp = _kw.get("actual"), _kw.get("expected")
+            is_vacuous = (
+                _act is not None and _exp is not None
+                and ast.dump(_act) == ast.dump(_exp))
             pins.append(Pin(
                 file=path.resolve().relative_to(repo_root).as_posix(),
                 line=call.line, callee=call.callee,
                 name=name, dynamic=dynamic,
-                carries_duration=has_duration))
+                carries_duration=has_duration,
+                vacuous_check=is_vacuous))
     pins.sort(key=lambda pin: (pin.file, pin.line))
     return pins
 
@@ -547,12 +558,43 @@ def _check_duration_shape(pins: list[Pin]) -> list[str]:
     return problems
 
 
+def _check_vacuous(pins: list[Pin]) -> list[str]:
+    """E9 — a CHECK whose `actual` and `expected` are the same expression.
+
+    S9: `actual` is mandatory; `expected=None` means a deliberate SAMPLE.
+    A CHECK that compares an expression to itself derives `ok` True on
+    every call, so it can never fail -- it reports the request back as
+    though it were the result, and a green record from it is evidence of
+    nothing.
+
+    THE RULE IS ENCODED, NOT THE LIST. Three emitters were recorded as
+    having this shape. Measured 2026-08-20, only one still did: the other
+    two had been repaired or were deliberate samples, and the list had
+    gone stale while the defect class had not. A list needs re-reading; a
+    rule does not.
+
+    Reports only what it can PROVE, by comparing the AST dumps. Two
+    expressions that are equivalent but written differently are not
+    claimed to be equal here -- that would be a guess, and this check
+    exists to remove guesses.
+    """
+    return [
+        f"E9 {pin.name} at {pin.file}:{pin.line}: `actual` and "
+        f"`expected` are the same expression, so `ok` derives True on "
+        f"every call and this check can never fail. Compare the OBSERVED "
+        f"value against the DECLARED expectation, or declare it a sample "
+        f"by dropping `expected`."
+        for pin in pins if pin.vacuous_check
+    ]
+
+
 def check(pins: list[Pin], reg: Registry) -> list[str]:
     """Return every problem found. An empty list is a clean run."""
     problems = [f"E0 registry parse: {err}" for err in reg.parse_errors]
     problems.extend(_check_membership(pins, reg))
     problems.extend(_check_rows(reg))
     problems.extend(_check_duration_shape(pins))
+    problems.extend(_check_vacuous(pins))
     return problems
 
 
@@ -660,9 +702,34 @@ def _controls(pins: list[Pin],
     allowed = dataclasses.replace(
         pins[0], name="ghost.99.003.postcondition.allowed",
         carries_duration=True, dynamic=False)
-    quiet = [p for p in check([*pins, allowed], reg) if p.startswith("E8")]
+    # Scoped to the planted pin, for the same reason as E9 below: a
+    # global-silence check breaks as soon as the tree holds a real
+    # violation, which is when the rule is working.
+    quiet = [p for p in check([*pins, allowed], reg)
+             if p.startswith("E8") and allowed.name in p]
     results.append(("E8 is silent on a duration ON a postcondition",
                     not quiet, "; ".join(quiet) or "silent"))
+
+    # E9 — plant a check that compares an expression to itself.
+    vacuous = dataclasses.replace(
+        pins[0], name="ghost.99.004.postcondition.compares_itself",
+        vacuous_check=True, dynamic=False)
+    ok, detail = fired(check([*pins, vacuous], reg), "E9")
+    results.append(("E9 fires on a check that can never fail", ok, detail))
+
+    # The other half: the SAME planted pin with a real comparison must be
+    # silent, or E9 would condemn every emitter that carries an expected.
+    honest = dataclasses.replace(
+        pins[0], name="ghost.99.005.postcondition.compares_something",
+        vacuous_check=False, dynamic=False)
+    # Scoped to the PLANTED pin. Asking whether E9 is globally silent
+    # would fail whenever the tree holds a real violation -- which is
+    # the state this rule exists to report, so the control would break
+    # precisely when the rule was working.
+    quiet9 = [p for p in check([*pins, honest], reg)
+              if p.startswith("E9") and honest.name in p]
+    results.append(("E9 is silent on a check that can fail",
+                    not quiet9, "; ".join(quiet9) or "silent"))
 
     replanned = check(pins, _variant(
         reg, planned={**reg.planned, first.emitter_id: "made.up.name"}))
