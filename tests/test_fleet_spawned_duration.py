@@ -15,6 +15,17 @@ registry, not merely constructing the controller. Both knobs below -- tablet
 read cost and `_build_sim` cost -- therefore move the same duration, and the
 tests drive each independently to prove the bracket spans both.
 
+WHAT THE INTERVAL MUST NOT COVER. `_spawn_sim_fleet` imports the registry and
+the controller lazily, INSIDE the function. On the first call in a process
+those two imports run the interpreter's whole module-load path; on every call
+after it they are served from `sys.modules` for nothing. Inside the bracket
+that made record 1 incomparable to record 2 and the first spawn of a process
+permanently the slow one. A test that only checks "a duration exists" cannot
+see it, and a test process has already imported both modules, so the naive
+version measures the cached case twice and proves nothing. The pin below makes
+the re-import genuinely expensive by a known amount and asserts the duration
+does not move.
+
 BOTH EARLY RETURNS EMIT NOTHING (no configs, no candles). The test asserts the
 ABSENCE of a record there, because "refused" and "measured nothing" are
 different states.
@@ -26,6 +37,8 @@ should be the shipping code rather than a copy of it.
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 import time
 from typing import Optional
 
@@ -35,6 +48,7 @@ from src.core import signal_contract as sc
 from src.core.signal_contract import SignalSink
 from src.gui.simulator_tab.fleet import fleet_replay_controller as frc
 from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
+from src.gui.simulator_tab.fleet import simulator_bot_state as sbs
 from src.trading.stone_tablets import registry as tablet_registry
 
 OWNER = "sim.06.007.postcondition.fleet_spawned"
@@ -43,6 +57,19 @@ SIBLINGS = ("sim.06.008.invariant.state_persisted",
 
 SHORT_S = 0.005
 LONG_S = 0.030
+
+# The two modules `_spawn_sim_fleet` imports lazily, in the order it imports
+# them. Named here so a rename breaks this test rather than silently turning
+# the pin below into a no-op that still passes.
+LAZY_IMPORTS = (
+    "src.trading.stone_tablets.registry",
+    "src.gui.simulator_tab.fleet.fleet_replay_controller",
+)
+
+# The cost this test INSTALLS on each of those imports. Chosen, not measured:
+# the real figure is machine-specific (~0.48 s on the adversary's box) and an
+# assertion against it would pass or fail on hardware.
+IMPORT_DELAY_S = 0.120
 
 
 def _busy_wait(seconds: float) -> None:
@@ -67,6 +94,130 @@ class _Panel:
         self._controller = None
         self._activity_log_cb = None
         self._performance_log_cb = None
+
+
+@pytest.fixture(autouse=True)
+def _sim_state_under_tmp_path(monkeypatch, tmp_path):
+    """Keep the spawn's persistence off the operator's runtime tree.
+
+    `_spawn_sim_fleet` ends by writing `simulator_bot_state.json`, and both
+    `save_sim_state` and `load_sim_state` resolve that path from ONE module
+    global. Redirecting it here means every drive in this file persists under
+    `tmp_path`; ~/.acervator is the operator's, and the suite does not write
+    there.
+    """
+    monkeypatch.setattr(
+        sbs, "SIM_STATE_PATH", tmp_path / "simulator_bot_state.json")
+
+
+class _SlowLoader:
+    """Hands back the module that was already loaded, expensively.
+
+    Returning the ORIGINAL object is the point. A re-import that executed the
+    module afresh would build a NEW module object and throw away the fakes
+    `_install` patched onto the old one, so the spawn would reach the real
+    registry and the real controller. This costs the delay, then yields the
+    identical object the process had before -- nothing observable changes
+    except the time the import took.
+    """
+
+    def __init__(self, module, delay_s: float) -> None:
+        self._module = module
+        self._delay_s = delay_s
+
+    def create_module(self, _spec):
+        _busy_wait(self._delay_s)
+        return self._module
+
+    def exec_module(self, _module) -> None:
+        return None
+
+
+class _SlowReimport:
+    """Makes `_spawn_sim_fleet`'s two lazy imports genuinely expensive.
+
+    Evicts them from `sys.modules` so the next `import` statement really goes
+    through the import machinery, and fronts `sys.meta_path` so that machinery
+    lands on `_SlowLoader` and pays `delay_s` per module.
+
+    Everything it touches is process-global, so `restore` is exact and the
+    fixture calls it from a `finally`.
+    """
+
+    def __init__(self, names, delay_s: float) -> None:
+        self._names = tuple(names)
+        self._delay_s = delay_s
+        self._saved: dict = {}
+        self._saved_attrs: dict = {}
+        self._installed = False
+        self.hits: list = []
+
+    # -- sys.meta_path protocol ---------------------------------------
+    # `_path` and `_target` are the finder protocol's second and third
+    # positional arguments. The import machinery always passes them
+    # positionally, and this finder answers from `fullname` alone, so they
+    # are named as unused rather than silenced.
+    def find_spec(self, fullname, _path=None, _target=None):
+        module = self._saved.get(fullname)
+        if module is None:
+            return None
+        self.hits.append(fullname)
+        return importlib.util.spec_from_loader(
+            fullname, _SlowLoader(module, self._delay_s))
+
+    # -- lifecycle ----------------------------------------------------
+    def install(self) -> None:
+        for name in self._names:
+            module = sys.modules.get(name)
+            # Not a convenience check: if the module were absent the eviction
+            # would be a no-op, the import would run normally and the test
+            # would measure nothing while still passing.
+            assert module is not None, f"{name} is not imported; cannot evict"
+            self._saved[name] = module
+            self._saved_attrs[name] = (
+                getattr(module, "__spec__", None),
+                getattr(module, "__loader__", None))
+            del sys.modules[name]
+        sys.meta_path.insert(0, self)
+        self._installed = True
+
+    def restore(self) -> None:
+        if self._installed:
+            try:
+                sys.meta_path.remove(self)
+            except ValueError:                       # pragma: no cover
+                pass
+            self._installed = False
+        for name, module in self._saved.items():
+            sys.modules[name] = module
+            # `module_from_spec` rewrote these on the way through the loader.
+            spec, loader = self._saved_attrs[name]
+            module.__spec__ = spec
+            module.__loader__ = loader
+        self._saved.clear()
+
+
+@pytest.fixture()
+def slow_reimport():
+    """`_SlowReimport`, restored whether the test passes, fails or raises.
+
+    The outer snapshot is belt AND braces: `install` mutates `sys.modules`
+    before it touches `sys.meta_path`, so a failure part-way through would
+    leave the process short a module for every test that runs after this one.
+    """
+    guard = _SlowReimport(LAZY_IMPORTS, IMPORT_DELAY_S)
+    meta_before = list(sys.meta_path)
+    mods_before = {n: sys.modules.get(n) for n in LAZY_IMPORTS}
+    try:
+        yield guard
+    finally:
+        guard.restore()
+        sys.meta_path[:] = meta_before
+        for name, module in mods_before.items():
+            if module is None:                       # pragma: no cover
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
 
 
 def _install(monkeypatch, read_s: float, build_s: float, rows=(1, 2, 3)):
@@ -167,3 +318,111 @@ def test_a_spawn_with_no_tablets_emits_nothing(monkeypatch):
     sink = SignalSink()
     assert _drive(monkeypatch, sink, rows=()) == 0
     assert _durations(sink) == []
+
+
+def _drive_cold(monkeypatch, sink, guard) -> float:
+    """One spawn with both lazy imports evicted. Returns the WALL time.
+
+    Deliberately not routed through `_drive`: the eviction has to happen
+    after `_install` has patched the fakes onto the modules and immediately
+    before the call, and the wall clock has to bracket the call itself.
+
+    No Qt here. `_spawn_sim_fleet` is driven unbound against `_Panel`, so
+    nothing pumps an event loop and no queued work can widen the reading.
+    """
+    _install(monkeypatch, SHORT_S, SHORT_S)
+    previous = sc.get_sink()
+    sc.set_sink(sink)
+    guard.install()
+    t0 = time.monotonic()
+    try:
+        FleetReplayPanel._spawn_sim_fleet(_Panel())
+    finally:
+        wall = time.monotonic() - t0
+        guard.restore()
+        sc.set_sink(previous)
+    return wall
+
+
+def test_the_duration_excludes_the_cost_of_its_own_lazy_imports(
+        monkeypatch, slow_reimport):
+    """THE pin. The clock must start BELOW the two `import` statements.
+
+    Warm spawn and cold spawn do the same amount of spawn work -- same fake
+    registry, same fake controller, same `SHORT_S` on each. The ONLY
+    difference is that the cold one re-runs both imports at a cost this test
+    installs. If the bracket starts above them, the cold duration carries
+    `2 * IMPORT_DELAY_S` that is not spawn work and that no later call in the
+    process will ever pay again.
+    """
+    sink = SignalSink()
+
+    _drive(monkeypatch, sink)                       # warm: imports are cached
+    wall = _drive_cold(monkeypatch, sink, slow_reimport)
+
+    # POSITIVE CONTROL, before reading the durations at all. A zero here
+    # would be a statement about the instrument, not about the code: if the
+    # eviction or the finder silently did nothing, the two spawns are
+    # identical and the assertion below passes while measuring nothing.
+    assert sorted(slow_reimport.hits) == sorted(LAZY_IMPORTS), (
+        f"the finder did not serve both imports: {slow_reimport.hits}")
+    injected = IMPORT_DELAY_S * len(LAZY_IMPORTS)
+    assert wall >= injected * 0.8, (
+        f"the cold spawn only took {wall:.3f}s wall, so the {injected:.3f}s "
+        f"of import cost was never actually paid")
+
+    warm, cold = _durations(sink)
+    assert warm is not None and cold is not None
+    assert cold - warm < IMPORT_DELAY_S, (
+        f"the duration grew by {cold - warm:.3f}s when the only thing that "
+        f"changed was {injected:.3f}s of module loading: the clock starts "
+        f"above the lazy imports, so record 1 of a process is inflated and "
+        f"is not comparable to record 2")
+
+
+def test_the_cold_spawn_still_reports_the_spawn_work(monkeypatch,
+                                                     slow_reimport):
+    """The other half: excluding the imports must not exclude the spawn.
+
+    A clock started after `_build_sim` would also pass the pin above -- it
+    would be immune to import cost by measuring nothing. This drives the
+    build knob under the SAME cold-import conditions and requires the
+    duration to follow it.
+    """
+    sink = SignalSink()
+
+    _install(monkeypatch, SHORT_S, LONG_S)
+    previous = sc.get_sink()
+    sc.set_sink(sink)
+    slow_reimport.install()
+    try:
+        FleetReplayPanel._spawn_sim_fleet(_Panel())
+    finally:
+        slow_reimport.restore()
+        sc.set_sink(previous)
+
+    assert sorted(slow_reimport.hits) == sorted(LAZY_IMPORTS), (
+        f"the finder did not serve both imports: {slow_reimport.hits}")
+    cold, = _durations(sink)
+    assert cold is not None
+    assert cold >= LONG_S * 0.8, (
+        f"cold duration {cold:.3f}s did not contain the {LONG_S:.3f}s build")
+
+
+def test_the_reimport_guard_leaves_the_process_as_it_found_it(slow_reimport):
+    """The fixture's own control.
+
+    `sys.modules` and `sys.meta_path` are process-global. If the guard leaked
+    either, every test after this one in the same process would be running in
+    a corrupted interpreter, and the failure would surface somewhere else.
+    """
+    meta_before = list(sys.meta_path)
+    mods_before = {n: sys.modules[n] for n in LAZY_IMPORTS}
+
+    slow_reimport.install()
+    assert slow_reimport in sys.meta_path
+    assert all(n not in sys.modules for n in LAZY_IMPORTS)
+
+    slow_reimport.restore()
+    assert sys.meta_path == meta_before
+    assert {n: sys.modules[n] for n in LAZY_IMPORTS} == mods_before
