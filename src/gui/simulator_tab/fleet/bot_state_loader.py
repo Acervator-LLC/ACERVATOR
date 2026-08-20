@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -144,6 +145,8 @@ def load_bot_configs_from_state(
     live bot in the operator's fleet today is Scrumming — extend
     when Extractor fleet replay lands (v3.23.7x).
     """
+    # 10.3 phase 2 — the load starts HERE, at the file read.
+    _dur_t0 = time.monotonic()
     _path = path or BOT_STATE_PATH
     data = _read_state_file(_path)
     bots = data.get("bots") or {}
@@ -191,6 +194,19 @@ def load_bot_configs_from_state(
             cfg_copy["_src_stats"] = entry["stats"]
         out.append(cfg_copy)
 
+    # 10.3 phase 2 — STOP THE CLOCK HERE, BEFORE THE EMITTER BLOCK.
+    #
+    # `out` is complete at this point: the file has been read and every
+    # eligible entry turned into a config. What follows is the emitters'
+    # OWN bookkeeping -- `_eligible` is recomputed purely so each emitter
+    # can carry the expectation it is judged against.
+    #
+    # Letting the clock run through that would bill instrumentation cost
+    # to the load and report a number nobody could act on: making the
+    # emitters cheaper would "speed up the load". The same reasoning that
+    # keeps lock-wait out of `history.05.001`.
+    _dur_elapsed = time.monotonic() - _dur_t0
+
     # ── FEATURE 1 EMITTERS ────────────────────────────────────────
     # Directive: "Loads bot_state fleet as sim bots" and "ALL pieces /
     # functions of the fleet must import".
@@ -210,6 +226,7 @@ def load_bot_configs_from_state(
              or (e["config"].get("mode") or "").lower() == mode_filter)
     ]
     _emit("fleet.03.001.postcondition.bots_loaded", actual=len(out), expected=len(_eligible),
+          duration=_dur_elapsed,
           context={"mode_filter": mode_filter})
 
     # Traceability: sim ids must BE the live ids.
