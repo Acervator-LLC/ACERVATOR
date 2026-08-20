@@ -72,10 +72,34 @@ derivation has nothing to read.
 
 CONTROLS
 ========
-``--selftest`` plants one defect of each class against the real registry
-in memory, confirms the checker reports it, and confirms a clean
-comparison reports nothing. A checker with no planted-failure control is
-a claim about the checker, not about the tree.
+``--selftest`` plants one defect of each class, confirms the checker
+reports it, and confirms a clean pin reports nothing. A checker with no
+planted-failure control is a claim about the checker, not about the
+tree.
+
+Three properties, each of them bought by a measured failure:
+
+EVERY FIRE HALF IS SCOPED TO ITS OWN PLANT. Asking "did any problem
+start with E9?" is answered by ANY E9 in the tree, including a real one
+that has nothing to do with the plant. Measured 2026-08-20: with the E9
+plant neutered so it carried no defect, the control still reported
+PASS.
+
+E8 AND E9 PLANT SOURCE, NOT ``Pin`` OBJECTS. A fabricated Pin skips
+``_scan_module``, ``_call_spans``, ``collect_pins`` and
+``render_pin_name`` entirely, so it cannot show whether a rule sees a
+violation written in real code. The planted module goes to a temporary
+directory, is read back through the checker's own collection path, and
+is removed again on every path including failure.
+
+THE SIGNAL SEPARATES A BROKEN CONTROL FROM A KNOWN DEFECT. A control
+may be DECLARED red against a defect that is filed and owned elsewhere;
+that red is expected and does not move the verdict. Anything else does.
+The exit code answers one question -- did every control behave as
+declared -- so deleting a rule's detection now turns its own control
+red and turns the summary line and the exit code with it. The plain run
+carries the same check, because a green banner from an unproven
+instrument says nothing.
 """
 from __future__ import annotations
 
@@ -84,7 +108,9 @@ import ast
 import dataclasses
 import json
 import re
+import shutil
 import sys
+import tempfile
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -619,6 +645,127 @@ def line_warnings(pins: list[Pin], reg: Registry) -> list[str]:
 # --------------------------------------------------------------------- #
 
 
+@dataclass(frozen=True)
+class Control:
+    """One control, and how this control is ALLOWED to behave.
+
+    Three facts, not one.
+
+    ``ok``          the rule under test behaved the way a working rule
+                    must -- it fired on the plant, or stayed silent on
+                    the clean pin.
+    ``known``       non-empty when this control is DECLARED red against
+                    a defect that is already filed and owned somewhere
+                    else. The text names the owner.
+    ``as_declared`` the red that arrived is that same red, and not a
+                    different one wearing its label.
+
+    Splitting them is the whole point of this type. Before it, one
+    permanently failing control held the exit code at 1 on every run,
+    so a control that genuinely BROKE changed nothing a reader could
+    act on: same summary line, same exit code, one word different deep
+    in the body. A signal that is red whatever happens carries no
+    information, and the first thing anyone does with it is stop
+    reading it.
+    """
+
+    label: str
+    ok: bool
+    detail: str
+    known: str = ""
+    as_declared: bool = True
+
+    @property
+    def state(self) -> str:
+        """PASS, KNOWN-RED, STALE or BROKEN.
+
+        STALE is a control that was declared red and came back green.
+        That is not good news to be swallowed: the declaration is now
+        false, and while it stands the control reports nothing. The
+        declaration has to be deleted, so this state is not healthy.
+        """
+        if self.ok:
+            return "STALE" if self.known else "PASS"
+        if self.known and self.as_declared:
+            return "KNOWN-RED"
+        return "BROKEN"
+
+    @property
+    def healthy(self) -> bool:
+        """True when this control behaved exactly as declared."""
+        return self.state in ("PASS", "KNOWN-RED")
+
+
+_PLANT_MODULE = "planted_emitters.py"
+
+_PLANT_SOURCE = '''"""Planted pins for E8 and E9 -- source, not Pin objects.
+
+Written to a temporary directory, read back through the checker's own
+collection path, and deleted again. It is never written into the
+repository and never under the runtime directory.
+"""
+from src.core.signal_contract import emit
+
+
+def planted_pins() -> None:
+    """Five call sites: two for E8, three for E9."""
+    value = 1.0
+    emit("ghost.99.002.counter.not_a_postcondition",
+         actual=value, duration=0.5)
+    emit("ghost.99.003.postcondition.allowed",
+         actual=value, duration=0.5)
+    emit("ghost.99.004.postcondition.compares_itself",
+         actual=value, expected=value)
+    emit("ghost.99.005.postcondition.compares_something",
+         actual=value, expected=2.0)
+    emit("ghost.99.006.postcondition.positional_vacuous", value, value)
+'''
+
+_PLANT_NAMES = {
+    "e8_fires": "ghost.99.002.counter.not_a_postcondition",
+    "e8_quiet": "ghost.99.003.postcondition.allowed",
+    "e9_fires": "ghost.99.004.postcondition.compares_itself",
+    "e9_quiet": "ghost.99.005.postcondition.compares_something",
+    "e9_positional": "ghost.99.006.postcondition.positional_vacuous",
+}
+
+
+def _planted_pins() -> tuple[list[Pin], str]:
+    """Write the planted module, collect its pins, remove it.
+
+    WHY SOURCE AND NOT ``dataclasses.replace(pins[0], ...)``
+    =======================================================
+    A fabricated Pin hands the rule a flag the control set itself. It
+    proves the rule can read a boolean. It cannot prove the rule ever
+    SEES a violation written in real code, because the whole path from
+    text to Pin -- ``_scan_module``, ``_call_spans``, ``collect_pins``,
+    ``render_pin_name`` -- is skipped.
+
+    That gap is not theoretical. Both E8 and E9 read their flags from
+    ``node.keywords`` alone, so the same violation written with
+    positional arguments produces a Pin with the flag unset and both
+    rules go silent. No Pin-level control can see that, because it
+    never parses anything. The positional call site in the planted
+    module is there for exactly that reason.
+
+    Returns ``(pins, error)``; the error string is empty on success.
+    The temporary directory is removed on every path, failure included.
+    """
+    root = Path(tempfile.mkdtemp(prefix="emitter_control_plant_")).resolve()
+    try:
+        path = root / _PLANT_MODULE
+        path.write_bytes(_PLANT_SOURCE.encode("utf-8"))
+        if is_exempt(path):
+            return ([], (f"the planted module at {path} is exempt "
+                         f"from the scan, so it would prove "
+                         f"nothing"))
+        return (collect_pins(root, root), "")
+    except (OSError, SyntaxError, ValueError, LookupError) as exc:
+        return ([], f"{type(exc).__name__}: {exc}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def _variant(reg: Registry, rows: list[Row] | None = None,
              planned: dict[str, str] | None = None,
              numbers: dict[str, str] | None = None) -> Registry:
@@ -631,22 +778,65 @@ def _variant(reg: Registry, rows: list[Row] | None = None,
         parse_errors=[])
 
 
+KNOWN_TREE_E9 = "bot.01.002.postcondition.capital_reservation"
+"""The one real E9 in the tree, owned by the repair that fixes that pin.
+
+Named here so the clean-tree control can say WHICH red it expects. A
+control that accepts any red is not a control: a second, unrelated
+defect would arrive wearing the first one's excuse.
+"""
+
+
 def _controls(pins: list[Pin],
-              reg: Registry) -> list[tuple[str, bool, str]]:
-    """Plant one defect of each class and read the problem list back."""
-    def fired(problems: list[str], code: str) -> tuple[bool, str]:
-        hits = [p for p in problems if p.startswith(code)]
+              reg: Registry) -> list[Control]:
+    """Plant one defect of each class and read the problem list back.
+
+    EVERY HALF IS SCOPED TO ITS OWN PLANT
+    =====================================
+    A fire half used to ask "did any problem start with E9?". Measured
+    twice, independently, on 2026-08-20: with the E9 plant neutered so
+    that it carried no defect at all, the control still reported PASS,
+    because the tree holds one real E9 and the question was global. The
+    same was measured for E8 with a real violation added elsewhere. A
+    control that a stranger's defect can satisfy is not measuring its
+    own rule.
+
+    So every fire half now names the identity it planted -- a pin name,
+    a registry ID, a phantom row -- and asks whether the rule fired ON
+    THAT. The silence halves were already scoped this way, and the
+    reason written beside them applies to both halves equally.
+    """
+    def fired(problems: list[str], code: str,
+              *needles: str) -> tuple[bool, str]:
+        """Say whether `code` fired ON THE PLANTED THING.
+
+        `needles` are the identity of the plant, and every one of them
+        must appear in the problem line. A hit that names something
+        else is somebody else's finding and is not evidence about this
+        rule.
+        """
+        hits = [p for p in problems
+                if p.startswith(code) and all(n in p for n in needles)]
         return (bool(hits), "; ".join(hits) or "silent")
 
-    results: list[tuple[str, bool, str]] = []
+    results: list[Control] = []
 
     clean = check(pins, reg)
-    results.append(("clean tree reports nothing", not clean,
-                    "; ".join(clean) or "silent"))
+    results.append(Control(
+        label="clean tree reports nothing",
+        ok=not clean,
+        detail="; ".join(clean) or "silent",
+        known=(f"the tree holds one real E9 on {KNOWN_TREE_E9}, owned by "
+               f"the repair that fixes that pin, not by the controls"),
+        as_declared=bool(clean) and all(
+            p.startswith("E9") and KNOWN_TREE_E9 in p for p in clean)))
 
+    dropped_row = reg.rows[0]
     dropped = check(pins, _variant(reg, rows=reg.rows[1:]))
-    ok, detail = fired(dropped, "E1")
-    results.append(("E1 fires when a row is removed", ok, detail))
+    ok, detail = fired(dropped, "E1",
+                       f"{dropped_row.name} in {dropped_row.file}")
+    results.append(Control(
+        "E1 fires when a row is removed", ok, detail))
 
     phantom = Row(
         emitter_id="99-001", subsystem="ghost", signal_type="gauge",
@@ -658,100 +848,137 @@ def _controls(pins: list[Pin],
         reg, rows=[*reg.rows, phantom],
         planned={**reg.planned, "99-001": "ghost.99.001.gauge.not_a_pin"},
         numbers={**reg.subsystem_numbers, "ghost": "99"}))
-    ok, detail = fired(added, "E2")
-    results.append(("E2 fires when a phantom row is added", ok, detail))
+    ok, detail = fired(added, "E2", phantom.name, phantom.emitter_id)
+    results.append(Control(
+        "E2 fires when a phantom row is added", ok, detail))
 
     first = reg.rows[0]
     typed = check(pins, _variant(reg, rows=[
         dataclasses.replace(first, signal_type="vibe"), *reg.rows[1:]]))
-    ok, detail = fired(typed, "E4")
-    results.append((
+    ok, detail = fired(typed, "E4", first.emitter_id, "'vibe'")
+    results.append(Control(
         "E4 fires on a signal type outside the vocabulary", ok, detail))
 
     renumbered = check(pins, _variant(reg, rows=[
         dataclasses.replace(first, emitter_id="97-001"), *reg.rows[1:]]))
-    ok, detail = fired(renumbered, "E5")
-    results.append((
+    ok, detail = fired(renumbered, "E5", "97-001",
+                       f"{first.subsystem!r} is numbered")
+    results.append(Control(
         "E5 fires when an ID carries the wrong subsystem number",
         ok, detail))
 
     blanked = check(pins, _variant(reg, rows=[
         dataclasses.replace(first, previous_name=""), *reg.rows[1:]]))
-    ok, detail = fired(blanked, "E7")
-    results.append(("E7 fires when a previous name is blanked", ok, detail))
+    ok, detail = fired(blanked, "E7", first.emitter_id,
+                       "previous name is empty")
+    results.append(Control(
+        "E7 fires when a previous name is blanked", ok, detail))
 
     echoed = check(pins, _variant(reg, rows=[
         dataclasses.replace(first, previous_name=first.name),
         *reg.rows[1:]]))
-    ok, detail = fired(echoed, "E7")
-    results.append((
+    ok, detail = fired(echoed, "E7", first.emitter_id,
+                       "is the current name")
+    results.append(Control(
         "E7 fires when a previous name echoes the current name",
         ok, detail))
 
-    # E8 — plant a duration on a type that may not carry one. `dynamic`
-    # is False so the planted pin is typed and reaches the rule.
-    mistyped = dataclasses.replace(
-        pins[0], name="ghost.99.002.counter.not_a_postcondition",
-        carries_duration=True, dynamic=False)
-    ok, detail = fired(check([*pins, mistyped], reg), "E8")
-    results.append(("E8 fires on a duration outside a postcondition",
-                    ok, detail))
+    # E8 and E9 are planted as SOURCE. See `_planted_pins`.
+    planted, plant_error = _planted_pins()
+    want = set(_PLANT_NAMES.values())
+    got = want & {pin.name for pin in planted}
+    results.append(Control(
+        "the planted source module parses to its pins",
+        not plant_error and got == want,
+        plant_error or (
+            f"collected {len(planted)} pin(s) from source"
+            if got == want else
+            f"collected {len(planted)} pin(s); missing "
+            f"{', '.join(sorted(want - got))}")))
+    with_plant = check([*pins, *planted], reg)
 
-    # The other half: the SAME planted pin, typed as a postcondition,
-    # must be silent. A rule that fires on everything is not a rule.
-    allowed = dataclasses.replace(
-        pins[0], name="ghost.99.003.postcondition.allowed",
-        carries_duration=True, dynamic=False)
-    # Scoped to the planted pin, for the same reason as E9 below: a
-    # global-silence check breaks as soon as the tree holds a real
-    # violation, which is when the rule is working.
-    quiet = [p for p in check([*pins, allowed], reg)
-             if p.startswith("E8") and allowed.name in p]
-    results.append(("E8 is silent on a duration ON a postcondition",
-                    not quiet, "; ".join(quiet) or "silent"))
+    ok, detail = fired(with_plant, "E8", _PLANT_NAMES["e8_fires"])
+    results.append(Control(
+        "E8 fires on a duration outside a postcondition, from source",
+        ok, detail))
 
-    # E9 — plant a check that compares an expression to itself.
-    vacuous = dataclasses.replace(
-        pins[0], name="ghost.99.004.postcondition.compares_itself",
-        vacuous_check=True, dynamic=False)
-    ok, detail = fired(check([*pins, vacuous], reg), "E9")
-    results.append(("E9 fires on a check that can never fail", ok, detail))
+    # The other half: a duration ON a postcondition, out of the same
+    # parsed module, must be silent. A rule that fires on everything is
+    # not a rule. Scoped to the planted pin, because a global-silence
+    # check breaks as soon as the tree holds a real violation, which is
+    # when the rule is working.
+    quiet8 = [p for p in with_plant
+              if p.startswith("E8") and _PLANT_NAMES["e8_quiet"] in p]
+    results.append(Control(
+        "E8 is silent on a duration ON a postcondition, from source",
+        not quiet8, "; ".join(quiet8) or "silent"))
 
-    # The other half: the SAME planted pin with a real comparison must be
-    # silent, or E9 would condemn every emitter that carries an expected.
-    honest = dataclasses.replace(
-        pins[0], name="ghost.99.005.postcondition.compares_something",
-        vacuous_check=False, dynamic=False)
-    # Scoped to the PLANTED pin. Asking whether E9 is globally silent
-    # would fail whenever the tree holds a real violation -- which is
-    # the state this rule exists to report, so the control would break
-    # precisely when the rule was working.
-    quiet9 = [p for p in check([*pins, honest], reg)
-              if p.startswith("E9") and honest.name in p]
-    results.append(("E9 is silent on a check that can fail",
-                    not quiet9, "; ".join(quiet9) or "silent"))
+    ok, detail = fired(with_plant, "E9", _PLANT_NAMES["e9_fires"])
+    results.append(Control(
+        "E9 fires on a check that can never fail, from source",
+        ok, detail))
+
+    quiet9 = [p for p in with_plant
+              if p.startswith("E9") and _PLANT_NAMES["e9_quiet"] in p]
+    results.append(Control(
+        "E9 is silent on a check that can fail, from source",
+        not quiet9, "; ".join(quiet9) or "silent"))
+
+    # The blind spot, made visible. The same defect as the E9 plant
+    # above, written with positional arguments. DECLARED red: the rule
+    # reads `actual` and `expected` from `node.keywords` only, so this
+    # pin arrives with the flag unset and E9 cannot see it. When the
+    # detection repair lands, this control turns STALE and demands its
+    # declaration be deleted -- which is how a blind spot gets closed
+    # rather than commented on.
+    ok, detail = fired(with_plant, "E9", _PLANT_NAMES["e9_positional"])
+    results.append(Control(
+        label=("E9 fires on a vacuous check written with positional "
+               "arguments"),
+        ok=ok, detail=detail,
+        known=("`_check_vacuous` reads `actual` and `expected` from "
+               "`node.keywords` only, so a positional call leaves the "
+               "flag unset; owned by the detection repair, not by the "
+               "controls"),
+        as_declared=not ok))
 
     replanned = check(pins, _variant(
         reg, planned={**reg.planned, first.emitter_id: "made.up.name"}))
-    ok, detail = fired(replanned, "E6")
-    results.append((
+    ok, detail = fired(replanned, "E6", first.emitter_id, "made.up.name")
+    results.append(Control(
         "E6 fires on a planned name that is not its own derivation",
         ok, detail))
     return results
 
 
 def _selftest(pins: list[Pin], reg: Registry) -> int:
-    """Run the controls and report at the surface that drives exit."""
+    """Run the controls and report at the surface that drives exit.
+
+    The summary line and the exit code answer ONE question: did every
+    control behave the way it was declared to behave? A known-red
+    control that came back red is a declared fact about the tree and
+    does not move that answer. A control that broke does.
+    """
     write = sys.stdout.write
     results = _controls(pins, reg)
-    failed = 0
-    for label, ok, detail in results:
-        write(f"  [{'PASS' if ok else 'FAIL'}] {label}\n")
-        write(f"         {detail}\n")
-        if not ok:
-            failed += 1
-    write(f"controls: {len(results) - failed}/{len(results)} passed\n")
-    return 1 if failed else 0
+    for control in results:
+        write(f"  [{control.state}] {control.label}\n")
+        write(f"         {control.detail}\n")
+        if control.known:
+            write(f"         declared red: {control.known}\n")
+    tally = Counter(control.state for control in results)
+    unhealthy = [control for control in results if not control.healthy]
+    write(f"controls: {tally['PASS']} passed, {tally['KNOWN-RED']} "
+          f"known-red, {tally['BROKEN']} broken, {tally['STALE']} stale, "
+          f"of {len(results)}\n")
+    if unhealthy:
+        write(f"SELFTEST FAIL {len(unhealthy)} control(s) did not behave "
+              f"as declared: "
+              f"{'; '.join(control.label for control in unhealthy)}\n")
+        return 1
+    write(f"SELFTEST OK {len(results)} control(s), every one behaved as "
+          f"declared\n")
+    return 0
 
 
 # --------------------------------------------------------------------- #
@@ -771,7 +998,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help=f"registry path (default: <root>/{REGISTRY_PATH.as_posix()})")
     parser.add_argument(
         "--selftest", action="store_true",
-        help="plant one defect of each class and report")
+        help="plant one defect of each class and report whether "
+             "every control behaved as declared")
     parser.add_argument(
         "--json", action="store_true", help="machine-readable output")
     return parser.parse_args(argv)
@@ -800,24 +1028,42 @@ def main(argv: list[str] | None = None) -> int:
 
     problems = check(pins, reg)
     warnings = line_warnings(pins, reg)
+    # The controls run on the PLAIN path too. A green banner is a claim
+    # about the tree, and it is only worth the ink if the rules behind
+    # it have been shown to fire on a planted defect on THIS run.
+    # Measured 2026-08-20: with E9's detection deleted, this path
+    # printed OK and exited 0 over a tree that holds a check which can
+    # never fail. An unproven instrument reporting nothing is not the
+    # same fact as a clean tree, and it must not print the same line.
+    broken = [c for c in _controls(pins, reg) if not c.healthy]
 
     if args.json:
         write(json.dumps({
             "pins": len(pins), "rows": len(reg.rows),
             "problems": problems, "warnings": warnings,
-            "passed": not problems}, indent=2) + "\n")
-        return 1 if problems else 0
+            "broken_controls": [c.label for c in broken],
+            "passed": not problems and not broken}, indent=2) + "\n")
+        return 1 if (problems or broken) else 0
 
     write(f"pins in src  : {len(pins)}\n")
     write(f"registry rows: {len(reg.rows)}\n")
+    if broken:
+        write(f"instrument   : {len(broken)} control(s) did not behave as "
+              f"declared: {'; '.join(c.label for c in broken)}\n")
+        write("instrument   : these rules are NOT proven on this run, so "
+              "a clean result below is evidence of nothing. Run "
+              "--selftest.\n")
+    else:
+        write("instrument   : controls OK\n")
     for warning in warnings:
         write(f"  {warning}\n")
-    if not problems:
+    if not problems and not broken:
         write("OK every pin has a row and every row has a pin\n")
         return 0
     for problem in problems:
         write(f"  {problem}\n")
-    write(f"FAIL {len(problems)} problem(s)\n")
+    write(f"FAIL {len(problems)} problem(s), {len(broken)} broken "
+          f"control(s)\n")
     return 1
 
 
