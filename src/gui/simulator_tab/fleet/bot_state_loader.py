@@ -312,6 +312,12 @@ def load_smart_wires_from_state(
     imported but inert, and reporting the import count as though it were
     the active count is the failure this cascade exists to prevent.
     """
+    # 10.3 phase 2 — the load starts HERE, at the file read.
+    #
+    # The malformed-list branch below returns WITHOUT emitting, so it
+    # needs no duration: there is no record to carry one. Only the path
+    # that reaches `fleet.03.004` is timed.
+    _dur_t0 = time.monotonic()
     _path = path or BOT_STATE_PATH
     data = _read_state_file(_path)
     wires = data.get("smart_wires") or []
@@ -321,12 +327,16 @@ def load_smart_wires_from_state(
             type(wires).__name__)
         return []
     out = [w for w in wires if isinstance(w, dict)]
+    # `out` is complete; stop before the emitter's own block, for the
+    # same reason as `fleet.03.001` above.
+    _dur_elapsed = time.monotonic() - _dur_t0
 
     # FEATURE 1 EMITTER — wires are part of "all pieces of the fleet".
     # Nothing recorded how many were persisted versus how many reached
     # the sim, so a partial topology import was invisible.
     from src.core.signal_contract import emit as _emit
-    _emit("fleet.03.004.postcondition.wires_loaded", actual=len(out), expected=len(wires))
+    _emit("fleet.03.004.postcondition.wires_loaded", actual=len(out),
+          expected=len(wires), duration=_dur_elapsed)
     return out
 
 
