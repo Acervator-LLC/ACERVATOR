@@ -505,17 +505,28 @@ if _HAS_QT:
             if not self._configs:
                 return 0
 
-            # 10.3 phase 2 — the spawn starts HERE, after the empty-configs
-            # guard. `sim.06.007` carries `missing_tablets` in its context,
-            # so the operation it observes INCLUDES loading candles from the
-            # tablet registry, not just constructing the controller.
+            # 10.3 phase 2 — the spawn starts BELOW the two imports and
+            # after the empty-configs guard. `sim.06.007` carries
+            # `missing_tablets` in its context, so the operation it observes
+            # INCLUDES loading candles from the tablet registry, not just
+            # constructing the controller. That is still the boundary; only
+            # the imports moved out of it.
+            #
+            # WHY THE IMPORTS SIT OUTSIDE THE CLOCK. They are lazy, so the
+            # FIRST call in a process pays the whole interpreter cost of
+            # loading both modules and every call after it pays nothing,
+            # because Python serves them from `sys.modules`. Inside the
+            # bracket that made record 1 incomparable to record 2: item 17
+            # reads this field as latency, so the first spawn of every
+            # process would always look like the slow one. Loading a module
+            # is not spawn work and it never happens twice.
             #
             # BOTH EARLY RETURNS BELOW EMIT NOTHING (no configs, no candles),
             # so neither needs a duration: there is no record to carry one.
-            _dur_t0 = time.monotonic()
             from src.trading.stone_tablets.registry import get_registry
             from .fleet_replay_controller import FleetReplayController
 
+            _dur_t0 = time.monotonic()
             reg = get_registry()
             candles: dict = {}
             missing: list = []
