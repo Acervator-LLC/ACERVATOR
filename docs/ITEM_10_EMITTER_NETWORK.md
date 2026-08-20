@@ -15,7 +15,7 @@ his word.
 | 10.0 | COUNT | **shipped** — 40 emitters, counter proven four ways |
 | 10.1 | IDENTIFY | **shipped** — naming convention, `docs/EMITTER_IDENTIFICATION.md`, `tools/emitter_registry_check.py` |
 | 10.2 | RENAME | **shipped** — every emitter has a register row and every row an emitter |
-| **10.3** | **TIME** | **NOT DONE.** 0 of 40 carry a duration |
+| **10.3** | **TIME** | **PHASE 1 SHIPPED** (`Signal.dt`, cadence, ~34 tests). **PHASE 2 NOT DONE** — operation duration. 0 of 40 carry one; 6 can, 23 must not, 11 need a start marker. See `docs/audits/2026-08-19_emitter_duration_classification.md` |
 | **10.4** | **PROVE** | **NOT DONE.** Verify each emitter against the spec below |
 | **10.5+** | **EMIT** | **NOT STARTED.** Six tabs have zero emitters |
 
@@ -128,14 +128,56 @@ Every emitter needs the field to exist before any can carry it, and it is one
 file. Shared infrastructure with no consumer yet is the sole exception to the
 vertical rule.
 
-- Add a duration to the record in `src/core/signal_contract.py` /
-  `src/core/emit_contracts.py`.
-- **Classify all 40 first**: which wrap an interval that can be measured
-  honestly, and which are instantaneous observations where a duration would be
-  fabricated. **A fabricated duration is worse than a missing one**, because
-  item 17 computes health from it. `None` is a legitimate answer and must be
-  distinguishable from a real zero.
-- **Monotonic** clock, never the wall clock.
+**PHASE 1 IS ALREADY SHIPPED, AND IT IS NOT WHAT PHASE 2 ADDS.**
+`Signal.dt` exists, works and is pinned by ~34 tests in
+`tests/test_signal_timing.py`. Driven 2026-08-19: `nth=1 dt=None`, then 0.5 ms
+and 2.0 ms injected produced `0.0005375` and `0.0020274`. That is this unit's
+own tracking control, and it passes.
+
+**`dt` IS CADENCE — the gap BETWEEN emissions. It is NOT how long the observed
+operation TOOK.** The register already says so: *"`timer`. No pin carries a
+duration … Adding duration is a later unit, which will claim this term."* For
+item 17, cadence answers ON TIME and HANGS; what is missing is SLOW DOWNS.
+Anyone reading "0 of 40 carry a duration" and concluding the record has no time
+field will lose an hour. It has one. It measures something else.
+
+- Add an operation duration to the record in `src/core/signal_contract.py` /
+  `src/core/emit_contracts.py`, distinct from `dt`.
+- **CLASSIFY ALL 40 FIRST — DONE 2026-08-19.** Full evidence and the
+  per-emitter table:
+  `docs/audits/2026-08-19_emitter_duration_classification.md`. **A fabricated
+  duration is worse than a missing one**, because item 17 computes health from
+  it. `None` is legitimate and is already distinguishable from a real zero.
+- **Monotonic** clock, never the wall clock. Pre-mortemed: the Windows
+  15.6 ms-quantisation hazard was REFUTED — measured resolution 1e-07, 0.5 ms
+  and 2.0 ms cleanly separated.
+
+**WHAT THE CLASSIFICATION FOUND, and it bounds this unit:**
+
+- **32 of 40 emitters share an enclosing function**; only 8 sit alone
+  (`_run()` holds 8, `tick()` 4). Duration must therefore NEVER mean "time the
+  enclosing function" — those 32 would report identical numbers, which is a
+  fabricated distinction that item 17 would read as health. **At most ONE
+  emitter per operation owns that operation's duration.**
+- **23 are instantaneous.** `None` is the deliverable and no code is needed.
+  Three are traps: `tick.08.001.throttled` fires when NO work happened, so a
+  duration would be actively false; `tick.08.002.worked` is an ENTRY marker 85
+  lines into a 4,503-line `tick()`; `sim.06.006.window_played` already carries a
+  timestamp pair measuring THE TAPE, not the cost of replaying it.
+- **6 are clean owners of a bounded operation** and need no start markers —
+  `history.05.001.scan_complete`, `fleet.03.001.bots_loaded`,
+  `fleet.03.004.wires_loaded`, `sim.06.007.fleet_spawned`,
+  `topology.09.002.wires_received`, and `ta.07.003.computed`, which is the
+  highest-value row because it is TA compute latency.
+- **11 need instrumentation decisions first** — emit-only helpers, phases inside
+  377- and 670-line functions, and siblings that would double-count. One later
+  unit each.
+
+**THE SCOPE OF THIS UNIT IS THOSE SIX.** Not 40.
+
+**NAMED, NOT FIXED HERE: the tick has no completion emitter**, so per-tick
+latency — what items 11 and 17 both want — is not reachable from the current
+network. Adding one is a new emitter, which is 10.5+ work.
 
 **Its one control: a duration that TRACKS.** Absent before; present after; and
 two different known intervals must produce two **different** recorded values
