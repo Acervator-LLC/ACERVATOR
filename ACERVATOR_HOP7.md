@@ -321,18 +321,29 @@ measured absent. Pass `--source` or set the variable; do not trust the default.
    4 hooks, on `current`. A fresh clone now gets a gate. **It still needs
    `git config core.hooksPath .githooks` per clone**, or the pre-push gate does
    not bind; see FIRST FIVE MINUTES.
-2. **`core.autocrlf` is `true` here** and was `false` in the old tree, with no
-   `.gitattributes` in either. That flipped by default, not by decision. Now
-   that islands are retired, nothing preserves per-file endings any more, so
-   this stopped being cosmetic. **Measured 2026-08-19 across all 25 files in
-   `be6aa04..HEAD`: FIVE, not eighteen**, hold CRLF in the working tree and LF
-   in the committed blob — `archetype_gate.py`, `settings.json`,
-   `acervator/SKILL.md`, `unit-decomposition/SKILL.md`, `ACERVATOR_HOP7.md`.
-   The other 20 were already LF and passed through untouched. **And "rewritten"
-   is the wrong verb: nothing on disk changed.** The blob is normalised on the
-   way in and CRLF is restored on a Windows checkout. The real exposure is a
-   non-Windows clone, or a file that MUST stay LF — `build_mac.sh`,
-   `run_acervator.sh` — being handed CRLF. A `.gitattributes` is what pins that.
+2. **RESOLVED 2026-08-19 — full consolidation on LF, via `.gitattributes`.**
+   Operator decision. **The repository was ALREADY consolidated in storage:**
+   measured across all 670 tracked text files, every blob was LF — 667 LF, 3
+   with no newline, **zero CRLF, zero mixed**. The "68 CRLF / 95 LF mixed"
+   figure describes the OLD tree, where `autocrlf=false` meant the mixture was
+   genuinely stored; carrying that number into this repo was an error.
+
+   **The live defect was on the way OUT, not in.** `autocrlf=true` converts at
+   CHECKOUT. Measured in a fresh worktree, which is a real checkout:
+   `run_acervator.sh`, `build_mac.sh` and `os/install.sh` all arrived **CRLF**,
+   so every fresh clone on Windows got broken shell scripts. This working tree
+   escaped only because it was never checked out — it is the original folder
+   that was `git init`-ed.
+
+   **It also protected the gate from disabling itself.** `.githooks/pre-push`
+   is a shell script; a fresh Windows clone would have handed it CRLF, it would
+   have failed with "bad interpreter", and the pre-push gate would have stopped
+   running SILENTLY on exactly the machines that need it.
+
+   `.gitattributes` pins `* text=auto eol=lf`, with `*.sh` and `.githooks/*`
+   stated explicitly and binaries excluded. **It moved nothing in storage:**
+   `git add --renormalize .` across the whole repo staged only
+   `.gitattributes` itself, 0 other files. Verify with `git ls-files --eol`.
 3. **`git worktree` IS THE DEFAULT, decided 2026-08-19.** Islands left the
    working tree alone; a branch checkout replaces it, and that tree is what his
    live launch runs against 37 bots. Units take a `git worktree` of their own so
