@@ -47,6 +47,25 @@
 *.sh        text eol=lf
 .githooks/* text eol=lf
 
+# ONE SOURCE FILE IS PINNED TO CRLF, and it is a real dependency rather than a
+# preference. `tests/test_autonomous_fold_price_gate.py` reads this file as
+# BYTES, splits on "
+", and pins a sha256 of the exact CRLF bytes. Its own
+# comment states the requirement:
+#
+#     # Read as BYTES and decode without newline translation. The file is
+#     # pure CRLF; ``read_text`` would hand back LF and every hash below
+#     # would be a hash of a file that does not exist on disk.
+#
+# MEASURED 2026-08-19: without this pin a FRESH CHECKOUT hands it LF, the gate
+# anchors miss, and 80 of that file's 122 tests fail with StalePlant. The suite
+# was green in a working tree that predated `.gitattributes` and red in every
+# fresh clone -- see the audit for why the first gate did not catch it.
+#
+# Removing this pin means making that test line-ending agnostic, which also
+# means retiring its byte-exact sha256. That is its own unit, not a side effect.
+src/trading/scrumming_bot.py text eol=crlf
+
 # Binaries: never touched, never normalised, never diffed as text.
 *.png  binary
 *.jpg  binary
