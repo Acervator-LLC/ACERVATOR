@@ -19,6 +19,7 @@ import asyncio
 import logging
 import math
 import threading
+import time
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger("acervator.simulator.fleet.panel")
@@ -503,6 +504,15 @@ if _HAS_QT:
             """
             if not self._configs:
                 return 0
+
+            # 10.3 phase 2 — the spawn starts HERE, after the empty-configs
+            # guard. `sim.06.007` carries `missing_tablets` in its context,
+            # so the operation it observes INCLUDES loading candles from the
+            # tablet registry, not just constructing the controller.
+            #
+            # BOTH EARLY RETURNS BELOW EMIT NOTHING (no configs, no candles),
+            # so neither needs a duration: there is no record to carry one.
+            _dur_t0 = time.monotonic()
             from src.trading.stone_tablets.registry import get_registry
             from .fleet_replay_controller import FleetReplayController
 
@@ -556,11 +566,15 @@ if _HAS_QT:
                 performance_log_cb=_perf_cb,
                 max_candles=None)
             self._controller._build_sim()
+            # The bots exist; the spawn is over. Stop before the count and
+            # the emitter block, so instrumentation is not billed to it.
+            _dur_elapsed = time.monotonic() - _dur_t0
             n = len(list(getattr(self._controller, "_bots", []) or []))
             try:
                 from src.core.signal_contract import emit as _sp_emit
                 _sp_emit("sim.06.007.postcondition.fleet_spawned",
                          actual=n, expected=len(self._configs),
+                         duration=_dur_elapsed,
                          context={"symbols_with_tablet": len(candles),
                                   "missing_tablets": len(missing)})
             except Exception:  # noqa: BLE001,S110 - advisory
