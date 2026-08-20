@@ -36,6 +36,7 @@ v3.1.71 — Initial implementation
 from __future__ import annotations
 import logging
 import math
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -639,6 +640,11 @@ class SmartWireManager:
         """
         if not isinstance(wires, list):
             return 0
+
+        # 10.3 phase 2 — the import starts HERE, after the type guard.
+        # That guard returns WITHOUT emitting, so it needs no duration:
+        # there is no record to carry one.
+        _dur_t0 = time.monotonic()
         n = 0
         offered = 0
         # 2026-08-15 - THE SIBLING DEFECT, OPPOSITE SHAPE. import_ledgers
@@ -829,6 +835,13 @@ class SmartWireManager:
         # restores on every launch and carries a guard-clean topology,
         # so a line he sees every time is noise he learns to ignore -
         # which is the same defect as silence.
+        # 10.3 phase 2 — STOP HERE. `n` and `offered` are final, so the
+        # import is over. What follows is REPORTING: the lost-row tally
+        # and the operator warning. Timing those would bill the report
+        # to the import, and making the log cheaper would read as a
+        # faster import. Same boundary as fleet.03.001 and 03.004.
+        _dur_elapsed = time.monotonic() - _dur_t0
+
         lost = malformed + unreadable + unroutable
         if lost:
             logger.warning(
@@ -851,6 +864,7 @@ class SmartWireManager:
             from src.core.signal_contract import emit as _w
             _w("topology.09.002.postcondition.wires_received", actual=n,
                expected=len(wires) if isinstance(wires, list) else 0,
+               duration=_dur_elapsed,
                context={"sources": len(self._wires)})
         except Exception:  # noqa: BLE001,S110 - advisory
             pass
