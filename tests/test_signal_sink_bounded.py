@@ -511,9 +511,17 @@ class TestTheEmitterNeverStops:
         # no value in `health()` may be a bool at all. That catches the
         # next `capped` under any spelling; the old list could only
         # catch one called `capped`.
+        # 10.3 phase 2 -- RESTATED AGAIN, NOT RELAXED. `health()`
+        # gained `duration_rejected`, the count of durations the
+        # ingress guard refused, so the exact set is re-pinned to
+        # the ten keys it now publishes. A key that VANISHES still
+        # fails here, which is what the exact set protects, and
+        # the new one is an int, so the no-bool rule below still
+        # covers it.
         assert set(health) == {"emitted", "buffered", "retained", "evicted",
                                "dropped", "rotate_failures", "identities",
-                               "identity_overflow", "path"}
+                               "identity_overflow", "duration_rejected",
+                               "path"}
         assert not any(isinstance(v, bool) for v in health.values()), (
             "a bool in health() is a promise no reader can falsify, "
             "which is exactly what `capped` was")

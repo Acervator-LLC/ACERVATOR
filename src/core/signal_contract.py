@@ -73,6 +73,7 @@ records; something else decides.
 from __future__ import annotations
 
 import json
+import math
 import sys
 import threading
 import time
@@ -612,10 +613,39 @@ def _as_float(value: Any) -> Optional[float]:
     JSON value read off disk, where exact `int` and `float` cover every
     legitimate case; a string, a list or a bool is not a mis-typed
     interval, it is no interval, and None says so.
+
+    IT NEVER RAISES FOR ANY INPUT, AND HERE THAT MATTERS MORE THAN IT
+    DOES AT THE INGRESS. `emit` wraps its guard in a blanket handler,
+    so a raise there cost ONE record. `read_records` has no blanket
+    handler: its inner `except json.JSONDecodeError` sits around
+    `json.loads` ALONE, and its outer handler catches `OSError` ONLY.
+    This function runs after the decode, inside the `Signal(...)`
+    construction, where neither one reaches it. An OverflowError raised
+    here therefore left `read_records` entirely, so one bad line cost
+    the WHOLE FILE and took the caller down with it -- measured on this
+    branch over a three-line file, where zero of the three came back.
+
+    THE INT BRANCH IS BOUNDED FOR THAT REASON. `float(10 ** 400)`
+    raises OverflowError, which no type check can see, because the type
+    is a perfectly ordinary `int`. The bound is an int compared against
+    a float, which CPython evaluates EXACTLY, without converting either
+    side, so the test cannot itself raise; anything inside the bound is
+    representable, so neither can the conversion under it.
+
+    IT IS ONLY THE TOTALITY THAT IS SHARED WITH THE INGRESS GUARD, NOT
+    THE RULES. `_as_measured_duration` refuses a negative, a NaN and an
+    infinity, and rounds what it keeps, because it judges a number
+    arriving from a CALL SITE where those shapes mean a defect. This
+    function reads a number back off DISK, and a value a previous
+    generation really did write must read back as the value that is
+    there, or the reader is editing history. A wide int is refused
+    because no float can HOLD it, which is a different statement.
     """
     if type(value) is float:
         return value
     if type(value) is int:
+        if not -sys.float_info.max <= value <= sys.float_info.max:
+            return None
         return float(value)
     return None
 
@@ -632,6 +662,98 @@ def _as_ordinal(value: Any) -> int:
     if type(value) is int and value > 0:
         return value
     return 0
+
+
+def _as_measured_duration(value: Any) -> Optional[float]:
+    """Return `value` as a REAL measured duration, or None when it is not.
+
+    10.3 phase 2 -- THE INGRESS GUARD, and the counterpart to
+    `_as_float` above. That one refuses a bad number arriving from
+    DISK. Nothing refused a bad number arriving from a CALL SITE, and
+    `emit` wrote `float(duration)` verbatim, which had four holes with
+    one consequence.
+
+      `float(True)` is 1.0. A caller that passes a FLAG by mistake --
+      `duration=is_slow` -- wrote a one-second latency that is
+      indistinguishable on disk from a measured one. This is the exact
+      coercion `_as_float` names as "the class of coercion defect this
+      repo has already paid for once"; the way in from a call site had
+      no such refusal.
+
+      A NEGATIVE duration says time ran backwards. `time.monotonic()`
+      cannot produce one, so it can only come from a reversed
+      subtraction or a wall-clock difference taken across an NTP step.
+      It was stored verbatim.
+
+      Anything `float()` REFUSES -- a string, an object, None-like
+      sentinels -- raised TypeError inside `emit`, where the blanket
+      handler swallowed it and returned None. The bad argument did not
+      just lose its duration, it destroyed THE WHOLE RECORD, silently.
+
+      AN INT TOO WIDE FOR A FLOAT does the same thing by another
+      route. `float(10**400)` raises OverflowError, not TypeError, so
+      a guard that only judged the TYPE and then converted still fed
+      the blanket handler and still lost the record. No measurement
+      off `time.monotonic()` is 1e308 seconds, so a value that large
+      is not a slow operation, it is not a duration at all.
+
+    Every one of those writes a number item 17 reads as LATENCY. The
+    module's position is already stated on the field itself: A
+    FABRICATED DURATION IS WORSE THAN A MISSING ONE. So a value that
+    fails any check here degrades to None -- "no duration was
+    measured", which is the truth -- the record survives intact, and
+    the sink counts the refusal in `health()['duration_rejected']` so a
+    developer sees it without a debugger.
+
+    IT NEVER RAISES FOR ANY INPUT, AND THAT IS THE POINT. Not "for
+    every shape seen so far" -- TOTAL: every branch that could throw
+    is guarded before it is taken, which is why the int bound is
+    checked instead of the conversion being tried. `emit` runs on the
+    live trading and GUI paths. The module docstring already forbids an
+    exception thrown to report a schema nit, and a rejected argument is
+    a schema nit.
+
+    EXACT TYPES, NOT `isinstance`, for the reason `_as_float` gives:
+    `bool` is a subclass of `int`, so an isinstance guard is precisely
+    what lets `True` through as 1.0. `type(True) is int` is False, so a
+    bool needs no branch of its own -- it falls to the refusal below.
+
+    ZERO IS ACCEPTED AND IS NOT THE SAME AS None, exactly as for `dt`:
+    an operation faster than the clock can resolve is a real
+    measurement that rounds to 0.0, and None is reserved for the 23
+    emitters that measured nothing at all.
+
+    ROUNDED TO THE CLOCK'S OWN RESOLUTION, 1e-07, the same treatment
+    `dt` gets in `emit` for the same reason. Both fields come off the
+    same `time.monotonic()`, whose resolution on the operator's machine
+    is 1e-07, so the eighth decimal onward is float representation
+    noise -- written to disk on every record that carries a duration.
+    """
+    if value is None:
+        return None
+    if type(value) is int:
+        # AN INT TOO WIDE FOR A FLOAT IS NOT A MEASUREMENT, AND THE
+        # CONVERSION MUST NOT BE ATTEMPTED. `float(10**400)` raises
+        # OverflowError, which left this guard, reached `emit`, and was
+        # swallowed by the same blanket handler that swallowed
+        # `float(object())` -- destroying THE WHOLE RECORD by the
+        # fourth route rather than the third.
+        #
+        # The bound is an int compared against a float, which CPython
+        # evaluates EXACTLY, without converting either side, so the
+        # test cannot itself raise. Anything inside the bound is
+        # representable, so neither can the conversion under it. That
+        # is what makes this function total.
+        if not -sys.float_info.max <= value <= sys.float_info.max:
+            return None
+        value = float(value)
+    if type(value) is not float:
+        return None
+    if not math.isfinite(value):
+        return None
+    if value < 0.0:
+        return None
+    return round(value, 7)
 
 
 def _classify(name: str, site: str, now: float,
@@ -760,6 +882,14 @@ class SignalSink:
         self._dropped = 0
         self._evicted = 0
         self._rotate_failures = 0
+        # 10.3 phase 2 -- how many call sites handed `emit` a
+        # duration it refused; see `_as_measured_duration`. A
+        # non-zero value means a caller is passing something that
+        # is not a measurement, and the records it produced carry
+        # None rather than a fabricated latency. Counted rather
+        # than logged because nothing on this path is allowed to
+        # touch I/O.
+        self._duration_rejected = 0
 
     def emit(self, name: str, actual: Any, expected: Any = None,
              ok: Optional[bool] = None,
@@ -798,8 +928,18 @@ class SignalSink:
             _name = str(name)
             _site = site or _caller_site(2)
             _mod = module or _caller_module(2)
+            # 10.3 phase 2 -- THE DURATION IS JUDGED BEFORE THE
+            # LOCK. `_as_measured_duration` is a pure function of
+            # its argument, so holding the buffer lock across it
+            # would buy nothing, for the same reason the frame
+            # walk above sits outside. The REFUSAL is counted
+            # inside, with every other counter.
+            _dur = _as_measured_duration(duration)
+            _dur_refused = duration is not None and _dur is None
             with self._lock:
                 self._seq += 1
+                if _dur_refused:
+                    self._duration_rejected += 1
                 # 10.3 — BOTH CLOCKS, READ ADJACENT, INSIDE THE LOCK.
                 #
                 # `_now` is MONOTONIC and is the only thing ever
@@ -874,8 +1014,7 @@ class SignalSink:
                     ts=_ts,
                     dt=_dt,
                     nth=_nth,
-                    duration=(float(duration)
-                              if duration is not None else None),
+                    duration=_dur,
                     context=freeze(context) if context else None,
                 )
                 # EVICTION IS COUNTED, AND THE TWO EVICTIONS MEAN
@@ -1248,6 +1387,13 @@ class SignalSink:
             # when this is non-zero, but the file is over its cap and
             # somebody should know that without reading the disk.
             "rotate_failures": self._rotate_failures,
+            # 10.3 phase 2 -- a duration `emit` refused. Nothing
+            # was lost when this is non-zero: the record was kept
+            # and only its duration reads as "not measured". It is
+            # here because a caller passing a flag or a negative
+            # interval is a defect at the CALL SITE, and this is
+            # the only place the sink can say so.
+            "duration_rejected": self._duration_rejected,
             # 10.3 — the last-seen map's size, so its growth is visible
             # without a debugger, and its ceiling announces itself
             # rather than quietly stopping.
@@ -1438,6 +1584,17 @@ def read_records(path: Path) -> tuple:
 
     The operator's standing rule is that emitter data may not change
     after it is read back. The reader was the thing changing it.
+
+    A FIELD IT CANNOT USE COSTS THE FIELD, NEVER THE FILE. Two things
+    are skipped here and they are not the same thing. A line that will
+    not DECODE is not a record at all, and `continue` drops it. A line
+    that decodes cleanly and carries one unusable number IS a record:
+    its name, site, verdict and sequence are all readable, and the
+    coercion helpers return None for the number so the rest survives.
+    Dropping the whole record would delete a real emission from the
+    census to punish a field no consumer has to read, and an emission
+    missing from the census is the exact silent absence a monitor
+    exists to notice.
     """
     out: list[Signal] = []
     try:
