@@ -283,6 +283,31 @@ raw = open(p, "rb").read(); assert raw.count(b"\r") == 0   # for a \n-only file
 
 One assert, at the boundary. It costs nothing and catches all three rows above.
 
+## AFTER CHANGING `.gitattributes`, RE-CHECKOUT BEFORE YOU GATE
+
+MEASURED 2026-08-19, and it cost a broken default branch.
+
+A `.gitattributes` change alters what CHECKOUT writes to disk. It does **not**
+rewrite files already in a working tree. A worktree created BEFORE the change
+keeps its old bytes, and a gate run there measures **a byte layout no fresh clone
+will ever reproduce**.
+
+That is exactly what happened. The LF-consolidation PR was gated in a worktree
+cut before its own `.gitattributes` existed. Green. It merged. A fresh checkout
+of the result then failed **80 tests**, because
+`tests/test_autonomous_fold_price_gate.py` reads `scrumming_bot.py` as BYTES,
+splits on `"
+"`, and pins a sha256 of the exact CRLF bytes — and the new rule
+handed it LF.
+
+**After touching `.gitattributes`, cut a FRESH worktree and gate THAT.**
+Verifying `git add --renormalize .` stages nothing is necessary and is not
+sufficient — it proves storage did not move, and says nothing about what
+checkout now writes.
+
+A file whose ON-DISK form is load-bearing must be pinned explicitly and the
+reason recorded beside the pin.
+
 ## CONCURRENT JOBS SHARE ONE SCRATCHPAD. NAMESPACE EVERY FILE YOU WRITE.
 
 Branches isolate the REPO. They do not isolate the scratchpad, and several jobs
