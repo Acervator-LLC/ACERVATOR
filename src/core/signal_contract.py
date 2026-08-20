@@ -506,6 +506,27 @@ class Signal:
     #       looked.
     #   >1  `dt` is a real measured interval.
     nth: int = 0
+    # 10.3 phase 2 — HOW LONG THE OBSERVED OPERATION TOOK, in seconds,
+    # from `time.monotonic()`. Supplied BY THE CALL SITE, because only
+    # the call site knows when the operation began; the sink sees the
+    # emit moment and nothing before it.
+    #
+    # THIS IS NOT `dt`, AND THE DIFFERENCE IS THE WHOLE POINT.
+    #   dt        the gap BETWEEN successive emissions — cadence.
+    #             Answers item 17's "on time" and "hangs".
+    #   duration  how long the work being observed took — latency.
+    #             Answers item 17's "slow downs".
+    # A record can honestly carry one, both, or neither.
+    #
+    # None means NO DURATION WAS MEASURED, and it is never 0.0. Zero
+    # reads as "instantaneous", which is a measurement; there was none.
+    # Measured 2026-08-19: 23 of the 40 emitters are instantaneous
+    # observations where a duration would be FABRICATED, and a
+    # fabricated duration is worse than a missing one because item 17
+    # computes health from it. For those, None is the correct answer
+    # and no call site should pass anything. See
+    # docs/audits/2026-08-19_emitter_duration_classification.md.
+    duration: Optional[float] = None
 
     def to_json(self) -> str:
         return json.dumps({
@@ -520,6 +541,7 @@ class Signal:
             "count": self.count,
             "dt": self.dt,
             "nth": self.nth,
+            "duration": self.duration,
             "site": self.site,
             "context": self.context or {},
         }, default=_json_default, separators=(",", ":"))
@@ -744,7 +766,8 @@ class SignalSink:
              context: Optional[dict] = None,
              site: Optional[str] = None,
              module: Optional[str] = None,
-             count: int = 1) -> Optional[Signal]:
+             count: int = 1,
+             duration: Optional[float] = None) -> Optional[Signal]:
         """Record one observation. NEVER raises, NEVER blocks on I/O.
 
         Fires on BOTH the satisfied and violated paths — see the module
@@ -851,6 +874,8 @@ class SignalSink:
                     ts=_ts,
                     dt=_dt,
                     nth=_nth,
+                    duration=(float(duration)
+                              if duration is not None else None),
                     context=freeze(context) if context else None,
                 )
                 # EVICTION IS COUNTED, AND THE TWO EVICTIONS MEAN
@@ -1283,7 +1308,8 @@ def emit(name: str, actual: Any, expected: Any = None,
          ok: Optional[bool] = None,
          context: Optional[dict] = None,
          every: float = 0.0,
-         module: Optional[str] = None) -> Optional[Signal]:
+         module: Optional[str] = None,
+         duration: Optional[float] = None) -> Optional[Signal]:
     """Module-level emit — the universal connection point.
 
     Deliberately a plain function, not a bus subscription: a call site
@@ -1319,9 +1345,10 @@ def emit(name: str, actual: Any, expected: Any = None,
                 return None
             return sink.emit(name, actual, expected=expected, ok=ok,
                              context=context, site=_site, module=_mod,
-                             count=_n)
+                             count=_n, duration=duration)
     return sink.emit(name, actual, expected=expected, ok=ok,
-                     context=context, site=_site, module=_mod)
+                     context=context, site=_site, module=_mod,
+                     duration=duration)
 
 
 def install_process_sink(
@@ -1444,7 +1471,13 @@ def read_records(path: Path) -> tuple:
                     # which would claim every legacy record was the
                     # first emission of its identity.
                     dt=_as_float(d.get("dt")),
-                    nth=_as_ordinal(d.get("nth"))))
+                    nth=_as_ordinal(d.get("nth")),
+                    # 10.3 phase 2 — ABSENT IS NOT ZERO, for the same
+                    # reason as `dt` above. Every record written before
+                    # this key existed restores with duration None, "no
+                    # duration was measured", never 0.0, which would
+                    # claim every legacy operation was instantaneous.
+                    duration=_as_float(d.get("duration"))))
     except OSError:
         return ()
     return tuple(out)
