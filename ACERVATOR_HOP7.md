@@ -167,6 +167,31 @@ and `tests/` only, so a change touching `docs/` or `tools/` landed in two steps
 with a half-changed tree between them — measured twice in one unit, each costing
 a red gate. A commit is atomic across every directory. That hazard is gone.
 
+**THE EMITTER NETWORK: ONE SHAPE, ONE PATH.** This file did not mention the
+Sink at all until 2026-08-19, and that omission cost the operator a restatement.
+
+Every emitter enters through the same `emit()` in `src/core/signal_contract.py`,
+produces the same `Signal` record, and reaches the same **Sink**. The
+**Watchdog** reads that Sink from outside for health and crash context; the
+**Console** reads the same Sink for display. **One format, three independent
+consumers, no IPC** — which also satisfies the standing rule that emitter data
+may not be mutated after retrieval.
+
+Operator, 2026-08-08: *"All emitters going forward must generate a standardized
+output format"* and *"Design a universal means of connecting to our emitters.
+Standard connections. Standard messages. Easier analysis."* Restated
+2026-08-19: *"All the same basic shape. All feeding the Sink which feeds the
+Watchdog."*
+
+**What varies is the ROLE, never the shape** — the signal type, whether a
+duration is carried, and (once built) whether the emitter is `always_on` or
+`toggle`. Each is chosen from what the emitter observes, not invented per site.
+The full rules are S13 and S14 in `docs/ITEM_10_EMITTER_NETWORK.md`.
+
+Verified 2026-08-19: `watchdog_archetype src` reports **40 wired, 0 not
+wired**, and `emitter_registry_check` **E8** enforces "a duration only on a
+postcondition" with a two-sided control.
+
 **Eleven skills** in `.claude/skills/`. Load `harness-law` and
 `unit-decomposition` before the first edit.
 
