@@ -135,6 +135,12 @@ class Pin:
     callee: str
     name: str
     dynamic: bool
+    # E8 — does this call site pass `duration=`?
+    #
+    # Defaulted so any other construction of a Pin keeps working. Read
+    # from the AST call node, never from the source text: a `duration`
+    # appearing in a comment or a context dict is not the keyword.
+    carries_duration: bool = False
 
 
 def render_pin_name(node: ast.Call) -> tuple[str, bool]:
@@ -211,10 +217,13 @@ def collect_pins(src_root: Path, repo_root: Path) -> list[Pin]:
                        f"{path}:{call.line}")
                 raise LookupError(msg)
             name, dynamic = render_pin_name(node)
+            has_duration = any(
+                kw.arg == "duration" for kw in node.keywords)
             pins.append(Pin(
                 file=path.resolve().relative_to(repo_root).as_posix(),
                 line=call.line, callee=call.callee,
-                name=name, dynamic=dynamic))
+                name=name, dynamic=dynamic,
+                carries_duration=has_duration))
     pins.sort(key=lambda pin: (pin.file, pin.line))
     return pins
 
@@ -490,11 +499,60 @@ def _check_rows(reg: Registry) -> list[str]:
     return problems
 
 
+DURATION_TYPE = "postcondition"
+"""The ONLY signal type permitted to carry an operation duration.
+
+Operator, 2026-08-19: emitters must share one basic shape, with a handful
+of variants adapted to their monitoring role. This is one of those
+variants, and it is not an aesthetic preference -- it follows from what
+the six types MEAN.
+
+A `postcondition` asserts something AFTER an operation completes, so it
+is the only type with a bounded operation behind it. A `counter` reads a
+value. A `gauge` samples one. An `invariant` compares two things. An
+`event` and a `state_transition` happen at a point. None of those has a
+"how long did it take" to report, so a duration on one would be
+FABRICATED -- and item 17 computes health from it.
+
+MEASURED 2026-08-19 across all 40 emitters: durations appear on
+`postcondition` and on nothing else, zero exceptions. This rule makes
+that regularity enforced rather than emergent. See
+docs/audits/2026-08-19_emitter_duration_classification.md.
+"""
+
+
+def _check_duration_shape(pins: list[Pin]) -> list[str]:
+    """E8 — a duration may only ride on a postcondition.
+
+    Reads the SIGNAL TYPE OUT OF THE NAME rather than the register, so a
+    call site that adds `duration=` without touching the register is
+    still caught. A dynamic name cannot be typed and is skipped: it is
+    E6's job to report those, and failing here as well would report one
+    defect twice.
+    """
+    problems: list[str] = []
+    for pin in pins:
+        if not pin.carries_duration or pin.dynamic:
+            continue
+        parts = pin.name.split(".")
+        if len(parts) < 4:
+            continue
+        signal_type = parts[3]
+        if signal_type != DURATION_TYPE:
+            problems.append(
+                f"E8 {pin.name} at {pin.file}:{pin.line}: a duration may "
+                f"only ride on a {DURATION_TYPE}, not a {signal_type}. "
+                f"Only a postcondition follows a completed operation; on "
+                f"any other type the number is fabricated.")
+    return problems
+
+
 def check(pins: list[Pin], reg: Registry) -> list[str]:
     """Return every problem found. An empty list is a clean run."""
     problems = [f"E0 registry parse: {err}" for err in reg.parse_errors]
     problems.extend(_check_membership(pins, reg))
     problems.extend(_check_rows(reg))
+    problems.extend(_check_duration_shape(pins))
     return problems
 
 
@@ -587,6 +645,24 @@ def _controls(pins: list[Pin],
     results.append((
         "E7 fires when a previous name echoes the current name",
         ok, detail))
+
+    # E8 — plant a duration on a type that may not carry one. `dynamic`
+    # is False so the planted pin is typed and reaches the rule.
+    mistyped = dataclasses.replace(
+        pins[0], name="ghost.99.002.counter.not_a_postcondition",
+        carries_duration=True, dynamic=False)
+    ok, detail = fired(check([*pins, mistyped], reg), "E8")
+    results.append(("E8 fires on a duration outside a postcondition",
+                    ok, detail))
+
+    # The other half: the SAME planted pin, typed as a postcondition,
+    # must be silent. A rule that fires on everything is not a rule.
+    allowed = dataclasses.replace(
+        pins[0], name="ghost.99.003.postcondition.allowed",
+        carries_duration=True, dynamic=False)
+    quiet = [p for p in check([*pins, allowed], reg) if p.startswith("E8")]
+    results.append(("E8 is silent on a duration ON a postcondition",
+                    not quiet, "; ".join(quiet) or "silent"))
 
     replanned = check(pins, _variant(
         reg, planned={**reg.planned, first.emitter_id: "made.up.name"}))
