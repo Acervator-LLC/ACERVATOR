@@ -3128,10 +3128,27 @@ class VotingEngine:
         """
         Run all indicators on *candles* and aggregate into a VotingSummary.
         """
+        # 10.3 phase 2 — BRACKET THE REAL WORK, not the emit.
+        #
+        # This is the operation `ta.07.003.postcondition.computed`
+        # observes, so it is the only interval that emitter may honestly
+        # claim. `time.monotonic()` because a wall clock can step
+        # backwards; measured resolution on the target machine is 1e-07,
+        # so a sub-millisecond compute is still distinguishable.
+        #
+        # COST, MEASURED rather than assumed, because this runs on every
+        # candle of every live bot: `time.monotonic()` is 38 ns a call,
+        # so the pair adds ~76 ns to a compute_all that runs every
+        # indicator over the whole window. The emit block below is
+        # skipped entirely when nobody is collecting; this is not,
+        # deliberately, because the timer must bracket the work whether
+        # or not a sink was installed before it started.
+        _dur_t0 = time.monotonic()
         signals: list[Signal] = []
         for ind in self._indicators:
             sig = ind.compute(candles, timeframe)
             signals.append(sig)
+        _dur_elapsed = time.monotonic() - _dur_t0
 
         # ── DIRECTIVE 2 EMITTER — "actual per-candle TA every tick" ──
         #
@@ -3163,6 +3180,7 @@ class VotingEngine:
                 raise _TAInstrumentationOff
             _ta_emit("ta.07.003.postcondition.computed", actual=len(signals),
                      expected=len(self._indicators),
+                     duration=_dur_elapsed,
                      context={"timeframe": timeframe,
                               "window": len(candles)})
 
