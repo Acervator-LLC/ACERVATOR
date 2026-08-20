@@ -85,6 +85,56 @@ This is the acceptance test. Do not ask him where it is; it is here.
 | S10 | the topic's payload is declared in `src/core/emit_contracts.py`, validated on the live path; a declared-but-never-emitted topic is a **finding** | operator standing rule — it exists because 665 trades flowed past recording zero |
 | S11 | emitters are **OUTPUT ONLY** — they do not receive, are not subscribed to, and have no sending half | operator correction after this was built backwards once |
 | S12 | the record carries a **DURATION** | 10.3. Mandatory, not conditional |
+| S13 | **ONE SHAPE, ONE PATH.** Every emitter enters through the same `emit()` in `signal_contract`, produces the same `Signal` record, and reaches the same Sink, which the Watchdog and the Console both read. Variants adapt the ROLE, never the shape | operator 2026-08-08 and 2026-08-19 |
+| S14 | a **duration may only ride on a `postcondition`** — never on a counter, gauge, invariant, event or state_transition | follows from S6; enforced by `emitter_registry_check` E8 |
+
+### S13 — THE ARCHITECTURE, and why it was missing from this file until 2026-08-19
+
+**This was ruled on 2026-08-08 and did not reach the orientation layer.** It
+lived only in the memory directory, so instance after instance received the
+CONVENTIONS — naming, delimiter, padding, types, register rows — without the
+architecture that explains why they exist. The operator had to restate it.
+Transposed here so it travels.
+
+**Operator, 2026-08-08** (`project_emitter_first_workflow`), steps 3 and 7:
+
+> "All emitters going forward must generate a **standardized output format** —
+>  name, location, expected result, actual result, etc."
+
+> "Design a **universal means of connecting to our emitters. Standard
+>  connections. Standard messages. Easier analysis.**"
+
+**The shape** (`project_watchdog_arc`): emitters write structured records to an
+append-only **Sink**; the **Watchdog** reads that Sink from outside for health
+and crash context; the **Console** reads the same Sink for display. **One
+format, three independent consumers, no IPC.** It also satisfies "emitter data
+may not be mutated after retrieval" for free.
+
+**Operator, 2026-08-19, restating it:** *"All the same basic shape. All feeding
+the Sink which feeds the Watchdog."* And: *"all emitters should have the same
+basic shape or handful of shape variants that are adapted to their specific
+monitoring role."*
+
+**WHAT VARIES IS THE ROLE, NEVER THE SHAPE.** The variants are chosen from what
+the emitter observes, not invented per site:
+
+| axis | values | decided by |
+|---|---|---|
+| signal type | the six of S6 | what the emitter observes |
+| duration | carried, or `None` | S14 — postconditions only, and only when the emitter solely owns a bounded operation |
+| cadence class | `always_on` / `toggle` | operator 2026-08-19; not yet built, tracked separately |
+
+**VERIFIED 2026-08-19**, and these are the checks that keep it true:
+`watchdog_archetype src` reports **40 wired, 0 not wired**, `passed=true`,
+`errors=[]` — every emitter reaches the Sink, no bypasses. `emitter_registry_check`
+**E8** enforces S14 with a two-sided control: it fires on a duration outside a
+postcondition and is silent on one within it.
+
+**Known cosmetic deviation, not a shape break.** That one `emit` is imported
+under 24 different local aliases — `_hs_emit`, `_tk`, `_s2`, `_w`, `_cr_ok` and
+so on. Same function, same record, same Sink; the Watchdog resolves all of them.
+It makes the network harder to grep than it should be. Normalise when a unit is
+already touching a file; it does not justify a sweep.
 
 ### Why S12 blocks item 17
 
