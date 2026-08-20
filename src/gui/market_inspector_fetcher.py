@@ -326,6 +326,17 @@ async def fetch_htf_universe(
                         _cb_exc)
 
     elapsed = time.time() - fetch_start
+    # THE EMPTY-SCAN GUARD IS THIS RETURN. An empty scan leaves here and
+    # never reaches the cache write at the bottom, so `_LAST_RESULT` can
+    # only ever hold a result WITH DATA. Caching an empty one would serve
+    # nothing for 15 minutes and look like a working feed.
+    #
+    # The cache write below used to repeat the check as
+    # `if candles_by_symbol_by_tf:` with a comment claiming it was what
+    # enforced the property. It could never be false -- this return had
+    # already fired -- so it read as the enforcement while doing nothing,
+    # and a reader hardening the property would have hardened the dead
+    # branch. Pinned by test_an_empty_result_is_not_cached.
     if not candles_by_symbol_by_tf:
         return FetchResult(
             candles_by_symbol_by_tf={},
@@ -350,9 +361,7 @@ async def fetch_htf_universe(
             "symbol_count": len(candles_by_symbol_by_tf),
             "elapsed_seconds": elapsed,
         })
-    # Only a result WITH DATA becomes the cache. Caching an empty scan
-    # would serve nothing for 15 minutes and look like a working feed.
-    if candles_by_symbol_by_tf:
-        _LAST_RESULT = result
-        _LAST_FETCH_MONO = time.monotonic()
+    # Reached only with data -- see the early return above.
+    _LAST_RESULT = result
+    _LAST_FETCH_MONO = time.monotonic()
     return result
