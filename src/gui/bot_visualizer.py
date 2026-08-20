@@ -2183,6 +2183,8 @@ if _HAS_QT:
             invariant: 'data feeds differentiate; not visuals.'
             sadp: R60
             """
+            # 10.5 — the registration starts here.
+            _dur_t0 = time.monotonic()
             self._remove_live_sim(sim_id)
 
             # Translate sim-specific cfg into the unified schema
@@ -2201,7 +2203,35 @@ if _HAS_QT:
             insert_pos = self._sim_swarm_layout.count() - 1
             self._sim_swarm_layout.insertWidget(insert_pos, handle["widget"])
 
+            # The row exists and is in this layer's layout; stop
+            # before the emitter block so instrumentation is not
+            # billed to the registration.
+            _dur_elapsed = time.monotonic() - _dur_t0
             self._live_sim_rows[sim_id] = handle
+            # 10.5 — SWARM SIM REGISTRATION.
+            #
+            # Reads the row back OUT of this layer's store and reports its
+            # `kind`, not the argument that went in. A registration that
+            # lands in the wrong layer returns just as cleanly as a correct
+            # one, and with three symmetric entry points taking the same
+            # shape of argument that is an easy mistake to write.
+            #
+            # `actual` is what the store now holds; `expected` is the layer
+            # this function is for. They are different expressions, so the
+            # check can fail (S9).
+            try:
+                from src.core.signal_contract import emit as _sw_emit
+                _sw_emit(
+                    "swarm.11.001.postcondition.sim_run_registered",
+                    actual=(self._live_sim_rows.get(sim_id, {})
+                            or {}).get("kind"),
+                    expected="sim",
+                    duration=_dur_elapsed,
+                    context={"layer": "sim",
+                             "id": str(sim_id),
+                             "rows_in_layer": len(self._live_sim_rows)})
+            except Exception:  # noqa: BLE001,S110 - advisory
+                pass
             self._update_sim_summary()
             return handle
 
@@ -2246,6 +2276,8 @@ if _HAS_QT:
             metric).
             sadp: R60
             """
+            # 10.5 — the registration starts here.
+            _dur_t0 = time.monotonic()
             self._remove_live_paper(paper_id)
 
             unified_cfg = {
@@ -2262,7 +2294,35 @@ if _HAS_QT:
             insert_pos = self._paper_swarm_layout.count() - 1
             self._paper_swarm_layout.insertWidget(insert_pos, handle["widget"])
 
+            # The row exists and is in this layer's layout; stop
+            # before the emitter block so instrumentation is not
+            # billed to the registration.
+            _dur_elapsed = time.monotonic() - _dur_t0
             self._live_paper_rows[paper_id] = handle
+            # 10.5 — SWARM PAPER REGISTRATION.
+            #
+            # Reads the row back OUT of this layer's store and reports its
+            # `kind`, not the argument that went in. A registration that
+            # lands in the wrong layer returns just as cleanly as a correct
+            # one, and with three symmetric entry points taking the same
+            # shape of argument that is an easy mistake to write.
+            #
+            # `actual` is what the store now holds; `expected` is the layer
+            # this function is for. They are different expressions, so the
+            # check can fail (S9).
+            try:
+                from src.core.signal_contract import emit as _sw_emit
+                _sw_emit(
+                    "swarm.11.002.postcondition.paper_run_registered",
+                    actual=(self._live_paper_rows.get(paper_id, {})
+                            or {}).get("kind"),
+                    expected="paper",
+                    duration=_dur_elapsed,
+                    context={"layer": "paper",
+                             "id": str(paper_id),
+                             "rows_in_layer": len(self._live_paper_rows)})
+            except Exception:  # noqa: BLE001,S110 - advisory
+                pass
             self._update_paper_summary()
             return handle
 

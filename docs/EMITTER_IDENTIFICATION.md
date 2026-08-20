@@ -263,6 +263,7 @@ change. Otherwise the checker rejects the row.
 | `tick` | `08` | 3 |
 | `topology` | `09` | 2 |
 | `ytd` | `10` | 3 |
+| `swarm` | `11` | 2 |
 
 ## What 10.4 repaired, and what it measured
 
@@ -610,6 +611,8 @@ One row per pin call site. 40 rows.
 | `10-001` | `ytd` | `gauge` | `ytd.10.001.gauge.trades_fetched` | `ytd.trades_fetched` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1035` | how many year-to-date trades the panel holds after the fetch |
 | `10-002` | `ytd` | `postcondition` | `ytd.10.002.postcondition.fleet_symbol_coverage` | `ytd.fleet_symbol_coverage` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1043` | the year-to-date fetch covered every symbol the fleet trades |
 | `10-003` | `ytd` | `gauge` | `ytd.10.003.gauge.per_symbol_counts` | `ytd.per_symbol_counts` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1048` | how many year-to-date trades the panel holds per symbol |
+| `11-001` | `swarm` | `postcondition` | `swarm.11.001.postcondition.sim_run_registered` | `swarm.sim_run_registered` | `src/gui/bot_visualizer.py:2224` | the row stored under this sim id reports kind `sim`, so the registration landed in the layer it was addressed to |
+| `11-002` | `swarm` | `postcondition` | `swarm.11.002.postcondition.paper_run_registered` | `swarm.paper_run_registered` | `src/gui/bot_visualizer.py:2315` | the row stored under this paper id reports kind `paper` |
 
 ## Planned names
 
@@ -662,6 +665,8 @@ or a hand-edited name breaks the agreement and fails the run.
 | `10-001` | `ytd.10.001.gauge.trades_fetched` |
 | `10-002` | `ytd.10.002.postcondition.fleet_symbol_coverage` |
 | `10-003` | `ytd.10.003.gauge.per_symbol_counts` |
+| `11-001` | `swarm.11.001.postcondition.sim_run_registered` |
+| `11-002` | `swarm.11.002.postcondition.paper_run_registered` |
 
 The longest name is 53 characters:
 `fleet.03.007.postcondition.positions_seeded_from_lots`. The shortest
