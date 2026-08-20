@@ -233,9 +233,23 @@ The operator's list of allowed vocabularies is wider than the set above.
 Four terms from it classify nothing here, and a measured reason keeps each one
 out, rather than an aesthetic one.
 
-- `timer`. No pin carries a duration. The emitter network inventory
-  measured that directly and controlled the detector five ways. Adding
-  duration is a later unit, which will claim this term.
+- `timer`. Eight pins carry a duration. This bullet is a correction,
+  not a restatement. It formerly denied that any pin carries one. Queue
+  item 10.3 then added the `duration` field to `Signal` and wired it
+  into these eight pins:
+  `history.05.001.postcondition.scan_complete`,
+  `fleet.03.001.postcondition.bots_loaded`,
+  `fleet.03.004.postcondition.wires_loaded`,
+  `sim.06.007.postcondition.fleet_spawned`,
+  `ta.07.003.postcondition.computed`,
+  `topology.09.002.postcondition.wires_received`,
+  `swarm.11.001.postcondition.sim_run_registered` and
+  `swarm.11.002.postcondition.paper_run_registered`. The term is still
+  unused, and the reason has changed. A duration is a FIELD on the
+  record, not a signal type, so all eight of those pins stay
+  `postcondition`: each one reports a checked expectation, and the
+  duration says how long that operation took. A pin whose only job was
+  to report an interval could claim `timer`. None does yet.
 - `histogram`. No pin reports a distribution. Every numeric pin reports
   one scalar or one mapping.
 - `precondition`. No pin fires before an operation to check its entry
@@ -731,9 +745,11 @@ the checker, not about the tree.
 ## What this document does not do
 
 - It adds no pin, and removes none.
-- It adds no duration to any pin.
+- It adds no duration to any pin. Queue item 10.3 later added one to
+  eight of them; the `timer` bullet above lists which.
 - It builds no System Status tab.
-- It does not time anything. That is queue item 10.3.
+- It does not time anything. That is queue item 10.3, which has since
+  shipped.
 
 ## Falsification
 
