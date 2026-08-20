@@ -26,7 +26,6 @@ sadp: R28 SSS + R70 RCN
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -37,6 +36,26 @@ logger = logging.getLogger("acervator.market_inspector_fetcher")
 
 DEFAULT_TOP_N = 100
 DEFAULT_MIN_REFRESH_S = 15 * 60           # 15 minutes
+"""Minimum seconds between NETWORK fetches, unless the caller forces one.
+
+This constant was declared on the first implementation and never read, so no
+cadence was enforced and every Refresh hit the venue. `meta["source"]` and
+`meta["age_seconds"]` were already carried for a cache path that did not
+exist -- `source` was hardcoded "exchange" and `age_seconds` hardcoded 0.0.
+This is that path.
+
+WHY A CADENCE AT ALL: the Market Inspector scans the top-N universe across
+every connected exchange. Paper and Live compete for the same API budget, so
+an unbounded refresh here is taken out of their allowance.
+"""
+
+_LAST_RESULT: Optional["FetchResult"] = None
+_LAST_FETCH_MONO: float = 0.0
+"""Last successful NETWORK result and when it landed, on the monotonic clock.
+
+Monotonic, not wall clock: a wall clock can step backwards and would then
+report a negative age, which reads as "just fetched" and defeats the cadence.
+"""
 DAILY_BARS = 365
 WEEKLY_BARS = 200
 
@@ -215,6 +234,8 @@ async def fetch_htf_universe(
     active_symbols: Optional[set] = None,
     top_n: int = DEFAULT_TOP_N,
     progress_cb=None,
+    force_network: bool = False,
+    min_refresh_s: float = DEFAULT_MIN_REFRESH_S,
 ) -> FetchResult:
     """Fetch HTF OHLC for the top-N (+ active) markets on any connected
     exchange.
@@ -233,6 +254,31 @@ async def fetch_htf_universe(
                 "error": "no exchange connectors attached",
                 "symbol_count": 0,
             })
+
+    # ── CADENCE GATE ────────────────────────────────────────────────
+    # Serve the last network result while it is younger than
+    # `min_refresh_s`, unless the caller forces a network fetch. The
+    # Refresh button forces; the periodic path does not.
+    #
+    # `age_seconds` is now a MEASUREMENT rather than a hardcoded 0.0, and
+    # `source` says which path answered, so a reader can tell a cached
+    # answer from a fresh one instead of assuming.
+    global _LAST_RESULT, _LAST_FETCH_MONO
+    if not force_network and _LAST_RESULT is not None:
+        age = time.monotonic() - _LAST_FETCH_MONO
+        if 0.0 <= age < float(min_refresh_s):
+            cached = FetchResult(
+                candles_by_symbol_by_tf=_LAST_RESULT.candles_by_symbol_by_tf,
+                closes_by_symbol=_LAST_RESULT.closes_by_symbol,
+                universe=_LAST_RESULT.universe,
+                meta={**dict(_LAST_RESULT.meta or {}),
+                      "source": "cache",
+                      "age_seconds": round(age, 3)})
+            if progress_cb:
+                progress_cb(
+                    f"Using cached scan ({int(age)}s old; "
+                    f"refresh forces a new fetch)")
+            return cached
 
     candles_by_symbol_by_tf: dict = {}
     closes_by_symbol: dict = {}
@@ -269,8 +315,15 @@ async def fetch_htf_universe(
                     progress_cb(
                         f"[{eid}] fetched {i + 1}/{len(sub_universe)}: "
                         f"{base_u}")
-                except Exception:  # noqa: BLE001 - progress best-effort
-                    pass
+                except Exception as _cb_exc:  # noqa: BLE001
+                    # Progress reporting is best-effort and must never
+                    # break a fetch, but swallowing it silently is the
+                    # exact shape this project removes elsewhere: a
+                    # callback that stops working looks identical to one
+                    # that never fired. Record it at debug and move on.
+                    logger.debug(
+                        "market inspector progress callback failed: %s",
+                        _cb_exc)
 
     elapsed = time.time() - fetch_start
     if not candles_by_symbol_by_tf:
@@ -286,7 +339,7 @@ async def fetch_htf_universe(
                 "elapsed_seconds": elapsed,
             })
 
-    return FetchResult(
+    result = FetchResult(
         candles_by_symbol_by_tf=candles_by_symbol_by_tf,
         closes_by_symbol=closes_by_symbol,
         universe=universe,
@@ -297,3 +350,9 @@ async def fetch_htf_universe(
             "symbol_count": len(candles_by_symbol_by_tf),
             "elapsed_seconds": elapsed,
         })
+    # Only a result WITH DATA becomes the cache. Caching an empty scan
+    # would serve nothing for 15 minutes and look like a working feed.
+    if candles_by_symbol_by_tf:
+        _LAST_RESULT = result
+        _LAST_FETCH_MONO = time.monotonic()
+    return result

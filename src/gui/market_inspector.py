@@ -14,8 +14,11 @@ Two panels stacked in a scroll area:
      score, and D/W BB position + tightening state.
   3. Opposing Pairs table: long-side / short-side / 30-day correlation.
 
-Refresh cadence is enforced by the fetcher (15 min minimum unless
-force_network=True from the button).
+Refresh cadence is enforced by the fetcher: it serves the last network
+result while it is younger than DEFAULT_MIN_REFRESH_S (15 min), and goes
+to the network when the Refresh button passes force_network=True. Before
+v3.25.9 neither half existed -- the constant was never read and the
+parameter did not exist, so every refresh hit the venue.
 
 sadp: R28 SSS + R70 RCN
 v3.23.37 — Initial implementation.
@@ -24,16 +27,14 @@ v3.23.37 — Initial implementation.
 from __future__ import annotations
 
 import logging
-import time
-from typing import Optional
 
 logger = logging.getLogger("acervator.market_inspector_gui")
 
 try:
     from PySide6.QtWidgets import (
         QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-        QCheckBox, QGroupBox, QScrollArea, QTableWidget,
-        QTableWidgetItem, QHeaderView, QFrame, QSplitter,
+        QCheckBox, QGroupBox, QTableWidget,
+        QTableWidgetItem, QHeaderView, QSplitter,
     )
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor
@@ -315,14 +316,16 @@ if _HAS_QT:
             self._refresh_btn.setEnabled(False)
             self._status_lbl.setText("Fetching…")
             try:
-                self._scheduler(self._fetch_and_analyze(connectors))
+                self._scheduler(
+                    self._fetch_and_analyze(connectors, force=force))
             except Exception as exc:  # noqa: BLE001 - scheduler failure
                 self._pending_refresh = False
                 self._refresh_btn.setEnabled(True)
                 self._status_lbl.setText(
                     f"Scheduler error: {exc}")
 
-        async def _fetch_and_analyze(self, connectors: dict) -> None:
+        async def _fetch_and_analyze(self, connectors: dict,
+                                     force: bool = False) -> None:
             try:
                 from .market_inspector_fetcher import (
                     fetch_htf_universe)
@@ -330,6 +333,7 @@ if _HAS_QT:
                     connectors,
                     active_symbols=self._active_symbols,
                     progress_cb=self._on_progress,
+                    force_network=force,
                 )
             except Exception as exc:  # noqa: BLE001 - fetcher surface
                 logger.exception(
