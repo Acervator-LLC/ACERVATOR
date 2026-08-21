@@ -43,6 +43,12 @@ limit on ``(name, site)`` because "the same signal emitted from two
 places is two different things to a reader". So the comparison is
 between MULTISETS -- two pins with one row is a finding.
 
+The throttle gained a third key element in issue #57 -- an ``instance``
+a rate-limited pin may declare when several live objects run its line --
+and this match key did NOT. Those objects are ONE pin at ONE call site
+and they take ONE row; they are told apart on the record by the id their
+context already carries.
+
 Line drift is reported as a warning and does not fail the run. That is a
 stated blind spot: a row whose line number is stale still passes.
 
