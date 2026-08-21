@@ -232,7 +232,8 @@ try:
         QScrollArea, QGraphicsOpacityEffect, QComboBox, QLineEdit,
         QCheckBox, QSizePolicy,
     )  # v3.19.12 removed unused QToolTip
-    from PySide6.QtCore import Qt, QTimer, Slot, Signal, QObject
+    from PySide6.QtCore import (Qt, QTimer, Slot, Signal, QObject,
+                                QSignalBlocker)
     from PySide6.QtGui import (QColor, QIcon, QFont, QMouseEvent,
                                QTextCharFormat)
     # v3.19.12 removed unused QPropertyAnimation, QEasingCurve, QAction
@@ -1688,6 +1689,96 @@ if _HAS_QT:
             panel.update()
 
     # ---------------------------------------------------------------
+    # Selection re-anchor (issue #51)
+    # ---------------------------------------------------------------
+    # A Qt selection is anchored to a ROW INDEX, not to a row's
+    # contents. Both bot tables below rewrite every row in place on the
+    # 2000 ms dashboard timer, so a fleet list that arrives in a
+    # different order -- which is what deleting one bot does to every
+    # row beneath it -- leaves the operator's highlight exactly where
+    # it was while a DIFFERENT bot is now underneath it. Measured on
+    # the unrepaired tree: select `bot-AAA`, re-render with the two
+    # statuses swapped, and the table answers `bot-BBB`; `_cmd("stop")`
+    # then dispatched `('bot-BBB', 'stop')`. No operator action in
+    # between and nothing on screen that changed.
+    #
+    # THE REPAIR LIVES ON THE TABLE, NOT ON THE TAB. Measured, not
+    # assumed: `BotStatusTable` has two consumers -- `ExchangeTab`
+    # below, and `SimulatorTab.mount_bot_status_table`, which resolves
+    # THIS class by import and mounts it in the fleet-replay bot area.
+    # `ExtractorBotTable` has one, `ExchangeTab`. Repairing the tab
+    # would have left the Simulator's copy of the same widget holding
+    # the same defect. One function, called by both classes, so the
+    # two can never drift apart on a money path.
+    #
+    # THREE OTHER TABLES REWRITE THEIR ROWS THE SAME WAY AND ARE LEFT
+    # ALONE, each for a measured reason. `bot_swarm_list.BotListView`
+    # reads no selection at all -- no `selectedItems`, no `currentRow`,
+    # no selection signal -- so it has no anchor to lose.
+    # `stock_main_window.StockBotTable` sets `SelectRows` and nothing
+    # ever reads it: `_start_bot`, `_stop_bot` and `_delete_bot` log
+    # "select a bot first" and dispatch nothing, so no selection there
+    # reaches a command. `history_tab.HistoryTab._render_page` paints
+    # executed TRADES; it carries no bot id and drives no command.
+    # Named here rather than repaired -- a repair to any of the three
+    # would be a change nothing can observe.
+    def _reanchor_bot_selection(
+            table: BotStatusTable | ExtractorBotTable,
+            previous_bot_id: str,
+            bot_ids: list[str]) -> None:
+        """Put the highlight back on the BOT it was on, not on its row.
+
+        `previous_bot_id` is read off the table BEFORE the rewrite;
+        `bot_ids` is the row->bot map the rewrite just built.
+        """
+        if not previous_bot_id:
+            # Nothing was selected. Selecting a row now would be the
+            # timer choosing a bot on the operator's behalf.
+            return
+        # The steady state is the common case -- same fleet, same
+        # order, every 2000 ms. Re-selecting there would re-run Qt's
+        # auto-scroll on every tick and fight the operator's own
+        # scrolling, so the restore runs only when the anchor moved.
+        if table.get_selected_bot_id() == previous_bot_id:
+            return
+        target = None
+        for _row, _bid in enumerate(bot_ids):
+            if _bid == previous_bot_id:
+                target = _row
+                break
+        # A row the render SKIPPED carries no column-0 item (the blank
+        # row `exchange.15.002` counts). Highlighting one would put the
+        # operator's eye on a row `get_selected_bot_id` answers "" for,
+        # and `_cmd` would fall back to the OTHER table's selection --
+        # MEM-408 in a new place. Treat it as absent.
+        if target is not None and table.item(target, 0) is None:
+            target = None
+        # RE-SELECTING EMITS `itemSelectionChanged`. In `ExchangeTab`
+        # that handler sets `_last_clicked_table` and clears the
+        # sibling table's selection. That flag records an OPERATOR
+        # CLICK; a 2000 ms timer moving it would be a second misroute
+        # of the same family as the one this function repairs. The
+        # restore is therefore silent, and the flag is asserted
+        # unmoved across a refresh in the tests.
+        #
+        # `QSignalBlocker` and not `blockSignals(True)`: it restores
+        # whatever the block state was BEFORE it rather than assuming
+        # False, so a caller that had already blocked this table is
+        # left blocked, and it cannot leak a blocked table if a line
+        # inside raises.
+        with QSignalBlocker(table):
+            table.clearSelection()
+            if target is None:
+                # The selected bot left the fleet. Clearing is the safe
+                # answer: `_cmd` already logs "Select a bot first."
+                # when nothing is selected, so the operator is told.
+                # Leaving the old ROW selected is the defect itself.
+                table.setCurrentCell(-1, -1)
+            else:
+                table.setCurrentCell(target, 0)
+                table.selectRow(target)
+
+    # ---------------------------------------------------------------
     # Bot Status Table - clickable rows
     # ---------------------------------------------------------------
     class BotStatusTable(QTableWidget):
@@ -1871,6 +1962,12 @@ if _HAS_QT:
             # v3.23.7 — remember last payload so header-dot toggle can
             # re-render without refetching from the bot manager.
             self._last_statuses = list(bot_statuses)
+            # issue #51 -- READ THE BOT UNDER THE HIGHLIGHT BEFORE THE
+            # REWRITE. Once `setRowCount` and `setItem` have run there
+            # is no way back from a row index to the bot that was on
+            # it. Restored by `_reanchor_bot_selection` at the end of
+            # this method.
+            _selected_before = self.get_selected_bot_id()
             self.setRowCount(len(bot_statuses))
             self._bot_ids = []
             for row, status in enumerate(bot_statuses):
@@ -2324,6 +2421,9 @@ if _HAS_QT:
                 )
                 self.setCellWidget(row, 9, detail_btn)   # v3.23.49 — col 7→9
 
+            # issue #51 -- the highlight follows the BOT, not the row.
+            _reanchor_bot_selection(self, _selected_before, self._bot_ids)
+
         def _on_detail(self, bot_id: str) -> None:
             if self._on_bot_clicked:
                 self._on_bot_clicked(bot_id)
@@ -2471,6 +2571,12 @@ if _HAS_QT:
                     item.setToolTip(tip)
 
         def update_bots(self, bot_statuses: list[dict]) -> None:
+            # issue #51 -- READ THE BOT UNDER THE HIGHLIGHT BEFORE THE
+            # REWRITE. Once `setRowCount` and `setItem` have run there
+            # is no way back from a row index to the bot that was on
+            # it. Restored by `_reanchor_bot_selection` at the end of
+            # this method.
+            _selected_before = self.get_selected_bot_id()
             self.setRowCount(len(bot_statuses))
             self._bot_ids = []
             for row, status in enumerate(bot_statuses):
@@ -2599,6 +2705,9 @@ if _HAS_QT:
                 detail_btn.clicked.connect(
                     lambda checked, b=bid: self._on_detail(b))
                 self.setCellWidget(row, 7, detail_btn)
+
+            # issue #51 -- the highlight follows the BOT, not the row.
+            _reanchor_bot_selection(self, _selected_before, self._bot_ids)
 
         def _on_detail(self, bot_id: str) -> None:
             if self._on_bot_clicked:
@@ -3031,19 +3140,35 @@ if _HAS_QT:
             # 15-003's context as a pair of row counts instead, where a
             # reader can see it without a verdict resting on it.
             #
-            # 15-003 IS THE SECOND MISROUTE, AND THIS TICK CAUSES IT.
-            # A Qt selection is anchored to a ROW INDEX, not to a row's
-            # contents. `setRowCount` + `setItem` above rewrite the
-            # rows in place and never re-anchor the selection, so a
-            # fleet list that arrives in a different order -- one bot
-            # deleted, every row below it shifted up -- leaves the
-            # operator's highlight sitting exactly where it was while
-            # a DIFFERENT bot is now underneath it. Measured on this
-            # tree: select row 0, re-render with the two scrumming
-            # statuses swapped, and `get_selected_bot_id()` returns the
-            # other bot. The next Start / Pause / Stop / Restart /
-            # Delete goes there, on a 2000 ms timer, with no operator
-            # action in between and nothing on screen that changed.
+            # 15-003 IS THE SECOND MISROUTE, AND THIS TICK USED TO
+            # CAUSE IT. A Qt selection is anchored to a ROW INDEX, not
+            # to a row's contents. `setRowCount` + `setItem` rewrite
+            # the rows in place, so a fleet list that arrives in a
+            # different order -- one bot deleted, every row below it
+            # shifted up -- left the operator's highlight sitting
+            # exactly where it was while a DIFFERENT bot was now
+            # underneath it. Measured on the unrepaired tree: select
+            # `bot-AAA`, re-render with the two scrumming statuses
+            # swapped, `get_selected_bot_id()` answered `bot-BBB`, and
+            # `_cmd("stop")` dispatched `('bot-BBB', 'stop')` -- on a
+            # 2000 ms timer, with no operator action in between and
+            # nothing on screen that changed.
+            #
+            # ISSUE #51 REPAIRED IT IN THE TABLES, NOT HERE. Both
+            # tables now read the bot under the highlight before the
+            # rewrite and put the highlight back on THAT BOT after it
+            # (`_reanchor_bot_selection`). The repair sits on the
+            # table classes because this tab is not their only mount:
+            # `SimulatorTab.mount_bot_status_table` mounts THIS
+            # `BotStatusTable` in the fleet-replay bot area, so a
+            # repair written here would have left that copy defective.
+            #
+            # THIS PIN IS STILL THE MEASURE AND IS STILL FALSIFIABLE.
+            # It is read from the WIDGETS on either side of the
+            # rewrite, so it reports the drift whatever causes it --
+            # including a re-anchor that stops working. That is how the
+            # falsifier in `tests/test_exchange_tab_emitters.py` still
+            # drives this pin red after the repair.
             #
             # A SELECTION THAT DISAPPEARS IS NOT COUNTED. When the
             # selected bot leaves the fleet its row goes with it and
