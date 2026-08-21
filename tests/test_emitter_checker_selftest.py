@@ -20,15 +20,26 @@ runs ``pytest tests``, so a test is the way in.
 
 WHAT IS PINNED HERE, AND WHAT DELIBERATELY IS NOT
 =================================================
-``python -m tools.emitter_registry_check`` with no flag exits 1 today. It
-reports a real pre-existing defect in the tree, E9 on
-``bot.01.002.postcondition.capital_reservation``, filed as issue #21 and
-owned by the repair for that pin. Nothing here asserts that path is
-green, because today it is not, and a test authored to fail on the day
-it lands is not a test.
+``--selftest`` exits 0. Every control behaves as it is declared to. That
+is the fact this file pins, and it is a fact about the INSTRUMENT.
 
-``--selftest`` exits 0 today. That same red is DECLARED, so the
-instrument reports itself sound. That is the fact this file pins.
+Nothing here asserts that ``python -m tools.emitter_registry_check``
+with no flag is green. That is a fact about the TREE, it moves with
+every pin anyone adds, and the release gate is what reads it.
+
+WHAT THIS PARAGRAPH USED TO SAY, 2026-08-20
+-------------------------------------------
+It said the no-flag run exits 1 on a real pre-existing defect, E9 on
+``bot.01.002.postcondition.capital_reservation``, filed as issue #21;
+and that ``--selftest`` still exits 0 because that red was DECLARED on
+the clean-tree control.
+
+Issue #21 landed. The pin now reads the HELD reservation against the
+NEEDED quantity instead of comparing the request with itself, the
+declaration on that control was retired in the same unit, and the
+control reports PASS rather than KNOWN-RED. The paragraph is rewritten
+rather than left standing, because a note that names a defect as
+current is read as evidence that it is.
 
 WHY THE EXIT CODE IS NOT THE ONLY ASSERTION
 ===========================================

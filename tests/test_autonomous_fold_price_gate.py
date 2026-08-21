@@ -262,6 +262,35 @@ SITE_B_SPANS = (
         "                    len(self._fold_tranches))",
         (),
     ),
+    # 2026-08-20, ISSUE #21 -- THE GRANT-PATH POSTCONDITION IS A NEW PART.
+    #
+    # `_ensure_capital_reservation` emitted `actual` and `expected` as
+    # the SAME expression, so its verdict derived True on every tick of
+    # every bot and a green record from it meant nothing. The repair
+    # reads the HELD reservation against the NEEDED quantity and judges
+    # the pair against the 1 % band the update path above it already
+    # keeps the reservation inside. +47 lines, every one of them inside
+    # that one `else:` branch.
+    #
+    # It is enumerated here because the digest below is over the WHOLE
+    # file. A part that is not named reaches `_pre_change_source`
+    # unreversed, the digest moves, and every "the twin still trades"
+    # control in this file is then comparing against something that is
+    # not the code that shipped.
+    (
+        "            # v3.24.93 - the success path reports too, so a green run is",
+        "                    every=60.0,",
+        ("            # v3.24.93 - the success path reports too, so a green run is",
+         "            # evidence rather than silence. Throttled: this runs on",
+         "            # every tick of every bot.",
+         "            try:",
+         "                from src.core.signal_contract import emit as _cr_ok",
+         "                _cr_ok(",
+         '                    "bot.01.002.postcondition.capital_reservation",',
+         "                    actual=round(float(_qty), 10),",
+         "                    expected=round(float(_qty), 10),",
+         "                    every=60.0,"),
+    ),
 )
 
 # THE RE-ANCHOR IS DERIVED, NOT TRANSCRIBED, AND THAT IS A CORRECTION.
