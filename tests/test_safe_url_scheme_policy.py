@@ -104,13 +104,28 @@ _CALL_SITES: tuple[tuple[str, dict], ...] = (
     # returns exactly these two lines. Neither call moved in the
     # source and neither kwarg shape changed.
     #
+    # RE-ANCHORED 2026-08-21, from :3934 and :4079, by the issue #51
+    # selection re-anchor. Both calls are BELOW everything that unit
+    # touched -- a helper above `BotStatusTable`, one line in each of
+    # the two `update_bots` methods, a comment restatement inside
+    # `ExchangeTab.update_bots` and one widened import -- so one
+    # shared offset of 125 lines covers both. That is a fact about
+    # where the change landed and not a rule: both numbers were read
+    # again from `grep -n "safe_urlopen(" src/gui/main_window.py`,
+    # which still returns exactly these two lines. Neither call moved
+    # in the source and neither kwarg shape changed.
+    #
+    # BOTH PINS WERE PROVED TO STILL BIND AGAIN, INDEPENDENTLY, by
+    # shifting each call one line and watching only that row fail.
+    #
     # Earlier notes here recorded the move from :3244 and :3342 on
     # 2026-08-13 (the IVP persistence unit, twelve lines), from :3256
     # and :3354 (the Asset Charts emitter unit, 204 lines), from
-    # :3460 and :3558 (the Exchange tab emitter unit, 267 lines) and
-    # from :3727 and :3825 (the API Tester emitter unit, 191 and 238).
-    ("src/gui/main_window.py:3934", {"timeout": 10, "context": None}),
-    ("src/gui/main_window.py:4079", {"timeout": 10}),
+    # :3460 and :3558 (the Exchange tab emitter unit, 267 lines), from
+    # :3727 and :3825 (the API Tester emitter unit, 191 and 238) and
+    # from :3918 and :4063 (the `apitest.16.002` repair, sixteen).
+    ("src/gui/main_window.py:4059", {"timeout": 10, "context": None}),
+    ("src/gui/main_window.py:4204", {"timeout": 10}),
 )
 _CALL_IDS = [site for site, _ in _CALL_SITES]
 _CALL_KWARGS = [kwargs for _, kwargs in _CALL_SITES]

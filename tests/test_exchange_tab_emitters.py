@@ -26,11 +26,24 @@ asserts that it does before it asserts the pin saw it.
 
 `15-003` IS THE SAME LOSS WITH NOBODY'S FINGER ON IT. A Qt selection is
 anchored to a ROW INDEX. `update_bots` runs on the 2000 ms dashboard
-timer and rewrites rows in place without re-anchoring, so a fleet list
-that arrives in a different order leaves the highlight where it was
-while a different bot sits under it.
-`test_a_reordered_refresh_that_moves_the_selection_is_reported` swaps
-two scrumming statuses and reads the other bot back out of the table.
+timer and rewrites rows in place, so a fleet list that arrives in a
+different order left the highlight where it was while a different bot
+sat under it. Driven on the unrepaired tree: select `bot-AAA`, refresh
+with the two statuses swapped, and `_cmd("stop")` dispatched
+`('bot-BBB', 'stop')`.
+
+ISSUE #51 REPAIRED THAT, AND THE PIN KEPT ITS FALSIFIER. The two bot
+tables now re-anchor the highlight by BOT ID across the rewrite
+(`main_window._reanchor_bot_selection`), so the ordinary reordered
+refresh is green and
+`test_a_reordered_refresh_keeps_the_highlight_on_the_chosen_bot` reads
+the same bot back out of the widget.
+`test_a_reordered_refresh_that_moves_the_selection_is_reported` remains
+the falsifier and drives the pin's failing condition by the one route
+that still produces it: it takes the re-anchor away and swaps the two
+statuses again. A check nobody has ever seen fail is not a check, and
+that test is also the positive control for the repair -- it fails if
+`_reanchor_bot_selection` is renamed or removed.
 
 NOTHING HERE READS AN ARGUMENT BACK AS THOUGH IT WERE A RESULT.
 `15-001` never touches `command`; it matches the id about to be
@@ -266,6 +279,31 @@ def _last(sink: SignalSink, name: str):
     got = _records(sink, name)
     assert got, f"{name}: no record"
     return got[-1]
+
+
+def _without_the_reanchor(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Put the tree back the way it was before the issue #51 repair.
+
+    `BotStatusTable.update_bots` and `ExtractorBotTable.update_bots`
+    both end by calling the module-level `_reanchor_bot_selection`,
+    resolved through globals on every call. Replacing it with a no-op
+    restores the exact pre-repair behaviour -- rows rewritten in place,
+    the selection left on its old ROW INDEX -- which is the condition
+    `15-003` exists to report.
+
+    The name is asserted to exist and to be callable FIRST. A
+    `monkeypatch.setattr` on a name that has been renamed away would
+    raise, but a hand-rolled `setattr` would not, and a falsifier that
+    quietly patches nothing is a test that proves nothing. This is
+    therefore also the positive control for the repair: delete the
+    re-anchor and the tests below fail.
+    """
+    from src.gui import main_window as mw
+
+    assert callable(mw._reanchor_bot_selection)
+    monkeypatch.setattr(
+        mw, "_reanchor_bot_selection",
+        lambda _table, _previous_bot_id, _bot_ids: None, raising=True)
 
 
 def _tick(tab: Any, statuses: list[dict]) -> None:
@@ -660,16 +698,28 @@ def test_a_reordered_refresh_that_moves_the_selection_is_reported(
     """THE FALSIFIER for `15-003`, and it is the second misroute.
 
     A Qt selection is anchored to a ROW INDEX. `update_bots` rewrites
-    the rows in place and never re-anchors it, so a fleet list arriving
-    in a different order -- which is what a deletion does to every row
-    below it -- slides a different bot under the operator's highlight.
+    the rows in place, so a fleet list arriving in a different order --
+    which is what a deletion does to every row below it -- slid a
+    different bot under the operator's highlight. Nothing on screen
+    changed. The highlight did not move. The next command went
+    somewhere else, on a 2000 ms timer, with the operator's hands
+    still.
 
-    Nothing on screen changes. The highlight does not move. The next
-    command goes somewhere else, on a 2000 ms timer, with the operator's
-    hands still. This is asserted on the table's own answer BEFORE the
-    record is read, and then followed through `_cmd` so the consequence
-    is on the record too.
+    Issue #51 repaired that in the two table classes, so swapping two
+    statuses no longer produces the drift and this test can no longer
+    drive it that way. It is NOT deleted, because a pin with no
+    falsifier is a check nobody has ever seen fail. The failing
+    condition is driven by the one route that still reaches it: the
+    re-anchor is taken away and the same swap is made. The pin is read
+    off the WIDGETS on either side of the rewrite, so it reports the
+    drift whatever the cause -- including a re-anchor that stopped
+    working, which is the regression this test now also guards.
+
+    The consequence is still followed through `_cmd`, because a
+    substitution the operator cannot see is only a defect once a
+    command lands on it.
     """
+    _without_the_reanchor(monkeypatch)
     with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
         tab.update_bots([_scrum("s1"), _scrum("s2")])
         tab._bot_table.selectRow(0)
@@ -690,6 +740,141 @@ def test_a_reordered_refresh_that_moves_the_selection_is_reported(
     assert rec.context["extractor_selection_moved"] is False
     assert rec.context["selections_before"] == 1
     assert rec.context["selections_after"] == 1
+
+
+def test_a_reordered_refresh_keeps_the_highlight_on_the_chosen_bot(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """THE REPAIR, on the same drive that produced the defect.
+
+    Same statuses, same swap, no monkeypatch: the highlight follows the
+    BOT and `15-003` goes green. The command is dispatched afterwards
+    because the pin's verdict is not the point -- where the operator's
+    money goes is.
+    """
+    with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
+        tab.update_bots([_scrum("s1"), _scrum("s2")])
+        tab._bot_table.selectRow(0)
+        assert tab._bot_table.get_selected_bot_id() == "s1"
+
+        _tick(tab, [_scrum("s2"), _scrum("s1")])
+        rec = _last(sink, SELECTION)
+
+        assert tab._bot_table.get_selected_bot_id() == "s1"
+        tab._cmd("stop")
+        assert tab.dispatched == [("s1", "stop")]
+
+    assert rec.ok is True, rec.context
+    assert rec.actual == 0
+    assert rec.context["scrumming_selection_moved"] is False
+    assert rec.context["selections_before"] == 1
+    assert rec.context["selections_after"] == 1
+
+
+def test_the_visible_highlight_lands_on_the_chosen_bots_new_row(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """The HIGHLIGHT, not merely the answer `get_selected_bot_id` gives.
+
+    The operator reads the screen, so the repair is only a repair if
+    the painted row is the chosen bot's row. Three bots, the first one
+    deleted, every row below it shifted up: the selected row index must
+    MOVE, and the column-0 text on the row that is really selected must
+    be the bot the operator chose. Read off the widget's own selection
+    model and its own items.
+
+    THE SECOND DRIVE IS NOT A REPEAT. A deletion also SHRINKS the
+    table, and Qt clamps a current row that falls off the end -- so a
+    restore that re-selected the OLD ROW INDEX can land on the right
+    bot there by accident. Measured: a row-anchored restore planted in
+    place of this one passed the deletion drive. The reorder below
+    keeps the row count at two and moves `s3` from row 1 to row 0, so
+    only a restore that found the bot by ID can put the highlight
+    there.
+    """
+    with _collect(), _tab(qapp, monkeypatch, tmp_path) as tab:
+        tab.update_bots([_scrum("s1"), _scrum("s2"), _scrum("s3")])
+        tab._bot_table.selectRow(2)
+        assert tab._bot_table.get_selected_bot_id() == "s3"
+        assert tab._bot_table.currentRow() == 2
+
+        _tick(tab, [_scrum("s2"), _scrum("s3")])           # s1 deleted
+
+        painted = sorted({item.row()
+                          for item in tab._bot_table.selectedItems()})
+        assert painted == [1], painted
+        assert tab._bot_table.item(1, 0).text() == "s3"
+        assert tab._bot_table.currentRow() == 1
+        assert tab._bot_table.get_selected_bot_id() == "s3"
+
+        # Same row count, different order: no clamping to hide behind.
+        _tick(tab, [_scrum("s3"), _scrum("s2")])
+
+        painted = sorted({item.row()
+                          for item in tab._bot_table.selectedItems()})
+        assert painted == [0], painted
+        assert tab._bot_table.item(0, 0).text() == "s3"
+        assert tab._bot_table.currentRow() == 0
+        assert tab._bot_table.get_selected_bot_id() == "s3"
+        tab._cmd("pause")
+        assert tab.dispatched == [("s3", "pause")]
+
+
+def test_the_refresh_does_not_move_the_operators_preferred_table(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """The re-anchor must not impersonate an operator click.
+
+    Re-selecting a row emits `itemSelectionChanged`, and `ExchangeTab`
+    connects that to a handler which sets `_last_clicked_table`. That
+    flag records WHICH TABLE THE OPERATOR CHOSE and `_cmd` reads it
+    first, so a 2000 ms timer moving it would be a second misroute of
+    the same family as the one being repaired. The restore therefore
+    blocks signals across itself.
+
+    THE DRIVE IS THE STATE THAT SEPARATES THE TWO. The flag and the
+    selection have to disagree, or a restore that flips the flag flips
+    it to the value it already held and nothing is measured. The
+    `15-001` path produces exactly that disagreement: select a
+    Scrumming row, then click an Extractor row's Detail BUTTON -- a
+    click on a cell widget changes no row selection, so the flag goes
+    to "extractor" while the Scrumming selection stands. Now reorder
+    the scrumming rows, which is the one case where the restore really
+    runs.
+
+    THE CONSEQUENCE IS ON `15-001`'s OWN RECORD. `expected` IS the
+    flag. If the timer moved it, the fallback hijack this tab already
+    reports would be written down as a clean route -- the instrument
+    laundering the very defect it exists to catch. So the record is
+    read, not just the attribute.
+    """
+    with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
+        tab.update_bots([_scrum("s1"), _scrum("s2"), _extractor("e1")])
+        tab._bot_table.selectRow(0)
+        assert tab._last_clicked_table == "scrumming"
+
+        detail = tab._extractor_table.cellWidget(0, 7)
+        assert detail is not None, "the Extractor Detail button is gone"
+        detail.click()
+        assert tab._last_clicked_table == "extractor"
+        assert tab._bot_table.get_selected_bot_id() == "s1"
+
+        # The scrumming rows reorder. The restore RUNS here.
+        _tick(tab, [_scrum("s2"), _scrum("s1"), _extractor("e1")])
+
+        # The highlight followed the bot, and the flag did not move.
+        assert tab._bot_table.get_selected_bot_id() == "s1"
+        assert tab._last_clicked_table == "extractor"
+
+        tab._cmd("stop")
+        rec = _only(sink, ROUTED)
+        assert tab.dispatched == [("s1", "stop")]
+
+    # Still the `15-001` fallback hijack, still reported as one.
+    assert rec.ok is False
+    assert rec.expected == "extractor"
+    assert rec.actual == "scrumming"
+    assert rec.context["fell_back"] is True
 
 
 def test_a_selection_whose_bot_left_the_fleet_is_not_a_red(
@@ -718,6 +903,38 @@ def test_a_selection_whose_bot_left_the_fleet_is_not_a_red(
     assert rec.context["scrumming_selection_moved"] is False
 
 
+def test_a_selection_whose_bot_left_the_fleet_is_dropped_not_left_behind(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """The chosen answer for a bot that is gone: CLEAR the selection.
+
+    Two other answers were available and both are worse. Leaving the
+    old ROW selected is the defect itself -- a different bot is under
+    it. Moving the highlight to a neighbour would have the timer choose
+    a bot for the operator. Clearing is honest and the path already
+    exists: `_cmd` logs "Select a bot first." and dispatches nothing.
+
+    The row BELOW the deleted one shifts up into the vacated index, so
+    this is the exact shape that produced the misroute. The current
+    cell is asserted too: `clearSelection` alone leaves `currentRow()`
+    pointing at the old row, which is the MEM-411 half of the same
+    family.
+    """
+    with _collect(), _tab(qapp, monkeypatch, tmp_path) as tab:
+        tab.update_bots([_scrum("s1"), _scrum("s2")])
+        tab._bot_table.selectRow(0)
+        assert tab._bot_table.get_selected_bot_id() == "s1"
+
+        _tick(tab, [_scrum("s2")])                        # s1 deleted
+
+        assert tab._bot_table.selectedItems() == []
+        assert tab._bot_table.currentRow() == -1
+        assert tab._bot_table.get_selected_bot_id() == ""
+        tab._cmd("stop")
+        assert tab.dispatched == []
+        assert tab.warnings[-1] == "warning:Select a bot first."
+
+
 def test_a_moved_extractor_selection_is_reported_on_its_own_side(
         qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path) -> None:
@@ -725,7 +942,12 @@ def test_a_moved_extractor_selection_is_reported_on_its_own_side(
 
     The context names which side moved, because the two tables carry
     different accounting and a reader has to know which one to look at.
+    Driven with the re-anchor taken away, for the reason given on the
+    scrumming falsifier above: after issue #51 a reordered refresh no
+    longer moves the selection, and the pin still has to be shown
+    capable of reporting it when something does.
     """
+    _without_the_reanchor(monkeypatch)
     with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
         tab.update_bots([_extractor("e1"), _extractor("e2", base="SOL")])
         tab._extractor_table.selectRow(0)
@@ -737,6 +959,34 @@ def test_a_moved_extractor_selection_is_reported_on_its_own_side(
     assert rec.actual == 1
     assert rec.context["extractor_selection_moved"] is True
     assert rec.context["scrumming_selection_moved"] is False
+    assert rec.context["preferred_table"] == "extractor"
+
+
+def test_a_reordered_extractor_refresh_keeps_its_own_selection(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """The repair on the Extractor side, on the same drive.
+
+    `ExtractorBotTable` is a separate class with its own `update_bots`,
+    so the scrumming proof says nothing about it. Same swap, no
+    monkeypatch, and the command follows.
+    """
+    with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
+        tab.update_bots([_extractor("e1"), _extractor("e2", base="SOL")])
+        tab._extractor_table.selectRow(0)
+        assert tab._extractor_table.get_selected_bot_id() == "e1"
+
+        _tick(tab, [_extractor("e2", base="SOL"), _extractor("e1")])
+        rec = _last(sink, SELECTION)
+
+        assert tab._extractor_table.get_selected_bot_id() == "e1"
+        assert tab._extractor_table.item(1, 0).text() == "e1"
+        tab._cmd("stop")
+        assert tab.dispatched == [("e1", "stop")]
+
+    assert rec.ok is True, rec.context
+    assert rec.actual == 0
+    assert rec.context["extractor_selection_moved"] is False
     assert rec.context["preferred_table"] == "extractor"
 
 
