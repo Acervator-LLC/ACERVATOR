@@ -4912,10 +4912,46 @@ if _HAS_QT:
             console_layout.addWidget(_split, 1)
 
             self._signal_seq = 0
+            # 10.7 -- THE DRAIN LEDGER, AND WHY THE DRAIN ONLY COUNTS.
+            #
+            # This tab is a CONSUMER of the sink every pin writes to.
+            # An `emit` anywhere on the drain path writes a record into
+            # the collection the drain is draining: the next tick reads
+            # that record, renders it, and emits again, so the pin's own
+            # RATE becomes a function of the quantity it measures.
+            # `every=` slows that loop without breaking it, and the
+            # synchroniser never folds a FAILING check at all -- so the
+            # one state worth reporting would be the one state that ran
+            # un-throttled.
+            #
+            # So `_drain_signals` writes these five integers and emits
+            # NOTHING, and `_emit_console_health` -- driven by the timer
+            # below, at a rate that is a function of the clock and of
+            # nothing in the sink -- is the only thing that reads them
+            # back out.
+            self._signal_drain_ticks = 0
+            self._signal_read = 0
+            self._signal_rendered = 0
+            self._signal_slice_dropped = 0
+            self._signal_health_ticks_seen = 0
             self._signal_timer = QTimer(self)
             self._signal_timer.setInterval(500)
             self._signal_timer.timeout.connect(self._drain_signals)
             self._signal_timer.start()
+
+            # 10.7 -- the console health cadence. LOOKING OFTEN AND
+            # WRITING RARELY ARE DIFFERENT DECISIONS AND ARE MADE
+            # SEPARATELY HERE. 5000 ms so a stopped drain is visible
+            # inside two of the drain's own 500 ms windows; `every=30.0`
+            # on the three pins so the WRITE rate stays at one record
+            # per pin per 30 s, the same window the Asset Charts pins
+            # fold to. A failing check is never folded, so a drain that
+            # has stopped reports every 5 s until it starts again.
+            self._console_health_timer = QTimer(self)
+            self._console_health_timer.setInterval(5000)
+            self._console_health_timer.timeout.connect(
+                self._emit_console_health)
+            self._console_health_timer.start()
 
             # Refresh the buffered-count label every 500ms while paused
             # v3.16.10 — QTimer is already imported at module top (line 31);
@@ -5033,6 +5069,22 @@ if _HAS_QT:
             log pane uses, so one control quiets both.
             """
             try:
+                # 10.7 -- THE TICK COUNTER IS THE FIRST STATEMENT AND NO
+                # RETURN BELOW IT CAN SKIP IT. It counts INVOCATIONS of
+                # this slot, which is what `console.14.003` reads to
+                # tell a live timer from a dead one. Counted further
+                # down it would count RECORDS ARRIVING instead, and a
+                # quiet sink would then read exactly like a stopped
+                # timer -- the one fault the pin exists to separate from
+                # ordinary silence.
+                #
+                # `getattr` rather than `+= 1`:
+                # `tests/test_signal_timing.py` drives this method off a
+                # stub that owns three attributes, and an AttributeError
+                # here would be swallowed by the `except` below and take
+                # the whole drain down with it.
+                self._signal_drain_ticks = getattr(
+                    self, "_signal_drain_ticks", 0) + 1
                 if getattr(self, "_console_paused", False):
                     return
                 view = getattr(self, "_signal_view", None)
@@ -5048,7 +5100,22 @@ if _HAS_QT:
                 if not new:
                     return
                 self._signal_seq = new[-1].seq
-                for r in new[-200:]:
+                # 10.7 -- THE WATERMARK HAS ALREADY MOVED PAST EVERY
+                # RECORD IN `new`, INCLUDING THE ONES THE SLICE BELOW
+                # THROWS AWAY. `_signal_read` counts what the watermark
+                # consumed; `_signal_rendered` counts what reached the
+                # pane. The gap between them is the permanent, silent
+                # loss `console.14.001` reports, and `_signal_slice_
+                # dropped` says which mechanism took it. Nothing here
+                # emits: see the ledger comment beside the timer.
+                _shown = new[-200:]
+                self._signal_read = getattr(
+                    self, "_signal_read", 0) + len(new)
+                self._signal_slice_dropped = getattr(
+                    self, "_signal_slice_dropped", 0) + (
+                        len(new) - len(_shown))
+                self._signal_rendered = getattr(self, "_signal_rendered", 0)
+                for r in _shown:
                     if r.ok is True:
                         mark, colour = "OK  ", "#00ff88"
                     elif r.ok is False:
@@ -5069,16 +5136,62 @@ if _HAS_QT:
                         f'<span style="color:#667788"> {_esc(r.site)}</span>'
                         f'<span style="color:#c0ffe0">  '
                         f'got={_esc(render(r.actual))}{exp}</span>')
+                    # AFTER the append, never before. A raise inside
+                    # `appendHtml` leaves the count truthful about what
+                    # is really on the pane rather than about what this
+                    # loop intended to put there.
+                    self._signal_rendered += 1
             except Exception as exc:  # noqa: BLE001 - display is best-effort
                 logger.debug("signal drain failed: %s", exc)
 
         def _toggle_console_pause(self) -> None:
-            """Toggle the Console log handler's pause state."""
+            """Toggle the Console log handler's pause state.
+
+            10.7 -- `console.14.004` and `console.14.005`. BOTH ARE
+            TOGGLE PINS. They fire when the operator presses this
+            button and at no other time, so silence from either says
+            nothing about the tab's health; only the three cadence pins
+            in `_emit_console_health` may be read that way.
+
+            Neither reads `paused` back out as though the argument were
+            the result. 004 asks the flag the SIGNAL drain consults;
+            005 asks the console widget how many blocks it now holds.
+            """
             paused = self._console_pause_btn.isChecked()
             handler = getattr(self, "_console_log_handler", None)
             if handler is None:
                 return
+            import contextlib
+            import time as _pause_clock
+
+            # READ BEFORE THE DRAIN RUNS. Once `set_paused(False)`
+            # returns, the buffer is empty and the drop counter is
+            # zeroed, so the size of the debt is unrecoverable. The
+            # empty document counts as ZERO lines, not one: an empty
+            # QPlainTextEdit reports `blockCount() == 1`, and the first
+            # line lands IN that block rather than after it.
+            _console = getattr(self, "_console", None)
+            _held = 0
+            _dropped = 0
+            _before = 0
+            try:
+                _held = int(handler.buffered_count())
+                _dropped = int(getattr(handler, "_buffer_dropped", 0))
+                if _console is not None:
+                    _before = (0 if _console.document().isEmpty()
+                               else int(_console.blockCount()))
+            except Exception:  # noqa: BLE001 - observation only
+                _console = None
+            _t0 = _pause_clock.monotonic()
             handler.set_paused(paused)
+            _elapsed = _pause_clock.monotonic() - _t0
+            # Read the widget back out HERE, before the button text and
+            # the indicator label are touched, so nothing between the
+            # operation and its observation can add a line.
+            _after = -1
+            if _console is not None:
+                with contextlib.suppress(Exception):
+                    _after = int(_console.blockCount())
             if paused:
                 self._console_pause_btn.setText("▶  Resume")
                 self._console_pause_indicator.setText("PAUSED · 0 buffered")
@@ -5087,6 +5200,58 @@ if _HAS_QT:
                 self._console_pause_btn.setText("⏸  Pause")
                 self._console_pause_indicator.setText("")
                 self._console_pause_refresh.stop()
+            # 10.7 -- console.14.004. THE BUTTON CLAIMS TO QUIET BOTH
+            # PANES: `_drain_signals` gates on `self._console_paused`
+            # and its docstring says "one control quiets both". This
+            # asks the flag the drain actually reads, after the toggle
+            # has run, against the button the operator just pressed.
+            #
+            # NO DURATION (E8): reading a flag follows no operation, so
+            # a number here would be fabricated.
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _co_emit
+                _co_emit(
+                    "console.14.004.postcondition.pause_quiets_both_panes",
+                    actual=bool(getattr(self, "_console_paused", False)),
+                    expected=paused,
+                    context={
+                        "log_pane_paused": bool(
+                            getattr(handler, "_paused", False)),
+                        "button_checked": paused,
+                        "buffered": _held})
+            # 10.7 -- console.14.005, THE RESUME ONLY. On the pause
+            # press `set_paused` delivers nothing, so there is no
+            # delivery to judge and the pin stays quiet rather than
+            # asserting a vacuous zero.
+            #
+            # `expected` is what the resume OWED: the lines the buffer
+            # was holding, plus the one notice line `set_paused` adds
+            # when it dropped any. `actual` is the widget's own block
+            # count afterwards. They part company when the pane's block
+            # cap eats the delivery -- the operator paused precisely to
+            # keep those lines, and the cap throws them away silently.
+            #
+            # THE DURATION IS THE ONLY ONE IN THIS TAB and it is the
+            # only site that may carry one (E8): the drain paints up to
+            # `_buffer_max` lines into a widget on the GUI thread, which
+            # is a real bounded operation. The bracket opens one line
+            # above `set_paused` and closes one line below it.
+            if not paused and _after >= 0 and _console is not None:
+                with contextlib.suppress(Exception):
+                    from src.core.signal_contract import emit as _co_emit
+                    _co_emit(
+                        "console.14.005.postcondition.pause_buffer_delivered",
+                        actual=_after,
+                        expected=max(
+                            _before + _held + (1 if _dropped else 0), 1),
+                        duration=_elapsed,
+                        context={
+                            "held": _held,
+                            "dropped_at_cap": _dropped,
+                            "buffer_cap": int(
+                                getattr(handler, "_buffer_max", 0)),
+                            "blocks_before": _before,
+                            "max_blocks": int(_console.maximumBlockCount())})
 
         def _refresh_console_pause_indicator(self) -> None:
             """While paused, update the buffered-count display every 500ms."""
@@ -5101,6 +5266,113 @@ if _HAS_QT:
             else:
                 msg = f"PAUSED · {n} buffered (cap {cap})"
             self._console_pause_indicator.setText(msg)
+
+        def _emit_console_health(self) -> None:
+            """Report the signal drain FROM OUTSIDE THE DRAIN.
+
+            10.7 -- `console.14.001`, `console.14.002` and
+            `console.14.003`.
+
+            WHY THIS METHOD EXISTS AT ALL, rather than three pins inside
+            `_drain_signals`. The Console is a CONSUMER of the sink the
+            emitter network writes to. A pin on the drain path writes a
+            record into the collection it is draining; the next tick
+            reads that record, renders it and emits again, so the pin's
+            own rate becomes a function of the quantity it measures.
+            `every=` reduces that rate and does not break the coupling,
+            and the synchroniser never folds a FAILING check -- so the
+            one state worth reporting is the one state that would run
+            un-throttled.
+
+            THE COUPLING IS BROKEN BY MAKING THE EMISSION RATE
+            INDEPENDENT OF THE SINK. This method is driven by its own
+            5000 ms QTimer, so it writes at most three records per
+            interval whatever the sink holds: a constant slope, exactly
+            like every other cadence pin in the tree. `_drain_signals`
+            only counts.
+
+            THE THREE QUANTITIES ARE ALSO CHOSEN SO A CONSOLE RECORD
+            MOVES BOTH SIDES OF EVERY COMPARISON BY THE SAME AMOUNT. A
+            record written here is read once and rendered once, so
+            `read - rendered` is unchanged by it; it adds one block and
+            one rendered line, so the pane's count and the ledger's
+            count move together. No verdict here can be driven by this
+            method's own traffic. `evicted` is the one quantity that
+            does grow with it, which is why it rides in `context` as a
+            number and is not part of any expectation.
+
+            THE ONE THING IT CANNOT REPORT IS ITS OWN SILENCE. If the
+            GUI thread wedges, this timer stops with the drain and
+            nothing is written at all. That is the seam the Watchdog arc
+            takes: the sink's JSONL is append-only, and a cadence pin
+            that stops writing is readable from outside the process when
+            nothing inside it can still speak.
+
+            Never raises, for the reason `_drain_signals` never does.
+            """
+            try:
+                view = getattr(self, "_signal_view", None)
+                if view is None:
+                    return
+                import contextlib
+
+                from src.core.signal_contract import emit as _co_emit
+                _ticks = getattr(self, "_signal_drain_ticks", 0)
+                _seen = getattr(self, "_signal_health_ticks_seen", 0)
+                # Advanced on EVERY invocation, admitted or folded. The
+                # window an admitted record reports is therefore the
+                # last look's window, not the throttle's -- and a look
+                # that found nothing is a FAIL, which is never folded.
+                self._signal_health_ticks_seen = _ticks
+                _read = getattr(self, "_signal_read", 0)
+                _rendered = getattr(self, "_signal_rendered", 0)
+                _blocks = int(view.blockCount())
+                _cap = int(view.maximumBlockCount())
+                _timer = getattr(self, "_signal_timer", None)
+                _look = getattr(self, "_console_health_timer", None)
+                # An empty QPlainTextEdit reports one block, so the
+                # floor is 1 rather than 0. Above the cap the pane keeps
+                # exactly `_cap` blocks -- measured, not assumed.
+                _want = max(_rendered, 1)
+                if _cap > 0:
+                    _want = min(_want, _cap)
+                with contextlib.suppress(Exception):
+                    _co_emit(
+                        "console.14.001.invariant.records_rendered",
+                        actual=_rendered, expected=_read,
+                        every=30.0,
+                        context={
+                            "lost_to_slice": getattr(
+                                self, "_signal_slice_dropped", 0),
+                            "slice_cap": 200,
+                            "watermark": getattr(self, "_signal_seq", 0),
+                            "drain_ticks": _ticks})
+                with contextlib.suppress(Exception):
+                    _co_emit(
+                        "console.14.002.invariant.view_holds_rendered",
+                        actual=_blocks, expected=_want,
+                        every=30.0,
+                        context={
+                            "evicted": max(0, _rendered - _blocks),
+                            "max_blocks": _cap,
+                            "rendered": _rendered})
+                with contextlib.suppress(Exception):
+                    _co_emit(
+                        "console.14.003.invariant.drain_alive",
+                        actual=bool(_ticks - _seen > 0), expected=True,
+                        every=30.0,
+                        context={
+                            "ticks_since_last_look": _ticks - _seen,
+                            "drain_timer_active": bool(
+                                _timer is not None and _timer.isActive()),
+                            "drain_interval_ms": int(
+                                _timer.interval()) if _timer is not None
+                            else 0,
+                            "look_interval_ms": int(
+                                _look.interval()) if _look is not None
+                            else 0})
+            except Exception as exc:  # noqa: BLE001 - display is best-effort
+                logger.debug("console health emit failed: %s", exc)
 
         def _setup_status_bar(self) -> None:
             status = QStatusBar()

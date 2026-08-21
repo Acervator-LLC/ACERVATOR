@@ -182,14 +182,14 @@ vocabulary on trust.
 
 | signal type | pins | source of the term | example pin |
 |---|---|---|---|
-| `postcondition` | 38 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
-| `invariant` | 10 | Hoare logic; design by contract (Meyer) | `ta.07.002.invariant.invariants` |
+| `postcondition` | 40 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
+| `invariant` | 13 | Hoare logic; design by contract (Meyer) | `ta.07.002.invariant.invariants` |
 | `event` | 5 | OpenTelemetry Events | `tick.08.001.event.throttled` |
 | `counter` | 2 | Prometheus / OpenTelemetry instrument types | `sim.06.004.counter.trades_fired` |
 | `gauge` | 2 | Prometheus / OpenTelemetry instrument types | `ytd.10.003.gauge.per_symbol_counts` |
 | `state_transition` | 2 | finite state machine theory | `sim.06.013.state_transition.mode_selected` |
 
-6 terms cover all 59 pins. No pin needed a coined
+6 terms cover all 64 pins. No pin needed a coined
 term.
 
 ### Telling the two assertion terms apart
@@ -233,7 +233,7 @@ The operator's list of allowed vocabularies is wider than the set above.
 Four terms from it classify nothing here, and a measured reason keeps each one
 out, rather than an aesthetic one.
 
-- `timer`. Ten pins carry a duration. This bullet is a correction,
+- `timer`. Eleven pins carry a duration. This bullet is a correction,
   not a restatement. It formerly denied that any pin carries one. Queue
   item 10.3 then added the `duration` field to `Signal` and wired it
   into these eight pins:
@@ -274,6 +274,16 @@ out, rather than an aesthetic one.
   Asset Charts pins carry NO duration: two walk a dict, one walks a
   layout, one writes a dict key, and a number on any of them would be
   fabricated.
+
+  THE ELEVENTH IS `console.14.005.postcondition.pause_buffer_delivered`,
+  and it is the only pin in the Console tab that carries one. Its
+  bracket opens one line above `handler.set_paused(paused)` and closes
+  one line below it, so it spans the resume drain -- up to `_buffer_max`
+  lines painted into a `QPlainTextEdit` on the GUI thread -- and neither
+  the button relabel nor the indicator update that follow it. The other
+  four Console pins carry NO duration: three read integer counters off a
+  ledger and one reads a boolean flag, and a number on any of them would
+  be fabricated.
 - `histogram`. No pin reports a distribution. Every numeric pin reports
   one scalar or one mapping.
 - `precondition`. No pin fires before an operation to check its entry
@@ -304,6 +314,7 @@ change. Otherwise the checker rejects the row.
 | `swarm` | `11` | 2 |
 | `trading` | `12` | 6 |
 | `charts` | `13` | 5 |
+| `console` | `14` | 5 |
 
 ## What 10.4 repaired, and what it measured
 
@@ -779,9 +790,183 @@ is REACHABILITY, measured rather than argued.
 
 Both are worth a pin the day they gain a caller. Neither is one today.
 
+## The Console tab, which CONSUMES the sink it is instrumented against
+
+Queue item #10.7 instrumented the Console tab, built inline in
+`MainWindow._setup_ui` in `src/gui/main_window.py`. The tab carried no
+pin. `console` is subsystem `14`.
+
+THIS TAB IS NOT LIKE THE OTHER THREE, AND THE DIFFERENCE IS SETTLED
+BEFORE ANY PIN IS PLACED. The Console's lower pane is a CONSUMER of the
+signal sink. `MainWindow._drain_signals` runs on a 500 ms `QTimer`,
+calls `sink.since(self._signal_seq)` for an incremental read, and
+renders into `_signal_view`. The tab's own comment already states the
+architecture: "the sink is the single source, the Console is one
+consumer of it, and an out-of-process collector reading the same
+append-only JSONL is another."
+
+### THE RECURSION, AND WHY NO PIN SITS ON THE DRAIN PATH
+
+An `emit` anywhere inside `_drain_signals` writes a record into the
+collection that method is draining. The next tick reads that record,
+renders it, and emits again. The pin's own RATE then becomes a function
+of the quantity it is measuring, which is the definition of an
+instrument that reports itself.
+
+`every=` is not the answer. It reduces the rate and leaves the coupling
+in place, and `signal_contract.emit` never folds a FAILING check at all.
+The single state worth reporting is therefore the single state that
+would run un-throttled, straight back into its own input.
+
+THE COUPLING IS BROKEN BY MAKING THE EMISSION RATE INDEPENDENT OF THE
+SINK. `_drain_signals` writes five integers and emits nothing:
+`_signal_drain_ticks`, `_signal_read`, `_signal_rendered`,
+`_signal_slice_dropped` and the existing watermark `_signal_seq`.
+`MainWindow._emit_console_health`, driven by its own 5000 ms `QTimer`,
+is the only reader. It writes at most three records per interval
+whatever the sink holds -- a constant slope, exactly like every other
+cadence pin in the tree.
+
+THE QUANTITIES ARE ALSO CHOSEN SO THE PINS' OWN RECORDS MOVE BOTH SIDES
+OF EVERY COMPARISON BY THE SAME AMOUNT. A console record is read once
+and rendered once, so `read - rendered` is unchanged by it; it adds one
+pane block and one rendered line, so `blockCount` and the ledger move
+together; and it changes no tick count at all. No verdict here can be
+driven by this method's own traffic. `evicted` is the one quantity that
+does grow with it, which is why it rides in `context` as a number and is
+part of no expectation.
+
+Driven, not argued. `tests/test_console_tab_emitters.py` runs the real
+drain 200 times against a real sink with no other producer and asserts
+the record count does not move, then runs the health emitter with the
+drain called 0 times and 200 times and asserts the same record count
+both ways.
+
+### The cadence, and the split item #14 reads
+
+`14-001`, `14-002` and `14-003` fire on the 5000 ms health timer, which
+starts when the Console tab is built and runs for the life of the
+window. All three carry `every=30.0`, the same fold window the Asset
+Charts pins use: LOOKING OFTEN AND WRITING RARELY ARE DIFFERENT
+DECISIONS. Item #14 may read silence from any of the three as a stopped
+emitter.
+
+`14-004` and `14-005` are TOGGLE pins. They fire when the operator
+presses the Pause button and at no other time, so silence from either
+says nothing. `14-005` fires on the RESUME half only: the pause press
+delivers nothing, and a pin there would assert a vacuous zero.
+
+ONE PIN CARRIES A DURATION AND IT IS THE ONLY ONE THAT MAY (E8).
+`14-005` is a postcondition behind a real bounded operation -- the
+resume drain paints up to `_buffer_max` lines into a widget on the GUI
+thread -- and its bracket opens one line above `handler.set_paused` and
+closes one line below it. The other four read counters and a flag, and a
+number on any of them would be fabricated.
+
+### What the tab hides
+
+`14-001` is the watermark. `_drain_signals` assigns
+`self._signal_seq = new[-1].seq` and then renders `new[-200:]`. When
+more than 200 records arrive inside one 500 ms window the first
+`len(new) - 200` of them are discarded AFTER the watermark has already
+moved past them: they are never rendered and can never be read again by
+this consumer. Nothing said so. `_signal_read` counts what the watermark
+consumed, `_signal_rendered` counts what reached the pane, and the gap
+between them is that permanent loss. `lost_to_slice` in the context says
+which mechanism took it.
+
+`14-002` is the pane's block cap. `_signal_view` keeps 2000 blocks;
+above that Qt discards the oldest silently. Measured, not assumed: an
+empty `QPlainTextEdit` reports `blockCount() == 1`, the first line lands
+IN that block, and above the cap the count stops at exactly the cap. The
+expectation is therefore `min(max(rendered, 1), cap)`, and the pin reports the
+evicted count beside the verdict rather than painting itself red on a
+by-design scroll -- the `06-014` lesson, in a new place.
+
+`14-003` is the fault a pin inside the drain can never report. A drain
+that has stopped emits nothing, and nothing is exactly what a healthy
+quiet tab emits too. The tick counter is the FIRST statement in
+`_drain_signals` and no return below it can skip it, so it counts
+INVOCATIONS rather than records arriving; the health pass compares the
+counter against what it saw last time. A stopped drain reports `ok`
+False, and a failing check is never folded, so it reports every 5 s
+until the drain starts again. The pin cannot report its own silence: if
+the GUI thread wedges both timers stop together. That is the seam the
+out-of-process collector takes, and it is why the JSONL is append-only.
+
+`14-004` IS RED ON EVERY PAUSE TODAY, AND THAT IS THE POINT.
+`_drain_signals` gates on `self._console_paused` and its docstring says
+the Pause "honours the same Pause the log pane uses, so one control
+quiets both". Measured on this tree: `_console_paused` is assigned
+nowhere in `src/` or `main.py`; the only assignments anywhere are two
+lines in `tests/test_signal_timing.py`. The signals pane is therefore
+NOT quieted, the log pane is, and the two panes disagree for as long as
+the button is held down. The pin asks the flag the drain really reads
+against the button the operator really pressed. It reports `ok` True on
+resume and `ok` False on pause. The defect is REPORTED here, not
+repaired here: repairing it changes what the tab does, and this unit
+changes only what it says about itself.
+
+`14-005` is the pause buffer. The log handler holds up to 5000 messages
+while paused and drops the rest, counting them; on resume it delivers
+everything it held plus one notice line when it dropped any. The
+console pane then applies its own 2000-block cap to that delivery, so an
+operator who paused precisely to keep an error can have it thrown away
+by the pane a millisecond after the buffer handed it over. `expected` is
+what the resume owed, read off the buffer and the pane BEFORE the drain
+runs -- once `set_paused(False)` returns, the buffer is empty and the
+drop counter is zeroed, and the size of the debt is unrecoverable.
+`actual` is the pane's own block count afterwards.
+
+### Sites refused, and the reason for each
+
+Three candidate sites took no pin, and no reason here is aesthetic.
+
+- `_QtLogHandler.emit`, the most tempting site in the tab and the one
+  that must be refused hardest. It is attached to the ROOT logger, so it
+  runs once for every logging record from every module in the process --
+  the operator's own read of that pane is that it "is very spammy" -- and
+  it runs on WHATEVER THREAD made the logging call, which is the exact
+  hazard `_QtLogRelay` exists to manage. A failing check is never folded
+  by the synchroniser, so a red pin there would write one signal record
+  per log line at whatever rate the process logs. The loop it does NOT
+  close is worth recording as measured rather than assumed:
+  `src/core/signal_contract.py` contains no `logging` call at all on any
+  path, so an emit inside a log handler cannot re-enter logging through
+  the sink. The refusal rests on the rate and the thread, not on that.
+  The class is also declared inside `_setup_ui`, so no test could drive
+  such a pin without constructing a `MainWindow`.
+- `_refresh_console_pause_indicator`. It reads
+  `handler.buffered_count()`, `handler._buffer_max` and
+  `handler._buffer_dropped` and writes them into a `QLabel`. Every one
+  of those three is already carried in `14-005`'s context, off the same
+  three reads, and the only thing a pin here could add is whether
+  `QLabel.setText` took. `text()` returns whatever was just set, on
+  every Qt build, so the check would compare an expression with itself
+  and E9 would refuse it -- correctly.
+- The Clear button, `clear_btn.clicked.connect(self._console.clear)`. It
+  is wired straight to the widget's own slot with no method of ours in
+  between, so there is no call site to instrument without adding one.
+  Adding a method to carry a pin would change what the button does to
+  create somewhere to observe it, which is the instrument writing its
+  own input in a second form. It is also the one place in the tab where
+  losing the pane's contents is what the operator ASKED for.
+
+### The stand-in the test uses, stated rather than hidden
+
+`_QtLogHandler` is declared INSIDE `MainWindow._setup_ui`, so it is
+reachable only from a constructed `MainWindow` -- which builds every tab
+and reads the operator's own state off disk. `14-005`'s tests therefore
+drive the real `MainWindow._toggle_console_pause`, the real
+`QPushButton`, the real `QPlainTextEdit` with its real 2000-block cap
+and the real sink, with a stand-in for the handler alone, in the way
+`tests/test_asset_charts_emitters.py` stands in for `ChartDataFetcher`.
+The failure the pin exists to catch -- a delivery the pane's cap eats --
+is a property of the REAL widget and is driven through it.
+
 ## The register
 
-One row per pin call site. 59 rows.
+One row per pin call site. 64 rows.
 
 | ID | subsystem | signal type | current name | previous name | source | observes |
 |---|---|---|---|---|---|---|
@@ -834,9 +1019,9 @@ One row per pin call site. 59 rows.
 | `11-001` | `swarm` | `postcondition` | `swarm.11.001.postcondition.sim_run_registered` | `swarm.sim_run_registered` | `src/gui/bot_visualizer.py:2224` | the row stored under this sim id reports kind `sim`, so the registration landed in the layer it was addressed to |
 | `11-002` | `swarm` | `postcondition` | `swarm.11.002.postcondition.paper_run_registered` | `swarm.paper_run_registered` | `src/gui/bot_visualizer.py:2315` | the row stored under this paper id reports kind `paper` |
 | `12-001` | `trading` | `postcondition` | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:3982` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
-| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:6050` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
-| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:8098` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
-| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:7977` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
+| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:6322` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
+| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:8370` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
+| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:8249` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
 | `12-005` | `trading` | `postcondition` | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:4125` | the Activity Log's own paused state agrees with the button the operator just pressed |
 | `12-006` | `trading` | `postcondition` | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:4058` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
 | `13-001` | `charts` | `invariant` | `charts.13.001.invariant.panels_mounted` | `charts.panels_mounted` | `src/gui/main_window.py:1416` | every panel the fetch loop iterates is a widget really mounted in the scroll layout, asked of the layout rather than of the dict that built it |
@@ -844,6 +1029,11 @@ One row per pin call site. 59 rows.
 | `13-003` | `charts` | `postcondition` | `charts.13.003.postcondition.timeframe_rearmed` | `charts.timeframe_rearmed` | `src/gui/main_window.py:1461` | the panel the operator just retimed exists, holds the timeframe the fetch will read, and has had its throttle cleared |
 | `13-004` | `charts` | `postcondition` | `charts.13.004.postcondition.panel_refreshed` | `charts.panel_refreshed` | `src/gui/main_window.py:1582` | the candles the chart now holds are the candles THIS fetch returned, read off the chart, with the source attribution and the outcome beside the verdict and the fetch latency on the record |
 | `13-005` | `charts` | `invariant` | `charts.13.005.invariant.panels_fresh` | `charts.panels_fresh` | `src/gui/main_window.py:1617` | no panel has gone three throttle windows without a pass writing its `last_fetch`, counted over the panel dict so a panel the loop SKIPS cannot hide in its own silence |
+| `14-001` | `console` | `invariant` | `console.14.001.invariant.records_rendered` | `console.records_rendered` | `src/gui/main_window.py:5340` | every record the watermark consumed reached the signals pane, counted off the drain's own ledger, so the records the `[-200:]` slice throws away after the watermark has already moved past them are counted rather than lost in silence |
+| `14-002` | `console` | `invariant` | `console.14.002.invariant.view_holds_rendered` | `console.view_holds_rendered` | `src/gui/main_window.py:5351` | the signals pane really holds the window the drain wrote into it, asked of the widget's own block count against the ledger clamped by the pane's own cap, with the number of lines the cap has evicted beside the verdict |
+| `14-003` | `console` | `invariant` | `console.14.003.invariant.drain_alive` | `console.drain_alive` | `src/gui/main_window.py:5360` | the 500 ms drain ran at least once since the previous look, counted OUTSIDE the drain so a stopped timer is distinguishable from a quiet sink -- the one fault a pin inside the drain can never report |
+| `14-004` | `console` | `postcondition` | `console.14.004.postcondition.pause_quiets_both_panes` | `console.pause_quiets_both_panes` | `src/gui/main_window.py:5213` | the flag `_drain_signals` gates on agrees with the Pause button the operator just pressed, so the button's claim to quiet both panes is asked of the pane that is supposed to go quiet |
+| `14-005` | `console` | `postcondition` | `console.14.005.postcondition.pause_buffer_delivered` | `console.pause_buffer_delivered` | `src/gui/main_window.py:5242` | the console pane's own block count after a resume is the count it held plus every line the pause buffer was holding, so a delivery the pane's block cap eats is reported instead of vanishing, with how long the resume took on the record |
 
 ## Planned names
 
@@ -915,6 +1105,11 @@ or a hand-edited name breaks the agreement and fails the run.
 | `13-003` | `charts.13.003.postcondition.timeframe_rearmed` |
 | `13-004` | `charts.13.004.postcondition.panel_refreshed` |
 | `13-005` | `charts.13.005.invariant.panels_fresh` |
+| `14-001` | `console.14.001.invariant.records_rendered` |
+| `14-002` | `console.14.002.invariant.view_holds_rendered` |
+| `14-003` | `console.14.003.invariant.drain_alive` |
+| `14-004` | `console.14.004.postcondition.pause_quiets_both_panes` |
+| `14-005` | `console.14.005.postcondition.pause_buffer_delivered` |
 
 The longest name is 53 characters:
 `fleet.03.007.postcondition.positions_seeded_from_lots`. The shortest
