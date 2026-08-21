@@ -182,14 +182,14 @@ vocabulary on trust.
 
 | signal type | pins | source of the term | example pin |
 |---|---|---|---|
-| `postcondition` | 21 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
+| `postcondition` | 29 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
 | `invariant` | 8 | Hoare logic; design by contract (Meyer) | `ta.07.002.invariant.invariants` |
 | `event` | 5 | OpenTelemetry Events | `tick.08.001.event.throttled` |
 | `counter` | 2 | Prometheus / OpenTelemetry instrument types | `sim.06.004.counter.trades_fired` |
 | `gauge` | 2 | Prometheus / OpenTelemetry instrument types | `ytd.10.003.gauge.per_symbol_counts` |
 | `state_transition` | 2 | finite state machine theory | `sim.06.013.state_transition.mode_selected` |
 
-6 terms cover all 40 pins. No pin needed a coined
+6 terms cover all 48 pins. No pin needed a coined
 term.
 
 ### Telling the two assertion terms apart
@@ -233,7 +233,7 @@ The operator's list of allowed vocabularies is wider than the set above.
 Four terms from it classify nothing here, and a measured reason keeps each one
 out, rather than an aesthetic one.
 
-- `timer`. Eight pins carry a duration. This bullet is a correction,
+- `timer`. Nine pins carry a duration. This bullet is a correction,
   not a restatement. It formerly denied that any pin carries one. Queue
   item 10.3 then added the `duration` field to `Signal` and wired it
   into these eight pins:
@@ -250,10 +250,23 @@ out, rather than an aesthetic one.
   `postcondition`: each one reports a checked expectation, and the
   duration says how long that operation took. A pin whose only job was
   to report an interval could claim `timer`. None does yet.
+
+  THE NINTH ARRIVED AFTER 10.3, and the count above is the count of
+  pins, not a second claim about what 10.3 did.
+  `history.05.002.postcondition.trades_stored` carries one because it is
+  the History tab's only site behind network I/O. It is honest about its
+  own resolution rather than pretending to more: the fetch runs on the
+  platform's asyncio loop and is observed from the GUI thread by a
+  `QTimer` on a 400 ms interval, so a reading is the true fetch time plus
+  up to one poll, and `poll_interval_s` rides in the record's context so
+  a reader sees the quantum instead of inferring it. The other five
+  History pins carry NO duration: they count rows and compare sets over
+  data already in memory, and a number on any of them would be
+  fabricated.
 - `histogram`. No pin reports a distribution. Every numeric pin reports
   one scalar or one mapping.
 - `precondition`. No pin fires before an operation to check its entry
-  condition. All 40 fire during or after.
+  condition. All 48 fire during or after.
 - `error` and `fault`. The network emits on the success path by design,
   and a violated expectation is a verdict on an ordinary record, the
   `ok` field of `Signal`. A pin whose whole job was to announce a fault
@@ -271,7 +284,7 @@ change. Otherwise the checker rejects the row.
 | `extractor` | `02` | 2 |
 | `fleet` | `03` | 7 |
 | `gui` | `04` | 1 |
-| `history` | `05` | 1 |
+| `history` | `05` | 7 |
 | `sim` | `06` | 14 |
 | `ta` | `07` | 4 |
 | `tick` | `08` | 3 |
@@ -579,9 +592,37 @@ went unnamed. `dropped` now reports sections the loader has NO carry
 for; a carry that was offered and did not land is `missing`, which is
 a different thing and is part of the verdict.
 
+## The History tab, and what a toggle pin is
+
+Queue item #2 instrumented `src/gui/history_tab.py`, which carried no
+pin at all. `05-001` was already spelled `history` and already recorded,
+but it lives in `src/exchange/ccxt_connector.py`: the SUBSYSTEM was
+watched and the TAB was not. `05-002` through `05-007` are the tab.
+
+THEY ARE TOGGLE PINS. NONE OF THEM CARRIES A CADENCE EXPECTATION. Every
+one fires only when the operator has the History tab open and presses
+something -- Refresh, Apply, Reset, Prev, Next, Export CSV. Nothing in
+this tab runs on a loop and nothing polls it on a timer, so there is no
+interval at which a healthy tab must be seen emitting and no `every=`
+throttle on any of the six. A monitor that read silence here as a
+stopped pin would report every session in which the operator did not
+open the tab, which is most of them. Item #14 needs that stated rather
+than inferred.
+
+Two of the seven candidate sites in the tab took no pin, and the reason
+is the same reason: they have no readable result to compare against a
+declared intent. `_grade_row` returns one letter per row and is called
+once per row -- up to 100 times per page render -- and the letter cannot
+be checked here without re-deriving it, because the grading math lives
+in `src.trading.trade_grader` and belongs to that module's own pins.
+`_resolve_bot_label` returns a label or an empty string, and an empty
+string is the documented answer for a row with no matching bot, so
+nothing distinguishes a correct blank from a lookup that failed.
+A site with no readable result is not a pin.
+
 ## The register
 
-One row per pin call site. 40 rows.
+One row per pin call site. 48 rows.
 
 | ID | subsystem | signal type | current name | previous name | source | observes |
 |---|---|---|---|---|---|---|
@@ -599,6 +640,12 @@ One row per pin call site. 40 rows.
 | `03-007` | `fleet` | `postcondition` | `fleet.03.007.postcondition.positions_seeded_from_lots` | `fleet.positions_seeded_from_lots` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1095` | every spawned bot had its position seeded from lots |
 | `04-001` | `gui` | `postcondition` | `gui.04.001.postcondition.voting_panel.fit` | `gui.voting_panel.fit` | `src/gui/indicator_panel.py:1261` | every voting-panel column fitted its label at the geometry a show or a resize produced |
 | `05-001` | `history` | `postcondition` | `history.05.001.postcondition.scan_complete` | `history.scan_complete` | `src/exchange/ccxt_connector.py:778` | every requested symbol came back from the history scan |
+| `05-002` | `history` | `postcondition` | `history.05.002.postcondition.trades_stored` | `history.trades_stored` | `src/gui/history_tab.py:488` | every row the fetch stored is inside the requested window and unique on (exchange, symbol, id) |
+| `05-003` | `history` | `postcondition` | `history.05.003.postcondition.filter_options_built` | `history.filter_options_built` | `src/gui/history_tab.py:595` | the exchange and symbol dropdowns offer exactly the distinct values the loaded trades hold, entry by entry rather than by count |
+| `05-004` | `history` | `postcondition` | `history.05.004.postcondition.filters_applied` | `history.filters_applied` | `src/gui/history_tab.py:688` | no retained row breaks a filter the operator's own combos hold |
+| `05-005` | `history` | `postcondition` | `history.05.005.postcondition.page_rendered` | `history.page_rendered` | `src/gui/history_tab.py:889` | the table drew a timestamp cell for every row this page's arithmetic calls for |
+| `05-006` | `history` | `postcondition` | `history.05.006.postcondition.joiner_indexes_built` | `history.joiner_indexes_built` | `src/gui/history_tab.py:1130` | the gate and voting indexes still hold every entry their loops accepted, so a fail-soft collapse is not silent |
+| `05-007` | `history` | `postcondition` | `history.05.007.postcondition.csv_exported` | `history.csv_exported` | `src/gui/history_tab.py:1241` | the exported file holds one record for every filtered row handed to the writer |
 | `06-001` | `sim` | `postcondition` | `sim.06.001.postcondition.candles_stepped` | `sim.candles_stepped` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1750` | the replay played every candle it was ASKED for, with `outcome` naming which of the four loop exits ended it; a deliberate Stop is bounded, not equal |
 | `06-002` | `sim` | `postcondition` | `sim.06.002.postcondition.bot_ticks_did_work` | `sim.bot_ticks_did_work` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1777` | every tick that entered a bot is accounted for as worked, throttled or unknown |
 | `06-003` | `sim` | `counter` | `sim.06.003.counter.ticks_before_tape` | `sim.ticks_before_tape` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1944` | how many bot ticks ran before the tape started |
@@ -653,6 +700,12 @@ or a hand-edited name breaks the agreement and fails the run.
 | `03-007` | `fleet.03.007.postcondition.positions_seeded_from_lots` |
 | `04-001` | `gui.04.001.postcondition.voting_panel.fit` |
 | `05-001` | `history.05.001.postcondition.scan_complete` |
+| `05-002` | `history.05.002.postcondition.trades_stored` |
+| `05-003` | `history.05.003.postcondition.filter_options_built` |
+| `05-004` | `history.05.004.postcondition.filters_applied` |
+| `05-005` | `history.05.005.postcondition.page_rendered` |
+| `05-006` | `history.05.006.postcondition.joiner_indexes_built` |
+| `05-007` | `history.05.007.postcondition.csv_exported` |
 | `06-001` | `sim.06.001.postcondition.candles_stepped` |
 | `06-002` | `sim.06.002.postcondition.bot_ticks_did_work` |
 | `06-003` | `sim.06.003.counter.ticks_before_tape` |
@@ -761,7 +814,7 @@ This register is wrong if any of the following holds.
   as FAIL, which would mean the checker cannot see the failure it
   exists to catch.
 - `python -m tools.harness.watchdog_archetype src` reports a wired pin
-  count other than 40, with no source change between the runs.
+  count other than 48, with no source change between the runs.
 - Two rows carry the same ID, or a row's ID does not match the format
   `NN-EEE`.
 - A pin's `current name` here differs from the string at the cited
