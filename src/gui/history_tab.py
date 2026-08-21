@@ -66,7 +66,7 @@ except ImportError:
     # missing there is no Qt and no widget class, so importing this
     # module still succeeds (the module-level helper below stays
     # usable) and asking for the widget fails by name, as an
-    # ImportError, at the import site. main_window.py:4316-4354 already
+    # ImportError, at the import site. main_window.py:4520-4558 already
     # catches exactly that and logs "History tab unavailable".
     _HAS_QT = False
 
