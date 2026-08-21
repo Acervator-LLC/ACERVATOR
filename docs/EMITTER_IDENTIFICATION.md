@@ -182,14 +182,14 @@ vocabulary on trust.
 
 | signal type | pins | source of the term | example pin |
 |---|---|---|---|
-| `postcondition` | 40 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
-| `invariant` | 13 | Hoare logic; design by contract (Meyer) | `ta.07.002.invariant.invariants` |
+| `postcondition` | 43 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
+| `invariant` | 15 | Hoare logic; design by contract (Meyer) | `ta.07.002.invariant.invariants` |
 | `event` | 5 | OpenTelemetry Events | `tick.08.001.event.throttled` |
 | `counter` | 2 | Prometheus / OpenTelemetry instrument types | `sim.06.004.counter.trades_fired` |
 | `gauge` | 2 | Prometheus / OpenTelemetry instrument types | `ytd.10.003.gauge.per_symbol_counts` |
 | `state_transition` | 2 | finite state machine theory | `sim.06.013.state_transition.mode_selected` |
 
-6 terms cover all 64 pins. No pin needed a coined
+6 terms cover all 69 pins. No pin needed a coined
 term.
 
 ### Telling the two assertion terms apart
@@ -275,6 +275,13 @@ out, rather than an aesthetic one.
   layout, one writes a dict key, and a number on any of them would be
   fabricated.
 
+  THE EXCHANGE TAB ADDED NO TWELFTH. Not one of its five pins carries
+  a duration: three read widget state after an operator press and two
+  walk table rows already in memory, so a number on any of them would
+  be fabricated. The one site in that tab that looks like a candidate
+  -- `_cmd`, which dispatches an operator command -- writes its record
+  BEFORE the dispatch, so there is no completed operation to time.
+
   THE ELEVENTH IS `console.14.005.postcondition.pause_buffer_delivered`,
   and it is the only pin in the Console tab that carries one. Its
   bracket opens one line above `handler.set_paused(paused)` and closes
@@ -287,7 +294,11 @@ out, rather than an aesthetic one.
 - `histogram`. No pin reports a distribution. Every numeric pin reports
   one scalar or one mapping.
 - `precondition`. No pin fires before an operation to check its entry
-  condition. All 54 fire during or after.
+  condition. All 69 fire during or after. The count was stale at 54
+  through the Trading, Asset Charts and Console units and is
+  re-measured here rather than carried forward:
+  `python -m tools.harness.watchdog_archetype src` reports 69 wired
+  pins, and the register below holds 69 rows.
 - `error` and `fault`. The network emits on the success path by design,
   and a violated expectation is a verdict on an ordinary record, the
   `ok` field of `Signal`. A pin whose whole job was to announce a fault
@@ -315,6 +326,7 @@ change. Otherwise the checker rejects the row.
 | `trading` | `12` | 6 |
 | `charts` | `13` | 5 |
 | `console` | `14` | 5 |
+| `exchange` | `15` | 5 |
 
 ## What 10.4 repaired, and what it measured
 
@@ -531,7 +543,7 @@ THE YTD REACHABILITY RULE, so the excuse cannot come back:
 
     `ytd.10.001`, `ytd.10.002` and `ytd.10.003` ARE reachable
     offscreen, with no exchange and no network. The operator's own
-    application injects the manager at `src/gui/main_window.py:4386`:
+    application injects the manager at `src/gui/main_window.py:4653`:
 
         if hasattr(self._simulator, "set_bot_manager"):
             self._simulator.set_bot_manager(self._bot_manager)
@@ -964,9 +976,235 @@ and the real sink, with a stand-in for the handler alone, in the way
 The failure the pin exists to catch -- a delivery the pane's cap eats --
 is a property of the REAL widget and is driven through it.
 
+## The Exchange tab, where a misroute spends money
+
+Queue item #10.8 instrumented `ExchangeTab` in
+`src/gui/main_window.py`. The tab carried no pin. `exchange` is
+subsystem `15`.
+
+ONE INSTANCE EXISTS PER CONFIGURED EXCHANGE. Every pin in this tab
+therefore fires once per exchange per event, from ONE source line. The
+exchange id rides in every context so records can be told apart, and
+that multiplicity is what decides the throttle -- see the cadence
+section below.
+
+### `15-001`, AND WHY IT IS THE HIGHEST-STAKES PIN IN THE REGISTER
+
+`ExchangeTab._cmd` sends start / pause / stop / restart / delete to a
+SELECTED bot. It picks between two tables -- Scrumming and Extractor --
+using `self._last_clicked_table`. A command that reaches the wrong bot
+is a real-money action on the wrong asset, and it is not hypothetical:
+the function's own comment records `MEM-408`, an operator-reported
+incident where Extractor commands silently hijacked the last-selected
+Scrumming bot.
+
+THE v3.20.62 FIX REVERSED THE PREFERENCE AND KEPT THE FALLBACK. When
+the preferred table holds no selection, both branches fall through to
+the OTHER table's selection. The reachable path, driven in
+`tests/test_exchange_tab_emitters.py` rather than argued here:
+
+1. The operator selects a Scrumming row. `_last_clicked_table` becomes
+   `"scrumming"` and the Extractor table's selection is cleared.
+2. The operator clicks an Extractor row's **Detail button**. A click on
+   a cell WIDGET changes no row selection, so `_extractor_clicked`
+   flips `_last_clicked_table` to `"extractor"` while the Scrumming
+   selection stands untouched.
+3. Any command button now resolves through the extractor branch, finds
+   nothing selected there, falls back, and dispatches to the SCRUMMING
+   bot.
+
+That is MEM-408 again, in the direction the fix opened. The wrong bot
+returns exactly as cleanly as the right one -- the Bot Swarm misroute
+shape, with money attached.
+
+THE PIN DOES NOT PIN THE ARGUMENT IT WAS HANDED. `command` is the
+argument; it rides in `context` because a misrouted `delete` is not a
+misrouted `pause`, and it is never a side of the comparison. `expected`
+is the table the operator chose. `actual` is READ BACK OUT OF THE
+TABLES: the id about to be dispatched is matched against each table's
+CURRENT selection, so the record names the table that really supplied
+it. When the fallback fires, the two disagree and the record is red.
+
+NO BOT ID APPEARS ANYWHERE. A bot id is operator-chosen text that the
+privacy registry masks in this very table, and a context is written to
+disk. The contexts here hold table names, the fixed command vocabulary,
+booleans and counts.
+
+The record is written BEFORE the dispatch, so a command that raises
+still leaves its routing on the record. That is also why it carries no
+duration: nothing has run yet (E8).
+
+### `15-002` asks the widgets, not the lists
+
+`update_bots` splits `statuses` by `mode` into two comprehensions and
+hides a section when its list is empty. Two losses in that method are
+silent.
+
+A status whose `mode` is neither `"scrumming"` nor `"extractor"` is
+dropped by BOTH comprehensions and reaches no table at all. A status
+that does reach `BotStatusTable.update_bots` with the wrong mode is
+`continue`d AFTER `setRowCount` has already made its row, leaving a
+blank row that `rowCount()` counts and the operator cannot read.
+`15-002` counts rows that really carry a column-0 item, against
+`len(statuses)`, and sees both. Counting the argument would see
+neither. Only the first is reachable THROUGH this tab today, because
+the comprehensions are themselves the filter.
+
+THE WIDGET READ WAS UNFALSIFIABLE UNTIL A CONTROL WAS BUILT FOR IT, and
+that was measured rather than assumed. Replacing `actual` with
+`len(scrum_statuses) + len(extractor_statuses)` -- the ARGUMENT counted
+instead of the widgets -- passed every test in the file. Both
+comprehensions use the same predicate `BotStatusTable.update_bots`
+uses, so for every input the tab can be given the two numbers agree,
+and the stronger read was decoration nothing could tell from an echo.
+`test_the_row_count_is_read_from_the_widget_and_not_from_the_list`
+perturbs the CHILD TABLE'S RENDER only -- leaving a row without its
+column-0 item, the way that method's own `continue` leaves one -- and
+fails on the argument-counting form. The mutation is caught now.
+
+### `15-003`, the second misroute, and this tick is what causes it
+
+A Qt selection is anchored to a ROW INDEX, not to a row's contents.
+`setRowCount` and `setItem` rewrite the rows in place and never
+re-anchor the selection, so a fleet list that arrives in a different
+order -- one bot deleted, every row below it shifted up -- leaves the
+operator's highlight sitting exactly where it was while a DIFFERENT bot
+is now underneath it.
+
+Measured on this tree, and driven in the tests: select row 0 of the
+Scrumming table, re-render with the two scrumming statuses swapped, and
+`get_selected_bot_id()` returns the other bot. Nothing on screen
+changed. The next Start / Pause / Stop / Restart / Delete goes to that
+other bot, on a 2000 ms timer, with no operator action in between.
+
+`15-001` reports a misroute the operator's own click sequence causes.
+This one reports a misroute the DASHBOARD causes while the operator's
+hands are still.
+
+A SELECTION THAT DISAPPEARS IS NOT COUNTED. When the selected bot
+leaves the fleet its row goes with it and the table is visibly empty;
+that is by design, and counting it would paint this pin red on every
+ordinary bot deletion -- the `06-014` defect in a new place. Only a
+SILENT SUBSTITUTION is counted: a selection present both before and
+after, pointing at a different bot. The two ids are compared inside the
+method and only the verdict travels; the record carries booleans and
+counts, never an id.
+
+### `15-004` and `15-005`, the two halves of one button
+
+`_on_global_privacy_clicked` flips EVERY registered privacy mask in one
+shot and persists to `settings.json`. A partial apply leaves values on
+screen while the button says masked, and `set_all`'s persist swallows
+every exception by design, so a half-applied flip raises nothing.
+
+`15-004` asks the registry AGAIN, from a fresh accessor call, for every
+field it declares -- not for the snapshot the handler took, and not for
+`any_revealed`, which is the request. `expected` is how many fields the
+registry says it has; `actual` is how many really read back at the
+requested state. The button's tooltip still says 18 while
+`known_field_ids()` returns 19, so the count rides in context as a
+number rather than being assumed.
+
+`15-005` asks a different question with a different failure: whether
+the BUTTON then told the truth. `_refresh_privacy_mode_btn_style`
+computes its own `all_masked` inside a bare `except` that falls back to
+False, so a registry that answers `is_masked` badly relabels the button
+OFF while every field is masked. The operator un-masks nothing, sees
+"OFF", and shares a screen believing the values are already revealed
+when the reverse is true. `actual` is read off the widget's own text;
+`expected` is a fresh read of the registry.
+
+IT READS THAT EXPECTATION THROUGH `to_dict()` AND NOT THROUGH
+`is_masked()`, AND THAT WAS BOUGHT BY A MEASURED FAILURE. The restyle
+reads `is_masked`, so `is_masked` is part of what this pin judges. The
+first version of the pin read the same accessor; with `is_masked`
+raising -- the exact fault that sends the restyle down its `except` --
+it raised inside its own `contextlib.suppress` and wrote NO RECORD AT
+ALL, going silent on the one fault it exists to report. `to_dict()` is
+an independent accessor over the same locked state, so a divergence
+between the two is reported instead of swallowed.
+
+### The Exchange tab's cadence, and the split item #14 reads
+
+`15-002` and `15-003` are the tab's ONLY cadence pins.
+`_setup_refresh_timer` starts a 2000 ms `QTimer` on
+`_refresh_dashboard`, which calls `update_bots` once for EVERY exchange
+tab on every tick; `refresh_all_privacy_widgets` calls it once more per
+tab on a privacy toggle. Both carry `every=30.0`. Item #14 may read
+silence from either as a stopped emitter.
+
+`15-001`, `15-004` and `15-005` are OPERATOR-DRIVEN. They fire when a
+finger presses a button and at no other time, so silence from any of
+them says nothing about the tab's health. None carries a throttle: the
+operator's finger is the rate limit.
+
+THE THROTTLE IS PER SITE, NOT PER EXCHANGE, AND THE MULTIPLICITY MAKES
+THAT MATTER. `signal_contract._throttle_admit` keys its window on
+`(name, site)` and `site` is `file:line`. Every ExchangeTab runs the
+same two lines, so all of them share ONE 30 s fold window. An admitted
+GREEN therefore names one exchange in its context and stands for
+`count` passes across all of them: it is a record about that exchange,
+never a claim about the others. A FAILING check is never folded, so
+every exchange's own red arrives on its own record. That property is
+driven rather than asserted --
+`test_a_red_from_every_exchange_survives_the_shared_window` runs two
+tabs through one window with both failing and reads two records back.
+
+### Sites refused in the Exchange tab, and the reason for each
+
+Four candidate sites took no pin.
+
+- `_update_pull_rate_label`. Its entire result is a string in a
+  `QLabel`, formatted from the `pull_rate_summary()` dict in the same
+  expression that would have to supply the expectation, so the check
+  would compare an expression with itself and E9 would refuse it --
+  correctly. The freshness of the pool's slots is `MarketDataPool`'s
+  invariant, not this tab's, and a pin asserting it here would be red
+  during ordinary passive coalescing. It is also the tab's worst
+  cadence: a 1000 ms timer, one per exchange, for a cosmetic readout.
+- `_refresh_privacy_mode_btn_style`. It reads the registry, derives
+  `all_masked`, and writes a label and a stylesheet from it. A pin
+  INSIDE it compares the text it has just set against the flag it has
+  just computed -- the argument echoed back. The only non-vacuous form
+  is to observe it from OUTSIDE, after it returns, against an
+  independent read of the registry, and that is exactly `15-005`. The
+  method is also called once per exchange tab at construction, before
+  the operator has done anything.
+- `_PlaceholderExchange`. Three attribute assignments in `__init__`,
+  two of them constants and the third `exchange_id.capitalize()`. There
+  is no operation, no consumer inside the class and no result to read
+  back; a pin here would compare a constant with itself.
+- The SECTION-VISIBILITY comparison inside `update_bots`, which was
+  built, measured and then withdrawn. The four `setVisible` calls take
+  `bool(...)` of the same two lists the rows are rendered from, so a pin
+  asking whether a section is shown exactly when it has rows can vary
+  only through the blank-row path `15-002` already reports. That is one
+  defect counted twice and a second green that moves only when the first
+  one does -- decoration that reads as a second piece of evidence. The
+  row counts ride in `15-003`'s context instead, where a reader can see
+  them without a verdict resting on them. `15-003` became the selection
+  pin in the same change, which is a defect the tab really can have and
+  really does.
+
+### What is real in the tests and what is a stand-in
+
+The `ExchangeTab` itself is real, and so are both `QTableWidget`
+subclasses, the `QPushButton`s, the `QLabel`s and the real `SignalSink`.
+No `MainWindow` is constructed and no bot manager exists.
+
+Two things are stood in for, and neither is the thing under test.
+`CryptoNewsTicker` is replaced by an inert `QWidget`: the production
+class spawns a `QThread` that fetches ten RSS feeds, and a test must
+never reach the network. `get_privacy_mask_registry` is replaced by a
+`PrivacyMaskRegistry` bound to a `tmp_path` file, because the real
+singleton auto-persists to the operator's own
+`~/.acervator/settings.json` on every `set_all`. Nothing in these tests
+touches `~/.acervator` or `~/.acervator_logs`, reaches an exchange, or
+sends a command to a real bot.
+
 ## The register
 
-One row per pin call site. 64 rows.
+One row per pin call site. 69 rows.
 
 | ID | subsystem | signal type | current name | previous name | source | observes |
 |---|---|---|---|---|---|---|
@@ -1018,22 +1256,27 @@ One row per pin call site. 64 rows.
 | `10-003` | `ytd` | `gauge` | `ytd.10.003.gauge.per_symbol_counts` | `ytd.per_symbol_counts` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1059` | how many year-to-date trades the panel holds per symbol |
 | `11-001` | `swarm` | `postcondition` | `swarm.11.001.postcondition.sim_run_registered` | `swarm.sim_run_registered` | `src/gui/bot_visualizer.py:2224` | the row stored under this sim id reports kind `sim`, so the registration landed in the layer it was addressed to |
 | `11-002` | `swarm` | `postcondition` | `swarm.11.002.postcondition.paper_run_registered` | `swarm.paper_run_registered` | `src/gui/bot_visualizer.py:2315` | the row stored under this paper id reports kind `paper` |
-| `12-001` | `trading` | `postcondition` | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:3982` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
-| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:6322` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
-| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:8370` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
-| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:8249` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
-| `12-005` | `trading` | `postcondition` | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:4125` | the Activity Log's own paused state agrees with the button the operator just pressed |
-| `12-006` | `trading` | `postcondition` | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:4058` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
+| `12-001` | `trading` | `postcondition` | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:4249` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
+| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:6589` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
+| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:8637` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
+| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:8516` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
+| `12-005` | `trading` | `postcondition` | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:4392` | the Activity Log's own paused state agrees with the button the operator just pressed |
+| `12-006` | `trading` | `postcondition` | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:4325` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
 | `13-001` | `charts` | `invariant` | `charts.13.001.invariant.panels_mounted` | `charts.panels_mounted` | `src/gui/main_window.py:1416` | every panel the fetch loop iterates is a widget really mounted in the scroll layout, asked of the layout rather than of the dict that built it |
 | `13-002` | `charts` | `postcondition` | `charts.13.002.postcondition.panel_symbols_current` | `charts.panel_symbols_current` | `src/gui/main_window.py:1425` | the symbol each panel stores -- the one `fetch_chart_data` hands the exchange -- is the symbol the status that just updated that panel carries |
 | `13-003` | `charts` | `postcondition` | `charts.13.003.postcondition.timeframe_rearmed` | `charts.timeframe_rearmed` | `src/gui/main_window.py:1461` | the panel the operator just retimed exists, holds the timeframe the fetch will read, and has had its throttle cleared |
 | `13-004` | `charts` | `postcondition` | `charts.13.004.postcondition.panel_refreshed` | `charts.panel_refreshed` | `src/gui/main_window.py:1582` | the candles the chart now holds are the candles THIS fetch returned, read off the chart, with the source attribution and the outcome beside the verdict and the fetch latency on the record |
 | `13-005` | `charts` | `invariant` | `charts.13.005.invariant.panels_fresh` | `charts.panels_fresh` | `src/gui/main_window.py:1617` | no panel has gone three throttle windows without a pass writing its `last_fetch`, counted over the panel dict so a panel the loop SKIPS cannot hide in its own silence |
-| `14-001` | `console` | `invariant` | `console.14.001.invariant.records_rendered` | `console.records_rendered` | `src/gui/main_window.py:5340` | every record the watermark consumed reached the signals pane, counted off the drain's own ledger, so the records the `[-200:]` slice throws away after the watermark has already moved past them are counted rather than lost in silence |
-| `14-002` | `console` | `invariant` | `console.14.002.invariant.view_holds_rendered` | `console.view_holds_rendered` | `src/gui/main_window.py:5351` | the signals pane really holds the window the drain wrote into it, asked of the widget's own block count against the ledger clamped by the pane's own cap, with the number of lines the cap has evicted beside the verdict |
-| `14-003` | `console` | `invariant` | `console.14.003.invariant.drain_alive` | `console.drain_alive` | `src/gui/main_window.py:5360` | the 500 ms drain ran at least once since the previous look, counted OUTSIDE the drain so a stopped timer is distinguishable from a quiet sink -- the one fault a pin inside the drain can never report |
-| `14-004` | `console` | `postcondition` | `console.14.004.postcondition.pause_quiets_both_panes` | `console.pause_quiets_both_panes` | `src/gui/main_window.py:5213` | the flag `_drain_signals` gates on agrees with the Pause button the operator just pressed, so the button's claim to quiet both panes is asked of the pane that is supposed to go quiet |
-| `14-005` | `console` | `postcondition` | `console.14.005.postcondition.pause_buffer_delivered` | `console.pause_buffer_delivered` | `src/gui/main_window.py:5242` | the console pane's own block count after a resume is the count it held plus every line the pause buffer was holding, so a delivery the pane's block cap eats is reported instead of vanishing, with how long the resume took on the record |
+| `14-001` | `console` | `invariant` | `console.14.001.invariant.records_rendered` | `console.records_rendered` | `src/gui/main_window.py:5607` | every record the watermark consumed reached the signals pane, counted off the drain's own ledger, so the records the `[-200:]` slice throws away after the watermark has already moved past them are counted rather than lost in silence |
+| `14-002` | `console` | `invariant` | `console.14.002.invariant.view_holds_rendered` | `console.view_holds_rendered` | `src/gui/main_window.py:5618` | the signals pane really holds the window the drain wrote into it, asked of the widget's own block count against the ledger clamped by the pane's own cap, with the number of lines the cap has evicted beside the verdict |
+| `14-003` | `console` | `invariant` | `console.14.003.invariant.drain_alive` | `console.drain_alive` | `src/gui/main_window.py:5627` | the 500 ms drain ran at least once since the previous look, counted OUTSIDE the drain so a stopped timer is distinguishable from a quiet sink -- the one fault a pin inside the drain can never report |
+| `14-004` | `console` | `postcondition` | `console.14.004.postcondition.pause_quiets_both_panes` | `console.pause_quiets_both_panes` | `src/gui/main_window.py:5480` | the flag `_drain_signals` gates on agrees with the Pause button the operator just pressed, so the button's claim to quiet both panes is asked of the pane that is supposed to go quiet |
+| `14-005` | `console` | `postcondition` | `console.14.005.postcondition.pause_buffer_delivered` | `console.pause_buffer_delivered` | `src/gui/main_window.py:5509` | the console pane's own block count after a resume is the count it held plus every line the pause buffer was holding, so a delivery the pane's block cap eats is reported instead of vanishing, with how long the resume took on the record |
+| `15-001` | `exchange` | `postcondition` | `exchange.15.001.postcondition.command_routed_to_chosen_table` | `exchange.command_routed_to_chosen_table` | `src/gui/main_window.py:2954` | the table that really supplied the bot id about to be commanded is the table the operator last chose, read back out of both tables' current selections rather than from the branch that picked it, so the fallback hijack MEM-408 records is reported instead of returning as cleanly as a correct route |
+| `15-002` | `exchange` | `invariant` | `exchange.15.002.invariant.every_bot_reaches_a_table` | `exchange.every_bot_reaches_a_table` | `src/gui/main_window.py:3078` | every status handed to the tab is a row the operator can actually read, counted off the two tables' own column-0 items, so a bot dropped by both mode filters and a blank row left behind by a skipped render are both visible |
+| `15-003` | `exchange` | `invariant` | `exchange.15.003.invariant.selection_survives_refresh` | `exchange.selection_survives_refresh` | `src/gui/main_window.py:3090` | the bot under the operator's highlight after the dashboard re-renders the tables is the bot that was under it before, so a reordered fleet list silently moving the selection onto a different bot is reported rather than waiting for the next command to discover it |
+| `15-004` | `exchange` | `postcondition` | `exchange.15.004.postcondition.privacy_applied_to_every_field` | `exchange.privacy_applied_to_every_field` | `src/gui/main_window.py:3154` | every field the registry declares really reads back at the state the one-shot toggle asked for, so a partial apply that leaves values exposed is reported rather than swallowed by a persist that never raises |
+| `15-005` | `exchange` | `postcondition` | `exchange.15.005.postcondition.privacy_button_matches_registry` | `exchange.privacy_button_matches_registry` | `src/gui/main_window.py:3204` | the Privacy Mode button's own text agrees with an independent read of the registry, so a button that says OFF over a fully masked screen is reported instead of being trusted during a screen share |
 
 ## Planned names
 
@@ -1110,6 +1353,11 @@ or a hand-edited name breaks the agreement and fails the run.
 | `14-003` | `console.14.003.invariant.drain_alive` |
 | `14-004` | `console.14.004.postcondition.pause_quiets_both_panes` |
 | `14-005` | `console.14.005.postcondition.pause_buffer_delivered` |
+| `15-001` | `exchange.15.001.postcondition.command_routed_to_chosen_table` |
+| `15-002` | `exchange.15.002.invariant.every_bot_reaches_a_table` |
+| `15-003` | `exchange.15.003.invariant.selection_survives_refresh` |
+| `15-004` | `exchange.15.004.postcondition.privacy_applied_to_every_field` |
+| `15-005` | `exchange.15.005.postcondition.privacy_button_matches_registry` |
 
 The longest name is 53 characters:
 `fleet.03.007.postcondition.positions_seeded_from_lots`. The shortest
@@ -1190,7 +1438,7 @@ This register is wrong if any of the following holds.
   as FAIL, which would mean the checker cannot see the failure it
   exists to catch.
 - `python -m tools.harness.watchdog_archetype src` reports a wired pin
-  count other than 54, with no source change between the runs.
+  count other than 69, with no source change between the runs.
 - Two rows carry the same ID, or a row's ID does not match the format
   `NN-EEE`.
 - A pin's `current name` here differs from the string at the cited

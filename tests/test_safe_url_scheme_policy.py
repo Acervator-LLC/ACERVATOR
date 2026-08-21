@@ -71,25 +71,30 @@ _CALL_SITES: tuple[tuple[str, dict], ...] = (
     ("src/exchange/crypto_assets.py:369", {"timeout": 10}),
     ("src/exchange/market_data.py:116", {"timeout": 15}),
     ("src/gui/chart_data.py:230", {"timeout": 10}),
-    # RE-ANCHORED 2026-08-21, from :3256 and :3354. The Asset Charts
-    # emitter unit added 204 lines to `TradeChartsTab`, which is built
+    # RE-ANCHORED 2026-08-21, from :3460 and :3558. The Exchange tab
+    # emitter unit added 267 lines to `ExchangeTab`, which is built
     # inline in main_window.py ABOVE both of these calls; neither call
     # moved in the source and neither kwarg shape changed. The new
     # numbers were found by READING -- `grep -n "safe_urlopen("` over
-    # main_window.py returns exactly these two lines and nothing else --
-    # not by adding 204 to the old ones. The pin still asserts that
+    # main_window.py returns exactly these two lines and nothing else
+    # -- not by adding 267 to the old ones. The pin still asserts that
     # `safe_urlopen(` is ON that line, which is the whole point of it.
+    #
+    # BOTH PINS WERE PROVED TO STILL BIND, INDEPENDENTLY, by shifting
+    # each call one line and watching only that row fail. A number
+    # that is merely correct proves nothing about a pin that no longer
+    # reads it.
     #
     # THE EMITTER UNIT ADDED NO MODULE-LEVEL IMPORT. Its five pins
     # import `src.core.signal_contract.emit` function-locally, the way
     # every other emitter site in this repo does, precisely so that the
     # only thing moving these two numbers is code inside the tab.
     #
-    # An earlier note here recorded the 2026-08-13 move from :3244 and
-    # :3342, when the IVP persistence unit added twelve lines above
-    # them.
-    ("src/gui/main_window.py:3460", {"timeout": 10, "context": None}),
-    ("src/gui/main_window.py:3558", {"timeout": 10}),
+    # Earlier notes here recorded the move from :3244 and :3342 on
+    # 2026-08-13 (the IVP persistence unit, twelve lines) and from
+    # :3256 and :3354 (the Asset Charts emitter unit, 204 lines).
+    ("src/gui/main_window.py:3727", {"timeout": 10, "context": None}),
+    ("src/gui/main_window.py:3825", {"timeout": 10}),
 )
 _CALL_IDS = [site for site, _ in _CALL_SITES]
 _CALL_KWARGS = [kwargs for _, kwargs in _CALL_SITES]

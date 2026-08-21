@@ -183,7 +183,7 @@ FRESH_WITHIN = 0.5
 """Age below which a pin reads as JUST FIRED, in seconds.
 
 Queue item 10.3. Anchored to the reader rather than invented: the
-Console drains this sink on a 500 ms timer -- `main_window.py:4938`,
+Console drains this sink on a 500 ms timer -- `main_window.py:5205`,
 `self._signal_timer.setInterval(500)`. A record younger than one drain
 interval arrived since the operator last saw the pane, which is what
 "just fired" means to the only human reading it.
