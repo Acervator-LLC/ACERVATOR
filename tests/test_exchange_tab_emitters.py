@@ -56,12 +56,24 @@ button's own text off the widget.
 
 ONE INSTANCE EXISTS PER CONFIGURED EXCHANGE, and that decides the
 throttle. `signal_contract._throttle_admit` keys its fold window on
-`(name, site)` and `site` is `file:line`, so every ExchangeTab shares
-ONE window on the two cadence pins. A green therefore names one exchange
-and stands for `count` passes across all of them; a red is never folded.
-`test_two_exchanges_fold_into_one_green_record` and
-`test_a_red_from_every_exchange_survives_the_shared_window` drive both
-halves with two real tabs.
+`file:line`, and every ExchangeTab runs the same two lines, so until
+issue #57 all of them shared ONE window on the two cadence pins: a green
+named one exchange and stood for `count` passes across all of them, and
+an exchange whose emitter had stopped was invisible behind another
+exchange's green. Both cadence pins now pass
+`instance=self.exchange_id`, so each tab holds its own window and each
+green counts only its own exchange's passes.
+
+FOUR TESTS DRIVE THAT WITH TWO REAL TABS, and between them they are the
+two-sided control:
+`test_each_exchange_folds_into_its_own_green_record` (two healthy tabs
+are two greens and NOT a fault),
+`test_a_dead_exchange_is_visible_behind_a_healthy_one` (the falsifier --
+one tab's emitter stops and the record set says so, where before the
+repair it read exactly like two healthy tabs),
+`test_a_red_is_never_folded_inside_one_exchange_window` (the throttle
+bypass, driven where the per-exchange key cannot fake it) and
+`test_a_red_from_every_exchange_arrives_on_its_own_record`.
 
 NO PIN CARRIES A DURATION (E8). Three follow an operator press and read
 widget state; two walk table rows already in memory. `15-001` writes its
@@ -304,6 +316,28 @@ def _without_the_reanchor(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         mw, "_reanchor_bot_selection",
         lambda _table, _previous_bot_id, _bot_ids: None, raising=True)
+
+
+def _stop_the_emitter(tab: Any) -> None:
+    """Kill ONE tab's two cadence pins and leave the widget working.
+
+    Both pins read `self.exchange_id` while building their own context,
+    inside `ExchangeTab.update_bots`'s own `contextlib.suppress`. Making
+    that read raise stops the records at the production call site --
+    which is what a stopped emitter is -- without patching `emit`, the
+    sink or the throttle, and without moving the `site` string that the
+    fold window is keyed on. The tab still renders both tables: nothing
+    else in `update_bots` reads the attribute.
+
+    The attribute is asserted to be there before it is taken away, and
+    asserted to raise afterwards. A falsifier that quietly breaks
+    nothing proves nothing.
+    """
+    assert getattr(tab, "exchange_id", None)
+    del tab.exchange_id
+    if getattr(tab, "exchange_id", None) is not None:
+        message = "the emitter did not stop"
+        raise AssertionError(message)
 
 
 def _tick(tab: Any, statuses: list[dict]) -> None:
@@ -1141,21 +1175,23 @@ def test_a_button_that_says_off_over_a_masked_screen_is_reported(
 # ── the cadence, and what one instance per exchange does to it ─────────
 
 
-def test_two_exchanges_fold_into_one_green_record(
+def test_each_exchange_folds_into_its_own_green_record(
         qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path) -> None:
-    """THE MULTIPLICITY, driven.
+    """THE MULTIPLICITY, driven -- and TWO HEALTHY TABS ARE NOT A FAULT.
 
-    `_throttle_admit` keys its window on `(name, site)` and `site` is
-    `file:line`. Two ExchangeTabs run the SAME two lines, so they share
-    one 30 s window: the first pass is admitted and every later pass
-    inside the window folds into its `count`, whichever tab made it.
+    `_throttle_admit` keys its window on `(name, site, instance)`, and
+    both cadence pins declare `instance=self.exchange_id`. Two
+    ExchangeTabs run the SAME two lines, so before issue #57 they shared
+    one 30 s window and the second tab's passes folded into the first
+    tab's record. They hold one window EACH now: two exchanges, two
+    greens, and the second pass inside each window folds into its own
+    exchange's tally rather than into somebody else's.
 
-    A reader must therefore treat a green as a record ABOUT the exchange
-    its context names, standing for `count` passes across all of them --
-    never as a claim that the others are healthy. That is exactly why
-    the exchange id is in the context, and it is asserted here rather
-    than explained in a comment.
+    A green is a record ABOUT the exchange its context names and its
+    `count` is that exchange's own passes. Nothing here is a fault: both
+    records are `ok` True, which is the half of the control that stops
+    the repair from turning ordinary multiplicity into an alarm.
     """
     with _collect() as sink:
         with _tab(qapp, monkeypatch, tmp_path,
@@ -1168,26 +1204,127 @@ def test_two_exchanges_fold_into_one_green_record(
             second.update_bots([_scrum("s2")])
         got = _records(sink, REACHED)
 
-    assert len(got) == 1, [r.context["exchange"] for r in got]
-    assert got[0].ok is True
-    assert got[0].context["exchange"] == "coinbase"
-    assert got[0].count == 1
-    # The three folded passes are carried, not dropped: the NEXT
-    # admitted record would stand for them. Inside one window there is
-    # no next, which is the property being shown.
-    assert len(_records(sink, SELECTION)) == 1
+    assert len(got) == 2, [r.context["exchange"] for r in got]
+    assert [r.ok for r in got] == [True, True]
+    assert [r.context["exchange"] for r in got] == ["coinbase", "kraken"]
+    # One admitted pass each. The SECOND pass of each tab folded into
+    # its OWN exchange's window; inside one window there is no next
+    # record to carry it, which is the property being shown.
+    assert [r.count for r in got] == [1, 1]
+    assert len(_records(sink, SELECTION)) == 2
 
 
-def test_a_red_from_every_exchange_survives_the_shared_window(
+def test_a_dead_exchange_is_visible_behind_a_healthy_one(
         qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path) -> None:
-    """THE HALF THAT MAKES THE SHARED WINDOW SAFE.
+    """THE FALSIFIER FOR ISSUE #57.
+
+    The second tab's emitter is stopped: `exchange_id` raises, so both
+    pins die while building their own context, inside the tab's own
+    `contextlib.suppress`, at the production call site. The widget keeps
+    rendering and only its records stop.
+
+    On the unrepaired tree this produced EXACTLY what two healthy tabs
+    produced -- one record, naming `coinbase`, `count` 1 -- so the dead
+    tab was invisible. With the exchange in the key the record set names
+    the exchanges that are still speaking and no others, which is the
+    fact item #14 reads.
+    """
+    with _collect() as sink:
+        with _tab(qapp, monkeypatch, tmp_path,
+                  exchange_id="coinbase") as first, \
+                _tab(qapp, monkeypatch, tmp_path / "second",
+                     exchange_id="kraken") as second:
+            _stop_the_emitter(second)
+            for _ in range(3):
+                first.update_bots([_scrum("s1")])
+                second.update_bots([_scrum("s2")])
+        got = _records(sink, REACHED)
+
+    assert [r.context["exchange"] for r in got] == ["coinbase"]
+    assert [r.context["exchange"]
+            for r in _records(sink, SELECTION)] == ["coinbase"]
+    # The healthy tab is unharmed by its neighbour's silence.
+    assert got[0].ok is True
+
+
+def test_the_two_drives_do_not_read_the_same(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """THE WHOLE OF ISSUE #57 IN ONE ASSERTION.
+
+    The two tests above are one control between them, and a reader
+    should not have to hold both in their head to see it. This runs BOTH
+    drives -- two healthy tabs, then the same two with the second one's
+    emitter stopped -- and asserts the record sets DIFFER.
+
+    On the unrepaired tree they did not. Both read `records=1`,
+    `exchanges named=['coinbase']`, `counts=[1]`, for both pins. That
+    is the defect: a green over-claimed, so the healthy neighbour's
+    record covered for the dead tab and nothing on disk said which of
+    the two runs had happened.
+    """
+    def _drive(*, dead: bool) -> dict[str, list[tuple[str, int]]]:
+        with _collect() as sink:
+            with _tab(qapp, monkeypatch, tmp_path,
+                      exchange_id="coinbase") as first, \
+                    _tab(qapp, monkeypatch, tmp_path / "second",
+                         exchange_id="kraken") as second:
+                if dead:
+                    _stop_the_emitter(second)
+                for _ in range(3):
+                    first.update_bots([_scrum("s1")])
+                    second.update_bots([_scrum("s2")])
+            return {pin: [(r.context["exchange"], r.count)
+                          for r in _records(sink, pin)]
+                    for pin in THROTTLED}
+
+    healthy = _drive(dead=False)
+    stopped = _drive(dead=True)
+
+    # BOTH cadence pins, because a repair that reached only one of them
+    # would leave the other over-claiming and this test would not care.
+    for pin in THROTTLED:
+        assert healthy[pin] == [("coinbase", 1), ("kraken", 1)], pin
+        assert stopped[pin] == [("coinbase", 1)], pin
+        assert healthy[pin] != stopped[pin], pin
+
+
+def test_a_red_is_never_folded_inside_one_exchange_window(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """THE THROTTLE BYPASS, DRIVEN WHERE THE KEY CANNOT FAKE IT.
+
+    `emit` guards the throttle with `if _judged is not False`, so a
+    failing check never enters a fold window at all. Two exchanges each
+    failing would now produce two records whether or not that guard
+    existed -- the per-exchange key alone would explain it -- so the
+    bypass is driven on ONE tab instead: three failing passes, one
+    exchange, one 30 s window, three records.
+    """
+    stranded = _scrum("ghost")
+    stranded["mode"] = "paper"
+    with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
+        for _ in range(3):
+            tab.update_bots([_scrum("s1"), stranded])
+        got = _records(sink, REACHED)
+
+    assert len(got) == 3
+    assert [r.ok for r in got] == [False, False, False]
+    assert [r.context["exchange"] for r in got] == ["coinbase"] * 3
+
+
+def test_a_red_from_every_exchange_arrives_on_its_own_record(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """THE HALF THAT MADE THE SHARED WINDOW SAFE, AND STILL HOLDS.
 
     A failing check is never folded. Two exchanges, both losing a bot to
     the mode filter, inside one 30 s window: two records, one per
-    exchange, each naming its own. If the synchroniser folded reds the
-    second exchange's loss would be invisible for thirty seconds, and
-    the throttle would be a blindfold rather than a spam control.
+    exchange, each naming its own. This was the only thing standing
+    between the shared window and a blindfold before issue #57, and the
+    per-exchange key does not retire it -- a red must still bypass, as
+    the one-tab test above drives.
     """
     stranded = _scrum("ghost")
     stranded["mode"] = "paper"
