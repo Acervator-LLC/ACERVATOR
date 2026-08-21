@@ -24,9 +24,10 @@ from here. That is (a).
 THE IDENTITY IS `(name, site)`, NOT `name`
 ==========================================
 `signal_contract._throttle_admit` already keys its rate limit on the
-pair and states why: the same signal emitted from two places is two
-different things to a reader. `SignalSink.stats` keys on the name
-alone. The timing surface follows the throttle, and
+pair -- and, since issue #57, on the `instance` a call site may declare
+beside it -- and states why: the same signal emitted from two places is
+two different things to a reader. `SignalSink.stats` keys on the name
+alone. The timing surface follows the pair, and
 `TestIdentityIsTheNameAndTheSite` shows the two side by side so the
 difference is visible rather than asserted.
 
@@ -377,10 +378,11 @@ class TestIdentityIsTheNameAndTheSite:
         is two emitters -- and a loop, which emits from ONE line, is one.
 
         This is not a new rule. `_throttle_admit` already rate-limits on
-        `(name, site)`, so those two lines have had separate rate
-        windows all along. Stating it here because it surprises people
-        and because a test that emits twice on adjacent lines and
-        expects `nth == 2` is testing its own misunderstanding.
+        `(name, site)` -- and on any `instance` the call site declares
+        with it -- so those two lines have had separate rate windows all
+        along. Stating it here because it surprises people and because a
+        test that emits twice on adjacent lines and expects `nth == 2`
+        is testing its own misunderstanding.
         """
         sink.emit("pin.lines", actual=1)
         sink.emit("pin.lines", actual=2)
