@@ -182,14 +182,14 @@ vocabulary on trust.
 
 | signal type | pins | source of the term | example pin |
 |---|---|---|---|
-| `postcondition` | 43 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
+| `postcondition` | 48 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
 | `invariant` | 15 | Hoare logic; design by contract (Meyer) | `ta.07.002.invariant.invariants` |
 | `event` | 5 | OpenTelemetry Events | `tick.08.001.event.throttled` |
 | `counter` | 2 | Prometheus / OpenTelemetry instrument types | `sim.06.004.counter.trades_fired` |
 | `gauge` | 2 | Prometheus / OpenTelemetry instrument types | `ytd.10.003.gauge.per_symbol_counts` |
 | `state_transition` | 2 | finite state machine theory | `sim.06.013.state_transition.mode_selected` |
 
-6 terms cover all 69 pins. No pin needed a coined
+6 terms cover all 74 pins. No pin needed a coined
 term.
 
 ### Telling the two assertion terms apart
@@ -282,6 +282,22 @@ out, rather than an aesthetic one.
   -- `_cmd`, which dispatches an operator command -- writes its record
   BEFORE the dispatch, so there is no completed operation to time.
 
+  THE TWELFTH THROUGH THE SIXTEENTH ARE THE API TESTER'S FIVE, AND
+  THAT TAB IS THE FIRST WHERE EVERY PIN CARRIES ONE. The reason is the
+  tab: every one of its five sites sits behind a network operation,
+  which is what the other tabs mostly do not have. `apitest.16.001`
+  brackets `sync_connect` and carries None on every path that never
+  reached it; `apitest.16.002` brackets the close, from before the
+  executor is built to after its `__exit__` has waited for the worker,
+  and carries None when there was no connector to close;
+  `apitest.16.003` carries the venue call's own bracket and None on the
+  arm that ran nothing; `apitest.16.004` carries the endpoint sweep and
+  not the TCP and SSL diagnostics above it, which are separate
+  operations with their own log lines; `apitest.16.005` takes its own
+  reading across the status fetch and the parse, and does not touch the
+  `elapsed` the log line shows. Sixteen pins carry a duration. All
+  sixteen are `postcondition`.
+
   THE ELEVENTH IS `console.14.005.postcondition.pause_buffer_delivered`,
   and it is the only pin in the Console tab that carries one. Its
   bracket opens one line above `handler.set_paused(paused)` and closes
@@ -294,11 +310,11 @@ out, rather than an aesthetic one.
 - `histogram`. No pin reports a distribution. Every numeric pin reports
   one scalar or one mapping.
 - `precondition`. No pin fires before an operation to check its entry
-  condition. All 69 fire during or after. The count was stale at 54
+  condition. All 74 fire during or after. The count was stale at 54
   through the Trading, Asset Charts and Console units and is
-  re-measured here rather than carried forward:
-  `python -m tools.harness.watchdog_archetype src` reports 69 wired
-  pins, and the register below holds 69 rows.
+  re-measured on every unit rather than carried forward:
+  `python -m tools.harness.watchdog_archetype src` reports 74 wired
+  pins, and the register below holds 74 rows.
 - `error` and `fault`. The network emits on the success path by design,
   and a violated expectation is a verdict on an ordinary record, the
   `ok` field of `Signal`. A pin whose whole job was to announce a fault
@@ -327,6 +343,7 @@ change. Otherwise the checker rejects the row.
 | `charts` | `13` | 5 |
 | `console` | `14` | 5 |
 | `exchange` | `15` | 5 |
+| `apitest` | `16` | 5 |
 
 ## What 10.4 repaired, and what it measured
 
@@ -543,7 +560,7 @@ THE YTD REACHABILITY RULE, so the excuse cannot come back:
 
     `ytd.10.001`, `ytd.10.002` and `ytd.10.003` ARE reachable
     offscreen, with no exchange and no network. The operator's own
-    application injects the manager at `src/gui/main_window.py:4653`:
+    application injects the manager at `src/gui/main_window.py:4929`:
 
         if hasattr(self._simulator, "set_bot_manager"):
             self._simulator.set_bot_manager(self._bot_manager)
@@ -1202,9 +1219,178 @@ singleton auto-persists to the operator's own
 touches `~/.acervator` or `~/.acervator_logs`, reaches an exchange, or
 sends a command to a real bot.
 
+## The API Tester tab, the only one holding live credentials
+
+Queue item #10.9 instrumented `APITesterTab` in
+`src/gui/main_window.py`. The tab carried no pin. `apitest` is
+subsystem `16`, and it is the sixth and last tab with no emitters.
+
+THIS TAB IS DIFFERENT FROM THE OTHER FIVE IN ONE WAY THAT DECIDES EVERY
+DESIGN CHOICE BELOW. It holds live exchange API credentials in memory:
+`_api_key`, `_api_secret` and `_api_pp` are `QLineEdit`s in `Password`
+echo mode, `_do_connect` decrypts a stored key out of the settings vault
+when "Use stored credentials" is ticked, and the operator trades real
+money on those keys. AN EMITTER CONTEXT IS SERIALISED TO DISK, into
+`~/.acervator_logs/signals/session.jsonl`, append-only, in plain text.
+
+### The credential rule, and what it forbids
+
+NO PIN IN THIS TAB PLACES ANYTHING DERIVED FROM A CREDENTIAL IN
+`actual`, IN `expected` OR IN ANY CONTEXT VALUE. Not the value, not a
+prefix, not a length, not a hash. A length leaks, and a hash of a short
+secret is brute-forceable.
+
+Three consequences, each one a decision that was available and was
+refused.
+
+- ONE PRESENCE BOOLEAN IS USED, AND IT IS NAMED HERE.
+  `credentials_supplied` on `16-001` is `bool(key) and bool(secret)` and
+  says one thing: a non-empty key and a non-empty secret were resolved.
+  It earns its place because it is what tells a refusal for MISSING
+  credentials apart from a refusal BY THE VENUE, and those two send the
+  operator to different places. `used_stored_credentials` beside it is
+  the checkbox's own state and is not credential-derived at all.
+- AN ERROR'S CLASS NAME IS RECORDED AND ITS MESSAGE IS NOT. `16-002`
+  carries `failure_class`, which is `type(failure).__name__`. A venue
+  error message quotes the request parameters and some echo the key
+  back, so the message is refused everywhere in this tab -- including on
+  the paths where the tab itself prints it into its own result view,
+  which is a widget and not a file.
+- NO OPERATOR FREE TEXT REACHES A RECORD. The symbol box sits one row
+  below three password fields, and a value typed into the wrong box is a
+  credential in a field nothing would think to guard. `16-003`
+  therefore records the test name -- the fixed vocabulary the seven
+  buttons pass -- and does not record the symbol. The exchange id in every context
+  comes from the combo box's `currentData`, which is a value the tab
+  itself put there.
+
+The rule is held by two tests rather than by this paragraph, and they
+are halves of one instrument.
+`test_no_context_expression_reads_a_credential_widget` walks the syntax
+tree of all five pins and fails on any reference to the three
+credential widgets or to the symbol box.
+`test_no_sentinel_credential_reaches_the_serialised_records` puts a
+known sentinel into `_api_key`, `_api_secret`, `_api_pp` and the symbol
+box, drives every path that emits -- including a venue error whose
+MESSAGE carries the sentinel -- writes the records with the sink's own
+writer and searches the bytes.
+
+THE SECOND TEST HUNTS FRAGMENTS, AND THE REASON IS A MEASUREMENT. Its
+first version looked for the whole sentinel. A planted leak of
+`self._api_key.text()[:6]` -- a six-character prefix, which is exactly
+how a key gets logged "safely" -- PASSED it, and only the syntax-tree
+test caught the plant. A prefix is a leak: it shrinks the search space
+for whoever holds the file. The test now refuses every fragment of four
+characters or more and the three common digests of the sentinel and of
+its head, because a secret this short is brute-forceable. A LENGTH
+leaks too and no fragment hunt can see one, which is why the
+syntax-tree half is not a duplicate of this one.
+
+### The failure shape this tab has: a green over nothing
+
+Every pin here reports the same class of fault in a different place. The
+tab's whole purpose is to answer "does my API work", so a control that
+reports success while having done nothing is worse here than anywhere
+else on the platform: it is the instrument the operator reaches for when
+nothing else works.
+
+- `16-001`. `_do_connect` sets the label, the flag and the connector
+  reference on the success path, and the label is the only thing the
+  operator reads. `actual` is whether a session really exists -- the
+  reference, the flag AND the connector's `_ex` handle, which is the
+  property every later call resolves through. `expected` is the label,
+  read back off the widget. The pin sits in the `finally`, so both early
+  returns inside the `try` are on the record too: they leave the label
+  on "Connecting to ...", which does not start with "Connected", and
+  report an honest green.
+- `16-002`. THE ONE THAT MATTERS MOST. `_do_disconnect` writes
+  "Disconnected" whatever happened and drops the connector reference
+  either way, so a close that raised leaves an AUTHENTICATED SESSION
+  open that nothing can reach behind a display asserting the opposite.
+  The method's own comment, from the 2026-08-13 suppression audit,
+  already said so; nothing recorded it. `actual` is the release -- no
+  failure, no reference, flag down. `expected` is the claim on screen.
+- `16-003`. The dispatch chain in `_run_test` answers a name it does not
+  know with an empty dict and falls through to the success log, which
+  reads `<test> OK`. `actual` reads the result object's IDENTITY against
+  a sentinel bound before the chain, which is why the pin never reads
+  the `test` argument back in as though it were a result. `expected` is
+  the headline taken back off `_result_info` after `_log` painted it,
+  not the string handed to `_log`.
+- `16-004`. The probe's success branch prints `HTTP <status>` from the
+  response object and then whatever `read()` returned, so a 200 with an
+  empty body paints the same green line as one carrying the product
+  list. `expected` counts the greens shown; `actual` counts how many of
+  them carried bytes. A probe that raised is in neither count, and
+  `attempted` rides in the context so the sweep's own size is visible.
+- `16-005`. `_check_exchange_status` maps `none` and `minor` to green
+  and EVERYTHING ELSE to red, including the string `unknown` that its
+  own `get` supplies when the field is absent. A renamed field therefore
+  paints an outage the venue never declared. `actual` is the word the
+  document carried, capped at 32 characters because it is untrusted
+  venue text; `expected` is the published vocabulary and `ok` is
+  membership.
+
+### The cadence: every path in this tab is a finger
+
+`_do_connect`, `_do_disconnect`, `_run_test`, `_raw_http_probe` and
+`_check_exchange_status` are each reached from exactly one
+`clicked.connect` in `APITesterTab.__init__` and from nowhere else. The
+tab owns no `QTimer`. NONE OF THE FIVE PINS CARRIES `every=`, because
+the operator's finger is the rate limit, and item #14 may read silence
+from none of them: a quiet API Tester is the ordinary state of a tab
+nobody has pressed.
+
+### Sites refused in the API Tester tab, and the reason for each
+
+Four candidate sites took no pin.
+
+- `_log`. Its entire result is a headline in a `QLabel` and a block
+  appended to a `QTextEdit`, both formatted from the arguments in the
+  same expression that would have to supply the expectation, so the
+  check would compare an expression with itself and E9 would refuse it.
+  It is also called from every other site in the tab, several times per
+  press, so a pin here would fire on paths that already carry one. Where
+  the painted headline is worth reading, it is read from OUTSIDE, off
+  the widget, which is exactly what `16-003` does.
+- `_get_settings`. It walks `parent()` upward and returns the first
+  ancestor carrying `_settings`. No independent expectation exists to
+  compare the walk against: the only fact available is the object the
+  walk returned, and asking whether it is the one the window holds means
+  reading the same attribute by a second route. In production the tab is
+  parented under the one window that has the attribute, so the verdict
+  could not vary.
+- The TCP, SSL and certifi diagnostics at the head of `_raw_http_probe`.
+  Each already logs its own result, and a pin comparing "the handshake
+  succeeded" against "the log said OK" compares the branch with itself.
+  The bounded operation worth reporting in that method is the endpoint
+  sweep, which is `16-004`.
+- The `_use_stored` toggle. Its handler is a one-line lambda that sets
+  `_manual_frame` visibility to `not on`, so a pin would compare
+  `bool(...)` of the argument against the argument. E9 refuses it,
+  correctly.
+
+### What is real in the API Tester tests and what is a stand-in
+
+The `APITesterTab` itself is real, and so are the `QLineEdit`s, the
+`QComboBox`, the `QCheckBox`, the `QPushButton`s, the `QLabel`s, the
+`QTextEdit` and the real `SignalSink` writing to a real file under
+`tmp_path`. No `MainWindow` is constructed.
+
+FOUR SEAMS ARE CUT, AND EVERY ONE OF THEM IS A NETWORK CALL.
+`CCXTConnector` is replaced by a stub class, `socket.create_connection`
+and `ssl.create_default_context` by recorders, and `safe_urlopen` by a
+canned-response function. Each replacement COUNTS its calls and every
+test that drives a network path asserts the count, so a test that
+silently reached a venue fails rather than passing quietly.
+`test_no_test_in_this_module_reaches_a_venue` holds the real
+`urllib.request.urlopen` and the real `socket.create_connection` under
+counters for the whole module and asserts both stayed at zero. Nothing
+here touches `~/.acervator` or `~/.acervator_logs`.
+
 ## The register
 
-One row per pin call site. 69 rows.
+One row per pin call site. 74 rows.
 
 | ID | subsystem | signal type | current name | previous name | source | observes |
 |---|---|---|---|---|---|---|
@@ -1256,27 +1442,32 @@ One row per pin call site. 69 rows.
 | `10-003` | `ytd` | `gauge` | `ytd.10.003.gauge.per_symbol_counts` | `ytd.per_symbol_counts` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1059` | how many year-to-date trades the panel holds per symbol |
 | `11-001` | `swarm` | `postcondition` | `swarm.11.001.postcondition.sim_run_registered` | `swarm.sim_run_registered` | `src/gui/bot_visualizer.py:2224` | the row stored under this sim id reports kind `sim`, so the registration landed in the layer it was addressed to |
 | `11-002` | `swarm` | `postcondition` | `swarm.11.002.postcondition.paper_run_registered` | `swarm.paper_run_registered` | `src/gui/bot_visualizer.py:2315` | the row stored under this paper id reports kind `paper` |
-| `12-001` | `trading` | `postcondition` | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:4249` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
-| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:6589` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
-| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:8637` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
-| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:8516` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
-| `12-005` | `trading` | `postcondition` | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:4392` | the Activity Log's own paused state agrees with the button the operator just pressed |
-| `12-006` | `trading` | `postcondition` | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:4325` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
+| `12-001` | `trading` | `postcondition` | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:4525` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
+| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:6865` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
+| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:8913` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
+| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:8792` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
+| `12-005` | `trading` | `postcondition` | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:4668` | the Activity Log's own paused state agrees with the button the operator just pressed |
+| `12-006` | `trading` | `postcondition` | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:4601` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
 | `13-001` | `charts` | `invariant` | `charts.13.001.invariant.panels_mounted` | `charts.panels_mounted` | `src/gui/main_window.py:1416` | every panel the fetch loop iterates is a widget really mounted in the scroll layout, asked of the layout rather than of the dict that built it |
 | `13-002` | `charts` | `postcondition` | `charts.13.002.postcondition.panel_symbols_current` | `charts.panel_symbols_current` | `src/gui/main_window.py:1425` | the symbol each panel stores -- the one `fetch_chart_data` hands the exchange -- is the symbol the status that just updated that panel carries |
 | `13-003` | `charts` | `postcondition` | `charts.13.003.postcondition.timeframe_rearmed` | `charts.timeframe_rearmed` | `src/gui/main_window.py:1461` | the panel the operator just retimed exists, holds the timeframe the fetch will read, and has had its throttle cleared |
 | `13-004` | `charts` | `postcondition` | `charts.13.004.postcondition.panel_refreshed` | `charts.panel_refreshed` | `src/gui/main_window.py:1582` | the candles the chart now holds are the candles THIS fetch returned, read off the chart, with the source attribution and the outcome beside the verdict and the fetch latency on the record |
 | `13-005` | `charts` | `invariant` | `charts.13.005.invariant.panels_fresh` | `charts.panels_fresh` | `src/gui/main_window.py:1617` | no panel has gone three throttle windows without a pass writing its `last_fetch`, counted over the panel dict so a panel the loop SKIPS cannot hide in its own silence |
-| `14-001` | `console` | `invariant` | `console.14.001.invariant.records_rendered` | `console.records_rendered` | `src/gui/main_window.py:5607` | every record the watermark consumed reached the signals pane, counted off the drain's own ledger, so the records the `[-200:]` slice throws away after the watermark has already moved past them are counted rather than lost in silence |
-| `14-002` | `console` | `invariant` | `console.14.002.invariant.view_holds_rendered` | `console.view_holds_rendered` | `src/gui/main_window.py:5618` | the signals pane really holds the window the drain wrote into it, asked of the widget's own block count against the ledger clamped by the pane's own cap, with the number of lines the cap has evicted beside the verdict |
-| `14-003` | `console` | `invariant` | `console.14.003.invariant.drain_alive` | `console.drain_alive` | `src/gui/main_window.py:5627` | the 500 ms drain ran at least once since the previous look, counted OUTSIDE the drain so a stopped timer is distinguishable from a quiet sink -- the one fault a pin inside the drain can never report |
-| `14-004` | `console` | `postcondition` | `console.14.004.postcondition.pause_quiets_both_panes` | `console.pause_quiets_both_panes` | `src/gui/main_window.py:5480` | the flag `_drain_signals` gates on agrees with the Pause button the operator just pressed, so the button's claim to quiet both panes is asked of the pane that is supposed to go quiet |
-| `14-005` | `console` | `postcondition` | `console.14.005.postcondition.pause_buffer_delivered` | `console.pause_buffer_delivered` | `src/gui/main_window.py:5509` | the console pane's own block count after a resume is the count it held plus every line the pause buffer was holding, so a delivery the pane's block cap eats is reported instead of vanishing, with how long the resume took on the record |
+| `14-001` | `console` | `invariant` | `console.14.001.invariant.records_rendered` | `console.records_rendered` | `src/gui/main_window.py:5883` | every record the watermark consumed reached the signals pane, counted off the drain's own ledger, so the records the `[-200:]` slice throws away after the watermark has already moved past them are counted rather than lost in silence |
+| `14-002` | `console` | `invariant` | `console.14.002.invariant.view_holds_rendered` | `console.view_holds_rendered` | `src/gui/main_window.py:5894` | the signals pane really holds the window the drain wrote into it, asked of the widget's own block count against the ledger clamped by the pane's own cap, with the number of lines the cap has evicted beside the verdict |
+| `14-003` | `console` | `invariant` | `console.14.003.invariant.drain_alive` | `console.drain_alive` | `src/gui/main_window.py:5903` | the 500 ms drain ran at least once since the previous look, counted OUTSIDE the drain so a stopped timer is distinguishable from a quiet sink -- the one fault a pin inside the drain can never report |
+| `14-004` | `console` | `postcondition` | `console.14.004.postcondition.pause_quiets_both_panes` | `console.pause_quiets_both_panes` | `src/gui/main_window.py:5756` | the flag `_drain_signals` gates on agrees with the Pause button the operator just pressed, so the button's claim to quiet both panes is asked of the pane that is supposed to go quiet |
+| `14-005` | `console` | `postcondition` | `console.14.005.postcondition.pause_buffer_delivered` | `console.pause_buffer_delivered` | `src/gui/main_window.py:5785` | the console pane's own block count after a resume is the count it held plus every line the pause buffer was holding, so a delivery the pane's block cap eats is reported instead of vanishing, with how long the resume took on the record |
 | `15-001` | `exchange` | `postcondition` | `exchange.15.001.postcondition.command_routed_to_chosen_table` | `exchange.command_routed_to_chosen_table` | `src/gui/main_window.py:2954` | the table that really supplied the bot id about to be commanded is the table the operator last chose, read back out of both tables' current selections rather than from the branch that picked it, so the fallback hijack MEM-408 records is reported instead of returning as cleanly as a correct route |
 | `15-002` | `exchange` | `invariant` | `exchange.15.002.invariant.every_bot_reaches_a_table` | `exchange.every_bot_reaches_a_table` | `src/gui/main_window.py:3078` | every status handed to the tab is a row the operator can actually read, counted off the two tables' own column-0 items, so a bot dropped by both mode filters and a blank row left behind by a skipped render are both visible |
 | `15-003` | `exchange` | `invariant` | `exchange.15.003.invariant.selection_survives_refresh` | `exchange.selection_survives_refresh` | `src/gui/main_window.py:3090` | the bot under the operator's highlight after the dashboard re-renders the tables is the bot that was under it before, so a reordered fleet list silently moving the selection onto a different bot is reported rather than waiting for the next command to discover it |
 | `15-004` | `exchange` | `postcondition` | `exchange.15.004.postcondition.privacy_applied_to_every_field` | `exchange.privacy_applied_to_every_field` | `src/gui/main_window.py:3154` | every field the registry declares really reads back at the state the one-shot toggle asked for, so a partial apply that leaves values exposed is reported rather than swallowed by a persist that never raises |
 | `15-005` | `exchange` | `postcondition` | `exchange.15.005.postcondition.privacy_button_matches_registry` | `exchange.privacy_button_matches_registry` | `src/gui/main_window.py:3204` | the Privacy Mode button's own text agrees with an independent read of the registry, so a button that says OFF over a fully masked screen is reported instead of being trusted during a screen share |
+| `16-001` | `apitest` | `postcondition` | `apitest.16.001.postcondition.label_matches_session` | `apitest.label_matches_session` | `src/gui/main_window.py:3552` | a session really exists whenever the connection label says Connected, asked of the connector reference, the tab's flag and the connector's own `_ex` handle, so a connect that painted the label and holds nothing is reported; the `sync_connect` bracket is the duration and no credential of any kind reaches the record |
+| `16-002` | `apitest` | `postcondition` | `apitest.16.002.postcondition.session_released` | `apitest.session_released` | `src/gui/main_window.py:3649` | the authenticated session was really released whenever the label reads Disconnected, so a close that raised -- which drops the connector reference anyway and leaves an open session nothing can reach -- is reported with the error's CLASS name and never its message |
+| `16-003` | `apitest` | `postcondition` | `apitest.16.003.postcondition.reported_ok_ran_a_test` | `apitest.reported_ok_ran_a_test` | `src/gui/main_window.py:3761` | an arm of the dispatch chain really ran whenever the headline reads `<test> OK`, read off the result object's identity against the headline taken back out of the label widget, so the unrecognised-name arm that answers with an empty dict and still logs a pass is reported |
+| `16-004` | `apitest` | `postcondition` | `apitest.16.004.postcondition.green_probe_read_a_body` | `apitest.green_probe_read_a_body` | `src/gui/main_window.py:4012` | every probe that reported HTTP success carried bytes off the socket, counted over the sweep, so an endpoint that answers 200 with an empty body is told apart from one that returned the payload the operator is looking for; the sweep is the duration |
+| `16-005` | `apitest` | `postcondition` | `apitest.16.005.postcondition.indicator_is_mappable` | `apitest.indicator_is_mappable` | `src/gui/main_window.py:4108` | the status word the venue's document carried is one the tab can map, read back out of the parsed body and capped at 32 characters, so a missing or renamed field -- which the tab paints as an outage the venue never declared -- is reported instead of trusted |
 
 ## Planned names
 
@@ -1358,6 +1549,11 @@ or a hand-edited name breaks the agreement and fails the run.
 | `15-003` | `exchange.15.003.invariant.selection_survives_refresh` |
 | `15-004` | `exchange.15.004.postcondition.privacy_applied_to_every_field` |
 | `15-005` | `exchange.15.005.postcondition.privacy_button_matches_registry` |
+| `16-001` | `apitest.16.001.postcondition.label_matches_session` |
+| `16-002` | `apitest.16.002.postcondition.session_released` |
+| `16-003` | `apitest.16.003.postcondition.reported_ok_ran_a_test` |
+| `16-004` | `apitest.16.004.postcondition.green_probe_read_a_body` |
+| `16-005` | `apitest.16.005.postcondition.indicator_is_mappable` |
 
 The longest name is 53 characters:
 `fleet.03.007.postcondition.positions_seeded_from_lots`. The shortest

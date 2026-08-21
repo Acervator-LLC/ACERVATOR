@@ -3415,6 +3415,20 @@ if _HAS_QT:
         def _do_connect(self):
             import time as _t, concurrent.futures
             eid = self._exchange.currentData()
+            # 10.9 -- the two values apitest.16.001 reads, bound
+            # BEFORE the try so the `finally` can read them on every
+            # exit path, including the two early returns inside the
+            # try. `_call_s` stays None until `sync_connect` returns,
+            # so a path that never reached the network carries no
+            # duration rather than a fabricated one.
+            #
+            # `_supplied` IS A PRESENCE BOOLEAN AND NOTHING ELSE. It
+            # says a non-empty key and a non-empty secret were
+            # resolved. No length, no prefix, no hash: this record is
+            # serialised to ~/.acervator_logs/signals/ and the
+            # operator trades real money on those keys.
+            _supplied = False
+            _call_s = None
             self._conn_status.setText(f"Connecting to {eid.capitalize()}...")
             self._conn_status.setStyleSheet("color: #00aaff;")
             self._connect_btn.setEnabled(False)
@@ -3452,10 +3466,12 @@ if _HAS_QT:
                         self._log("ERROR", "Enter API key and secret", level="error")
                         return
 
+                _supplied = bool(key) and bool(secret)
                 conn = CCXTConnector(eid)
                 start = _t.monotonic()
                 conn.sync_connect(key, secret, pp)
                 elapsed = (_t.monotonic() - start) * 1000
+                _call_s = elapsed / 1000.0
                 mcount = len(conn._ccxt.markets) if conn._ccxt and conn._ccxt.markets else 0
 
                 self._connector = conn
@@ -3488,8 +3504,75 @@ if _HAS_QT:
             finally:
                 if not self._connected:
                     self._connect_btn.setEnabled(True)
+                # 10.9 -- apitest.16.001. THE LABEL IS ALL THE
+                # OPERATOR HAS. A connect that paints "Connected"
+                # while holding no session leaves every later button
+                # failing against a tab that says the link is up.
+                #
+                # `expected` IS WHAT THE OPERATOR WAS TOLD, read back
+                # off `_conn_status` after the handler wrote it.
+                # `actual` IS WHETHER A SESSION EXISTS: the connector
+                # reference, the tab's own flag, and the connector's
+                # `_ex` -- the property every later call resolves
+                # through. `sync_connect` returning without an
+                # exchange instance is the false green this pin is
+                # for. No argument to this method is read back as a
+                # result.
+                #
+                # IN THE `finally` SO EVERY EXIT IS ON THE RECORD.
+                # Both early returns inside the try leave the label on
+                # "Connecting to ...", which does not start with
+                # "Connected", so they report an honest green rather
+                # than nothing at all.
+                #
+                # NO CREDENTIAL REACHES THIS RECORD. `key`, `secret`
+                # and `pp` are not read here in any form -- not the
+                # value, not a length, not a hash. A length leaks and
+                # a hash of a short secret is brute-forceable. One
+                # PRESENCE BOOLEAN rides in the context:
+                # `credentials_supplied` says a key AND a secret were
+                # resolved and says nothing else, and it is what tells
+                # a refusal for missing credentials apart from a
+                # refusal by the venue.
+                #
+                # THE DURATION IS THE `sync_connect` BRACKET ONLY
+                # (E8), and it is None on every path that never
+                # reached the call.
+                #
+                # NO `every=`: the Connect button is the cadence, so
+                # silence from this pin says nothing about the tab.
+                _session = getattr(self._connector, "_ex", None)
+                _usable = (self._connector is not None
+                           and self._connected
+                           and _session is not None)
+                _claims = self._conn_status.text().startswith("Connected")
+                import contextlib
+                with contextlib.suppress(Exception):
+                    from src.core.signal_contract import emit as _api_emit
+                    _api_emit(
+                        "apitest.16.001.postcondition.label_matches_session",
+                        actual=_usable, expected=_claims,
+                        context={"exchange": eid,
+                                 "used_stored_credentials":
+                                     bool(self._use_stored.isChecked()),
+                                 "credentials_supplied": _supplied,
+                                 "connector_held":
+                                     self._connector is not None,
+                                 "disconnect_enabled":
+                                     self._disconnect_btn.isEnabled()},
+                        duration=_call_s)
 
         def _do_disconnect(self):
+            # 10.9 -- the state apitest.16.002 reads on every exit
+            # path, bound before the branch that fills it. `failure`
+            # MOVED UP from inside the branch and nothing else about
+            # it changed: it was already initialised to None there,
+            # and the pin below has to be able to read it when there
+            # was no connector to close.
+            _eid = self._exchange.currentData()
+            _held = self._connector is not None
+            _close_s = None
+            failure = None
             if self._connector:
                 # Suppression audit 2026-08-13, H3. Two layers
                 # used to lose the failure: the worker exception
@@ -3500,13 +3583,18 @@ if _HAS_QT:
                 # below reads "Disconnected", so an unreported
                 # failure leaves a session open that nothing can
                 # close and a display that asserts the opposite.
-                failure = None
                 try:
                     import concurrent.futures
+                    _close_at = time.monotonic()
                     with concurrent.futures.ThreadPoolExecutor(
                             max_workers=1) as pool:
                         fut = pool.submit(
                             asyncio.run, self._connector.disconnect())
+                    # The executor's __exit__ waits for the worker, so
+                    # this reading spans the whole close attempt and
+                    # not the submit. It stays None if the executor
+                    # itself could not be built.
+                    _close_s = time.monotonic() - _close_at
                     failure = fut.exception()
                 except Exception as exc:
                     logger.exception(
@@ -3527,6 +3615,46 @@ if _HAS_QT:
             self._conn_status.setText("Disconnected")
             self._conn_status.setStyleSheet("color: #888;")
             self._log("DISCONNECTED", "Connection closed", level="info")
+            # 10.9 -- apitest.16.002, AND IT IS THE ONE THAT MATTERS
+            # MOST IN THIS TAB. The label two lines above reads
+            # "Disconnected" whatever happened and the connector
+            # reference is dropped either way, so a close that failed
+            # leaves an AUTHENTICATED SESSION open that nothing can
+            # reach and a display that asserts the opposite. The
+            # method's own comment above says exactly that; nothing
+            # recorded it.
+            #
+            # `expected` IS THE CLAIM ON SCREEN, read off the label.
+            # `actual` IS WHETHER THE SESSION WAS RELEASED: the close
+            # raised nothing, the reference is gone and the flag is
+            # down. A failed close therefore reports red while the
+            # screen reads "Disconnected", which is the whole point.
+            #
+            # THE CONTEXT CARRIES THE ERROR'S CLASS NAME AND NEVER ITS
+            # MESSAGE. A venue error message quotes request parameters
+            # and some echo the key, and this record goes to disk.
+            #
+            # THE DURATION SPANS THE CLOSE ATTEMPT (E8) and is None
+            # when there was no connector to close.
+            #
+            # NO `every=`: the Disconnect button is the cadence.
+            _released = (failure is None
+                         and self._connector is None
+                         and not self._connected)
+            _claims_closed = self._conn_status.text().startswith(
+                "Disconnected")
+            import contextlib
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _api_emit
+                _api_emit(
+                    "apitest.16.002.postcondition.session_released",
+                    actual=_released, expected=_claims_closed,
+                    context={"exchange": _eid,
+                             "connector_held": _held,
+                             "failure_class": (type(failure).__name__
+                                               if failure is not None
+                                               else "")},
+                    duration=_close_s)
 
         def _run_test(self, test: str):
             if not self._connected or not self._connector:
@@ -3549,6 +3677,17 @@ if _HAS_QT:
             # Nothing runs between here and the try, so the elapsed
             # figure is the same number it was.
             start = _t.monotonic()
+            # 10.9 -- apitest.16.003's OBSERVABLE, and it is one
+            # token. The dispatch chain's last arm answers a name it
+            # does not know with an empty dict, and the success path
+            # below then logs "<test> OK" -- the operator reads a pass
+            # for a call that never happened. Binding that arm to a
+            # sentinel changes no value, no type and no branch: `{}`
+            # is still `{}`, still empty, and still renders as `{}`.
+            # It lets the pin read the RESULT to tell a real answer
+            # from the do-nothing arm, instead of reading the `test`
+            # argument back in as though it were a result.
+            _nothing: dict = {}
             try:
                 if test == "fetch_markets":
                     m = c.markets
@@ -3568,7 +3707,7 @@ if _HAS_QT:
                 elif test == "fetch_trades":
                     result = c.fetch_my_trades(sym, limit=20)
                 else:
-                    result = {}
+                    result = _nothing
 
                 elapsed = (_t.monotonic() - start) * 1000
 
@@ -3589,6 +3728,46 @@ if _HAS_QT:
                 else:
                     display = str(result)
                 self._log(f"{test} OK", display, elapsed, "success")
+                # 10.9 -- apitest.16.003. A GREEN HEADLINE OVER A CALL
+                # THAT NEVER RAN is the failure shape this tab has:
+                # the chain above answers an unrecognised name with an
+                # empty dict and falls straight through to the success
+                # log.
+                #
+                # `expected` IS THE HEADLINE THE OPERATOR READS, taken
+                # back off `_result_info` after `_log` painted it, not
+                # from the string handed to `_log`. `actual` IS
+                # WHETHER AN ARM RAN, read off the result object's own
+                # identity.
+                #
+                # NO OPERATOR FREE TEXT IN THE CONTEXT. `test` is the
+                # fixed vocabulary the seven buttons pass. The symbol
+                # box is NOT recorded: this tab has three password
+                # fields one row above it, and free text typed in this
+                # tab is exactly what must never reach a file.
+                #
+                # THE DURATION IS THE CALL BRACKET (E8), and it is
+                # None on the arm that ran nothing.
+                #
+                # NO `every=`: each test button press is one record.
+                _ran = result is not _nothing
+                _headline = self._result_info.text()
+                _claimed_ok = _headline.split(" (")[0].endswith(" OK")
+                _entries = (len(result)
+                            if isinstance(result, (dict, list)) else 1)
+                import contextlib
+                with contextlib.suppress(Exception):
+                    from src.core.signal_contract import emit as _api_emit
+                    _api_emit(
+                        "apitest.16.003.postcondition.reported_ok_ran_a_test",
+                        actual=_ran, expected=_claimed_ok,
+                        context={"exchange":
+                                     self._exchange.currentData(),
+                                 "test": test,
+                                 "result_kind": type(result).__name__,
+                                 "result_entries": _entries,
+                                 "truncated": "(truncated)" in display},
+                        duration=(elapsed / 1000.0 if _ran else None))
             except Exception as exc:
                 elapsed = (_t.monotonic() - start) * 1000
                 from ..exchange.ccxt_connector import CCXTConnector as CC
@@ -3710,7 +3889,19 @@ if _HAS_QT:
             except ImportError:
                 ssl_ctx = ssl.create_default_context()
 
+            # 10.9 -- apitest.16.004's ledger. `_green` counts the
+            # SUCCESS headlines the operator sees; `_green_with_body`
+            # counts how many of those really carried bytes off the
+            # socket. They are incremented on the same path but under
+            # DIFFERENT conditions, so a 200 with an empty body moves
+            # one and not the other.
+            _green = 0
+            _green_with_body = 0
+            _attempted = 0
+            _statuses: list = []
+            _sweep_at = _t.monotonic()
             for method, url, desc in endpoints:
+                _attempted += 1
                 try:
                     start = _t.monotonic()
                     # SafeRequest refuses any scheme outside the
@@ -3757,6 +3948,10 @@ if _HAS_QT:
                             f"Response:\n{body_display}"
                         )
                         self._log(f"HTTP {status} - {desc}", detail, elapsed, "success")
+                        _green += 1
+                        _statuses.append(status)
+                        if body:
+                            _green_with_body += 1
 
                 except urllib.error.HTTPError as exc:
                     elapsed = (_t.monotonic() - start) * 1000
@@ -3791,6 +3986,40 @@ if _HAS_QT:
 
                 safe_process_events("legacy P4.1 site")
 
+            # 10.9 -- apitest.16.004. A GREEN PROBE THAT READ NOTHING.
+            # The success branch reports `HTTP <status>` from the
+            # response object and then prints whatever `read()`
+            # returned, so an endpoint that answers 200 with an empty
+            # body paints the same green line as one that returned the
+            # product list -- and the operator uses this button
+            # precisely when nothing else works.
+            #
+            # `expected` IS THE NUMBER OF GREENS SHOWN.  `actual` IS
+            # HOW MANY OF THEM CARRIED BYTES. Neither side is the
+            # endpoint table read back: a probe that raised is in
+            # neither count, and `attempted` rides in the context so a
+            # reader sees the sweep's own size.
+            #
+            # THE DURATION IS THE SWEEP (E8) -- the loop above and
+            # nothing else. The SSL and TCP diagnostics before it are
+            # separate operations with their own log lines.
+            #
+            # NO `every=`: the Raw HTTP Probe button is the cadence.
+            _sweep_s = _t.monotonic() - _sweep_at
+            import contextlib
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _api_emit
+                _api_emit(
+                    "apitest.16.004.postcondition.green_probe_read_a_body",
+                    actual=_green_with_body, expected=_green,
+                    context={"exchange": eid,
+                             "host": host,
+                             "endpoints": len(endpoints),
+                             "attempted": _attempted,
+                             "http_statuses": _statuses,
+                             "not_green": _attempted - _green},
+                    duration=_sweep_s)
+
         def _check_exchange_status(self):
             """Check exchange status pages for known outages."""
             import time as _t, json
@@ -3801,6 +4030,15 @@ if _HAS_QT:
                 "binance": "https://www.binance.com/bapi/composite/v1/public/cms/article/list/query?type=1&pageNo=1&pageSize=1",
                 "kraken": "https://status.kraken.com/api/v2/status.json",
             }
+
+            # 10.9 -- the vocabulary apitest.16.005 judges the
+            # fetched document against. Statuspage publishes
+            # `status.indicator` as one of none / minor / major /
+            # critical; `maintenance` is carried too because some
+            # pages report it, and a value the venue never sends costs
+            # nothing while a missing one would paint a false red.
+            _mappable = ("none", "minor", "major", "critical",
+                         "maintenance")
 
             url = status_urls.get(eid)
             if not url:
@@ -3839,6 +4077,44 @@ if _HAS_QT:
                         )
                         level = "success" if indicator in ("none", "minor") else "error"
                         self._log(f"STATUS: {desc}", detail, elapsed, level)
+                        # 10.9 -- apitest.16.005. THE VERDICT IS
+                        # DERIVED FROM A WORD THE TAB MAY NOT KNOW.
+                        # The line above maps `none` and `minor` to
+                        # green and EVERYTHING ELSE to red, so a
+                        # missing field (which `get` answers with
+                        # "unknown") or a renamed one paints an outage
+                        # the venue never declared, and the operator
+                        # stops trading on it.
+                        #
+                        # `actual` IS THE WORD THE DOCUMENT CARRIED,
+                        # read back out of the parsed body and capped
+                        # at 32 characters because it is untrusted
+                        # venue text. `expected` is the vocabulary,
+                        # and `ok` is membership -- the two sides are
+                        # not the same expression.
+                        #
+                        # THE DURATION SPANS THE FETCH AND THE PARSE
+                        # (E8). It is this pin's own reading and does
+                        # not touch the `elapsed` the log line shows.
+                        #
+                        # NO `every=`: the Exchange Status Page button
+                        # is the cadence.
+                        _ind_seen = str(s.get("indicator", ""))[:32]
+                        _fetch_s = _t.monotonic() - start
+                        import contextlib
+                        with contextlib.suppress(Exception):
+                            from src.core.signal_contract import (
+                                emit as _api_emit)
+                            _api_emit(
+                                "apitest.16.005.postcondition.indicator_is_mappable",
+                                actual=_ind_seen, expected=_mappable,
+                                ok=_ind_seen in _mappable,
+                                context={"exchange": eid,
+                                         "http_status":
+                                             getattr(resp, "status", None),
+                                         "body_bytes": len(body),
+                                         "level_shown": level},
+                                duration=_fetch_s)
                     else:
                         self._log("STATUS", json.dumps(data, indent=2)[:800], elapsed, "info")
 

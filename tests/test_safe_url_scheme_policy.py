@@ -71,14 +71,17 @@ _CALL_SITES: tuple[tuple[str, dict], ...] = (
     ("src/exchange/crypto_assets.py:369", {"timeout": 10}),
     ("src/exchange/market_data.py:116", {"timeout": 15}),
     ("src/gui/chart_data.py:230", {"timeout": 10}),
-    # RE-ANCHORED 2026-08-21, from :3460 and :3558. The Exchange tab
-    # emitter unit added 267 lines to `ExchangeTab`, which is built
-    # inline in main_window.py ABOVE both of these calls; neither call
-    # moved in the source and neither kwarg shape changed. The new
-    # numbers were found by READING -- `grep -n "safe_urlopen("` over
-    # main_window.py returns exactly these two lines and nothing else
-    # -- not by adding 267 to the old ones. The pin still asserts that
-    # `safe_urlopen(` is ON that line, which is the whole point of it.
+    # RE-ANCHORED 2026-08-21, from :3727 and :3825. THESE TWO CALLS
+    # ARE INSIDE THE TAB THE CHANGE INSTRUMENTED, which is new: every
+    # earlier move pushed them down from above. The API Tester emitter
+    # unit put 276 lines into `APITesterTab`, and both calls live in
+    # that class -- the first in `_raw_http_probe`, the second in
+    # `_check_exchange_status` -- so each moved by the count of lines
+    # inserted ABOVE IT rather than by one shared offset: 191 and 238.
+    # That is why neither number may be derived by arithmetic. Both
+    # were found by READING -- `grep -n "safe_urlopen("` over
+    # main_window.py returns exactly these two lines and nothing else.
+    # Neither call moved in the source and neither kwarg shape changed.
     #
     # BOTH PINS WERE PROVED TO STILL BIND, INDEPENDENTLY, by shifting
     # each call one line and watching only that row fail. A number
@@ -91,10 +94,11 @@ _CALL_SITES: tuple[tuple[str, dict], ...] = (
     # only thing moving these two numbers is code inside the tab.
     #
     # Earlier notes here recorded the move from :3244 and :3342 on
-    # 2026-08-13 (the IVP persistence unit, twelve lines) and from
-    # :3256 and :3354 (the Asset Charts emitter unit, 204 lines).
-    ("src/gui/main_window.py:3727", {"timeout": 10, "context": None}),
-    ("src/gui/main_window.py:3825", {"timeout": 10}),
+    # 2026-08-13 (the IVP persistence unit, twelve lines), from :3256
+    # and :3354 (the Asset Charts emitter unit, 204 lines) and from
+    # :3460 and :3558 (the Exchange tab emitter unit, 267 lines).
+    ("src/gui/main_window.py:3918", {"timeout": 10, "context": None}),
+    ("src/gui/main_window.py:4063", {"timeout": 10}),
 )
 _CALL_IDS = [site for site, _ in _CALL_SITES]
 _CALL_KWARGS = [kwargs for _, kwargs in _CALL_SITES]
