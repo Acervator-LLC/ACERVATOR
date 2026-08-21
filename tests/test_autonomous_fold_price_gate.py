@@ -84,15 +84,81 @@ from src.trading.scrumming_bot import ScrummingBot
 REPO = Path(__file__).resolve().parent.parent
 SOURCE_PATH = REPO / "src" / "trading" / "scrumming_bot.py"
 
-# Read as BYTES and decode without newline translation. The file is
-# pure CRLF; ``read_text`` would hand back LF and every hash below
-# would be a hash of a file that does not exist on disk.
-SOURCE = SOURCE_PATH.read_bytes().decode("utf-8")
 
-# sha256 of src/trading/scrumming_bot.py at git 5405996436d1, the commit
-# this change was written against -- BEFORE the gate block was inserted.
+
+class StalePlant(RuntimeError):
+    """The twin no longer matches the shipping text.
+
+    DELIBERATELY NOT an ``AssertionError``. The controls below are
+    written as "the twin must trade"; if a stale strip raised an
+    assertion it could be mistaken for an ordinary failure, and if it
+    raised nothing the twin would silently BE the gated code and every
+    control would pass without testing anything.
+
+    A source file this module cannot read is refused the same way. A
+    reader that cannot find its anchors must say so out loud rather
+    than report zero hits.
+    """
+
+
+def _normalise(text: str) -> str:
+    """LF, whatever the checkout wrote. THE ONE PLACE THAT DECIDES.
+
+    Every anchor in this module is the text of a LINE. Matching a line
+    must not depend on which bytes end it, so the form is decided once,
+    here, and nothing below splits or joins on CRLF again.
+
+    WHY THIS FUNCTION EXISTS
+    ========================
+    It used to be the other way round: this module read the file as
+    bytes, split on CRLF, and pinned a sha256 of the exact CRLF bytes.
+    ``.gitattributes`` then had to pin ONE source file in the whole
+    repository to CRLF to keep this suite green. Git converts at
+    CHECKOUT, so that pin made the suite depend on a byte layout no
+    fresh clone reproduced by itself: without it, 80 of this file's
+    122 tests failed with ``StalePlant`` on a clean clone.
+
+    A carriage return that is NOT part of a CRLF pair is REFUSED rather
+    than translated. Translating one would silently rewrite the content
+    of a string literal in the source under test; refusing says the
+    file is not the file this module knows how to read.
+    """
+    text = text.replace("\r\n", "\n")
+    if "\r" in text:
+        raise StalePlant(
+            "the source carries a carriage return outside a CRLF pair, so "
+            "its lines cannot be recovered without changing its content")
+    return text
+
+
+# Read as BYTES, then normalise EXPLICITLY. ``read_text`` would hand
+# back LF too, but it would translate a lone CR as well and leave
+# nowhere to refuse one. Reading the bytes keeps that decision visible
+# and keeps all of it inside ``_normalise``.
+SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
+
+# sha256 of src/trading/scrumming_bot.py as it stood at git 5405996436d1
+# -- the commit this change was written against, BEFORE the gate block
+# was inserted -- with its line endings normalised to LF.
+#
+# NORMALISED RATHER THAN RAW, AND THAT IS THE WHOLE POINT. The constant
+# this replaces was a digest of that file's CRLF bytes. A digest of raw
+# bytes pins the line-ending form exactly as hard as it pins the
+# content, so it went red on a fresh clone for a reason that had
+# nothing to do with the code. This one is a digest of the CONTENT:
+# the same pre-change source, in the form the git blob stores and a
+# checkout now writes.
+#
+# IT IS DERIVED FROM THE CONSTANT IT REPLACES, not measured afresh:
+# the reversal below reproduced 306b2d13..f33d6 exactly under CRLF, and
+# this digest is that identical text with every CRLF folded to LF.
+#
+# WHAT IT STILL CATCHES, WHICH IS WHY IT IS HERE AT ALL: every real
+# change to ``scrumming_bot.py`` outside the reversed spans reaches
+# this digest through ``_pre_change_source`` and turns this test red.
+# The line-ending form stopped mattering. The content did not.
 PRE_CHANGE_SHA256 = (
-    "306b2d133b28401c113653f7bedfc64f8cda991e53fa393aec099d9eb90f33d6")
+    "986d79ed7785015d12a57bfc877ba1b078027d93b2f7655ec2fbc78a90ef2082")
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE.")
@@ -247,9 +313,15 @@ def _reverse_to_pre_change(lines: list[str]) -> tuple[list[str], dict[int, int]]
     return [ln for _, ln in tagged], back
 
 
-def _pre_change_source() -> tuple[str, list[int]]:
-    """The whole change undone, plus any citation with no pre-change line."""
-    pre_lines, back = _reverse_to_pre_change(SOURCE.split("\r\n"))
+def _pre_change_source(source: str | None = None) -> tuple[str, list[int]]:
+    """The whole change undone, plus any citation with no pre-change line.
+
+    ``source`` defaults to the shipping file. It is a parameter so the
+    control below can hand the SAME file back in the other line-ending
+    form and require the same answer out.
+    """
+    text = SOURCE if source is None else _normalise(source)
+    pre_lines, back = _reverse_to_pre_change(text.split("\n"))
     orphans: list[int] = []
 
     def _one(group):
@@ -265,7 +337,7 @@ def _pre_change_source() -> tuple[str, list[int]]:
         head, tail = _one(match.group(1)), _one(match.group(2))
         return f":{head}" if tail is None else f":{head}-{tail}"
 
-    return _CITATION_RE.sub(_sub, "\r\n".join(pre_lines)), orphans
+    return _CITATION_RE.sub(_sub, "\n".join(pre_lines)), orphans
 
 AUTONOMOUS = ("wire_stack", "max_cartridge")
 EVERY_INTENT = ("manual_button", "wire_stack", "max_cartridge")
@@ -275,23 +347,16 @@ EVERY_INTENT = ("manual_button", "wire_stack", "max_cartridge")
 EXACT = 0.0
 
 
-class StalePlant(RuntimeError):
-    """The twin no longer matches the shipping text.
-
-    DELIBERATELY NOT an ``AssertionError``. The controls below are
-    written as "the twin must trade"; if a stale strip raised an
-    assertion it could be mistaken for an ordinary failure, and if it
-    raised nothing the twin would silently BE the gated code and every
-    control would pass without testing anything.
-    """
-
-
 # ── the provably pre-change twin ─────────────────────────────────────
 
 
-def _stripped_source() -> str:
-    """The shipping source with the gate block cut back out, CRLF kept."""
-    lines = SOURCE.split("\r\n")
+def _stripped_source(source: str | None = None) -> str:
+    """The shipping source with the gate block cut back out.
+
+    Line endings are the normalised LF, in and out.
+    """
+    lines = (SOURCE if source is None
+             else _normalise(source)).split("\n")
     starts = [i for i, ln in enumerate(lines) if ln == _GATE_FIRST_LINE]
     resumes = [i for i, ln in enumerate(lines) if ln.startswith(_RESUMES_AT)]
     if len(starts) != 1 or len(resumes) != 1:
@@ -308,7 +373,7 @@ def _stripped_source() -> str:
             f"the block boundaries moved: line {cut_from + 1} is "
             f"{lines[cut_from]!r} and line {cut_to + 1} is "
             f"{lines[cut_to]!r}")
-    return "\r\n".join(lines[:cut_from] + lines[cut_to:])
+    return "\n".join(lines[:cut_from] + lines[cut_to:])
 
 
 def _load_twin():
@@ -626,8 +691,24 @@ def test_the_twin_is_the_pre_change_file():
         "undoing the gate block, the site-B spans and the citation shift "
         "does not reproduce the pre-change file byte for byte, so the "
         "change is not the three parts this unit claims it is")
-    assert restored.count(b"\n") == restored.count(b"\r\n"), (
-        "the twin picked up a bare LF; the file is pure CRLF")
+    assert b"\r" not in restored, (
+        "the twin carries a carriage return, so the digest just checked is "
+        "a digest of a byte layout and not of the file's content")
+
+    # AND THE SAME ANSWER COMES BACK FROM THE OTHER LINE-ENDING FORM.
+    #
+    # This module used to require the file on disk to be CRLF, and
+    # ``.gitattributes`` pinned it so that stayed true -- which made the
+    # suite green only in a tree carrying one particular byte layout.
+    # Reversing the CRLF rendering of the very same source is what says
+    # the pin is unnecessary rather than merely gone. If any reader
+    # starts splitting on a byte layout again, this assertion goes red,
+    # and it goes red whichever form the checkout wrote.
+    again, crlf_orphans = _pre_change_source(
+        SOURCE.replace("\n", "\r\n"))
+    assert crlf_orphans == [] and again == text, (
+        "the same file in CRLF form reconstructs a DIFFERENT pre-change "
+        "text, so this module is reading a byte layout and not lines")
 
 
 def test_every_re_anchored_citation_still_names_its_own_line():
@@ -648,9 +729,9 @@ def test_every_re_anchored_citation_still_names_its_own_line():
     the anchor table exists to prevent, reintroduced by the change that
     was supposed to repair it.
     """
-    ship = SOURCE.split("\r\n")
+    ship = SOURCE.split("\n")
     pre_text, orphans = _pre_change_source()
-    pre = pre_text.split("\r\n")
+    pre = pre_text.split("\n")
     _, back = _reverse_to_pre_change(ship)
     assert orphans == [], f"citations with no pre-change line: {orphans}"
 
@@ -1072,7 +1153,7 @@ def test_control_the_same_scenario_is_refused_for_an_autonomous_caller(
 
 def _method_text(source: str, name: str) -> bytes:
     """One method's text, from ``def`` to the next method at its level."""
-    lines = source.split("\r\n")
+    lines = _normalise(source).split("\n")
     starts = [i for i, ln in enumerate(lines)
               if ln.startswith(f"    def {name}(")
               or ln.startswith(f"    async def {name}(")]
@@ -1084,7 +1165,7 @@ def _method_text(source: str, name: str) -> bytes:
         if line.startswith("    def ") or line.startswith("    async def "):
             break
         body.append(line)
-    return "\r\n".join(body).encode("utf-8")
+    return "\n".join(body).encode("utf-8")
 
 
 def test_the_operator_tranche_button_is_textually_unchanged():
