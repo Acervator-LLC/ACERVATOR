@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from ..core.safe_url import SafeRequest, safe_urlopen
 import asyncio
-import contextlib
 import logging
 import math
 import time
@@ -3773,6 +3772,7 @@ if _HAS_QT:
                 _panel_slot != 1,
                 _alias_page != _visible_page,
             ))
+            import contextlib
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _tr_emit
                 _tr_emit(
@@ -3847,6 +3847,7 @@ if _HAS_QT:
                             _doc = self._log.document()
                             _rev = _doc.revision()
                             self._log.append(f"[notification] {msg}")
+                            import contextlib
                             with contextlib.suppress(Exception):
                                 from src.core.signal_contract import (
                                     emit as _tr_emit)
@@ -3913,6 +3914,7 @@ if _HAS_QT:
                 # did, and the operator only learns the difference
                 # when the errors he paused for scroll away.
                 # NO DURATION: a flag flip has no operation (E8).
+                import contextlib
                 with contextlib.suppress(Exception):
                     from src.core.signal_contract import emit as _tr_emit
                     _stats = self._status_log.health_stats()
@@ -5838,6 +5840,7 @@ if _HAS_QT:
                 _landed = "stock"
             elif self._crypto_tab_widget.indexOf(tab) >= 0:
                 _landed = "crypto"
+            import contextlib
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _tr_emit
                 _tr_emit(
@@ -7764,6 +7767,7 @@ if _HAS_QT:
             _alias_page = (self._trading_stack.indexOf(_alias_host)
                            if _alias_host is not None else -1)
             _stock_wing = self._trading_mode == "stock"
+            import contextlib
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _tr_emit
                 _tr_emit(
@@ -7884,6 +7888,7 @@ if _HAS_QT:
                 _tab = _store.get(_eid)
                 if _tab is None or _bar.indexOf(_tab) < 0:
                     _missing += 1
+            import contextlib
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _tr_emit
                 _tr_emit(
