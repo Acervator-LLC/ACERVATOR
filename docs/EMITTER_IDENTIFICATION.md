@@ -182,14 +182,14 @@ vocabulary on trust.
 
 | signal type | pins | source of the term | example pin |
 |---|---|---|---|
-| `postcondition` | 35 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
-| `invariant` | 8 | Hoare logic; design by contract (Meyer) | `ta.07.002.invariant.invariants` |
+| `postcondition` | 38 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
+| `invariant` | 10 | Hoare logic; design by contract (Meyer) | `ta.07.002.invariant.invariants` |
 | `event` | 5 | OpenTelemetry Events | `tick.08.001.event.throttled` |
 | `counter` | 2 | Prometheus / OpenTelemetry instrument types | `sim.06.004.counter.trades_fired` |
 | `gauge` | 2 | Prometheus / OpenTelemetry instrument types | `ytd.10.003.gauge.per_symbol_counts` |
 | `state_transition` | 2 | finite state machine theory | `sim.06.013.state_transition.mode_selected` |
 
-6 terms cover all 54 pins. No pin needed a coined
+6 terms cover all 59 pins. No pin needed a coined
 term.
 
 ### Telling the two assertion terms apart
@@ -233,7 +233,7 @@ The operator's list of allowed vocabularies is wider than the set above.
 Four terms from it classify nothing here, and a measured reason keeps each one
 out, rather than an aesthetic one.
 
-- `timer`. Nine pins carry a duration. This bullet is a correction,
+- `timer`. Ten pins carry a duration. This bullet is a correction,
   not a restatement. It formerly denied that any pin carries one. Queue
   item 10.3 then added the `duration` field to `Signal` and wired it
   into these eight pins:
@@ -262,6 +262,17 @@ out, rather than an aesthetic one.
   a reader sees the quantum instead of inferring it. The other five
   History pins carry NO duration: they count rows and compare sets over
   data already in memory, and a number on any of them would be
+  fabricated.
+
+  THE TENTH IS `charts.13.004.postcondition.panel_refreshed`, and it is
+  the only pin in the Asset Charts tab that carries one. Its bracket
+  opens one line above `await self._fetcher.fetch(...)` and closes one
+  line below it, so it spans the network call and neither the Candle
+  conversion, nor `set_candles`, nor the emitter's own bookkeeping. If
+  the await returns and a later line raises, the reading already taken
+  stands rather than being re-measured across the raise. The other four
+  Asset Charts pins carry NO duration: two walk a dict, one walks a
+  layout, one writes a dict key, and a number on any of them would be
   fabricated.
 - `histogram`. No pin reports a distribution. Every numeric pin reports
   one scalar or one mapping.
@@ -292,6 +303,7 @@ change. Otherwise the checker rejects the row.
 | `ytd` | `10` | 3 |
 | `swarm` | `11` | 2 |
 | `trading` | `12` | 6 |
+| `charts` | `13` | 5 |
 
 ## What 10.4 repaired, and what it measured
 
@@ -508,7 +520,7 @@ THE YTD REACHABILITY RULE, so the excuse cannot come back:
 
     `ytd.10.001`, `ytd.10.002` and `ytd.10.003` ARE reachable
     offscreen, with no exchange and no network. The operator's own
-    application injects the manager at `src/gui/main_window.py:4182`:
+    application injects the manager at `src/gui/main_window.py:4386`:
 
         if hasattr(self._simulator, "set_bot_manager"):
             self._simulator.set_bot_manager(self._bot_manager)
@@ -683,9 +695,93 @@ Two of the eight candidate sites took no pin.
 
 A site with no readable result is not a pin.
 
+## The Asset Charts tab, the first tab with a CADENCE
+
+Queue item #10.6 instrumented the Asset Charts tab, `TradeChartsTab`,
+built inline in `src/gui/main_window.py`. The tab carried no pin at all.
+`charts` is subsystem `13`.
+
+THESE ARE NOT TOGGLE PINS, AND THAT IS THE DIFFERENCE FROM THE HISTORY
+AND TRADING TABS. `MainWindow._setup_refresh_timer` starts a 2000 ms
+`QTimer` on `_refresh_dashboard`, and that handler calls
+`update_charts(...)` on every tick that has at least one bot and
+schedules `fetch_chart_data(...)` on every tick that also has exchange
+connectors. Four of the five pins therefore have a cadence a monitor
+may hold them to, and item #14 may read silence from `13-001`, `13-002`,
+`13-004` and `13-005` as a stopped emitter while any bot exists. Only
+`13-003` is a toggle: it fires when the operator moves a panel's
+timeframe combo and at no other time.
+
+THE CADENCE IS ALSO WHY THREE OF THEM CARRY `every=30.0`. At one record
+every two seconds an un-throttled pin writes 1800 records an hour, and
+three of those would push the rest of the network out of `RETAIN_ROWS`
+inside one session. 30 s is the tab's own per-panel fetch window, so one
+admitted record stands for one window and `count` says how many passes
+it covers. A FAILING check is never suppressed by the synchroniser.
+`13-004` deliberately carries NO throttle: the synchroniser keys on
+(name, site) and that one site serves every panel, so a throttle there
+would admit one panel per window and drop the rest -- hiding which panel
+went stale, which is the only thing the pin is for. It is bounded
+already by the tab's own 30 s check.
+
+WHAT THE TAB HIDES. `fetch_chart_data` has three outcomes. On candles it
+calls `set_candles` then `set_source(source)`; on an empty answer it
+calls `set_error(source)`; on a raise it calls `set_error(str(exc))`.
+NEITHER OF THE LAST TWO CLEARS THE CANDLES ALREADY ON THE CHART, so a
+panel last fed hours ago paints exactly like one fed a second ago.
+`13-004` reads the candle count back off `CandlestickChart` and declares
+the count THIS fetch returned, so a stale panel reports `ok` False, and
+it carries the source attribution and the outcome name in its context so
+a cached answer is distinguishable from a fresh one. This is the shape
+repaired in the Market Inspector on 2026-08-20, in a different widget.
+
+`13-005` covers what `13-004` cannot. Every path through the fetch loop
+body sets `last_fetch`, so a panel that stopped refreshing is a panel the
+loop SKIPPED -- and a skipped panel emits nothing at all, which reads
+exactly like a healthy quiet one. `13-005` walks `last_fetch` back out of
+the panel dict instead and counts panels untouched for three throttle
+windows, reporting `never_fetched` separately because "the chart is old"
+and "the chart never started" are different faults. The live skip is the
+wildcard `continue`: a `*/USDC` symbol in the panel dict is fetched
+never again.
+
+EVERY PIN READS THE STATE THE NEXT CALLER USES. `13-001` counts the
+widgets really in the scroll layout against the panels the fetch loop
+really iterates. `13-002` reads the symbol stored in the panel dict --
+the string `fetch_chart_data` hands the exchange -- against the symbol
+in the status that just updated that panel; the update branch of
+`update_charts` never rewrites it, so a bot whose symbol changed keeps
+fetching the old pair while its title shows the new one. `13-003` reads
+`ChartPanel.timeframe`, which is the combo the fetch reads, and fires
+whether or not the bot still has a panel, because the guard it sits
+behind is a silent no-op for a signal from a panel already dropped. Not
+one of the five reads `bot_statuses` back out as though the argument
+were the result.
+
+NO CONTEXT CARRIES A BOT ID OR OPERATOR TEXT. The contexts hold counts,
+ages, timeframes, an exchange id, a source label and the trading symbol
+-- the same shape `history.05.004` already writes.
+
+Two of the seven candidate sites in the tab took no pin, and the reason
+is REACHABILITY, measured rather than argued.
+
+- `log_trade`. It appends to `self._trade_log`, which `update_charts`
+  reads to draw historical SCRUM/FOLD markers. `grep -rn` over `src/`
+  and `main.py` finds no caller: the only other `log_trade` in the tree
+  is `LogManager.log_trade` in `src/core/logging_engine.py`, a different
+  class on a different object. `self._trade_log` is therefore empty for
+  the life of the process, the marker branch never runs, and a pin here
+  would be silent in every live session -- indistinguishable from a
+  healthy tab, which is the false green this register exists to prevent.
+- `push_synthetic_candles`. Same measurement, same answer: no caller
+  anywhere in `src/` or `main.py`. Its docstring describes a live
+  Nuclear Mode feed that nothing yet calls.
+
+Both are worth a pin the day they gain a caller. Neither is one today.
+
 ## The register
 
-One row per pin call site. 54 rows.
+One row per pin call site. 59 rows.
 
 | ID | subsystem | signal type | current name | previous name | source | observes |
 |---|---|---|---|---|---|---|
@@ -737,12 +833,17 @@ One row per pin call site. 54 rows.
 | `10-003` | `ytd` | `gauge` | `ytd.10.003.gauge.per_symbol_counts` | `ytd.per_symbol_counts` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1059` | how many year-to-date trades the panel holds per symbol |
 | `11-001` | `swarm` | `postcondition` | `swarm.11.001.postcondition.sim_run_registered` | `swarm.sim_run_registered` | `src/gui/bot_visualizer.py:2224` | the row stored under this sim id reports kind `sim`, so the registration landed in the layer it was addressed to |
 | `11-002` | `swarm` | `postcondition` | `swarm.11.002.postcondition.paper_run_registered` | `swarm.paper_run_registered` | `src/gui/bot_visualizer.py:2315` | the row stored under this paper id reports kind `paper` |
-| `12-001` | `trading` | `postcondition` | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:3778` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
-| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:5846` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
-| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:7894` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
-| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:7773` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
-| `12-005` | `trading` | `postcondition` | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:3921` | the Activity Log's own paused state agrees with the button the operator just pressed |
-| `12-006` | `trading` | `postcondition` | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:3854` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
+| `12-001` | `trading` | `postcondition` | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:3982` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
+| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:6050` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
+| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:8098` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
+| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:7977` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
+| `12-005` | `trading` | `postcondition` | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:4125` | the Activity Log's own paused state agrees with the button the operator just pressed |
+| `12-006` | `trading` | `postcondition` | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:4058` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
+| `13-001` | `charts` | `invariant` | `charts.13.001.invariant.panels_mounted` | `charts.panels_mounted` | `src/gui/main_window.py:1416` | every panel the fetch loop iterates is a widget really mounted in the scroll layout, asked of the layout rather than of the dict that built it |
+| `13-002` | `charts` | `postcondition` | `charts.13.002.postcondition.panel_symbols_current` | `charts.panel_symbols_current` | `src/gui/main_window.py:1425` | the symbol each panel stores -- the one `fetch_chart_data` hands the exchange -- is the symbol the status that just updated that panel carries |
+| `13-003` | `charts` | `postcondition` | `charts.13.003.postcondition.timeframe_rearmed` | `charts.timeframe_rearmed` | `src/gui/main_window.py:1461` | the panel the operator just retimed exists, holds the timeframe the fetch will read, and has had its throttle cleared |
+| `13-004` | `charts` | `postcondition` | `charts.13.004.postcondition.panel_refreshed` | `charts.panel_refreshed` | `src/gui/main_window.py:1582` | the candles the chart now holds are the candles THIS fetch returned, read off the chart, with the source attribution and the outcome beside the verdict and the fetch latency on the record |
+| `13-005` | `charts` | `invariant` | `charts.13.005.invariant.panels_fresh` | `charts.panels_fresh` | `src/gui/main_window.py:1617` | no panel has gone three throttle windows without a pass writing its `last_fetch`, counted over the panel dict so a panel the loop SKIPS cannot hide in its own silence |
 
 ## Planned names
 
@@ -809,6 +910,11 @@ or a hand-edited name breaks the agreement and fails the run.
 | `12-004` | `trading.12.004.postcondition.active_layer_alias` |
 | `12-005` | `trading.12.005.postcondition.activity_log_paused` |
 | `12-006` | `trading.12.006.postcondition.notification_relayed` |
+| `13-001` | `charts.13.001.invariant.panels_mounted` |
+| `13-002` | `charts.13.002.postcondition.panel_symbols_current` |
+| `13-003` | `charts.13.003.postcondition.timeframe_rearmed` |
+| `13-004` | `charts.13.004.postcondition.panel_refreshed` |
+| `13-005` | `charts.13.005.invariant.panels_fresh` |
 
 The longest name is 53 characters:
 `fleet.03.007.postcondition.positions_seeded_from_lots`. The shortest
