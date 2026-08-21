@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from ..core.safe_url import SafeRequest, safe_urlopen
 import asyncio
+import contextlib
 import logging
 import math
 import time
@@ -3726,6 +3727,69 @@ if _HAS_QT:
             top_splitter.addWidget(self._indicator_panel)
 
             top_splitter.setSizes([600, 500])
+
+            # 10.5 -- TRADING TAB ASSEMBLY.
+            #
+            # This tab computes nothing. It builds a structure and
+            # then makes claims about that structure in its own
+            # comments: two layer pages in one QStackedWidget,
+            # Crypto first and Stock second, the indicator panel to
+            # the right of the stack, and a legacy alias pointing at
+            # the layer the operator can actually see. Every claim
+            # is READ BACK OUT of the widget that now holds it. Not
+            # one of them echoes the call that made it: indexOf asks
+            # the stack and the splitter where a widget really sits,
+            # and currentIndex asks the stack what it really shows.
+            #
+            # _faults counts the claims that came back wrong, so the
+            # verdict is one number and the context names which
+            # claim produced it. actual is that count and expected
+            # is 0 -- different expressions, so the check can fail
+            # (E9).
+            #
+            # NO DURATION. Assembly is widget construction on the
+            # GUI thread with no bounded operation behind it, and a
+            # number here would be fabricated (E8).
+            _crypto_host = (self._crypto_tab_widget.parentWidget()
+                            if self._crypto_tab_widget else None)
+            _stock_host = (self._stock_tab_widget.parentWidget()
+                           if self._stock_tab_widget else None)
+            _alias_host = (self._tab_widget.parentWidget()
+                           if self._tab_widget else None)
+            _crypto_page = (self._trading_stack.indexOf(_crypto_host)
+                            if _crypto_host is not None else -1)
+            _stock_page = (self._trading_stack.indexOf(_stock_host)
+                           if _stock_host is not None else -1)
+            _alias_page = (self._trading_stack.indexOf(_alias_host)
+                           if _alias_host is not None else -1)
+            _visible_page = self._trading_stack.currentIndex()
+            _stack_slot = top_splitter.indexOf(self._trading_stack)
+            _panel_slot = top_splitter.indexOf(self._indicator_panel)
+            _faults = sum((
+                self._trading_stack.count() != 2,
+                _crypto_page != 0,
+                _stock_page != 1,
+                _stack_slot != 0,
+                _panel_slot != 1,
+                _alias_page != _visible_page,
+            ))
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _tr_emit
+                _tr_emit(
+                    "trading.12.001.postcondition.tab_assembled",
+                    actual=_faults, expected=0,
+                    context={"stack_pages": self._trading_stack.count(),
+                             "crypto_page": _crypto_page,
+                             "stock_page": _stock_page,
+                             "stack_slot": _stack_slot,
+                             "panel_slot": _panel_slot,
+                             "splitter_slots": top_splitter.count(),
+                             "alias_page": _alias_page,
+                             "visible_page": _visible_page,
+                             "chart_removed": self._chart is None,
+                             "equity_ids":
+                                 len(self._equity_exchange_ids)})
+
             main_splitter.addWidget(top_splitter)
 
             # Bottom section: spool + two symmetrical log panels
@@ -3764,7 +3828,38 @@ if _HAS_QT:
                                   if v is not None]
                         msg = " | ".join(parts) if parts else ""
                         if msg and self._log is not None:
+                            # 10.5 -- trading.12.006. The stub is
+                            # kept only for its signature, so the
+                            # one thing worth checking is that a
+                            # legacy notify still REACHES the
+                            # Activity Log instead of vanishing.
+                            # The document's own revision counter
+                            # answers that; the text does not.
+                            # Measured 2026-08-21: QTextEdit.append
+                            # renders a message holding a tag-like
+                            # fragment as rich text and drops it, so
+                            # a text comparison reports a healthy
+                            # append as lost. The 5000-block cap
+                            # breaks a block count the same way.
+                            # NO MESSAGE TEXT ENTERS THE CONTEXT --
+                            # a context is written to disk and a
+                            # notification carries operator data.
+                            _doc = self._log.document()
+                            _rev = _doc.revision()
                             self._log.append(f"[notification] {msg}")
+                            with contextlib.suppress(Exception):
+                                from src.core.signal_contract import (
+                                    emit as _tr_emit)
+                                _tr_emit(
+                                    "trading.12.006.postcondition"
+                                    ".notification_relayed",
+                                    actual=_doc.revision() != _rev,
+                                    expected=True,
+                                    context={
+                                        "parts": len(parts),
+                                        "chars": len(msg),
+                                        "blocks": _doc.blockCount(),
+                                        "revision": _doc.revision()})
                     except Exception:  # noqa: S110
                         pass   # sadp: R61 ACCEPT — notify stub must never raise
             # status_log is created a few lines below; defer _spool assignment
@@ -3811,6 +3906,25 @@ if _HAS_QT:
                 else:
                     self._status_log.resume()
                     self._activity_pause_btn.setText("⏸  Pause Console")
+                # 10.5 -- trading.12.005. The handler's whole job is
+                # to turn a button state into a log state, so the
+                # log's own state is what gets read back. A pause
+                # that never took returns as cleanly as one that
+                # did, and the operator only learns the difference
+                # when the errors he paused for scroll away.
+                # NO DURATION: a flag flip has no operation (E8).
+                with contextlib.suppress(Exception):
+                    from src.core.signal_contract import emit as _tr_emit
+                    _stats = self._status_log.health_stats()
+                    _tr_emit(
+                        "trading.12.005.postcondition"
+                        ".activity_log_paused",
+                        actual=_stats["paused"], expected=checked,
+                        context={"buffered": _stats["pause_buffer_size"],
+                                 "renders": _stats["total_renders"],
+                                 "render_errors":
+                                     _stats["render_errors"],
+                                 "blocks": _stats["document_blocks"]})
             self._activity_pause_btn.toggled.connect(
                 _on_activity_pause_toggled)
             activity_header_row.addWidget(self._activity_pause_btn)
@@ -5705,6 +5819,39 @@ if _HAS_QT:
             if target_tabs is self._exchange_tabs:
                 self._exchange_tabs[exchange_id] = tab
 
+            # 10.5 -- EXCHANGE TAB ROUTING.
+            #
+            # This is the Bot Swarm misroute in another building.
+            # Two layers take the same shape of argument, the
+            # routing decision is one boolean, and a tab added to
+            # the wrong layer returns exactly as cleanly as a tab
+            # added to the right one -- the operator finds out when
+            # a broker he configured is simply not on screen.
+            #
+            # So actual ASKS THE TWO LAYER WIDGETS which of them is
+            # holding the new tab, and reports none when neither is.
+            # expected is the layer this call was routed to. Neither
+            # reads target_widget, which is the argument that went
+            # in.
+            _landed = "none"
+            if self._stock_tab_widget.indexOf(tab) >= 0:
+                _landed = "stock"
+            elif self._crypto_tab_widget.indexOf(tab) >= 0:
+                _landed = "crypto"
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _tr_emit
+                _tr_emit(
+                    "trading.12.002.postcondition.exchange_tab_routed",
+                    actual=_landed,
+                    expected="stock" if is_equity else "crypto",
+                    context={"exchange": exchange_id,
+                             "stock_tabs": self._stock_tab_widget.count(),
+                             "crypto_tabs":
+                                 self._crypto_tab_widget.count(),
+                             "in_layer_store":
+                                 target_tabs.get(exchange_id) is tab,
+                             "placeholder_dropped": ph is not None})
+
         # --- v3.16.52 — Error-log capture + click-to-open dialog ----
         def _on_bot_error_for_log(self, event) -> None:
             """Capture bot.error events into a rolling buffer for the
@@ -7597,6 +7744,45 @@ if _HAS_QT:
                     "(Stock wing paused.)", "info")
             self._update_mode_btn_style()
 
+            # 10.5 -- THE LEGACY ALIAS TRACKS THE VISIBLE LAYER.
+            #
+            # _tab_widget, _exchange_tabs and _empty_placeholder are
+            # aliases repointed BY HAND in the two branches above.
+            # Nothing binds them to the stack. A branch that flips
+            # the stack and forgets an alias leaves the operator
+            # looking at one layer while every caller of the alias
+            # works on the other, and both sides return success.
+            #
+            # actual is the stack page that OWNS the alias widget,
+            # found with indexOf on the widget's real parent.
+            # expected is the page the stack really shows. The two
+            # branches assign neither, so this cannot echo them.
+            # The other two aliases ride in the context, checked by
+            # identity against the layer stores.
+            _alias_host = (self._tab_widget.parentWidget()
+                           if self._tab_widget else None)
+            _alias_page = (self._trading_stack.indexOf(_alias_host)
+                           if _alias_host is not None else -1)
+            _stock_wing = self._trading_mode == "stock"
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _tr_emit
+                _tr_emit(
+                    "trading.12.004.postcondition.active_layer_alias",
+                    actual=_alias_page,
+                    expected=self._trading_stack.currentIndex(),
+                    context={"mode": self._trading_mode,
+                             "tabs_alias_ok": self._exchange_tabs is (
+                                 self._stock_exchange_tabs if _stock_wing
+                                 else self._crypto_exchange_tabs),
+                             "placeholder_alias_ok":
+                                 self._empty_placeholder is (
+                                     self._stock_placeholder
+                                     if _stock_wing
+                                     else self._crypto_placeholder),
+                             "tabs_in_alias": self._tab_widget.count(),
+                             "stack_pages":
+                                 self._trading_stack.count()})
+
         def _update_mode_btn_style(self):
             """Update mode button and layer tab headers to reflect the active layer.
             Tab widget tinting is skipped if the stack hasn't been built yet
@@ -7656,11 +7842,17 @@ if _HAS_QT:
             """
             if not self._settings:
                 return
+            _wanted: list[str] = []
             for exch in self._settings.list_exchanges():
                 eid  = exch.get("exchange_id", "")
                 name = exch.get("display_name", eid.capitalize())
                 if not eid:
                     continue
+                # Collected HERE, from the read the loop already
+                # made. A second list_exchanges() for the pin below
+                # would be a second trip through stored exchange
+                # records for instrumentation alone.
+                _wanted.append(eid)
                 # Route to correct layer dict
                 target = (self._stock_exchange_tabs
                           if self._is_equity_exchange(eid)
@@ -7671,6 +7863,40 @@ if _HAS_QT:
                         f"Exchange tab added: {name} "
                         f"({'stock' if self._is_equity_exchange(eid) else 'crypto'} layer)",
                         "success")
+
+            # 10.5 -- EVERY CONFIGURED EXCHANGE REACHED A TAB BAR.
+            #
+            # The loop above adds a tab when the layer STORE lacks
+            # the id, so the store agreeing with the settings is the
+            # loop's own bookkeeping and proves nothing about what
+            # the operator sees. This walks the configured ids again
+            # and asks the LAYER TAB BAR whether it is really
+            # holding that exchange's tab. A store entry whose
+            # widget never reached the bar counts as missing.
+            _missing = 0
+            for _eid in _wanted:
+                if self._is_equity_exchange(_eid):
+                    _store = self._stock_exchange_tabs
+                    _bar = self._stock_tab_widget
+                else:
+                    _store = self._crypto_exchange_tabs
+                    _bar = self._crypto_tab_widget
+                _tab = _store.get(_eid)
+                if _tab is None or _bar.indexOf(_tab) < 0:
+                    _missing += 1
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _tr_emit
+                _tr_emit(
+                    "trading.12.003.postcondition"
+                    ".exchange_tabs_synced",
+                    actual=_missing, expected=0,
+                    context={"configured": len(_wanted),
+                             "crypto_bar": self._crypto_tab_widget.count(),
+                             "stock_bar": self._stock_tab_widget.count(),
+                             "crypto_store":
+                                 len(self._crypto_exchange_tabs),
+                             "stock_store":
+                                 len(self._stock_exchange_tabs)})
 
         def _refuse_extractor_without_parent(
             self, base_currency: str, exchange_id: str,

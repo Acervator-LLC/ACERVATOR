@@ -182,14 +182,14 @@ vocabulary on trust.
 
 | signal type | pins | source of the term | example pin |
 |---|---|---|---|
-| `postcondition` | 29 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
+| `postcondition` | 35 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
 | `invariant` | 8 | Hoare logic; design by contract (Meyer) | `ta.07.002.invariant.invariants` |
 | `event` | 5 | OpenTelemetry Events | `tick.08.001.event.throttled` |
 | `counter` | 2 | Prometheus / OpenTelemetry instrument types | `sim.06.004.counter.trades_fired` |
 | `gauge` | 2 | Prometheus / OpenTelemetry instrument types | `ytd.10.003.gauge.per_symbol_counts` |
 | `state_transition` | 2 | finite state machine theory | `sim.06.013.state_transition.mode_selected` |
 
-6 terms cover all 48 pins. No pin needed a coined
+6 terms cover all 54 pins. No pin needed a coined
 term.
 
 ### Telling the two assertion terms apart
@@ -266,7 +266,7 @@ out, rather than an aesthetic one.
 - `histogram`. No pin reports a distribution. Every numeric pin reports
   one scalar or one mapping.
 - `precondition`. No pin fires before an operation to check its entry
-  condition. All 48 fire during or after.
+  condition. All 54 fire during or after.
 - `error` and `fault`. The network emits on the success path by design,
   and a violated expectation is a verdict on an ordinary record, the
   `ok` field of `Signal`. A pin whose whole job was to announce a fault
@@ -291,6 +291,7 @@ change. Otherwise the checker rejects the row.
 | `topology` | `09` | 2 |
 | `ytd` | `10` | 3 |
 | `swarm` | `11` | 2 |
+| `trading` | `12` | 6 |
 
 ## What 10.4 repaired, and what it measured
 
@@ -620,9 +621,71 @@ string is the documented answer for a row with no matching bot, so
 nothing distinguishes a correct blank from a lookup that failed.
 A site with no readable result is not a pin.
 
+## The Trading tab, a container instrumented as one
+
+Queue item #10.5 instrumented the Trading tab, built inline in
+`src/gui/main_window.py`. The tab carried no pin at all. `trading` is
+subsystem `12`; `gui` (`04`) is not the tab subsystem, it holds one
+widget-fit pin in `indicator_panel.py`.
+
+THE TAB COMPUTES NOTHING. It builds a structure and wires it, so its
+postconditions are about WIRING BEING WHAT IT CLAIMS, not about
+arithmetic. Every one of the six reads its answer back out of the widget
+that now holds it -- `indexOf` on the stack, on the splitter and on the
+two layer tab bars, `currentIndex` on the stack, `health_stats` on the
+Activity Log, `revision` on its document. Not one reads the argument
+that went in.
+
+THE ALIAS IS THE REASON THE TAB NEEDED PINS. `_tab_widget`,
+`_exchange_tabs` and `_empty_placeholder` are aliases for whichever
+layer is visible, and `_toggle_trading_mode` repoints all three BY HAND
+beside the `setCurrentIndex` that moves the stack. Nothing binds the two
+halves. That is the shape `swarm.11.001` exists to catch: a wrong answer
+returns exactly as cleanly as a right one, and the operator finds out
+when a caller works on the layer he cannot see. `12-004` reports the
+stack page that OWNS the alias widget against the page the stack really
+shows, and carries the other two aliases in its context.
+
+THEY ARE TOGGLE PINS. NONE CARRIES A CADENCE EXPECTATION. `12-001` fires
+once, when the window builds. The other five fire when the operator
+acts -- adds an exchange, closes the Settings dialog, presses the mode
+button, presses Pause Console, or trips a call site that still notifies.
+No interval exists at which a healthy tab must be seen emitting, and no
+`every=` throttle rides on any of them. A monitor that read silence
+here as a stopped pin would report a normal session.
+
+NO PIN IN THIS TAB CARRIES A DURATION. Every site is a widget operation
+on the GUI thread with no bounded operation behind it. A number on any
+of them would be fabricated, which is worse than a missing one.
+
+NO CONTEXT IN THIS TAB CARRIES OPERATOR TEXT. A context is written to
+disk and the Trading tab handles exchange credentials, so the contexts
+hold counts, indexes and exchange ids only. `12-006` deliberately
+reports the LENGTH of a notification and never the message.
+
+Two of the eight candidate sites took no pin.
+
+- The `_spool` stub's WIRING, as distinct from its delivery. The stub is
+  built in `_setup_ui` and kept only for its `.notify()` signature. At
+  construction the only readable fact is that the assignment happened,
+  which is the argument going back out. The delivery is readable, and
+  that is where `12-006` sits instead.
+- The API Interaction Log's resume flush. The only read-back the flush
+  offers is `blockCount()`, and `setMaximumBlockCount(2000)` caps it
+  while Qt reuses the initial empty block at the other end, so the count
+  stops tracking the flush at both ends. An expectation built around
+  those two would be a claim about Qt's document, not about the flush.
+  Measured 2026-08-21 on the same class of defect: `QTextEdit.append`
+  renders a message holding a tag-like fragment as rich text, so a text
+  comparison reports a healthy append as lost. `12-006` reads the
+  document's `revision()` for that reason, which neither cap nor markup
+  can move.
+
+A site with no readable result is not a pin.
+
 ## The register
 
-One row per pin call site. 48 rows.
+One row per pin call site. 54 rows.
 
 | ID | subsystem | signal type | current name | previous name | source | observes |
 |---|---|---|---|---|---|---|
@@ -674,6 +737,12 @@ One row per pin call site. 48 rows.
 | `10-003` | `ytd` | `gauge` | `ytd.10.003.gauge.per_symbol_counts` | `ytd.per_symbol_counts` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1059` | how many year-to-date trades the panel holds per symbol |
 | `11-001` | `swarm` | `postcondition` | `swarm.11.001.postcondition.sim_run_registered` | `swarm.sim_run_registered` | `src/gui/bot_visualizer.py:2224` | the row stored under this sim id reports kind `sim`, so the registration landed in the layer it was addressed to |
 | `11-002` | `swarm` | `postcondition` | `swarm.11.002.postcondition.paper_run_registered` | `swarm.paper_run_registered` | `src/gui/bot_visualizer.py:2315` | the row stored under this paper id reports kind `paper` |
+| `12-001` | `trading` | `postcondition` | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:3778` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
+| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:5843` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
+| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:7889` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
+| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:7769` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
+| `12-005` | `trading` | `postcondition` | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:3919` | the Activity Log's own paused state agrees with the button the operator just pressed |
+| `12-006` | `trading` | `postcondition` | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:3853` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
 
 ## Planned names
 
@@ -734,6 +803,12 @@ or a hand-edited name breaks the agreement and fails the run.
 | `10-003` | `ytd.10.003.gauge.per_symbol_counts` |
 | `11-001` | `swarm.11.001.postcondition.sim_run_registered` |
 | `11-002` | `swarm.11.002.postcondition.paper_run_registered` |
+| `12-001` | `trading.12.001.postcondition.tab_assembled` |
+| `12-002` | `trading.12.002.postcondition.exchange_tab_routed` |
+| `12-003` | `trading.12.003.postcondition.exchange_tabs_synced` |
+| `12-004` | `trading.12.004.postcondition.active_layer_alias` |
+| `12-005` | `trading.12.005.postcondition.activity_log_paused` |
+| `12-006` | `trading.12.006.postcondition.notification_relayed` |
 
 The longest name is 53 characters:
 `fleet.03.007.postcondition.positions_seeded_from_lots`. The shortest
@@ -814,7 +889,7 @@ This register is wrong if any of the following holds.
   as FAIL, which would mean the checker cannot see the failure it
   exists to catch.
 - `python -m tools.harness.watchdog_archetype src` reports a wired pin
-  count other than 48, with no source change between the runs.
+  count other than 54, with no source change between the runs.
 - Two rows carry the same ID, or a row's ID does not match the format
   `NN-EEE`.
 - A pin's `current name` here differs from the string at the cited
