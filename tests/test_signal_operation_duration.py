@@ -36,6 +36,53 @@ from src.core.signal_contract import Signal, SignalSink, read_records
 SHORT_S = 0.005
 LONG_S = 0.030
 
+# HOW MANY TIMES EACH WORKLOAD IS MEASURED, and why the figure compared
+# is the MINIMUM of the samples rather than a single reading.
+#
+# A scheduling pause can only ADD to an elapsed-time reading. The
+# operating system can take the thread away inside the bracketed region
+# and hand it back later; it cannot hand back time that was never
+# spent. So every sample is the true cost plus non-negative noise, and
+# the smallest of several samples is the closest estimate of the true
+# cost this machine can give. Averaging would not do it -- an average
+# carries the noise it was given -- and raising the ratio would not do
+# it either, because the ratio is not what is wrong.
+#
+# WHY THE CLASS NEEDED IT. On 2026-08-19 the release gate went red on
+# the sibling of this test in tests/test_wires_received_duration.py:
+# one failure in a 7012-test run, with the same file passing 45 times
+# in isolation on the same commit. Reproduced 2026-08-20 by burning
+# 1.5 ms inside the SHORT measurement, which is where a real scheduler
+# pause would land. That is the whole failure: a single-sample
+# measurement of a small interval, taken once, on a loaded Windows box
+# with the live application trading.
+#
+# THIS SITE, MEASURED 2026-08-20, 60 single readings off the real
+# emitter: a 0.005 s compute recorded 0.0050007 s to 0.0050099 s and a
+# 0.030 s compute recorded 0.0300008 s to 0.0300244 s. The lever is what the bracket is asked to see, so
+# a pause of 10 ms inside the SHORT region is all it takes to close
+# a gap that reads as comfortable.
+SAMPLES = 5
+
+# THE FLOOR, and the measurement that says it is not optional.
+#
+# Move the stop clock above the work and the bracket spans nothing:
+# every reading collapses to the cost of two `time.monotonic()` calls,
+# and a ratio between two numbers that small is a coin flip rather than
+# a measurement. Measured 2026-08-20 with the stop clock planted above
+# the work at this exact site, 120 readings: every reading fell between 0.0 s and 3.0e-07 s. The bare ratio
+# ACCEPTED 2 of 30 pairs, and the minimum of five samples accepted 6 of 30.
+#
+# READ THAT SECOND FIGURE AGAIN. The minimum is the right estimator
+# against a stall and it does NOT close the dead-clock hole; at some
+# sites it widens it, because it drives the short reading to a hard
+# zero and any positive long reading then beats twice zero. The floor
+# is a SECOND rule, never an alternative to the first.
+#
+# Half the long lever separates the two populations by four orders of
+# magnitude without standing near either.
+LONG_FLOOR_S = LONG_S / 2.0
+
 
 def _busy_wait(seconds: float) -> None:
     """Burn a known interval on the monotonic clock.
@@ -62,6 +109,46 @@ def _tracks(short: Optional[float], long_: Optional[float]) -> bool:
 
 
 # ── the field itself ──────────────────────────────────────────────────
+
+
+def _tracks_the_operation(short: Optional[float],
+                            long_: Optional[float]) -> bool:
+    """Ask `_tracks`, then put a floor under the long reading.
+
+    This ADDS a condition and relaxes none: everything `_tracks`
+    refuses is still refused here. The floor is the thing a ratio
+    cannot do -- tell a real operation from a bracket that
+    measured two clock reads. See `LONG_FLOOR_S` for the harvested
+    dead-clock readings that set it, and
+    `test_the_site_predicate_rejects_a_bracket_that_spans_nothing`
+    for this predicate driven in the failing direction.
+    """
+    if short is None or long_ is None:
+        return False
+    if long_ < LONG_FLOOR_S:
+        return False
+    return _tracks(short, long_)
+
+
+def _fastest_probe(name: str, burn_s: float) -> Optional[float]:
+    """The lowest of `SAMPLES` self-timed brackets around `burn_s`.
+
+    Every sample is written to a sink and read back, so the value
+    compared still travelled through `emit`. The clock is never touched
+    and no recorded value is adjusted; the only thing added here is
+    repetition.
+    """
+    best: Optional[float] = None
+    for _ in range(SAMPLES):
+        sink = SignalSink()
+        t0 = time.monotonic()
+        _busy_wait(burn_s)
+        sink.emit(name, actual=1, duration=time.monotonic() - t0)
+        got = sink.records()[-1].duration
+        if got is None:
+            return None
+        best = got if best is None else min(best, got)
+    return best
 
 
 def test_an_emitter_that_measures_nothing_records_none_not_zero():
@@ -98,23 +185,21 @@ def test_duration_and_dt_are_independent_fields():
 
 
 def test_the_duration_tracks_two_different_known_intervals():
-    """THE control. Present-but-constant fails this; existence checks do not."""
-    sink = SignalSink()
+    """THE control. Present-but-constant fails this; existence checks do not.
 
-    t0 = time.monotonic()
-    _busy_wait(SHORT_S)
-    sink.emit("probe.99.010.postcondition.op", actual=1,
-              duration=time.monotonic() - t0)
+    Each interval is measured `SAMPLES` times and the MINIMUM of the
+    samples is compared. A pause inside one bracketed region inflates
+    that one sample and the minimum discards it. Nothing compared here
+    is relaxed: both sides are still real durations that travelled
+    through `emit`, and both must still clear the floor and the ratio.
+    """
+    short = _fastest_probe("probe.99.010.postcondition.op", SHORT_S)
+    long_ = _fastest_probe("probe.99.011.postcondition.op", LONG_S)
 
-    t0 = time.monotonic()
-    _busy_wait(LONG_S)
-    sink.emit("probe.99.011.postcondition.op", actual=1,
-              duration=time.monotonic() - t0)
-
-    short, long_ = (r.duration for r in sink.records()[-2:])
     assert short == pytest.approx(SHORT_S, abs=0.004), short
     assert long_ == pytest.approx(LONG_S, abs=0.010), long_
-    assert _tracks(short, long_), f"did not track: {short} vs {long_}"
+    assert _tracks_the_operation(short, long_), (
+        f"did not track: {short} vs {long_}")
 
 
 def test_the_tracking_predicate_rejects_a_constant_duration():
@@ -127,6 +212,38 @@ def test_the_tracking_predicate_rejects_a_constant_duration():
     assert not _tracks(None, None), "an absent duration must not read as tracking"
     assert not _tracks(0.03, 0.005), "going backwards must not read as tracking"
     assert _tracks(0.005, 0.030), "a real increase must read as tracking"
+
+
+def test_the_site_predicate_rejects_a_bracket_that_spans_nothing() -> None:
+    """The other half of the FLOOR, so it cannot pass while blind.
+
+    A new predicate needs its own falsifier. Each line below is one way
+    this site could be blinded while still handing the sink a
+    `duration` field of exactly the right shape.
+    """
+    assert not _tracks_the_operation(0.01, 0.01), (
+        "a constant duration must not read as tracking")
+    assert not _tracks_the_operation(None, LONG_S), (
+        "an absent duration must not read as tracking")
+    assert not _tracks_the_operation(SHORT_S, None), (
+        "an absent duration must not read as tracking")
+    assert not _tracks_the_operation(LONG_S, SHORT_S), (
+        "going backwards must not read as tracking")
+
+    # THE DEAD CLOCK, and the measured reason this site carries a floor
+    # the shared predicate does not. This pair is a real one, harvested
+    # 2026-08-20 with the stop clock planted above the work. `_tracks`
+    # accepts it. The floor rejects it. That is an addition to
+    # `_tracks`, never a relaxation of it.
+    assert _tracks(0.0, 3.0e-07), (
+        "the shared predicate is expected to accept a dead clock here")
+    assert not _tracks_the_operation(0.0, 3.0e-07), (
+        "a bracket that spans no work must not read as tracking")
+
+    # The honest pair measured off the real site, 2026-08-20, must
+    # still read as tracking.
+    assert _tracks_the_operation(0.0050007, 0.0300008), (
+        "the real measured pair must read as tracking")
 
 
 # ── persistence: a field the writer does not enumerate is a lost field ──
@@ -214,7 +331,8 @@ def test_ta_07_003_carries_a_duration_that_tracks_the_real_compute():
         engine = VotingEngine()
         for secs in (SHORT_S, LONG_S):
             engine._indicators = [_Burn(secs)]
-            engine.compute_all([], "1h")
+            for _ in range(SAMPLES):
+                engine.compute_all([], "1h")
     finally:
         # RESTORE THE PREVIOUS SINK, never None. `set_sink` is process-global
         # and ta_engine gates its whole instrumentation block on the sink
@@ -224,10 +342,15 @@ def test_ta_07_003_carries_a_duration_that_tracks_the_real_compute():
 
     computed = [r for r in sink.records()
                 if r.name == "ta.07.003.postcondition.computed"]
-    assert len(computed) == 2, computed
+    assert len(computed) == 2 * SAMPLES, computed
 
-    short, long_ = (r.duration for r in computed)
-    assert _tracks(short, long_), f"did not track the real compute: {short} vs {long_}"
+    # The MINIMUM of each workload's samples, for the reason recorded
+    # at `SAMPLES`: a pause can only ADD to an elapsed-time reading, so
+    # the smallest sample is the closest estimate of the real compute.
+    short = min(r.duration for r in computed[:SAMPLES])
+    long_ = min(r.duration for r in computed[SAMPLES:])
+    assert _tracks_the_operation(short, long_), (
+        f"did not track the real compute: {short} vs {long_}")
     assert short == pytest.approx(SHORT_S, abs=0.005), short
     assert long_ == pytest.approx(LONG_S, abs=0.015), long_
 
