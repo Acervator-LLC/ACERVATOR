@@ -1570,12 +1570,15 @@ if _HAS_QT:
                 # is the failure the operator cannot see.
                 #
                 # NO `every=` HERE, DELIBERATELY. The synchroniser keys
-                # on (name, site) and this single site serves every
-                # panel, so a throttle would admit one panel per window
-                # and drop the rest -- hiding which panel went stale,
-                # which is the only thing this pin is for. It is
-                # bounded already: the 30 s check at the top of the
-                # loop lets each panel past at most once per window.
+                # on (name, site) plus whatever `instance` the call
+                # site declares, and this single site serves every
+                # panel, so a throttle declaring no instance would
+                # admit one panel per window and drop the rest --
+                # hiding which panel went stale, which is the only
+                # thing this pin is for. It stays un-throttled rather
+                # than instanced because it is bounded already: the
+                # 30 s check at the top of the loop lets each panel
+                # past at most once per window.
                 _shown = len(
                     getattr(info["panel"].chart, "_candles", None) or [])
                 with contextlib.suppress(Exception):
@@ -3103,18 +3106,36 @@ if _HAS_QT:
             # either of these two as a stopped emitter. The three
             # operator-driven pins in this tab carry no such promise.
             #
-            # THE THROTTLE IS PER SITE, NOT PER EXCHANGE, AND THAT IS
-            # LOAD-BEARING. `signal_contract._throttle_admit` keys its
-            # window on (name, site) and `site` is `file:line`. One
-            # ExchangeTab exists per configured exchange, but all of
-            # them run THESE lines, so every tab shares one 30 s fold
-            # window. An admitted GREEN therefore names one exchange in
-            # its context and stands for `count` passes across all of
-            # them -- it is a record about that exchange, never a claim
-            # about the others. A FAILING check is never folded, so
-            # every exchange's own red arrives on its own record. The
-            # exchange id rides in context precisely so the two can be
-            # told apart.
+            # THE THROTTLE IS PER EXCHANGE, AND THAT IS LOAD-BEARING.
+            # `signal_contract._throttle_admit` keys its window on
+            # (name, site) plus the `instance` a call site declares,
+            # and `site` is `file:line`. One ExchangeTab exists per
+            # configured exchange and all of them run THESE lines, so
+            # the pair ALONE put every tab in ONE 30 s fold window:
+            # the first tab's pass was admitted and the rest
+            # folded into it. A green then named one exchange and stood
+            # for `count` passes across all of them, and a tab whose
+            # emitter had STOPPED was invisible -- two healthy tabs and
+            # one dead tab produced the same single record naming
+            # `coinbase` with `count` 1. Issue #57.
+            #
+            # `instance=self.exchange_id` PUTS THE EXCHANGE IN THE KEY.
+            # Each tab now holds its own window, so each admitted green
+            # is about the exchange it names and `count` is that
+            # exchange's own passes. Silence from one exchange is now a
+            # readable fact rather than another exchange's record
+            # covering for it, which is what item #14 reads.
+            #
+            # THE ID, NOT THE OBJECT. `id(self)` would leave a dead
+            # entry in a process-lifetime dict for every tab Qt
+            # destroys; the exchange id is the configuration, so a tab
+            # rebuilt for the same exchange reuses its window and the
+            # key space is bounded by the exchange count.
+            #
+            # A FAILING check is still never folded, so every
+            # exchange's own red arrives on its own record whatever the
+            # key is. The exchange id stays in context, where a reader
+            # sees it: the key is not written to the record.
             #
             # 15-002 ASKS THE WIDGETS, NOT THE LISTS. A status whose
             # `mode` is neither "scrumming" nor "extractor" is dropped
@@ -3205,6 +3226,7 @@ if _HAS_QT:
                     actual=_scrum_drawn + _ext_drawn,
                     expected=len(statuses),
                     every=30.0,
+                    instance=self.exchange_id,
                     context={"exchange": self.exchange_id,
                              "scrumming_rows": _scrum_drawn,
                              "extractor_rows": _ext_drawn,
@@ -3216,6 +3238,7 @@ if _HAS_QT:
                     "exchange.15.003.invariant.selection_survives_refresh",
                     actual=sum(_moved), expected=0,
                     every=30.0,
+                    instance=self.exchange_id,
                     context={"exchange": self.exchange_id,
                              "scrumming_selection_moved": _moved[0],
                              "extractor_selection_moved": _moved[1],

@@ -476,6 +476,16 @@ class Signal:
     kind: str = "check"
     # v3.24.90 — how many identical observations this record stands for
     # when the synchroniser has folded a loop's worth into one line.
+    #
+    # WHOSE OBSERVATIONS: the ones that share this record's throttle
+    # key, which is `(name, site)` plus the `instance` the call site
+    # declared. A pin that declares none pools every observation from
+    # that line, which is what this number has always meant on a loop.
+    # A pin that declares one — one `ExchangeTab` per configured
+    # exchange — counts THAT instance's own passes and nobody
+    # else's. Before `instance` existed the number pooled every live
+    # object running the line, so a green named one exchange and
+    # counted the others; it no longer does.
     count: int = 1
     # 10.3 — seconds since the previous emission of the SAME
     # (name, site) identity, taken from `time.monotonic()`.
@@ -1257,6 +1267,12 @@ class SignalSink:
         different things to a reader. `stats()` keys on the name alone
         and therefore merges them into one row; this does not, and
         neither does `timing()`.
+
+        THE THROTTLE ALSO KEYS ON AN `instance` A CALL SITE MAY
+        DECLARE, AND THIS MAP DOES NOT. Two live objects on one line
+        hold two fold windows and one identity here: the pair is what
+        this sink can see, and the id that tells the objects apart is
+        on the record's context rather than in `site`.
         """
         with self._lock:
             return tuple(sorted(self._seen))
@@ -1411,7 +1427,8 @@ _THROTTLE_LOCK = threading.Lock()
 _THROTTLE: dict = {}
 
 
-def _throttle_admit(name: str, site: str, every: float):
+def _throttle_admit(name: str, site: str, every: float,
+                    instance: Optional[str] = None):
     """Admit this observation, or fold it into the next one.
 
     Returns the number of observations the admitted record stands for
@@ -1420,10 +1437,32 @@ def _throttle_admit(name: str, site: str, every: float):
     Keyed by (name, site) rather than name alone: the same signal
     emitted from two places is two different things to a reader, and
     collapsing them would hide which one is firing.
+
+    `instance` IS THAT SAME RULE WHERE THE TWO THINGS SHARE ONE LINE.
+    Two objects of one class run the same `file:line`, so the pair
+    alone keys them together. Measured on two real `ExchangeTab`
+    objects, three refresh passes each: one record, naming one
+    exchange, `count` 1 -- and the identical record when the SECOND
+    tab's emitter was dead. A green stood for passes it had not seen
+    and a stopped instance was invisible. A pin with more than one live
+    instance now declares what makes its own distinct, and that value
+    joins the key.
+
+    IT IS AN EXPLICIT DECLARATION, NEVER OBJECT IDENTITY. `id(self)`
+    changes on every restart, so no window would survive one, and it
+    would leave a dead entry behind for every widget Qt destroys --
+    an unbounded key space in a dict nothing prunes. A CONFIGURED id
+    (an exchange id, a bot id) is stable across both, so the entry
+    count is bounded by the configuration and not by uptime. The
+    emitter already holds that id: `exchange.15.002` puts it in its
+    context for exactly this reason.
+
+    A pin that leaves `instance` at None keys as it always did, which
+    is why the pins with one live instance are untouched.
     """
     now = time.monotonic()
     with _THROTTLE_LOCK:
-        key = (name, site)
+        key = (name, site, None if instance is None else str(instance))
         last, pending = _THROTTLE.get(key, (None, 0))
         if last is not None and (now - last) < every:
             _THROTTLE[key] = (last, pending + 1)
@@ -1454,6 +1493,7 @@ def emit(name: str, actual: Any, expected: Any = None,
          ok: Optional[bool] = None,
          context: Optional[dict] = None,
          every: float = 0.0,
+         instance: Optional[str] = None,
          module: Optional[str] = None,
          duration: Optional[float] = None) -> Optional[Signal]:
     """Module-level emit — the universal connection point.
@@ -1462,6 +1502,14 @@ def emit(name: str, actual: Any, expected: Any = None,
     should not need a reference to anything. With no sink installed this
     is a dict lookup and a return, so instrumentation can live on a hot
     path and cost nothing when nobody is collecting.
+
+    `instance` NAMES WHICH OBJECT THIS OBSERVATION CAME FROM, and it
+    means something ONLY beside `every`. A rate-limited line run by
+    several live objects folds their passes together without it — see
+    `_throttle_admit`. It is not written to the record: the emitter
+    that knows the id already carries it in `context`, where a reader
+    can see it. Nothing else in this function reads it, so a pin
+    without `every` is unaffected whether it declares one or not.
     """
     sink = get_sink()
     if sink is None:
@@ -1476,9 +1524,14 @@ def emit(name: str, actual: Any, expected: Any = None,
         # Correct concern: a per-candle emitter on a 35-bot fleet fires
         # tens of thousands of times a run, and at that rate the file
         # is a cost rather than evidence. `every=N` admits one record
-        # per N seconds per (name, site) and folds the suppressed ones
-        # into the next record's `count`, so nothing is silently
-        # dropped -- the line says how many it stands for.
+        # per N seconds per (name, site, instance) and folds the
+        # suppressed ones into the next record's `count`, so nothing is
+        # silently dropped -- the line says how many it stands for.
+        #
+        # `instance` IS WHAT THE CALL SITE DECLARES ITS OBJECT BY, and
+        # a pin that omits it keys on the pair exactly as before. Two
+        # live objects on one line shared one window until this
+        # existed, so a green named one of them and stood for all.
         #
         # A FAILING check is NEVER suppressed. Rate-limiting the thing
         # you built the network to catch is how a spam control becomes
@@ -1486,7 +1539,7 @@ def emit(name: str, actual: Any, expected: Any = None,
         _judged = ok if ok is not None else (
             bool(actual == expected) if expected is not None else None)
         if _judged is not False:
-            _n = _throttle_admit(name, _site, float(every))
+            _n = _throttle_admit(name, _site, float(every), instance)
             if _n is None:
                 return None
             return sink.emit(name, actual, expected=expected, ok=ok,

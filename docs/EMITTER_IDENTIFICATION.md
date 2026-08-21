@@ -157,6 +157,15 @@ limit on `(name, site)` and says why: "the same signal emitted from two
 places is two different things to a reader, and collapsing them would
 hide which one is firing." The registry uses the same identity.
 
+ISSUE #57 ADDED A THIRD ELEMENT TO THE THROTTLE KEY AND NOT TO THIS
+ONE. Two objects of one class run the same `file:line`, so the pair
+folded their passes together; a rate-limited pin with more than one live
+instance now declares an `instance` and the throttle keys on
+`(name, site, instance)`. The registry identity is still `(file, name)`:
+those two objects are ONE pin at ONE call site, and they are told apart
+on the record by the id the context already carries, not by a second
+registry row.
+
 One consequence is worth stating. `SignalSink.stats` groups by name
 alone, so before 10.2 it merged those two sites into one row and
 reported a single `site` for both. The two names now differ, so the
@@ -759,10 +768,12 @@ inside one session. 30 s is the tab's own per-panel fetch window, so one
 admitted record stands for one window and `count` says how many passes
 it covers. A FAILING check is never suppressed by the synchroniser.
 `13-004` deliberately carries NO throttle: the synchroniser keys on
-(name, site) and that one site serves every panel, so a throttle there
-would admit one panel per window and drop the rest -- hiding which panel
-went stale, which is the only thing the pin is for. It is bounded
-already by the tab's own 30 s check.
+(name, site) plus whatever `instance` the call site declares, and that
+one site serves every panel, so a throttle declaring no instance would
+admit one panel per window and drop the rest -- hiding which panel went
+stale, which is the only thing the pin is for. It stays un-throttled
+rather than instanced because it is bounded already by the tab's own
+30 s check.
 
 WHAT THE TAB HIDES. `fetch_chart_data` has three outcomes. On candles it
 calls `set_candles` then `set_source(source)`; on an empty answer it
@@ -1155,17 +1166,40 @@ finger presses a button and at no other time, so silence from any of
 them says nothing about the tab's health. None carries a throttle: the
 operator's finger is the rate limit.
 
-THE THROTTLE IS PER SITE, NOT PER EXCHANGE, AND THE MULTIPLICITY MAKES
-THAT MATTER. `signal_contract._throttle_admit` keys its window on
-`(name, site)` and `site` is `file:line`. Every ExchangeTab runs the
-same two lines, so all of them share ONE 30 s fold window. An admitted
-GREEN therefore names one exchange in its context and stands for
-`count` passes across all of them: it is a record about that exchange,
-never a claim about the others. A FAILING check is never folded, so
-every exchange's own red arrives on its own record. That property is
-driven rather than asserted --
-`test_a_red_from_every_exchange_survives_the_shared_window` runs two
-tabs through one window with both failing and reads two records back.
+THE THROTTLE IS PER EXCHANGE, AND THE MULTIPLICITY IS WHY.
+`signal_contract._throttle_admit` keys its window on `(name, site)` and
+`site` is `file:line`. Every ExchangeTab runs the same two lines, so the
+pair alone put all of them in ONE 30 s fold window: an admitted GREEN
+named one exchange in its context and stood for `count` passes across
+all of them, and an exchange whose emitter had STOPPED was invisible
+behind another exchange's green. Driven on the unrepaired tree with two
+real tabs and three refresh passes each: both healthy and second-tab-
+dead produced the same one record, naming `coinbase`, `count` 1.
+
+ISSUE #57 PUT THE EXCHANGE IN THE KEY. Both pins pass
+`instance=self.exchange_id`, so the window is keyed on
+`(name, site, exchange)` and each tab holds its own. An admitted green
+is now about the exchange it names and `count` is that exchange's own
+passes -- it was never a claim about the others and it no longer counts
+them either. Silence from one exchange survives the other exchanges'
+records, which is what item #14 reads.
+
+THE KEY IS THE CONFIGURED ID, NOT THE OBJECT. `id(self)` would change on
+every restart and leave a dead entry in a process-lifetime dict for
+every tab Qt destroys. Measured: 600 tabs built and destroyed over three
+exchange ids gave 600 distinct `id(self)` and 6 `_THROTTLE` entries.
+
+A FAILING check is still never folded, so every exchange's own red
+arrives on its own record whatever the key is. Both properties are
+driven rather than asserted.
+`test_a_red_is_never_folded_inside_one_exchange_window` drives three
+failing passes through ONE tab and one window -- where the per-exchange
+key cannot explain the result -- and reads three records back;
+`test_a_red_from_every_exchange_arrives_on_its_own_record` runs two
+tabs with both failing and reads two.
+`test_the_two_drives_do_not_read_the_same` runs the healthy pair and
+the stopped-emitter pair and asserts the record sets DIFFER, which is
+the whole of issue #57 in one assertion.
 
 ### Sites refused in the Exchange tab, and the reason for each
 
@@ -1442,32 +1476,32 @@ One row per pin call site. 74 rows.
 | `10-003` | `ytd` | `gauge` | `ytd.10.003.gauge.per_symbol_counts` | `ytd.per_symbol_counts` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1059` | how many year-to-date trades the panel holds per symbol |
 | `11-001` | `swarm` | `postcondition` | `swarm.11.001.postcondition.sim_run_registered` | `swarm.sim_run_registered` | `src/gui/bot_visualizer.py:2224` | the row stored under this sim id reports kind `sim`, so the registration landed in the layer it was addressed to |
 | `11-002` | `swarm` | `postcondition` | `swarm.11.002.postcondition.paper_run_registered` | `swarm.paper_run_registered` | `src/gui/bot_visualizer.py:2315` | the row stored under this paper id reports kind `paper` |
-| `12-001` | `trading` | `postcondition` | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:4666` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
-| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:7006` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
-| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:9054` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
-| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:8933` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
-| `12-005` | `trading` | `postcondition` | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:4809` | the Activity Log's own paused state agrees with the button the operator just pressed |
-| `12-006` | `trading` | `postcondition` | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:4742` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
+| `12-001` | `trading` | `postcondition` | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:4689` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
+| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:7029` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
+| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:9077` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
+| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:8956` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
+| `12-005` | `trading` | `postcondition` | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:4832` | the Activity Log's own paused state agrees with the button the operator just pressed |
+| `12-006` | `trading` | `postcondition` | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:4765` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
 | `13-001` | `charts` | `invariant` | `charts.13.001.invariant.panels_mounted` | `charts.panels_mounted` | `src/gui/main_window.py:1417` | every panel the fetch loop iterates is a widget really mounted in the scroll layout, asked of the layout rather than of the dict that built it |
 | `13-002` | `charts` | `postcondition` | `charts.13.002.postcondition.panel_symbols_current` | `charts.panel_symbols_current` | `src/gui/main_window.py:1426` | the symbol each panel stores -- the one `fetch_chart_data` hands the exchange -- is the symbol the status that just updated that panel carries |
 | `13-003` | `charts` | `postcondition` | `charts.13.003.postcondition.timeframe_rearmed` | `charts.timeframe_rearmed` | `src/gui/main_window.py:1462` | the panel the operator just retimed exists, holds the timeframe the fetch will read, and has had its throttle cleared |
-| `13-004` | `charts` | `postcondition` | `charts.13.004.postcondition.panel_refreshed` | `charts.panel_refreshed` | `src/gui/main_window.py:1583` | the candles the chart now holds are the candles THIS fetch returned, read off the chart, with the source attribution and the outcome beside the verdict and the fetch latency on the record |
-| `13-005` | `charts` | `invariant` | `charts.13.005.invariant.panels_fresh` | `charts.panels_fresh` | `src/gui/main_window.py:1618` | no panel has gone three throttle windows without a pass writing its `last_fetch`, counted over the panel dict so a panel the loop SKIPS cannot hide in its own silence |
-| `14-001` | `console` | `invariant` | `console.14.001.invariant.records_rendered` | `console.records_rendered` | `src/gui/main_window.py:6024` | every record the watermark consumed reached the signals pane, counted off the drain's own ledger, so the records the `[-200:]` slice throws away after the watermark has already moved past them are counted rather than lost in silence |
-| `14-002` | `console` | `invariant` | `console.14.002.invariant.view_holds_rendered` | `console.view_holds_rendered` | `src/gui/main_window.py:6035` | the signals pane really holds the window the drain wrote into it, asked of the widget's own block count against the ledger clamped by the pane's own cap, with the number of lines the cap has evicted beside the verdict |
-| `14-003` | `console` | `invariant` | `console.14.003.invariant.drain_alive` | `console.drain_alive` | `src/gui/main_window.py:6044` | the 500 ms drain ran at least once since the previous look, counted OUTSIDE the drain so a stopped timer is distinguishable from a quiet sink -- the one fault a pin inside the drain can never report |
-| `14-004` | `console` | `postcondition` | `console.14.004.postcondition.pause_quiets_both_panes` | `console.pause_quiets_both_panes` | `src/gui/main_window.py:5897` | the flag `_drain_signals` gates on agrees with the Pause button the operator just pressed, so the button's claim to quiet both panes is asked of the pane that is supposed to go quiet |
-| `14-005` | `console` | `postcondition` | `console.14.005.postcondition.pause_buffer_delivered` | `console.pause_buffer_delivered` | `src/gui/main_window.py:5926` | the console pane's own block count after a resume is the count it held plus every line the pause buffer was holding, so a delivery the pane's block cap eats is reported instead of vanishing, with how long the resume took on the record |
-| `15-001` | `exchange` | `postcondition` | `exchange.15.001.postcondition.command_routed_to_chosen_table` | `exchange.command_routed_to_chosen_table` | `src/gui/main_window.py:3063` | the table that really supplied the bot id about to be commanded is the table the operator last chose, read back out of both tables' current selections rather than from the branch that picked it, so the fallback hijack MEM-408 records is reported instead of returning as cleanly as a correct route |
-| `15-002` | `exchange` | `invariant` | `exchange.15.002.invariant.every_bot_reaches_a_table` | `exchange.every_bot_reaches_a_table` | `src/gui/main_window.py:3203` | every status handed to the tab is a row the operator can actually read, counted off the two tables' own column-0 items, so a bot dropped by both mode filters and a blank row left behind by a skipped render are both visible |
-| `15-003` | `exchange` | `invariant` | `exchange.15.003.invariant.selection_survives_refresh` | `exchange.selection_survives_refresh` | `src/gui/main_window.py:3215` | the bot under the operator's highlight after the dashboard re-renders the tables is the bot that was under it before, so a reordered fleet list silently moving the selection onto a different bot is reported rather than waiting for the next command to discover it |
-| `15-004` | `exchange` | `postcondition` | `exchange.15.004.postcondition.privacy_applied_to_every_field` | `exchange.privacy_applied_to_every_field` | `src/gui/main_window.py:3279` | every field the registry declares really reads back at the state the one-shot toggle asked for, so a partial apply that leaves values exposed is reported rather than swallowed by a persist that never raises |
-| `15-005` | `exchange` | `postcondition` | `exchange.15.005.postcondition.privacy_button_matches_registry` | `exchange.privacy_button_matches_registry` | `src/gui/main_window.py:3329` | the Privacy Mode button's own text agrees with an independent read of the registry, so a button that says OFF over a fully masked screen is reported instead of being trusted during a screen share |
-| `16-001` | `apitest` | `postcondition` | `apitest.16.001.postcondition.label_matches_session` | `apitest.label_matches_session` | `src/gui/main_window.py:3677` | a session really exists whenever the connection label says Connected, asked of the connector reference, the tab's flag and the connector's own `_ex` handle, so a connect that painted the label and holds nothing is reported; the `sync_connect` bracket is the duration and no credential of any kind reaches the record |
-| `16-002` | `apitest` | `postcondition` | `apitest.16.002.postcondition.session_released` | `apitest.session_released` | `src/gui/main_window.py:3790` | the authenticated session was really released whenever the label reads Disconnected, so a close that raised -- which drops the connector reference anyway and leaves an open session nothing can reach -- is reported with the error's CLASS name and never its message |
-| `16-003` | `apitest` | `postcondition` | `apitest.16.003.postcondition.reported_ok_ran_a_test` | `apitest.reported_ok_ran_a_test` | `src/gui/main_window.py:3902` | an arm of the dispatch chain really ran whenever the headline reads `<test> OK`, read off the result object's identity against the headline taken back out of the label widget, so the unrecognised-name arm that answers with an empty dict and still logs a pass is reported |
-| `16-004` | `apitest` | `postcondition` | `apitest.16.004.postcondition.green_probe_read_a_body` | `apitest.green_probe_read_a_body` | `src/gui/main_window.py:4153` | every probe that reported HTTP success carried bytes off the socket, counted over the sweep, so an endpoint that answers 200 with an empty body is told apart from one that returned the payload the operator is looking for; the sweep is the duration |
-| `16-005` | `apitest` | `postcondition` | `apitest.16.005.postcondition.indicator_is_mappable` | `apitest.indicator_is_mappable` | `src/gui/main_window.py:4249` | the status word the venue's document carried is one the tab can map, read back out of the parsed body and capped at 32 characters, so a missing or renamed field -- which the tab paints as an outage the venue never declared -- is reported instead of trusted |
+| `13-004` | `charts` | `postcondition` | `charts.13.004.postcondition.panel_refreshed` | `charts.panel_refreshed` | `src/gui/main_window.py:1586` | the candles the chart now holds are the candles THIS fetch returned, read off the chart, with the source attribution and the outcome beside the verdict and the fetch latency on the record |
+| `13-005` | `charts` | `invariant` | `charts.13.005.invariant.panels_fresh` | `charts.panels_fresh` | `src/gui/main_window.py:1621` | no panel has gone three throttle windows without a pass writing its `last_fetch`, counted over the panel dict so a panel the loop SKIPS cannot hide in its own silence |
+| `14-001` | `console` | `invariant` | `console.14.001.invariant.records_rendered` | `console.records_rendered` | `src/gui/main_window.py:6047` | every record the watermark consumed reached the signals pane, counted off the drain's own ledger, so the records the `[-200:]` slice throws away after the watermark has already moved past them are counted rather than lost in silence |
+| `14-002` | `console` | `invariant` | `console.14.002.invariant.view_holds_rendered` | `console.view_holds_rendered` | `src/gui/main_window.py:6058` | the signals pane really holds the window the drain wrote into it, asked of the widget's own block count against the ledger clamped by the pane's own cap, with the number of lines the cap has evicted beside the verdict |
+| `14-003` | `console` | `invariant` | `console.14.003.invariant.drain_alive` | `console.drain_alive` | `src/gui/main_window.py:6067` | the 500 ms drain ran at least once since the previous look, counted OUTSIDE the drain so a stopped timer is distinguishable from a quiet sink -- the one fault a pin inside the drain can never report |
+| `14-004` | `console` | `postcondition` | `console.14.004.postcondition.pause_quiets_both_panes` | `console.pause_quiets_both_panes` | `src/gui/main_window.py:5920` | the flag `_drain_signals` gates on agrees with the Pause button the operator just pressed, so the button's claim to quiet both panes is asked of the pane that is supposed to go quiet |
+| `14-005` | `console` | `postcondition` | `console.14.005.postcondition.pause_buffer_delivered` | `console.pause_buffer_delivered` | `src/gui/main_window.py:5949` | the console pane's own block count after a resume is the count it held plus every line the pause buffer was holding, so a delivery the pane's block cap eats is reported instead of vanishing, with how long the resume took on the record |
+| `15-001` | `exchange` | `postcondition` | `exchange.15.001.postcondition.command_routed_to_chosen_table` | `exchange.command_routed_to_chosen_table` | `src/gui/main_window.py:3066` | the table that really supplied the bot id about to be commanded is the table the operator last chose, read back out of both tables' current selections rather than from the branch that picked it, so the fallback hijack MEM-408 records is reported instead of returning as cleanly as a correct route |
+| `15-002` | `exchange` | `invariant` | `exchange.15.002.invariant.every_bot_reaches_a_table` | `exchange.every_bot_reaches_a_table` | `src/gui/main_window.py:3224` | every status handed to the tab is a row the operator can actually read, counted off the two tables' own column-0 items, so a bot dropped by both mode filters and a blank row left behind by a skipped render are both visible |
+| `15-003` | `exchange` | `invariant` | `exchange.15.003.invariant.selection_survives_refresh` | `exchange.selection_survives_refresh` | `src/gui/main_window.py:3237` | the bot under the operator's highlight after the dashboard re-renders the tables is the bot that was under it before, so a reordered fleet list silently moving the selection onto a different bot is reported rather than waiting for the next command to discover it |
+| `15-004` | `exchange` | `postcondition` | `exchange.15.004.postcondition.privacy_applied_to_every_field` | `exchange.privacy_applied_to_every_field` | `src/gui/main_window.py:3302` | every field the registry declares really reads back at the state the one-shot toggle asked for, so a partial apply that leaves values exposed is reported rather than swallowed by a persist that never raises |
+| `15-005` | `exchange` | `postcondition` | `exchange.15.005.postcondition.privacy_button_matches_registry` | `exchange.privacy_button_matches_registry` | `src/gui/main_window.py:3352` | the Privacy Mode button's own text agrees with an independent read of the registry, so a button that says OFF over a fully masked screen is reported instead of being trusted during a screen share |
+| `16-001` | `apitest` | `postcondition` | `apitest.16.001.postcondition.label_matches_session` | `apitest.label_matches_session` | `src/gui/main_window.py:3700` | a session really exists whenever the connection label says Connected, asked of the connector reference, the tab's flag and the connector's own `_ex` handle, so a connect that painted the label and holds nothing is reported; the `sync_connect` bracket is the duration and no credential of any kind reaches the record |
+| `16-002` | `apitest` | `postcondition` | `apitest.16.002.postcondition.session_released` | `apitest.session_released` | `src/gui/main_window.py:3813` | the authenticated session was really released whenever the label reads Disconnected, so a close that raised -- which drops the connector reference anyway and leaves an open session nothing can reach -- is reported with the error's CLASS name and never its message |
+| `16-003` | `apitest` | `postcondition` | `apitest.16.003.postcondition.reported_ok_ran_a_test` | `apitest.reported_ok_ran_a_test` | `src/gui/main_window.py:3925` | an arm of the dispatch chain really ran whenever the headline reads `<test> OK`, read off the result object's identity against the headline taken back out of the label widget, so the unrecognised-name arm that answers with an empty dict and still logs a pass is reported |
+| `16-004` | `apitest` | `postcondition` | `apitest.16.004.postcondition.green_probe_read_a_body` | `apitest.green_probe_read_a_body` | `src/gui/main_window.py:4176` | every probe that reported HTTP success carried bytes off the socket, counted over the sweep, so an endpoint that answers 200 with an empty body is told apart from one that returned the payload the operator is looking for; the sweep is the duration |
+| `16-005` | `apitest` | `postcondition` | `apitest.16.005.postcondition.indicator_is_mappable` | `apitest.indicator_is_mappable` | `src/gui/main_window.py:4272` | the status word the venue's document carried is one the tab can map, read back out of the parsed body and capped at 32 characters, so a missing or renamed field -- which the tab paints as an outage the venue never declared -- is reported instead of trusted |
 
 ## Planned names
 
