@@ -93,12 +93,24 @@ _CALL_SITES: tuple[tuple[str, dict], ...] = (
     # every other emitter site in this repo does, precisely so that the
     # only thing moving these two numbers is code inside the tab.
     #
+    # THE MOVE FROM :3918 AND :4063 IS THE ONE REPAIR ABOVE THEM. The
+    # guard that stopped `apitest.16.002`'s context read from adding a
+    # precondition to `_do_disconnect` sits in that method, which is
+    # ABOVE BOTH CALLS, so this time a single offset of sixteen lines
+    # covers both -- unlike the unit before it, where the inserts
+    # straddled the first call. That is a fact about where the change
+    # landed, not a rule: both numbers were read again from
+    # `grep -n "safe_urlopen(" src/gui/main_window.py`, which still
+    # returns exactly these two lines. Neither call moved in the
+    # source and neither kwarg shape changed.
+    #
     # Earlier notes here recorded the move from :3244 and :3342 on
     # 2026-08-13 (the IVP persistence unit, twelve lines), from :3256
-    # and :3354 (the Asset Charts emitter unit, 204 lines) and from
-    # :3460 and :3558 (the Exchange tab emitter unit, 267 lines).
-    ("src/gui/main_window.py:3918", {"timeout": 10, "context": None}),
-    ("src/gui/main_window.py:4063", {"timeout": 10}),
+    # and :3354 (the Asset Charts emitter unit, 204 lines), from
+    # :3460 and :3558 (the Exchange tab emitter unit, 267 lines) and
+    # from :3727 and :3825 (the API Tester emitter unit, 191 and 238).
+    ("src/gui/main_window.py:3934", {"timeout": 10, "context": None}),
+    ("src/gui/main_window.py:4079", {"timeout": 10}),
 )
 _CALL_IDS = [site for site, _ in _CALL_SITES]
 _CALL_KWARGS = [kwargs for _, kwargs in _CALL_SITES]

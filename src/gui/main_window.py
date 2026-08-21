@@ -3569,7 +3569,24 @@ if _HAS_QT:
             # it changed: it was already initialised to None there,
             # and the pin below has to be able to read it when there
             # was no connector to close.
-            _eid = self._exchange.currentData()
+            #
+            # THE CONTEXT READ IS GUARDED AND THE VERDICT IS NOT.
+            # `_exchange` is the ONE attribute this pin needs that the
+            # method did not need before it, so reading it bare turned
+            # instrumentation into a PRECONDITION ON THE HOST: a caller
+            # that binds this method onto an object without that widget
+            # used to run and would now raise AttributeError. A pin may
+            # never make its host need more than it did -- the same
+            # rule `emit` itself follows. The guard covers the whole
+            # read, a missing attribute and a deleted C++ widget alike,
+            # and the cost of a miss is ONE CONTEXT FIELD falling to
+            # None. `actual`, `expected`, `ok` and the duration do not
+            # read it, so on a real tab -- which has the widget -- the
+            # record is byte for byte the one it was.
+            import contextlib
+            _eid = None
+            with contextlib.suppress(Exception):
+                _eid = self._exchange.currentData()
             _held = self._connector is not None
             _close_s = None
             failure = None
@@ -3643,7 +3660,6 @@ if _HAS_QT:
                          and not self._connected)
             _claims_closed = self._conn_status.text().startswith(
                 "Disconnected")
-            import contextlib
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _api_emit
                 _api_emit(
