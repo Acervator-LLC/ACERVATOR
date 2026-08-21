@@ -2897,10 +2897,79 @@ if _HAS_QT:
                     self._status_log.log(
                         "Select a bot first.", "warning")
                 return
+            # 10.8 -- exchange.15.001, AND IT IS THE HIGHEST-STAKES SITE
+            # IN THE TAB. A command that lands on the wrong bot is a
+            # real-money action on the wrong asset, and it has already
+            # happened in this function: MEM-408, recorded in the
+            # comment above.
+            #
+            # THE v3.20.62 FIX REVERSED THE PREFERENCE AND KEPT THE
+            # FALLBACK. When the preferred table holds no selection the
+            # branches above take the OTHER table's, so a stale
+            # selection still supplies the target. The reachable path,
+            # driven in tests rather than argued: the operator selects
+            # a Scrumming row, then clicks an Extractor row's Detail
+            # button. A click on a cell WIDGET changes no row
+            # selection, so `_extractor_clicked` flips
+            # `_last_clicked_table` to "extractor" while the Scrumming
+            # selection stands untouched. Start / Pause / Stop /
+            # Restart / Delete then falls back and hijacks that
+            # Scrumming bot -- MEM-408 again, in the direction the fix
+            # opened.
+            #
+            # `expected` IS THE TABLE THE OPERATOR CHOSE. `actual` IS
+            # READ BACK OUT OF THE TABLES: the id about to be
+            # dispatched is matched against each table's CURRENT
+            # selection, so the record says which table really supplied
+            # it. The `command` argument is never echoed as a result --
+            # it rides in `context`, because a misrouted `delete` is
+            # not a misrouted `pause`.
+            #
+            # NO BOT ID ANYWHERE. A bot id is operator-chosen text that
+            # the privacy registry masks in this very table, and a
+            # context is written to disk. Table names, a fixed command
+            # vocabulary and booleans only.
+            #
+            # NO DURATION (E8): nothing has run yet. The record is
+            # written BEFORE the dispatch, so a command that raises
+            # still leaves its routing on the record.
+            #
+            # NO `every=`: the operator's finger is the cadence, so
+            # silence here says nothing about the tab's health. Only
+            # 15-002 and 15-003 may be read that way.
+            _chosen = self._last_clicked_table
+            _scrum_sel = self._bot_table.get_selected_bot_id()
+            _ext_sel = self._extractor_table.get_selected_bot_id()
+            if _chosen == "extractor":
+                _from = ("extractor" if bot_id == _ext_sel
+                         else "scrumming" if bot_id == _scrum_sel
+                         else "neither")
+            else:
+                _from = ("scrumming" if bot_id == _scrum_sel
+                         else "extractor" if bot_id == _ext_sel
+                         else "neither")
+            import contextlib
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _ex_emit
+                _ex_emit(
+                    "exchange.15.001.postcondition.command_routed_to_chosen_table",
+                    actual=_from, expected=_chosen,
+                    context={"exchange": self.exchange_id,
+                             "command": command,
+                             "scrumming_selected": bool(_scrum_sel),
+                             "extractor_selected": bool(_ext_sel),
+                             "fell_back": _from != _chosen})
             if self._on_bot_cmd:
                 self._on_bot_cmd(bot_id, command)
 
         def update_bots(self, statuses: list[dict]) -> None:
+            # 10.8 -- READ BEFORE THE RE-RENDER, for exchange.15.003.
+            # Once `setRowCount` and `setItem` have run there is no way
+            # back to which bot the operator's highlight was on, so the
+            # two ids are taken here, off the widgets, before anything
+            # touches them.
+            _sel_before = (self._bot_table.get_selected_bot_id(),
+                           self._extractor_table.get_selected_bot_id())
             # v3.20.5 — pre-filter by mode and route to the correct
             # table. Hide a section if its list is empty so the
             # dashboard doesn't show an empty-table header.
@@ -2916,6 +2985,122 @@ if _HAS_QT:
             self._bot_table.setVisible(bool(scrum_statuses))
             self._extractor_label.setVisible(bool(extractor_statuses))
             self._extractor_table.setVisible(bool(extractor_statuses))
+            # 10.8 -- exchange.15.002 and exchange.15.003. THIS IS THE
+            # TAB'S ONLY CADENCE SITE. `_setup_refresh_timer` starts a
+            # 2000 ms QTimer on `_refresh_dashboard`, which calls this
+            # method once for EVERY exchange tab on every tick;
+            # `refresh_all_privacy_widgets` calls it once more per tab
+            # on a privacy toggle. Item #14 may read silence from
+            # either of these two as a stopped emitter. The three
+            # operator-driven pins in this tab carry no such promise.
+            #
+            # THE THROTTLE IS PER SITE, NOT PER EXCHANGE, AND THAT IS
+            # LOAD-BEARING. `signal_contract._throttle_admit` keys its
+            # window on (name, site) and `site` is `file:line`. One
+            # ExchangeTab exists per configured exchange, but all of
+            # them run THESE lines, so every tab shares one 30 s fold
+            # window. An admitted GREEN therefore names one exchange in
+            # its context and stands for `count` passes across all of
+            # them -- it is a record about that exchange, never a claim
+            # about the others. A FAILING check is never folded, so
+            # every exchange's own red arrives on its own record. The
+            # exchange id rides in context precisely so the two can be
+            # told apart.
+            #
+            # 15-002 ASKS THE WIDGETS, NOT THE LISTS. A status whose
+            # `mode` is neither "scrumming" nor "extractor" is dropped
+            # by BOTH comprehensions above and reaches no table at all,
+            # and a status that does reach `BotStatusTable.update_bots`
+            # with the wrong mode is `continue`d after `setRowCount`
+            # has already made its row -- leaving a blank row that
+            # `rowCount()` counts and the operator cannot read. Both
+            # losses are silent. Counting rows that really carry a
+            # column-0 item sees both; counting the argument would see
+            # neither. Today only the first is reachable THROUGH this
+            # tab, because the comprehensions above are the filter; the
+            # measure is held against the second by a direct control on
+            # `BotStatusTable` in the tests.
+            #
+            # THE SECTION-VISIBILITY COMPARISON WAS REFUSED. The four
+            # `setVisible` calls above take `bool(...)` of the same two
+            # lists the rows are rendered from, so a pin asking whether
+            # a section is shown exactly when it has rows can only vary
+            # through the blank-row path 15-002 already reports -- one
+            # defect counted twice, and a second green that moves only
+            # when the first one does. The visible state is carried in
+            # 15-003's context as a pair of row counts instead, where a
+            # reader can see it without a verdict resting on it.
+            #
+            # 15-003 IS THE SECOND MISROUTE, AND THIS TICK CAUSES IT.
+            # A Qt selection is anchored to a ROW INDEX, not to a row's
+            # contents. `setRowCount` + `setItem` above rewrite the
+            # rows in place and never re-anchor the selection, so a
+            # fleet list that arrives in a different order -- one bot
+            # deleted, every row below it shifted up -- leaves the
+            # operator's highlight sitting exactly where it was while
+            # a DIFFERENT bot is now underneath it. Measured on this
+            # tree: select row 0, re-render with the two scrumming
+            # statuses swapped, and `get_selected_bot_id()` returns the
+            # other bot. The next Start / Pause / Stop / Restart /
+            # Delete goes there, on a 2000 ms timer, with no operator
+            # action in between and nothing on screen that changed.
+            #
+            # A SELECTION THAT DISAPPEARS IS NOT COUNTED. When the
+            # selected bot leaves the fleet its row goes with it and
+            # the table is visibly empty; that is by design, and
+            # counting it would paint this red on every ordinary bot
+            # deletion -- the 06-014 defect in a new place. Only a
+            # SILENT SUBSTITUTION is counted: a selection present both
+            # before and after, pointing at a different bot.
+            #
+            # NO BOT ID IS WRITTEN. The two ids are compared here and
+            # only the verdict travels; the record carries booleans and
+            # counts.
+            #
+            # NO DURATION ON EITHER (E8): both walk rows already in
+            # memory, so a number would be fabricated.
+            _scrum_drawn = 0
+            for _row in range(self._bot_table.rowCount()):
+                if self._bot_table.item(_row, 0) is not None:
+                    _scrum_drawn += 1
+            _ext_drawn = 0
+            for _row in range(self._extractor_table.rowCount()):
+                if self._extractor_table.item(_row, 0) is not None:
+                    _ext_drawn += 1
+            _sel_after = (self._bot_table.get_selected_bot_id(),
+                          self._extractor_table.get_selected_bot_id())
+            _moved = [
+                bool(_was and _now and _was != _now)
+                for _was, _now in zip(_sel_before, _sel_after, strict=True)]
+            import contextlib
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _ex_emit
+                _ex_emit(
+                    "exchange.15.002.invariant.every_bot_reaches_a_table",
+                    actual=_scrum_drawn + _ext_drawn,
+                    expected=len(statuses),
+                    every=30.0,
+                    context={"exchange": self.exchange_id,
+                             "scrumming_rows": _scrum_drawn,
+                             "extractor_rows": _ext_drawn,
+                             "routed_scrumming": len(scrum_statuses),
+                             "routed_extractor": len(extractor_statuses)})
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _ex_emit
+                _ex_emit(
+                    "exchange.15.003.invariant.selection_survives_refresh",
+                    actual=sum(_moved), expected=0,
+                    every=30.0,
+                    context={"exchange": self.exchange_id,
+                             "scrumming_selection_moved": _moved[0],
+                             "extractor_selection_moved": _moved[1],
+                             "selections_before": sum(
+                                 1 for _s in _sel_before if _s),
+                             "selections_after": sum(
+                                 1 for _s in _sel_after if _s),
+                             "preferred_table": self._last_clicked_table,
+                             "scrumming_rows": _scrum_drawn,
+                             "extractor_rows": _ext_drawn})
 
         # v3.23.7 — global Privacy Mode handlers
         def _on_global_privacy_clicked(self) -> None:
@@ -2939,7 +3124,89 @@ if _HAS_QT:
                 reg.set_all(any_revealed)
             except Exception:  # R28-OK
                 return
+            # 10.8 -- exchange.15.004. THE BUTTON CLAIMS TO FLIP EVERY
+            # REGISTERED MASK IN ONE SHOT, and a partial apply leaves
+            # some values on screen while the button says masked.
+            # `set_all` writes under a lock and then persists, and its
+            # persist swallows every exception by design, so a
+            # half-applied flip raises nothing at all.
+            #
+            # THE REGISTRY IS ASKED AGAIN, from a fresh accessor call,
+            # for every field it declares -- not for the snapshot taken
+            # above, and not for `any_revealed`, which is the request.
+            # `expected` is how many fields the registry says it has;
+            # `actual` is how many really read back at the requested
+            # state. The tooltip on this button still says 18 while
+            # `known_field_ids()` returns 19, so the count rides in
+            # context as a number rather than being assumed.
+            #
+            # NO DURATION (E8) and NO `every=`: an operator press, and
+            # a walk over a dict already in memory.
+            import contextlib
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _ex_emit
+                _reg = get_privacy_mask_registry()
+                _ids = _reg.known_field_ids()
+                _state = _reg.to_dict()
+                _applied = sum(
+                    1 for _fid in _ids
+                    if bool(_state.get(_fid, False)) is bool(any_revealed))
+                _ex_emit(
+                    "exchange.15.004.postcondition.privacy_applied_to_every_field",
+                    actual=_applied, expected=len(_ids),
+                    context={"exchange": self.exchange_id,
+                             "masking": bool(any_revealed),
+                             "fields_declared": len(_ids),
+                             "fields_left_behind": len(_ids) - _applied})
             self._refresh_privacy_mode_btn_style()
+            # 10.8 -- exchange.15.005. THE LABEL THE OPERATOR READS
+            # AGAINST THE STATE THE RENDERERS READ. 15-004 asks whether
+            # the flip reached every field; this asks whether the
+            # button then told the truth about it, which is a different
+            # question with a different failure. The restyle above
+            # computes its own `all_masked` inside a bare `except` that
+            # falls back to False, so a registry that answers
+            # `is_masked` badly relabels the button OFF while every
+            # field is masked -- the operator un-masks nothing, sees
+            # "OFF", and shares a screen believing the values are
+            # already revealed when the reverse is true.
+            #
+            # `actual` IS READ OFF THE WIDGET, from the text Qt now
+            # holds, never from the flag that set it. `expected` is a
+            # fresh read of the registry. Same fixed two-state
+            # vocabulary the button uses.
+            #
+            # THE EXPECTATION IS READ THROUGH `to_dict()`, NOT THROUGH
+            # `is_masked()`, AND THAT IS NOT A STYLE CHOICE. The restyle
+            # above reads `is_masked`, so `is_masked` is part of what
+            # this pin is judging. Measured while building this unit:
+            # with `is_masked` raising -- the exact fault that sends the
+            # restyle down its `except` and relabels the button OFF over
+            # a fully masked screen -- a pin reading the same accessor
+            # raised inside its own `contextlib.suppress` and wrote NO
+            # RECORD AT ALL. The instrument went silent on the one fault
+            # it exists to report. `to_dict()` is an independent
+            # accessor over the same locked state, so a divergence
+            # between the two is now reported instead of swallowed.
+            #
+            # It sits BEFORE `refresh_all_privacy_widgets`, which
+            # restyles every OTHER tab's button and re-renders their
+            # tables; this pin is about this tab's own button, one line
+            # after its own restyle, with nothing in between.
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _ex_emit
+                _reg = get_privacy_mask_registry()
+                _shown_on = "ON" in self._privacy_mode_btn.text()
+                _ids = _reg.known_field_ids()
+                _state = _reg.to_dict()
+                _all_masked = all(
+                    bool(_state.get(_fid, False)) for _fid in _ids)
+                _ex_emit(
+                    "exchange.15.005.postcondition.privacy_button_matches_registry",
+                    actual=_shown_on, expected=_all_masked,
+                    context={"exchange": self.exchange_id,
+                             "masking": bool(any_revealed),
+                             "fields_declared": len(_ids)})
             try:
                 root = self.window()
                 if hasattr(root, "refresh_all_privacy_widgets"):
