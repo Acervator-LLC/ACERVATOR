@@ -712,6 +712,89 @@ def test_a_disconnect_with_nothing_connected_is_green(
     assert rec.duration is None
 
 
+def _host_without_the_exchange_widget(connector: Any) -> Any:
+    """The REAL `_do_disconnect` on a host that has no `_exchange`.
+
+    `tests/test_main_window_suppression_repairs.py` drives this method
+    exactly this way to cover the H3 disconnect repair without building
+    a whole tab, and its host carries only what the method needed
+    BEFORE `16-002` existed. Reproduced here rather than borrowed,
+    because that file is testing something else and must not have to
+    grow an attribute to carry this tab's instrumentation.
+    """
+    from PySide6.QtWidgets import QLabel, QPushButton, QTextEdit
+
+    from src.gui import main_window as mw
+
+    names = ("_do_disconnect", "_log")
+    host = type("NoExchangeHost", (),
+                {name: getattr(mw.APITesterTab, name)
+                 for name in names})()
+    host._connector = connector
+    host._connected = True
+    host._connect_btn = QPushButton()
+    host._disconnect_btn = QPushButton()
+    host._conn_status = QLabel()
+    host._result_info = QLabel()
+    host._result_view = QTextEdit()
+    assert not hasattr(host, "_exchange")
+    return host
+
+
+def test_the_pin_adds_no_precondition_to_its_host(
+        qapp: QApplication, connector_class: type) -> None:
+    """INSTRUMENTATION MAY NOT MAKE ITS HOST NEED MORE THAN IT DID.
+
+    `16-002` reads `_exchange` for its context and nothing else in
+    `_do_disconnect` touches that widget, so an unguarded read turned a
+    pin into a precondition: a caller that had always been able to
+    drive this method on a host without the combo box would raise
+    AttributeError, and the pin would have taken down the thing it
+    observes.
+
+    THE VERDICT IS HELD AGAINST A REAL TAB, not against a restatement
+    of it. The same clean disconnect is driven twice -- once on a real
+    `APITesterTab` and once on the host that has no `_exchange` -- and
+    the two records are compared field by field. `ok`, `actual`,
+    `expected` and every context value but ONE are identical; the one
+    that differs is `exchange`, which degrades to None on the host that
+    cannot answer for it. A failure here means either the pin can raise
+    inside its host again, or the guard has started costing something
+    other than that single context field.
+    """
+    connector = connector_class("coinbase")
+    with _collect() as sink:
+        with _tab(qapp) as tab:
+            tab._api_key.setText("k")
+            tab._api_secret.setText("s")
+            tab._do_connect()
+            tab._do_disconnect()
+        on_a_tab = _only(sink, RELEASED)
+
+    host = _host_without_the_exchange_widget(connector)
+    with _collect() as sink:
+        # No `pytest.raises` and no try: an AttributeError here IS the
+        # regression, and it must surface as this test's own failure.
+        host._do_disconnect()
+        hostless = _only(sink, RELEASED)
+
+    assert connector.closed is True
+    assert host._connector is None
+    assert host._conn_status.text() == "Disconnected"
+
+    assert hostless.ok is on_a_tab.ok is True
+    assert hostless.actual is on_a_tab.actual is True
+    assert hostless.expected is on_a_tab.expected is True
+    assert hostless.duration is not None
+
+    on_a_tab_context = dict(on_a_tab.context)
+    hostless_context = dict(hostless.context)
+    assert on_a_tab_context["exchange"] == "coinbase"
+    assert hostless_context["exchange"] is None
+    del on_a_tab_context["exchange"], hostless_context["exchange"]
+    assert hostless_context == on_a_tab_context
+
+
 # ── 16-003  the OK headline came from a call ───────────────────────────
 
 
