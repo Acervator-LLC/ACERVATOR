@@ -1372,12 +1372,128 @@ if _HAS_QT:
                     info["panel"].setParent(None)
                     info["panel"].deleteLater()
 
+            # 10.6 -- charts.13.001 and charts.13.002. Both read the
+            # state the NEXT caller uses: the widgets the operator
+            # really sees, and the symbol `fetch_chart_data` really
+            # hands the exchange. Neither reads `bot_statuses` back
+            # out as though the argument were the result.
+            #
+            # THE IMPORTS ARE FUNCTION-LOCAL, like every other emitter
+            # site in this repo. `tests/test_safe_url_scheme_policy.py`
+            # pins two `safe_urlopen` call sites in this file BY LINE
+            # NUMBER, and a module-level import here would move them
+            # for a reason that has nothing to do with either call.
+            #
+            # NO DURATION ON EITHER. Both are a dict walk and a layout
+            # walk with no bounded operation behind them, so a number
+            # would be fabricated (E8).
+            #
+            # BOTH CARRY `every=30.0`, AND THAT IS THE DIFFERENCE FROM
+            # THE HISTORY AND TRADING TABS. Those two are toggle pins.
+            # THIS TAB IS DRIVEN ON A CADENCE: `_setup_refresh_timer`
+            # starts a 2000 ms QTimer on `_refresh_dashboard`, which
+            # calls `update_charts` on every tick that has at least one
+            # bot. Un-throttled that is 1800 records an hour from each
+            # of these two lines, which would push the rest of the
+            # network out of `RETAIN_ROWS` inside one session. 30 s is
+            # the panel fetch window below, so one admitted record
+            # stands for one window and `count` says how many passes it
+            # covers. A FAILING check is never suppressed.
+            _mounted = 0
+            for _slot in range(self._scroll_layout.count()):
+                _item = self._scroll_layout.itemAt(_slot)
+                if _item is not None and _item.widget() is not None:
+                    _mounted += 1
+            _drift = 0
+            for _st in bot_statuses:
+                _held = self._chart_panels.get(_st.get("bot_id", ""))
+                if (_held is not None
+                        and _held.get("symbol") != _st.get("symbol", "")):
+                    _drift += 1
+            import contextlib
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _ch_emit
+                _ch_emit(
+                    "charts.13.001.invariant.panels_mounted",
+                    actual=_mounted, expected=len(self._chart_panels),
+                    every=30.0,
+                    context={"layout_items": self._scroll_layout.count(),
+                             "statuses": len(bot_statuses),
+                             "kept": len(seen)})
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _ch_emit
+                _ch_emit(
+                    "charts.13.002.postcondition.panel_symbols_current",
+                    actual=_drift, expected=0,
+                    every=30.0,
+                    context={"panels": len(self._chart_panels),
+                             "statuses": len(bot_statuses),
+                             "mounted": _mounted})
+
         def _on_tf_changed(self, bot_id: str, tf: str):
+            """Re-arm this panel's fetch after a timeframe change.
+
+            10.6 -- charts.13.003. THE PIN FIRES WHETHER OR NOT THE
+            BOT STILL HAS A PANEL, which is the whole point: the guard
+            below is a silent no-op for a signal arriving from a panel
+            this tab has already dropped, and `last_fetch` then stays
+            where it was while the chart relabels itself. The operator
+            reads a new timeframe over candles the fetch never asked
+            for. `ChartPanel.timeframe` is the combo `fetch_chart_data`
+            reads, so the check is against the widget rather than `tf`
+            going straight back out.
+
+            NO DURATION: a dict write follows no bounded operation
+            (E8). NO `every=`: this one is a toggle, driven by the
+            operator moving the timeframe combo and by nothing else.
+            """
             if bot_id in self._chart_panels:
                 self._chart_panels[bot_id]["last_fetch"] = 0
+            _info = self._chart_panels.get(bot_id) or {}
+            _panel = _info.get("panel")
+            _rearmed = bool(
+                _panel is not None
+                and _info.get("last_fetch", -1) == 0
+                and _panel.timeframe == tf)
+            import contextlib
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _ch_emit
+                _ch_emit(
+                    "charts.13.003.postcondition.timeframe_rearmed",
+                    actual=_rearmed, expected=True,
+                    context={"requested_tf": tf,
+                             "panel_tf": (_panel.timeframe
+                                          if _panel is not None else ""),
+                             "known_bot": _panel is not None,
+                             "panels": len(self._chart_panels)})
 
         async def fetch_chart_data(self, exchange_connectors: dict = None) -> None:
-            """Fetch OHLCV data for all chart panels."""
+            """Fetch OHLCV data for all chart panels.
+
+            10.6 -- charts.13.004 and charts.13.005, the two halves of
+            one question: is what the operator is looking at the answer
+            THIS pass produced?
+
+            THE FETCH HAS THREE OUTCOMES AND TWO OF THEM LEAVE THE OLD
+            CANDLES ON THE CHART. An empty answer calls
+            `set_error(source)`; a raise calls `set_error(str(exc))`.
+            Neither clears `CandlestickChart._candles`, so a panel that
+            has not been fed for hours renders exactly like one fed a
+            second ago. `13-004` reads the candle count back OFF THE
+            CHART and declares the count this fetch returned, and it
+            carries the SOURCE ATTRIBUTION and the outcome name beside
+            the verdict so a cached answer is distinguishable from a
+            fresh one.
+
+            `13-005` covers what `13-004` cannot see. Every path
+            through the loop body sets `last_fetch`, so a panel that
+            stops refreshing is a panel the loop SKIPPED -- and a
+            skipped panel emits nothing, which reads exactly like a
+            healthy quiet one. `13-005` walks `last_fetch` back out of
+            the panel dict instead and counts the panels no pass has
+            touched.
+            """
+            import contextlib
             import time as _time
             from .native_chart import Candle
             now = _time.time()
@@ -1392,6 +1508,10 @@ if _HAS_QT:
                 # update_charts filters Extractors), don't try to
                 # fetch it from the exchange — coinbase rejects
                 # ``*/USDC`` with "does not have market symbol".
+                #
+                # 10.6 -- THIS IS THE ONE PATH OUT OF THE LOOP BODY
+                # THAT LEAVES `last_fetch` UNTOUCHED, which is why
+                # `13-005` exists at the bottom of this method.
                 if "*" in symbol:
                     continue
                 tf = info["panel"].timeframe
@@ -1401,9 +1521,24 @@ if _HAS_QT:
                     eid = info.get("exchange_id", "")
                     exchange = exchange_connectors.get(eid)
 
+                # 10.6 -- THE DURATION BRACKET OPENS HERE AND CLOSES ON
+                # THE LINE AFTER THE AWAIT. It spans the network fetch
+                # and nothing else: not the Candle conversion, not
+                # `set_candles`, and not the emitter's own bookkeeping.
+                # The second reading, in the handler, is taken only if
+                # the await itself raised -- if it returned and a later
+                # line raised, the measurement already taken stands.
+                _t0 = _time.monotonic()
+                _elapsed = None
+                _outcome = "raised"
+                _raw_n = 0
+                _src = ""
                 try:
                     candles_raw, source = await self._fetcher.fetch(
                         symbol, tf, exchange=exchange, limit=100)
+                    _elapsed = _time.monotonic() - _t0
+                    _raw_n = len(candles_raw or [])
+                    _src = str(source)
 
                     if candles_raw:
                         candles = [
@@ -1413,13 +1548,82 @@ if _HAS_QT:
                         ]
                         info["panel"].chart.set_candles(candles)
                         info["panel"].set_source(source)
+                        _outcome = "candles"
                     else:
                         info["panel"].chart.set_error(source)
+                        _outcome = "empty"
 
                     info["last_fetch"] = now
                 except Exception as exc:
+                    if _elapsed is None:
+                        _elapsed = _time.monotonic() - _t0
                     info["panel"].chart.set_error(str(exc)[:60])
+                    _src = type(exc).__name__
                     info["last_fetch"] = now
+
+                # 10.6 -- charts.13.004. `_shown` is the chart's own
+                # candle list, read after the widget was written; the
+                # declared expectation is what THIS fetch returned. On
+                # the empty and raised paths the two differ by exactly
+                # the candles left standing from an earlier pass, which
+                # is the failure the operator cannot see.
+                #
+                # NO `every=` HERE, DELIBERATELY. The synchroniser keys
+                # on (name, site) and this single site serves every
+                # panel, so a throttle would admit one panel per window
+                # and drop the rest -- hiding which panel went stale,
+                # which is the only thing this pin is for. It is
+                # bounded already: the 30 s check at the top of the
+                # loop lets each panel past at most once per window.
+                _shown = len(
+                    getattr(info["panel"].chart, "_candles", None) or [])
+                with contextlib.suppress(Exception):
+                    from src.core.signal_contract import emit as _ch_emit
+                    _ch_emit(
+                        "charts.13.004.postcondition.panel_refreshed",
+                        actual=_shown, expected=_raw_n,
+                        duration=_elapsed,
+                        context={"outcome": _outcome, "source": _src,
+                                 "symbol": symbol, "timeframe": tf,
+                                 "exchange_id": info.get("exchange_id", ""),
+                                 "throttle_s": 30})
+
+            # 10.6 -- charts.13.005. A panel is STALE when no pass has
+            # written its `last_fetch` for three throttle windows, and
+            # NEVER-FETCHED when no pass ever has. Three windows so a
+            # single throttled pass can never be counted; the age is
+            # reported beside the verdict rather than left to be
+            # inferred, because "the chart is old" and "the chart
+            # stopped" are different faults.
+            #
+            # NO DURATION: an invariant follows no operation (E8), and
+            # this one is a dict walk.
+            _stale_after = 90.0
+            _stale = 0
+            _never = 0
+            _oldest = 0.0
+            for _held in self._chart_panels.values():
+                _last = float(_held.get("last_fetch", 0) or 0)
+                if _last <= 0:
+                    _never += 1
+                    _stale += 1
+                    continue
+                _age = now - _last
+                _oldest = max(_oldest, _age)
+                if _age > _stale_after:
+                    _stale += 1
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _ch_emit
+                _ch_emit(
+                    "charts.13.005.invariant.panels_fresh",
+                    actual=_stale, expected=0,
+                    every=30.0,
+                    context={"panels": len(self._chart_panels),
+                             "never_fetched": _never,
+                             "oldest_age_s": round(_oldest, 3),
+                             "stale_after_s": _stale_after,
+                             "throttle_s": 30,
+                             "connectors": len(exchange_connectors or {})})
 
         def log_trade(self, trade_data: dict) -> None:
             """Record a trade for chart markup."""
