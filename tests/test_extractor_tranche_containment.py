@@ -1247,36 +1247,36 @@ def test_POSITIVE_CONTROL_the_append_scanner_finds_a_real_append():
 
 CITATION_ANCHORS: dict[int, str] = {
     574: '# Invariant: sum(l["units"] for l in _main_lots)',
-    1581: 'def _apply_fold_target_growth(self, accum_profit: float,',
-    1655: '_cycle_cap_growth = self._anchor_target_balance * (_cap_pct',
-    2331: 'self._target_balance = float(self._target_balance) + u',
-    2335: 'self.config.target_balance = self._target_balance',
-    2427: 'def _positive_observed_quantity(',
-    2489: 'def _finite_state_number(',
-    2534: 'def _sum_lot_units(lots: Any) -> tuple[float | None, str | None]:',
-    3406: 'fill_price = await self._execute_buy(',
-    3451: 'self._main_lots.append({',
-    4572: 'return float(self._current_holdings) * float(price)',
-    4667: 'return self._anchor_target_balance * mult',
-    5624: '_tracked_units_bootstrap = sum(',
-    5629: 'self._current_holdings = min(',
-    6300: 'float(getattr(_bal1, "total", 0)',
-    6342: 'getattr(_bal1, "absent", False) or',
-    6563: 'self._current_holdings = sum(',
-    6730: '# _main_lots and derives _current_holdings from that source',
-    6736: 'self._current_holdings * ticker.last',
-    7503: 'entry_fill = await self._execute_buy(',
-    7526: 'self._main_lots.append({',
-    7561: 'delta = current_value - self._target_balance',
-    9215: 'price <= tranche["initial_buy_price"]',
-    9483: '_patent_only_eligible = sum(',
-    9744: '# MEM-171 / ADR-004 patent invariant is NOT abandoned in',
-    9756: 'if ticker.last <= float(t.get("ref", 0)) * _otd_factor',
-    9963: 'buy_fill = await self._execute_buy(',
-    10020: 'self._main_lots.append({',
-    10472: 'hedge_fill = await self._execute_buy(',
-    10506: 'self._main_lots.append({',
-    11276: 'async def _reconcile_holdings(self, reason:',
+    1628: 'def _apply_fold_target_growth(self, accum_profit: float,',
+    1702: '_cycle_cap_growth = self._anchor_target_balance * (_cap_pct',
+    2378: 'self._target_balance = float(self._target_balance) + u',
+    2382: 'self.config.target_balance = self._target_balance',
+    2474: 'def _positive_observed_quantity(',
+    2536: 'def _finite_state_number(',
+    2581: 'def _sum_lot_units(lots: Any) -> tuple[float | None, str | None]:',
+    3453: 'fill_price = await self._execute_buy(',
+    3498: 'self._main_lots.append({',
+    4619: 'return float(self._current_holdings) * float(price)',
+    4714: 'return self._anchor_target_balance * mult',
+    5671: '_tracked_units_bootstrap = sum(',
+    5676: 'self._current_holdings = min(',
+    6347: 'float(getattr(_bal1, "total", 0)',
+    6389: 'getattr(_bal1, "absent", False) or',
+    6610: 'self._current_holdings = sum(',
+    6777: '# _main_lots and derives _current_holdings from that source',
+    6783: 'self._current_holdings * ticker.last',
+    7550: 'entry_fill = await self._execute_buy(',
+    7573: 'self._main_lots.append({',
+    7608: 'delta = current_value - self._target_balance',
+    9262: 'price <= tranche["initial_buy_price"]',
+    9530: '_patent_only_eligible = sum(',
+    9791: '# MEM-171 / ADR-004 patent invariant is NOT abandoned in',
+    9803: 'if ticker.last <= float(t.get("ref", 0)) * _otd_factor',
+    10010: 'buy_fill = await self._execute_buy(',
+    10067: 'self._main_lots.append({',
+    10519: 'hedge_fill = await self._execute_buy(',
+    10553: 'self._main_lots.append({',
+    11323: 'async def _reconcile_holdings(self, reason:',
     # 2026-08-13 re-anchor, U2. ONE insertion into scrumming_bot.py --
     # the two units parsers, the block that widens the audited figure
     # from the scalar to the lot book, and the coerced rescale write --
@@ -1334,11 +1334,11 @@ CITATION_ANCHORS: dict[int, str] = {
     # the three lines it replaced, because one added line above the
     # drift-down branch would have moved every anchor below it a
     # second time.
-    11526: 'if exchange_units < internal_units - 1e-9:',
-    11548: 'self._current_holdings = exchange_units',
-    11550: '# Drift UP (or effectively equal): extra units are NOT the',
-    11567: '# _current_holdings + _main_lots unchanged.',
-    11695: 'async def _execute_manual_rebalance(',
+    11573: 'if exchange_units < internal_units - 1e-9:',
+    11595: 'self._current_holdings = exchange_units',
+    11597: '# Drift UP (or effectively equal): extra units are NOT the',
+    11614: '# _current_holdings + _main_lots unchanged.',
+    11742: 'async def _execute_manual_rebalance(',
     # 2026-08-15 re-anchor, the nan-ladder unit. ONE insertion, +104
     # lines, entirely inside the U3 gate block in
     # `_execute_manual_rebalance`: the ref filter that replaced the bare
@@ -1367,12 +1367,41 @@ CITATION_ANCHORS: dict[int, str] = {
     # the source, once by `ast.literal_eval` of the dict itself -- and
     # both read 42. The stale number was the work order's, and it is
     # recorded here so the next reader does not trust it either.
-    12656: 'self._main_lots.append({',
-    12673: 'self._main_lots.append({',
-    12682: 'self._current_holdings += fill_amount',
-    14322: 'async def _execute_buy(',
-    14799: 'self._current_holdings += amount',
-    14924: 'def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:',
+    12703: 'self._main_lots.append({',
+    12720: 'self._main_lots.append({',
+    12729: 'self._current_holdings += fill_amount',
+    14369: 'async def _execute_buy(',
+    14846: 'self._current_holdings += amount',
+    14971: 'def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:',
+    # 2026-08-20 re-anchor, ISSUE #21 -- the capital-reservation grant
+    # postcondition. ONE insertion into `scrumming_bot.py`, +47 lines,
+    # entirely inside the success branch of
+    # `_ensure_capital_reservation`: the comment that states what the
+    # two halves of the check now read, the two locals the record is
+    # built from, and the explicit `ok`.
+    #
+    # TWO BANDS, and they are clean: +0 at :574, +47 from :1581 down.
+    # 41 anchors moved, 1 did not, and NO anchor is new -- the unit
+    # added no method and `_ensure_capital_reservation` is not in
+    # DOCUMENTED_METHODS.
+    #
+    # Derived the same way as every note above: anchor ordinal plus
+    # monotonic shift, never difflib. Each anchor's occurrence count in
+    # the pre-change file located the SAME occurrence in the post-change
+    # file -- which matters again here, because `self._main_lots.append({`
+    # occurs seven times and a first-match search collapses all seven
+    # onto one line. Shifts were required non-negative and
+    # non-decreasing, and every relocated line was re-read from disk and
+    # confirmed to still hold the text recorded beside it. Zero
+    # violations.
+    #
+    # THE PROSE CITATIONS INSIDE `scrumming_bot.py` MOVED TOO, and they
+    # were rewritten in the same unit: every `:NNNN` token in that file
+    # naming a line below the insertion is +47. That is 61 lines of
+    # prose, not only the ones `_cited_line_numbers` reads, because
+    # `tests/test_autonomous_fold_price_gate.py` rewrites EVERY token in
+    # the file through its reversal map and its pre-change digest goes
+    # red on any token that was left behind.
 }
 
 # Every method whose prose is allowed to cite a line. v3.25.7 widened

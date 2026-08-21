@@ -778,15 +778,6 @@ def _variant(reg: Registry, rows: list[Row] | None = None,
         parse_errors=[])
 
 
-KNOWN_TREE_E9 = "bot.01.002.postcondition.capital_reservation"
-"""The one real E9 in the tree, owned by the repair that fixes that pin.
-
-Named here so the clean-tree control can say WHICH red it expects. A
-control that accepts any red is not a control: a second, unrelated
-defect would arrive wearing the first one's excuse.
-"""
-
-
 def _controls(pins: list[Pin],
               reg: Registry) -> list[Control]:
     """Plant one defect of each class and read the problem list back.
@@ -821,15 +812,24 @@ def _controls(pins: list[Pin],
 
     results: list[Control] = []
 
+    # THE DECLARATION THAT USED TO SIT HERE IS RETIRED, 2026-08-20.
+    #
+    # This control carried `known=` naming one real E9 in the tree, on
+    # `bot.01.002.postcondition.capital_reservation`, and `as_declared=`
+    # requiring the red that arrived to be that one. Issue #21 repaired
+    # that pin: it now reads the HELD reservation against the NEEDED
+    # quantity instead of comparing the request with itself.
+    #
+    # A declaration that outlives its defect is not harmless. While it
+    # stands the control reports nothing -- a green comes back STALE
+    # rather than PASS, and any red at all is admitted under the old
+    # excuse. So it goes out in the same unit as the repair, and the
+    # control is a plain one again: the tree is clean, or it is not.
     clean = check(pins, reg)
     results.append(Control(
         label="clean tree reports nothing",
         ok=not clean,
-        detail="; ".join(clean) or "silent",
-        known=(f"the tree holds one real E9 on {KNOWN_TREE_E9}, owned by "
-               f"the repair that fixes that pin, not by the controls"),
-        as_declared=bool(clean) and all(
-            p.startswith("E9") and KNOWN_TREE_E9 in p for p in clean)))
+        detail="; ".join(clean) or "silent"))
 
     dropped_row = reg.rows[0]
     dropped = check(pins, _variant(reg, rows=reg.rows[1:]))
