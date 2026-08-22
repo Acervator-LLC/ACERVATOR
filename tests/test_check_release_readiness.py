@@ -231,3 +231,194 @@ class TestFailurePathsRemoveSidecar:
         monkeypatch.setattr(crr, "_run_claim_ledger_check", lambda: (True, ""))
         assert crr.main([]) != 0
         assert "ruff missing" in capsys.readouterr().out
+
+
+class TestRepoWideVersionLiterals:
+    """Issue #70. One version, one name.
+
+    `TestMainPyVersionLiterals` above proved the pattern on ONE file.
+    Measured at build v3.25.8, these sources disagreed with
+    `src.__version__ == "3.25.8"` at the same time:
+
+      * pyproject.toml            version = "1.0.0", name
+                                  "quantum-auto-trader"
+      * ver.txt                   3.25.5 -- zero consumers, now deleted
+      * README.md                 "Current version: 3.15.94"
+      * splash_screen.py:170      "3.9.0"
+      * investor_screen.py:289    "3.7.0"
+      * generate_essay_ja.py:43   "3.1.98"
+      * generate_essay_ja.py:78   output filename stamped v3.7.0
+
+    Nothing compared any of them to the package, so every one rotted
+    quietly. The repo already SHIPS a drift detector --
+    src/core/version_sweep.py check_version_consistency -- and a search
+    of the tree finds no caller for it. An instrument nobody runs
+    measures nothing. These tests live in the suite, which does run.
+
+    The rule they pin: a file either imports `__version__` or states a
+    value equal to it. There is no third option.
+    """
+
+    _SEMVER = r"\d+\.\d+\.\d+"
+
+    # Scripts that show or stamp the build version. Each carried a stale
+    # literal before issue #70.
+    _VERSION_CARRYING_SCRIPTS = (
+        "splash_screen.py",
+        "investor_screen.py",
+        "generate_essay_ja.py",
+    )
+
+    @staticmethod
+    def _parse(name):
+        import ast
+        return ast.parse((REPO_ROOT / name).read_text(encoding="utf-8"))
+
+    @classmethod
+    def _frozen_content_constants(cls, tree):
+        """Return id() of every literal bound to a `*_FROZEN_AT` name.
+
+        generate_essay_ja.py pins _CONTENT_VERSION_FROZEN_AT = "3.1.98".
+        That is not a claim about THIS build. It records which English
+        manual the Japanese body was translated from, and the file warns
+        at import time when it differs from the running version.
+        Rewriting it to the current version would delete a true
+        statement and silence the warning.
+
+        This is a stated rule, not a file-and-line allowlist. Exemption
+        is earned by the naming convention, and
+        test_the_frozen_content_marker_still_warns below stops the
+        convention becoming a hiding place.
+        """
+        import ast
+        exempt = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+            if any(n.endswith("_FROZEN_AT") for n in names):
+                exempt.add(id(node.value))
+        return exempt
+
+    @pytest.mark.parametrize("script", _VERSION_CARRYING_SCRIPTS)
+    def test_scripts_state_no_version_that_disagrees(self, script):
+        import ast
+        import re
+        import src
+        tree = self._parse(script)
+        exempt = self._frozen_content_constants(tree)
+        mismatched = [
+            (n.lineno, n.value)
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Constant)
+            and isinstance(n.value, str)
+            and re.fullmatch(self._SEMVER, n.value)
+            and id(n) not in exempt
+            and n.value != src.__version__
+        ]
+        assert not mismatched, (
+            f"{script} states version literal(s) that disagree with "
+            f"src.__version__=={src.__version__}: {mismatched}")
+
+    @pytest.mark.parametrize("script", _VERSION_CARRYING_SCRIPTS)
+    def test_scripts_source_their_version_from_the_package(self, script):
+        """Positive control for the test above.
+
+        Without this, deleting every import and hardcoding today's value
+        into all three files leaves the drift test green, and the drift
+        restarts at the next release. This is the control
+        TestMainPyVersionLiterals already uses for main.py.
+        """
+        import ast
+        tree = self._parse(script)
+        assert any(
+            isinstance(n, ast.ImportFrom)
+            and (n.module or "").split(".")[0] == "src"
+            and any(a.name == "__version__" for a in n.names)
+            for n in ast.walk(tree)), (
+            f"{script} no longer imports __version__ from src; its "
+            f"version strings are hardcoded again")
+
+    def test_the_frozen_content_marker_still_warns(self):
+        """Positive control for the `*_FROZEN_AT` exemption.
+
+        The exemption is safe only while the frozen value announces
+        itself at runtime. If the warning goes, the exemption becomes a
+        place to park stale versions unseen.
+        """
+        source = (REPO_ROOT / "generate_essay_ja.py").read_text(
+            encoding="utf-8")
+        assert "_CONTENT_VERSION_FROZEN_AT" in source
+        assert "warnings.warn" in source, (
+            "generate_essay_ja.py freezes a content version but no longer "
+            "warns when it differs from the running build")
+
+    def test_pyproject_does_not_restate_the_version(self):
+        import tomllib
+        data = tomllib.loads(
+            (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        project = data["project"]
+        assert "version" not in project, (
+            f"pyproject.toml hardcodes version={project['version']!r}; it "
+            f"must stay dynamic so it cannot disagree with src.__version__")
+        assert "version" in project.get("dynamic", []), (
+            "pyproject.toml declares neither a static nor a dynamic version")
+        attr = data["tool"]["setuptools"]["dynamic"]["version"]["attr"]
+        assert attr == "src.__version__", (
+            f"pyproject.toml derives its version from {attr!r}, not from "
+            f"src.__version__")
+
+    def test_pyproject_version_resolves_to_the_package_version(self):
+        """Read pyproject through setuptools, not by eye.
+
+        test_pyproject_does_not_restate_the_version checks the wiring.
+        This checks the wiring produces the right number. A fix that
+        never reaches the value it claims to set is not a fix.
+        """
+        import src
+        from setuptools.config.pyprojecttoml import read_configuration
+        resolved = read_configuration(
+            str(REPO_ROOT / "pyproject.toml"))["project"]["version"]
+        assert resolved == src.__version__, (
+            f"setuptools resolves the project version to {resolved!r} but "
+            f"src.__version__ is {src.__version__!r}")
+
+    def test_pyproject_names_the_product(self):
+        import tomllib
+        data = tomllib.loads(
+            (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        assert data["project"]["name"] == "acervator", (
+            f"pyproject.toml calls the project "
+            f"{data['project']['name']!r}; the product is Acervator")
+        scripts = list(data["project"]["scripts"])
+        assert scripts == ["acervator"], (
+            f"console scripts are {scripts}; the product is Acervator")
+
+    def test_readme_states_no_version_of_its_own(self):
+        """The README must point at the source, not copy it.
+
+        Its hand-written number was 10 minor versions stale. Dated
+        historical records such as "measured at v3.13.7" are
+        deliberately not matched. They are true statements about a past
+        run, and rewriting them to today's build would make them false.
+        """
+        import re
+        text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        claims = re.findall(
+            r"[Cc]urrent version:?\*{0,2}\s*:?\s*v?(" + self._SEMVER + ")",
+            text)
+        assert not claims, (
+            f"README.md hand-writes a current version {claims}; name the "
+            f"source file instead, so it cannot go stale")
+
+    def test_no_scratch_version_file_at_repo_root(self):
+        """ver.txt held `ASSIGN: __version__ = "3.25.5"`.
+
+        A search of every file type found no reader for it anywhere in
+        the tree. It was committed once, by accident, in `be6aa04
+        initial upload`. Issue #70 deleted it. This stops it returning
+        as a fifth disagreeing source.
+        """
+        assert not (REPO_ROOT / "ver.txt").exists(), (
+            "ver.txt is back at the repo root; the version lives in "
+            "src/__init__.py and nowhere else")

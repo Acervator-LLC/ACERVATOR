@@ -3,8 +3,11 @@ requires = ["setuptools>=69.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "quantum-auto-trader"
-version = "1.0.0"
+name = "acervator"
+# Issue #70 — the version is NOT restated here. setuptools>=69 reads it
+# straight out of src/__init__.py via [tool.setuptools.dynamic] below, so
+# src.__version__ is the one source and this file cannot drift from it.
+dynamic = ["version"]
 description = "Multi-exchange crypto auto-trading platform with Grid and Speculative Scrumming modes"
 readme = "README.md"
 license = {text = "Proprietary"}
@@ -24,7 +27,13 @@ dependencies = [
 ]
 
 [project.scripts]
-quantum-trader = "main:main"
+acervator = "main:main"
+
+[tool.setuptools.dynamic]
+# Read by setuptools' static AST reader — src/__init__.py assigns
+# __version__ as a plain string literal, so this resolves without
+# importing the package (no PySide6 needed at build time).
+version = {attr = "src.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["."]

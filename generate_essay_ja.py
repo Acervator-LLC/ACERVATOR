@@ -37,10 +37,12 @@ from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase import pdfmetrics
 
 sys.path.insert(0, str(Path(__file__).parent))
-try:
-    from src import __version__
-except Exception:
-    __version__ = "3.1.98"
+# Issue #70 — no literal fallback. The old `except Exception: __version__ =
+# "3.1.98"` did two wrong things at once: it restated the version, and
+# because the literal equalled _CONTENT_VERSION_FROZEN_AT it also silenced
+# the staleness warning below on exactly the runs that needed it. A script
+# that stamps a PDF with the build version must fail if it cannot read one.
+from src import __version__
 
 # v3.16.2 — content/scaffolding version split. The PDF stamp uses
 # __version__ (current source); the translation body is fossilized at
@@ -75,7 +77,10 @@ DARKER  = HexColor("#0A0A14")
 BODY_C  = HexColor("#C8D8F0")
 HEAD_C  = HexColor("#151530")
 
-OUTPUT = "acervator_product_manual_v3.7.0_ja.pdf"
+# Issue #70 — the filename follows the stamp inside the PDF, which is
+# __version__. The old literal said v3.7.0 and matched neither the
+# stamp nor the frozen translation body.
+OUTPUT = f"acervator_product_manual_v{__version__}_ja.pdf"
 PAGE_W, PAGE_H = letter
 MARGIN = 0.65 * inch
 USABLE_W = PAGE_W - 2 * MARGIN

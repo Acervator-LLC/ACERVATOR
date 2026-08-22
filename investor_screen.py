@@ -22,6 +22,11 @@ from PySide6.QtWidgets import QWidget
 from PySide6.QtGui     import (QPainter, QFont, QColor, QLinearGradient, QPen)
 from PySide6.QtCore    import Qt, QRectF, QPointF, QTimer
 
+# Issue #70 — the version is imported, never restated. The old code kept a
+# literal fallback inside paintEvent ("3.7.0"), which silently outlived
+# 18 minor releases because nothing ever compared it to the package.
+from src import __version__
+
 TOTAL_DURATION = 100.0
 
 # ── Palette ───────────────────────────────────────────────────────────────────
@@ -283,10 +288,6 @@ class InvestorScreen(QWidget):
     # ── paintEvent dispatch ───────────────────────────────────────────────────
 
     def paintEvent(self, event):
-        try:
-            from src import __version__
-        except ImportError:
-            __version__ = "3.7.0"
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         W, H = self.width(), self.height()

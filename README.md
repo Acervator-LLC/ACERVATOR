@@ -13,7 +13,7 @@
 
 Built by Anthony L. Brown (Ekthelius the Accumulator). Released to humanity.
 
-**Current version:** 3.15.94 · **SADP:** 1.92 · **Rules:** R1–R76 (R59 reserved) · **Last battery:** 39-simulation historical battery (2020 COVID + 2021 ATH + 2022 bear), 38/39 wins (97.4%), R55 verify-clean 100%. See `sadp/RAIntSimBat/reports/` for current sweep data.
+**Current version:** `__version__` in [`src/__init__.py`](src/__init__.py) is the one source; this README does not restate it, so it cannot go stale (issue #70). · **SADP:** 1.92 · **Rules:** R1–R76 (R59 reserved) · **Last battery:** 39-simulation historical battery (2020 COVID + 2021 ATH + 2022 bear), 38/39 wins (97.4%), R55 verify-clean 100%. See `sadp/RAIntSimBat/reports/` for current sweep data.
 
 ---
 
@@ -33,7 +33,7 @@ No prediction required. The volatility that destroys emotional traders is the en
 
 ---
 
-## Battery Results (v3.13.7)
+## Battery Results (measured at v3.13.7)
 
 Tested across **738 simulations** spanning 27 portfolio configurations, capital levels from $400 through $100K, six two-year historical periods (including 2020 COVID crash, 2021 ATH bubble, and 2022 brutal bear), and VIP-0 through VIP-3 fee tiers. Identical parameters throughout. No per-asset optimization.
 

@@ -229,7 +229,22 @@ class VersionSweep:
     # ── CHECK 2: Version consistency ──────────────────────────────────────────
 
     def check_version_consistency(self):
-        """All version strings must match src/__init__.py."""
+        """No file may restate a version that differs from src/__init__.py.
+
+        Issue #70 rewrote the rule this check enforces. It used to DEMAND a
+        version literal in each listed file and raise MEDIUM when one was
+        absent. That is backwards: a file that carries no literal cannot
+        drift, so absence is the correct end state, not a finding.
+
+        Two of the four paths it listed (render_trailer.py and
+        sadp/RAIntSimBat/RAIntSimBat.py) do not exist in the tree and were
+        skipped every run. main.py stopped matching its pattern when it
+        moved to `from src import __version__`, so it had been scoring a
+        MEDIUM for doing the right thing.
+
+        What remains: if one of these files DOES restate a version, that
+        restatement must equal the canonical value.
+        """
         canonical = self.result.version
         if canonical == "unknown":
             return
@@ -237,8 +252,8 @@ class VersionSweep:
         version_sources = {
             self.root / "main.py":              r'current_version\s*=\s*["\']([^"\']+)["\']',
             self.root / "splash_screen.py":     r'__version__\s*=\s*["\']([^"\']+)["\']',
-            self.root / "render_trailer.py":    r'__version__\s*=\s*["\']([^"\']+)["\']',
-            self.root / "sadp" / "RAIntSimBat" / "RAIntSimBat.py": r'__version__\s*=\s*["\']([^"\']+)["\']',
+            self.root / "investor_screen.py":   r'__version__\s*=\s*["\']([^"\']+)["\']',
+            self.root / "generate_essay_ja.py": r'__version__\s*=\s*["\']([^"\']+)["\']',
         }
 
         for fpath, pattern in version_sources.items():
@@ -246,14 +261,11 @@ class VersionSweep:
                 continue
             text = fpath.read_text(errors='replace')
             m = re.search(pattern, text)
+            # No match == the file imports __version__ == nothing can drift.
             if m and m.group(1) != canonical:
                 self._add(Severity.HIGH, "CONSISTENCY", fpath, 0,
                           f"Version mismatch: {m.group(1)!r} != canonical {canonical!r}",
-                          f"Update to {canonical!r}.")
-            elif not m:
-                self._add(Severity.MEDIUM, "CONSISTENCY", fpath, 0,
-                          "Version string not found in expected location.",
-                          "Add or verify __version__ string.")
+                          f"Import __version__ from src rather than restating {m.group(1)!r}.")
 
         # Docs must also reference the right version
         doc_files = [
