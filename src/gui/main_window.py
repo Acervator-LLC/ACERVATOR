@@ -1781,6 +1781,87 @@ if _HAS_QT:
                 table.setCurrentCell(target, 0)
                 table.selectRow(target)
 
+    def _select_row_for_bot(
+            table: BotStatusTable | ExtractorBotTable,
+            bot_id: str,
+            bot_ids: list[str]) -> None:
+        """Put the highlight on the row whose Detail button was pressed.
+
+        issue #52. The Detail button sits INSIDE A CELL, and a click on
+        a cell widget changes no row selection. So the button was the
+        one entry point that moved `ExchangeTab._last_clicked_table`
+        without moving the selection that flag is supposed to describe:
+        `_cmd` then preferred a table holding nothing, fell back, and
+        sent Start / Pause / Stop / Restart / Delete to the bot selected
+        on the OTHER table -- MEM-408, with real money on it.
+
+        THE REPAIR IS TO MAKE THE BUTTON DO WHAT A ROW CLICK DOES, not
+        to write the sibling-clearing rule out a second time.
+        `ExchangeTab.__init__` already connects `itemSelectionChanged`
+        on both tables to a handler that sets the flag AND clears the
+        sibling, and that handler is the only place that rule may live.
+
+        SO THE SIGNAL HERE IS DELIBERATELY NOT BLOCKED. That is the
+        opposite of `_reanchor_bot_selection` above, and for the
+        opposite reason: the 2000 ms refresh is not an operator and must
+        not move the flag, while THIS call IS the operator's click and
+        must. Blocking here would leave the sibling selected and the
+        defect exactly where it was.
+
+        `bot_ids` is the table's own row->bot map, passed in rather than
+        read off the widget for the same reason `_reanchor_bot_selection`
+        takes it: a row index means nothing without it.
+        """
+        if not bot_id:
+            return
+        target = None
+        for _row, _bid in enumerate(bot_ids):
+            if _bid == bot_id:
+                target = _row
+                break
+        if target is None:
+            # The button outlived its row. Not reachable through the
+            # dashboard today -- `setCellWidget` rebuilds every button
+            # on every render and each lambda captures that render's bot
+            # id -- but selecting SOME row because the right one is gone
+            # would be the misroute this repair exists to close.
+            return
+        if table.item(target, 0) is None:
+            # A row the render SKIPPED carries no column-0 item, so
+            # `selectedItems()` stays empty and `get_selected_bot_id`
+            # answers "" for it -- the empty-preferred-table state that
+            # `_cmd` falls back out of. `_reanchor_bot_selection`
+            # refuses such a row for the same reason.
+            return
+        # NO already-on-this-bot EARLY RETURN. One was written here and
+        # then taken out, because nothing could see it work: driven
+        # against a 40-row table scrolled to the bottom, against an
+        # emission counter on `itemSelectionChanged`, and against a
+        # ctrl-click two-row selection, the repeat click read the same
+        # scroll position, the same zero emissions and the same
+        # selected rows with the guard and without it. Qt supplies the
+        # idempotence -- it emits only when the selection really
+        # changes -- and a branch no drive can tell apart from its own
+        # absence is not a guard, it is a claim. The emission count is
+        # asserted in the tests instead, where a change in that
+        # behaviour would be read as a fact rather than assumed.
+        #
+        # THE PAIR, and it is the pair `_reanchor_bot_selection` above
+        # uses. `get_selected_bot_id` reads TWO fields -- it gates on
+        # `selectedItems()` and then INDEXES with `currentRow()` -- and
+        # these two lines set one each, so neither is left to the other
+        # one's side effects.
+        #
+        # MEASURED, because "both are needed" would have been a claim:
+        # each line was dropped in turn and the whole file's tests
+        # still passed, so on this Qt build either call alone moves
+        # both fields. The pair is kept anyway -- it says which two
+        # fields the operator's click has to move, which is the thing
+        # the misroute was made of, and it matches the sibling
+        # function. It is not kept on a necessity nothing could show.
+        table.setCurrentCell(target, 0)
+        table.selectRow(target)
+
     # ---------------------------------------------------------------
     # Bot Status Table - clickable rows
     # ---------------------------------------------------------------
@@ -2428,6 +2509,15 @@ if _HAS_QT:
             _reanchor_bot_selection(self, _selected_before, self._bot_ids)
 
         def _on_detail(self, bot_id: str) -> None:
+            # issue #52 -- SELECT THE ROW FIRST, THEN OPEN THE DIALOG.
+            # The selection is what `ExchangeTab._cmd` reads, and
+            # `self._on_bot_clicked` runs `MainWindow._on_bot_clicked`,
+            # whose `dlg.exec()` is a modal loop that does not return
+            # until the operator closes the dialog. Selecting after it
+            # would leave the highlight -- and every command the
+            # operator can press -- pointing at the previous row for as
+            # long as the dialog stands open.
+            _select_row_for_bot(self, bot_id, self._bot_ids)
             if self._on_bot_clicked:
                 self._on_bot_clicked(bot_id)
 
@@ -2713,6 +2803,12 @@ if _HAS_QT:
             _reanchor_bot_selection(self, _selected_before, self._bot_ids)
 
         def _on_detail(self, bot_id: str) -> None:
+            # issue #52 -- SELECT THE ROW FIRST. Both tables carry a
+            # Detail button and both flip `_last_clicked_table` through
+            # their `on_bot_clicked` callback, so both need this or the
+            # fallback hijack survives in one direction. See
+            # `_select_row_for_bot` for why the signal is not blocked.
+            _select_row_for_bot(self, bot_id, self._bot_ids)
             if self._on_bot_clicked:
                 self._on_bot_clicked(bot_id)
 
