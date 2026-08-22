@@ -7,8 +7,9 @@ main.py — Acervator entry point
 # │                                                             │
 # │ This is the application entry point. Run: python main.py    │
 # │                                                             │
-# │ IMPORTANT: current_version string here must match           │
-# │ src/__init__.py __version__. Both must be bumped together.  │
+# │ IMPORTANT: this file DECLARES no version. It imports        │
+# │ __version__ from src/__init__.py, the one place that        │
+# │ states it. Bump it there. Do not add a copy here.           │
 # │                                                             │
 # │ The app has TWO modes:                                      │
 # │   - Crypto mode: main_window.py (CCXT exchanges)           │
