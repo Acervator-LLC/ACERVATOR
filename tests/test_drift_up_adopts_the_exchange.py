@@ -49,9 +49,6 @@ class _Bus:
     def emit(self, _topic, **kw):
         self.messages.append(str(kw.get("message", "")))
 
-    def subscribe(self, *a, **kw):
-        pass
-
 
 class _Mgr:
     """Stands in for BotManager. ``sibling_units`` is what other bots on
