@@ -16,6 +16,11 @@ from PySide6.QtGui     import (QPainter, QFont, QColor, QLinearGradient,
                                 QPen, QFontDatabase)
 from PySide6.QtCore    import Qt, QRectF, QTimer, QPointF
 
+# Issue #70 — the version is imported, never restated. The old code kept a
+# literal fallback inside paintEvent ("3.9.0"), which silently outlived
+# 16 minor releases because nothing ever compared it to the package.
+from src import __version__
+
 # ── Palette (exact from HTML) ─────────────────────────────────────────────────
 CYAN    = QColor(0,   255, 238)
 GREEN   = QColor(0,   255, 136)
@@ -170,10 +175,6 @@ class SplashScreen(QWidget):
         p.drawText(QRectF(cx - rw/2, y, rw, 80), Qt.AlignCenter | Qt.TextWordWrap, text)
 
     def paintEvent(self, _event):
-        try:
-            from src import __version__
-        except ImportError:
-            __version__ = "3.9.0"
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         W, H = self.width(), self.height()
