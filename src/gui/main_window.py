@@ -4382,6 +4382,52 @@ if _HAS_QT:
                 self._log("STATUS CHECK FAILED", f"{type(exc).__name__}: {exc}", level="error")
 
     # ---------------------------------------------------------------
+    # The Console Pause flag
+    # ---------------------------------------------------------------
+    def _set_console_paused(window: MainWindow, *, paused: bool) -> None:
+        """Set the flag the signals pane's drain is gated on.
+
+        issue #49. `_drain_signals` has always read
+        `getattr(self, "_console_paused", False)`, and its docstring has
+        always said it "honours the same Pause the log pane uses, so one
+        control quiets both". NOTHING IN THE TREE EVER ASSIGNED THAT
+        ATTRIBUTE, so the `False` default won every read: the operator
+        pressed Pause, `_QtLogHandler.set_paused` stopped the log pane,
+        and the signals pane under it went on scrolling. Driven on the
+        real widgets before this repair -- 10 blocks on the signals pane
+        at the press, 51 four drain ticks later, while the log pane held
+        at 10.
+
+        THE DOCSTRING IS THE SPECIFICATION AND THE CODE DISAGREED WITH
+        IT. The repair makes the code do what the prose says. Rewriting
+        the prose to describe the broken behaviour would have deleted
+        the only record of what the button is for.
+
+        IT IS A MODULE-LEVEL FUNCTION, resolved through globals on every
+        call, for the same reason `_reanchor_bot_selection` (issue #51)
+        and `_select_row_for_bot` (issue #52) are. The falsifier for
+        `console.14.004` has to be able to put the pre-repair tree back
+        for the length of one drive. Written inline as
+        `self._console_paused = paused` the assignment is unreachable
+        from a test, the pin's red condition becomes unreachable with
+        it, and a pin that cannot be driven to red is a pin nobody can
+        read when it is green.
+
+        `bool()` because `console.14.004` reads this value back and
+        compares it against the button's own `isChecked()`, which is a
+        bool. A truthy int here would report green about a different
+        type.
+
+        KEYWORD-ONLY, because the argument is a bare bool.
+        `paused=paused` at the one call site says what the value means;
+        a positional `True` would say only which function it belongs
+        to. The falsifier's stand-in carries the same signature, so a
+        call that went back to positional raises there rather than
+        patching a function nobody calls.
+        """
+        window._console_paused = bool(paused)
+
+    # ---------------------------------------------------------------
     # Main Window
     # ---------------------------------------------------------------
     class MainWindow(QMainWindow):
@@ -4394,6 +4440,16 @@ if _HAS_QT:
         # tells the type checker what the value will be without
         # bringing it into existence.
         _last_equity_snap: float
+
+        # DECLARED, NOT ASSIGNED, for the same reason and with the same
+        # consequence. `_drain_signals` reads this through
+        # `getattr(self, "_console_paused", False)` and must keep
+        # reading the default until the operator's first press, so a
+        # value here would create the attribute and change which branch
+        # a fresh window takes. The annotation exists so the type
+        # checkers know `_set_console_paused` is writing a real member
+        # of this class rather than inventing one.
+        _console_paused: bool
 
         def __init__(self, bot_manager=None, settings_manager=None, parent=None):
             super().__init__(parent)
@@ -5870,6 +5926,13 @@ if _HAS_QT:
             Never raises: instrumentation display must not be able to take
             down the window it is displayed in. Honours the same Pause the
             log pane uses, so one control quiets both.
+
+            The flag that Pause is spelled with is `_console_paused`, and
+            `_set_console_paused` -- called by `_toggle_console_pause` --
+            is the only thing that writes it (issue #49). A paused drain
+            advances NO watermark, so the sink keeps every record for the
+            resume: see the note on `_signal_read` below for what the
+            resume pass then does with a backlog.
             """
             try:
                 # 10.7 -- THE TICK COUNTER IS THE FIRST STATEMENT AND NO
@@ -5961,6 +6024,19 @@ if _HAS_QT:
             005 asks the console widget how many blocks it now holds.
             """
             paused = self._console_pause_btn.isChecked()
+            # issue #49 -- THE SIGNALS HALF OF THE BUTTON, AND IT IS SET
+            # BEFORE THE HANDLER GUARD ON PURPOSE. `_drain_signals`
+            # gates the signals pane on this flag; `set_paused` below
+            # stops the log pane. Two panes, two mechanisms, one press.
+            # A missing `_console_log_handler` returns two lines down,
+            # and quieting one pane must not be conditional on the other
+            # pane's plumbing existing.
+            #
+            # NO DRAIN CAN INTERLEAVE with what follows. `_drain_signals`
+            # is a `QTimer` slot and this is a `clicked` slot; both run
+            # on the Qt GUI thread, so the order of the statements here
+            # is a readability decision and not a race.
+            _set_console_paused(self, paused=paused)
             handler = getattr(self, "_console_log_handler", None)
             if handler is None:
                 return
@@ -6003,11 +6079,15 @@ if _HAS_QT:
                 self._console_pause_btn.setText("⏸  Pause")
                 self._console_pause_indicator.setText("")
                 self._console_pause_refresh.stop()
-            # 10.7 -- console.14.004. THE BUTTON CLAIMS TO QUIET BOTH
-            # PANES: `_drain_signals` gates on `self._console_paused`
-            # and its docstring says "one control quiets both". This
-            # asks the flag the drain actually reads, after the toggle
-            # has run, against the button the operator just pressed.
+            # 10.7 -- console.14.004. THE BUTTON QUIETS BOTH PANES,
+            # and since issue #49 it really does: `_drain_signals`
+            # gates on `self._console_paused`, `_set_console_paused`
+            # above assigns it, and `set_paused` stopped the log pane.
+            # This asks the flag the drain actually reads, after the
+            # toggle has run, against the button the operator just
+            # pressed -- so a repair that is reverted, renamed away or
+            # skipped by an early return reports red here instead of
+            # going quiet.
             #
             # NO DURATION (E8): reading a flag follows no operation, so
             # a number here would be fabricated.
