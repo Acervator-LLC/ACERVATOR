@@ -33,11 +33,11 @@ Trigger criteria (all four must hold):
 
 ## Build order (per new archetype)
 
-1. **Reuse the schema.** Copy `Finding` and `ArchetypeReport` from `tools/harness/coding_archetype.py`. Do not fork the schema; add domain-specific fields only if genuinely needed.
+1. **Reuse the schema.** Copy `Finding` and `ArchetypeReport` from `dev_harness/harness/coding_archetype.py`. Do not fork the schema; add domain-specific fields only if genuinely needed.
 2. **Write per-tool runners** as `_run_<tool>(self, target) -> tuple[list[Finding], str]`. Return `(findings, "ok")` on success; raise `FileNotFoundError` if the tool isn't installed (the driver catches and marks `missing`).
 3. **Curate severity mapping.** Establish per-rule overrides for known dangerous patterns (see `_BANDIT_SEVERITY_OVERRIDES` in coding_archetype.py). Document each entry with the reason for the override.
 4. **Implement `_build_falsification()`.** Enumerate the concrete conditions under which the report is wrong (missing tools, output-format drift, target modified after review). No hand-waving.
-5. **Ship a `main()` CLI.** Argparse-style `python -m tools.harness.<name>_archetype <target>` → JSON report → exit 0 if passed, 1 if failed.
+5. **Ship a `main()` CLI.** Argparse-style `python -m dev_harness.harness.<name>_archetype <target>` → JSON report → exit 0 if passed, 1 if failed.
 
 ## Test order (per new archetype)
 
@@ -53,14 +53,14 @@ Trigger criteria (all four must hold):
 - **Never fabricate reviewer output** to fill a session-limit gap. If a subagent fails, say so in the report and retry after the limit resets.
 - **Save every reviewer transcript verbatim.** The whole point is the operator can grep the raw output and verify.
 - **Never modify the archetype to make the fixture pass.** If a defect isn't caught, log it as a known gap and add the missing rule as a separate item.
-- **Log every claim.** Use `python -m tools.harness.claim_ledger log "..." --evidence "..."` before shipping any assertion. `check` gates the cascade.
+- **Log every claim.** Use `python -m dev_harness.harness.claim_ledger log "..." --evidence "..."` before shipping any assertion. `check` gates the cascade.
 - **Emit a `falsification` field.** No exceptions. Reports without falsification are unverifiable and violate the operator's show-don't-tell directive.
 
 ## Reference implementations
 
-- `tools/harness/coding_archetype.py` — 6 tools (ruff, mypy, pyright, bandit, vulture, semgrep). 100% recall on hand-crafted fixture v2.
-- `tools/harness/gui_archetype.py` — PySide6 AST + ruff + bandit. 100% recall.
-- `tools/harness/docs_archetype.py` — proselint + structure + Vale (graceful missing). 80% recall (documented gap: duplicate-heading rule).
+- `dev_harness/harness/coding_archetype.py` — 6 tools (ruff, mypy, pyright, bandit, vulture, semgrep). 100% recall on hand-crafted fixture v2.
+- `dev_harness/harness/gui_archetype.py` — PySide6 AST + ruff + bandit. 100% recall.
+- `dev_harness/harness/docs_archetype.py` — proselint + structure + Vale (graceful missing). 80% recall (documented gap: duplicate-heading rule).
 
 Every archetype ships with fixtures at:
 - `docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/`
@@ -94,9 +94,9 @@ This SKILL is wrong if:
 
 Verify with:
 ```
-python -m tools.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_good.py
-python -m tools.harness.gui_archetype docs/audits/2026-07-24_gui_docs_archetypes/gui_fixtures/known_good_widget.py
-python -m tools.harness.docs_archetype docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_good.md
-python -m tools.harness.claim_ledger check
+python -m dev_harness.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_good.py
+python -m dev_harness.harness.gui_archetype docs/audits/2026-07-24_gui_docs_archetypes/gui_fixtures/known_good_widget.py
+python -m dev_harness.harness.docs_archetype docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_good.md
+python -m dev_harness.harness.claim_ledger check
 ```
 All four should exit 0 on a clean tree.

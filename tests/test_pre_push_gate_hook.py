@@ -22,7 +22,7 @@ touches the real working tree, and nothing writes to the operator's home.
 
 # ruff: noqa: S603
 # S607 IS FIXED BY CONSTRUCTION, NOT SUPPRESSED — see the reasoning at the top
-# of tools/harness/coding_archetype.py. Every spawn below resolves its
+# of dev_harness/harness/coding_archetype.py. Every spawn below resolves its
 # executable to an absolute path first (`_GIT`, `_sh()`), so a `git.cmd` or
 # `sh.cmd` planted earlier on PATH cannot be executed under the developer's
 # token during a test run.

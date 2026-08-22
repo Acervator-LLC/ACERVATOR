@@ -47,7 +47,7 @@ live tree. The check runs before any copy, so a refused name creates
 nothing at all.
 
 Scope: only files under `src/` and `tests/` are ever written to live.
-`tools/harness/`, `.claude/`, config files and the version banner are
+`dev_harness/harness/`, `.claude/`, config files and the version banner are
 protected — an island that changed one is refused outright rather than
 silently skipped, because silent dropping is the failure mode this tool
 exists to stop.
@@ -115,7 +115,7 @@ SKIP_DIR_NAMES = frozenset({
 
 PROMOTABLE_ROOTS = ("src/", "tests/")
 
-PROTECTED_PREFIXES = ("tools/harness/", ".claude/")
+PROTECTED_PREFIXES = ("dev_harness/harness/", ".claude/")
 PROTECTED_EXACT = frozenset({
     "src/__init__.py",
     "main.py",
@@ -623,7 +623,7 @@ def _refuse_protected(protected: list[Verdict]) -> int:
         _say(f"  {verdict.rel}")
     _say("")
     _say("This tool promotes only src/ and tests/. It never writes")
-    _say("tools/harness/, .claude/, a config file, or a version banner.")
+    _say("dev_harness/harness/, .claude/, a config file, or a version banner.")
     _say("Nothing was promoted. Move that work out of the island, or land")
     _say("it deliberately by hand with the operator watching.")
     return 1

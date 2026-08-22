@@ -37,20 +37,20 @@ def _run_hook(hook: str, stdin: str) -> subprocess.CompletedProcess:
 
 
 class TestRouterNamesRealArchetype:
-    """When the router says 'run tools.harness.coding_archetype', that
+    """When the router says 'run dev_harness.harness.coding_archetype', that
     module MUST exist and be invokable. Otherwise the routing text is a
     lie. Same for the other two domains."""
 
     def _extract_archetype_module(self, output: str) -> str | None:
         import re
-        m = re.search(r"python -m (tools\.harness\.\w+_archetype)", output)
+        m = re.search(r"python -m (dev_harness\.harness\.\w+_archetype)", output)
         return m.group(1) if m else None
 
     def test_router_coding_module_is_invokable(self):
         r = _run_hook("prompt_router.py",
                       json.dumps({"user_prompt": "refactor the pytest suite"}))
         module = self._extract_archetype_module(r.stdout)
-        assert module == "tools.harness.coding_archetype"
+        assert module == "dev_harness.harness.coding_archetype"
         # Actually invoke -h; must exit 2 (usage) — proves module runnable
         p = subprocess.run(
             [sys.executable, "-m", module],
@@ -61,9 +61,9 @@ class TestRouterNamesRealArchetype:
     def test_router_gui_module_is_invokable(self):
         r = _run_hook("prompt_router.py",
                       json.dumps({"user_prompt": "fix QPushButton layout"}))
-        assert "tools.harness.gui_archetype" in r.stdout
+        assert "dev_harness.harness.gui_archetype" in r.stdout
         p = subprocess.run(
-            [sys.executable, "-m", "tools.harness.gui_archetype"],
+            [sys.executable, "-m", "dev_harness.harness.gui_archetype"],
             capture_output=True, timeout=30, cwd=str(REPO),
         )
         assert p.returncode == 2
@@ -71,9 +71,9 @@ class TestRouterNamesRealArchetype:
     def test_router_docs_module_is_invokable(self):
         r = _run_hook("prompt_router.py",
                       json.dumps({"user_prompt": "write a how-to guide"}))
-        assert "tools.harness.docs_archetype" in r.stdout
+        assert "dev_harness.harness.docs_archetype" in r.stdout
         p = subprocess.run(
-            [sys.executable, "-m", "tools.harness.docs_archetype"],
+            [sys.executable, "-m", "dev_harness.harness.docs_archetype"],
             capture_output=True, timeout=30, cwd=str(REPO),
         )
         assert p.returncode == 2

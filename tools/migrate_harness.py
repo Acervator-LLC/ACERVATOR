@@ -30,10 +30,12 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent.parent
 CLAUDE_PROJECTS = pathlib.Path.home() / ".claude" / "projects"
 
-# tools/ files that are NOT reachable by `island promote` and so never travel
-# on their own. Add to this list rather than remembering them.
-LOOSE_TOOLS = ("queue_state.py", "island.py", "touchset.py",
-               "emitter_registry_check.py", "migrate_harness.py")
+# Repo-relative files that are NOT reachable by `island promote` and so never
+# travel on their own. Add to this list rather than remembering them. Issue #84
+# moved touchset out of tools/, so these are whole paths, not bare names.
+LOOSE_TOOLS = ("tools/queue_state.py", "tools/island.py",
+               "dev_harness/touchset.py",
+               "tools/emitter_registry_check.py", "tools/migrate_harness.py")
 
 # (file, exact text to find, replacement, why)
 PATCHES = (
@@ -144,8 +146,8 @@ def main() -> int:
     # 2. loose tools that promote never moves
     moved = []
     for name in LOOSE_TOOLS:
-        src = HERE / "tools" / name
-        dst = target / "tools" / name
+        src = HERE / name
+        dst = target / name
         if not src.is_file():
             continue
         if dst.is_file() and sha(dst) == sha(src):
@@ -182,11 +184,11 @@ def main() -> int:
     print("   Both are required: a gate that always fails is as useless as one")
     print("   that always passes.\n")
     fixtures = "docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures"
-    print(f"   python -m tools.harness.coding_archetype {fixtures}/known_bad.py")
+    print(f"   python -m dev_harness.harness.coding_archetype {fixtures}/known_bad.py")
     print("     -> MUST exit 1, passed=False. Exit 0 means nothing is checked.")
-    print(f"   python -m tools.harness.coding_archetype {fixtures}/known_good.py")
+    print(f"   python -m dev_harness.harness.coding_archetype {fixtures}/known_good.py")
     print("     -> MUST exit 0, passed=True.")
-    print("   python -m tools.harness.check_release_readiness")
+    print("   python -m dev_harness.harness.check_release_readiness")
     print("     -> MUST print [OK]. Run it DETACHED, read the exit code from a")
     print("        FILE, never through a pipe.")
     print("\n   Then edit any file and confirm an [archetype-gate] line appears.")

@@ -1,4 +1,4 @@
-"""Pin tests for tools/harness/calibrations/__init__.py.
+"""Pin tests for dev_harness/harness/calibrations/__init__.py.
 
 Verifies the calibration loader public API and that all three shipped
 calibrations are present + non-empty + non-trivial.
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from tools.harness import calibrations
+from dev_harness.harness import calibrations
 
 
 class TestApi:

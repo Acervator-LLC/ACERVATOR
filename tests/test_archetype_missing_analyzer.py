@@ -35,7 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.harness.coding_archetype import CodingArchetype
+from dev_harness.harness.coding_archetype import CodingArchetype
 
 MODULE_INVOKED = ["ruff", "mypy", "bandit", "vulture"]
 
@@ -85,7 +85,7 @@ class TestGUIArchetype:
 
     @pytest.mark.parametrize("tool", ["ruff", "bandit"])
     def test_absent_module_reports_missing(self, tool, sample_py, monkeypatch):
-        from tools.harness.gui_archetype import GUIArchetype
+        from dev_harness.harness.gui_archetype import GUIArchetype
         real_run = subprocess.run
         monkeypatch.setattr(subprocess, "run", _absent(tool, real_run))
         report = GUIArchetype().review(sample_py)
@@ -100,7 +100,7 @@ class TestDocsArchetype:
         return p
 
     def test_absent_proselint_reports_missing(self, sample_md, monkeypatch):
-        from tools.harness.docs_archetype import DocsArchetype
+        from dev_harness.harness.docs_archetype import DocsArchetype
         real_run = subprocess.run
         monkeypatch.setattr(subprocess, "run", _absent("proselint", real_run))
         report = DocsArchetype().review(sample_md)
@@ -115,7 +115,7 @@ class TestDocsArchetype:
         vale:'ok' with 0 findings, so an installed-but-unconfigured vale
         was worse than an absent one.
         """
-        from tools.harness.docs_archetype import DocsArchetype
+        from dev_harness.harness.docs_archetype import DocsArchetype
         e100 = ('{"Line":0,"Path":"","Text":"E100 [.vale.ini not found] '
                 'Runtime error\\n\\nno config file found","Code":"E100"}')
         real_run = subprocess.run
@@ -153,7 +153,7 @@ class TestDocsArchetype:
         """
         import shutil
 
-        from tools.harness.docs_archetype import DocsArchetype
+        from dev_harness.harness.docs_archetype import DocsArchetype
         resolved = shutil.which("vale")
         if resolved is None:
             pytest.skip("vale not installed on this machine")

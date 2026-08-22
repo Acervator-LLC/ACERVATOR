@@ -170,14 +170,14 @@ ISLAND_MANIFEST = ".island.json"
 # exposes `review(Path) -> ArchetypeReport`. The gate names modules, so
 # modules are the key.
 ARCHETYPE_CLASSES: dict[str, str] = {
-    "tools.harness.coding_archetype": "CodingArchetype",
-    "tools.harness.gui_archetype": "GUIArchetype",
-    "tools.harness.ta_archetype": "TAArchetype",
-    "tools.harness.docs_archetype": "DocsArchetype",
-    "tools.harness.watchdog_archetype": "WatchdogArchetype",
+    "dev_harness.harness.coding_archetype": "CodingArchetype",
+    "dev_harness.harness.gui_archetype": "GUIArchetype",
+    "dev_harness.harness.ta_archetype": "TAArchetype",
+    "dev_harness.harness.docs_archetype": "DocsArchetype",
+    "dev_harness.harness.watchdog_archetype": "WatchdogArchetype",
 }
 
-WATCHDOG_MODULE = "tools.harness.watchdog_archetype"
+WATCHDOG_MODULE = "dev_harness.harness.watchdog_archetype"
 
 # Provenance labels. A pin must always say which authority put a module
 # in the set, so this module never borrows the gate's standing.

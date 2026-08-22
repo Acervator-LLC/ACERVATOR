@@ -21,10 +21,10 @@ deliverable is a PROPOSED RULE for the operator, never a code edit.
 
 | domain | authority | command |
 |---|---|---|
-| all code | Coding Archetype | `python -m tools.harness.coding_archetype <path>` |
-| ANY arithmetic | TA Quant | `python -m tools.harness.ta_archetype <path>` |
-| PySide6 widgets | GUI Archetype | `python -m tools.harness.gui_archetype <path>` |
-| markdown | Docs Archetype | `python -m tools.harness.docs_archetype <path>` |
+| all code | Coding Archetype | `python -m dev_harness.harness.coding_archetype <path>` |
+| ANY arithmetic | TA Quant | `python -m dev_harness.harness.ta_archetype <path>` |
+| PySide6 widgets | GUI Archetype | `python -m dev_harness.harness.gui_archetype <path>` |
+| markdown | Docs Archetype | `python -m dev_harness.harness.docs_archetype <path>` |
 
 A file containing arithmetic needs BOTH the coding and TA verdicts.
 Writing the code yourself and running the archetype afterwards is
@@ -67,8 +67,8 @@ control. A zero is a claim about the instrument, not the world.
 Prove the harness discriminates before trusting any verdict:
 
 ```bash
-python -m tools.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_good.py
-python -m tools.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_bad.py
+python -m dev_harness.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_good.py
+python -m dev_harness.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_bad.py
 ```
 
 The first must exit 0, the second exit 1. If the second exits 0 the
@@ -79,7 +79,7 @@ mechanism goes blind. A test with no control is not evidence.
 
 ## The three protections
 
-Run inside `coding_archetype` from `tools/harness/rules/`:
+Run inside `coding_archetype` from `dev_harness/harness/rules/`:
 
 - **hallucination** (H001-H003) — a cited path, test, or symbol that
   does not exist on disk. Resolves against the working directory, so a
@@ -103,8 +103,8 @@ MANUALLY on it. Silence from the hook there is not a pass.
 Both must hold, in this order:
 
 ```bash
-python -m tools.harness.check_release_readiness    # must print [OK], exit 0
-python -m tools.harness.claim_ledger check         # must exit 0, no open claims
+python -m dev_harness.harness.check_release_readiness    # must print [OK], exit 0
+python -m dev_harness.harness.claim_ledger check         # must exit 0, no open claims
 ```
 
 Only then touch `src/__init__.py` `__version__` or `CHANGELOG.md`.
@@ -113,7 +113,7 @@ it against RE-MEASURED evidence, not the original assertion.
 
 ## Hands off the harness
 
-Never edit anything under `tools/harness/`. You have no standing to call
+Never edit anything under `dev_harness/harness/`. You have no standing to call
 a finding a false positive. When the harness fails your work, change
 YOUR CODE. If a rule genuinely seems wrong, say so and leave it alone —
 changing a rule so your own code passes is the failure mode the operator
@@ -132,7 +132,7 @@ untouched for free; a branch checkout REPLACES it, so either take a
 running. See `development-island` for the full workflow.
 
 **One thing this cost you, and it lands in the section above.** Island
-`promote` mechanically REFUSED `tools/harness/`, `.claude/`, config and
+`promote` mechanically REFUSED `dev_harness/harness/`, `.claude/`, config and
 version files. Git refuses nothing. "Hands off the harness" now has no
 mechanism behind it — only this rule.
 
@@ -162,7 +162,7 @@ one-line, obviously-inert — all of it gates.
 python -m tools.gate
 ```
 
-It calls `tools.harness.check_release_readiness` unmodified — `tools/harness/`
+It calls `dev_harness.harness.check_release_readiness` unmodified — `dev_harness/harness/`
 stays untouched, per the rule above — and on success writes
 `.gate_stamp.json` recording WHICH COMMIT was proved.
 
@@ -197,9 +197,9 @@ the server is checking anything.
 
 This skill is wrong if:
 
-- Any archetype named above is missing from `tools/harness/`
+- Any archetype named above is missing from `dev_harness/harness/`
 - `known_bad.py` exits 0 (the instrument is blind)
-- `tools/harness/rules/` no longer contains hallucination, scaffolding
+- `dev_harness/harness/rules/` no longer contains hallucination, scaffolding
   and slop
 - The `passed` field is absent from an archetype's JSON output
 

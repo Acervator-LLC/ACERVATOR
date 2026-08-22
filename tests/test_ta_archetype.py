@@ -1,6 +1,6 @@
 """The TA archetype's fixture pair, one reconstruction per live rule.
 
-`tools/harness/ta_archetype.py` names this file in its module docstring
+`dev_harness/harness/ta_archetype.py` names this file in its module docstring
 and in the `falsification` string every report carries. Until
 2026-08-13 the file did not exist: the archetype claimed a falsifier
 nobody could run, and the harness's own H001 rule reported the dead
@@ -43,7 +43,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.harness.ta_archetype import TAArchetype
+from dev_harness.harness.ta_archetype import TAArchetype
 
 FIX = REPO_ROOT / "docs" / "audits" / "2026-08-13_ta_archetype" / "fixtures"
 

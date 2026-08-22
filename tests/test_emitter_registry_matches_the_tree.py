@@ -9,7 +9,7 @@ check compares a value with itself.
 
 Measured on this branch before this file existed::
 
-    $ grep -rn "emitter_registry" tools/harness/ tests/
+    $ grep -rn "emitter_registry" dev_harness/harness/ tests/
     tests/test_emitter_checker_selftest.py:<docstring mention>
 
 One mention, in prose. No invocation. Nothing on the way to green ran
