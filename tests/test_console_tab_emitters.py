@@ -67,12 +67,30 @@ WHAT THE TAB HIDES.
   `test_records_the_slice_threw_away_after_the_watermark_moved_are_reported`
   drives 250 records through one pass and then asks the sink for them
   back, which returns nothing.
-  `14-004` -- the drain gates on `self._console_paused` and the pause
-  button's own docstring says one control quiets both panes. That
-  attribute is assigned NOWHERE in `src/` or `main.py`, so the signals
-  pane is not quieted at all.
-  `test_the_flag_the_drain_reads_is_assigned_nowhere_in_the_tree` reads
-  the tree, and the pin reports `ok` False on every pause.
+  `14-004` -- REPAIRED, issue #49, and this is what it hid. The drain
+  gates on `self._console_paused` and the pause button's own docstring
+  says one control quiets both panes. That attribute was assigned
+  NOWHERE in `src/` or `main.py`, so the log pane stopped and the
+  signals pane under it went on scrolling. `_set_console_paused` now
+  writes it and `_toggle_console_pause` calls it, so the pin is GREEN on
+  a pause. `test_the_flag_the_drain_reads_is_assigned_exactly_once_in_the_tree`
+  reads the tree for that one assignment against the same control, and
+  `test_a_pause_that_quiets_only_one_pane_is_reported` still drives the
+  pin to red -- through `_without_the_console_pause_flag`, which puts
+  the pre-repair tree back for the length of one drive.
+
+  WHAT THE REPAIR THEN HANDS TO `14-001`, AND IT IS NOT NOTHING. A
+  paused drain advances NO watermark, so the sink holds the whole pause
+  and the first pass after the resume reads it in one go. Driven on the
+  real widgets: a backlog of 200 or fewer arrives whole; above that the
+  `[-200:]` slice keeps the NEWEST 200 and `_signal_slice_dropped`
+  counts the rest -- 53 records lost out of a 250-record pause, 2303 out
+  of a 2500-record one -- after the watermark has already moved past
+  them. The operator paused to KEEP those lines. `14-001` goes red and
+  names the mechanism rather than losing them in silence, which is the
+  behaviour issue #48 owns.
+  `test_a_resume_delivers_the_backlog_and_the_slice_reports_what_it_ate`
+  pins those numbers so #48 has a measured baseline to move.
 
 WHAT IS REAL HERE AND WHAT IS A STAND-IN. The `QPlainTextEdit`s and
 their real 2000-block caps, the `QPushButton`, the `QLabel`, the
@@ -243,9 +261,12 @@ def _console(qapp: QApplication, *, handler_cap: int = 5000,
     the pattern `tests/test_signal_timing.py` already drives
     `_drain_signals` with.
 
-    `_console_paused` is DELIBERATELY NOT SET, because production never
-    sets it either. Giving it a value here would hide the defect
-    `14-004` exists to report.
+    `_console_paused` is DELIBERATELY NOT PRE-SET. A `MainWindow` does
+    not carry it before the first press either: `_set_console_paused` is
+    its only writer and `_toggle_console_pause` is that function's only
+    caller (issue #49). Seeding it here would start every drive from a
+    state production never starts from, and would hide a repair that
+    stopped calling it.
     """
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QLabel, QPlainTextEdit, QPushButton
@@ -352,6 +373,55 @@ def _look(stub: Any) -> None:
     """
     sc.reset_throttle()
     stub._emit_console_health()
+
+
+def _without_the_console_pause_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Put the tree back the way it was before the issue #49 repair.
+
+    `_toggle_console_pause` now calls the module-level
+    `_set_console_paused`, resolved through globals on every call, and
+    that function is the ONLY writer of `self._console_paused` -- the
+    flag `_drain_signals` gates the signals pane on. Replacing it with a
+    no-op restores the exact pre-repair behaviour: the log handler is
+    still paused, the attribute is never created, `_drain_signals` reads
+    its `getattr(..., False)` default and the signals pane goes on
+    scrolling under a stopped log pane.
+
+    THAT IS WHY THE FALSIFIER BELOW STILL REACHES `14-004`'s FAILING
+    CONDITION. The pin compares the flag the drain really reads against
+    the button the operator really pressed, so it reports any genuine
+    disagreement between them -- but after the repair no press produces
+    one, because the press that stops the log pane now sets the flag as
+    well.
+
+    The name is asserted to exist and to be callable FIRST, for the
+    reason `_without_the_reanchor` in `tests/test_exchange_tab_emitters.py`
+    gives: `monkeypatch.setattr` on a renamed-away name raises, a
+    hand-rolled `setattr` would not, and a falsifier that quietly
+    patches nothing proves nothing. This is therefore also the positive
+    control for the repair -- rename or delete `_set_console_paused` and
+    the test that calls this fails.
+    """
+    from src.gui import main_window as mw
+
+    assert callable(mw._set_console_paused)
+
+    def _pre_repair_no_op(_window: object, *, paused: bool) -> None:
+        """Take the argument and write nothing, as the tree once did.
+
+        That is exactly what issue #49 found: the log handler is paused
+        and the flag the signals drain reads is never created at all.
+
+        `paused` is spelled out rather than swallowed by `**kwargs` so
+        this stand-in carries the SAME signature as the function it
+        replaces. A repair that changed the call back to a positional
+        argument would raise here instead of quietly patching a
+        function nobody calls any more.
+        """
+        assert isinstance(paused, bool)
+
+    monkeypatch.setattr(
+        mw, "_set_console_paused", _pre_repair_no_op, raising=True)
 
 
 # ── the syntax tree ────────────────────────────────────────────────────
@@ -667,14 +737,34 @@ def test_a_drain_that_stopped_is_reported(qapp: QApplication) -> None:
 
 
 def test_a_pause_that_quiets_only_one_pane_is_reported(
-        qapp: QApplication) -> None:
-    """THE FALSIFIER for `14-004`, and it is a live defect.
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    """THE FALSIFIER for `14-004`, reached rather than waited for.
+
+    It WAS a live defect and issue #49 closed it, so the pin is green
+    on a pause now and the failing condition has to be reached another
+    way.
 
     `_drain_signals` gates on `self._console_paused` and its docstring
     says the button "honours the same Pause the log pane uses, so one
-    control quiets both". Nothing in the tree ever assigns that
-    attribute, so the log pane stops and the signals pane does not.
+    control quiets both". Before the repair nothing in the tree ever
+    assigned that attribute, so the log pane stopped and the signals
+    pane did not. `_without_the_console_pause_flag` puts that tree back
+    for the length of this drive -- the same move
+    `tests/test_exchange_tab_emitters.py` makes for `15-001` and
+    `15-003`.
+
+    THE ASSERTIONS ARE UNCHANGED AND THE DRIVE IS UNCHANGED. Only the
+    route to the red moved. `getattr(..., None) is None` is the
+    pre-repair condition EXACTLY: it fails if the repair merely wrote
+    the wrong value, and it fails if the falsifier patched nothing at
+    all.
+
+    The pane is then driven, because a pin's opinion is not the defect.
+    Five records arrive under a pressed Pause and the signals pane
+    renders six -- the five plus the pause record itself -- while the
+    log pane holds nothing.
     """
+    _without_the_console_pause_flag(monkeypatch)
     with _collect() as sink, _console(qapp) as stub:
         stub._console_pause_btn.setChecked(True)
         stub._toggle_console_pause()
@@ -682,12 +772,102 @@ def test_a_pause_that_quiets_only_one_pane_is_reported(
         # The defect itself, read off the object the drain consults.
         assert getattr(stub, "_console_paused", None) is None
         assert stub._console_log_handler._paused is True
+        # And the consequence, read off the pane rather than the pin.
+        assert stub._signal_view.document().isEmpty()
+        _seed(sink, 5)
+        stub._console_log_handler.log("one line the operator wanted kept")
+        stub._drain_signals()
+        assert stub._signal_view.blockCount() == 6, (
+            "the paused drain rendered nothing; the falsifier patched "
+            "nothing and this test proves nothing")
+        assert stub._console.document().isEmpty()
     assert rec.ok is False
     assert rec.actual is False
     assert rec.expected is True
     assert rec.context["log_pane_paused"] is True
     assert rec.context["button_checked"] is True
     assert rec.duration is None
+
+
+def test_a_pause_quiets_the_signals_pane_as_well_as_the_log(
+        qapp: QApplication) -> None:
+    """THE REPAIR, issue #49, driven rather than asserted about.
+
+    ONE PRESS, TWO MECHANISMS. `set_paused` buffers the log pane;
+    `_set_console_paused` writes the flag `_drain_signals` reads. This
+    is the drive the falsifier above inverts: forty records and four
+    log lines arrive across four drain ticks under a pressed Pause, and
+    both panes hold exactly what they held at the press.
+
+    `14-004` is green here, which is the whole point of the repair: the
+    emitter that found this defect now reports it repaired.
+    """
+    with _collect() as sink, _console(qapp) as stub:
+        _seed(sink, 10)
+        stub._console_log_handler.log("before the press")
+        stub._drain_signals()
+        assert stub._signal_view.blockCount() == 10
+        assert stub._console.blockCount() == 1
+
+        stub._console_pause_btn.setChecked(True)
+        stub._toggle_console_pause()
+        assert stub._console_paused is True
+        at_press_signals = stub._signal_view.blockCount()
+        at_press_log = stub._console.blockCount()
+        watermark = stub._signal_seq
+        read_at_press = stub._signal_read
+
+        for _ in range(4):
+            _seed(sink, 10)
+            stub._console_log_handler.log("held")
+            stub._drain_signals()
+
+        assert stub._signal_view.blockCount() == at_press_signals
+        assert stub._console.blockCount() == at_press_log
+        # The watermark did not move either, so nothing was consumed
+        # and thrown away while the operator was reading.
+        assert stub._signal_seq == watermark
+        assert stub._signal_read == read_at_press
+        assert stub._console_log_handler.buffered_count() == 4
+        rec = _only(sink, QUIETS)
+    assert rec.ok is True, rec.context
+    assert rec.actual is True
+    assert rec.expected is True
+    assert rec.context["log_pane_paused"] is True
+    assert rec.context["button_checked"] is True
+    assert rec.duration is None
+
+
+def test_a_pause_does_not_make_the_drain_look_dead(
+        qapp: QApplication) -> None:
+    """The repair must not turn `14-003` red every time Pause is held.
+
+    `_signal_drain_ticks` is incremented as the FIRST statement of
+    `_drain_signals`, above the pause guard, so a paused drain still
+    counts its own invocations and `drain_alive` reads a live timer.
+    Were the counter below the guard, an operator reading the pane for
+    ten seconds would raise a stopped-drain alarm -- the exact fault
+    `14-003` exists to separate from ordinary silence.
+    """
+    with _collect() as sink, _console(qapp) as stub:
+        stub._console_pause_btn.setChecked(True)
+        stub._toggle_console_pause()
+        for _ in range(20):
+            stub._drain_signals()
+        assert stub._signal_drain_ticks == 20
+        assert stub._signal_rendered == 0
+        _look(stub)
+        alive = _only(sink, ALIVE)
+        rendered = _only(sink, RENDERED)
+    assert alive.ok is True, alive.context
+    assert alive.context["ticks_since_last_look"] == 20
+    assert alive.context["drain_timer_active"] is True
+    # Nothing was read and nothing was rendered, so 14-001 is green too:
+    # a pause loses nothing WHILE it is held.
+    assert rendered.ok is True, rendered.context
+    assert rendered.actual == 0
+    assert rendered.expected == 0
+    assert rendered.context["lost_to_slice"] == 0
 
 
 def test_a_resume_leaves_both_panes_agreeing(qapp: QApplication) -> None:
@@ -706,14 +886,24 @@ def test_a_resume_leaves_both_panes_agreeing(qapp: QApplication) -> None:
     assert rec.context["log_pane_paused"] is False
 
 
-def test_the_flag_the_drain_reads_is_assigned_nowhere_in_the_tree() -> None:
+def test_the_flag_the_drain_reads_is_assigned_exactly_once_in_the_tree(
+        ) -> None:
     """The measurement behind `14-004`, read off the syntax tree.
 
-    A comment claiming the defect would age. This walks every module
-    under `src/` plus `main.py` for an assignment to `_console_paused`
-    and finds none, against a control that the same walk DOES find the
-    neighbouring `_signal_seq`. Without the control a zero here would be
-    a claim about the walk rather than about the tree.
+    IT USED TO ASSERT ZERO. That walk found no assignment to
+    `_console_paused` anywhere under `src/` or in `main.py`, against a
+    control that the same walk DID find the neighbouring `_signal_seq`
+    -- and the zero was the defect, not an instrument fault. Issue #49
+    put ONE assignment in the tree, so the same walk now asserts one,
+    in `main_window.py`, and the control stays exactly where it was:
+    without it a count here would be a claim about the walk rather than
+    about the tree.
+
+    ONE, not merely at-least-one. `_set_console_paused` is the single
+    writer on purpose -- the falsifier for `14-004` monkeypatches that
+    function to reach the pin's red condition, and a second assignment
+    written somewhere else would keep the flag moving with the falsifier
+    installed and quietly retire the falsifier.
     """
     targets = [*sorted((REPO / "src").rglob("*.py")), REPO / "main.py"]
 
@@ -740,7 +930,82 @@ def test_the_flag_the_drain_reads_is_assigned_nowhere_in_the_tree() -> None:
         return hits
 
     assert _assigned("_signal_seq"), "the control found nothing; the walk is broken"
-    assert _assigned("_console_paused") == []
+    written = _assigned("_console_paused")
+    assert len(written) == 1, written
+    assert written[0].startswith("main_window.py:"), written
+
+
+def test_a_resume_delivers_the_backlog_and_the_slice_reports_what_it_ate(
+        qapp: QApplication) -> None:
+    """WHAT THE ISSUE #49 PAUSE HANDS TO `14-001`, AS NUMBERS.
+
+    A paused drain advances no watermark, so the sink keeps every record
+    of the pause and the first pass after the resume reads the whole
+    backlog in one call. `_drain_signals` then renders `new[-200:]` --
+    the NEWEST 200 -- after `self._signal_seq = new[-1].seq` has already
+    moved past all of it, so anything older is unreachable by this
+    consumer for the rest of the run.
+
+    THE NUMBERS ARE PINNED HERE BECAUSE ISSUE #48 OWNS THAT BEHAVIOUR
+    AND NEEDS A BASELINE TO MOVE, not a paragraph to argue with. Each
+    row below is (records emitted during the pause) -> (rendered,
+    dropped by the slice, blocks on the pane). Three records ride along
+    with every drive: the pause's own `14-004`, and the resume's
+    `14-004` and `14-005`.
+
+        50    ->  53 rendered,    0 dropped,  53 blocks
+        197   -> 200 rendered,    0 dropped, 200 blocks
+        250   -> 200 rendered,   53 dropped, 200 blocks
+        2500  -> 200 rendered, 2303 dropped, 200 blocks
+
+    The operator paused precisely to keep those lines. The loss is
+    REPORTED rather than silent -- `14-001` goes red and
+    `lost_to_slice` names the mechanism -- which is the whole reason the
+    pin was written before the pause was repaired.
+
+    The pane's own 2000-block cap is NOT what bites here: the 200-line
+    slice caps the delivery first, so the cap can only evict pane
+    history that was already there. `14-002` reports that separately,
+    through `evicted`.
+    """
+    def _resume_after(backlog: int) -> tuple[int, int, int, Any]:
+        with _collect() as sink, _console(qapp) as stub:
+            stub._console_pause_btn.setChecked(True)
+            stub._toggle_console_pause()
+            _seed(sink, backlog)
+            stub._drain_signals()
+            assert stub._signal_view.document().isEmpty()
+            stub._console_pause_btn.setChecked(False)
+            stub._toggle_console_pause()
+            stub._drain_signals()
+            _look(stub)
+            return (stub._signal_rendered,
+                    stub._signal_slice_dropped,
+                    stub._signal_view.blockCount(),
+                    _only(sink, RENDERED))
+
+    rendered, dropped, blocks, rec = _resume_after(50)
+    assert (rendered, dropped, blocks) == (53, 0, 53)
+    assert rec.ok is True, rec.context
+
+    rendered, dropped, blocks, rec = _resume_after(197)
+    assert (rendered, dropped, blocks) == (200, 0, 200)
+    assert rec.ok is True, rec.context
+
+    rendered, dropped, blocks, rec = _resume_after(250)
+    assert (rendered, dropped, blocks) == (200, 53, 200)
+    assert rec.ok is False
+    assert rec.actual == 200
+    assert rec.expected == 253
+    assert rec.context["lost_to_slice"] == 53
+    assert rec.context["slice_cap"] == SLICE_CAP
+
+    rendered, dropped, blocks, rec = _resume_after(2500)
+    assert (rendered, dropped, blocks) == (200, 2303, 200)
+    assert rec.ok is False
+    assert rec.context["lost_to_slice"] == 2303
+    # The pane cap never bit: 200 rendered is under 2000 blocks.
+    assert blocks < PANE_BLOCKS
 
 
 # ── 14-005  the resume put the buffer on the pane ──────────────────────
