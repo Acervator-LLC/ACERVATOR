@@ -27,8 +27,11 @@ of the 38 live bots.
 
 `_without_the_anchor_reference` below restates that defective branch so
 the falsifier survives as a record rather than being deleted. The
-`TestTheIMUTopUpDefect` class is the positive control: every case in it
-fails if the fix is reverted.
+`TestTheIMUTopUpDefect` class carries the positive controls. Reverting
+the one token `old_a` -> `old_t` was measured, not assumed: 14 tests in
+this file fail, 10 of them in that class. The other 3 in the class are
+regression pins on arms the repair does not touch, and they are
+expected to hold either way.
 
 Most of these are source-shape pins (AST/text) — they verify the
 scrumming_bot.py implementation without needing to instantiate a
@@ -346,7 +349,7 @@ class TestTheIMUTopUpDefect:
     IMU was the largest, CAP the smallest still exposed at $5.4148.
 
     Every case below fails if the `old_a` reference is reverted to
-    `old_t`, except the two marked as regression pins, which are
+    `old_t`, except the three marked as regression pins, which are
     unchanged by the repair and are here to prove it did not spill.
     """
 
