@@ -46,7 +46,7 @@ def live(tmp_path: Path) -> Path:
     write(root / "src" / "trading" / "claims.py", SIBLING_BEFORE)
     write(root / "tests" / "test_claims.py", "def test_x():\n    assert True\n")
     write(root / "src" / "__init__.py", '__version__ = "3.15.27"\n')
-    write(root / "tools" / "harness" / "coding_archetype.py", "PASS = True\n")
+    write(root / "dev_harness" / "harness" / "coding_archetype.py", "PASS = True\n")
     return root
 
 
@@ -331,7 +331,7 @@ def test_protected_paths_are_refused_not_silently_skipped(
 ) -> None:
     """Silent dropping is the failure mode this tool exists to stop."""
     isl = fork(live, islands)
-    write(isl / "tools" / "harness" / "coding_archetype.py", "PASS = False\n")
+    write(isl / "dev_harness" / "harness" / "coding_archetype.py", "PASS = False\n")
     write(isl / "src" / "__init__.py", '__version__ = "9.9.9"\n')
     before = snapshot(live)
 

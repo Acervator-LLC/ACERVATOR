@@ -14,7 +14,7 @@ That is the failure this file exists to make impossible.
 
 Why a wrapper and not a change to the gate itself
 -------------------------------------------------
-`harness-law` forbids editing anything under `tools/harness/`, and that rule
+`harness-law` forbids editing anything under `dev_harness/harness/`, and that rule
 is not negotiable for convenience. So the gate is called, not modified. This
 file adds exactly one thing the gate does not record: WHICH COMMIT was proved.
 
@@ -39,7 +39,7 @@ Exit code is the gate's own, unmodified. Never read it through a pipe.
 
 # ruff: noqa: S603
 # S607 IS FIXED BY CONSTRUCTION HERE, NOT SUPPRESSED, following the reasoning
-# recorded at the top of tools/harness/coding_archetype.py: a partial
+# recorded at the top of dev_harness/harness/coding_archetype.py: a partial
 # executable path is not a false positive, because on Windows PATH plus
 # PATHEXT would execute a `git.cmd` planted anywhere earlier on PATH under the
 # developer's own token. Both spawns below use an absolute path — the gate via
@@ -110,9 +110,9 @@ def clear_stamp(reason: str) -> None:
 
 
 def main() -> int:
-    print("[gate] running tools.harness.check_release_readiness ...")
+    print("[gate] running dev_harness.harness.check_release_readiness ...")
     result = subprocess.run(
-        [sys.executable, "-m", "tools.harness.check_release_readiness"],
+        [sys.executable, "-m", "dev_harness.harness.check_release_readiness"],
         cwd=REPO,
         check=False,
     )

@@ -401,13 +401,13 @@ def _pick_archetypes(path: Path, source: str) -> list:
     mods = []
     if suffix in _PY_SUFFIXES:
         # Coding ALWAYS. A GUI file is still Python.
-        mods.append("tools.harness.coding_archetype")
+        mods.append("dev_harness.harness.coding_archetype")
         if _src_has_qwidget_class(source, path):
-            mods.append("tools.harness.gui_archetype")
+            mods.append("dev_harness.harness.gui_archetype")
         if _looks_like_ta(path, source):
-            mods.append("tools.harness.ta_archetype")
+            mods.append("dev_harness.harness.ta_archetype")
     elif suffix in _MD_SUFFIXES:
-        mods.append("tools.harness.docs_archetype")
+        mods.append("dev_harness.harness.docs_archetype")
     return mods
 
 

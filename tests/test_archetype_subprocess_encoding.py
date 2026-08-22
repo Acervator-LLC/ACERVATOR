@@ -41,7 +41,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-HARNESS = REPO_ROOT / "tools" / "harness"
+HARNESS = REPO_ROOT / "dev_harness" / "harness"
 ARCHETYPES = ["coding_archetype.py", "docs_archetype.py", "gui_archetype.py"]
 
 
@@ -121,7 +121,7 @@ class TestTheRealisticPayloadDecodes:
     def test_the_prose_layer_returns_findings_on_the_bad_fixture(self):
         """End-to-end: the layer that was silently empty now reports.
         This is the assertion that would have caught the original."""
-        from tools.harness.docs_archetype import DocsArchetype
+        from dev_harness.harness.docs_archetype import DocsArchetype
 
         fixture = (REPO_ROOT / "docs" / "audits"
                    / "2026-07-24_gui_docs_archetypes" / "docs_fixtures"

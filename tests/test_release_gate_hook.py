@@ -64,7 +64,7 @@ def _sidecar(tests=1105, version="3.24.32", checks=None, age_minutes=0):
                        "claims": "ran"} if checks is None else checks,
         "timestamp": when.replace(microsecond=0).isoformat().replace(
             "+00:00", "Z"),
-        "generator": "tools/harness/check_release_readiness.py",
+        "generator": "dev_harness/harness/check_release_readiness.py",
     }
 
 

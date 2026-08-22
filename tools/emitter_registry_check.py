@@ -22,7 +22,7 @@ Right side : the rows of the Emitter Identification markdown.
 WHY IT IMPORTS THE WATCHDOG INSTEAD OF MATCHING TEXT
 ====================================================
 "What is a pin" already has one definition, in
-``tools/harness/watchdog_archetype.py``. It resolves names through the
+``dev_harness/harness/watchdog_archetype.py``. It resolves names through the
 AST because a pin is a call that reaches the installed handler, not a
 spelling. The inventory of 2026-08-13 measured what happens when a
 counter guesses at the spelling instead: one regex returned 0 against a
@@ -31,7 +31,7 @@ never re-implements it. It adds only the part the Watchdog does not
 record -- the name string each pin carries.
 
 This file is NOT part of the harness. It lives under ``tools/`` because
-the Coding Archetype may not edit ``tools/harness/``.
+the Coding Archetype may not edit ``dev_harness/harness/``.
 
 THE MATCH KEY IS (file, name), COUNTED
 ======================================
@@ -125,7 +125,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from tools.harness.watchdog_archetype import _iter_python, _scan_module, is_exempt
+from dev_harness.harness.watchdog_archetype import _iter_python, _scan_module, is_exempt
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REGISTRY_PATH = Path("docs/EMITTER_IDENTIFICATION.md")

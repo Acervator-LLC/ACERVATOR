@@ -27,7 +27,7 @@ Without it the pre-push gate hook does not run and you can push ungated code.
 python -m tools.gate
 ```
 
-Runs the whole suite via `tools.harness.check_release_readiness` and, on
+Runs the whole suite via `dev_harness.harness.check_release_readiness` and, on
 success, stamps WHICH COMMIT it proved into `.gate_stamp.json`. **Run it
 detached and read the exit code from a file** — never through a pipe. If it
 does not print `[OK]`, read the failures before touching anything.
@@ -43,7 +43,7 @@ Each queue item's state **measured from code**. A written table goes stale in
 days; this does not.
 
 ```bash
-python -m tools.harness.claim_ledger check
+python -m dev_harness.harness.claim_ledger check
 ```
 
 ---
@@ -69,13 +69,13 @@ Answers to 5-8 live in `.claude/skills/harness-law` and the memory directory.
 **Then prove the harness is live:**
 
 ```bash
-python -m tools.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_bad.py
+python -m dev_harness.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_bad.py
 ```
 
 **Must exit 1.** Verified 2026-08-16 in this repo: it does.
 
 ```bash
-python -m tools.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_good.py
+python -m dev_harness.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_good.py
 ```
 
 **Must exit 0.** Verified: it does. Both halves required — a gate that always
@@ -129,8 +129,8 @@ write code**; you referee. Report each one's own `passed`, never a delta.
 positive.
 
 `coding_archetype`, `ta_archetype`, `gui_archetype`, `docs_archetype`,
-`watchdog_archetype`, plus `tools/touchset.py`,
-`tools/harness/check_release_readiness.py`, `claim_ledger`.
+`watchdog_archetype`, plus `dev_harness/touchset.py`,
+`dev_harness/harness/check_release_readiness.py`, `claim_ledger`.
 
 **The missing-target trap is FIXED.** It used to report `passed=True`, exit 0 on
 a path that did not exist. Measured 2026-08-16: `coding_archetype
@@ -155,7 +155,7 @@ while he is running. See STILL OUTSTANDING.
 
 **TWO PROTECTIONS THE SWITCH REMOVES. Name them, because prose does not bind.**
 
-- `promote` REFUSED `tools/harness/`, `.claude/`, config and version files by
+- `promote` REFUSED `dev_harness/harness/`, `.claude/`, config and version files by
   design. Git refuses nothing. "Hands off the harness" is now a rule with no
   mechanism behind it.
 - `promote` preserved each file's line endings. Git under `core.autocrlf=true`

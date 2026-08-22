@@ -7,7 +7,7 @@ headline portfolio figure. That field and `stats.current_price` are
 written at different moments in the tick, so the cached product lags
 whenever price moved after the last write.
 
-Measured by `tools/harness/reconcile_position_values.py` against live
+Measured by `dev_harness/harness/reconcile_position_values.py` against live
 state 2026-08-06: 11 of 35 bots diverged more than 1% from
 holdings x price, worst ORCA/USD at 11.53%, and the fleet total
 understated the position by $35.46 against $3,317.16.
