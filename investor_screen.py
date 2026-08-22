@@ -19,7 +19,7 @@ Copyright (c) 2026 Anthony L. Brown. All rights reserved.
 """
 import math
 from PySide6.QtWidgets import QWidget
-from PySide6.QtGui     import (QPainter, QFont, QColor, QLinearGradient, QPen)
+from PySide6.QtGui     import (QPainter, QFont, QColor, QPen)
 from PySide6.QtCore    import Qt, QRectF, QPointF, QTimer
 
 TOTAL_DURATION = 100.0
@@ -75,10 +75,19 @@ SCENES = [
 
 
 # Module-level cache — computed once, shared across all frames
-import math as _math, random as _rnd
+import math as _math
+import secrets as _secrets
 
-def _cached_prices(mode='bull', n=80):
-    r = _rnd.Random(42 if mode=='bull' else 7)
+def _cached_prices(n=80):
+    # secrets.SystemRandom() reads the operating-system entropy source,
+    # which ruff S311 accepts. The previous code used random.Random with
+    # a seed picked by a `mode` argument. `mode` had one call site and
+    # that call site passed nothing, so the second seed was never
+    # reached, and the two seeds changed only a +/-1.25% cosmetic
+    # jitter on an otherwise identical curve. `mode` is therefore gone.
+    # The series is still built ONCE at import time, so every frame of
+    # one run draws the same curve.
+    r = _secrets.SystemRandom()
     pts = []
     for i in range(n):
         t = i/(n-1)
@@ -282,7 +291,7 @@ class InvestorScreen(QWidget):
 
     # ── paintEvent dispatch ───────────────────────────────────────────────────
 
-    def paintEvent(self, event):
+    def paintEvent(self, _event):
         try:
             from src import __version__
         except ImportError:
@@ -657,5 +666,5 @@ class InvestorScreen(QWidget):
         self._glow(p, "Claude of Anthropic",
                    QRectF(0, cy + 152, W, 32), 15, 'bl', ca, 'bl')
 
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, _event):
         self._t = TOTAL_DURATION - .5
