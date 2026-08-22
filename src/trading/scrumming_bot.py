@@ -11581,11 +11581,16 @@ class ScrummingBot(BotContainer):
             message=(
                 f"BALANCE DRIFT ({reason}): internal={internal_units:.6f} "
                 f"exchange={exchange_units:.6f} "
-                f"drift={drift_units:+.6f} ({drift_pct:.2f}%). "
-                f"Resetting internal state to exchange reality."))
+                f"drift={drift_units:+.6f} ({drift_pct:.2f}%)."))
+        # This line is emitted BEFORE either branch runs, so it states
+        # the OBSERVATION only. It used to end "Resetting internal
+        # state to exchange reality" and then the drift-UP branch
+        # preserved instead -- two log lines one second apart saying
+        # opposite things, 735 times on BILL alone. Each branch below
+        # reports what it actually did.
         logger.warning(
             "Bot %s balance drift (%s): internal=%.6f exchange=%.6f "
-            "drift=%+.6f (%.3f%%) — resetting",
+            "drift=%+.6f (%.3f%%)",
             self.bot_id, reason, internal_units, exchange_units,
             drift_units, drift_pct)
 
@@ -11630,24 +11635,115 @@ class ScrummingBot(BotContainer):
                                   if l["units"] > 1e-12]
             self._current_holdings = exchange_units
         else:
-            # Drift UP (or effectively equal): extra units are NOT the
-            # bot's. Do not auto-seed _main_lots, do not adopt the
-            # exchange balance.
+            # Drift UP. Operator directive 2026-08-22, verbatim:
+            #
+            #   "Target Delta is supposed to be a simple calculation of
+            #    Current Balance (from the exchange) vs. Target Balance
+            #    (anchor / in app). There should be no other control."
+            #
+            # This branch was that other control. It refused EVERY
+            # upward correction, so a bot whose book fell behind the
+            # wallet traded against the stale number for as long as it
+            # ran. Measured on BILL 2026-08-22: internal 14131 against
+            # an exchange 15778, for 1647 units the bot had itself
+            # bought and failed to book. The Ammo cell then rendered
+            # "buy $16.27" on a position $17 ABOVE its target -- a
+            # full signal inversion on an accumulation platform.
+            #
+            # WHAT IS KEPT. The refusal existed for a real reason
+            # (2026-07-27, a fresh ETH/BTC bot claiming ~$178 of the
+            # operator's personal coin). That protection is preserved
+            # exactly, but expressed as ATTRIBUTION rather than as a
+            # blanket refusal:
+            #
+            #   claimable = exchange - personal_hold_qty - siblings
+            #
+            # Both subtrahends are declarations, not inferences:
+            # `personal_hold_qty` is a number the operator sets, and
+            # the sibling total is what other bots already track. A
+            # surplus above `claimable` is genuinely foreign and is
+            # still refused, and still says so.
             _surplus = max(0.0, exchange_units - internal_units)
             if _surplus > 1e-9:
-                self._bus.emit("bot.log", bot_id=self.bot_id,
-                    message=(
-                        f"DRIFT UP ({reason}): {_surplus:.8f} "
-                        f"{self.config.target_asset} on exchange NOT "
-                        f"attributed to this bot (internal={internal_units:.8f} "
-                        f"exchange={exchange_units:.8f}). Preserving "
-                        f"internal state; those units belong to "
-                        f"another bot, prior state, or operator."))
-                logger.info(
-                    "Bot %s drift UP (%s): surplus=%.8f preserved-internal=%.8f "
-                    "→ NOT claiming exchange units",
-                    self.bot_id, reason, _surplus, internal_units)
-            # _current_holdings + _main_lots unchanged.
+                _personal = max(0.0, float(getattr(
+                    self.config, "personal_hold_qty", 0.0) or 0.0))
+                _sib_units = 0.0
+                _mgr = getattr(self, "_bot_manager", None)
+                if _mgr is not None:
+                    try:
+                        _sib_units = max(0.0, float(
+                            _mgr.sum_sibling_tracked_units(
+                                self.bot_id, self.config.target_asset)))
+                    except Exception as _sib_exc:  # R28-OK: fail closed
+                        # Unknown sibling total means unknown
+                        # attribution. Claim nothing this pass rather
+                        # than risk taking another bot's inventory.
+                        logger.warning(
+                            "Bot %s drift UP (%s): sibling total "
+                            "unreadable (%s) — claiming nothing this "
+                            "pass.", self.bot_id, reason, _sib_exc)
+                        _sib_units = float("inf")
+                _claimable = exchange_units - _personal - _sib_units
+                _adopt = min(exchange_units, _claimable)
+                _gain = _adopt - internal_units
+
+                if _gain > 1e-9:
+                    # Reconciliation lot. The units are real and on the
+                    # exchange; only their cost basis is unknown, so it
+                    # is booked at the price this reconcile ran at and
+                    # flagged, rather than inventing a fill that never
+                    # happened. The invariant every consumer relies on
+                    # -- sum(_main_lots units) == _current_holdings --
+                    # is what makes the delta computable, so the lot is
+                    # appended in the same step that moves the scalar.
+                    _basis = float(getattr(
+                        getattr(self, "stats", None),
+                        "current_price", 0.0) or 0.0)
+                    self._main_lots.append({
+                        "units": _gain,
+                        "initial_buy_price": _basis,
+                        "operator_initiated": False,
+                        "reconciled_to_exchange": True,
+                    })
+                    self._current_holdings = _adopt
+                    _foreign = max(0.0, exchange_units - _adopt)
+                    self._bus.emit("bot.log", bot_id=self.bot_id,
+                        message=(
+                            f"DRIFT UP ({reason}): adopted the exchange "
+                            f"balance. internal={internal_units:.8f} -> "
+                            f"{_adopt:.8f} {self.config.target_asset} "
+                            f"(exchange={exchange_units:.8f}). Booked "
+                            f"{_gain:.8f} units as a reconciliation lot "
+                            f"at ${_basis:.8f}. "
+                            + (f"{_foreign:.8f} units left unclaimed "
+                               f"(personal hold {_personal:.8f}, "
+                               f"siblings {_sib_units:.8f})."
+                               if _foreign > 1e-9 else
+                               "No units on this asset are spoken for "
+                               "elsewhere.")))
+                    logger.info(
+                        "Bot %s drift UP (%s): adopted %.8f (was %.8f, "
+                        "exchange %.8f, personal %.8f, siblings %.8f)",
+                        self.bot_id, reason, _adopt, internal_units,
+                        exchange_units, _personal, _sib_units)
+                else:
+                    # Every surplus unit is spoken for. This is the
+                    # 2026-07-27 case and it still refuses -- but it
+                    # now says WHY, with the numbers that decided it.
+                    self._bus.emit("bot.log", bot_id=self.bot_id,
+                        message=(
+                            f"DRIFT UP ({reason}): {_surplus:.8f} "
+                            f"{self.config.target_asset} on exchange is "
+                            f"not this bot's (internal="
+                            f"{internal_units:.8f} exchange="
+                            f"{exchange_units:.8f}). Personal hold "
+                            f"{_personal:.8f}, sibling bots "
+                            f"{_sib_units:.8f}. Preserving internal "
+                            f"state."))
+                    logger.info(
+                        "Bot %s drift UP (%s): surplus=%.8f fully "
+                        "attributed elsewhere — preserved internal=%.8f",
+                        self.bot_id, reason, _surplus, internal_units)
         return True
 
 
