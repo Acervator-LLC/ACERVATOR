@@ -4428,6 +4428,91 @@ if _HAS_QT:
         window._console_paused = bool(paused)
 
     # ---------------------------------------------------------------
+    # The signals-pane gap marker
+    # ---------------------------------------------------------------
+    def _signal_gap_marker_text(skipped: int) -> str:
+        """Return the line the signals pane draws over a skipped stretch.
+
+        issue #48, and it is the operator's requirement in his own
+        words: "The Emitter Network just needs to work. No part should
+        get back logged or clogged or fall out of sync."
+
+        THE PANE IS ONE CONSUMER FALLING BEHIND AND IT IS NOT DATA
+        LOSS, AND THE WORDING SAYS SO. `SignalSink` appends and flushes
+        on every emit, so every record this pass steps over is already
+        on disk in `~/.acervator_logs/signals/session.jsonl`. A marker
+        reading "not shown" alone would send the operator hunting a
+        defect that is not there; this one names the file, so the next
+        move is `Get-Content`, not a bug report.
+
+        "SKIPPED TO STAY CURRENT" IS THE OTHER HALF OF THE SENTENCE.
+        The alternative design -- advance the watermark only as far as
+        the render reached -- would leave the pane falling further
+        behind under sustained load, showing older and older records
+        while the sink races ahead, with nothing on the screen to say
+        whether it is a live monitor or a historical one. The pane
+        stays current and draws the gap instead, and the marker states
+        which of the two it chose.
+
+        `NOT LOST` IS UPPER CASE ON PURPOSE. It is the one clause a
+        reader scanning a scrolling pane has to catch.
+
+        The count is the FIRST number in the line so the eye finds it
+        without reading the sentence, and it is the same quantity
+        `console.14.001` reports as `lost_to_slice`.
+
+        Split out from `_draw_signal_gap_marker` so a test can assert
+        the WORDING without a widget, and so the drawing test and the
+        wording test fail separately when they fail.
+        """
+        return (f"──── [SIGNALS GAP] {skipped} earlier records skipped "
+                f"to stay current · NOT LOST · on disk in "
+                f"~/.acervator_logs/signals/session.jsonl ────")
+
+    def _draw_signal_gap_marker(view: QPlainTextEdit, *, skipped: int) -> int:
+        """Draw one gap marker into the signals pane. Returns blocks added.
+
+        issue #48. The return value is the number of BLOCKS this call
+        put on the pane, and `_drain_signals` adds it to
+        `_signal_markers`, which `console.14.002` then counts as part
+        of what the drain wrote. A marker line IS a block, so leaving
+        it out of that ledger would paint `14-002` red for drawing the
+        very thing that makes the skip visible.
+
+        `skipped <= 0` DRAWS NOTHING AND RETURNS ZERO. A pass that kept
+        every record must leave no trace at all, or the marker becomes
+        pane furniture the operator learns to read past.
+
+        IT IS A MODULE-LEVEL FUNCTION, resolved through globals on
+        every call, for the same reason `_set_console_paused` (issue
+        #49), `_reanchor_bot_selection` (issue #51) and
+        `_select_row_for_bot` (issue #52) are: `_without_the_gap_marker`
+        has to be able to put the pre-repair tree back for the length
+        of one drive. Written inline in the drain, the pre-repair
+        behaviour is unreachable from a test and the tests below would
+        be asserting about arithmetic rather than about this code.
+
+        ESCAPED, like every other line the drain appends. `appendHtml`
+        parses its input and the count is interpolated into it; the
+        escape is here so this line can never become the one place a
+        payload reaches the parser.
+
+        AMBER ON A DARK GROUND, and the only line in the pane that
+        carries a background colour. `OK`/`FAIL`/`--` records are green,
+        red and grey text on `#05050a`; nothing else paints its own
+        ground, so the marker cannot be misread as a record even at the
+        10 px this pane renders at. The rules on both ends do the same
+        work in a plain-text copy, where the colour is gone.
+        """
+        if skipped <= 0:
+            return 0
+        from html import escape as _esc
+        view.appendHtml(
+            '<span style="color:#ffb000;background-color:#33220a">'
+            f'{_esc(_signal_gap_marker_text(skipped))}</span>')
+        return 1
+
+    # ---------------------------------------------------------------
     # Main Window
     # ---------------------------------------------------------------
     class MainWindow(QMainWindow):
@@ -5783,7 +5868,7 @@ if _HAS_QT:
             # one state worth reporting would be the one state that ran
             # un-throttled.
             #
-            # So `_drain_signals` writes these five integers and emits
+            # So `_drain_signals` writes these six integers and emits
             # NOTHING, and `_emit_console_health` -- driven by the timer
             # below, at a rate that is a function of the clock and of
             # nothing in the sink -- is the only thing that reads them
@@ -5792,6 +5877,16 @@ if _HAS_QT:
             self._signal_read = 0
             self._signal_rendered = 0
             self._signal_slice_dropped = 0
+            # issue #48. GAP MARKERS ARE COUNTED SEPARATELY FROM
+            # RECORDS AND THE TWO MUST NEVER BE ADDED INTO ONE NUMBER.
+            # `console.14.001` asks whether every record the watermark
+            # consumed reached the pane, so a marker must not inflate
+            # `_signal_rendered` and turn a real skip green.
+            # `console.14.002` asks whether the pane holds what the
+            # drain drew, and a marker IS a block, so it must be in
+            # that sum. One counter each is the only shape that
+            # answers both questions honestly.
+            self._signal_markers = 0
             self._signal_health_ticks_seen = 0
             self._signal_timer = QTimer(self)
             self._signal_timer.setInterval(500)
@@ -5933,6 +6028,18 @@ if _HAS_QT:
             advances NO watermark, so the sink keeps every record for the
             resume: see the note on `_signal_read` below for what the
             resume pass then does with a backlog.
+
+            THE PANE STAYS CURRENT AND DRAWS THE GAP (issue #48). Two
+            paths reach the same slice: a long pause and then a resume,
+            and a live burst of more than 200 records inside one 500 ms
+            window with no pause at all. On both, the watermark moves to
+            `new[-1].seq` and the render keeps the newest 200 -- so this
+            consumer steps over the rest. It is NOT data loss: the sink
+            appends and flushes on every emit, and every stepped-over
+            record is on disk in
+            `~/.acervator_logs/signals/session.jsonl`. What was missing
+            was any sign of it ON THE SCREEN, and
+            `_draw_signal_gap_marker` is that sign.
             """
             try:
                 # 10.7 -- THE TICK COUNTER IS THE FIRST STATEMENT AND NO
@@ -5975,12 +6082,38 @@ if _HAS_QT:
                 # dropped` says which mechanism took it. Nothing here
                 # emits: see the ledger comment beside the timer.
                 _shown = new[-200:]
+                _skipped = len(new) - len(_shown)
                 self._signal_read = getattr(
                     self, "_signal_read", 0) + len(new)
                 self._signal_slice_dropped = getattr(
-                    self, "_signal_slice_dropped", 0) + (
-                        len(new) - len(_shown))
+                    self, "_signal_slice_dropped", 0) + _skipped
                 self._signal_rendered = getattr(self, "_signal_rendered", 0)
+                # issue #48. THE GAP IS DRAWN, NOT ONLY COUNTED. A
+                # number that lives in the emitter stream helps whoever
+                # reads `session.jsonl`; it does nothing at all for the
+                # operator watching the pane, who until now saw the
+                # newest 200 records appear with no sign that 4800
+                # older ones had been stepped over.
+                #
+                # ABOVE THE SLICE, NOT BELOW IT, and that is the whole
+                # of the placement argument. The skipped records are
+                # OLDER than the 200 about to be drawn, so the marker
+                # that describes them belongs above them. Below, on a
+                # pane that then goes quiet, the marker would sit at
+                # the bottom as the newest thing on the screen and read
+                # as a gap at the live edge -- a lie about a pane that
+                # is in fact fully current.
+                #
+                # AND IT CANNOT BE EVICTED BY ITS OWN PASS. One pass
+                # appends at most 1 marker + 200 records against a
+                # 2000-block cap, so a marker drawn first still has
+                # about 1800 blocks of headroom when its own pass ends.
+                # The 200-line slice and the 2000-block cap both stay:
+                # an unbounded render would stall the Qt GUI thread,
+                # and that is an arc of its own.
+                self._signal_markers = getattr(
+                    self, "_signal_markers", 0) + _draw_signal_gap_marker(
+                        view, skipped=_skipped)
                 for r in _shown:
                     if r.ok is True:
                         mark, colour = "OK  ", "#00ff88"
@@ -6184,6 +6317,19 @@ if _HAS_QT:
             does grow with it, which is why it rides in `context` as a
             number and is not part of any expectation.
 
+            WHAT ISSUE #48 CHANGED ABOUT `14-002`, STATED AND NOT LEFT
+            TO DRIFT. The drain now draws two kinds of line: records,
+            and a gap marker over a stretch the slice stepped over. The
+            pin still asks whether the pane holds what the drain drew,
+            but "what the drain drew" is now `_signal_rendered +
+            _signal_markers` rather than `_signal_rendered` alone, and
+            `gap_markers` rides in `context` so a reader of
+            `session.jsonl` can take the two apart. `14-001` is
+            UNCHANGED: it asks whether every record the watermark
+            consumed reached the pane, a marker is not a record, and a
+            Console that quietly keeps up must stay distinguishable in
+            the record stream from one that quietly skips.
+
             THE ONE THING IT CANNOT REPORT IS ITS OWN SILENCE. If the
             GUI thread wedges, this timer stops with the drain and
             nothing is written at all. That is the seam the Watchdog arc
@@ -6209,6 +6355,7 @@ if _HAS_QT:
                 self._signal_health_ticks_seen = _ticks
                 _read = getattr(self, "_signal_read", 0)
                 _rendered = getattr(self, "_signal_rendered", 0)
+                _markers = getattr(self, "_signal_markers", 0)
                 _blocks = int(view.blockCount())
                 _cap = int(view.maximumBlockCount())
                 _timer = getattr(self, "_signal_timer", None)
@@ -6216,7 +6363,18 @@ if _HAS_QT:
                 # An empty QPlainTextEdit reports one block, so the
                 # floor is 1 rather than 0. Above the cap the pane keeps
                 # exactly `_cap` blocks -- measured, not assumed.
-                _want = max(_rendered, 1)
+                #
+                # issue #48. `+ _markers` IS THE RESTATEMENT, WRITTEN
+                # DOWN RATHER THAN LEFT TO DRIFT. Before the gap marker
+                # this pin compared the pane's block count against
+                # `_signal_rendered` alone, because records were the
+                # only thing the drain drew. A gap marker is a block
+                # too, so the drain now draws two kinds of line and
+                # `14-002` counts both. Left as `_rendered` alone the
+                # pin would go red by exactly the number of markers --
+                # red for drawing the notice that makes a skip visible,
+                # which is the `06-014` defect wearing a new hat.
+                _want = max(_rendered + _markers, 1)
                 if _cap > 0:
                     _want = min(_want, _cap)
                 with contextlib.suppress(Exception):
@@ -6236,9 +6394,11 @@ if _HAS_QT:
                         actual=_blocks, expected=_want,
                         every=30.0,
                         context={
-                            "evicted": max(0, _rendered - _blocks),
+                            "evicted": max(
+                                0, _rendered + _markers - _blocks),
                             "max_blocks": _cap,
-                            "rendered": _rendered})
+                            "rendered": _rendered,
+                            "gap_markers": _markers})
                 with contextlib.suppress(Exception):
                     _co_emit(
                         "console.14.003.invariant.drain_alive",
