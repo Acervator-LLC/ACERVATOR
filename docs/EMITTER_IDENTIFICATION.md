@@ -569,7 +569,7 @@ THE YTD REACHABILITY RULE, so the excuse cannot come back:
 
     `ytd.10.001`, `ytd.10.002` and `ytd.10.003` ARE reachable
     offscreen, with no exchange and no network. The operator's own
-    application injects the manager at `src/gui/main_window.py:4945`:
+    application injects the manager at `src/gui/main_window.py:5330`:
 
         if hasattr(self._simulator, "set_bot_manager"):
             self._simulator.set_bot_manager(self._bot_manager)
@@ -915,13 +915,40 @@ consumed, `_signal_rendered` counts what reached the pane, and the gap
 between them is that permanent loss. `lost_to_slice` in the context says
 which mechanism took it.
 
+ISSUE #48 DID NOT CHANGE THAT PIN AND DID NOT CHANGE THE SLICE. The
+records are not lost from the SYSTEM: `SignalSink` appends and flushes
+on every emit, so everything the pane steps over is on disk in
+`~/.acervator_logs/signals/session.jsonl`. The pane is one consumer
+falling behind. The alternative -- advance the watermark only as far as
+the render reached -- was refused: under sustained load the pane falls
+further and further behind, showing older and older records while the
+sink races ahead, with nothing on the screen to say whether it is a live
+monitor or a historical one. THE PANE STAYS CURRENT AND DRAWS THE GAP.
+`_draw_signal_gap_marker` puts one amber line above the slice naming how
+many records were stepped over, saying they are NOT LOST, and naming the
+file they are in. `14-001` still reports the gap as a NUMBER, because a
+Console that quietly keeps up and one that quietly skips have to stay
+distinguishable in the record stream as well as on the screen.
+
 `14-002` is the pane's block cap. `_signal_view` keeps 2000 blocks;
 above that Qt discards the oldest silently. Measured, not assumed: an
 empty `QPlainTextEdit` reports `blockCount() == 1`, the first line lands
 IN that block, and above the cap the count stops at exactly the cap. The
-expectation is therefore `min(max(rendered, 1), cap)`, and the pin reports the
-evicted count beside the verdict rather than painting itself red on a
-by-design scroll -- the `06-014` lesson, in a new place.
+expectation is therefore `min(max(rendered + markers, 1), cap)`, and the
+pin reports the evicted count beside the verdict rather than painting
+itself red on a by-design scroll -- the `06-014` lesson, in a new place.
+
+`+ markers` IS A RESTATEMENT OF THIS PIN BY ISSUE #48, WRITTEN DOWN
+RATHER THAN LEFT TO DRIFT. Before the gap marker the drain drew exactly
+one kind of line, so "what the drain wrote" and `_signal_rendered` were
+the same number. The drain now draws two: records, and a gap marker over
+a stretch the slice stepped over. A marker line IS a block, so it is in
+the sum, and `gap_markers` rides in the context so the two can be taken
+apart when `session.jsonl` is read. Left as `_rendered` alone the pin
+would go red by exactly the number of markers -- red for drawing the
+notice that makes a skip visible, which is the `06-014` defect again in
+the same place. `14-001` is NOT restated: it asks whether every RECORD
+the watermark consumed reached the pane, and a marker is not a record.
 
 `14-003` is the fault a pin inside the drain can never report. A drain
 that has stopped emits nothing, and nothing is exactly what a healthy
@@ -934,18 +961,50 @@ until the drain starts again. The pin cannot report its own silence: if
 the GUI thread wedges both timers stop together. That is the seam the
 out-of-process collector takes, and it is why the JSONL is append-only.
 
-`14-004` IS RED ON EVERY PAUSE TODAY, AND THAT IS THE POINT.
+`14-004` WAS RED ON EVERY PAUSE, AND ISSUE #49 TURNED IT GREEN.
 `_drain_signals` gates on `self._console_paused` and its docstring says
 the Pause "honours the same Pause the log pane uses, so one control
-quiets both". Measured on this tree: `_console_paused` is assigned
-nowhere in `src/` or `main.py`; the only assignments anywhere are two
-lines in `tests/test_signal_timing.py`. The signals pane is therefore
-NOT quieted, the log pane is, and the two panes disagree for as long as
-the button is held down. The pin asks the flag the drain really reads
-against the button the operator really pressed. It reports `ok` True on
-resume and `ok` False on pause. The defect is REPORTED here, not
-repaired here: repairing it changes what the tab does, and this unit
-changes only what it says about itself.
+quiets both". Measured on the tree this unit shipped against:
+`_console_paused` was assigned nowhere in `src/` or `main.py`; the only
+assignments anywhere were two lines in `tests/test_signal_timing.py`.
+The signals pane stayed live, the log pane stopped, and the two panes
+disagreed for as long as the operator held the button down. Driven on
+the real widgets: the signals pane went from 10 blocks at the press to
+51 four drain ticks later, while the log pane held at 10.
+
+THE DOCSTRING WAS THE SPECIFICATION AND THE CODE DISAGREED WITH IT, so
+the code moved. `_set_console_paused` -- module-level, one statement,
+the single writer of that flag -- is called by `_toggle_console_pause`,
+and the pin now reports `ok` True on both halves of the toggle. THE PIN
+ITSELF DID NOT CHANGE. It still asks the flag the drain really reads
+against the button the operator really pressed, which is why it could
+report the repair instead of having to be re-argued after it. Its
+falsifier moved instead: `tests/test_console_tab_emitters.py` reaches
+the red condition through `_without_the_console_pause_flag`, which puts
+the pre-repair tree back for the length of one drive, the same shape
+`15-001` and `15-003` already use.
+
+WHAT THE REPAIR HANDED TO `14-001`, RECORDED HERE BECAUSE IT COSTS
+SOMETHING. A paused drain advances no watermark, so the sink holds the
+whole pause and the first pass after the resume reads it in one call.
+Measured: a backlog of 200 or fewer arrives whole; above that the
+`[-200:]` slice keeps the NEWEST 200 and `_signal_slice_dropped` counts
+the rest -- 53 records out of a 250-record pause, 2303 out of a
+2500-record one -- after the watermark has already moved past them. The
+resume pass itself stays cheap: 10 to 14 ms for backlogs from 200 to
+50,000, because `since` walks back from the newest and stops and only
+200 records are ever painted. The cost lands on LOST RECORDS, not on
+a wedged GUI thread, and the operator paused precisely to keep those
+records. That loss is issue #48's subject. `14-001` reports it and
+`lost_to_slice` names the mechanism; none of it stays silent.
+
+ISSUE #48 IS NOW IN THIS BRANCH, BECAUSE THE PAUSE REPAIR CREATED THE
+CONDITION ON A PATH WHERE IT DID NOT EXIST. Two paths reach the same
+slice: the resume above, and a live burst of more than 200 records
+inside one 500 ms window with no pause involved, which is what #48 was
+filed for and predates the pause repair. Both now draw the marker; the
+resume rows measured for the pause repair are unchanged except in their
+block counts, one higher on every row that skipped anything.
 
 `14-005` is the pause buffer. The log handler holds up to 5000 messages
 while paused and drops the rest, counting them; on resume it delivers
@@ -1476,22 +1535,22 @@ One row per pin call site. 74 rows.
 | `10-003` | `ytd` | `gauge` | `ytd.10.003.gauge.per_symbol_counts` | `ytd.per_symbol_counts` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1059` | how many year-to-date trades the panel holds per symbol |
 | `11-001` | `swarm` | `postcondition` | `swarm.11.001.postcondition.sim_run_registered` | `swarm.sim_run_registered` | `src/gui/bot_visualizer.py:2224` | the row stored under this sim id reports kind `sim`, so the registration landed in the layer it was addressed to |
 | `11-002` | `swarm` | `postcondition` | `swarm.11.002.postcondition.paper_run_registered` | `swarm.paper_run_registered` | `src/gui/bot_visualizer.py:2315` | the row stored under this paper id reports kind `paper` |
-| `12-001` | `trading` | `postcondition` | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:4785` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
-| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:7125` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
-| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:9173` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
-| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:9052` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
-| `12-005` | `trading` | `postcondition` | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:4928` | the Activity Log's own paused state agrees with the button the operator just pressed |
-| `12-006` | `trading` | `postcondition` | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:4861` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
+| `12-001` | `trading` | `postcondition` | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:4926` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
+| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:7365` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
+| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:9413` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
+| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:9292` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
+| `12-005` | `trading` | `postcondition` | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:5069` | the Activity Log's own paused state agrees with the button the operator just pressed |
+| `12-006` | `trading` | `postcondition` | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:5002` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
 | `13-001` | `charts` | `invariant` | `charts.13.001.invariant.panels_mounted` | `charts.panels_mounted` | `src/gui/main_window.py:1417` | every panel the fetch loop iterates is a widget really mounted in the scroll layout, asked of the layout rather than of the dict that built it |
 | `13-002` | `charts` | `postcondition` | `charts.13.002.postcondition.panel_symbols_current` | `charts.panel_symbols_current` | `src/gui/main_window.py:1426` | the symbol each panel stores -- the one `fetch_chart_data` hands the exchange -- is the symbol the status that just updated that panel carries |
 | `13-003` | `charts` | `postcondition` | `charts.13.003.postcondition.timeframe_rearmed` | `charts.timeframe_rearmed` | `src/gui/main_window.py:1462` | the panel the operator just retimed exists, holds the timeframe the fetch will read, and has had its throttle cleared |
 | `13-004` | `charts` | `postcondition` | `charts.13.004.postcondition.panel_refreshed` | `charts.panel_refreshed` | `src/gui/main_window.py:1586` | the candles the chart now holds are the candles THIS fetch returned, read off the chart, with the source attribution and the outcome beside the verdict and the fetch latency on the record |
 | `13-005` | `charts` | `invariant` | `charts.13.005.invariant.panels_fresh` | `charts.panels_fresh` | `src/gui/main_window.py:1621` | no panel has gone three throttle windows without a pass writing its `last_fetch`, counted over the panel dict so a panel the loop SKIPS cannot hide in its own silence |
-| `14-001` | `console` | `invariant` | `console.14.001.invariant.records_rendered` | `console.records_rendered` | `src/gui/main_window.py:6143` | every record the watermark consumed reached the signals pane, counted off the drain's own ledger, so the records the `[-200:]` slice throws away after the watermark has already moved past them are counted rather than lost in silence |
-| `14-002` | `console` | `invariant` | `console.14.002.invariant.view_holds_rendered` | `console.view_holds_rendered` | `src/gui/main_window.py:6154` | the signals pane really holds the window the drain wrote into it, asked of the widget's own block count against the ledger clamped by the pane's own cap, with the number of lines the cap has evicted beside the verdict |
-| `14-003` | `console` | `invariant` | `console.14.003.invariant.drain_alive` | `console.drain_alive` | `src/gui/main_window.py:6163` | the 500 ms drain ran at least once since the previous look, counted OUTSIDE the drain so a stopped timer is distinguishable from a quiet sink -- the one fault a pin inside the drain can never report |
-| `14-004` | `console` | `postcondition` | `console.14.004.postcondition.pause_quiets_both_panes` | `console.pause_quiets_both_panes` | `src/gui/main_window.py:6016` | the flag `_drain_signals` gates on agrees with the Pause button the operator just pressed, so the button's claim to quiet both panes is asked of the pane that is supposed to go quiet |
-| `14-005` | `console` | `postcondition` | `console.14.005.postcondition.pause_buffer_delivered` | `console.pause_buffer_delivered` | `src/gui/main_window.py:6045` | the console pane's own block count after a resume is the count it held plus every line the pause buffer was holding, so a delivery the pane's block cap eats is reported instead of vanishing, with how long the resume took on the record |
+| `14-001` | `console` | `invariant` | `console.14.001.invariant.records_rendered` | `console.records_rendered` | `src/gui/main_window.py:6381` | every record the watermark consumed reached the signals pane, counted off the drain's own ledger, so the records the `[-200:]` slice steps over after the watermark has already moved past them are counted rather than lost in silence -- they are still on disk in `session.jsonl`, and since issue #48 the pane draws a marker saying so, which this pin does NOT count as a record rendered |
+| `14-002` | `console` | `invariant` | `console.14.002.invariant.view_holds_rendered` | `console.view_holds_rendered` | `src/gui/main_window.py:6392` | the signals pane really holds every line the drain drew into it -- records AND the gap markers issue #48 draws over a skipped stretch, each of which is a block -- asked of the widget's own block count against the ledger clamped by the pane's own cap, with the number of lines the cap has evicted and the number of markers drawn beside the verdict |
+| `14-003` | `console` | `invariant` | `console.14.003.invariant.drain_alive` | `console.drain_alive` | `src/gui/main_window.py:6403` | the 500 ms drain ran at least once since the previous look, counted OUTSIDE the drain so a stopped timer is distinguishable from a quiet sink -- the one fault a pin inside the drain can never report |
+| `14-004` | `console` | `postcondition` | `console.14.004.postcondition.pause_quiets_both_panes` | `console.pause_quiets_both_panes` | `src/gui/main_window.py:6229` | the flag `_drain_signals` gates on agrees with the Pause button the operator just pressed, so the button's claim to quiet both panes is asked of the pane that is supposed to go quiet |
+| `14-005` | `console` | `postcondition` | `console.14.005.postcondition.pause_buffer_delivered` | `console.pause_buffer_delivered` | `src/gui/main_window.py:6258` | the console pane's own block count after a resume is the count it held plus every line the pause buffer was holding, so a delivery the pane's block cap eats is reported instead of vanishing, with how long the resume took on the record |
 | `15-001` | `exchange` | `postcondition` | `exchange.15.001.postcondition.command_routed_to_chosen_table` | `exchange.command_routed_to_chosen_table` | `src/gui/main_window.py:3162` | the table that really supplied the bot id about to be commanded is the table the operator last chose, read back out of both tables' current selections rather than from the branch that picked it, so the fallback hijack MEM-408 records is reported instead of returning as cleanly as a correct route |
 | `15-002` | `exchange` | `invariant` | `exchange.15.002.invariant.every_bot_reaches_a_table` | `exchange.every_bot_reaches_a_table` | `src/gui/main_window.py:3320` | every status handed to the tab is a row the operator can actually read, counted off the two tables' own column-0 items, so a bot dropped by both mode filters and a blank row left behind by a skipped render are both visible |
 | `15-003` | `exchange` | `invariant` | `exchange.15.003.invariant.selection_survives_refresh` | `exchange.selection_survives_refresh` | `src/gui/main_window.py:3333` | the bot under the operator's highlight after the dashboard re-renders the tables is the bot that was under it before, so a reordered fleet list silently moving the selection onto a different bot is reported rather than waiting for the next command to discover it |
