@@ -318,6 +318,44 @@ def _without_the_reanchor(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda _table, _previous_bot_id, _bot_ids: None, raising=True)
 
 
+def _without_the_detail_row_selection(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Put the tree back the way it was before the issue #52 repair.
+
+    `BotStatusTable._on_detail` and `ExtractorBotTable._on_detail` both
+    now begin by calling the module-level `_select_row_for_bot`,
+    resolved through globals on every call, so the Detail button selects
+    its own row and the `itemSelectionChanged` handler ALREADY wired in
+    `ExchangeTab.__init__` clears the sibling. Replacing that function
+    with a no-op restores the exact pre-repair behaviour: the button
+    flips `_last_clicked_table` through `_scrum_clicked` /
+    `_extractor_clicked` and moves no selection at all.
+
+    THAT IS WHY THE TWO FALSIFIERS BELOW STILL REACH `15-001`'s FAILING
+    CONDITION. The pin matches the id about to be dispatched against
+    each table's CURRENT selection, so it reports any genuine
+    disagreement between the preference and the live selection -- but
+    after the repair no operator gesture produces one, because every
+    gesture that moves the flag now moves the selection with it. The
+    fallback itself is UNCHANGED and still stands for the first-time
+    operator who has one populated table and no click history; taking
+    it out would refuse that operator's command instead.
+
+    The name is asserted to exist and to be callable FIRST, for the
+    reason `_without_the_reanchor` gives: `monkeypatch.setattr` on a
+    renamed-away name raises, a hand-rolled `setattr` would not, and a
+    falsifier that quietly patches nothing proves nothing. This is
+    therefore also the positive control for the repair -- rename or
+    delete `_select_row_for_bot` and the tests that call this fail.
+    """
+    from src.gui import main_window as mw
+
+    assert callable(mw._select_row_for_bot)
+    monkeypatch.setattr(
+        mw, "_select_row_for_bot",
+        lambda _table, _bot_id, _bot_ids: None, raising=True)
+
+
 def _stop_the_emitter(tab: Any) -> None:
     """Kill ONE tab's two cadence pins and leave the widget working.
 
@@ -432,6 +470,184 @@ def test_a_command_reaches_the_table_the_operator_chose(
     assert rec.duration is None
 
 
+def test_the_extractor_detail_button_carries_the_selection_with_it(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """ISSUE #52: the Detail button is a row click, so `15-001` is green.
+
+    The gesture the falsifier below drives, with the repair in place and
+    nothing patched out: select a Scrumming row, click the EXTRACTOR
+    row's Detail button, press Stop. The command reaches `ext-1`.
+
+    The three widget reads between the click and the command are the
+    mechanism, not decoration. The preference moved AND the selection
+    moved with it AND the sibling is empty -- and the sibling is empty
+    because `_select_row_for_bot` does NOT block the signal, so the
+    `itemSelectionChanged` handler `ExchangeTab.__init__` already wires
+    does the clearing. There is no second copy of that rule.
+    """
+    with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
+        tab.update_bots([_scrum("scrum-1"), _extractor("ext-1")])
+        tab._bot_table.selectRow(0)
+        assert tab._bot_table.get_selected_bot_id() == "scrum-1"
+
+        detail = tab._extractor_table.cellWidget(0, 7)
+        assert detail is not None, "the Extractor Detail button is gone"
+        detail.click()
+
+        assert tab._last_clicked_table == "extractor"
+        assert tab._extractor_table.get_selected_bot_id() == "ext-1"
+        assert tab._bot_table.get_selected_bot_id() == ""
+        assert tab._bot_table.selectedItems() == []
+
+        tab._cmd("stop")
+        rec = _only(sink, ROUTED)
+        assert tab.dispatched == [("ext-1", "stop")]
+    assert rec.ok is True, rec.context
+    assert rec.actual == "extractor"
+    assert rec.expected == "extractor"
+    assert rec.context["fell_back"] is False
+    assert rec.context["scrumming_selected"] is False
+    assert rec.context["extractor_selected"] is True
+
+
+def test_the_scrumming_detail_button_carries_the_selection_with_it(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """ISSUE #52 in the other direction, because BOTH tables have one.
+
+    `delete` again -- the command with the least recoverable
+    consequence, and the one the mirror falsifier sends to the wrong
+    bot once the repair is taken away.
+    """
+    with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
+        tab.update_bots([_scrum("scrum-1"), _extractor("ext-1")])
+        tab._extractor_table.selectRow(0)
+        assert tab._extractor_table.get_selected_bot_id() == "ext-1"
+
+        detail = tab._bot_table.cellWidget(0, 9)
+        assert detail is not None, "the Scrumming Detail button is gone"
+        detail.click()
+
+        assert tab._last_clicked_table == "scrumming"
+        assert tab._bot_table.get_selected_bot_id() == "scrum-1"
+        assert tab._extractor_table.get_selected_bot_id() == ""
+        assert tab._extractor_table.selectedItems() == []
+
+        tab._cmd("delete")
+        rec = _only(sink, ROUTED)
+        assert tab.dispatched == [("scrum-1", "delete")]
+    assert rec.ok is True, rec.context
+    assert rec.actual == "scrumming"
+    assert rec.expected == "scrumming"
+    assert rec.context["fell_back"] is False
+    assert rec.context["command"] == "delete"
+
+
+def test_a_detail_button_inside_the_selected_table_moves_the_highlight(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """The same-table case, and it is a SECOND misroute issue #52 closes.
+
+    `15-001` could never see this one. The operator has `s1` selected
+    and presses the Detail button on `s2`'s row: before the repair the
+    preference and the selection agreed -- both said "scrumming" -- so
+    the pin was green while `pause` went to `s1`, the bot whose Detail
+    dialog the operator was NOT looking at. Nothing fell back, so
+    nothing was reported. Measured on the unrepaired tree, with real
+    widgets, before the repair was written.
+
+    The row-selecting repair closes it for the same reason it closes the
+    cross-table hijack: the button now does what a row click does. The
+    dispatch is the assertion; the pin is read only to show it did not
+    turn red on a route that is correct.
+
+    THE SECOND CLICK IS THE IDEMPOTENCE CHECK, AND IT IS COUNTED.
+    Selecting a row from inside `_on_detail` fires
+    `itemSelectionChanged`, which runs the handler that clears the
+    sibling -- so the emissions are the thing to measure, not the thing
+    to argue about. Two counters ride the same two signals the
+    production handlers ride, so they see exactly what those handlers
+    see, `blockSignals` included. One click that moves the highlight is
+    ONE emission on that table and NONE on the sibling (the sibling's
+    clear runs blocked), and a repeat click on the row already selected
+    is none on either. No storm, no churn under an operator who
+    double-clicks.
+
+    THE IDEMPOTENCE IS QT'S, NOT A BRANCH IN THE REPAIR, and that is
+    why it is asserted here. `_select_row_for_bot` carried an
+    already-on-this-bot early return until it was measured: a 40-row
+    table scrolled to the bottom, this emission counter, and a
+    ctrl-click two-row selection all read the same values with the
+    guard and without it, so the guard was removed and the behaviour it
+    claimed is pinned here instead.
+    """
+    with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
+        tab.update_bots([_scrum("s1"), _scrum("s2"), _extractor("e1")])
+        tab._bot_table.selectRow(0)
+        assert tab._bot_table.get_selected_bot_id() == "s1"
+
+        seen = {"scrumming": 0, "extractor": 0}
+        tab._bot_table.itemSelectionChanged.connect(
+            lambda: seen.__setitem__("scrumming", seen["scrumming"] + 1))
+        tab._extractor_table.itemSelectionChanged.connect(
+            lambda: seen.__setitem__("extractor", seen["extractor"] + 1))
+
+        tab._bot_table.cellWidget(1, 9).click()
+        assert tab._last_clicked_table == "scrumming"
+        assert tab._bot_table.get_selected_bot_id() == "s2"
+        assert tab._bot_table.currentRow() == 1
+        assert seen == {"scrumming": 1, "extractor": 0}, seen
+
+        tab._bot_table.cellWidget(1, 9).click()
+        assert tab._bot_table.get_selected_bot_id() == "s2"
+        assert tab._bot_table.currentRow() == 1
+        assert seen == {"scrumming": 1, "extractor": 0}, seen
+
+        tab._cmd("pause")
+        rec = _only(sink, ROUTED)
+        assert tab.dispatched == [("s2", "pause")]
+    assert rec.ok is True, rec.context
+    assert rec.context["fell_back"] is False
+
+
+def test_the_detail_button_leaves_a_row_it_cannot_read_alone(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """A row the render SKIPPED must not be selected by the repair.
+
+    `BotStatusTable.update_bots` calls `setRowCount` first and then
+    `continue`s past a status neither mode filter claims, so the row
+    exists with no column-0 item. `selectedItems()` stays empty on such
+    a row and `get_selected_bot_id` answers "" for it -- which is the
+    empty-preferred-table state `_cmd` falls back out of, so selecting
+    one would be MEM-408 in a new place. `_reanchor_bot_selection`
+    refuses the same row for the same reason.
+
+    Driven against the table directly, the way `15-002`'s blank-row
+    control is: the path is unreachable through `ExchangeTab`, whose
+    comprehensions are themselves the filter, and a skipped row carries
+    no Detail button to press either -- both are asserted here.
+    `_on_detail` is called with the skipped row's bot id to reach the
+    branch at all.
+    """
+    with _tab(qapp, monkeypatch, tmp_path) as tab:
+        table = tab._bot_table
+        misrouted = _extractor("wrong-home")
+        table.update_bots([_scrum("s1"), misrouted])
+        assert table.item(1, 0) is None
+        assert table.cellWidget(1, 9) is None
+
+        table.selectRow(0)
+        assert table.get_selected_bot_id() == "s1"
+
+        table._on_detail("wrong-home")
+
+        # The highlight did not move onto the unreadable row.
+        assert table.get_selected_bot_id() == "s1"
+        assert table.currentRow() == 0
+
+
 def test_a_command_that_lands_on_the_other_tables_bot_is_reported(
         qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path) -> None:
@@ -442,17 +658,34 @@ def test_a_command_that_lands_on_the_other_tables_bot_is_reported(
 
       1. The operator selects a Scrumming row. `_last_clicked_table`
          becomes "scrumming" and the Extractor table is cleared.
-      2. The operator clicks the Extractor row's Detail BUTTON. A click
-         on a cell widget changes no row selection, so
-         `_extractor_clicked` flips the flag to "extractor" while the
-         Scrumming selection stands untouched.
+      2. The operator clicks the Extractor row's Detail BUTTON, which
+         flips the flag to "extractor" through `_extractor_clicked`.
       3. The operator presses Stop.
 
     `_cmd` resolves through the extractor branch, finds nothing there,
     falls back, and sends `stop` to the SCRUMMING bot. The dispatch is
     asserted first, because the pin is only worth anything if the
     misroute is real.
+
+    ISSUE #52 REPAIRED STEP 2, AND THIS FALSIFIER KEPT ITS RED. The
+    Detail button sits inside a cell, and a click on a cell widget
+    changes no row selection -- that was the whole gap, and the ONE
+    entry point that moved the flag without moving the selection. The
+    button now selects its own row first (`_select_row_for_bot`), so
+    the sibling is cleared by the handler already wired on
+    `itemSelectionChanged`, and the same three gestures are green in
+    `test_the_extractor_detail_button_carries_the_selection_with_it`,
+    which reads `ext-1` back off the dispatch.
+
+    SO THE DRIVE IS UNCHANGED AND THE PRE-REPAIR BUTTON IS RESTORED
+    UNDER IT, the way `15-003`'s falsifier takes the re-anchor away.
+    `_without_the_detail_row_selection` is the only route left to a
+    genuine disagreement between the preference and the live selection,
+    and it doubles as the positive control: the repair is a named
+    module function, and renaming it makes this test fail rather than
+    pass quietly. The fallback the pin watches is untouched.
     """
+    _without_the_detail_row_selection(monkeypatch)
     with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
         tab.update_bots([_scrum("scrum-1"), _extractor("ext-1")])
         tab._bot_table.selectRow(0)
@@ -491,12 +724,22 @@ def test_the_fallback_hijacks_in_the_other_direction_too(
     The preference is on the Scrumming table and only the Extractor
     table holds a selection. `delete` -- the command with the least
     recoverable consequence -- goes to the Extractor bot.
+
+    ISSUE #52 REPAIRED THIS DIRECTION TOO, and that is why it is driven
+    here: BOTH tables carry a Detail button and BOTH flip the flag
+    through their `on_bot_clicked` callback, so a repair applied to one
+    of them would have left the hijack standing in this direction.
+    `_without_the_detail_row_selection` restores the pre-repair button
+    on both, which is the one route left to the genuine disagreement
+    the pin reports. The repaired gesture is green in
+    `test_the_scrumming_detail_button_carries_the_selection_with_it`.
     """
+    _without_the_detail_row_selection(monkeypatch)
     with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
         tab.update_bots([_scrum("scrum-1"), _extractor("ext-1")])
         tab._extractor_table.selectRow(0)
         # Put the preference back on Scrumming without selecting a row,
-        # exactly as the Scrumming Detail button does.
+        # exactly as the Scrumming Detail button did before issue #52.
         detail = tab._bot_table.cellWidget(0, 9)
         assert detail is not None, "the Scrumming Detail button is gone"
         detail.click()
@@ -869,12 +1112,21 @@ def test_the_refresh_does_not_move_the_operators_preferred_table(
     THE DRIVE IS THE STATE THAT SEPARATES THE TWO. The flag and the
     selection have to disagree, or a restore that flips the flag flips
     it to the value it already held and nothing is measured. The
-    `15-001` path produces exactly that disagreement: select a
+    `15-001` path produced exactly that disagreement: select a
     Scrumming row, then click an Extractor row's Detail BUTTON -- a
-    click on a cell widget changes no row selection, so the flag goes
-    to "extractor" while the Scrumming selection stands. Now reorder
-    the scrumming rows, which is the one case where the restore really
+    click on a cell widget changes no row selection, so the flag went
+    to "extractor" while the Scrumming selection stood. Now reorder the
+    scrumming rows, which is the one case where the restore really
     runs.
+
+    ISSUE #52 CLOSED THAT GENERATOR, SO IT IS RESTORED HERE. The Detail
+    button now selects its own row, which is the repair. This test is
+    not about the button: it is about a 2000 ms timer that must not
+    impersonate one, and it needs the flag and the selection to
+    disagree to measure anything at all.
+    `_without_the_detail_row_selection` puts the pre-repair button back
+    for the length of this drive -- the same move `_without_the_reanchor`
+    makes one section down -- and nothing else in the drive changes.
 
     THE CONSEQUENCE IS ON `15-001`'s OWN RECORD. `expected` IS the
     flag. If the timer moved it, the fallback hijack this tab already
@@ -882,6 +1134,7 @@ def test_the_refresh_does_not_move_the_operators_preferred_table(
     laundering the very defect it exists to catch. So the record is
     read, not just the attribute.
     """
+    _without_the_detail_row_selection(monkeypatch)
     with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
         tab.update_bots([_scrum("s1"), _scrum("s2"), _extractor("e1")])
         tab._bot_table.selectRow(0)

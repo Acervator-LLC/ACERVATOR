@@ -132,15 +132,29 @@ _CALL_SITES: tuple[tuple[str, dict], ...] = (
     # BOTH PINS WERE PROVED TO STILL BIND AGAIN, INDEPENDENTLY, by
     # shifting each call one line and watching only that row fail.
     #
+    # RE-ANCHORED 2026-08-21, from :4082 and :4227, by the issue #52
+    # Detail-button row selection. Both calls are BELOW everything that
+    # change touched -- one helper above `BotStatusTable` and a comment
+    # plus one call at the top of each of the two `_on_detail` methods
+    # -- so one shared offset of 96 lines covers both. That is a fact
+    # about where the change landed and not a rule: both numbers were
+    # read again from `grep -n "safe_urlopen(" src/gui/main_window.py`,
+    # which still returns exactly these two lines and nothing else.
+    # Neither call moved in the source and neither kwarg shape changed.
+    #
+    # BOTH PINS WERE PROVED TO STILL BIND AGAIN, INDEPENDENTLY, by
+    # shifting each call one line and watching only that row fail.
+    #
     # Earlier notes here recorded the move from :3244 and :3342 on
     # 2026-08-13 (the IVP persistence unit, twelve lines), from :3256
     # and :3354 (the Asset Charts emitter unit, 204 lines), from
     # :3460 and :3558 (the Exchange tab emitter unit, 267 lines), from
     # :3727 and :3825 (the API Tester emitter unit, 191 and 238), from
-    # :3918 and :4063 (the `apitest.16.002` repair, sixteen) and from
-    # :3934 and :4079 (the issue #51 selection re-anchor, 125).
-    ("src/gui/main_window.py:4082", {"timeout": 10, "context": None}),
-    ("src/gui/main_window.py:4227", {"timeout": 10}),
+    # :3918 and :4063 (the `apitest.16.002` repair, sixteen), from
+    # :3934 and :4079 (the issue #51 selection re-anchor, 125) and from
+    # :4059 and :4204 (the issue #57 throttle instance key, 23).
+    ("src/gui/main_window.py:4178", {"timeout": 10, "context": None}),
+    ("src/gui/main_window.py:4323", {"timeout": 10}),
 )
 _CALL_IDS = [site for site, _ in _CALL_SITES]
 _CALL_KWARGS = [kwargs for _, kwargs in _CALL_SITES]
