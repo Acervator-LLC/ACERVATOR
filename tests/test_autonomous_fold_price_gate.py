@@ -179,10 +179,32 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 # describes -- "the shipping file with the U3 gate block and the site-B
 # spans removed" -- not the method that derives it.
 #
-# The prior digest, kept so the chain is auditable:
+# RE-BASED AGAIN 2026-08-22, same tripwire, same reason. One further
+# repair landed in ``scrumming_bot.py`` outside every reversed span:
+#
+#   3. the three paths the drift-UP adopt left open --
+#      ``bootstrap_exchange_state`` still clamped holdings to the book
+#      on every launch; the top-up was measured from
+#      ``max(scalar, book)`` so a scalar leading the book left
+#      ``sum(_main_lots) != _current_holdings``; and the reconciliation
+#      lot took ``stats.current_price`` untested, booking a basis of
+#      0.0 on a bot that had not completed a priced tick.
+#
+# This one ADDS a second `self._main_lots.append({`, in the shared
+# writer ``_book_reconciliation_lot``, and REMOVES the one that was
+# inline in the drift-UP branch. It also holds
+# `_adopt = min(exchange_units, _claimable)` twice, once in the new
+# bootstrap adopter ABOVE the reconcile. The monotonic guard refused
+# that citation rather than re-pointing it into the wrong method, and
+# it was re-pointed by hand at the branch the prose means.
+#
+# `_pre_change_source` still returns zero orphans.
+#
+# The prior digests, kept so the chain is auditable:
 #   986d79ed7785015d12a57bfc877ba1b078027d93b2f7655ec2fbc78a90ef2082
+#   29276909ff46dce02bc650de45802c779539adb7093b010cd875ef376201e9a0
 PRE_CHANGE_SHA256 = (
-    "29276909ff46dce02bc650de45802c779539adb7093b010cd875ef376201e9a0")
+    "4b5c51bde7c54836dcd935c85c76ee06757e1fe8b79edd2ce1febb0831ad3c75")
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE.")
