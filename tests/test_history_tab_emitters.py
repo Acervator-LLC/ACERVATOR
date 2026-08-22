@@ -93,7 +93,8 @@ from src.core.signal_contract import SignalSink  # noqa: E402
 # Imported, not forked. `_tracks` is the project's duration predicate and
 # this module has no standing to relax it; the site rule below WRAPS it
 # and only ever adds a condition.
-from tests.test_signal_operation_duration import _tracks  # noqa: E402
+from tests.test_signal_operation_duration import (  # noqa: E402
+    _busy_wait, _tracks)
 
 if TYPE_CHECKING:                       # pragma: no cover
     # Annotation only. PySide6 must not be imported at module scope: the
@@ -774,3 +775,361 @@ def test_a_short_write_is_reported(
     assert rec.context["readback"] is True
     with target.open("r", newline="", encoding="utf-8") as fh:
         assert len(list(csv.reader(fh))) == 4    # header plus three
+
+
+# ── 10.3 durations: four History pins, each driven both ways ───────────
+#
+# WHY THIS BLOCK EXISTS
+# =====================
+# Queue item 10.3 made a duration MANDATORY IN THE RECORD -- not
+# mandatory as a number on every pin, which is impossible, but mandatory
+# as a DECLARATION the register carries and the checker holds against
+# the code. `tools/emitter_registry_check.py` rule E11 proves the
+# `duration=` keyword is present at a site the register calls
+# `measured`. It cannot prove the bracket spans the right work, because
+# no static rule can read that.
+#
+# THAT IS THE HOLE THESE TESTS FILL, AND IT IS THE ONLY ONE THAT
+# MATTERS. A bracket collapsed above the work still passes E11: the
+# keyword is there and the record carries a float. So each test below
+# drives the REAL emitter through two workloads that differ by a known
+# interval and requires the two recorded values to DIFFER. A duration
+# that is present but constant passes an existence check and fails
+# this one.
+#
+# THE LEVER IS ALWAYS INSIDE THE BRACKET AND NEVER TOUCHES THE CLOCK.
+# Nothing below patches `time.monotonic`, the `emit` call or the
+# `duration` argument. Each lever slows down real work the bracket is
+# supposed to be spanning: a combo rebuild, a filter pass, two log
+# reads, a CSV write. If the bracket does not span that work, the two
+# readings do not move apart and the test fails, which is the design.
+#
+# THE MINIMUM OF SEVERAL SAMPLES IS COMPARED, NOT ONE READING. A
+# scheduling pause can only ADD to an elapsed-time measurement: the
+# operating system can take the thread away inside the bracket, it
+# cannot hand back time that was never spent. So every sample is the
+# true cost plus non-negative noise, and the smallest is this machine's
+# closest estimate of the true cost. Measured on the sibling of this
+# rule in tests/test_wires_received_duration.py 2026-08-19: one failure
+# in a 7012-test gate run, with the same file passing 45 times in
+# isolation on the same commit. That is a single-sample measurement of
+# a small interval on a loaded Windows box with the live application
+# trading.
+
+SITE_SHORT_S = 0.005
+SITE_LONG_S = 0.060
+SITE_FLOOR_S = SITE_LONG_S / 2.0
+SITE_SAMPLES = 5
+
+
+def _tracks_the_site(short: Optional[float],
+                     long_: Optional[float]) -> bool:
+    """`_tracks`, with a floor under the long reading.
+
+    The floor is the part a ratio cannot do. With the bracket collapsed
+    above the work both readings fall to the cost of two
+    `time.monotonic()` calls, and two values that small differ by more
+    than a factor of two on ordinary clock jitter, so the ratio alone
+    ACCEPTS the blinding it exists to catch. Measured at this class of
+    site 2026-08-20 with the stop clock planted above the work, 120
+    readings: every reading fell between 0.0 s and 5.0e-07 s, and the
+    bare ratio accepted 4 of 30 pairs.
+
+    This ADDS the floor and relaxes nothing: everything `_tracks`
+    refuses is still refused.
+    """
+    if short is None or long_ is None:
+        return False
+    if long_ < SITE_FLOOR_S:
+        return False
+    return _tracks(short, long_)
+
+
+def test_the_site_duration_predicate_can_fail() -> None:
+    """The predicate driven in the failing direction. No Qt needed.
+
+    A predicate only ever driven the passing way is a claim about the
+    predicate, not about the sites. Each pair below is a real blinding
+    that the four tests under it must refuse.
+    """
+    # A collapsed bracket: two clock reads apart. The RATIO accepts this
+    # pair, which is exactly why the floor is a second rule.
+    assert _tracks(1.0e-07, 4.0e-07) is True
+    assert _tracks_the_site(1.0e-07, 4.0e-07) is False
+    # A literal substituted for the measurement: no movement at all.
+    assert _tracks_the_site(SITE_LONG_S, SITE_LONG_S) is False
+    # A bracket that spans the work but reports it backwards.
+    assert _tracks_the_site(SITE_LONG_S, SITE_SHORT_S) is False
+    # An absent duration is not a passing one.
+    assert _tracks_the_site(None, SITE_LONG_S) is False
+    assert _tracks_the_site(SITE_SHORT_S, None) is False
+    # And the real shape passes, so the predicate is not simply strict.
+    assert _tracks_the_site(SITE_SHORT_S, SITE_LONG_S) is True
+
+
+def _fastest(name: str, drive: Callable[[], None]) -> Optional[float]:
+    """Run `drive` `SITE_SAMPLES` times; return the lowest duration.
+
+    Every sample goes through the real `emit` and is read back off a
+    real sink, so the value compared still travelled the whole path.
+    The clock is never touched and no recorded value is adjusted; the
+    only thing added here is repetition.
+    """
+    best: Optional[float] = None
+    for _ in range(SITE_SAMPLES):
+        with _collect() as sink:
+            drive()
+        found = _records(sink, name)
+        if not found:
+            return None
+        got = found[-1].duration
+        if got is None:
+            return None
+        best = got if best is None else min(best, got)
+    return best
+
+
+# ── 05.003 the duration spans the combo rebuild ────────────────────────
+
+
+def test_the_options_duration_tracks_the_combo_rebuild(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The lever is `clear()`, which runs ONCE inside the bracket.
+
+    `_populate_filter_options` clears each combo and refills it. The
+    burn is added to the clear, so it lands between the opening clock
+    and the closing one and nowhere else. The read-back that produces
+    `actual` sits BELOW the closing clock, so a bracket reaching down
+    over it would report a number that moves with the check rather than
+    with the work.
+    """
+    def _driver(burn_s: float) -> Callable[[], None]:
+        def _drive() -> None:
+            tab = _loaded_tab()
+            original = tab._exch_combo.clear
+
+            def _slow_clear() -> None:
+                original()
+                _busy_wait(burn_s)
+
+            monkeypatch.setattr(tab._exch_combo, "clear", _slow_clear)
+            tab._populate_filter_options()
+            monkeypatch.undo()
+        return _drive
+
+    short = _fastest(OPTIONS, _driver(SITE_SHORT_S))
+    long_ = _fastest(OPTIONS, _driver(SITE_LONG_S))
+    assert _tracks_the_site(short, long_), (
+        f"05-003 records a duration that does not move with the combo "
+        f"rebuild: short={short!r} long={long_!r}. The register "
+        f"declares this pin measured, so the bracket must span the "
+        f"rebuild and only the rebuild.")
+
+
+def test_the_options_duration_is_a_bounded_real_measurement(
+        qapp: QApplication) -> None:
+    """Present, finite, non-negative, and not the fabricated zero."""
+    tab = _loaded_tab()
+    with _collect() as sink:
+        tab._populate_filter_options()
+    rec = _records(sink, OPTIONS)[0]
+    assert rec.duration is not None
+    assert isinstance(rec.duration, float)
+    assert rec.duration >= 0.0
+    assert rec.duration < 60.0
+    # The sink refused nothing, so the value the site passed WAS a
+    # measurement rather than a flag or a string coerced into one.
+    assert sink.health()["duration_rejected"] == 0
+
+
+# ── 05.004 the duration spans the filter pass ──────────────────────────
+
+
+class _SlowRow(dict):
+    """A trade row whose every field read costs a known interval.
+
+    The lever for this site has to live in the DATA, because the bracket
+    spans a plain loop with no call inside it a test can reach. Each
+    `get` burns `_burn` seconds, so the cost scales with the pass the
+    bracket is supposed to be timing and with nothing else.
+    """
+
+    _burn = 0.0
+
+    def get(self, key, default=None):        # noqa: ANN001, ANN201
+        _busy_wait(type(self)._burn)
+        return super().get(key, default)
+
+
+def test_the_filter_duration_tracks_the_filter_pass(
+        qapp: QApplication) -> None:
+    """The widget reads above the loop are outside the bracket.
+
+    `_apply_filters` fetches five widget values, then walks
+    `_all_trades`, then walks the RETAINED set again to judge itself.
+    Only the middle one is the operation, and the comment at the bracket
+    names what it excludes.
+    """
+    def _driver(burn_s: float) -> Callable[[], None]:
+        def _drive() -> None:
+            tab = _filterable_tab()
+            rows = [_SlowRow(r) for r in tab._all_trades]
+            _SlowRow._burn = burn_s
+            tab._all_trades = rows
+            try:
+                tab._apply_filters()
+            finally:
+                _SlowRow._burn = 0.0
+        return _drive
+
+    short = _fastest(FILTERS, _driver(SITE_SHORT_S))
+    long_ = _fastest(FILTERS, _driver(SITE_LONG_S))
+    assert _tracks_the_site(short, long_), (
+        f"05-004 records a duration that does not move with the filter "
+        f"pass: short={short!r} long={long_!r}.")
+
+
+# ── 05.006 the duration spans both log reads ───────────────────────────
+
+
+def test_the_joiner_duration_tracks_the_two_log_reads(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The only disk I/O on the render path, and the number for it.
+
+    `live_gate_decisions` and `live_voting_panel_snapshots` walk
+    gate.log and voting.log. The lever burns inside the gate reader, so
+    it lands between the opening clock and the closing one.
+    """
+    import src.trading.live_log_reader as llr
+
+    def _driver(burn_s: float) -> Callable[[], None]:
+        def _slow_gate(*a: object, **kw: object) -> Iterator[dict]:
+            _busy_wait(burn_s)
+            yield _gate_entry("bot-a", ISO % 1)
+
+        def _drive() -> None:
+            monkeypatch.setattr(llr, "live_gate_decisions", _slow_gate)
+            monkeypatch.setattr(
+                llr, "live_voting_panel_snapshots",
+                lambda *a, **kw: iter([_gate_entry("bot-b", ISO % 5)]))
+            tab = _tab()
+            tab._build_joiner_indexes_for_page(
+                [_row("j1", ts=1_755_000_000.0)])
+            monkeypatch.undo()
+        return _drive
+
+    short = _fastest(JOINER, _driver(SITE_SHORT_S))
+    long_ = _fastest(JOINER, _driver(SITE_LONG_S))
+    assert _tracks_the_site(short, long_), (
+        f"05-006 records a duration that does not move with the log "
+        f"reads: short={short!r} long={long_!r}.")
+
+
+def test_the_joiner_duration_is_recorded_when_a_reader_throws(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    """THE FAIL-SOFT CONTROL, and the case the number is FOR.
+
+    Both reader loops discard their whole index on any exception. A
+    duration taken only on the clean path would go silent in exactly
+    the case this pin exists to make visible: a reader that ran a long
+    time and then threw. The bracket closes BELOW both handlers, so the
+    record still says how long it ran before it failed.
+    """
+    import src.trading.live_log_reader as llr
+
+    def _throws(*a: object, **kw: object) -> Iterator[dict]:
+        _busy_wait(SITE_LONG_S)
+        yield _gate_entry("bot-a", ISO % 1)
+        raise ValueError("corrupt gate.log line")
+
+    monkeypatch.setattr(llr, "live_gate_decisions", _throws)
+    monkeypatch.setattr(
+        llr, "live_voting_panel_snapshots",
+        lambda *a, **kw: iter([_gate_entry("bot-b", ISO % 5)]))
+    tab = _tab()
+    with _collect() as sink:
+        tab._build_joiner_indexes_for_page(
+            [_row("j1", ts=1_755_000_000.0)])
+    rec = _records(sink, JOINER)[0]
+    assert rec.ok is False                    # the index collapsed
+    assert rec.duration is not None           # and it is still timed
+    assert rec.duration >= SITE_FLOOR_S
+
+
+# ── 05.007 the duration spans the write and the read-back ──────────────
+
+
+def test_the_csv_duration_tracks_the_write(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """The file dialog is OUTSIDE the bracket, and that is the point.
+
+    `QFileDialog.getSaveFileName` blocks until the operator picks a
+    path. That wait is human time and it is unbounded; on the record it
+    would read as disk latency, and item 17 reads this field as
+    latency. The lever burns inside `csv.writer`, which is below the
+    dialog and inside the bracket.
+    """
+    import src.gui.history_tab as hist
+
+    def _driver(burn_s: float, tag: str) -> Callable[[], None]:
+        def _drive() -> None:
+            original = hist.csv.writer
+
+            def _slow_writer(stream: object, *a: object,
+                             **kw: object) -> object:
+                _busy_wait(burn_s)
+                return original(stream, *a, **kw)
+
+            monkeypatch.setattr(hist.csv, "writer", _slow_writer)
+            tab = _paged_tab(5)
+            _export(tab, monkeypatch, tmp_path / f"h_{tag}.csv")
+            monkeypatch.undo()
+        return _drive
+
+    short = _fastest(CSV, _driver(SITE_SHORT_S, "short"))
+    long_ = _fastest(CSV, _driver(SITE_LONG_S, "long"))
+    assert _tracks_the_site(short, long_), (
+        f"05-007 records a duration that does not move with the export: "
+        f"short={short!r} long={long_!r}.")
+
+
+def test_the_csv_duration_excludes_the_file_dialog(
+        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    """Burn a long interval INSIDE the dialog; the record must not see it.
+
+    This is the half a tracking test cannot do. Tracking says the number
+    moves with the work. This says it does NOT move with the wait, which
+    is what stops the bracket being widened later to swallow it.
+    """
+    import src.gui.history_tab as hist
+
+    class _SlowDialog:
+        @staticmethod
+        def getSaveFileName(*a: object, **kw: object) -> tuple:
+            _busy_wait(SITE_LONG_S * 4)
+            return (str(tmp_path / "slow_dialog.csv"),
+                    "CSV files (*.csv)")
+
+    class _Box:
+        @staticmethod
+        def information(*a: object, **kw: object) -> None:
+            return None
+
+        @staticmethod
+        def warning(*a: object, **kw: object) -> None:
+            return None
+
+    monkeypatch.setattr(hist, "QFileDialog", _SlowDialog)
+    monkeypatch.setattr(hist, "QMessageBox", _Box)
+    tab = _paged_tab(5)
+    with _collect() as sink:
+        tab._export_csv()
+    rec = _records(sink, CSV)[0]
+    assert rec.duration is not None
+    assert rec.duration < SITE_LONG_S * 4, (
+        f"05-007 recorded {rec.duration!r} s while the file dialog held "
+        f"the thread for {SITE_LONG_S * 4} s. The bracket has been "
+        f"widened over the operator's own wait, which is not export "
+        f"cost.")

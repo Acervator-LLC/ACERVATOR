@@ -242,80 +242,29 @@ The operator's list of allowed vocabularies is wider than the set above.
 Four terms from it classify nothing here, and a measured reason keeps each one
 out, rather than an aesthetic one.
 
-- `timer`. Eleven pins carry a duration. This bullet is a correction,
-  not a restatement. It formerly denied that any pin carries one. Queue
-  item 10.3 then added the `duration` field to `Signal` and wired it
-  into these eight pins:
-  `history.05.001.postcondition.scan_complete`,
-  `fleet.03.001.postcondition.bots_loaded`,
-  `fleet.03.004.postcondition.wires_loaded`,
-  `sim.06.007.postcondition.fleet_spawned`,
-  `ta.07.003.postcondition.computed`,
-  `topology.09.002.postcondition.wires_received`,
-  `swarm.11.001.postcondition.sim_run_registered` and
-  `swarm.11.002.postcondition.paper_run_registered`. The term is still
-  unused, and the reason has changed. A duration is a FIELD on the
-  record, not a signal type, so all eight of those pins stay
-  `postcondition`: each one reports a checked expectation, and the
-  duration says how long that operation took. A pin whose only job was
-  to report an interval could claim `timer`. None does yet.
+- `timer`. Twenty-one pins carry a duration and every one of them is a
+  `postcondition`. The term stays unused, and the reason is not
+  aesthetic: a duration is a FIELD on the record, not a signal type.
+  Each of the twenty-one reports a checked expectation, and the
+  duration says how long the operation behind that expectation took. A
+  pin whose only job was to report an interval could claim `timer`.
+  None does.
 
-  THE NINTH ARRIVED AFTER 10.3, and the count above is the count of
-  pins, not a second claim about what 10.3 did.
-  `history.05.002.postcondition.trades_stored` carries one because it is
-  the History tab's only site behind network I/O. It is honest about its
-  own resolution rather than pretending to more: the fetch runs on the
-  platform's asyncio loop and is observed from the GUI thread by a
-  `QTimer` on a 400 ms interval, so a reading is the true fetch time plus
-  up to one poll, and `poll_interval_s` rides in the record's context so
-  a reader sees the quantum instead of inferring it. The other five
-  History pins carry NO duration: they count rows and compare sets over
-  data already in memory, and a number on any of them would be
-  fabricated.
+  THE PROSE THAT USED TO SIT HERE IS GONE, AND ITS REPLACEMENT IS A
+  COLUMN. It had grown to seventy lines -- "the ninth arrived", "the
+  tenth is", "the twelfth through the sixteenth" -- one paragraph per
+  unit, each restating a count that the next unit made stale. Two of
+  its claims were measurably false by the time 10.3 read them: it said
+  the History tab's other five pins carry no duration because they work
+  over data already in memory, and `05-007` writes a file and reads it
+  back while `05-006` reads two logs off disk.
 
-  THE TENTH IS `charts.13.004.postcondition.panel_refreshed`, and it is
-  the only pin in the Asset Charts tab that carries one. Its bracket
-  opens one line above `await self._fetcher.fetch(...)` and closes one
-  line below it, so it spans the network call and neither the Candle
-  conversion, nor `set_candles`, nor the emitter's own bookkeeping. If
-  the await returns and a later line raises, the reading already taken
-  stands rather than being re-measured across the raise. The other four
-  Asset Charts pins carry NO duration: two walk a dict, one walks a
-  layout, one writes a dict key, and a number on any of them would be
-  fabricated.
+  A count in prose has nobody checking it. The register's `duration`
+  column now carries one declaration per pin, and
+  `tools/emitter_registry_check.py` holds every declaration against the
+  call site and against the signal type on every run. See the
+  **Duration** section below for the four terms and the rule.
 
-  THE EXCHANGE TAB ADDED NO TWELFTH. Not one of its five pins carries
-  a duration: three read widget state after an operator press and two
-  walk table rows already in memory, so a number on any of them would
-  be fabricated. The one site in that tab that looks like a candidate
-  -- `_cmd`, which dispatches an operator command -- writes its record
-  BEFORE the dispatch, so there is no completed operation to time.
-
-  THE TWELFTH THROUGH THE SIXTEENTH ARE THE API TESTER'S FIVE, AND
-  THAT TAB IS THE FIRST WHERE EVERY PIN CARRIES ONE. The reason is the
-  tab: every one of its five sites sits behind a network operation,
-  which is what the other tabs mostly do not have. `apitest.16.001`
-  brackets `sync_connect` and carries None on every path that never
-  reached it; `apitest.16.002` brackets the close, from before the
-  executor is built to after its `__exit__` has waited for the worker,
-  and carries None when there was no connector to close;
-  `apitest.16.003` carries the venue call's own bracket and None on the
-  arm that ran nothing; `apitest.16.004` carries the endpoint sweep and
-  not the TCP and SSL diagnostics above it, which are separate
-  operations with their own log lines; `apitest.16.005` takes its own
-  reading across the status fetch and the parse, and does not touch the
-  `elapsed` the log line shows. Sixteen pins carry a duration. All
-  sixteen are `postcondition`.
-
-  THE ELEVENTH IS `console.14.005.postcondition.pause_buffer_delivered`,
-  and it is the only pin in the Console tab that carries one. Its
-  bracket opens one line above `handler.set_paused(paused)` and closes
-  one line below it, so it spans the resume drain -- up to `_buffer_max`
-  lines painted into a `QPlainTextEdit` on the GUI thread -- and neither
-  the button relabel nor the indicator update that follow it. The other
-  four Console pins carry NO duration: three read integer counters off a
-  ledger and one reads a boolean flag, and a number on any of them would
-  be fabricated.
 - `histogram`. No pin reports a distribution. Every numeric pin reports
   one scalar or one mapping.
 - `precondition`. No pin fires before an operation to check its entry
@@ -332,6 +281,135 @@ out, rather than an aesthetic one.
 A pin that genuinely needs one of these terms may take it. Add the term
 to `SIGNAL_TYPES` in `tools/emitter_registry_check.py` in that same
 change. Otherwise the checker rejects the row.
+
+## Duration
+
+Queue item 10.3, on the operator's standing queue:
+
+> "TIME -- duration in the pin record. **MANDATORY, not conditional**."
+>
+> "10.3 SITS IN FRONT OF ALL THREE. Duration is MANDATORY in the record,
+> and his health definition for item 17 -- on time, slow downs, hangs --
+> is entirely time-aware. A tab migrated before the record carries a
+> duration is a tab that gets rewired afterwards."
+
+`Signal` carries three time fields and they measure three different
+things. Confusing them is the single most likely reading error in this
+document, so they are separated first.
+
+| field | measures | who supplies it | answers, for item 17 |
+|---|---|---|---|
+| `ts` | the wall clock at the emit | the sink | correlating with trade.log and gate.log |
+| `dt` | the gap since the SAME pin last fired | the sink | **on time**, and **hangs** |
+| `duration` | how long the observed operation took | the CALL SITE | **slow downs** |
+
+`dt` is cadence and is computed by `SignalSink` from what already passes
+through it. `duration` is latency and cannot be: only the caller that
+wrapped the operation knows when it began. That is why a duration is a
+property of the CALL SITE, and why a column here is the only place the
+two can be held against each other.
+
+### The rule, and it is one rule for all 74
+
+**A duration is the elapsed `time.monotonic()` across the operation the
+pin asserts about, and only the SOLE OWNER of that operation may carry
+it.**
+
+Two clauses, and each was bought by a measured failure.
+
+**`time.monotonic()`, never the wall clock.** The operator's machine
+sleeps and its clock is stepped by NTP. A wall-clock difference taken
+across either is wrong and can be negative, which reads as an operation
+that finished before it started. `_as_measured_duration` in
+`src/core/signal_contract.py` refuses a negative for that reason, and
+the refusal is counted in `health()['duration_rejected']`.
+
+**Sole owner, because a shared function fabricates a distinction.**
+Measured 2026-08-19: 32 of the 40 emitters that existed then shared
+their enclosing function with at least one other -- eight in one
+`_run()`, four in one `tick()`. If each carried its enclosing function's
+elapsed time they would report IDENTICAL numbers under different names,
+and item 17 would compute health from the duplicate. At most one pin
+per operation therefore owns that operation's time.
+
+### What the signal type decides
+
+The type is not decoration here. It decides whether a duration is
+possible at all, and rule E8 enforces it.
+
+| signal type | duration | why |
+|---|---|---|
+| `postcondition` | permitted | it fires at the exit of an operation, so an operation exists to time |
+| `invariant` | forbidden | it compares two things that must agree; no operation sits behind the comparison |
+| `counter` | forbidden | it reads a running total |
+| `gauge` | forbidden | it samples a value at an instant |
+| `event` | forbidden | it records that a discrete thing happened, at a point |
+| `state_transition` | forbidden | it records a move between named states, at a point |
+
+26 of the 74 pins are one of the five forbidden types. 48 are
+`postcondition`, and those 48 are the only pins where a duration can
+ever be honest.
+
+### The four terms in the `duration` column
+
+Every row declares one. The vocabulary lives in
+`DURATION_DISPOSITIONS` in `tools/emitter_registry_check.py` and the
+checker refuses a term outside it.
+
+| term | count | meaning |
+|---|---|---|
+| `measured: <what the bracket spans>` | 21 | the call site brackets an operation and passes `duration=` |
+| `forbidden` | 26 | the signal type is not `postcondition`; E8 refuses a duration here |
+| `none: <reason>` | 16 | a `postcondition` whose site owns no interval; a number would be FABRICATED |
+| `deferred: <what is missing>` | 11 | a `postcondition` that DOES own a bounded operation which nobody has bracketed yet |
+
+`measured` NAMES WHAT THE BRACKET SPANS, and that is not decoration. A
+bracket that drifts onto the wrong work still passes an existence
+check. The cell is what a reader compares the code against.
+
+`forbidden` CARRIES NO REASON, and it is the only term that does not.
+Its reason is the signal type, the type is a machine-checked field in
+the same row, and rule E12 holds the two together. Writing the reason
+out 26 times would be 26 copies of one fact that can go stale
+independently.
+
+`none` AND `deferred` ARE DIFFERENT CLAIMS AND ARE NEVER MERGED. `none`
+says a duration cannot be honest at this site, ever. `deferred` says it
+can, and nobody has written it. One word covering both leaves a reader
+unable to tell "leave this alone" from "this is the next unit", which
+is the disjunction defect this repo keeps paying for. The 11 `deferred`
+rows are the standing work list; they are visible here rather than
+absent, which is the whole point of the column.
+
+**A FABRICATED DURATION IS WORSE THAN A MISSING ONE.** Item 17 computes
+health from this field. A zero written where nothing was measured reads
+as an instantaneous operation, which is a measurement. `None` in the
+record reads as no measurement, which is the truth.
+`_as_measured_duration` accepts a real 0.0 and refuses everything that
+is not a measurement, so the two stay distinguishable on disk.
+
+### What is enforced, and what is not
+
+`tools/emitter_registry_check.py` runs three rules over this column on
+every invocation, plain and `--selftest` alike.
+
+- **E10** the cell declares one of the four terms, and carries a reason
+  where a reason is required. An empty cell fails: an unfilled column
+  is not "no duration", it is no statement.
+- **E11** the declaration agrees with the CODE. A `measured` row whose
+  call site passes no `duration=` fails, and so does any other row
+  whose call site does. Read off the syntax tree, so the word
+  `duration` in a comment or inside a context dict is never mistaken
+  for the keyword.
+- **E12** the declaration agrees with the SIGNAL TYPE, both ways round.
+
+What is NOT enforced: whether a `measured` bracket spans the operation
+its cell names. No static rule can read that. It is held by the
+per-pin duration tests under `tests/`, each of which drives the real
+emitter through two known workloads and requires two DIFFERENT recorded
+values -- present-but-constant passes an existence check and fails
+that one.
+
 
 ## Subsystem numbers
 
@@ -715,9 +793,15 @@ No interval exists at which a healthy tab must be seen emitting, and no
 `every=` throttle rides on any of them. A monitor that read silence
 here as a stopped pin would report a normal session.
 
-NO PIN IN THIS TAB CARRIES A DURATION. Every site is a widget operation
-on the GUI thread with no bounded operation behind it. A number on any
-of them would be fabricated, which is worse than a missing one.
+NO PIN IN THIS TAB CARRIES A DURATION, AND THE SIX DIVIDE TWO WAYS.
+Five of them declare `none`: each reads its answer back out of a widget
+after one move, one flag flip or one notify, so nothing runs between
+two points and a number would be fabricated. `12-001` declares
+`deferred`, which is a different statement. The tab build IS a bounded
+operation -- it constructs and wires two layer pages, a stack, a
+splitter and an indicator panel -- and nobody has bracketed it. That is
+a duration this tab can honestly carry and does not yet, so the row
+says so rather than claiming the site is instantaneous.
 
 NO CONTEXT IN THIS TAB CARRIES OPERATOR TEXT. A context is written to
 disk and the Trading tab handles exchange credentials, so the contexts
@@ -1485,82 +1569,82 @@ here touches `~/.acervator` or `~/.acervator_logs`.
 
 One row per pin call site. 74 rows.
 
-| ID | subsystem | signal type | current name | previous name | source | observes |
-|---|---|---|---|---|---|---|
-| `01-001` | `bot` | `postcondition` | `bot.01.001.postcondition.capital_reservation` | `bot.capital_reservation` | `src/trading/scrumming_bot.py:1354` | REFUSAL PATH: the reservation granted nothing against the requested quantity |
-| `01-002` | `bot` | `postcondition` | `bot.01.002.postcondition.capital_reservation` | `bot.capital_reservation` | `src/trading/scrumming_bot.py:1421` | GRANT PATH: the reservation the registry holds is inside the 1 % band the update path keeps it in, against the quantity this tick needs |
-| `01-003` | `bot` | `postcondition` | `bot.01.003.postcondition.adoption_capped` | `bot.adoption_capped` | `src/trading/scrumming_bot.py:6601` | the adopted amount equals the uncapped amount, or the cap bit |
-| `02-001` | `extractor` | `postcondition` | `extractor.02.001.postcondition.tranche_contained` | `extractor.tranche_contained` | `src/trading/scrumming_bot.py:3268` | the target tranche grew by exactly the arriving amount |
-| `02-002` | `extractor` | `invariant` | `extractor.02.002.invariant.arrival_atomic` | `extractor.arrival_atomic` | `src/trading/scrumming_bot.py:3283` | an extractor arrival shifted no value outside the tranche |
-| `03-001` | `fleet` | `postcondition` | `fleet.03.001.postcondition.bots_loaded` | `fleet.bots_loaded` | `src/gui/simulator_tab/fleet/bot_state_loader.py:228` | the loader returned one config for every eligible bot |
-| `03-002` | `fleet` | `invariant` | `fleet.03.002.invariant.bot_ids_mirror_live` | `fleet.bot_ids_mirror_live` | `src/gui/simulator_tab/fleet/bot_state_loader.py:233` | the loaded bot ids are the same set as the live bot ids |
-| `03-003` | `fleet` | `invariant` | `fleet.03.003.invariant.sections_imported` | `fleet.sections_imported` | `src/gui/simulator_tab/fleet/bot_state_loader.py:285` | every section the loader carries, that an entry offered, reached the returned dict - counted over every eligible bot |
-| `03-004` | `fleet` | `postcondition` | `fleet.03.004.postcondition.wires_loaded` | `fleet.wires_loaded` | `src/gui/simulator_tab/fleet/bot_state_loader.py:338` | the loader returned one entry for every wire it received |
-| `03-005` | `fleet` | `invariant` | `fleet.03.005.invariant.state_parity` | `fleet.state_parity` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1017` | each bot's imported scrum state equals its source state |
-| `03-006` | `fleet` | `postcondition` | `fleet.03.006.postcondition.state_imported` | `fleet.state_imported` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1091` | every spawned bot received imported state |
-| `03-007` | `fleet` | `postcondition` | `fleet.03.007.postcondition.positions_seeded_from_lots` | `fleet.positions_seeded_from_lots` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1095` | every spawned bot had its position seeded from lots |
-| `04-001` | `gui` | `postcondition` | `gui.04.001.postcondition.voting_panel.fit` | `gui.voting_panel.fit` | `src/gui/indicator_panel.py:1261` | every voting-panel column fitted its label at the geometry a show or a resize produced |
-| `05-001` | `history` | `postcondition` | `history.05.001.postcondition.scan_complete` | `history.scan_complete` | `src/exchange/ccxt_connector.py:778` | every requested symbol came back from the history scan |
-| `05-002` | `history` | `postcondition` | `history.05.002.postcondition.trades_stored` | `history.trades_stored` | `src/gui/history_tab.py:488` | every row the fetch stored is inside the requested window and unique on (exchange, symbol, id) |
-| `05-003` | `history` | `postcondition` | `history.05.003.postcondition.filter_options_built` | `history.filter_options_built` | `src/gui/history_tab.py:595` | the exchange and symbol dropdowns offer exactly the distinct values the loaded trades hold, entry by entry rather than by count |
-| `05-004` | `history` | `postcondition` | `history.05.004.postcondition.filters_applied` | `history.filters_applied` | `src/gui/history_tab.py:688` | no retained row breaks a filter the operator's own combos hold |
-| `05-005` | `history` | `postcondition` | `history.05.005.postcondition.page_rendered` | `history.page_rendered` | `src/gui/history_tab.py:889` | the table drew a timestamp cell for every row this page's arithmetic calls for |
-| `05-006` | `history` | `postcondition` | `history.05.006.postcondition.joiner_indexes_built` | `history.joiner_indexes_built` | `src/gui/history_tab.py:1130` | the gate and voting indexes still hold every entry their loops accepted, so a fail-soft collapse is not silent |
-| `05-007` | `history` | `postcondition` | `history.05.007.postcondition.csv_exported` | `history.csv_exported` | `src/gui/history_tab.py:1241` | the exported file holds one record for every filtered row handed to the writer |
-| `06-001` | `sim` | `postcondition` | `sim.06.001.postcondition.candles_stepped` | `sim.candles_stepped` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1750` | the replay played every candle it was ASKED for, with `outcome` naming which of the four loop exits ended it; a deliberate Stop is bounded, not equal |
-| `06-002` | `sim` | `postcondition` | `sim.06.002.postcondition.bot_ticks_did_work` | `sim.bot_ticks_did_work` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1777` | every tick that entered a bot is accounted for as worked, throttled or unknown |
-| `06-003` | `sim` | `counter` | `sim.06.003.counter.ticks_before_tape` | `sim.ticks_before_tape` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1944` | how many bot ticks ran before the tape started |
-| `06-004` | `sim` | `counter` | `sim.06.004.counter.trades_fired` | `sim.trades_fired` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1953` | how many trades the run fired in total |
-| `06-005` | `sim` | `invariant` | `sim.06.005.invariant.exceptions` | `sim.exceptions` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1954` | the run raised no exceptions |
-| `06-006` | `sim` | `event` | `sim.06.006.event.window_played` | `sim.window_played` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1966` | a replay window finished, with the tape span it covered |
-| `06-007` | `sim` | `postcondition` | `sim.06.007.postcondition.fleet_spawned` | `sim.fleet_spawned` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:586` | the panel spawned one bot for every config it held |
-| `06-008` | `sim` | `invariant` | `sim.06.008.invariant.state_persisted` | `sim.state_persisted` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:655` | the persisted state file agrees with the in-memory state |
-| `06-009` | `sim` | `invariant` | `sim.06.009.invariant.spawn_drift` | `sim.spawn_drift` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:662` | no bot changed between this spawn and the first spawn |
-| `06-010` | `sim` | `postcondition` | `sim.06.010.postcondition.bot_table.rendered` | `sim.bot_table.rendered` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:776` | the bot table drew a row for every bot the controller holds |
-| `06-011` | `sim` | `postcondition` | `sim.06.011.postcondition.price_chart.fed` | `sim.price_chart.fed` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:2086` | every symbol the tape could feed at this instant arrived at the chart with a candle |
-| `06-012` | `sim` | `postcondition` | `sim.06.012.postcondition.gate_status.rendered` | `sim.gate_status.rendered` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:2100` | the gate status panel drew every row the snapshot holds |
-| `06-013` | `sim` | `state_transition` | `sim.06.013.state_transition.mode_selected` | `sim.mode_selected` | `src/gui/simulator_tab/simulator_tab.py:824` | the stack is on the page the requested mode demands |
-| `06-014` | `sim` | `event` | `sim.06.014.event.log.line` | `sim.log.line` | `src/gui/simulator_tab/simulator_tab.py:1010` | which log stream produced this line, and whether the pane took it |
-| `07-001` | `ta` | `postcondition` | `ta.07.001.postcondition.coverage_per_bot` | `ta.coverage_per_bot` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1869` | TA was observed only on candles the bot was eligible for; coverage is reported beside the verdict |
-| `07-002` | `ta` | `invariant` | `ta.07.002.invariant.invariants` | `ta.invariants` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1934` | no indicator broke its declared bound during the run |
-| `07-003` | `ta` | `postcondition` | `ta.07.003.postcondition.computed` | `ta.computed` | `src/trading/ta_engine.py:3181` | one signal came back for every configured indicator |
-| `07-004` | `ta` | `postcondition` | `ta.07.004.postcondition.raw.{}` | `ta.raw.{}` | `src/trading/ta_engine.py:3238` | one indicator's raw reading against its declared bound; the leaf of the name is the indicator, built at run time |
-| `08-001` | `tick` | `event` | `tick.08.001.event.throttled` | `tick.throttled` | `src/trading/scrumming_bot.py:6323` | the read-rate throttle skipped a tick |
-| `08-002` | `tick` | `event` | `tick.08.002.event.worked` | `tick.worked` | `src/trading/scrumming_bot.py:6340` | a tick passed the throttle and did work |
-| `08-003` | `tick` | `event` | `tick.08.003.event.exit_dust_band` | `tick.exit_dust_band` | `src/trading/scrumming_bot.py:6892` | an exit landed inside the dust band |
-| `09-001` | `topology` | `state_transition` | `topology.09.001.state_transition.bot_attached` | `topology.bot_attached` | `src/trading/smart_wire.py:275` | a bot joined the wire topology |
-| `09-002` | `topology` | `postcondition` | `topology.09.002.postcondition.wires_received` | `topology.wires_received` | `src/trading/smart_wire.py:865` | the topology took every wire it received |
-| `10-001` | `ytd` | `gauge` | `ytd.10.001.gauge.trades_fetched` | `ytd.trades_fetched` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1046` | how many year-to-date trades the panel holds after the fetch |
-| `10-002` | `ytd` | `postcondition` | `ytd.10.002.postcondition.fleet_symbol_coverage` | `ytd.fleet_symbol_coverage` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1054` | the year-to-date fetch covered every symbol the fleet trades |
-| `10-003` | `ytd` | `gauge` | `ytd.10.003.gauge.per_symbol_counts` | `ytd.per_symbol_counts` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1059` | how many year-to-date trades the panel holds per symbol |
-| `11-001` | `swarm` | `postcondition` | `swarm.11.001.postcondition.sim_run_registered` | `swarm.sim_run_registered` | `src/gui/bot_visualizer.py:2224` | the row stored under this sim id reports kind `sim`, so the registration landed in the layer it was addressed to |
-| `11-002` | `swarm` | `postcondition` | `swarm.11.002.postcondition.paper_run_registered` | `swarm.paper_run_registered` | `src/gui/bot_visualizer.py:2315` | the row stored under this paper id reports kind `paper` |
-| `12-001` | `trading` | `postcondition` | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:4926` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
-| `12-002` | `trading` | `postcondition` | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:7365` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
-| `12-003` | `trading` | `postcondition` | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:9413` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
-| `12-004` | `trading` | `postcondition` | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:9292` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
-| `12-005` | `trading` | `postcondition` | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:5069` | the Activity Log's own paused state agrees with the button the operator just pressed |
-| `12-006` | `trading` | `postcondition` | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:5002` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
-| `13-001` | `charts` | `invariant` | `charts.13.001.invariant.panels_mounted` | `charts.panels_mounted` | `src/gui/main_window.py:1417` | every panel the fetch loop iterates is a widget really mounted in the scroll layout, asked of the layout rather than of the dict that built it |
-| `13-002` | `charts` | `postcondition` | `charts.13.002.postcondition.panel_symbols_current` | `charts.panel_symbols_current` | `src/gui/main_window.py:1426` | the symbol each panel stores -- the one `fetch_chart_data` hands the exchange -- is the symbol the status that just updated that panel carries |
-| `13-003` | `charts` | `postcondition` | `charts.13.003.postcondition.timeframe_rearmed` | `charts.timeframe_rearmed` | `src/gui/main_window.py:1462` | the panel the operator just retimed exists, holds the timeframe the fetch will read, and has had its throttle cleared |
-| `13-004` | `charts` | `postcondition` | `charts.13.004.postcondition.panel_refreshed` | `charts.panel_refreshed` | `src/gui/main_window.py:1586` | the candles the chart now holds are the candles THIS fetch returned, read off the chart, with the source attribution and the outcome beside the verdict and the fetch latency on the record |
-| `13-005` | `charts` | `invariant` | `charts.13.005.invariant.panels_fresh` | `charts.panels_fresh` | `src/gui/main_window.py:1621` | no panel has gone three throttle windows without a pass writing its `last_fetch`, counted over the panel dict so a panel the loop SKIPS cannot hide in its own silence |
-| `14-001` | `console` | `invariant` | `console.14.001.invariant.records_rendered` | `console.records_rendered` | `src/gui/main_window.py:6381` | every record the watermark consumed reached the signals pane, counted off the drain's own ledger, so the records the `[-200:]` slice steps over after the watermark has already moved past them are counted rather than lost in silence -- they are still on disk in `session.jsonl`, and since issue #48 the pane draws a marker saying so, which this pin does NOT count as a record rendered |
-| `14-002` | `console` | `invariant` | `console.14.002.invariant.view_holds_rendered` | `console.view_holds_rendered` | `src/gui/main_window.py:6392` | the signals pane really holds every line the drain drew into it -- records AND the gap markers issue #48 draws over a skipped stretch, each of which is a block -- asked of the widget's own block count against the ledger clamped by the pane's own cap, with the number of lines the cap has evicted and the number of markers drawn beside the verdict |
-| `14-003` | `console` | `invariant` | `console.14.003.invariant.drain_alive` | `console.drain_alive` | `src/gui/main_window.py:6403` | the 500 ms drain ran at least once since the previous look, counted OUTSIDE the drain so a stopped timer is distinguishable from a quiet sink -- the one fault a pin inside the drain can never report |
-| `14-004` | `console` | `postcondition` | `console.14.004.postcondition.pause_quiets_both_panes` | `console.pause_quiets_both_panes` | `src/gui/main_window.py:6229` | the flag `_drain_signals` gates on agrees with the Pause button the operator just pressed, so the button's claim to quiet both panes is asked of the pane that is supposed to go quiet |
-| `14-005` | `console` | `postcondition` | `console.14.005.postcondition.pause_buffer_delivered` | `console.pause_buffer_delivered` | `src/gui/main_window.py:6258` | the console pane's own block count after a resume is the count it held plus every line the pause buffer was holding, so a delivery the pane's block cap eats is reported instead of vanishing, with how long the resume took on the record |
-| `15-001` | `exchange` | `postcondition` | `exchange.15.001.postcondition.command_routed_to_chosen_table` | `exchange.command_routed_to_chosen_table` | `src/gui/main_window.py:3162` | the table that really supplied the bot id about to be commanded is the table the operator last chose, read back out of both tables' current selections rather than from the branch that picked it, so the fallback hijack MEM-408 records is reported instead of returning as cleanly as a correct route |
-| `15-002` | `exchange` | `invariant` | `exchange.15.002.invariant.every_bot_reaches_a_table` | `exchange.every_bot_reaches_a_table` | `src/gui/main_window.py:3320` | every status handed to the tab is a row the operator can actually read, counted off the two tables' own column-0 items, so a bot dropped by both mode filters and a blank row left behind by a skipped render are both visible |
-| `15-003` | `exchange` | `invariant` | `exchange.15.003.invariant.selection_survives_refresh` | `exchange.selection_survives_refresh` | `src/gui/main_window.py:3333` | the bot under the operator's highlight after the dashboard re-renders the tables is the bot that was under it before, so a reordered fleet list silently moving the selection onto a different bot is reported rather than waiting for the next command to discover it |
-| `15-004` | `exchange` | `postcondition` | `exchange.15.004.postcondition.privacy_applied_to_every_field` | `exchange.privacy_applied_to_every_field` | `src/gui/main_window.py:3398` | every field the registry declares really reads back at the state the one-shot toggle asked for, so a partial apply that leaves values exposed is reported rather than swallowed by a persist that never raises |
-| `15-005` | `exchange` | `postcondition` | `exchange.15.005.postcondition.privacy_button_matches_registry` | `exchange.privacy_button_matches_registry` | `src/gui/main_window.py:3448` | the Privacy Mode button's own text agrees with an independent read of the registry, so a button that says OFF over a fully masked screen is reported instead of being trusted during a screen share |
-| `16-001` | `apitest` | `postcondition` | `apitest.16.001.postcondition.label_matches_session` | `apitest.label_matches_session` | `src/gui/main_window.py:3796` | a session really exists whenever the connection label says Connected, asked of the connector reference, the tab's flag and the connector's own `_ex` handle, so a connect that painted the label and holds nothing is reported; the `sync_connect` bracket is the duration and no credential of any kind reaches the record |
-| `16-002` | `apitest` | `postcondition` | `apitest.16.002.postcondition.session_released` | `apitest.session_released` | `src/gui/main_window.py:3909` | the authenticated session was really released whenever the label reads Disconnected, so a close that raised -- which drops the connector reference anyway and leaves an open session nothing can reach -- is reported with the error's CLASS name and never its message |
-| `16-003` | `apitest` | `postcondition` | `apitest.16.003.postcondition.reported_ok_ran_a_test` | `apitest.reported_ok_ran_a_test` | `src/gui/main_window.py:4021` | an arm of the dispatch chain really ran whenever the headline reads `<test> OK`, read off the result object's identity against the headline taken back out of the label widget, so the unrecognised-name arm that answers with an empty dict and still logs a pass is reported |
-| `16-004` | `apitest` | `postcondition` | `apitest.16.004.postcondition.green_probe_read_a_body` | `apitest.green_probe_read_a_body` | `src/gui/main_window.py:4272` | every probe that reported HTTP success carried bytes off the socket, counted over the sweep, so an endpoint that answers 200 with an empty body is told apart from one that returned the payload the operator is looking for; the sweep is the duration |
-| `16-005` | `apitest` | `postcondition` | `apitest.16.005.postcondition.indicator_is_mappable` | `apitest.indicator_is_mappable` | `src/gui/main_window.py:4368` | the status word the venue's document carried is one the tab can map, read back out of the parsed body and capped at 32 characters, so a missing or renamed field -- which the tab paints as an outage the venue never declared -- is reported instead of trusted |
+| ID | subsystem | signal type | duration | current name | previous name | source | observes |
+|---|---|---|---|---|---|---|---|
+| `01-001` | `bot` | `postcondition` | none: the reservation guard evaluates a bound; nothing runs between two points here | `bot.01.001.postcondition.capital_reservation` | `bot.capital_reservation` | `src/trading/scrumming_bot.py:1354` | REFUSAL PATH: the reservation granted nothing against the requested quantity |
+| `01-002` | `bot` | `postcondition` | none: the reservation guard evaluates a bound; nothing runs between two points here | `bot.01.002.postcondition.capital_reservation` | `bot.capital_reservation` | `src/trading/scrumming_bot.py:1421` | GRANT PATH: the reservation the registry holds is inside the 1 % band the update path keeps it in, against the quantity this tick needs |
+| `01-003` | `bot` | `postcondition` | none: the cap is one arithmetic comparison | `bot.01.003.postcondition.adoption_capped` | `bot.adoption_capped` | `src/trading/scrumming_bot.py:6601` | the adopted amount equals the uncapped amount, or the cap bit |
+| `02-001` | `extractor` | `postcondition` | deferred: an arrival inside a 670-line method with no start marker | `extractor.02.001.postcondition.tranche_contained` | `extractor.tranche_contained` | `src/trading/scrumming_bot.py:3268` | the target tranche grew by exactly the arriving amount |
+| `02-002` | `extractor` | `invariant` | forbidden | `extractor.02.002.invariant.arrival_atomic` | `extractor.arrival_atomic` | `src/trading/scrumming_bot.py:3283` | an extractor arrival shifted no value outside the tranche |
+| `03-001` | `fleet` | `postcondition` | measured: the bot_state load | `fleet.03.001.postcondition.bots_loaded` | `fleet.bots_loaded` | `src/gui/simulator_tab/fleet/bot_state_loader.py:228` | the loader returned one config for every eligible bot |
+| `03-002` | `fleet` | `invariant` | forbidden | `fleet.03.002.invariant.bot_ids_mirror_live` | `fleet.bot_ids_mirror_live` | `src/gui/simulator_tab/fleet/bot_state_loader.py:233` | the loaded bot ids are the same set as the live bot ids |
+| `03-003` | `fleet` | `invariant` | forbidden | `fleet.03.003.invariant.sections_imported` | `fleet.sections_imported` | `src/gui/simulator_tab/fleet/bot_state_loader.py:285` | every section the loader carries, that an entry offered, reached the returned dict - counted over every eligible bot |
+| `03-004` | `fleet` | `postcondition` | measured: the smart-wire load | `fleet.03.004.postcondition.wires_loaded` | `fleet.wires_loaded` | `src/gui/simulator_tab/fleet/bot_state_loader.py:338` | the loader returned one entry for every wire it received |
+| `03-005` | `fleet` | `invariant` | forbidden | `fleet.03.005.invariant.state_parity` | `fleet.state_parity` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1017` | each bot's imported scrum state equals its source state |
+| `03-006` | `fleet` | `postcondition` | deferred: a phase inside `_build_sim`, span 377, with no start marker | `fleet.03.006.postcondition.state_imported` | `fleet.state_imported` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1091` | every spawned bot received imported state |
+| `03-007` | `fleet` | `postcondition` | deferred: a phase inside `_build_sim`, span 377, with no start marker | `fleet.03.007.postcondition.positions_seeded_from_lots` | `fleet.positions_seeded_from_lots` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1095` | every spawned bot had its position seeded from lots |
+| `04-001` | `gui` | `postcondition` | deferred: `emit_fit` only reports; the fit runs in the caller's frame | `gui.04.001.postcondition.voting_panel.fit` | `gui.voting_panel.fit` | `src/gui/indicator_panel.py:1261` | every voting-panel column fitted its label at the geometry a show or a resize produced |
+| `05-001` | `history` | `postcondition` | measured: the venue history scan, clocked inside the scan lock | `history.05.001.postcondition.scan_complete` | `history.scan_complete` | `src/exchange/ccxt_connector.py:778` | every requested symbol came back from the history scan |
+| `05-002` | `history` | `postcondition` | measured: the async fetch, resolved to one 400 ms poll | `history.05.002.postcondition.trades_stored` | `history.trades_stored` | `src/gui/history_tab.py:488` | every row the fetch stored is inside the requested window and unique on (exchange, symbol, id) |
+| `05-003` | `history` | `postcondition` | measured: the rebuild of the two filter combos | `history.05.003.postcondition.filter_options_built` | `history.filter_options_built` | `src/gui/history_tab.py:608` | the exchange and symbol dropdowns offer exactly the distinct values the loaded trades hold, entry by entry rather than by count |
+| `05-004` | `history` | `postcondition` | measured: the filter pass over the loaded trades | `history.05.004.postcondition.filters_applied` | `history.filters_applied` | `src/gui/history_tab.py:714` | no retained row breaks a filter the operator's own combos hold |
+| `05-005` | `history` | `postcondition` | deferred: the row-draw loop is timeable, but 05-006 owns the joiner build above it | `history.05.005.postcondition.page_rendered` | `history.page_rendered` | `src/gui/history_tab.py:916` | the table drew a timestamp cell for every row this page's arithmetic calls for |
+| `05-006` | `history` | `postcondition` | measured: the two joiner log reads and the bucketing | `history.05.006.postcondition.joiner_indexes_built` | `history.joiner_indexes_built` | `src/gui/history_tab.py:1180` | the gate and voting indexes still hold every entry their loops accepted, so a fail-soft collapse is not silent |
+| `05-007` | `history` | `postcondition` | measured: the CSV write and the read-back, below the file dialog | `history.05.007.postcondition.csv_exported` | `history.csv_exported` | `src/gui/history_tab.py:1307` | the exported file holds one record for every filtered row handed to the writer |
+| `06-001` | `sim` | `postcondition` | deferred: a teardown phase inside `_run`, span 655, with no start marker | `sim.06.001.postcondition.candles_stepped` | `sim.candles_stepped` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1750` | the replay played every candle it was ASKED for, with `outcome` naming which of the four loop exits ended it; a deliberate Stop is bounded, not equal |
+| `06-002` | `sim` | `postcondition` | deferred: a teardown phase inside `_run`, span 655, with no start marker | `sim.06.002.postcondition.bot_ticks_did_work` | `sim.bot_ticks_did_work` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1777` | every tick that entered a bot is accounted for as worked, throttled or unknown |
+| `06-003` | `sim` | `counter` | forbidden | `sim.06.003.counter.ticks_before_tape` | `sim.ticks_before_tape` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1944` | how many bot ticks ran before the tape started |
+| `06-004` | `sim` | `counter` | forbidden | `sim.06.004.counter.trades_fired` | `sim.trades_fired` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1953` | how many trades the run fired in total |
+| `06-005` | `sim` | `invariant` | forbidden | `sim.06.005.invariant.exceptions` | `sim.exceptions` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1954` | the run raised no exceptions |
+| `06-006` | `sim` | `event` | forbidden | `sim.06.006.event.window_played` | `sim.window_played` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1966` | a replay window finished, with the tape span it covered |
+| `06-007` | `sim` | `postcondition` | measured: the fleet spawn | `sim.06.007.postcondition.fleet_spawned` | `sim.fleet_spawned` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:586` | the panel spawned one bot for every config it held |
+| `06-008` | `sim` | `invariant` | forbidden | `sim.06.008.invariant.state_persisted` | `sim.state_persisted` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:655` | the persisted state file agrees with the in-memory state |
+| `06-009` | `sim` | `invariant` | forbidden | `sim.06.009.invariant.spawn_drift` | `sim.spawn_drift` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:662` | no bot changed between this spawn and the first spawn |
+| `06-010` | `sim` | `postcondition` | deferred: `emit_bot_table` only reports; the render runs in the caller's frame | `sim.06.010.postcondition.bot_table.rendered` | `sim.bot_table.rendered` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:776` | the bot table drew a row for every bot the controller holds |
+| `06-011` | `sim` | `postcondition` | deferred: shares `_drain_visual_snapshot` with 06-012; no owner is chosen yet | `sim.06.011.postcondition.price_chart.fed` | `sim.price_chart.fed` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:2107` | every symbol the tape could feed at this instant arrived at the chart with a candle |
+| `06-012` | `sim` | `postcondition` | deferred: shares `_drain_visual_snapshot` with 06-011; no owner is chosen yet | `sim.06.012.postcondition.gate_status.rendered` | `sim.gate_status.rendered` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:2121` | the gate status panel drew every row the snapshot holds |
+| `06-013` | `sim` | `state_transition` | forbidden | `sim.06.013.state_transition.mode_selected` | `sim.mode_selected` | `src/gui/simulator_tab/simulator_tab.py:824` | the stack is on the page the requested mode demands |
+| `06-014` | `sim` | `event` | forbidden | `sim.06.014.event.log.line` | `sim.log.line` | `src/gui/simulator_tab/simulator_tab.py:1010` | which log stream produced this line, and whether the pane took it |
+| `07-001` | `ta` | `postcondition` | none: the coverage figure is counted from tallies the run already holds | `ta.07.001.postcondition.coverage_per_bot` | `ta.coverage_per_bot` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1869` | TA was observed only on candles the bot was eligible for; coverage is reported beside the verdict |
+| `07-002` | `ta` | `invariant` | forbidden | `ta.07.002.invariant.invariants` | `ta.invariants` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1934` | no indicator broke its declared bound during the run |
+| `07-003` | `ta` | `postcondition` | measured: the indicator compute | `ta.07.003.postcondition.computed` | `ta.computed` | `src/trading/ta_engine.py:3181` | one signal came back for every configured indicator |
+| `07-004` | `ta` | `postcondition` | none: a reporting loop after the compute, which 07-003 times | `ta.07.004.postcondition.raw.{}` | `ta.raw.{}` | `src/trading/ta_engine.py:3238` | one indicator's raw reading against its declared bound; the leaf of the name is the indicator, built at run time |
+| `08-001` | `tick` | `event` | forbidden | `tick.08.001.event.throttled` | `tick.throttled` | `src/trading/scrumming_bot.py:6323` | the read-rate throttle skipped a tick |
+| `08-002` | `tick` | `event` | forbidden | `tick.08.002.event.worked` | `tick.worked` | `src/trading/scrumming_bot.py:6340` | a tick passed the throttle and did work |
+| `08-003` | `tick` | `event` | forbidden | `tick.08.003.event.exit_dust_band` | `tick.exit_dust_band` | `src/trading/scrumming_bot.py:6892` | an exit landed inside the dust band |
+| `09-001` | `topology` | `state_transition` | forbidden | `topology.09.001.state_transition.bot_attached` | `topology.bot_attached` | `src/trading/smart_wire.py:275` | a bot joined the wire topology |
+| `09-002` | `topology` | `postcondition` | measured: the wire import | `topology.09.002.postcondition.wires_received` | `topology.wires_received` | `src/trading/smart_wire.py:865` | the topology took every wire it received |
+| `10-001` | `ytd` | `gauge` | forbidden | `ytd.10.001.gauge.trades_fetched` | `ytd.trades_fetched` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1066` | how many year-to-date trades the panel holds after the fetch |
+| `10-002` | `ytd` | `postcondition` | measured: the awaited year-to-date venue walk | `ytd.10.002.postcondition.fleet_symbol_coverage` | `ytd.fleet_symbol_coverage` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1074` | the year-to-date fetch covered every symbol the fleet trades |
+| `10-003` | `ytd` | `gauge` | forbidden | `ytd.10.003.gauge.per_symbol_counts` | `ytd.per_symbol_counts` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1080` | how many year-to-date trades the panel holds per symbol |
+| `11-001` | `swarm` | `postcondition` | measured: the sim-run registration | `swarm.11.001.postcondition.sim_run_registered` | `swarm.sim_run_registered` | `src/gui/bot_visualizer.py:2224` | the row stored under this sim id reports kind `sim`, so the registration landed in the layer it was addressed to |
+| `11-002` | `swarm` | `postcondition` | measured: the paper-run registration | `swarm.11.002.postcondition.paper_run_registered` | `swarm.paper_run_registered` | `src/gui/bot_visualizer.py:2315` | the row stored under this paper id reports kind `paper` |
+| `12-001` | `trading` | `postcondition` | deferred: the tab build is bounded, but no bracket is placed around it | `trading.12.001.postcondition.tab_assembled` | `trading.tab_assembled` | `src/gui/main_window.py:4926` | the assembled tab holds two layer pages with Crypto first, the stack and the indicator panel in their two splitter slots, and the legacy alias on the page the stack shows |
+| `12-002` | `trading` | `postcondition` | none: the pin reads the tab bar back after one widget move | `trading.12.002.postcondition.exchange_tab_routed` | `trading.exchange_tab_routed` | `src/gui/main_window.py:7365` | the layer tab bar now holding this exchange's tab is the layer the routing decision named |
+| `12-003` | `trading` | `postcondition` | none: the pin walks the configured exchanges already in memory | `trading.12.003.postcondition.exchange_tabs_synced` | `trading.exchange_tabs_synced` | `src/gui/main_window.py:9413` | every configured exchange reached a layer tab bar, asked of the bar rather than of the loop's own store |
+| `12-004` | `trading` | `postcondition` | none: the pin reads the stack index back | `trading.12.004.postcondition.active_layer_alias` | `trading.active_layer_alias` | `src/gui/main_window.py:9292` | the stack page that owns the legacy alias widget is the page the stack shows, so a hand-repointed alias cannot lag the visible layer |
+| `12-005` | `trading` | `postcondition` | none: the pin reads one paused flag back | `trading.12.005.postcondition.activity_log_paused` | `trading.activity_log_paused` | `src/gui/main_window.py:5069` | the Activity Log's own paused state agrees with the button the operator just pressed |
+| `12-006` | `trading` | `postcondition` | none: the pin reads the document revision; the notify ran in the caller's frame | `trading.12.006.postcondition.notification_relayed` | `trading.notification_relayed` | `src/gui/main_window.py:5002` | the legacy notify stub's message reached the Activity Log document, read from the document's revision counter |
+| `13-001` | `charts` | `invariant` | forbidden | `charts.13.001.invariant.panels_mounted` | `charts.panels_mounted` | `src/gui/main_window.py:1417` | every panel the fetch loop iterates is a widget really mounted in the scroll layout, asked of the layout rather than of the dict that built it |
+| `13-002` | `charts` | `postcondition` | none: the pin walks the panel dict already in memory | `charts.13.002.postcondition.panel_symbols_current` | `charts.panel_symbols_current` | `src/gui/main_window.py:1426` | the symbol each panel stores -- the one `fetch_chart_data` hands the exchange -- is the symbol the status that just updated that panel carries |
+| `13-003` | `charts` | `postcondition` | none: the pin writes and reads back one dict key | `charts.13.003.postcondition.timeframe_rearmed` | `charts.timeframe_rearmed` | `src/gui/main_window.py:1462` | the panel the operator just retimed exists, holds the timeframe the fetch will read, and has had its throttle cleared |
+| `13-004` | `charts` | `postcondition` | measured: the awaited chart fetch | `charts.13.004.postcondition.panel_refreshed` | `charts.panel_refreshed` | `src/gui/main_window.py:1586` | the candles the chart now holds are the candles THIS fetch returned, read off the chart, with the source attribution and the outcome beside the verdict and the fetch latency on the record |
+| `13-005` | `charts` | `invariant` | forbidden | `charts.13.005.invariant.panels_fresh` | `charts.panels_fresh` | `src/gui/main_window.py:1621` | no panel has gone three throttle windows without a pass writing its `last_fetch`, counted over the panel dict so a panel the loop SKIPS cannot hide in its own silence |
+| `14-001` | `console` | `invariant` | forbidden | `console.14.001.invariant.records_rendered` | `console.records_rendered` | `src/gui/main_window.py:6381` | every record the watermark consumed reached the signals pane, counted off the drain's own ledger, so the records the `[-200:]` slice steps over after the watermark has already moved past them are counted rather than lost in silence -- they are still on disk in `session.jsonl`, and since issue #48 the pane draws a marker saying so, which this pin does NOT count as a record rendered |
+| `14-002` | `console` | `invariant` | forbidden | `console.14.002.invariant.view_holds_rendered` | `console.view_holds_rendered` | `src/gui/main_window.py:6392` | the signals pane really holds every line the drain drew into it -- records AND the gap markers issue #48 draws over a skipped stretch, each of which is a block -- asked of the widget's own block count against the ledger clamped by the pane's own cap, with the number of lines the cap has evicted and the number of markers drawn beside the verdict |
+| `14-003` | `console` | `invariant` | forbidden | `console.14.003.invariant.drain_alive` | `console.drain_alive` | `src/gui/main_window.py:6403` | the 500 ms drain ran at least once since the previous look, counted OUTSIDE the drain so a stopped timer is distinguishable from a quiet sink -- the one fault a pin inside the drain can never report |
+| `14-004` | `console` | `postcondition` | none: the pin reads one boolean flag back | `console.14.004.postcondition.pause_quiets_both_panes` | `console.pause_quiets_both_panes` | `src/gui/main_window.py:6229` | the flag `_drain_signals` gates on agrees with the Pause button the operator just pressed, so the button's claim to quiet both panes is asked of the pane that is supposed to go quiet |
+| `14-005` | `console` | `postcondition` | measured: the resume drain into the console pane | `console.14.005.postcondition.pause_buffer_delivered` | `console.pause_buffer_delivered` | `src/gui/main_window.py:6258` | the console pane's own block count after a resume is the count it held plus every line the pause buffer was holding, so a delivery the pane's block cap eats is reported instead of vanishing, with how long the resume took on the record |
+| `15-001` | `exchange` | `postcondition` | none: the record is written before the dispatch, so no operation has finished | `exchange.15.001.postcondition.command_routed_to_chosen_table` | `exchange.command_routed_to_chosen_table` | `src/gui/main_window.py:3162` | the table that really supplied the bot id about to be commanded is the table the operator last chose, read back out of both tables' current selections rather than from the branch that picked it, so the fallback hijack MEM-408 records is reported instead of returning as cleanly as a correct route |
+| `15-002` | `exchange` | `invariant` | forbidden | `exchange.15.002.invariant.every_bot_reaches_a_table` | `exchange.every_bot_reaches_a_table` | `src/gui/main_window.py:3320` | every status handed to the tab is a row the operator can actually read, counted off the two tables' own column-0 items, so a bot dropped by both mode filters and a blank row left behind by a skipped render are both visible |
+| `15-003` | `exchange` | `invariant` | forbidden | `exchange.15.003.invariant.selection_survives_refresh` | `exchange.selection_survives_refresh` | `src/gui/main_window.py:3333` | the bot under the operator's highlight after the dashboard re-renders the tables is the bot that was under it before, so a reordered fleet list silently moving the selection onto a different bot is reported rather than waiting for the next command to discover it |
+| `15-004` | `exchange` | `postcondition` | none: the pin reads every declared registry field back | `exchange.15.004.postcondition.privacy_applied_to_every_field` | `exchange.privacy_applied_to_every_field` | `src/gui/main_window.py:3398` | every field the registry declares really reads back at the state the one-shot toggle asked for, so a partial apply that leaves values exposed is reported rather than swallowed by a persist that never raises |
+| `15-005` | `exchange` | `postcondition` | none: the pin reads the button text back | `exchange.15.005.postcondition.privacy_button_matches_registry` | `exchange.privacy_button_matches_registry` | `src/gui/main_window.py:3448` | the Privacy Mode button's own text agrees with an independent read of the registry, so a button that says OFF over a fully masked screen is reported instead of being trusted during a screen share |
+| `16-001` | `apitest` | `postcondition` | measured: the `sync_connect` call | `apitest.16.001.postcondition.label_matches_session` | `apitest.label_matches_session` | `src/gui/main_window.py:3796` | a session really exists whenever the connection label says Connected, asked of the connector reference, the tab's flag and the connector's own `_ex` handle, so a connect that painted the label and holds nothing is reported; the `sync_connect` bracket is the duration and no credential of any kind reaches the record |
+| `16-002` | `apitest` | `postcondition` | measured: the session close, including the wait for the worker | `apitest.16.002.postcondition.session_released` | `apitest.session_released` | `src/gui/main_window.py:3909` | the authenticated session was really released whenever the label reads Disconnected, so a close that raised -- which drops the connector reference anyway and leaves an open session nothing can reach -- is reported with the error's CLASS name and never its message |
+| `16-003` | `apitest` | `postcondition` | measured: the venue call the dispatch arm ran | `apitest.16.003.postcondition.reported_ok_ran_a_test` | `apitest.reported_ok_ran_a_test` | `src/gui/main_window.py:4021` | an arm of the dispatch chain really ran whenever the headline reads `<test> OK`, read off the result object's identity against the headline taken back out of the label widget, so the unrecognised-name arm that answers with an empty dict and still logs a pass is reported |
+| `16-004` | `apitest` | `postcondition` | measured: the endpoint sweep, without the TCP and SSL probes | `apitest.16.004.postcondition.green_probe_read_a_body` | `apitest.green_probe_read_a_body` | `src/gui/main_window.py:4272` | every probe that reported HTTP success carried bytes off the socket, counted over the sweep, so an endpoint that answers 200 with an empty body is told apart from one that returned the payload the operator is looking for; the sweep is the duration |
+| `16-005` | `apitest` | `postcondition` | measured: the status fetch and the parse | `apitest.16.005.postcondition.indicator_is_mappable` | `apitest.indicator_is_mappable` | `src/gui/main_window.py:4368` | the status word the venue's document carried is one the tab can map, read back out of the parsed body and capped at 32 characters, so a missing or renamed field -- which the tab paints as an outage the venue never declared -- is reported instead of trusted |
 
 ## Planned names
 
@@ -1668,8 +1752,12 @@ as before, rather than losing the slug that tells two emitters apart.
 1. Pick the subsystem. If it is new, give it the next free number in the
    subsystem table.
 2. Take the next free emitter number inside that subsystem.
-3. Pick the signal type from the vocabulary above.
+3. Pick the signal type from the vocabulary above. It decides whether
+   a duration is possible at all: only a `postcondition` may carry one.
 4. Write the pin, calling `emit` from `src/core/signal_contract.py`.
+   If the pin is a `postcondition` that owns a bounded operation,
+   bracket that operation with `time.monotonic()` and pass
+   `duration=`.
 5. Add the row here, and add the planned name.
 6. Fill the `previous name` cell. For a pin that existed before 10.2 it
    is the name that pin carried. For a new pin it is the two-field
@@ -1678,10 +1766,15 @@ as before, rather than losing the slug that tells two emitters apart.
    before 10.2. It may never equal the current name: a row whose two
    name columns agree records no rename and hands the derivation a slug
    with the numbering still glued to it, so the checker refuses it.
-7. Run the checker.
+7. Fill the `duration` cell with one of the four terms from the
+   **Duration** section, and with its reason. Nothing lets you leave
+   it out: an empty cell fails E10, because an unfilled column is not
+   "no duration", it is no statement.
+8. Run the checker.
 
-Step five is the step that gets skipped, which is why step seven
-exists.
+Step five is the step that gets skipped, which is why step eight
+exists. Step seven is the step 10.3 added, for the same reason: a
+duration that nobody had to declare was a duration nobody wrote.
 
 ## The checker
 
@@ -1698,6 +1791,15 @@ a planned name that is not the derivation of its own row, a current
 name that is not that planned name, and a `previous name` cell that is
 empty or that merely repeats the current name.
 
+It also holds the `duration` column against the tree. E8 refuses a
+duration on any signal type but `postcondition`. E10 refuses a cell
+that declares nothing the vocabulary knows, or a declaration with no
+reason. E11 refuses a declaration that disagrees with the call site, in
+either direction. E12 refuses one that disagrees with the signal type,
+in either direction. Together they are why 10.3 does not decay: a pin
+added tomorrow cannot reach a green run without saying what it does
+about time.
+
 The match key is the pair (file, name), counted, so two pins sharing a
 name in one file need two rows. Line numbers move whenever an edit adds
 lines above a pin, so a stale line raises a warning and does not fail
@@ -1711,11 +1813,10 @@ the checker, not about the tree.
 ## What this document does not do
 
 - It adds no pin, and removes none.
-- It adds no duration to any pin. Queue item 10.3 later added one to
-  eight of them; the `timer` bullet above lists which.
 - It builds no System Status tab.
-- It does not time anything. That is queue item 10.3, which has since
-  shipped.
+- It does not time anything itself. The `duration` column RECORDS what
+  each call site does about time; the measurement is taken in the
+  code, by the site that owns the operation.
 
 ## Falsification
 
@@ -1738,3 +1839,26 @@ This register is wrong if any of the following holds.
 - `NAME_COLUMN` in `src/core/signal_contract.py` is narrower than the
   longest name in the table above, which would put the console back
   into the overflow this unit left.
+
+The `duration` column is wrong if any of the following holds.
+
+- A row declares `measured` and its call site passes no `duration=`,
+  or a row declares anything else and its call site does. E11 exists to
+  make that a failing run rather than a reading error.
+- A `measured` bracket does not span the operation its cell names.
+  No static rule can see this; the per-pin duration tests are what hold
+  it. A test that accepts a present-but-CONSTANT duration is not
+  holding it either.
+- Any pin declared `none` is shown to wrap a measurable interval. Then
+  the absent number is a missing measurement, not an honest one, and
+  the row belongs in `deferred`.
+- Any pin declared `deferred` is shown NOT to own a bounded operation.
+  Then the row is claiming future work that does not exist, and it
+  belongs in `none`.
+- `Signal.dt` is shown to measure operation duration rather than
+  inter-arrival cadence, which would make the whole column redundant
+  rather than distinct.
+- `time.monotonic()` on the target machine is measured coarser than the
+  intervals being recorded, which would make every tracking control
+  unfalsifiable. Measured 2026-08-19 on this machine: resolution
+  1e-07, smallest observable delta 100 ns.
