@@ -120,6 +120,10 @@ import tempfile
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from tools.harness.watchdog_archetype import _iter_python, _scan_module, is_exempt
 
@@ -142,8 +146,8 @@ ID_RE = re.compile(r"^(\d{2})-(\d{3})$")
 SOURCE_RE = re.compile(r"^(.+):(\d+)$")
 SUBSYSTEM_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
-MAIN_HEADER = ("ID", "subsystem", "signal type", "current name",
-               "previous name", "source", "observes")
+MAIN_HEADER = ("ID", "subsystem", "signal type", "duration",
+               "current name", "previous name", "source", "observes")
 PLANNED_HEADER = ("ID", "planned name")
 SUBSYS_HEADER = ("subsystem", "number", "pins")
 
@@ -289,6 +293,13 @@ class Row:
     line: int
     observes: str
     doc_line: int
+    # 10.3 -- the DECLARED duration disposition, verbatim from the cell.
+    #
+    # Defaulted so any other construction of a Row keeps working, and so
+    # a row written before the column existed still parses. The default
+    # is NOT a pass: E10 refuses an empty cell, which is how a row that
+    # skipped the column is caught rather than read as "no duration".
+    duration: str = ""
 
 
 @dataclass
@@ -345,8 +356,8 @@ def _parse_main(lines: list[str],
             errors.append(f"line {number}: expected {_MAIN_COLS} cells, "
                           f"found {len(cells)}")
             continue
-        (emitter_id, subsystem, signal_type, name, previous_name,
-         source, observes) = cells
+        (emitter_id, subsystem, signal_type, duration, name,
+         previous_name, source, observes) = cells
         match = SOURCE_RE.match(source)
         if match is None:
             errors.append(
@@ -357,7 +368,8 @@ def _parse_main(lines: list[str],
             signal_type=signal_type, name=name,
             previous_name=previous_name,
             file=match.group(1), line=int(match.group(2)),
-            observes=observes, doc_line=number))
+            observes=observes, doc_line=number,
+            duration=duration))
     return rows
 
 
@@ -590,6 +602,132 @@ def _check_duration_shape(pins: list[Pin]) -> list[str]:
     return problems
 
 
+DURATION_DISPOSITIONS: tuple[str, ...] = (
+    "measured", "forbidden", "none", "deferred",
+)
+"""The closed vocabulary of the register's `duration` column.
+
+10.3. Operator, on the standing queue: "TIME -- duration in the pin
+record. MANDATORY, not conditional." A sweep that fills the field once
+decays; a rule does not. So every row DECLARES what it does about a
+duration, the declaration is one of four terms, and the checker holds
+the declaration against the code.
+
+    measured    the call site brackets an operation and passes
+                `duration=`. The text after the colon names WHAT THE
+                BRACKET SPANS, because a bracket that drifts onto the
+                wrong work still passes an existence check.
+    forbidden   the signal type is not `postcondition`, so rule E8
+                refuses a duration here. No reason is written: the
+                reason is the type, the type is in the same row, and
+                E12 checks the two agree.
+    none        a `postcondition` whose site owns no interval -- it
+                reads a value back, or another pin owns the operation.
+                A number here would be FABRICATED, and item 17 computes
+                health from it. The reason says which.
+    deferred    a `postcondition` whose site DOES own a bounded
+                operation that nobody has bracketed yet. The reason
+                names what is missing.
+
+`none` AND `deferred` ARE NOT THE SAME CLAIM, AND MERGING THEM WOULD
+LOSE THE ONE THAT IS ACTIONABLE. `none` says a duration cannot be
+honest here, ever. `deferred` says it can, and is not written yet. One
+message covering both causes is the disjunction defect this repo keeps
+paying for -- a reader given one word cannot tell "leave it alone" from
+"this is the next unit".
+"""
+
+_NEEDS_REASON: tuple[str, ...] = ("measured", "none", "deferred")
+"""Dispositions whose cell must carry text after the colon.
+
+`forbidden` is excluded and is the only one: its reason is the signal
+type, which is a machine-checked field in the same row.
+"""
+
+
+def _disposition_of(row: Row) -> tuple[str, str]:
+    """Split one duration cell into (term, reason).
+
+    Returns ("", "") for an empty cell, which E10 then reports. The
+    term comes from before the FIRST colon, so a reason may hold one.
+    """
+    cell = (row.duration or "").strip()
+    if not cell:
+        return ("", "")
+    term, _, reason = cell.partition(":")
+    return (term.strip(), reason.strip())
+
+
+def _check_duration_declared(pins: list[Pin],
+                             reg: Registry) -> list[str]:
+    """E10, E11, E12 -- every row declares a duration, and it is true.
+
+    THIS IS THE RULE THAT MAKES 10.3 STICK. `_check_duration_shape`
+    (E8) already refuses a duration on the wrong signal type, but it
+    only ever looks at a call site that HAS one. Nothing looked at the
+    58 sites that had none, so a pin could be added, migrated or
+    rewritten with no duration and no statement about why, and every
+    check stayed green. That is the silence the emitter network exists
+    to remove, reproduced inside the checker for the network.
+
+    Three findings, deliberately separate.
+
+      E10  the cell does not declare anything the vocabulary knows.
+           An empty cell lands here, which is what catches a row added
+           after this change that skipped the column.
+      E11  the declaration and the CODE disagree. Read off the AST, so
+           a `duration` word in a comment or a context dict is not
+           mistaken for the keyword.
+      E12  the declaration and the SIGNAL TYPE disagree.
+
+    A row with no pin is not reported here. That is E1/E2's finding and
+    reporting it twice would name one defect as two.
+    """
+    problems: list[str] = []
+    by_key = {(pin.file, pin.name): pin for pin in pins}
+    for row in reg.rows:
+        term, reason = _disposition_of(row)
+        if term not in DURATION_DISPOSITIONS:
+            problems.append(
+                f"E10 {row.emitter_id}: duration cell "
+                f"{row.duration!r} does not start with one of "
+                f"{', '.join(DURATION_DISPOSITIONS)}. Every row must "
+                f"say what it does about a duration; an unfilled cell "
+                f"is not 'no duration', it is no statement.")
+            continue
+        if term in _NEEDS_REASON and not reason:
+            problems.append(
+                f"E10 {row.emitter_id}: duration {term!r} carries no "
+                f"reason. Write it as '{term}: <reason>' -- for "
+                f"'measured' the reason names what the bracket spans, "
+                f"and for the others it says why no bracket exists.")
+            continue
+        if (term == "forbidden") is not (row.signal_type != DURATION_TYPE):
+            problems.append(
+                f"E12 {row.emitter_id}: duration {term!r} disagrees "
+                f"with signal type {row.signal_type!r}. Only a "
+                f"{DURATION_TYPE} may carry a duration, so every other "
+                f"type declares 'forbidden' and a {DURATION_TYPE} "
+                f"never does.")
+            continue
+        pin = by_key.get((row.file, row.name))
+        if pin is None:
+            continue
+        if term == "measured" and not pin.carries_duration:
+            problems.append(
+                f"E11 {row.emitter_id}: the row declares a measured "
+                f"duration, but {row.file}:{pin.line} passes no "
+                f"`duration=`. The register is claiming a number the "
+                f"record never carries.")
+        elif term != "measured" and pin.carries_duration:
+            problems.append(
+                f"E11 {row.emitter_id}: the row declares {term!r}, "
+                f"but {row.file}:{pin.line} passes `duration=`. Either "
+                f"the bracket is wrong or the row is stale; a reader "
+                f"cannot tell which while they disagree.")
+    return problems
+
+
 def _check_vacuous(pins: list[Pin]) -> list[str]:
     """E9 — a CHECK whose `actual` and `expected` are the same expression.
 
@@ -626,6 +764,7 @@ def check(pins: list[Pin], reg: Registry) -> list[str]:
     problems.extend(_check_membership(pins, reg))
     problems.extend(_check_rows(reg))
     problems.extend(_check_duration_shape(pins))
+    problems.extend(_check_duration_declared(pins, reg))
     problems.extend(_check_vacuous(pins))
     return problems
 
@@ -784,6 +923,116 @@ def _variant(reg: Registry, rows: list[Row] | None = None,
         parse_errors=[])
 
 
+def _duration_controls(
+        pins: list[Pin], reg: Registry, first: Row,
+        fired: Callable[..., tuple[bool, str]]) -> list[Control]:
+    """Plant E10, E11 and E12 against real rows and read them back.
+
+    Split out of `_controls`, which had grown past the archetype's
+    statement and length ceilings once these ten arrived. `fired` is
+    passed in rather than redefined, so both halves of this file ask
+    the same scoping question of every plant.
+    """
+    results: list[Control] = []
+    # 10.3 -- E10, E11 AND E12, EACH PLANTED AGAINST A REAL ROW.
+    #
+    # Every half is scoped to the ID it planted, for the reason written
+    # at the top of this function: a global "did any E10 fire?" is
+    # answered by anybody's E10 and measures nothing about this plant.
+    #
+    # THE SILENCE HALVES ARE NOT THE CLEAN-TREE CONTROL. That one says
+    # the tree as it stands is quiet. These say the rule stays quiet on
+    # a row that is CHANGED and still correct -- which is what separates
+    # a rule from a rule that fires on any edit.
+    _measured = next(
+        (r for r in reg.rows if _disposition_of(r)[0] == "measured"), None)
+    _forbidden = next(
+        (r for r in reg.rows if _disposition_of(r)[0] == "forbidden"), None)
+    results.append(Control(
+        "the registry holds a measured row and a forbidden row to plant",
+        _measured is not None and _forbidden is not None,
+        f"measured={_measured.emitter_id if _measured else 'none'}, "
+        f"forbidden={_forbidden.emitter_id if _forbidden else 'none'}"))
+
+    if _measured is not None and _forbidden is not None:
+        def _swap(row: Row, duration: str) -> Registry:
+            """Copy the registry with one row's duration cell replaced."""
+            return _variant(reg, rows=[
+                dataclasses.replace(r, duration=duration)
+                if r.emitter_id == row.emitter_id else r
+                for r in reg.rows])
+
+        blank = check(pins, _swap(first, ""))
+        ok, detail = fired(blank, "E10", first.emitter_id, "does not start")
+        results.append(Control(
+            "E10 fires when a duration cell is empty", ok, detail))
+
+        coined = check(pins, _swap(first, "sometimes: when it feels right"))
+        ok, detail = fired(coined, "E10", first.emitter_id, "does not start")
+        results.append(Control(
+            "E10 fires on a term outside the vocabulary", ok, detail))
+
+        bare = check(pins, _swap(first, "none"))
+        ok, detail = fired(bare, "E10", first.emitter_id, "carries no")
+        results.append(Control(
+            "E10 fires when a declaration carries no reason", ok, detail))
+
+        kept = check(pins, _swap(first, "none: a rewritten but valid reason"))
+        noise = [q for q in kept
+                 if q.startswith(("E10", "E11", "E12"))
+                 and first.emitter_id in q]
+        results.append(Control(
+            "E10/E11/E12 stay silent on a re-worded but correct cell",
+            not noise, "; ".join(noise) or "silent"))
+
+        # E11 -- the declaration against the CODE, both ways round.
+        demoted = check(pins, _swap(
+            _measured, "none: claims the site owns no interval"))
+        ok, detail = fired(demoted, "E11", _measured.emitter_id,
+                           "passes `duration=`")
+        results.append(Control(
+            "E11 fires when a row denies a duration the site passes",
+            ok, detail))
+
+        promoted = check(pins, _swap(
+            first, "measured: claims a bracket that is not there"))
+        ok, detail = fired(promoted, "E11", first.emitter_id,
+                           "passes no `duration=`")
+        results.append(Control(
+            "E11 fires when a row claims a duration the site never passes",
+            ok, detail))
+
+        quiet11 = [q for q in check(pins, _swap(
+            _measured, "measured: a re-worded description of the bracket"))
+            if q.startswith("E11") and _measured.emitter_id in q]
+        results.append(Control(
+            "E11 is silent when the row and the site agree",
+            not quiet11, "; ".join(quiet11) or "silent"))
+
+        # E12 -- the declaration against the SIGNAL TYPE, both ways round.
+        mistyped = check(pins, _swap(
+            _forbidden, "none: claims a postcondition's disposition"))
+        ok, detail = fired(mistyped, "E12", _forbidden.emitter_id,
+                           "disagrees with signal type")
+        results.append(Control(
+            "E12 fires when a non-postcondition declares anything but "
+            "forbidden", ok, detail))
+
+        overreach = check(pins, _swap(first, "forbidden"))
+        ok, detail = fired(overreach, "E12", first.emitter_id,
+                           "disagrees with signal type")
+        results.append(Control(
+            "E12 fires when a postcondition declares forbidden", ok, detail))
+
+        quiet12 = [q for q in check(pins, _swap(_forbidden, "forbidden"))
+                   if q.startswith("E12") and _forbidden.emitter_id in q]
+        results.append(Control(
+            "E12 is silent when the disposition matches the type",
+            not quiet12, "; ".join(quiet12) or "silent"))
+
+    return results
+
+
 def _controls(pins: list[Pin],
               reg: Registry) -> list[Control]:
     """Plant one defect of each class and read the problem list back.
@@ -849,7 +1098,8 @@ def _controls(pins: list[Pin],
         name="ghost.99.001.gauge.not_a_pin",
         previous_name="ghost.not_a_pin",
         file="src/core/log_paths.py", line=1,
-        observes="a row for a pin that does not exist", doc_line=0)
+        observes="a row for a pin that does not exist", doc_line=0,
+        duration="forbidden")
     added = check(pins, _variant(
         reg, rows=[*reg.rows, phantom],
         planned={**reg.planned, "99-001": "ghost.99.001.gauge.not_a_pin"},
@@ -947,6 +1197,13 @@ def _controls(pins: list[Pin],
                "flag unset; owned by the detection repair, not by the "
                "controls"),
         as_declared=not ok))
+
+    # 10.3 -- the duration column's own controls. Extracted into
+    # `_duration_controls` rather than written inline: adding ten
+    # controls here pushed `_controls` past the archetype's statement
+    # and length ceilings, and the answer to a function that outgrew
+    # its limit is to split it, never to quiet the rule that said so.
+    results.extend(_duration_controls(pins, reg, first, fired))
 
     replanned = check(pins, _variant(
         reg, planned={**reg.planned, first.emitter_id: "made.up.name"}))

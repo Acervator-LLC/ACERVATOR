@@ -1006,8 +1006,28 @@ if _HAS_QT:
             bot_mgr = self._bot_manager
 
             async def _do_fetch():
+                # 10.3 -- THE BRACKET SPANS THE AWAITED FETCH ALONE.
+                #
+                # It opens one line above `fetch_all_history_chunked`
+                # and closes one line below it, so it holds the venue
+                # walk and neither the per-symbol tally below it nor the
+                # emitters' own bookkeeping. Measured on the operator's
+                # machine a 4040-trade walk takes longer than 15 s, so
+                # this is the slowest single operation the Fleet Replay
+                # panel performs and the one item 17 wants a number for.
+                #
+                # ONLY `10-002` CARRIES IT, AND THE RULE PICKS THE
+                # OWNER RATHER THAN A PREFERENCE. Three pins fire in
+                # this function. `10-001` and `10-003` are gauges, and a
+                # gauge samples a value at an instant -- rule E8 refuses
+                # a duration on one. `10-002` is the only postcondition
+                # here, so it is the sole eligible owner of the fetch
+                # and the double-count the classification warned about
+                # cannot arise.
+                _fetch_t0 = time.monotonic()
                 trades = await fetch_all_history_chunked(
                     bot_mgr, since_ts)
+                _fetch_s = time.monotonic() - _fetch_t0
                 self._ytd_trades = list(trades or [])
                 by_symbol: dict[str, int] = {}
                 for t in self._ytd_trades:
@@ -1055,7 +1075,8 @@ if _HAS_QT:
                           actual=_covered,
                           expected=sorted(_fleet_syms),
                           context={"uncovered": sorted(
-                              _fleet_syms - set(by_symbol))})
+                              _fleet_syms - set(by_symbol))},
+                          duration=_fetch_s)
                     _emit("ytd.10.003.gauge.per_symbol_counts",
                           actual=dict(sorted(by_symbol.items())))
                 except Exception as _emx:  # noqa: BLE001 - never break the fetch
