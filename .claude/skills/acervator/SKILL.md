@@ -418,7 +418,7 @@ These were listed as missing in the 2026-06-18 pass; re-probed and present:
 | pyright | 1.1.411 (CLI on PATH) |
 | semgrep | importable |
 
-All three are wired into `tools/harness/coding_archetype.py` and run on every
+All three are wired into `dev_harness/harness/coding_archetype.py` and run on every
 edit via the archetype gate.
 
 ## ✕ NOT installed on Windows (would be part of the "correct" stack)

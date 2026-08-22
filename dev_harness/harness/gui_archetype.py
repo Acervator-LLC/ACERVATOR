@@ -48,7 +48,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tools.harness.report import (
+from dev_harness.harness.report import (
     REPO_ROOT,
     ArchetypeReport,
     Finding,
@@ -599,7 +599,7 @@ class GUIArchetype:
     calibration_name = "gui"
 
     def load_calibration(self) -> str:
-        from tools.harness.calibrations import load
+        from dev_harness.harness.calibrations import load
         return load(self.calibration_name)
 
     def review(self, target: Path) -> ArchetypeReport:
@@ -653,8 +653,8 @@ class GUIArchetype:
         scan_rule_modules(
             report, target,
             (
-                ("scaffolding", "tools.harness.rules.scaffolding"),
-                ("hallucination", "tools.harness.rules.hallucination"),
+                ("scaffolding", "dev_harness.harness.rules.scaffolding"),
+                ("hallucination", "dev_harness.harness.rules.hallucination"),
             ),
             (".py",))
 

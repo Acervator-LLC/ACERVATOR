@@ -42,7 +42,7 @@ cell and on a cell that merely echoes the current name.
 ## What a pin is
 
 A pin is a call that reaches the installed signal handler. The one
-definition lives in `tools/harness/watchdog_archetype.py`, which
+definition lives in `dev_harness/harness/watchdog_archetype.py`, which
 resolves the call through the syntax tree rather than matching text. A
 pin is not a spelling.
 
@@ -271,7 +271,7 @@ out, rather than an aesthetic one.
   condition. All 74 fire during or after. The count was stale at 54
   through the Trading, Asset Charts and Console units and is
   re-measured on every unit rather than carried forward:
-  `python -m tools.harness.watchdog_archetype src` reports 74 wired
+  `python -m dev_harness.harness.watchdog_archetype src` reports 74 wired
   pins, and the register below holds 74 rows.
 - `error` and `fault`. The network emits on the success path by design,
   and a violated expectation is a verdict on an ordinary record, the
@@ -1827,7 +1827,7 @@ This register is wrong if any of the following holds.
 - `python -m tools.emitter_registry_check --selftest` reports a control
   as FAIL, which would mean the checker cannot see the failure it
   exists to catch.
-- `python -m tools.harness.watchdog_archetype src` reports a wired pin
+- `python -m dev_harness.harness.watchdog_archetype src` reports a wired pin
   count other than 69, with no source change between the runs.
 - Two rows carry the same ID, or a row's ID does not match the format
   `NN-EEE`.

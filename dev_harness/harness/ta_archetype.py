@@ -65,7 +65,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tools.harness.report import (
+from dev_harness.harness.report import (
     REPO_ROOT,
     ArchetypeReport,
     Finding,
@@ -491,7 +491,7 @@ class TAArchetype:
 
     def load_calibration(self) -> str:
         try:
-            from tools.harness.calibrations import load
+            from dev_harness.harness.calibrations import load
             return load(self.calibration_name)
         except Exception:
             return ""

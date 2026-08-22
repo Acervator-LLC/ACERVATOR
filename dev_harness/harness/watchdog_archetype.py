@@ -82,7 +82,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from tools.harness.report import ArchetypeReport, Finding, cli_exit
+from dev_harness.harness.report import ArchetypeReport, Finding, cli_exit
 
 __all__ = ["ArchetypeReport", "Finding", "WatchdogArchetype", "main"]
 

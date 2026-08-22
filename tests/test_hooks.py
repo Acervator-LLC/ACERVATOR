@@ -188,9 +188,9 @@ class TestArchetypeGate:
         finally:
             sys.path.pop(0)
         pick = archetype_gate._pick_archetypes
-        CODING = "tools.harness.coding_archetype"
-        GUI = "tools.harness.gui_archetype"
-        DOCS = "tools.harness.docs_archetype"
+        CODING = "dev_harness.harness.coding_archetype"
+        GUI = "dev_harness.harness.gui_archetype"
+        DOCS = "dev_harness.harness.docs_archetype"
 
         # A Qt widget is BOTH a GUI file and a Python file.
         gui_fixture = REPO / "docs" / "audits" / "2026-07-24_gui_docs_archetypes" \
@@ -251,7 +251,7 @@ class TestVerifyReleaseGate:
     def test_non_banner_path_passes_through(self):
         stdin = json.dumps({
             "tool_name": "Edit",
-            "tool_input": {"file_path": "tools/harness/foo.py"},
+            "tool_input": {"file_path": "dev_harness/harness/foo.py"},
         })
         r = _run_hook("verify_release_gate.py", stdin)
         assert r.returncode == 0

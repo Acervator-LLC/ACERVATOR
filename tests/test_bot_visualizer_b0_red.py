@@ -1,6 +1,6 @@
 """B0 - the red that shipped in bot_visualizer.py, pinned so it cannot return.
 
-Measured on the unmodified tree by ``python -m tools.touchset baseline``:
+Measured on the unmodified tree by ``python -m dev_harness.touchset baseline``:
 ``coding_archetype passed=False, 9 high`` and ``gui_archetype
 passed=False, 5 high``. The touch-set tool REFUSED to pin the file. Three
 distinct defects produced those fourteen rows:

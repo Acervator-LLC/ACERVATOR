@@ -35,7 +35,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from tools.harness.report import (
+from dev_harness.harness.report import (
     OPTIONAL_ANALYZERS as _SHARED_OPTIONAL_ANALYZERS,
 )
 
@@ -150,9 +150,9 @@ def _run_archetype_selfcheck() -> tuple[bool, list[str], list[str]]:
     errors: list[str] = []
     notes: list[str] = []
     try:
-        from tools.harness.coding_archetype import CodingArchetype
-        from tools.harness.gui_archetype import GUIArchetype
-        from tools.harness.docs_archetype import DocsArchetype
+        from dev_harness.harness.coding_archetype import CodingArchetype
+        from dev_harness.harness.gui_archetype import GUIArchetype
+        from dev_harness.harness.docs_archetype import DocsArchetype
     except ImportError as e:
         return False, [f"cannot import archetypes: {e}"], notes
 
@@ -210,7 +210,7 @@ def _run_claim_ledger_check() -> tuple[bool, str]:
     """No open claims allowed."""
     sys.path.insert(0, str(REPO))
     try:
-        from tools.harness.claim_ledger import list_open
+        from dev_harness.harness.claim_ledger import list_open
     except ImportError as e:
         return False, f"cannot import claim_ledger: {e}"
     open_claims = list_open()

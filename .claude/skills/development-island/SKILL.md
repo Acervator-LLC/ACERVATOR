@@ -19,7 +19,7 @@ imitate, and it does it better, with real history.
 | fork an isolated copy | branch, or `git worktree` for a separate directory |
 | refuse a stale promote | merge/rebase conflict |
 | `.island_ledger.jsonl`, 56 entries | commit history |
-| declared touch-set at fork | `tools/touchset.py`, which still exists |
+| declared touch-set at fork | `dev_harness/touchset.py`, which still exists |
 
 `tools/island.py` and the **32 tests** in
 `tests/test_island_promotion_refuses_stale.py` remain on disk. Retiring the tool
@@ -46,7 +46,7 @@ small" is not one.
 This repo's own finding is that **blocking mechanisms bind and prose does not**.
 Two mechanisms just became prose:
 
-1. **`promote` refused `tools/harness/`, `.claude/`, config and version files by
+1. **`promote` refused `dev_harness/harness/`, `.claude/`, config and version files by
    design.** Git refuses nothing. "Hands off the harness" in `harness-law` now
    rests on your discipline alone.
 2. **`promote` preserved each file's line endings.** Git under
@@ -118,14 +118,14 @@ Before grafting work between two branches:
 0. **PRE-MORTEM. Attack the DESIGN before you branch.** No branch, no pytest, no
    edit. See below — it is minutes and it is the cheapest step here.
 1. Cut the branch (worktree if he is running). Declare the files you intend to
-   touch; `tools/touchset.py` still refuses work on an already-red file.
+   touch; `dev_harness/touchset.py` still refuses work on an already-red file.
 2. Work there. Never on his tree.
 3. Run every checker **on your branch**: coding, ta, gui, watchdog as the file
    type demands. All must report `passed=true`, and assert `errors == []` — a
    green verdict with a populated `errors` list is not green.
 4. Commit source, tests and docs together, atomically.
 5. **Gate, BEFORE anything leaves the branch:** `python -m tools.gate`, detached,
-   exit code read from a FILE. Then `python -m tools.harness.claim_ledger check`.
+   exit code read from a FILE. Then `python -m dev_harness.harness.claim_ledger check`.
 6. Push. `.githooks/pre-push` refuses a commit the gate has not stamped.
 7. Only then open the PR and merge.
 
@@ -138,7 +138,7 @@ the reasoning that markdown cannot affect pytest. Reasoning is not measurement.
 No docs-only, one-line or obviously-inert exemption exists.
 
 `tools/gate.py` wraps `check_release_readiness` without modifying it, so
-`tools/harness/` stays untouched, and stamps the COMMIT it proved into
+`dev_harness/harness/` stays untouched, and stamps the COMMIT it proved into
 `.gate_stamp.json`. The sidecar alone cannot do that: a version and a test count
 do not identify a tree, so two commits at the same version look identical to it.
 A green gate on a DIRTY tree is deliberately NOT stamped — it measured content
@@ -341,7 +341,7 @@ say so and require the prefix.
 - `git push --force`, or force a merge past a conflict. A refusal is the tool
   working; you rebase.
 - Weaken a test or widen a tolerance to make something pass.
-- Edit anything under `tools/harness/` or `.claude/` to make your work pass.
+- Edit anything under `dev_harness/harness/` or `.claude/` to make your work pass.
   Nothing mechanically stops you any more — that is exactly why it is written here.
 - Leave branches behind after they merge.
 

@@ -14,9 +14,10 @@ The standing constraint is explicit: test harnesses never write to
 ``~/.acervator`` or ``~/.acervator_logs``. This file enforces it
 rather than leaving it to each test author to remember.
 
-Scope note: this redirects the SIM log root only. ``~/.acervator``
-(bot_state.json, credentials) is operator-owned and read-only to the
-suite; nothing here grants write access to it.
+Scope note: ``~/.acervator`` (bot_state.json, credentials) is
+operator-owned and read-only to the suite. Nothing here grants write
+access to it. The Simulator's own state file used to land there and
+now resolves through ``ACERVATOR_SIM_STATE_ROOT``, set below.
 """
 from __future__ import annotations
 
@@ -50,6 +51,30 @@ from src.trading.sim_run_log import SIM_LOG_ROOT_ENV  # noqa: E402
 # conftest is imported before any test module, so this is early enough.
 _CRASH_LOG_TMP = Path(tempfile.mkdtemp(prefix="acervator-test-crash-"))
 os.environ.setdefault("ACERVATOR_CRASH_LOG_ROOT", str(_CRASH_LOG_TMP))
+
+# v3.25.x — the Simulator's own state file, set at conftest IMPORT time
+# for the same reason and one more.
+#
+# `save_sim_state` and `load_sim_state` now resolve the root on every
+# call, so a fixture would be soon enough for them. The module ALSO
+# keeps two backwards-compatible constants that bind while the module is
+# imported, and that import happens during COLLECTION, before any
+# fixture body runs. Setting the variable here means even a test that
+# reads the old constant gets the throwaway directory.
+#
+# What this prevents, measured: on 2026-08-22 a full run replaced
+# ~/.acervator/simulator_bot_state.json -- the operator's saved
+# Simulator fleet -- with one synthetic fixture bot. The writer is
+# test_fleet_sim_infrastructure.py::test_fleet_replay_panel_mounts. It
+# clicks Load on a real FleetReplayPanel; the spawn behind that button
+# calls `save_sim_state` with no path. The test redirected the file it
+# READ and nothing redirected the file it WROTE.
+#
+# The guard below SAW the write; it could not stop it. Only a redirect
+# can. The guard stays exactly as it is: it is the backstop, this is the
+# fix.
+_SIM_STATE_TMP = Path(tempfile.mkdtemp(prefix="acervator-test-simstate-"))
+os.environ.setdefault("ACERVATOR_SIM_STATE_ROOT", str(_SIM_STATE_TMP))
 
 
 def _live_roots() -> tuple[Path, ...]:

@@ -1,6 +1,6 @@
 # touchset — refuse a unit's bad file before the first edit
 
-`tools/touchset.py` measures the files a unit is about to touch. It
+`dev_harness/touchset.py` measures the files a unit is about to touch. It
 refuses a touch set that cannot succeed. It then re-measures the same
 files on the island and refuses a change that made them worse.
 
@@ -18,7 +18,7 @@ the archetype's own `passed`, read through that archetype's published
 ### Baseline — run this BEFORE the first edit
 
 ```
-python -m tools.touchset baseline <path> [<path>...] [--pin FILE] [--root DIR]
+python -m dev_harness.touchset baseline <path> [<path>...] [--pin FILE] [--root DIR]
 ```
 
 For each path it measures:
@@ -35,7 +35,7 @@ is unusable or any file is already red.
 ### Check — run this BEFORE promotion
 
 ```
-python -m tools.touchset check --pin FILE --against DIR
+python -m dev_harness.touchset check --pin FILE --against DIR
 ```
 
 It re-measures every pinned path inside the island. It compares each one

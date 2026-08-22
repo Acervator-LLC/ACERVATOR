@@ -60,7 +60,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tools.harness.report import (
+from dev_harness.harness.report import (
     REPO_ROOT,
     ArchetypeReport,
     Finding,
@@ -75,7 +75,7 @@ __all__ = ["ArchetypeReport", "CodingArchetype", "Finding", "main"]
 # `Finding` and `ArchetypeReport` now live in tools/harness/report.py.
 # Five archetypes each carried a copy; the copies drifted, and two of
 # the drifts shipped a green report for a run that checked nothing.
-# Re-exported above so `from tools.harness.coding_archetype import
+# Re-exported above so `from dev_harness.harness.coding_archetype import
 # ArchetypeReport` keeps working.
 
 
@@ -439,7 +439,7 @@ class CodingArchetype:
 
     def load_calibration(self) -> str:
         """Return the human-editable calibration prompt for peer reviewers."""
-        from tools.harness.calibrations import load
+        from dev_harness.harness.calibrations import load
         return load(self.calibration_name)
 
     def review(self, target: Path) -> ArchetypeReport:
@@ -490,16 +490,16 @@ class CodingArchetype:
         scan_rule_modules(
             report, target,
             (
-                ("scaffolding", "tools.harness.rules.scaffolding"),
-                ("hallucination", "tools.harness.rules.hallucination"),
+                ("scaffolding", "dev_harness.harness.rules.scaffolding"),
+                ("hallucination", "dev_harness.harness.rules.hallucination"),
                 # v3.23.92 — slop is coding-only per operator directive
                 # 2026-08-01: "slop probably only applied to coding."
                 # gui_archetype + docs_archetype deliberately skip it.
-                ("slop", "tools.harness.rules.slop"),
+                ("slop", "dev_harness.harness.rules.slop"),
                 # 2026-08-10 — numeric_guard is coding-only for the same
                 # reason: numeric admission is a code contract, not a
                 # widget or a document concern.
-                ("numeric_guard", "tools.harness.rules.numeric_guard"),
+                ("numeric_guard", "dev_harness.harness.rules.numeric_guard"),
             ),
             (".py",))
 

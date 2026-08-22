@@ -157,7 +157,7 @@ def main() -> int:
         "reason": (
             f"Release-gate DENY: attempting to write banner-bump path "
             f"{rel!r} but {reason}. Run:\n"
-            f"  python -m tools.harness.check_release_readiness\n"
+            f"  python -m dev_harness.harness.check_release_readiness\n"
             f"and get `[OK] Release-ready (vX.Y.Z, N tests)` first."
         ),
     }

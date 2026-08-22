@@ -26,13 +26,13 @@ from pathlib import Path
 from datetime import datetime
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
-from reportlab.lib.colors import HexColor, white, black
+from reportlab.lib.colors import HexColor, white
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
     PageBreak, HRFlowable,
 )
-from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase import pdfmetrics
 

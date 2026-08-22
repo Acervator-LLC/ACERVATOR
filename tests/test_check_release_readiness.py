@@ -2,7 +2,7 @@
 
 Replaces the pre-2026-07-25 archived pin, which could not run: it
 imported six helpers from `tools.check_release_readiness`, and the tool
-now lives at `tools.harness.check_release_readiness` and defines only
+now lives at `dev_harness.harness.check_release_readiness` and defines only
 one of them. Full classification of every archived failure is at
 docs/audits/2026-08-05_C43_archived_pin_classification.md.
 
@@ -34,7 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.harness import check_release_readiness as crr  # noqa: E402
+from dev_harness.harness import check_release_readiness as crr  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

@@ -145,7 +145,7 @@ unsatisfiable conjunction**, a **blended input**, or an **unanchored coefficient
 Both reported the file `passed=True` with a branch that provably could not execute
 on any input.
 
-These are **PROPOSED RULES**. Only an archetype implements them; `tools/harness/` is
+These are **PROPOSED RULES**. Only an archetype implements them; `dev_harness/harness/` is
 off-limits to everyone else.
 
 ## FALSIFICATION

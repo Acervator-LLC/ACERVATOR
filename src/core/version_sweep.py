@@ -18,8 +18,6 @@ Exit codes:
 from __future__ import annotations
 
 import ast
-import hashlib
-import importlib
 import json
 import logging
 import os
@@ -1037,8 +1035,8 @@ class VersionSweep:
             from reportlab.lib.styles import ParagraphStyle
             from reportlab.lib.colors import HexColor, white
             from reportlab.lib.units import mm
-            from reportlab.platypus import (SimpleDocTemplate, Paragraph,
-                                             Table, TableStyle)
+            from reportlab.platypus import (Flowable, SimpleDocTemplate,
+                                             Paragraph, Table, TableStyle)
             # v3.19.12 — removed unused TA_LEFT + Spacer + HRFlowable imports
         except ImportError:
             return None
@@ -1083,7 +1081,11 @@ class VersionSweep:
             c.drawRightString(W - MARGIN, 8*mm, f"Page {doc.page}")
             c.restoreState()
 
-        story = [
+        # Annotated, because the list starts with two Paragraphs and
+        # later takes Tables as well. Without the annotation the element
+        # type is read as Paragraph, and SimpleDocTemplate.build() then
+        # gets list[Paragraph] where it asks for list[Flowable].
+        story: list[Flowable] = [
             Paragraph(f"Acervator v{result.version} — Version Sweep Report", SS['Title']),
             Paragraph(
                 f"{result.timestamp}  ·  "
@@ -1127,7 +1129,10 @@ class VersionSweep:
                 continue
             story.append(Paragraph(f"{sev} — {len(items)} finding{'s' if len(items)!=1 else ''}",
                                    SS['SH']))
-            rows = [["Category", "File", "Line", "Description"]]
+            # Annotated for the same reason: the header row holds plain
+            # strings and every data row below holds Paragraphs.
+            rows: list[list[Flowable | str]] = [
+                ["Category", "File", "Line", "Description"]]
             for f in items:
                 rows.append([
                     Paragraph(f.category, SS['Body']),

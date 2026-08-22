@@ -51,7 +51,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from tools.harness.report import (
+from dev_harness.harness.report import (
     REPO_ROOT,
     ArchetypeReport,
     Finding,
@@ -170,7 +170,7 @@ class DocsArchetype:
     calibration_name = "docs"
 
     def load_calibration(self) -> str:
-        from tools.harness.calibrations import load
+        from dev_harness.harness.calibrations import load
         return load(self.calibration_name)
 
     _DIATAXIS_KEYWORDS = re.compile(
@@ -233,8 +233,8 @@ class DocsArchetype:
         scan_rule_modules(
             report, target,
             (
-                ("scaffolding", "tools.harness.rules.scaffolding"),
-                ("hallucination", "tools.harness.rules.hallucination"),
+                ("scaffolding", "dev_harness.harness.rules.scaffolding"),
+                ("hallucination", "dev_harness.harness.rules.hallucination"),
             ),
             (".md", ".txt"), files=files)
 

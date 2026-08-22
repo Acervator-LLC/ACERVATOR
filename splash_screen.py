@@ -9,12 +9,12 @@ Visual reference: trailer.html
   Fonts:   Orbitron (title/numbers), Rajdhani (body) -- fall back to system
   Layout:  Grid background, glow text, particles, progress bar, 10 slides
 """
-import math, time
-from PySide6.QtWidgets import QWidget, QApplication
+import math
+import secrets
+from PySide6.QtWidgets import QWidget
 from PySide6.QtGui     import (QPainter, QFont, QColor, QLinearGradient,
-                                QPen, QFontDatabase, QFontMetrics,
-                                QRadialGradient)
-from PySide6.QtCore    import Qt, QRectF, QTimer, QPointF, QRect
+                                QPen, QFontDatabase)
+from PySide6.QtCore    import Qt, QRectF, QTimer, QPointF
 
 # ── Palette (exact from HTML) ─────────────────────────────────────────────────
 CYAN    = QColor(0,   255, 238)
@@ -90,10 +90,16 @@ class SplashScreen(QWidget):
         self._phase  = "running"
         self._grid_offset = 0.0
         # Particle positions: (x_frac, y_start, speed, size, phase_offset)
-        import random; random.seed(42)
+        # secrets.SystemRandom() reads the operating-system entropy
+        # source. The previous code called the module-level `random`
+        # functions, which ruff S311 reports, and it also called
+        # random.seed(42). seed() sets the PROCESS-WIDE generator, so a
+        # splash screen changed the numbers every other part of the
+        # application got from `random`. Both problems go away here.
+        rng = secrets.SystemRandom()
         self._particles = [
-            (random.random(), random.random(), 4+random.random()*5,  # sweep-ignore: visual animation only, not security-sensitive
-             1+random.random()*2, random.random()*8)  # sweep-ignore: visual animation only, not security-sensitive
+            (rng.random(), rng.random(), 4 + rng.random() * 5,
+             1 + rng.random() * 2, rng.random() * 8)
             for _ in range(28)
         ]
         self._timer = QTimer(self)
@@ -163,7 +169,7 @@ class SplashScreen(QWidget):
         rw = cx * 2 * w_frac
         p.drawText(QRectF(cx - rw/2, y, rw, 80), Qt.AlignCenter | Qt.TextWordWrap, text)
 
-    def paintEvent(self, event):
+    def paintEvent(self, _event):
         try:
             from src import __version__
         except ImportError:
@@ -235,7 +241,7 @@ class SplashScreen(QWidget):
         p.end()
 
     # ── SLIDE 0: Logo ─────────────────────────────────────────────────────────
-    def _s_logo(self, p, W, H, cx, cy, t, ss, se, alpha, ver):
+    def _s_logo(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         # Logo spin: scale(0)→scale(1) in first 0.8s, then stable
         spin_prog = min(1.0, (t - ss) / 0.8)
         logo_scale = 0.0
@@ -303,7 +309,7 @@ class SplashScreen(QWidget):
                         cx, cy + 44, sub_a, MUTED, 16)
 
     # ── SLIDE 1: Stats ────────────────────────────────────────────────────────
-    def _s_stats(self, p, W, H, cx, cy, t, ss, se, alpha, ver):
+    def _s_stats(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "Validated Across Every Market Condition", cx, cy-145, alpha)
         self._glow_text(p, "39 Simulations.  39 Wins.",
                         QRectF(0, cy-110, W, 60),
@@ -335,7 +341,7 @@ class SplashScreen(QWidget):
             self._body_text(p, lbl, bx, cy + 40, sa * 0.8, MUTED, 11, 0.18)
 
     # ── SLIDE 2: Accumulation ─────────────────────────────────────────────────
-    def _s_accumulation(self, p, W, H, cx, cy, t, ss, se, alpha, ver):
+    def _s_accumulation(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "Core Engine", cx, cy-145, alpha * fade_up(t, ss, 0.5))
         self._glow_text(p, "Accumulation Trading",
                         QRectF(0, cy-100, W, 56),
@@ -353,7 +359,7 @@ class SplashScreen(QWidget):
                         _orbitron(int(W*0.022)), GREEN, 18)
 
     # ── SLIDE 3: Landing Strip ────────────────────────────────────────────────
-    def _s_landing_strip(self, p, W, H, cx, cy, t, ss, se, alpha, ver):
+    def _s_landing_strip(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "Original Technical Analysis", cx, cy-145,
                   alpha * fade_up(t, ss, 0.5))
         self._glow_text(p, "Landing Strip Detection",
@@ -371,7 +377,7 @@ class SplashScreen(QWidget):
                         _orbitron(int(W*0.020)), ORANGE, 18)
 
     # ── SLIDE 4: MR Inspector ─────────────────────────────────────────────────
-    def _s_mr_inspector(self, p, W, H, cx, cy, t, ss, se, alpha, ver):
+    def _s_mr_inspector(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "Background Intelligence", cx, cy-145,
                   alpha * fade_up(t, ss, 0.5))
         self._glow_text(p, "Mean Reversion Inspector",
@@ -389,7 +395,7 @@ class SplashScreen(QWidget):
                         _orbitron(int(W*0.022)), GREEN, 18)
 
     # ── SLIDE 5: Smart Wire ───────────────────────────────────────────────────
-    def _s_smart_wire(self, p, W, H, cx, cy, t, ss, se, alpha, ver):
+    def _s_smart_wire(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "Unprecedented Architecture", cx, cy-145,
                   alpha * fade_up(t, ss, 0.5))
         self._glow_text(p, "Smart Wire Network",
@@ -407,7 +413,7 @@ class SplashScreen(QWidget):
                         _orbitron(int(W*0.022)), CYAN, 18)
 
     # ── SLIDE 6: Bear Markets ─────────────────────────────────────────────────
-    def _s_bear_market(self, p, W, H, cx, cy, t, ss, se, alpha, ver):
+    def _s_bear_market(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "Where Others Fail", cx, cy-145,
                   alpha * fade_up(t, ss, 0.5))
         self._glow_text(p, "Bear Markets Are Our Best Markets",
@@ -425,7 +431,7 @@ class SplashScreen(QWidget):
                         _orbitron(int(W*0.020)), GREEN, 18)
 
     # ── SLIDE 7: Innovations ──────────────────────────────────────────────────
-    def _s_innovations(self, p, W, H, cx, cy, t, ss, se, alpha, ver):
+    def _s_innovations(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "No Existing Competitor Offers", cx, cy-145,
                   alpha * fade_up(t, ss, 0.5))
         features = [
@@ -457,7 +463,7 @@ class SplashScreen(QWidget):
                         _orbitron(int(W*0.020)), ORANGE, 18)
 
     # ── SLIDE 8: SADP (replaces Pricing) ──────────────────────────────────────
-    def _s_sadp(self, p, W, H, cx, cy, t, ss, se, alpha, ver):
+    def _s_sadp(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "Independent Invention — Patent Pending", cx, cy-145,
                   alpha * fade_up(t, ss, 0.5))
         self._glow_text(p, "Structured AI Development Protocol",
@@ -475,7 +481,7 @@ class SplashScreen(QWidget):
                         _orbitron(int(W*0.024)), ORANGE, 18)
 
     # ── SLIDE 9: Credits ──────────────────────────────────────────────────────
-    def _s_credits(self, p, W, H, cx, cy, t, ss, se, alpha, ver):
+    def _s_credits(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         # Small logo
         la = alpha * min(1.0, (t - ss) / 0.6)
         lr = 52 * la
@@ -521,5 +527,5 @@ class SplashScreen(QWidget):
                             QRectF(0, y0 + 8, W, 52),
                             CYAN, fa, _orbitron(int(W*0.026)), CYAN, 25)
 
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, _event):
         self._t = TOTAL_DURATION - 0.5

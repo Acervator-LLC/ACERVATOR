@@ -103,7 +103,7 @@ _DOMAIN_RULES: list[tuple[str, re.Pattern[str], str, tuple[str, ...]]] = [
             r")\b",
             re.IGNORECASE,
         ),
-        "tools.harness.coding_archetype",
+        "dev_harness.harness.coding_archetype",
         (_LAW_SKILL, "archetype-peer-review"),
     ),
     (
@@ -118,7 +118,7 @@ _DOMAIN_RULES: list[tuple[str, re.Pattern[str], str, tuple[str, ...]]] = [
             r")\b",
             re.IGNORECASE,
         ),
-        "tools.harness.gui_archetype",
+        "dev_harness.harness.gui_archetype",
         (_LAW_SKILL, "archetype-peer-review"),
     ),
     (
@@ -133,7 +133,7 @@ _DOMAIN_RULES: list[tuple[str, re.Pattern[str], str, tuple[str, ...]]] = [
             r")\b",
             re.IGNORECASE,
         ),
-        "tools.harness.docs_archetype",
+        "dev_harness.harness.docs_archetype",
         (_LAW_SKILL, "archetype-peer-review"),
     ),
 ]
@@ -157,7 +157,7 @@ _CASCADE_KEYWORDS = re.compile(
 
 
 def _archetype_module_exists(module_path: str) -> bool:
-    """Check that a `tools.harness.<name>_archetype` file exists on disk."""
+    """Check that a `dev_harness.harness.<name>_archetype` file exists on disk."""
     rel = Path(*module_path.split(".")).with_suffix(".py")
     return (REPO / rel).is_file()
 
@@ -194,9 +194,9 @@ def _build_cascade_reminder() -> str:
     return (
         "[cascade] this prompt mentions release / version / cascade. "
         "Before bumping any banner:\n"
-        "  1. `python -m tools.harness.check_release_readiness` must print "
+        "  1. `python -m dev_harness.harness.check_release_readiness` must print "
         "[OK] first.\n"
-        "  2. `python -m tools.harness.claim_ledger check` must exit 0 "
+        "  2. `python -m dev_harness.harness.claim_ledger check` must exit 0 "
         "(no open claims)."
     )
 
@@ -251,7 +251,7 @@ def _build_law(turn: int) -> str:
         return "\n".join([
             f"[harness-law] turn {turn}",
             "  The archetype authors code. You referee its findings.",
-            ("  Run `python -m tools.harness.coding_archetype <path>` on "
+            ("  Run `python -m dev_harness.harness.coding_archetype <path>` on "
              "every file you touch."),
             "  Report `passed`, never a delta. No archetype run = INVALID.",
             f"  Skill: `{_LAW_SKILL}`",

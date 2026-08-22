@@ -198,7 +198,7 @@ leaves 1 has to be able to say so, and cannot say so without the baseline.
 ### THE TOOL EXISTS. RUN IT.
 
 ```bash
-python -m tools.touchset baseline <path> [<path>...] --pin <file>
+python -m dev_harness.touchset baseline <path> [<path>...] --pin <file>
 ```
 
 Refuses (exit 1) if any file is already red, naming the file and the
@@ -209,7 +209,7 @@ as a pass. Writes a pin recording each file's verdicts, line-ending kind
 and forbidden-directive count.
 
 ```bash
-python -m tools.touchset check --pin <file> --against <island>
+python -m dev_harness.touchset check --pin <file> --against <island>
 ```
 
 Compares the island to the **pin**, never to zero. Exit 1 on: a red file,
