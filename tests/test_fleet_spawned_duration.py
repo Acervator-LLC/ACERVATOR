@@ -170,13 +170,16 @@ def _sim_state_under_tmp_path(monkeypatch, tmp_path):
     """Keep the spawn's persistence off the operator's runtime tree.
 
     `_spawn_sim_fleet` ends by writing `simulator_bot_state.json`, and both
-    `save_sim_state` and `load_sim_state` resolve that path from ONE module
-    global. Redirecting it here means every drive in this file persists under
-    `tmp_path`; ~/.acervator is the operator's, and the suite does not write
-    there.
+    `save_sim_state` and `load_sim_state` resolve that path from ONE root,
+    read on every call. Redirecting that root here means every drive in this
+    file persists under `tmp_path`; ~/.acervator is the operator's, and the
+    suite does not write there.
+
+    conftest already redirects the root for the whole session, so this is
+    the second of two locks. It narrows the destination from one directory
+    per SESSION to one per TEST, which is what this file's drives need.
     """
-    monkeypatch.setattr(
-        sbs, "SIM_STATE_PATH", tmp_path / "simulator_bot_state.json")
+    monkeypatch.setenv(sbs.SIM_STATE_ROOT_ENV, str(tmp_path))
 
 
 class _SlowLoader:
