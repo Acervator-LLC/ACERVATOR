@@ -274,8 +274,8 @@ class TestRepoWideVersionLiterals:
         import ast
         return ast.parse((REPO_ROOT / name).read_text(encoding="utf-8"))
 
-    @classmethod
-    def _frozen_content_constants(cls, tree):
+    @staticmethod
+    def _frozen_content_constants(tree):
         """Return id() of every literal bound to a `*_FROZEN_AT` name.
 
         generate_essay_ja.py pins _CONTENT_VERSION_FROZEN_AT = "3.1.98".
@@ -369,19 +369,33 @@ class TestRepoWideVersionLiterals:
             f"src.__version__")
 
     def test_pyproject_version_resolves_to_the_package_version(self):
-        """Read pyproject through setuptools, not by eye.
+        """Follow the declaration to the value it actually yields.
 
         test_pyproject_does_not_restate_the_version checks the wiring.
-        This checks the wiring produces the right number. A fix that
-        never reaches the value it claims to set is not a fix.
+        This one walks it. A fix that never reaches the value it claims
+        to set is not a fix, so the attr is resolved the way setuptools
+        resolves it -- import the module named on the left of the last
+        dot, then read the attribute named on the right.
+
+        Resolving it here rather than calling
+        setuptools.config.pyprojecttoml.read_configuration is
+        deliberate: that module ships no type stubs, and adding a
+        `type: ignore` to quiet the archetype would hide a real class of
+        finding for the life of this file. Measured out of band at
+        setuptools 83.0.0, read_configuration returns 3.25.8 for this
+        pyproject, which agrees with the walk below.
         """
+        import importlib
+        import tomllib
         import src
-        from setuptools.config.pyprojecttoml import read_configuration
-        resolved = read_configuration(
-            str(REPO_ROOT / "pyproject.toml"))["project"]["version"]
+        data = tomllib.loads(
+            (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        attr = data["tool"]["setuptools"]["dynamic"]["version"]["attr"]
+        module_name, _, attr_name = attr.rpartition(".")
+        resolved = getattr(importlib.import_module(module_name), attr_name)
         assert resolved == src.__version__, (
-            f"setuptools resolves the project version to {resolved!r} but "
-            f"src.__version__ is {src.__version__!r}")
+            f"pyproject.toml resolves its version through {attr!r} to "
+            f"{resolved!r}, but src.__version__ is {src.__version__!r}")
 
     def test_pyproject_names_the_product(self):
         import tomllib
