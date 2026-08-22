@@ -1489,9 +1489,9 @@ One row per pin call site. 74 rows.
 |---|---|---|---|---|---|---|
 | `01-001` | `bot` | `postcondition` | `bot.01.001.postcondition.capital_reservation` | `bot.capital_reservation` | `src/trading/scrumming_bot.py:1354` | REFUSAL PATH: the reservation granted nothing against the requested quantity |
 | `01-002` | `bot` | `postcondition` | `bot.01.002.postcondition.capital_reservation` | `bot.capital_reservation` | `src/trading/scrumming_bot.py:1421` | GRANT PATH: the reservation the registry holds is inside the 1 % band the update path keeps it in, against the quantity this tick needs |
-| `01-003` | `bot` | `postcondition` | `bot.01.003.postcondition.adoption_capped` | `bot.adoption_capped` | `src/trading/scrumming_bot.py:6547` | the adopted amount equals the uncapped amount, or the cap bit |
-| `02-001` | `extractor` | `postcondition` | `extractor.02.001.postcondition.tranche_contained` | `extractor.tranche_contained` | `src/trading/scrumming_bot.py:3232` | the target tranche grew by exactly the arriving amount |
-| `02-002` | `extractor` | `invariant` | `extractor.02.002.invariant.arrival_atomic` | `extractor.arrival_atomic` | `src/trading/scrumming_bot.py:3247` | an extractor arrival shifted no value outside the tranche |
+| `01-003` | `bot` | `postcondition` | `bot.01.003.postcondition.adoption_capped` | `bot.adoption_capped` | `src/trading/scrumming_bot.py:6583` | the adopted amount equals the uncapped amount, or the cap bit |
+| `02-001` | `extractor` | `postcondition` | `extractor.02.001.postcondition.tranche_contained` | `extractor.tranche_contained` | `src/trading/scrumming_bot.py:3268` | the target tranche grew by exactly the arriving amount |
+| `02-002` | `extractor` | `invariant` | `extractor.02.002.invariant.arrival_atomic` | `extractor.arrival_atomic` | `src/trading/scrumming_bot.py:3283` | an extractor arrival shifted no value outside the tranche |
 | `03-001` | `fleet` | `postcondition` | `fleet.03.001.postcondition.bots_loaded` | `fleet.bots_loaded` | `src/gui/simulator_tab/fleet/bot_state_loader.py:228` | the loader returned one config for every eligible bot |
 | `03-002` | `fleet` | `invariant` | `fleet.03.002.invariant.bot_ids_mirror_live` | `fleet.bot_ids_mirror_live` | `src/gui/simulator_tab/fleet/bot_state_loader.py:233` | the loaded bot ids are the same set as the live bot ids |
 | `03-003` | `fleet` | `invariant` | `fleet.03.003.invariant.sections_imported` | `fleet.sections_imported` | `src/gui/simulator_tab/fleet/bot_state_loader.py:285` | every section the loader carries, that an entry offered, reached the returned dict - counted over every eligible bot |
@@ -1525,9 +1525,9 @@ One row per pin call site. 74 rows.
 | `07-002` | `ta` | `invariant` | `ta.07.002.invariant.invariants` | `ta.invariants` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1934` | no indicator broke its declared bound during the run |
 | `07-003` | `ta` | `postcondition` | `ta.07.003.postcondition.computed` | `ta.computed` | `src/trading/ta_engine.py:3181` | one signal came back for every configured indicator |
 | `07-004` | `ta` | `postcondition` | `ta.07.004.postcondition.raw.{}` | `ta.raw.{}` | `src/trading/ta_engine.py:3238` | one indicator's raw reading against its declared bound; the leaf of the name is the indicator, built at run time |
-| `08-001` | `tick` | `event` | `tick.08.001.event.throttled` | `tick.throttled` | `src/trading/scrumming_bot.py:6269` | the read-rate throttle skipped a tick |
-| `08-002` | `tick` | `event` | `tick.08.002.event.worked` | `tick.worked` | `src/trading/scrumming_bot.py:6286` | a tick passed the throttle and did work |
-| `08-003` | `tick` | `event` | `tick.08.003.event.exit_dust_band` | `tick.exit_dust_band` | `src/trading/scrumming_bot.py:6838` | an exit landed inside the dust band |
+| `08-001` | `tick` | `event` | `tick.08.001.event.throttled` | `tick.throttled` | `src/trading/scrumming_bot.py:6305` | the read-rate throttle skipped a tick |
+| `08-002` | `tick` | `event` | `tick.08.002.event.worked` | `tick.worked` | `src/trading/scrumming_bot.py:6322` | a tick passed the throttle and did work |
+| `08-003` | `tick` | `event` | `tick.08.003.event.exit_dust_band` | `tick.exit_dust_band` | `src/trading/scrumming_bot.py:6874` | an exit landed inside the dust band |
 | `09-001` | `topology` | `state_transition` | `topology.09.001.state_transition.bot_attached` | `topology.bot_attached` | `src/trading/smart_wire.py:275` | a bot joined the wire topology |
 | `09-002` | `topology` | `postcondition` | `topology.09.002.postcondition.wires_received` | `topology.wires_received` | `src/trading/smart_wire.py:865` | the topology took every wire it received |
 | `10-001` | `ytd` | `gauge` | `ytd.10.001.gauge.trades_fetched` | `ytd.trades_fetched` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1046` | how many year-to-date trades the panel holds after the fetch |

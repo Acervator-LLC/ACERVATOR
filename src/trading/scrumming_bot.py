@@ -1498,6 +1498,19 @@ class ScrummingBot(BotContainer):
         intent. Config is also updated so persistence + re-reads see
         the new value.
 
+        v3.25.9 — `new_target` is compared against the ANCHOR, not
+        against the grown `_target_balance`. The value arrives from an
+        anchor-denominated spinbox (`cfg.target_balance`), so the grown
+        target is the wrong frame to test it in. Worked example on live
+        bot IMU (anchor $50.00, target $63.53, $13.53 accrued): the
+        operator raises the displayed $50 to $60 to add $10 of capital.
+        Under the anchor reference this is a top-up — anchor becomes
+        $60 and target becomes $73.53. Under the old grown-target
+        reference 60 > 63.53 was False, so both collapsed to $60, the
+        $13.53 was destroyed, and the target FELL. The top-up policy of
+        the 2026-07-26 Option A directive is unchanged; only the
+        reference the comparison reads is corrected.
+
         Returns a dict:
             {
                 "applied": True/False,
@@ -1551,30 +1564,53 @@ class ScrummingBot(BotContainer):
         # erasing the $5. Diagnosed via
         # docs/audits/2026-07-25_ytd_compounding_replay/REPORT.md.
         #
+        # v3.25.9 — the comparison reads the ANCHOR, not the grown
+        # target. `nt` arrives from the Target Balance spinbox, which
+        # shows `cfg.target_balance` and is deliberately NOT repointed
+        # at the grown value (the hazard is spelled out at
+        # bot_live_settings.py:3736). The spinbox is therefore
+        # anchor-denominated, so `nt` must be compared against the
+        # anchor. Comparing it against the grown target made every
+        # top-up smaller than the accrued growth fall into the
+        # collapse branch: on live bot IMU (anchor $50.00, target
+        # $63.53) raising the displayed $50 to $60 tested 60 > 63.53,
+        # took the else branch, and set BOTH to 60 — destroying
+        # $13.53 of accrued growth AND lowering the target below where
+        # it already stood. The position then sat above target, the
+        # Delta flipped positive, and the bot folded the excess.
+        # This is a correction to the REFERENCE, not to the top-up
+        # policy of the 2026-07-26 Option A directive.
+        #
         # New behaviour:
-        #   * new > current_target → interpret as top-up.
+        #   * new > current_anchor → interpret as top-up.
         #       anchor := new_target (fresh capital base)
         #       target := new_target + (current_target − current_anchor)
         #                                            (preserved growth)
         #     e.g. anchor=200 target=205 (5 accrued) + new=250 →
         #          anchor=250 target=255. Operator's $50 top-up
         #          preserved on top of $5 accrued.
-        #   * new < current_target → interpret as explicit lower / withdrawal.
+        #     e.g. anchor=50 target=63.53 (13.53 accrued) + new=60 →
+        #          anchor=60 target=73.53. The $10 top-up lands and
+        #          the $13.53 survives, even though 60 is BELOW the
+        #          grown target.
+        #   * new < current_anchor → interpret as explicit lower / withdrawal.
         #       anchor := new_target
         #       target := new_target
         #     Accrued growth cleared (can't accrue above a lower base).
-        #   * new == current_target → no-op path (mark_changed diff should
-        #     already skip; guarded here too for robustness).
+        #   * new == current_anchor → no-op path (mark_changed diff should
+        #     already skip; guarded here too for robustness). Falls to
+        #     the else branch, which is a no-op when target == anchor
+        #     and a re-confirmation of the anchor when it is not.
         accrued = max(0.0, old_t - old_a)   # non-negative growth so far
-        if nt > old_t and accrued > 1e-9:
+        if nt > old_a and accrued > 1e-9:
             # Top-up path — preserve the accrued growth on top of the
             # new anchor.
             self._anchor_target_balance = nt
             self._target_balance = nt + accrued
         else:
-            # Lower / equal / zero-accrued top-up — old behaviour
-            # (both in lockstep). Zero-accrued top-up == old behaviour
-            # by definition since accrued=0.
+            # At-or-below-anchor / zero-accrued — old behaviour (both
+            # in lockstep). Zero-accrued == old behaviour by definition
+            # since accrued=0.
             self._target_balance = nt
             self._anchor_target_balance = nt
         try:
