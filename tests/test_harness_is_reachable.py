@@ -41,10 +41,23 @@ Two-sided control
 wrong path and require them to report FAILURE. Without those two, a helper
 that always returned "reachable" would satisfy every assertion above.
 """
+
+# ruff: noqa: S603
+# S607 IS FIXED BY CONSTRUCTION, NOT SUPPRESSED, following the reasoning at the
+# top of dev_harness/harness/coding_archetype.py and the pattern already
+# measured clean in tests/test_pre_push_gate_hook.py. Both spawns below use an
+# absolute executable path — the interpreter via `sys.executable`, git via
+# `_git_exe()` resolved through shutil.which — so a `git.cmd` planted earlier
+# on PATH cannot run under the developer's token during a test.
+#
+# S603 remains and is not avoidable: an all-literal argv draws none, and every
+# argv carrying a variable draws one. A resolved interpreter path is a variable
+# by definition. This directive is the residue, narrowed to the one rule.
 from __future__ import annotations
 
 import importlib
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -52,6 +65,15 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
+
+_GIT = shutil.which("git")
+
+
+def _git_exe() -> str:
+    """Absolute git path, or fail loudly. A skipped test is not evidence."""
+    if _GIT is None:
+        pytest.fail("git not found; tracked files cannot be enumerated")
+    return _GIT
 
 # The five archetypes, and the class each one exposes. This list is the
 # CONTRACT. It is deliberately written out rather than discovered, because a
@@ -85,6 +107,15 @@ _OLD_PATH_RE = re.compile(r"tools[./]harness")
 _HISTORY = ("docs/audits", "docs/harness_archive", "CHANGELOG.md",
             "tools/.island_ledger.jsonl",
             ".claude/settings.local.json.pre_consolidation_20260806")
+
+# Two sets name the old path on purpose and stay green.
+#   1. The harness's own prose. Operator law forbids editing an archetype's
+#      contents, so comments inside it keep the wording they shipped with.
+#      Prose cannot route a call, so a stale comment disables no check.
+#   2. THIS file. Its controls import the old path deliberately, to prove the
+#      old path is gone. Without them the whole file could pass vacuously.
+_ALLOWED_PREFIXES = ("dev_harness/",)
+_ALLOWED_EXACT = frozenset({"tests/test_harness_is_reachable.py"})
 
 
 def probe_import(module_name: str, class_name: str) -> tuple[bool, str]:
@@ -183,11 +214,10 @@ class TestOldPathIsGone:
 
     def test_no_live_file_still_points_at_the_old_path(self):
         listing = subprocess.run(
-            ["git", "ls-files"], cwd=str(REPO),
+            [_git_exe(), "ls-files"], cwd=str(REPO),
             capture_output=True, text=True, check=False,
         )
-        if listing.returncode != 0:
-            pytest.skip("git is not available to enumerate tracked files")
+        assert listing.returncode == 0, "git could not enumerate tracked files"
         offenders = []
         for rel in listing.stdout.splitlines():
             if not rel or rel.startswith(_HISTORY) or rel in _HISTORY:
@@ -201,13 +231,17 @@ class TestOldPathIsGone:
                 continue
             if _OLD_PATH_RE.search(text):
                 offenders.append(rel)
-        # The harness keeps its own prose unedited by operator law. Those
-        # files are named here so the check stays sharp everywhere else.
-        allowed = {p for p in offenders if p.startswith("dev_harness/")}
-        assert not (set(offenders) - allowed), (
-            f"live files still name the old harness path: "
-            f"{sorted(set(offenders) - allowed)}"
+        stale = {o for o in offenders
+                 if not o.startswith(_ALLOWED_PREFIXES)
+                 and o not in _ALLOWED_EXACT}
+        assert not stale, (
+            f"live files still name the old harness path: {sorted(stale)}"
         )
+
+    def test_the_named_exceptions_still_exist(self):
+        """An allowance that outlives its file would widen the check silently."""
+        for rel in _ALLOWED_EXACT:
+            assert (REPO / rel).is_file(), f"stale allowance for {rel}"
 
 
 class TestTheInstrumentCanFail:
