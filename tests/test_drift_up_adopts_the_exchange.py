@@ -241,6 +241,14 @@ def test_without_the_adopt_the_book_stayed_behind_the_wallet():
     assert "reconciled_to_exchange" in text, (
         "the drift-UP branch no longer books a reconciliation lot -- "
         "the Target Delta operand has stopped coming from the exchange")
-    assert "_claimable = exchange_units" in text, (
+    # v3.25.10 moved this expression out of the branch and into
+    # `_claimable_exchange_units`, so that `bootstrap_exchange_state`
+    # asks the same question the same way. The token asserted here
+    # moved with it; the arithmetic is character-for-character the one
+    # that was in the branch.
+    assert "exchange_units - _personal - _sib_units" in text, (
         "the attribution arithmetic is gone; upward drift is either "
         "refused wholesale again or claiming units it has not attributed")
+    assert "def _claimable_exchange_units(" in text, (
+        "the shared attribution helper is gone, so the reconcile and "
+        "the bootstrap pre-fill can drift apart again")

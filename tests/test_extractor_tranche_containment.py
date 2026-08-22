@@ -1258,25 +1258,25 @@ CITATION_ANCHORS: dict[int, str] = {
     3534: 'self._main_lots.append({',
     4655: 'return float(self._current_holdings) * float(price)',
     4750: 'return self._anchor_target_balance * mult',
-    5707: '_tracked_units_bootstrap = sum(',
-    5712: 'self._current_holdings = min(',
-    6383: 'float(getattr(_bal1, "total", 0)',
-    6425: 'getattr(_bal1, "absent", False) or',
-    6646: 'self._current_holdings = sum(',
-    6813: '# _main_lots and derives _current_holdings from that source',
-    6819: 'self._current_holdings * ticker.last',
-    7586: 'entry_fill = await self._execute_buy(',
-    7609: 'self._main_lots.append({',
-    7644: 'delta = current_value - self._target_balance',
-    9298: 'price <= tranche["initial_buy_price"]',
-    9566: '_patent_only_eligible = sum(',
-    9827: '# MEM-171 / ADR-004 patent invariant is NOT abandoned in',
-    9839: 'if ticker.last <= float(t.get("ref", 0)) * _otd_factor',
-    10046: 'buy_fill = await self._execute_buy(',
-    10103: 'self._main_lots.append({',
-    10555: 'hedge_fill = await self._execute_buy(',
-    10589: 'self._main_lots.append({',
-    11359: 'async def _reconcile_holdings(self, reason:',
+    5722: '_tracked_units_bootstrap = sum(',
+    5727: 'self._current_holdings = min(',
+    6401: 'float(getattr(_bal1, "total", 0)',
+    6443: 'getattr(_bal1, "absent", False) or',
+    6664: 'self._current_holdings = sum(',
+    6831: '# _main_lots and derives _current_holdings from that source',
+    6837: 'self._current_holdings * ticker.last',
+    7604: 'entry_fill = await self._execute_buy(',
+    7627: 'self._main_lots.append({',
+    7662: 'delta = current_value - self._target_balance',
+    9316: 'price <= tranche["initial_buy_price"]',
+    9584: '_patent_only_eligible = sum(',
+    9845: '# MEM-171 / ADR-004 patent invariant is NOT abandoned in',
+    9857: 'if ticker.last <= float(t.get("ref", 0)) * _otd_factor',
+    10064: 'buy_fill = await self._execute_buy(',
+    10121: 'self._main_lots.append({',
+    10573: 'hedge_fill = await self._execute_buy(',
+    10607: 'self._main_lots.append({',
+    11524: 'async def _reconcile_holdings(self, reason:',
     # 2026-08-13 re-anchor, U2. ONE insertion into scrumming_bot.py --
     # the two units parsers, the block that widens the audited figure
     # from the scalar to the lot book, and the coerced rescale write --
@@ -1334,11 +1334,11 @@ CITATION_ANCHORS: dict[int, str] = {
     # the three lines it replaced, because one added line above the
     # drift-down branch would have moved every anchor below it a
     # second time.
-    11614: 'if exchange_units < internal_units - 1e-9:',
-    11636: 'self._current_holdings = exchange_units',
-    11638: '# Drift UP. Operator directive 2026-08-22, verbatim:',
-    11687: '_adopt = min(exchange_units, _claimable)',
-    11874: 'async def _execute_manual_rebalance(',
+    11793: 'if exchange_units < internal_units - 1e-9:',
+    11815: 'self._current_holdings = exchange_units',
+    11817: '# Drift UP. Operator directive 2026-08-22, verbatim:',
+    11849: '_adopt = min(exchange_units, _claimable)',
+    12070: 'async def _execute_manual_rebalance(',
     # 2026-08-15 re-anchor, the nan-ladder unit. ONE insertion, +104
     # lines, entirely inside the U3 gate block in
     # `_execute_manual_rebalance`: the ref filter that replaced the bare
@@ -1367,12 +1367,12 @@ CITATION_ANCHORS: dict[int, str] = {
     # the source, once by `ast.literal_eval` of the dict itself -- and
     # both read 42. The stale number was the work order's, and it is
     # recorded here so the next reader does not trust it either.
-    12835: 'self._main_lots.append({',
-    12852: 'self._main_lots.append({',
-    12861: 'self._current_holdings += fill_amount',
-    14501: 'async def _execute_buy(',
-    14978: 'self._current_holdings += amount',
-    15103: 'def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:',
+    13031: 'self._main_lots.append({',
+    13048: 'self._main_lots.append({',
+    13057: 'self._current_holdings += fill_amount',
+    14697: 'async def _execute_buy(',
+    15174: 'self._current_holdings += amount',
+    15299: 'def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:',
     # 2026-08-20 re-anchor, ISSUE #21 -- the capital-reservation grant
     # postcondition. ONE insertion into `scrumming_bot.py`, +47 lines,
     # entirely inside the success branch of
