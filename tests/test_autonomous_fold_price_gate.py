@@ -157,8 +157,32 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 # change to ``scrumming_bot.py`` outside the reversed spans reaches
 # this digest through ``_pre_change_source`` and turns this test red.
 # The line-ending form stopped mattering. The content did not.
+# RE-BASED 2026-08-22, and this is the tripwire doing its job rather
+# than a failure being papered over. Two reviewed repairs landed in
+# ``scrumming_bot.py`` after the digest above was taken, and both are
+# outside every span this file reverses, so both reached the digest:
+#
+#   1. `repair/target-topup-preserves-growth` -- `set_target_balance_live`
+#      compares the operator's input against the ANCHOR, not the grown
+#      target. A top-up smaller than accrued growth used to collapse the
+#      anchor and destroy the growth.
+#   2. `repair/holdings-follow-the-exchange` -- `_reconcile_holdings`
+#      adopts the exchange balance on upward drift instead of refusing
+#      every correction, so the Target Delta's first operand comes from
+#      the venue. This one ADDS a `self._main_lots.append({`, which is
+#      why the citation anchors moved and why the re-anchor had to skip
+#      that occurrence when counting ordinals.
+#
+# The reversal itself still reproduces cleanly: `_pre_change_source`
+# returns zero orphans, so every `:NNNN` in the file still names a line
+# that exists on both sides. What changed is the CONTENT this digest
+# describes -- "the shipping file with the U3 gate block and the site-B
+# spans removed" -- not the method that derives it.
+#
+# The prior digest, kept so the chain is auditable:
+#   986d79ed7785015d12a57bfc877ba1b078027d93b2f7655ec2fbc78a90ef2082
 PRE_CHANGE_SHA256 = (
-    "986d79ed7785015d12a57bfc877ba1b078027d93b2f7655ec2fbc78a90ef2082")
+    "29276909ff46dce02bc650de45802c779539adb7093b010cd875ef376201e9a0")
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE.")
