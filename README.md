@@ -40,7 +40,7 @@ Tested across **738 simulations** spanning 27 portfolio configurations, capital 
 | Bear regime stability | $4,262–$4,427 total / 9 sims / 4% CV |
 | Profitable fee ceiling | up to 0.50% roundtrip |
 
-The 23 non-wins are concentrated in extreme single-asset bear conditions (2022-class drawdowns of 64–94%) at small capital levels. Losses in those cases are marginal ($10–$157 on $400 deployments). Strategy does not claim to win in catastrophic single-asset collapses; see `docs/RISK_REGISTER.md` RSK-006.
+The 23 non-wins are concentrated in extreme single-asset bear conditions (2022-class drawdowns of 64–94%) at small capital levels. Losses in those cases are marginal ($10–$157 on $400 deployments). Strategy does not claim to win in catastrophic single-asset collapses.
 
 **vs 6 competing strategies** (canonical 39-sim battery):
 
@@ -53,7 +53,7 @@ The 23 non-wins are concentrated in extreme single-asset bear conditions (2022-c
 | SMA 50/200 Cross | 37/39 (94.9%) |
 | RSI Mean-Reversion | 35/39 (89.7%) |
 
-Full methodology and every simulation's numbers: `acervator_product_manual_v3_13_7.pdf`.
+The per-simulation tables behind these figures were published in a product-manual PDF that is not in this repository. Nothing in the tree reproduces them, so treat the table above as the summary of record and read `CHANGELOG.md` and `docs/audits/` for how each number was reached.
 
 ---
 
@@ -61,8 +61,8 @@ Full methodology and every simulation's numbers: `acervator_product_manual_v3_13
 
 - **Scrum/Fold Cycle** — harvest excess above target, buy back cheaper
 - **Profit Folding** — each fold permanently raises the target, compounding growth
-- **Hunger/Satiety Dual Index** — delta-driven aggression scalar (see ADR-011)
-- **Provenance Fold Queue** — per-tranche independent fold execution (see ADR-010)
+- **Hunger/Satiety Dual Index** — delta-driven aggression scalar
+- **Provenance Fold Queue** — per-tranche independent fold execution
 - **BB Midline Gate** — scrum only above midline, fold only below (trend alignment)
 - **Bollinger Band Bullseye** — rapid-fire execution when price touches BB exactly
 - **Band Travel Detection** — triggers harvest when price has moved ≥N% of BB width since last trade
@@ -78,7 +78,7 @@ Full methodology and every simulation's numbers: `acervator_product_manual_v3_13
 
 ## Nuclear Mode — Continuous Stress Demo
 
-`src/core/nuclear_live.py` runs the platform in a self-exercising burn-in mode: each bot is assigned a random asset, base currency, and 2-year historical period from the battery, and executes real Scrum/Fold ticks visibly through the GUI. Its job is to confirm the engine, Smart Wire, MR Inspector, PoA TestNet, and TokenLedger all function under realistic load for extended periods without operator intervention.
+Nuclear Mode lives under `src/gui/simulator_tab/` (`nuclear_controller.py`, `nuclear_fleet_controller.py`, `nuclear_mode_panel.py`, `nuclear_sim_exchange.py`, `nuclear_candle_source.py`) with its verification helpers in `src/trading/nuclear_verification.py`. It runs the platform in a self-exercising burn-in mode: each bot is assigned a random asset, base currency, and 2-year historical period from the battery, and executes real Scrum/Fold ticks visibly through the GUI. Its job is to confirm the engine, Smart Wire, MR Inspector, PoA TestNet, and TokenLedger all function under realistic load for extended periods without operator intervention.
 
 **Speed oscillator (v3.13.7):** tick rate and per-tick workload co-oscillate on a 120-second cycle — 45s cosine ramp up, 30s sustain at 4× base (0.2s tick, 4× candles/tick → 16× combined throughput), 45s cosine ramp down, repeat. A 5Hz `SystemLoadMR` sampler runs on a background daemon; CPU ≥ 60% triggers a COOLING regime that caps the multiplier at 1.5× until three consecutive CALM samples restore normal cycling. Workload is deterministic (fractional accumulator preserved across ticks) so expected throughput matches the multiplier exactly.
 
@@ -104,19 +104,21 @@ An earlier governance harness, SADP, was retired. Documents under `docs/audits/`
 **Requirements:** Python 3.11+
 
 ```bash
-git clone https://github.com/yourusername/acervator.git
-cd acervator
+git clone https://github.com/ekthelius/ACERVATOR---THE-ACCUMULATION-TRADING-PLATFORM.git
+cd ACERVATOR---THE-ACCUMULATION-TRADING-PLATFORM
 
-# Core (required)
-pip install -r requirements.txt
-
-# Optional: video recording, PDF reports, stock trading
-pip install -r requirements-optional.txt
+# Core (required). The dependency list lives in pyproject.toml
+# ([project] dependencies). A requirements.txt is not in the tree.
+pip install -e .
 
 python main.py
 ```
 
-**Minimum install:**
+**Optional extras** — video recording (`opencv-python` or `Pillow`) and PDF
+generation (`reportlab`) are not declared in `pyproject.toml`. Install them by
+hand.
+
+**Minimum install** (if you do not want the editable install):
 ```bash
 pip install PySide6 ccxt cryptography keyring numpy psutil
 ```
@@ -136,65 +138,96 @@ pip install opencv-python      # direct MP4, no temp files
 ```
 acervator/
 ├── main.py                                   # Entry point
-├── acervator_product_manual_v3_13_7.pdf      # Full research documentation (43 pages)
+├── acervator_watchdog.py                     # Out-of-process crash watchdog
+├── BUILD.py                                  # PyInstaller build driver
+├── pyproject.toml                            # Dependencies, pytest, coverage
+├── CHANGELOG.md · CONTRIBUTING.md · DISCLAIMER.md · LICENSE
+│
+├── contracts/                                # Solidity + deploy script
+│   ├── ACRV.sol · AcervatorTrophy.sol
+│   ├── CompetitionRegistry.sol
+│   └── deploy.py
+│
+├── dev_harness/                              # The development harness
+│   ├── harness/                              # Archetypes + release gate
+│   │   ├── coding_archetype.py · docs_archetype.py
+│   │   ├── gui_archetype.py · ta_archetype.py
+│   │   ├── watchdog_archetype.py
+│   │   ├── check_release_readiness.py
+│   │   └── rules/                            # hallucination · numeric_guard
+│   │                                         # scaffolding · slop
+│   ├── agents/
+│   └── touchset.py
 │
 ├── docs/
-│   ├── adr/                                  # Architecture Decision Records (ADR-001…012)
-│   ├── srs/SRS.md                            # Software Requirements Specification
-│   ├── AUDITS.md · TEST_PLAN.md              # Test suite overviews
-│   ├── ROADMAP.md · RISK_REGISTER.md         # Project management
-│   ├── PROJECT_MANAGEMENT.md
-│   └── tools/build_product_manual.py         # PDF generator for Product Manual
-│
-├── logs/
-│   ├── real_market/                          # Live bot trade logs + API audit
-│   ├── simulator/
-│   │   ├── recordings/                       # Screen recorder output (MP4/GIF)
-│   │   └── sessions/                         # Per-session story + status logs
-│   └── paper/reports/                        # Paper trader session reports
+│   ├── audits/                               # Session audits (historical)
+│   ├── harness_archive/                      # Retired-harness records
+│   ├── EMITTER_IDENTIFICATION.md
+│   ├── ITEM_10_EMITTER_NETWORK.md
+│   └── TOUCHSET.md
 │
 ├── src/
 │   ├── core/                                 # Cross-cutting services
-│   │   ├── nuclear_live.py                   # Nuclear Mode engine
 │   │   ├── system_load_oscillator.py         # Speed oscillator (v3.13.7)
-│   │   ├── nuclear_runner.py · mini_display.py
 │   │   ├── state_manager.py · event_bus.py
 │   │   ├── sound_engine.py · sms_engine.py
-│   │   ├── logging_engine.py · encryption.py · settings.py
+│   │   ├── logging_engine.py · log_paths.py
+│   │   ├── encryption.py · settings.py · usb_auth.py
 │   │   ├── execution_discipline.py · trade_historian.py
+│   │   ├── emit_contracts.py                 # Emitter registry
 │   │   ├── rule_registry.py                  # Rule state and admin commands
-│   │   └── version_sweep.py                  # Release gate
+│   │   └── version_sweep.py
 │   ├── trading/                              # The bot brain
 │   │   ├── scrumming_bot.py                  # Core Scrum/Fold engine
 │   │   ├── ta_engine.py                      # 7-indicator TA + Landing Strip
 │   │   ├── phantom_balance.py                # Multi-TF coordination (TradeLock)
 │   │   ├── mr_inspector.py · smart_wire.py
 │   │   ├── volume_guard.py · reconciliation.py
+│   │   ├── buy_safety.py · capital_reservation.py
+│   │   ├── extractor_bot.py · bot_container.py
+│   │   ├── nuclear_verification.py
+│   │   ├── stone_tablets/                    # Historical candle store
 │   │   └── risk_manager.py · analytics_engine.py
 │   ├── competition/                          # Proof of Accumulation package
 │   │   ├── bot_identity.py · merkle_log.py
 │   │   ├── competition_engine.py · challenge_protocol.py
-│   │   ├── token_ledger.py · nft_minter.py
-│   │   ├── trophy_generator.py · season_schedule.py
-│   │   ├── base_config.py · base_connector.py
+│   │   ├── token_ledger.py · trophy_generator.py
+│   │   ├── season_schedule.py · base_config.py
 │   │   └── local_testnet.py                  # In-process blockchain for testing
 │   ├── exchange/                             # Crypto exchange integrations
 │   │   ├── base.py · ccxt_connector.py
-│   │   ├── paper_exchange.py · market_data.py
-│   │   └── crypto_assets.py · data_pool.py
+│   │   ├── market_data.py · data_pool.py
+│   │   ├── circuit_breaker.py · idempotency.py
+│   │   └── crypto_assets.py · tablet_backend.py
 │   ├── stocks/                               # Equity broker integrations
 │   │   ├── broker_base.py · alpaca_connector.py
 │   │   ├── stock_bot.py · stock_accumulation_bot.py
 │   │   └── tradingview_bridge.py · market_hours.py
 │   └── gui/                                  # PySide6 UI
-│       ├── main_window.py · simulator.py
-│       ├── paper_trader_tab.py · paper_exchange.py
+│       ├── main_window.py · stock_main_window.py
+│       ├── simulator_tab/                    # Simulator + Nuclear Mode
+│       │   ├── simulator_tab.py
+│       │   ├── nuclear_controller.py
+│       │   ├── nuclear_fleet_controller.py
+│       │   ├── nuclear_mode_panel.py
+│       │   └── nuclear_sim_exchange.py
 │       ├── testnet_tab.py · competition_tab.py
 │       ├── bot_visualizer.py · bot_wizard.py
-│       ├── market_map.py · indicator_panel.py
-│       ├── screen_recorder.py · audio_suite.py
-│       └── ...
+│       ├── market_inspector.py · indicator_panel.py
+│       ├── history_tab.py · journal_tab.py
+│       └── screen_recorder.py · audio_suite.py
+│
+├── tests/                                    # 7382 tests
+└── tools/                                    # Repo utilities
+    ├── emitter_registry_check.py
+    ├── build_release_zip.py
+    └── gate.py · island.py · queue_state.py
 ```
+
+**Runtime files are not in the tree.** State lives under `~/.acervator/`
+(`bot_state.json`, credentials, reservation state) and logs under
+`~/.acervator_logs/` (`activity/`, `console/`, `trade/`). Nothing writes a
+`logs/` directory into the source tree.
 
 ---
 

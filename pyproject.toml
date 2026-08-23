@@ -41,21 +41,28 @@ where = ["."]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-# TD-022: legacy / no-longer-applicable regression tests live here; do not collect.
-# TD-021: test_swarm_row_parity reads source under default codec; ignore until encoding fix ships.
-norecursedirs = ["obsolete", "__pycache__", ".git"]
-addopts = "--ignore=tests/obsolete --ignore=tests/test_swarm_row_parity.py"
+# Issue #69 - this block used to exclude `tests/obsolete` (TD-022) and
+# `tests/test_swarm_row_parity.py` (TD-021). Those two paths are not in
+# the tree and never have been. An `--ignore=` for a path that is not in
+# the tree is inert: pytest accepts it and collects the same 7382 tests
+# either way. Both entries are gone, so this block states only what it
+# does.
+norecursedirs = ["__pycache__", ".git"]
 
-# v3.19.7 — Coverage configuration. Coverage is NOT enabled by default
-# (would slow the 1533-test suite by ~3×). Operator runs coverage
-# explicitly via:
+# v3.19.7 - Coverage configuration. Coverage is NOT enabled by default
+# (it slows the suite by about 3x). Run it explicitly:
 #
-#     python -m pytest --cov=src --cov-report=term \
-#                      --cov-report=json
+#     python -m pytest --cov=src --cov-report=term --cov-report=json
 #
-# The coverage-floor regression test (tests/test_coverage_floor.py)
-# does a focused per-module coverage check in-process and compares
-# to qa_baselines/coverage_baseline.json. Tighter focus = faster.
+# Issue #69 - this comment used to name a coverage-floor regression test
+# (`tests/test_coverage_floor.py`) that compared per-module coverage to
+# `qa_baselines/coverage_baseline.json`. That test is not in the tree,
+# and neither is that baseline. No test in the suite reads a coverage
+# baseline, so no floor is enforced. The claim is gone, not restated.
+#
+# `[tool.coverage.json] output` below is a WRITE target, not a read:
+# coverage creates `qa_baselines/` on demand. It is not a dead
+# reference.
 [tool.coverage.run]
 branch = true
 # v3.19.7 — Source paths. acervator_watchdog.py lives at repo root
@@ -84,21 +91,25 @@ skip_covered = false
 output = "qa_baselines/coverage_current.json"
 show_contexts = false
 
-# v3.19.7 — Mutation testing configuration. mutmut runs against a
-# focused, money-critical target set (buy_safety.py first; expand as
-# the harness matures). Run on-demand:
+# Issue #69 - the [tool.mutmut] block is gone. It could not run, for two
+# independent reasons, both measured 2026-08-22.
 #
-#     python -m mutmut run
-#     python -m mutmut results
+# 1. mutmut 3.5.0 refuses this platform. `python -m mutmut run` prints
+#    "To run mutmut on Windows, please use the WSL" and exits 1 at
+#    import (mutmut/__main__.py, lines 8-10). It never reads this
+#    config.
+# 2. Its `runner` named `tests/test_verify_buy_safe_helper.py` and
+#    `tests/test_mem228_buy_confirmation_gate.py`. Those files are not
+#    in the tree, and `git log` over all 107 commits shows no commit
+#    ever added them. That command exits 4.
 #
-# Baseline + survivor list pinned in qa_baselines/mutation_baseline.json;
-# tests/test_mutation_baseline.py reads it and asserts the surviving-
-# mutation count for each target file has not grown.
-[tool.mutmut]
-paths_to_mutate = "src/trading/buy_safety.py"
-backup = false
-runner = "python -m pytest tests/test_verify_buy_safe_helper.py tests/test_mem228_buy_confirmation_gate.py -x -q"
-tests_dir = "tests/"
+# The pinned baseline (`qa_baselines/mutation_baseline.json`), its
+# reader (`tests/test_mutation_baseline.py`) and `tools/mutation_runner
+# .py` are not in the tree either, and were never added by any commit.
+# So no number in this repository rests on this block. Nothing exercises
+# `src/trading/buy_safety.py` directly, so there is no honest runner to
+# name. Writing one is a separate unit. Inventing one to satisfy this
+# config would be worse than deleting it.
 
 # v3.19.14 — Vulture configuration. The four remaining findings after
 # v3.19.12's cleanup are all function/callback parameter signatures

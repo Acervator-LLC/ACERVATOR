@@ -1995,8 +1995,8 @@ if _HAS_QT:
         #
         # The factory also returns a handle dict with the same key set
         # regardless of tab type, so update_* / stop_* functions can be
-        # symmetric. This is the invariant locked by
-        # tests/test_swarm_row_parity.py.
+        # symmetric. No test locks this invariant today; issue #69:
+        # the file pyproject.toml excluded for it is not in the tree.
         #
         # Unified field schema (left → right):
         #   dot     ·  live indicator (filled when running, hollow/grey stopped)
