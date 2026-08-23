@@ -335,10 +335,12 @@ old tree. **A prose checklist failed once; a script did not.**
 **Historical as of 2026-08-19: islands are retired and nothing forks any more.**
 Recorded because the tool is still on disk and still passes its 32 tests.
 
-`migrate_stone_tablets.py` got the same treatment via `ACERVATOR_TABLET_SOURCE`,
-but note its DEFAULT is now a relative sibling lookup that **does not resolve on
-this machine** — `…/Documents/acervator_session71_CLOSE_hop5_v3_22_73/…/sadp/historical_data`,
-measured absent. Pass `--source` or set the variable; do not trust the default.
+`migrate_stone_tablets.py` is **deleted** (issue #83, 2026-08-22). It was a
+one-shot. Its migration ran on 2026-08-01 and the result is on disk:
+`~/.acervator/stone_tablets/` holds 407 tablets and a `MANIFEST.json`, with
+millisecond timestamps, an `exchange_id` field and a derived `year` -- the
+exact three transforms the script existed to apply. A migration that has
+run is history, not a tool.
 
 ### STILL OUTSTANDING
 

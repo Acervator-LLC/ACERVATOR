@@ -37,22 +37,14 @@ LOOSE_TOOLS = ("tools/queue_state.py", "tools/island.py",
                "dev_harness/touchset.py",
                "tools/emitter_registry_check.py", "tools/migrate_harness.py")
 
-# (file, exact text to find, replacement, why)
-PATCHES = (
-    (
-        "tools/island.py",
-        're.compile(r"^ISLANDS_ROOT = Path\\(", re.M)',
-        None,
-        "ISLANDS_ROOT is a hardcoded absolute path to the old machine's "
-        "scratchpad. Islands will fork to the wrong place.",
-    ),
-    (
-        "tools/migrate_stone_tablets.py",
-        None,
-        None,
-        "carries an absolute Desktop path to a different session directory.",
-    ),
-)
+# Step 4 measures absolute paths. It replaced a hand-kept PATCHES table
+# that named two files and one regex and was read by no code path. One
+# of the two files was a one-shot migration script, deleted under issue
+# #83 once its migration was shown to have run. A list of known-bad
+# paths that nothing consults is a checklist wearing a script's clothes,
+# which is the failure this whole file exists to end.
+# `report_absolute_paths` MEASURES the same fault over every tool in the
+# tree, so it cannot name a file that is no longer there.
 
 
 def project_key(repo: pathlib.Path) -> str:
@@ -102,10 +94,11 @@ def copy_tree(src: pathlib.Path, dst: pathlib.Path, apply: bool) -> tuple[int, i
 
 def report_absolute_paths(repo: pathlib.Path) -> list[str]:
     """Find hardcoded absolute paths that will not work in the new tree."""
-    hits: list[str] = []
     tools = repo / "tools"
     if not tools.is_dir():
-        return hits
+        message = f"no tools directory under {repo}"
+        raise FileNotFoundError(message)
+    hits: list[str] = []
     for path in sorted(tools.rglob("*.py")):
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -133,6 +126,14 @@ def main() -> int:
         print("REFUSED: target is the source tree.")
         return 2
 
+    absent = [n for n in LOOSE_TOOLS if not (HERE / n).is_file()]
+    if absent:
+        print(f"REFUSED: LOOSE_TOOLS names {len(absent)} file(s) that are "
+              f"not in the source tree: {absent}")
+        print("Each one would travel nowhere while this tool still printed")
+        print("a count and returned 0. Fix the list or restore the file.")
+        return 3
+
     mode = "APPLYING" if args.apply else "DRY RUN — nothing will be written"
     print(f"{mode}\n  from {HERE}\n    to {target}\n")
 
@@ -143,20 +144,25 @@ def main() -> int:
     hooks = len(list((HERE / ".claude" / "hooks").glob("*.py")))
     print(f"                       {skills} skills, {hooks} hooks")
 
-    # 2. loose tools that promote never moves
+    # 2. loose tools that promote never moves.
+    #
+    # A missing source used to `continue`. Issue #84 moved touchset.py out
+    # of tools/, and under that skip the migration would have dropped it
+    # for ever while still printing a count and returning 0. A tool that
+    # does nothing and reports success is worse than one that crashes, so
+    # a missing source is now REFUSED by name.
     moved = []
     for name in LOOSE_TOOLS:
         src = HERE / name
         dst = target / name
-        if not src.is_file():
-            continue
         if dst.is_file() and sha(dst) == sha(src):
             continue
         moved.append(name)
         if args.apply:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
-    print(f"2. loose tools         {len(moved):>4} to copy  {moved if moved else ''}")
+    print(f"2. loose tools         {len(moved):>4} to copy  "
+          f"{moved or ''}")
 
     # 3. memory — keyed to the project path, so it never travels by itself
     src_mem = CLAUDE_PROJECTS / project_key(HERE) / "memory"
@@ -175,9 +181,11 @@ def main() -> int:
         print(f"     {hit}")
     if not hits:
         print("     none")
-    print("   These are NOT auto-patched. Each needs a deliberate replacement,")
-    print("   and island.py's ISLANDS_ROOT is the one that matters — island")
-    print("   discipline is mandatory and it currently forks to the old machine.")
+    print("   These are NOT auto-patched. Each needs a deliberate")
+    print("   replacement. The list above IS the finding: an empty list")
+    print("   means every tool derives its paths at run time, and a")
+    print("   non-empty one names each site that would point at the old")
+    print("   machine after the move.")
 
     # 5. what proves it worked. Not asserted here; run it.
     print("\n5. VERIFY. Run these IN THE NEW REPO. This tool does not grade itself.")
