@@ -173,31 +173,37 @@ PIP="${VENV_DIR}/bin/pip"
 info "Upgrading pip..."
 "$PIP" install --upgrade pip --quiet
 
+# Issue #94 - these two lists used to be hand-copied. The first named
+# 11 packages, of which `requests` is imported by no file in the tree,
+# and it was missing `psutil`, `ta` and `defusedxml`. The names now come
+# from pyproject.toml through tools/deps.py, which is the one source.
+#
+# A TARGET is not a build HOST. This install takes the `os` consumer,
+# which is the core set plus the `report` extra. It must NOT take
+# pyinstaller: AcervatorOS runs from source in this venv and never
+# compiles the application.
 info "Installing Acervator dependencies..."
-"$PIP" install \
-    PySide6 \
-    ccxt \
-    cryptography \
-    keyring \
-    pandas \
-    numpy \
-    reportlab \
-    aiohttp \
-    certifi \
-    tomli_w \
-    requests \
-    --quiet
+DEPS="$("$PYTHON" "${SOURCE_DIR}/tools/deps.py" requirements os)" || \
+    error "Could not read the dependency set from ${SOURCE_DIR}/pyproject.toml"
+[[ -n "$DEPS" ]] || error "Empty dependency set; refusing to install"
+# shellcheck disable=SC2086
+"$PIP" install $DEPS --quiet
 
-info "Installing mini display libraries (optional — safe to skip if no displays)..."
-"$PIP" install \
-    luma.oled \
-    RPLCD \
-    smbus2 \
-    Pillow \
-    --quiet 2>/dev/null || true
-# st7789 and waveshare_epd are hardware-specific — install manually if needed
+# The mini-panel libraries are a separate step because failure is
+# tolerated here: a Pi with no panel is a supported machine, and
+# src/core/mini_display.py imports each of them inside a try block that
+# returns False. They are the `display` extra, without the core set.
+info "Installing mini display libraries (optional, safe to skip if no displays)..."
+DISPLAY_DEPS="$("$PYTHON" "${SOURCE_DIR}/tools/deps.py" requirements display --extras-only)" || \
+    DISPLAY_DEPS=""
+if [[ -n "$DISPLAY_DEPS" ]]; then
+    # shellcheck disable=SC2086
+    "$PIP" install $DISPLAY_DEPS --quiet 2>/dev/null || true
+fi
+# st7789 and waveshare_epd stay out of pyproject.toml on purpose: they
+# are hardware-specific and this script never installed them either.
 # pip install st7789         (for ST7789 TFT)
-# pip install waveshare_epd  (for e-Paper — see waveshare wiki)
+# pip install waveshare_epd  (for e-Paper - see waveshare wiki)
 
 ok "Python dependencies installed"
 

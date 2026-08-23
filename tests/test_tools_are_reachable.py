@@ -93,8 +93,13 @@ TOOLS = REPO / "tools"
 # file returns undeclared; `tests/test_island_machinery_stays_retired.py`
 # holds the wider contract, because the tool had a ledger, a test file and
 # seven skill documents around it.
+#
+# `deps` entered this list under issue #94. It reads the dependency set
+# out of pyproject.toml so that no script has to hold one. It carries an
+# argument parser and three subcommands, so it is True.
 INVENTORY: tuple[tuple[str, bool], ...] = (
     ("build_release_zip", True),
+    ("deps", True),
     ("emitter_registry_check", True),
     ("gate", False),
     ("migrate_harness", True),

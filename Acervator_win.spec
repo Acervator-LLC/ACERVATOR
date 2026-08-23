@@ -5,8 +5,14 @@ Acervator_win.spec — PyInstaller spec for Windows
 Produces: dist/Acervator/Acervator.exe
 
 Build command (run on Windows):
-    pip install pyinstaller PySide6 ccxt cryptography keyring pandas numpy ta tomli_w aiohttp certifi requests reportlab pillow
+    pip install $(python -m tools.deps requirements build)
     pyinstaller Acervator_win.spec
+
+Issue #94 - that first command used to be a hand-copied list of 14
+package names written out in this docstring. It was one of eight such
+lists and it agreed with none of the others. pyproject.toml is the one
+source now, and tools/deps.py reads it. Do not write a package name
+back into this file.
 
 The resulting .exe is a standalone Windows application.
 No NSIS, no separate installer — the dist/ folder IS the application.
