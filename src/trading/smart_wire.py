@@ -823,8 +823,6 @@ class SmartWireManager:
                 continue
             self._wires.setdefault(str(src), {})[str(tgt)] = pct
             n += 1
-        if n > 0:
-            logger.info("SmartWire: imported %d wire(s) from saved state", n)
         # The headline must RECONCILE: accepted + lost == offered, and
         # `offered` is every element of the list because it is counted
         # ABOVE the first guard - the exact ordering import_ledgers was
@@ -836,12 +834,42 @@ class SmartWireManager:
         # so a line he sees every time is noise he learns to ignore -
         # which is the same defect as silence.
         # 10.3 phase 2 — STOP HERE. `n` and `offered` are final, so the
-        # import is over. What follows is REPORTING: the lost-row tally
-        # and the operator warning. Timing those would bill the report
-        # to the import, and making the log cheaper would read as a
-        # faster import. Same boundary as fleet.03.001 and 03.004.
+        # import is over. What follows is REPORTING: the accepted-count
+        # line, the lost-row tally and the operator warning. Timing
+        # those would bill the report to the import, and making the log
+        # cheaper would read as a faster import. Same boundary as
+        # fleet.03.001 and 03.004.
+        #
+        # 2026-08-22 — THE ACCEPTED-COUNT LINE USED TO SIT ABOVE THIS
+        # CLOCK, and the comment above already said it should not. The
+        # code disagreed with its own stated boundary, so the duration
+        # this method declared was the import PLUS one log dispatch.
+        #
+        # WHAT THAT COST, MEASURED. A log dispatch is a CONSTANT: it
+        # fires once whatever the row count, and its price is set by how
+        # many handlers the root logger carries, which is a property of
+        # the process and not of the import. Measured 2026-08-22 with 16
+        # console handlers attached and the root logger at DEBUG, one
+        # such dispatch cost 0.001585 s, the minimum of twenty. Against
+        # a 1_000-row import that really costs 0.000290 s, the declared
+        # duration became 0.001965 s — five parts report to one part
+        # work. The operator reading this pin was reading his own
+        # console painting.
+        #
+        # AND IT IS NOT A SMALL ERROR ON THE LARGE SIDE EITHER. The same
+        # constant landed on a 10_000-row import, so the two readings
+        # moved together and their RATIO collapsed from 10.4 to 2.4.
+        # tests/test_wires_received_duration.py asks whether the
+        # duration grows with the work; with the report inside the
+        # bracket that question was being asked of a number that was
+        # mostly not the work, and the release gate went red on it.
+        # Moving the line down repairs the measurement. It changes no
+        # log text, no log level and no log ORDER — this line still
+        # precedes the lost-row warning below, exactly as before.
         _dur_elapsed = time.monotonic() - _dur_t0
 
+        if n > 0:
+            logger.info("SmartWire: imported %d wire(s) from saved state", n)
         lost = malformed + unreadable + unroutable
         if lost:
             logger.warning(
