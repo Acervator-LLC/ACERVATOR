@@ -103,10 +103,19 @@ CALLERS: tuple[str, ...] = (
 _MODULE_RE = re.compile(r"\bdev_harness\.harness\.[A-Za-z_][A-Za-z0-9_.]*")
 
 # The old home. Historical records keep it on purpose and are excluded.
+#
+# Issue #82 dropped a fifth entry. It named the settings backup
+# "settings.local.json.pre_consolidation_20260806" under the .claude
+# directory. That file was a committed copy of a settings file which a
+# global ignore rule keeps out of every commit. It held 3866 permission
+# entries, and 62 of them named the old harness path, so the scan had to
+# skip it. The file is deleted, so the entry now matches nothing. An
+# allowance that outlives its file widens the check in silence. The
+# sibling test test_the_named_exceptions_still_exist guards against that
+# same fault for _ALLOWED_EXACT.
 _OLD_PATH_RE = re.compile(r"tools[./]harness")
 _HISTORY = ("docs/audits", "docs/harness_archive", "CHANGELOG.md",
-            "tools/.island_ledger.jsonl",
-            ".claude/settings.local.json.pre_consolidation_20260806")
+            "tools/.island_ledger.jsonl")
 
 # Two sets name the old path on purpose and stay green.
 #   1. The harness's own prose. Operator law forbids editing an archetype's
