@@ -143,9 +143,9 @@ nothing.
 2026-08-19, on moving to GitHub. Work on a branch cut for the unit, never
 directly on the branch he runs from, and let merge or rebase refuse a stale
 change — which is the refusal `island promote` was built to imitate in the first
-place. `tools/island.py` and the 32 tests in
-`tests/test_island_promotion_refuses_stale.py` remain on disk; retiring the tool
-is its own unit, and deleting it today would take the gate red.
+place. **The tool is now DELETED** — issue #67, 2026-08-22 — together with its
+ledger and its 31 test functions (102 collected tests).
+`tests/test_island_machinery_stays_retired.py` refuses its return.
 
 **THE WORKING TREE IS STILL WHAT HIS LAUNCH RUNS.** This is the one property an
 island gave for free and a branch does not: checking out a branch REPLACES the
@@ -330,10 +330,10 @@ old tree. **A prose checklist failed once; a script did not.**
 | gate discriminates | known_bad **exit 1**, known_good **exit 0** |
 | hardcoded old-machine ABSOLUTE paths in `tools/` | **zero** |
 
-**`ISLANDS_ROOT` derives** rather than pointing at the old machine —
-`%TEMP%/acervator_islands/<repo name>`, override `ACERVATOR_ISLANDS_ROOT`.
-**Historical as of 2026-08-19: islands are retired and nothing forks any more.**
-Recorded because the tool is still on disk and still passes its 32 tests.
+`tools/island.py` held the only path that could have pointed at the old
+machine. It DERIVED that root rather than hardcoding it, which is why the
+row above measures zero. The file is **deleted** as of issue #67,
+2026-08-22, so nothing forks any more.
 
 `migrate_stone_tablets.py` is **deleted** (issue #83, 2026-08-22). It was a
 one-shot. Its migration ran on 2026-08-01 and the result is on disk:
@@ -402,7 +402,7 @@ resolved.
 | the law, 11 skills | `.claude/skills/` |
 | audits and raw evidence | `docs/audits/` |
 | emitter register | `docs/EMITTER_IDENTIFICATION.md` + `tools/emitter_registry_check.py` |
-| promotion history, 56 entries | `tools/.island_ledger.jsonl` — **frozen 2026-08-19**, islands retired; git history is the record from here |
+| promotion history, 56 entries | **deleted** under issue #67. Recover it from git: `git show 905c9b0:tools/.island_ledger.jsonl`. Git history is the record from here |
 
 **Search the transcript rather than trusting a summary — including this one.**
 

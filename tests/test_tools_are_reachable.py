@@ -86,11 +86,17 @@ TOOLS = REPO / "tools"
 # no argument parser, so `python -m tools.gate --help` would not print a
 # usage line, it would RUN THE RELEASE GATE. A test may not do that. Its
 # entry point is checked at the API level instead, one test below.
+#
+# `island` left this list under issue #67. It was a branch-and-merge
+# simulator, retired by operator decision on 2026-08-19 when the work moved
+# to git. `test_every_tool_on_disk_is_declared` below already fails if the
+# file returns undeclared; `tests/test_island_machinery_stays_retired.py`
+# holds the wider contract, because the tool had a ledger, a test file and
+# seven skill documents around it.
 INVENTORY: tuple[tuple[str, bool], ...] = (
     ("build_release_zip", True),
     ("emitter_registry_check", True),
     ("gate", False),
-    ("island", True),
     ("migrate_harness", True),
     ("orphan_widget_scan", True),
     ("queue_state", True),

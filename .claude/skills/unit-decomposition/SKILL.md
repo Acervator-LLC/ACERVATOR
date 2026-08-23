@@ -209,10 +209,16 @@ as a pass. Writes a pin recording each file's verdicts, line-ending kind
 and forbidden-directive count.
 
 ```bash
-python -m dev_harness.touchset check --pin <file> --against <island>
+python -m dev_harness.touchset check --pin <file> --against <branch checkout>
 ```
 
-Compares the island to the **pin**, never to zero. Exit 1 on: a red file,
+`--against` takes the root of the tree that holds your edits: your branch
+checkout, your worktree or your clone. The tool prints the word "island"
+for that root, which is the retired name for it (issue #67 deleted the
+island tool; `dev_harness/` is not this skill's to edit). Read it as
+"the tree you changed".
+
+Compares that tree to the **pin**, never to zero. Exit 1 on: a red file,
 a forbidden-directive count that INCREASED, a line-ending kind that
 flipped, or a path that vanished. A pre-existing directive count is not
 this unit's to clear; an increase always is.
@@ -425,9 +431,9 @@ This skill is wrong if:
   incomplete. The question would then be licensing scope cuts rather than
   finding absorbed neighbours. The tell is whether the dropped file was a
   second surface or a required path: name which, every time.
-- A touch set measured green at work-order time still blocks at promote
-  because live moved underneath it. Question 6 would then need to run at
-  promote as well as at sizing, which is `development-island`'s staleness
+- A touch set measured green at work-order time still conflicts at merge
+  because the base moved underneath it. Question 6 would then need to run
+  at merge as well as at sizing, which is `development-island`'s staleness
   rule and not this skill's.
 - The value-domain rule fires on a unit with no float in its accepted set
   and costs rows that can never be reached. Then it is being applied by

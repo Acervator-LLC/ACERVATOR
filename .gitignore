@@ -1,11 +1,12 @@
 # Acervator — .gitignore
-# Added 2026-08-05 with cascade C00 (baseline snapshot protocol).
 # Principle: ignore only what is regenerable, transient, or oversized.
-# Everything else is tracked, because C00 exists to make rollback real
-# and a rollback that omits files is not a rollback.
+# Everything else is tracked.
 #
-# NOTE: _archive/ and .session26_backups/ ARE tracked on purpose —
-# cascade C43 and others restore archived pin tests out of them.
+# The cascade C00 "baseline snapshot protocol" section was removed under
+# issue #67. It declared that `_archive/` and `.session26_backups/` were
+# tracked on purpose, as a rollback mechanism. Measured 2026-08-22: neither
+# directory is on disk and neither has a tracked file. The section named a
+# protocol that protected nothing. Git history is the rollback mechanism.
 
 # ── Python bytecode / build ─────────────────────────────────────
 __pycache__/
