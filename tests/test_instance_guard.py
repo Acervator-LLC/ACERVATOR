@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import gc
 import hashlib
 import inspect
 import json
@@ -119,6 +120,32 @@ def _claim_owned_by(config_dir: Path, machine_id: str,
         ig.write_claim(config_dir, ig.read_machine_identity(), "test")
     finally:
         monkey.undo()
+
+
+@contextlib.contextmanager
+def capture_errors(logger_name: str) -> Iterator[list]:
+    """Collect ERROR records from one logger.
+
+    `caplog` cannot see them: `logging_engine.py:315` sets
+    `propagate = False` on the `acervator` logger, so records stop there
+    and never reach the root handler pytest installs.
+    """
+    import logging
+
+    found: list = []
+
+    class _Sink(logging.Handler):
+        def emit(self, record: "logging.LogRecord") -> None:
+            if record.levelno >= logging.ERROR:
+                found.append(record.getMessage())
+
+    target = logging.getLogger(logger_name)
+    sink = _Sink()
+    target.addHandler(sink)
+    try:
+        yield found
+    finally:
+        target.removeHandler(sink)
 
 
 def _digest(path: Path) -> str:
@@ -553,23 +580,96 @@ def _refused_decision(
         return guard.evaluate(FLEET)
 
 
+def _live_consent_dialogs(qapp: "QApplication") -> int:
+    """How many consent dialogs are still top-level widgets right now."""
+    from src.gui.instance_consent_dialog import InstanceConsentDialog
+
+    return len([w for w in qapp.topLevelWidgets()
+                if isinstance(w, InstanceConsentDialog)])
+
+
+@contextlib.contextmanager
+def _consent_dialog(decision: ig.GuardDecision,
+                    qapp: "QApplication") -> Iterator[object]:
+    """Build the dialog and release it when the block ends.
+
+    NEVER `deleteLater()`. MEASURED 2026-08-23: `deleteLater()` moves
+    ownership from Python to C++, and the `DeferredDelete` event that
+    then has to arrive is NOT delivered by `QApplication.processEvents()`
+    - only by a running event loop. A dialog cleaned up that way stays in
+    `QApplication.topLevelWidgets()` for the rest of the process.
+
+    That is not a cosmetic leak. `tests/test_sim_visuals_expand_reentrancy.py`
+    takes `[w for w in app.topLevelWidgets() if isinstance(w, QDialog)][0]`
+    and asserts on that object's lifetime. A surviving consent dialog
+    becomes element zero, and the test reports the Expand dialog as
+    leaked while it is examining a different widget entirely.
+
+    The exit hands ownership back to Python with `setParent(None)` and
+    drops the helper's reference. It does NOT check the result: the `with`
+    target still names the widget in the test's own frame at this point,
+    so any count taken here reads at least one and would be a check that
+    can never pass. `_no_consent_dialog_outlives_its_test` asks the
+    question after the test's frame is gone.
+    """
+    from src.gui.instance_consent_dialog import InstanceConsentDialog, release_dialog
+
+    dialog = InstanceConsentDialog(decision)
+    try:
+        yield dialog
+    finally:
+        release_dialog(dialog)
+        del dialog
+        gc.collect()
+        qapp.processEvents()
+
+
+@pytest.fixture(autouse=True)
+def _no_consent_dialog_outlives_its_test(request: pytest.FixtureRequest
+                                         ) -> Iterator[None]:
+    """After every test in THIS file, no consent dialog may still exist.
+
+    IT IS A FIXTURE AND NOT PART OF `_consent_dialog` BECAUSE THE `with`
+    TARGET OUTLIVES THE BLOCK. `with _consent_dialog(...) as dialog:`
+    binds the widget in the TEST's frame as well as the helper's, so a
+    check written inside the helper's `finally` can never see zero - it
+    runs while the caller still names the object. Measured: the first
+    version of this check asserted 1 == 0 on every dialog test. The
+    teardown of a function-scoped fixture runs after the test function
+    has returned and its frame is released, which is the first moment the
+    question can be answered honestly.
+
+    This does not duplicate `tests/conftest.py::_destroy_qt_widgets`. That
+    fixture CLEANS UP for the whole suite. This one ASSERTS, for this file
+    only, and it fails rather than tidies - because the defect it exists
+    to catch was a cleanup everybody assumed had worked.
+    """
+    yield
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return
+    gc.collect()
+    app.processEvents()
+    survivors = _live_consent_dialogs(app)
+    assert survivors == 0, (
+        f"{survivors} consent dialog(s) outlived "
+        f"{request.node.name} and are still top-level widgets; every "
+        f"later test that walks topLevelWidgets() will see them")
+
+
 def test_the_dialog_defaults_to_not_starting_the_bots(
         qapp: QApplication, tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch) -> None:
     """Return, Escape and the title-bar X must all mean no."""
-    from src.gui.instance_consent_dialog import InstanceConsentDialog
-
     decision = _refused_decision(tmp_path, monkeypatch)
-    dialog = InstanceConsentDialog(decision)
-    try:
+    with _consent_dialog(decision, qapp) as dialog:
         assert dialog.consented is False
         assert dialog._refuse_button.isDefault() is True
         assert dialog._consent_button.isDefault() is False
         dialog.reject()          # Escape and the X both land here
         assert dialog.consented is False
-    finally:
-        dialog.deleteLater()
-        qapp.processEvents()
 
 
 def test_the_dialog_states_both_machines_and_the_bot_count(
@@ -578,19 +678,13 @@ def test_the_dialog_states_both_machines_and_the_bot_count(
     """Every fact the operator needs is on screen at once."""
     from PySide6.QtWidgets import QLabel
 
-    from src.gui.instance_consent_dialog import InstanceConsentDialog
-
     decision = _refused_decision(tmp_path, monkeypatch)
-    dialog = InstanceConsentDialog(decision)
-    try:
+    with _consent_dialog(decision, qapp) as dialog:
         shown = " ".join(w.text() for w in dialog.findChildren(QLabel))
         assert "desk-01" in shown
         assert "cloud-vm-01" in shown
         assert "live exchange account" in shown
         assert str(FLEET) in dialog._consent_button.text()
-    finally:
-        dialog.deleteLater()
-        qapp.processEvents()
 
 
 def test_the_dialog_offers_no_consent_against_a_live_second_copy(
@@ -598,8 +692,6 @@ def test_the_dialog_offers_no_consent_against_a_live_second_copy(
         monkeypatch: pytest.MonkeyPatch) -> None:
     """Consent cannot make two live copies on one account safe, so it is
     not offered rather than offered and ignored."""
-    from src.gui.instance_consent_dialog import InstanceConsentDialog
-
     _be_machine(monkeypatch, MACHINE_A)
     _claim_owned_by(tmp_path, MACHINE_A)
     with _guard(tmp_path) as running:
@@ -607,12 +699,8 @@ def test_the_dialog_offers_no_consent_against_a_live_second_copy(
         with _guard(tmp_path) as second_copy:
             decision = second_copy.evaluate(FLEET)
 
-    dialog = InstanceConsentDialog(decision)
-    try:
+    with _consent_dialog(decision, qapp) as dialog:
         assert dialog._consent_button.isEnabled() is False
-    finally:
-        dialog.deleteLater()
-        qapp.processEvents()
 
 
 def test_a_dialog_that_cannot_be_shown_counts_as_a_refusal(
@@ -865,3 +953,62 @@ def test_the_real_identity_ignores_the_state_directory(tmp_path: Path) -> None:
         assert guard.decision.identity.fingerprint == before
     finally:
         guard.release()
+
+
+def test_ask_for_consent_leaves_no_dialog_behind(
+        qapp: QApplication, tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The PRODUCT path, not just the tests.
+
+    `ask_for_consent` is called once per launch with `parent=` the main
+    window. A parented widget is owned by its parent in C++, so before
+    this repair the dialog stayed attached to the main window, hidden,
+    for the whole session. The function now reads the answer into a
+    local, destroys the dialog, and returns the local - in that order,
+    because any other order reads a widget that may already be gone.
+    """
+    from PySide6.QtWidgets import QWidget
+
+    import src.gui.instance_consent_dialog as dlg
+
+    decision = _refused_decision(tmp_path, monkeypatch)
+    monkeypatch.setattr(dlg.InstanceConsentDialog, "exec",
+                        lambda self: self._on_consent())
+
+    window = QWidget()
+    try:
+        assert dlg.ask_for_consent(decision, parent=window) is True
+        gc.collect()
+        qapp.processEvents()
+        assert _live_consent_dialogs(qapp) == 0
+        assert not window.findChildren(dlg.InstanceConsentDialog), (
+            "the consent dialog is still attached to the window that "
+            "parented it")
+    finally:
+        window.setParent(None)
+        del window
+        gc.collect()
+        qapp.processEvents()
+
+
+def test_ask_for_consent_reads_the_answer_before_it_destroys_the_dialog(
+        qapp: QApplication, tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A refusal must survive the destruction that follows it.
+
+    Reading `consented` after the widget is gone would raise
+    RuntimeError, and an exception on this path would be swallowed into
+    a refusal - which happens to look correct, so nothing would ever
+    report the fault.
+    """
+    import src.gui.instance_consent_dialog as dlg
+
+    decision = _refused_decision(tmp_path, monkeypatch)
+    monkeypatch.setattr(dlg.InstanceConsentDialog, "exec",
+                        lambda self: self._on_refuse())
+    with capture_errors("acervator.gui.instance_consent") as errors:
+        assert dlg.ask_for_consent(decision) is False
+    assert errors == [], f"the destroy path logged an error: {errors}"
+    gc.collect()
+    qapp.processEvents()
+    assert _live_consent_dialogs(qapp) == 0

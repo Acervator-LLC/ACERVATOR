@@ -173,6 +173,47 @@ class InstanceConsentDialog(QtWidgets.QDialog):
         super().reject()
 
 
+def release_dialog(dialog: Optional[InstanceConsentDialog]) -> None:
+    """Destroy the dialog now. Never with `deleteLater()`.
+
+    MEASURED 2026-08-23, PySide6 on Windows and on the offscreen plugin.
+    Three cases, one line of output each:
+
+        parentless dialog, Python reference dropped     0 alive
+        deleteLater() first, then reference dropped     1 alive
+        after sendPostedEvents(None, DeferredDelete)    0 alive
+
+    `deleteLater()` MOVES OWNERSHIP FROM PYTHON TO C++. The object then
+    waits for a `DeferredDelete` event, and `QApplication.processEvents()`
+    does not deliver one - only a running event loop or an explicit
+    `sendPostedEvents(None, DeferredDelete)` does. A dialog "cleaned up"
+    that way therefore OUTLIVES the call that made it and stays in
+    `QApplication.topLevelWidgets()`, where anything that walks that list
+    picks it up. The cleanup call is what causes the leak.
+
+    `setParent(None)` hands ownership back to Python, so the widget dies
+    with the last reference to it, deterministically and with no event
+    loop involved.
+
+    `WA_DeleteOnClose` IS DELIBERATELY NOT SET ON THIS DIALOG. `exec()`
+    returns and the caller must still read `consented`. Deleting on close
+    would destroy the C++ object when the operator dismisses the dialog
+    with the window X - one of the two safe answers - and the read after
+    it would raise `RuntimeError: Internal C++ object already deleted`.
+    The owner destroys the dialog after it has the answer, which is this
+    function, called after the answer is already in a local.
+    """
+    if dialog is None:
+        return
+    try:
+        dialog.close()
+        dialog.setParent(None)
+    except RuntimeError as exc:
+        # The C++ object is already gone. Nothing is left to release, and
+        # the answer was read before this call, so this cannot lose one.
+        logger.debug("instance consent dialog was already destroyed: %s", exc)
+
+
 def ask_for_consent(decision: GuardDecision,
                     parent: Optional[QtWidgets.QWidget] = None) -> bool:
     """Show the dialog and return True only on an explicit grant.
@@ -180,17 +221,28 @@ def ask_for_consent(decision: GuardDecision,
     Any failure to display returns False. A consent surface that cannot
     be drawn has collected no consent, and the caller must treat that
     exactly as a refusal.
+
+    THE ORDER OF THE LAST THREE STEPS IS THE CONTRACT. The answer is read
+    into a local FIRST, the dialog is destroyed SECOND, and the local is
+    returned THIRD. Any other order reads a widget that may already be
+    gone. This function owns the dialog for its whole life and leaves
+    nothing behind: before this, the dialog was parented to the main
+    window and stayed attached to it, hidden, for the rest of the session.
     """
+    dialog: Optional[InstanceConsentDialog] = None
     try:
         dialog = InstanceConsentDialog(decision, parent=parent)
         dialog.exec()
+        granted = bool(dialog.consented)
     except Exception as exc:  # noqa: BLE001 - a broken dialog means no consent
         logger.error(
             "instance consent dialog could not be shown (%s). Treating "
             "this as a refusal: no bot starts without a surface the "
             "operator can read.", exc)
-        return False
-    return bool(dialog.consented)
+        granted = False
+    finally:
+        release_dialog(dialog)
+    return granted
 
 
 _STYLE_SHEET = (
