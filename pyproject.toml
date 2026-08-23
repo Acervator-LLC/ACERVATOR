@@ -91,18 +91,25 @@ skip_covered = false
 output = "qa_baselines/coverage_current.json"
 show_contexts = false
 
-# Issue #69 - the [tool.mutmut] block is gone. Measured 2026-08-22: its
-# `runner` named `tests/test_verify_buy_safe_helper.py` and
-# `tests/test_mem228_buy_confirmation_gate.py`. Neither file is in the
-# tree, and pytest exits 4 on a missing path. mutmut reads any non-zero
-# exit as "mutant killed", so `python -m mutmut run` reported every
-# mutant killed while it ran zero tests. The pinned baseline
-# (`qa_baselines/mutation_baseline.json`), its reader
-# (`tests/test_mutation_baseline.py`) and `tools/mutation_runner.py` are
-# not in the tree either. Nothing exercises `src/trading/buy_safety.py`
-# directly, so there is no honest runner to name. Writing one is a
-# separate unit. Inventing one to satisfy this config would be worse
-# than deleting it.
+# Issue #69 - the [tool.mutmut] block is gone. It could not run, for two
+# independent reasons, both measured 2026-08-22.
+#
+# 1. mutmut 3.5.0 refuses this platform. `python -m mutmut run` prints
+#    "To run mutmut on Windows, please use the WSL" and exits 1 at
+#    import (mutmut/__main__.py, lines 8-10). It never reads this
+#    config.
+# 2. Its `runner` named `tests/test_verify_buy_safe_helper.py` and
+#    `tests/test_mem228_buy_confirmation_gate.py`. Those files are not
+#    in the tree, and `git log` over all 107 commits shows no commit
+#    ever added them. That command exits 4.
+#
+# The pinned baseline (`qa_baselines/mutation_baseline.json`), its
+# reader (`tests/test_mutation_baseline.py`) and `tools/mutation_runner
+# .py` are not in the tree either, and were never added by any commit.
+# So no number in this repository rests on this block. Nothing exercises
+# `src/trading/buy_safety.py` directly, so there is no honest runner to
+# name. Writing one is a separate unit. Inventing one to satisfy this
+# config would be worse than deleting it.
 
 # v3.19.14 — Vulture configuration. The four remaining findings after
 # v3.19.12's cleanup are all function/callback parameter signatures

@@ -27,15 +27,24 @@ They fall into three classes, and the class decides the repair:
              ``docs/``, a whole ``logs/`` subtree and 9 modules under
              ``src/`` that are not there.
 
-  VACUOUS    ``[tool.mutmut] runner`` named two test files that are not
-             in the tree. pytest exits 4 on a missing path, and mutmut
-             reads any non-zero exit as "mutant killed". A mutation run
-             would report every mutant killed while it ran zero tests.
-             Nothing else read a qa_baselines file: the two tests the
+  DEAD       ``[tool.mutmut]`` described a mutation-testing capability
+             the tree does not have. It could not run, for two
+             independent reasons. mutmut 3.5.0 refuses this platform:
+             ``python -m mutmut run`` prints "To run mutmut on Windows,
+             please use the WSL" and exits 1 at import, before it reads
+             any config. Separately, its ``runner`` named
+             ``tests/test_verify_buy_safe_helper.py`` and
+             ``tests/test_mem228_buy_confirmation_gate.py``, and that
+             command exits 4 because neither file is in the tree.
+             Nothing read a qa_baselines file either: the two tests the
              config said would read one
              (``tests/test_coverage_floor.py``,
-             ``tests/test_mutation_baseline.py``) are not in the tree
-             either. The config claimed a guard that never existed.
+             ``tests/test_mutation_baseline.py``) are not in the tree.
+             So the baselines were never load-bearing, and no number in
+             the suite rests on them. ``git log`` over all 107 commits
+             shows that no commit ever added any of these paths. They
+             are not deleted files. They are references that never had
+             a referent in this repository.
 
 WHY A GUARD AND NOT A CLEANUP
 =============================
