@@ -63,7 +63,9 @@ source. It belongs in additional_items.
 - **`ACERVATOR_DEV_1_BACKUP_2026-05-20.jsonl`** — 62.89 MB of the 63.87 MB
   of root files. A May transcript backup. Because root files go in BOTH
   archives, including it costs ~126 MB across the pair.
-- any existing island directory under the scratchpad
+- any clone or `git worktree` under the scratchpad. Islands are retired
+  (issue #67), so an island directory is no longer one of the shapes; a
+  unit's branch checkout is
 
 **A root-level file over ~5 MB is almost certainly a mistake.** Check the
 root file list by size before building; the legitimate ones are all under

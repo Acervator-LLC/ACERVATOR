@@ -301,7 +301,7 @@ textually reversing your own edit is fragile, and it failed twice on 2026-08-15.
 | failure | cost |
 |---|---|
 | the reversal span ended one line short of a counter write, so the twin raised `NameError` | **27 money controls went red on a fault in the RECONSTRUCTION, not the code** |
-| a helper mapped every citation-shaped `file.py:NNNN` token instead of only self-citations, shifting 16 that named OTHER files | the island gate went red and BLOCKED a sound, fully-proven repair |
+| a helper mapped every citation-shaped `file.py:NNNN` token instead of only self-citations, shifting 16 that named OTHER files | the gate went red and BLOCKED a sound, fully-proven repair |
 
 **Both reds were false, and both cost a full unit to diagnose.** Neither said anything about
 the code under test.
@@ -318,7 +318,7 @@ arithmetic, no token mapping, nothing to drift as the file grows.
   the tests assume. Read the log; do not guess a hash.
 - **THE TWIN MUST STILL DISCRIMINATE.** A twin that is byte-perfect and that no control can
   fail against proves nothing. Show the controls going RED on the twin and GREEN on the
-  island. That is the two-sided control applied to the control itself.
+  branch. That is the two-sided control applied to the control itself.
 
 **AND ASK WHAT THE TEST IS FOR.** "My reconstruction equals the pre-change file" only ever
 guarded the reconstruction. Once the twin comes from git that assertion is trivially true,

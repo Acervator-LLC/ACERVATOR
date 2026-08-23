@@ -113,9 +113,14 @@ _MODULE_RE = re.compile(r"\bdev_harness\.harness\.[A-Za-z_][A-Za-z0-9_.]*")
 # allowance that outlives its file widens the check in silence. The
 # sibling test test_the_named_exceptions_still_exist guards against that
 # same fault for _ALLOWED_EXACT.
+#
+# Issue #67 dropped a fourth entry, "tools/.island_ledger.jsonl", for the
+# same reason. The island tool was retired and its ledger was deleted, so
+# the entry named nothing. It also never earned its place: the ledger held
+# ZERO occurrences of the old path, measured before the deletion, so
+# removing the allowance changes no verdict here.
 _OLD_PATH_RE = re.compile(r"tools[./]harness")
-_HISTORY = ("docs/audits", "docs/harness_archive", "CHANGELOG.md",
-            "tools/.island_ledger.jsonl")
+_HISTORY = ("docs/audits", "docs/harness_archive", "CHANGELOG.md")
 
 # Two sets name the old path on purpose and stay green.
 #   1. The harness's own prose. Operator law forbids editing an archetype's

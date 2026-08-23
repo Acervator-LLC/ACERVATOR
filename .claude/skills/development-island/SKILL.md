@@ -21,9 +21,12 @@ imitate, and it does it better, with real history.
 | `.island_ledger.jsonl`, 56 entries | commit history |
 | declared touch-set at fork | `dev_harness/touchset.py`, which still exists |
 
-`tools/island.py` and the **32 tests** in
-`tests/test_island_promotion_refuses_stale.py` remain on disk. Retiring the tool
-is its own unit; deleting it today takes the gate red for no gain.
+**THE TOOL IS DELETED.** Issue #67, 2026-08-22, removed `tools/island.py`,
+`tools/.island_ledger.jsonl` and the 31 test functions (102 collected tests) in
+`tests/test_island_promotion_refuses_stale.py`.
+`tests/test_island_machinery_stays_retired.py` fails if any of them return.
+Recover the ledger from git if you need it:
+`git show 905c9b0:tools/.island_ledger.jsonl`.
 
 ## THE LAW, RESTATED FOR GIT
 

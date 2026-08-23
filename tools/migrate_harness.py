@@ -30,10 +30,14 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent.parent
 CLAUDE_PROJECTS = pathlib.Path.home() / ".claude" / "projects"
 
-# Repo-relative files that are NOT reachable by `island promote` and so never
-# travel on their own. Add to this list rather than remembering them. Issue #84
-# moved touchset out of tools/, so these are whole paths, not bare names.
-LOOSE_TOOLS = ("tools/queue_state.py", "tools/island.py",
+# Repo-relative files that live OUTSIDE `.claude/` and so are not carried by
+# step 1. Add to this list rather than remembering them. Issue #84 moved
+# touchset out of tools/, so these are whole paths, not bare names.
+#
+# `tools/island.py` left this list under issue #67, which deleted the file.
+# A missing source is REFUSED by name below, so a stale entry here would
+# have stopped every migration outright.
+LOOSE_TOOLS = ("tools/queue_state.py",
                "dev_harness/touchset.py",
                "tools/emitter_registry_check.py", "tools/migrate_harness.py")
 
@@ -144,7 +148,7 @@ def main() -> int:
     hooks = len(list((HERE / ".claude" / "hooks").glob("*.py")))
     print(f"                       {skills} skills, {hooks} hooks")
 
-    # 2. loose tools that promote never moves.
+    # 2. loose tools that live outside `.claude/`.
     #
     # A missing source used to `continue`. Issue #84 moved touchset.py out
     # of tools/, and under that skip the migration would have dropped it

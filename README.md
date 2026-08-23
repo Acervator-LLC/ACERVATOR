@@ -221,7 +221,7 @@ acervator/
 └── tools/                                    # Repo utilities
     ├── emitter_registry_check.py
     ├── build_release_zip.py
-    └── gate.py · island.py · queue_state.py
+    └── gate.py · queue_state.py · migrate_harness.py
 ```
 
 **Runtime files are not in the tree.** State lives under `~/.acervator/`

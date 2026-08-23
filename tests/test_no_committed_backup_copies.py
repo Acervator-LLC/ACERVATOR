@@ -319,7 +319,7 @@ def test_the_rule_reads_the_last_path_element_only() -> None:
     "test_scrumming_v3.py",
     "test_nuclear_panel_drives_v2.py",
     ".vale.ini",
-    ".island_ledger.jsonl",
+    ".release_ready.json",
     "settings.local.json",
     "acervator.service",
     "Acervator_win.spec",
