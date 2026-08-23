@@ -350,9 +350,18 @@ xcode-select --install
 # Python 3 from python.org (NOT the system stub); 3.12 or 3.13 recommended
 
 # --- Coding quality (deterministic) ---
+# Issue #94 - these two lines used to hand-copy the checker names. They
+# are the `dev` extra in pyproject.toml now, which is the one source.
 pip3 install --upgrade pip
-pip3 install ruff mypy pyright bandit vulture pip-audit
-pip3 install pytest pytest-cov hypothesis mutmut
+pip3 install -e ".[dev]"
+#
+# That extra holds exactly the tools the archetypes spawn: ruff, mypy,
+# bandit, vulture and pyright from
+# dev_harness/harness/coding_archetype.py, proselint from
+# docs_archetype.py, pytest with pytest-asyncio and pytest-xdist, and
+# the types-reportlab stubs. It does NOT hold pip-audit, pytest-cov,
+# hypothesis or mutmut: no file in the repository runs any of them, and
+# pyproject.toml records that mutmut 3.5.0 refuses this platform.
 
 # --- Semgrep + pre-commit ---
 brew install semgrep

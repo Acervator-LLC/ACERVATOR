@@ -114,23 +114,39 @@ pip install -e .
 python main.py
 ```
 
-**Optional extras** — video recording (`opencv-python` or `Pillow`) and PDF
-generation (`reportlab`) are not declared in `pyproject.toml`. Install them by
-hand.
+**Optional extras.** Issue #94 moved these into
+`[project.optional-dependencies]` in `pyproject.toml`, so each one is
+named in that file and nowhere else:
 
-**Minimum install** (if you do not want the editable install):
 ```bash
-pip install PySide6 ccxt cryptography keyring numpy psutil
+pip install -e ".[report]"    # PDF sweep report (reportlab)
+pip install -e ".[video]"     # screen recorder (opencv-python, Pillow)
+pip install -e ".[charts]"    # chart and PDF tokens (matplotlib)
+pip install -e ".[monitor]"   # live monitor HTTP client (httpx)
+pip install -e ".[display]"   # AcervatorOS mini panels (Raspberry Pi)
+pip install -e ".[build]"     # PyInstaller host
+pip install -e ".[dev]"       # ruff, mypy, bandit, vulture, pytest, stubs
 ```
 
-`psutil` is required for Nuclear Mode's `SystemLoadMR` CPU sampling. Without it, Nuclear Mode refuses to start rather than silently reporting zero load (R28 FL / R61 CBF compliance).
+Issue #94 also removed a sixth hand-copied "minimum install" list that
+used to stand here. `psutil` was in it and is now a core dependency: it
+is what Nuclear Mode uses for `SystemLoadMR` CPU sampling, and without
+it `_make_oscillator` caps the load multiplier instead of reporting zero
+load (R28 FL / R61 CBF compliance).
 
 **Video recording options (best to worst):**
 ```bash
-pip install opencv-python      # direct MP4, no temp files
-# OR install system ffmpeg    # 30s rolling MP4 chunks, auto-purge
-# OR pip install Pillow       # animated GIF fallback
+pip install -e ".[video]"      # direct MP4 via opencv-python, no temp files
+# OR install system ffmpeg     # 30s rolling MP4 chunks, auto-purge
+# OR the Pillow in that extra   # animated GIF fallback
 ```
+
+**Where the package names live.** `pyproject.toml` is the only place.
+`build_windows.ps1`, `build_mac.sh`, `BUILD.py`, `os/install.sh` and
+`os/update.sh` each call `python -m tools.deps requirements <consumer>`
+and install what it prints. `requirements/` holds the resolved
+transitive set that `python -m tools.deps lock` produced, one file per
+platform and interpreter.
 ---
 
 ## Project Structure

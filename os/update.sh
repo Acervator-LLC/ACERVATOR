@@ -67,11 +67,17 @@ chown -R acervator:acervator "${INSTALL_DIR}/src"
 ok "Source updated"
 
 # ── Update Python dependencies ────────────────────────────────────────────────
+#
+# Issue #94 - this list used to be hand-copied and it disagreed with
+# os/install.sh, which is the script that created this venv. The names
+# now come from pyproject.toml through tools/deps.py, so the update
+# installs the same set the install did.
 info "Updating Python packages..."
-"${VENV_DIR}/bin/pip" install \
-    PySide6 ccxt cryptography keyring pandas numpy \
-    reportlab aiohttp certifi tomli_w requests \
-    --upgrade --quiet
+DEPS="$("${VENV_DIR}/bin/python3" "${INSTALL_DIR}/src/tools/deps.py" requirements os)" || \
+    fail "Could not read the dependency set from ${INSTALL_DIR}/src/pyproject.toml"
+[[ -n "$DEPS" ]] || fail "Empty dependency set; refusing to update"
+# shellcheck disable=SC2086
+"${VENV_DIR}/bin/pip" install $DEPS --upgrade --quiet
 ok "Dependencies updated"
 
 # ── Show new version ──────────────────────────────────────────────────────────
