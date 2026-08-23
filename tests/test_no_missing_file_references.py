@@ -46,6 +46,52 @@ They fall into three classes, and the class decides the repair:
              are not deleted files. They are references that never had
              a referent in this repository.
 
+WHAT ISSUE #89 MEASURED
+=======================
+The Docker build was retired on 2026-08-22, not repaired. ``Dockerfile``
+and ``docker-compose.yml`` are deleted. Five findings, each one on its
+own sufficient:
+
+  NO SOURCE   The image ran ``cloud/acervator_daemon.py`` and mounted
+              ``cloud/config.json``. Neither ``cloud/`` nor
+              ``RAIntSimBat.py`` is in the tree, and ``git log`` over
+              all 109 commits shows that no commit ever added either
+              one. The build failed at line 21, its first COPY.
+
+  NO ENTRY    The one entry point is ``main:main``. It builds a
+              QApplication and it exits with a message when PySide6 is
+              absent. No headless runner is in the tree. The Dockerfile
+              installed no Qt and said so: "No Qt, no PySide6, no
+              display server needed". So the image could not start the
+              only program this repository has, whatever its
+              dependencies.
+
+  NO SERVER   The HEALTHCHECK polled a /health route on port 8080. No
+              HTTP server, no such route and no --status-port option is
+              in the tree, so the container would report unhealthy for
+              its whole life.
+
+  NO READER   The compose file passed BINANCE_API_KEY, ALPACA_API_KEY,
+              ANTHROPIC_API_KEY and TELEGRAM_BOT_TOKEN. No module reads
+              any of those names. The platform reads its credentials
+              from a user directory, not from the environment.
+
+  NO CALLER   Literal "docker", case-insensitive, over every tracked
+              file hit three: the compose file itself, this test, and
+              two lines in the harness archive. There is no CI (issue
+              #91). Nothing ever built the image.
+
+The deployment this repository does maintain is ``os/`` - AcervatorOS
+on Raspberry Pi OS or Debian. It installs a systemd unit that sets
+DISPLAY and QT_QPA_PLATFORM=xcb, because the program needs a display. A
+container and that unit are two answers to one question, and only one
+of them has code.
+
+Docker is not installed on the machine that made this change: no
+binary, no service, no install directory. So no repaired image could be
+built and proved. A build file that is only believed to build is the
+same false claim in a new coat.
+
 WHY A GUARD AND NOT A CLEANUP
 =============================
 ``docs_archetype`` passed README.md green on 2026-08-22 while that
@@ -83,8 +129,6 @@ SHIPPED = (
     "README.md",
     "CONTRIBUTING.md",
     "DISCLAIMER.md",
-    "Dockerfile",
-    "docker-compose.yml",
 )
 
 # Extensions that make a token a path claim rather than prose.
@@ -122,25 +166,6 @@ ALLOWED: dict[tuple[str, str], str] = {
         "placeholder, not a claim",
     ("CONTRIBUTING.md", "src/your_file.py"):
         "placeholder, not a claim",
-
-    # Issue #89 owns the Docker build. Recorded here, not hidden:
-    # ``cloud/`` is not in the tree, so ``COPY cloud/requirements_cloud
-    # .txt`` fails at the first COPY and the image cannot build. Delete
-    # these entries when #89 lands.
-    ("Dockerfile", "cloud/requirements_cloud.txt"):
-        "issue #89, the Docker build is broken",
-    ("Dockerfile", "requirements_cloud.txt"):
-        "issue #89, the Docker build is broken",
-    ("Dockerfile", "RAIntSimBat.py"):
-        "issue #89, the Docker build is broken",
-    ("Dockerfile", "cloud/acervator_daemon.py"):
-        "issue #89, the Docker build is broken",
-    ("Dockerfile", "cloud/config.json"):
-        "issue #89, the Docker build is broken",
-    ("docker-compose.yml", "./cloud/config.json"):
-        "issue #89, the Docker build is broken",
-    ("docker-compose.yml", "app/cloud/config.json"):
-        "issue #89, a path inside the container",
 
     # Runtime state. ``~/.acervator/bot_state.json`` is written by the
     # running platform and is never in the source tree.
@@ -342,3 +367,75 @@ def test_readme_install_step_names_a_real_dependency_source() -> None:
     assert _pyproject()["project"]["dependencies"], (
         "pyproject.toml declares no dependencies, so `pip install -e .` "
         "installs nothing")
+
+
+# ── Retired Docker build (issue #89) ─────────────────────────────────
+
+RETIRED_DOCKER = ("Dockerfile", "docker-compose.yml")
+
+# A retired deployment must leave no caller behind. These are the parts
+# of the tree the scan does not read, and why each one is out.
+_SCAN_SKIP_PARTS = {
+    ".git",           # object store, not source
+    "__pycache__",    # bytecode
+    ".pytest_cache",  # tool cache
+    ".claude",        # session settings hold past shell command text
+    "build",          # build output
+    "dist",           # build output; vendored keyring metadata says Docker
+}
+_SCAN_SKIP_DIRS = (
+    "docs/audits",          # historical record, kept as written
+    "docs/harness_archive",  # historical record, kept as written
+)
+_SCAN_SKIP_FILES = {
+    "CHANGELOG.md",         # historical record, kept as written
+    Path(__file__).name,    # this file carries the record of the removal
+}
+# Suffixes that make a file source rather than data or an image.
+_SCAN_SUFFIXES = {
+    ".py", ".md", ".toml", ".yml", ".yaml", ".json", ".cfg", ".ini",
+    ".txt", ".sh", ".ps1", ".bat", ".spec", ".service", ".desktop",
+}
+
+
+def _docker_mentions() -> list[str]:
+    """Every line of a live source file that names Docker."""
+    hits: list[str] = []
+    for path in REPO_ROOT.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in _SCAN_SUFFIXES:
+            continue
+        rel = path.relative_to(REPO_ROOT)
+        if set(rel.parts) & _SCAN_SKIP_PARTS or rel.name in _SCAN_SKIP_FILES:
+            continue
+        if any(rel.is_relative_to(skip) for skip in _SCAN_SKIP_DIRS):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        hits += [
+            f"{rel.as_posix()}:{n}: {line.strip()[:70]}"
+            for n, line in enumerate(text.split("\n"), start=1)
+            if "docker" in line.lower()
+        ]
+    return hits
+
+
+def test_retired_docker_build_files_are_gone() -> None:
+    """Issue #89 deleted the Docker build, and it may not return.
+
+    The image copied a directory that no commit ever added, so it could
+    not build; and it excluded the toolkit that the one entry point
+    needs, so it could not run. Restoring either file re-states a claim
+    that no code in this tree can satisfy.
+    """
+    present = [name for name in RETIRED_DOCKER
+               if (REPO_ROOT / name).exists()]
+    assert present == [], (
+        f"issue #89 retired the Docker build; {present} came back")
+
+
+def test_nothing_references_the_retired_docker_build() -> None:
+    """A retired deployment may not keep a caller in a live file.
+
+    Deleting a build file and leaving a script, a document or a config
+    that still calls it moves the false claim instead of ending it.
+    """
+    assert _docker_mentions() == []
