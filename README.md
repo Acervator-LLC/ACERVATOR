@@ -128,11 +128,12 @@ pip install -e ".[build]"     # PyInstaller host
 pip install -e ".[dev]"       # ruff, mypy, bandit, vulture, pytest, stubs
 ```
 
-Issue #94 also removed a sixth hand-copied "minimum install" list that
-used to stand here. `psutil` was in it and is now a core dependency: it
-is what Nuclear Mode uses for `SystemLoadMR` CPU sampling, and without
-it `_make_oscillator` caps the load multiplier instead of reporting zero
-load (R28 FL / R61 CBF compliance).
+Issue #94 also removed a hand-copied "minimum install" list that used to
+stand here, one of the nine it found. Every package it named is a core
+dependency, so `pip install -e .` above already installs all of them.
+`psutil` is one: Nuclear Mode uses it for `SystemLoadMR` CPU sampling,
+and without it `_make_oscillator` caps the load multiplier instead of
+reporting zero load (R28 FL / R61 CBF compliance).
 
 **Video recording options (best to worst):**
 ```bash
@@ -147,6 +148,7 @@ pip install -e ".[video]"      # direct MP4 via opencv-python, no temp files
 and install what it prints. `requirements/` holds the resolved
 transitive set that `python -m tools.deps lock` produced, one file per
 platform and interpreter.
+
 ---
 
 ## Project Structure
