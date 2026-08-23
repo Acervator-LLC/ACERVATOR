@@ -267,6 +267,17 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     report = build_report(root)
+    # A scan that read no file finds no orphan, prints every count as 0
+    # and returns 0 -- including under --strict, where 0 is the pass
+    # verdict. A root that holds no module is therefore REFUSED. The
+    # directory check above does not cover it: an existing but empty
+    # directory passes that check and scans nothing.
+    if not report["files_scanned"]:
+        print(f"no Python file under {root}; nothing was scanned",
+              file=sys.stderr)
+        print("A scan of zero files reports zero orphans and would pass "
+              "--strict.", file=sys.stderr)
+        return 2
     if args.json:
         print(json.dumps(report, indent=2))
     else:

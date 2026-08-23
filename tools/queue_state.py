@@ -145,6 +145,15 @@ GIT_ITEM = 16
 
 def report(only: set[int]) -> int:
     scanned = len(source_files())
+    # A probe over zero files reports 0 hits for every needle and the
+    # run still exits 0. That reads exactly like "every item is open",
+    # which is the one answer this tool must never give by accident. So
+    # an empty scan is REFUSED, and the refusal comes BEFORE the banner.
+    if scanned == 0:
+        print(f"REFUSED: no source files under {ROOT / 'src'}.")
+        print("Every probe would report 0 hits and the exit code would")
+        print("still be 0. That cannot be told apart from an open queue.")
+        return 2
     print(f"queue state, measured from {ROOT.name} over {scanned} source files\n")
     for number, title, probes, how in PROBES:
         if only and number not in only:
