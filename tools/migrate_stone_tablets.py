@@ -1,7 +1,10 @@
-"""migrate_stone_tablets.py — one-shot migration from the retired
-sadp/historical_data/ archive (last shipped in session 71 /
-v3.22.73) into the v3.23.97 registry at
-``~/.acervator/stone_tablets/``.
+"""migrate_stone_tablets.py - one-shot migration of a session archive.
+
+Reads the ``historical_data`` tablet archive that shipped with session
+71 / v3.22.73 and writes it into the v3.23.97 registry at
+``~/.acervator/stone_tablets/``. That archive is not part of this
+repository, so the source directory has no default: give it with
+--source, or set ACERVATOR_TABLET_SOURCE.
 
 Transforms applied per tablet:
     (1) ts_seconds -> ts_milliseconds (multiply by 1000)
@@ -12,9 +15,8 @@ Transforms applied per tablet:
         checksums are regenerated under the new schema
 
 Usage:
-    python -m tools.migrate_stone_tablets \\
-        --source "C:\\path\\to\\session71\\...\\sadp\\historical_data"
-    python -m tools.migrate_stone_tablets --dry-run    (no writes)
+    python -m tools.migrate_stone_tablets --source DIR
+    python -m tools.migrate_stone_tablets --source DIR --dry-run
 """
 from __future__ import annotations
 
@@ -28,15 +30,12 @@ from pathlib import Path
 
 logger = logging.getLogger("acervator.migrate_stone_tablets")
 
-# Default source path — the session71 archive on the operator's
-# desktop where the June 2026 build landed. Overridable via --source.
-_DEFAULT_SRC = Path(
-    os.environ.get("ACERVATOR_TABLET_SOURCE")
-    or (Path(__file__).resolve().parent.parent.parent
-        / "acervator_session71_CLOSE_hop5_v3_22_73"
-        / "acervator_session71_CLOSE_hop5_v3_22_73"
-        / "sadp" / "historical_data")
-)
+# The archive lives outside this repository. There is no built-in
+# default path: a wrong default is worse than none, because it makes
+# the tool report "source dir not found" for a directory the operator
+# never named. ACERVATOR_TABLET_SOURCE supplies it, or --source does.
+_ENV_SRC = os.environ.get("ACERVATOR_TABLET_SOURCE")
+_DEFAULT_SRC = Path(_ENV_SRC) if _ENV_SRC else None
 
 
 def _derive_exchange_id(source_str: str) -> str:
@@ -82,8 +81,11 @@ def _bucket_by_year(rows: list[list[float]]) -> dict[int, list[list[float]]]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, default=_DEFAULT_SRC,
-                        help=f"Source dir (default: {_DEFAULT_SRC})")
+    parser.add_argument(
+        "--source", type=Path, default=_DEFAULT_SRC,
+        required=_DEFAULT_SRC is None,
+        help="Source dir holding the *_5min_ytd.json tablets. "
+             "Defaults to $ACERVATOR_TABLET_SOURCE when that is set.")
     parser.add_argument("--dry-run", action="store_true",
                         help="Report what would migrate; no writes.")
     parser.add_argument("--verbose", action="store_true",

@@ -6,7 +6,7 @@ This is v1 — built by one person. The battery is 39/39 but one person's perspe
 
 1. **Honesty over flattery.** If something doesn't work, say so. Failed experiments are as valuable as successes — the research essay documents both.
 
-2. **Battery first.** Any change to `RAIntSimBat.py` or the trading engine (`run_v3192`) requires a pre/post battery comparison. Run `python RAIntSimBat.py` before your change, save the output, make your change, run it again. Include both results in your PR.
+2. **Gate first.** Any change to the trading engine (`run_v3192` in `src/trading/`) must leave the release gate green. Run `python -m dev_harness.harness.check_release_readiness` before your change, save the `[OK] Release-ready (vX.Y.Z, N tests)` line, make your change, run it again. Put both lines in your PR. A test count that drops without an explanation is a failed run.
 
 3. **Don't break the GUI without fixing it.** GUI changes must not alter widget dimensions outside the changed widget. Check adjacent layout elements before and after.
 
@@ -30,22 +30,27 @@ This is v1 — built by one person. The battery is 39/39 but one person's perspe
 
 1. Fork the repo, create a branch: `git checkout -b feature/your-feature-name`
 2. Make your changes
-3. Run the battery if you touched engine code: `python RAIntSimBat.py`
-4. Include battery results in your PR description if applicable
+3. Run every archetype that matches a file you touched, one file per invocation: `python -m dev_harness.harness.coding_archetype PATH` for Python, `python -m dev_harness.harness.docs_archetype PATH` for Markdown. Each must report `passed=true` with no high or critical finding.
+4. Put the gate line and the archetype verdicts in your PR description
 5. Submit the PR with a clear description of what changed and why
 
 ## Running the Tests
 
 ```bash
-# Full simulation battery (required for engine changes)
-python RAIntSimBat.py
+# The whole suite, the way the gate runs it
+python -m dev_harness.harness.check_release_readiness
 
-# Strategy comparison
-python RAIntSimBat.py RAIntSimBat-COMPARE-FULL
+# One test file while you work
+python -m pytest tests/test_your_file.py -q
 
-# Single asset validation
-python RAIntSimBat.py RAIntSimBat-BTC-USD-2023
+# One file through its archetype (one file per invocation)
+python -m dev_harness.harness.coding_archetype src/your_file.py
+
+# Every runtime pin still has a registry row
+python -m tools.emitter_registry_check
 ```
+
+Do not run pytest with a friendlier invocation than the gate uses. A pass the gate cannot reproduce is not a pass.
 
 ## Questions
 
