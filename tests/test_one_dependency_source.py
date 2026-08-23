@@ -76,15 +76,19 @@ TWO-SIDED CONTROL
 =================
 Driven both ways on 2026-08-23.
 
-    IN THE SUITE  `TestTheInstrumentCanFail` writes a file that holds a
-                  hand-copied list into a temporary directory and
-                  requires the same rule to report it, and writes a
-                  derived call and requires silence. Without the first,
-                  this file would pass because the scan found nothing.
+    IN THE SUITE  `TestTheInstrumentCanFail` drives the rule over nine
+                  shapes and requires a report on four of them: the
+                  exact fourteen-name line issue #94 removed, a
+                  two-name line, a list of packages `pyproject.toml`
+                  does not declare, and a list inside a string literal.
+                  It requires silence on five: a one-name line, a
+                  markdown table row, and the three derived forms the
+                  repaired scripts use. Without the first four, this
+                  file would pass because the scan found nothing.
 
     ON THE REPO   The pre-fix pip line from `build_windows.ps1:28` was
                   written back over the repaired call in the working
-                  tree. Two tests failed and thirteen passed.
+                  tree. Two tests failed and fifteen passed.
                   `test_no_tracked_file_holds_a_dependency_list` named
                   `build_windows.ps1:35` and listed all fourteen
                   packages: pyinstaller, PySide6, ccxt, cryptography,
@@ -95,8 +99,8 @@ Driven both ways on 2026-08-23.
                   the call to the tool. The file was then restored from
                   a copy and kept its sha256, d39d5e874003ca8e5f55c4e1e
                   5bb160b4453ada3bb7a94e45fe53b59953f437b before the
-                  plant and the same after it, and all fifteen tests
-                  passed again.
+                  plant and the same after it, and all seventeen
+                  tests passed again.
 """
 
 from __future__ import annotations
@@ -117,9 +121,14 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 # HISTORICAL RECORDS. These hold what was true when they were written and
 # they may not be edited to satisfy a rule. `docs/audits/` and
 # `docs/harness_archive/` are the session record; `CHANGELOG.md` is the
-# release record. This file also excludes itself and `tools/deps.py`,
-# because both QUOTE the eight removed lists as evidence, and a guard
-# that could not describe what it removed would be unreadable.
+# release record. `requirements/` is excluded because a lock file lists
+# every resolved package by design; that is what a lock file is.
+#
+# This file excludes ITSELF, and nothing else. The controls below hold
+# the exact pre-fix lines as string literals and must trip the rule, so
+# the scan would report this file every run. `tools/deps.py` is NOT
+# excluded: it describes the eight removed lists by file and count and
+# never writes a `pip install` line, and it was measured at zero hits.
 EXCLUDED_PREFIXES: tuple[str, ...] = (
     "docs/audits/",
     "docs/harness_archive/",
@@ -127,7 +136,6 @@ EXCLUDED_PREFIXES: tuple[str, ...] = (
 )
 EXCLUDED_FILES: tuple[str, ...] = (
     "CHANGELOG.md",
-    "tools/deps.py",
     "tests/test_one_dependency_source.py",
 )
 
@@ -152,9 +160,22 @@ EXTRA_INSTALL_WORDS: frozenset[str] = frozenset({
 })
 
 # A line that installs. Any of pip, pip3, or `python -m pip`.
+#
+# The character class before the command carries a quote as well as
+# whitespace. A first version did not, and it read the planted line in
+# `test_the_rule_reports_the_removed_windows_line` below as no match,
+# because a double quote sat in front of `pip`. A list inside a string
+# literal is still a list, and a script that built its pip argv as a
+# string would have slipped through. That is also why `tools/deps.py`
+# and this file are in EXCLUDED_FILES: with the quote in the class,
+# both of them now trip their own rule on the evidence they quote.
 _PIP_INSTALL = re.compile(
-    r"""(?:^|[\s;&|(])(?:pip3?|python3?\s+-m\s+pip)\s+install\b""",
+    r"""(?:^|[\s;&|("'`])(?:pip3?|python3?\s+-m\s+pip)\s+install\b""",
     re.IGNORECASE)
+
+# Where an install command ends. Everything after this is prose, another
+# cell of a markdown table, or another command.
+_COMMAND_END = re.compile(r"""[`"'|;&#)]""")
 
 # The derived forms. A line that installs is allowed only when it takes
 # its names from the one source instead of naming them.
@@ -272,14 +293,30 @@ def hand_copied_list(line: str, words: set[str]) -> tuple[str, ...]:
     Try: pip install ccxt", and `CCXT` and `ccxt` are two tokens and one
     package. `os/install.sh:205` and two more files pair `ST7789` with
     `st7789` the same way.
+
+    Only the text INSIDE the install command is counted. A second
+    attempt counted the whole line and reported two more false hits, in
+    a markdown table where one cell installs a package and the next
+    cell talks about another: `.claude/skills/acervator/SKILL.md:161`
+    reads "| `pip install pyright` | alternative type checker; often
+    finds what mypy misses |". One package is installed there and two
+    are named. The slice ends at the first character that closes a
+    command: a backtick, a quote, a pipe, a semicolon, an ampersand, a
+    comment mark or a closing bracket.
+
+    `_DERIVED` is still measured on the WHOLE line, because
+    `pip install -e ".[dev]"` carries its marker inside a quote and the
+    slice would cut it off.
     """
-    if not _PIP_INSTALL.search(line):
+    match = _PIP_INSTALL.search(line)
+    if match is None:
         return ()
     if _DERIVED.search(line):
         return ()
+    arguments = _COMMAND_END.split(line[match.end():], maxsplit=1)[0]
     ordered: list[str] = []
     seen: set[str] = set()
-    for token in re.split(r"[^A-Za-z0-9_.\-]+", line):
+    for token in re.split(r"[^A-Za-z0-9_.\-]+", arguments):
         if not token:
             continue
         name = normalise(token)
@@ -539,6 +576,22 @@ class TestTheInstrumentCanFail:
         names = hand_copied_list(
             "pip3 install requests pillow --quiet", install_words())
         assert names == ("requests", "pillow"), names
+
+    def test_the_rule_reports_a_list_inside_a_string_literal(self) -> None:
+        """A script that builds its pip argv as a string still holds a list."""
+        names = hand_copied_list(
+            'cmd = "pip install PySide6 ccxt"', install_words())
+        assert names == ("PySide6", "ccxt"), names
+
+    def test_the_rule_stays_quiet_on_a_markdown_table_row(self) -> None:
+        """One cell installs one package; the next cell names another.
+
+        `.claude/skills/acervator/SKILL.md:161` is this shape. Counting
+        the whole line reported it, and it is not a list.
+        """
+        row = ("| **Pyright** | `pip install pyright` | alternative type "
+               "checker; often finds what mypy misses |")
+        assert hand_copied_list(row, install_words()) == ()
 
     def test_the_rule_stays_quiet_on_one_name(self) -> None:
         """One name is a sentence about a package, not a list."""
