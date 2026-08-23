@@ -101,6 +101,50 @@ Driven both ways on 2026-08-23.
                   5bb160b4453ada3bb7a94e45fe53b59953f437b before the
                   plant and the same after it, and all seventeen
                   tests passed again.
+
+ISSUE #92 - A BLIND SPOT IN CONTRACT 3
+======================================
+Measured 2026-08-23 in a clone at commit 5613bd1, the commit that
+merged issue #94. This file passed, and the suite stood at 7388 tests,
+while `contracts/deploy.py` imported three undeclared third-party
+packages: web3 at line 82, eth_account at line 83 and solcx at line 54.
+
+The cause was `PRODUCT_ROOTS`, which read ("src", "tools", "os").
+`contracts` was already in FIRST_PARTY, so an import OF that package
+was correctly skipped, but no walk ever ENTERED the directory, so the
+imports it MADE were never read. The tuple named the trees to read,
+FIRST_PARTY named the trees that are ours, and the two disagreed.
+
+Contract 1 missed the same file for a second and independent reason.
+Its word set is read out of pyproject.toml at run time, so a list of
+packages the one source has never heard of scores zero known words and
+cannot reach the floor of two. `contracts/deploy.py:8` read
+"pip install web3 eth-account py-solc-x" and the rule stayed silent.
+That blind spot closed as a CONSEQUENCE of the declaration, and not by
+a change to the rule. Measured in order, in the same clone:
+
+    1. `contracts` added to PRODUCT_ROOTS, nothing declared.
+       `test_no_third_party_import_is_undeclared` FAILED and named
+       eth_account, solcx and web3, each at contracts/deploy.py.
+       16 passed.
+    2. The file was restored from a copy and kept its sha256,
+       5921733f5042278481c2718c00a72211e910683baf18cf81ce564adbe829ec4a
+       before the plant and the same after it. 17 passed.
+    3. The `contracts` extra declared in pyproject.toml and the repair
+       applied. `test_no_third_party_import_is_undeclared` passed, and
+       `test_no_tracked_file_holds_a_dependency_list` FAILED with
+       "contracts/deploy.py:8 names ['web3', 'eth-account',
+       'py-solc-x']" - the SAME line, now visible, because the three
+       names had entered `install_words()`. 16 passed.
+    4. That docstring line replaced with the derived form, and
+       `install_deps()` removed. 17 passed, then 21 with the four
+       controls in `TestTheWalkReachesTheContractsTree` below.
+
+`src/competition/` was checked and is NOT part of this. Issue #92 says
+it needs web3, eth-account and py-solc-x. An AST walk over all ten of
+its modules finds one third-party import, `cryptography` at
+src/competition/bot_identity.py:34 and :36, and that has always been a
+core dependency. Nothing was declared for it.
 """
 
 from __future__ import annotations
@@ -201,6 +245,11 @@ IMPORT_TO_DISTRIBUTION: dict[str, str] = {
     "luma": "luma.oled",
     "ST7789": "st7789",
     "tomli": "tomli",
+    # Issue #92. `pip install eth_account` and `pip install solcx` both
+    # fail; the distributions are `eth-account` and `py-solc-x`. Without
+    # these two rows contract 3 would report a package that is declared.
+    "eth_account": "eth-account",
+    "solcx": "py-solc-x",
 }
 
 # Third-party imports the product tree makes that no consumer installs,
@@ -219,7 +268,29 @@ UNDECLARED_ON_PURPOSE: frozenset[str] = frozenset({"tomli", "ST7789"})
 # beside `main.py`, and two of those, `generate_essay_ja.py` and
 # `generate_essay_localized.py`, import reportlab. A walk that read only
 # `src/` would call reportlab unimported and would report the wrong set.
-PRODUCT_ROOTS: tuple[str, ...] = ("src", "tools", "os")
+# Issue #92 REPAIRED A BLIND SPOT HERE. This tuple read
+# ("src", "tools", "os"). `contracts` was in FIRST_PARTY above, so an
+# import OF it was skipped, but no walk ever entered it, so the imports
+# it MAKES were never read. `contracts/deploy.py` imported web3,
+# eth_account and solcx, none of them declared, and contract 3 passed
+# on 2026-08-23 at 7388 tests while it did.
+#
+# Contract 1 missed the same file for a second and independent reason.
+# Its word set is READ from pyproject.toml, so a list of packages the
+# one source has never heard of names zero known words and cannot reach
+# the floor of two. `contracts/deploy.py:8` read
+# "pip install web3 eth-account py-solc-x" and scored nothing. That
+# blind spot closes as a CONSEQUENCE of declaring the three packages,
+# not by a change to the rule: the moment pyproject.toml names them
+# they enter `install_words()`. This file does not widen the rule to
+# guess at unknown package names, because a guess would report every
+# `pip install` in every document.
+#
+# The rule this tuple now follows: every root named in FIRST_PARTY that
+# is a directory in the tree is walked. `tests` and `dev_harness` stay
+# out because neither ships, and `acervator_watchdog` is a file at the
+# root, already covered by the `*.py` glob below.
+PRODUCT_ROOTS: tuple[str, ...] = ("src", "tools", "os", "contracts")
 
 
 # ---------------------------------------------------------------------------
@@ -371,10 +442,17 @@ def scan_for_lists(paths: list[str], words: set[str]) -> list[str]:
 # The import inventory
 # ---------------------------------------------------------------------------
 
-def product_python_files() -> list[Path]:
-    """Every Python file in the product tree. Never an empty answer."""
+def product_python_files(
+        roots: tuple[str, ...] = PRODUCT_ROOTS) -> list[Path]:
+    """Every Python file in the product tree. Never an empty answer.
+
+    `roots` is a parameter and not a constant read, so that
+    `TestTheWalkReachesTheContractsTree` below can drive this walk with
+    the pre-issue-92 tuple and measure what that tuple missed. A control
+    that cannot run the broken version proves nothing about the repair.
+    """
     files = sorted(REPO_ROOT.glob("*.py"))
-    for root in PRODUCT_ROOTS:
+    for root in roots:
         directory = REPO_ROOT / root
         if directory.is_dir():
             files.extend(sorted(directory.rglob("*.py")))
@@ -383,10 +461,11 @@ def product_python_files() -> list[Path]:
     return files
 
 
-def top_level_imports() -> dict[str, list[str]]:
+def top_level_imports(
+        roots: tuple[str, ...] = PRODUCT_ROOTS) -> dict[str, list[str]]:
     """Map each imported top-level module to the files that import it."""
     found: dict[str, list[str]] = {}
-    for path in product_python_files():
+    for path in product_python_files(roots):
         try:
             tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"),
                              filename=str(path))
@@ -407,10 +486,11 @@ def top_level_imports() -> dict[str, list[str]]:
     return found
 
 
-def third_party_imports() -> dict[str, list[str]]:
+def third_party_imports(
+        roots: tuple[str, ...] = PRODUCT_ROOTS) -> dict[str, list[str]]:
     """The imports that are neither standard library nor first party."""
     standard = set(sys.stdlib_module_names)
-    return {name: files for name, files in top_level_imports().items()
+    return {name: files for name, files in top_level_imports(roots).items()
             if name not in standard
             and name not in FIRST_PARTY
             and not name.startswith("_")}
@@ -632,3 +712,77 @@ class TestTheInstrumentCanFail:
         assert len(paths) >= 100, (
             f"the scan read only {len(paths)} tracked files; a rule that "
             "reads nothing reports nothing")
+
+
+# ---------------------------------------------------------------------------
+# Two-sided control for the issue #92 repair
+# ---------------------------------------------------------------------------
+
+class TestTheWalkReachesTheContractsTree:
+    """Drive the import walk with the broken tuple and the repaired one.
+
+    Issue #92. `PRODUCT_ROOTS` read ("src", "tools", "os"). The whole
+    `contracts/` tree was outside every walk, so contract 3 could not
+    see the imports it made. These three tests fail if that tuple ever
+    narrows again, and they fail for a reason a reader can act on: they
+    name the file and the modules, not a count.
+    """
+
+    #: The tuple as it stood before issue #92 repaired it.
+    BROKEN_ROOTS: tuple[str, ...] = ("src", "tools", "os")
+
+    #: The modules `contracts/deploy.py` imports.
+    CHAIN_MODULES: tuple[str, ...] = ("web3", "eth_account", "solcx")
+
+    def test_the_old_tuple_missed_all_three_chain_modules(self) -> None:
+        """The NEGATIVE side. Without the repair the walk sees nothing."""
+        seen = third_party_imports(self.BROKEN_ROOTS)
+        found = [name for name in self.CHAIN_MODULES if name in seen]
+        assert not found, (
+            f"the pre-issue-92 roots {self.BROKEN_ROOTS} now reach "
+            f"{found}. This control no longer measures the blind spot it "
+            "was written for; re-derive it before deleting it.")
+
+    def test_the_repaired_tuple_finds_all_three_chain_modules(self) -> None:
+        """The POSITIVE side. With the repair the walk reports each one."""
+        seen = third_party_imports()
+        missing = [name for name in self.CHAIN_MODULES if name not in seen]
+        assert not missing, (
+            f"the import walk did not reach {missing} in contracts/. "
+            f"PRODUCT_ROOTS is {PRODUCT_ROOTS}; `contracts` must stay in "
+            "it or contract 3 goes blind to that tree again.")
+        assert "contracts/deploy.py" in seen["web3"], seen["web3"]
+
+    def test_each_chain_module_maps_to_its_declared_distribution(self) -> None:
+        """The import name is not the package name for two of the three.
+
+        `pip install eth_account` and `pip install solcx` both fail. Only
+        `eth-account` and `py-solc-x` resolve. Contract 3 compares the
+        DISTRIBUTION name, so a missing row in IMPORT_TO_DISTRIBUTION
+        would report a package that pyproject.toml declares.
+        """
+        declared = declared_distributions()
+        for module in self.CHAIN_MODULES:
+            distribution = IMPORT_TO_DISTRIBUTION.get(module, module)
+            assert normalise(distribution) in declared, (
+                f"{module} maps to {distribution}, which pyproject.toml "
+                f"does not declare. Declared: {sorted(declared)}")
+
+    def test_the_contracts_extra_installs_no_other_package(self) -> None:
+        """The extra is opt-in and must stay small.
+
+        A default Acervator install must not pull a chain client. This
+        fails if `contracts` ever grows beyond the three packages
+        `contracts/deploy.py` imports.
+        """
+        extras = read_extras()
+        assert "contracts" in extras, (
+            "pyproject.toml no longer declares the `contracts` extra; "
+            "issue #92 added it for contracts/deploy.py")
+        names = {normalise(req) for req in extras["contracts"]}
+        assert names == {"web3", "eth-account", "py-solc-x"}, names
+        core = {normalise(req) for req in read_project()["dependencies"]}
+        assert not (names & core), (
+            f"a chain package reached the core dependency list: "
+            f"{sorted(names & core)}. contracts/deploy.py is imported by "
+            "no file and collected by no build; it must stay opt-in.")

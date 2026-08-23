@@ -66,12 +66,22 @@ REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 #           `os/install.sh` installs them with failure tolerated: a Pi
 #           with no panel is a supported machine.
 #   dev     the checkers the archetypes spawn, and the type stubs.
+#   contracts
+#           issue #92. The Base-chain deployment CLI,
+#           `contracts/deploy.py`. No build script and no install
+#           script asks for it, and none should: nothing in the
+#           product imports that file. The consumer exists so that an
+#           operator preparing a deployment has one derived command
+#           instead of a list to copy, which is the whole subject of
+#           issue #94.
 CONSUMER_EXTRAS: dict[str, tuple[str, ...]] = {
     "build": ("build", "report"),
     "os": ("report",),
     "display": ("display",),
     "dev": ("dev",),
-    "all": ("report", "video", "charts", "monitor", "display", "build", "dev"),
+    "contracts": ("contracts",),
+    "all": ("report", "video", "charts", "monitor", "display", "build",
+            "dev", "contracts"),
 }
 
 
