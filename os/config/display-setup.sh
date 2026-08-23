@@ -3,18 +3,31 @@
 #  AcervatorOS — Display and Auto-Login Setup
 #  Configures X11 + Openbox for fullscreen kiosk mode.
 #  Acervator starts automatically on boot, full-screen, no window chrome.
+#
+#  Usage:
+#    display-setup.sh <user> <install_dir> <venv_dir> [--dry-run]
 # =============================================================================
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=../lib/common.sh
+source "${SCRIPT_DIR}/../lib/common.sh"
+
 ACERVATOR_USER="${1:?Usage: display-setup.sh <user> <install_dir> <venv_dir>}"
 INSTALL_DIR="${2:?}"
 VENV_DIR="${3:?}"
+shift 3
+
+for arg in "$@"; do
+    [[ "$arg" = "--dry-run" ]] && ACERVATOR_DRY_RUN=true
+done
 
 HOME_DIR="/home/${ACERVATOR_USER}"
 
 # ── LightDM auto-login ────────────────────────────────────────────────────────
-cat > /etc/lightdm/lightdm.conf << LIGHTDM
+acervator_write_file /etc/lightdm/lightdm.conf << LIGHTDM
 [Seat:*]
 autologin-user=${ACERVATOR_USER}
 autologin-user-timeout=0
@@ -25,9 +38,9 @@ xserver-command=X -nocursor
 LIGHTDM
 
 # ── Openbox config ────────────────────────────────────────────────────────────
-mkdir -p "${HOME_DIR}/.config/openbox"
+acervator_run mkdir -p "${HOME_DIR}/.config/openbox"
 
-cat > "${HOME_DIR}/.config/openbox/rc.xml" << 'OPENBOX_RC'
+acervator_write_file "${HOME_DIR}/.config/openbox/rc.xml" << 'OPENBOX_RC'
 <?xml version="1.0" encoding="UTF-8"?>
 <openbox_config xmlns="http://openbox.org/3.4/rc">
   <resistance><strength>10</strength><screen_edge_strength>20</screen_edge_strength></resistance>
@@ -64,7 +77,7 @@ cat > "${HOME_DIR}/.config/openbox/rc.xml" << 'OPENBOX_RC'
 OPENBOX_RC
 
 # ── Openbox autostart ─────────────────────────────────────────────────────────
-cat > "${HOME_DIR}/.config/openbox/autostart" << AUTOSTART
+acervator_write_file "${HOME_DIR}/.config/openbox/autostart" << AUTOSTART
 # AcervatorOS openbox autostart
 
 # Hide cursor after 2 seconds of inactivity
@@ -83,25 +96,25 @@ ${VENV_DIR}/bin/python3 ${INSTALL_DIR}/src/main.py &
 AUTOSTART
 
 # ── .xinitrc fallback (if LightDM not used) ──────────────────────────────────
-cat > "${HOME_DIR}/.xinitrc" << XINITRC
+acervator_write_file "${HOME_DIR}/.xinitrc" << 'XINITRC'
 #!/bin/bash
 exec openbox-session
 XINITRC
 
 # ── .bash_profile auto-startx (if autologin via getty without LightDM) ────────
-cat > "${HOME_DIR}/.bash_profile" << PROFILE
+acervator_write_file "${HOME_DIR}/.bash_profile" << 'PROFILE'
 # AcervatorOS — auto-start display on tty1
-[[ -z "\${DISPLAY}" && "\${XDG_VTNR}" -eq 1 ]] && exec startx
+[[ -z "${DISPLAY}" && "${XDG_VTNR}" -eq 1 ]] && exec startx
 PROFILE
 
 # ── Permissions ───────────────────────────────────────────────────────────────
-chown -R "${ACERVATOR_USER}:${ACERVATOR_USER}" \
+acervator_run chown -R "${ACERVATOR_USER}:${ACERVATOR_USER}" \
     "${HOME_DIR}/.config" \
     "${HOME_DIR}/.xinitrc" \
     "${HOME_DIR}/.bash_profile"
 
 # ── Enable LightDM ────────────────────────────────────────────────────────────
-systemctl enable lightdm 2>/dev/null || true
+acervator_run systemctl enable lightdm 2>/dev/null || true
 
 echo "  ✓ Display configured — fullscreen kiosk mode on next boot"
 echo "  ✓ Auto-login: ${ACERVATOR_USER} → openbox → Acervator"

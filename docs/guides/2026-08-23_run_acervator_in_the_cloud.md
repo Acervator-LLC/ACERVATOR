@@ -167,7 +167,7 @@ I was told that `ExecStart` in the service unit points at a `main.py`
 inside a `src` folder, that no such file exists in your tree, and that
 this is a defect. I checked, and **that claim is wrong**. [TREE]
 
-`os/install.sh:225-235` copies the whole repository into
+`os/install.sh:289` copies the whole repository into
 `/opt/acervator/src/`. The repository root, which holds `main.py`,
 therefore lands at `/opt/acervator/src/`. The unit's
 `ExecStart=__VENV_DIR__/bin/python3 __INSTALL_DIR__/src/main.py`
@@ -182,40 +182,59 @@ that works.
 
 This one is real, and it blocks everything. [TREE]
 
-`os/install.sh` sets `set -euo pipefail` at line 24. The `-u` option
+Every line number in this section describes the tree BEFORE the issue
+#88/#95 repair, at commit d3cfe99. The repair moved the assignment, so
+the numbers no longer point at what they describe.
+
+`os/install.sh` set `set -euo pipefail` at line 24. The `-u` option
 makes the shell exit when it expands a variable that has no value.
 
-The script uses `SCRIPT_DIR` at lines 249, 252 and 253. It assigns
+The script used `SCRIPT_DIR` at lines 249, 252 and 253. It assigned
 `SCRIPT_DIR` at line 260.
 
 I tested the exact shell behaviour rather than assume it. Under
 `set -u`, an unset variable ends the script immediately, and a trailing
-`|| true` does **not** rescue it. `os/install.sh` therefore exits at line 249.
+`|| true` does **not** rescue it. `os/install.sh` therefore exited at
+line 249.
 
-Everything after line 249 never runs. That includes the systemd
+Everything after line 249 never ran. That included the systemd
 service, the VNC configuration, the firewall, and the time
-synchronisation setup. The installer, as committed, does not finish.
+synchronisation setup. The installer, as committed at d3cfe99, did not
+finish.
 
-The repair is one line: move the `SCRIPT_DIR` assignment above line
-249. I am not permitted to make code changes in this unit, so I record
-it here for the queue.
+**REPAIRED.** Issue #88/#95 moved the `SCRIPT_DIR` assignment to the
+top of the file, above every use.
+`tests/test_os_installer_suite.py` now fails when ANY variable in the
+`os/` suite appears above its first assignment. That guards the defect
+class, and not only this one instance.
 
 ### Defect two: the installer demands a Python that Debian does not ship
 
-`os/install.sh:163` runs `python3.12 -m venv`, and line 105 asks apt for
-a `python3.12` package. The file header names Debian 12, Raspberry Pi OS
+At commit d3cfe99, `os/install.sh:163` ran `python3.12 -m venv`, and
+line 105 asked apt for a `python3.12` package. The file header names Debian 12, Raspberry Pi OS
 Bookworm and Ubuntu 22.04 as targets. [TREE]
 
 Debian 12 ships Python 3.11 and has no `python3.12` package in its
 standard repositories. [WEB] Ubuntu 24.04 LTS ships Python 3.12 and does
 have that package. [WEB]
 
-The installer therefore works on Ubuntu 24.04 and fails on two of the three
-systems its own header names. **Choose Ubuntu 24.04 LTS for the cloud
-machine.** That choice removes the problem instead of working around it.
+The installer therefore worked on Ubuntu 24.04 and failed on two of the
+three systems its own header named.
 
 Your `pyproject.toml` asks only for Python 3.11 or later, so the
-hard-coded 3.12 is stricter than the application needs. [TREE]
+hard-coded 3.12 was stricter than the application needs. [TREE]
+
+**REPAIRED.** Issue #88/#95 removed the version from the package list.
+The installer now asks apt for the unversioned `python3`,
+`python3-venv`, `python3-dev` and `python3-pip`, then checks the
+interpreter it gets against the floor in `pyproject.toml`. Debian 12
+and Raspberry Pi OS Bookworm meet that floor with 3.11. Ubuntu 22.04
+ships 3.10 and does not, and the installer now says so and stops
+instead of failing further on.
+
+**Ubuntu 24.04 LTS is still the recommendation for a cloud machine.**
+It is the newest of the supported targets. The repair means Debian 12
+is no longer excluded.
 
 ### Defect three: the firewall does not open the viewer port
 
@@ -233,13 +252,21 @@ port 22 already permits. The steps below do exactly that. This also
 solves a security problem you would otherwise have, because a VNC port
 open to the internet draws continuous scanning and attack. [WEB]
 
+**REPAIRED.** Issue #88/#95 left the firewall alone and changed the
+advice. `os/install.sh --headless` now prints the tunnel command and
+tells you to bind the VNC server to the loopback interface with
+`-localhost yes`. `os/config/firewall.sh` says in its own header why
+5901 stays shut, and `tests/test_os_installer_suite.py` fails if any
+rule in that file ever opens it.
+
 ### Defect four: the installer omits the library that Qt 6.5 and later demand
 
 This is the failure you would find hardest to diagnose, so read it
 carefully.
 
-`os/install.sh:100-109` lists the Qt support libraries to install. It
-names ten of them. It does **not** name `libxcb-cursor0`. [TREE]
+At commit d3cfe99, `os/install.sh:100-109` listed the Qt support
+libraries to install. It named ten of them. It did **not** name
+`libxcb-cursor0`. [TREE] The list is now at `os/install.sh:130-152`.
 
 From Qt 6.5.0 onward, the `xcb` platform plugin refuses to load without
 that library. The error message is misleading on purpose:
@@ -260,6 +287,10 @@ the affected range. [TREE]
 Without this package the application will not open a window at all. It
 does not matter how correct the rest of your setup is. Install
 `libxcb-cursor0` and the problem disappears.
+
+**REPAIRED.** Issue #88/#95 added `libxcb-cursor0` to the package list.
+`tests/test_os_installer_suite.py` holds the whole set of libraries the
+xcb platform plugin needs and fails if any of them leaves the list.
 
 If a Qt window ever fails to appear, run the application again with
 `QT_DEBUG_PLUGINS=1` set. Qt then prints each plugin it tried and the
@@ -500,12 +531,12 @@ Four reasons, in order of weight.
 
 1. **It keeps your bots alive.** Persistence is the default, not a
    setting you might forget. This is the property you cannot compromise.
-2. **Your own repository already chose it.** `os/install.sh:119`
+2. **Your own repository already chose it.** `os/install.sh:160`
    installs `tigervnc-standalone-server` on the `--headless` path, and
-   lines 289-299 already write a startup file that launches Openbox and
-   then the application. [TREE] You are repairing something that exists
-   rather than building something new. That is a much smaller job, and
-   a much smaller thing to maintain.
+   `os/install.sh:354-361` writes a startup file that launches Openbox
+   and then the application. [TREE] You are repairing something that
+   exists rather than building something new. That is a much smaller
+   job, and a much smaller thing to maintain.
 3. **Your firewall already fits it.** `os/config/firewall.sh` permits
    inbound SSH and nothing else. [TREE] The tunnel needs exactly that
    and nothing more. The firewall was right all along, and only the
@@ -598,21 +629,28 @@ Connect over SSH. Disconnect. Connect again.
 **Why:** every later step depends on this working. Prove it while
 nothing else can be blamed.
 
-### Step 4 — Repair the four installer defects
+### Step 4 — Check the installer before you run it
 
-Before you run `os/install.sh`, fix the four problems named earlier in
-this document:
+The tree now holds a repair for each of the four defects named earlier.
+Confirm that those repairs reached the machine you will install on, and
+see what the installer would do, with one command:
 
-1. Move the `SCRIPT_DIR` assignment above line 249.
-2. Add `libxcb-cursor0` to the package list.
-3. Ignore the printed advice about connecting to port 5901.
-4. Confirm `python3.12` is available, which Ubuntu 24.04 gives you.
+```
+bash os/install.sh --dry-run --headless
+```
 
-**Why:** without repair one the installer stops early. Without repair
-two no window ever opens.
+**Why:** `--dry-run` needs no root and changes nothing. It prints every
+command the installer would run, and then prints
+`DRY RUN finished`. If it stops before that line, do not run the real
+install.
 
-These are code changes, so they belong to a build unit, not to you at a
-keyboard. Raise them as queue items.
+**What to look for in the output:**
+
+1. It reaches sections `5 / 8` through `8 / 8`. Defect one used to stop
+   it at section 4.
+2. The `apt-get install` line names `libxcb-cursor0`.
+3. The `apt-get install` line names `python3` and not `python3.12`.
+4. The VNC advice names an `ssh -L` tunnel and not a public address.
 
 ### Step 5 — Install with the headless option
 
@@ -761,8 +799,8 @@ value.
 
 | Symptom | Most likely cause | What to do |
 |---|---|---|
-| The installer stops early and prints "unbound variable" | Defect one above | Move the `SCRIPT_DIR` line above line 249 |
-| `apt` cannot find `python3.12` | You chose Debian, not Ubuntu 24.04 | Rebuild the machine on Ubuntu 24.04 LTS |
+| The installer stops early and prints "unbound variable" | You are running a copy from before the issue #88/#95 repair | Update the tree, then prove it with `bash os/install.sh --dry-run` |
+| The installer stops and says it needs Python 3.11 or later | Your machine is Ubuntu 22.04, which ships 3.10 | Rebuild the machine on Ubuntu 24.04 LTS, or on Debian 12 |
 | "Could not load the Qt platform plugin xcb ... even though it was found" | `libxcb-cursor0` is missing | Install it, then run again with `QT_DEBUG_PLUGINS=1` if it persists |
 | The service restarts five times and then stops | `DISPLAY` names a screen that does not exist | Point `DISPLAY` at your virtual screen number |
 | The window opens but is cut off | The virtual screen is smaller than the window | The main window demands at least 1400 by 900. Use 1920 by 1080 |
@@ -809,9 +847,13 @@ I list these so you do not mistake my silence for confidence.
 6. **I could not read the Oracle and Akamai policy documents.** Their
    servers refused my requests. What I report about Oracle's policy is
    second-hand.
-7. **I did not test whether `os/install.sh` completes after the
-   defects are repaired.** I proved that it stops. I did not prove that
-   fixing those four things is sufficient. There may be more.
+7. **Nobody has run `os/install.sh` on a real machine.** The issue
+   #88/#95 repair added a `--dry-run` mode, and the dry run does reach
+   the last line of the script on a machine that is not Debian. That
+   proves the CONTROL FLOW completes. It does not prove that
+   `apt-get`, `useradd`, `systemctl` and `ufw` all succeed on a real
+   target, and it does not prove that a window opens. The first person
+   to test that will be you.
 8. **I never opened your credentials.** I did not read
    `~/.acervator/`, and nothing in this guide depends on its contents.
 

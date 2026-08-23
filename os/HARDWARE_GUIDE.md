@@ -65,12 +65,21 @@ scp acervator_v3_4_0.zip pi@acervator.local:~/
 cd ~
 unzip acervator_v3_4_0.zip
 cd acervator
+
+# See what the installer would do, without changing anything:
+bash os/install.sh --dry-run
+
+# Then install for real:
 sudo bash os/install.sh
 ```
 
+`--dry-run` needs no root and touches nothing. It prints every command
+the installer would run, and ends with `DRY RUN finished`. If it stops
+before that line, do not run the real install.
+
 The installer will:
 - Create the `acervator` system user
-- Install Python 3.12 and all dependencies
+- Install Python 3.11 or later, and all dependencies
 - Configure auto-login and fullscreen display
 - Set up the firewall
 - Enable the systemd service
@@ -115,15 +124,28 @@ Run the installer with `--headless`:
 sudo bash os/install.sh --headless
 ```
 
-Then access Acervator from any device on your network:
+Then reach Acervator through an SSH tunnel. **Do not open port 5901.**
+`os/config/firewall.sh` sets a deny-by-default policy and permits
+inbound SSH only, so a viewer pointed straight at `acervator.local:5901`
+cannot connect. A VNC port reachable from a network also draws
+continuous scanning, which is why the port stays shut.
+
+On the Pi, bind the VNC server to the machine itself:
 
 ```bash
-# From Windows: use TigerVNC Viewer or RealVNC Viewer
-# Connect to: acervator.local:5901
-
-# From macOS/Linux:
-vncviewer acervator.local:5901
+vncserver :1 -geometry 1920x1080 -localhost yes
 ```
+
+From your own computer, build the tunnel, then point the viewer at
+your own machine:
+
+```bash
+ssh -L 5901:localhost:5901 pi@acervator.local
+# then connect TigerVNC Viewer or RealVNC Viewer to: localhost:5901
+```
+
+Use 1920 by 1080 or larger. The main window refuses to be smaller than
+1400 by 900, so a smaller screen cuts it off.
 
 Set a VNC password on first run:
 ```bash
