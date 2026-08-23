@@ -4,16 +4,9 @@
 
 > *"Stop predicting. Start accumulating."*
 
-> 🛠️ **Looking for SADP?** The AI development governance harness that this project was built on top of is now packaged for separable adoption.
-> → [`WHY_SADP.md`](WHY_SADP.md) — what SADP is, comparison to other harnesses, how to adopt it
-> → [`sadp/SKILL.md`](sadp/SKILL.md) — Anthropic-Agent-Skills-compatible packaging
-> → [`tools/sadp_init.py`](tools/sadp_init.py) — scaffolder for adopting SADP in a fresh project
->
-> SADP is Apache 2.0. The Acervator trading inventions are NOT inside that grant — see [`NOTICE`](NOTICE) for the boundary.
-
 Built by Anthony L. Brown (Ekthelius the Accumulator). Released to humanity.
 
-**Current version:** `__version__` in [`src/__init__.py`](src/__init__.py) is the one source; this README does not restate it, so it cannot go stale (issue #70). · **SADP:** 1.92 · **Rules:** R1–R76 (R59 reserved) · **Last battery:** 39-simulation historical battery (2020 COVID + 2021 ATH + 2022 bear), 38/39 wins (97.4%), R55 verify-clean 100%. See `sadp/RAIntSimBat/reports/` for current sweep data.
+**Current version:** `__version__` in [`src/__init__.py`](src/__init__.py) is the one source; this README does not restate it, so it cannot go stale (issue #70).
 
 ---
 
@@ -91,20 +84,18 @@ Full methodology and every simulation's numbers: `acervator_product_manual_v3_13
 
 ---
 
-## Structured AI Development Protocol (SADP)
+## Development Harness
 
-Acervator was built using the **Structured AI Development Protocol (SADP)** — a formal methodology for building complex software with an AI co-developer across an indefinite number of sessions. SADP is an independent invention, separate from the trading platform, applicable to any AI-assisted project.
-
-**Current SADP state:** version 1.18, rules R1–R62 (R59 reserved), 154 memory entries, 43 HOP addenda across 4 HOP generations.
+Acervator is built with an AI co-developer under a harness that refuses work rather than trusting it. The harness lives in `dev_harness/`; the rules the operator gives the agent live in `.claude/skills/`.
 
 | Component | Description |
 |-----------|-------------|
-| **Continuity Layer (GHP)** | Structured session handoff. `sadp/ACERVATOR_HOP4.md` + `sadp/NEXT_SESSION_ORDERS.md`. Each new session runs `python3 sadp/hop_open.py [--query \| --proceed]` — six deterministic steps (read SADP / Chronicle / PM / orders / checklist audit / verdict) gated by exit code. |
-| **Governance Layer (R1–R62)** | 62 behavioral rules grouped A–JJ. Each rule encodes a specific failure mode observed in earlier sessions. Includes rules sourced from named SE standards (McCabe 1976, Martin 2002, Nygard 2007, Helland 2012). Recent additions: **R60 QD** (queue discipline, older pre-empts newer), **R61 CBF** (callback boundary fail-loudly — see ADR-012), **R62 FRG** (freshness gate, structural drift detection). |
-| **Administrative Control Layer** | `RULE LOCK / UNLOCK / SUSPEND / RESTORE / STATUS / LIST / AUDIT` command syntax. CORE protection on algorithm invariants. Full audit trail via `sadp/EDIT_LOG.jsonl` and `sadp/EPISODIC_MEMORY.json`. |
-| **Structural Enforcement** | `sadp/CHECKLIST.json` — 14 declarative file-relationship invariants (mtime_gte, byte_identical, version_match, custom). `sadp/checklist.py` runs them; cascade-blocking failures gate hop open and cascade close. `sadp/ARTIFACTS.json` + `sadp/cleanup_outputs.py` manage `/mnt/user-data/outputs/` lifecycle with regen-on-demand. |
+| **Archetypes** | `dev_harness/harness/coding_archetype.py`, `docs_archetype.py`, `gui_archetype.py`, `ta_archetype.py` and `watchdog_archetype.py`. Each one reads a single file and returns `passed` with its findings. `passed=false` is invalid work, and fewer findings than last time is not a pass. |
+| **Rules** | `dev_harness/harness/rules/` — hallucination, numeric-guard, scaffolding and slop detectors that run inside the archetypes. |
+| **Release gate** | `python -m dev_harness.harness.check_release_readiness` runs the suite and prints `[OK] Release-ready (vX.Y.Z, N tests)`. No version banner and no CHANGELOG entry moves before that line appears. |
+| **Emitter registry** | `python -m tools.emitter_registry_check` — every runtime pin in `src/` must have a row, and every row must have a pin. A claim with no emitter behind it is not evidence. |
 
-Key docs: [`sadp/SPEC-CORE.md`](sadp/SPEC-CORE.md) · [`sadp/ACERVATOR_HOP4.md`](sadp/ACERVATOR_HOP4.md) · [`sadp/NEXT_SESSION_ORDERS.md`](sadp/NEXT_SESSION_ORDERS.md) · [`ARCHITECTURE.md`](ARCHITECTURE.md) · `acervator_product_manual_v3_13_7.pdf` Part III.
+An earlier governance harness, SADP, was retired. Documents under `docs/audits/`, `docs/harness_archive/` and `CHANGELOG.md` still describe it. They are historical records and were true when written.
 
 ---
 
@@ -145,26 +136,7 @@ pip install opencv-python      # direct MP4, no temp files
 ```
 acervator/
 ├── main.py                                   # Entry point
-├── RAIntSimBat.py                            # Launcher → sadp/RAIntSimBat/
 ├── acervator_product_manual_v3_13_7.pdf      # Full research documentation (43 pages)
-│
-├── sadp/RAIntSimBat/                         # Simulation battery (under SADP)
-│   ├── RAIntSimBat.py                        # Engine
-│   ├── reports/                              # JSON output + MASTER_SUMMARY PDFs
-│   └── data/cache/                           # OHLCV data cache (CoinGecko / Yahoo)
-│
-├── sadp/                                     # Structured AI Development Protocol
-│   ├── SPEC-CORE.md                          # Rule specifications (R1–R62)
-│   ├── RULE_REGISTRY.json                    # Rule state machine
-│   ├── EPISODIC_MEMORY.json                  # 154 memory entries
-│   ├── EDIT_LOG.jsonl                        # Every file touch with rationale
-│   ├── ACERVATOR_HOP4.md                     # Session handoff (43 addenda)
-│   ├── NEXT_SESSION_ORDERS.md                # Next-session orders
-│   ├── hop_open.py                           # Deterministic 6-step hop-open
-│   ├── freshness.py                          # R62 FRG drift detection
-│   ├── CHECKLIST.json / checklist.py         # 14 declarative invariants
-│   ├── ARTIFACTS.json / cleanup_outputs.py   # Outputs lifecycle manager
-│   └── hop_updater.py                        # HOP header regenerator
 │
 ├── docs/
 │   ├── adr/                                  # Architecture Decision Records (ADR-001…012)
@@ -190,7 +162,7 @@ acervator/
 │   │   ├── sound_engine.py · sms_engine.py
 │   │   ├── logging_engine.py · encryption.py · settings.py
 │   │   ├── execution_discipline.py · trade_historian.py
-│   │   ├── rule_registry.py                  # SADP admin control layer
+│   │   ├── rule_registry.py                  # Rule state and admin commands
 │   │   └── version_sweep.py                  # Release gate
 │   ├── trading/                              # The bot brain
 │   │   ├── scrumming_bot.py                  # Core Scrum/Fold engine
@@ -223,32 +195,6 @@ acervator/
 │       ├── screen_recorder.py · audio_suite.py
 │       └── ...
 ```
-
----
-
-## Running the Battery
-
-```bash
-# Full canonical 39-simulation battery
-python RAIntSimBat.py
-
-# Extended 78-sim battery (3 recent periods + 3 historical)
-python RAIntSimBat.py RAIntSimBat-EXTENDED
-
-# Strategy comparison (vs 6 competitors, all 39 sims)
-python RAIntSimBat.py RAIntSimBat-COMPARE-FULL
-
-# Capital scaling battery ($400 / $4K / $20K / $100K × VIP tiers)
-python RAIntSimBat.py RAIntSimBat-CAPITAL-SCALING
-
-# Single asset, all years
-python RAIntSimBat.py RAIntSimBat-BTC-USD-ALL
-
-# Help / full command reference
-python RAIntSimBat.py --help
-```
-
-Headless prompts and syntax reference: `HEADLESS_SYNTAX_GUIDE.md`.
 
 ---
 
