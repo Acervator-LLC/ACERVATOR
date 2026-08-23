@@ -200,11 +200,30 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 #
 # `_pre_change_source` still returns zero orphans.
 #
+# RE-BASED A THIRD TIME 2026-08-22, issue #69, same tripwire, same
+# reason. One line changed in the MODULE DOCSTRING of
+# ``scrumming_bot.py``. That line read "See ARCHITECTURE.md for full
+# invariants list."; no such document is in the tree, so the header
+# stated something false. The replacement line says so.
+#
+# WHAT THIS RE-BASE IS NOT. No executable line moved. The file held
+# 15595 lines before the edit and 15595 after, so every ``:NNNN``
+# citation still names the line it named. ``CITATION_ANCHORS`` in
+# ``tests/test_extractor_tranche_containment.py`` needed no ordinal
+# shift, and that file's 122 tests pass unchanged on both sides. The
+# edit adds no occurrence of any anchor string. It is outside the gate
+# block and outside every span in ``SITE_B_SPANS``, which is why it
+# reaches this digest at all.
+#
+# ``_pre_change_source`` returns zero orphans, and the CRLF rendering
+# reconstructs the identical text.
+#
 # The prior digests, kept so the chain is auditable:
 #   986d79ed7785015d12a57bfc877ba1b078027d93b2f7655ec2fbc78a90ef2082
 #   29276909ff46dce02bc650de45802c779539adb7093b010cd875ef376201e9a0
+#   4b5c51bde7c54836dcd935c85c76ee06757e1fe8b79edd2ce1febb0831ad3c75
 PRE_CHANGE_SHA256 = (
-    "4b5c51bde7c54836dcd935c85c76ee06757e1fe8b79edd2ce1febb0831ad3c75")
+    "ffe8cebd69cbc2eac674d0a8696efdca3542112fe1606bc0dcd3546297c1288f")
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE.")
