@@ -69,6 +69,30 @@ dependencies = [
 #            `_call` with no guard. No install list in the tree ever
 #            installed it. This extra declares that dependency; it does
 #            not make it optional.
+#   contracts  issue #92. `contracts/deploy.py` is a standalone CLI
+#            that deploys ACRV.sol and CompetitionRegistry.sol to Base
+#            Sepolia or Base Mainnet. It imports web3, eth_account and
+#            solcx. It is an extra, and not a core dependency, for the
+#            same reason `charts` is: no code in the product reaches
+#            it. No file in the tree imports `contracts.deploy`,
+#            neither .spec file collects `contracts/`, and
+#            `acrv_address` and `registry_address` in
+#            src/competition/base_config.py:56, :57, :70 and :71 are
+#            all the empty string, so the deployment has never
+#            completed on any machine. The three imports now sit
+#            inside `try:` with an `except ImportError` that names
+#            this extra, so the script states what to install instead
+#            of pip-installing behind the operator.
+#            NO LOWER BOUND IS STATED, and that is deliberate. A bound
+#            would be a guess: none of the three has been resolved,
+#            installed or run anywhere this project has measured.
+#            `python -m tools.deps lock contracts` pins them the first
+#            time one is.
+#            `src/competition/` needs NONE of these. Issue #92 says it
+#            does. An AST walk over all ten of its modules finds one
+#            third-party import, `cryptography` at
+#            src/competition/bot_identity.py:34 and :36, and that is
+#            already a core dependency above.
 #   display  src/core/mini_display.py imports luma (:239, :301),
 #            ST7789 (:362), RPLCD (:442) and smbus2 (:577), each inside
 #            `try:` with an `except` that returns False, so a machine
@@ -85,6 +109,7 @@ report = ["reportlab>=4.0.0"]
 video = ["opencv-python>=4.9.0", "pillow>=10.0.0"]
 charts = ["matplotlib>=3.8.0"]
 monitor = ["httpx>=0.27.0"]
+contracts = ["web3", "eth-account", "py-solc-x"]
 display = [
     "luma.oled>=3.13.0",
     "RPLCD>=1.3.1",
