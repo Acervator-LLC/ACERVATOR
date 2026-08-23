@@ -11,26 +11,35 @@ Visual reference: trailer.html
 """
 import math
 import secrets
-from PySide6.QtWidgets import QWidget
-from PySide6.QtGui     import (QPainter, QFont, QColor, QLinearGradient,
-                                QPen, QFontDatabase)
-from PySide6.QtCore    import Qt, QRectF, QTimer, QPointF
+from PySide6.QtGui     import (QFont, QColor, QLinearGradient,
+                                QPainter, QPen, QFontDatabase)
+from PySide6.QtCore    import Qt, QRectF
 
 # Issue #70 — the version is imported, never restated. The old code kept a
 # literal fallback inside paintEvent ("3.9.0"), which silently outlived
 # 16 minor releases because nothing ever compared it to the package.
 from src import __version__
 
-# ── Palette (exact from HTML) ─────────────────────────────────────────────────
-CYAN    = QColor(0,   255, 238)
-GREEN   = QColor(0,   255, 136)
-MAGENTA = QColor(255,   0, 170)
-BLUE    = QColor(0,   170, 255)
-ORANGE  = QColor(255, 170,   0)
+# Issue #74 - the animation core is shared, not restated. screen_fx.py
+# sits at the repository root for the reason its docstring gives: src/
+# and resources/ are copied wholesale into every build, and nothing in
+# the application imports these screens.
+import screen_fx
+from screen_fx import AnimatedScreenBase, ease, scene_alpha, tag_font
+
+# -- Palette (exact from HTML) ------------------------------------------------
+# Five accents come from the shared table. The other five are splash's
+# own: no other screen uses this dark, this panel, this body colour or
+# this dim, and every one of those values differs from theirs.
+CYAN    = screen_fx.colour("cy")
+GREEN   = screen_fx.colour("gn")
+MAGENTA = screen_fx.colour("mg")
+BLUE    = screen_fx.colour("bl")
+ORANGE  = screen_fx.colour("or")
 DARK    = QColor(6,     6,  16)
 PANEL   = QColor(10,   10,  26)
 BODY    = QColor(208, 222, 255)   # #D0DEFF
-MUTED   = QColor(136, 153, 187)   # #8899BB
+MUTED   = screen_fx.colour("mu")  # #8899BB
 DIM     = QColor(80,   85, 110)
 
 TOTAL_DURATION = 48.0   # seconds
@@ -52,19 +61,17 @@ SLIDES = [
 ENDS = [s[0] for s in SLIDES[1:]] + [TOTAL_DURATION]
 
 
-def ease_in_out(t):
-    x = max(0.0, min(1.0, t))
-    return x * x * (3 - 2 * x)
-
-
-def slide_alpha(t, start, end, fi=0.6, fo=0.5):
-    return max(0.0,
-        ease_in_out((t - start) / fi) -
-        ease_in_out((t - end + fo) / fo))
-
-
-def fade_up(t, start, dur=0.6, delay=0.0):
-    return ease_in_out((t - start - delay) / dur)
+# ease_in_out / slide_alpha / fade_up used to live here. They were the
+# same smoothstep, the same envelope and the same delayed ramp that
+# cartoon_screen and investor_screen also carried. screen_fx.smoothstep,
+# screen_fx.scene_alpha and screen_fx.ease are those three, once.
+#
+#   fade_up(t, start, dur, delay)  ==  ease(t, start, dur, delay)
+#   slide_alpha(t, ss, se)         ==  scene_alpha(t, ss, se, 0.6, 0.5)
+#
+# 0.6 and 0.5 were slide_alpha's own defaults. They are passed
+# explicitly now, because scene_alpha's defaults are the other two
+# screens' values.
 
 
 # ── Font helpers ──────────────────────────────────────────────────────────────
@@ -85,15 +92,24 @@ def _rajdhani(size, bold=False):
         return QFont(family, size, QFont.SemiBold if bold else QFont.Normal)
 
 
-class SplashScreen(QWidget):
+class SplashScreen(AnimatedScreenBase):
+    """The 48-second Acervator trailer, painted with QPainter."""
+
+    ACCESSIBLE_NAME = "Acervator trailer"
+    ACCESSIBLE_DESCRIPTION = (
+        "A 48-second animated trailer. Click anywhere to skip to the end.")
+
+    TOTAL_DURATION = TOTAL_DURATION
+    # splash scrolls its grid at 0.5 px per tick. cartoon_screen and
+    # investor_screen use 0.4. That is a real difference in what is
+    # drawn, so it is a parameter and not a merge.
+    GRID_SCROLL    = 0.5
 
     def __init__(self, target_window):
         super().__init__(target_window,
                          Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setGeometry(target_window.geometry())
-        self._t      = 0.0
-        self._phase  = "running"
-        self._grid_offset = 0.0
+        self._start_clock()
         # Particle positions: (x_frac, y_start, speed, size, phase_offset)
         # secrets.SystemRandom() reads the operating-system entropy
         # source. The previous code called the module-level `random`
@@ -107,63 +123,40 @@ class SplashScreen(QWidget):
              1 + rng.random() * 2, rng.random() * 8)
             for _ in range(28)
         ]
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._tick)
-        self._timer.start(16)
 
-    def _tick(self):
-        self._t += 0.016
-        self._grid_offset = (self._grid_offset + 0.5) % 60
-        self.repaint()
-
-    def _a(self, v): return max(0, min(255, int(v * 255)))
-    def _c(self, base, alpha): c = QColor(base); c.setAlpha(self._a(alpha)); return c
+    # _tick, _a, _c and _make_glow_px are inherited from
+    # AnimatedScreenBase. The four bodies were byte-identical to
+    # cartoon_screen's and investor_screen's, apart from the grid speed
+    # above and the name of the grid-offset attribute, which is `_goff`
+    # in all three now.
 
     # ── Text glow helper (fakes CSS text-shadow) ──────────────────────────────
-    def _make_glow_px(self, text, W, H, rect, font, glow_col, blur_r):
-        """Render text to pixmap, apply QGraphicsBlurEffect. Cached — called once per unique text."""
-        from PySide6.QtWidgets import (QGraphicsScene, QGraphicsPixmapItem,
-                                       QGraphicsBlurEffect)
-        from PySide6.QtGui import QPixmap
-        txt = QPixmap(W, H); txt.fill(Qt.transparent)
-        tp = QPainter(txt); tp.setFont(font)
-        gc = QColor(glow_col); gc.setAlpha(180); tp.setPen(gc)
-        tp.drawText(rect, Qt.AlignCenter | Qt.TextWordWrap, text); tp.end()
-        eff = QGraphicsBlurEffect(); eff.setBlurRadius(blur_r)
-        item = QGraphicsPixmapItem(txt); item.setGraphicsEffect(eff)
-        sc = QGraphicsScene(); sc.addItem(item); sc.setSceneRect(0, 0, W, H)
-        out = QPixmap(W, H); out.fill(Qt.transparent)
-        rp = QPainter(out); sc.render(rp); rp.end()
-        return out
     def _glow_text(self, p, text, rect, color, alpha, font,
                    glow_color=None, glow_r=20):
-        """Proper CSS text-shadow equivalent: blurred halo + sharp text on top."""
-        if alpha < 0.01: return
-        W, H   = int(self.width()), int(self.height())
+        """Proper CSS text-shadow equivalent: blurred halo + sharp text on top.
+
+        splash takes the FONT from its caller and a blur radius in glow
+        units. The other two screens take a point size and build an
+        Orbitron font from it. That derivation is what stays per-screen;
+        the draw itself is AnimatedScreenBase._draw_glow.
+        """
+        W, H   = self._wh()
         gc     = glow_color or color
         blur_r = max(6, min(18, glow_r // 2))
         key    = (text, W, H, gc.red(), gc.green(), gc.blue(),
                   font.pointSize(), blur_r)
-        if not hasattr(self, '_gcache'): self._gcache = {}
-        if key not in self._gcache:
-            try:    self._gcache[key] = self._make_glow_px(text, W, H, rect, font, gc, blur_r)
-            except: self._gcache[key] = None
-        gp = self._gcache.get(key)
-        if gp:
-            p.setOpacity(alpha * 0.5); p.drawPixmap(0, 0, gp); p.setOpacity(1.0)
-        c = QColor(color); c.setAlpha(self._a(alpha))
-        p.setPen(c); p.setFont(font)
-        p.drawText(rect, Qt.AlignCenter | Qt.TextWordWrap, text)
+        self._draw_glow(p, text, rect, font, color, gc, blur_r, key, alpha)
 
     def _tag(self, p, text, cx, y, alpha):
-        """Small uppercase magenta tag label."""
+        """Small uppercase magenta tag label.
+
+        splash's tag is 22 px tall in a 10-point probed font. The other
+        two are 20 px in a 9-point Orbitron. The geometry and the font
+        stay here; the letter spacing and the draw are shared.
+        """
         if alpha < 0.01: return
-        c = QColor(MAGENTA); c.setAlpha(self._a(alpha))
-        p.setPen(c)
-        f = _orbitron(10)
-        f.setLetterSpacing(QFont.AbsoluteSpacing, 3)
-        p.setFont(f)
-        p.drawText(QRectF(0, y, cx*2, 22), Qt.AlignCenter, text.upper())
+        self._draw_tag(p, text, QRectF(0, y, cx*2, 22),
+                       self._c(MAGENTA, alpha), tag_font(base=_orbitron(10)))
 
     def _body_text(self, p, text, cx, y, alpha, color=None, size=16, w_frac=0.65):
         if alpha < 0.01: return
@@ -184,23 +177,14 @@ class SplashScreen(QWidget):
         # ── Dark background ────────────────────────────────────────────────
         p.fillRect(0, 0, W, H, DARK)
 
-        # ── Scrolling grid (matches .grid-bg CSS) ─────────────────────────
-        off = self._grid_offset
-        grid_pen = QPen(QColor(0, 255, 238, 8), 1)
-        p.setPen(grid_pen)
-        x = -60 + off
-        while x < W + 60:
-            p.drawLine(QPointF(x, 0), QPointF(x, H))
-            x += 60
-        y_g = -60 + off
-        while y_g < H + 60:
-            p.drawLine(QPointF(0, y_g), QPointF(W, y_g))
-            y_g += 60
+        # -- Scrolling grid (matches .grid-bg CSS) ------------------------
+        # The loop is AnimatedScreenBase._draw_grid. The PEN is splash's
+        # own: a flat alpha of 8, where the other two screens scale the
+        # grid alpha with the scene.
+        self._draw_grid(p, W, H, QPen(QColor(0, 255, 238, 8), 1))
 
-        # ── Scanlines ────────────────────────────────────────────────────
-        p.setPen(QColor(0, 0, 0, 8))
-        for y_s in range(0, H, 4):
-            p.drawLine(0, y_s, W, y_s)
+        # -- Scanlines ----------------------------------------------------
+        self._draw_scanlines(p, W, H, QColor(0, 0, 0, 8))
 
         # ── Particles ────────────────────────────────────────────────────
         for xf, y_base, speed, size, phase in self._particles:
@@ -234,7 +218,7 @@ class SplashScreen(QWidget):
         for i, (ss, name) in enumerate(SLIDES):
             se = ENDS[i]
             if t < ss - 0.8 or t > se + 0.4: continue
-            alpha = slide_alpha(t, ss, se)
+            alpha = scene_alpha(t, ss, se, 0.6, 0.5)
             if alpha < 0.01: continue
             fn = getattr(self, f"_s_{name}", None)
             if fn: fn(p, W, H, cx, cy, t, ss, se, alpha, __version__)
@@ -298,14 +282,14 @@ class SplashScreen(QWidget):
                 p.drawEllipse(QRectF(ex-sz, ey-sz, sz*2, sz*2))
 
         # Title: ACERVATOR (Orbitron, cyan glow)
-        title_a = alpha * fade_up(t, ss, 1.0, 0.5)
+        title_a = alpha * ease(t, ss, 1.0, 0.5)
         if title_a > 0.01:
             self._glow_text(p, "ACERVATOR",
                             QRectF(0, cy-18, W, 56),
                             CYAN, title_a, _orbitron(int(W*0.034)),
                             CYAN, 30)
         # Subtitle
-        sub_a = alpha * fade_up(t, ss, 0.8, 1.2)
+        sub_a = alpha * ease(t, ss, 0.8, 1.2)
         self._body_text(p, "The market doesn't sleep.  Neither do your bots.",
                         cx, cy + 44, sub_a, MUTED, 16)
 
@@ -314,7 +298,7 @@ class SplashScreen(QWidget):
         self._tag(p, "Validated Across Every Market Condition", cx, cy-145, alpha)
         self._glow_text(p, "39 Simulations.  39 Wins.",
                         QRectF(0, cy-110, W, 60),
-                        CYAN, alpha * fade_up(t, ss, 0.7, 0.2),
+                        CYAN, alpha * ease(t, ss, 0.7, 0.2),
                         _orbitron(int(W*0.025)), CYAN, 20)
 
         stats = [
@@ -343,98 +327,98 @@ class SplashScreen(QWidget):
 
     # ── SLIDE 2: Accumulation ─────────────────────────────────────────────────
     def _s_accumulation(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
-        self._tag(p, "Core Engine", cx, cy-145, alpha * fade_up(t, ss, 0.5))
+        self._tag(p, "Core Engine", cx, cy-145, alpha * ease(t, ss, 0.5))
         self._glow_text(p, "Accumulation Trading",
                         QRectF(0, cy-100, W, 56),
-                        CYAN, alpha * fade_up(t, ss, 0.6, 0.2),
+                        CYAN, alpha * ease(t, ss, 0.6, 0.2),
                         _orbitron(int(W*0.028)), CYAN, 22)
         self._body_text(p,
             "Not a grid bot.  Not DCA.  Not Shannon's Demon.\n"
             "An asymmetric harvest-fold cycle where every fold is\n"
             "structurally guaranteed to accumulate more asset than was sold.",
-            cx, cy - 22, alpha * fade_up(t, ss, 0.6, 0.5),
+            cx, cy - 22, alpha * ease(t, ss, 0.6, 0.5),
             BODY, 16)
         self._glow_text(p, "100% Fold Win Rate",
                         QRectF(0, cy+70, W, 48),
-                        GREEN, alpha * fade_up(t, ss, 0.6, 0.8),
+                        GREEN, alpha * ease(t, ss, 0.6, 0.8),
                         _orbitron(int(W*0.022)), GREEN, 18)
 
     # ── SLIDE 3: Landing Strip ────────────────────────────────────────────────
     def _s_landing_strip(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "Original Technical Analysis", cx, cy-145,
-                  alpha * fade_up(t, ss, 0.5))
+                  alpha * ease(t, ss, 0.5))
         self._glow_text(p, "Landing Strip Detection",
                         QRectF(0, cy-100, W, 56),
-                        CYAN, alpha * fade_up(t, ss, 0.6, 0.2),
+                        CYAN, alpha * ease(t, ss, 0.6, 0.2),
                         _orbitron(int(W*0.026)), CYAN, 22)
         self._body_text(p,
             "Inspired by semiconductor wafer inspection.\n"
             "CogNex edge detection applied to Heikin-Ashi consolidation patterns.\n"
             "An original contribution to technical analysis.",
-            cx, cy - 22, alpha * fade_up(t, ss, 0.6, 0.5), BODY, 16)
+            cx, cy - 22, alpha * ease(t, ss, 0.6, 0.5), BODY, 16)
         self._glow_text(p, "3-Layer Detection Architecture",
                         QRectF(0, cy+70, W, 48),
-                        ORANGE, alpha * fade_up(t, ss, 0.6, 0.8),
+                        ORANGE, alpha * ease(t, ss, 0.6, 0.8),
                         _orbitron(int(W*0.020)), ORANGE, 18)
 
     # ── SLIDE 4: MR Inspector ─────────────────────────────────────────────────
     def _s_mr_inspector(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "Background Intelligence", cx, cy-145,
-                  alpha * fade_up(t, ss, 0.5))
+                  alpha * ease(t, ss, 0.5))
         self._glow_text(p, "Mean Reversion Inspector",
                         QRectF(0, cy-100, W, 56),
-                        CYAN, alpha * fade_up(t, ss, 0.6, 0.2),
+                        CYAN, alpha * ease(t, ss, 0.6, 0.2),
                         _orbitron(int(W*0.026)), CYAN, 22)
         self._body_text(p,
             "Always watching.  Rarely acting.  But when it does —\n"
             "the Boosted Fold captures the full reversion move,\n"
             "not just the small oscillation.",
-            cx, cy - 22, alpha * fade_up(t, ss, 0.6, 0.5), BODY, 16)
+            cx, cy - 22, alpha * ease(t, ss, 0.6, 0.5), BODY, 16)
         self._glow_text(p, "+31.6% Improvement",
                         QRectF(0, cy+70, W, 48),
-                        GREEN, alpha * fade_up(t, ss, 0.6, 0.8),
+                        GREEN, alpha * ease(t, ss, 0.6, 0.8),
                         _orbitron(int(W*0.022)), GREEN, 18)
 
     # ── SLIDE 5: Smart Wire ───────────────────────────────────────────────────
     def _s_smart_wire(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "Unprecedented Architecture", cx, cy-145,
-                  alpha * fade_up(t, ss, 0.5))
+                  alpha * ease(t, ss, 0.5))
         self._glow_text(p, "Smart Wire Network",
                         QRectF(0, cy-100, W, 56),
-                        CYAN, alpha * fade_up(t, ss, 0.6, 0.2),
+                        CYAN, alpha * ease(t, ss, 0.6, 0.2),
                         _orbitron(int(W*0.028)), CYAN, 22)
         self._body_text(p,
             "Your bots don't just trade — they fund each other.\n"
             "Provenance-tracked capital routing creates\n"
             "a self-reinforcing compounding network.",
-            cx, cy - 22, alpha * fade_up(t, ss, 0.6, 0.5), BODY, 16)
+            cx, cy - 22, alpha * ease(t, ss, 0.6, 0.5), BODY, 16)
         self._glow_text(p, "+54.3% Network Effect",
                         QRectF(0, cy+70, W, 48),
-                        CYAN, alpha * fade_up(t, ss, 0.6, 0.8),
+                        CYAN, alpha * ease(t, ss, 0.6, 0.8),
                         _orbitron(int(W*0.022)), CYAN, 18)
 
     # ── SLIDE 6: Bear Markets ─────────────────────────────────────────────────
     def _s_bear_market(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "Where Others Fail", cx, cy-145,
-                  alpha * fade_up(t, ss, 0.5))
+                  alpha * ease(t, ss, 0.5))
         self._glow_text(p, "Bear Markets Are Our Best Markets",
                         QRectF(W*0.1, cy-110, W*0.8, 80),
-                        CYAN, alpha * fade_up(t, ss, 0.6, 0.2),
+                        CYAN, alpha * ease(t, ss, 0.6, 0.2),
                         _orbitron(int(W*0.022)), CYAN, 20)
         self._body_text(p,
             "When passive hold loses 20-62%, the accumulation bot profits.\n"
             "$6,059 average advantage per simulation in bear conditions.\n"
             "The harvest-fold cycle preserves capital that buy-and-hold destroys.",
-            cx, cy - 10, alpha * fade_up(t, ss, 0.6, 0.5), BODY, 16)
+            cx, cy - 10, alpha * ease(t, ss, 0.6, 0.5), BODY, 16)
         self._glow_text(p, "$6,059 Avg Bear Market Advantage",
                         QRectF(0, cy+72, W, 48),
-                        GREEN, alpha * fade_up(t, ss, 0.6, 0.8),
+                        GREEN, alpha * ease(t, ss, 0.6, 0.8),
                         _orbitron(int(W*0.020)), GREEN, 18)
 
     # ── SLIDE 7: Innovations ──────────────────────────────────────────────────
     def _s_innovations(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "No Existing Competitor Offers", cx, cy-145,
-                  alpha * fade_up(t, ss, 0.5))
+                  alpha * ease(t, ss, 0.5))
         features = [
             "Asymmetric Harvest-Fold",
             "Position-Aware TA",
@@ -449,7 +433,7 @@ class SplashScreen(QWidget):
         xl = cx - W * 0.38
         xr = cx + W * 0.03
         for i, feat in enumerate(features):
-            fa = alpha * fade_up(t, ss, 0.5, 0.2 + i * 0.12)
+            fa = alpha * ease(t, ss, 0.5, 0.2 + i * 0.12)
             xpos = xl if i < 4 else xr
             ypos = cy - 88 + (i % 4) * 38
             col  = CYAN if i < 4 else GREEN
@@ -460,25 +444,25 @@ class SplashScreen(QWidget):
                        "\u25b8  " + feat)
         self._glow_text(p, "Innovation Score: 9.9 / 10",
                         QRectF(0, cy+78, W, 48),
-                        ORANGE, alpha * fade_up(t, ss, 0.5, 1.0),
+                        ORANGE, alpha * ease(t, ss, 0.5, 1.0),
                         _orbitron(int(W*0.020)), ORANGE, 18)
 
     # ── SLIDE 8: SADP (replaces Pricing) ──────────────────────────────────────
     def _s_sadp(self, p, W, H, cx, cy, t, ss, se, alpha, _ver):
         self._tag(p, "Independent Invention — Patent Pending", cx, cy-145,
-                  alpha * fade_up(t, ss, 0.5))
+                  alpha * ease(t, ss, 0.5))
         self._glow_text(p, "Structured AI Development Protocol",
                         QRectF(W*0.05, cy-108, W*0.9, 70),
-                        CYAN, alpha * fade_up(t, ss, 0.6, 0.2),
+                        CYAN, alpha * ease(t, ss, 0.6, 0.2),
                         _orbitron(int(W*0.022)), CYAN, 22)
         self._body_text(p,
             "The first formal methodology for governing AI co-development\n"
             "across indefinite session boundaries.\n"
             "34 rules.  Three components.  Applicable to any AI-assisted project.",
-            cx, cy - 20, alpha * fade_up(t, ss, 0.6, 0.5), BODY, 16)
+            cx, cy - 20, alpha * ease(t, ss, 0.6, 0.5), BODY, 16)
         self._glow_text(p, "SADP v1.0",
                         QRectF(0, cy+70, W, 48),
-                        ORANGE, alpha * fade_up(t, ss, 0.6, 0.8),
+                        ORANGE, alpha * ease(t, ss, 0.6, 0.8),
                         _orbitron(int(W*0.024)), ORANGE, 18)
 
     # ── SLIDE 9: Credits ──────────────────────────────────────────────────────
@@ -510,7 +494,7 @@ class SplashScreen(QWidget):
         ]
         y0 = cy - 35
         for delay, text, col, size, bold in lines:
-            la2 = alpha * fade_up(t, ss, 0.6, delay)
+            la2 = alpha * ease(t, ss, 0.6, delay)
             if la2 < 0.01: continue
             if bold:
                 self._glow_text(p, text, QRectF(0, y0, W, size*2.2),
@@ -522,11 +506,12 @@ class SplashScreen(QWidget):
             y0 += size * 2.4
 
         # Final ACERVATOR title
-        fa = alpha * fade_up(t, ss, 0.6, 1.5)
+        fa = alpha * ease(t, ss, 0.6, 1.5)
         if fa > 0.01:
             self._glow_text(p, "ACERVATOR",
                             QRectF(0, y0 + 8, W, 52),
                             CYAN, fa, _orbitron(int(W*0.026)), CYAN, 25)
 
-    def mousePressEvent(self, _event):
-        self._t = TOTAL_DURATION - 0.5
+    # mousePressEvent is inherited. All three screens ran the clock on to
+    # TOTAL_DURATION - 0.5 on a click. AnimatedScreenBase reads its own
+    # TOTAL_DURATION class attribute, which this class sets above.

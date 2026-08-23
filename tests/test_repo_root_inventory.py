@@ -136,6 +136,17 @@ INVENTORY: dict[str, str] = {
     "TESTNET_POA_VERIFY_REPORT.md":
         "April verification record, kept beside the HOP archives",
 
+    # -- the animation core the three screens share ----------------------
+    "screen_fx.py":
+        "issue #74. splash_screen.py, cartoon_screen.py and "
+        "investor_screen.py all say `import screen_fx`, a top-level "
+        "import that resolves only because conftest puts the root on "
+        "sys.path. It may not move to src/ or resources/ for the same "
+        "reason they may not: `tools/spec_common.datas_candidates` "
+        "copies both directories wholesale, so there it would ship in "
+        "EVERY build, and at the root it ships in none. "
+        "tests/test_screens_share_one_animation_core.py pins that",
+
     # -- version-carrying scripts pinned to the root by live tests -------
     "splash_screen.py":
         "tests/test_screen_rng_and_signatures.py says `import "

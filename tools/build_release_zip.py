@@ -147,6 +147,11 @@ ADDITIONAL_FILES_EXACT = {
     "generate_essay_ja.py",
     "generate_essay_localized.py",
     "investor_screen.py",
+    # Issue #74 extracted the animation core these three screens shared.
+    # It travels with them: it has no other consumer, and splitting a
+    # helper from every file that imports it across two zips would give
+    # the PRIMARY zip a module nothing there calls.
+    "screen_fx.py",
     # Issue #85 renamed `test_scrumming_v3.py` to
     # `tools/scrumming_v3_sim.py`. This set matches a repo-relative
     # string EXACTLY, so the old entry would have stopped matching in

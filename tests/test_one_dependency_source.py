@@ -233,6 +233,11 @@ _DERIVED = re.compile(
 FIRST_PARTY: frozenset[str] = frozenset({
     "src", "tools", "tests", "dev_harness", "acervator_watchdog",
     "contracts", "os",
+    # Issue #74. The animation core the three presentation screens
+    # share. It is a root .py, so it is a TOP-LEVEL import name, and
+    # this set is what tells contract 3 that `import screen_fx` is ours
+    # and not a package somebody has to install.
+    "screen_fx",
 })
 
 # Import name -> distribution name, for the cases where they differ.
