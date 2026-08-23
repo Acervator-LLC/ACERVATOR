@@ -191,7 +191,7 @@ vocabulary on trust.
 
 | signal type | pins | source of the term | example pin |
 |---|---|---|---|
-| `postcondition` | 48 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
+| `postcondition` | 49 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
 | `invariant` | 15 | Hoare logic; design by contract (Meyer) | `ta.07.002.invariant.invariants` |
 | `event` | 5 | OpenTelemetry Events | `tick.08.001.event.throttled` |
 | `counter` | 2 | Prometheus / OpenTelemetry instrument types | `sim.06.004.counter.trades_fired` |
@@ -431,6 +431,7 @@ that one.
 | `console` | `14` | 5 |
 | `exchange` | `15` | 5 |
 | `apitest` | `16` | 5 |
+| `instance` | `17` | 1 |
 
 ## What 10.4 repaired, and what it measured
 
@@ -1645,6 +1646,7 @@ One row per pin call site. 74 rows.
 | `16-003` | `apitest` | `postcondition` | measured: the venue call the dispatch arm ran | `apitest.16.003.postcondition.reported_ok_ran_a_test` | `apitest.reported_ok_ran_a_test` | `src/gui/main_window.py:4021` | an arm of the dispatch chain really ran whenever the headline reads `<test> OK`, read off the result object's identity against the headline taken back out of the label widget, so the unrecognised-name arm that answers with an empty dict and still logs a pass is reported |
 | `16-004` | `apitest` | `postcondition` | measured: the endpoint sweep, without the TCP and SSL probes | `apitest.16.004.postcondition.green_probe_read_a_body` | `apitest.green_probe_read_a_body` | `src/gui/main_window.py:4272` | every probe that reported HTTP success carried bytes off the socket, counted over the sweep, so an endpoint that answers 200 with an empty body is told apart from one that returned the payload the operator is looking for; the sweep is the duration |
 | `16-005` | `apitest` | `postcondition` | measured: the status fetch and the parse | `apitest.16.005.postcondition.indicator_is_mappable` | `apitest.indicator_is_mappable` | `src/gui/main_window.py:4368` | the status word the venue's document carried is one the tab can map, read back out of the parsed body and capped at 32 characters, so a missing or renamed field -- which the tab paints as an outage the venue never declared -- is reported instead of trusted |
+| `17-001` | `instance` | `postcondition` | measured: the machine-identity read, the claim read and the lock acquisition | `instance.17.001.postcondition.auto_start_permitted` | `instance.auto_start_permitted` | `src/core/instance_guard.py:815` | the flag the launch will ACT on agrees with the evidence rebuilt from the same record, which is the exclusive handle plus the claim compared field by field against this machine; a silent fleet start on a machine that does not own the fleet is therefore reported rather than trusted |
 
 ## Planned names
 
@@ -1731,6 +1733,7 @@ or a hand-edited name breaks the agreement and fails the run.
 | `16-003` | `apitest.16.003.postcondition.reported_ok_ran_a_test` |
 | `16-004` | `apitest.16.004.postcondition.green_probe_read_a_body` |
 | `16-005` | `apitest.16.005.postcondition.indicator_is_mappable` |
+| `17-001` | `instance.17.001.postcondition.auto_start_permitted` |
 
 The longest name is 53 characters:
 `fleet.03.007.postcondition.positions_seeded_from_lots`. The shortest
