@@ -700,21 +700,39 @@ class TestThePythonFloor:
             f"pyproject.toml asks for {expected} and os/lib/common.sh "
             f"asks for {found}")
 
-    def test_no_script_demands_one_python_release(self) -> None:
-        """Debian 12 has no `python3.12` package. Issue #95 defect three."""
+    def test_the_package_list_names_no_python_release(self) -> None:
+        """Debian 12 has no `python3.12` package. Issue #95 defect three.
+
+        A first version of this rule read whole LINES and asked for
+        `apt-get install` or `BASE_PKGS` on the same line. The control
+        run put `python3.12` back inside the array and the rule stayed
+        silent, because the array spreads over many lines and the
+        package sits on none of them. It now reads the array itself.
+        """
+        offending = [name for name in base_package_names()
+                     if re.match(r"^python3\.\d+", name)]
+        assert offending == [], (
+            f"os/install.sh asks apt for {offending}. Debian 12 and "
+            "Raspberry Pi OS Bookworm carry no such package. Ask for the "
+            "unversioned python3 set and check the floor at run time")
+
+    def test_no_script_runs_one_python_release_by_name(self) -> None:
+        """`python3.12 -m venv` fails on a machine that ships 3.11.
+
+        A line may name SEVERAL versioned interpreters, because that is
+        a probe list that falls back: `acervator_find_python` tries
+        3.14 down to 3.11 and then the unversioned names. Naming ONE is
+        a demand, and a demand is what issue #95 defect three is.
+        """
         offending = []
         for script in sorted(OS_DIR.rglob("*.sh")):
             for number, line in enumerate(
                     script.read_text(encoding="utf-8").splitlines(), start=1):
                 if line.lstrip().startswith("#"):
                     continue
-                names_a_release = re.search(r"python3\.\d+", line)
-                installs = re.search(
-                    r"apt-get\s+install|^\s*python3\.\d+\s+-m\s+venv"
-                    r"|BASE_PKGS", line)
-                if installs and names_a_release:
-                    offending.append(
-                        f"{script.name}:{number} {line.strip()}")
+                named = re.findall(r"(?<![\w.])python3\.\d+", line)
+                if len(set(named)) == 1:
+                    offending.append(f"{script.name}:{number} {line.strip()}")
         assert offending == [], offending
 
     def test_the_installer_checks_the_floor_at_run_time(self) -> None:
