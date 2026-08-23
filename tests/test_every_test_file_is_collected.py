@@ -15,37 +15,41 @@ Those counts are from BEFORE this file existed. Adding it makes 273
 and 269, and takes collection from 7407 items to 7423 -- the 16 this
 file contributes, and nothing else moved.
 
-The four:
+Issue #85 then renamed the first of the four out of pytest's discovery
+patterns, so the disk figure is 272 and the uncollected figure is 3.
+Nothing about the rule changed; one subject left it.
 
-  ``test_scrumming_v3.py`` at the repository root. It sits outside
-  ``testpaths``, so pytest never reads it. It also defines NO test
-  function, so bringing it in would add nothing:
-  ``pytest test_scrumming_v3.py --collect-only`` answers "no tests
-  collected" and exits 5. Run as a script under
-  ``PYTHONIOENCODING=utf-8`` it completes and exits 0, because it holds
-  no assertion that can fail; it prints a six-scenario simulation
-  report. It is not a stale copy of anything either. Its whole import
-  list -- ``VortexIndicator``, ``MACD``, ``BollingerBands``,
-  ``compute_heikin_ashi``, ``detect_bb_proximity`` -- is exercised by
-  collected tests that DO assert, in
+The four, as issue #93 found them:
+
+  ``test_scrumming_v3.py`` at the repository root. It sat outside
+  ``testpaths``, so pytest never read it. It also defined NO test
+  function, so bringing it in would have added nothing:
+  ``pytest test_scrumming_v3.py --collect-only`` answered "no tests
+  collected" and exited 5. It is not a stale copy of anything either.
+  Its whole import list -- ``VortexIndicator``, ``MACD``,
+  ``BollingerBands``, ``compute_heikin_ashi``, ``detect_bb_proximity``
+  -- is exercised by collected tests that DO assert, in
   ``test_ta_engine_confidence_bounds.py``,
   ``test_ta_engine_degenerate_abstention.py``,
   ``test_bollinger_squeeze_scale_invariance.py``,
-  ``test_slingshot_canonical.py`` and three others. So it is a script
-  wearing a test prefix, and it adds no coverage. Its disk mtime is
-  2026-04-23, four months before this measurement.
+  ``test_slingshot_canonical.py`` and three others. So it was a script
+  wearing a test prefix, and it added no coverage.
 
-  It is EXCUSED here and not repaired, and the reason is a measurement,
-  not a preference. The coding archetype answers ``passed=false`` on it
-  at HEAD -- 5 high, 73 medium, 52 low -- and four of the five high
-  findings are ruff S311 on the seeded ``random.Random`` calls that
-  build its synthetic price series, with the fifth an unused
-  ``BollingerBands`` import. Clearing those needs either a suppression
-  or a rewrite of the simulation, and issue #93 is a collection unit.
-  Renaming the file out of pytest's discovery patterns, or deleting it,
-  is the right end state and it belongs to whichever unit may edit its
-  body. Until then this entry states what the file is, so its name no
-  longer implies coverage that is not there.
+  RESOLVED by issue #85 on 2026-08-23. Issue #93 excused it here and
+  said the repair "belongs to whichever unit may edit its body". Issue
+  #85 is that unit. The file is now ``tools/scrumming_v3_sim.py``: the
+  name no longer matches pytest's discovery patterns, so no excusal is
+  needed and the entry is gone from ``EXCUSED`` below. Its excusal was
+  the ONLY one in this map that named a live script rather than a
+  calibration fixture.
+
+  Issue #85 did NOT move it to ``tests/``, which is what issue #85
+  originally proposed. ``test_every_collected_test_file_defines_at
+  _least_one_test`` below fails on any collected file that yields no
+  test item, so ``tests/`` would have turned the suite red. That test
+  is the reason the proposal was refused, and it is a two-sided control
+  on the refusal: put a test-function-free file under ``testpaths`` and
+  it reports the file by name.
 
   Three archetype fixtures under ``docs/audits/``. They are DELIBERATE,
   they must never be collected, and each one says so in its own
@@ -108,12 +112,10 @@ WALK_SKIP_EXACT = {
 # ``test_every_excusal_names_a_file_that_is_in_the_tree`` deletes an
 # entry's cover the moment its file leaves.
 EXCUSED: dict[str, str] = {
-    "test_scrumming_v3.py":
-        "a simulation script, not a test: it defines no test function, "
-        "so pytest takes zero items out of it and exits 5. Every TA "
-        "symbol it imports is asserted by a collected test. It is red "
-        "under the coding archetype at HEAD, so renaming or deleting "
-        "it belongs to a unit that may edit its body",
+    # Issue #85 removed the one entry here that named a live script,
+    # `test_scrumming_v3.py`, by renaming it to
+    # `tools/scrumming_v3_sim.py`. Every entry left is a calibration
+    # fixture under `docs/audits/`, which is a historical record.
     "docs/audits/2026-07-24_gui_docs_archetypes/gui_fixtures/tests/"
     "known_good_colour_test.py":
         "GUI006 calibration fixture; the archetype must exit 0 on it",
@@ -217,7 +219,7 @@ def test_every_discovery_named_file_is_collected_or_excused() -> None:
 
     It reads as coverage in the tree and contributes nothing to the
     gate. ``test_scrumming_v3.py`` sat at the root in exactly this
-    state.
+    state until issue #85 renamed it ``tools/scrumming_v3_sim.py``.
     """
     stragglers = [rel for rel in _discovery_named_files()
                   if not _inside_testpaths(rel) and rel not in EXCUSED]

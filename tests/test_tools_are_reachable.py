@@ -105,6 +105,13 @@ INVENTORY: tuple[tuple[str, bool], ...] = (
     ("migrate_harness", True),
     ("orphan_widget_scan", True),
     ("queue_state", True),
+    # Issue #85 moved this in from the repository root, where it was
+    # called `test_scrumming_v3.py`. It wore pytest's discovery prefix,
+    # sat outside `testpaths`, and defined no test function, so nothing
+    # collected it and nothing ran it. It reached its scenarios from a
+    # bare `__main__` block; the move gave it the `main()` and the parser
+    # this inventory requires, so it is True.
+    ("scrumming_v3_sim", True),
 )
 
 # Deleted under issue #83. Each was a one-shot whose migration had already
