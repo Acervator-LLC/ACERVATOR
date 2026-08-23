@@ -16,9 +16,9 @@ main.py — Acervator entry point
 # │   - Stock mode: stock_main_window.py (Alpaca broker)        │
 # │                                                             │
 # │ BUILD: Use BUILD.py with PyInstaller, NOT this file.        │
-# │ TEST:  Use RAIntSimBat.py for the simulation battery.       │
-# │ DOCS:  Use generate_essay.py for the product manual PDF.    │
-# │ GUIDE: See AI_DEVELOPER_GUIDE.md for full architecture.     │
+# │ TEST:  python -m dev_harness.harness.check_release_readiness│
+# │ DOCS:  README.md and CONTRIBUTING.md are the front door.    │
+# │        Issue #69 cut three pointers to absent files.        │
 # └─────────────────────────────────────────────────────────────┘
 
 Orchestrates application startup:

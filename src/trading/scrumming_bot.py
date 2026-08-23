@@ -22,7 +22,7 @@ scrumming_bot.py — Accumulation Trading Bot (live engine)
 # │ This guarantees more asset is bought back than was sold.    │
 # │ DO NOT change this condition.                               │
 # │                                                             │
-# │ See ARCHITECTURE.md for full invariants list.               │
+# │ Issue #69: the doc this line named is not in the tree.      │
 # └─────────────────────────────────────────────────────────────┘
 
 Implements the Accumulation Trading strategy with:

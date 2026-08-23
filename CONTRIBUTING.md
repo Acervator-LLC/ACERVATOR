@@ -10,7 +10,7 @@ This is v1 — built by one person. The battery is 39/39 but one person's perspe
 
 3. **Don't break the GUI without fixing it.** GUI changes must not alter widget dimensions outside the changed widget. Check adjacent layout elements before and after.
 
-4. **Essay is the record.** Significant changes — new mechanisms, new battery results, new strategy comparisons — belong in `generate_essay.py` as a new numbered section. The PDF is regenerated automatically.
+4. **The changelog is the record.** Significant changes — new mechanisms, new battery results, new strategy comparisons — go in `CHANGELOG.md`, with the supporting measurement written up under `docs/audits/`. Issue #69: the English product-manual generator this rule used to name is not in the tree, and no step in this repository rebuilds the English PDF.
 
 ## What We're Looking For
 
