@@ -14,8 +14,6 @@ test explicitly xfails with the reason so the gap is visible.
 from __future__ import annotations
 
 import importlib
-import os
-import sys
 from pathlib import Path
 
 import pytest
@@ -92,21 +90,21 @@ class TestMainEntry:
 
 
 class TestBuildSpecHiddenImportsResolve:
-    """Every module in Acervator_win.spec's hiddenimports MUST import
-    cleanly, OR PyInstaller will silently produce a broken .exe."""
+    """Every module in the build hiddenimports MUST import cleanly, OR
+    PyInstaller will silently produce a broken .exe."""
 
     @pytest.fixture(scope="class")
     def spec_hidden_imports(self):
-        """Extract ccxt.async_support.* names from the win spec."""
-        import re
-        spec = (REPO / "Acervator_win.spec").read_text(encoding="utf-8")
-        # Extract quoted strings inside hiddenimports=[...]
-        m = re.search(
-            r"hiddenimports=\(.*?collect_submodules\('src'\)\s*\+\s*\[(.*?)\]",
-            spec, re.DOTALL,
-        )
-        assert m, "could not find hiddenimports block"
-        return set(re.findall(r"['\"]([A-Za-z0-9_.]+)['\"]", m.group(1)))
+        """The Windows hidden imports, read from the shared spec module.
+
+        Issue #87 - this used to pull the names out of
+        Acervator_win.spec with a regular expression. The names now live
+        in tools/spec_common.py, so the fixture asks the one source
+        directly. Reading them is no longer a parsing problem.
+        """
+        from tools.spec_common import hiddenimports_for
+
+        return set(hiddenimports_for("windows"))
 
     def test_hiddenimports_extraction_works(self, spec_hidden_imports):
         assert len(spec_hidden_imports) > 10, (
@@ -158,15 +156,27 @@ class TestTradingSurface:
         # Search the package for a BotConfig-shaped class
         import pkgutil
         found: list[str] = []
+        # Issue #87 - the loop below used to swallow every import failure
+        # with a bare `continue`. A module that stopped importing was
+        # therefore invisible here: the search simply skipped it, and the
+        # test still passed as long as SOME other module held BotConfig.
+        # The failures are collected now and printed with the result, so
+        # a broken module is visible whether the search succeeds or not.
+        unimportable: list[str] = []
         for info in pkgutil.iter_modules(pkg.__path__, prefix="src.trading."):
             try:
                 mod = importlib.import_module(info.name)
-            except Exception:
+            except Exception as exc:
+                unimportable.append(f"{info.name}: {type(exc).__name__}: {exc}")
                 continue
             for attr in dir(mod):
                 if attr == "BotConfig":
                     found.append(f"{info.name}.BotConfig")
+        detail = ""
+        if unimportable:
+            detail = ("\n\nModules that did not import during the search:\n  "
+                      + "\n  ".join(unimportable))
         assert found, (
             "No BotConfig class found anywhere in src.trading — the "
-            "bot-creation flow has no configuration class at all"
+            "bot-creation flow has no configuration class at all" + detail
         )
