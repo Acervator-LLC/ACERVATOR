@@ -1,14 +1,68 @@
 #!/usr/bin/env python3
+"""Scrumming v3 scenario simulator. A script, not a test.
+
+WHY THIS FILE IS IN ``tools/``
+==============================
+It sat at the repository root and it was called
+``test_scrumming_v3.py``. That name carries pytest's discovery prefix,
+so pytest matched it and took ZERO items out of it: the file defines no
+test function and no test class. Issue #93 measured that. Issue #93
+could not repair it, because the repair means editing the body, so it
+recorded an excusal in ``tests/test_every_test_file_is_collected.py``
+instead. The excusal is gone with this move, and the name now says what
+the file is.
+
+Run it the way every other tool in this directory is run:
+
+    python -m tools.scrumming_v3_sim
+
+``tools/`` carries no ``__init__.py``, and ``-m`` puts the working
+directory on ``sys.path``. That is how ``from src.trading.ta_engine
+import ...`` below resolves. ``python tools/scrumming_v3_sim.py`` puts
+``tools/`` on ``sys.path`` instead and raises ModuleNotFoundError for
+``src``. At the repository root the plain path form worked, because the
+script directory WAS the repository root.
+
+WHY ``tools/`` AND NOT ``tests/``
+=================================
+Issue #85 proposed ``tests/``. That destination is wrong and the suite
+proves it: ``tests/test_every_test_file_is_collected.py``
+::``test_every_collected_test_file_defines_at_least_one_test`` fails on
+any collected file that yields no test item. Moving a file with no test
+function under ``testpaths`` turns the suite red.
+
+``tools/`` is one of the ``PRODUCT_ROOTS`` in
+``tests/test_one_dependency_source.py``, so the import contract still
+reads this file after the move. A directory outside that tuple would
+have dropped the file out of the dependency walk with no message.
+
+WHY THE PRICE GENERATORS USE NUMPY AND NOT THE ``random`` MODULE
+================================================================
+The four generators need a REPRODUCIBLE stream. Each takes a ``seed``
+argument, and two runs at one seed must build the same scenario. ruff
+reports every call into the ``random`` module as S311 at HIGH.
+
+``splash_screen.py`` and ``investor_screen.py`` answered S311 with
+``secrets.SystemRandom()``. That answer is wrong here: a system-entropy
+generator takes no seed, so the scenarios stop repeating.
+
+``numpy.random.default_rng(seed)`` takes a seed, is not the ``random``
+module, and numpy is a declared dependency in ``pyproject.toml``. The
+number STREAM differs from the stream ``random.Random`` gave, so the
+figures this file prints differ from any figure recorded before this
+change. No test and no document pins those figures.
 """
-Scrumming Bot v3 Simulation Test Suite
-Tests targeting state machine + TA confidence across market scenarios.
-"""
-import math, random, time
+import argparse
+import contextlib
+import math
+import sys
 from dataclasses import dataclass
+
+import numpy as np
 
 # Import TA engine
 from src.trading.ta_engine import (
-    Candle, VortexIndicator, MACD, BollingerBands,
+    Candle, VortexIndicator, MACD,
     compute_heikin_ashi, detect_bb_proximity
 )
 
@@ -19,64 +73,64 @@ class SimCandle:
 # ── Price generators ──────────────────────────────────────────
 def gen_range_bound(n=500, center=100, amplitude=10, seed=42):
     """Oscillating price around center."""
-    rng = random.Random(seed)
+    rng = np.random.default_rng(seed)
     candles = []
     price = center
     for i in range(n):
-        move = rng.gauss(0, amplitude * 0.03) + math.sin(i * 0.05) * amplitude * 0.01
+        move = float(rng.normal(0, amplitude * 0.03)) + math.sin(i * 0.05) * amplitude * 0.01
         o = price
         price = max(center * 0.5, price + move)
-        h = max(o, price) + abs(rng.gauss(0, amplitude * 0.005))
-        l = min(o, price) - abs(rng.gauss(0, amplitude * 0.005))
+        h = max(o, price) + abs(float(rng.normal(0, amplitude * 0.005)))
+        l = min(o, price) - abs(float(rng.normal(0, amplitude * 0.005)))
         candles.append(SimCandle(i * 3600, o, h, l, price, 10000 + abs(move) * 1e5))
     return candles
 
 def gen_bull_run(n=500, start=42000, end=73000, seed=42):
     """Strong bull trend (BTC Jan-Mar 2024 style)."""
-    rng = random.Random(seed)
+    rng = np.random.default_rng(seed)
     candles = []
     price = start
     step = (end - start) / n
     for i in range(n):
         o = price
-        noise = rng.gauss(0, price * 0.008)
+        noise = float(rng.normal(0, price * 0.008))
         price = price + step + noise
         # Occasional small pullbacks
-        if rng.random() < 0.15:
+        if float(rng.random()) < 0.15:
             price -= step * 2
-        h = max(o, price) + abs(rng.gauss(0, price * 0.003))
-        l = min(o, price) - abs(rng.gauss(0, price * 0.003))
+        h = max(o, price) + abs(float(rng.normal(0, price * 0.003)))
+        l = min(o, price) - abs(float(rng.normal(0, price * 0.003)))
         candles.append(SimCandle(i * 3600, o, h, l, price, 10000 + abs(step) * 100))
     return candles
 
 def gen_bear_drop(n=500, start=73000, end=55000, seed=42):
     """Bear market drop."""
-    rng = random.Random(seed)
+    rng = np.random.default_rng(seed)
     candles = []
     price = start
     step = (end - start) / n
     for i in range(n):
         o = price
-        noise = rng.gauss(0, price * 0.008)
+        noise = float(rng.normal(0, price * 0.008))
         price = price + step + noise
-        if rng.random() < 0.15:
+        if float(rng.random()) < 0.15:
             price -= step * 2  # Occasional bounces (negative step → positive bounce)
-        h = max(o, price) + abs(rng.gauss(0, price * 0.003))
-        l = min(o, price) - abs(rng.gauss(0, price * 0.003))
+        h = max(o, price) + abs(float(rng.normal(0, price * 0.003)))
+        l = min(o, price) - abs(float(rng.normal(0, price * 0.003)))
         candles.append(SimCandle(i * 3600, o, h, l, price, 10000))
     return candles
 
 def gen_volatile_chop(n=500, center=65000, seed=42):
     """High volatility choppy market."""
-    rng = random.Random(seed)
+    rng = np.random.default_rng(seed)
     candles = []
     price = center
     for i in range(n):
         o = price
-        move = rng.gauss(0, center * 0.02)
+        move = float(rng.normal(0, center * 0.02))
         price = max(center * 0.7, min(center * 1.3, price + move))
-        h = max(o, price) + abs(rng.gauss(0, center * 0.005))
-        l = min(o, price) - abs(rng.gauss(0, center * 0.005))
+        h = max(o, price) + abs(float(rng.normal(0, center * 0.005)))
+        l = min(o, price) - abs(float(rng.normal(0, center * 0.005)))
         candles.append(SimCandle(i * 3600, o, h, l, price, 10000 + abs(move) * 100))
     return candles
 
@@ -104,11 +158,10 @@ class ScrumSim:
         self.trades = 0
         self.scrums = 0
         self.folds = 0
-        self.pnl = 0.0
+        self.harvested_usd = 0.0
         self.volume = 0.0
         self.fold_queue_usd = 0.0
         self.fold_ref_price = 0.0
-        self.dist_queue = 0.0
 
         # Targeting
         self.mode = "search"
@@ -240,7 +293,7 @@ class ScrumSim:
                     extra = buy - at_scrum
                     self.usd -= usd_avail
                     self.holdings += buy
-                    self.pnl += extra * price
+                    self.harvested_usd += extra * price
                     self.trades += 1; self.folds += 1
                     self.volume += usd_avail
                     self.fold_queue_usd = 0.0
@@ -256,6 +309,14 @@ class ScrumSim:
             "pnl": portfolio - self.investment,
             "passive_pnl": passive - self.investment,
             "advantage": portfolio - passive,
+            # The fold profit this run actually harvested. It was
+            # accumulated and then thrown away: the old return dict had a
+            # key called "pnl" that held `portfolio - investment`, a
+            # different quantity with the same name, and `self.pnl` was
+            # never read. vulture reported it as a dead attribute. The
+            # accumulator is named `harvested_usd` now and it is
+            # reported.
+            "harvested": self.harvested_usd,
             "trades": self.trades,
             "scrums": self.scrums,
             "folds": self.folds,
@@ -280,6 +341,7 @@ def run_scenario(name, candles, **kwargs):
     print(f"{'─' * 60}")
     print(f"  Trades: {r['trades']} ({r['scrums']} scrums, {r['folds']} folds)")
     print(f"  Volume: ${r['volume']:,.2f}")
+    print(f"  Harvested by folds: ${r['harvested']:,.2f}")
     print(f"  Portfolio: ${r['portfolio']:,.2f}  "
           f"({pnl_color}P/L: ${r['pnl']:+,.2f}{reset})")
     print(f"  Passive:   ${r['passive_hold']:,.2f}  "
@@ -289,49 +351,85 @@ def run_scenario(name, candles, **kwargs):
     return r
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """Run the six scenarios and print the comparison report.
+
+    A callable ``main`` is the contract every module under ``tools/``
+    owes ``tests/test_tools_are_reachable.py``. While this file lived at
+    the repository root it reached its scenarios from a bare ``__main__``
+    block, so nothing outside the interpreter could start it.
+
+    ``--seed`` is not a new feature. All four generators already took a
+    ``seed`` argument, and the block this replaces already used two
+    different values. The parser exposes what the functions already had.
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m tools.scrumming_v3_sim",
+        description="Scrumming v3 scenario simulator. Prints a "
+                    "six-scenario comparison of the bot against a "
+                    "passive hold.")
+    parser.add_argument(
+        "--seed", type=int, default=42,
+        help="seed for the synthetic price series (default: 42). The "
+             "bear half of the full-cycle scenario uses seed + 1, so "
+             "the two halves do not repeat one series.")
+    args = parser.parse_args(argv)
+    seed = args.seed
+
+    # The report draws its rules with U+2550 and U+2500 and its price
+    # arrow with U+2192. A Windows console hands Python a cp1252 stdout,
+    # which encodes none of them. MEASURED at HEAD on 2026-08-23: this
+    # file, as it stood at the repository root, raised UnicodeEncodeError
+    # inside the first `run_scenario` print and produced no scenario at
+    # all. The characters are right; the stream was wrong.
+    with contextlib.suppress(AttributeError, OSError, ValueError):
+        sys.stdout.reconfigure(encoding="utf-8")
+
     print("\n" + "=" * 60)
-    print("  SCRUMMING BOT v3 — SIMULATION TEST SUITE")
+    print("  SCRUMMING BOT v3 \u2014 SCENARIO SIMULATOR")
     print("  TA Confidence + Targeting State Machine")
+    print(f"  seed: {seed}")
     print("=" * 60)
 
     results = {}
 
-    # Test 1: Range-bound (ideal scenario)
+    # 1: Range-bound (ideal scenario)
     results["range_bound"] = run_scenario(
-        "RANGE-BOUND ($90–$110, 500 candles)",
-        gen_range_bound(500, center=100, amplitude=10))
+        "RANGE-BOUND ($90\u2013$110, 500 candles)",
+        gen_range_bound(500, center=100, amplitude=10, seed=seed))
 
-    # Test 2: Strong bull run (BTC 2024 problem scenario)
+    # 2: Strong bull run (BTC 2024 problem scenario)
     results["bull_run"] = run_scenario(
-        "BULL RUN ($42K→$73K, 500 candles — BTC Jan-Mar 2024)",
-        gen_bull_run(500, start=42000, end=73000))
+        "BULL RUN ($42K\u2192$73K, 500 candles \u2014 BTC Jan-Mar 2024)",
+        gen_bull_run(500, start=42000, end=73000, seed=seed))
 
-    # Test 3: Bear drop
+    # 3: Bear drop
     results["bear_drop"] = run_scenario(
-        "BEAR DROP ($73K→$55K, 500 candles)",
-        gen_bear_drop(500, start=73000, end=55000))
+        "BEAR DROP ($73K\u2192$55K, 500 candles)",
+        gen_bear_drop(500, start=73000, end=55000, seed=seed))
 
-    # Test 4: Volatile chop
+    # 4: Volatile chop
     results["volatile"] = run_scenario(
-        "VOLATILE CHOP (±20% around $65K, 500 candles)",
-        gen_volatile_chop(500, center=65000))
+        "VOLATILE CHOP (\u00b120% around $65K, 500 candles)",
+        gen_volatile_chop(500, center=65000, seed=seed))
 
-    # Test 5: Bull then bear (full cycle)
-    bull = gen_bull_run(250, start=42000, end=73000, seed=42)
-    bear = gen_bear_drop(250, start=73000, end=58000, seed=43)
-    # Adjust timestamps for bear portion
+    # 5: Bull then bear (full cycle)
+    bull = gen_bull_run(250, start=42000, end=73000, seed=seed)
+    bear = gen_bear_drop(250, start=73000, end=58000, seed=seed + 1)
+    # Adjust timestamps for the bear portion
     for i, c in enumerate(bear):
-        bear[i] = SimCandle(c.time + 250 * 3600, c.open, c.high, c.low, c.close, c.volume)
+        bear[i] = SimCandle(c.time + 250 * 3600, c.open, c.high, c.low,
+                            c.close, c.volume)
     cycle = bull + bear
     results["full_cycle"] = run_scenario(
-        "FULL CYCLE: Bull $42K→$73K then Bear $73K→$58K (500 candles)",
+        "FULL CYCLE: Bull $42K\u2192$73K then Bear $73K\u2192$58K "
+        "(500 candles)",
         cycle)
 
-    # Test 6: Tight range (low volatility)
+    # 6: Tight range (low volatility)
     results["tight"] = run_scenario(
-        "TIGHT RANGE ($99–$101, 500 candles, low vol)",
-        gen_range_bound(500, center=100, amplitude=2))
+        "TIGHT RANGE ($99\u2013$101, 500 candles, low vol)",
+        gen_range_bound(500, center=100, amplitude=2, seed=seed))
 
     # Summary
     print("\n" + "=" * 60)
@@ -342,10 +440,15 @@ if __name__ == "__main__":
     print(f"  Scenarios won vs passive: {wins}/{total}")
     for name, r in results.items():
         adv = r["advantage"]
-        sym = "✓" if adv >= 0 else "✗"
+        sym = "\u2713" if adv >= 0 else "\u2717"
         print(f"    {sym} {name:20s}: advantage ${adv:+,.2f} "
               f"({r['trades']} trades, price {r['price_change']:+.1f}%)")
 
     total_adv = sum(r["advantage"] for r in results.values())
     print(f"\n  Total advantage across all scenarios: ${total_adv:+,.2f}")
     print("=" * 60)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

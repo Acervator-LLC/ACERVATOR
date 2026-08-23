@@ -67,6 +67,7 @@ above.
 # rule.
 from __future__ import annotations
 
+import ast
 import importlib
 import subprocess
 import sys
@@ -105,6 +106,13 @@ INVENTORY: tuple[tuple[str, bool], ...] = (
     ("migrate_harness", True),
     ("orphan_widget_scan", True),
     ("queue_state", True),
+    # Issue #85 moved this in from the repository root, where it was
+    # called `test_scrumming_v3.py`. It wore pytest's discovery prefix,
+    # sat outside `testpaths`, and defined no test function, so nothing
+    # collected it and nothing ran it. It reached its scenarios from a
+    # bare `__main__` block; the move gave it the `main()` and the parser
+    # this inventory requires, so it is True.
+    ("scrumming_v3_sim", True),
 )
 
 # Deleted under issue #83. Each was a one-shot whose migration had already
@@ -115,6 +123,40 @@ DELETED_ONE_SHOTS: tuple[str, ...] = (
     "purge_orphan_reservations",
     "quarantine_sim_contamination",
 )
+
+# Shared LIBRARIES under `tools/`. A library is IMPORTED and never run, so
+# the `main` contract above is the wrong question to ask of one.
+#
+# `spec_common` entered this directory under issue #87, which lifted the
+# text both `.spec` files shared into one module: `read_acervator_version`,
+# `datas_candidates`, `build_graceful_datas`, `hiddenimports_for`,
+# `COMMON_HIDDENIMPORTS`, `KEYRING_BACKENDS` and `EXCLUDES`. PyInstaller
+# EXECS a spec file, and the spec then says
+# `from tools.spec_common import ...`. Nothing starts spec_common as a
+# program, and nothing should: a `main()` on it would be an entry point
+# with no caller.
+#
+# Issue #85 measured it undeclared and RED at 0bb82bb and refused it while
+# issue #87 still owned the file. #87 is merged, so the row is taken here.
+# It is NOT a tool row with a softer rule. A library owes three things,
+# and `TestEveryLibraryIsALibrary` asks for all three:
+#
+#   1. it imports;
+#   2. it exposes every name its importers ask for, READ FROM THE
+#      IMPORTERS rather than restated in this file;
+#   3. it exposes NO `main`.
+#
+# Rule 3 is what stops this category becoming a hiding place. A tool whose
+# entry point broke cannot be moved here to silence the failure, because
+# the ABSENCE of `main` is what makes a library a library.
+LIBRARIES: tuple[tuple[str, str], ...] = (
+    ("spec_common",
+     "shared PyInstaller spec content, imported by Acervator_win.spec "
+     "and Acervator_mac.spec"),
+)
+
+# The importers rule 2 is read from.
+SPEC_FILES: tuple[str, ...] = ("Acervator_win.spec", "Acervator_mac.spec")
 
 
 def probe_import(stem: str) -> tuple[bool, str]:
@@ -132,14 +174,45 @@ def probe_import(stem: str) -> tuple[bool, str]:
     return True, ""
 
 
+def library_stems() -> set[str]:
+    return {stem for stem, _ in LIBRARIES}
+
+
 def declared_stems() -> set[str]:
-    return {stem for stem, _ in INVENTORY}
+    """Every module this file declares, tool or library.
+
+    Widening a comparison is how a guard quietly stops guarding, so
+    `test_the_directory_check_still_catches_an_undeclared_script` below
+    drives the widened set with a file that neither list names.
+    """
+    return {stem for stem, _ in INVENTORY} | library_stems()
 
 
-def stems_on_disk() -> set[str]:
-    """Every tool module actually present, ignoring private helpers."""
-    return {p.stem for p in TOOLS.glob("*.py")
+def stems_on_disk(directory: Path = TOOLS) -> set[str]:
+    """Every module actually present, ignoring private helpers.
+
+    `directory` is a parameter and not a constant read, following
+    `product_python_files` in tests/test_one_dependency_source.py, so a
+    control can drive this walk over a planted tree. A comparison that
+    can only ever read the real directory cannot be SHOWN reporting a
+    straggler.
+    """
+    return {p.stem for p in directory.glob("*.py")
             if not p.stem.startswith("_")}
+
+
+def names_imported_from(module: str, source: str) -> set[str]:
+    """Every name a source file asks `module` for.
+
+    Parsed, not text-searched. Both spec files name `tools.spec_common`
+    in their prose as well as in their import statement, and prose is not
+    an import.
+    """
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom) and node.module == module:
+            found.update(alias.name for alias in node.names)
+    return found
 
 
 class TestTheInventoryMatchesTheDirectory:
@@ -197,6 +270,70 @@ class TestEveryToolRunsAsAProgram:
         assert callable(mod.main)
         assert callable(mod.head_sha)
         assert callable(mod.tree_is_dirty)
+
+
+class TestEveryLibraryIsALibrary:
+    """A library imports, serves its importers, and is not a program."""
+
+    @pytest.mark.parametrize(("stem", "_why"), LIBRARIES)
+    def test_library_imports(self, stem, _why):
+        """Rule 1. An unimportable library stops both builds."""
+        importlib.import_module(f"tools.{stem}")
+
+    @pytest.mark.parametrize(("stem", "_why"), LIBRARIES)
+    def test_library_exposes_no_main(self, stem, _why):
+        """Rule 3. The rule that keeps this category honest."""
+        mod = importlib.import_module(f"tools.{stem}")
+        assert not callable(getattr(mod, "main", None)), (
+            f"tools/{stem}.py is declared a library and carries a "
+            f"callable main. Either it is a tool and belongs in "
+            f"INVENTORY, or that main has no caller and must go. This "
+            f"category is not a place to park a tool whose entry point "
+            f"broke."
+        )
+
+    @pytest.mark.parametrize(("stem", "_why"), LIBRARIES)
+    def test_library_carries_a_reason(self, stem, _why):
+        assert _why.strip(), f"tools/{stem}.py is declared with no reason"
+
+    def test_a_module_is_a_tool_or_a_library_and_never_both(self):
+        both = sorted({stem for stem, _ in INVENTORY} & library_stems())
+        assert not both, f"declared as both tool and library: {both}"
+
+
+class TestTheSharedSpecLibraryServesItsImporters:
+    """Rule 2, read from the importers and not from a list here.
+
+    A hand-written list of names would drift the moment a spec asked for
+    a new one. The spec files ARE the list.
+    """
+
+    @pytest.mark.parametrize("spec", SPEC_FILES)
+    def test_every_name_a_spec_asks_for_is_defined(self, spec):
+        source = (REPO / spec).read_text(encoding="utf-8")
+        wanted = names_imported_from("tools.spec_common", source)
+        assert wanted, (
+            f"{spec} imports nothing from tools.spec_common; this check "
+            f"has no input and can report nothing")
+        mod = importlib.import_module("tools.spec_common")
+        missing = sorted(name for name in wanted if not hasattr(mod, name))
+        assert not missing, (
+            f"{spec} imports {missing} from tools.spec_common and the "
+            f"module defines none of them. PyInstaller would stop with "
+            f"an ImportError on the operator's machine."
+        )
+
+    def test_both_specs_read_the_same_library(self):
+        """The module exists to hold what the two specs SHARE."""
+        asked = [
+            names_imported_from(
+                "tools.spec_common",
+                (REPO / spec).read_text(encoding="utf-8"))
+            for spec in SPEC_FILES
+        ]
+        assert asked[0] & asked[1], (
+            "the two specs now share no name from tools.spec_common; the "
+            "reason that module exists has gone")
 
 
 class TestTheDeletedOneShotsStayDeleted:
@@ -344,6 +481,49 @@ class TestTheInstrumentCanFail:
         ok, why = probe_import("faux_no_main")
         assert not ok
         assert "no callable main" in why
+
+    def test_the_directory_check_still_catches_an_undeclared_script(
+            self, tmp_path):
+        """The widened allowlist must still report a real straggler.
+
+        LIBRARIES made `declared_stems` bigger. A bigger allowlist is
+        exactly how a guard stops guarding, so the comparison is driven
+        over a planted tree holding every declared name, one file that is
+        declared nowhere, and one private helper that must stay ignored.
+        """
+        planted = tmp_path / "tools"
+        planted.mkdir()
+        for stem in sorted(declared_stems()):
+            (planted / f"{stem}.py").write_text("x = 1", encoding="utf-8")
+        (planted / "zz_undeclared_straggler.py").write_text(
+            "x = 1", encoding="utf-8")
+        (planted / "_private_helper.py").write_text("x = 1", encoding="utf-8")
+
+        extra = sorted(stems_on_disk(planted) - declared_stems())
+        assert extra == ["zz_undeclared_straggler"], extra
+
+    def test_the_library_rule_rejects_a_library_that_grew_a_main(
+            self, monkeypatch):
+        """Rule 3, driven with the case it exists for.
+
+        A module object carrying a `main` is planted in the import cache,
+        so the rule reads a real module and the `main` is the only thing
+        left to decide the answer.
+        """
+        faux = types.ModuleType("tools.faux_library")
+        faux.main = lambda: 0
+        monkeypatch.setitem(sys.modules, "tools.faux_library", faux)
+        mod = importlib.import_module("tools.faux_library")
+        assert callable(getattr(mod, "main", None)), (
+            "the planted module lost its main; the rule cannot be shown "
+            "rejecting anything")
+
+    def test_the_spec_surface_check_rejects_a_name_that_is_absent(self):
+        """Rule 2, driven with a name tools.spec_common does not define."""
+        mod = importlib.import_module("tools.spec_common")
+        wanted = {"EXCLUDES", "no_such_name_at_all"}
+        missing = sorted(name for name in wanted if not hasattr(mod, name))
+        assert missing == ["no_such_name_at_all"]
 
     def test_the_inventory_check_rejects_a_declaration_with_no_file(self):
         """The comparison, driven with a name that is not on disk."""

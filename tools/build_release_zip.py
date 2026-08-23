@@ -147,7 +147,12 @@ ADDITIONAL_FILES_EXACT = {
     "generate_essay_ja.py",
     "generate_essay_localized.py",
     "investor_screen.py",
-    "test_scrumming_v3.py",
+    # Issue #85 renamed `test_scrumming_v3.py` to
+    # `tools/scrumming_v3_sim.py`. This set matches a repo-relative
+    # string EXACTLY, so the old entry would have stopped matching in
+    # silence and the file would have joined the PRIMARY zip with no
+    # message. It joins the PRIMARY zip on purpose now: it is a tool in
+    # `tools/`, and every other tool in that directory ships there.
     # Cat 7 — low-coupling promo (trailer chain). KEEP
     # generate_essay.py in PRIMARY — it builds the live product
     # manual. The trailer chain (splash + render) is dormant.

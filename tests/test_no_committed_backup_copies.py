@@ -316,7 +316,7 @@ def test_the_rule_reads_the_last_path_element_only() -> None:
     "test_no_committed_backup_copies.py",
     "backup_manager.py",
     "test_backup_flow.py",
-    "test_scrumming_v3.py",
+    "scrumming_v3_sim.py",
     "test_nuclear_panel_drives_v2.py",
     ".vale.ini",
     ".release_ready.json",
