@@ -654,7 +654,7 @@ class ScrummingBot(BotContainer):
         # accrue and be spread out over time."
         #
         # Drain mechanic (per cycle):
-        #   per_cycle_growth_budget = anchor × (max_target_growth_pct / 100)
+        #   per_cycle_growth_budget = cycle-open target × (pct / 100)
         #   this_cycle_growth = min(this_cycle_surplus + standing_surplus,
         #                           per_cycle_growth_budget)
         #   target_balance += this_cycle_growth
@@ -805,7 +805,7 @@ class ScrummingBot(BotContainer):
         # depletion (delta<0 and bb_pos<0.40 and !bullish) as a
         # countercyclical capital deployment. Replenished from fold
         # profit (8% of accum_profit) up to the initial reserve size.
-        # Ported from RAIntSimBat.py:2144-2159 (hedge buy) and
+        # Ported from RAIntSimBat.py lines 2144-2159 (hedge buy) and
         # lines 1794-1795, 1903-1904 (replenishment from fold profit).
         self._hedge_bal: float = (
             float(config.hedge_balance) if config.hedge_rebalance_active else 0.0)
@@ -997,8 +997,8 @@ class ScrummingBot(BotContainer):
 
         # v3.16.56 — Per-cycle Growth Rate Cap consumed tracker. Operator
         # directive 2026-05-13: the Growth Rate Cap is the ONLY mechanic
-        # that stops burst-fire. Each cycle has a budget of
-        # anchor × max_target_growth_pct/100. Per-fold drain decrements
+        # that stops burst-fire. Each cycle has a budget of the
+        # cycle-open target × pct/100 (issue #106). Per-fold drain cuts
         # this; when consumed >= cap, no further target growth until
         # cap resets. Cap resets on EITHER:
         #   (A) SCRUM fires (Target Delta swings positive, sell event)
@@ -1781,6 +1781,88 @@ class ScrummingBot(BotContainer):
             "preserved_growth": max(0.0, new_t - new_a),
         }
 
+    @property
+    def cycle_growth_cap_usd(self) -> float:
+        """The per-cycle Growth Rate Cap in USD. THE ONE DEFINITION.
+
+        Issue #106, operator report 2026-08-21: "the compounding rate
+        appears to stay frozen as a calculation based on the starting
+        value of the bot but this should refresh after each Fold so as
+        to induce the appropriate curve."
+
+        THE BASE IS THE GROWN TARGET, NOT THE FROZEN ANCHOR. Every site
+        that needed this number used to spell out
+        `self._anchor_target_balance * (max_target_growth_pct / 100)`
+        for itself. `_anchor_target_balance` moves only on operator
+        input, wire income or tranche arrival; a Fold never moves it. So
+        the cap held ONE dollar value for the life of the bot and the
+        curve was `anchor x (1 + 0.01N)` rather than `anchor x 1.01^N`.
+        Measured on the live fleet 2026-08-24: IMU had grown 27.1%, from
+        $50.00 to $63.53, and still capped each Fold at $0.50.
+
+        WHY THE BASE SUBTRACTS `_fold_cycle_cap_consumed` RATHER THAN
+        READING `_target_balance` RAW. `_apply_fold_target_growth` adds
+        the SAME `_growth_applied` to `_target_balance` and to
+        `_fold_cycle_cap_consumed`, so their difference is invariant
+        across a cycle and equals the target as it stood when the cycle
+        opened. Reading the raw target instead would let the cap grow as
+        the cycle consumed it -- a bound that expands while you spend it
+        -- and one cycle would settle at pct/(1-pct) rather than pct.
+        At 1% that is 1.0101% per cycle, an overrun of the per-event
+        bound MEM-249 states. Subtracting the consumption pins the base
+        for the cycle and needs no new attribute and no state migration.
+
+        WHAT THIS DOES NOT CHANGE, and MEM-249 at
+        `src/trading/bot_container.py` is the rule being kept: fold
+        surplus is still the ONLY mechanism that may grow the target,
+        and it is still bounded per event. Only the BASE of the bound
+        moved. Nothing new became able to grow the target.
+
+        FAIL-CLOSED. A non-finite or unreadable input returns 0.0, which
+        is a cap of zero and therefore no growth at all. A cap that
+        defaulted wide on unreadable state would grow the target from a
+        number nobody could read.
+
+        NOT ONE-DIRECTIONAL IN TWO NAMED STATES. The cap is >= the old
+        one whenever accrued growth (`target - anchor`) is at least the
+        consumption booked this cycle, which is the ordinary case
+        because this cycle's consumption is PART of accrued growth.
+        Detonation (`_execute_detonation`) puts the target back to the
+        anchor and deliberately does NOT clear
+        `_fold_cycle_cap_consumed`, and a withdrawal below the anchor
+        clears growth the same way; in both the base sits BELOW the
+        anchor until the cycle resets, so the cap is briefly smaller
+        than it used to be. Both are bounded by the consumption already
+        booked and both self-clear on the next cycle reset. Detonation
+        is disabled on all 38 live bots.
+
+        Returns:
+          The whole cycle's cap in USD, not the remaining headroom.
+          Callers subtract `_fold_cycle_cap_consumed` themselves, which
+          is what the four call sites did before this property existed.
+
+        """
+        try:
+            _pct = float(getattr(
+                self.config, "max_target_growth_pct", 1.0) or 0.0)
+            _target = float(getattr(self, "_target_balance", 0.0) or 0.0)
+            _consumed = float(getattr(
+                self, "_fold_cycle_cap_consumed", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+        if not (math.isfinite(_pct) and math.isfinite(_target)
+                and math.isfinite(_consumed)):
+            return 0.0
+        if _pct <= 0.0:
+            return 0.0
+        # The target as it stood when this cycle opened. Never negative:
+        # a detonation or a withdrawal can leave the consumption above
+        # the target until the next reset, and a negative base would
+        # make the cap negative and `cap - consumed` wrong in the other
+        # direction.
+        _base = max(0.0, _target - _consumed)
+        return _base * (_pct / 100.0)
+
     def _apply_fold_target_growth(self, accum_profit: float,
                                   source: str) -> float:
         """Drain fold surplus into `_target_balance`, bounded by the
@@ -1793,9 +1875,9 @@ class ScrummingBot(BotContainer):
         tranche back to cash-equivalent should contribute to target
         growth, not just the autonomous FOLD path.
 
-        Formula (v3.23.7 realignment):
+        Formula (v3.23.7 realignment; base corrected by issue #106):
           surplus_usd = max(0, accum_profit * quote_to_usd)
-          cycle_cap = anchor * (max_target_growth_pct/100)
+          cycle_cap = self.cycle_growth_cap_usd
           cap_remaining = max(0, cycle_cap - fold_cycle_cap_consumed)
           growth_applied = min(surplus_usd, cap_remaining)
           _target_balance += growth_applied
@@ -1854,8 +1936,15 @@ class ScrummingBot(BotContainer):
             except Exception as _sup:  # noqa: BLE001 - diagnostic best-effort
                 logger.debug("suppressed in %s: %s: %s", "_apply_fold_target_growth", type(_sup).__name__, _sup)
             return 0.0
-        _cap_pct = float(getattr(self.config, "max_target_growth_pct", 1.0))
-        _cycle_cap_growth = self._anchor_target_balance * (_cap_pct / 100.0)
+        # Issue #106 -- THE CAP COMPOUNDS. This read
+        # `self._anchor_target_balance * (_cap_pct / 100.0)`, and the
+        # anchor is the operator's input value which no Fold ever moves.
+        # `cycle_growth_cap_usd` takes the same percentage of the target
+        # as it stood when this cycle opened. Read its docstring for why
+        # the base is not the raw target. `_cap_pct` used to be bound
+        # here and is not, because nothing in this method reads the
+        # percentage now that the property owns the arithmetic.
+        _cycle_cap_growth = self.cycle_growth_cap_usd
         _cap_remaining = max(
             0.0,
             _cycle_cap_growth - self._fold_cycle_cap_consumed)
@@ -1978,7 +2067,7 @@ class ScrummingBot(BotContainer):
         # ORDER IS THE WHOLE POINT.
         #
         # THE RULE IS ONE RULE, AND IT IS NOT NEW HERE. The autonomous
-        # rebuy-distance gate states it at :12761: a value sets an
+        # rebuy-distance gate states it at :12883: a value sets an
         # ordering or a threshold ONLY IF IT IS A FINITE NUMBER, and the
         # finiteness test runs BEFORE any comparison, never as part of
         # one. That gate tests the threshold it is about to compare
@@ -1997,8 +2086,8 @@ class ScrummingBot(BotContainer):
         #
         # AND THIS METHOD SIZES AN ORDER, which is what makes it worse
         # than the gate's. The return flows through
-        # `buy_usd_target = -delta_usd + _growth_preview` (:12930) into
-        # `guarded_place_order` (:13019). Measured end to end on the
+        # `buy_usd_target = -delta_usd + _growth_preview` (:13052) into
+        # `guarded_place_order` (:13150). Measured end to end on the
         # operator's own config (interval 5.0, fee 1.6, growth cap 1.0),
         # ladders differing only in row order placed TWO DIFFERENT
         # AMOUNTS for the same ladder at the same price.
@@ -2030,7 +2119,7 @@ class ScrummingBot(BotContainer):
         # The key is the ref itself, already proven finite above, so the
         # sort is a total order by construction rather than by hope.
         _readable.sort(key=lambda pair: pair[0], reverse=True)
-        # Read by the one caller (:12890) to say out loud that the
+        # Read by the one caller (:13012) to say out loud that the
         # sizing answer came from fewer tranches than are queued.
         self._fold_preview_unreadable_refs = _unreadable_refs
         _remaining = float(units)
@@ -2103,8 +2192,13 @@ class ScrummingBot(BotContainer):
         self._fold_preview_unreadable_units = _unreadable_units
         _quote = float(self._quote_to_usd or 1.0)
         _new_surplus_usd = max(0.0, _accum * _quote)
-        _cap_pct = float(getattr(self.config, "max_target_growth_pct", 1.0))
-        _cycle_cap_growth = self._anchor_target_balance * (_cap_pct / 100.0)
+        # Issue #106 -- the SAME property the applier reads. This is a
+        # preview of what `_apply_fold_target_growth` WOULD add, so a
+        # second spelling of the cap here would let the preview and the
+        # applier disagree about the one number the preview exists to
+        # predict. `_cap_pct` is no longer read for the cap and is not
+        # bound at all.
+        _cycle_cap_growth = self.cycle_growth_cap_usd
         _cap_remaining = max(
             0.0, _cycle_cap_growth - self._fold_cycle_cap_consumed)
         if _cap_remaining <= 1e-9:
@@ -2708,8 +2802,8 @@ class ScrummingBot(BotContainer):
 
         THE TYPE GROUND IS SHARED TOO, v3.25.7, and for a reason this
         contract does not merely inherit. The tick multiplies
-        `_current_holdings` by a price (:6957) and subtracts
-        `_target_balance` (:7782); a string in either raises TypeError
+        `_current_holdings` by a price (:7058) and subtracts
+        `_target_balance` (:7883); a string in either raises TypeError
         in the DECIDER. State that only `float()` can read is already
         broken state, so coercing it here would launder a corruption
         into a durable float write. Refuse it and say which name it was.
@@ -2758,7 +2852,7 @@ class ScrummingBot(BotContainer):
         exception, because `__float__` on the stored value is the one
         place caller-shaped data still gets to run code. The units
         value is deliberately NOT type-refused the way the two money
-        parameters are: `_main_lots_invariant_ok` (:15526) coerces the
+        parameters are: `_main_lots_invariant_ok` (:15657) coerces the
         same field with a bare `sum`, and refusing here what that
         accepts would put the ledger's two readers on different rules.
 
@@ -2800,8 +2894,8 @@ class ScrummingBot(BotContainer):
 
         THE TWO HALVES ARE THE TWO TERMS OF ONE SUBTRACTION. The tick
         computes `current_value = _current_holdings * ticker.last *
-        _quote_to_usd` (:6957) and then `delta = current_value -
-        _target_balance` (:7782). An arrival moves BOTH terms. Split the
+        _quote_to_usd` (:7058) and then `delta = current_value -
+        _target_balance` (:7883). An arrival moves BOTH terms. Split the
         halves and delta moves, in whichever direction the missing half
         was:
 
@@ -2826,7 +2920,7 @@ class ScrummingBot(BotContainer):
         through an expression that reads the rate at TWO DIFFERENT
         TIMES, and so quietly assumed the rate cannot move between the
         arrival and the tick that reads it. Write both out. With P the
-        live quote-side price, `q_tick` the rate the tick reads (:6957)
+        live quote-side price, `q_tick` the rate the tick reads (:7058)
         and `q_arr` the rate this method read when it priced the
         arrival:
 
@@ -2858,10 +2952,10 @@ class ScrummingBot(BotContainer):
 
         KNOWN LIMITATION -- CONTAINMENT DOES NOT SURVIVE A DRIFT-DOWN
         RECONCILE, AND BOTH LIFTED BALANCES ARE LEFT BEHIND.
-        `_reconcile_holdings` (:11751) writes `_main_lots` and
+        `_reconcile_holdings` (:11873) writes `_main_lots` and
         `_current_holdings` and writes NEITHER `_target_balance` NOR
         `_anchor_target_balance` anywhere (AST-verified over the whole
-        function, both names). Its drift-DOWN branch (:12020-12042)
+        function, both names). Its drift-DOWN branch (:12142-12164)
         rescales every lot by `exchange_units / internal_units` and
         resets holdings to the exchange figure. Run it after an arrival
         and the units go while both lifts stay: a $20 arrival on a
@@ -2870,22 +2964,28 @@ class ScrummingBot(BotContainer):
         reasoned.
 
         v3.25.6 RECORDED ONLY HALF OF THAT BLAST RADIUS. It named the
-        target and stopped. The stranded ANCHOR is the wider of the two,
-        because the anchor is the base other limits are taken from and
-        it is not reset by the tick: `_apply_fold_target_growth` sizes
-        the per-cycle Growth Rate Cap as
-        `self._anchor_target_balance * (max_target_growth_pct / 100)`
-        (:1858), and `position_ceiling_usd` returns
-        `self._anchor_target_balance * mult` (:4870). A $20 stranded
-        lift on a $200 anchor therefore widens the growth cap by 10% and
-        raises the Smart Ceiling by $20 x mult, for as long as it
-        stands.
+        target and stopped. BOTH numbers are stranded and each is the
+        base of a different limit, so each widens a different bound for
+        as long as it stands.
+
+        THE ANCHOR carries `position_ceiling_usd`, which returns
+        `self._anchor_target_balance * mult` (:4971). A $20 stranded
+        lift on a $200 anchor raises the Smart Ceiling by $20 x mult.
+
+        THE TARGET carries the per-cycle Growth Rate Cap. Issue #106
+        moved that base: `cycle_growth_cap_usd` (:1785) takes
+        `max_target_growth_pct` of the target as it stood when the cycle
+        opened, not of the anchor. So the same $20 stranded lift on a
+        $200 target widens the growth cap by 10%. Before #106 that
+        sentence named the anchor, and it is written down here because
+        a repair that moves a base moves every blast radius measured
+        from it.
 
         THIS IS NOT FIXED HERE, ON PURPOSE. A rescale is PROPORTIONAL
         across every lot and the ledger records no provenance, so
         nothing in `_main_lots` says which units arrived from a child
         and which were bought. `_target_balance` is built from operator
-        config, fold growth (:1784), wire income (:2534) and arrivals
+        config, fold growth (:1866), wire income (:2628) and arrivals
         together, so there is no evidence available at reconcile time to
         size a matching un-lift. Un-lifting proportionally would guess.
         The drift-DOWN branch is also the "legitimate loss" branch: a
@@ -2899,18 +2999,18 @@ class ScrummingBot(BotContainer):
 
         THE HOLDINGS HALF IS A LOT, NOT A NUMBER. Since v3.23.43 this
         bot owns exactly what is in `_main_lots` and derives
-        `_current_holdings` from that source alone (:6951). The
+        `_current_holdings` from that source alone (:7052). The
         invariant `sum(lot["units"]) == _current_holdings` (:694) is
-        checked by `_main_lots_invariant_ok` (:15526). Two consequences,
+        checked by `_main_lots_invariant_ok` (:15657). Two consequences,
         both load-bearing:
 
           * Incrementing `_current_holdings` without appending a lot
             breaks the invariant, and the next drift-down reconcile
-            rescales `_main_lots` and resets holdings (:12020-12042),
+            rescales `_main_lots` and resets holdings (:12142-12164),
             silently undoing the credit.
           * Booking nothing at all is not neutral either. Units that
             land on the exchange but are never attributed are refused
-            by the drift-UP policy (:12044-12076) -- "those units
+            by the drift-UP policy (:12166-12198) -- "those units
             belong to another bot, prior state, or operator" -- so the
             child's gain would sit unclaimed forever.
 
@@ -2920,16 +3020,16 @@ class ScrummingBot(BotContainer):
         scalar" and the file does not do that. There are two shapes:
 
           SPLIT ACROSS AN AWAIT, and it is the common one. `_execute_buy`
-            (:14924) moves the scalar -- `self._current_holdings +=
-            amount` (:15401) -- and appends NO lot. Its callers append
-            the lot after the await returns: `tick` at :7724 -> :7747,
-            :10291 -> :10348, :10800 -> :10834, and `manual_fire_tranche`
-            at :3609 -> :3654. Between the scalar write and the lot
+            (:15055) moves the scalar -- `self._current_holdings +=
+            amount` (:15532) -- and appends NO lot. Its callers append
+            the lot after the await returns: `tick` at :7825 -> :7848,
+            :10405 -> :10462, :10922 -> :10956, and `manual_fire_tranche`
+            at :3710 -> :3755. Between the scalar write and the lot
             append the coroutine has already yielded, so the :694
             invariant is briefly false and a tick can see it.
 
-          SYNCHRONOUS, and rarer. `_execute_manual_rebalance` (:12297)
-            appends (:13258 / :13275) and moves the scalar (:13284)
+          SYNCHRONOUS, and rarer. `_execute_manual_rebalance` (:12419)
+            appends (:13389 / :13406) and moves the scalar (:13415)
             with nothing suspending in between.
 
         This method is deliberately the second shape. The first shape is
@@ -2946,9 +3046,10 @@ class ScrummingBot(BotContainer):
         put back into the shape `_main_lots` stores -- a quote-side
         price -- and not a fabricated entry price.
 
-        WHY THIS IS NOT `_apply_fold_target_growth` (:1784). That helper
+        WHY THIS IS NOT `_apply_fold_target_growth` (:1866). That helper
         applies the per-cycle Growth Rate Cap (`max_target_growth_pct`,
-        default 1.0% of anchor). A cap is WRONG here: a return larger
+        default 1.0% of the cycle-open target -- issue #106 moved that
+        base off the anchor). A cap is WRONG here: a return larger
         than the cap would be truncated, the uncontained remainder would
         read as excess, and the parent would scrum exactly the amount
         this method exists to protect. Containment is uncapped by
@@ -3041,7 +3142,7 @@ class ScrummingBot(BotContainer):
 
         try:
             # `or 1.0` is not a convenience here. The tick prices the
-            # position with EXACTLY this expression (:6957), so the
+            # position with EXACTLY this expression (:7058), so the
             # arrival must be priced with it too. A stricter reading
             # here -- refusing a 0.0 rate the tick silently reads as
             # 1.0 -- would put the containment arithmetic and the
@@ -3094,7 +3195,7 @@ class ScrummingBot(BotContainer):
                                f"{type(lots).__name__}; refusing to book "
                                f"an unattributable arrival")}
 
-        # USD = units x quote_price x quote_to_usd (:4775). Inverted,
+        # USD = units x quote_price x quote_to_usd (:4876). Inverted,
         # this is the quote-side price `_main_lots` stores alongside
         # every other lot. Both observed quantities, no model.
         #
@@ -3210,7 +3311,7 @@ class ScrummingBot(BotContainer):
         # caller-supplied callable between the first write and the last,
         # so no tick can read a half-applied state. Target and anchor
         # move together, following the co-movement precedent at
-        # :2534-2538.
+        # :2628-2632.
         lots.append(_arrival_lot)
         self._current_holdings = _h_after
         self._target_balance = _t_after
@@ -3303,7 +3404,7 @@ class ScrummingBot(BotContainer):
         # made `_delta_shift_usd` (the tick's own d(delta)) a statement
         # about `_main_lots` rather than about `_current_holdings`, and
         # `_current_holdings` is the quantity the tick actually prices
-        # (:6957). The two agree on a healthy arrival and diverge on
+        # (:7058). The two agree on a healthy arrival and diverge on
         # exactly the runs the check exists for.
         _holdings_usd_added = ((_h_seen - _h_before)
                                * arrival_price * qrate)
@@ -10120,16 +10221,28 @@ class ScrummingBot(BotContainer):
                 #
                 # When many lingering tranches become eligible at once,
                 # soft-cap the deployed fold-back capital to the
-                # configured per-cycle growth rate (anchor ×
-                # max_target_growth_pct/100). Excess tranches stay
+                # configured per-cycle growth rate. Issue #106: that
+                # rate is max_target_growth_pct of the target as the
+                # cycle opened, NOT of the anchor. Excess tranches stay
                 # queued for the NEXT TA-validated fold opportunity.
                 # Sort highest-initial_buy_price-first so the most
                 # expensive lots get fold-back priority (mirrors
                 # SCRUM-side MEM-171 highest-priced-first consumption).
+                # Issue #106 -- the admission bound compounds with the
+                # cap it is a bound ON. This read
+                # `self._anchor_target_balance * _max_growth_pct / 100`
+                # and so admitted the same dollar of tranche capital on
+                # a bot that had grown 27% as on the day it was made.
+                # `_max_growth_pct` is still read because the emit below
+                # names the percentage.
                 _max_growth_pct = float(getattr(
                     self.config, 'max_target_growth_pct', 1.0))
-                _cycle_cap_usd = (self._anchor_target_balance
-                                   * _max_growth_pct / 100.0)
+                _cycle_cap_usd = self.cycle_growth_cap_usd
+                # The base the property took, named so the emit below
+                # can quote it without respelling the subtraction.
+                _cycle_open_target = max(
+                    0.0, float(self._target_balance)
+                    - float(self._fold_cycle_cap_consumed))
                 # v3.20.62 — bug-1B fix: subtract what's already been
                 # consumed this cycle so successive eligibility batches
                 # respect the cumulative budget. Pre-fix, this site
@@ -10174,8 +10287,9 @@ class ScrummingBot(BotContainer):
                             f"(${_cap_remaining_for_queue:.2f} remaining "
                             f"after ${self._fold_cycle_cap_consumed:.2f} "
                             f"consumed this cycle, "
-                            f"{_max_growth_pct}% of anchor "
-                            f"${self._anchor_target_balance:.2f}). "
+                            f"{_max_growth_pct}% of cycle-open target "
+                            f"${_cycle_open_target:.2f}, "
+                            f"anchor ${self._anchor_target_balance:.2f}). "
                             f"{_partial_count} tranche(s) part-consumed "
                             f"— each keeps its remaining balance and "
                             f"stays queued. {_excluded} of "
@@ -10417,11 +10531,18 @@ class ScrummingBot(BotContainer):
                 # growth, not code text.
                 _new_surplus_usd = max(0.0, accum_profit * float(self._quote_to_usd or 1.0))
 
+                # Issue #106 -- DIAGNOSTIC ONLY, and it still has to be
+                # right. Nothing downstream enforces this value: the
+                # drain below delegates to `_apply_fold_target_growth`,
+                # which reads the cap itself. But this is the line an
+                # operator greps to see what the budget WAS, so a stale
+                # spelling here would report a cap the bot did not use.
                 _cap_pct_growth = float(getattr(
                     self.config, "max_target_growth_pct", 1.0))
-                _cycle_cap_growth = (
-                    self._anchor_target_balance * (_cap_pct_growth / 100.0)
-                )
+                _cycle_cap_growth = self.cycle_growth_cap_usd
+                _cycle_open_target_d = max(
+                    0.0, float(self._target_balance)
+                    - float(self._fold_cycle_cap_consumed))
 
                 # v3.23.7 P0-DIAG — accum_profit-sourced surplus frame.
                 # Replaces v3.16.50 position-vs-target log.
@@ -10436,8 +10557,9 @@ class ScrummingBot(BotContainer):
                             f"new_surplus=${_new_surplus_usd:+.4f}, "
                             f"standing_surplus_in=${self._standing_surplus_usd:.4f}, "
                             f"cycle_budget=${_cycle_cap_growth:.4f} "
-                            f"({_cap_pct_growth}% of anchor "
-                            f"${self._anchor_target_balance:.4f}), "
+                            f"({_cap_pct_growth}% of cycle-open target "
+                            f"${_cycle_open_target_d:.4f}, "
+                            f"anchor ${self._anchor_target_balance:.4f}), "
                             f"profit_folding_active="
                             f"{self.config.profit_folding_active}."))
                 except Exception as _sup:  # R28-OK: diagnostic-only
@@ -10776,7 +10898,7 @@ class ScrummingBot(BotContainer):
         # hedge reserve to buy the dip. Replenished later from fold
         # profit (8% recycle, see Chunk 3 block above inside fold path).
         #
-        # Ported from RAIntSimBat.py:2144-2159. Gap threshold: >= 1% of
+        # Ported from RAIntSimBat.py lines 2144-2159. Gap threshold: >= 1% of
         # target. Hedge buys append a new lot to _main_lots at current
         # fill price (MEM-171 compliance — the hedge buy's cost basis
         # becomes its future fold floor).
@@ -11498,8 +11620,8 @@ class ScrummingBot(BotContainer):
 
         Returns (number, None) when usable, (None, reason) when
         refused, the same shape as `_positive_observed_quantity`
-        (:2630), `_finite_state_number` (:2692) and `_sum_lot_units`
-        (:2737). Returning the refusal instead of raising is what lets
+        (:2724), `_finite_state_number` (:2786) and `_sum_lot_units`
+        (:2831). Returning the refusal instead of raising is what lets
         `_reconcile_holdings` decline the whole audit before it writes
         anything.
 
@@ -11522,7 +11644,7 @@ class ScrummingBot(BotContainer):
         passing.
 
         The restore paths coerce the same field more loosely, with
-        `float(lot.get("units", 0) or 0)` (:5842, :6784). That
+        `float(lot.get("units", 0) or 0)` (:5943, :6885). That
         divergence is deliberate and it runs one way only: this reader
         refuses a strict superset of what they refuse, so a book they
         loaded can be declined here, and a book declined here is never
@@ -11563,10 +11685,10 @@ class ScrummingBot(BotContainer):
         Deriving them a second time down there would let two passes
         disagree about one book.
 
-        NOT `_sum_lot_units` (:2737), and the difference is deliberate
+        NOT `_sum_lot_units` (:2831), and the difference is deliberate
         in both directions. That helper refuses a lot with no "units"
         key; here such a lot counts as ZERO, which is what the restore
-        paths' `.get` already does (:5842, :6784). Refusing it instead
+        paths' `.get` already does (:5943, :6885). Refusing it instead
         would leave a bot permanently unreconcilable over a lot that
         holds nothing. It also returns a total only, and a total cannot
         be multiplied back into a book. Its contract is pinned by the
@@ -11581,7 +11703,7 @@ class ScrummingBot(BotContainer):
         because those two do not agree — CPython's `sum` applies
         Neumaier compensation to floats. On ORCA's real 48-lot book
         `sum` gives 54.053407815409216 and an accumulator loop gives
-        54.05340781540922, one ULP apart. `sum` is what :5842 and :6784
+        54.05340781540922, one ULP apart. `sum` is what :5943 and :6885
         use to derive the scalar, so the audited total comes out
         bit-identical to theirs.
         """
@@ -11756,7 +11878,7 @@ class ScrummingBot(BotContainer):
         v3.25.8 (U2) — WHAT THE BOT CLAIMS IS TWO COUNTERS, NOT ONE.
         The comparison used to read `_current_holdings` alone. That
         scalar is the one `bootstrap_exchange_state` clamps against the
-        wallet with `min` (:5847), so on a bot whose lot book sits
+        wallet with `min` (:5948), so on a bot whose lot book sits
         above it the audit compared the wallet against the wallet and
         reported alignment while the excess stranded in `_main_lots`.
         The audited figure is now `max(scalar, sum of the lot book)` —
@@ -11764,7 +11886,7 @@ class ScrummingBot(BotContainer):
 
         v3.25.8 (U2) — THE VENUE NUMBER IS `total`, NOT `free`. The
         read was `balance.free`, which excludes any coin committed to a
-        resting order. The startup handshake reads `total` (:6521,
+        resting order. The startup handshake reads `total` (:6622,
         MEM-255). One wallet, two readers, two different fields — see
         the block at the fetch for why that only becomes load-bearing
         once this audit starts firing.
@@ -11809,7 +11931,7 @@ class ScrummingBot(BotContainer):
             # coin owned. `free` is only the coins not tied up in a
             # resting order: free = total - used. This read was
             # `balance.free`. The startup handshake reads `total`
-            # (:6521), and MEM-255 records why: `total` is the number
+            # (:6622), and MEM-255 records why: `total` is the number
             # the operator sees on the exchange screen.
             #
             # Two readers of one wallet must not read two fields. The
@@ -11867,7 +11989,7 @@ class ScrummingBot(BotContainer):
         # No information is not a reading. Refuse, say which asset and
         # why, and let the next scheduled interval try again. The
         # startup handshake already refuses on this exact sentinel
-        # (:6563); this closes the same hole on the periodic path.
+        # (:6664); this closes the same hole on the periodic path.
         if _venue_absent:
             self._bus.emit("bot.log", bot_id=self.bot_id,
                 message=(
@@ -11885,7 +12007,7 @@ class ScrummingBot(BotContainer):
 
         # --- U2 (2026-08-13) — AUDIT THE BOOK, NOT ONLY THE SCALAR ---
         # `bootstrap_exchange_state` sets the scalar with
-        #     min(max(0.0, _units), _tracked_units_bootstrap)   (:5847)
+        #     min(max(0.0, _units), _tracked_units_bootstrap)   (:5948)
         # so `min` can pull the SCALAR down to the wallet, can never
         # pull the LOT LIST down with it, and can never leave the
         # scalar above the lot sum. Auditing the scalar alone therefore
@@ -12823,7 +12945,7 @@ class ScrummingBot(BotContainer):
                 _best_rebuy = 0.0
                 _distance_ok = False
                 # Bound before the `try` for the reason `_excluded`
-                # (:10068) and `_fold_plan` (:10075) are: both are read
+                # (:10169) and `_fold_plan` (:10176) are: both are read
                 # by messages below, and an unbound name there would
                 # raise while REPORTING a decision rather than making
                 # one.
@@ -12859,7 +12981,7 @@ class ScrummingBot(BotContainer):
                     # on the one path where every other gate already is.
                     #
                     # The rule is this file's own, recorded above
-                    # `_reconcilable_units` (:11451): "A finiteness test
+                    # `_reconcilable_units` (:11573): "A finiteness test
                     # has to run BEFORE any comparison, never as part of
                     # one."
                     #
@@ -12878,7 +13000,7 @@ class ScrummingBot(BotContainer):
                     #
                     # THE VERB IS STILL ONLY REFUSE. The ladder is NOT
                     # purged here, which is the deliberate difference
-                    # from the tick path's own guard (:9979). That guard
+                    # from the tick path's own guard (:10080). That guard
                     # DELETES the malformed rows and bumps
                     # `_tranches_malformed_dropped`; it can, because it
                     # runs after its fold has committed to acting. This
@@ -12981,9 +13103,18 @@ class ScrummingBot(BotContainer):
             # growth, so the residual deficit was IDENTICALLY the growth
             # and the fold logged success having structurally failed to
             # re-zero. Worse, the residual is always smaller than Manual
-            # Fire's own 1% dust band (growth caps at 1% of anchor, and
-            # target >= anchor), so firing again reported "already
+            # Fire's own 1% dust band, so firing again reported "already
             # within dust band" and the miss could never be worked off.
+            #
+            # WHY THE RESIDUAL IS ALWAYS INSIDE THE BAND, restated for
+            # issue #106. The band is 1% of the target. The growth is at
+            # most the cycle cap, and the cap is now
+            # max_target_growth_pct of the CYCLE-OPEN target -- the
+            # target minus what this cycle already consumed -- so at the
+            # 1.0% default the cap is at most 1% of the target and the
+            # residual cannot leave the band. The old argument reached
+            # the same place by a different route ("1% of anchor, and
+            # target >= anchor"). Moving the base did not widen this.
             #
             # Operator ruling: "After growth is calculated so that the
             # Fold does not acquire too little and actually fails to
@@ -13475,7 +13606,7 @@ class ScrummingBot(BotContainer):
         COUNTER SEMANTICS. Discarded tranches are counted in
         `_tranches_discarded_lifetime`, NOT in `_tranches_closed_lifetime`.
         A closed tranche is one that FOLDED. The self-destruct path at
-        :3108 conflates the two, which is why "created minus closed" has
+        :3209 conflates the two, which is why "created minus closed" has
         never reconciled against the standing count. Keeping them
         separate preserves created - closed - discarded = standing.
 
@@ -13543,7 +13674,7 @@ class ScrummingBot(BotContainer):
 
         WHAT THIS NUMBER IS, and why discarding it destroys nothing.
         `_pending_wire_credits` is BOOKKEEPING, not custody. Verified by
-        reading every writer: the park site at :2265 is `+= u` and a
+        reading every writer: the park site at :2359 is `+= u` and a
         ledger append, and no code path anywhere places an order,
         withdraws, or transfers exchange funds on the strength of it.
         All bots share one exchange wallet, so a Smart Wire route is an
@@ -15543,18 +15674,18 @@ class ScrummingBot(BotContainer):
 
         v3.25.7 -- THE MEM-171 CITATION WAS WRONG TWICE IN ONE SENTENCE.
         It read: the fold-floor rule `price <= tranche
-        ["initial_buy_price"]` "is enforced at :9543, not here". First,
-        :9543 is a COMMENT that describes the rule; it evaluates
+        ["initial_buy_price"]` "is enforced at :9644, not here". First,
+        :9644 is a COMMENT that describes the rule; it evaluates
         nothing. Second, and worse, the rule is not enforced on the fold
         path AT ALL. The executor's eligibility filter is
-        `ticker.last <= float(t.get("ref", 0)) * _otd_factor` (:10084),
+        `ticker.last <= float(t.get("ref", 0)) * _otd_factor` (:10185),
         which carries no `initial_buy_price` term, and the comment
-        beside it says so in as many words (:10072). The
+        beside it says so in as many words (:10173). The
         `initial_buy_price` reading survives only as a SECONDARY
-        diagnostic counter, `_patent_only_eligible` (:9811), labelled
+        diagnostic counter, `_patent_only_eligible` (:9912), labelled
         there as "not a gate". MEM-171 is held at the strategy level by
         the position ceiling -- `self._anchor_target_balance * mult`
-        (:4870) -- not per tranche. Cite the predicate, not the prose
+        (:4971) -- not per tranche. Cite the predicate, not the prose
         about it.
         """
         lots_sum = sum(l["units"] for l in self._main_lots)
