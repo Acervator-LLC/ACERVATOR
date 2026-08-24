@@ -570,8 +570,11 @@ def main():
     log("")
 
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "sweep_result.md").write_text("\n".join(lines) + "\n",
-                                         encoding="utf-8")
+    # An explicit LF newline: `write_text` translates on Windows, and
+    # a CRLF pin on ONE file here once cost a whole suite.
+    with io.open(OUT / "sweep_result.md", "w", encoding="utf-8",
+                 newline="\n") as fh:
+        fh.write("\n".join(lines) + "\n")
     with io.open(OUT / "rows.jsonl", "w", encoding="utf-8",
                  newline="\n") as fh:
         for r in rows:
