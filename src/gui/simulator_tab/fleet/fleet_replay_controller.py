@@ -38,6 +38,8 @@ import time
 from bisect import bisect_right
 from dataclasses import dataclass, field
 
+from src.trading.stone_tablets import addressing
+
 _YIELD_BUDGET_S = 0.020
 """Minimum wall-clock gap between event-loop yields in the replay loop.
 
@@ -57,7 +59,7 @@ if TYPE_CHECKING:
     # Annotation only -- see `_instantiate_bot`. Guarded so the module
     # takes on no import it does not need at run time; the annotations
     # are strings already, under `from __future__ import annotations`.
-    from src.exchange.base import ExchangeInterface
+    from src.exchange.base import ExchangeInterface, Trade
 
 logger = logging.getLogger("acervator.simulator.fleet.controller")
 
@@ -1332,21 +1334,108 @@ class FleetReplayController:
         except Exception as _ox:  # noqa: BLE001 - observation is advisory
             logger.debug("TA observation skipped: %s", _ox)
 
+    def _candle_address_for(self, symbol: str) -> str:
+        """``NNNNNN_TICKER`` for the candle under the tape's cursor.
+
+        ``FleetSimExchange`` stamped this onto every fill's ``raw``
+        (sim_exchange.py:642). ``TabletBackend`` has no address
+        concept -- it serves rows, and an address is a Stone Tablet
+        idea -- so the Simulator resolves it here, from the same
+        cursor the fill was priced off and through the same
+        ``format_address``. Empty string when it cannot be resolved:
+        the fill still records, it just carries no address rather than
+        a wrong one.
+        """
+        tape = self._tape
+        if tape is None:
+            return ""
+        try:
+            return addressing.format_address(
+                addressing.ticker_from_symbol(symbol),
+                tape.cursor_for(symbol))
+        except Exception as exc:  # noqa: BLE001 - addressing is advisory
+            logger.debug(
+                "candle address for %s raised %s: %s",
+                symbol, type(exc).__name__, exc)
+            return ""
+
+    def _read_fill(self, trade: dict | Trade) -> dict:
+        """Normalise one fill payload into the fields this class records.
+
+        ISSUE #110 -- THE SHAPE CHANGED AND THE READER DID NOT.
+        ``TabletBackend.on_trade`` hands out ``dict(_t)``, a ccxt-shaped
+        DICT (tablet_backend.py:527). Every reader below was written for
+        ``FleetSimExchange``'s ``Trade`` OBJECT, and ``getattr`` on a
+        dict does not read a key. So each field returned its default and
+        a replay that filled a REAL trade recorded
+        ``per_symbol_trade_count == {}``, queued no chart marker, and
+        wrote ``symbol="" side="" amount=0.0 price=0.0`` to the run log.
+
+        A dict is therefore routed through the dict branch UP FRONT --
+        the same resolution ``history_helpers.py:90`` already applies to
+        this exact ambiguity. Falling back by exception cannot work
+        here, because ``getattr`` with a default never raises.
+
+        THE OBJECT BRANCH IS A LIVE SURFACE, NOT SCAFFOLDING. Verified:
+        ``TabletBackend`` is the only producer wired to this observer
+        (:900) and ``FleetSimExchange`` is instantiated nowhere in
+        ``src/`` or ``tools/``. But ``FleetSimExchange.on_trade`` still
+        passes a ``Trade`` (sim_exchange.py:680) and the class is still
+        exported from ``fleet/__init__.py``, so a host that wires it is
+        read correctly instead of silently zeroed.
+
+        TIME UNITS DIFFER BETWEEN THE TWO PRODUCERS and the run log
+        wants MILLISECONDS. The dict's ``timestamp`` IS the master
+        clock in ms (``current_ts_ms()``, tablet_backend.py:522); the
+        object carries SECONDS on ``.timestamp`` and the ms value on
+        ``raw["sim_master_ts_ms"]``. Reading the object's seconds as ms
+        would date every sim row to 1970 and make parity unmeasurable.
+        """
+        if isinstance(trade, dict):
+            symbol = str(trade.get("symbol", "") or "")
+            side_obj = trade.get("side", "")
+            amount = float(trade.get("amount", 0) or 0)
+            price = float(trade.get("price", 0) or 0)
+            raw = trade.get("raw") or {}
+            ts_ms = trade.get("timestamp")
+        else:
+            raw = getattr(trade, "raw", None) or {}
+            symbol = str(getattr(trade, "symbol", "") or "")
+            side_obj = getattr(trade, "side", "")
+            amount = float(getattr(trade, "amount", 0) or 0)
+            price = float(getattr(trade, "price", 0) or 0)
+            ts_ms = raw.get("sim_master_ts_ms")
+        # `OrderSide` is an enum on the object path and a plain
+        # lowercase string on the dict path. `.value` unwraps the first
+        # and passes the second through.
+        side = str(getattr(side_obj, "value", side_obj) or "")
+        addr = str(raw.get("candle_address", "") or "")
+        if not addr and symbol:
+            addr = self._candle_address_for(symbol)
+        return {
+            "symbol": symbol,
+            "side": side,
+            "amount": amount,
+            "price": price,
+            "usd": amount * price,
+            "sim_ts_ms": int(ts_ms) if ts_ms else None,
+            "candle_address": addr,
+        }
+
     def _on_sim_trade(self, trade) -> None:
         self.progress.trades_fired += 1
-        # v3.24.13 — persist the fill. Before this, sim trades lived
-        # only in FleetSimExchange._trades and vanished when the
+        fill = self._read_fill(trade)
+        _sym = fill["symbol"]
+        # v3.24.13 - persist the fill. Before this, sim trades lived
+        # only in the sim exchange's own list and vanished when the
         # process ended, so a replay could not be compared against
         # anything afterwards. Writes to ~/.acervator_logs/sim/,
         # never the live tree.
         if self._run_log is not None:
             try:
-                raw = getattr(trade, "raw", None) or {}
-                side = getattr(trade, "side", "")
-                _sym = str(getattr(trade, "symbol", "") or "")
                 self._run_log.record_trade(
                     symbol=_sym,
-                    # v3.24.80 — ATTRIBUTE THE FILL TO A BOT.
+                    # v3.24.80 - ATTRIBUTE THE FILL TO A BOT.
                     #
                     # `bot_id` was never passed, so every trade row on
                     # disk carried "". 8,250 fills across a soak, none
@@ -1354,62 +1443,59 @@ class FleetReplayController:
                     # useless for exactly the question it exists to
                     # answer.
                     #
-                    # The trade arrives from FleetSimExchange, which
-                    # does not know which bot placed the order — so it
-                    # is resolved by symbol, the same single-writer
+                    # The trade arrives from the exchange, which does
+                    # not know which bot placed the order - so it is
+                    # resolved by symbol, the same single-writer
                     # attribution the per-bot trade counter below has
                     # used since v3.24.0. These are the LIVE bot ids
                     # (carried in from bot_state since v3.24.71), so a
                     # sim fill is traceable straight back to the
                     # operator's own bot.
                     bot_id=self._bot_id_for_symbol.get(_sym, ""),
-                    # v3.24.80 — the side, under the key the schema
+                    # v3.24.80 - the side, under the key the schema
                     # declares. `action` was empty on every row.
-                    action=str(getattr(side, "value", side) or ""),
-                    side=str(getattr(side, "value", side) or ""),
-                    amount=float(getattr(trade, "amount", 0) or 0),
-                    price=float(getattr(trade, "price", 0) or 0),
-                    usd=(float(getattr(trade, "amount", 0) or 0)
-                         * float(getattr(trade, "price", 0) or 0)),
-                    sim_ts_ms=raw.get("sim_master_ts_ms"),
-                    # v3.24.32 — spendable at fill time. Operator
+                    action=fill["side"],
+                    side=fill["side"],
+                    amount=fill["amount"],
+                    price=fill["price"],
+                    usd=fill["usd"],
+                    sim_ts_ms=fill["sim_ts_ms"],
+                    # v3.24.32 - spendable at fill time. Operator
                     # directive 2026-08-05: "We can also add Spendable
                     # to the trade log for use as an additional
                     # validation point."
                     #
                     # Recorded per fill so a replay's wallet trajectory
                     # can be reconstructed from the log alone and
-                    # checked against the header — a drift between the
+                    # checked against the header - a drift between the
                     # two means the header is lying, which is how
                     # Spendable $0.00 / Locked $2,995.14 went unnoticed.
                     extra={"spendable_usd": round(
                         self._spendable_now(), 8)},
-                    # v3.24.17 — tablet traceability
-                    candle_address=str(
-                        raw.get("candle_address", "") or ""),
+                    # v3.24.17 - tablet traceability
+                    candle_address=fill["candle_address"],
                 )
             except Exception as _rl_exc:  # noqa: BLE001 - logging is advisory
                 logger.debug(
                     "sim run log: trade record failed: %s", _rl_exc)
-        # v3.24.0 — attribute by symbol (single writer path,
+        # v3.24.0 - attribute by symbol (single writer path,
         # actually populated). Replaces v3.23.80's trade.raw
-        # bot_id lookup which was scaffolding — nothing ever
+        # bot_id lookup which was scaffolding - nothing ever
         # wrote raw["bot_id"], so per_bot_trade_count stayed at 0
         # for every bot despite trades_fired ticking up.
         try:
-            sym = str(getattr(trade, "symbol", "") or "")
-            if sym:
-                self.progress.per_symbol_trade_count[sym] = (
-                    self.progress.per_symbol_trade_count.get(sym, 0)
+            if _sym:
+                self.progress.per_symbol_trade_count[_sym] = (
+                    self.progress.per_symbol_trade_count.get(_sym, 0)
                     + 1)
-                # v3.24.29 — queue a chart marker. GREEN when this fill
+                # v3.24.29 - queue a chart marker. GREEN when this fill
                 # landed on a candle that carries a historical trade
                 # (validated), RED when it did not (a sim-only fire).
                 # Queued rather than drawn: this runs on the replay
                 # worker, and the chart is a Qt widget.
                 _exp = self._expected_indices
                 _ok = bool(_exp) and self._candle_i in _exp
-                self._pending_markers.append((sym, _ok))
+                self._pending_markers.append((_sym, _ok))
         except Exception:  # noqa: BLE001,S110 - counter best-effort
             pass
 
@@ -1420,16 +1506,32 @@ class FleetReplayController:
         the fleet is multi-quote, and reading one leg would under-report
         by whatever sits in the others — the same single-currency
         assumption that left ten USDC bots unfunded.
+
+        ISSUE #110 SWEEP -- READS THE TAPE, NOT ``self._exchange``.
+        This read ``self._exchange._balances``. ``_balances`` belonged
+        to ``FleetSimExchange``; since v3.24.84 ``self._exchange`` is a
+        ``CCXTConnector``, which has no such attribute, so the
+        ``AttributeError`` below was caught on EVERY call and this
+        returned 0.0 for the whole life of the Simulator. Measured on a
+        replay whose tape ledger held $99.40 of USD: ``_spendable_now()
+        == 0.0``, and every trade row on disk carried
+        ``spendable_usd: 0.0`` -- the exact "Spendable $0.00" that the
+        caller records this field to catch.
+
+        ``TabletBackend.balances()`` is the ledger's own PUBLIC
+        accessor and returns a copy, so this reaches into no private
+        state and cannot mutate the wallet it reports.
         """
-        ex = self._exchange
-        if ex is None:
+        tape = self._tape
+        if tape is None:
             return 0.0
         quotes = {
             str(c.get("base_currency", "USD") or "USD").upper()
             for c in self._configs}
         try:
+            wallet = tape.balances()
             return float(sum(
-                float(ex._balances.get(q, 0.0) or 0.0) for q in quotes))
+                float(wallet.get(q, 0.0) or 0.0) for q in quotes))
         except (AttributeError, TypeError, ValueError):
             return 0.0
 
@@ -1977,13 +2079,20 @@ class FleetReplayController:
                 _s2("sim.06.005.invariant.exceptions", actual=_p.exceptions, expected=0)
                 # Which window was actually played — a run that cannot
                 # say what data it consumed cannot be re-checked.
+                #
+                # ISSUE #110 SWEEP -- ASKS THE TAPE. This read
+                # `self._exchange.clock.timestamps`, which was
+                # `FleetSimExchange`'s shape. `self._exchange` is a
+                # `CCXTConnector` since v3.24.84 and carries no
+                # `clock`, so `getattr` returned None, `_ts` fell to
+                # `[]`, and this pin reported
+                # `first_ts=None last_ts=None` on EVERY healthy run --
+                # a run that could not say what data it consumed, which
+                # is the one thing the comment above demands.
                 _first = _last = None
                 try:
-                    _ts = getattr(
-                        getattr(self._exchange, "clock", None),
-                        "timestamps", None) or []
-                    if _ts:
-                        _first, _last = int(_ts[0]), int(_ts[-1])
+                    if self._tape is not None:
+                        _first, _last = self._tape.clock_window()
                 except Exception as _wx:  # noqa: BLE001
                     logger.debug("window read failed: %s", _wx)
                 _s2("sim.06.006.event.window_played",

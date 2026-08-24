@@ -1706,11 +1706,29 @@ if _HAS_QT:
                     self._drain_visual_snapshot)
             self._drain_timer.start()
 
-        def _collect_stat_fields(self, bots: list, exchange) -> dict:
+        def _collect_stat_fields(self, bots: list, ledger) -> dict:
             """v3.24.19 — worker-thread half of the stat strip feed:
-            pure arithmetic over bot + exchange state, returning
+            pure arithmetic over bot + ledger state, returning
             formatted strings. Touches no Qt. ``_apply_stat_fields``
             pushes the result on the Qt main thread.
+
+            ISSUE #110 SWEEP -- ``ledger`` IS THE TAPE, NOT
+            ``ctl._exchange``. This was handed the controller's
+            exchange and read ``exchange._balances`` and
+            ``exchange._trades`` off it. Both belonged to
+            ``FleetSimExchange``; since v3.24.84 that object is a
+            ``CCXTConnector``, which carries neither, so both
+            ``getattr`` defaults fired on every refresh and the strip
+            reported **Spendable $0.00 and Trades 0 on every run that
+            traded**. Measured on a replay holding $99.40 and one
+            filled trade.
+
+            ``TabletBackend.snapshot()`` is the ledger's own public
+            report and answers both questions in one call, so this
+            reads no private attribute and cannot silently default
+            again: a tape that cannot answer raises, and the handler
+            below records the failure through telemetry rather than
+            printing a zero.
 
             Telemetry (v3.24.8) proved ``SimStatStrip.set()`` had
             ZERO call sites anywhere in the source tree, which is
@@ -1731,11 +1749,12 @@ if _HAS_QT:
                 Errors    — tick exceptions recorded by the controller
             """
             try:
+                snap = (ledger.snapshot()
+                        if ledger is not None else {})
                 spendable = 0.0
-                if exchange is not None:
-                    bal = getattr(exchange, "_balances", {}) or {}
-                    for cur in ("USD", "USDC"):
-                        spendable += float(bal.get(cur, 0.0) or 0.0)
+                bal = snap.get("balances") or {}
+                for cur in ("USD", "USDC"):
+                    spendable += float(bal.get(cur, 0.0) or 0.0)
                 realised = 0.0
                 locked = 0.0
                 mature = 0.0
@@ -1757,9 +1776,7 @@ if _HAS_QT:
                     price = float(
                         getattr(b, "_last_price", 0.0) or 0.0)
                     locked += holdings * price
-                trades = 0
-                if exchange is not None:
-                    trades = len(getattr(exchange, "_trades", []) or [])
+                trades = int(snap.get("trades", 0) or 0)
                 errors = int(getattr(
                     getattr(self._controller, "progress", None),
                     "exceptions", 0) or 0)
@@ -1855,6 +1872,11 @@ if _HAS_QT:
             """
             ctl = self._controller
             exchange = getattr(ctl, "_exchange", None)
+            # ISSUE #110 SWEEP -- the LEDGER is the tape, and it is a
+            # different object from the connector the bots trade
+            # through. `exchange` stays for the legacy `_series` branch
+            # below, which is the only reader that still wants it.
+            ledger = getattr(ctl, "_tape", None)
             bots = list(getattr(ctl, "_bots", []) or [])
             per_symbol: dict = {}
             for bot in bots:
@@ -1967,7 +1989,7 @@ if _HAS_QT:
                 "per_symbol": per_symbol,
                 "trade_markers": _marks,
                 "stat_fields": self._collect_stat_fields(
-                    bots, exchange),
+                    bots, ledger),
             }
 
         def _drain_visual_snapshot(self) -> None:
