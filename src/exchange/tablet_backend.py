@@ -265,6 +265,23 @@ class TabletBackend:
     def ticks_elapsed(self) -> int:
         return self._ticks
 
+    def clock_window(self) -> tuple[int | None, int | None]:
+        """First and last master timestamp in the tape, in ms.
+
+        The window a run CONSUMED, which is what makes the run
+        re-checkable against the same data later. `FleetSimExchange`
+        exposed this as `clock.timestamps`; a reader written against
+        that shape gets `None` from a `CCXTConnector` and reports a
+        run with no window at all (issue #110). Exposed as a method on
+        the tape so the reader asks the object that owns the clock.
+
+        `(None, None)` on an empty tape -- there is no window, and a
+        zero would claim the epoch.
+        """
+        if not self._clock:
+            return (None, None)
+        return (int(self._clock[0]), int(self._clock[-1]))
+
     def on_trade(self, callback) -> None:
         """Register a fill observer.
 
