@@ -368,6 +368,21 @@ LIVE_LABELS = [
     "Open tranches:", "1",
     "Parked USD (in fold queue):", "$250.0000",
     "Oldest tranche age:", "1.0h",
+    # issue #103, 2026-08-24 - the two despawn rows. The capture grew
+    # by four entries because the panel gained two rows, and that is a
+    # DELIBERATE change to what a valid tranche makes this tab show.
+    # Recorded here rather than relaxed away: the assertion is still
+    # byte-for-byte, so the next unintended drift still fails.
+    #
+    # This fixture's tranche is one hour old and the timer reads Off,
+    # which is the live fleet's state on all 38 bots, so every window
+    # prints zero. The row proves the panel says WHAT IT WOULD REMOVE
+    # even when the answer is nothing.
+    "Tranche despawn timer:",
+    "Off  -  Settings tab > Advanced > Tranche Despawn Timer",
+    "Despawn would remove:",
+    ("if armed at  7d: 0 ($0.0000)  -  14d: 0 ($0.0000)  -  "
+     "30d: 0 ($0.0000)  -  60d: 0 ($0.0000)"),
     "Lifetime tranches opened:", "10",
     "Lifetime tranches closed (fold-back fired):", "6",
     "Cycle close ratio (closed/opened):", "60.00%  (6/10)",

@@ -46,11 +46,30 @@ NEW_KEYS = ("live_target_balance", "standing_surplus_usd",
 
 
 def _get_status_src() -> str:
-    for n in ast.walk(ast.parse(BC_SRC)):
-        if isinstance(n, ast.FunctionDef) and n.name == "get_status" \
-                and 1314 < n.lineno < 1614:
-            return ast.get_source_segment(BC_SRC, n) or ""
-    raise AssertionError("get_status not found")
+    """Give the source of `BotContainer.get_status`, found by its CLASS.
+
+    THE LOCATOR WAS A LINE WINDOW, `1314 < lineno < 1614`, and issue
+    #103 measured what that costs: inserting 189 lines ABOVE the class,
+    in a part of the file this test says nothing about, pushed the
+    method past 1614 and turned nine assertions into "get_status not
+    found" - a locator failure wearing the costume of a missing export.
+
+    The window was disambiguation, and it was never needed. There is
+    exactly ONE `get_status` in `bot_container.py` and it is a method
+    of `BotContainer`. Walking to the class and then to its own body
+    names that method exactly, and no edit anywhere else in the file
+    can move it out of range.
+    """
+    for node in ast.walk(ast.parse(BC_SRC)):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        if node.name != "BotContainer":
+            continue
+        for sub in node.body:
+            if isinstance(sub, ast.FunctionDef) and sub.name == "get_status":
+                return ast.get_source_segment(BC_SRC, sub) or ""
+    raise AssertionError(
+        "BotContainer.get_status not found in bot_container.py")
 
 
 class TestTheSpinboxWasNotRepointed:
