@@ -241,6 +241,14 @@ def test_a_fold_row_reports_the_blue_background(_table):
                 FOLD_TRANCHE_BG_HEX), f"row {row} col {col} is not blue"
     assert FOLD_TRANCHE_BG_HEX == "#123a63"
 
+    # THE SAME CLAIM, ON THE RENDER, in this same function. The model
+    # read above reports what the cell was TOLD to paint; a
+    # `QTableWidget::item` stylesheet rule overrides the item brush and
+    # leaves the getter returning the old value.
+    image = render_widget(_table)
+    for row in FOLD_ROWS:
+        assert _fill_pixel(_table, image, row) == FOLD_TRANCHE_BG_HEX
+
 
 def test_an_extractor_row_reports_red_background_and_white_text(_table):
     """Part 2: item 4's colours, unchanged by the border work."""
@@ -258,6 +266,16 @@ def test_an_extractor_row_reports_red_background_and_white_text(_table):
     assert EXTRACTOR_TRANCHE_BG_HEX == "#b3261e"
     assert EXTRACTOR_TRANCHE_FG_HEX == "#ffffff"
 
+    # THE SAME CLAIM, ON THE RENDER. The white is asserted on the
+    # glyphs of a column that carries text, because a fill sample can
+    # never see a foreground.
+    image = render_widget(_table)
+    for row in EXT_ROWS:
+        assert _fill_pixel(_table, image, row) == EXTRACTOR_TRANCHE_BG_HEX
+        painted = _cell_colours(_table, image, row, 0)
+        assert _glyph_hits(painted, EXTRACTOR_TRANCHE_FG_HEX) > 0, (
+            f"row {row} rendered no white glyph pixel: {painted}")
+
 
 def test_the_two_row_types_are_different_colours(_table):
     """The whole point of the spec: a lease must not look like
@@ -272,6 +290,15 @@ def test_the_two_row_types_are_different_colours(_table):
     assert fold_bg == FOLD_TRANCHE_BG_HEX
     assert ext_bg == EXTRACTOR_TRANCHE_BG_HEX
 
+    # THE SAME CLAIM, ON THE RENDER. Two rows that report different
+    # brushes can still paint the same colour if a stylesheet wins.
+    image = render_widget(_table)
+    fold_px = _fill_pixel(_table, image, 0)
+    ext_px = _fill_pixel(_table, image, 3)
+    assert fold_px != ext_px
+    assert fold_px == FOLD_TRANCHE_BG_HEX
+    assert ext_px == EXTRACTOR_TRANCHE_BG_HEX
+
 
 def test_the_semantic_foregrounds_survive_the_repaint(_table):
     """Status green/amber and Source cyan carry TRADING meaning.
@@ -280,19 +307,42 @@ def test_the_semantic_foregrounds_survive_the_repaint(_table):
     fill's foreground. All three were measured against #123a63 and
     clear WCAG AA, so none needed re-tuning either.
     """
+    # issue #98 defect 5 renamed this label and changed nothing else
+    # on the cell. "manual fire" named a BUY - the action that REMOVES
+    # a tranche - on a row a manual SCRUM created.
     source_cell = _table.item(0, 8)
-    assert source_cell.text() == "manual fire"
+    assert source_cell.text() == "manual scrum"
     assert source_cell.foreground().color().name() == "#00ccff"
 
     status_cell = _table.item(0, 7)
     assert status_cell.foreground().color().name() in (
         "#00ff88", "#ff9900")
 
-    # A row with no manual fire keeps the ordinary body colour.
+    # A row no operator scrummed keeps the ordinary body colour. The
+    # fixture's row 1 carries NO `operator_initiated` key at all, which
+    # is what the autonomous scrum and DIST paths write, so it reads
+    # "auto scrum" both before and after issue #98 defect 5.
     from src.gui.bot_live_settings import FOLD_TRANCHE_FG_HEX
     plain = _table.item(1, 8)
     assert plain.text() == "auto scrum"
     assert plain.foreground().color().name() == FOLD_TRANCHE_FG_HEX
+
+    # THE SAME CLAIM, ON THE RENDER. A foreground that the fill's
+    # repaint had overwritten would still report its own colour here
+    # and paint the body colour on screen, which is the exact failure
+    # this test exists to catch.
+    image = render_widget(_table)
+    cyan = _cell_colours(_table, image, 0, 8)
+    assert cyan.get("#00ccff", 0) > 0, (
+        f"the Source cell rendered no cyan glyph pixel: {cyan}")
+    assert FOLD_TRANCHE_FG_HEX not in cyan
+    body = _cell_colours(_table, image, 1, 8)
+    assert body.get(FOLD_TRANCHE_FG_HEX, 0) > 0, (
+        f"the plain Source cell rendered no body glyph pixel: {body}")
+    assert "#00ccff" not in body
+    status = _cell_colours(_table, image, 0, 7)
+    assert (status.get("#00ff88", 0) + status.get("#ff9900", 0)) > 0, (
+        f"the Status cell rendered neither green nor amber: {status}")
 
 
 def test_the_fold_row_keeps_its_fire_button_and_the_extractor_has_none(
@@ -306,6 +356,24 @@ def test_the_fold_row_keeps_its_fire_button_and_the_extractor_has_none(
     for row in EXT_ROWS:
         assert _table.cellWidget(row, 9) is None
         assert _table.item(row, 9).text() == "—"
+
+    # THE STYLESHEET READ ABOVE, CORROBORATED ON THE RENDER. A sheet
+    # naming a colour is not the same claim as the button painting it,
+    # and the Extractor cell must show its own row fill where a fold
+    # row shows a control.
+    image = render_widget(_table)
+    for row in FOLD_ROWS:
+        painted = _cell_colours(_table, image, row, 9)
+        assert painted.get("#00ccff", 0) > 0, (
+            f"fold row {row} rendered no cyan on its Fire cell: "
+            f"{painted}")
+    from src.gui.bot_live_settings import EXTRACTOR_TRANCHE_BG_HEX
+    for row in EXT_ROWS:
+        painted = _cell_colours(_table, image, row, 9)
+        assert painted.get(EXTRACTOR_TRANCHE_BG_HEX, 0) > 0, (
+            f"Extractor row {row} did not render its own fill under "
+            f"the empty Fire cell: {painted}")
+        assert "#00ccff" not in painted
 
 
 def test_the_fire_button_sits_on_the_row_fill(_table):
@@ -322,6 +390,15 @@ def test_the_fire_button_sits_on_the_row_fill(_table):
     assert FOLD_TRANCHE_BG_HEX in sheet
     assert "#2a3a4a" not in sheet, "the old grey chip background is back"
     assert "#00ccff" in sheet
+
+    # THE SAME CLAIM, ON THE RENDER. A sheet that names the fill and a
+    # button that paints it are two different facts, and only the
+    # second one is what the operator sees.
+    image = render_widget(_table)
+    painted = _cell_colours(_table, image, 0, 9)
+    assert painted.get(FOLD_TRANCHE_BG_HEX, 0) > 0, (
+        f"the Fire cell rendered no row fill: {painted}")
+    assert "#2a3a4a" not in painted, "the old grey chip is on screen"
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -378,7 +455,7 @@ def test_the_rows_are_tall_enough_to_read_as_bands(_table):
 # C. THE PIXELS — the only assertions that would catch the
 #    stylesheet regression described in the module docstring.
 # ═════════════════════════════════════════════════════════════════════
-def _render(table):
+def render_widget(table):
     """Render the table's viewport and return the QImage.
 
     `grab()` rather than `QPixmap(viewport().size())` + `render()`.
@@ -390,6 +467,86 @@ def _render(table):
     agree.
     """
     return table.viewport().grab().toImage()
+
+
+def _fit_on_screen(table) -> None:
+    """Detach, show and size a table so a render is complete.
+
+    The `_table` fixture already does this; a test that builds its
+    own table calls this instead of repeating the arrangement. An
+    unshown widget has never been polished and renders regions
+    unpainted, so a sampler reads a default colour at a point that
+    is nominally in range.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    table.setParent(None)
+    width = table.verticalHeader().width() + 40
+    for col in range(table.columnCount()):
+        width += table.columnWidth(col)
+    rows = sum(table.rowHeight(r) for r in range(table.rowCount()))
+    table.setMaximumHeight(16_777_215)
+    table.resize(
+        width,
+        rows + table.horizontalHeader().sizeHint().height() + 40)
+    table.show()
+    QApplication.processEvents()
+
+
+def _glyph_hits(painted: dict, target: str, tolerance: int = 48) -> int:
+    """Count rendered pixels within `tolerance` of `target`.
+
+    A FILL is sampled exactly, and every fill assertion in this file
+    still is. A GLYPH cannot be: Qt antialiases text, so a one-pixel
+    stem over a coloured cell can leave no pixel at the pure colour at
+    all. Measured on this fixture -- the Extractor row's white "EXT"
+    rendered `#e6ffff` and `#ffffde` and nothing at `#ffffff`.
+
+    The tolerance is per channel and it is deliberately far below the
+    distance between any two colours this file cares about: white to
+    the Extractor red is 76/217/225 and the fold body colour to the
+    Source cyan is 224/32/15. A blend that lands inside 48 of the
+    target came from the target.
+    """
+    from PySide6.QtGui import QColor
+
+    want = QColor(target)
+    hits = 0
+    for name, count in painted.items():
+        got = QColor(name)
+        if max(abs(got.red() - want.red()),
+               abs(got.green() - want.green()),
+               abs(got.blue() - want.blue())) <= tolerance:
+            hits += count
+    return hits
+
+
+def _cell_colours(table, image, row: int, col: int) -> dict:
+    """Count every RENDERED colour inside one cell.
+
+    `_fill_pixel` samples ONE point away from the text, which is
+    the right instrument for a fill. A foreground claim needs the
+    glyphs, and a glyph is a handful of pixels at an unknown
+    offset, so this counts the whole cell instead of guessing
+    where a letter fell. Same device-pixel-ratio scaling as `_px`,
+    for the same reason.
+    """
+    import collections
+
+    from PySide6.QtGui import QColor
+
+    rect = table.visualRect(table.model().index(row, col))
+    ratio = image.devicePixelRatio() or 1.0
+    counts: collections.Counter = collections.Counter()
+    for x in range(rect.left(), rect.right()):
+        for y in range(rect.top(), rect.bottom()):
+            ix, iy = int(x * ratio), int(y * ratio)
+            assert (0 <= ix < image.width()
+                    and 0 <= iy < image.height()), (
+                f"logical ({x},{y}) -> device ({ix},{iy}) is outside "
+                f"the {image.width()}x{image.height()} render")
+            counts[QColor(image.pixel(ix, iy)).name()] += 1
+    return dict(counts)
 
 
 def _px(image, x: int, y: int) -> str:
@@ -435,7 +592,7 @@ def test_the_fold_row_actually_renders_blue(_table):
     model assertions above green and this one failing."""
     from src.gui.bot_live_settings import FOLD_TRANCHE_BG_HEX
 
-    image = _render(_table)
+    image = render_widget(_table)
     for row in FOLD_ROWS:
         assert _fill_pixel(_table, image, row) == FOLD_TRANCHE_BG_HEX
 
@@ -444,7 +601,7 @@ def test_the_extractor_row_actually_renders_red(_table):
     """The regression this whole file exists to make impossible."""
     from src.gui.bot_live_settings import EXTRACTOR_TRANCHE_BG_HEX
 
-    image = _render(_table)
+    image = render_widget(_table)
     for row in EXT_ROWS:
         assert _fill_pixel(_table, image, row) == EXTRACTOR_TRANCHE_BG_HEX
 
@@ -455,7 +612,7 @@ def test_the_container_edge_actually_renders_on_every_row(_table):
     from src.gui.bot_live_settings import (
         EXTRACTOR_TRANCHE_BORDER_HEX, FOLD_TRANCHE_BORDER_HEX,
     )
-    image = _render(_table)
+    image = render_widget(_table)
     for row in FOLD_ROWS:
         assert _edge_pixel(_table, image, row) == FOLD_TRANCHE_BORDER_HEX
     for row in EXT_ROWS:
@@ -518,7 +675,7 @@ def test_the_container_edge_survives_the_fire_button_column(_table):
 
     for row in FOLD_ROWS:
         _bring_into_view(_table, row, 9)
-        image = _render(_table)
+        image = render_widget(_table)
         assert _edge_pixel_col(_table, image, row, 9) == (
             FOLD_TRANCHE_BORDER_HEX), (
             "the container edge is broken at the Fire button column")
@@ -542,7 +699,7 @@ def test_the_container_edge_survives_the_arbiter_button_column(_table):
 
     for row in EXT_ROWS:
         _bring_into_view(_table, row, ARBITER_COLUMN_INDEX)
-        image = _render(_table)
+        image = render_widget(_table)
         assert _edge_pixel_col(
             _table, image, row, ARBITER_COLUMN_INDEX) == (
             EXTRACTOR_TRANCHE_BORDER_HEX), (
@@ -607,6 +764,18 @@ def test_the_fire_button_carries_the_inset_that_frees_the_edge(_table):
     assert f"margin: {TRANCHE_FIRE_BTN_INSET_PX // 2}px 0px" in sheet, (
         "the Fire button lost its vertical inset")
 
+    # WHAT THE MARGIN IS FOR, ON THE RENDER. The inset leaves the
+    # strip at the top and bottom of the cell untouched so the
+    # delegate's rule shows through it; without it the edge broke over
+    # this column. Asserted as the border colour actually reaching the
+    # Fire cell.
+    from src.gui.bot_live_settings import FOLD_TRANCHE_BORDER_HEX
+
+    image = render_widget(_table)
+    painted = _cell_colours(_table, image, FOLD_ROWS[0], 9)
+    assert painted.get(FOLD_TRANCHE_BORDER_HEX, 0) > 0, (
+        f"the container edge does not reach the Fire cell: {painted}")
+
 
 def test_control_the_pixel_sampler_discriminates(_table):
     """THE CONTROL for the three pixel tests above.
@@ -617,7 +786,7 @@ def test_control_the_pixel_sampler_discriminates(_table):
     different from the fill it borders, and never return a colour that
     is not on the surface.
     """
-    image = _render(_table)
+    image = render_widget(_table)
     fold_fill = _fill_pixel(_table, image, FOLD_ROWS[0])
     ext_fill = _fill_pixel(_table, image, EXT_ROWS[0])
     fold_edge = _edge_pixel(_table, image, FOLD_ROWS[0])
@@ -639,7 +808,7 @@ def test_control_a_row_with_no_fill_gets_no_edge(_table):
     for col in range(_table.columnCount()):
         _table.item(FOLD_ROWS[0], col).setBackground(QBrush())
 
-    image = _render(_table)
+    image = render_widget(_table)
     from src.gui.bot_live_settings import FOLD_TRANCHE_BORDER_HEX
     assert _edge_pixel(_table, image, FOLD_ROWS[0]) != (
         FOLD_TRANCHE_BORDER_HEX)
@@ -760,7 +929,8 @@ def test_a_table_with_only_extractor_rows_still_paints_and_borders():
     from PySide6.QtWidgets import QApplication, QDialog, QTableWidget
 
     from src.gui.bot_live_settings import (
-        EXTRACTOR_TRANCHE_BG_HEX, BotLiveSettingsDialog,
+        EXTRACTOR_TRANCHE_BG_HEX, EXTRACTOR_TRANCHE_BORDER_HEX,
+        BotLiveSettingsDialog,
     )
 
     if QApplication.instance() is None:
@@ -786,3 +956,11 @@ def test_a_table_with_only_extractor_rows_still_paints_and_borders():
     assert table.rowCount() == 1
     assert table.item(0, 0).background().color().name() == (
         EXTRACTOR_TRANCHE_BG_HEX)
+
+    # THE SAME CLAIM, ON THE RENDER. This test builds its own table
+    # rather than taking the fixture, so it arranges its own surface
+    # before sampling.
+    _fit_on_screen(table)
+    image = render_widget(table)
+    assert _fill_pixel(table, image, 0) == EXTRACTOR_TRANCHE_BG_HEX
+    assert _edge_pixel(table, image, 0) == EXTRACTOR_TRANCHE_BORDER_HEX

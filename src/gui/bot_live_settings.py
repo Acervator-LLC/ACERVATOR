@@ -162,6 +162,103 @@ ARBITER_COLUMN_HEADER = "Arbiter"
 # row prints under Fire.
 ARBITER_NOT_APPLICABLE = "—"
 
+# ── The Source column (issue #98 defect 5) ───────────────────────────
+# WHAT THE COLUMN USED TO SAY, AND WHY IT WAS WRONG.
+# The cell read `"manual fire" if t.get("operator_initiated") else
+# "auto scrum"`. `operator_initiated` is written at ONE site,
+# `scrumming_bot.py:12398`, inside the SCRUM (sell) branch of
+# `_execute_manual_rebalance`, and its value comes from that method's
+# intent map at `scrumming_bot.py:12153`:
+#
+#     "manual_button": ("MANUAL_SCRUM", "MANUAL_FOLD", True)
+#     "wire_stack":    ("WIRE_STACK_SCRUM", "WIRE_STACK_FOLD", False)
+#     "max_cartridge": ("CARTRIDGE_SCRUM", "CARTRIDGE_FOLD", False)
+#
+# So the flag means MANUAL SCRUM: an operator-pressed SELL that CREATED
+# this tranche. A manual FIRE is the opposite operation. It is a BUY,
+# and it REMOVES a tranche (`scrumming_bot.py:3548`). A tranche created
+# by a manual fire cannot exist, so the old label named an action that
+# could not have produced the row it sat on.
+#
+# THREE PROVENANCES, NOT TWO, AND THE THIRD IS THE KEY'S ABSENCE.
+# The two autonomous append sites -- the SCRUM cycle at
+# `scrumming_bot.py:9112` and the DIST re-fold at `:10721` -- write no
+# `operator_initiated` key at all. `_restore_state` copies each stored
+# tranche dict verbatim (`scrumming_bot.py:5211`) and stamps nothing,
+# so the absence survives a save and a reload and is readable here.
+# That splits the old false branch in two:
+#
+#   key True     an operator pressed Manual Fire on this bot; the SELL
+#                leg of that rebalance created this tranche
+#   key False    an AUTONOMOUS rebalance created it -- Wire Stack Fire
+#                or Max Cartridge Fire. Which of the two is NOT stored
+#                and this panel does not guess.
+#   key absent   the ordinary scrum cycle, or the DIST re-fold
+#
+# MEASURED ON THE LIVE FLEET, `~/.acervator/bot_state.json` read-only
+# at 2026-08-23 19:28:19, 1,687 open fold tranches on 38 bots:
+# 214 True, 1,189 False, 284 absent. So the old code mislabelled 214
+# rows with an impossible action and printed one word over 1,473 rows
+# that come from two different mechanisms.
+#
+# THE MERGE CAVEAT, CARRIED OVER RATHER THAN INVENTED HERE.
+# `_top_up_remnant_fold_tranches` keeps the OLDER record, so a manual
+# scrum merged into an autonomous remnant is displayed thereafter as
+# the remnant's provenance. `scrumming_bot.py:12453` states that; this
+# column is its only consumer and no gate, order or amount reads the
+# field.
+FOLD_SOURCE_MANUAL_SCRUM = "manual scrum"
+FOLD_SOURCE_AUTO_REBALANCE = "auto rebalance"
+FOLD_SOURCE_AUTO_SCRUM = "auto scrum"
+
+#: The cyan already carried by the operator-initiated cell. Kept on the
+#: manual-scrum row only: `_paint_fold_tranche_row` measured it at
+#: 6.12:1 against the fold fill, and this unit renames a label rather
+#: than re-tuning a colour.
+FOLD_SOURCE_MANUAL_FG_HEX = "#00ccff"
+
+FOLD_SOURCE_TOOLTIPS = {
+    FOLD_SOURCE_MANUAL_SCRUM: (
+        "An operator-pressed Manual Fire created this tranche. That "
+        "button runs a rebalance; its SELL leg is a manual SCRUM, and "
+        "a scrum is what queues a fold tranche.\n\n"
+        "Stored as operator_initiated = true."),
+    FOLD_SOURCE_AUTO_REBALANCE: (
+        "An AUTONOMOUS rebalance created this tranche: Wire Stack Fire "
+        "or Max Cartridge Fire. The bot fired it, not the operator.\n\n"
+        "Stored as operator_initiated = false. Which of the two fired "
+        "is NOT stored on the tranche, so this panel does not name "
+        "it; the trade log carries WIRE_STACK_SCRUM or "
+        "CARTRIDGE_SCRUM for the sale itself."),
+    FOLD_SOURCE_AUTO_SCRUM: (
+        "The ordinary scrum cycle created this tranche, or the DIST "
+        "re-fold that follows a distribution sell.\n\n"
+        "Those two paths store no operator_initiated key at all, and "
+        "that absence is what this label reads."),
+}
+
+
+def _fold_tranche_source_label(tranche: dict) -> str:
+    """Name the action that CREATED this fold tranche.
+
+    Three answers, because the stored record distinguishes three cases
+    and the old two-way test threw one of them away. See the block
+    above for the write sites and the live counts.
+
+    THE TRUTHINESS TEST IS DELIBERATE AND UNCHANGED. The shipped cell
+    asked `if t.get("operator_initiated")`, so a stored `0`, `""` or
+    `False` all took the autonomous branch. Keeping that test means a
+    row whose flag is a falsey non-bool renders exactly as it did
+    before, and this unit changes the WORDS on the cell rather than
+    which branch a row lands in. Only the key's presence is new
+    information, and `in` is the one test that can see it.
+    """
+    if tranche.get("operator_initiated"):
+        return FOLD_SOURCE_MANUAL_SCRUM
+    if "operator_initiated" in tranche:
+        return FOLD_SOURCE_AUTO_REBALANCE
+    return FOLD_SOURCE_AUTO_SCRUM
+
 
 def _arbiter_label(value: object) -> str:
     """Return the operator's word for a value: ``Parent``/``Sibling``.
@@ -596,8 +693,11 @@ if _HAS_QT:
             # see Leg-1/Leg-2 health at a glance instead of needing
             # post-hoc CSV analysis. MEM-171 / ADR-004 mechanics.
             if cfg.mode.value == "scrumming":
-                tabs.addTab(self._wrap_scrollable(
-                    self._create_fold_tranches_tab()), "Fold Tranches")
+                # issue #98 defect 1 - installed through the one site
+                # that also records the page, so a clear can rebuild
+                # this tab in place instead of telling the operator to
+                # reopen the dialog.
+                self._install_fold_tranches_tab(tabs)
 
             # --- Tab 3.5: Stack Tranches (Scrumming only) ---
             # v3.23.28 — mirror of Fold Tranches for the Stack Mode
@@ -1492,18 +1592,37 @@ if _HAS_QT:
                     f"Nothing was cleared — the call failed:\n\n{exc}")
                 return
 
-            # This dialog builds its tabs once in __init__ and has no
-            # refresh path (the sibling Manual Fire handler does not
-            # refresh either). Rather than invent one here, say so: a
-            # panel that silently shows the pre-clear numbers would be
-            # the same class of untruth this whole pass has been
-            # removing.
+            # issue #98 defects 1, 2 and 3.
+            #
+            # THE RESULT LEADS. The message used to open with
+            # "Discarded N tranche(s)" and then say "No order was
+            # placed", which is REASSURANCE standing where a RESULT
+            # belongs - after a button that appeared to have done
+            # nothing, beside a table that had not changed. Read in
+            # that position it reads as a failure. The order is now
+            # what happened, what the panel shows, whether it reached
+            # disk, and only then what did NOT happen.
+            #
+            # EVERY LINE REPORTS THE STEP THAT ACTUALLY RAN. The panel
+            # line and the save line come back from `_settle_after_clear`
+            # carrying the real outcome of each, so a refresh that could
+            # not run or a save that raised is named here rather than
+            # papered over.
+            _settled = self._settle_after_clear("Clear fold tranches")
+            _now_open = len(getattr(bot, "_fold_tranches", []) or [])
             QMessageBox.information(
                 self, "Clear fold tranches",
-                f"Discarded {report.get('count', 0)} tranche(s) holding "
-                f"${float(report.get('usd', 0)):,.4f}.\n\n"
-                f"No order was placed. This panel still shows the "
-                f"pre-clear figures — reopen it to see the new state.")
+                "\n\n".join([
+                    f"Cleared {report.get('count', 0)} fold tranche(s) "
+                    f"holding "
+                    f"${float(report.get('usd', 0)):,.4f}.",
+                    f"This bot now holds {_now_open} open fold "
+                    f"tranche(s).",
+                    "\n".join(_settled),
+                    "No order was placed. Holdings, cost basis and "
+                    "target balance are unchanged — only the queued "
+                    "intent to buy back is gone.",
+                ]))
 
         def _on_clear_wire_credits(self) -> None:
             """Discard this bot's parked Smart Wire credits, after
@@ -1563,11 +1682,23 @@ if _HAS_QT:
                     f"Nothing was cleared — the call failed:\n\n{exc}")
                 return
 
+            # issue #98 defects 1, 2 and 3, on the sibling button.
+            # Same three steps and the same message order as the fold
+            # clear above; see the comment there for why the result
+            # leads and the reassurance follows.
+            _settled = self._settle_after_clear("Clear wire credits")
+            _now_parked = float(
+                getattr(bot, "_pending_wire_credits", 0.0) or 0.0)
             QMessageBox.information(
                 self, "Clear wire credits",
-                f"Discarded ${float(report.get('usd', 0)):,.4f} of parked "
-                f"credit.\n\nNo funds moved. This panel still shows the "
-                f"pre-clear figures — reopen it to see the new state.")
+                "\n\n".join([
+                    f"Cleared ${float(report.get('usd', 0)):,.4f} of "
+                    f"parked Smart Wire credit.",
+                    f"This bot now has ${_now_parked:,.4f} parked.",
+                    "\n".join(_settled),
+                    "No funds moved. This released an EARMARK only, so "
+                    "the cash returns to ordinary spendable balance.",
+                ]))
 
         def _paint_fold_tranche_row(
                 self, table: QTableWidget, row: int) -> None:
@@ -1585,7 +1716,10 @@ if _HAS_QT:
             SEMANTIC FOREGROUNDS ARE NEVER OVERWRITTEN. The Status
             cell carries green for "price gate open" and amber for
             "price gate shut"; the Source cell carries `#00ccff` on a
-            manually-fired tranche. Those colours are trading meaning,
+            manual-scrum tranche -- one an operator's own Manual Fire
+            SOLD into being (issue #98 defect 5 corrected the word on
+            that cell; the colour and the rows carrying it are the
+            same ones). Those colours are trading meaning,
             not decoration, and this is a visual change, so they are
             left exactly as they are. All three were measured against
             this fill and clear WCAG AA — 8.65:1, 5.42:1 and 6.12:1 —
@@ -1733,6 +1867,278 @@ if _HAS_QT:
                 # exit does, and item 1 books the return. Column 9 holds
                 # a painted em dash instead, set in the loop above.
 
+        # -- issue #98 defects 1 and 3 - the operator can SEE the clear --
+        #
+        # WHAT WAS WRONG. Both Clear buttons worked. The trade log
+        # proves it on BTC bot `7c39c7a2`: "WIRE CREDITS CLEARED ...
+        # $343.6824" and "FOLD TRANCHES CLEARED ... 42 tranche(s)".
+        # What the operator SAW was a panel that had not moved. Driven
+        # offscreen against a stub bot, with the confirmation accepted:
+        #
+        #     BEFORE  table rows 58   bot tranches 58   label "58"
+        #     AFTER   table rows 58   bot tranches  0   label "58"
+        #             clear button still "Clear 58 Fold Tranche(s)",
+        #             still enabled, 58 Fire buttons still live
+        #
+        # and neither clear reached disk. Both bot methods mutate memory
+        # and leave the write to the 60-second rolling save
+        # (`main.py:1343`), so a clear followed by a close inside that
+        # window restored every record the operator had just destroyed.
+        #
+        # NEITHER REPAIR TOUCHES `scrumming_bot.py`. The clear itself is
+        # correct and is not changed. The refresh is this dialog's own
+        # widget tree, and the save is a call the CALLER can make - the
+        # precedent is Reset-all-errors, which calls `save_all_state()`
+        # inside its click at `main_window.py:8259` and states the same
+        # reason.
+        FOLD_TRANCHES_TAB_LABEL = "Fold Tranches"
+
+        def _install_fold_tranches_tab(self, tabs: QTabWidget) -> QWidget:
+            """Build the Fold Tranches tab, add it, and remember it.
+
+            ONE INSTALL SITE, so the handle a later refresh swaps is
+            never a second bookkeeping step somebody can forget. The
+            tests drive this method rather than re-implementing the two
+            lines, which is what makes them a test of the shipped
+            wiring.
+            """
+            page = self._wrap_scrollable(self._create_fold_tranches_tab())
+            tabs.addTab(page, self.FOLD_TRANCHES_TAB_LABEL)
+            self._fold_tab_page = page
+            return page
+
+        def _refresh_fold_tranches_tab(self) -> str:
+            """Rebuild the Fold Tranches tab in place. Return a status.
+
+            Returns "refreshed", or a sentence naming why it did not.
+            THE STRING IS LOAD-BEARING: the message the operator reads
+            after a clear quotes it, so a rebuild that could not run
+            says so instead of the panel quietly lying twice.
+
+            THE TAB IS FOUND BY WIDGET IDENTITY, NOT BY A STORED INDEX.
+            `indexOf` asks the tab bar where the page actually is, so a
+            tab added, hidden or reordered anywhere else in this dialog
+            cannot make the refresh rebuild somebody else's tab. A
+            stored integer could.
+
+            `removeTab` + `insertTab` AT THE SAME INDEX, so no other tab
+            renumbers and the operator keeps their place in the dialog.
+            `removeTab` does not delete the page - it reparents it to
+            nothing - so the old page is deleted here explicitly.
+            Without that, every clear would leak a whole tab's widget
+            tree for the life of the dialog.
+
+            THE DELEGATE SURVIVES BECAUSE THE BUILDER REBINDS IT.
+            `setItemDelegate` does not take ownership, so the table's
+            delegate is held on `self`; the rebuild overwrites that
+            attribute with the new table's delegate, and the old one
+            goes with the old page.
+            """
+            tabs = getattr(self, "_tabs", None)
+            page = getattr(self, "_fold_tab_page", None)
+            if tabs is None or page is None:
+                return ("not refreshed: this dialog has no Fold "
+                        "Tranches tab installed")
+            try:
+                index = tabs.indexOf(page)
+            except Exception as exc:  # R28-OK: display-only rebuild
+                logger.warning(
+                    "Fold Tranches refresh could not locate its tab "
+                    "(%s: %s)", type(exc).__name__, exc)
+                return (f"not refreshed: the tab could not be located "
+                        f"({type(exc).__name__})")
+            if index < 0:
+                return ("not refreshed: the Fold Tranches tab is no "
+                        "longer in this dialog")
+            label = tabs.tabText(index)
+            was_current = tabs.currentIndex() == index
+            try:
+                fresh = self._wrap_scrollable(
+                    self._create_fold_tranches_tab())
+            except Exception as exc:  # R28-OK: display-only rebuild
+                logger.exception(
+                    "Fold Tranches refresh raised while rebuilding "
+                    "the tab")
+                return (f"not refreshed: rebuilding the tab raised "
+                        f"{type(exc).__name__}: {exc}")
+            tabs.removeTab(index)
+            tabs.insertTab(index, fresh, label)
+            self._fold_tab_page = fresh
+            if was_current:
+                tabs.setCurrentIndex(index)
+            page.setParent(None)
+            page.deleteLater()
+            return "refreshed"
+
+        def _fold_panel_shows(self) -> dict:
+            """Report what the Fold Tranches tab shows RIGHT NOW.
+
+            Read off the widgets, never off the bot. That is the whole
+            value of it: the pin below compares this dict against the
+            bot's own numbers, and two reads of one expression would
+            agree whatever the panel displayed.
+
+            `fold_rows` subtracts the Extractor rows. Those are appended
+            after every fold tranche and are a child's lease, not this
+            bot's inventory.
+            """
+            table = getattr(self, "_fold_tranche_table", None)
+            lbl = getattr(self, "_fold_open_count_lbl", None)
+            btn = getattr(self, "_fold_clear_btn", None)
+            wire = getattr(self, "_fold_wire_btn", None)
+            rows = None
+            if table is not None:
+                rows = max(
+                    0,
+                    table.rowCount()
+                    - int(getattr(self, "_fold_ext_row_count", 0) or 0))
+            elif lbl is not None:
+                # No table means the builder took its empty-queue
+                # branch, which renders the "fold queue is empty" note
+                # and no rows at all. That is zero rows, not "unknown".
+                rows = 0
+            return {
+                "fold_rows": rows,
+                "open_tranches_label": (
+                    lbl.text() if lbl is not None else None),
+                "clear_button_text": (
+                    btn.text() if btn is not None else None),
+                "clear_button_enabled": (
+                    bool(btn.isEnabled()) if btn is not None else None),
+                "wire_button_enabled": (
+                    bool(wire.isEnabled()) if wire is not None else None),
+            }
+
+        def _bot_manager_for_save(self) -> object | None:
+            """Return the object that owns `save_all_state`, or None.
+
+            `self._bm` FIRST, THEN THE BOT'S OWN MANAGER. The Simulator
+            builds this dialog with no manager, and so do the listing
+            tests, so `self._bm` is None on those paths; the parent
+            bot's `_bot_manager` is the object that produced these rows
+            in the first place. The Arbiter handler resolves its manager
+            the same way and for the same reason.
+            """
+            for candidate in (getattr(self, "_bm", None),
+                              getattr(self._bot, "_bot_manager", None)):
+                if callable(getattr(candidate, "save_all_state", None)):
+                    return candidate
+            return None
+
+        def _save_fleet_state_now(self, what: str) -> tuple[bool, str]:
+            """Persist the fleet in this click. Return (saved, reason).
+
+            issue #98 defect 3. `clear_fold_tranches` and
+            `clear_pending_wire_credits` both write memory only
+            (`scrumming_bot.py:13273` and `:13350`) and rely on the
+            60-second rolling save. Clear, then close inside that
+            window, and everything the operator destroyed comes back.
+
+            WHY THIS SAVES WHERE THE ARBITER TOGGLE DELIBERATELY DOES
+            NOT. That toggle's comment is right about the cost: a fleet
+            serialise plus a backup copy on the GUI thread is the freeze
+            class. It is also right about the risk it weighed - a
+            TOGGLE lost to a crash is set again in one click. A CLEAR
+            lost to a crash RESTORES records the operator deliberately
+            destroyed, and no second click can un-restore them. The two
+            are not the same trade, so they do not get the same answer.
+            The cost is stated rather than hidden: this call blocks the
+            GUI thread for as long as the fleet takes to serialise, and
+            the pin beside it carries that duration, so the cost is
+            measured on the operator's own machine instead of argued
+            about here.
+
+            THE FAILURE IS REPORTED, NEVER SWALLOWED. A clear that ran
+            in memory and did not reach disk is exactly the gap the
+            operator relies on this button to close, so the reason comes
+            back as text and goes into the message they read.
+            """
+            manager = self._bot_manager_for_save()
+            saver = getattr(manager, "save_all_state", None)
+            if not callable(saver):
+                return (False, "no bot manager is attached to this panel")
+            try:
+                saver()
+            except Exception as exc:  # noqa: BLE001 - operator surface
+                logger.warning(
+                    "%s: cleared in memory but NOT saved (%s: %s); a "
+                    "restart before the next rolling save will restore "
+                    "it.", what, type(exc).__name__, exc)
+                return (False, f"{type(exc).__name__}: {exc}")
+            return (True, "")
+
+        def _settle_after_clear(self, what: str) -> list[str]:
+            """Save, rebuild the tab, pin the result, report the lines.
+
+            ONE PATH FOR BOTH CLEAR BUTTONS. They discard different
+            things and their confirmations differ, but what has to
+            happen AFTER an accepted clear is the same three steps, and
+            two copies of them would drift the first time either moved.
+
+            THE ORDER IS SAVE, THEN REFRESH. The durable write is the
+            one a crash can take away; the rebuild only reads memory
+            that is already correct. Saving first means a crash between
+            the two costs a stale panel, not a restored tranche.
+            """
+            import contextlib
+            import time as _clock
+
+            _t0 = _clock.monotonic()
+            saved, why = self._save_fleet_state_now(what)
+            refresh = self._refresh_fold_tranches_tab()
+            _elapsed = _clock.monotonic() - _t0
+
+            shows = self._fold_panel_shows()
+            _open = len(getattr(self._bot, "_fold_tranches", []) or [])
+            _parked = float(
+                getattr(self._bot, "_pending_wire_credits", 0.0) or 0.0)
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _fold_emit
+                _fold_emit(
+                    "gui.04.002.postcondition.clear_settled",
+                    actual={
+                        "fold_rows": shows["fold_rows"],
+                        "open_tranches_label": shows["open_tranches_label"],
+                        "clear_button_enabled": shows[
+                            "clear_button_enabled"],
+                        "wire_button_enabled": shows["wire_button_enabled"],
+                        "saved": saved,
+                    },
+                    expected={
+                        "fold_rows": _open,
+                        "open_tranches_label": str(_open),
+                        "clear_button_enabled": bool(_open),
+                        "wire_button_enabled": _parked > 1e-9,
+                        "saved": True,
+                    },
+                    duration=_elapsed,
+                    context={
+                        "bot_id": getattr(self._bot, "bot_id", "?"),
+                        "cleared": what,
+                        "refresh": refresh,
+                        "save_reason": why,
+                        "clear_button_text": shows["clear_button_text"],
+                    })
+
+            lines = []
+            if refresh == "refreshed":
+                lines.append(
+                    "The panel behind this message has been rebuilt "
+                    "and now shows the new state.")
+            else:
+                lines.append(
+                    f"The panel was {refresh}. Close and reopen this "
+                    f"dialog to see the new state.")
+            if saved:
+                lines.append("Saved to disk.")
+            else:
+                lines.append(
+                    f"NOT SAVED TO DISK - {why}. The change holds in "
+                    f"memory, and the platform's rolling save should "
+                    f"write it within 60 seconds; a restart before "
+                    f"that would bring it back.")
+            return lines
+
         def _create_fold_tranches_tab(self) -> QWidget:
             import time as _time
 
@@ -1747,6 +2153,20 @@ if _HAS_QT:
             w = QWidget()
             layout = QVBoxLayout(w)
             layout.setSpacing(8)
+
+            # issue #98 defect 1 — THE READ-BACK HANDLES, CLEARED FIRST.
+            # `_refresh_fold_tranches_tab` rebuilds this whole widget
+            # and then asks the REBUILT surface what it shows, so the
+            # pin compares the panel against the bot rather than
+            # comparing a local variable to itself. Cleared here rather
+            # than only assigned below, because a rebuild that takes the
+            # empty-queue branch builds no table at all and a stale
+            # handle from the previous build would answer for it.
+            self._fold_tranche_table = None
+            self._fold_open_count_lbl = None
+            self._fold_clear_btn = None
+            self._fold_wire_btn = None
+            self._fold_ext_row_count = 0
 
             tranches = list(getattr(self._bot, "_fold_tranches", []) or [])
             # Item 4 (2026-08-11) — Extractor Tranches leased against
@@ -1856,7 +2276,9 @@ if _HAS_QT:
             else:
                 ratio_str = "—  (no scrums yet)"
 
-            sf.addRow("Open tranches:", QLabel(str(open_count)))
+            open_count_lbl = QLabel(str(open_count))
+            self._fold_open_count_lbl = open_count_lbl
+            sf.addRow("Open tranches:", open_count_lbl)
 
             parked_str = f"${parked_usd:,.4f}"
             if parked_unreadable:
@@ -1917,6 +2339,7 @@ if _HAS_QT:
                 "QPushButton:disabled { color: #666666; "
                 "border-color: #444444; }")
             clear_btn.clicked.connect(self._on_clear_fold_tranches)
+            self._fold_clear_btn = clear_btn
 
             # v3.24.45 — operator directive 2026-08-06: "Languishing wire
             # credits can also be cleared. These too were not calculated
@@ -1944,6 +2367,7 @@ if _HAS_QT:
                 "QPushButton:disabled { color: #666666; "
                 "border-color: #444444; }")
             wire_btn.clicked.connect(self._on_clear_wire_credits)
+            self._fold_wire_btn = wire_btn
 
             btn_row = QHBoxLayout()
             btn_row.addWidget(clear_btn)
@@ -2258,11 +2682,20 @@ if _HAS_QT:
                     else:
                         table.setItem(row, 7, QTableWidgetItem("—"))
 
-                    src_str = ("manual fire" if t.get("operator_initiated")
-                               else "auto scrum")
+                    # issue #98 defect 5 — THE COLUMN NAMES THE ACTION
+                    # THAT CREATED THE ROW. It used to print "manual
+                    # fire", a BUY, which is the action that REMOVES a
+                    # tranche. The mapping and the live counts behind
+                    # the three labels are at the top of this module.
+                    src_str = _fold_tranche_source_label(t)
                     si = QTableWidgetItem(src_str)
-                    if t.get("operator_initiated"):
-                        si.setForeground(QColor("#00ccff"))
+                    si.setToolTip(FOLD_SOURCE_TOOLTIPS[src_str])
+                    if src_str == FOLD_SOURCE_MANUAL_SCRUM:
+                        # The one semantic foreground on this column,
+                        # unchanged. `_paint_fold_tranche_row` measured
+                        # it at 6.12:1 against the fold fill and leaves
+                        # any cell that already owns a foreground alone.
+                        si.setForeground(QColor(FOLD_SOURCE_MANUAL_FG_HEX))
                     table.setItem(row, 8, si)
 
                     # v3.16.53 — Fire button for per-tranche operator-
@@ -2349,6 +2782,14 @@ if _HAS_QT:
 
                 self._paint_extractor_tranche_rows(
                     table, ext_rows, len(tranches), now_ts)
+
+                # The two counts stay named apart here for the same
+                # reason the group title names them apart: an Extractor
+                # row is a child's lease, not this bot's fold
+                # inventory, and the refresh pin subtracts one from the
+                # other rather than reporting their sum.
+                self._fold_tranche_table = table
+                self._fold_ext_row_count = len(ext_rows)
 
                 dl.addWidget(table)
                 layout.addWidget(detail_group)
@@ -2700,6 +3141,16 @@ if _HAS_QT:
                                 _units = result.get("units_returned", 0.0)
                                 _remaining = result.get(
                                     "remaining_tranches", 0)
+                                # issue #98 defect 1 - THE SIBLING
+                                # HOLE. A filled fold-back removes the
+                                # tranche it fired, so this panel is
+                                # stale for exactly the reason a clear
+                                # leaves it stale, and it used to say
+                                # so instead of fixing it. No save is
+                                # forced here: the fill itself is a
+                                # TRADE, and the trade path owns its
+                                # own persistence.
+                                _r = self._refresh_fold_tranches_tab()
                                 QMessageBox.information(
                                     self, "Manual Fire complete",
                                     f"Tranche #{idx + 1} fold-back "
@@ -2708,8 +3159,13 @@ if _HAS_QT:
                                     f"  Units back:   {_units:.6f}\n"
                                     f"  Remaining:    {_remaining} "
                                     f"tranche(s)\n\n"
-                                    f"Tab will refresh on next "
-                                    f"dialog open.")
+                                    + ("The panel behind this message "
+                                       "has been rebuilt and now shows "
+                                       "the new state."
+                                       if _r == "refreshed" else
+                                       f"The panel was {_r}. Close and "
+                                       f"reopen this dialog to see the "
+                                       f"new state."))
                             else:
                                 _reason = (
                                     result.get("reason", "unknown")
