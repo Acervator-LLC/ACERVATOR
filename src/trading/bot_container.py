@@ -1782,16 +1782,16 @@ class BotContainer:
         # explicitly refuses to deploy part of one, so any single tranche
         # larger than the whole budget is skipped on every cycle forever.
         # Computed defensively: a status call must never raise.
+        # Issue #106 - the budget below reads `cycle_growth_cap_usd`
+        # rather than respelling `anchor * pct/100`: the cap compounds
+        # off the grown target now and this readout must move with it.
+        # `getattr` like the MEM-244 probes - a grid bot has no cap.
         _over_cap_summary = {
             "tranches_over_cycle_cap": 0,
             "tranches_over_cycle_cap_usd": 0.0,
         }
         try:
-            _budget = (
-                float(getattr(self, "_anchor_target_balance", 0.0) or 0.0)
-                * float(getattr(
-                    self.config, "max_target_growth_pct", 0.0) or 0.0)
-                / 100.0)
+            _budget = float(getattr(self, "cycle_growth_cap_usd", 0.0) or 0.0)
             if _budget > 0:
                 _over = [
                     float(_t.get("usd", 0) or 0)
@@ -1848,11 +1848,11 @@ class BotContainer:
                 getattr(self, "_standing_surplus_usd", 0.0) or 0.0),
             "fold_cycle_cap_consumed": float(
                 getattr(self, "_fold_cycle_cap_consumed", 0.0) or 0.0),
+            # Issue #106 - this export and the enforcement drifted apart
+            # the moment the target first grew. Same property the bot
+            # enforces with, so row and bound are now one number.
             "cycle_growth_budget_usd": round(
-                float(getattr(self, "_anchor_target_balance", 0.0) or 0.0)
-                * float(getattr(
-                    self.config, "max_target_growth_pct", 0.0) or 0.0)
-                / 100.0, 8),
+                float(getattr(self, "cycle_growth_cap_usd", 0.0) or 0.0), 8),
             # How much queued tranche capital the per-cycle filter can
             # never admit, because a tranche is only taken if it fits
             # ENTIRELY. Counted here rather than in the GUI so the

@@ -4571,8 +4571,14 @@ if _HAS_QT:
                     "Phase 2 of the tranche repair.")
             sf.addRow("Standing surplus:", _surplus_lbl)
 
-            _budget = round(_anchor_tb * float(getattr(
-                cfg, "max_target_growth_pct", 0.0) or 0.0) / 100.0, 8)
+            # Issue #106 - was `_anchor_tb * pct / 100`, the frozen
+            # input value. The bot bounds each Fold with
+            # `cycle_growth_cap_usd`, whose base is the grown target, so
+            # this row and the "Over-cap tranches" row below it both
+            # used to describe a budget the bot had stopped using. Read
+            # the property rather than respelling it.
+            _budget = round(float(getattr(
+                self._bot, "cycle_growth_cap_usd", 0.0) or 0.0), 8)
             _consumed = float(getattr(
                 self._bot, "_fold_cycle_cap_consumed", 0.0) or 0.0)
             sf.addRow(

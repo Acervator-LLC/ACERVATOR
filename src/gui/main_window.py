@@ -1296,22 +1296,46 @@ if _HAS_QT:
                         #   anchor_price = anchor_usd / current_holdings
                         # When holdings are zero (no position yet), we
                         # skip the lines (price-axis projection is
-                        # undefined). Ceiling = anchor × (1 + cap_pct).
+                        # undefined).
+                        #
+                        # Issue #106 — THE DRAWN LINE AND THE ENFORCED
+                        # LINE WERE DIFFERENT LINES. The ceiling read
+                        # `anchor_px * (1 + cap_pct/100)`, so it was
+                        # drawn from the operator's input value; the bot
+                        # enforces against `_target_balance`, which fold
+                        # surplus grows. On IMU (anchor $50.00, target
+                        # $63.53) the chart drew $50.50 where the bot
+                        # enforced $64.17 — a chart and a bot telling
+                        # the operator different stories about the same
+                        # number. The ceiling is now what the bot can
+                        # actually reach on this cycle: the live target
+                        # plus this cycle's cap, taken from the SAME
+                        # `cycle_growth_cap_usd` property the four
+                        # enforcement sites read.
+                        #
+                        # The ANCHOR line is unchanged and still comes
+                        # from `_anchor_target_balance`. Its badge says
+                        # "TB-Anchor", so it is the one line here that
+                        # is supposed to show the frozen input.
                         try:
                             anchor_usd = float(
                                 getattr(bot, "_anchor_target_balance",
                                         getattr(bot, "_target_balance", 0))
                                 or 0)
-                            cap_pct = float(getattr(
-                                bot.config, "max_target_growth_pct", 1.0)
-                                or 1.0)
+                            target_usd = float(
+                                getattr(bot, "_target_balance", anchor_usd)
+                                or anchor_usd)
+                            cap_usd = float(
+                                getattr(bot, "cycle_growth_cap_usd", 0.0)
+                                or 0.0)
                             holdings = float(
                                 getattr(bot, "_current_holdings", 0) or 0)
                             qrate = float(
                                 getattr(bot, "_quote_to_usd", 1.0) or 1.0)
                             if anchor_usd > 0 and holdings > 0 and qrate > 0:
                                 anchor_px = anchor_usd / holdings / qrate
-                                ceiling_px = anchor_px * (1.0 + cap_pct / 100.0)
+                                ceiling_px = (
+                                    (target_usd + cap_usd) / holdings / qrate)
                                 panel.chart.set_target_balance_lines(
                                     anchor_px, ceiling_px)
                             else:

@@ -173,7 +173,10 @@ if _HAS_QT:
             # update_charts() from the bot's get_status() snapshot.
             #   _tb_anchor_price:    horizontal Target Balance anchor line
             #   _tb_ceiling_price:   horizontal Target Balance ceiling line
-            #     (anchor × (1 + max_target_growth_pct/100))
+            #     Issue #106: (live target + cycle_growth_cap_usd).
+            #     Was (anchor × (1 + max_target_growth_pct/100)), which
+            #     drew the operator's input value where the bot
+            #     enforces the GROWN target.
             #     Both are computed by main_window as anchor_usd /
             #     current_holdings so they project onto the price axis.
             #   _fire_armed_state:   {scrum_armed, fold_armed,
@@ -1295,7 +1298,10 @@ if _HAS_QT:
                 # denominated Target Balance anchor (and the MEM-246 hard
                 # ceiling above it) sit on the price axis given current
                 # holdings. anchor_price = anchor_usd / current_holdings;
-                # ceiling_price = anchor × (1 + max_target_growth_pct/100).
+                # the ceiling is the live target plus this cycle's
+                # growth cap, over current holdings -- issue #106.
+                # Before that it took the ANCHOR and the growth
+                # percentage, which is not what the bot enforces.
                 # Both render as horizontal dashed lines spanning the
                 # price pane with a right-edge label badge.
                 # ===========================================================

@@ -292,14 +292,64 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 #
 # ``_pre_change_source`` returns zero orphans.
 #
+# RE-BASED A SIXTH TIME 2026-08-24, issue #106, same tripwire, same
+# reason. One repair landed in ``scrumming_bot.py`` outside every span
+# this file reverses, so it reaches the digest:
+#
+#   6. the per-Fold growth cap never compounded. Four sites spelled it
+#      out as ``self._anchor_target_balance * (max_target_growth_pct /
+#      100)``, and ``_anchor_target_balance`` is the operator's input
+#      value that no Fold ever moves. The cap therefore held ONE dollar
+#      value for the life of the bot and the curve was
+#      ``anchor x (1 + 0.01N)`` rather than ``anchor x 1.01^N``.
+#      Measured on the live fleet the same day: 35 of 38 bots carried
+#      accrued growth, IMU had grown 27.1% and still capped each Fold at
+#      $0.50, and $13.37 sat parked in ``standing_surplus_usd`` behind
+#      the frozen number. The repair adds ONE property,
+#      ``cycle_growth_cap_usd``, whose base is the target as it stood
+#      when the cycle opened, and the four sites read it.
+#
+# WHAT THIS RE-BASE IS. One property beside ``_apply_fold_target_growth``
+# and four call sites rewritten in place, plus the prose that stated the
+# old base. +131 lines, in SEVEN bands: +0 at and below :694, +82 from
+# :1784, +94 from :2534, +101 from :3609, +114 from :10291, +122 from
+# :10800 and +131 from :13258 down. The unit adds no
+# ``self._main_lots.append({``, so no ordinal count moved.
+# ``CITATION_ANCHORS`` in ``tests/test_extractor_tranche_containment.py``
+# was re-anchored in the SAME change -- 40 anchors moved, 1 did not, ONE
+# is new (:1785, the property) and ONE WAS RETIRED (:1858, whose line
+# this change deletes) -- and that file's 121 tests pass.
+#
+# TWO CROSS-FILE TOKENS WERE WRITTEN OUT IN FULL, and this is the part
+# a later reader needs. ``# Ported from RAIntSimBat.py:2144-2159``
+# appears twice. Those digits name lines in ANOTHER module, but
+# ``_CITATION_RE`` cannot tell a cross-file citation from a self one, so
+# ``_one`` looked 2144 and 2159 up in ``back`` like any other. Before
+# this change both resolved by luck. This change moved ``SITE_B_SPANS``
+# span 2 down onto shipping lines 2062-2188, which SWALLOWED both
+# numbers -- a reversed span contributes no entry to ``back`` -- and
+# ``_pre_change_source`` returned four orphans.
+#
+# THE GUARD WAS NOT EDITED TO CLEAR THIS. The 2026-08-13 note in
+# ``CITATION_ANCHORS`` records the established repair for exactly this
+# shape: a ``:NNNN`` in ``scrumming_bot.py`` that means another file is
+# "written out in full". Both now read ``RAIntSimBat.py lines
+# 2144-2159``, on the same lines, so no line count moved and no anchor
+# shifted a second time. The remaining 17 cross-file tokens still
+# resolve by luck and are NOT repaired here; they are named in the
+# unit's report as a latent hazard of the same shape.
+#
+# ``_pre_change_source`` returns zero orphans.
+#
 # The prior digests, kept so the chain is auditable:
 #   986d79ed7785015d12a57bfc877ba1b078027d93b2f7655ec2fbc78a90ef2082
 #   29276909ff46dce02bc650de45802c779539adb7093b010cd875ef376201e9a0
 #   4b5c51bde7c54836dcd935c85c76ee06757e1fe8b79edd2ce1febb0831ad3c75
 #   ffe8cebd69cbc2eac674d0a8696efdca3542112fe1606bc0dcd3546297c1288f
 #   d4edd46f7ce7d04ef716255fc36976056f75a4d938351b3c0ff9388932cd5aef
+#   03d05460421d2c601a37dadc5cd97b6a77805a974ac29f6f3f2b5e75cf7f40f5
 PRE_CHANGE_SHA256 = (
-    "03d05460421d2c601a37dadc5cd97b6a77805a974ac29f6f3f2b5e75cf7f40f5")
+    "ac3459c2b80406bf7c4e9698c186cb29c77fe32c17ef6d3a8a1f5cb56f3076aa")
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE.")

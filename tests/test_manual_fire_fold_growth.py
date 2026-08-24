@@ -128,7 +128,12 @@ class TestItMatchesTheRealFormula:
     def test_only_units_actually_bought_count(self):
         """Growth is bounded by what the buy discharges, not by the
         whole queue."""
-        b = _bot([_tr(10.0, 60.0)], anchor=10000.0)
+        # Issue #106 - the TARGET is what lifts the cap out of the way
+        # now, so it is raised with the anchor. The old fixture raised
+        # only the anchor and left the target at $100, which is a state
+        # the setter invariant `target >= anchor` forbids: the cap was
+        # being lifted by a bot that could not exist.
+        b = _bot([_tr(10.0, 60.0)], anchor=10000.0, target=10000.0)
         assert b._preview_fold_growth(1.0, 50.0) == pytest.approx(10.0)
 
     def test_a_tranche_below_the_price_adds_nothing(self):
@@ -179,7 +184,10 @@ class TestDegenerateInputs:
         assert b._preview_fold_growth(1.0, 50.0) == pytest.approx(1.0)
 
     def test_the_quote_rate_is_applied(self):
-        b = _bot([_tr(1.0, 60.0)], anchor=10000.0, qrate=3.0)
+        # Issue #106 - same reason as above: the target carries the
+        # cap now, and target < anchor is not a reachable state.
+        b = _bot([_tr(1.0, 60.0)], anchor=10000.0, target=10000.0,
+                 qrate=3.0)
         assert b._preview_fold_growth(1.0, 50.0) == pytest.approx(30.0)
 
 
