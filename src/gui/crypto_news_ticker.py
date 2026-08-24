@@ -776,10 +776,42 @@ if _HAS_QT:
             runs. Only a wait that SUCCEEDS permits destruction, and
             the destruction itself happens in
             ``_retire_worker_thread`` from ``finished``.
+
+            ASKING TWICE DOES NOT DO THE WORK TWICE. When a wait fails
+            the thread is abandoned and BOTH references stay set, so a
+            later ``stop()`` -- an application close after a failed tab
+            teardown, say -- arrives with the same worker still on the
+            attribute. Without the guard below that second call:
+
+              * detached signals that the first call already detached,
+                which libpyside reports as ``Failed to disconnect
+                (None) from signal`` -- the visible symptom, and the
+                least of it;
+              * blocked the GUI thread for another whole
+                ``_STOP_WAIT_MS`` on a thread already flagged and
+                already asked to quit;
+              * wrote the abandon ERROR a second time, so the crash
+                watchdog reads two failures where one happened.
+
+            The last is why this is a correctness guard and not tidying
+            up. A log the operator reads during a crash must not
+            multiply its own entries by the number of times something
+            polite called ``stop()``.
+
+            ``is_stopping()`` is the whole test: it is set by
+            ``request_stop`` on the first call and never cleared, and a
+            worker that has finished has already had both references
+            cleared by ``_teardown_worker``, so it cannot be reached
+            here at all.
             """
             thread = self._worker_thread
             worker = self._worker
             if thread is None:
+                return
+            if worker is not None and worker.is_stopping():
+                # Already asked, and the answer has not arrived yet.
+                # `finished` clears the references whenever the thread
+                # really stops; until then there is nothing to add.
                 return
             if worker is not None:
                 for _sig in (worker.headlinesReady, worker.failed):
