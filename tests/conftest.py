@@ -24,9 +24,14 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:                                      # pragma: no cover
+    from PySide6.QtWidgets import QWidget
 
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
@@ -392,22 +397,274 @@ def _assert_no_live_tree_writes(_redirect_sim_log_root):
 # Placed here rather than in each GUI test file: it applies to every
 # test that ever builds a widget, including ones not yet written, and
 # six separate copies of the same fixture is six places for it to rot.
-@pytest.fixture(autouse=True)
-def _destroy_qt_widgets():
-    yield
+#
+# ── issue #101, v3.26.x — THE RECIPE DESTROYED NOTHING ───────────────
+#
+# The fixture did `hide()`, `setParent(None)`, `deleteLater()`, then
+# `processEvents()`. Measured 2026-08-24, PySide6 on the offscreen
+# plugin, one line of output each:
+#
+#     parentless dialog, Python reference dropped     0 alive
+#     deleteLater() first, then reference dropped     1 alive
+#     after sendPostedEvents(None, DeferredDelete)    0 alive
+#
+# `deleteLater()` posts a `DeferredDelete` event, and
+# `QApplication.processEvents()` NEVER DELIVERS ONE. Only a running
+# event loop, or an explicit `sendPostedEvents`, does. So every widget
+# the fixture "cleaned up" stayed in `QApplication.topLevelWidgets()`
+# for the rest of the session, and anything that walks that list -- as
+# tests/test_sim_visuals_expand_reentrancy.py does -- read a stranger.
+#
+# ── WHAT THE OLD FIXTURE REALLY PROVIDED, AND WHICH LINE ─────────────
+#
+# It provided IMMORTALITY, not destruction, and that is what kept the
+# process alive. Measured 2026-08-24, one ExchangeTab built and the
+# script then allowed to exit:
+#
+#     no cleanup at all                        exit 127
+#     hide() + setParent(None)                 exit 127
+#     hide() + setParent(None) + deleteLater() exit 0
+#
+# `w.deleteLater()` IS THE LINE. It moves ownership from Python to C++
+# -- `Shiboken.ownedByPython` reads True before the call and False
+# after -- so Python's shutdown frees no widget and no widget is ever
+# destroyed. `hide()` and `setParent(None)` provide nothing here; the
+# first two rows above are the control that proves it.
+#
+# The same control at suite scale, 2026-08-24: with the body of this
+# fixture replaced by a bare `yield`, a full `pytest tests` run reached
+# 76% and died with exit 139 -- SIGSEGV, no failure summary. The
+# docstring's claim was true. Keep `deleteLater()`.
+#
+# WHY DESTRUCTION KILLS THE PROCESS. `ExchangeTab` owns a
+# `CryptoNewsTicker`, and `crypto_news_ticker.py:386` builds
+# `QThread(self)` -- a thread PARENTED to the widget. Destroying the
+# widget destroys a RUNNING QThread, which Qt answers with
+# `std::terminate`: no traceback, no failure summary, exit 127. The
+# first honest attempt at this repair -- a global
+# `sendPostedEvents(None, DeferredDelete)` -- died exactly there, 2573
+# tests into a full run, at `test_exchange_tab_boot_smoke.py`.
+#
+# ── THE REPAIR ───────────────────────────────────────────────────────
+#
+# 1. STOP THE THREADS FIRST. `quit()` then a bounded `wait()`. Measured
+#    on the news ticker: `wait(3000)` returned True after 0.54 s, and
+#    the widget then destroyed with exit 0.
+# 2. DELIVER PER WIDGET, NOT GLOBALLY. `sendPostedEvents(w, ...)` sends
+#    only the events posted to `w`. The global form also delivers the
+#    `deleteLater()` calls SHIPPED code made on objects this fixture
+#    never chose -- QThreads among them. Per-widget delivery destroys
+#    what the fixture handled and touches nothing else.
+# 3. SPARE WHAT WOULD ABORT. A widget whose thread will not stop keeps
+#    the old immortality, and its address is recorded so the leak guard
+#    below reports it by name instead of failing a file that has no fix
+#    for it.
+# 4. REPEAT UNTIL THE LIST IS EMPTY. Destroying a widget can EXPOSE new
+#    top-level widgets: measured on `test_suite_integrity.py`, tearing
+#    down a MainWindow left four `QMenu` popups behind with no parent
+#    and no Python owner. They were never in the first pass's list, so
+#    a single sweep could not reach them. The loop is bounded at
+#    `_MAX_TEARDOWN_PASSES` so a widget that respawns cannot hang the
+#    suite; a pass that destroys nothing ends it early.
+_MAX_TEARDOWN_PASSES = 4
+_WIDGET_TEARDOWN_WAIT_MS = 2000
+
+# Addresses of widgets deliberately left alive because destroying them
+# would abort the process. Runtime facts, not a name allowlist: the only
+# way onto this list is to still own a running QThread after a bounded
+# wait.
+_SPARED_WIDGETS: dict[int, str] = {}
+
+
+def _live_top_level_widgets() -> dict[int, str]:
+    """Map every live top-level widget to its type name, by C++ address.
+
+    The address is the identity, not the Python wrapper: a wrapper can
+    be recreated for the same C++ object. An address CAN be reused after
+    a destruction, which makes a brand-new widget look like an old one.
+    That direction is deliberate. The leak guard below then UNDER-reports
+    rather than accusing an innocent file.
+    """
     try:
         from PySide6.QtWidgets import QApplication
+        from shiboken6 import Shiboken
+    except ImportError:                                # pragma: no cover
+        return {}
+    app = QApplication.instance()
+    if app is None:
+        return {}
+    live: dict[int, str] = {}
+    for w in list(app.topLevelWidgets()):
+        try:
+            if not Shiboken.isValid(w):
+                continue
+            live[Shiboken.getCppPointer(w)[0]] = type(w).__name__
+        except (RuntimeError, AttributeError):         # pragma: no cover
+            continue                                   # destroyed mid-walk
+    return live
+
+
+def _stop_owned_threads(widget: QWidget) -> int:
+    """Stop every QThread under `widget`. Return how many still run.
+
+    A QThread destroyed while it runs makes Qt call `std::terminate`.
+    The widget teardown below therefore asks first and destroys second.
+    """
+    try:
+        from PySide6.QtCore import QThread
+    except ImportError:                                # pragma: no cover
+        return 0
+    try:
+        running = [t for t in widget.findChildren(QThread) if t.isRunning()]
+    except RuntimeError:                               # pragma: no cover
+        return 0                                       # already destroyed
+    for t in running:
+        try:
+            t.quit()
+            t.wait(_WIDGET_TEARDOWN_WAIT_MS)
+        except RuntimeError:                           # pragma: no cover
+            continue
+    left = 0
+    for t in running:
+        try:
+            if t.isRunning():
+                left += 1
+        except RuntimeError:                           # pragma: no cover
+            continue
+    return left
+
+
+@pytest.fixture(autouse=True)
+def _destroy_qt_widgets() -> Iterator[None]:
+    yield
+    try:
+        from PySide6.QtCore import QCoreApplication, QEvent
+        from PySide6.QtWidgets import QApplication
+        from shiboken6 import Shiboken
     except ImportError:                                # pragma: no cover
         return
     app = QApplication.instance()
     if app is None:
         return
-    for w in list(app.topLevelWidgets()):
+
+    for _pass in range(_MAX_TEARDOWN_PASSES):
+        doomed = []
+        for w in list(app.topLevelWidgets()):
+            try:
+                if not Shiboken.isValid(w):
+                    continue
+                w.hide()
+                if _stop_owned_threads(w):
+                    # Destroying this one calls std::terminate. Hand it
+                    # to C++ and never deliver the event, which is what
+                    # the whole fixture used to do to everything.
+                    _SPARED_WIDGETS[
+                        Shiboken.getCppPointer(w)[0]] = type(w).__name__
+                    w.deleteLater()
+                    continue
+                w.setParent(None)
+                w.deleteLater()
+                doomed.append(w)
+            except RuntimeError:
+                # Already destroyed by its own parent; nothing to do.
+                continue
+        app.processEvents()
+        for w in doomed:
+            try:
+                if Shiboken.isValid(w):
+                    QCoreApplication.sendPostedEvents(
+                        w, QEvent.Type.DeferredDelete)
+            except RuntimeError:                       # pragma: no cover
+                continue      # a parent in this same list took it first
+        if not doomed:
+            break                    # nothing left this pass could own
         try:
-            w.hide()
-            w.setParent(None)
-            w.deleteLater()
-        except RuntimeError:
-            # Already destroyed by its own parent; nothing to do.
-            continue
-    app.processEvents()
+            if not [w for w in app.topLevelWidgets()
+                    if Shiboken.getCppPointer(w)[0] not in _SPARED_WIDGETS]:
+                break                # the list is empty; no second look
+        except RuntimeError:                           # pragma: no cover
+            break
+
+# ── A leak fails in the file that caused it ──────────────────────────
+#
+# issue #101. Before this fixture a leaked widget failed a STRANGER.
+# `tests/test_sim_visuals_expand_reentrancy.py` asks
+# `app.topLevelWidgets()` for every open QDialog and takes element
+# zero. One dialog left behind by ANY earlier file makes element zero
+# the wrong widget, and the test then reports its own subject as leaked
+# while it examines somebody else's. Three units spent a full diagnosis
+# each on that shape on 2026-08-23 -- issues #96 and #98, and the
+# referee who repaired #98's fallout. Every one of them started from
+# "a neighbour test broke".
+#
+# WHY THIS GUARD CANNOT BECOME THE FLAKY THING EVERYONE DISABLES:
+#
+#  1. IT IS BASELINE-RELATIVE. Each file is judged only on the widgets
+#     it ADDED. A leak from an earlier file cannot fail a later one, so
+#     one defect gives exactly one failure, and it is in the file that
+#     holds the fix. This one property stops the cascade.
+#  2. IT RUNS AFTER `_destroy_qt_widgets`. Module-scoped finalizers run
+#     after function-scoped ones, so it measures what survived a real
+#     destruction pass, not what a test left bound in a local.
+#  3. IT NEEDS NO RUN ORDER. No file's result depends on which files ran
+#     before it, so `-k`, a single-file run and a full run all agree.
+#  4. THERE IS NO ALLOWLIST AND NO ENVIRONMENT SWITCH. An allowlist rots
+#     into a list of accepted leaks, and a switch is how a guard dies.
+#     The only exclusion is `_SPARED_WIDGETS`, and a widget earns a
+#     place there by still owning a running QThread -- a fact measured
+#     at teardown, not a name written down in advance. Those are
+#     PRINTED with the file that made them, so they stay visible.
+#  5. A NON-GUI FILE PAYS NOTHING. With no QApplication both snapshots
+#     are empty dicts.
+@pytest.fixture(scope="module", autouse=True)
+def _assert_no_widget_leak(
+        request: pytest.FixtureRequest) -> Iterator[None]:
+    """Fail the FILE that left a top-level Qt widget alive."""
+    before = _live_top_level_widgets()
+    yield
+    after = _live_top_level_widgets()
+    new = {a: n for a, n in after.items() if a not in before}
+    spared = {a: n for a, n in new.items() if a in _SPARED_WIDGETS}
+    leaked = {a: n for a, n in new.items() if a not in _SPARED_WIDGETS}
+
+    import collections
+    where = Path(
+        getattr(request.module, "__file__", str(request.module))).name
+    if spared:
+        print(f"\n[widget teardown] {where} left "
+              f"{len(spared)} widget(s) alive that cannot be destroyed: "
+              + ", ".join(f"{n} x {t}" for t, n in
+                          collections.Counter(spared.values()).most_common())
+              + ". Each still owned a running QThread after "
+              f"{_WIDGET_TEARDOWN_WAIT_MS} ms, and destroying a running "
+              "QThread aborts the process.")
+    if not leaked:
+        return
+
+    by_type = collections.Counter(leaked.values()).most_common()
+    raise AssertionError(
+        f"{where} left {len(leaked)} top-level Qt widget(s) alive after "
+        f"its last test:\n  "
+        + "\n  ".join(f"{n} x {t}" for t, n in by_type)
+        + "\n\nA surviving widget is not local. Anything that walks "
+          "`QApplication.topLevelWidgets()` -- and "
+          "tests/test_sim_visuals_expand_reentrancy.py does -- then "
+          "reads a widget from THIS file and reports the failure "
+          "against ITSELF.\n\n"
+          "THE REPAIR IS IN THIS FILE. The owner destroys the widget:\n"
+          "    w.close()\n"
+          "    w.setParent(None)          # only if it HAD a parent\n"
+          "then drops the last Python reference to it. A parentless\n"
+          "widget with no Python reference dies at once.\n\n"
+          "DO NOT clean up with `deleteLater()`. That hands the object\n"
+          "to C++ and posts a `DeferredDelete` event which\n"
+          "`processEvents()` does not deliver, so the call MAKES the\n"
+          "leak. If a `deleteLater()` is unavoidable, deliver the event\n"
+          "to that object:\n"
+          "    QCoreApplication.sendPostedEvents(\n"
+          "        w, QEvent.Type.DeferredDelete)\n\n"
+          "Read the answer into a local FIRST, destroy SECOND, return\n"
+          "THIRD. And assert the count in a FIXTURE. `with _dialog() as\n"
+          "d:` binds the widget in the test frame too, so a check inside\n"
+          "the context manager can never see zero.",
+    )
