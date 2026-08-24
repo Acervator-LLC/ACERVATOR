@@ -368,6 +368,15 @@ LIVE_LABELS = [
     "Open tranches:", "1",
     "Parked USD (in fold queue):", "$250.0000",
     "Oldest tranche age:", "1.0h",
+    # issue #98 defect 9, 2026-08-24 - THE ALLOTMENT TOTAL. The panel
+    # printed per-row Units and no total, so PUMP/USD marking 1.99x the
+    # units it holds looked exactly like a queue that had marked half.
+    # This fixture's stub bot carries no `_current_holdings` at all, so
+    # the row prints the marked total and says plainly that it cannot
+    # read the holdings - it does NOT print a ratio against a number it
+    # does not have.
+    "Units marked (queue vs held):",
+    "1.500000 marked / holdings unreadable",
     # issue #103, 2026-08-24 - the two despawn rows. The capture grew
     # by four entries because the panel gained two rows, and that is a
     # DELIBERATE change to what a valid tranche makes this tab show.
@@ -386,6 +395,26 @@ LIVE_LABELS = [
     "Lifetime tranches opened:", "10",
     "Lifetime tranches closed (fold-back fired):", "6",
     "Cycle close ratio (closed/opened):", "60.00%  (6/10)",
+    # issue #98 defect 10, 2026-08-24 - two of the three persisted
+    # quantities the panel never showed. The third,
+    # `_wire_credits_discarded_lifetime`, follows the tranche-discard
+    # row's convention and appears only once it is non-zero; this stub
+    # has never cleared, so it is absent here BY DESIGN and its
+    # presence on a bot that HAS cleared is pinned in
+    # `tests/test_fold_panel_surface_remainder.py`.
+    #
+    # The malformed row is shown even at zero, and that is the point of
+    # it: 0 on all 38 bots is a positive statement that no stored
+    # tranche was ever unreadable, and a hidden row would make that
+    # reading indistinguishable from a panel that does not count drops.
+    "Tranches dropped as malformed:", "0",
+    "Fold budget this cycle:", "$0.0000 spent of $0.0000",
+    # issue #98 defect 7, 2026-08-24 - the label on the row-order
+    # combo. `_build` harvests every `QLabel` in the built tab, and the
+    # two reach controls sit above the table, so the order label lands
+    # in this capture with no value beside it. The filter box is a
+    # `QLineEdit` with a placeholder and no label, so it adds nothing.
+    "Order:",
 ]
 LIVE_ROW = [
     "1", "1.0h", "1.500000", "$250.0000", "$30000.00000000",
