@@ -353,10 +353,45 @@ def _short_units():
 
 #: Taken at the issue #99 repair. These are NEW pins, not restatements:
 #: no digest in EXPECTED moved, so none was rewritten.
+#:
+#: ONE PIN WAS RESTATED by the issue #100 repair, and this block is why
+#: the repair was visible at all. ``VotingEngine._aggregate`` divided
+#: ``abs(net_score)`` by the weight of every voter it ASKED. It now
+#: divides by the weight of every voter that ANSWERED: the published
+#: denominator of a weighted arithmetic mean is the sum of the weights
+#: of the data points included in the calculation, and an abstaining
+#: indicator supplied no data point.
+#:
+#: WHAT MOVED, AND ONLY WHAT MOVED. ``consensus_confidence``. Nothing
+#: else. MEASURED over 406 stone tablets x 6 tape lengths, 2,436 rows:
+#: ``net_score`` moved on 0 rows, ``consensus_direction`` on 0 rows,
+#: and every voter's own ``direction``, ``confidence``, ``weight`` and
+#: ``details`` on 0 rows. 1,220 rows moved, every one of them in
+#: ``consensus_confidence`` alone.
+#:
+#: THE MOVE IS MONOTONE, AND STRUCTURALLY SO. The voted weight cannot
+#: exceed the asked weight and the numerator is untouched, so the
+#: quotient can only rise or stay equal. Measured: 1,220 rows rose,
+#: 1,216 held, 0 fell, none passed the 1.0 cap.
+#:
+#: AT 40 BARS on this tape, Ichimoku (needs 79 candles), Slingshot (52)
+#: and Z-Score (51) all abstain, and carried 3.0 of the engine's 11.7
+#: total weight -- 25.6% of the old denominator supplied by voters that
+#: had measured nothing.
+#:
+#: THE 400-BAR PIN IN ``EXPECTED`` DID NOT MOVE, which is this file's
+#: own thesis restated by a second defect: on the long tape no voter
+#: abstains, so the long pin is blind to a denominator error exactly as
+#: it was blind to the back-filled EMA. A 400-bar sweep alone would
+#: have reported this repair as a no-op.
 EXPECTED_SHORT = {
     "macd": "b04be9756a1fafff959516346fa222ee8965ef7fe5ed9ed07e3fd1c86864ed9c",
     "macd_taper": "be3e7ab4145472bc726159e7b62b656484ea727ffd9eb9825cc706106a9427ce",
-    "voting_engine": "68b306f9a514d0c09d61b714c3cd2d080f790f8d7a175b1609a9facf216cd241",
+    # RESTATED by issue #100. Was
+    # "68b306f9a514d0c09d61b714c3cd2d080f790f8d7a175b1609a9facf216cd241"
+    # while an abstaining voter's full weight still counted in the
+    # `consensus_confidence` denominator.
+    "voting_engine": "2914a154fe7497569fad65f43d5611c7d301218349c0a9d886b2b00d6dcb9f8f",
 }
 
 

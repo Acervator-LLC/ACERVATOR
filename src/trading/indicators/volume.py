@@ -181,7 +181,7 @@ class VolumeAnalysis:
                       self.div_lookback) + 5
         if len(candles) < min_len:
             return Signal("volume", timeframe, SignalDirection.NEUTRAL,
-                          0.0, self.weight)
+                          0.0, self.weight, abstained=True)
 
         closes  = [c.close  for c in candles]
         volumes = [c.volume for c in candles]
@@ -260,7 +260,7 @@ class VolumeAnalysis:
         # exactly when every bar traded nothing.
         if avg_vol <= 0.0:
             return Signal("volume", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
         vol_ratio = curr_vol / (avg_vol + 1e-9)
         is_spike  = vol_ratio > self.spike_threshold
         is_high   = vol_ratio > 1.5

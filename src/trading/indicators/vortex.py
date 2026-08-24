@@ -56,7 +56,8 @@ class VortexIndicator:
 
     def compute(self, candles: list[Candle], timeframe: str = "1h") -> Signal:
         if len(candles) < self.period + 1:
-            return Signal("vortex", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal("vortex", timeframe,
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         vm_plus = []
         vm_minus = []
@@ -76,7 +77,8 @@ class VortexIndicator:
 
         n = self.period
         if len(vm_plus) < n:
-            return Signal("vortex", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal("vortex", timeframe,
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         sum_vp = sum(vm_plus[-n:])
         sum_vm = sum(vm_minus[-n:])
@@ -101,7 +103,7 @@ class VortexIndicator:
         # halt, so the sum cancels to EXACTLY 0.0 and `<= 0.0` is sound.
         if sum_tr_window <= 0.0:
             return Signal("vortex", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         sum_tr = sum_tr_window + 1e-9
 
