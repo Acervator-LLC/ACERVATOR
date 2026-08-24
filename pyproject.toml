@@ -161,6 +161,14 @@ testpaths = ["tests"]
 # does.
 norecursedirs = ["__pycache__", ".git"]
 
+# RULE: "A silent capture is a failed capture." — see the
+# `_silent_capture_guard` fixture in tests/conftest.py. The marker is
+# the guard's only opt-out and is registered here so an unknown-mark
+# warning can never be mistaken for the guard being inert.
+markers = [
+    "caplog_may_be_empty(reason): this test watches a NON-Acervator logger and an empty caplog is its pass condition",
+]
+
 # v3.19.7 - Coverage configuration. Coverage is NOT enabled by default
 # (it slows the suite by about 3x). Run it explicitly:
 #
