@@ -459,6 +459,14 @@ def _assert_no_live_tree_writes(_redirect_sim_log_root):
 #    the old immortality, and its address is recorded so the leak guard
 #    below reports it by name instead of failing a file that has no fix
 #    for it.
+# 4. REPEAT UNTIL THE LIST IS EMPTY. Destroying a widget can EXPOSE new
+#    top-level widgets: measured on `test_suite_integrity.py`, tearing
+#    down a MainWindow left four `QMenu` popups behind with no parent
+#    and no Python owner. They were never in the first pass's list, so
+#    a single sweep could not reach them. The loop is bounded at
+#    `_MAX_TEARDOWN_PASSES` so a widget that respawns cannot hang the
+#    suite; a pass that destroys nothing ends it early.
+_MAX_TEARDOWN_PASSES = 4
 _WIDGET_TEARDOWN_WAIT_MS = 2000
 
 # Addresses of widgets deliberately left alive because destroying them
@@ -539,34 +547,43 @@ def _destroy_qt_widgets() -> Iterator[None]:
     if app is None:
         return
 
-    doomed = []
-    for w in list(app.topLevelWidgets()):
-        try:
-            if not Shiboken.isValid(w):
-                continue
-            w.hide()
-            if _stop_owned_threads(w):
-                # Destroying this one calls std::terminate. Hand it to
-                # C++ and never deliver the event, which is exactly what
-                # the whole fixture used to do.
-                _SPARED_WIDGETS[Shiboken.getCppPointer(w)[0]] = type(w).__name__
+    for _pass in range(_MAX_TEARDOWN_PASSES):
+        doomed = []
+        for w in list(app.topLevelWidgets()):
+            try:
+                if not Shiboken.isValid(w):
+                    continue
+                w.hide()
+                if _stop_owned_threads(w):
+                    # Destroying this one calls std::terminate. Hand it
+                    # to C++ and never deliver the event, which is what
+                    # the whole fixture used to do to everything.
+                    _SPARED_WIDGETS[
+                        Shiboken.getCppPointer(w)[0]] = type(w).__name__
+                    w.deleteLater()
+                    continue
+                w.setParent(None)
                 w.deleteLater()
+                doomed.append(w)
+            except RuntimeError:
+                # Already destroyed by its own parent; nothing to do.
                 continue
-            w.setParent(None)
-            w.deleteLater()
-            doomed.append(w)
-        except RuntimeError:
-            # Already destroyed by its own parent; nothing to do.
-            continue
-    app.processEvents()
-    for w in doomed:
+        app.processEvents()
+        for w in doomed:
+            try:
+                if Shiboken.isValid(w):
+                    QCoreApplication.sendPostedEvents(
+                        w, QEvent.Type.DeferredDelete)
+            except RuntimeError:                       # pragma: no cover
+                continue      # a parent in this same list took it first
+        if not doomed:
+            break                    # nothing left this pass could own
         try:
-            if Shiboken.isValid(w):
-                QCoreApplication.sendPostedEvents(
-                    w, QEvent.Type.DeferredDelete)
+            if not [w for w in app.topLevelWidgets()
+                    if Shiboken.getCppPointer(w)[0] not in _SPARED_WIDGETS]:
+                break                # the list is empty; no second look
         except RuntimeError:                           # pragma: no cover
-            continue          # a parent in this same list took it first
-
+            break
 
 # ── A leak fails in the file that caused it ──────────────────────────
 #

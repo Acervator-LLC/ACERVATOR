@@ -229,3 +229,58 @@ class TestTheTeardownSparesWhatWouldAbort:
         finally:
             w.setParent(None)
             del w
+
+
+# ── The coupled repair: api_logger's handler could not keep its promise
+
+class TestRecordSurvivesADestroyedListener:
+    """`src/exchange/api_logger.py` is repaired in the same change,
+    because the teardown above cannot destroy anything without it.
+
+    `MainWindow._on_api_event` stays in `APIInteractionLog._listeners`
+    after the window is destroyed. The `except Exception` around the
+    listener call was there so that a listener which raises cannot
+    break `record()`. It could not keep that promise: its own
+    diagnostic read `getattr(cb, "__qualname__", repr(cb))`, Python
+    built `repr(cb)` on every call, and `repr()` of a bound method
+    whose Qt object is gone raises RuntimeError. The RuntimeError left
+    the handler and came out of `record()`, which is on the API path.
+
+    Measured 2026-08-24: 39 tests across four files failed on this the
+    moment the suite teardown began destroying widgets for real.
+    """
+
+    def test_a_listener_whose_repr_raises_does_not_break_record(self) -> None:
+        from src.exchange.api_logger import APIInteractionLog
+
+        class _Detonator:
+            """A listener shaped like a destroyed Qt bound method: it
+            raises when called, when asked for any attribute, and when
+            repr'd."""
+
+            def __call__(self, entry: dict) -> None:
+                raise RuntimeError("Internal C++ object already deleted.")
+
+            def __getattr__(self, name: str) -> object:
+                raise RuntimeError("Internal C++ object already deleted.")
+
+            def __repr__(self) -> str:
+                raise RuntimeError("Internal C++ object already deleted.")
+
+        log = APIInteractionLog()
+        log._listeners.append(_Detonator())
+        entry = log.record(exchange="app", action="PIN", reason="issue 101")
+        assert entry["action"] == "PIN", (
+            "record() did not return; the listener handler raised out of "
+            "it again")
+
+    def test_a_healthy_listener_is_still_named_in_the_log(self) -> None:
+        """POSITIVE CONTROL. The repair must not silence the diagnostic
+        the handler exists to produce."""
+        from src.exchange.api_logger import _listener_name
+
+        class _Named:
+            def ping(self) -> None:
+                pass
+
+        assert _listener_name(_Named().ping).endswith("_Named.ping")

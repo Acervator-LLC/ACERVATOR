@@ -19,9 +19,46 @@ from __future__ import annotations
 import functools
 import logging
 import time
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger("acervator.api")
+
+
+def _listener_name(cb: object) -> str:
+    """Name a listener without touching an object that may be destroyed.
+
+    issue #101. The handler below existed so that a listener which
+    raises cannot break `record`. It could not keep that promise,
+    because its own diagnostic raised.
+
+    `getattr(cb, "__qualname__", repr(cb))` evaluates `repr(cb)` EVERY
+    time, including when `__qualname__` is present -- Python builds the
+    default argument before it calls `getattr`. `cb` is normally a
+    BOUND METHOD of a Qt widget, and `repr()` of a bound method whose
+    C++ object is destroyed raises
+    `RuntimeError: Internal C++ object already deleted`. That
+    RuntimeError left the `except` block and came out of `record()`,
+    which is on the API path.
+
+    Measured 2026-08-24: `MainWindow._on_api_event` stays in
+    `_listeners` after the window is destroyed, so the next `record()`
+    hit exactly this. 39 tests across four files failed on it as soon
+    as the suite teardown started destroying widgets for real.
+
+    `object.__repr__` reads the type and the address only. It cannot
+    call into Qt, so it cannot raise.
+    """
+    try:
+        name = getattr(cb, "__qualname__", None)
+    except Exception as exc:
+        # A destroyed Qt object answers every attribute read with
+        # RuntimeError, not AttributeError, so the `None` default above
+        # does not cover it. Naming the listener must never be the
+        # reason a caller loses its own exception.
+        name = f"<unnameable listener: {type(exc).__name__}>"
+    if isinstance(name, str):
+        return name
+    return object.__repr__(cb)
 
 
 class APIInteractionLog:
@@ -117,8 +154,8 @@ class APIInteractionLog:
             try:
                 cb(entry)
             except Exception as exc:
-                logger.debug("api_logger listener %r raised: %s: %s",
-                             getattr(cb, "__qualname__", repr(cb)),
+                logger.debug("api_logger listener %s raised: %s: %s",
+                             _listener_name(cb),
                              type(exc).__name__, exc, exc_info=True)
 
         return entry
