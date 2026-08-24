@@ -102,7 +102,7 @@ Coupled consumer: `src/gui/main_window.py:1314` draws the ceiling line at
 drawn line and the enforced line already disagree. On IMU the chart shows
 $50.50 where the bot enforces $64.17. Any cap change must land this too.
 
-Constraint to honour: MEM-249 at `src/trading/bot_container.py:2017` states
+Constraint to honour: MEM-249 at `src/trading/bot_container.py:2206` states
 that fold surplus is the only legitimate mechanism that may grow the target,
 bounded per event. Changing the base of the bound keeps that rule intact.
 
