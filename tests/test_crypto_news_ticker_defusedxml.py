@@ -353,8 +353,23 @@ class TestMalformedNeverRaises:
 # ------------------------------------------------------------------
 
 class _Resp:
+    """A response stub that ADVANCES, like the stream it stands for.
+
+    The first version of this stub returned ``self._body[:amount]`` on
+    every call, from offset zero. That modelled a reader that calls
+    ``read`` exactly once. ``fetch_one`` now reads the body in bounded
+    chunks (issue #105, so a teardown does not have to wait out a
+    third-party host), and a stub that never advances hands the same
+    bytes back for ever. It reported an oversized feed where the real
+    stream would have reported a small one.
+
+    A stub that does not model the thing it replaces turns a correct
+    change into a red test. This one keeps an offset.
+    """
+
     def __init__(self, body: bytes) -> None:
         self._body = body
+        self._offset = 0
         self.read_args: list[int | None] = []
 
     def __enter__(self):
@@ -365,7 +380,12 @@ class _Resp:
 
     def read(self, amount: int | None = None) -> bytes:
         self.read_args.append(amount)
-        return self._body if amount is None else self._body[:amount]
+        if amount is None:
+            chunk = self._body[self._offset:]
+        else:
+            chunk = self._body[self._offset:self._offset + amount]
+        self._offset += len(chunk)
+        return chunk
 
 
 class TestResponseSizeCap:
@@ -374,7 +394,13 @@ class TestResponseSizeCap:
 
     def test_read_is_bounded_rather_than_unlimited(self, monkeypatch):
         """A failure means ``resp.read()`` was called with no argument,
-        which reads until the peer stops sending."""
+        which reads until the peer stops sending.
+
+        The read is now CHUNKED as well as capped (issue #105), so the
+        assertion is on the shape of every request rather than on a
+        single one: no request may be unbounded, none may exceed the
+        chunk size, and the total asked for may not exceed the cap.
+        """
         from src.gui import crypto_news_ticker as cnt
         resp = _Resp(b"<rss version='2.0'><channel><item>"
                      b"<title>Small</title>"
@@ -382,7 +408,12 @@ class TestResponseSizeCap:
                      b"</item></channel></rss>")
         monkeypatch.setattr(cnt, "safe_urlopen", lambda *_a, **_k: resp)
         assert [h.title for h in cnt.fetch_one(SRC)] == ["Small"]
-        assert resp.read_args == [MAX_FEED_BYTES + 1]
+        assert resp.read_args
+        assert None not in resp.read_args
+        assert all(a <= cnt.READ_CHUNK_BYTES
+                   for a in resp.read_args if a is not None)
+        assert sum(a for a in resp.read_args
+                   if a is not None) <= MAX_FEED_BYTES + 1
 
     def test_oversized_body_is_dropped_and_logged(
             self, monkeypatch, capture_log):
