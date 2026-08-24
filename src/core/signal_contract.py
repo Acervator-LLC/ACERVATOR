@@ -82,7 +82,10 @@ from types import MappingProxyType
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:  # import used only by annotations
+    from collections.abc import Iterable
 
 DEFAULT_FLUSH_EVERY = 200
 """Rows buffered before a disk write. Matches SimRunLog's default so the
@@ -176,6 +179,137 @@ MEASURED on the operator's ``signals/session.jsonl`` 2026-08-13:
 4.1 hours of live history at today's emitter count, and the file stops
 being 2.4 GB and climbing. Raise ``backup_count`` if a longer window is
 wanted; the number is a constructor argument for exactly that reason.
+"""
+
+
+# ---------------------------------------------------------------------------
+# The DIGEST ladder — a second, per-identity-fair file beside the main one
+# ---------------------------------------------------------------------------
+#
+# WHAT THE MAIN LADDER CANNOT DO, MEASURED
+# ----------------------------------------
+# The main ladder above is bounded by BYTES and evicted by AGE, one whole
+# file at a time. Nothing in it decides what is worth keeping, so the
+# emitters that write most decide how far back every OTHER emitter can be
+# read. That is not a theory. READ-ONLY off the operator's own disk,
+# 2026-08-24, all six generations of ``signals/session.jsonl``:
+#
+#     488,000 records      267.4 MB      125.4 MB per hour
+#     span of the WHOLE 300 MB ladder: 2.13 hours
+#     distinct emitters present: 28, against 77 pins in the tree
+#     top 5 emitters: 44.0% of the bytes
+#     top 8 emitters: 62.9% of the bytes
+#
+# So 49 of the platform's 77 pins are not in the retained window at all,
+# and the window is barely two hours wide. A pin that fires once a shift
+# is unreadable by the time anybody looks. An emitter whose output is
+# evicted before it is read is an emitter that does not exist.
+#
+# WHAT THE DIGEST IS
+# ------------------
+# A SECOND ladder, written by the same flush, in which every emitter
+# identity is rate-limited to at most one record per
+# ``DIGEST_MIN_INTERVAL`` seconds. The suppressed records are not
+# discarded and are not silent: each admitted line carries ``folded``,
+# the number of observations it stands for, so ``sum(folded)`` over a
+# digest file equals the number of records that happened. The main
+# ladder is UNCHANGED and still holds every record verbatim.
+#
+# The fairness is by CONSTRUCTION, not by today's traffic mix. One
+# identity's contribution to the digest is bounded by the clock, so the
+# fill rate has a ceiling of ``pins / DIGEST_MIN_INTERVAL`` records per
+# second no matter how loud any single emitter becomes. A noisy emitter
+# cannot evict a quiet one because it cannot outspend it.
+#
+# WHAT WAS REJECTED, AND WHY
+# --------------------------
+# * A PER-EMITTER RECORD BUDGET PER FILE. Fair, but the budgets reset on
+#   rotation, so a loud emitter still sets the rotation rate and still
+#   sets everyone's window. It also drops records outright. The time
+#   rule bounds the RATE, which is the quantity that decides the window.
+# * QUIETENING THE LOUD EMITTERS AT THEIR CALL SITES with ``every=``.
+#   That reduces what is observed. The emitters are load-bearing and the
+#   main ladder must keep being complete. See the FINDING below.
+# * KEEPING EVERY ``ok=False`` RECORD REGARDLESS OF RATE. This is the
+#   obvious "keep by interest" rule and the measurement kills it:
+#   ``bot.01.001.postcondition.capital_reservation`` emitted 53,558
+#   records in the 2.13-hour window and EVERY ONE of them is
+#   ``ok=False``. A verdict carve-out would hand that one identity the
+#   digest and reproduce the eviction defect inside the fix. Interest is
+#   not a licence to outspend; the rule is per-identity time, with no
+#   exception any single identity can exploit.
+# * SHRINKING THE MAIN LADDER to pay for the digest. The main ladder is
+#   the complete record. Trading its completeness for the digest's reach
+#   would lose the thing the digest is not trying to replace.
+#
+# FINDING, NOT FIXED HERE (the emitter sites are not this unit's to
+# change): the fifteen ``ta.07.*`` and ``tick.08.*`` pins each emit at
+# 3.6-4.0 records per second, sustained, on a live loop, and none of
+# them passes ``every=``. That is measured, and it is what a throttle is
+# for. It belongs to #14, which categorises always-on against toggle.
+
+DIGEST_MIN_INTERVAL = 10.0
+"""Seconds an emitter identity must wait for its next DIGEST line.
+
+CALIBRATED, not chosen. The 488,000 real records above were replayed
+through this exact rule at several intervals. ``admitted + folded``
+equalled the records read on every run, an interval of 0 admitted
+100.0% (the rule is a no-op, so the replay was really running it) and
+an unbounded interval admitted exactly 28 records, one per identity
+(so the rule really bites):
+
+    interval    admitted     folded    digest MB/h    hours in 96 MB
+           0     488,000          0         127.98              0.75
+           2      54,262    433,738          13.86               6.9
+           5      27,925    460,075           7.02              13.7
+          10      15,201    472,799           3.73              25.7
+          30       6,476    481,524           1.50              64.0
+          60       3,358    484,642           0.77             124.7
+
+Ten seconds is where the two requirements meet. EVERY quiet emitter in
+the measured window keeps 100% of its records at 10 s -- eight
+identities cut by exactly 0.0%, including ``charts.13.001``,
+``exchange.15.002``, ``exchange.15.003``, ``console.14.002`` and
+``bot.01.002`` -- while the fifteen loud ones are cut 96.9% to 98.6%.
+The digest therefore costs a quiet channel NOTHING and still buys it a
+day of history. A shorter interval buys the loud emitters resolution
+nobody asked for at the quiet ones' expense; a longer one starts
+folding the quiet channels too, which is the defect wearing a
+different hat.
+"""
+
+DIGEST_FILE_BYTES = 16 * 1024 * 1024
+"""Rotation threshold for the digest file.
+
+Sized from the measured digest rate against a stated requirement,
+rather than copied from the 50 MB the main ladder uses. The
+requirement is ONE FULL DAY: an operator asking what happened
+overnight needs the whole night in the window. At the measured
+3.73 MB/h, 24 hours is 89.5 MB, so a ladder of 6 x 16 MB = 96 MB
+holds 25.7 hours -- a day with headroom.
+
+WORST CASE, stated because the measured case is not a bound: if every
+one of the 77 pins in the tree went maximally loud at once, the rule
+admits 77 / 10 s = 7.7 records per second. At the measured 600 bytes
+per digest line that is 16.2 MB/h, and 96 MB still holds 5.9 hours --
+still 2.8x the 2.13 hours the whole 300 MB main ladder holds today.
+The ceiling is set by the PIN COUNT and the interval, never by any
+emitter's volume, which is the property the main ladder lacks.
+
+The added footprint is 96 MB against the 1,990 MB measured in
+``~/.acervator_logs`` on 2026-08-24 -- 4.8% more disk to take the
+readable window on every channel from 2.1 hours to 25.7.
+"""
+
+DIGEST_BACKUP_COUNT = 5
+"""Backups kept beside the digest file. Five, matching every other
+ladder on the platform, so the footprint is 6 x 16 MB = 96 MB.
+
+THE HONEST LIMIT: this is still a ladder, so the oldest digest file is
+still discarded whole when the sixth rolls off. The digest does not
+claim to keep everything for ever. It claims that WITHIN its window no
+emitter can be evicted by another emitter's volume, and that the
+window is a day rather than two hours.
 """
 
 
@@ -539,8 +673,21 @@ class Signal:
     # docs/audits/2026-08-19_emitter_duration_classification.md.
     duration: Optional[float] = None
 
-    def to_json(self) -> str:
-        return json.dumps({
+    def to_json(self, extra: Optional[dict] = None) -> str:
+        """Serialise this record. `extra` appends fields, never edits.
+
+        The digest ladder needs one field the record itself does not
+        own -- ``folded``, how many observations that line stands for
+        -- and the record is frozen for a reason. `extra` is appended
+        AFTER the declared fields, so a reader sees the record exactly
+        as the main ladder wrote it plus whatever the writer added,
+        and no caller can overwrite an observation through this door
+        without naming the field it is overwriting.
+
+        Default is None, so every existing caller serialises byte for
+        byte what it serialised before.
+        """
+        payload = {
             "ts": self.ts,
             "seq": self.seq,
             "module": self.module,
@@ -555,7 +702,11 @@ class Signal:
             "duration": self.duration,
             "site": self.site,
             "context": self.context or {},
-        }, default=_json_default, separators=(",", ":"))
+        }
+        if extra:
+            payload.update(extra)
+        return json.dumps(payload, default=_json_default,
+                          separators=(",", ":"))
 
     def message(self) -> str:
         """The operator-facing line. THE emitter message standard.
@@ -845,7 +996,10 @@ class SignalSink:
                  max_bytes: int = MAX_FILE_BYTES,
                  backup_count: int = FILE_BACKUP_COUNT,
                  retain_rows: int = RETAIN_ROWS,
-                 max_identities: int = MAX_IDENTITIES) -> None:
+                 max_identities: int = MAX_IDENTITIES,
+                 digest_interval: float = DIGEST_MIN_INTERVAL,
+                 digest_max_bytes: int = DIGEST_FILE_BYTES,
+                 digest_backup_count: int = DIGEST_BACKUP_COUNT) -> None:
         self.path = path
         self.flush_every = max(1, int(flush_every))
         self.enabled = enabled
@@ -900,6 +1054,31 @@ class SignalSink:
         # than logged because nothing on this path is allowed to
         # touch I/O.
         self._duration_rejected = 0
+        # ── the digest ladder ────────────────────────────────────────
+        #
+        # `digest_interval <= 0` switches the second ladder off
+        # entirely, the same way `max_bytes <= 0` switches rotation
+        # off: a caller that wants only the verbatim file can have it,
+        # and the tests that drive the eviction reproduction need
+        # exactly that switch to show the failure direction.
+        self._digest_interval = max(0.0, float(digest_interval))
+        self._digest_max_bytes = max(0, int(digest_max_bytes))
+        self._digest_backup_count = max(1, int(digest_backup_count))
+        # {(name, site): seconds accumulated since that identity's last
+        # ADMITTED digest line}. Advanced by each record's own `dt`,
+        # which the sink already measured on the monotonic clock at
+        # emit time -- so the decision is exact even when `flush`
+        # writes two hundred records at once, and `flush` never reads a
+        # clock of its own.
+        self._digest_since: dict = {}
+        # {(name, site): observations folded since that identity's last
+        # admitted line}. Becomes the `folded` field on the next one.
+        self._digest_pending: dict = {}
+        self._digest_admitted = 0
+        self._digest_folded = 0
+        self._digest_dropped = 0
+        self._digest_rotate_failures = 0
+        self._digest_identity_overflow = 0
 
     def emit(self, name: str, actual: Any, expected: Any = None,
              ok: Optional[bool] = None,
@@ -1076,18 +1255,156 @@ class SignalSink:
         Called with `_io_lock` held, so a rename can never interleave
         with another thread's append.
         """
-        if self.path is None or self._max_bytes <= 0:
+        self._roll(self.path, self._max_bytes, self._backup_count)
+
+    @staticmethod
+    def _roll(path: Optional[Path], max_bytes: int,
+              backup_count: int) -> None:
+        """Shift one ladder by one place, if it has reached its cap.
+
+        Lifted verbatim out of `_rotate_if_needed` when the digest
+        ladder arrived, because two ladders in one class using two
+        copies of the same loop is exactly how the v3.23.5 WinError 183
+        lesson gets un-learned in one of them. ONE module, ONE rotation
+        idiom -- and now one implementation of it, so a fix to the
+        primitive cannot reach one ladder and miss the other.
+
+        `Path.replace` rather than `Path.rename` for the reason
+        `_rotate_if_needed` records: rename raises WinError 183 on
+        Windows when the destination exists.
+        """
+        if path is None or max_bytes <= 0:
             return
-        if not self.path.is_file():
+        if not path.is_file():
             return
-        if self.path.stat().st_size < self._max_bytes:
+        if path.stat().st_size < max_bytes:
             return
-        for i in range(self._backup_count - 1, 0, -1):
-            src = self.path.parent / f"{self.path.name}.{i}"
-            dst = self.path.parent / f"{self.path.name}.{i + 1}"
+        for i in range(backup_count - 1, 0, -1):
+            src = path.parent / f"{path.name}.{i}"
+            dst = path.parent / f"{path.name}.{i + 1}"
             if src.exists():
                 src.replace(dst)
-        self.path.replace(self.path.parent / f"{self.path.name}.1")
+        path.replace(path.parent / f"{path.name}.1")
+
+    @property
+    def digest_path(self) -> Optional[Path]:
+        """Where the digest ladder lives — beside the main file.
+
+        DERIVED rather than stored, because `path` is assigned AFTER
+        construction by both `install_process_sink` and the sim run
+        log. A stored digest path would be computed from a `path` of
+        None at construction and stay None for the life of the
+        process, so the second ladder would exist in the constructor
+        and nowhere else. Deriving it means it follows `path` wherever
+        `path` goes, including a replay that repoints the sink at its
+        own run directory.
+
+        ``session.jsonl`` -> ``session.digest.jsonl``. The suffix is
+        inserted before the extension so the two ladders sort together
+        and a reader looking for one finds the other.
+        """
+        if self.path is None:
+            return None
+        p = self.path
+        return p.with_name(f"{p.stem}.digest{p.suffix}")
+
+    def _digest_rows(self, rows: Iterable[Signal]) -> list:
+        """Choose the digest's share of `rows`, and what each line means.
+
+        Returns a list of ``(record, folded)`` pairs. ACCOUNTING RULE,
+        and the reason this is worth testing: every record in `rows` is
+        either admitted or folded into a later admitted line of the
+        SAME identity, so across a run
+
+            sum(folded over the digest) + still-pending == records emitted
+
+        A folded record is not a dropped record. It is on the main
+        ladder verbatim, and it is counted here. Nothing on this path
+        is allowed to discard an observation without leaving the count
+        where a reader can see it -- `health()['digest_folded']`.
+
+        THE CLOCK IS THE RECORD'S OWN `dt`. The sink measured it on the
+        monotonic clock at emit time, per `(name, site)`, so
+        accumulating it gives the exact time since that identity's last
+        admitted line. `flush` therefore reads no clock, which also
+        means a batch of two hundred buffered records is thinned as if
+        it had been thinned live.
+
+        `dt` is None on a first emission (`nth == 1`) and on an
+        identity past the `MAX_IDENTITIES` ceiling (`nth == 0`). A
+        first emission is admitted -- a pin that has just started
+        firing is the most interesting record it will ever produce. An
+        untimed one contributes 0.0 to the accumulator, so it folds:
+        the sink refused to measure that identity's interval, and the
+        digest will not invent one. Its volume is still visible,
+        because it arrives as the `folded` count on that identity's
+        one admitted line.
+        """
+        if self._digest_interval <= 0.0:
+            return []
+        out = []
+        for r in rows:
+            key = (r.name, r.site)
+            prev = self._digest_since.get(key)
+            if prev is None:
+                # NEW IDENTITY. Admitted, and the ceiling that bounds
+                # `_seen` bounds this map for the same reason: an
+                # unbounded key space in a dict nothing prunes. Past
+                # the ceiling the record is still admitted -- an
+                # identity nobody has room to track is by definition
+                # rare, and refusing it would be this issue's defect
+                # rebuilt inside its fix -- but no entry is kept, so
+                # the map cannot grow. The count says it happened.
+                if len(self._digest_since) < self._max_identities:
+                    self._digest_since[key] = 0.0
+                else:
+                    self._digest_identity_overflow += 1
+                out.append((r, self._digest_pending.pop(key, 0) + 1))
+                self._digest_admitted += 1
+                continue
+            since = prev + (r.dt or 0.0)
+            if since < self._digest_interval:
+                self._digest_since[key] = since
+                self._digest_pending[key] = (
+                    self._digest_pending.get(key, 0) + 1)
+                self._digest_folded += 1
+                continue
+            self._digest_since[key] = 0.0
+            out.append((r, self._digest_pending.pop(key, 0) + 1))
+            self._digest_admitted += 1
+        return out
+
+    def _write_digest(self, rows: Iterable[Signal]) -> None:
+        """Append the digest lines for `rows`. Called with `_io_lock`.
+
+        Opens nothing when nothing was admitted, which is the common
+        case: at the measured traffic the rule admits about 3% of
+        records, so most flushes have no digest write at all and the
+        second ladder costs the GUI thread no extra file handle.
+
+        A failure here is counted in `_digest_dropped` and is NOT a
+        record loss -- those records are on the main ladder. It is
+        counted anyway, because a digest that has quietly stopped being
+        written looks exactly like a platform that has gone quiet.
+        """
+        admitted = self._digest_rows(rows)
+        if not admitted:
+            return
+        target = self.digest_path
+        if target is None:
+            return
+        try:
+            self._roll(target, self._digest_max_bytes,
+                       self._digest_backup_count)
+        except OSError:
+            self._digest_rotate_failures += 1
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("a", encoding="utf-8", errors="replace") as fh:
+                for r, folded in admitted:
+                    fh.write(r.to_json({"folded": folded}) + "\n")
+        except OSError:
+            self._digest_dropped += len(admitted)
 
     def flush(self) -> None:
         """Append the buffer to disk. Append-only: never rewrites.
@@ -1143,6 +1460,15 @@ class SignalSink:
                 # loss is counted so a reader can see the record set is
                 # partial.
                 self._dropped += len(rows)
+            # THE DIGEST IS WRITTEN AFTER THE VERBATIM FILE, ALWAYS.
+            #
+            # The main ladder is the complete record and nothing is
+            # allowed to come between the rows and it. The digest is a
+            # second view of rows that are already on disk, so it runs
+            # second and its own failure is counted separately -- see
+            # `_write_digest`. Inside the same `_io_lock` so a rotation
+            # of either ladder cannot interleave with an append to it.
+            self._write_digest(rows)
 
     # ── retrieval ────────────────────────────────────────────────────
     #
@@ -1416,6 +1742,31 @@ class SignalSink:
             "identities": len(self._seen),
             "identity_overflow": self._identity_overflow,
             "path": str(self.path) if self.path else None,
+            # ── the digest ladder ────────────────────────────────────
+            #
+            # `digest_folded` is the one number that has to be here.
+            # The digest thins the loud emitters by 97% and a reader
+            # who cannot see that is reading a thinned file as a
+            # complete one -- which is the mistake this whole module
+            # exists to make impossible. Every record the digest did
+            # not write verbatim is in this count AND is carried on the
+            # next admitted line of its own identity as `folded`, so
+            # the thinning is visible from the health dict and from the
+            # file itself, independently.
+            #
+            # None of these is a record loss. `digest_dropped` is the
+            # closest thing to one and it is not: those records are on
+            # the main ladder, and the count is here because a digest
+            # that has silently stopped being written is
+            # indistinguishable from a platform that has gone quiet.
+            "digest_admitted": self._digest_admitted,
+            "digest_folded": self._digest_folded,
+            "digest_dropped": self._digest_dropped,
+            "digest_rotate_failures": self._digest_rotate_failures,
+            "digest_identity_overflow": self._digest_identity_overflow,
+            "digest_interval": self._digest_interval,
+            "digest_path": (str(self.digest_path)
+                            if self.digest_path else None),
         }
 
 
