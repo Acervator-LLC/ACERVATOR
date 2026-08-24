@@ -22,6 +22,7 @@ import os
 import socket
 import threading
 import time
+import warnings
 
 import pytest
 
@@ -78,12 +79,21 @@ class _Blocker:
         self.honours_stop = honours_stop
         self.limit_s = limit_s
         self.entered = threading.Event()
+        # An OUT-OF-BAND release, for teardown only. It is
+        # deliberately not the product stop flag: a test that
+        # needs an unstoppable fetch must still get one, or it is
+        # not testing the abandon path. This lets such a test hand
+        # the thread back in milliseconds instead of idling out
+        # `limit_s`.
+        self.released = threading.Event()
 
     def __call__(self, *_a, **kw):
         self.entered.set()
         should_stop = kw.get("should_stop")
         end = time.monotonic() + self.limit_s
         while time.monotonic() < end:
+            if self.released.is_set():
+                return []
             if self.honours_stop and should_stop is not None \
                     and should_stop():
                 return []
@@ -235,6 +245,84 @@ class TestStopIsBounded:
         assert ticker._worker_thread is first
         assert first is not None
         assert first.wait(6000)
+
+    @pytest.mark.parametrize("stops", [1, 2, 3])
+    def test_only_the_first_stop_does_work(
+            self, monkeypatch, qt_app, capture_log, stops):
+        """A second stop() on an abandoned worker must be a no-op.
+
+        This shape is REACHABLE IN THE PRODUCT, not only in a fixture.
+        When a wait fails the thread is abandoned and both references
+        stay set on purpose, so the next caller -- an application close
+        after a failed tab teardown -- arrives with the same worker
+        still attached.
+
+        A FAILURE HERE MEANS that second call does the work again:
+
+          * it blocks the GUI thread for another whole _STOP_WAIT_MS on
+            a thread already flagged and already asked to quit;
+          * it writes the abandon ERROR again, so the operator crash
+            watchdog reads two thread failures where one happened;
+          * it re-detaches signals already detached, which libpyside
+            reports as "Failed to disconnect (None) from signal".
+
+        The duplicated log line is the one that matters. A log read
+        during a crash must not multiply its own entries by the number
+        of times something polite called stop().
+
+        stops=1 is the built-in control. It must pass with the guard
+        present OR absent, which is what shows the other two shapes
+        fail for the guard and not for some unrelated reason.
+        """
+        # Long enough that no wait in this test can succeed, so an
+        # unguarded extra stop fails its own wait and logs its own
+        # error rather than quietly succeeding.
+        blocker = _Blocker(honours_stop=False, limit_s=30.0)
+        monkeypatch.setattr(cnt, "fetch_all", blocker)
+        widget = cnt.CryptoNewsTicker()
+        try:
+            _run_fetch(widget, blocker, qt_app)
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                with capture_log("acervator.crypto_news_ticker") as records:
+                    started = time.monotonic()
+                    widget.stop()
+                    first_elapsed = time.monotonic() - started
+                    extra_elapsed = []
+                    for _ in range(stops - 1):
+                        mark = time.monotonic()
+                        widget.stop()
+                        extra_elapsed.append(time.monotonic() - mark)
+
+            bound_s = cnt._STOP_WAIT_MS / 1000.0
+            assert first_elapsed >= bound_s * 0.5, (
+                f"the FIRST stop returned in {first_elapsed:.3f}s; it "
+                f"never waited, so this test is not driving the abandon "
+                f"path at all")
+            for index, elapsed in enumerate(extra_elapsed, start=2):
+                assert elapsed < bound_s * 0.25, (
+                    f"stop() call {index} took {elapsed:.3f}s against a "
+                    f"{bound_s:.1f}s bound: an extra stop repeats the "
+                    f"wait instead of being a no-op")
+
+            abandons = [r for r in records
+                        if "did not stop" in r.getMessage()]
+            assert len(abandons) == 1, (
+                f"{stops} stop() calls wrote {len(abandons)} abandon "
+                f"ERROR lines; the crash watchdog would read "
+                f"{len(abandons)} thread failures where 1 happened")
+
+            failed_disconnects = [
+                str(w.message) for w in caught
+                if "Failed to disconnect" in str(w.message)]
+            assert failed_disconnects == [], (
+                "an extra stop re-detached signals the first stop had "
+                f"already detached: {failed_disconnects}")
+        finally:
+            blocker.released.set()
+            thread = widget._worker_thread
+            if thread is not None:
+                thread.wait(10000)
 
     def test_the_stop_bound_is_derived_from_the_poll_slice(self):
         """The bound must stay a multiple of the only blocking step
