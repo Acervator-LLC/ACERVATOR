@@ -518,10 +518,26 @@ class TestTheEmitterNeverStops:
         # fails here, which is what the exact set protects, and
         # the new one is an int, so the no-bool rule below still
         # covers it.
+        # #62 -- RESTATED AGAIN, NOT RELAXED. `health()` gained the
+        # seven digest keys when the second ladder arrived, so the
+        # exact set is re-pinned to the seventeen it now publishes. A
+        # key that VANISHES still fails here, which is what the exact
+        # set protects.
+        #
+        # `digest_folded` is the one that MUST be in this dict. The
+        # digest thins the loud emitters by about 97%, and a reader who
+        # cannot see how much was folded is reading a thinned file as a
+        # complete one -- the same class of mistake `capped` was. It is
+        # an int, and `digest_interval` is a float, so the no-bool rule
+        # below still covers every new key.
         assert set(health) == {"emitted", "buffered", "retained", "evicted",
                                "dropped", "rotate_failures", "identities",
                                "identity_overflow", "duration_rejected",
-                               "path"}
+                               "path",
+                               "digest_admitted", "digest_folded",
+                               "digest_dropped", "digest_rotate_failures",
+                               "digest_identity_overflow",
+                               "digest_interval", "digest_path"}
         assert not any(isinstance(v, bool) for v in health.values()), (
             "a bool in health() is a promise no reader can falsify, "
             "which is exactly what `capped` was")
