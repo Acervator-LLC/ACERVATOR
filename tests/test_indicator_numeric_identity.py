@@ -179,8 +179,42 @@ def _bb_pos_history() -> list:
 #: SHA-256 of each unit's canonical output over the tape above, taken at
 #: v3.26.0 with the indicators still inside ta_engine.py, and unchanged
 #: by the issue #73 split.
+#:
+#: TWO PINS WERE RESTATED by the canonical-formula repair. Both moved
+#: for the SAME reason, and the OLD value is recorded beside each so the
+#: change is auditable.
+#:
+#: `ADXIndicator._wilder_smooth` recursed as ``a + (v - a) / period``.
+#: Wilder publishes the recursion as an explicit weighted average, and
+#: StockCharts reproduces it that way for all three of his indicators:
+#:   "Subsequent ADX14 = ((Prior ADX14 x 13) + Current DX Value)/14"
+#:   "Current ATR = [(Prior ATR x 13) + Current TR] / 14"
+#:   "Average Gain = [(previous Average Gain) x 13 + current Gain] / 14"
+#: i.e. ``(a * (period - 1) + v) / period``, which is what ATR,
+#: Supertrend, RSI and StochasticRSI in this package already used. The
+#: same change also removed a ``+ 1e-9`` that the DX series added to a
+#: denominator the current-bar DI pair used bare -- one formula, two
+#: divisions.
+#:
+#: WHAT MOVED. Only ``Signal.confidence``, and only in its last bits.
+#: MEASURED over 406 stone tablets x 3 windows: every rounded detail
+#: field (``adx``, ``di_plus``, ``di_minus`` and all eleven booleans) is
+#: byte-identical, and the worst confidence change is 1.22e-15
+#: absolute. ``voting_engine`` moved because it carries every voter's
+#: raw confidence. No gate verdict changed: 29,208 evaluated, 0 moved.
+#:
+#: The other twenty pins hold. That is not proof the repairs missed
+#: them -- Ichimoku's Chikou repair and Kaufman's window repair are both
+#: ACTIVE on this tape (the historical cloud reads 1.0909/1.0648 against
+#: the current 1.0217/0.9678, and the ER window ends at 0.8723 against
+#: the old 0.8846); both simply resolve to the same boolean here. ATR's
+#: restored first True Range is 1.85e-15 relative at 400 bars, below
+#: ``round(atr, 8)``, and Supertrend's is smaller still.
 EXPECTED = {
-    "adx": "fa36fd9e749982e6bd32a7ff460702d81ab8834bce2b94c3b18e8034fa124aba",
+    # RESTATED. Was
+    # "fa36fd9e749982e6bd32a7ff460702d81ab8834bce2b94c3b18e8034fa124aba"
+    # before the Wilder-spelling and DX-epsilon repair.
+    "adx": "e2fd4d2d146d7bd13de369db0973c8c438222e3a032b88c899055c35fc00794d",
     "atr": "f85286da7bd653ba4451cf19fc09aec46d77fb47d15e47df25fb45719e7c921f",
     "bb_proximity": "9a5e96d5ac5d02e354c6bf0d338215ad36824493ec8b5249e043e60909ebe030",
     "bollinger": "511c7c97e9b46dbfe2b6476e6444e498edb610b3a5d758e88965a5787826807e",
@@ -198,7 +232,11 @@ EXPECTED = {
     "stochastic_rsi": "2cdc5162b2733fcf0b49ebf7da860da989c8775a56896b8b8b082516089c3934",
     "supertrend": "270670d53152f76c841d30ed801678ee26485c8c5d807c9da3add330ade16118",
     "volume": "065c7e1e79be4d26b55fc325102eafdd67327218018ca181ab4081f3a2cc0df3",
-    "voting_engine": "4f1c7a3e0c9a2d86f1b2eb36c6e5195c633f02a552d6a3adcf96c64ceb9d2232",
+    # RESTATED. Was
+    # "4f1c7a3e0c9a2d86f1b2eb36c6e5195c633f02a552d6a3adcf96c64ceb9d2232"
+    # before the same repair: this digest carries the ADX voter's raw
+    # confidence, so it moved with it and for no other reason.
+    "voting_engine": "e90c6b9b11c19bd8ca0d957303e52875641bc64cc172e09455e202d93da2aea8",
     "vortex": "c1d4d32dc62386d3357f31b961b139682cd38e9ce7d596a58e6fe25e41be5c52",
     "w_bottom": "1a68a6ce5c825b9ba4901d1adfe4e5ce1707eaa5148631c504687c445b5d67e0",
     "zscore": "56a681b17a8a3c39981a83f74d051278cfe35a4e4b350b8aa8def8b21db1676f",

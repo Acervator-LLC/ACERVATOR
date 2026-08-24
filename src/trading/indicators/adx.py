@@ -9,6 +9,9 @@ from .types import (
     SignalDirection,
     Signal,
 )
+from .helpers import (
+    _true_range,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -71,13 +74,31 @@ class ADXIndicator:
         written. `ScrummingTrendRegimeGate.adx_threshold` was empirically
         recalibrated to 500.0 against the OLD scale and is reset to 30.0
         in the same change — its docstring required exactly that.
+
+        ONE SPELLING, EVERYWHERE. The recursion is written as Wilder
+        publishes it and as StockCharts reproduces it:
+
+            "Subsequent ADX14 = ((Prior ADX14 x 13) + Current DX)/14"
+            "Average Gain = [(previous Average Gain) x 13 + current
+             Gain] / 14"            (the same recursion, Wilder's RSI)
+            "Current ATR = [(Prior ATR x 13) + Current TR] / 14"
+
+        i.e. ``(a * (period - 1) + v) / period``. This body used
+        ``a + (v - a) / period`` instead. The two are the SAME identity
+        in exact arithmetic and are NOT the same in IEEE 754: measured
+        over 200 bars the two forms landed on 0x1.1069e657ae042p+0 and
+        0x1.1069e657ae045p+0, 6.66e-16 apart. ``ATRIndicator``,
+        ``SupertrendIndicator``, ``RSIIndicator`` and ``StochasticRSI``
+        all already used the published spelling; this was the one
+        outlier, and its output feeds a threshold comparison
+        (``ADXTrendSuppressionGate``, 30.0).
         """
         if len(values) < period:
             return [0.0] * len(values)
         result = [0.0] * (period - 1)
         result.append(sum(values[:period]) / period)
         for v in values[period:]:
-            result.append(result[-1] + (v - result[-1]) / period)
+            result.append((result[-1] * (period - 1) + v) / period)
         return result
 
     def compute(self, candles: list, timeframe: str = "1h") -> Signal:
@@ -87,16 +108,23 @@ class ADXIndicator:
         if n < self.period * 2 + 2:
             return Signal("adx", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
 
-        dm_plus = []; dm_minus = []; tr_list = []
+        # True Range comes from the module's ONE definition. The DMI
+        # sums it against +DM and -DM, and directional movement reaches
+        # back one bar, so Wilder's DMI worksheet starts all three
+        # columns on the second row: `[1:]` is that alignment, written
+        # where the formula requires it. `_true_range` computes the
+        # identical per-bar expression this loop used to inline.
+        tr_list = _true_range(candles)[1:]
+
+        dm_plus = []; dm_minus = []
         for i in range(1, n):
-            h, l, c = candles[i].high, candles[i].low, candles[i].close
-            ph, pl, pc = candles[i-1].high, candles[i-1].low, candles[i-1].close
+            h, l = candles[i].high, candles[i].low
+            ph, pl = candles[i-1].high, candles[i-1].low
 
             up   = h - ph
             down = pl - l
             dm_plus.append(up   if up > down and up > 0   else 0.0)
             dm_minus.append(down if down > up and down > 0 else 0.0)
-            tr_list.append(max(h - l, abs(h - pc), abs(l - pc)))
 
         s_dmp = self._wilder_smooth(dm_plus,  self.period)
         s_dmm = self._wilder_smooth(dm_minus, self.period)
@@ -115,11 +143,27 @@ class ADXIndicator:
         else:
             p_dip = di_plus; p_dim = di_minus
 
-        di_sum = di_plus + di_minus
-        dx = 100.0 * abs(di_plus - di_minus) / di_sum if di_sum > 1e-9 else 0.0
-
         # ADX = Wilder smooth of DX history
-        # Compute full DX series for smoothing
+        #
+        # ONE DIVISION, NOT TWO. Wilder defines the directional
+        # indicators exactly once -- StockCharts: "Divide the 14-day
+        # smoothed Plus Directional Movement (+DM) by the 14-day
+        # smoothed True Range ... Multiply by 100" -- and there is no
+        # epsilon in that definition.
+        #
+        # This method used to divide two different ways in two places.
+        # `di_plus` / `di_minus` above use `s_tr[-1]` bare, guarded by
+        # the `s_tr[-1] < 1e-9` return above. The series below added
+        # `+ 1e-9` to the SAME denominator, so the current bar's DX and
+        # the last entry of the DX series were two different numbers
+        # from one formula. The epsilon is removed; the `s_tr[j] <= 0.0`
+        # test on the next lines is the zero guard, and it is exact for
+        # the reason its own comment gives.
+        #
+        # A standalone `dx` local stood here as well, computed from the
+        # no-epsilon pair and never read by anything. It was the second
+        # implementation this repair exists to remove. The current DX is
+        # `dx_series[-1]`, from the one loop below.
         dx_series = []
         for j in range(len(s_tr)):
             # No true range in this window makes DI+ and DI- both 0/0.
@@ -131,8 +175,8 @@ class ADXIndicator:
             if s_tr[j] <= 0.0:
                 dx_series.append(0.0)
                 continue
-            dip_j = 100.0 * s_dmp[j] / (s_tr[j] + 1e-9)
-            dim_j = 100.0 * s_dmm[j] / (s_tr[j] + 1e-9)
+            dip_j = 100.0 * s_dmp[j] / s_tr[j]
+            dim_j = 100.0 * s_dmm[j] / s_tr[j]
             ds    = dip_j + dim_j
             dx_series.append(100.0 * abs(dip_j - dim_j) / ds if ds > 1e-9 else 0.0)
 

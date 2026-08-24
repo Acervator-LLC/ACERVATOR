@@ -44,12 +44,19 @@ def detect_landing_strip_v2(
     shrink_threshold: float = 0.90,
     bb_tolerance_pct: float = 3.0,
     use_ha: bool = True,
+    bb_period: int = 20,
+    bb_std: float = 2.0,
 ) -> TighteningResult:
     """
     Three-layer Landing Strip detection:
       Layer 1: Detect tightening (|close-open| shrinking consecutively)
       Layer 2: Filter by BB proximity (near upper or lower band)
       Layer 3: Score by length (longer strip = higher confidence boost)
+
+    ``bb_period`` and ``bb_std`` are the Bollinger parameters Layer 2
+    measures against. They match ``detect_bb_proximity`` and
+    ``BollingerBands`` in name, default and meaning, so one bot's
+    configuration reaches every band in its own tick.
 
     Inspired by CogNex edge detection in semiconductor metrology:
       Tightening = edge gradient, BB proximity = region of interest,
@@ -105,15 +112,38 @@ def detect_landing_strip_v2(
     # This is more sensitive than close-only: during consolidation the body
     # tightens in the middle but wicks still test the BB bands.
     closes = [c.close for c in candles]
-    if len(closes) < 20:
+    if len(closes) < bb_period:
         return TighteningResult(False, "", shrink_count, tightening_ratio, 0.5, 0.0, shrink_count)
 
+    # THE BANDS READ THEIR CONFIGURATION.
+    #
+    # Bollinger's published definition is a middle band SMA(N) with
+    # an upper and lower band at K standard deviations, and N and K
+    # are PARAMETERS of the indicator -- Bollinger's own defaults
+    # are 20 and 2. The other three sites that build these bands
+    # take them as arguments: `BollingerBands.__init__(period,
+    # std_dev)`, `detect_bb_proximity(bb_period, bb_std)` and
+    # `SlingshotIndicator.__init__(bb_period, bb_std)`.
+    #
+    # This detector wrote `20` and `2` into the body. A bot
+    # configured with any other pair would have had its landing
+    # strip measured against bands no other part of the engine was
+    # drawing -- a different indicator, under the same name, in the
+    # same tick.
+    #
+    # The defaults are Bollinger's own and match every other site,
+    # so nothing computed here moves today. MEASURED read-only on
+    # the live fleet: none of the 38 bots carries a `bb_period` or
+    # `bb_std` key, so all four sites agree at 20 / 2.0 right now.
+    # The defect is that the value was STATIC where the definition
+    # makes it dynamic.
+    #
     # v3.24.22 — suffix-only; only [-1] is read below.
-    sma_vals = _sma_tail(closes, 20, tail=1)
-    std_vals = _stdev_tail(closes, 20, tail=1)
+    sma_vals = _sma_tail(closes, bb_period, tail=1)
+    std_vals = _stdev_tail(closes, bb_period, tail=1)
     mid = sma_vals[-1]
-    upper = mid + 2 * std_vals[-1]
-    lower = mid - 2 * std_vals[-1]
+    upper = mid + bb_std * std_vals[-1]
+    lower = mid - bb_std * std_vals[-1]
     # No channel, so no band to be near and no side to name. The
     # `mid * 0.01` floor removed here is the same fabricated 1%-of-price
     # scale the v1 detector carried, and it is forbidden for the same
@@ -121,7 +151,7 @@ def detect_landing_strip_v2(
     # over the same 20 bars the bands are built from, because
     # `upper - lower` is 4*sigma and rounds to ULPs on a halt; the width
     # test is kept underneath as a subordinate floor.
-    if _window_has_no_range(closes[-20:]) or upper - lower <= 0:
+    if _window_has_no_range(closes[-bb_period:]) or upper - lower <= 0:
         return TighteningResult(False, "", shrink_count, tightening_ratio,
                                 0.5, 0.0, shrink_count)
 

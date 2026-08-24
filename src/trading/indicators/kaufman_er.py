@@ -93,9 +93,27 @@ class KaufmanERIndicator:
         highly_efficient = er >= 0.70
         er_peak_falling  = er_falling and er_prev >= 0.60   # trend ending
 
-        # Price direction (trending ER needs direction to be useful)
-        closes_all = [c.close for c in candles]
-        price_up   = closes_all[-1] > closes_all[-self.period]
+        # Price direction, READ OFF THE ER WINDOW.
+        #
+        # Kaufman's Efficiency Ratio (Smarter Trading, 1995) is
+        # DIRECTION over VOLATILITY, both measured on the SAME N
+        # bars:
+        #
+        #     ER = |Close - Close[N periods ago]|
+        #          / sum(|Close - Close[1 period ago]|) over those N
+        #
+        # `closes` above is `candles[-(period + 1):]` -- period + 1
+        # bars, which is the period changes the denominator sums.
+        # Its numerator is therefore `closes[-1] - closes[0]`.
+        #
+        # The direction test used to read `closes_all[-period]`,
+        # which is `closes[1]`, NOT `closes[0]`: a window one bar
+        # SHORTER than the ratio it labels. When ER said "trending"
+        # and the two windows disagreed in sign, the vote was cast
+        # the wrong way. The sign now comes from the same two
+        # endpoints as the numerator, so `er` and `price_up`
+        # describe one move.
+        price_up   = closes[-1] > closes[0]
 
         if trending and price_up:
             direction  = SignalDirection.BULLISH
