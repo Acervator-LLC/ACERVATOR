@@ -125,6 +125,42 @@ class TabletBackend:
         self._fee_by_symbol = dict(fee_rate_by_symbol or {})
         self._default_fee = float(default_fee_rate)
         self._opening_balances: dict[str, float] = dict(self._balances)
+        # THE EXCHANGE REPORTS EVERY CURRENCY IT TRADES, INCLUDING THE
+        # ONES THAT ARE ZERO.
+        #
+        # `FleetSimExchange`, which this class replaced in v3.24.84,
+        # seeded both sides of every pair for exactly this reason:
+        # "Seed every base + quote encountered so MEM-254's absent-side
+        # handshake passes" (sim_exchange.py:130-136). The seeding was
+        # not carried across, so `fetch_balance` reported only the quote
+        # currencies the caller passed.
+        #
+        # WHAT THAT COST. `CCXTConnector.get_balance` marks a currency
+        # the response OMITS as `absent=True` (ccxt_connector.py:1212),
+        # and `ScrummingBot.tick` refuses to set `_initialised` on an
+        # absent read (scrumming_bot.py:6664-6678). The refusal is
+        # correct - two deterministic lies from the same filter still
+        # agree - but here the read was not a lie, it was a currency the
+        # backend simply never listed. So EVERY sim bot re-ran the init
+        # handshake on EVERY tick, for ever, and no sim bot has been
+        # initialised since v3.24.84.
+        #
+        # The handshake is two balance reads with `await
+        # asyncio.sleep(0.25)` between them (scrumming_bot.py:6623).
+        # Measured on a 50-candle 2-bot replay: 100 refusals, 25.73 s of
+        # the run's 26.03 s spent in that sleep - 98.8%.
+        #
+        # `setdefault`, so a caller that states a currency keeps its
+        # value; only the currencies the caller did not mention are
+        # added, at zero. `_opening_balances` is captured ABOVE this
+        # block so it still reflects the caller's intent rather than the
+        # seeded scaffolding, which is what `FleetSimExchange` did too.
+        for _sym in self._rows:
+            _base, _sep, _quote = str(_sym).partition("/")
+            if not _sep:
+                continue
+            self._balances.setdefault(_base.upper(), 0.0)
+            self._balances.setdefault(_quote.upper(), 0.0)
         self._on_trade = None
         self._ticks = 0
 

@@ -220,6 +220,85 @@ def test_wallet_seed_is_announced_in_activity_log():
     assert any("Wallet seed: $250.00" in a for a in acts)
 
 
+# ── the wallet must also LIST the asset each bot trades ──────────
+# `_build_sim` seeds `balances=dict(seed_by_quote)`, so the tape held
+# USD and nothing else. `CCXTConnector.get_balance` marks a currency
+# the response omits `absent=True`, and `ScrummingBot.tick` refuses to
+# set `_initialised` on an absent read. Every sim bot therefore re-ran
+# the init handshake on every tick, for ever, and that handshake holds
+# `await asyncio.sleep(0.25)` between its two balance reads.
+#
+# MEASURED on a 50-candle 2-bot replay before the seeding: 100
+# refusals, 25.73 s of the run's 26.03 s inside that one sleep, no bot
+# initialised, and `sim.06.002` reporting worked=100 of entered=100.
+# After: 2 handshakes, both bots initialised, 0.54 s, and
+# `sim.06.002` reporting worked=2, throttled=98.
+#
+# `FleetSimExchange` seeded both sides of every pair for exactly this
+# reason (sim_exchange.py:130-136). `TabletBackend` replaced it in
+# v3.24.84 and the seeding was not carried across.
+
+def test_the_wallet_lists_the_asset_each_bot_trades():
+    ctrl = FleetReplayController(
+        configs=[{"mode": "scrumming", "symbol": "BTC/USD",
+                  "target_balance": 200.0}],
+        candles_by_symbol={
+            "BTC/USD": _synthesize_candles_for_symbol("BTC/USD", 5),
+        })
+    ctrl._build_sim()
+    bals = ctrl._tape.fetch_balance()
+    assert "BTC" in bals, (
+        "the tape omits the base asset, so the init handshake refuses "
+        f"on every tick for ever; it listed {sorted(bals)}")
+    assert bals["BTC"]["total"] == 0.0, "seeding must not invent units"
+
+
+def test_a_bot_initialises_instead_of_looping_the_handshake():
+    """THE CONSUMER.
+
+    A balance the tape lists proves nothing until the bot that reads
+    `absent` gets past its own guard. The instrument is the handshake's
+    own `asyncio.sleep(0.25)`, COUNTED rather than timed, so the
+    verdict does not depend on how fast the machine is.
+    """
+    ctrl = FleetReplayController(
+        configs=[{"mode": "scrumming", "symbol": "BTC/USD",
+                  "target_balance": 200.0}],
+        candles_by_symbol={
+            "BTC/USD": _synthesize_candles_for_symbol("BTC/USD", 400),
+        },
+        tick_delay_s=0.0)
+    ctrl._build_sim()
+    for _ in range(300):
+        ctrl._tape.step()
+    bot = ctrl._bots[0]
+    sleeps: list[float] = []
+    _real_sleep = asyncio.sleep
+
+    async def _counting_sleep(delay, *a, **kw):
+        sleeps.append(float(delay))
+        await _real_sleep(0, *a, **kw)
+
+    async def run():
+        asyncio.sleep = _counting_sleep
+        try:
+            await bot.tick()
+            first = list(sleeps)
+            for _ in range(5):
+                await bot.tick()
+            return first
+        finally:
+            asyncio.sleep = _real_sleep
+
+    first = asyncio.run(run())
+    assert bot._initialised is True, (
+        "the bot refused to initialise, so every later tick re-runs "
+        "the handshake")
+    assert first.count(0.25) == 1, first
+    assert sleeps.count(0.25) == 1, (
+        f"the handshake ran again after initialisation: {sleeps}")
+
+
 # ── v3.24.15: anchored read head ─────────────────────────────────
 # Operator directive 2026-08-03: "the read head reaches a candle,
 # first checks for an expected trade, if none are identified, it
