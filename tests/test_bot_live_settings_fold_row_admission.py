@@ -342,6 +342,26 @@ class TestTheDialogOpens:
 # `_without_the_fee_in_the_panel` control that reproduces the two
 # strings above on demand.
 #
+# A THIRD CELL MOVED, AND FOR THE SAME KIND OF REASON.
+#
+# Until issue #98 this table pinned:
+#
+#     Source       "auto scrum"
+#
+# `_valid_tranche` stores `operator_initiated: False`. That value is
+# written at ONE site, the SCRUM branch of `_execute_manual_rebalance`
+# (`src/trading/scrumming_bot.py:12398`), and `False` there means the
+# caller was `wire_stack` or `max_cartridge` - an AUTONOMOUS rebalance
+# fire. The ordinary scrum cycle and the DIST re-fold write no
+# `operator_initiated` key at all, and THAT absence is what "auto
+# scrum" names. So this row was reading one mechanism and printing the
+# name of another.
+#
+# The pin is RESTATED, not dropped: "auto rebalance" for a stored
+# `False`. `tests/test_fold_source_names_the_action.py` holds all three
+# provenances against their write sites, with the live fleet counts
+# that measured the defect.
+#
 #: Captured from LIVE, through the same builder, before the change.
 #: Not one character of these may move.
 LIVE_LABELS = [
@@ -355,7 +375,7 @@ LIVE_LABELS = [
 LIVE_ROW = [
     "1", "1.0h", "1.500000", "$250.0000", "$30000.00000000",
     "$29000.00000000", "≤$29370.00000000",
-    "Need price ≤ OTD (+5.55%)", "auto scrum", "", DASH,
+    "Need price ≤ OTD (+5.55%)", "auto rebalance", "", DASH,
 ]
 
 

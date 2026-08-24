@@ -191,7 +191,7 @@ vocabulary on trust.
 
 | signal type | pins | source of the term | example pin |
 |---|---|---|---|
-| `postcondition` | 49 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
+| `postcondition` | 50 | Hoare logic; design by contract (Meyer) | `fleet.03.001.postcondition.bots_loaded` |
 | `invariant` | 15 | Hoare logic; design by contract (Meyer) | `ta.07.002.invariant.invariants` |
 | `event` | 5 | OpenTelemetry Events | `tick.08.001.event.throttled` |
 | `counter` | 2 | Prometheus / OpenTelemetry instrument types | `sim.06.004.counter.trades_fired` |
@@ -358,7 +358,7 @@ checker refuses a term outside it.
 
 | term | count | meaning |
 |---|---|---|
-| `measured: <what the bracket spans>` | 21 | the call site brackets an operation and passes `duration=` |
+| `measured: <what the bracket spans>` | 22 | the call site brackets an operation and passes `duration=` |
 | `forbidden` | 26 | the signal type is not `postcondition`; E8 refuses a duration here |
 | `none: <reason>` | 16 | a `postcondition` whose site owns no interval; a number would be FABRICATED |
 | `deferred: <what is missing>` | 11 | a `postcondition` that DOES own a bounded operation which nobody has bracketed yet |
@@ -418,7 +418,7 @@ that one.
 | `bot` | `01` | 3 |
 | `extractor` | `02` | 2 |
 | `fleet` | `03` | 7 |
-| `gui` | `04` | 1 |
+| `gui` | `04` | 2 |
 | `history` | `05` | 7 |
 | `sim` | `06` | 14 |
 | `ta` | `07` | 4 |
@@ -1585,6 +1585,7 @@ One row per pin call site. 74 rows.
 | `03-006` | `fleet` | `postcondition` | deferred: a phase inside `_build_sim`, span 377, with no start marker | `fleet.03.006.postcondition.state_imported` | `fleet.state_imported` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1091` | every spawned bot received imported state |
 | `03-007` | `fleet` | `postcondition` | deferred: a phase inside `_build_sim`, span 377, with no start marker | `fleet.03.007.postcondition.positions_seeded_from_lots` | `fleet.positions_seeded_from_lots` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1095` | every spawned bot had its position seeded from lots |
 | `04-001` | `gui` | `postcondition` | deferred: `emit_fit` only reports; the fit runs in the caller's frame | `gui.04.001.postcondition.voting_panel.fit` | `gui.voting_panel.fit` | `src/gui/indicator_panel.py:1261` | every voting-panel column fitted its label at the geometry a show or a resize produced |
+| `04-002` | `gui` | `postcondition` | measured: the in-click fleet save and the Fold Tranches tab rebuild, bracketed around both | `gui.04.002.postcondition.clear_settled` | `gui.clear_settled` | `src/gui/bot_live_settings.py:2097` | after an accepted Clear, the rebuilt panel's own row count, count label and two button states agree with what the bot now holds, and the clear reached disk |
 | `05-001` | `history` | `postcondition` | measured: the venue history scan, clocked inside the scan lock | `history.05.001.postcondition.scan_complete` | `history.scan_complete` | `src/exchange/ccxt_connector.py:778` | every requested symbol came back from the history scan |
 | `05-002` | `history` | `postcondition` | measured: the async fetch, resolved to one 400 ms poll | `history.05.002.postcondition.trades_stored` | `history.trades_stored` | `src/gui/history_tab.py:488` | every row the fetch stored is inside the requested window and unique on (exchange, symbol, id) |
 | `05-003` | `history` | `postcondition` | measured: the rebuild of the two filter combos | `history.05.003.postcondition.filter_options_built` | `history.filter_options_built` | `src/gui/history_tab.py:608` | the exchange and symbol dropdowns offer exactly the distinct values the loaded trades hold, entry by entry rather than by count |
@@ -1672,6 +1673,7 @@ or a hand-edited name breaks the agreement and fails the run.
 | `03-006` | `fleet.03.006.postcondition.state_imported` |
 | `03-007` | `fleet.03.007.postcondition.positions_seeded_from_lots` |
 | `04-001` | `gui.04.001.postcondition.voting_panel.fit` |
+| `04-002` | `gui.04.002.postcondition.clear_settled` |
 | `05-001` | `history.05.001.postcondition.scan_complete` |
 | `05-002` | `history.05.002.postcondition.trades_stored` |
 | `05-003` | `history.05.003.postcondition.filter_options_built` |
@@ -1749,6 +1751,37 @@ of the field above it.
 imposes, because the slug is free text. The field is padded and never
 truncated: a longer name pushes the rest of its own line right, exactly
 as before, rather than losing the slug that tells two emitters apart.
+
+## The Fold-Tranche panel, instrumented at the one place it lied
+
+`gui.04.002.postcondition.clear_settled` is the first pin on
+`src/gui/bot_live_settings.py`, and issue #98 is what earned it.
+
+Both Clear buttons on the Fold Tranches tab worked. The trade log
+records them and the state file agrees. What the operator saw was a
+panel that had not moved: the table kept its rows, the summary kept its
+count, and the button kept offering to clear tranches the bot no longer
+held. The dialog built its tabs once and had no refresh path, so the
+handler printed a disclaimer instead. Neither clear reached disk either;
+both relied on the 60-second rolling save.
+
+The repair rebuilds the tab and saves the fleet inside the click. Both
+of those are claims about a surface, and a claim about a surface is
+exactly what an island test proves only on the island. So the pin ASKS
+THE REBUILT WIDGETS what they show - row count, count label, both
+button states - and compares that against the bot's own tranche list
+and parked credit, read separately. `actual` is a widget read and
+`expected` is a model read, so the two cannot agree by construction.
+
+The `duration` is not decoration here. The in-click save serialises the
+whole fleet on the GUI THREAD, which is the freeze class the operator
+has already been bitten by, and the Arbiter toggle three hundred lines
+away declines to save for that exact reason. This unit decided the
+trade differently - a toggle lost to a crash is set again in one click,
+a clear lost to a crash restores records the operator deliberately
+destroyed - and the bracket spans the save and the rebuild together, so
+the cost of that decision is measured on the operator's own machine
+rather than argued about in a comment.
 
 ## Adding an emitter
 
