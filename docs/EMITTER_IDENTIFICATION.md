@@ -1568,7 +1568,7 @@ here touches `~/.acervator` or `~/.acervator_logs`.
 
 ## The register
 
-One row per pin call site. 74 rows.
+One row per pin call site. 77 rows.
 
 | ID | subsystem | signal type | duration | current name | previous name | source | observes |
 |---|---|---|---|---|---|---|---|
@@ -1585,7 +1585,8 @@ One row per pin call site. 74 rows.
 | `03-006` | `fleet` | `postcondition` | deferred: a phase inside `_build_sim`, span 377, with no start marker | `fleet.03.006.postcondition.state_imported` | `fleet.state_imported` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1091` | every spawned bot received imported state |
 | `03-007` | `fleet` | `postcondition` | deferred: a phase inside `_build_sim`, span 377, with no start marker | `fleet.03.007.postcondition.positions_seeded_from_lots` | `fleet.positions_seeded_from_lots` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1095` | every spawned bot had its position seeded from lots |
 | `04-001` | `gui` | `postcondition` | deferred: `emit_fit` only reports; the fit runs in the caller's frame | `gui.04.001.postcondition.voting_panel.fit` | `gui.voting_panel.fit` | `src/gui/indicator_panel.py:1261` | every voting-panel column fitted its label at the geometry a show or a resize produced |
-| `04-002` | `gui` | `postcondition` | measured: the in-click fleet save and the Fold Tranches tab rebuild, bracketed around both | `gui.04.002.postcondition.clear_settled` | `gui.clear_settled` | `src/gui/bot_live_settings.py:2097` | after an accepted Clear, the rebuilt panel's own row count, count label and two button states agree with what the bot now holds, and the clear reached disk |
+| `04-002` | `gui` | `postcondition` | measured: the in-click fleet save and the Fold Tranches tab rebuild, bracketed around both | `gui.04.002.postcondition.clear_settled` | `gui.clear_settled` | `src/gui/bot_live_settings.py:2363` | after an accepted Clear, the rebuilt panel's own row count, count label and two button states agree with what the bot now holds, and the clear reached disk |
+| `04-003` | `gui` | `postcondition` | measured: the five `despawn_preview` passes over both ledgers, bracketed around them | `gui.04.003.postcondition.despawn_rows_match_ledger` | `gui.despawn_rows_match_ledger` | `src/gui/bot_live_settings.py:705` | the two despawn rows the Fold Tranches tab just rendered say what this bot's own fold and stack ledgers hold, at the armed threshold and at every candidate window |
 | `05-001` | `history` | `postcondition` | measured: the venue history scan, clocked inside the scan lock | `history.05.001.postcondition.scan_complete` | `history.scan_complete` | `src/exchange/ccxt_connector.py:778` | every requested symbol came back from the history scan |
 | `05-002` | `history` | `postcondition` | measured: the async fetch, resolved to one 400 ms poll | `history.05.002.postcondition.trades_stored` | `history.trades_stored` | `src/gui/history_tab.py:488` | every row the fetch stored is inside the requested window and unique on (exchange, symbol, id) |
 | `05-003` | `history` | `postcondition` | measured: the rebuild of the two filter combos | `history.05.003.postcondition.filter_options_built` | `history.filter_options_built` | `src/gui/history_tab.py:608` | the exchange and symbol dropdowns offer exactly the distinct values the loaded trades hold, entry by entry rather than by count |
@@ -1674,6 +1675,7 @@ or a hand-edited name breaks the agreement and fails the run.
 | `03-007` | `fleet.03.007.postcondition.positions_seeded_from_lots` |
 | `04-001` | `gui.04.001.postcondition.voting_panel.fit` |
 | `04-002` | `gui.04.002.postcondition.clear_settled` |
+| `04-003` | `gui.04.003.postcondition.despawn_rows_match_ledger` |
 | `05-001` | `history.05.001.postcondition.scan_complete` |
 | `05-002` | `history.05.002.postcondition.trades_stored` |
 | `05-003` | `history.05.003.postcondition.filter_options_built` |
