@@ -38,7 +38,8 @@ class BollingerBands:
     def compute(self, candles: list[Candle], timeframe: str = "1h") -> Signal:
         closes = [c.close for c in candles]
         if len(closes) < self.period:
-            return Signal("bollinger_bands", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal("bollinger_bands", timeframe,
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         # v3.24.22 — suffix-only. Consumes sma[-1]/std[-1] plus the
         # widths slice over the last `period` entries, so `period` is
@@ -126,7 +127,7 @@ class BollingerBands:
         if (_window_has_no_range(closes[-self.period:])
                 or upper - lower <= 0.0):
             return Signal("bollinger_bands", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         bb_pos = (price - lower) / (upper - lower + 1e-9)
 

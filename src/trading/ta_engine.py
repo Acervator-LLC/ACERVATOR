@@ -507,6 +507,15 @@ class VotingEngine:
                     weight=sig.weight * tf_w,
                     details=sig.details,
                     timestamp=sig.timestamp,
+                    # THE FLAG MUST SURVIVE THE COPY. `_aggregate` reads
+                    # `abstained` off the signals THIS loop builds, not
+                    # off the originals, so a rebuild that dropped it
+                    # would put every abstaining voter's timeframe-
+                    # boosted weight back into the multi-timeframe
+                    # denominator while the per-timeframe one stayed
+                    # correct -- the repair working everywhere except
+                    # the number the fleet actually reads.
+                    abstained=sig.abstained,
                 )
                 all_signals.append(boosted)
 
@@ -532,8 +541,52 @@ class VotingEngine:
                 neutral += 1
 
         net = bull_score - bear_score
-        total_weight = sum(s.weight for s in signals) or 1.0
-        consensus_conf = abs(net) / total_weight
+
+        # THE DENOMINATOR IS THE WEIGHT THAT VOTED — issue #100.
+        # ------------------------------------------------------
+        # `consensus_confidence` is a WEIGHTED ARITHMETIC MEAN of each
+        # voter's signed conviction `direction x confidence`, taken in
+        # absolute value. The published definition of that mean fixes
+        # its denominator: it is the sum of the weights of the data
+        # points INCLUDED IN THE CALCULATION. A voter that abstained
+        # contributed no data point, so its weight is not one of them.
+        #
+        # This line used to read `sum(s.weight for s in signals)`. That
+        # summed the weight of every voter the engine ASKED, not the
+        # weight of every voter that ANSWERED, so an indicator with too
+        # little history to evaluate its own formula still occupied a
+        # share of the maximum the numerator was measured against. The
+        # displayed number was diluted by a quantity no candle produced.
+        #
+        # The panel already told the operator this was the rule.
+        # `src/gui/indicator_panel.py:1025` documents the field as
+        # "|Net| / total_weight_of_active_voters" -- the code and its
+        # own tooltip disagreed, and the tooltip was right.
+        #
+        # MEASURED over 406 stone tablets, the abstaining share of the
+        # old denominator, by tape length:
+        #     35 bars  34.21% mean   42.74% worst tablet   406/406 hit
+        #     40 bars  25.68% mean   42.74% worst tablet   406/406 hit
+        #     60 bars   9.44% mean   17.95% worst tablet   406/406 hit
+        #    100 bars   0.06% mean   25.64% worst tablet     3/406 hit
+        #    200 bars   0.06% mean   25.64% worst tablet     3/406 hit
+        #    400 bars   0.14% mean   41.03% worst tablet     6/406 hit
+        # The live fetch is 100 candles (`scrumming_bot.py:7500`), where
+        # only a degenerate book abstains -- but a bot that has just
+        # spawned holds the short tape, and there the dilution is a
+        # third of the denominator on every symbol measured.
+        #
+        # WHEN NOBODY VOTED. `voted_weight` is then exactly 0.0 and so
+        # is `net`: an abstention is NEUTRAL, `weighted_score` multiplies
+        # by `direction.value == 0`, and neither score accumulates. The
+        # quotient is 0/0, which is UNDEFINED and is not a confidence of
+        # any size. This returns 0.0 -- no vote -- which is the rule
+        # `tests/test_ta_engine_degenerate_abstention.py` already holds
+        # every division in this package to. It is NOT a guard against
+        # ZeroDivisionError standing in for a decision; the decision is
+        # that an engine with no voters has no consensus.
+        voted_weight = sum(s.weight for s in signals if not s.abstained)
+        consensus_conf = abs(net) / voted_weight if voted_weight > 0.0 else 0.0
 
         return VotingSummary(
             bullish_count=bullish,

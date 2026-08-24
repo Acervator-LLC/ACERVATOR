@@ -125,8 +125,33 @@ class RSIIndicator:
         metrics = self._compute_metrics(candles)
         if metrics["rs_indeterminate"]:
             return Signal("rsi", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
         rsi = metrics["rsi"]
+
+        # THE ONE VOTER WHOSE ABSTENTION IS NOT VISIBLE IN ITS OUTPUT.
+        #
+        # Every other indicator in this package leaves `compute()`
+        # through a guard when the tape is shorter than its warm-up.
+        # RSI does not. `_compute_metrics` answers a tape shorter than
+        # `period + 1` with `{"rsi": 50.0, ..., "rs_indeterminate":
+        # False}`, and that `False` routes the warm-up straight past the
+        # guard above and into the mapping below. The 50.0 then travels
+        # as a reading: NEUTRAL at confidence 0.0, with `details["rsi"]`
+        # emitted through `ta.07.004.postcondition.raw.rsi` exactly as a
+        # measured 50 would be.
+        #
+        # `metrics["rsi"]` is therefore NOT evidence that a value was
+        # measured, and `len(candles)` is the only thing here that is.
+        # Measured on this tree: the substitution is live for a tape of
+        # 2 to 14 bars, and RSI carries 0.8 of the engine's 11.7 total
+        # weight over that range.
+        #
+        # SCOPE. This marks the vote as not cast. It does not touch the
+        # 50.0 -- that substitution is item A2 of
+        # docs/audits/2026-08-23_manufactured_values_sweep.md, and it is
+        # named there, not repaired here. Every number this method
+        # returns is unchanged; only `abstained` moves.
+        warming_up = len(candles) < self.period + 1
 
         # Direction
         if rsi > 70:
@@ -169,4 +194,5 @@ class RSIIndicator:
                 "bull_div":   metrics["bull_div"],
                 "bear_div":   metrics["bear_div"],
             },
+            abstained=warming_up,
         )

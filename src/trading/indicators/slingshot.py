@@ -164,7 +164,7 @@ class SlingshotIndicator:
         min_len = self.bb_period + self.squeeze_lookback + 2
         if n < min_len:
             return Signal("slingshot", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         closes = [c.close for c in candles]
         # v3.24.22 — suffix-only. The loop below reads indices
@@ -232,7 +232,7 @@ class SlingshotIndicator:
 
         if len(bb) < self.squeeze_lookback:
             return Signal("slingshot", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         last = len(bb) - 1
         curr_close, curr_up, curr_lo, curr_mid, curr_bw, curr_sqz_on, \
@@ -272,7 +272,7 @@ class SlingshotIndicator:
         if (_window_has_no_range(_span_px)
                 or avg_bw <= 0.0 or prev2_bw <= 0.0 or curr_rangema <= 0.0):
             return Signal("slingshot", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         squeeze_bw_limit = avg_bw * self.squeeze_threshold
         n_squeezed = sum(1 for bw in recent_bw if bw < squeeze_bw_limit)

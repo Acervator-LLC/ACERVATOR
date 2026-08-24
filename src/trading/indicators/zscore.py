@@ -49,7 +49,8 @@ class ZScoreIndicator:
 
     def compute(self, candles: list, timeframe: str = "1h") -> Signal:
         if len(candles) < self.period + 1:
-            return Signal("zscore", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal("zscore", timeframe,
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         closes = [c.close for c in candles[-self.period:]]
         sma    = sum(closes) / self.period
@@ -57,7 +58,8 @@ class ZScoreIndicator:
         std    = variance**0.5
 
         if std < 1e-9:
-            return Signal("zscore", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal("zscore", timeframe,
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         z = (candles[-1].close - sma) / std
 

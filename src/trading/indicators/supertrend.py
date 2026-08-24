@@ -53,7 +53,7 @@ class SupertrendIndicator:
         n = len(candles)
         if n < self.period + 2:
             return Signal("supertrend", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         # ATR (Wilder) -- THE WHOLE TRUE RANGE SERIES, FIRST BAR
         # INCLUDED. Supertrend is an ATR trailing stop, so its ATR
@@ -76,7 +76,7 @@ class SupertrendIndicator:
 
         if not atr:
             return Signal("supertrend", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         # Align. `tr_list[k]` is now the True Range of candle k, so
         # `atr[0] = mean(tr_list[:period])` is the ATR AT candle

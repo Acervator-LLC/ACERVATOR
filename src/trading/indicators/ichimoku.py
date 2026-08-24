@@ -74,7 +74,8 @@ class IchimokuCloud:
 
         # Minimum: SpB(52) + displacement(26) + 1 for prev-period comparison
         if n < B + D + 1:
-            return Signal("ichimoku", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal("ichimoku", timeframe,
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         price = candles[-1].close
 

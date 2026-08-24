@@ -106,7 +106,8 @@ class ADXIndicator:
         # sadp: R28  # indicator compute: fail-loudly(R28)
         n = len(candles)
         if n < self.period * 2 + 2:
-            return Signal("adx", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal("adx", timeframe,
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         # True Range comes from the module's ONE definition. The DMI
         # sums it against +DM and -DM, and directional movement reaches
@@ -131,7 +132,8 @@ class ADXIndicator:
         s_tr  = self._wilder_smooth(tr_list,  self.period)
 
         if not s_tr or s_tr[-1] < 1e-9:
-            return Signal("adx", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal("adx", timeframe,
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         di_plus  = 100.0 * s_dmp[-1] / s_tr[-1]
         di_minus = 100.0 * s_dmm[-1] / s_tr[-1]

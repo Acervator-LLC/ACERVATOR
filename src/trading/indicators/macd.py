@@ -120,7 +120,8 @@ class MACD:
         # ``n >= slow + signal``. That is the condition already written
         # here. It was right before this repair and it stays.
         if len(closes) < self.slow + self.signal_period:
-            return Signal("macd", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal("macd", timeframe,
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         macd_line, signal_line, histogram = self._lines(closes)
 
@@ -137,7 +138,8 @@ class MACD:
             # above. An explicit abstention, not an assert, so a
             # non-default parameterisation states that it has no
             # reading instead of returning one it did not compute.
-            return Signal("macd", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal("macd", timeframe,
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         direction = SignalDirection.NEUTRAL
         confidence = 0.0

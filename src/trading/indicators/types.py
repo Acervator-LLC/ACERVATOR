@@ -67,6 +67,38 @@ class Signal:
     details: dict = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
+    # THE VOTER SAYS WHETHER IT VOTED
+    # ------------------------------
+    # True means this indicator CAST NO VOTE: it had too little history
+    # to evaluate its formula, or the formula's denominator was exactly
+    # zero on an admissible bar, so the quantity is undefined. It is NOT
+    # the same statement as ``direction is NEUTRAL``, which means the
+    # indicator MEASURED and found no direction.
+    #
+    # The two were numerically indistinguishable before issue #100.
+    # Both produce ``direction=NEUTRAL, confidence=0.0``, so both add
+    # nothing to ``VotingSummary.net_score`` -- and both still added
+    # their full weight to the denominator ``VotingEngine._aggregate``
+    # divides by. A voter that supplied no value from any data source
+    # was therefore a term in a weighted mean, which is the one thing a
+    # weighted mean's denominator may not contain.
+    #
+    # WHY A FIELD AND NOT AN INFERENCE. Every warm-up guard in this
+    # package happens to return with no ``details``, so ``details == {}``
+    # reads as an abstention today. That is a coincidence of how the
+    # guards were typed, is asserted nowhere, and is ALREADY FALSE for
+    # one voter: ``rsi.py`` returns a fabricated ``{"rsi": 50.0, ...}``
+    # on a tape shorter than ``period + 1``, so its abstention looks
+    # like a measurement. An inference that is already wrong once is not
+    # a signal.
+    #
+    # APPENDED AFTER ``timestamp``, DELIBERATELY. ``Signal`` is built
+    # positionally in this tree -- five arguments at every guard, six
+    # and seven in ``tests/test_indicator_numeric_identity.py``. A field
+    # inserted before ``timestamp`` would silently re-bind the seventh
+    # positional argument from a wall clock to a boolean.
+    abstained: bool = False
+
     @property
     def weighted_score(self) -> float:
         """Signed score: direction × confidence × weight."""

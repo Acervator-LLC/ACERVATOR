@@ -36,7 +36,8 @@ class StochasticRSI:
         closes = [c.close for c in candles]
         needed = self.rsi_period + self.stoch_period + self.d_smooth + 5
         if len(closes) < needed:
-            return Signal("stochastic_rsi", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal("stochastic_rsi", timeframe,
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         # Compute RSI series
         deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
@@ -84,7 +85,8 @@ class StochasticRSI:
             rsi_values.append(100 - 100 / (1 + rs))
 
         if rs_indeterminate or len(rsi_values) < self.stoch_period:
-            return Signal("stochastic_rsi", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal("stochastic_rsi", timeframe,
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         # Stochastic of RSI
         #
@@ -127,7 +129,7 @@ class StochasticRSI:
 
         if stoch_indeterminate:
             return Signal("stochastic_rsi", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         # K line (SMA smoothing)
         k_line = _sma(stoch_rsi, self.k_smooth)

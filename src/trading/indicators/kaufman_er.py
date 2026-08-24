@@ -48,7 +48,7 @@ class KaufmanERIndicator:
     def compute(self, candles: list, timeframe: str = "1h") -> Signal:
         if len(candles) < self.period + 2:
             return Signal("kaufman_er", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         closes = [c.close for c in candles[-(self.period + 1):]]
         net_change = abs(closes[-1] - closes[0])
@@ -65,7 +65,7 @@ class KaufmanERIndicator:
         # cancels exactly, and needs no source-window test behind it.
         if price_travel <= 0.0:
             return Signal("kaufman_er", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+                          SignalDirection.NEUTRAL, 0.0, self.weight, abstained=True)
 
         # Kaufman's Efficiency Ratio: net displacement over the total
         # distance travelled to get there. Both are prices, so `er` is
