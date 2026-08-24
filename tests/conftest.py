@@ -21,6 +21,7 @@ now resolves through ``ACERVATOR_SIM_STATE_ROOT``, set below.
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import tempfile
@@ -182,6 +183,196 @@ def capture_log():
             target.setLevel(prior_level)
 
     return _capture
+
+
+# ---------------------------------------------------------------------
+# RULE -- a silent capture is a failed capture.
+# ---------------------------------------------------------------------
+ACERVATOR_LOG_NODE = "acervator"
+
+SILENT_CAPTURE_MARKER = "caplog_may_be_empty"
+
+
+def silent_capture_verdict(caplog_record_count: int,
+                           blocked_record_count: int,
+                           *, marked: bool) -> bool:
+    """Return True when a test looked through a blind window.
+
+    The conjunction IS the defect:
+
+    * ``caplog_record_count == 0`` -- the test saw nothing, and
+    * ``blocked_record_count > 0`` -- something DID log on the
+      ``acervator`` node, at a level ``caplog`` was accepting, and the
+      record stopped there because ``propagate`` is False.
+
+    Either half alone is innocent. Together they mean the assertion the
+    test made about its records was made against a list that could not
+    have been anything but empty.
+
+    ``marked`` is the explicit opt-out. See ``_silent_capture_guard``.
+    """
+    if marked:
+        return False
+    return caplog_record_count == 0 and blocked_record_count > 0
+
+
+class _BlockedRecordProbe(logging.Handler):
+    """Count records that reach the ``acervator`` node and stop there.
+
+    Attached to the ``acervator`` logger, so it runs SYNCHRONOUSLY at
+    emit time. That matters three times:
+
+    * ``propagate`` is read at emit time, so a test that toggles the
+      flag itself is measured correctly.
+    * ``caplog.at_level(...)`` raises the capture handler's level for a
+      block INSIDE the test and restores it on exit. Reading that level
+      at teardown reads the restored value and is therefore useless.
+      Reading it here reads the level in force when the record was
+      made, which is the level that decides whether ``caplog`` would
+      have kept the record. This is what keeps the guard quiet on a
+      test that captures at ERROR while the code logs at INFO.
+    * ``active`` bounds the count to the call phase, so records made by
+      other fixtures during setup or teardown are not attributed to the
+      test body.
+
+    Nothing here changes a level or a flag. It only observes, and
+    ``emit`` reads three attributes and appends to a set, so it has no
+    raising path. A guard may never break the test it watches.
+    """
+
+    def __init__(self, capture_handler: logging.Handler,
+                 node: logging.Logger) -> None:
+        super().__init__(level=logging.NOTSET)
+        self._capture_handler = capture_handler
+        self._node = node
+        self.active = False
+        self.blocked = 0
+        self.names: set[str] = set()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if not self.active:
+            return          # setup or teardown, not the test body
+        if self._node.propagate:
+            return          # caplog could still see it; not blind
+        if record.levelno < self._capture_handler.level:
+            return          # caplog would have dropped it anyway
+        self.blocked += 1
+        self.names.add(record.name)
+
+
+@pytest.fixture(autouse=True)
+def _silent_capture_guard(
+        request: pytest.FixtureRequest) -> Iterator[None]:
+    """Fail a test whose ``caplog`` window cannot see what happened.
+
+    THE DEFECT
+    ==========
+    ``src/core/logging_engine.py`` sets
+    ``logging.getLogger("acervator").propagate = False``. ``caplog``
+    attaches its handler to the ROOT logger. So a record from any
+    ``acervator.*`` logger stops at the ``acervator`` node and never
+    reaches ``caplog``. A test that asserts on ``caplog.records`` then
+    reads an empty list. When the assertion is a negative one -- "this
+    must NOT be logged" -- the test PASSES. It fails green, which is
+    why nothing pushes back on it. This has bitten twice.
+
+    ORDER INDEPENDENCE -- HOW, EXACTLY
+    ==================================
+    The obvious form of this guard samples ``propagate``, and is then
+    hostage to the same dependency it exists to catch: until some test
+    constructs the logging engine, propagation is still on, ``caplog``
+    works, and the guard stays silent.
+
+    MEASURED on this tree 2026-08-24. Collection is alphabetical and
+    deterministic -- ``pytest-randomly`` is not installed. The first
+    test file to build a ``LogManager``, and so the first to set
+    ``propagate = False``, is ``tests/test_c39g_bot_log_reaches_disk``
+    at position 48 of 286. Nothing ever sets the flag back, so files
+    1-47 run sighted and files 48-286 run blind. A prefix of the first
+    35 files, 1,801 tests, ended with ``propagate=True`` and no handler
+    on the node. Every ``caplog`` reader in the suite sat at positions
+    23, 33 and 35 -- inside that sighted window. A sampling guard would
+    have been asleep for all of them.
+
+    So this guard does not sample the flag. It SETS it. For the
+    duration of any test that requested ``caplog``, and only such a
+    test, the ``acervator`` node is forced to ``propagate = False`` --
+    which is the production state, because the live application always
+    builds the logging engine. The test therefore meets the same wall
+    in isolation, on the first file, in any collection order, that it
+    would meet late in a full run. The guard is order-independent
+    because it stopped reading an accidental global and now establishes
+    the condition itself.
+
+    Restoring is deliberate, not symmetrical. If the engine was built
+    DURING the test it has set ``propagate = False`` and added its own
+    handler to the node; restoring ``True`` would then double every
+    record into the root handler. So the flag returns to its prior
+    value only while the node still has no handlers of its own.
+
+    COST
+    ====
+    A test that did not request ``caplog`` returns on the first line.
+    No handler is attached, no flag is touched, no teardown work runs.
+
+    THE OPT-OUT
+    ===========
+    ``@pytest.mark.caplog_may_be_empty("reason")`` suppresses the
+    guard. It exists for the one shape the guard cannot read: a test
+    that watches a NON-Acervator logger (``urllib3``, ``asyncio``) and
+    expects nothing from it, while unrelated Acervator logging happens
+    in the background. The guard sees an empty ``caplog`` beside
+    blocked Acervator records and cannot know the test never cared
+    about them. State a reason. The marker is not a silencer.
+
+    THE FIX, WHEN IT FIRES
+    ======================
+    Use the ``capture_log`` fixture above. It attaches to the named
+    logger directly and does not depend on propagation at all.
+
+    WHAT IT DOES NOT SEE
+    ====================
+    One node, ``acervator``. A test blinded by ``propagate = False``
+    on some other logger is outside this guard, and so is a test
+    blinded by a filter, a disabled logger or a level set on the root.
+    The rule is named for one measured defect and is scoped to it.
+    """
+    if "caplog" not in request.fixturenames:
+        yield
+        return
+
+    caplog = request.getfixturevalue("caplog")
+    node = logging.getLogger(ACERVATOR_LOG_NODE)
+    probe = _BlockedRecordProbe(caplog.handler, node)
+    prior_propagate = node.propagate
+    node.addHandler(probe)
+    node.propagate = False
+    probe.active = True
+    try:
+        yield
+    finally:
+        probe.active = False
+        node.removeHandler(probe)
+        # Keep False if the engine claimed the node during this test.
+        node.propagate = False if node.handlers else prior_propagate
+
+    marked = request.node.get_closest_marker(SILENT_CAPTURE_MARKER) is not None
+    seen = len(caplog.get_records("call"))
+    if silent_capture_verdict(seen, probe.blocked, marked=marked):
+        pytest.fail(
+            "A silent capture is a failed capture.\n"
+            "  caplog.records          : 0\n"
+            f"  blocked on 'acervator'  : {probe.blocked}\n"
+            f"  loggers                 : {sorted(probe.names)}\n"
+            "logging_engine sets acervator.propagate = False, so these "
+            "records never reach the root handler caplog installs. This "
+            "test asserted on a list that could not have been anything "
+            "but empty.\n"
+            "Fix: use the `capture_log` fixture with the logger name. "
+            "If an empty list is genuinely the pass condition for a "
+            "NON-Acervator logger, mark the test with "
+            "@pytest.mark.caplog_may_be_empty and state the reason.",
+            pytrace=False)
 
 
 @pytest.fixture(scope="session", autouse=True)
