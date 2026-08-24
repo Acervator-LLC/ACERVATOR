@@ -104,6 +104,11 @@ INVENTORY: tuple[tuple[str, bool], ...] = (
     ("emitter_registry_check", True),
     ("gate", False),
     ("migrate_harness", True),
+    # Issue #105 added this. It captures the facts a GitHub
+    # organization migration must preserve, then verifies them
+    # afterwards. It carries an argument parser with two
+    # subcommands, `capture` and `verify`, so it is True.
+    ("migration_verifier", True),
     ("orphan_widget_scan", True),
     ("queue_state", True),
     # Issue #85 moved this in from the repository root, where it was
