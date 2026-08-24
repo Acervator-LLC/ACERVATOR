@@ -45,8 +45,9 @@ not. The Fold-Tranche panel did its own read, took the interval and NOT
 the fee, and printed a rebuy price above the one the executor applies --
 six false greens on live tranches, measured 2026-08-23 (GitHub issue
 #97). One definition of the arithmetic does not stop a caller feeding it
-different inputs, so ``minimum_opposing_trade_distance_pct_from_config`` below defines
-the read as well.
+different inputs, so
+``minimum_opposing_trade_distance_pct_from_config`` below defines the
+read as well.
 
 WHICH CALLERS USE IT TODAY, AND WHICH DO NOT
 The Fold-Tranche panel (``gui/bot_live_settings.py``) calls it. The two
