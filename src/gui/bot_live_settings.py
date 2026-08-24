@@ -1982,12 +1982,51 @@ if _HAS_QT:
                 # "Patent ceiling $" → "Original cost $" to reflect its
                 # now-informational role. The OTD threshold ("Min rebuy")
                 # IS the binding per-tranche price gate.
+                #
+                # v3.26.0 (issue #97) — THE PANEL ASKS THE CODE THAT
+                # DECIDES. This read was
+                #     float(getattr(cfg, 'scrumming_interval_pct', 0) or 0)
+                # — the scrumming interval ALONE. The executor's
+                # per-tranche fold filter (`scrumming_bot.py:9857`) uses
+                # the Minimum Opposing Trade Distance, which is
+                # interval + TRADING FEE, defined in `otd_math`.
+                #
+                # MEASURED ON THE LIVE FLEET, 2026-08-23, not argued: 24
+                # of 38 bots run a 1.6% fee, so the "Min rebuy $" column
+                # printed a price 1.71% ABOVE the gate the executor
+                # applies. Over the 1,707 open fold tranches at their
+                # stored price the panel showed Price-OK on 17 where the
+                # executor accepts 11. Six green rows for a buy the
+                # executor refuses, all on ALLO/USDC.
+                #
+                # ADDING A FEE TERM TO THE ARITHMETIC HERE WOULD BE THE
+                # SAME DEFECT AGAIN. Two implementations that agree
+                # today drift the next time either one moves, which is
+                # exactly how this one was born: the fee entered the
+                # executor in v3.25.8 and this surface never heard about
+                # it. The call below is the call `scrumming_bot` makes,
+                # the config read included, so nothing is left here to
+                # drift. `_otd_factor` is bound ONCE and both consumers
+                # below read it — the Min rebuy cell and the Status
+                # verdict must never be able to disagree.
+                #
+                # Imported locally, matching the executor's own pattern
+                # and keeping this GUI module importable without
+                # `src.trading`.
                 _otd_pct = 0.0
+                _otd_factor = 1.0
                 try:
-                    _otd_pct = float(getattr(
-                        self._bot.config, 'scrumming_interval_pct', 0) or 0)
+                    from ..trading.otd_math import (
+                        fold_rebuy_factor_from_pct,
+                        minimum_opposing_trade_distance_pct_from_config,
+                    )
+                    _otd_pct = (
+                        minimum_opposing_trade_distance_pct_from_config(
+                            self._bot.config))
+                    _otd_factor = fold_rebuy_factor_from_pct(_otd_pct)
                 except Exception:  # R28-OK: best-effort config read
                     _otd_pct = 0.0
+                    _otd_factor = 1.0
 
                 table = QTableWidget()
                 # v3.16.53 — added "Fire" column for per-tranche
@@ -2135,19 +2174,29 @@ if _HAS_QT:
                         f"${ceiling_v:.8f}" if ceiling_v is not None
                         else "—"))
 
-                    # v3.16.42 — Min rebuy estimate (operator directive):
-                    # ref × (1 - OTD/100). OTD-derived guide ONLY — actual
-                    # fold-back additionally requires TA validation in the
-                    # GEP (Gating Evaluation Protocol). This column does
-                    # NOT bypass TA; it shows where OTD's hysteresis gate
+                    # v3.16.42 — Min rebuy estimate (operator directive).
+                    # OTD-derived guide ONLY — actual fold-back
+                    # additionally requires TA validation in the GEP
+                    # (Gating Evaluation Protocol). This column does NOT
+                    # bypass TA; it shows where OTD's hysteresis gate
                     # would clear for this tranche IF TA confirms.
+                    #
+                    # v3.26.0 (issue #97) — `_otd_factor` comes from
+                    # `otd_math`, the module the executor calls. The
+                    # expression here was `ref_v * (1.0 - _otd_pct /
+                    # 100.0)` over an interval-only `_otd_pct`, which is
+                    # a second implementation of the executor's gate and
+                    # printed a price the executor refuses.
                     if (ref_v is not None and ref_v > 0
                             and _otd_pct > 0):
-                        min_rebuy_v = ref_v * (1.0 - _otd_pct / 100.0)
+                        min_rebuy_v = ref_v * _otd_factor
                         mr_item = QTableWidgetItem(f"≤${min_rebuy_v:.8f}")
                         mr_item.setToolTip(
                             f"OTD-derived guide only (ref × (1 − "
-                            f"{_otd_pct:.2f}%)). Fold-back requires TA "
+                            f"{_otd_pct:.2f}%), the Minimum Opposing "
+                            f"Trade Distance = scrumming interval + "
+                            f"trading fee, read from the same otd_math "
+                            f"the executor uses). Fold-back requires TA "
                             f"validation in the GEP regardless. This is "
                             f"NOT a trigger price.")
                         table.setItem(row, 6, mr_item)
@@ -2163,9 +2212,17 @@ if _HAS_QT:
                     # not gate fold-back. Compound saturation is governed
                     # by position-level smart ceiling (visible in Bot
                     # Settings, not per-tranche).
+                    #
+                    # v3.26.0 (issue #97) — the threshold is
+                    # `ref_v * _otd_factor`, the SAME binding the Min
+                    # rebuy cell above reads, from the SAME `otd_math`
+                    # call the executor makes. It was a second copy of
+                    # `ref_v * (1.0 - _otd_pct / 100.0)` over an
+                    # interval-only percentage, so a row could show a
+                    # green "Price-OK" for a buy the executor refuses.
                     if (cur_price > 0 and ref_v is not None
                             and ref_v > 0 and _otd_pct > 0):
-                        otd_thresh = ref_v * (1.0 - _otd_pct / 100.0)
+                        otd_thresh = ref_v * _otd_factor
                         otd_factor_diff_pct = (cur_price - otd_thresh) / otd_thresh * 100.0
                         if cur_price <= otd_thresh:
                             status_str = f"Price-OK ({otd_factor_diff_pct:+.2f}% vs OTD)"
