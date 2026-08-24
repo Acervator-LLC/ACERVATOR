@@ -21,19 +21,67 @@ from .types import (
 # ---------------------------------------------------------------------------
 # Math helpers
 # ---------------------------------------------------------------------------
-def _ema(values: list[float], period: int) -> list[float]:
-    """Compute EMA series.  Returns list of same length, first (period-1) are SMA-seeded."""
-    if len(values) < period:
-        return values[:]
-    result = [0.0] * len(values)
-    # Seed with SMA
-    result[period - 1] = sum(values[:period]) / period
+def _ema(values: list[float], period: int) -> list[float | None]:
+    """Exponential moving average, candle-aligned, NO VALUE BEFORE THE SEED.
+
+    THE PUBLISHED DEFINITION. StockCharts, reproducing the standard
+    three-step construction: "An exponential moving average (EMA) has to
+    start somewhere, so a simple moving average is used as the previous
+    period's EMA in the first calculation." The three steps are then
+    "calculate the simple moving average for the initial EMA value",
+    "calculate the weighting multiplier", and "calculate the exponential
+    moving average FOR EACH DAY BETWEEN THE INITIAL EMA VALUE AND
+    TODAY".
+
+    So the series has exactly one starting point. Over ``values`` of
+    length n with parameter ``period``:
+
+        result[period - 1] = mean(values[0 : period])     the SMA seed
+        result[i]          = (values[i] - result[i-1]) * k + result[i-1]
+        k                  = 2 / (period + 1)
+
+    and BELOW ``period - 1`` THERE IS NO EMA. Not zero, not the seed:
+    none. Those entries are ``None``, so reading one is a TypeError at
+    the point of misuse rather than a plausible wrong number. That is
+    the same contract ``_sma_tail`` states below, for the same reason.
+
+    WHAT THIS REPAIRED (issue #99). The body used to end with
+
+        for i in range(period - 1):
+            result[i] = result[period - 1]
+
+    which BACK-FILLED every leading index with the seed. The arithmetic
+    above it was right; those entries were invented. They were not a
+    display convenience either -- MACD feeds one EMA output into the
+    next, so ``_ema(macd_line, 9)`` seeded its signal line on nine
+    manufactured constants and then recursed through sixteen more. For a
+    26/9 MACD that is 25 fabricated inputs. It is a CALCULATED-FROM-THE-
+    DATA-SOURCE failure, not a formula failure, and no formula audit can
+    see it.
+
+    A SHORT TAPE RETURNS NOTHING. When fewer than ``period`` values
+    exist there is no seed, so every entry is ``None`` and the series
+    says so. The body used to ``return values[:]`` -- handing the caller
+    the RAW INPUT relabelled as its own moving average.
+
+    LENGTH IS PRESERVED. ``len(result) == len(values)`` always, so a
+    caller may still index by candle. Returning a short list instead
+    would let ``zip(ema_fast, ema_slow)`` line up index 0 of a 12-EMA
+    with index 0 of a 26-EMA -- two different candles, silently.
+    """
+    n = len(values)
+    result: list[float | None] = [None] * n
+    if period < 1 or n < period:
+        return result
+    prev = sum(values[:period]) / period      # the SMA seed
+    result[period - 1] = prev
     multiplier = 2.0 / (period + 1)
-    for i in range(period, len(values)):
-        result[i] = (values[i] - result[i - 1]) * multiplier + result[i - 1]
-    # Fill leading zeros with first valid value
-    for i in range(period - 1):
-        result[i] = result[period - 1]
+    for i in range(period, n):
+        # `prev` holds exactly what ``result[i - 1]`` holds. Carrying it
+        # in a float local keeps the recursion off the Optional list, so
+        # the arithmetic is the published one with nothing to unwrap.
+        prev = (values[i] - prev) * multiplier + prev
+        result[i] = prev
     return result
 
 

@@ -305,3 +305,230 @@ class TestTheComparisonCanFail:
         one = TA.VortexIndicator().compute(CANDLES, "5m")
         two = TA.VortexIndicator().compute(CANDLES, "5m")
         assert digest(one) == digest(two)
+
+
+# =====================================================================
+# ISSUE #99 -- PROVENANCE, AND A TAPE SHORT ENOUGH TO SEE IT
+# =====================================================================
+#
+# THE PINS ABOVE ARE BLIND TO THIS DEFECT AND THE BLINDNESS IS
+# MEASURED. ``_ema`` back-filled every index below its seed with the
+# seed value, so MACD's signal line was seeded on 25 numbers no candle
+# supplied. On the 400-bar tape above, the repair is BIT-IDENTICAL --
+# 406 of 406 stone tablets, not one float moved -- because the EMA
+# recursion decays the seed by 0.8 per bar and 366 bars of decay reach
+# 1e-36. Every digest above still holds after the repair. That is not
+# the repair being small; that is a 400-bar tape being the wrong
+# instrument.
+#
+# MEASURED over 406 stone tablets. Maximum relative error on the signal
+# line, repaired against back-filled:
+#
+#     bars   max rel err     median        bit-identical
+#       20   MACD abstains (its guard is slow + signal = 35)
+#       35   1.897e+00       9.411e-02       0 / 406
+#       40   1.370e+00       3.605e-02       1 / 406
+#       60   7.962e-02       4.839e-04       1 / 406
+#      120   2.079e-06       7.668e-10       0 / 406
+#      200   2.563e-14       0             336 / 406
+#      400   0               0             406 / 406
+#
+# A freshly spawned bot holds the shortest tape it will ever hold while
+# it makes its first decisions. So the pins below run on the first 40
+# bars of the SAME generated tape -- no new generator, nothing new to
+# pin -- and cover only the three units the repair moves.
+
+SHORT_CANDLES = CANDLES[:40]
+
+
+def _short_units():
+    c = SHORT_CANDLES
+    return {
+        "macd": lambda: TA.MACD().compute(c, "5m"),
+        "macd_taper": lambda: TA.detect_macd_taper(
+            TA.MACD().compute_histogram_series(c, 12)),
+        "voting_engine": lambda: TA.VotingEngine().compute_all(c, "5m"),
+    }
+
+
+#: Taken at the issue #99 repair. These are NEW pins, not restatements:
+#: no digest in EXPECTED moved, so none was rewritten.
+EXPECTED_SHORT = {
+    "macd": "b04be9756a1fafff959516346fa222ee8965ef7fe5ed9ed07e3fd1c86864ed9c",
+    "macd_taper": "be3e7ab4145472bc726159e7b62b656484ea727ffd9eb9825cc706106a9427ce",
+    "voting_engine": "68b306f9a514d0c09d61b714c3cd2d080f790f8d7a175b1609a9facf216cd241",
+}
+
+
+def _back_filling_ema(values: list, period: int) -> list:
+    """Reproduce the ``_ema`` body as it stood BEFORE the #99 repair.
+
+    Kept here, and only here, as the positive control. A pin that cannot
+    fail is a claim about the test, so the class below drives this OLD
+    body through the SAME MACD arithmetic and requires a DIFFERENT
+    answer on a short tape.
+    """
+    if len(values) < period:
+        return values[:]
+    result = [0.0] * len(values)
+    result[period - 1] = sum(values[:period]) / period
+    multiplier = 2.0 / (period + 1)
+    for i in range(period, len(values)):
+        result[i] = (values[i] - result[i - 1]) * multiplier + result[i - 1]
+    for i in range(period - 1):
+        result[i] = result[period - 1]
+    return result
+
+
+class TestEveryValueTracesToACandle:
+    """Clause 1 of the baseline: CALCULATED FROM THE DATA SOURCE.
+
+    A formula audit cannot see a failure here, because the arithmetic
+    is right and the INPUT is invented.
+    """
+
+    def test_the_ema_has_no_value_before_its_seed(self):
+        """Show that the series starts at the seed and not before.
+
+        StockCharts: "a simple moving average is used as the previous
+        period's EMA in the first calculation", and the series runs
+        "for each day between the initial EMA value and today". Below
+        that first value there is no EMA.
+        """
+        v = [float(x) for x in range(1, 21)]
+        out = TA._ema(v, 5)
+        assert len(out) == len(v)
+        assert out[:4] == [None, None, None, None]
+        ema_at_seed = out[4]
+        assert ema_at_seed == sum(v[:5]) / 5.0     # the SMA seed
+        assert ema_at_seed is not None
+        k = 2.0 / 6.0
+        assert out[5] == (v[5] - ema_at_seed) * k + ema_at_seed
+
+    def test_a_tape_shorter_than_the_period_returns_nothing(self):
+        """Show that too little data returns no value at all.
+
+        The published answer to "what is the 20-EMA of five bars" is
+        that there is not one. It used to be the five bars back.
+        """
+        v = [1.0, 2.0, 3.0, 4.0, 5.0]
+        assert TA._ema(v, 20) == [None] * 5
+        assert TA._ema(v, 20) != v
+
+    def test_the_macd_signal_line_seeds_on_real_macd_values(self):
+        """Signal Line: 9-day EMA of MACD Line.
+
+        The MACD Line starts at ``slow - 1``, so the signal line seeds
+        on the first nine values THAT series has, and its own first
+        value sits at ``slow + signal - 2``.
+        """
+        m = TA.MACD()
+        closes = [c.close for c in CANDLES[:120]]
+        macd_line, signal_line, histogram = m._lines(closes)
+        first_macd = m.slow - 1
+        first_sig = m.slow + m.signal_period - 2
+        assert all(v is None for v in macd_line[:first_macd])
+        assert macd_line[first_macd] is not None
+        assert all(v is None for v in signal_line[:first_sig])
+        # Every name below holds a MACD-LINE quantity -- a difference
+        # of two price EMAs, absolute, in the asset's own units. Nothing
+        # here is normalised, so nothing here may be compared with a
+        # ratio.
+        macd_window = [v for v in
+                       macd_line[first_macd:first_macd + m.signal_period]
+                       if v is not None]
+        assert len(macd_window) == m.signal_period
+        signal_at_seed = signal_line[first_sig]
+        macd_at_seed = macd_line[first_sig]
+        assert signal_at_seed == sum(macd_window) / m.signal_period
+        assert signal_at_seed is not None
+        assert macd_at_seed is not None
+        assert histogram[first_sig] == macd_at_seed - signal_at_seed
+
+    def test_macd_abstains_below_its_published_warm_up(self):
+        """Show the guard is exactly the published warm-up.
+
+        ``slow + signal`` is exactly the bar count the ``[-2]`` reads
+        need. One bar under it, MACD says nothing rather than
+        something.
+        """
+        m = TA.MACD()
+        n = m.slow + m.signal_period
+        short = CANDLES[:n - 1]
+        assert m.compute(short, "5m").direction is TA.SignalDirection.NEUTRAL
+        assert m.compute(short, "5m").confidence == 0.0
+        assert m.compute_histogram_series(short, 12) == []
+
+    def test_the_histogram_series_is_short_when_the_data_is_short(self):
+        """Show the series carries only the bars that exist.
+
+        It used to return ``n`` of them always, because the back-fill
+        manufactured the rest.
+        """
+        m = TA.MACD()
+        n = m.slow + m.signal_period
+        got = m.compute_histogram_series(CANDLES[:n], 12)
+        assert len(got) == 2                      # indices 33 and 34
+        assert all(isinstance(x, float) for x in got)
+        assert len(m.compute_histogram_series(CANDLES[:400], 12)) == 12
+
+
+class TestTheShortTapePinsCanFail:
+    """The positive control for the pins below.
+
+    Drive the PRE-REPAIR ``_ema`` through the same MACD arithmetic and
+    require a different answer on the short tape -- and the SAME answer
+    on the long one, which is the measured reason the 400-bar pins
+    above did not move.
+    """
+
+    @staticmethod
+    def _old_last_hist(candles: list) -> float:
+        """Last MACD histogram bar, computed the pre-repair way."""
+        closes = [c.close for c in candles]
+        ef = _back_filling_ema(closes, 12)
+        es = _back_filling_ema(closes, 26)
+        ml = [f - s for f, s in zip(ef, es, strict=True)]
+        sl = _back_filling_ema(ml, 9)
+        return [m - s for m, s in zip(ml, sl, strict=True)][-1]
+
+    @staticmethod
+    def _new_last_hist(candles: list) -> float:
+        """Last MACD histogram bar as the repaired unit computes it."""
+        last = TA.MACD()._lines([c.close for c in candles])[2][-1]
+        assert last is not None
+        return last
+
+    def test_the_old_body_answers_differently_on_a_short_tape(self) -> None:
+        old_hist = self._old_last_hist(SHORT_CANDLES)
+        new_hist = self._new_last_hist(SHORT_CANDLES)
+        assert old_hist != new_hist, (
+            "the pins below cannot see the defect they exist for")
+        spread = (abs(old_hist - new_hist)
+                  / max(abs(old_hist), abs(new_hist)))
+        assert spread > 1e-3
+
+    def test_the_old_body_answers_identically_on_the_long_tape(self) -> None:
+        """Show why EXPECTED above did not move.
+
+        A blind instrument, not a small repair.
+        """
+        assert self._old_last_hist(CANDLES) == self._new_last_hist(CANDLES)
+
+
+class TestTheShortTapeNumbersArePinned:
+    @pytest.mark.parametrize("unit", sorted(EXPECTED_SHORT))
+    def test_the_digest_is_unchanged(self, unit):
+        got = digest(_short_units()[unit]())
+        assert got == EXPECTED_SHORT[unit], (
+            unit + " on 40 bars: the number moved. Digest is " + got
+            + ", pinned is " + EXPECTED_SHORT[unit] + ".")
+
+    def test_the_short_tape_is_a_slice_of_the_pinned_tape(self):
+        """Show the short tape is a slice, not a second generator.
+
+        If this fails, the tape moved and the three digests above mean
+        nothing.
+        """
+        assert len(SHORT_CANDLES) == 40
+        assert CANDLES[:40] == SHORT_CANDLES
