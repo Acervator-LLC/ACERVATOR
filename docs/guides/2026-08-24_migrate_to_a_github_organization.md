@@ -168,14 +168,37 @@ line.
       pre-push hook then refuses every push. Run `python -m tools.gate` to
       re-stamp. At the time of writing the stamp reads `de16ee7`, v3.26.0,
       7897 tests, and matches HEAD. **[measured]**
-- [ ] **4.4** Install the GitHub CLI, so the baseline can record your
-      issues. Without it the verifier cannot answer the single most
-      important question after the move.
+- [ ] **4.4** Make `gh` REACHABLE, so the baseline can record your
+      issues. Without issue data the verifier cannot answer the single
+      most important question after the move.
+
+      Reachable is the condition the tool tests. It is wider than
+      being on PATH. The verifier asks `shutil.which("gh")` first, and
+      then looks in the standard install directories: `%ProgramFiles%`
+      and `%ProgramFiles(x86)%\GitHub CLI`, the winget link directory
+      `%LOCALAPPDATA%\Microsoft\WinGet\Links`, the chocolatey and
+      scoop shim directories, and the usual POSIX `bin` directories.
+      An install at `C:\Program Files\GitHub CLI\gh.exe` is found
+      even when `gh` is on PATH in no shell. **[measured 2026-08-24:
+      that is this machine]**
+
+      Check it, and install only if the check fails:
+
+      ```
+      python -c "from tools.migration_verifier import resolve_program; print(resolve_program('gh'))"
+      ```
+
+      `None` means the tool cannot reach `gh` anywhere. Then install
+      it, or use the export in 4.5:
 
       ```
       winget install --id GitHub.cli
       gh auth login
       ```
+
+      A path means the tool WILL use it. You still need to run
+      `gh auth login` once, because a `gh` that cannot authenticate
+      reads no issues.
 
 - [ ] **4.5** **Capture the baseline. Do this BEFORE the transfer.**
 
@@ -186,8 +209,9 @@ line.
 
       Read the last line. If it says `issues NOT CAPTURED`, stop and fix
       4.4. A baseline without issue data proves nothing about your issues.
+      The reason on that line names where the tool looked.
 
-      If you cannot install `gh`, export the issues by hand from any
+      If you cannot reach `gh`, export the issues by hand from any
       machine that has it and pass the file:
 
       ```
@@ -195,6 +219,11 @@ line.
           --state all --limit 1000 --json number,title,state > issues.json
       python -m tools.migration_verifier --issues-json issues.json capture --out ..\migration_baseline.json
       ```
+
+      A PowerShell 5.1 `Out-File -Encoding utf8` writes a BOM. The
+      reader opens the export as `utf-8-sig`, so a file with a BOM and
+      a file without one both read. **[measured 2026-08-24: both give
+      `CAPTURE_EXIT=0`]**
 
 - [ ] **4.6** **Put the baseline somewhere outside both repositories.** The
       file holds your only record of correct. `..\` already sits outside.
@@ -286,9 +315,9 @@ Exit codes:
 | `2` | Refused. The baseline file is missing or unreadable. |
 | `3` | Not green. Nothing failed, but some checks could not run. |
 
-**Exit 3 is not a pass.** Some check did not run. A missing `gh` causes
-this most often. A check that did not run is not a check that passed. Fix
-the cause, then run it again.
+**Exit 3 is not a pass.** Some check did not run. A `gh` the tool
+cannot reach causes this most often. A check that did not run is not a
+check that passed. Fix the cause, then run it again.
 
 What it checks:
 

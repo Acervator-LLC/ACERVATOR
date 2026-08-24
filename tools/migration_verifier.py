@@ -63,9 +63,12 @@ The network is injectable
 -------------------------
 Nothing here calls GitHub during a test. `capture` and `verify` take a
 `GitHubReader`; the default one shells out to `gh`, and the tests pass a
-fake built from fixtures. When `gh` is absent the reader raises
-`GitHubUnavailable`, the GitHub-facing checks report UNKNOWN with the
-reason, and `--issues-json` lets the operator supply an export instead.
+fake built from fixtures. `gh` is looked for on PATH FIRST and then in
+the standard install directories, because a GitHub CLI that is
+installed but off PATH is the machine the operator actually has. When
+`gh` is in neither place the reader raises `GitHubUnavailable`, the
+GitHub-facing checks report UNKNOWN with the reason, and `--issues-json`
+lets the operator supply an export instead.
 """
 
 from __future__ import annotations
@@ -74,20 +77,25 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
 # ruff: noqa: S603
 # S607 is fixed by construction below and NOT suppressed, following the
 # reasoning at the top of dev_harness/harness/coding_archetype.py. Both
-# `git` and `gh` resolve through `shutil.which` and are spawned by absolute
-# path, so no executable planted earlier on PATH can run under the
-# operator's token. S603 is the residue: every argv here carries a
+# `git` and `gh` resolve through `resolve_program` and are spawned by
+# absolute path, so no executable planted earlier on PATH can run under
+# the operator's token. `resolve_program` asks `shutil.which` first and
+# then a FIXED list of standard install directories held in this file;
+# it never searches a caller-supplied directory and never walks a tree,
+# so the fallback adds no directory that a PATH entry could not already
+# hold. S603 is the residue: every argv here carries a
 # caller-supplied path or repository name, which is a variable by
 # definition, and ruff draws S603 on any argv holding a variable.
 
@@ -177,6 +185,35 @@ GIT_READS = frozenset({
 #: Read-only `gh` subcommands. `api` appears because a GET reads;
 #: `_gh_flags_are_read_only` refuses every other method.
 GH_READS = frozenset({"api", "issue"})
+
+#: Where the GitHub CLI puts itself when it does not reach PATH.
+#:
+#: Measured 2026-08-24 on the operator's machine: `shutil.which("gh")`
+#: returns None in Git Bash AND in PowerShell, while
+#: `C:\\Program Files\\GitHub CLI\\gh.exe` exists and runs. A `capture`
+#: that asks PATH only then prints `gh is not installed`, which is
+#: FALSE, and sends the operator to reinstall what he already has.
+#:
+#: Each row is (environment variable, directory under it). A row whose
+#: variable is unset contributes nothing. An empty variable name means
+#: the directory is absolute, for the POSIX installs. The list is FIXED
+#: here: no row is read from PATH, no directory is walked.
+GH_INSTALL_DIRS: tuple[tuple[str, str], ...] = (
+    ("ProgramFiles", "GitHub CLI"),
+    ("ProgramW6432", "GitHub CLI"),
+    ("ProgramFiles(x86)", "GitHub CLI"),
+    ("LOCALAPPDATA", "Microsoft/WinGet/Links"),
+    ("LOCALAPPDATA", "GitHubCLI/bin"),
+    ("ProgramData", "chocolatey/bin"),
+    ("USERPROFILE", "scoop/shims"),
+    ("", "/usr/local/bin"),
+    ("", "/usr/bin"),
+    ("", "/opt/homebrew/bin"),
+)
+
+#: The file names `gh` carries. PATHEXT is not consulted, because
+#: nothing in the fallback resolves through PATH.
+GH_EXE_NAMES = ("gh.exe", "gh")
 
 GREEN = "GREEN"
 RED = "RED"
@@ -269,11 +306,81 @@ def _git_flags_are_read_only(args: Sequence[str]) -> bool:
     return True
 
 
+def gh_candidates(
+    env: Mapping[str, str] | None = None,
+    *,
+    posix: bool | None = None,
+) -> tuple[Path, ...]:
+    """Every standard `gh` install path, in search order.
+
+    Built from `GH_INSTALL_DIRS`, which is a fixed list in this file.
+    Nothing here reads PATH and nothing walks a directory tree, so the
+    fallback cannot reach a location that a caller chose.
+
+    `env` and `posix` are seams, so a test can drive the search on a
+    platform it is not running on. Both default to this machine.
+    """
+    source = os.environ if env is None else env
+    on_posix = os.name != "nt" if posix is None else posix
+    found: list[Path] = []
+    for variable, tail in GH_INSTALL_DIRS:
+        if not variable:
+            if not on_posix:
+                # A bare POSIX path is DRIVE-RELATIVE on Windows.
+                # `Path("/usr/bin/gh")` probes `C:\usr\bin\gh` from
+                # a C: working directory and `D:\usr\bin\gh` from a
+                # D: one, so the directory probed would depend on
+                # where the operator stood. Skip these rows there.
+                continue
+            base = Path(tail)
+        else:
+            root = source.get(variable, "")
+            if not root:
+                continue
+            base = Path(root) / tail
+        for name in GH_EXE_NAMES:
+            candidate = base / name
+            if candidate not in found:
+                found.append(candidate)
+    return tuple(found)
+
+
+def resolve_program(
+    name: str,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """Find `name` on PATH first, then in the standard install dirs.
+
+    PATH answers first, so an operator who put a chosen `gh` on PATH
+    keeps that one. Only `gh` has a fallback list. `git` needs none: a
+    machine that cloned this repository has `git` on PATH already.
+    """
+    on_path = shutil.which(name)
+    if on_path is not None:
+        return on_path
+    if name != "gh":
+        return None
+    for candidate in gh_candidates(env):
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def _not_found(name: str) -> str:
+    """Say where the program was looked for. The message must be TRUE."""
+    if name == "gh":
+        return (
+            "gh was not found on PATH or in any standard install "
+            "directory"
+        )
+    return f"{name} was not found on PATH"
+
+
 def default_runner(argv: Sequence[str], cwd: Path | None) -> Completed:
     """Spawn a program by ABSOLUTE path, so PATH cannot be hijacked."""
-    exe = shutil.which(argv[0])
+    exe = resolve_program(argv[0])
     if exe is None:
-        return Completed(127, "", f"{argv[0]} is not installed")
+        return Completed(127, "", _not_found(argv[0]))
     try:
         done = subprocess.run(
             [exe, *argv[1:]],
@@ -338,12 +445,21 @@ def _gh_flags_are_read_only(args: Sequence[str]) -> bool:
 
 
 class GhCliReader:
-    """Reads GitHub through the `gh` CLI, GET only.
+    r"""Reads GitHub through the `gh` CLI, GET only.
 
-    `gh` is not installed on the operator's machine as measured on
-    2026-08-24, so this reader normally raises and the GitHub-facing
-    checks report UNKNOWN. That is the honest outcome. `--issues-json`
-    exists so the operator can still capture issue facts from an export.
+    Measured 2026-08-24: `gh` IS installed on the operator's machine,
+    at `C:\Program Files\GitHub CLI\gh.exe`, and it is on PATH in
+    neither Git Bash nor PowerShell. So `run` resolves the program
+    through `resolve_program`, which asks PATH first and the standard
+    install directories second. When neither answers, this reader
+    raises and the GitHub-facing checks report UNKNOWN. That is the
+    honest outcome, and the message then says where it looked.
+    `--issues-json` exists so the operator can still capture issue
+    facts from an export.
+
+    Discovery happens INSIDE the runner, after `run` has validated the
+    subcommand and the flags. A wider search therefore reaches no
+    command that the narrow one refused.
     """
 
     def __init__(self, runner: Runner | None = None) -> None:
@@ -365,8 +481,9 @@ class GhCliReader:
         done = self.runner(["gh", *args], None)
         if done.code == 127:
             msg = (
-                "gh is not installed. Install GitHub CLI and run "
-                "`gh auth login`, or pass --issues-json with an export."
+                "gh was not found on PATH or in any standard install "
+                "directory. Install GitHub CLI and run `gh auth login`, "
+                "or pass --issues-json with an export."
             )
             raise GitHubUnavailable(msg)
         if done.code != 0:
@@ -416,18 +533,27 @@ class JsonFileReader:
     """Reads issue facts from an export instead of from the network.
 
     The export is whatever `gh issue list --json number,title,state`
-    produces, saved to a file. This keeps `capture` usable on a machine
-    with no `gh`, which is the machine the operator actually has.
+    produces, saved to a file, with a BOM or without one. This keeps
+    `capture` usable on a machine that cannot reach `gh` at all.
     """
 
     def __init__(self, path: Path) -> None:
         self.path = path
 
     def issues(self, repo: str) -> list[dict[str, Any]]:
-        """Every issue in the export. `repo` is accepted and not used."""
+        """Every issue in the export. `repo` is accepted and not used.
+
+        Read as `utf-8-sig`, which accepts a BOM and accepts its
+        absence. The documented way to make this export is `gh issue
+        list --json number,title,state | Out-File -Encoding utf8`, and
+        Windows PowerShell 5.1 writes a BOM there. Plain `utf-8` then
+        refuses the file that the tool's own instruction produced.
+        """
         del repo
         try:
-            parsed = json.loads(self.path.read_text(encoding="utf-8"))
+            parsed = json.loads(
+                self.path.read_text(encoding="utf-8-sig"),
+            )
         except (OSError, json.JSONDecodeError) as exc:
             msg = f"cannot read {self.path}: {exc}"
             raise GitHubUnavailable(msg) from exc
@@ -1260,7 +1386,7 @@ def _report_capture(payload: dict[str, Any], out: Path) -> int:
     print(
         "  Without issue data, verify cannot answer 'did issue numbers "
         "survive'. That is the single most important thing the migration "
-        "must preserve. Re-capture with gh installed, or --issues-json.",
+        "must preserve. Re-capture with gh reachable, or --issues-json.",
     )
     return 3
 
