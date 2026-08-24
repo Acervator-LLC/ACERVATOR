@@ -1,7 +1,9 @@
 """fleet_replay_controller.py — async orchestrator for Fleet Replay.
 
-v3.23.79-A. Feeds YTD candle data through FleetSimExchange while
-ticking each ScrummingBot instance built from bot_state.json configs.
+v3.23.79-A. Feeds YTD candle data through the exchange the bots hold
+while ticking each ScrummingBot instance built from bot_state.json
+configs. Since v3.24.84 that exchange is a real ``CCXTConnector`` served
+by ``TabletBackend``; before it, ``FleetSimExchange``.
 Deferred from v3.23.72 per operator direction to ship the panel MVP
 first + add the tick loop after the API-optimization detour.
 
@@ -17,7 +19,7 @@ Contract:
     await ctrl.stopped_event.wait()   # optional: block until fully stopped
 
 Per-tick loop:
-    1. Advance FleetSimExchange cursor one candle across all symbols.
+    1. Advance the TabletBackend cursor one candle across all symbols.
     2. For each bot: call bot.tick() (real class code, unmodified).
     3. Update progress state (candles played, per-bot trades, etc.).
     4. Repeat until every series exhausts OR request_stop() fires.
@@ -45,11 +47,17 @@ time rather than by candle or bot count. At 20 ms the GUI still gets a
 slot ~50x/second — far more than a repaint needs — while the replay stops
 paying a pump period per bot.
 """
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from src.exchange.ccxt_connector import CCXTConnector
 from src.exchange.tablet_backend import TabletBackend
-from .sim_exchange import FleetSimExchange, make_symbol_series_map
+from .sim_exchange import make_symbol_series_map
+
+if TYPE_CHECKING:
+    # Annotation only -- see `_instantiate_bot`. Guarded so the module
+    # takes on no import it does not need at run time; the annotations
+    # are strings already, under `from __future__ import annotations`.
+    from src.exchange.base import ExchangeInterface
 
 logger = logging.getLogger("acervator.simulator.fleet.controller")
 
@@ -223,11 +231,26 @@ def resolve_phantoms_enabled(cfg: dict, force: bool = False) -> bool:
 
 
 def _instantiate_bot(
-    cfg: dict, exchange: FleetSimExchange,
+    cfg: dict, exchange: ExchangeInterface,
     capital_registry: Optional[Any] = None,
 ) -> Optional[Any]:
     """Build a ScrummingBot from a bot_state.json config against the
-    sim exchange. Uses ``make_bot_config`` for mode-shape validation.
+    exchange it will trade on. Uses ``make_bot_config`` for mode-shape
+    validation.
+
+    ``exchange`` carried a ``FleetSimExchange`` annotation until issue
+    #109. It stopped being true in v3.24.84, when ``_build_sim`` began
+    passing a real ``CCXTConnector`` served by ``TabletBackend`` — the
+    same version that stopped the Simulator trading. Both mypy and
+    pyright reported the mismatch as soon as a test passed the real
+    argument, which is one reason no test did.
+
+    ``ExchangeInterface`` rather than ``CCXTConnector``: it is what this
+    function actually needs (``exchange_id``) and what the consumer
+    declares (``ScrummingBot.__init__``), and it accepts BOTH the
+    connector ``_build_sim`` passes today and the ``FleetSimExchange``
+    the older callers still pass. Naming one concrete class would only
+    move the lie to the other caller.
 
     Returns None (with a logged warning) on any construction error;
     the caller skips that bot and continues.
