@@ -162,9 +162,12 @@ line.
 - [ ] **4.1** Land or park in-flight work. Issue #101 was in flight on
       2026-08-24. Do not migrate mid-merge.
 - [ ] **4.2** Both trees clean: `git status` shows nothing you care about.
-- [ ] **4.3** Gate is green and the stamp matches HEAD. Right now it does
-      not: `.gate_stamp.json` names `760111b` and HEAD is `de16ee7`.
-      **[measured]** Run `python -m tools.gate` and get a fresh stamp.
+- [ ] **4.3** Get a green gate, and check that the stamp names HEAD.
+      Compare `commit` in `.gate_stamp.json` against `git rev-parse HEAD`.
+      They differ whenever a merge lands after the last gate run, and the
+      pre-push hook then refuses every push. Run `python -m tools.gate` to
+      re-stamp. At the time of writing the stamp reads `de16ee7`, v3.26.0,
+      7897 tests, and matches HEAD. **[measured]**
 - [ ] **4.4** Install the GitHub CLI, so the baseline can record your
       issues. Without it the verifier cannot answer the single most
       important question after the move.
