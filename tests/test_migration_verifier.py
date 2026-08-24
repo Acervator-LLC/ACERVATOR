@@ -64,7 +64,9 @@ from typing import Any
 
 import pytest
 
+from tools import migration_verifier
 from tools.migration_verifier import (
+    GH_INSTALL_DIRS,
     GREEN,
     RED,
     SCHEMA,
@@ -82,6 +84,8 @@ from tools.migration_verifier import (
     check_references,
     check_remotes,
     check_tracked,
+    default_runner,
+    gh_candidates,
     issue_citations,
     issue_numbers_in,
     load_baseline,
@@ -90,6 +94,7 @@ from tools.migration_verifier import (
     probe_github,
     render,
     repo_slug,
+    resolve_program,
     run_git,
     scan_issue_references,
     verify,
@@ -829,7 +834,7 @@ class TestNoNetworkInTests:
             del argv, cwd
             return Completed(127, "", "gh: not found")
 
-        with pytest.raises(GitHubUnavailable, match="not installed"):
+        with pytest.raises(GitHubUnavailable, match="not found on PATH"):
             GhCliReader(absent).issues("org/repo")
 
     def test_the_json_reader_reads_an_export_instead(
@@ -1064,3 +1069,278 @@ class TestTheReportDoesNotReassure:
         self, url: str, want: str,
     ) -> None:
         assert repo_slug(url) == want
+
+
+# --------------------------------------------------------------------------
+# Issue #108. Two reasons `capture` skipped the issue data, and the issue
+# data is what the tool itself calls the most important thing the migration
+# must preserve. Each one is driven BOTH ways: the state it must now
+# accept, and the state it must still refuse.
+# --------------------------------------------------------------------------
+
+
+class TestGhIsFoundWhenItIsInstalledButOffPath:
+    r"""Installed-but-off-PATH is the machine the operator actually has.
+
+    Measured 2026-08-24: `shutil.which("gh")` returns None in Git Bash
+    and in PowerShell, and `C:\Program Files\GitHub CLI\gh.exe` runs. The
+    old reader asked PATH only and reported `gh is not installed`, which
+    is FALSE and sends the operator to reinstall what he has.
+    """
+
+    def test_path_answers_first(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The control. An operator who chose a `gh` keeps that one."""
+        chosen = tmp_path / "chosen" / "gh.exe"
+        chosen.parent.mkdir(parents=True)
+        chosen.write_text("", encoding="utf-8")
+        monkeypatch.setattr(
+            migration_verifier.shutil, "which", lambda _name: str(chosen),
+        )
+        assert resolve_program("gh", {"ProgramFiles": "C:/nowhere"}) == str(
+            chosen,
+        )
+
+    @pytest.mark.parametrize(("variable", "tail"), [
+        ("ProgramFiles", "GitHub CLI"),
+        ("ProgramW6432", "GitHub CLI"),
+        ("ProgramFiles(x86)", "GitHub CLI"),
+        ("LOCALAPPDATA", "Microsoft/WinGet/Links"),
+        ("ProgramData", "chocolatey/bin"),
+        ("USERPROFILE", "scoop/shims"),
+    ])
+    def test_an_installed_gh_that_is_off_path_is_found(
+        self,
+        variable: str,
+        tail: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """PATH says no; the standard install directory says yes."""
+        planted = tmp_path / tail / "gh.exe"
+        planted.parent.mkdir(parents=True)
+        planted.write_text("", encoding="utf-8")
+        monkeypatch.setattr(
+            migration_verifier.shutil, "which", lambda _name: None,
+        )
+        got = resolve_program("gh", {variable: str(tmp_path)})
+        assert got == str(planted), "an installed gh must not read as absent"
+
+    def test_only_gh_gets_a_fallback(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`git` is on PATH on any machine that cloned this repository."""
+        monkeypatch.setattr(
+            migration_verifier.shutil, "which", lambda _name: None,
+        )
+        assert resolve_program("git") is None
+
+    def test_a_gh_that_is_genuinely_absent_still_reads_as_absent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The other half. Widening discovery must not invent a `gh`."""
+        monkeypatch.setattr(
+            migration_verifier.shutil, "which", lambda _name: None,
+        )
+        env = {variable: str(tmp_path) for variable, _ in GH_INSTALL_DIRS
+               if variable}
+        present = [path for path in gh_candidates(env) if path.is_file()]
+        assert present == [], f"the fixture is not clean: {present}"
+        assert resolve_program("gh", env) is None
+
+    def test_the_candidate_list_is_fixed_and_never_read_from_path(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A wider search must not become a caller-chosen search."""
+        monkeypatch.setenv("PATH", "C:/planted")
+        names = {path.name for path in gh_candidates({"ProgramFiles": "C:/x"})}
+        assert names == {"gh.exe", "gh"}
+        assert not any(
+            "planted" in str(path)
+            for path in gh_candidates({"ProgramFiles": "C:/x"})
+        )
+
+    def test_every_candidate_is_an_absolute_path(self) -> None:
+        r"""A drive-relative probe depends on where the operator stood.
+
+        `Path("/usr/bin/gh")` on Windows is NOT absolute. It probes
+        `C:\usr\bin\gh` from a C: working directory. Both halves
+        are driven, because the POSIX rows must still be searched on
+        POSIX.
+        """
+        assert gh_candidates({}, posix=False) == ()
+        windows = gh_candidates(
+            {"ProgramFiles": "C:/Program Files"}, posix=False,
+        )
+        assert windows, "a set ProgramFiles must give candidates"
+        for path in windows:
+            assert path.is_absolute(), f"{path} is not absolute"
+
+        on_posix = gh_candidates({}, posix=True)
+        assert on_posix, "the POSIX rows must be searched on POSIX"
+        assert all(
+            path.as_posix().startswith("/") for path in on_posix
+        )
+
+    def test_the_absent_message_says_where_it_looked(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`gh is not installed` was the false half. It must be gone."""
+        monkeypatch.setattr(
+            migration_verifier.shutil, "which", lambda _name: None,
+        )
+        for variable, _ in GH_INSTALL_DIRS:
+            if variable:
+                monkeypatch.setenv(variable, str(tmp_path))
+        done = default_runner(["gh", "--version"], None)
+        assert done.code == 127
+        assert "PATH" in done.err
+        assert "standard install" in done.err
+        assert "is not installed" not in done.err
+
+    def test_the_reader_refuses_honestly_when_gh_is_nowhere(self) -> None:
+        """UNKNOWN with a true reason, never an empty issue list."""
+        def absent(argv: Sequence[str], cwd: Path | None) -> Completed:
+            del argv, cwd
+            return Completed(127, "", "gh was not found")
+
+        with pytest.raises(GitHubUnavailable) as caught:
+            GhCliReader(absent).issues("org/repo")
+        text = str(caught.value)
+        assert "not found on PATH" in text
+        assert "standard install" in text
+        assert "--issues-json" in text, "the refusal must name the way out"
+
+    def test_capture_reports_not_captured_and_exits_three(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The refusal design stays intact. Exit 3 is not a pass."""
+        out = tmp_path / "baseline.json"
+        code = main([
+            "--no-github", "--primary", str(tmp_path),
+            "capture", "--out", str(out),
+        ])
+        assert code == 3
+        assert "issues NOT CAPTURED" in capsys.readouterr().out
+
+
+class TestWideningDiscoveryDoesNotWidenWhatIsAllowed:
+    """The read-only guarantee is load-bearing. It is unchanged."""
+
+    @pytest.mark.parametrize("args", [
+        ["issue", "create", "--title", "no"],
+        ["issue", "close", "108"],
+        ["repo", "delete", "x/y"],
+        ["api", "--method", "POST", "repos/x/y/issues"],
+        ["api", "repos/x/y/issues", "-f", "title=no"],
+    ])
+    def test_a_mutation_is_refused_before_discovery_ever_runs(
+        self, args: list[str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`run` validates first, so the resolved path is never reached."""
+        def never(name: str, env: object = None) -> str:
+            del env
+            msg = f"discovery ran for a refused command: {name}"
+            raise AssertionError(msg)
+
+        monkeypatch.setattr(migration_verifier, "resolve_program", never)
+        with pytest.raises(ReadOnlyViolation):
+            GhCliReader(migration_verifier.default_runner).run(args)
+
+    def test_a_get_still_reaches_the_runner(self) -> None:
+        """The control. A guard that refuses everything guards nothing."""
+        seen: list[list[str]] = []
+
+        def recorder(argv: Sequence[str], cwd: Path | None) -> Completed:
+            del cwd
+            seen.append(list(argv))
+            return Completed(0, "[]", "")
+
+        assert GhCliReader(recorder).run(
+            ["api", "--method", "GET", "repos/x/y"],
+        ) == "[]"
+        assert seen == [["gh", "api", "--method", "GET", "repos/x/y"]]
+
+    def test_run_git_still_refuses_a_write(self, tmp_path: Path) -> None:
+        """`git remote set-url` writes. It must still never spawn."""
+        with pytest.raises(ReadOnlyViolation):
+            run_git(["remote", "set-url", "origin", NEW_URL], tmp_path,
+                    _never_spawn)
+
+    def test_assert_writable_still_refuses_the_runtime_directory(
+        self, tmp_path: Path,
+    ) -> None:
+        """Credentials live there. The tool has no business in it."""
+        with pytest.raises(ReadOnlyViolation):
+            assert_writable(
+                tmp_path / ".acervator" / "coinbase_credentials.json",
+                tmp_path,
+            )
+
+
+class TestTheIssueExportIsReadWithOrWithoutABom:
+    """`Out-File -Encoding utf8` on PowerShell 5.1 writes a BOM."""
+
+    def test_the_fixture_really_carries_a_bom(self, tmp_path: Path) -> None:
+        """The positive control for the two tests below.
+
+        Without this, a passing BOM test could be passing on a file that
+        never held a BOM.
+        """
+        export = _write_export(tmp_path / "bom.json", bom=True)
+        assert export.read_bytes()[:3] == b"\xef\xbb\xbf"
+        with pytest.raises(json.JSONDecodeError, match="BOM"):
+            json.loads(export.read_text(encoding="utf-8"))
+
+    def test_a_bom_export_is_read(self, tmp_path: Path) -> None:
+        """The file the tool's own documented command produces."""
+        export = _write_export(tmp_path / "bom.json", bom=True)
+        rows = JsonFileReader(export).issues("x")
+        assert [row["number"] for row in rows] == [96, 108]
+
+    def test_a_no_bom_export_is_read(self, tmp_path: Path) -> None:
+        """The other half. `utf-8-sig` must not require a BOM."""
+        export = _write_export(tmp_path / "plain.json", bom=False)
+        assert export.read_bytes()[:1] == b"["
+        rows = JsonFileReader(export).issues("x")
+        assert [row["number"] for row in rows] == [96, 108]
+
+    def test_a_broken_export_is_still_refused(self, tmp_path: Path) -> None:
+        """Reading a BOM must not turn into reading anything."""
+        broken = tmp_path / "broken.json"
+        broken.write_bytes(b"\xef\xbb\xbf{not json")
+        with pytest.raises(GitHubUnavailable, match="cannot read"):
+            JsonFileReader(broken).issues("x")
+
+    @pytest.mark.parametrize("encoding", ["utf-8-sig", "utf-8"])
+    def test_capture_exits_zero_with_either_export(
+        self,
+        encoding: str,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """End to end, the exit code the operator reads."""
+        export = _write_export(
+            tmp_path / "issues.json", bom=encoding == "utf-8-sig",
+        )
+        out = tmp_path / "baseline.json"
+        code = main([
+            "--issues-json", str(export), "--primary", str(tmp_path),
+            "capture", "--out", str(out),
+        ])
+        assert code == 0, "the documented export must be accepted"
+        assert "issues 1 open, 1 closed" in capsys.readouterr().out
+
+
+def _write_export(path: Path, *, bom: bool) -> Path:
+    """Write the export `gh issue list --json ...` makes, either encoding."""
+    rows = [
+        {"number": 96, "title": "guard", "state": "CLOSED"},
+        {"number": 108, "title": "capture skips issue data", "state": "OPEN"},
+    ]
+    body = json.dumps(rows)
+    path.write_bytes(
+        (b"\xef\xbb\xbf" if bom else b"") + body.encode("utf-8"),
+    )
+    return path
