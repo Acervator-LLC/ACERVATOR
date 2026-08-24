@@ -52,8 +52,27 @@ class RSIIndicator:
                     "rs_indeterminate": False}
         closes = [c.close for c in candles]
         deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
-        gains  = [max(d, 0) for d in deltas]
-        losses = [max(-d, 0) for d in deltas]
+        # WILDER'S GAIN AND LOSS, ONE SPELLING.
+        #
+        # StockCharts, stating Wilder's rule: "Losses are expressed as
+        # positive values, not negative values." Both series are
+        # NON-NEGATIVE MAGNITUDES: the up move on an up bar, the size
+        # of the down move on a down bar, zero otherwise.
+        #
+        # The two copies of this line in the package disagreed on the
+        # zero bar. ``max(0, d)`` returns the int ``0``; ``max(d, 0)``
+        # on ``d = 0.0`` returns ``0.0`` but ``max(-d, 0)`` returns
+        # ``-0.0`` -- Python's ``max`` keeps the FIRST argument on a
+        # tie, and ``-0.0 == 0`` is True. A negative zero is not "a
+        # positive value", and neither copy said in code what Wilder's
+        # rule says.
+        #
+        # ``max(0.0, x)`` puts the FLOAT ZERO FIRST, so the tie on a
+        # flat bar resolves to ``+0.0`` for both series, in both files.
+        # Verified across d = 0.0, -0.0, +5.0 and -5.0: every flat-bar
+        # result carries sign bit +1.
+        gains  = [max(0.0, d) for d in deltas]
+        losses = [max(0.0, -d) for d in deltas]
         avg_gain = sum(gains[:self.period]) / self.period
         avg_loss = sum(losses[:self.period]) / self.period
         rsi_series = []

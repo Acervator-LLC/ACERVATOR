@@ -9,6 +9,9 @@ from .types import (
     SignalDirection,
     Signal,
 )
+from .helpers import (
+    _true_range,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -52,11 +55,16 @@ class SupertrendIndicator:
             return Signal("supertrend", timeframe,
                           SignalDirection.NEUTRAL, 0.0, self.weight)
 
-        # ATR (Wilder)
-        tr_list = [max(candles[i].high - candles[i].low,
-                       abs(candles[i].high - candles[i-1].close),
-                       abs(candles[i].low  - candles[i-1].close))
-                   for i in range(1, n)]
+        # ATR (Wilder) -- THE WHOLE TRUE RANGE SERIES, FIRST BAR
+        # INCLUDED. Supertrend is an ATR trailing stop, so its ATR
+        # is Wilder's ATR and it is seeded the same way: the average
+        # of the first `period` True Ranges, of which the first is
+        # `high - low` (StockCharts, reproducing Wilder's
+        # worksheet). This comprehension started at bar 1 and
+        # dropped that value. `_true_range` is the module's one
+        # definition; the per-bar expression is the identical max
+        # of the identical three terms.
+        tr_list = _true_range(candles)
 
         # Simple ATR smoothing (Wilder)
         atr = [0.0] * (self.period)
@@ -70,14 +78,22 @@ class SupertrendIndicator:
             return Signal("supertrend", timeframe,
                           SignalDirection.NEUTRAL, 0.0, self.weight)
 
-        # Align: atr[0] corresponds to candles[period]
+        # Align. `tr_list[k]` is now the True Range of candle k, so
+        # `atr[0] = mean(tr_list[:period])` is the ATR AT candle
+        # `period - 1`, and `atr[j]` is the ATR at candle
+        # `period - 1 + j`. Re-anchored below as
+        # `idx_atr = i - (period - 1)`.
+        #
+        # The band loop still starts at candle `period`, so the
+        # same candles carry bands as before -- only the ATR values
+        # move, by the seed the line above restored.
         start = self.period
         curr_atr = atr[-1]
 
         # Build Supertrend series (need history for sticky bands)
         ub = [0.0]; lb = [0.0]; st = [True]   # True = bullish
         for i in range(start, n):
-            idx_atr = i - start
+            idx_atr = i - (self.period - 1)
             if idx_atr >= len(atr):
                 idx_atr = len(atr) - 1
             a = atr[idx_atr]

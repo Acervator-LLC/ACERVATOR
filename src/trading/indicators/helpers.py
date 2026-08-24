@@ -146,7 +146,43 @@ def _window_has_no_range(values: list[float]) -> bool:
 
 
 def _true_range(candles: list[Candle]) -> list[float]:
-    """True Range series."""
+    """True Range series, ONE bar per candle, candle-aligned.
+
+    THE PUBLISHED DEFINITION. Wilder, *New Concepts in Technical
+    Trading Systems* (1978). True Range is the greatest of:
+
+        1. current High less current Low
+        2. |current High less PREVIOUS Close|
+        3. |current Low  less PREVIOUS Close|
+
+    THE FIRST BAR. Methods 2 and 3 need a previous close, and the
+    first bar of a tape has none. The published answer is method 1
+    alone. StockCharts, reproducing Wilder's own ATR worksheet:
+    "the first TR value is simply the High minus the Low", and the
+    worked spreadsheet carries a True Range on its very first row.
+    So ``_true_range(candles)[0]`` is ``high - low`` and the series
+    is the same length as ``candles``.
+
+    ONE DEFINITION, FIVE WINDOWS. Each indicator then sums this
+    series over the bars ITS OWN published formula covers, and the
+    slice is written at the call site:
+
+      ATRIndicator, SupertrendIndicator -- the whole series. Wilder's
+        ATR averages every TR, the first one included.
+      ADXIndicator -- ``[1:]``. TR is summed against +DM and -DM,
+        and directional movement needs a previous bar, so Wilder's
+        DMI worksheet starts every one of its three columns on the
+        second row.
+      VortexIndicator -- ``[1:]``, for the same reason: VM+ and VM-
+        (Botes and Siepman, 2010) each reach back one bar.
+      SlingshotIndicator -- computes its own, deliberately (see that
+        class's docstring and tests/test_slingshot_canonical.py). Its
+        first bar is ``high - low``, so it agrees with this one.
+
+    v3.26.x: this docstring said only "True Range series" and four
+    other copies of the per-bar formula had drifted apart on the
+    first bar. The arithmetic below is unchanged.
+    """
     tr = [candles[0].high - candles[0].low]
     for i in range(1, len(candles)):
         c = candles[i]

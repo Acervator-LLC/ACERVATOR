@@ -64,6 +64,14 @@ class VortexIndicator:
             vm_plus.append(abs(candles[i].high - candles[i - 1].low))
             vm_minus.append(abs(candles[i].low - candles[i - 1].high))
 
+        # True Range from the module's ONE definition, sliced to the
+        # window the Vortex formula sums over. Botes and Siepman
+        # (2010) define VM+ = |High_t - Low_{t-1}| and
+        # VM- = |Low_t - High_{t-1}|, so both reach back one bar and
+        # neither exists at bar 0. VI+ and VI- divide a VM sum by a
+        # TR sum over THE SAME BARS, so the TR series must start
+        # where the VM series does. `[1:]` is that alignment -- not
+        # a discarded value.
         tr = _true_range(candles)[1:]
 
         n = self.period

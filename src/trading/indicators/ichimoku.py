@@ -119,9 +119,45 @@ class IchimokuCloud:
         ch_price = candles[n - D - 1].close if n > D else price
         chikou_bull = price > ch_price
         chikou_bear = price < ch_price
-        # Extra: Chikou vs the cloud of D periods ago (triple-layer confirmation)
-        chikou_above_hist_cloud = chikou_bull and price > cloud_top
-        chikou_below_hist_cloud = chikou_bear and price < cloud_bottom
+        # Extra: Chikou vs the cloud of D periods ago (triple-layer
+        # confirmation).
+        #
+        # THE CLOUD AT THE CHIKOU'S OWN POSITION. The Chikou Span is
+        # "Close plotted 26 days in the past" (StockCharts), so it
+        # sits at bar n-1-D, and the published confirmation reads it
+        # against what is drawn there: the Chikou Span is bullish
+        # when it is "above the candlesticks (and the cloud) from 26
+        # periods ago".
+        #
+        # A cloud PLOTTED at bar x was COMPUTED at bar x-D, because
+        # Senkou A and B are displaced D bars forward. The cloud
+        # under the Chikou was therefore computed at bar n-1-2D.
+        #
+        # This test used `cloud_top` / `cloud_bottom`, which are the
+        # cloud plotted at the CURRENT bar. That made the expression
+        # `chikou_bull and above_cloud` -- two quantities scored
+        # separately three lines below and again at step 6, so the
+        # "third layer" was a re-count of the first two and the name
+        # was not what the code did.
+        #
+        # With fewer than 2D + B bars there is no cloud under the
+        # Chikou. An unmeasured confirmation is not a confirmation,
+        # so both flags are False and the plain `chikou_bull` /
+        # `chikou_bear` branch below still scores. `_mid` would
+        # answer 0.0 on a negative start, and `price > 0.0` would be
+        # a fabricated True.
+        if n - 2 * D - B >= 0:
+            _h_tenkan = self._mid(candles, n - 2 * D - T, T)
+            _h_kijun  = self._mid(candles, n - 2 * D - K, K)
+            _hist_spa = (_h_tenkan + _h_kijun) / 2.0
+            _hist_spb = self._mid(candles, n - 2 * D - B, B)
+            chikou_above_hist_cloud = (
+                chikou_bull and price > max(_hist_spa, _hist_spb))
+            chikou_below_hist_cloud = (
+                chikou_bear and price < min(_hist_spa, _hist_spb))
+        else:
+            chikou_above_hist_cloud = False
+            chikou_below_hist_cloud = False
 
         # ── TK CROSS + LOCATION ──────────────────────────────────────────
         tk_bull_cross = p_tenkan <= p_kijun and tenkan > kijun
