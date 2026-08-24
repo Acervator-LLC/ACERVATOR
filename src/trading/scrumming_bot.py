@@ -183,7 +183,59 @@ WHAT IS DELIBERATELY NOT CHANGED. The direction conjunct
 (``eff_direction in (BULLISH, NEUTRAL)``) still gates the trade, exactly
 as v3.15.64 preserved it -- actively-contradicting TA still refuses. The
 non-priority arm keeps ``_TA_CONFIDENCE_FLOOR`` untouched.
+
+v3.26.x (issue #104) -- THIS CONSTANT IS NO LONGER THE WHOLE FLOOR ON
+THE ARM. Two further favours were found in the same shape and repaired
+the same way, so the arm's skew is now one term of a sum that
+``_skewed_confidence_floor`` divides by. With the other two at zero the
+answer is still exactly this number, which is why it is kept and still
+quoted in the log line.
 """
+
+
+def _skewed_confidence_floor(skew: float,
+                             floor: float = _TA_CONFIDENCE_FLOOR) -> float:
+    """``floor`` relaxed by ``skew``, proportionally, so the gate can refuse.
+
+    THE DEFECT CLASS THIS CLOSES. ``tick()`` carried THREE favours and
+    every one was written as an edit to ``eff_confidence``: the
+    BB-priority skew (issue #102, repaired), ``position_boost`` and
+    ``bb_confidence_boost`` (issue #104, this one). Confidence is bounded
+    [0, 1] and the floor is 0.25, so a favour of 0.25 or more makes
+    ``eff_confidence >= floor`` true for EVERY reading. The comparison
+    has no false case and the conjunct cannot refuse.
+
+    MEASURED, over 406 stone tablets at six tape lengths, 2,436 readings.
+    ``position_boost`` reached +0.4000 -- larger than the largest
+    consensus confidence the same sweep measured, 0.3402. A term bigger
+    than the quantity it adjusts is not an adjustment to it. The two
+    favours summed past the floor that judged them on 73 readings, and
+    drove ``eff_confidence`` BELOW ZERO on 316: a confidence outside the
+    domain of a confidence, printed to the operator at nine sites.
+
+    WHY PROPORTIONAL AND NOT SUBTRACTIVE. Subtracting a favour of 0.30
+    from a floor of 0.25 lands at or below zero and is the tautology
+    again. Dividing preserves zero -- however large the favour, a reading
+    of exactly 0.0 is still refused -- and it needs no second rule for a
+    NEGATIVE skew, which tightens the floor by the same arithmetic.
+
+    THE LIMIT AT A SKEW OF -1 IS INFINITY, AND THAT IS THE RIGHT ANSWER.
+    A favour of -1 is total evidence against, and the floor no reading
+    can clear is what the division tends to. It is returned rather than
+    clamped to something friendlier. No skew this module builds reaches
+    it: ``position_boost`` bottoms at -0.29 by enumeration of its own
+    terms, ``bb_confidence_boost`` is never negative, and the BB-priority
+    skew is positive. The branch guards a future term, not a live path.
+
+    NO NEW NUMBER IS INTRODUCED. The floor and every skew are constants
+    or measurements already of record. Only the form of the favour, and
+    what it is applied to, change.
+    """
+    denominator = 1.0 + skew
+    if denominator <= 0.0:
+        return math.inf
+    return floor / denominator
+
 
 _WIRE_CREDIT_CAP = 20
 """Per-tranche cap on wire-credit DETAIL entries.
@@ -685,7 +737,7 @@ class ScrummingBot(BotContainer):
         # Leg-2 cycle health at a glance instead of needing a CSV pull.
         # Created counter increments at every _fold_tranches.append site;
         # closed counter increments by `_removed` on every fold-back
-        # dequeue at scrumming_bot.py:5397 region. Both persist via
+        # dequeue at scrumming_bot.py:5449 region. Both persist via
         # export/import_scrumming_state with default 0 backward-compat.
         # Cycle close ratio (closed/created) signals strategy throughput:
         # ratio approaches 1.0 in equilibrium, drifts low if fold-back
@@ -1926,7 +1978,7 @@ class ScrummingBot(BotContainer):
         # ORDER IS THE WHOLE POINT.
         #
         # THE RULE IS ONE RULE, AND IT IS NOT NEW HERE. The autonomous
-        # rebuy-distance gate states it at :12620: a value sets an
+        # rebuy-distance gate states it at :12761: a value sets an
         # ordering or a threshold ONLY IF IT IS A FINITE NUMBER, and the
         # finiteness test runs BEFORE any comparison, never as part of
         # one. That gate tests the threshold it is about to compare
@@ -1945,8 +1997,8 @@ class ScrummingBot(BotContainer):
         #
         # AND THIS METHOD SIZES AN ORDER, which is what makes it worse
         # than the gate's. The return flows through
-        # `buy_usd_target = -delta_usd + _growth_preview` (:12789) into
-        # `guarded_place_order` (:12878). Measured end to end on the
+        # `buy_usd_target = -delta_usd + _growth_preview` (:12930) into
+        # `guarded_place_order` (:13019). Measured end to end on the
         # operator's own config (interval 5.0, fee 1.6, growth cap 1.0),
         # ladders differing only in row order placed TWO DIFFERENT
         # AMOUNTS for the same ladder at the same price.
@@ -1978,7 +2030,7 @@ class ScrummingBot(BotContainer):
         # The key is the ref itself, already proven finite above, so the
         # sort is a total order by construction rather than by hope.
         _readable.sort(key=lambda pair: pair[0], reverse=True)
-        # Read by the one caller (:12749) to say out loud that the
+        # Read by the one caller (:12890) to say out loud that the
         # sizing answer came from fewer tranches than are queued.
         self._fold_preview_unreadable_refs = _unreadable_refs
         _remaining = float(units)
@@ -2656,8 +2708,8 @@ class ScrummingBot(BotContainer):
 
         THE TYPE GROUND IS SHARED TOO, v3.25.7, and for a reason this
         contract does not merely inherit. The tick multiplies
-        `_current_holdings` by a price (:6905) and subtracts
-        `_target_balance` (:7730); a string in either raises TypeError
+        `_current_holdings` by a price (:6957) and subtracts
+        `_target_balance` (:7782); a string in either raises TypeError
         in the DECIDER. State that only `float()` can read is already
         broken state, so coercing it here would launder a corruption
         into a durable float write. Refuse it and say which name it was.
@@ -2706,7 +2758,7 @@ class ScrummingBot(BotContainer):
         exception, because `__float__` on the stored value is the one
         place caller-shaped data still gets to run code. The units
         value is deliberately NOT type-refused the way the two money
-        parameters are: `_main_lots_invariant_ok` (:15385) coerces the
+        parameters are: `_main_lots_invariant_ok` (:15526) coerces the
         same field with a bare `sum`, and refusing here what that
         accepts would put the ledger's two readers on different rules.
 
@@ -2748,8 +2800,8 @@ class ScrummingBot(BotContainer):
 
         THE TWO HALVES ARE THE TWO TERMS OF ONE SUBTRACTION. The tick
         computes `current_value = _current_holdings * ticker.last *
-        _quote_to_usd` (:6905) and then `delta = current_value -
-        _target_balance` (:7730). An arrival moves BOTH terms. Split the
+        _quote_to_usd` (:6957) and then `delta = current_value -
+        _target_balance` (:7782). An arrival moves BOTH terms. Split the
         halves and delta moves, in whichever direction the missing half
         was:
 
@@ -2774,7 +2826,7 @@ class ScrummingBot(BotContainer):
         through an expression that reads the rate at TWO DIFFERENT
         TIMES, and so quietly assumed the rate cannot move between the
         arrival and the tick that reads it. Write both out. With P the
-        live quote-side price, `q_tick` the rate the tick reads (:6905)
+        live quote-side price, `q_tick` the rate the tick reads (:6957)
         and `q_arr` the rate this method read when it priced the
         arrival:
 
@@ -2806,10 +2858,10 @@ class ScrummingBot(BotContainer):
 
         KNOWN LIMITATION -- CONTAINMENT DOES NOT SURVIVE A DRIFT-DOWN
         RECONCILE, AND BOTH LIFTED BALANCES ARE LEFT BEHIND.
-        `_reconcile_holdings` (:11610) writes `_main_lots` and
+        `_reconcile_holdings` (:11751) writes `_main_lots` and
         `_current_holdings` and writes NEITHER `_target_balance` NOR
         `_anchor_target_balance` anywhere (AST-verified over the whole
-        function, both names). Its drift-DOWN branch (:11879-11901)
+        function, both names). Its drift-DOWN branch (:12020-12042)
         rescales every lot by `exchange_units / internal_units` and
         resets holdings to the exchange figure. Run it after an arrival
         and the units go while both lifts stay: a $20 arrival on a
@@ -2823,8 +2875,8 @@ class ScrummingBot(BotContainer):
         it is not reset by the tick: `_apply_fold_target_growth` sizes
         the per-cycle Growth Rate Cap as
         `self._anchor_target_balance * (max_target_growth_pct / 100)`
-        (:1806), and `position_ceiling_usd` returns
-        `self._anchor_target_balance * mult` (:4818). A $20 stranded
+        (:1858), and `position_ceiling_usd` returns
+        `self._anchor_target_balance * mult` (:4870). A $20 stranded
         lift on a $200 anchor therefore widens the growth cap by 10% and
         raises the Smart Ceiling by $20 x mult, for as long as it
         stands.
@@ -2833,7 +2885,7 @@ class ScrummingBot(BotContainer):
         across every lot and the ledger records no provenance, so
         nothing in `_main_lots` says which units arrived from a child
         and which were bought. `_target_balance` is built from operator
-        config, fold growth (:1732), wire income (:2482) and arrivals
+        config, fold growth (:1784), wire income (:2534) and arrivals
         together, so there is no evidence available at reconcile time to
         size a matching un-lift. Un-lifting proportionally would guess.
         The drift-DOWN branch is also the "legitimate loss" branch: a
@@ -2847,18 +2899,18 @@ class ScrummingBot(BotContainer):
 
         THE HOLDINGS HALF IS A LOT, NOT A NUMBER. Since v3.23.43 this
         bot owns exactly what is in `_main_lots` and derives
-        `_current_holdings` from that source alone (:6899). The
-        invariant `sum(lot["units"]) == _current_holdings` (:642) is
-        checked by `_main_lots_invariant_ok` (:15385). Two consequences,
+        `_current_holdings` from that source alone (:6951). The
+        invariant `sum(lot["units"]) == _current_holdings` (:694) is
+        checked by `_main_lots_invariant_ok` (:15526). Two consequences,
         both load-bearing:
 
           * Incrementing `_current_holdings` without appending a lot
             breaks the invariant, and the next drift-down reconcile
-            rescales `_main_lots` and resets holdings (:11879-11901),
+            rescales `_main_lots` and resets holdings (:12020-12042),
             silently undoing the credit.
           * Booking nothing at all is not neutral either. Units that
             land on the exchange but are never attributed are refused
-            by the drift-UP policy (:11903-11935) -- "those units
+            by the drift-UP policy (:12044-12076) -- "those units
             belong to another bot, prior state, or operator" -- so the
             child's gain would sit unclaimed forever.
 
@@ -2868,16 +2920,16 @@ class ScrummingBot(BotContainer):
         scalar" and the file does not do that. There are two shapes:
 
           SPLIT ACROSS AN AWAIT, and it is the common one. `_execute_buy`
-            (:14783) moves the scalar -- `self._current_holdings +=
-            amount` (:15260) -- and appends NO lot. Its callers append
-            the lot after the await returns: `tick` at :7672 -> :7695,
-            :10150 -> :10207, :10659 -> :10693, and `manual_fire_tranche`
-            at :3557 -> :3602. Between the scalar write and the lot
-            append the coroutine has already yielded, so the :642
+            (:14924) moves the scalar -- `self._current_holdings +=
+            amount` (:15401) -- and appends NO lot. Its callers append
+            the lot after the await returns: `tick` at :7724 -> :7747,
+            :10291 -> :10348, :10800 -> :10834, and `manual_fire_tranche`
+            at :3609 -> :3654. Between the scalar write and the lot
+            append the coroutine has already yielded, so the :694
             invariant is briefly false and a tick can see it.
 
-          SYNCHRONOUS, and rarer. `_execute_manual_rebalance` (:12156)
-            appends (:13117 / :13134) and moves the scalar (:13143)
+          SYNCHRONOUS, and rarer. `_execute_manual_rebalance` (:12297)
+            appends (:13258 / :13275) and moves the scalar (:13284)
             with nothing suspending in between.
 
         This method is deliberately the second shape. The first shape is
@@ -2894,7 +2946,7 @@ class ScrummingBot(BotContainer):
         put back into the shape `_main_lots` stores -- a quote-side
         price -- and not a fabricated entry price.
 
-        WHY THIS IS NOT `_apply_fold_target_growth` (:1732). That helper
+        WHY THIS IS NOT `_apply_fold_target_growth` (:1784). That helper
         applies the per-cycle Growth Rate Cap (`max_target_growth_pct`,
         default 1.0% of anchor). A cap is WRONG here: a return larger
         than the cap would be truncated, the uncontained remainder would
@@ -2989,7 +3041,7 @@ class ScrummingBot(BotContainer):
 
         try:
             # `or 1.0` is not a convenience here. The tick prices the
-            # position with EXACTLY this expression (:6905), so the
+            # position with EXACTLY this expression (:6957), so the
             # arrival must be priced with it too. A stricter reading
             # here -- refusing a 0.0 rate the tick silently reads as
             # 1.0 -- would put the containment arithmetic and the
@@ -3013,7 +3065,7 @@ class ScrummingBot(BotContainer):
                               f"got {qrate!r}"}
 
         # No ledger, no credit. Booking units the ledger cannot hold is
-        # what breaks the :642 invariant.
+        # what breaks the :694 invariant.
         #
         # EXACTLY A LIST, NOT MERELY SOMETHING THAT PASSES `isinstance`.
         # v3.25.7. `isinstance(lots, list)` stood here, and it admits a
@@ -3023,7 +3075,7 @@ class ScrummingBot(BotContainer):
         # Measured on the v3.25.6 file with a ledger whose `append`
         # stored the lot and then raised: `RuntimeError` escaped the
         # method, `_main_lots` went 1 -> 2, `_current_holdings` and
-        # `_target_balance` did not move at all, and the :642 invariant
+        # `_target_balance` did not move at all, and the :694 invariant
         # was left 0.1 units apart. The atomic block had been split by
         # the one call inside it.
         #
@@ -3042,7 +3094,7 @@ class ScrummingBot(BotContainer):
                                f"{type(lots).__name__}; refusing to book "
                                f"an unattributable arrival")}
 
-        # USD = units x quote_price x quote_to_usd (:4723). Inverted,
+        # USD = units x quote_price x quote_to_usd (:4775). Inverted,
         # this is the quote-side price `_main_lots` stores alongside
         # every other lot. Both observed quantities, no model.
         #
@@ -3158,7 +3210,7 @@ class ScrummingBot(BotContainer):
         # caller-supplied callable between the first write and the last,
         # so no tick can read a half-applied state. Target and anchor
         # move together, following the co-movement precedent at
-        # :2482-2486.
+        # :2534-2538.
         lots.append(_arrival_lot)
         self._current_holdings = _h_after
         self._target_balance = _t_after
@@ -3187,7 +3239,7 @@ class ScrummingBot(BotContainer):
         # never read the lot at all. Measured: with a ledger whose
         # `append` silently drops the write, it reported
         # `delta_shift_usd = 1.8e-14` and `atomic = True` while
-        # `main_lots_added` was 0 and the :642 invariant was False. A
+        # `main_lots_added` was 0 and the :694 invariant was False. A
         # residual that is zero by algebra is decoration.
         #
         # THAT PARTICULAR LEDGER IS NOW REFUSED UP FRONT -- see the
@@ -3251,7 +3303,7 @@ class ScrummingBot(BotContainer):
         # made `_delta_shift_usd` (the tick's own d(delta)) a statement
         # about `_main_lots` rather than about `_current_holdings`, and
         # `_current_holdings` is the quantity the tick actually prices
-        # (:6905). The two agree on a healthy arrival and diverge on
+        # (:6957). The two agree on a healthy arrival and diverge on
         # exactly the runs the check exists for.
         _holdings_usd_added = ((_h_seen - _h_before)
                                * arrival_price * qrate)
@@ -3278,7 +3330,7 @@ class ScrummingBot(BotContainer):
         # would add no falsifying power. They are kept because they are
         # the two quantities an operator reads: how far the arrival
         # moved delta, and how far the ledger and the scalar drifted
-        # apart over this one write. The :642 invariant is scoped to
+        # apart over this one write. The :694 invariant is scoped to
         # THIS arrival rather than measured absolutely, because a bot
         # may already carry a gap from an earlier path and this method
         # reports on its own write, not on somebody else's.
@@ -3448,7 +3500,7 @@ class ScrummingBot(BotContainer):
         # or is never constructed, so `self._bus.emit` below cannot
         # reach main_window's handler. Isolation comes from WHICH bus
         # the bot holds, not from refusing to emit — the same principle
-        # the capital registry follows at :1238.
+        # the capital registry follows at :1290.
         #
         # WHAT IT COST: the SENT / PLACED / FILLED / CANCELLED trace,
         # including the CANCELLED reason string, is the only place a sim
@@ -8023,7 +8075,38 @@ class ScrummingBot(BotContainer):
                 elif downtrend:
                     position_boost += 0.05  # Bearish = good for scrum
 
-        eff_confidence += position_boost
+        # v3.26.x (issue #104) -- POSITION-AWARE MOMENTUM SKEWS THE
+        # FLOOR. IT DOES NOT EDIT THE MEASUREMENT.
+        #
+        # This line read `eff_confidence += position_boost`.
+        #
+        # WHAT THE BLOCK IS FOR, from the record. DEVELOPMENT_CHRONICLE
+        # carries the BONK insight of 2026-04-14 that created it --
+        # "strong VX bullish AT the upper BB means the price is being
+        # PUSHED into resistance with force. Best time to sell, not
+        # worst." That is a statement about WHEN TO TRADE, and every
+        # comment above says the same: "boost scrum", "great time to
+        # scrum", "Bearish = good for scrum". It is a PRIORITY rule, and
+        # it was written into a confidence.
+        #
+        # IT ADDS NO MEASUREMENT. Every signal it reads -- vortex, macd,
+        # ichimoku, stochastic_rsi -- has already been counted by
+        # `VotingEngine` into `summary.consensus_confidence`, each with a
+        # weight of its own. This block re-reads those same votes and
+        # grants a FLAT bonus for where inside the band the price sits.
+        # A builder adds evidence; this re-spends evidence.
+        #
+        # AND IT OUTGREW WHAT IT ADJUSTED. Enumerating its own terms, the
+        # ceiling is +0.40 and the floor is -0.29. The product manual
+        # documents it as ±0.03 to ±0.20 -- deliberately under the 0.25
+        # confidence floor, so that it could not carry a reading over the
+        # gate by itself. The shipped arithmetic can, and the sweep
+        # observed +0.4000 against a largest measured consensus
+        # confidence of 0.3402.
+        #
+        # So the favour lands on the THRESHOLD now, together with the
+        # other two. See `_skewed_confidence_floor` and the
+        # `_eff_conf_floor` computation below.
 
         # =================================================================
         # TREND-HOLD GATE (v3.1.48) with Chunk 4 Band Travel override
@@ -8078,10 +8161,20 @@ class ScrummingBot(BotContainer):
             if bb_result.near_upper: bb_near = " NEAR UPPER"
             elif bb_result.near_lower: bb_near = " NEAR LOWER"
 
+        # v3.26.x (issue #104) -- `+ BB 0.nn` READ AS AN ADDEND TO THE
+        # CONFIDENCE PRINTED BESIDE IT, and until this change it was one.
+        # Both favours now skew the FLOOR instead, so they are named as
+        # skews and the confidence stands alone as the measurement it is.
+        _skew_note = ""
+        if position_boost or bb_confidence_boost:
+            _skew_note = (
+                f", floor skew {position_boost:+.2f} pos"
+                + ("" if not bb_confidence_boost
+                   else " %+.2f BB" % bb_confidence_boost))
         self._bus.emit("bot.log", bot_id=self.bot_id,
             message=f"TA Vote: {summary.consensus_direction.name} "
                     f"(conf={summary.consensus_confidence:.2f}"
-                    f"{'+ BB %.2f' % bb_confidence_boost if bb_confidence_boost > 0 else ''}, "
+                    f"{_skew_note}, "
                     f"B:{summary.bullish_count}/N:{summary.neutral_count}/"
                     f"S:{summary.bearish_count})"
                     f" | BB pos={bb_pos:.2f}{bb_near}")
@@ -8163,7 +8256,36 @@ class ScrummingBot(BotContainer):
         # block) to the already-position-boosted value. Previously this
         # line did 'eff_confidence = summary.consensus_confidence + boost',
         # which overwrote the position-aware adjustment from line 540.
-        eff_confidence += bb_confidence_boost
+        # v3.26.x (issue #104) -- THE BB/LANDING-STRIP FAVOUR SKEWS THE
+        # FLOOR TOO. Same defect, same repair.
+        #
+        # This line read `eff_confidence += bb_confidence_boost`.
+        #
+        # WHY IT IS A FAVOUR AND NOT EVIDENCE. It is ONE-DIRECTIONAL --
+        # a detected pattern only ever raises the confidence, never
+        # lowers it -- and it raises the confidence used by BOTH
+        # `is_bullish` and `is_bearish` at once, while the pattern that
+        # granted it names ONE side in `bb_result.landing_strip_side`.
+        # A reading that names one direction but favours both is not a
+        # measurement of either. The landing-strip half is also already
+        # honoured as a hard override further down, where
+        # `landing_strip_side` sets `is_bullish` or `is_bearish` to True
+        # regardless of any confidence, so its contribution here only
+        # ever favoured a comparison that had already been decided.
+        #
+        # THE CEILING, DERIVED FROM SOURCE rather than from the tape.
+        # The landing-strip term is `0.15 + consolidation_strength *
+        # 0.20` and `consolidation_strength` is bounded to 1.0 twice in
+        # `bb_proximity.py`, so that term tops out at +0.35. The
+        # tightening term is `detect_landing_strip_v2`'s
+        # `confidence_boost`, `0.08 + 0.17 * length_factor *
+        # tightness_factor`, both factors bounded to 1.0, so it tops out
+        # at +0.25. They are independent detections and both can fire on
+        # one reading, so the sum reaches +0.60 -- more than twice the
+        # floor it was compared against, and well past the +0.15 to
+        # +0.35 the product manual documents. The 406-tablet sweep only
+        # reached +0.1437, so this ceiling is derived and NOT observed;
+        # it is stated that way on purpose.
         if bb_override_direction and eff_direction == SignalDirection.NEUTRAL:
             eff_direction = bb_override_direction
 
@@ -8278,8 +8400,19 @@ class ScrummingBot(BotContainer):
         # `_BB_PRIORITY_CONFIDENCE_FLOOR` carries the derivation and the
         # reason the relaxation is proportional rather than subtractive.
         _bb_priority_arm = _bb_priority_scrum_skew or _bb_priority_fold_skew
-        _eff_conf_floor = (_BB_PRIORITY_CONFIDENCE_FLOOR if _bb_priority_arm
-                           else _TA_CONFIDENCE_FLOOR)
+        # v3.26.x (issue #104) -- ALL THREE FAVOURS, IN ONE PLACE, ON THE
+        # THRESHOLD. `position_boost` and `bb_confidence_boost` used to
+        # be added to `eff_confidence` above; the BB-priority skew used
+        # to be added here. They COMPOUND -- all three are computed on
+        # every tick from the same reading, and the 406-tablet sweep
+        # measured both of the first two positive together on 3 readings
+        # and their sum past the floor that judged them on 73. Summing
+        # them here keeps the MAGNITUDE of the favour exactly what the
+        # added form gave, and changes only what it is applied to.
+        _ta_conf_skew = position_boost + bb_confidence_boost
+        if _bb_priority_arm:
+            _ta_conf_skew += _BB_PRIORITY_SKEW
+        _eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew)
         if _bb_priority_arm:
             try:
                 self._bus.emit(
@@ -8291,11 +8424,15 @@ class ScrummingBot(BotContainer):
                         f"|Δ|=${abs(delta):.2f}≥interval. confidence "
                         f"{eff_confidence:.2f} UNCHANGED; floor "
                         f"{_TA_CONFIDENCE_FLOOR:.2f} → "
-                        f"{_BB_PRIORITY_CONFIDENCE_FLOOR:.4f} "
-                        f"(÷{1.0 + _BB_PRIORITY_SKEW:.2f}). TA direction NOT "
-                        f"flipped — actively-contradicting TA still gates "
-                        f"trade, and a confidence under the relaxed floor "
-                        f"still refuses it."))
+                        f"{_eff_conf_floor:.4f} "
+                        f"(÷{1.0 + _ta_conf_skew:.2f} = 1 + BB-priority "
+                        f"{_BB_PRIORITY_SKEW:+.2f} + position "
+                        f"{position_boost:+.2f} + BB-confidence "
+                        f"{bb_confidence_boost:+.2f}). Arm alone would be "
+                        f"{_BB_PRIORITY_CONFIDENCE_FLOOR:.4f}. TA direction "
+                        f"NOT flipped — actively-contradicting TA still "
+                        f"gates trade, and a confidence under the relaxed "
+                        f"floor still refuses it."))
             except Exception as _sup:  # R28-OK: best-effort optional update / telemetry probe
                 logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
 
@@ -8661,7 +8798,8 @@ class ScrummingBot(BotContainer):
                 self._bus.emit("bot.log", bot_id=self.bot_id,
                     message=f"MEM-196 RIPE-HARVEST OVERRIDE ta_bullish: "
                             f"raw is_bullish=False (dir={eff_direction.name}, "
-                            f"conf={eff_confidence:.2f}) — "
+                            f"conf={eff_confidence:.2f}, floor "
+                            f"{_eff_conf_floor:.2f}) — "
                             f"RipeHarvestScrumOverride will force-pass.")
             if not target_fires:
                 self._bus.emit("bot.log", bot_id=self.bot_id,
@@ -8678,7 +8816,8 @@ class ScrummingBot(BotContainer):
                 self._bus.emit("bot.log", bot_id=self.bot_id,
                     message=f"MEM-196 DEEP-FOLD OVERRIDE ta_bearish: "
                             f"raw is_bearish=False (dir={eff_direction.name}, "
-                            f"conf={eff_confidence:.2f}) — "
+                            f"conf={eff_confidence:.2f}, floor "
+                            f"{_eff_conf_floor:.2f}) — "
                             f"DeepFoldOverride will force-pass.")
         # ────────────────────────────────────────────────────────────
 
@@ -9253,8 +9392,9 @@ class ScrummingBot(BotContainer):
                     message=f"SCRUM: Target=${self._target_balance:.2f}, "
                             f"Value=${current_value:.2f} (+{delta_pct:.1f}%), "
                             f"sold {scrum_asset:.6f} (${scrum_usd:.4f}) on "
-                            f"{eff_direction.name} (conf={eff_confidence:.2f}, "
-                            f"pos_boost={position_boost:+.2f}, bb={bb_pos:.0%}). "
+                            f"{eff_direction.name} (conf={eff_confidence:.2f}"
+                            f"≥floor {_eff_conf_floor:.2f}, "
+                            f"pos_skew={position_boost:+.2f}, bb={bb_pos:.0%}). "
                             f"Fill=${sell_fill:.8f}, queued ${scrum_usd:.4f} for fold.")
                 self._bus.emit("trade.filled", bot_id=self.bot_id,
                     side="sell", type="SCRUM", price=sell_fill,
@@ -9333,7 +9473,8 @@ class ScrummingBot(BotContainer):
         elif delta > 0 and not below_interval and not is_bullish:
             self._bus.emit("bot.log", bot_id=self.bot_id,
                 message=f"HOLD SCRUM: delta +${abs(delta):.4f} but TA={eff_direction.name} "
-                        f"conf={eff_confidence:.2f} — waiting for BULLISH")
+                        f"conf={eff_confidence:.2f} (floor {_eff_conf_floor:.2f}) "
+                        f"— waiting for BULLISH")
 
         # v3.15.57 — Upper BB Detection Threshold hard gate (operator
         # directive 2026-04-25). Surface explicitly when this gate is
@@ -11357,8 +11498,8 @@ class ScrummingBot(BotContainer):
 
         Returns (number, None) when usable, (None, reason) when
         refused, the same shape as `_positive_observed_quantity`
-        (:2578), `_finite_state_number` (:2640) and `_sum_lot_units`
-        (:2685). Returning the refusal instead of raising is what lets
+        (:2630), `_finite_state_number` (:2692) and `_sum_lot_units`
+        (:2737). Returning the refusal instead of raising is what lets
         `_reconcile_holdings` decline the whole audit before it writes
         anything.
 
@@ -11381,7 +11522,7 @@ class ScrummingBot(BotContainer):
         passing.
 
         The restore paths coerce the same field more loosely, with
-        `float(lot.get("units", 0) or 0)` (:5790, :6732). That
+        `float(lot.get("units", 0) or 0)` (:5842, :6784). That
         divergence is deliberate and it runs one way only: this reader
         refuses a strict superset of what they refuse, so a book they
         loaded can be declined here, and a book declined here is never
@@ -11422,10 +11563,10 @@ class ScrummingBot(BotContainer):
         Deriving them a second time down there would let two passes
         disagree about one book.
 
-        NOT `_sum_lot_units` (:2685), and the difference is deliberate
+        NOT `_sum_lot_units` (:2737), and the difference is deliberate
         in both directions. That helper refuses a lot with no "units"
         key; here such a lot counts as ZERO, which is what the restore
-        paths' `.get` already does (:5790, :6732). Refusing it instead
+        paths' `.get` already does (:5842, :6784). Refusing it instead
         would leave a bot permanently unreconcilable over a lot that
         holds nothing. It also returns a total only, and a total cannot
         be multiplied back into a book. Its contract is pinned by the
@@ -11440,7 +11581,7 @@ class ScrummingBot(BotContainer):
         because those two do not agree — CPython's `sum` applies
         Neumaier compensation to floats. On ORCA's real 48-lot book
         `sum` gives 54.053407815409216 and an accumulator loop gives
-        54.05340781540922, one ULP apart. `sum` is what :5790 and :6732
+        54.05340781540922, one ULP apart. `sum` is what :5842 and :6784
         use to derive the scalar, so the audited total comes out
         bit-identical to theirs.
         """
@@ -11615,7 +11756,7 @@ class ScrummingBot(BotContainer):
         v3.25.8 (U2) — WHAT THE BOT CLAIMS IS TWO COUNTERS, NOT ONE.
         The comparison used to read `_current_holdings` alone. That
         scalar is the one `bootstrap_exchange_state` clamps against the
-        wallet with `min` (:5795), so on a bot whose lot book sits
+        wallet with `min` (:5847), so on a bot whose lot book sits
         above it the audit compared the wallet against the wallet and
         reported alignment while the excess stranded in `_main_lots`.
         The audited figure is now `max(scalar, sum of the lot book)` —
@@ -11623,7 +11764,7 @@ class ScrummingBot(BotContainer):
 
         v3.25.8 (U2) — THE VENUE NUMBER IS `total`, NOT `free`. The
         read was `balance.free`, which excludes any coin committed to a
-        resting order. The startup handshake reads `total` (:6469,
+        resting order. The startup handshake reads `total` (:6521,
         MEM-255). One wallet, two readers, two different fields — see
         the block at the fetch for why that only becomes load-bearing
         once this audit starts firing.
@@ -11668,7 +11809,7 @@ class ScrummingBot(BotContainer):
             # coin owned. `free` is only the coins not tied up in a
             # resting order: free = total - used. This read was
             # `balance.free`. The startup handshake reads `total`
-            # (:6469), and MEM-255 records why: `total` is the number
+            # (:6521), and MEM-255 records why: `total` is the number
             # the operator sees on the exchange screen.
             #
             # Two readers of one wallet must not read two fields. The
@@ -11726,7 +11867,7 @@ class ScrummingBot(BotContainer):
         # No information is not a reading. Refuse, say which asset and
         # why, and let the next scheduled interval try again. The
         # startup handshake already refuses on this exact sentinel
-        # (:6511); this closes the same hole on the periodic path.
+        # (:6563); this closes the same hole on the periodic path.
         if _venue_absent:
             self._bus.emit("bot.log", bot_id=self.bot_id,
                 message=(
@@ -11744,7 +11885,7 @@ class ScrummingBot(BotContainer):
 
         # --- U2 (2026-08-13) — AUDIT THE BOOK, NOT ONLY THE SCALAR ---
         # `bootstrap_exchange_state` sets the scalar with
-        #     min(max(0.0, _units), _tracked_units_bootstrap)   (:5795)
+        #     min(max(0.0, _units), _tracked_units_bootstrap)   (:5847)
         # so `min` can pull the SCALAR down to the wallet, can never
         # pull the LOT LIST down with it, and can never leave the
         # scalar above the lot sum. Auditing the scalar alone therefore
@@ -12682,7 +12823,7 @@ class ScrummingBot(BotContainer):
                 _best_rebuy = 0.0
                 _distance_ok = False
                 # Bound before the `try` for the reason `_excluded`
-                # (:9927) and `_fold_plan` (:9934) are: both are read
+                # (:10068) and `_fold_plan` (:10075) are: both are read
                 # by messages below, and an unbound name there would
                 # raise while REPORTING a decision rather than making
                 # one.
@@ -12718,7 +12859,7 @@ class ScrummingBot(BotContainer):
                     # on the one path where every other gate already is.
                     #
                     # The rule is this file's own, recorded above
-                    # `_reconcilable_units` (:11310): "A finiteness test
+                    # `_reconcilable_units` (:11451): "A finiteness test
                     # has to run BEFORE any comparison, never as part of
                     # one."
                     #
@@ -12737,7 +12878,7 @@ class ScrummingBot(BotContainer):
                     #
                     # THE VERB IS STILL ONLY REFUSE. The ladder is NOT
                     # purged here, which is the deliberate difference
-                    # from the tick path's own guard (:9838). That guard
+                    # from the tick path's own guard (:9979). That guard
                     # DELETES the malformed rows and bumps
                     # `_tranches_malformed_dropped`; it can, because it
                     # runs after its fold has committed to acting. This
@@ -13334,7 +13475,7 @@ class ScrummingBot(BotContainer):
         COUNTER SEMANTICS. Discarded tranches are counted in
         `_tranches_discarded_lifetime`, NOT in `_tranches_closed_lifetime`.
         A closed tranche is one that FOLDED. The self-destruct path at
-        :3056 conflates the two, which is why "created minus closed" has
+        :3108 conflates the two, which is why "created minus closed" has
         never reconciled against the standing count. Keeping them
         separate preserves created - closed - discarded = standing.
 
@@ -13402,7 +13543,7 @@ class ScrummingBot(BotContainer):
 
         WHAT THIS NUMBER IS, and why discarding it destroys nothing.
         `_pending_wire_credits` is BOOKKEEPING, not custody. Verified by
-        reading every writer: the park site at :2213 is `+= u` and a
+        reading every writer: the park site at :2265 is `+= u` and a
         ledger append, and no code path anywhere places an order,
         withdraws, or transfers exchange funds on the strength of it.
         All bots share one exchange wallet, so a Smart Wire route is an
@@ -15402,18 +15543,18 @@ class ScrummingBot(BotContainer):
 
         v3.25.7 -- THE MEM-171 CITATION WAS WRONG TWICE IN ONE SENTENCE.
         It read: the fold-floor rule `price <= tranche
-        ["initial_buy_price"]` "is enforced at :9402, not here". First,
-        :9402 is a COMMENT that describes the rule; it evaluates
+        ["initial_buy_price"]` "is enforced at :9543, not here". First,
+        :9543 is a COMMENT that describes the rule; it evaluates
         nothing. Second, and worse, the rule is not enforced on the fold
         path AT ALL. The executor's eligibility filter is
-        `ticker.last <= float(t.get("ref", 0)) * _otd_factor` (:9943),
+        `ticker.last <= float(t.get("ref", 0)) * _otd_factor` (:10084),
         which carries no `initial_buy_price` term, and the comment
-        beside it says so in as many words (:9931). The
+        beside it says so in as many words (:10072). The
         `initial_buy_price` reading survives only as a SECONDARY
-        diagnostic counter, `_patent_only_eligible` (:9670), labelled
+        diagnostic counter, `_patent_only_eligible` (:9811), labelled
         there as "not a gate". MEM-171 is held at the strategy level by
         the position ceiling -- `self._anchor_target_balance * mult`
-        (:4818) -- not per tranche. Cite the predicate, not the prose
+        (:4870) -- not per tranche. Cite the predicate, not the prose
         about it.
         """
         lots_sum = sum(l["units"] for l in self._main_lots)

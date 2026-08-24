@@ -251,12 +251,55 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 # ``_pre_change_source`` returns zero orphans.
 #
 # The prior digests, kept so the chain is auditable:
+#
+# RE-BASED A FIFTH TIME 2026-08-24, issue #104, same tripwire, same
+# reason. One repair landed in ``scrumming_bot.py`` outside every span
+# this file reverses, so it reaches the digest:
+#
+#   5. the two remaining confidence favours could not refuse either.
+#      ``tick()`` added ``position_boost`` and ``bb_confidence_boost``
+#      to ``eff_confidence`` and compared the sum against the floor.
+#      ``position_boost`` reaches +0.40 by enumeration of its own terms
+#      and was OBSERVED at +0.4000 over 406 stone tablets;
+#      ``bb_confidence_boost`` reaches +0.60 by derivation from its two
+#      component bounds. Either exceeds the 0.25 floor alone, and on 73
+#      of 2,436 readings the favour by itself cleared the floor that
+#      judged it -- so on those the comparison had no false case
+#      whatever the indicators measured. The repair leaves
+#      ``eff_confidence`` alone, and it is now exactly
+#      ``summary.consensus_confidence``. All THREE favours, the #102 arm
+#      included, are summed and divide the floor through the new
+#      module-scope ``_skewed_confidence_floor``.
+#
+# WHAT THIS RE-BASE IS. One module-scope function beside
+# ``_TA_CONFIDENCE_FLOOR``, the two ``+=`` lines in ``tick()`` replaced
+# by the prose that says why each favour is a favour, the floor
+# computation rewritten in place, and five log lines repaired. +141
+# lines, in two bands: +52 from :694 through :7782 and +141 from :9543
+# down. The unit adds no method and no ``self._main_lots.append({``, so
+# no anchor is new and no ordinal count moved. ``CITATION_ANCHORS`` in
+# ``tests/test_extractor_tranche_containment.py`` was re-anchored in the
+# SAME change -- 42 anchors, all moved, all read back out of the
+# post-change file -- and that file's 121 tests pass.
+#
+# The 74 self-citation tokens inside ``scrumming_bot.py`` moved by the
+# same two bands. ``:488-494`` did not, for the reason #102 recorded:
+# it names a spec document rather than this file. Nineteen further
+# tokens carry another module's filename, and one more -- ``[:180]`` at
+# the credential-refusal emit -- is a SLICE that the regex above matches
+# and that was never a citation. Those 21 were left alone, and the count
+# is written down so the gap does not read as an omission.
+#
+# ``_pre_change_source`` returns zero orphans.
+#
+# The prior digests, kept so the chain is auditable:
 #   986d79ed7785015d12a57bfc877ba1b078027d93b2f7655ec2fbc78a90ef2082
 #   29276909ff46dce02bc650de45802c779539adb7093b010cd875ef376201e9a0
 #   4b5c51bde7c54836dcd935c85c76ee06757e1fe8b79edd2ce1febb0831ad3c75
 #   ffe8cebd69cbc2eac674d0a8696efdca3542112fe1606bc0dcd3546297c1288f
+#   d4edd46f7ce7d04ef716255fc36976056f75a4d938351b3c0ff9388932cd5aef
 PRE_CHANGE_SHA256 = (
-    "d4edd46f7ce7d04ef716255fc36976056f75a4d938351b3c0ff9388932cd5aef")
+    "03d05460421d2c601a37dadc5cd97b6a77805a974ac29f6f3f2b5e75cf7f40f5")
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE.")
