@@ -317,6 +317,31 @@ class TestTheDialogOpens:
 # CONTROL B - VALID INPUT RENDERS IDENTICALLY
 # ---------------------------------------------------------------------
 
+# TWO CELLS IN `LIVE_ROW` MOVED ONCE, AND THE REASON IS RECORDED HERE
+# RATHER THAN DELETED WITH THEM.
+#
+# Until v3.26.0 this table pinned:
+#
+#     Min rebuy $  "≤$29550.00000000"
+#     Status       "Need price ≤ OTD (+4.91%)"
+#
+# `_Cfg` below sets `scrumming_interval_pct = 1.5` and NO
+# `trading_fee_pct`. Those two strings are `ref × (1 - 1.5/100)` — the
+# scrumming interval alone. The executor's own per-tranche fold filter
+# uses the Minimum Opposing Trade Distance, `interval + trading fee`
+# (`src/trading/otd_math.py`), and reads a missing fee as 0.6. The panel
+# was therefore printing a rebuy price the executor refuses, on 24 of
+# the operator's 38 live bots, and showing six green "Price-OK" rows for
+# buys that could not fire (GitHub issue #97, measured 2026-08-23).
+#
+# The pin is RESTATED, not dropped: 2.1% instead of 1.5%, so
+# `30000 × 0.979 = 29370` and `31000` sits `+5.55%` above it. The
+# falsifier that keeps the panel asking `otd_math` instead of doing its
+# own arithmetic lives in
+# `tests/test_fold_panel_asks_the_executor.py`, together with the
+# `_without_the_fee_in_the_panel` control that reproduces the two
+# strings above on demand.
+#
 #: Captured from LIVE, through the same builder, before the change.
 #: Not one character of these may move.
 LIVE_LABELS = [
@@ -329,8 +354,8 @@ LIVE_LABELS = [
 ]
 LIVE_ROW = [
     "1", "1.0h", "1.500000", "$250.0000", "$30000.00000000",
-    "$29000.00000000", "≤$29550.00000000",
-    "Need price ≤ OTD (+4.91%)", "auto scrum", "", DASH,
+    "$29000.00000000", "≤$29370.00000000",
+    "Need price ≤ OTD (+5.55%)", "auto scrum", "", DASH,
 ]
 
 
@@ -514,8 +539,8 @@ class TestTheRefusalIsHonest:
         """POSITIVE CONTROL for the row above."""
         _, rows = _build([_valid_tranche()], monkeypatch)
         assert rows[0][COL_REF] == "$30000.00000000"
-        assert rows[0][COL_MIN_REBUY] == "≤$29550.00000000"
-        assert rows[0][COL_STATUS] == "Need price ≤ OTD (+4.91%)"
+        assert rows[0][COL_MIN_REBUY] == "≤$29370.00000000"
+        assert rows[0][COL_STATUS] == "Need price ≤ OTD (+5.55%)"
 
     @pytest.mark.parametrize("value", REFUSED)
     def test_summary_and_row_never_disagree_on_the_age(

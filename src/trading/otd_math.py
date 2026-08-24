@@ -39,10 +39,35 @@ misconfiguration.
 This module is pure -- no imports from ``src.trading`` (avoids circular
 deps), no exchange calls, no state.
 
+WHERE THE INPUTS COME FROM IS PART OF THE ONE DEFINITION
+The arithmetic was single-sourced here in v3.25.8, and the READS were
+not. The Fold-Tranche panel did its own read, took the interval and NOT
+the fee, and printed a rebuy price above the one the executor applies --
+six false greens on live tranches, measured 2026-08-23 (GitHub issue
+#97). One definition of the arithmetic does not stop a caller feeding it
+different inputs, so ``minimum_opposing_trade_distance_pct_from_config`` below defines
+the read as well.
+
+WHICH CALLERS USE IT TODAY, AND WHICH DO NOT
+The Fold-Tranche panel (``gui/bot_live_settings.py``) calls it. The two
+executor sites -- the autonomous tick fold gate and the manual-rebalance
+refusal in ``scrumming_bot.py`` -- still spell the ``getattr`` pair
+inline. The reader reproduces their coercion exactly, quirk for
+quirk, and ``tests/test_fold_panel_asks_the_executor.py`` proves the
+agreement over all 1,707 live fold tranches rather than asserting it.
+
+THAT IS STILL TWO STATEMENTS OF ONE DEFAULT, AND IT IS NAMED, NOT
+HIDDEN. Routing those two sites through this reader is the obvious
+finish and is NOT done here: ``test_the_twin_is_the_pre_change_file``
+in ``tests/test_autonomous_fold_price_gate.py`` is a prior unit's
+byte-for-byte reversibility proof over ``scrumming_bot.py``, and any
+edit to that file breaks it. Re-homing the two reads is its own unit.
+
 Public API:
     minimum_opposing_trade_distance_pct(interval_pct, fee_pct) -> float
     fold_rebuy_factor_from_pct(otd_pct) -> float
     fold_rebuy_factor(interval_pct, fee_pct) -> float
+    minimum_opposing_trade_distance_pct_from_config(config) -> float
 
 FALSIFICATION: this module is wrong if (a)
 ``minimum_opposing_trade_distance_pct`` ever returns a value outside
@@ -101,3 +126,41 @@ def fold_rebuy_factor(interval_pct: float, fee_pct: float) -> float:
     """``minimum_opposing_trade_distance_pct`` expressed as a factor."""
     return fold_rebuy_factor_from_pct(
         minimum_opposing_trade_distance_pct(interval_pct, fee_pct))
+
+
+def minimum_opposing_trade_distance_pct_from_config(
+    config: object,
+) -> float:
+    """Return the OTD percentage a bot's own config asks for.
+
+    THIS FUNCTION IS THE PLACE A SURFACE ASKS. The Fold-Tranche panel
+    calls it, so no GUI code names either config field or either
+    default. A surface that repeats the `getattr` pair is a second
+    reader, and a second reader is how the panel came to omit the fee.
+
+    THE TWO EXECUTOR SITES IN `scrumming_bot` DO NOT CALL IT YET. See
+    the module docstring for why, and for what proves the agreement
+    meanwhile.
+
+    ``config`` is read by attribute only. No I/O, no state, and this
+    module still imports nothing from ``src.trading``.
+
+    THE COERCION IS REPRODUCED EXACTLY AS THE EXECUTOR SPELLS IT, quirk
+    included: `or 0.6` on the fee means a fee configured to exactly
+    0.0 is read as 0.6, because 0.0 is falsy. That is the live
+    behaviour of the gate that trades, so it is the behaviour every
+    surface must show. It is named here, not repaired here -- a
+    surface that disagreed with the executor about a zero fee would
+    be the very defect this function exists to end.
+
+    Raises ``TypeError``/``ValueError`` on a non-numeric config value,
+    for the reason `minimum_opposing_trade_distance_pct` states: what
+    the caller does about that is the caller's posture, and the live
+    callers deliberately differ. The tick falls back to an OTD of 0.0;
+    the manual rebalance refuses the fire; the panel falls back to no
+    price gate and still renders, because a raise there does not open
+    the Bot Settings dialog at all.
+    """
+    return minimum_opposing_trade_distance_pct(
+        getattr(config, "scrumming_interval_pct", 0) or 0,
+        getattr(config, "trading_fee_pct", 0.6) or 0.6)
