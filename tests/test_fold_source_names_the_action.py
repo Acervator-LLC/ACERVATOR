@@ -169,6 +169,30 @@ def table():
     # the last reference and Qt destroys the table mid-test.
     yield tables[0]
 
+    # TEARDOWN. See the same block in
+    # `tests/test_fold_panel_settles_after_a_clear.py` for the
+    # measurement: an undestroyed dialog here fails in a STRANGER's
+    # test, because `_open_dialogs(app)` in
+    # `test_sim_visuals_expand_reentrancy.py` takes element zero of
+    # every top-level QDialog in the process. Issue #101 holds the
+    # root cause.
+    #
+    # `deleteLater()` is deliberately NOT used: issue #96 measured that
+    # it moves ownership to C++ and the object then waits for an event
+    # `processEvents()` never delivers, so it PREVENTS the destruction
+    # it appears to request.
+    # `setParent(None)` alone is a NO-OP here: these widgets were never
+    # parented, and a parentless Qt widget is owned by Qt for the life
+    # of the process. Measured -- it left all 32 alive. The recipe that
+    # DOES destroy is the third row of issue #96's table: queue the
+    # delete, then DELIVER the event ourselves, because
+    # `processEvents()` does not deliver DeferredDelete.
+    from PySide6.QtCore import QCoreApplication, QEvent
+    for _w in (widget, dialog):
+        _w.close()
+        _w.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
 
 def _source_texts(table) -> list[str]:
     return [table.item(row, COL_SOURCE).text()

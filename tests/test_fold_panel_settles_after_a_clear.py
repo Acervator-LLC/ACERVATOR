@@ -287,6 +287,32 @@ def panel(tmp_path):
     # YIELD so every object above stays referenced for the whole test.
     yield _Panel(bot, manager, state_manager, dialog, tabs)
 
+    # TEARDOWN, and the recipe matters. Measured 2026-08-23: without it
+    # this fixture left 32 `BotLiveSettingsDialog` and 30 `QTabWidget`
+    # alive at session end, and
+    # `test_sim_visuals_expand_reentrancy.py::TestTheDialogIsDestroyed`
+    # then failed -- because `_open_dialogs(app)` returns EVERY
+    # top-level QDialog in the process and takes element zero, so it
+    # examined one of ours and reported its own subject as leaked. A
+    # leak here fails in a stranger's test; see issue #101.
+    #
+    # `deleteLater()` is NOT used, on purpose. Issue #96 measured that
+    # it CAUSES the leak: it moves ownership from Python to C++, and the
+    # object then waits for a DeferredDelete event that
+    # `QApplication.processEvents()` never delivers. Dropping the last
+    # Python reference destroys the widget; `deleteLater()` prevents it.
+    # `setParent(None)` alone is a NO-OP here: these widgets were never
+    # parented, and a parentless Qt widget is owned by Qt for the life
+    # of the process. Measured -- it left all 32 alive. The recipe that
+    # DOES destroy is the third row of issue #96's table: queue the
+    # delete, then DELIVER the event ourselves, because
+    # `processEvents()` does not deliver DeferredDelete.
+    from PySide6.QtCore import QCoreApplication, QEvent
+    for _w in (tabs, dialog):
+        _w.close()
+        _w.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
 
 # ══════════════════════════════════════════════════════════════════════
 # THE CONTROLS. Each one puts the tree back and must reproduce the
