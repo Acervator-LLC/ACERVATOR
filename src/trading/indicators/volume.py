@@ -190,7 +190,19 @@ class VolumeAnalysis:
         obv = self._obv(candles)
         obv_ema_s = _ema(obv, 5)
         obv_ema_l = _ema(obv, self.period)
-        obv_rising = obv_ema_s[-1] > obv_ema_l[-1]
+        # ``_ema`` has no value before its seed and says so with None
+        # (issue #99). Both reads here are the LAST entry and the guard
+        # above admits only ``len(candles) >= self.period + 5``, so both
+        # are real on every reachable path. The None test is what makes
+        # that a stated precondition instead of an assumption: with no
+        # EMA there is no OBV trend, and "not rising" is the abstention.
+        # It replaces a silent fabrication -- ``_ema`` used to hand back
+        # the RAW OBV relabelled as its own moving average on a short
+        # series, which made this line compare OBV against itself.
+        _obv_s = obv_ema_s[-1]
+        _obv_l = obv_ema_l[-1]
+        obv_rising = (_obv_s is not None and _obv_l is not None
+                      and _obv_s > _obv_l)
         obv_accel  = obv[-1] > obv[-2]          # OBV up this candle?
 
         # OBV divergence
