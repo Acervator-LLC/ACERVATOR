@@ -113,8 +113,8 @@ Key docs: [`sadp/SPEC-CORE.md`](sadp/SPEC-CORE.md) · [`sadp/ACERVATOR_HOP4.md`]
 **Requirements:** Python 3.11+
 
 ```bash
-git clone https://github.com/yourusername/acervator.git
-cd acervator
+git clone https://github.com/Acervator-LLC/ACERVATOR.git
+cd ACERVATOR
 
 # Core (required)
 pip install -r requirements.txt

@@ -1,7 +1,7 @@
 # Extractor Bot — refined concept and development plan
 
 **Scope.** This report covers `src/trading/extractor_bot.py` (1702 lines) and the capital-coordination modules it depends on. All repo paths are relative to
-``.
+`acervator_session25_CLOSE_hop5_v3_15_27/`.
 
 Design-document keys, all under `_archive/docs_audits_pre_2026_07_24/`:
 

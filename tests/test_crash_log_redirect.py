@@ -5,7 +5,7 @@ Not by reading code. `tests/conftest.py`'s live-tree guard failed a full
 suite run on 2026-08-07 and named the exact file it had modified:
 
     modified 1 pre-existing file(s) with no live Acervator process
-      ~\\.acervator_logs\\crash_20260807_064256.log
+      ~/.acervator_logs/crash_20260807_064256.log
 
 `main._get_crash_log_path` resolved `Path.home() / ".acervator_logs"`
 with no override, so any test that tripped an excepthook appended to a

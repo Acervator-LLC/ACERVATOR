@@ -1,5 +1,5 @@
 {
-  "target": "docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_good_widget.py",
+  "target": "docs/audits/2026-07-24_gui_docs_archetypes/gui_fixtures/known_good_widget.py",
   "passed": true,
   "tool_availability": {
     "gui-static": "ok",
@@ -17,7 +17,7 @@
     {
       "tool": "ruff",
       "severity": "low",
-      "file": "docs\\audits\\2026-07-24_gui_docs_archetypes\\gui_fixtures\\known_good_widget.py",
+      "file": "docs/audits/2026-07-24_gui_docs_archetypes/gui_fixtures/known_good_widget.py",
       "line": 28,
       "rule_id": "D107",
       "message": "Missing docstring in `__init__`"

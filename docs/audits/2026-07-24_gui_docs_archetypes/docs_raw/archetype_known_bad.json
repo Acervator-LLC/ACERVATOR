@@ -1,5 +1,5 @@
 {
-  "target": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_bad.md",
+  "target": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md",
   "passed": false,
   "tool_availability": {
     "proselint": "ok",
@@ -22,7 +22,7 @@
     {
       "tool": "proselint",
       "severity": "medium",
-      "file": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_bad.md",
+      "file": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md",
       "line": 1,
       "rule_id": "uncomparables",
       "message": "Comparison of an uncomparable: 'very unique' is not comparable."
@@ -30,7 +30,7 @@
     {
       "tool": "proselint",
       "severity": "medium",
-      "file": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_bad.md",
+      "file": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md",
       "line": 1,
       "rule_id": "weasel_words.very",
       "message": "Substitute 'damn' every time you're inclined to write 'very'; your editor will delete it and the writing will be just as it should be."
@@ -38,7 +38,7 @@
     {
       "tool": "proselint",
       "severity": "medium",
-      "file": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_bad.md",
+      "file": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md",
       "line": 1,
       "rule_id": "cliches.misc.garner",
       "message": "'At the end of the day' is a clich\u00e9"
@@ -46,7 +46,7 @@
     {
       "tool": "proselint",
       "severity": "medium",
-      "file": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_bad.md",
+      "file": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md",
       "line": 1,
       "rule_id": "industrial_language.corporate_speak",
       "message": "Minimize your use of corporate catchphrases like 'At the end of the day'."
@@ -54,7 +54,7 @@
     {
       "tool": "proselint",
       "severity": "medium",
-      "file": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_bad.md",
+      "file": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md",
       "line": 3,
       "rule_id": "misc.greylist",
       "message": "Use of 'utilize'. Do you know anyone who needs to utilize the word utilize?"
@@ -62,7 +62,7 @@
     {
       "tool": "proselint",
       "severity": "medium",
-      "file": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_bad.md",
+      "file": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md",
       "line": 3,
       "rule_id": "misc.greylist",
       "message": "Use of 'obviously'. This is obviously an inadvisable word to use."
@@ -70,7 +70,7 @@
     {
       "tool": "proselint",
       "severity": "medium",
-      "file": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_bad.md",
+      "file": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md",
       "line": 7,
       "rule_id": "weasel_words.very",
       "message": "Substitute 'damn' every time you're inclined to write 'very'; your editor will delete it and the writing will be just as it should be."
@@ -78,7 +78,7 @@
     {
       "tool": "proselint",
       "severity": "medium",
-      "file": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_bad.md",
+      "file": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md",
       "line": 11,
       "rule_id": "cliches.misc.write_good",
       "message": "'Needless to say' is a clich\u00e9"
@@ -86,7 +86,7 @@
     {
       "tool": "proselint",
       "severity": "high",
-      "file": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_bad.md",
+      "file": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md",
       "line": 20,
       "rule_id": "typography.symbols.curly_quotes",
       "message": "Use curly quotes \u201c\u201d, not straight quotes \"\"."
@@ -94,7 +94,7 @@
     {
       "tool": "proselint",
       "severity": "medium",
-      "file": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_bad.md",
+      "file": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md",
       "line": 23,
       "rule_id": "weasel_words.very",
       "message": "Substitute 'damn' every time you're inclined to write 'very'; your editor will delete it and the writing will be just as it should be."
@@ -102,7 +102,7 @@
     {
       "tool": "structure",
       "severity": "medium",
-      "file": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_bad.md",
+      "file": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md",
       "line": 1,
       "rule_id": "DOC001",
       "message": "No H1 heading (single '# Title' line) found; the doc has no anchor."
@@ -110,7 +110,7 @@
     {
       "tool": "structure",
       "severity": "low",
-      "file": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_bad.md",
+      "file": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md",
       "line": 1,
       "rule_id": "DOC003",
       "message": "No Diataxis-mode signal in the document's opening 500 chars (Tutorial / How-to / Reference / Explanation). Consider stating the doc's mode explicitly."

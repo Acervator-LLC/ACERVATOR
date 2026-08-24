@@ -76,3 +76,17 @@ id_rsa*
 # pre-push hook. Never commit it: it is per-clone and committing it would
 # change the very sha it certifies.
 .gate_stamp.json
+
+# ── Per-clone harness state (regenerated at runtime) ────────────
+# The touchset pin and island ledger both record an ABSOLUTE machine
+# root (like .gate_stamp.json above). Committing them baked one Windows
+# user's path into the repo; they are per-clone state, not source, and
+# tools/touchset.py + tools/island.py rewrite them on the next run.
+tools/.touchset_pin.json
+tools/.island_ledger.jsonl
+
+# ── Local Claude Code settings (per-user, incl. backups) ────────
+# settings.local.json is personal, and *.pre_consolidation_* etc. are
+# transient snapshots of it. Only settings.json is shared.
+.claude/settings.local.json
+.claude/settings.local.json.*

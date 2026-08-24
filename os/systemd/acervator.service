@@ -1,6 +1,6 @@
 [Unit]
 Description=Acervator Accumulation Trading Platform
-Documentation=https://github.com/yourusername/acervator
+Documentation=https://github.com/Acervator-LLC/ACERVATOR
 # Must have network and time before we touch any exchange
 After=network-online.target time-sync.target
 Wants=network-online.target time-sync.target

@@ -4691,7 +4691,7 @@ First Session 22 addendum. Operator reported BUILD.py failing on Windows 11 / Py
 
 ### Operator's bug report
 
-PyInstaller error: `Unable to find '~\...\acervator_session20_close_v3_13_7\data\historical' when adding binary and data files.`
+PyInstaller error: `Unable to find '<repo root>/data/historical' when adding binary and data files.`
 
 ### Diagnosis — three issues
 
@@ -4738,7 +4738,7 @@ Session 21 Chunk 2's grep used `--include=*.py --include=*.md --include=*.json` 
 
 ### Immediate operator workaround (for current stuck build)
 
-Create empty folder at `~\...\acervator_session20_close_v3_13_7\data\historical` — PyInstaller will then bundle the empty dir and succeed. App falls back to runtime-downloaded cache + embedded `ASSET_PERIODS` anchors.
+Create empty folder at `<repo root>/data/historical` — PyInstaller will then bundle the empty dir and succeed. App falls back to runtime-downloaded cache + embedded `ASSET_PERIODS` anchors.
 
 ### Key insight captured
 

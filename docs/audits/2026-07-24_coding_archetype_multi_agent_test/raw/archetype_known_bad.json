@@ -1,5 +1,5 @@
 {
-  "target": "docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+  "target": "docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_bad.py",
   "passed": false,
   "tool_availability": {
     "mypy": "ok",
@@ -19,7 +19,7 @@
     {
       "tool": "bandit",
       "severity": "low",
-      "file": "docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "file": "docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_bad.py",
       "line": 17,
       "rule_id": "B404",
       "message": "Consider possible security implications associated with the subprocess module."
@@ -27,7 +27,7 @@
     {
       "tool": "bandit",
       "severity": "low",
-      "file": "docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "file": "docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_bad.py",
       "line": 20,
       "rule_id": "B105",
       "message": "Possible hardcoded password: 'hunter2'"
@@ -35,7 +35,7 @@
     {
       "tool": "bandit",
       "severity": "low",
-      "file": "docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "file": "docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_bad.py",
       "line": 29,
       "rule_id": "B101",
       "message": "Use of assert detected. The enclosed code will be removed when compiling to optimised byte code."
@@ -43,7 +43,7 @@
     {
       "tool": "vulture",
       "severity": "high",
-      "file": "docs\\audits\\2026-07-24_coding_archetype_multi_agent_test\\fixtures\\known_bad.py",
+      "file": "docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_bad.py",
       "line": 17,
       "rule_id": "dead-code",
       "message": "unused import 'subprocess'"

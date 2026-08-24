@@ -1,7 +1,7 @@
 # Unit Sizing — report and SKILL
 
 Deliverable saved for extraction at
-`<scratchpad>/unit_sizing_SKILL.md`
+`<session scratchpad>/unit_sizing_SKILL.md`
 (148 lines; `tools.harness.docs_archetype` reports `passed=True`, 28 findings, no high/critical).
 
 ---

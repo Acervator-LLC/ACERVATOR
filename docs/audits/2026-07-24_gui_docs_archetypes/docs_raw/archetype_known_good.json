@@ -1,5 +1,5 @@
 {
-  "target": "docs\\audits\\2026-07-24_gui_docs_archetypes\\docs_fixtures\\known_good.md",
+  "target": "docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_good.md",
   "passed": true,
   "tool_availability": {
     "proselint": "ok",

@@ -279,7 +279,7 @@ stale-binary guard reports it. Run `python main.py` from source or rebuild.
 | 13 | profiler butterfly view | open, 0 hits in code |
 | 14 | decouple stack SPAWN from USE | open |
 | 15 | compounding distribution modes | open |
-| 16 | upload to GitHub | **DONE.** `origin` = `github.com/ekthelius/ACERVATOR---THE-ACCUMULATION-TRADING-PLATFORM`, `be6aa04 initial upload` |
+| 16 | upload to GitHub | **DONE.** `origin` = `github.com/Acervator-LLC/ACERVATOR`, `be6aa04 initial upload` |
 | 17 | System Status tab | open, blocked behind 10.3/10.4 |
 | 18 | History tab Gates column | open, he placed it LAST |
 | 19 | tranche merge secondary rule | open |

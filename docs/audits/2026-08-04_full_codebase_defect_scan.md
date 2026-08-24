@@ -775,7 +775,7 @@ Two independent methods agree. No phantom files were reported — every path in 
 
 ### `src/design_system.py` (563 lines) — NEVER ASSIGNED, NEVER READ
 
-Absolute path: `src/design_system.py`
+Repo path: `src/design_system.py`
 
 **Why it fell through:** classic partition-boundary orphan. It is the only non-`__init__` module sitting directly at `src/` top level. `periphery` swept `src/__init__.py`, `src/utils/`, `src/competition/`, `src/stocks/` — it took the top-level `__init__.py` but not its sibling. `gui-rest` scanned the *similarly named* `src/gui/design_system.py` (256 lines), which likely made the gap invisible to a name-based reconciliation.
 
@@ -865,5 +865,5 @@ Line volume actually covered per partition (primary assignment, not counting cor
 The claim "we scanned the whole codebase" is **not yet a fact.** It becomes one after `src/design_system.py` is scanned — and that file is not an empty stub; it is a live-looking, well-documented, zero-consumer module that is exactly the class of defect this audit was commissioned to find.
 
 Scratchpad artifacts (both file lists, for reproduction):
-- `<scratchpad>/actual.txt`
-- `<scratchpad>/reported_sorted.txt`
+- `<session scratchpad>/actual.txt`
+- `<session scratchpad>/reported_sorted.txt`

@@ -56,45 +56,8 @@
     ]
   },
   "permissions": {
-    "defaultMode": "bypassPermissions",
-    "allow": [
-      "Read(~/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION)",
-      "Read(~/**)",
-      "Read(~/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
-      "Read(~\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION)",
-      "Read(~/**)",
-      "Edit(~/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION)",
-      "Edit(~/**)",
-      "Edit(~/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
-      "Edit(~\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION)",
-      "Edit(~/**)",
-      "Write(~/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION)",
-      "Write(~/**)",
-      "Write(~/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
-      "Write(~\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION)",
-      "Write(~/**)",
-      "Glob(~/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION)",
-      "Glob(~/**)",
-      "Glob(~/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
-      "Glob(~\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION)",
-      "Glob(~/**)",
-      "Grep(~/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION)",
-      "Grep(~/**)",
-      "Grep(~/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/**)",
-      "Grep(~\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION)",
-      "Grep(~/**)",
-      "Bash",
-      "Read",
-      "Edit",
-      "Write",
-      "Glob",
-      "Grep",
-      "Bash(:*)"
-    ],
-    "additionalDirectories": [
-      "~/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION",
-      "~/AppData/Local/Temp/claude"
-    ]
-  },
-  "skipDangerousModePermissionPrompt": true
+    "defaultMode": "default",
+    "allow": [],
+    "additionalDirectories": []
+  }
 }

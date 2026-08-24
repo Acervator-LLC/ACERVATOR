@@ -20,7 +20,7 @@ Verification complete. Every load-bearing line re-read from source; live figures
 
 # END-TO-END TRACE: SCRUM → target balance does not move
 
-**Verification basis.** All line numbers below are from the working-tree file `src\trading\scrumming_bot.py` (11,085 lines, 602,017 bytes, mtime 2026-08-06 17:27), which I re-read directly. I executed no project code and constructed no project classes; the two scripts I ran open `bot_state.json` with mode `"r"` and never write.
+**Verification basis.** All line numbers below are from the working-tree file `src/trading/scrumming_bot.py` (11,085 lines, 602,017 bytes, mtime 2026-08-06 17:27), which I re-read directly. I executed no project code and constructed no project classes; the two scripts I ran open `bot_state.json` with mode `"r"` and never write.
 
 **Caveat that constrains every runtime claim below — this is new and the segment map did not have it.** The running process is executing **older code than the source file on disk**. All 7,957 `HOLD FOLD` lines in the live window carry the pre-v3.24.43 wording (`"TA=BEARISH — waiting for BEARISH"`), including lines written at `2026-08-07T01:06:46Z` — after the source file's mtime of `2026-08-07T00:27Z`. Zero lines carry the post-fix wording emitted by :8520-8522. So the log corroborates the *shape* of the failure and the *state file* it produced, but it cannot validate specific current-source line numbers. Static claims are anchored to source; runtime claims are labelled.
 

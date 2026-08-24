@@ -1,6 +1,6 @@
 # Acervator Review — Simulator + Nuclear 2.0 Pass, and Codebase/Optimization Audit
 
-**Repo:** `~/acervator_session25_CLOSE_hop5_v3_15_27` · v3.24.31 · 1098 tests green
+**Repo:** `acervator_session25_CLOSE_hop5_v3_15_27` · v3.24.31 · 1098 tests green
 **Date:** 2026-08-05
 
 **Evidence legend** — every item below cites `file:line` from code that was read.

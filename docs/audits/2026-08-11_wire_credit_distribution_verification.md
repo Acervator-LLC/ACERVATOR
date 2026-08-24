@@ -80,7 +80,7 @@ retrospectively falsify the money half — which is what it did here.
 > sit on tranches that exist.
 
 Implemented in
-`<scratchpad>/wcv_check.py`
+`<session scratchpad>/wcv_check.py`
 in two modes, because they catch different defects:
 
 - **Self-consistency** needs only the state. It sees a doubled credit, a
@@ -398,7 +398,7 @@ autonomous scrum.
 ## Evidence
 
 Scripts and raw output under
-`<scratchpad>/`:
+`<session scratchpad>/`:
 
 | script | output | purpose |
 |---|---|---|
