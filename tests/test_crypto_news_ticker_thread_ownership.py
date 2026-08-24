@@ -176,25 +176,50 @@ class TestStopIsBounded:
         assert ticker._worker is None
 
     def test_stop_abandons_rather_than_destroys_an_unstoppable_thread(
-            self, monkeypatch, ticker, qt_app, caplog):
+            self, monkeypatch, ticker, qt_app, capture_log):
         """The pathological branch, driven rather than assumed.
 
         A FAILURE HERE MEANS a thread that will not stop is destroyed
         anyway, which is the abort.
+
+        ``capture_log`` rather than ``caplog``, for the reason
+        ``tests/conftest.py`` gives at the fixture and the sibling
+        defusedxml file repeats: ``logging_engine`` sets
+        ``acervator.propagate = False``, so once ANY earlier test has
+        built the engine, no record from this logger reaches the root
+        handler ``caplog`` installs. This test shipped with ``caplog``
+        and was therefore green alone and green as a file -- neither
+        builds the engine -- and red at file 69 of the full run. Worse
+        than red: for as long as it was green it could not fail, so it
+        asserted nothing.
+
+        The capture is taken at TWO nodes on purpose. The inner one is
+        the emitting logger, and proves the line is emitted at all. The
+        outer one is ``acervator``, which is the node ``logging_engine``
+        hangs its file handlers on -- so it proves the record still
+        REACHES the operator's crash watchdog, rather than only that
+        some logger somewhere saw it.
         """
         blocker = _Blocker(honours_stop=False, limit_s=4.0)
         monkeypatch.setattr(cnt, "fetch_all", blocker)
         _run_fetch(ticker, blocker, qt_app)
-        with caplog.at_level("ERROR", logger="acervator.crypto_news_ticker"):
-            ticker.stop()
+        with capture_log("acervator") as at_engine_node:
+            with capture_log("acervator.crypto_news_ticker") as at_emitter:
+                ticker.stop()
         thread = ticker._worker_thread
         assert thread is not None, (
             "the reference was dropped, so force_refresh can start a "
             "second fetch beside the first -- issue #58 tail")
         assert Shiboken.isValid(thread), "a running thread was destroyed"
         assert thread.isRunning()
-        assert any("did not stop" in r.getMessage() for r in caplog.records), (
+        assert any("did not stop" in r.getMessage() for r in at_emitter), (
             "the abandon was silent; the watchdog gets nothing to read")
+        assert any("did not stop" in r.getMessage()
+                   for r in at_engine_node), (
+            "the abandon was logged but does not propagate to the "
+            "`acervator` node, where logging_engine attaches the "
+            "handler that writes ~/.acervator_logs/console/system.log. "
+            "The watchdog would still get nothing to read.")
         assert thread.wait(6000)
 
     def test_force_refresh_refuses_a_second_fetch_after_a_failed_stop(
