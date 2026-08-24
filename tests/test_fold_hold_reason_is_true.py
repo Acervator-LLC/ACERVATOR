@@ -28,6 +28,16 @@ enforced; naming it changes no behaviour, and no gate is moved. Whether
 that floor belongs where it is remains an open strategy question for the
 operator and is deliberately untouched.
 
+2026-08-24, ISSUE #102. Half of that question is now answered, and the
+answer was that the floor was not being enforced at all on one arm. The
+BB-priority arm added 0.30 to `eff_confidence` before comparing it
+against 0.25, so on that arm the conjunct read `conf >= -0.05` and
+refused nothing. The gate site therefore reads `_eff_conf_floor` now:
+`_TA_CONFIDENCE_FLOOR` normally, `_BB_PRIORITY_CONFIDENCE_FLOOR` on the
+arm. The three source-level pins in `TestTheFloorIsNamed` were RESTATED
+for the new name rather than deleted, and two were added -- one that
+both floors can refuse, one that no addition reaches the measurement.
+
 These tests exercise the message-construction logic against the real
 constant rather than driving `tick()`, which needs a live ticker, a
 populated TA engine and an exchange. What they pin is that no input
@@ -45,7 +55,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.trading.scrumming_bot import _TA_CONFIDENCE_FLOOR  # noqa: E402
+from src.trading.scrumming_bot import (  # noqa: E402
+    _BB_PRIORITY_CONFIDENCE_FLOOR, _TA_CONFIDENCE_FLOOR)
 from src.trading.ta_engine import SignalDirection  # noqa: E402
 
 SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(
@@ -90,16 +101,63 @@ class TestTheFloorIsNamed:
 
     def test_the_bare_literal_is_gone_from_the_gate(self):
         """The point of naming it is that it becomes greppable. A stray
-        inlined 0.25 would drift away from the constant silently."""
+        inlined 0.25 would drift away from the constant silently.
+
+        RESTATED 2026-08-24, issue #102. The gate used to read
+        ``eff_confidence >= _TA_CONFIDENCE_FLOOR`` at both sites. It now
+        reads ``eff_confidence >= _eff_conf_floor``, a local that IS
+        ``_TA_CONFIDENCE_FLOOR`` on every tick except the BB-priority
+        arm, where it is ``_BB_PRIORITY_CONFIDENCE_FLOOR``. What this
+        test pins is unchanged -- no bare literal reaches the gate -- so
+        it pins the new name and, below, that both constants are still
+        the only things the local can be.
+        """
         seg = _gate_source()
         assert "eff_confidence >= 0.25" not in seg
-        assert "eff_confidence >= _TA_CONFIDENCE_FLOOR" in seg
+        assert "eff_confidence >= _eff_conf_floor" in seg
+        assert ("_eff_conf_floor = (_BB_PRIORITY_CONFIDENCE_FLOOR "
+                "if _bb_priority_arm" in seg)
+        assert "else _TA_CONFIDENCE_FLOOR)" in seg
 
     def test_both_directions_use_it(self):
         """The floor gates SCRUM as well as FOLD. Fixing one side only
         would leave the other lying."""
         seg = _gate_source()
-        assert seg.count("eff_confidence >= _TA_CONFIDENCE_FLOOR") == 2
+        assert seg.count("eff_confidence >= _eff_conf_floor") == 2
+
+    def test_the_priority_floor_can_still_refuse(self):
+        """ISSUE #102, and the reason the local exists at all.
+
+        The BB-priority arm used to ADD 0.30 to the measurement and then
+        compare the sum against 0.25. On a quantity whose indicator
+        output is bounded [0, 1] that is ``conf >= -0.05``: the conjunct
+        had no false case. A floor that cannot refuse is not a floor.
+
+        Both floors must therefore be strictly positive, and the
+        priority floor must be the LOWER of the two -- it is a favour,
+        not a promotion.
+        """
+        assert _TA_CONFIDENCE_FLOOR > 0.0
+        assert _BB_PRIORITY_CONFIDENCE_FLOOR > 0.0
+        assert _BB_PRIORITY_CONFIDENCE_FLOOR < _TA_CONFIDENCE_FLOOR
+        # A reading of exactly 0.0 -- the case the issue names -- is
+        # refused on both arms.
+        assert not 0.0 >= _BB_PRIORITY_CONFIDENCE_FLOOR
+        assert not 0.0 >= _TA_CONFIDENCE_FLOOR
+
+    def test_the_measurement_is_not_edited_before_the_gate(self):
+        """The favour lands on the threshold, never on the reading.
+
+        POSITIVE CONTROL for the repair. If a later change reinstates an
+        addition onto ``eff_confidence`` inside the priority block, the
+        gate stops judging what the indicators measured and the nine
+        diagnostics below it start printing a confidence no indicator
+        produced. That is the half of the defect the floor value alone
+        does not cover.
+        """
+        seg = _gate_source()
+        assert "eff_confidence + _BB_PRIORITY_SKEW" not in seg
+        assert "eff_confidence = max(" not in seg
 
 
 class TestTheHoldReasonIsNeverSelfContradicting:

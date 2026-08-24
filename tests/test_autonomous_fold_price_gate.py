@@ -218,12 +218,45 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 # ``_pre_change_source`` returns zero orphans, and the CRLF rendering
 # reconstructs the identical text.
 #
+# RE-BASED A FOURTH TIME 2026-08-24, issue #102, same tripwire, same
+# reason. One repair landed in ``scrumming_bot.py`` outside every span
+# this file reverses, so it reaches the digest:
+#
+#   4. the BB-priority arm could not refuse. ``tick()`` added +0.30 to
+#      ``eff_confidence`` and then compared the sum against the 0.25
+#      ``_TA_CONFIDENCE_FLOOR``. On a quantity bounded [0, 1] that is
+#      ``conf >= -0.05``: no reading fails it, including exactly 0.0,
+#      so the confidence conjunct was the hard override the operator
+#      refused by name on 2026-04-26. The addition also travelled --
+#      nine sites in ``tick()`` printed the inflated number rather than
+#      the measured one. The repair leaves ``eff_confidence`` alone and
+#      relaxes the THRESHOLD on that arm instead, proportionally, to
+#      ``_BB_PRIORITY_CONFIDENCE_FLOOR`` = 0.25 / 1.30.
+#
+# WHAT THIS RE-BASE IS. Two module-scope constants beside
+# ``_TA_CONFIDENCE_FLOOR``, and the gate block in ``tick()`` rewritten
+# in place. +86 lines, in two bands: +68 from :574 through :7662 and
+# +86 from :9316 down. The unit adds no method and no
+# ``self._main_lots.append({``, so no anchor is new and no ordinal
+# count moved. ``CITATION_ANCHORS`` in
+# ``tests/test_extractor_tranche_containment.py`` was re-anchored in
+# the SAME change -- 42 anchors, all moved, all read back out of the
+# post-change file -- and that file's 121 tests pass.
+#
+# The 74 self-citation tokens inside ``scrumming_bot.py`` moved by the
+# same two bands. ``:488-494`` did not: pre-change 488-494 is the
+# phantom-timeframe filter, so that token names a spec document rather
+# than this file, and a cross-document reference is not shifted.
+#
+# ``_pre_change_source`` returns zero orphans.
+#
 # The prior digests, kept so the chain is auditable:
 #   986d79ed7785015d12a57bfc877ba1b078027d93b2f7655ec2fbc78a90ef2082
 #   29276909ff46dce02bc650de45802c779539adb7093b010cd875ef376201e9a0
 #   4b5c51bde7c54836dcd935c85c76ee06757e1fe8b79edd2ce1febb0831ad3c75
+#   ffe8cebd69cbc2eac674d0a8696efdca3542112fe1606bc0dcd3546297c1288f
 PRE_CHANGE_SHA256 = (
-    "ffe8cebd69cbc2eac674d0a8696efdca3542112fe1606bc0dcd3546297c1288f")
+    "d4edd46f7ce7d04ef716255fc36976056f75a4d938351b3c0ff9388932cd5aef")
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE.")

@@ -1246,37 +1246,37 @@ def test_POSITIVE_CONTROL_the_append_scanner_finds_a_real_append():
 # ── D8 and D9: citations must point at what they claim ──────────────
 
 CITATION_ANCHORS: dict[int, str] = {
-    574: '# Invariant: sum(l["units"] for l in _main_lots)',
-    1664: 'def _apply_fold_target_growth(self, accum_profit: float,',
-    1738: '_cycle_cap_growth = self._anchor_target_balance * (_cap_pct',
-    2414: 'self._target_balance = float(self._target_balance) + u',
-    2418: 'self.config.target_balance = self._target_balance',
-    2510: 'def _positive_observed_quantity(',
-    2572: 'def _finite_state_number(',
-    2617: 'def _sum_lot_units(lots: Any) -> tuple[float | None, str | None]:',
-    3489: 'fill_price = await self._execute_buy(',
-    3534: 'self._main_lots.append({',
-    4655: 'return float(self._current_holdings) * float(price)',
-    4750: 'return self._anchor_target_balance * mult',
-    5722: '_tracked_units_bootstrap = sum(',
-    5727: 'self._current_holdings = min(',
-    6401: 'float(getattr(_bal1, "total", 0)',
-    6443: 'getattr(_bal1, "absent", False) or',
-    6664: 'self._current_holdings = sum(',
-    6831: '# _main_lots and derives _current_holdings from that source',
-    6837: 'self._current_holdings * ticker.last',
-    7604: 'entry_fill = await self._execute_buy(',
-    7627: 'self._main_lots.append({',
-    7662: 'delta = current_value - self._target_balance',
-    9316: 'price <= tranche["initial_buy_price"]',
-    9584: '_patent_only_eligible = sum(',
-    9845: '# MEM-171 / ADR-004 patent invariant is NOT abandoned in',
-    9857: 'if ticker.last <= float(t.get("ref", 0)) * _otd_factor',
-    10064: 'buy_fill = await self._execute_buy(',
-    10121: 'self._main_lots.append({',
-    10573: 'hedge_fill = await self._execute_buy(',
-    10607: 'self._main_lots.append({',
-    11524: 'async def _reconcile_holdings(self, reason:',
+    642: '# Invariant: sum(l["units"] for l in _main_lots)',
+    1732: 'def _apply_fold_target_growth(self, accum_profit: float,',
+    1806: '_cycle_cap_growth = self._anchor_target_balance * (_cap_pct',
+    2482: 'self._target_balance = float(self._target_balance) + u',
+    2486: 'self.config.target_balance = self._target_balance',
+    2578: 'def _positive_observed_quantity(',
+    2640: 'def _finite_state_number(',
+    2685: 'def _sum_lot_units(lots: Any) -> tuple[float | None, str | None]:',
+    3557: 'fill_price = await self._execute_buy(',
+    3602: 'self._main_lots.append({',
+    4723: 'return float(self._current_holdings) * float(price)',
+    4818: 'return self._anchor_target_balance * mult',
+    5790: '_tracked_units_bootstrap = sum(',
+    5795: 'self._current_holdings = min(',
+    6469: 'float(getattr(_bal1, "total", 0)',
+    6511: 'getattr(_bal1, "absent", False) or',
+    6732: 'self._current_holdings = sum(',
+    6899: '# _main_lots and derives _current_holdings from that source',
+    6905: 'self._current_holdings * ticker.last',
+    7672: 'entry_fill = await self._execute_buy(',
+    7695: 'self._main_lots.append({',
+    7730: 'delta = current_value - self._target_balance',
+    9402: 'price <= tranche["initial_buy_price"]',
+    9670: '_patent_only_eligible = sum(',
+    9931: '# MEM-171 / ADR-004 patent invariant is NOT abandoned in',
+    9943: 'if ticker.last <= float(t.get("ref", 0)) * _otd_factor',
+    10150: 'buy_fill = await self._execute_buy(',
+    10207: 'self._main_lots.append({',
+    10659: 'hedge_fill = await self._execute_buy(',
+    10693: 'self._main_lots.append({',
+    11610: 'async def _reconcile_holdings(self, reason:',
     # 2026-08-13 re-anchor, U2. ONE insertion into scrumming_bot.py --
     # the two units parsers, the block that widens the audited figure
     # from the scalar to the lot book, and the coerced rescale write --
@@ -1334,11 +1334,11 @@ CITATION_ANCHORS: dict[int, str] = {
     # the three lines it replaced, because one added line above the
     # drift-down branch would have moved every anchor below it a
     # second time.
-    11793: 'if exchange_units < internal_units - 1e-9:',
-    11815: 'self._current_holdings = exchange_units',
-    11817: '# Drift UP. Operator directive 2026-08-22, verbatim:',
-    11849: '_adopt = min(exchange_units, _claimable)',
-    12070: 'async def _execute_manual_rebalance(',
+    11879: 'if exchange_units < internal_units - 1e-9:',
+    11901: 'self._current_holdings = exchange_units',
+    11903: '# Drift UP. Operator directive 2026-08-22, verbatim:',
+    11935: '_adopt = min(exchange_units, _claimable)',
+    12156: 'async def _execute_manual_rebalance(',
     # 2026-08-15 re-anchor, the nan-ladder unit. ONE insertion, +104
     # lines, entirely inside the U3 gate block in
     # `_execute_manual_rebalance`: the ref filter that replaced the bare
@@ -1367,12 +1367,12 @@ CITATION_ANCHORS: dict[int, str] = {
     # the source, once by `ast.literal_eval` of the dict itself -- and
     # both read 42. The stale number was the work order's, and it is
     # recorded here so the next reader does not trust it either.
-    13031: 'self._main_lots.append({',
-    13048: 'self._main_lots.append({',
-    13057: 'self._current_holdings += fill_amount',
-    14697: 'async def _execute_buy(',
-    15174: 'self._current_holdings += amount',
-    15299: 'def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:',
+    13117: 'self._main_lots.append({',
+    13134: 'self._main_lots.append({',
+    13143: 'self._current_holdings += fill_amount',
+    14783: 'async def _execute_buy(',
+    15260: 'self._current_holdings += amount',
+    15385: 'def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:',
     # 2026-08-20 re-anchor, ISSUE #21 -- the capital-reservation grant
     # postcondition. ONE insertion into `scrumming_bot.py`, +47 lines,
     # entirely inside the success branch of
@@ -1402,6 +1402,36 @@ CITATION_ANCHORS: dict[int, str] = {
     # `tests/test_autonomous_fold_price_gate.py` rewrites EVERY token in
     # the file through its reversal map and its pre-change digest goes
     # red on any token that was left behind.
+    # 2026-08-24 re-anchor, ISSUE #102 -- the BB-priority arm stops
+    # editing the confidence and relaxes the floor instead. TWO
+    # insertions into `scrumming_bot.py`: `_BB_PRIORITY_SKEW` and the
+    # derived `_BB_PRIORITY_CONFIDENCE_FLOOR`, placed beside
+    # `_TA_CONFIDENCE_FLOOR` at module scope, and the rewritten gate
+    # block in `tick()`.
+    #
+    # TWO BANDS, and they are clean: +68 from :574 through :7662, +86
+    # from :9316 down. 42 anchors moved, 0 did not, and NO anchor is
+    # new -- the unit adds no method and no `_main_lots.append({`.
+    #
+    # Derived the same way as every note above: anchor ordinal plus
+    # monotonic shift, never difflib. Each anchor's occurrence count in
+    # the pre-change file located the SAME occurrence in the post-change
+    # file, which still matters because `self._main_lots.append({`
+    # occurs seven times. Shifts were required non-negative and
+    # non-decreasing in cited order, and every rewritten line was read
+    # back out of the post-change file to confirm it holds the text
+    # recorded beside it. Zero violations.
+    #
+    # THE PROSE CITATIONS INSIDE `scrumming_bot.py` MOVED TOO, in the
+    # same unit and by the same two bands: 74 of the 75 self-citation
+    # tokens. The 75th is `:488-494` at `:1759` ("the drain the spec at
+    # :488-494 has always described"). Pre-change 488-494 is the
+    # phantom-timeframe filter, so that token names a SPEC DOCUMENT and
+    # not this file; a cross-document reference is not shifted. It is
+    # named here rather than moved.
+    #
+    # `test_POSITIVE_CONTROL_the_citation_checker_catches_a_shifted_line`
+    # carries the SAME number in its body, so it moved from 574 to 642.
 }
 
 # Every method whose prose is allowed to cite a line. v3.25.7 widened
@@ -1470,7 +1500,7 @@ def test_every_cited_number_has_an_anchor():
 def test_POSITIVE_CONTROL_the_citation_checker_catches_a_shifted_line():
     """The checker must fail on a number that no longer holds its token."""
     lines = _source_lines()
-    lineno = 574
+    lineno = 642
     anchor_text = '# Invariant: sum(l["units"] for l in _main_lots)'
     assert anchor_text in lines[lineno - 1]
     assert anchor_text not in lines[lineno]
