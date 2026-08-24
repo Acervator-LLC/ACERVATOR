@@ -367,12 +367,15 @@ class TestTheRunCanNameTheDataItConsumed:
 
     def test_the_window_pin_carries_the_tapes_own_first_and_last_stamp(
             self, run: _Run) -> None:
-        """It read `self._exchange.clock.timestamps`.
+        """Name the tape's first and last stamp, not None.
 
-        `clock` was `FleetSimExchange`'s. `CCXTConnector` has none, so
-        the pin reported `first_ts=None last_ts=None` on every healthy
-        run — a run that cannot say what data it consumed cannot be
-        re-checked against it.
+        The pin read `getattr(self._exchange, "clock", None)`. No
+        exchange this controller has held carries a `clock`:
+        `FleetSimExchange` named it `master_clock`, and
+        `CCXTConnector`, which replaced it in v3.24.84, has no clock at
+        all. So the pin reported `first_ts=None last_ts=None` on every
+        healthy run since it was written, and a run that cannot say
+        what data it consumed cannot be re-checked against it.
         """
         assert run.window is not None, (
             "no window_played record was emitted, so this check has no "

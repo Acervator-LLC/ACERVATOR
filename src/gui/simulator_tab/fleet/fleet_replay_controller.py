@@ -2081,14 +2081,19 @@ class FleetReplayController:
                 # say what data it consumed cannot be re-checked.
                 #
                 # ISSUE #110 SWEEP -- ASKS THE TAPE. This read
-                # `self._exchange.clock.timestamps`, which was
-                # `FleetSimExchange`'s shape. `self._exchange` is a
-                # `CCXTConnector` since v3.24.84 and carries no
-                # `clock`, so `getattr` returned None, `_ts` fell to
-                # `[]`, and this pin reported
-                # `first_ts=None last_ts=None` on EVERY healthy run --
-                # a run that could not say what data it consumed, which
-                # is the one thing the comment above demands.
+                # `getattr(self._exchange, "clock", None)`, and NO
+                # exchange this controller has ever held carries a
+                # `clock`. `FleetSimExchange` named it `master_clock`
+                # (sim_exchange.py:247) and `CCXTConnector`, which
+                # replaced it in v3.24.84, has no clock at all. So
+                # `getattr` returned None, `_ts` fell to `[]`, and this
+                # pin has reported `first_ts=None last_ts=None` on
+                # EVERY healthy run since it was written -- a run that
+                # cannot say what data it consumed, which is the one
+                # thing the comment above demands.
+                #
+                # Older than the hand-over, and the same failure class:
+                # a `getattr` default standing in for data it never had.
                 _first = _last = None
                 try:
                     if self._tape is not None:
