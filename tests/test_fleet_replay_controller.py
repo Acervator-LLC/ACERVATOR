@@ -388,5 +388,17 @@ def test_unanchored_run_evaluates_every_candle():
         await ctrl.stopped_event.wait()
 
     asyncio.run(run())
+    # Issue #109 — the positive anchor comes FIRST.
+    #
+    # `candles_skipped == 0` on its own is a negative assertion: a
+    # controller that played nothing at all reports zero skipped and
+    # passes. That is the shape that let a Simulator with no
+    # initialised bots and no trades read as healthy for nine months.
+    # "Evaluated everything" is only a claim if something was
+    # evaluated, so the count of candles PLAYED is asserted before the
+    # count of candles skipped.
+    assert ctrl.progress.candles_played >= 1, (
+        "the controller played no candles, so 'skipped nothing' says "
+        "nothing about whether it evaluates everything")
     assert ctrl.progress.candles_skipped == 0, (
         "default must evaluate everything")
