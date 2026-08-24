@@ -32,7 +32,10 @@ Parked surplus $14.35. Every bot runs `max_target_growth_pct = 1.0`.
 
 ## Defect 1 — a top-up destroys accrued growth
 
-Status: LIVE. The operator hit this repeatedly and attributed it elsewhere.
+Status: FIXED in v3.25.9. Re-verified 2026-08-24 by cold read.
+`set_target_balance_live` now compares against the anchor. The method
+docstring carries the IMU worked example below. This section is kept as
+the record of the defect, not as an open item.
 
 `set_target_balance_live` at `src/trading/scrumming_bot.py:1571` reads:
 
@@ -60,7 +63,11 @@ which matches the 2026-07-26 directive.
 
 ## Defect 2 — the growth cap never compounds
 
-Status: LIVE. This is the operator report.
+Status: LIVE, re-verified 2026-08-24. Tracked as a GitHub issue.
+Four sites still read the anchor, not three: `scrumming_bot.py` lines
+1858, 2107, 10131 and 10423. Fleet re-measured the same day: 35 of 38
+bots carry accrued growth, $92.24 fleet-wide, $13.37 parked behind the
+frozen cap. IMU is +27.1% and still caps each Fold at $0.50.
 
 Three sites compute the per-cycle growth cap from the anchor:
 
