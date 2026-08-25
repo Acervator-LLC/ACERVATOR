@@ -200,6 +200,7 @@ def _redirect_writable_roots():
     """
     from src.core.feature_telemetry import TELEMETRY_ROOT_ENV
     from src.core.privacy_mask_registry import SETTINGS_ROOT_ENV
+    from src.trading.capital_reservation import RESERVATION_ROOT_ENV
 
     tmp_root = Path(tempfile.mkdtemp(prefix="acervator-test-roots-"))
     (tmp_root / "acervator").mkdir(parents=True, exist_ok=True)
@@ -220,6 +221,10 @@ def _redirect_writable_roots():
         TELEMETRY_ROOT_ENV: str(tmp_root),
         SETTINGS_ROOT_ENV: str(tmp_root / "acervator"),
         "ACERVATOR_CRASH_LOG_ROOT": str(tmp_root / "acervator_logs"),
+        # The capital-reservation singleton (get_registry) autosaves to
+        # reservation_state.json; without this every test that touched it
+        # wrote into the operator's real ~/.acervator (created it on CI).
+        RESERVATION_ROOT_ENV: str(tmp_root / "acervator"),
     }
     prior = {k: os.environ.get(k) for k in overrides}
     os.environ.update(overrides)

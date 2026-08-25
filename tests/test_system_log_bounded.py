@@ -113,11 +113,24 @@ class TestTheBoundExists:
         """THE unit. Asserted on the handler LogManager actually
         installs, not on the source text, because a source that says
         `maxBytes` and a handler that rotates are different claims."""
+        log = clean_acervator_logger
+        # `clean_acervator_logger` empties the logger at fixture setup, but
+        # pytest's logging plugin attaches its own LogCaptureHandler to the
+        # (process-global) "acervator" logger around the call phase — i.e.
+        # AFTER setup. Left in place that foreign handler both inflates the
+        # count and, worse, trips LogManager's "install only when the logger
+        # has none" guard, so LogManager installs nothing and the test reads
+        # pytest's handlers instead of the one under test. Order-dependent, so
+        # it only surfaced once the suite ran in parallel. Clear immediately
+        # before, and assert on the handler LogManager installs.
+        for h in list(log.handlers):
+            log.removeHandler(h)
         LogManager(log_dir=tmp_path)
-        handlers = clean_acervator_logger.handlers
-        assert len(handlers) == 1
-        h = handlers[0]
-        assert isinstance(h, SizeBoundedFileHandler)
+        installed = [h for h in log.handlers if isinstance(h, SizeBoundedFileHandler)]
+        assert len(installed) == 1, [
+            (type(h).__module__ + "." + type(h).__name__, repr(h)) for h in log.handlers
+        ]
+        h = installed[0]
         assert h.maxBytes == SYSTEM_LOG_MAX_BYTES
         assert h.backupCount == SYSTEM_LOG_BACKUP_COUNT
         assert h.baseFilename.endswith("system.log")

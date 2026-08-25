@@ -67,6 +67,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 import uuid
@@ -82,6 +83,26 @@ logger = logging.getLogger("acervator.capital_reservation")
 
 _DEFAULT_STATE_DIR = Path.home() / ".acervator"
 _DEFAULT_STATE_FILE = _DEFAULT_STATE_DIR / "reservation_state.json"
+
+# Live-tree redirect hook, mirroring TELEMETRY_ROOT_ENV / SETTINGS_ROOT_ENV
+# in src/core. get_registry()'s singleton autosaves to reservation_state.json,
+# so every test that resolved the singleton wrote into the operator's real
+# ~/.acervator — on a clean machine (CI) it CREATED the file outright, which
+# is what turned a silent leak into a red build. When this env var is set, the
+# state file lives under it instead. Resolved at call time (never frozen at
+# import) so tests/conftest.py can point it at a tmp dir after this module is
+# already imported. The default path constant above is kept unchanged for the
+# tests that assert on its shape.
+RESERVATION_ROOT_ENV = "ACERVATOR_RESERVATION_ROOT"
+
+
+def _resolve_state_file() -> Path:
+    """The reservation-state path, honoring the redirect override."""
+    override = os.environ.get(RESERVATION_ROOT_ENV)
+    if override:
+        return Path(override) / "reservation_state.json"
+    return _DEFAULT_STATE_FILE
+
 
 # Heartbeat: bot pings every HEARTBEAT_INTERVAL; if no ping in
 # HEARTBEAT_TTL the bot's reservations are pruned as zombie.
@@ -202,7 +223,7 @@ class CapitalReservationRegistry:
         """
         self._lock = threading.Lock()
         self._state_path = (
-            Path(state_path) if state_path is not None else _DEFAULT_STATE_FILE
+            Path(state_path) if state_path is not None else _resolve_state_file()
         )
         self._autosave = autosave
         self._boot_time = time.time()
