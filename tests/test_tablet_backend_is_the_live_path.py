@@ -23,6 +23,7 @@ The strongest evidence that the seam is in the right place is
 instead of the 100 it asked for. Nothing in the backend implements that.
 It falls out of declaring ccxt's real signature.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -52,14 +53,14 @@ def _rows(n, start_ts=T0, px0=0.1):
     out, px = [], px0
     for i in range(n):
         px *= 1.0 + ((i % 7) - 3) * 0.0015
-        out.append([start_ts + i * STEP, px, px * 1.004, px * 0.996,
-                    px, 40.0])
+        out.append([start_ts + i * STEP, px, px * 1.004, px * 0.996, px, 40.0])
     return out
 
 
 def _wired(n=800, advance=500, **kw):
-    be = TabletBackend({"BTC/USD": _rows(n)},
-                       balances={"USD": 5_000.0, "BTC": 0.0}, **kw)
+    be = TabletBackend(
+        {"BTC/USD": _rows(n)}, balances={"USD": 5_000.0, "BTC": 0.0}, **kw
+    )
     for _ in range(advance):
         be.step()
     conn = CCXTConnector("coinbase")
@@ -73,7 +74,7 @@ class TestLiveIsUntouched:
         attached. This is the claim that keeps real money safe."""
         conn = CCXTConnector("coinbase")
         assert conn._injected_ex is None
-        assert conn._ex is None            # no ccxt session yet
+        assert conn._ex is None  # no ccxt session yet
         assert conn.is_connected is False
 
     def test_attaching_does_not_touch_the_ccxt_slots(self):
@@ -127,8 +128,7 @@ class TestTheConnectorRunsUnmodifiedOverTablets:
         """The fee arrives via the connector's own reader --
         `raw["fee"]["cost"]` -- not by the sim stamping a field."""
         conn, _ = _wired()
-        o = await conn.place_order(
-            "BTC/USD", OrderSide.BUY, OrderType.MARKET, 1_000.0)
+        o = await conn.place_order("BTC/USD", OrderSide.BUY, OrderType.MARKET, 1_000.0)
         assert o.filled == 1_000.0
         assert o.average > 0
         assert o.fee > 0 and o.fee_currency == "USD"
@@ -140,8 +140,9 @@ class TestTheConnectorRunsUnmodifiedOverTablets:
 
 class TestCausality:
     def test_a_symbol_is_unreadable_before_its_tape_opens(self):
-        be = TabletBackend({"EARLY/USD": _rows(300),
-                            "LATE/USD": _rows(300, T0 + 100 * STEP)})
+        be = TabletBackend(
+            {"EARLY/USD": _rows(300), "LATE/USD": _rows(300, T0 + 100 * STEP)}
+        )
         be.step()
         assert be.has_data("EARLY/USD") is True
         assert be.has_data("LATE/USD") is False
@@ -149,23 +150,24 @@ class TestCausality:
             be.fetch_ticker("LATE/USD")
 
     def test_it_becomes_readable_once_the_tape_opens(self):
-        be = TabletBackend({"EARLY/USD": _rows(300),
-                            "LATE/USD": _rows(300, T0 + 100 * STEP)})
+        be = TabletBackend(
+            {"EARLY/USD": _rows(300), "LATE/USD": _rows(300, T0 + 100 * STEP)}
+        )
         for _ in range(150):
             be.step()
         assert be.has_data("LATE/USD") is True
         assert be.fetch_ticker("LATE/USD")["last"] > 0
 
     def test_no_candle_is_ever_served_ahead_of_the_clock(self):
-        be = TabletBackend({"EARLY/USD": _rows(300),
-                            "LATE/USD": _rows(300, T0 + 100 * STEP)})
+        be = TabletBackend(
+            {"EARLY/USD": _rows(300), "LATE/USD": _rows(300, T0 + 100 * STEP)}
+        )
         for _ in range(250):
             if not be.step():
                 break
             for sym in ("EARLY/USD", "LATE/USD"):
                 if be.has_data(sym):
-                    assert (be.fetch_ohlcv(sym, "5m")[-1][0]
-                            <= be.current_ts_ms())
+                    assert be.fetch_ohlcv(sym, "5m")[-1][0] <= be.current_ts_ms()
 
 
 class TestHigherTimeframesAreNotFaked:
@@ -191,10 +193,8 @@ class TestTheSurfaceCannotDriftFromTheConnector:
         argument to a call site, this fails rather than surfacing as a
         TypeError mid-replay.
         """
-        src = (REPO_ROOT / "src/exchange/ccxt_connector.py").read_text(
-            encoding="utf-8")
-        pattern = re.compile(
-            r"_call_sync\(\s*self\._ex\.([a-z_]+)\s*,?([^)]*)\)")
+        src = (REPO_ROOT / "src/exchange/ccxt_connector.py").read_text(encoding="utf-8")
+        pattern = re.compile(r"_call_sync\(\s*self\._ex\.([a-z_]+)\s*,?([^)]*)\)")
         worst: dict = {}
         for m in pattern.finditer(src):
             name, argstr = m.group(1), m.group(2).strip()
@@ -212,12 +212,16 @@ class TestTheSurfaceCannotDriftFromTheConnector:
         for name, n in sorted(worst.items()):
             fn = getattr(TabletBackend, name, None)
             assert fn is not None, f"backend is missing {name}"
-            pos = [q for q in inspect.signature(fn).parameters.values()
-                   if q.name != "self" and q.kind in (
-                       q.POSITIONAL_ONLY, q.POSITIONAL_OR_KEYWORD)]
+            pos = [
+                q
+                for q in inspect.signature(fn).parameters.values()
+                if q.name != "self"
+                and q.kind in (q.POSITIONAL_ONLY, q.POSITIONAL_OR_KEYWORD)
+            ]
             assert len(pos) >= n, (
                 f"{name}: connector passes {n} positional args, "
-                f"backend accepts {len(pos)}")
+                f"backend accepts {len(pos)}"
+            )
 
     def test_the_non_call_sync_members_exist(self):
         """`markets`, `market`, and the precision helpers are reached

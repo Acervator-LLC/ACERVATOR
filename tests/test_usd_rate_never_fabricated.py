@@ -17,6 +17,7 @@ The rule this file pins: when no honest rate can be had, the lookup
 returns nothing. Callers must then do something visible and true
 instead of pricing a Bitcoin at a dollar.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -64,18 +65,23 @@ def _manager(answer: Any) -> BotManager:
     if answer is NO_CONNECTOR:
         mgr._connector = None
     else:
-        mgr._connector = type("_Conn", (), {
-            "_ccxt_sync": _Ticker(answer),
-            # register() hands every new bot's symbol to the connector
-            # for history scanning; a no-op keeps that path quiet.
-            "add_scan_symbol": lambda _self, _symbol: None,
-        })()
+        mgr._connector = type(
+            "_Conn",
+            (),
+            {
+                "_ccxt_sync": _Ticker(answer),
+                # register() hands every new bot's symbol to the connector
+                # for history scanning; a no-op keeps that path quiet.
+                "add_scan_symbol": lambda _self, _symbol: None,
+            },
+        )()
     return mgr
 
 
 # ---------------------------------------------------------------------
 # The whole set of ways the question can be answered.
 # ---------------------------------------------------------------------
+
 
 def test_rate_available_is_returned_unchanged() -> None:
     """A real price comes back as itself."""
@@ -90,14 +96,17 @@ def test_dollar_pegged_base_is_one_dollar() -> None:
     assert mgr._usd_per_base_for("coinbase", "USDC") == 1.0
 
 
-@pytest.mark.parametrize(("answer", "label"), [
-    (_boom, "request throws"),
-    ({"last": 0, "close": 0}, "request returns zero"),
-    ({"last": -3.0}, "request returns a negative"),
-    ({"last": "not-a-number"}, "request returns something not a number"),
-    (None, "request returns nothing at all"),
-    (NO_CONNECTOR, "no connector at all"),
-])
+@pytest.mark.parametrize(
+    ("answer", "label"),
+    [
+        (_boom, "request throws"),
+        ({"last": 0, "close": 0}, "request returns zero"),
+        ({"last": -3.0}, "request returns a negative"),
+        ({"last": "not-a-number"}, "request returns something not a number"),
+        (None, "request returns nothing at all"),
+        (NO_CONNECTOR, "no connector at all"),
+    ],
+)
 def test_no_honest_rate_returns_nothing(answer: Any, label: str) -> None:
     """Every failing row must return nothing, not a number.
 
@@ -120,24 +129,36 @@ def test_failing_rows_are_not_confusable_with_a_dollar_coin() -> None:
 # What the two callers do with the answer.
 # ---------------------------------------------------------------------
 
+
 def _bot(bot_id: str = "bot-1") -> Any:
     cfg = BotConfig(
-        exchange_id="coinbase", base_currency="BTC",
-        target_asset="ETH", symbol="ETH/BTC",
-        target_balance=2000.0)
-    return type("_Bot", (), {
-        "bot_id": bot_id,
-        "config": cfg,
-        "set_smart_wire": lambda _self, _mgr: None,
-    })()
+        exchange_id="coinbase",
+        base_currency="BTC",
+        target_asset="ETH",
+        symbol="ETH/BTC",
+        target_balance=2000.0,
+    )
+    return type(
+        "_Bot",
+        (),
+        {
+            "bot_id": bot_id,
+            "config": cfg,
+            "set_smart_wire": lambda _self, _mgr: None,
+        },
+    )()
 
 
 def _registry_holding_one_claim(bot_id: str) -> CapitalRegistry:
     reg = CapitalRegistry(wallet_balances_provider=_half_a_bitcoin)
     reg.request_reservation(
-        bot_id=bot_id, exchange_id="coinbase", base_currency="BTC",
-        usd_amount=2000.0, current_rate_usd_per_base=BTC_USD,
-        bot_mode="scrumming")
+        bot_id=bot_id,
+        exchange_id="coinbase",
+        base_currency="BTC",
+        usd_amount=2000.0,
+        current_rate_usd_per_base=BTC_USD,
+        bot_mode="scrumming",
+    )
     return reg
 
 
@@ -155,8 +176,7 @@ def test_register_with_a_real_rate_records_the_real_amount() -> None:
     assert held.last_rate_usd_per_base == pytest.approx(BTC_USD)
 
 
-def test_register_without_a_rate_keeps_the_bot_and_records_no_claim(
-) -> None:
+def test_register_without_a_rate_keeps_the_bot_and_records_no_claim() -> None:
     """A price outage must not delete a bot.
 
     With the made-up rate this refused the bot outright and dropped it,
@@ -185,8 +205,7 @@ def test_reconcile_without_a_rate_leaves_the_saved_claim_alone() -> None:
 
     mgr = _manager(_boom)
     mgr.set_capital_registry(reg)
-    report = mgr.reconcile_capital_registry(
-        exchange_id="coinbase", base_currency="BTC")
+    report = mgr.reconcile_capital_registry(exchange_id="coinbase", base_currency="BTC")
 
     assert report is None
     after = reg.get_reservations()[0]
@@ -201,11 +220,9 @@ def test_reconcile_without_a_rate_raises_no_false_alarm() -> None:
     mgr = _manager(_boom)
     mgr.set_capital_registry(reg)
     alarms: list = []
-    mgr._bus.subscribe(
-        "capital.drift_alert", lambda evt: alarms.append(evt))
+    mgr._bus.subscribe("capital.drift_alert", lambda evt: alarms.append(evt))
 
-    mgr.reconcile_capital_registry(
-        exchange_id="coinbase", base_currency="BTC")
+    mgr.reconcile_capital_registry(exchange_id="coinbase", base_currency="BTC")
 
     assert alarms == []
 
@@ -217,8 +234,7 @@ def test_reconcile_with_a_real_rate_still_reports() -> None:
     mgr = _manager({"last": BTC_USD})
     mgr.set_capital_registry(reg)
 
-    report = mgr.reconcile_capital_registry(
-        exchange_id="coinbase", base_currency="BTC")
+    report = mgr.reconcile_capital_registry(exchange_id="coinbase", base_currency="BTC")
 
     assert report is not None
     assert report["wallet_usd"] == pytest.approx(WALLET_BTC * BTC_USD)

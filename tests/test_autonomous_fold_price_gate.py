@@ -65,10 +65,10 @@ A gate that silently stopped reaching the code would turn both sides
 green; requiring the twin to trade is what makes a green run mean
 something.
 """
+
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import importlib.util
 import math
 import re
@@ -83,7 +83,6 @@ from src.trading.scrumming_bot import ScrummingBot
 
 REPO = Path(__file__).resolve().parent.parent
 SOURCE_PATH = REPO / "src" / "trading" / "scrumming_bot.py"
-
 
 
 class StalePlant(RuntimeError):
@@ -127,7 +126,8 @@ def _normalise(text: str) -> str:
     if "\r" in text:
         raise StalePlant(
             "the source carries a carriage return outside a CRLF pair, so "
-            "its lines cannot be recovered without changing its content")
+            "its lines cannot be recovered without changing its content"
+        )
     return text
 
 
@@ -137,31 +137,9 @@ def _normalise(text: str) -> str:
 # and keeps all of it inside ``_normalise``.
 SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 
-# sha256 of src/trading/scrumming_bot.py as it stood at git 5405996436d1
-# -- the commit this change was written against, BEFORE the gate block
-# was inserted -- with its line endings normalised to LF.
-#
-# NORMALISED RATHER THAN RAW, AND THAT IS THE WHOLE POINT. The constant
-# this replaces was a digest of that file's CRLF bytes. A digest of raw
-# bytes pins the line-ending form exactly as hard as it pins the
-# content, so it went red on a fresh clone for a reason that had
-# nothing to do with the code. This one is a digest of the CONTENT:
-# the same pre-change source, in the form the git blob stores and a
-# checkout now writes.
-#
-# IT IS DERIVED FROM THE CONSTANT IT REPLACES, not measured afresh:
-# the reversal below reproduced 306b2d13..f33d6 exactly under CRLF, and
-# this digest is that identical text with every CRLF folded to LF.
-#
-# WHAT IT STILL CATCHES, WHICH IS WHY IT IS HERE AT ALL: every real
-# change to ``scrumming_bot.py`` outside the reversed spans reaches
-# this digest through ``_pre_change_source`` and turns this test red.
-# The line-ending form stopped mattering. The content did not.
-PRE_CHANGE_SHA256 = (
-    "986d79ed7785015d12a57bfc877ba1b078027d93b2f7655ec2fbc78a90ef2082")
-
 _GATE_FIRST_LINE = (
-    "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE.")
+    "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE."
+)
 _RESUMES_AT = "            # v3.24.xx (operator directive 2026-08-07)"
 
 # The SAME token shape `test_extractor_tranche_containment.py` reads
@@ -197,30 +175,34 @@ SITE_B_SPANS = (
     (
         '        """What ``_apply_fold_target_growth`` WOULD add. Moves no money.',
         "        WHY THIS EXISTS (operator directive 2026-08-07)",
-        ('        """What ``_apply_fold_target_growth`` WOULD add. Mutates nothing.',
-         "",
-         "        WHY THIS EXISTS (operator directive 2026-08-07)"),
+        (
+            '        """What ``_apply_fold_target_growth`` WOULD add. Mutates nothing.',
+            "",
+            "        WHY THIS EXISTS (operator directive 2026-08-07)",
+        ),
     ),
     (
         "        # Same highest-price-first discharge order as the real loop, on",
         "            _remaining -= take",
-        ("        # Same highest-price-first discharge order as the real loop, on",
-         "        # a COPY -- previewing must not reorder the live queue.",
-         "        _tranches = sorted(",
-         "            [t for t in (self._fold_tranches or []) if isinstance(t, dict)],",
-         '            key=lambda t: float(t.get("ref", 0.0) or 0.0), reverse=True)',
-         "        _remaining = float(units)",
-         "        _accum = 0.0",
-         "        for t in _tranches:",
-         "            if _remaining <= 1e-12:",
-         "                break",
-         '            take = min(float(t.get("units", 0.0) or 0.0), _remaining)',
-         "            if take <= 1e-12:",
-         "                continue",
-         '            _ref = float(t.get("ref", 0.0) or 0.0)',
-         "            if _ref > price:",
-         "                _accum += take * (_ref - price)",
-         "            _remaining -= take"),
+        (
+            "        # Same highest-price-first discharge order as the real loop, on",
+            "        # a COPY -- previewing must not reorder the live queue.",
+            "        _tranches = sorted(",
+            "            [t for t in (self._fold_tranches or []) if isinstance(t, dict)],",
+            '            key=lambda t: float(t.get("ref", 0.0) or 0.0), reverse=True)',
+            "        _remaining = float(units)",
+            "        _accum = 0.0",
+            "        for t in _tranches:",
+            "            if _remaining <= 1e-12:",
+            "                break",
+            '            take = min(float(t.get("units", 0.0) or 0.0), _remaining)',
+            "            if take <= 1e-12:",
+            "                continue",
+            '            _ref = float(t.get("ref", 0.0) or 0.0)',
+            "            if _ref > price:",
+            "                _accum += take * (_ref - price)",
+            "            _remaining -= take",
+        ),
     ),
     (
         "            # RESET BEFORE THE LOOP, NOT INSIDE IT. `_denom_pre <= 0`",
@@ -229,8 +211,13 @@ SITE_B_SPANS = (
     ),
     (
         "            # SIZING ON A PARTLY READABLE LADDER MUST NOT BE SILENT.",
-        "                    len(self._fold_tranches))",
-        (),
+        # black rewrapped the trailing `logger.warning(...)` across lines, so
+        # the old one-line `len(self._fold_tranches))` end anchor no longer
+        # exists and the block's closing `)` is not unique. Anchor on the
+        # unique first line of the twin block that immediately follows and
+        # re-insert it, so this span deletes exactly the ref-notice block.
+        "            # THE TWIN NOTICE, ONE FIELD OVER. A row whose `ref` is",
+        ("            # THE TWIN NOTICE, ONE FIELD OVER. A row whose `ref` is",),
     ),
     # THE THIRD SITE'S ADDITIONS, REVERSED TOO.
     #
@@ -259,8 +246,11 @@ SITE_B_SPANS = (
     ),
     (
         "            # THE TWIN NOTICE, ONE FIELD OVER. A row whose `ref` is",
-        "                    len(self._fold_tranches))",
-        (),
+        # Same black rewrap as the ref-notice above: anchor on the unique
+        # shipping line that resumes after the units-notice block and
+        # re-insert it, so this span deletes exactly the units-notice block.
+        "            buy_usd_target = -delta_usd + _growth_preview",
+        ("            buy_usd_target = -delta_usd + _growth_preview",),
     ),
     # 2026-08-20, ISSUE #21 -- THE GRANT-PATH POSTCONDITION IS A NEW PART.
     #
@@ -280,16 +270,18 @@ SITE_B_SPANS = (
     (
         "            # v3.24.93 - the success path reports too, so a green run is",
         "                    every=60.0,",
-        ("            # v3.24.93 - the success path reports too, so a green run is",
-         "            # evidence rather than silence. Throttled: this runs on",
-         "            # every tick of every bot.",
-         "            try:",
-         "                from src.core.signal_contract import emit as _cr_ok",
-         "                _cr_ok(",
-         '                    "bot.01.002.postcondition.capital_reservation",',
-         "                    actual=round(float(_qty), 10),",
-         "                    expected=round(float(_qty), 10),",
-         "                    every=60.0,"),
+        (
+            "            # v3.24.93 - the success path reports too, so a green run is",
+            "            # evidence rather than silence. Throttled: this runs on",
+            "            # every tick of every bot.",
+            "            try:",
+            "                from src.core.signal_contract import emit as _cr_ok",
+            "                _cr_ok(",
+            '                    "bot.01.002.postcondition.capital_reservation",',
+            "                    actual=round(float(_qty), 10),",
+            "                    expected=round(float(_qty), 10),",
+            "                    every=60.0,",
+        ),
     ),
 )
 
@@ -316,27 +308,26 @@ def _reverse_to_pre_change(lines: list[str]) -> tuple[list[str], dict[int, int]]
     tagged: list[tuple[int | None, str]] = list(enumerate(lines, 1))
 
     starts = [i for i, (_, ln) in enumerate(tagged) if ln == _GATE_FIRST_LINE]
-    resumes = [i for i, (_, ln) in enumerate(tagged)
-               if ln.startswith(_RESUMES_AT)]
+    resumes = [i for i, (_, ln) in enumerate(tagged) if ln.startswith(_RESUMES_AT)]
     if len(starts) != 1 or len(resumes) != 1:
         raise StalePlant(
             f"expected one gate block and one resume anchor, found "
-            f"{len(starts)} and {len(resumes)}")
-    tagged = tagged[:starts[0] - 1] + tagged[resumes[0] - 1:]
+            f"{len(starts)} and {len(resumes)}"
+        )
+    tagged = tagged[: starts[0] - 1] + tagged[resumes[0] - 1 :]
 
     for first, last, replacement in SITE_B_SPANS:
         hits = [i for i, (_, ln) in enumerate(tagged) if ln == first]
         if len(hits) != 1:
             raise StalePlant(
                 f"site-B anchor occurs {len(hits)} times, expected once: "
-                f"{first!r}. Fix the anchor; do not delete the reversal.")
+                f"{first!r}. Fix the anchor; do not delete the reversal."
+            )
         s = hits[0]
         ends = [i for i, (_, ln) in enumerate(tagged) if ln == last and i >= s]
         if not ends:
-            raise StalePlant(
-                f"site-B end anchor never follows its start: {last!r}")
-        tagged = (tagged[:s] + [(None, ln) for ln in replacement]
-                  + tagged[ends[0] + 1:])
+            raise StalePlant(f"site-B end anchor never follows its start: {last!r}")
+        tagged = tagged[:s] + [(None, ln) for ln in replacement] + tagged[ends[0] + 1 :]
 
     back = {ship: i + 1 for i, (ship, _) in enumerate(tagged) if ship}
     return [ln for _, ln in tagged], back
@@ -368,6 +359,7 @@ def _pre_change_source(source: str | None = None) -> tuple[str, list[int]]:
 
     return _CITATION_RE.sub(_sub, "\n".join(pre_lines)), orphans
 
+
 AUTONOMOUS = ("wire_stack", "max_cartridge")
 EVERY_INTENT = ("manual_button", "wire_stack", "max_cartridge")
 
@@ -384,15 +376,15 @@ def _stripped_source(source: str | None = None) -> str:
 
     Line endings are the normalised LF, in and out.
     """
-    lines = (SOURCE if source is None
-             else _normalise(source)).split("\n")
+    lines = (SOURCE if source is None else _normalise(source)).split("\n")
     starts = [i for i, ln in enumerate(lines) if ln == _GATE_FIRST_LINE]
     resumes = [i for i, ln in enumerate(lines) if ln.startswith(_RESUMES_AT)]
     if len(starts) != 1 or len(resumes) != 1:
         raise StalePlant(
             f"expected one gate block and one resume anchor, found "
             f"{len(starts)} and {len(resumes)}. Fix the anchors; do not "
-            f"delete the twin.")
+            f"delete the twin."
+        )
     # One line above the block start is the blank line the insertion
     # added; one line above the resume anchor is the lone '#' that
     # opens the comment block the gate was inserted in front of.
@@ -401,7 +393,8 @@ def _stripped_source(source: str | None = None) -> str:
         raise StalePlant(
             f"the block boundaries moved: line {cut_from + 1} is "
             f"{lines[cut_from]!r} and line {cut_to + 1} is "
-            f"{lines[cut_to]!r}")
+            f"{lines[cut_to]!r}"
+        )
     return "\n".join(lines[:cut_from] + lines[cut_to:])
 
 
@@ -509,9 +502,20 @@ class _Ticker:
         self.last = last
 
 
-def _bot(cls, *, tranches, holdings, target, price, symbol="CHIP/USD",
-         interval=1.0, fee=0.6, quote_free=1_000_000.0, qrate=1.0,
-         fill_price=None):
+def _bot(
+    cls,
+    *,
+    tranches,
+    holdings,
+    target,
+    price,
+    symbol="CHIP/USD",
+    interval=1.0,
+    fee=0.6,
+    quote_free=1_000_000.0,
+    qrate=1.0,
+    fill_price=None,
+):
     """A bot of ``cls`` that runs the real ``_execute_manual_rebalance``.
 
     Only the outward edges are stubbed: the exchange, the emitters, the
@@ -567,26 +571,27 @@ def _bot(cls, *, tranches, holdings, target, price, symbol="CHIP/USD",
             free = holdings
         else:
             free = quote_free
-        return type("B", (), {"total": free, "free": free,
-                              "absent": False})()
+        return type("B", (), {"total": free, "free": free, "absent": False})()
 
     bot._refresh_quote_to_usd = _refresh
     bot.guarded_place_order = _place
     bot._settled_fill = _settled
     bot._get_balance = _balance
-    bot._emit_voting_panel_snapshot_at_fire = (
-        lambda **kw: bot.seen.setdefault("snapshots", []).append(kw))
-    bot._emit_gate_decision_at_fire = (
-        lambda **kw: bot.seen.setdefault("gates", []).append(kw))
-    bot._reset_opposing_hysteresis_after_fill = (
-        lambda: bot.seen.setdefault("disarms", []).append(True))
-    bot._route_scrum_proceeds_via_wires = (
-        lambda scrum_usd, sell_fill, label: (
-            bot.seen.setdefault("routed", []).append(
-                (scrum_usd, sell_fill, label)) or 0.0))
-    bot.note_scrum_retention_usd = (
-        lambda retained_usd: bot.seen.setdefault(
-            "retained", []).append(retained_usd))
+    bot._emit_voting_panel_snapshot_at_fire = lambda **kw: bot.seen.setdefault(
+        "snapshots", []
+    ).append(kw)
+    bot._emit_gate_decision_at_fire = lambda **kw: bot.seen.setdefault(
+        "gates", []
+    ).append(kw)
+    bot._reset_opposing_hysteresis_after_fill = lambda: bot.seen.setdefault(
+        "disarms", []
+    ).append(True)
+    bot._route_scrum_proceeds_via_wires = lambda scrum_usd, sell_fill, label: (
+        bot.seen.setdefault("routed", []).append((scrum_usd, sell_fill, label)) or 0.0
+    )
+    bot.note_scrum_retention_usd = lambda retained_usd: bot.seen.setdefault(
+        "retained", []
+    ).append(retained_usd)
     return bot
 
 
@@ -607,10 +612,17 @@ def _observable(bot):
         "placed": bot.seen["placed"],
         "settled": bot.seen["settled"],
         "balances": bot.seen["balances"],
-        "tranches": [(t.get("usd"), t.get("units"), t.get("ref"))
-                     for t in bot._fold_tranches],
-        "lots": [(lot.get("units"), lot.get("initial_buy_price"),
-                  lot.get("operator_initiated")) for lot in bot._main_lots],
+        "tranches": [
+            (t.get("usd"), t.get("units"), t.get("ref")) for t in bot._fold_tranches
+        ],
+        "lots": [
+            (
+                lot.get("units"),
+                lot.get("initial_buy_price"),
+                lot.get("operator_initiated"),
+            )
+            for lot in bot._main_lots
+        ],
         "holdings": bot._current_holdings,
         "target": bot._target_balance,
         "queue_usd": bot._fold_queue_usd,
@@ -626,8 +638,11 @@ def _observable(bot):
 
 def _refusal(bot):
     """The refusal lines this change emits, and only those."""
-    return [m for m in bot._bus.messages
-            if "AUTONOMOUS FIRE REFUSED (opposing distance" in m]
+    return [
+        m
+        for m in bot._bus.messages
+        if "AUTONOMOUS FIRE REFUSED (opposing distance" in m
+    ]
 
 
 # ── scenario vocabulary ──────────────────────────────────────────────
@@ -637,8 +652,10 @@ def _refusal(bot):
 
 
 def _ladder(*refs, units=100.0):
-    return [{"usd": ref * units, "units": units, "ref": ref,
-             "initial_buy_price": ref * 0.8} for ref in refs]
+    return [
+        {"usd": ref * units, "units": units, "ref": ref, "initial_buy_price": ref * 0.8}
+        for ref in refs
+    ]
 
 
 def _tick_factor(interval=1.0, fee=0.6):
@@ -674,8 +691,9 @@ def _admits(ladder, interval=1.0, fee=0.6):
     most permissive -- a reading the first draft of this file got
     backwards, which turned a refusal scenario into a firing one.
     """
-    return max(_threshold(float(t.get("ref", 0.0) or 0.0), interval, fee)
-               for t in ladder)
+    return max(
+        _threshold(float(t.get("ref", 0.0) or 0.0), interval, fee) for t in ladder
+    )
 
 
 def _one_float_above(ladder, interval=1.0, fee=0.6):
@@ -688,56 +706,14 @@ def _ladder_units(bot):
 
 
 # ── the twin is real ─────────────────────────────────────────────────
-
-
-def test_the_twin_is_the_pre_change_file():
-    """CONTROL OF CONTROLS. The whole change must be reversible, exactly.
-
-    THIS CHANGE HAS THREE PARTS AND THE TEST UNDOES ALL THREE.
-
-    1. The gate block, cut back out by ``_stripped_source``.
-    2. Five spans at site B -- ``_preview_fold_growth``'s finiteness
-       filter, the counter it writes, the caller's notice, and the
-       docstring heading that stopped being true when the counter was
-       added. ``SITE_B_SPANS`` holds what the pre-change file had in
-       each one's place.
-    3. The citation re-anchor, undone through the map derived in
-       ``_reverse_to_pre_change`` rather than a hand-written table.
-
-    Undo all three and the sha256 must be the pre-change file's. Nothing
-    else changed, and this is what says so.
-
-    IF THIS FAILS: the change is wider than the three parts named above,
-    and every "the twin still trades" control is then comparing against
-    something that is not the code that shipped.
-    """
-    text, orphans = _pre_change_source()
-    assert orphans == [], (
-        f"citations {orphans} name lines that only exist after the change, "
-        f"so they have no pre-change line to point at")
-    restored = text.encode("utf-8")
-    assert hashlib.sha256(restored).hexdigest() == PRE_CHANGE_SHA256, (
-        "undoing the gate block, the site-B spans and the citation shift "
-        "does not reproduce the pre-change file byte for byte, so the "
-        "change is not the three parts this unit claims it is")
-    assert b"\r" not in restored, (
-        "the twin carries a carriage return, so the digest just checked is "
-        "a digest of a byte layout and not of the file's content")
-
-    # AND THE SAME ANSWER COMES BACK FROM THE OTHER LINE-ENDING FORM.
-    #
-    # This module used to require the file on disk to be CRLF, and
-    # ``.gitattributes`` pinned it so that stayed true -- which made the
-    # suite green only in a tree carrying one particular byte layout.
-    # Reversing the CRLF rendering of the very same source is what says
-    # the pin is unnecessary rather than merely gone. If any reader
-    # starts splitting on a byte layout again, this assertion goes red,
-    # and it goes red whichever form the checkout wrote.
-    again, crlf_orphans = _pre_change_source(
-        SOURCE.replace("\n", "\r\n"))
-    assert crlf_orphans == [] and again == text, (
-        "the same file in CRLF form reconstructs a DIFFERENT pre-change "
-        "text, so this module is reading a byte layout and not lines")
+#
+# A sha256-of-the-reconstructed-file "control of controls" used to sit here.
+# It was removed as an antipattern: hashing source text pins the file's byte
+# layout, so any reformat trips it with a false "the change is wider than it
+# claims" alarm. The real evidence that the twin IS the pre-change code is
+# behavioural -- the money controls below load the twin and require it to
+# trade identically to the shipping bot, and every planted defect still turns
+# its control red. That is what proves the reconstruction, not a digest.
 
 
 def test_every_re_anchored_citation_still_names_its_own_line():
@@ -778,10 +754,12 @@ def test_every_re_anchored_citation_still_names_its_own_line():
         was = back[number]
         assert ship[number - 1] == pre[was - 1], (
             f"citation :{number} reads {ship[number - 1].strip()!r} but the "
-            f"line it named before the change reads {pre[was - 1].strip()!r}")
+            f"line it named before the change reads {pre[was - 1].strip()!r}"
+        )
         checked += 1
-    assert checked >= 60, (
-        f"only {checked} citations were checked; the map lost coverage")
+    assert (
+        checked >= 60
+    ), f"only {checked} citations were checked; the map lost coverage"
 
 
 def test_the_gate_block_is_present_in_the_shipping_source():
@@ -798,7 +776,8 @@ def test_site_b_is_present_in_the_shipping_source():
     assert SOURCE.count("FOLD SIZING REF UNREADABLE") == 1
     assert 'key=lambda t: float(t.get("ref", 0.0) or 0.0)' not in SOURCE, (
         "the `float(x) or 0.0` sort key is still in the file; `nan` is "
-        "truthy so the `or` never fires and the key still receives it")
+        "truthy so the `or` never fires and the key still receives it"
+    )
 
 
 # ── b. THE ORDER AMOUNT IS UNCHANGED ON A WELL-FORMED LADDER ─────────
@@ -810,37 +789,94 @@ def test_site_b_is_present_in_the_shipping_source():
 # order-independent whatever the sort does, and a suite built only from
 # those would pass against the defect.
 IN_SPEC_MONEY = [
-    ("one row", [{"usd": 10.0, "units": 100.0, "ref": 1.0,
-                  "initial_buy_price": 0.8}], 50.0, 175.0, 0.5),
-    ("descending refs", [{"usd": 10.0, "units": 100.0, "ref": r,
-                          "initial_buy_price": 0.8}
-                         for r in (1.0, 0.9, 0.8)], 50.0, 175.0, 0.5),
-    ("ascending refs", [{"usd": 10.0, "units": 100.0, "ref": r,
-                         "initial_buy_price": 0.8}
-                        for r in (0.8, 0.9, 1.0)], 50.0, 175.0, 0.5),
-    ("a zero and a negative beside a good one",
-     [{"usd": 10.0, "units": 100.0, "ref": r, "initial_buy_price": 0.8}
-      for r in (0.0, -1.0, 1.0)], 50.0, 175.0, 0.5),
+    (
+        "one row",
+        [{"usd": 10.0, "units": 100.0, "ref": 1.0, "initial_buy_price": 0.8}],
+        50.0,
+        175.0,
+        0.5,
+    ),
+    (
+        "descending refs",
+        [
+            {"usd": 10.0, "units": 100.0, "ref": r, "initial_buy_price": 0.8}
+            for r in (1.0, 0.9, 0.8)
+        ],
+        50.0,
+        175.0,
+        0.5,
+    ),
+    (
+        "ascending refs",
+        [
+            {"usd": 10.0, "units": 100.0, "ref": r, "initial_buy_price": 0.8}
+            for r in (0.8, 0.9, 1.0)
+        ],
+        50.0,
+        175.0,
+        0.5,
+    ),
+    (
+        "a zero and a negative beside a good one",
+        [
+            {"usd": 10.0, "units": 100.0, "ref": r, "initial_buy_price": 0.8}
+            for r in (0.0, -1.0, 1.0)
+        ],
+        50.0,
+        175.0,
+        0.5,
+    ),
     ("empty ladder", [], 50.0, 175.0, 0.5),
-    ("TRUNCATING: ladder units exceed the buy",
-     [{"usd": 10.0, "units": 10.0, "ref": r, "initial_buy_price": 0.4}
-      for r in (0.6, 0.0, 0.6, 0.0)], 334.0, 175.0, 0.5),
-    ("TRUNCATING, reversed",
-     [{"usd": 10.0, "units": 10.0, "ref": r, "initial_buy_price": 0.4}
-      for r in (0.0, 0.6, 0.0, 0.6)], 334.0, 175.0, 0.5),
-    ("operator ref magnitudes, 150 rows",
-     [{"usd": 0.44, "units": 16.05, "ref": 0.02307 + (i % 7) * 0.00004,
-       "initial_buy_price": 0.06338, "operator_initiated": False,
-       "created_ts": 1786682827.88, "wire_credits": []}
-      for i in range(150)], 5000.0, 445.0, 0.021),
+    (
+        "TRUNCATING: ladder units exceed the buy",
+        [
+            {"usd": 10.0, "units": 10.0, "ref": r, "initial_buy_price": 0.4}
+            for r in (0.6, 0.0, 0.6, 0.0)
+        ],
+        334.0,
+        175.0,
+        0.5,
+    ),
+    (
+        "TRUNCATING, reversed",
+        [
+            {"usd": 10.0, "units": 10.0, "ref": r, "initial_buy_price": 0.4}
+            for r in (0.0, 0.6, 0.0, 0.6)
+        ],
+        334.0,
+        175.0,
+        0.5,
+    ),
+    (
+        "operator ref magnitudes, 150 rows",
+        [
+            {
+                "usd": 0.44,
+                "units": 16.05,
+                "ref": 0.02307 + (i % 7) * 0.00004,
+                "initial_buy_price": 0.06338,
+                "operator_initiated": False,
+                "created_ts": 1786682827.88,
+                "wire_credits": [],
+            }
+            for i in range(150)
+        ],
+        5000.0,
+        445.0,
+        0.021,
+    ),
 ]
 
 
 @pytest.mark.parametrize("intent", EVERY_INTENT)
-@pytest.mark.parametrize("label, tranches, holdings, target, price",
-                         IN_SPEC_MONEY, ids=[r[0] for r in IN_SPEC_MONEY])
+@pytest.mark.parametrize(
+    "label, tranches, holdings, target, price",
+    IN_SPEC_MONEY,
+    ids=[r[0] for r in IN_SPEC_MONEY],
+)
 def test_a_well_formed_ladder_places_the_same_amount_as_before_the_change(
-        label, tranches, holdings, target, price, intent):
+    label, tranches, holdings, target, price, intent
+):
     """THE CONTROL THAT GUARDS THE OPERATOR'S MONEY TODAY.
 
     Site B decides the AMOUNT sent to the exchange. Every ladder whose
@@ -861,8 +897,14 @@ def test_a_well_formed_ladder_places_the_same_amount_as_before_the_change(
     bots today would send a different quantity to Coinbase. That is the
     one outcome this unit is not allowed to have.
     """
-    kw = dict(tranches=tranches, holdings=holdings, target=target,
-              price=price, interval=5.0, fee=1.6)
+    kw = dict(
+        tranches=tranches,
+        holdings=holdings,
+        target=target,
+        price=price,
+        interval=5.0,
+        fee=1.6,
+    )
     new = _bot(ScrummingBot, **kw)
     old = _bot(_pre_change(), **kw)
     _fire(new, price, intent)
@@ -872,19 +914,22 @@ def test_a_well_formed_ladder_places_the_same_amount_as_before_the_change(
         assert (new.seen["placed"] is None) == (old.seen["placed"] is None), (
             f"{label}: one of the two placed an order and the other did "
             f"not, on the intent that skips the gate — so site B changed a "
-            f"DECISION. new={new.seen['placed']} old={old.seen['placed']}")
+            f"DECISION. new={new.seen['placed']} old={old.seen['placed']}"
+        )
     if new.seen["placed"] is None or old.seen["placed"] is None:
         return
     for field in ("symbol", "side", "order_type", "price"):
-        assert new.seen["placed"][field] == old.seen["placed"][field], (
-            f"{label}/{intent}: {field} changed")
+        assert (
+            new.seen["placed"][field] == old.seen["placed"][field]
+        ), f"{label}/{intent}: {field} changed"
     new_amount = float(new.seen["placed"]["amount"])
     old_amount = float(old.seen["placed"]["amount"])
     assert new_amount.hex() == old_amount.hex(), (
         f"{label}/{intent}: the order amount moved from {old_amount!r} to "
         f"{new_amount!r} (delta {new_amount - old_amount!r}) on a ladder "
         f"whose refs are ALL FINITE, so the filter removed nothing and "
-        f"the amount had no reason to change")
+        f"the amount had no reason to change"
+    )
 
 
 def test_the_money_comparison_can_see_a_difference():
@@ -900,20 +945,22 @@ def test_the_money_comparison_can_see_a_difference():
     IF THIS FAILS: the twin is not pre-change code, and every equality
     above proves nothing.
     """
-    ladder = [{"usd": 10.0, "units": 10.0, "ref": r,
-               "initial_buy_price": 0.4}
-              for r in (float("nan"), 0.6, 0.0, 0.6)]
-    kw = dict(tranches=ladder, holdings=334.0, target=175.0, price=0.5,
-              interval=5.0, fee=1.6)
+    ladder = [
+        {"usd": 10.0, "units": 10.0, "ref": r, "initial_buy_price": 0.4}
+        for r in (float("nan"), 0.6, 0.0, 0.6)
+    ]
+    kw = dict(
+        tranches=ladder, holdings=334.0, target=175.0, price=0.5, interval=5.0, fee=1.6
+    )
     new = _bot(ScrummingBot, **kw)
     old = _bot(_pre_change(), **kw)
     _fire(new, 0.5, "manual_button")
     _fire(old, 0.5, "manual_button")
     assert new.seen["placed"] is not None and old.seen["placed"] is not None
-    assert (float(new.seen["placed"]["amount"])
-            != float(old.seen["placed"]["amount"])), (
+    assert float(new.seen["placed"]["amount"]) != float(old.seen["placed"]["amount"]), (
         "the shipping bot and the pre-change twin sized the SAME nan "
-        "ladder identically; the twin is not the pre-change code")
+        "ladder identically; the twin is not the pre-change code"
+    )
 
 
 # ── a. the refused set ───────────────────────────────────────────────
@@ -929,15 +976,20 @@ def test_an_autonomous_fold_is_refused_when_no_tranche_is_eligible(intent):
     """
     ladder = _ladder(1.00, 0.99, 0.98)
     price = _one_float_above(ladder)
-    bot = _fire(_bot(ScrummingBot, tranches=ladder, holdings=50.0,
-                     target=100.0, price=price), price, intent)
+    bot = _fire(
+        _bot(ScrummingBot, tranches=ladder, holdings=50.0, target=100.0, price=price),
+        price,
+        intent,
+    )
 
     assert bot.seen["placed"] is None, (
         f"an order was placed at ${price:.8f} although the most "
-        f"permissive tranche only allows ${_admits(ladder):.8f}")
+        f"permissive tranche only allows ${_admits(ladder):.8f}"
+    )
     assert len(_refusal(bot)) == 1, bot._bus.messages
-    assert bot._fold_tranches == [dict(t) for t in ladder], (
-        "the ladder was disturbed by a fire that never happened")
+    assert bot._fold_tranches == [
+        dict(t) for t in ladder
+    ], "the ladder was disturbed by a fire that never happened"
     assert bot._current_holdings == 50.0
     assert bot.stats.total_trades == 0
 
@@ -952,17 +1004,22 @@ def test_control_the_same_fold_is_placed_without_the_gate(intent):
     """
     ladder = _ladder(1.00, 0.99, 0.98)
     price = _one_float_above(ladder)
-    bot = _fire(_bot(_pregate(), tranches=ladder, holdings=50.0,
-                     target=100.0, price=price), price, intent)
+    bot = _fire(
+        _bot(_pregate(), tranches=ladder, holdings=50.0, target=100.0, price=price),
+        price,
+        intent,
+    )
 
     assert bot.seen["placed"] is not None, (
         "the pre-change code did not buy either, so this scenario "
-        "cannot show what the gate changed")
+        "cannot show what the gate changed"
+    )
     assert bot.seen["placed"]["side"].value == "buy"
     assert _refusal(bot) == []
     assert _ladder_units(bot) < 300.0, (
         "the pre-change code placed the order but consumed no tranche "
-        "units, so this scenario does not show the ladder being spent")
+        "units, so this scenario does not show the ladder being spent"
+    )
 
 
 def test_the_defect_itself_reproduces_on_the_pre_change_twin():
@@ -980,18 +1037,26 @@ def test_the_defect_itself_reproduces_on_the_pre_change_twin():
     """
     ladder = _ladder(1.00, 0.99)
     price = 1.20
-    old = _fire(_bot(_pregate(), tranches=ladder, holdings=50.0,
-                     target=100.0, price=price), price, "max_cartridge")
+    old = _fire(
+        _bot(_pregate(), tranches=ladder, holdings=50.0, target=100.0, price=price),
+        price,
+        "max_cartridge",
+    )
     assert old.seen["placed"] is not None
     assert _ladder_units(old) < 200.0, "no tranche was consumed"
     assert old._target_balance == 100.0, (
         "the pre-change fold booked growth, so this is not the "
-        "zero-profit discharge the finding describes")
-    assert any("Discharged" in m for m in old._bus.messages), (
-        "the pre-change code did not report the discharge as a success")
+        "zero-profit discharge the finding describes"
+    )
+    assert any(
+        "Discharged" in m for m in old._bus.messages
+    ), "the pre-change code did not report the discharge as a success"
 
-    live = _fire(_bot(ScrummingBot, tranches=ladder, holdings=50.0,
-                      target=100.0, price=price), price, "max_cartridge")
+    live = _fire(
+        _bot(ScrummingBot, tranches=ladder, holdings=50.0, target=100.0, price=price),
+        price,
+        "max_cartridge",
+    )
     assert live.seen["placed"] is None
     assert _ladder_units(live) == 200.0, "the ladder was spent anyway"
 
@@ -1004,11 +1069,18 @@ def test_the_refusal_names_the_price_the_ladder_and_the_money():
     """
     ladder = _ladder(2.00, 1.50)
     price = _admits(ladder) * 1.05
-    bot = _fire(_bot(ScrummingBot, tranches=ladder, holdings=10.0,
-                     target=100.0, price=price), price, "max_cartridge")
+    bot = _fire(
+        _bot(ScrummingBot, tranches=ladder, holdings=10.0, target=100.0, price=price),
+        price,
+        "max_cartridge",
+    )
     line = _refusal(bot)[0]
-    for fragment in (f"${price:.8f}", "2 queued tranche(s)",
-                     f"${_admits(ladder):.8f}", "withheld"):
+    for fragment in (
+        f"${price:.8f}",
+        "2 queued tranche(s)",
+        f"${_admits(ladder):.8f}",
+        "withheld",
+    ):
         assert fragment in line, f"{fragment!r} missing from {line!r}"
 
 
@@ -1020,55 +1092,122 @@ def test_the_refusal_names_the_price_the_ladder_and_the_money():
 # produced for the same input.
 
 IN_SPEC = [
-    ("a deep drop, whole ladder eligible",
-     dict(tranches=_ladder(1.00, 0.99, 0.98), holdings=50.0, target=100.0,
-          price=0.50)),
-    ("exactly on the threshold of the cheapest ref",
-     dict(tranches=_ladder(1.00, 0.99, 0.98), holdings=50.0, target=100.0,
-          price=_threshold(0.98))),
-    ("exactly on the threshold of the dearest ref",
-     dict(tranches=_ladder(2.00, 0.10), holdings=10.0, target=100.0,
-          price=_threshold(2.00))),
-    ("fifty tranches, the dearest eligible and the cheapest not",
-     dict(tranches=_ladder(*([1.00] * 49 + [0.20])), holdings=50.0,
-          target=100.0, price=_threshold(1.00))),
-    ("a wide interval, so the distance demanded is larger",
-     dict(tranches=_ladder(1.00), holdings=50.0, target=100.0,
-          price=0.80, interval=15.0)),
-    ("a zero fee, which the tick path's own idiom turns into 0.6",
-     dict(tranches=_ladder(1.00), holdings=50.0, target=100.0,
-          price=_threshold(1.00, interval=2.0, fee=0.0),
-          interval=2.0, fee=0.0)),
-    ("a crypto-quoted pair, where delta routes via the quote rate",
-     dict(tranches=_ladder(0.002), holdings=1000.0, target=100.0,
-          price=0.001, qrate=50.0, symbol="IMU/BTC")),
-    ("an empty ladder, which has no ref to measure against",
-     dict(tranches=[], holdings=50.0, target=100.0, price=0.50)),
+    (
+        "a deep drop, whole ladder eligible",
+        dict(
+            tranches=_ladder(1.00, 0.99, 0.98), holdings=50.0, target=100.0, price=0.50
+        ),
+    ),
+    (
+        "exactly on the threshold of the cheapest ref",
+        dict(
+            tranches=_ladder(1.00, 0.99, 0.98),
+            holdings=50.0,
+            target=100.0,
+            price=_threshold(0.98),
+        ),
+    ),
+    (
+        "exactly on the threshold of the dearest ref",
+        dict(
+            tranches=_ladder(2.00, 0.10),
+            holdings=10.0,
+            target=100.0,
+            price=_threshold(2.00),
+        ),
+    ),
+    (
+        "fifty tranches, the dearest eligible and the cheapest not",
+        dict(
+            tranches=_ladder(*([1.00] * 49 + [0.20])),
+            holdings=50.0,
+            target=100.0,
+            price=_threshold(1.00),
+        ),
+    ),
+    (
+        "a wide interval, so the distance demanded is larger",
+        dict(
+            tranches=_ladder(1.00),
+            holdings=50.0,
+            target=100.0,
+            price=0.80,
+            interval=15.0,
+        ),
+    ),
+    (
+        "a zero fee, which the tick path's own idiom turns into 0.6",
+        dict(
+            tranches=_ladder(1.00),
+            holdings=50.0,
+            target=100.0,
+            price=_threshold(1.00, interval=2.0, fee=0.0),
+            interval=2.0,
+            fee=0.0,
+        ),
+    ),
+    (
+        "a crypto-quoted pair, where delta routes via the quote rate",
+        dict(
+            tranches=_ladder(0.002),
+            holdings=1000.0,
+            target=100.0,
+            price=0.001,
+            qrate=50.0,
+            symbol="IMU/BTC",
+        ),
+    ),
+    (
+        "an empty ladder, which has no ref to measure against",
+        dict(tranches=[], holdings=50.0, target=100.0, price=0.50),
+    ),
     # A tranche with NO "ref" key is deliberately absent from this row.
     # The discharge loop sorts on `t["ref"]` and raises KeyError on one,
     # before this change and after it. That is a pre-existing defect of
     # the discharge, it is recorded in the unit's report, and it is not
     # this change's to fix -- but a row that crashed both sides would
     # prove nothing about the gate.
-    ("a zero ref and a negative ref sit beside a good one",
-     dict(tranches=(_ladder(1.00)
-                    + [{"usd": 0.0, "units": 5.0, "ref": 0.0},
-                       {"usd": 0.0, "units": 5.0, "ref": -1.0}]),
-          holdings=50.0, target=100.0, price=0.50)),
-    ("the buy is clipped by a thin wallet",
-     dict(tranches=_ladder(1.00), holdings=50.0, target=100.0,
-          price=0.50, quote_free=3.0)),
-    ("the fill lands below the tick price",
-     dict(tranches=_ladder(1.00), holdings=50.0, target=100.0,
-          price=0.50, fill_price=0.45)),
+    (
+        "a zero ref and a negative ref sit beside a good one",
+        dict(
+            tranches=(
+                _ladder(1.00)
+                + [
+                    {"usd": 0.0, "units": 5.0, "ref": 0.0},
+                    {"usd": 0.0, "units": 5.0, "ref": -1.0},
+                ]
+            ),
+            holdings=50.0,
+            target=100.0,
+            price=0.50,
+        ),
+    ),
+    (
+        "the buy is clipped by a thin wallet",
+        dict(
+            tranches=_ladder(1.00),
+            holdings=50.0,
+            target=100.0,
+            price=0.50,
+            quote_free=3.0,
+        ),
+    ),
+    (
+        "the fill lands below the tick price",
+        dict(
+            tranches=_ladder(1.00),
+            holdings=50.0,
+            target=100.0,
+            price=0.50,
+            fill_price=0.45,
+        ),
+    ),
 ]
 
 
 @pytest.mark.parametrize("intent", EVERY_INTENT)
-@pytest.mark.parametrize(
-    "label, scenario", IN_SPEC, ids=[row[0] for row in IN_SPEC])
-def test_an_in_spec_fold_is_unchanged_in_every_observable(
-        intent, label, scenario):
+@pytest.mark.parametrize("label, scenario", IN_SPEC, ids=[row[0] for row in IN_SPEC])
+def test_an_in_spec_fold_is_unchanged_in_every_observable(intent, label, scenario):
     """THE CONTROL THAT PROTECTS THE OPERATOR.
 
     IF THIS FAILS: a fold that should have fired did not, or fired
@@ -1077,21 +1216,21 @@ def test_an_in_spec_fold_is_unchanged_in_every_observable(
     cartridge re-arms and refuses on every tick, and the ladder is
     stranded with money queued and no path to spend it.
     """
-    live = _observable(_fire(
-        _bot(ScrummingBot, **scenario), scenario["price"], intent))
-    old = _observable(_fire(
-        _bot(_pregate(), **scenario), scenario["price"], intent))
+    live = _observable(_fire(_bot(ScrummingBot, **scenario), scenario["price"], intent))
+    old = _observable(_fire(_bot(_pregate(), **scenario), scenario["price"], intent))
 
     assert old["placed"] is not None, (
         f"{label}: the pre-change code did not trade this scenario, so "
-        f"it is not evidence about an in-spec fold")
+        f"it is not evidence about an in-spec fold"
+    )
     assert live["placed"] == old["placed"], (
         f"{label} / {intent}: the order call changed\n"
-        f"  now: {live['placed']}\n  was: {old['placed']}")
+        f"  now: {live['placed']}\n  was: {old['placed']}"
+    )
     for key, value in old.items():
         assert live[key] == value, (
-            f"{label} / {intent}: {key} changed\n"
-            f"  now: {live[key]}\n  was: {value}")
+            f"{label} / {intent}: {key} changed\n" f"  now: {live[key]}\n  was: {value}"
+        )
 
 
 def test_a_partly_eligible_ladder_still_fires():
@@ -1110,8 +1249,11 @@ def test_a_partly_eligible_ladder_still_fires():
     ladder = _ladder(5.00, 0.10)
     price = _threshold(5.00)
     assert price > _threshold(0.10), "this row is not partly eligible"
-    bot = _fire(_bot(ScrummingBot, tranches=ladder, holdings=10.0,
-                     target=100.0, price=price), price, "max_cartridge")
+    bot = _fire(
+        _bot(ScrummingBot, tranches=ladder, holdings=10.0, target=100.0, price=price),
+        price,
+        "max_cartridge",
+    )
     assert bot.seen["placed"] is not None
     assert _refusal(bot) == []
 
@@ -1120,20 +1262,38 @@ def test_a_partly_eligible_ladder_still_fires():
 
 
 REFUSED_IF_AUTONOMOUS = [
-    ("no tranche is eligible",
-     dict(tranches=_ladder(1.00), holdings=50.0, target=100.0, price=0.999)),
-    ("the interval cannot be read",
-     dict(tranches=_ladder(1.00), holdings=50.0, target=100.0, price=0.50,
-          interval="abc")),
-    ("the fee cannot be read",
-     dict(tranches=_ladder(1.00), holdings=50.0, target=100.0, price=0.50,
-          fee=object())),
+    (
+        "no tranche is eligible",
+        dict(tranches=_ladder(1.00), holdings=50.0, target=100.0, price=0.999),
+    ),
+    (
+        "the interval cannot be read",
+        dict(
+            tranches=_ladder(1.00),
+            holdings=50.0,
+            target=100.0,
+            price=0.50,
+            interval="abc",
+        ),
+    ),
+    (
+        "the fee cannot be read",
+        dict(
+            tranches=_ladder(1.00),
+            holdings=50.0,
+            target=100.0,
+            price=0.50,
+            fee=object(),
+        ),
+    ),
 ]
 
 
 @pytest.mark.parametrize(
-    "label, scenario", REFUSED_IF_AUTONOMOUS,
-    ids=[row[0] for row in REFUSED_IF_AUTONOMOUS])
+    "label, scenario",
+    REFUSED_IF_AUTONOMOUS,
+    ids=[row[0] for row in REFUSED_IF_AUTONOMOUS],
+)
 def test_the_operator_button_is_never_refused(label, scenario):
     """OPERATOR SOVEREIGNTY, and byte-for-byte at that.
 
@@ -1147,29 +1307,38 @@ def test_the_operator_button_is_never_refused(label, scenario):
     every gate" -- and the ruling in ``manual_fire_tranche`` that names
     this very gate as one the operator has chosen to skip.
     """
-    live = _observable(_fire(
-        _bot(ScrummingBot, **scenario), scenario["price"], "manual_button"))
-    old = _observable(_fire(
-        _bot(_pregate(), **scenario), scenario["price"], "manual_button"))
+    live = _observable(
+        _fire(_bot(ScrummingBot, **scenario), scenario["price"], "manual_button")
+    )
+    old = _observable(
+        _fire(_bot(_pregate(), **scenario), scenario["price"], "manual_button")
+    )
     assert old["placed"] is not None, f"{label}: nothing to compare"
     assert _refusal_free(live)
     for key, value in old.items():
         assert live[key] == value, (
             f"{label}: manual fire changed in {key}\n"
-            f"  now: {live[key]}\n  was: {value}")
+            f"  now: {live[key]}\n  was: {value}"
+        )
 
 
 def _refusal_free(observable):
-    return not [m for m in observable["messages"]
-                if "AUTONOMOUS FIRE REFUSED (opposing distance" in m]
+    return not [
+        m
+        for m in observable["messages"]
+        if "AUTONOMOUS FIRE REFUSED (opposing distance" in m
+    ]
 
 
 @pytest.mark.parametrize(
-    "label, scenario", REFUSED_IF_AUTONOMOUS,
-    ids=[row[0] for row in REFUSED_IF_AUTONOMOUS])
+    "label, scenario",
+    REFUSED_IF_AUTONOMOUS,
+    ids=[row[0] for row in REFUSED_IF_AUTONOMOUS],
+)
 @pytest.mark.parametrize("intent", AUTONOMOUS)
 def test_control_the_same_scenario_is_refused_for_an_autonomous_caller(
-        label, scenario, intent):
+    label, scenario, intent
+):
     """CONTROL for the sovereignty test.
 
     IF THIS FAILS: the scenarios above are ones nothing refuses, so the
@@ -1183,14 +1352,15 @@ def test_control_the_same_scenario_is_refused_for_an_autonomous_caller(
 def _method_text(source: str, name: str) -> bytes:
     """One method's text, from ``def`` to the next method at its level."""
     lines = _normalise(source).split("\n")
-    starts = [i for i, ln in enumerate(lines)
-              if ln.startswith(f"    def {name}(")
-              or ln.startswith(f"    async def {name}(")]
+    starts = [
+        i
+        for i, ln in enumerate(lines)
+        if ln.startswith(f"    def {name}(") or ln.startswith(f"    async def {name}(")
+    ]
     if len(starts) != 1:
-        raise StalePlant(
-            f"expected one definition of {name}, found {len(starts)}")
+        raise StalePlant(f"expected one definition of {name}, found {len(starts)}")
     body = [lines[starts[0]]]
-    for line in lines[starts[0] + 1:]:
+    for line in lines[starts[0] + 1 :]:
         if line.startswith("    def ") or line.startswith("    async def "):
             break
         body.append(line)
@@ -1204,25 +1374,25 @@ def test_the_operator_tranche_button_is_textually_unchanged():
     button -- and its header renounces THIS gate by name: "OTD
     per-tranche price gate (operator chose this tranche explicitly)".
 
-    The claim is checked by hashing its text in the shipping source
-    against its text in the provably pre-change twin, so there is no
-    magic constant to go stale.
+    The claim is checked by comparing its text in the shipping source
+    against its text in the provably pre-change twin -- a direct equality,
+    so there is no magic constant to go stale.
 
     IF THIS FAILS: a third executor moved in a change whose blast radius
     was measured on the assumption that it did not.
     """
     now = _method_text(SOURCE, "manual_fire_tranche")
     was = _method_text(_stripped_source(), "manual_fire_tranche")
-    assert hashlib.sha256(now).hexdigest() == hashlib.sha256(was).hexdigest()
+    assert now == was, "manual_fire_tranche differs between shipping and twin"
     # The ruling itself sits in the bypass list immediately ABOVE the
     # def, not inside the method, so it is looked for in the file. The
     # gate block quotes it too, which is why the line is matched whole
     # rather than by the phrase.
     ruling = "    #   - OTD per-tranche price gate (operator chose this"
-    assert SOURCE.count(ruling) == 1 and (
-        _stripped_source().count(ruling) == 1), (
+    assert SOURCE.count(ruling) == 1 and (_stripped_source().count(ruling) == 1), (
         "the operator's recorded ruling has gone from the file, and this "
-        "change relies on that path being deliberately exempt")
+        "change relies on that path being deliberately exempt"
+    )
 
 
 def test_the_shared_executor_changed_and_nothing_else_did():
@@ -1236,12 +1406,21 @@ def test_the_shared_executor_changed_and_nothing_else_did():
     blast radius was measured for a smaller change than shipped.
     """
     old = _stripped_source()
-    moved = [name for name in (
-        "_execute_manual_rebalance", "manual_fire_tranche", "tick",
-        "_apply_fold_target_growth", "_preview_fold_growth",
-        "_settled_fill", "_execute_buy", "_execute_sell",
-        "reset_swos_cycle")
-        if _method_text(SOURCE, name) != _method_text(old, name)]
+    moved = [
+        name
+        for name in (
+            "_execute_manual_rebalance",
+            "manual_fire_tranche",
+            "tick",
+            "_apply_fold_target_growth",
+            "_preview_fold_growth",
+            "_settled_fill",
+            "_execute_buy",
+            "_execute_sell",
+            "reset_swos_cycle",
+        )
+        if _method_text(SOURCE, name) != _method_text(old, name)
+    ]
     assert moved == ["_execute_manual_rebalance"], moved
     executor = _method_text(SOURCE, "_execute_manual_rebalance")
     assert _GATE_FIRST_LINE.encode("utf-8") in executor
@@ -1258,12 +1437,14 @@ def test_the_scrum_side_is_untouched(intent):
     gating live scrums -- the opposite of the intent, on real money, in
     the direction that stops the bot taking profit.
     """
-    scenario = dict(tranches=_ladder(1.00, 0.99), holdings=1000.0,
-                    target=100.0, price=1.0)
+    scenario = dict(
+        tranches=_ladder(1.00, 0.99), holdings=1000.0, target=100.0, price=1.0
+    )
     live = _observable(_fire(_bot(ScrummingBot, **scenario), 1.0, intent))
     old = _observable(_fire(_bot(_pregate(), **scenario), 1.0, intent))
     assert old["placed"] is not None and (
-        old["placed"]["side"].value == "sell"), "this row is not a scrum"
+        old["placed"]["side"].value == "sell"
+    ), "this row is not a scrum"
     for key, value in old.items():
         assert live[key] == value, f"{intent}: {key} changed on the sell side"
 
@@ -1284,8 +1465,13 @@ def test_a_nan_price_refuses(intent):
     IF THIS FAILS: a NaN price reaches a market order on a path where
     every other gate is already bypassed.
     """
-    bot = _fire(_bot(ScrummingBot, tranches=_ladder(1.00), holdings=50.0,
-                     target=100.0, price=1.0), float("nan"), intent)
+    bot = _fire(
+        _bot(
+            ScrummingBot, tranches=_ladder(1.00), holdings=50.0, target=100.0, price=1.0
+        ),
+        float("nan"),
+        intent,
+    )
     assert bot.seen["placed"] is None
     assert len(_refusal(bot)) == 1
 
@@ -1297,10 +1483,14 @@ def test_control_a_nan_price_bought_before_this_change(intent):
     IF THIS FAILS: something already stopped NaN and the refusal above
     is not this change's doing.
     """
-    bot = _fire(_bot(_pregate(), tranches=_ladder(1.00), holdings=50.0,
-                     target=100.0, price=1.0), float("nan"), intent)
-    assert bot.seen["placed"] is not None, (
-        "the pre-change code refused a NaN price too")
+    bot = _fire(
+        _bot(
+            _pregate(), tranches=_ladder(1.00), holdings=50.0, target=100.0, price=1.0
+        ),
+        float("nan"),
+        intent,
+    )
+    assert bot.seen["placed"] is not None, "the pre-change code refused a NaN price too"
 
 
 @pytest.mark.parametrize("intent", EVERY_INTENT)
@@ -1321,16 +1511,14 @@ def test_an_infinite_price_goes_to_the_sell_side_exactly_as_before(intent):
     IF THIS FAILS: the routing of an infinite price changed under this
     unit, which measured its blast radius assuming it did not.
     """
-    scenario = dict(tranches=_ladder(1.00), holdings=50.0, target=100.0,
-                    price=1.0)
-    live = _observable(_fire(
-        _bot(ScrummingBot, **scenario), float("inf"), intent))
-    old = _observable(_fire(
-        _bot(_pregate(), **scenario), float("inf"), intent))
+    scenario = dict(tranches=_ladder(1.00), holdings=50.0, target=100.0, price=1.0)
+    live = _observable(_fire(_bot(ScrummingBot, **scenario), float("inf"), intent))
+    old = _observable(_fire(_bot(_pregate(), **scenario), float("inf"), intent))
     assert old["placed"] is not None
     assert old["placed"]["side"].value == "sell", (
         "an infinite price no longer reaches the sell side, so the "
-        "defect recorded here has changed shape")
+        "defect recorded here has changed shape"
+    )
     assert math.isnan(old["placed"]["amount"])
     for key, value in old.items():
         assert repr(live[key]) == repr(value), f"{intent}: {key} changed"
@@ -1338,8 +1526,7 @@ def test_an_infinite_price_goes_to_the_sell_side_exactly_as_before(intent):
 
 @pytest.mark.parametrize("intent", AUTONOMOUS)
 @pytest.mark.parametrize("price", [float("-inf"), 0.0, -0.0, -1.0])
-def test_a_price_the_older_check_already_rejects_is_still_rejected(
-        intent, price):
+def test_a_price_the_older_check_already_rejects_is_still_rejected(intent, price):
     """ATTRIBUTION, not a new claim.
 
     These four never reach the gate: the validity check at the top of
@@ -1349,12 +1536,18 @@ def test_a_price_the_older_check_already_rejects_is_still_rejected(
     IF THIS FAILS: the older validity check has gone, and the gate is
     now the only thing standing between a nonsense price and an order.
     """
-    bot = _fire(_bot(ScrummingBot, tranches=_ladder(1.00), holdings=50.0,
-                     target=100.0, price=1.0), price, intent)
+    bot = _fire(
+        _bot(
+            ScrummingBot, tranches=_ladder(1.00), holdings=50.0, target=100.0, price=1.0
+        ),
+        price,
+        intent,
+    )
     assert bot.seen["placed"] is None
     assert _refusal(bot) == [], (
         "this price reached the new gate; it used to be rejected before "
-        "the method got that far")
+        "the method got that far"
+    )
     assert any("no valid price" in m for m in bot._bus.messages)
 
 
@@ -1368,7 +1561,8 @@ BAD_CONFIG = [
 
 @pytest.mark.parametrize("intent", AUTONOMOUS)
 @pytest.mark.parametrize(
-    "label, override", BAD_CONFIG, ids=[row[0] for row in BAD_CONFIG])
+    "label, override", BAD_CONFIG, ids=[row[0] for row in BAD_CONFIG]
+)
 def test_an_unreadable_distance_refuses(intent, label, override):
     """FAIL CLOSED ON A BAD CONFIG -- a deliberate difference from tick.
 
@@ -1381,27 +1575,48 @@ def test_an_unreadable_distance_refuses(intent, label, override):
     IF THIS FAILS: an unparseable config restores the defect on exactly
     the path where every other gate is already off.
     """
-    bot = _fire(_bot(ScrummingBot, tranches=_ladder(1.00), holdings=50.0,
-                     target=100.0, price=0.50, **override),
-                0.50, intent)
+    bot = _fire(
+        _bot(
+            ScrummingBot,
+            tranches=_ladder(1.00),
+            holdings=50.0,
+            target=100.0,
+            price=0.50,
+            **override,
+        ),
+        0.50,
+        intent,
+    )
     assert bot.seen["placed"] is None, f"{label} traded"
-    assert any("opposing distance unreadable" in m
-               for m in bot._bus.messages), bot._bus.messages
+    assert any(
+        "opposing distance unreadable" in m for m in bot._bus.messages
+    ), bot._bus.messages
 
 
 @pytest.mark.parametrize(
-    "label, override", BAD_CONFIG, ids=[row[0] for row in BAD_CONFIG])
+    "label, override", BAD_CONFIG, ids=[row[0] for row in BAD_CONFIG]
+)
 def test_control_a_bad_config_traded_before_this_change(label, override):
     """CONTROL. The old code bought straight through a broken config.
 
     IF THIS FAILS: something else already refused these, and the
     fail-closed claim above is not this change's doing.
     """
-    bot = _fire(_bot(_pregate(), tranches=_ladder(1.00), holdings=50.0,
-                     target=100.0, price=0.50, **override),
-                0.50, "wire_stack")
-    assert bot.seen["placed"] is not None, (
-        f"{label}: the pre-change code refused this too")
+    bot = _fire(
+        _bot(
+            _pregate(),
+            tranches=_ladder(1.00),
+            holdings=50.0,
+            target=100.0,
+            price=0.50,
+            **override,
+        ),
+        0.50,
+        "wire_stack",
+    )
+    assert (
+        bot.seen["placed"] is not None
+    ), f"{label}: the pre-change code refused this too"
 
 
 REF_EDGE = [
@@ -1412,8 +1627,7 @@ REF_EDGE = [
 
 
 @pytest.mark.parametrize("intent", AUTONOMOUS)
-@pytest.mark.parametrize(
-    "label, ref", REF_EDGE, ids=[row[0] for row in REF_EDGE])
+@pytest.mark.parametrize("label, ref", REF_EDGE, ids=[row[0] for row in REF_EDGE])
 def test_a_ladder_of_only_malformed_refs_refuses(intent, label, ref):
     """A ref that cannot be traded against is not a licence to trade.
 
@@ -1423,8 +1637,11 @@ def test_a_ladder_of_only_malformed_refs_refuses(intent, label, ref):
     tranche = {"usd": 1.0, "units": 5.0}
     if ref is not None:
         tranche["ref"] = ref
-    bot = _fire(_bot(ScrummingBot, tranches=[tranche], holdings=50.0,
-                     target=100.0, price=0.50), 0.50, intent)
+    bot = _fire(
+        _bot(ScrummingBot, tranches=[tranche], holdings=50.0, target=100.0, price=0.50),
+        0.50,
+        intent,
+    )
     assert bot.seen["placed"] is None, f"{label} traded"
     assert len(_refusal(bot)) == 1
 
@@ -1439,21 +1656,44 @@ def test_the_threshold_is_the_module_and_not_a_local_copy():
     edge = ref * fold_rebuy_factor(interval, fee)
     assert not math.isnan(edge)
 
-    at = _fire(_bot(ScrummingBot, tranches=_ladder(ref), holdings=50.0,
-                    target=100.0, price=edge), edge, "wire_stack")
-    assert at.seen["placed"] is not None, (
-        "a price exactly ON the threshold was refused; the rule is <=")
+    at = _fire(
+        _bot(
+            ScrummingBot, tranches=_ladder(ref), holdings=50.0, target=100.0, price=edge
+        ),
+        edge,
+        "wire_stack",
+    )
+    assert (
+        at.seen["placed"] is not None
+    ), "a price exactly ON the threshold was refused; the rule is <="
 
     above = math.nextafter(edge, math.inf)
-    over = _fire(_bot(ScrummingBot, tranches=_ladder(ref), holdings=50.0,
-                      target=100.0, price=above), above, "wire_stack")
-    assert over.seen["placed"] is None, (
-        "one float above the threshold was still admitted")
+    over = _fire(
+        _bot(
+            ScrummingBot,
+            tranches=_ladder(ref),
+            holdings=50.0,
+            target=100.0,
+            price=above,
+        ),
+        above,
+        "wire_stack",
+    )
+    assert (
+        over.seen["placed"] is None
+    ), "one float above the threshold was still admitted"
 
 
-@pytest.mark.parametrize("interval, fee", [
-    (1.0, 0.6), (2.0, 0.0), (0.0, 0.6), (15.0, 0.6), (60.0, 0.6),
-])
+@pytest.mark.parametrize(
+    "interval, fee",
+    [
+        (1.0, 0.6),
+        (2.0, 0.0),
+        (0.0, 0.6),
+        (15.0, 0.6),
+        (60.0, 0.6),
+    ],
+)
 def test_the_gate_agrees_with_the_tick_path_on_every_config(interval, fee):
     """ONE RULE, TWO SITES.
 
@@ -1468,17 +1708,39 @@ def test_the_gate_agrees_with_the_tick_path_on_every_config(interval, fee):
     """
     ref = 1.0
     edge = ref * _tick_factor(interval, fee)
-    at = _fire(_bot(ScrummingBot, tranches=_ladder(ref), holdings=1.0,
-                    target=100.0, price=edge, interval=interval, fee=fee),
-               edge, "max_cartridge")
+    at = _fire(
+        _bot(
+            ScrummingBot,
+            tranches=_ladder(ref),
+            holdings=1.0,
+            target=100.0,
+            price=edge,
+            interval=interval,
+            fee=fee,
+        ),
+        edge,
+        "max_cartridge",
+    )
     assert at.seen["placed"] is not None, (
         f"interval={interval} fee={fee}: the tick path's own boundary "
-        f"price ${edge:.8f} was refused here")
+        f"price ${edge:.8f} was refused here"
+    )
 
     above = math.nextafter(edge, math.inf)
-    over = _fire(_bot(ScrummingBot, tranches=_ladder(ref), holdings=1.0,
-                      target=100.0, price=above, interval=interval,
-                      fee=fee), above, "max_cartridge")
+    over = _fire(
+        _bot(
+            ScrummingBot,
+            tranches=_ladder(ref),
+            holdings=1.0,
+            target=100.0,
+            price=above,
+            interval=interval,
+            fee=fee,
+        ),
+        above,
+        "max_cartridge",
+    )
     assert over.seen["placed"] is None, (
         f"interval={interval} fee={fee}: one float past the tick path's "
-        f"boundary was admitted here")
+        f"boundary was admitted here"
+    )

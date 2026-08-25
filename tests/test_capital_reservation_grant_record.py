@@ -58,6 +58,7 @@ The same injection carries both halves. An in-band value must come back
 True and an out-of-band value must come back False, so no test here can
 pass because the injection itself decided the answer.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -118,20 +119,42 @@ class _Registry:
         self.heartbeats: list[str] = []
         self.after_heartbeat: Callable[[], None] | None = None
 
-    def reserve(self, bot_id: str, asset: str, qty: float, reason: str,
-                bot_kind: str = "unknown",
-                total_holdings: float | None = None) -> str:
-        self.reserved.append({
-            "bot_id": bot_id, "asset": asset, "qty": float(qty),
-            "reason": reason, "bot_kind": bot_kind,
-            "total_holdings": total_holdings})
+    def reserve(
+        self,
+        bot_id: str,
+        asset: str,
+        qty: float,
+        reason: str,
+        bot_kind: str = "unknown",
+        total_holdings: float | None = None,
+    ) -> str:
+        self.reserved.append(
+            {
+                "bot_id": bot_id,
+                "asset": asset,
+                "qty": float(qty),
+                "reason": reason,
+                "bot_kind": bot_kind,
+                "total_holdings": total_holdings,
+            }
+        )
         return f"reservation-{len(self.reserved):04d}"
 
-    def update(self, handle: str, bot_id: str, new_qty: float,
-               total_holdings: float | None = None) -> None:
-        self.updated.append({
-            "handle": handle, "bot_id": bot_id,
-            "new_qty": float(new_qty), "total_holdings": total_holdings})
+    def update(
+        self,
+        handle: str,
+        bot_id: str,
+        new_qty: float,
+        total_holdings: float | None = None,
+    ) -> None:
+        self.updated.append(
+            {
+                "handle": handle,
+                "bot_id": bot_id,
+                "new_qty": float(new_qty),
+                "total_holdings": total_holdings,
+            }
+        )
 
     def heartbeat(self, bot_id: str) -> None:
         self.heartbeats.append(bot_id)
@@ -163,9 +186,11 @@ def _bot(registry: _Registry) -> SimpleNamespace:
     )
     stub._crr = MethodType(ScrummingBot._crr, stub)
     stub._compute_reservation_qty = MethodType(
-        ScrummingBot._compute_reservation_qty, stub)
+        ScrummingBot._compute_reservation_qty, stub
+    )
     stub._get_cached_exchange_balance = MethodType(
-        ScrummingBot._get_cached_exchange_balance, stub)
+        ScrummingBot._get_cached_exchange_balance, stub
+    )
     return stub
 
 
@@ -176,8 +201,10 @@ def _ensure(stub: SimpleNamespace) -> None:
 
 def _desync_to(stub: SimpleNamespace, held: float) -> Callable[[], None]:
     """Leave the mirror at ``held`` once the registry work is done."""
+
     def _plant() -> None:
         stub._crr_last_reserved_qty = held
+
     return _plant
 
 
@@ -206,11 +233,13 @@ def _one_record(collector: Any) -> Any:
     assert len(records) == 1, (
         f"expected exactly one {PIN} record, got {len(records)}. A pin "
         f"that made none is a pin that did not run; more than one means "
-        f"throttle state leaked into this test.")
+        f"throttle state leaked into this test."
+    )
     return records[0]
 
 
 # -- the numbers this file rests on -----------------------------------
+
 
 def test_the_needed_quantity_is_what_this_file_says_it_is() -> None:
     """POSITIVE CONTROL for every band below.
@@ -237,6 +266,7 @@ def test_the_planted_values_are_one_each_side_of_the_band() -> None:
 
 # -- the record exists, and it reads live state -----------------------
 
+
 def test_the_grant_path_records_its_postcondition(sink: Any) -> None:
     """An undriven emitter is decoration. This is the one that runs."""
     registry = _Registry()
@@ -260,8 +290,10 @@ def test_the_grant_path_records_its_postcondition(sink: Any) -> None:
 
 # -- the two-sided control --------------------------------------------
 
+
 def test_the_verdict_is_true_when_the_held_quantity_is_inside_the_band(
-        sink: Any) -> None:
+    sink: Any,
+) -> None:
     """Inside the band the update path keeps the reservation in.
 
     The two halves are DIFFERENT NUMBERS here and the verdict is still
@@ -278,13 +310,14 @@ def test_the_verdict_is_true_when_the_held_quantity_is_inside_the_band(
     assert record.actual == pytest.approx(INSIDE_BAND)
     assert record.expected == pytest.approx(NEEDED)
     assert record.actual != record.expected, (
-        "the record carried one value twice, which is the defect this "
-        "unit removed")
+        "the record carried one value twice, which is the defect this " "unit removed"
+    )
     assert record.ok is True
 
 
 def test_the_verdict_is_false_when_the_held_quantity_is_outside_the_band(
-        sink: Any) -> None:
+    sink: Any,
+) -> None:
     """THE HALF THAT COULD NOT HAPPEN BEFORE.
 
     Same method, same emitter, same injection seam as the case above,
@@ -303,12 +336,12 @@ def test_the_verdict_is_false_when_the_held_quantity_is_outside_the_band(
     assert record.expected == pytest.approx(NEEDED)
     assert record.ok is False, (
         "the held reservation is outside the 1 % band the update path "
-        "maintains and the pin reported it green")
+        "maintains and the pin reported it green"
+    )
 
 
 @pytest.mark.parametrize("held", [0.0, -1.0])
-def test_a_held_quantity_of_zero_or_less_is_not_a_pass(
-        sink: Any, held: float) -> None:
+def test_a_held_quantity_of_zero_or_less_is_not_a_pass(sink: Any, held: float) -> None:
     """There is nothing for a band to be measured against.
 
     The update path above the record reads this state the same way: it
@@ -328,6 +361,7 @@ def test_a_held_quantity_of_zero_or_less_is_not_a_pass(
 
 
 # -- the verdict has to survive the wire ------------------------------
+
 
 def test_a_failing_verdict_is_not_throttled_away(sink: Any) -> None:
     """The pin admits one record per 60 s. A red is never one of them.
@@ -353,15 +387,16 @@ def test_a_failing_verdict_is_not_throttled_away(sink: Any) -> None:
     assert [r.ok for r in records] == [True, False], (
         "the second tick's failing record was suppressed by the 60 s "
         "throttle, so a real divergence would go unrecorded for a "
-        "minute")
+        "minute"
+    )
     assert registry.updated == [], (
         "the second tick pushed an update, so it corrected the mirror "
         "itself and the red the record carries is not the one this "
-        "test planted")
+        "test planted"
+    )
 
 
-def test_the_verdict_can_be_recomputed_from_the_record_itself(
-        sink: Any) -> None:
+def test_the_verdict_can_be_recomputed_from_the_record_itself(sink: Any) -> None:
     """Both halves are rounded, and the verdict is judged on them.
 
     So a reader of the JSONL can reproduce `ok` from the two numbers
@@ -381,9 +416,10 @@ def test_the_verdict_can_be_recomputed_from_the_record_itself(
     for record in records:
         recomputed = bool(
             record.actual > 0.0
-            and abs(record.expected - record.actual)
-            / record.actual <= 0.01)
+            and abs(record.expected - record.actual) / record.actual <= 0.01
+        )
         assert record.ok is recomputed, (
             f"the record says ok={record.ok} but its own actual="
             f"{record.actual} and expected={record.expected} recompute "
-            f"to {recomputed}")
+            f"to {recomputed}"
+        )

@@ -25,6 +25,7 @@ Design doc:
 
 sadp: R28 SSS + R70 RCN
 """
+
 from .bot_state_loader import (
     load_bot_configs_from_state,
     BOT_STATE_PATH,

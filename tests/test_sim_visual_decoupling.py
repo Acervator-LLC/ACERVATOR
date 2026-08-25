@@ -24,6 +24,7 @@ an un-drained frame must be replaced rather than queued.
 The methods are exercised unbound against duck-typed stand-ins so the
 suite stays headless — no QApplication, no widgets.
 """
+
 from __future__ import annotations
 
 import sys
@@ -39,11 +40,12 @@ if str(REPO) not in sys.path:
 from src.gui.simulator_tab.fleet import fleet_replay_panel as frp  # noqa: E402
 
 pytestmark = pytest.mark.skipif(
-    not getattr(frp, "_HAS_QT", False),
-    reason="PySide6 not available")
+    not getattr(frp, "_HAS_QT", False), reason="PySide6 not available"
+)
 
 
 # ── stand-ins ────────────────────────────────────────────────────
+
 
 class _Stats:
     def __init__(self, **kw):
@@ -59,8 +61,9 @@ class _Cfg:
 
 
 class _Bot:
-    def __init__(self, symbol, holdings=0.0, price=0.0,
-                 gate_state=None, summary=None, **stats):
+    def __init__(
+        self, symbol, holdings=0.0, price=0.0, gate_state=None, summary=None, **stats
+    ):
         self.config = _Cfg(symbol)
         self.bot_id = symbol.replace("/", "-")
         self.stats = _Stats(**stats)
@@ -127,8 +130,7 @@ class _Panel:
         return frp.FleetReplayPanel._collect_visual_snapshot(self)
 
     def _collect_stat_fields(self, bots, exchange):
-        return frp.FleetReplayPanel._collect_stat_fields(
-            self, bots, exchange)
+        return frp.FleetReplayPanel._collect_stat_fields(self, bots, exchange)
 
     def _apply_stat_fields(self, fields):
         return frp.FleetReplayPanel._apply_stat_fields(self, fields)
@@ -141,19 +143,28 @@ def _call(name, panel, *a):
 
 # ── the producer must not touch Qt ───────────────────────────────
 
+
 def test_producer_returns_plain_data():
     """The snapshot must be JSON-shaped: dicts, strs, floats, bools.
     Anything Qt-derived crossing the thread boundary would reintroduce
     exactly the coupling this cascade removed."""
-    bot = _Bot("BTC/USD", holdings=0.5, price=60000.0,
-               gate_state={"scrum_armed": True, "fold_armed": False,
-                           "scrum_blockers": ["delta"],
-                           "fold_blockers": [],
-                           "scrum_fixture": {"landing_strip_side": "up"}},
-               summary={"grade": "B"})
-    ex = _Exchange(balances={"USD": 100.0},
-                   series={"BTC/USD": _Series(
-                       [0, 1.0, 2.0, 0.5, 1.5, 42.0])})
+    bot = _Bot(
+        "BTC/USD",
+        holdings=0.5,
+        price=60000.0,
+        gate_state={
+            "scrum_armed": True,
+            "fold_armed": False,
+            "scrum_blockers": ["delta"],
+            "fold_blockers": [],
+            "scrum_fixture": {"landing_strip_side": "up"},
+        },
+        summary={"grade": "B"},
+    )
+    ex = _Exchange(
+        balances={"USD": 100.0},
+        series={"BTC/USD": _Series([0, 1.0, 2.0, 0.5, 1.5, 42.0])},
+    )
     panel = _Panel(_Controller([bot], ex))
 
     snap = _call("_collect_visual_snapshot", panel)
@@ -178,8 +189,7 @@ def test_producer_returns_plain_data():
 
 def test_producer_reads_candle_close_and_volume():
     bot = _Bot("ETH/USD", gate_state={"scrum_armed": False})
-    ex = _Exchange(series={"ETH/USD": _Series(
-        [0, 10.0, 20.0, 5.0, 17.5, 900.0])})
+    ex = _Exchange(series={"ETH/USD": _Series([0, 10.0, 20.0, 5.0, 17.5, 900.0])})
     panel = _Panel(_Controller([bot], ex))
 
     e = _call("_collect_visual_snapshot", panel)["per_symbol"]["ETH/USD"]
@@ -198,6 +208,7 @@ def test_producer_marks_missing_gate_state():
 
 def test_producer_survives_a_broken_bot():
     """One bad bot must not cost the whole frame."""
+
     class _Exploding(_Bot):
         @property
         def _last_gate_state(self):
@@ -223,6 +234,7 @@ def test_producer_skips_bots_without_a_symbol():
 
 
 # ── latest-wins handoff ──────────────────────────────────────────
+
 
 def test_undrained_frame_is_replaced_not_queued():
     """If the GUI cannot keep up, intermediate frames are dropped.
@@ -270,24 +282,38 @@ def test_producer_is_inert_without_a_controller():
 
 # ── stat strip: split halves ─────────────────────────────────────
 
+
 def test_stat_fields_aggregate_across_bots():
     bots = [
-        _Bot("BTC/USD", holdings=0.5, price=60000.0,
-             realised_pnl=100.0, accumulated_fold=0.25,
-             total_scrummed_usd=1000.0, total_folded_usd=800.0),
-        _Bot("ETH/USD", holdings=2.0, price=3000.0,
-             realised_pnl=50.0, accumulated_fold=0.75,
-             total_scrummed_usd=500.0, total_folded_usd=400.0),
+        _Bot(
+            "BTC/USD",
+            holdings=0.5,
+            price=60000.0,
+            realised_pnl=100.0,
+            accumulated_fold=0.25,
+            total_scrummed_usd=1000.0,
+            total_folded_usd=800.0,
+        ),
+        _Bot(
+            "ETH/USD",
+            holdings=2.0,
+            price=3000.0,
+            realised_pnl=50.0,
+            accumulated_fold=0.75,
+            total_scrummed_usd=500.0,
+            total_folded_usd=400.0,
+        ),
     ]
-    ex = _Exchange(balances={"USD": 1200.0, "USDC": 300.0},
-                   trades=[object(), object(), object()])
+    ex = _Exchange(
+        balances={"USD": 1200.0, "USDC": 300.0}, trades=[object(), object(), object()]
+    )
     panel = _Panel(_Controller(bots, ex))
 
     f = _call("_collect_stat_fields", panel, bots, ex)
 
-    assert f["Spendable"] == "$1,500.00"        # USD + USDC
+    assert f["Spendable"] == "$1,500.00"  # USD + USDC
     assert f["Realised"] == "$150.00"
-    assert f["Locked"] == "$36,000.00"          # .5*60000 + 2*3000
+    assert f["Locked"] == "$36,000.00"  # .5*60000 + 2*3000
     assert f["Mature"] == "$1.00"
     assert f["Scrummed"] == "$1,500.00"
     assert f["Folded"] == "$1,200.00"
@@ -310,8 +336,17 @@ def test_stat_fields_cover_every_strip_slot():
     panel = _Panel(_Controller())
     f = _call("_collect_stat_fields", panel, [], _Exchange())
     assert set(f) == {
-        "Spendable", "Realised", "Locked", "Mature", "Exch",
-        "Scrummed", "Folded", "Trades", "Bots", "Errors"}
+        "Spendable",
+        "Realised",
+        "Locked",
+        "Mature",
+        "Exch",
+        "Scrummed",
+        "Folded",
+        "Trades",
+        "Bots",
+        "Errors",
+    }
 
 
 def test_apply_pushes_every_field_to_the_strip():
@@ -323,7 +358,7 @@ def test_apply_pushes_every_field_to_the_strip():
 
 def test_apply_without_a_strip_is_a_noop():
     panel = _Panel(_Controller(), None)
-    _call("_apply_stat_fields", panel, {"Bots": "7"})   # must not raise
+    _call("_apply_stat_fields", panel, {"Bots": "7"})  # must not raise
 
 
 def test_collect_tolerates_a_missing_exchange():
@@ -345,14 +380,22 @@ def test_snapshot_carries_stat_fields():
 
 # ── the coupling itself ──────────────────────────────────────────
 
+
 def test_producer_source_names_no_widget_setters():
     """Structural guard. If someone reintroduces a widget call in the
     producer the decoupling is silently undone and only a stopwatch
     would catch it — so assert on the source."""
     import inspect
-    src = inspect.getsource(
-        frp.FleetReplayPanel._collect_visual_snapshot)
-    for banned in ("update_gates", "append_tick", "update_bot_row",
-                   "setText", "setEnabled", ".update()"):
-        assert banned not in src, (
-            f"producer calls {banned!r} — Qt from the worker thread")
+
+    src = inspect.getsource(frp.FleetReplayPanel._collect_visual_snapshot)
+    for banned in (
+        "update_gates",
+        "append_tick",
+        "update_bot_row",
+        "setText",
+        "setEnabled",
+        ".update()",
+    ):
+        assert (
+            banned not in src
+        ), f"producer calls {banned!r} — Qt from the worker thread"

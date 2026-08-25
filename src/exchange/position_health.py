@@ -39,19 +39,21 @@ from .base import Trade, OrderSide
 @dataclass
 class PositionHealth:
     """Derived position-health summary for one asset."""
+
     asset: str
-    qty: float                  # current position size (units)
-    avg_entry: float            # weighted-avg cost basis for open position
+    qty: float  # current position size (units)
+    avg_entry: float  # weighted-avg cost basis for open position
     cost_basis_total_usd: float  # qty × avg_entry
-    realized_pnl_usd: float     # cumulative realized P/L from closed cycles
-    fees_paid_total: float      # cumulative fees in quote currency
-    trade_count: int            # total trades counted (BUY + SELL)
+    realized_pnl_usd: float  # cumulative realized P/L from closed cycles
+    fees_paid_total: float  # cumulative fees in quote currency
+    trade_count: int  # total trades counted (BUY + SELL)
     first_trade_ts: Optional[float] = None
     last_trade_ts: Optional[float] = None
 
 
-def compute_position_health(trades: list,
-                             asset: Optional[str] = None) -> PositionHealth:
+def compute_position_health(
+    trades: list, asset: Optional[str] = None
+) -> PositionHealth:
     """Aggregate trade history into a single PositionHealth record.
 
     Args:

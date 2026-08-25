@@ -34,6 +34,7 @@ The uniform value remains an approximation and is labelled as one at
 both sites. This pin exists so the two cannot drift apart again while
 the real-limits capture is outstanding.
 """
+
 from __future__ import annotations
 
 import sys
@@ -80,7 +81,8 @@ def _fleet():
 
     return FleetSimExchange(
         series_map={SYM: CandleSeries(symbol=SYM, rows=[list(CANDLE)])},
-        starting_balances={"USD": 1_000.0, "BTC": 10.0})
+        starting_balances={"USD": 1_000.0, "BTC": 10.0},
+    )
 
 
 async def _limits(ex):
@@ -98,8 +100,10 @@ async def _limits(ex):
         entries = list(markets)
     assert entries, "venue reported no markets"
     m = entries[0]
-    return (float(getattr(m, "min_amount", 0.0) or 0.0),
-            float(getattr(m, "min_cost", 0.0) or 0.0))
+    return (
+        float(getattr(m, "min_amount", 0.0) or 0.0),
+        float(getattr(m, "min_cost", 0.0) or 0.0),
+    )
 
 
 class TestTheInstrumentWorks:
@@ -121,7 +125,8 @@ class TestTheVenuesAgree:
         f_amt, f_cost = await _limits(_fleet())
         assert n_cost == pytest.approx(f_cost), (
             f"nuclear min_cost={n_cost}, fleet min_cost={f_cost}; small "
-            f"orders one venue accepts, the other rejects")
+            f"orders one venue accepts, the other rejects"
+        )
 
     @pytest.mark.asyncio
     async def test_min_amount_is_identical(self):
@@ -141,8 +146,8 @@ class TestTheFloorErrsTowardsRefusing:
         for name, build in (("nuclear", _nuclear), ("fleet", _fleet)):
             _amt, cost = await _limits(build())
             assert cost >= 1.0, (
-                f"{name} min_cost={cost} would accept orders Coinbase "
-                f"rejects")
+                f"{name} min_cost={cost} would accept orders Coinbase " f"rejects"
+            )
 
 
 class TestTheApproximationIsLabelled:
@@ -150,9 +155,12 @@ class TestTheApproximationIsLabelled:
         """SN-20's real-limits half is outstanding. A fabricated uniform
         value that is not labelled as one is how the next reader
         concludes the sim honours venue limits."""
-        for rel in ("src/gui/simulator_tab/fleet/sim_exchange.py",
-                    "src/gui/simulator_tab/nuclear_sim_exchange.py"):
+        for rel in (
+            "src/gui/simulator_tab/fleet/sim_exchange.py",
+            "src/gui/simulator_tab/nuclear_sim_exchange.py",
+        ):
             src = (REPO_ROOT / rel).read_text(encoding="utf-8")
             assert "SN-20" in src, (
                 f"{rel} does not record that its market limits are a "
-                f"placeholder pending real per-symbol capture")
+                f"placeholder pending real per-symbol capture"
+            )

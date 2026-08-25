@@ -33,6 +33,7 @@ enqueues requests; it never calls mutating methods directly.
 
 sadp: R28 FL  R44 DRY  R49 LOG  R50 ANCH
 """
+
 from __future__ import annotations
 
 import json
@@ -42,10 +43,9 @@ import threading
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
-
 
 logger = logging.getLogger("acervator.shared_testnet")
 
@@ -53,27 +53,30 @@ logger = logging.getLogger("acervator.shared_testnet")
 SCHEMA_VERSION = 1
 DEFAULT_PERSIST_PATH = Path.home() / ".acervator" / "testnet_chain.json"
 QUEUE_DRAIN_INTERVAL_MS = 250
-PERSIST_DEBOUNCE_MS     = 500
+PERSIST_DEBOUNCE_MS = 500
 
 
 # ══════════════════════════════════════════════════════════════════════════
 # Event schema
 # ══════════════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class CompetitionRequest:
     """Request from Nuclear (or any other producer) to run a PoA
     competition against the shared chain. Enqueued from any thread;
     executed on Qt main thread."""
-    symbol:   str
-    season:   int
-    n_bots:   int = 3
-    round_id: Optional[int] = None   # for caller correlation
+
+    symbol: str
+    season: int
+    n_bots: int = 3
+    round_id: Optional[int] = None  # for caller correlation
 
 
 # ══════════════════════════════════════════════════════════════════════════
 # Worker thread — runs run_demo_competition off the Qt main thread
 # ══════════════════════════════════════════════════════════════════════════
+
 
 class _CompetitionWorker(QThread):
     """Runs a single competition against the shared LocalTestnet on
@@ -85,8 +88,9 @@ class _CompetitionWorker(QThread):
 
     finished_competition = Signal(dict)
 
-    def __init__(self, testnet, request: CompetitionRequest,
-                 lock: threading.Lock, parent=None):
+    def __init__(
+        self, testnet, request: CompetitionRequest, lock: threading.Lock, parent=None
+    ):
         super().__init__(parent)
         self._testnet = testnet
         self._request = request
@@ -102,28 +106,32 @@ class _CompetitionWorker(QThread):
                 result = self._testnet.run_demo_competition(
                     n_bots=self._request.n_bots,
                     season=self._request.season,
-                    symbol=self._request.symbol)
+                    symbol=self._request.symbol,
+                )
             if not isinstance(result, dict):
                 result = {"error": f"unexpected result type: {type(result)}"}
             # Echo the request for correlation
             result["_request"] = {
-                "symbol":   self._request.symbol,
-                "season":   self._request.season,
-                "n_bots":   self._request.n_bots,
+                "symbol": self._request.symbol,
+                "season": self._request.season,
+                "n_bots": self._request.n_bots,
                 "round_id": self._request.round_id,
             }
             self.finished_competition.emit(result)
         except Exception as e:
             logger.exception("CompetitionWorker failed: %s", e)
-            self.finished_competition.emit({
-                "error": f"{type(e).__name__}: {e}",
-                "_request": asdict(self._request),
-            })
+            self.finished_competition.emit(
+                {
+                    "error": f"{type(e).__name__}: {e}",
+                    "_request": asdict(self._request),
+                }
+            )
 
 
 # ══════════════════════════════════════════════════════════════════════════
 # The bridge — singleton held on MainWindow
 # ══════════════════════════════════════════════════════════════════════════
+
 
 class SharedTestnetBridge(QObject):
     """Owns the single LocalTestnet instance + the thread-crossing queue.
@@ -136,12 +144,11 @@ class SharedTestnetBridge(QObject):
       bridge.reset()                                      # wipe memory + persist
     """
 
-    chain_updated         = Signal()           # fires after any mutation
-    competition_completed = Signal(dict)       # full result, including "error"
-    chain_reset           = Signal(str)        # reason string
+    chain_updated = Signal()  # fires after any mutation
+    competition_completed = Signal(dict)  # full result, including "error"
+    chain_reset = Signal(str)  # reason string
 
-    def __init__(self, testnet, persist_path: Optional[Path] = None,
-                 parent=None):
+    def __init__(self, testnet, persist_path: Optional[Path] = None, parent=None):
         super().__init__(parent)
         self._testnet = testnet
         self._persist_path = persist_path
@@ -169,11 +176,13 @@ class SharedTestnetBridge(QObject):
 
         sadp: R28 FL — raises on double-install so we detect misuse."""
         if getattr(main_win, "_testnet_bridge", None) is not None:
-            raise RuntimeError("SharedTestnetBridge already installed "
-                                "on this MainWindow")
+            raise RuntimeError(
+                "SharedTestnetBridge already installed " "on this MainWindow"
+            )
         from src.competition.local_testnet import LocalTestnet
+
         path = persist_path or DEFAULT_PERSIST_PATH
-        testnet = LocalTestnet()   # fresh
+        testnet = LocalTestnet()  # fresh
         bridge = cls(testnet, persist_path=path, parent=main_win)
         # Try loading persisted state
         bridge._try_load()
@@ -197,6 +206,7 @@ class SharedTestnetBridge(QObject):
         """Wipe the in-memory chain + remove persistence file.
         Must be called on the Qt main thread. Emits chain_reset signal."""
         from src.competition.local_testnet import LocalTestnet
+
         with self._mutation_lock:
             self._testnet.__dict__.update(LocalTestnet().__dict__)
         try:
@@ -215,13 +225,14 @@ class SharedTestnetBridge(QObject):
         it. If a worker is already running, we wait — one-at-a-time to
         keep the chain state consistent and avoid parallel writers."""
         if self._active_worker is not None and self._active_worker.isRunning():
-            return   # serialize
+            return  # serialize
         try:
             req = self._queue.get_nowait()
         except queue.Empty:
             return
         worker = _CompetitionWorker(
-            self._testnet, req, self._mutation_lock, parent=self)
+            self._testnet, req, self._mutation_lock, parent=self
+        )
         worker.finished_competition.connect(self._on_worker_done)
         self._active_worker = worker
         worker.start()
@@ -256,14 +267,14 @@ class SharedTestnetBridge(QObject):
             return
         try:
             self._persist_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self._persist_path.with_suffix(
-                self._persist_path.suffix + ".tmp")
-            tmp.write_text(json.dumps(payload, indent=2),
-                            encoding="utf-8")
+            tmp = self._persist_path.with_suffix(self._persist_path.suffix + ".tmp")
+            tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
             tmp.replace(self._persist_path)
-            logger.debug("chain persisted (block=%d, txs=%d)",
-                          payload.get("block_number", 0),
-                          len(payload.get("transactions", [])))
+            logger.debug(
+                "chain persisted (block=%d, txs=%d)",
+                payload.get("block_number", 0),
+                len(payload.get("transactions", [])),
+            )
         except Exception as e:
             logger.warning("chain persist failed: %s", e)
 
@@ -272,27 +283,26 @@ class SharedTestnetBridge(QObject):
         Field names match LocalTestnet internals verified 2026-04-20:
           LocalChain: _blocks (list), _txs (dict[hash→tx]), _events
                        (list), _block_number (int)
-          LocalACRV:  _balances (dict[addr→wei]), _allowances, 
+          LocalACRV:  _balances (dict[addr→wei]), _allowances,
                        _total_supply (int), _mint_log (list[dict])
           LocalRegistry: _comps (dict[id→dict])
         Any schema drift here needs a SCHEMA_VERSION bump."""
         chain = self._testnet._chain
-        acrv  = self._testnet._acrv
+        acrv = self._testnet._acrv
         registry = self._testnet._registry
         return {
-            "schema_version":    SCHEMA_VERSION,
-            "saved_at":          time.time(),
-            "block_number":      chain._block_number,
-            "blocks":            [b.to_dict() for b in chain._blocks],
+            "schema_version": SCHEMA_VERSION,
+            "saved_at": time.time(),
+            "block_number": chain._block_number,
+            "blocks": [b.to_dict() for b in chain._blocks],
             # _txs is a dict keyed by hash → preserve as list of tx dicts
-            "transactions":      [t.to_dict() for t in chain._txs.values()],
-            "events":            [e.to_dict() for e in chain._events],
-            "acrv_balances":     dict(acrv._balances),
-            "acrv_allowances":   {a: dict(b) for a, b
-                                   in acrv._allowances.items()},
+            "transactions": [t.to_dict() for t in chain._txs.values()],
+            "events": [e.to_dict() for e in chain._events],
+            "acrv_balances": dict(acrv._balances),
+            "acrv_allowances": {a: dict(b) for a, b in acrv._allowances.items()},
             "acrv_total_supply": acrv._total_supply,
-            "acrv_mint_log":     list(acrv._mint_log),
-            "competitions":      {k: v for k, v in registry._comps.items()},
+            "acrv_mint_log": list(acrv._mint_log),
+            "competitions": {k: v for k, v in registry._comps.items()},
         }
 
     def _try_load(self) -> None:
@@ -304,58 +314,66 @@ class SharedTestnetBridge(QObject):
         try:
             payload = json.loads(self._persist_path.read_text(encoding="utf-8"))
         except Exception as e:
-            logger.warning("persisted chain unreadable (%s) — starting "
-                           "fresh", e)
+            logger.warning("persisted chain unreadable (%s) — starting " "fresh", e)
             return
         ver = payload.get("schema_version")
         if ver != SCHEMA_VERSION:
             logger.warning(
                 "persisted chain schema %s != current %s — discarding "
                 "old chain history (wipe+warn policy)",
-                ver, SCHEMA_VERSION)
-            try: self._persist_path.unlink()
-            except Exception: pass   # sadp: R61 ACCEPT — schema wipe
+                ver,
+                SCHEMA_VERSION,
+            )
+            try:
+                self._persist_path.unlink()
+            except Exception:
+                pass  # sadp: R61 ACCEPT — schema wipe
             # best-effort; unlink failure (file already gone, permission,
             # etc.) doesn't change behaviour since we're discarding the
             # old chain anyway and will overwrite on next persist.
-            self.chain_reset.emit(
-                f"schema version upgrade ({ver} → {SCHEMA_VERSION})")
+            self.chain_reset.emit(f"schema version upgrade ({ver} → {SCHEMA_VERSION})")
             return
         try:
             self._restore_state(payload)
             saved_at = payload.get("saved_at", 0)
             age_min = max(0, (time.time() - saved_at) / 60)
-            logger.info("chain restored from disk (block=%d, age=%.0f min)",
-                         payload.get("block_number", 0), age_min)
+            logger.info(
+                "chain restored from disk (block=%d, age=%.0f min)",
+                payload.get("block_number", 0),
+                age_min,
+            )
         except Exception as e:
             logger.warning("chain restore failed (%s) — starting fresh", e)
             # Don't leave a corrupt file in place
-            try: self._persist_path.unlink()
-            except Exception: pass   # sadp: R61 ACCEPT — corrupt-file
+            try:
+                self._persist_path.unlink()
+            except Exception:
+                pass  # sadp: R61 ACCEPT — corrupt-file
             # cleanup best-effort; same rationale as above.
 
     def _restore_state(self, payload: dict) -> None:
         """Rehydrate LocalTestnet fields from a serialized payload.
         Field names must match _serialize_state exactly.
         sadp: R28 FL — any missing or mismatched field raises"""
-        from src.competition.local_testnet import (
-            Block, TxRecord, ChainEvent)
+        from src.competition.local_testnet import Block, TxRecord, ChainEvent
 
         chain = self._testnet._chain
-        acrv  = self._testnet._acrv
+        acrv = self._testnet._acrv
         registry = self._testnet._registry
 
         chain._blocks = [Block(**b) for b in payload.get("blocks", [])]
         # Restore _txs as the dict LocalChain expects: hash → TxRecord
-        chain._txs = {t["tx_hash"]: TxRecord(**t)
-                       for t in payload.get("transactions", [])}
+        chain._txs = {
+            t["tx_hash"]: TxRecord(**t) for t in payload.get("transactions", [])
+        }
         chain._events = [ChainEvent(**e) for e in payload.get("events", [])]
         chain._block_number = payload.get("block_number", 0)
 
-        acrv._balances   = dict(payload.get("acrv_balances", {}))
-        acrv._allowances = {a: dict(b) for a, b
-                             in payload.get("acrv_allowances", {}).items()}
+        acrv._balances = dict(payload.get("acrv_balances", {}))
+        acrv._allowances = {
+            a: dict(b) for a, b in payload.get("acrv_allowances", {}).items()
+        }
         acrv._total_supply = int(payload.get("acrv_total_supply", 0))
-        acrv._mint_log   = list(payload.get("acrv_mint_log", []))
+        acrv._mint_log = list(payload.get("acrv_mint_log", []))
 
         registry._comps = dict(payload.get("competitions", {}))

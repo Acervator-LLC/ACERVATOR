@@ -31,6 +31,7 @@ not evidence. The pairing is deliberate: `test_bollinger_abstains_on_zero
 _width_band` and `test_bollinger_still_votes_bullish_at_pct_b_002` fail
 in OPPOSITE directions, so no single wrong constant satisfies both.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -75,6 +76,7 @@ def _lcg(seed: int):
         nonlocal state
         state = (LCG_A * state + LCG_C) % LCG_M
         return state / LCG_M
+
     return nxt
 
 
@@ -135,8 +137,7 @@ def realistic_rows(n: int = 400, base: float = 100.0) -> list[list[float]]:
         open_px = prev_close
         top = max(open_px, close) + abs(rng() - 0.5) * (base * 0.006)
         bottom = min(open_px, close) - abs(rng() - 0.5) * (base * 0.006)
-        rows.append([float(i), open_px, top, bottom, close,
-                     800.0 + rng() * 400.0])
+        rows.append([float(i), open_px, top, bottom, close, 800.0 + rng() * 400.0])
         prev_close = close
     return rows
 
@@ -152,8 +153,7 @@ def monotone_rows(n: int = 400) -> list[list[float]]:
     return rows
 
 
-def halt_after_real(real_n: int, halt_n: int, base: float = 100.0
-                    ) -> list[list[float]]:
+def halt_after_real(real_n: int, halt_n: int, base: float = 100.0) -> list[list[float]]:
     """Real history, then the venue stops."""
     rows = realistic_rows(real_n, base)
     last = rows[-1][4]
@@ -189,8 +189,12 @@ def test_the_degenerate_series_are_admitted_by_the_real_screen() -> None:
     be driving bars the production path already rejects, and the findings
     would say nothing about live trading."""
     tapes = [flat_rows(400, p) for p in ALL_PEGS]
-    tapes += [flat_rows(400, 118.39, 900.0), halt_after_real(300, 30),
-              monotone_rows(), flat_rows(1, 118.39)]
+    tapes += [
+        flat_rows(400, 118.39, 900.0),
+        halt_after_real(300, 30),
+        monotone_rows(),
+        flat_rows(1, 118.39),
+    ]
     for rows in tapes:
         assert len(candles_from_raw(rows)) == len(rows)
 
@@ -233,8 +237,7 @@ def test_bollinger_abstains_at_every_peg(peg: float) -> None:
     failure on a NON_CANCELLING peg means the guard is back on the
     derived band width, which does not reach zero on a halt.
     """
-    sig = BollingerBands().compute(
-        candles_from_raw(flat_rows(400, peg)), "1h")
+    sig = BollingerBands().compute(candles_from_raw(flat_rows(400, peg)), "1h")
     assert sig.direction is SD.NEUTRAL, (peg, sig.direction, sig.confidence)
     assert sig.confidence == 0.0, (peg, sig.confidence)
 
@@ -306,8 +309,9 @@ def test_bollinger_still_votes_bullish_at_pct_b_002() -> None:
             lo = mid
     pct_b, sig = _pct_b_for((lo + hi) / 2)
 
-    assert pct_b == pytest.approx(0.02, abs=0.001), (
-        f"fixture did not land on %B = 0.02: {pct_b}")
+    assert pct_b == pytest.approx(
+        0.02, abs=0.001
+    ), f"fixture did not land on %B = 0.02: {pct_b}"
     assert sig.details["band_width"] > 0.0, "control needs a LIVE band"
     assert sig.direction is SD.BULLISH
     assert sig.confidence > 0.9
@@ -315,8 +319,7 @@ def test_bollinger_still_votes_bullish_at_pct_b_002() -> None:
 
 # ── F02 -------------------------------------------------------------------
 @pytest.mark.parametrize("peg", ALL_PEGS)
-def test_bb_proximity_names_no_side_when_both_bands_are_near(
-        peg: float) -> None:
+def test_bb_proximity_names_no_side_when_both_bands_are_near(peg: float) -> None:
     """The channel is narrower than the tolerance, so neither side is the
     one price is reverting FROM. Before the repair this reported
     landing_strip_side == "upper" -- a SELL -- while its own bb_position
@@ -327,8 +330,7 @@ def test_bb_proximity_names_no_side_when_both_bands_are_near(
 
 
 @pytest.mark.parametrize("peg", ALL_PEGS)
-def test_landing_strip_v2_names_no_side_when_both_bands_are_near(
-        peg: float) -> None:
+def test_landing_strip_v2_names_no_side_when_both_bands_are_near(peg: float) -> None:
     """THE FIXTURE CHANGED, and the reason is the point of this file.
 
     This drove `flat_rows(400, 100.0)`. MEASURED against the pre-repair
@@ -345,9 +347,11 @@ def test_landing_strip_v2_names_no_side_when_both_bands_are_near(
     reported side "lower" with bb_position 0.0134 at 118.39.
     """
     res = detect_landing_strip_v2(
-        candles_from_raw(const_close_shrinking_bodies(price=peg)))
-    assert res.raw_tightenings >= 3, (
-        "fixture must reach Layer 2, or the branch is never entered")
+        candles_from_raw(const_close_shrinking_bodies(price=peg))
+    )
+    assert (
+        res.raw_tightenings >= 3
+    ), "fixture must reach Layer 2, or the branch is never entered"
     assert res.detected is False, (peg, res)
     assert res.side == "", (peg, res)
 
@@ -362,14 +366,21 @@ def _rally_into_upper_band(steps: int = 5) -> list[list[float]]:
     prev = 100.0
     for i in range(26):
         close = 100.0 + (rng() - 0.5) * 1.2
-        rows.append([float(i), prev, max(prev, close) + 0.15,
-                     min(prev, close) - 0.15, close, 700.0])
+        rows.append(
+            [
+                float(i),
+                prev,
+                max(prev, close) + 0.15,
+                min(prev, close) - 0.15,
+                close,
+                700.0,
+            ]
+        )
         prev = close
     step = 3.0
     for j in range(steps):
         close = prev + step
-        rows.append([float(26 + j), prev, close + 0.05, prev - 0.05,
-                     close, 700.0])
+        rows.append([float(26 + j), prev, close + 0.05, prev - 0.05, close, 700.0])
         prev = close
         step *= 0.5
     return rows
@@ -378,8 +389,10 @@ def _rally_into_upper_band(steps: int = 5) -> list[list[float]]:
 def _selloff_into_lower_band() -> list[list[float]]:
     """The mirror of the rally, reflected about 200. Same shape, opposite
     side."""
-    return [[r[0], 200.0 - r[1], 200.0 - r[3], 200.0 - r[2], 200.0 - r[4],
-             r[5]] for r in _rally_into_upper_band()]
+    return [
+        [r[0], 200.0 - r[1], 200.0 - r[3], 200.0 - r[2], 200.0 - r[4], r[5]]
+        for r in _rally_into_upper_band()
+    ]
 
 
 def test_bb_proximity_still_names_upper_on_a_live_one_sided_band() -> None:
@@ -392,7 +405,9 @@ def test_bb_proximity_still_names_upper_on_a_live_one_sided_band() -> None:
     """
     res = detect_bb_proximity(
         candles_from_raw(_rally_into_upper_band()),
-        tolerance_pct=5.0, consolidation_threshold=100.0)
+        tolerance_pct=5.0,
+        consolidation_threshold=100.0,
+    )
     assert res.near_upper is True
     assert res.near_lower is False
     assert res.landing_strip is True
@@ -411,7 +426,9 @@ def test_bb_proximity_names_lower_when_only_the_lower_band_is_near() -> None:
     """
     res = detect_bb_proximity(
         candles_from_raw(_selloff_into_lower_band()),
-        tolerance_pct=5.0, consolidation_threshold=100.0)
+        tolerance_pct=5.0,
+        consolidation_threshold=100.0,
+    )
     assert res.bb_position < 0.5, "fixture must sit in the LOWER half"
     assert res.near_lower is True
     assert res.near_upper is False
@@ -422,7 +439,8 @@ def test_bb_proximity_names_lower_when_only_the_lower_band_is_near() -> None:
 def test_landing_strip_v2_still_names_upper_on_a_live_one_sided_band() -> None:
     """The same control for the second F02 site, the ternary at :3429."""
     res = detect_landing_strip_v2(
-        candles_from_raw(_rally_into_upper_band()), bb_tolerance_pct=3.0)
+        candles_from_raw(_rally_into_upper_band()), bb_tolerance_pct=3.0
+    )
     assert res.detected is True
     assert res.side == "upper"
     assert res.bb_position > 0.5
@@ -430,8 +448,7 @@ def test_landing_strip_v2_still_names_upper_on_a_live_one_sided_band() -> None:
 
 # ── Vortex ----------------------------------------------------------------
 @pytest.mark.parametrize("halt", list(range(14, 24)))
-def test_vortex_abstains_once_the_halt_fills_the_true_range_window(
-        halt: int) -> None:
+def test_vortex_abstains_once_the_halt_fills_the_true_range_window(halt: int) -> None:
     """The overshoot lives at ONE halt length -- 14, the period -- because
     true range is aligned to bar i while the VM sums reach back to i-1. A
     test at a single fixed length steps straight over it."""
@@ -458,8 +475,7 @@ def test_rsi_abstains_on_a_flat_window(peg: float) -> None:
     """Both averages are exactly zero, so RS is 0/0. Through the epsilon
     that produced rsi == 0.0 exactly -- the bottom of the scale -- read as
     maximum oversold and voted BULLISH at confidence 1.0000."""
-    sig = RSIIndicator().compute(
-        candles_from_raw(flat_rows(400, peg)), "1h")
+    sig = RSIIndicator().compute(candles_from_raw(flat_rows(400, peg)), "1h")
     assert sig.direction is SD.NEUTRAL, (peg, sig.direction)
     assert sig.confidence == 0.0, (peg, sig.confidence)
 
@@ -475,8 +491,7 @@ def test_rsi_still_reports_overbought_when_there_are_no_losses() -> None:
 
 @pytest.mark.parametrize("peg", ALL_PEGS)
 def test_stochastic_rsi_abstains_on_a_flat_window(peg: float) -> None:
-    sig = StochasticRSI().compute(
-        candles_from_raw(flat_rows(400, peg)), "1h")
+    sig = StochasticRSI().compute(candles_from_raw(flat_rows(400, peg)), "1h")
     assert sig.direction is SD.NEUTRAL, (peg, sig.direction)
     assert sig.confidence == 0.0, (peg, sig.confidence)
 
@@ -493,10 +508,8 @@ def test_stochastic_rsi_abstains_when_the_rsi_window_has_no_range() -> None:
 
 # ── the remaining Group A units -------------------------------------------
 @pytest.mark.parametrize("peg", ALL_PEGS)
-def test_volume_abstains_when_the_window_traded_nothing(
-        peg: float) -> None:
-    sig = VolumeAnalysis().compute(
-        candles_from_raw(flat_rows(400, peg)), "1h")
+def test_volume_abstains_when_the_window_traded_nothing(peg: float) -> None:
+    sig = VolumeAnalysis().compute(candles_from_raw(flat_rows(400, peg)), "1h")
     assert sig.direction is SD.NEUTRAL, (peg, sig.direction)
     assert sig.confidence == 0.0, (peg, sig.confidence)
 
@@ -524,15 +537,13 @@ def test_kaufman_er_abstains_when_price_never_moved(peg: float) -> None:
     change, and it is kept only so the site stays covered when the
     guard is next touched.
     """
-    sig = KaufmanERIndicator().compute(
-        candles_from_raw(flat_rows(400, peg)), "1h")
+    sig = KaufmanERIndicator().compute(candles_from_raw(flat_rows(400, peg)), "1h")
     assert sig.direction is SD.NEUTRAL, (peg, sig.direction)
     assert sig.confidence == 0.0, (peg, sig.confidence)
 
 
 @pytest.mark.parametrize("peg", ALL_PEGS)
-def test_slingshot_abstains_when_there_is_no_volatility_unit(
-        peg: float) -> None:
+def test_slingshot_abstains_when_there_is_no_volatility_unit(peg: float) -> None:
     """Driven at every peg, because Slingshot's bandwidths are
     `2 * bb_std * sigma / mid` and inherit the same rounding the band
     width does. Measured, this fails on the pre-repair tree at every peg
@@ -544,8 +555,9 @@ def test_slingshot_abstains_when_there_is_no_volatility_unit(
         assert sig.confidence == 0.0, (peg, halt, sig.confidence)
 
 
-def const_close_shrinking_bodies(n: int = 30, price: float = 100.0
-                                 ) -> list[list[float]]:
+def const_close_shrinking_bodies(
+    n: int = 30, price: float = 100.0
+) -> list[list[float]]:
     """Every CLOSE identical, but the bodies shrink because the OPEN moves.
 
     This is the only shape that reaches the v2 detector's band floor. A
@@ -569,15 +581,15 @@ def const_close_shrinking_bodies(n: int = 30, price: float = 100.0
     body = price * 0.02
     for i in range(n):
         open_px = price - body
-        rows.append([float(i), open_px, max(open_px, price),
-                     min(open_px, price), price, 700.0])
+        rows.append(
+            [float(i), open_px, max(open_px, price), min(open_px, price), price, 700.0]
+        )
         body *= 0.7
     return rows
 
 
 @pytest.mark.parametrize("peg", ALL_PEGS)
-def test_bb_proximity_reports_no_position_when_there_is_no_channel(
-        peg: float) -> None:
+def test_bb_proximity_reports_no_position_when_there_is_no_channel(peg: float) -> None:
     """Pins the REMOVAL OF THE FABRICATED BAND, distinctly from the side
     logic. `bb_range = mid * 0.01` invented a 1%-of-price channel that no
     published source defines; with it, a bandless market reported
@@ -595,7 +607,8 @@ def test_bb_proximity_reports_no_position_when_there_is_no_channel(
 
 @pytest.mark.parametrize("peg", ALL_PEGS)
 def test_landing_strip_v2_reports_no_position_when_there_is_no_channel(
-        peg: float) -> None:
+    peg: float,
+) -> None:
     """The same fabricated floor in the v2 detector, on the only tape that
     reaches it. Measured: restoring the floor moves bb_position from 0.5
     to 0.0.
@@ -606,16 +619,19 @@ def test_landing_strip_v2_reports_no_position_when_there_is_no_channel(
     100.0-only fixture could not make.
     """
     res = detect_landing_strip_v2(
-        candles_from_raw(const_close_shrinking_bodies(price=peg)))
+        candles_from_raw(const_close_shrinking_bodies(price=peg))
+    )
     assert res.detected is False, (peg, res)
     assert res.bb_position == 0.5, (peg, res.bb_position)
-    assert res.raw_tightenings >= 3, (
-        "fixture must reach Layer 2, or the floor is never evaluated")
+    assert (
+        res.raw_tightenings >= 3
+    ), "fixture must reach Layer 2, or the floor is never evaluated"
 
 
 @pytest.mark.parametrize("peg", ALL_PEGS)
 def test_kaufman_er_previous_window_falls_back_to_the_current_reading(
-        peg: float) -> None:
+    peg: float,
+) -> None:
     """A previous window that never moved has no efficiency ratio. The
     module's own fallback is the current reading, and `er_rising` must not
     claim a rise that was never measured.
@@ -631,8 +647,7 @@ def test_kaufman_er_previous_window_falls_back_to_the_current_reading(
 
 
 @pytest.mark.parametrize("peg", ALL_PEGS)
-def test_zscore_previous_window_falls_back_to_the_current_reading(
-        peg: float) -> None:
+def test_zscore_previous_window_falls_back_to_the_current_reading(peg: float) -> None:
     """Measured: with the epsilon restored, z_prev reads 0.0 rather than
     the current z, so the indicator reports a previous position it never
     measured.
@@ -651,8 +666,7 @@ def test_zscore_previous_window_falls_back_to_the_current_reading(
 
 
 @pytest.mark.parametrize("peg", ALL_PEGS)
-def test_zscore_keeps_its_reading_and_reports_no_reversion(
-        peg: float) -> None:
+def test_zscore_keeps_its_reading_and_reports_no_reversion(peg: float) -> None:
     """THE PAIRED CONTROL for the arm above, and it is a control rather
     than a pin: it passes on the pre-repair tree too, by design. Its job
     is to fail if the abstention ever widens into the vote itself.
@@ -669,8 +683,7 @@ def test_zscore_keeps_its_reading_and_reports_no_reversion(
 
 
 @pytest.mark.parametrize("peg", ALL_PEGS)
-def test_heikin_ashi_reports_no_body_ratio_when_a_bar_has_no_range(
-        peg: float) -> None:
+def test_heikin_ashi_reports_no_body_ratio_when_a_bar_has_no_range(peg: float) -> None:
     """0.0 is not neutral for this field: the only consumer tests
     `body_pct <= threshold`, so zero is the TIGHTEST possible reading and
     manufactured a consolidation from a market that had not moved."""
@@ -678,16 +691,14 @@ def test_heikin_ashi_reports_no_body_ratio_when_a_bar_has_no_range(
     assert math.isnan(ha[-1].body_pct), (peg, ha[-1].body_pct)
 
 
-def test_heikin_ashi_still_measures_a_body_on_a_live_bar(
-        healthy: list) -> None:
+def test_heikin_ashi_still_measures_a_body_on_a_live_bar(healthy: list) -> None:
     """THE PAIRED CONTROL: every bar of well-formed data keeps a number."""
     ha = compute_heikin_ashi(healthy)
     assert not any(math.isnan(c.body_pct) for c in ha)
 
 
 @pytest.mark.parametrize("peg", ALL_PEGS)
-def test_adx_dx_series_survives_a_zero_true_range_window(
-        peg: float) -> None:
+def test_adx_dx_series_survives_a_zero_true_range_window(peg: float) -> None:
     """NOT A REGRESSION PIN either, and for the same reason as the
     KaufmanER arm above.
 
@@ -699,8 +710,7 @@ def test_adx_dx_series_survives_a_zero_true_range_window(
     and removes a 0/0; it changes no output, and this arm cannot be
     shown failing against the pre-repair code.
     """
-    sig = ADXIndicator().compute(
-        candles_from_raw(flat_rows(400, peg)), "1h")
+    sig = ADXIndicator().compute(candles_from_raw(flat_rows(400, peg)), "1h")
     assert sig.direction is SD.NEUTRAL, (peg, sig.direction)
     assert sig.confidence == 0.0, (peg, sig.confidence)
 
@@ -717,10 +727,12 @@ def test_a_halted_market_no_longer_opens_the_buy_side(peg: float) -> None:
     arm in the file: one assertion, at the engine's own output, that
     separates a guard on the source window from a guard on the width.
     """
-    summary = VotingEngine().compute_all(
-        candles_from_raw(flat_rows(400, peg)), "1h")
+    summary = VotingEngine().compute_all(candles_from_raw(flat_rows(400, peg)), "1h")
     assert summary.consensus_direction is not SD.BULLISH, (
-        peg, summary.consensus_direction, summary.net_score)
+        peg,
+        summary.consensus_direction,
+        summary.net_score,
+    )
     assert summary.net_score < 0.1, (peg, summary.net_score)
 
 

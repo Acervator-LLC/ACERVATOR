@@ -159,10 +159,19 @@ DEFAULT_PIN = "tools/.touchset_pin.json"
 PIN_VERSION = 2
 
 # Directories never walked when sweeping for files the pin never saw.
-SKIP_DIR_NAMES = frozenset({
-    ".git", "__pycache__", ".pytest_cache", ".venv", "node_modules",
-    ".mypy_cache", ".ruff_cache", ".hypothesis", ".deepeval",
-})
+SKIP_DIR_NAMES = frozenset(
+    {
+        ".git",
+        "__pycache__",
+        ".pytest_cache",
+        ".venv",
+        "node_modules",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".hypothesis",
+        ".deepeval",
+    }
+)
 
 ISLAND_MANIFEST = ".island.json"
 
@@ -309,7 +318,8 @@ def load_gate() -> ModuleType:
         message = f"no routing rule at {gate_path}"
         raise RoutingUnavailable(message)
     spec = importlib.util.spec_from_file_location(
-        "touchset_archetype_gate", gate_path,
+        "touchset_archetype_gate",
+        gate_path,
     )
     if spec is None or spec.loader is None:
         message = f"cannot build an import spec for {gate_path}"
@@ -341,8 +351,9 @@ def gate_router(gate: ModuleType) -> Callable[[Path, str], list[str]]:
     return cast("Callable[[Path, str], list[str]]", picker)
 
 
-def _gate_suffixes(gate: ModuleType, name: str,
-                   fallback: tuple[str, ...]) -> tuple[str, ...]:
+def _gate_suffixes(
+    gate: ModuleType, name: str, fallback: tuple[str, ...]
+) -> tuple[str, ...]:
     """Return a suffix tuple published by the gate, or a stated default."""
     value = getattr(gate, name, None)
     if isinstance(value, tuple) and all(isinstance(s, str) for s in value):
@@ -503,7 +514,7 @@ def _pragma_in_line(line: str) -> list[str]:
     """
     found: list[str] = []
     for marker in MARKER_RE.finditer(line):
-        match = DIRECTIVE_RE.match(line[marker.end():])
+        match = DIRECTIVE_RE.match(line[marker.end() :])
         if match is not None:
             found.append(_normalise_directive(match.group(0)))
     return found
@@ -520,7 +531,9 @@ def _tally(spellings: Iterable[str]) -> tuple[int, dict[str, int]]:
 
 
 def count_directives(
-    path: Path, data: bytes, py_suffixes: tuple[str, ...],
+    path: Path,
+    data: bytes,
+    py_suffixes: tuple[str, ...],
 ) -> tuple[int, dict[str, int], str]:
     """Return (total, by spelling, scan method) for one file.
 
@@ -628,7 +641,9 @@ def _degraded_tools(availability: object) -> list[str]:
 
 
 def run_archetype(
-    module_name: str, provenance: str, target: Path,
+    module_name: str,
+    provenance: str,
+    target: Path,
 ) -> ArchetypeResult:
     """Run one archetype on one file and read ITS verdict.
 
@@ -646,8 +661,13 @@ def run_archetype(
     interrupt must not be laundered into a verdict.
     """
     unusable = ArchetypeResult(
-        module=module_name, provenance=provenance, passed=False,
-        by_severity={}, errors=[], degraded=[], ran=False,
+        module=module_name,
+        provenance=provenance,
+        passed=False,
+        by_severity={},
+        errors=[],
+        degraded=[],
+        ran=False,
     )
     class_name = ARCHETYPE_CLASSES.get(module_name)
     if class_name is None:
@@ -680,8 +700,7 @@ def run_archetype(
         provenance=provenance,
         passed=verdict,
         by_severity=_recount(payload.get("findings")),
-        errors=[str(e) for e in raw_errors] if isinstance(raw_errors, list)
-        else [],
+        errors=[str(e) for e in raw_errors] if isinstance(raw_errors, list) else [],
         degraded=_degraded_tools(payload.get("tool_availability")),
         ran=True,
     )
@@ -769,7 +788,10 @@ class Entry:
 
 
 def _submit_archetypes(
-    target: Path, modules: dict[str, str], jobs: int, timeout: int,
+    target: Path,
+    modules: dict[str, str],
+    jobs: int,
+    timeout: int,
 ) -> dict[str, ArchetypeResult]:
     """Run each archetype concurrently and collect its own verdict.
 
@@ -871,7 +893,8 @@ def _typed_rel(root: Path, raw: str) -> str | None:
 
 
 def resolve_paths(
-    root: Path, raw_paths: Iterable[str],
+    root: Path,
+    raw_paths: Iterable[str],
 ) -> tuple[list[str], list[PathProblem]]:
     """Return the usable relative paths and every problem found.
 
@@ -890,30 +913,40 @@ def resolve_paths(
         try:
             rel = combined.resolve().relative_to(root_resolved).as_posix()
         except (OSError, ValueError):
-            problems.append(PathProblem(
-                raw, "OUTSIDE-ROOT",
-                f"resolves outside {root_resolved}; a touch set may only "
-                "name files inside the tree being measured",
-            ))
+            problems.append(
+                PathProblem(
+                    raw,
+                    "OUTSIDE-ROOT",
+                    f"resolves outside {root_resolved}; a touch set may only "
+                    "name files inside the tree being measured",
+                )
+            )
             continue
         target = root / rel
         if target.is_dir():
-            problems.append(PathProblem(
-                raw, "NOT-A-FILE", "is a directory, not a file",
-            ))
+            problems.append(
+                PathProblem(
+                    raw,
+                    "NOT-A-FILE",
+                    "is a directory, not a file",
+                )
+            )
             continue
         if not target.is_file():
             problems.append(PathProblem(raw, "MISSING", "no such file"))
             continue
         typed = _typed_rel(root, raw)
         if typed is not None and typed != rel and typed.lower() == rel.lower():
-            problems.append(PathProblem(
-                raw, "CASE-MISMATCH",
-                f"the file on disk is {rel}. This filesystem ignores case, so "
-                "the same command names nothing at all on a case-sensitive "
-                "host — and the install manifest includes a Mac Mini. "
-                "Refusing rather than silently correcting the spelling.",
-            ))
+            problems.append(
+                PathProblem(
+                    raw,
+                    "CASE-MISMATCH",
+                    f"the file on disk is {rel}. This filesystem ignores case, so "
+                    "the same command names nothing at all on a case-sensitive "
+                    "host — and the install manifest includes a Mac Mini. "
+                    "Refusing rather than silently correcting the spelling.",
+                )
+            )
             continue
         if rel not in rels:
             rels.append(rel)
@@ -947,7 +980,9 @@ def iter_routed_files(root: Path, suffixes: frozenset[str]) -> Iterator[Path]:
 
 
 def directory_eol_majority(
-    directory: Path, suffix: str, exclude: set[str],
+    directory: Path,
+    suffix: str,
+    exclude: set[str],
 ) -> tuple[str, dict[str, int]]:
     """Return the dominant line-ending kind for a directory, and the tally.
 
@@ -1021,7 +1056,10 @@ def pin_digest(payload: dict[str, object]) -> str:
 
 
 def write_pin(
-    pin_path: Path, root: Path, entries: list[Entry], only: tuple[str, ...],
+    pin_path: Path,
+    root: Path,
+    entries: list[Entry],
+    only: tuple[str, ...],
 ) -> None:
     """Write the machine-readable pin. The only file this module writes."""
     payload: dict[str, object] = {
@@ -1214,9 +1252,7 @@ def baseline(
     say_reduced(only)
     _say("")
 
-    entries = [
-        measure(root, rel, routing, only, jobs, timeout) for rel in rels
-    ]
+    entries = [measure(root, rel, routing, only, jobs, timeout) for rel in rels]
     for entry in entries:
         _say_entry(entry)
 
@@ -1264,13 +1300,16 @@ def _pinned_directives(pinned: dict[str, object]) -> tuple[int, dict[str, int]]:
     raw_kinds = recorded.get("by_kind")
     kinds = (
         {str(k): v for k, v in raw_kinds.items() if isinstance(v, int)}
-        if isinstance(raw_kinds, dict) else {}
+        if isinstance(raw_kinds, dict)
+        else {}
     )
     return total, kinds
 
 
 def _compare_directives(
-    rel: str, pinned: dict[str, object], entry: Entry,
+    rel: str,
+    pinned: dict[str, object],
+    entry: Entry,
 ) -> list[str]:
     """Return a failure line if any directive spelling rose.
 
@@ -1323,7 +1362,7 @@ def _compare_eol(rel: str, pinned: dict[str, object], entry: Entry) -> list[str]
     return [
         f"LINE ENDING FLIPPED  {rel}: {before} -> {entry.eol}. The repo has "
         "no repo-wide ending, so each file keeps its own kind. Rewrite the "
-        f"file as {before} — read AND write with newline=\"\".",
+        f'file as {before} — read AND write with newline="".',
     ]
 
 
@@ -1344,7 +1383,10 @@ def _pinned_degraded(pinned: dict[str, object]) -> dict[str, set[str]]:
 
 
 def _compare_degraded(
-    rel: str, pinned: dict[str, object], entry: Entry, machine: set[str],
+    rel: str,
+    pinned: dict[str, object],
+    entry: Entry,
+    machine: set[str],
 ) -> list[str]:
     """Return a failure line for every tool that stopped running.
 
@@ -1377,7 +1419,9 @@ def _compare_degraded(
 
 
 def _new_file_reasons(
-    entry: Entry, island: Path, exclude: set[str],
+    entry: Entry,
+    island: Path,
+    exclude: set[str],
 ) -> list[str]:
     """Return every reason a never-pinned file may not land.
 
@@ -1414,7 +1458,9 @@ def _new_file_reasons(
 
 
 def _find_new_files(
-    island: Path, baseline_root: Path, pinned: set[str],
+    island: Path,
+    baseline_root: Path,
+    pinned: set[str],
     routing: Routing,
 ) -> list[str]:
     """Return every routed file on the island the pin and baseline lack."""
@@ -1428,8 +1474,14 @@ def _find_new_files(
 
 
 def _sweep_new_files(
-    island: Path, baseline_root: Path, pinned: set[str], routing: Routing,
-    machine: set[str], jobs: int, timeout: int, limit: int,
+    island: Path,
+    baseline_root: Path,
+    pinned: set[str],
+    routing: Routing,
+    machine: set[str],
+    jobs: int,
+    timeout: int,
+    limit: int,
 ) -> tuple[list[str], list[str]]:
     """Measure files the pin never saw. Returns (failures, notes).
 
@@ -1481,25 +1533,37 @@ class CheckOptions:
 
 
 def _check_one_pinned(
-    pinned: dict[str, object], against: Path, routing: Routing,
-    only: tuple[str, ...], machine: set[str], options: CheckOptions,
+    pinned: dict[str, object],
+    against: Path,
+    routing: Routing,
+    only: tuple[str, ...],
+    machine: set[str],
+    options: CheckOptions,
 ) -> tuple[list[str], list[str], bool]:
     """Compare one pinned file. Returns (failures, notes, unchanged)."""
     rel = str(pinned.get("path") or "")
     if not rel:
         return ["PIN DAMAGED  an entry carries no path."], [], False
     if (against / rel).is_dir():
-        return [
-            f"PATH REPLACED  {rel}: pinned as a file, but {against / rel} is "
-            "now a directory. Nothing can be graded, and every archetype "
-            "returns 0 on a path it cannot read.",
-        ], [], False
+        return (
+            [
+                f"PATH REPLACED  {rel}: pinned as a file, but {against / rel} is "
+                "now a directory. Nothing can be graded, and every archetype "
+                "returns 0 on a path it cannot read.",
+            ],
+            [],
+            False,
+        )
     if not (against / rel).is_file():
-        return [
-            f"PATH VANISHED  {rel}: pinned, but absent from {against}. Every "
-            "archetype exits 0 on a path that does not exist, so this is "
-            "refused before any verdict is read.",
-        ], [], False
+        return (
+            [
+                f"PATH VANISHED  {rel}: pinned, but absent from {against}. Every "
+                "archetype exits 0 on a path that does not exist, so this is "
+                "refused before any verdict is read.",
+            ],
+            [],
+            False,
+        )
     entry = measure(against, rel, routing, only, options.jobs, options.timeout)
     _say_entry(entry)
     failures = list(entry.red_reasons())
@@ -1517,7 +1581,8 @@ def _check_one_pinned(
 
 
 def _resolve_baseline_root(
-    pin: dict[str, object], options: CheckOptions,
+    pin: dict[str, object],
+    options: CheckOptions,
 ) -> tuple[Path | None, str]:
     """Return the tree the pin was taken from, or a refusal."""
     if options.baseline_root is not None:
@@ -1525,7 +1590,10 @@ def _resolve_baseline_root(
     else:
         raw = pin.get("root")
         if not isinstance(raw, str) or not raw:
-            return None, "the pin records no root, so a new file cannot be told from an old one"
+            return (
+                None,
+                "the pin records no root, so a new file cannot be told from an old one",
+            )
         root = Path(raw)
     if not root.is_dir():
         return None, (
@@ -1539,7 +1607,9 @@ def _resolve_baseline_root(
 
 
 def _check_setup(
-    pin_path: Path, against: Path, options: CheckOptions,
+    pin_path: Path,
+    against: Path,
+    options: CheckOptions,
 ) -> tuple[dict[str, object], Routing, Path] | int:
     """Validate everything `check` needs, or return an exit code."""
     pin, refusal = load_pin(pin_path)
@@ -1564,7 +1634,10 @@ def _check_setup(
 
 
 def _say_check_result(
-    failures: list[str], notes: list[str], count: int, reduced: bool,
+    failures: list[str],
+    notes: list[str],
+    count: int,
+    reduced: bool,
 ) -> int:
     """Print the verdict of a check run and return its exit code."""
     _say("")
@@ -1601,8 +1674,11 @@ def check(pin_path: Path, against: Path, options: CheckOptions) -> int:
     raw_only = pin.get("only")
     only = tuple(str(m) for m in raw_only) if isinstance(raw_only, list) else ()
     entries_raw = pin.get("entries")
-    pinned_entries = [e for e in entries_raw if isinstance(e, dict)] \
-        if isinstance(entries_raw, list) else []
+    pinned_entries = (
+        [e for e in entries_raw if isinstance(e, dict)]
+        if isinstance(entries_raw, list)
+        else []
+    )
     machine = pin_degraded_union(pinned_entries)
 
     _say(f"Pin:      {pin_path}")
@@ -1617,15 +1693,26 @@ def check(pin_path: Path, against: Path, options: CheckOptions) -> int:
     unchanged = 0
     for pinned in pinned_entries:
         fired, said, same = _check_one_pinned(
-            pinned, against, routing, only, machine, options,
+            pinned,
+            against,
+            routing,
+            only,
+            machine,
+            options,
         )
         failures.extend(fired)
         notes.extend(said)
         unchanged += int(same)
 
     swept, sweep_notes = _sweep_new_files(
-        against, baseline_root, {str(e.get("path") or "") for e in pinned_entries},
-        routing, machine, options.jobs, options.timeout, options.new_file_limit,
+        against,
+        baseline_root,
+        {str(e.get("path") or "") for e in pinned_entries},
+        routing,
+        machine,
+        options.jobs,
+        options.timeout,
+        options.new_file_limit,
     )
     failures.extend(swept)
     notes.extend(sweep_notes)
@@ -1637,7 +1724,9 @@ def check(pin_path: Path, against: Path, options: CheckOptions) -> int:
             "was pointed at the tree the pin was taken from.",
         )
     return _say_check_result(
-        failures, notes, len(pinned_entries),
+        failures,
+        notes,
+        len(pinned_entries),
         reduced=bool(only) and not options.accept_reduced,
     )
 
@@ -1659,16 +1748,20 @@ def build_parser() -> argparse.ArgumentParser:
     subs = parser.add_subparsers(dest="command", required=True)
 
     base = subs.add_parser(
-        "baseline", help="measure a touch set and write a pin",
+        "baseline",
+        help="measure a touch set and write a pin",
     )
     base.add_argument("paths", nargs="+")
     base.add_argument("--pin", default=DEFAULT_PIN)
     base.add_argument(
-        "--root", default=None,
+        "--root",
+        default=None,
         help="tree the paths are relative to (default: the repo)",
     )
     base.add_argument(
-        "--only", nargs="+", default=[],
+        "--only",
+        nargs="+",
+        default=[],
         choices=sorted(ARCHETYPE_CLASSES),
         help="narrow the archetype set; records reduced coverage in the pin",
     )
@@ -1679,16 +1772,20 @@ def build_parser() -> argparse.ArgumentParser:
     chk.add_argument("--pin", required=True)
     chk.add_argument("--against", required=True)
     chk.add_argument(
-        "--baseline-root", default=None,
+        "--baseline-root",
+        default=None,
         help="tree the pin was taken from (default: the pin's own record)",
     )
     chk.add_argument("--jobs", type=int, default=DEFAULT_JOBS)
     chk.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT)
     chk.add_argument(
-        "--new-file-limit", type=int, default=DEFAULT_NEW_FILE_LIMIT,
+        "--new-file-limit",
+        type=int,
+        default=DEFAULT_NEW_FILE_LIMIT,
     )
     chk.add_argument(
-        "--accept-reduced", action="store_true",
+        "--accept-reduced",
+        action="store_true",
         help="accept a --only pin as a pass, recording that it is partial",
     )
     return parser
@@ -1715,8 +1812,7 @@ def _run(args: argparse.Namespace) -> int:
             new_file_limit=args.new_file_limit,
             accept_reduced=args.accept_reduced,
             baseline_root=(
-                Path(args.baseline_root).resolve() if args.baseline_root
-                else None
+                Path(args.baseline_root).resolve() if args.baseline_root else None
             ),
         ),
     )

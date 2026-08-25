@@ -9,12 +9,11 @@ Provides:
 
 from __future__ import annotations
 
-import asyncio
 import hmac
 import json
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Mapping, Optional, Callable
 
 logger = logging.getLogger("acervator.stocks.tradingview")
@@ -23,9 +22,10 @@ logger = logging.getLogger("acervator.stocks.tradingview")
 @dataclass
 class TVAlert:
     """Parsed TradingView alert."""
+
     timestamp: float
     symbol: str
-    action: str         # "buy", "sell", "close", "info"
+    action: str  # "buy", "sell", "close", "info"
     price: float = 0
     quantity: float = 0
     strategy: str = ""  # Pine Script strategy name
@@ -38,10 +38,10 @@ class TVAlert:
 class TradingViewBridge:
     """
     TradingView integration hub.
-    
+
     Receives webhook alerts from TradingView and routes them to
     registered handlers (stock bots, notification system, journal).
-    
+
     TradingView Alert Setup:
     1. Create alert on TradingView
     2. Set webhook URL to: http://localhost:{port}/webhook
@@ -55,9 +55,12 @@ class TradingViewBridge:
     # surfaced in the v3.15.84 SADP upgrade audit.
     DEFAULT_BIND_HOST = "127.0.0.1"
 
-    def __init__(self, port: int = DEFAULT_PORT,
-                 bind_host: str = DEFAULT_BIND_HOST,
-                 force_unauthenticated_lan: bool = False):
+    def __init__(
+        self,
+        port: int = DEFAULT_PORT,
+        bind_host: str = DEFAULT_BIND_HOST,
+        force_unauthenticated_lan: bool = False,
+    ):
         # v3.15.89 (TV-AUTH-5 fix): force_unauthenticated_lan is the
         # escape hatch for the otherwise-blocked combination of
         # bind_host="0.0.0.0" + empty auth token. start() refuses to
@@ -77,7 +80,8 @@ class TradingViewBridge:
             logger.warning(
                 "TradingView bridge binding to 0.0.0.0 — webhook server "
                 "will be reachable from the local network. Ensure auth "
-                "token is configured (set_auth_token) before exposing.")
+                "token is configured (set_auth_token) before exposing."
+            )
 
     @property
     def port(self) -> int:
@@ -148,7 +152,9 @@ class TradingViewBridge:
         # Required: either set an auth token (recommended) or
         # construct with force_unauthenticated_lan=True (explicit
         # operator opt-in; warn loudly).
-        if self._bind_host == "0.0.0.0" and not self._auth_token:  # nosec B104 — defensive refusal, not a bind
+        if (
+            self._bind_host == "0.0.0.0" and not self._auth_token
+        ):  # nosec B104 — defensive refusal, not a bind
             if not self._force_unauthenticated_lan:
                 raise RuntimeError(
                     "TradingView bridge refusing to start: "
@@ -163,32 +169,38 @@ class TradingViewBridge:
                     "to explicitly opt in to unauthenticated LAN exposure "
                     "(NOT recommended)\n"
                     "See docs/audits/2026-04-28_tradingview_bridge_auth_"
-                    "audit.md TV-AUTH-5 for context.")
+                    "audit.md TV-AUTH-5 for context."
+                )
             logger.warning(
                 "TradingView bridge starting on 0.0.0.0 with NO AUTH "
                 "TOKEN — force_unauthenticated_lan=True was set "
                 "explicitly. Anyone on the local network can submit "
-                "trade alerts.")
+                "trade alerts."
+            )
 
         try:
             from aiohttp import web
 
             app = web.Application()
-            app.router.add_post('/webhook', self._handle_webhook)
-            app.router.add_get('/health', self._handle_health)
-            app.router.add_get('/status', self._handle_status)
+            app.router.add_post("/webhook", self._handle_webhook)
+            app.router.add_get("/health", self._handle_health)
+            app.router.add_get("/status", self._handle_status)
 
             runner = web.AppRunner(app)
             await runner.setup()
-            site = web.TCPSite(runner, self._bind_host, self._port)  # nosec B104 — operator-configurable; defaults to 127.0.0.1
+            site = web.TCPSite(
+                runner, self._bind_host, self._port
+            )  # nosec B104 — operator-configurable; defaults to 127.0.0.1
             await site.start()
 
             self._server = runner
             self._running = True
             logger.info("TradingView webhook server started on port %d", self._port)
         except ImportError:
-            logger.warning("aiohttp not installed — webhook server unavailable. "
-                          "Install with: pip install aiohttp")
+            logger.warning(
+                "aiohttp not installed — webhook server unavailable. "
+                "Install with: pip install aiohttp"
+            )
             # Fallback: basic HTTP server
             await self._start_basic_server()
         except Exception as e:
@@ -200,8 +212,7 @@ class TradingViewBridge:
             try:
                 await self._server.cleanup()
             except Exception as _sf_exc:  # noqa: BLE001
-                logger.warning(
-                    "TradingView bridge request failed: %s", _sf_exc)
+                logger.warning("TradingView bridge request failed: %s", _sf_exc)
         self._running = False
         logger.info("TradingView webhook server stopped")
 
@@ -221,10 +232,15 @@ class TradingViewBridge:
             if alert:
                 self._alert_history.append(alert)
                 if len(self._alert_history) > self._max_history:
-                    self._alert_history = self._alert_history[-self._max_history:]
+                    self._alert_history = self._alert_history[-self._max_history :]
 
-                logger.info("TV Alert: %s %s @ $%.2f (%s)",
-                           alert.action, alert.symbol, alert.price, alert.strategy)
+                logger.info(
+                    "TV Alert: %s %s @ $%.2f (%s)",
+                    alert.action,
+                    alert.symbol,
+                    alert.price,
+                    alert.strategy,
+                )
 
                 # Dispatch to handlers
                 for handler in self._handlers:
@@ -244,17 +260,21 @@ class TradingViewBridge:
     async def _handle_health(self, request):
         """Health check endpoint."""
         from aiohttp import web
+
         return web.Response(status=200, text="OK")
 
     async def _handle_status(self, request):
         """Status endpoint."""
         from aiohttp import web
+
         status = {
             "running": self._running,
             "port": self._port,
             "handlers": len(self._handlers),
             "alerts_received": len(self._alert_history),
-            "last_alert": self._alert_history[-1].timestamp if self._alert_history else 0,
+            "last_alert": (
+                self._alert_history[-1].timestamp if self._alert_history else 0
+            ),
         }
         return web.json_response(status)
 
@@ -275,7 +295,7 @@ class TradingViewBridge:
                     self_inner.send_response(401)
                     self_inner.end_headers()
                     return
-                length = int(self_inner.headers.get('Content-Length', 0))
+                length = int(self_inner.headers.get("Content-Length", 0))
                 body = self_inner.rfile.read(length).decode()
                 alert = self.bridge._parse_alert(body)
                 if alert:
@@ -285,7 +305,8 @@ class TradingViewBridge:
                             handler(alert)
                         except Exception as _sf_exc:  # noqa: BLE001
                             logger.warning(
-                                "TradingView bridge request failed: %s", _sf_exc)
+                                "TradingView bridge request failed: %s", _sf_exc
+                            )
                     self_inner.send_response(200)
                 else:
                     self_inner.send_response(400)
@@ -295,13 +316,17 @@ class TradingViewBridge:
                 pass  # Suppress default logging
 
         def run_server():
-            server = http.server.HTTPServer((self._bind_host, self._port), WebhookHandler)  # nosec B104 — operator-configurable; defaults to 127.0.0.1
+            server = http.server.HTTPServer(
+                (self._bind_host, self._port), WebhookHandler
+            )  # nosec B104 — operator-configurable; defaults to 127.0.0.1
             self._server = server
             self._running = True
             logger.info("Basic webhook server started on port %d", self._port)
             server.serve_forever()
 
-        thread = threading.Thread(target=run_server, daemon=True, name="tv-bridge-server")
+        thread = threading.Thread(
+            target=run_server, daemon=True, name="tv-bridge-server"
+        )
         thread.start()
 
     def _parse_alert(self, body: str) -> Optional[TVAlert]:
@@ -338,17 +363,15 @@ class TradingViewBridge:
                     if idx + 1 < len(parts):
                         price = float(parts[idx + 1])
                 return TVAlert(
-                    timestamp=now, symbol=symbol, action=action,
-                    price=price, raw=body)
+                    timestamp=now, symbol=symbol, action=action, price=price, raw=body
+                )
         except Exception as _sf_exc:  # noqa: BLE001
-            logger.warning(
-                "TradingView bridge request failed: %s", _sf_exc)
+            logger.warning("TradingView bridge request failed: %s", _sf_exc)
 
         return None
 
     @staticmethod
-    def get_chart_url(symbol: str, interval: str = "D",
-                      theme: str = "dark") -> str:
+    def get_chart_url(symbol: str, interval: str = "D", theme: str = "dark") -> str:
         """Generate TradingView chart embed URL."""
         return (
             f"https://www.tradingview.com/widgetembed/?frameElementId=tv_chart"
@@ -359,8 +382,7 @@ class TradingViewBridge:
 
     def get_summary(self) -> dict:
         """Get bridge status summary."""
-        recent = [a for a in self._alert_history
-                  if time.time() - a.timestamp < 3600]
+        recent = [a for a in self._alert_history if time.time() - a.timestamp < 3600]
         return {
             "running": self._running,
             "port": self._port,
@@ -368,6 +390,9 @@ class TradingViewBridge:
             "handlers": len(self._handlers),
             "total_alerts": len(self._alert_history),
             "alerts_1h": len(recent),
-            "last_alert_age": (time.time() - self._alert_history[-1].timestamp
-                              if self._alert_history else None),
+            "last_alert_age": (
+                time.time() - self._alert_history[-1].timestamp
+                if self._alert_history
+                else None
+            ),
         }

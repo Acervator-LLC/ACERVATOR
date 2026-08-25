@@ -9,6 +9,7 @@ the two components confirmed dead by manual audit on 2026-08-02
 telemetry layer that reports optimistically is worse than none,
 because it manufactures confidence.
 """
+
 from __future__ import annotations
 
 import sys
@@ -34,6 +35,7 @@ def tel(tmp_path):
 
 # ── T1: the reason this module exists ────────────────────────────
 
+
 def test_detects_declared_but_never_called(tel):
     """THE test. Mirrors the 2026-08-02 audit exactly."""
     tel.declare("sim.stat_strip.feed", "sim.price_chart.append")
@@ -56,6 +58,7 @@ def test_undeclared_feature_is_not_reported_dead(tel):
 
 
 # ── counters ─────────────────────────────────────────────────────
+
 
 def test_record_call_accumulates(tel):
     tel.record_call("f", count=3)
@@ -100,11 +103,12 @@ def test_timestamps_set_on_first_and_last(tel):
     assert c.first_ts > 0
     first = c.first_ts
     tel.record_call("f")
-    assert tel.get("f").first_ts == first   # unchanged
-    assert tel.get("f").last_ts >= first    # advanced
+    assert tel.get("f").first_ts == first  # unchanged
+    assert tel.get("f").last_ts >= first  # advanced
 
 
 # ── context manager ──────────────────────────────────────────────
+
 
 def test_track_records_call_on_success(tel):
     with tel.track("f"):
@@ -121,6 +125,7 @@ def test_track_records_exception_and_reraises(tel):
 
 
 # ── reporting ────────────────────────────────────────────────────
+
 
 def test_report_flags_dead_first(tel):
     tel.declare("z.dead", "a.alive")
@@ -156,6 +161,7 @@ def test_scope_filters_report(tel):
 
 
 # ── persistence ──────────────────────────────────────────────────
+
 
 def test_save_load_roundtrip_keeps_lifetime(tmp_path):
     p = tmp_path / "tel.json"
@@ -208,6 +214,7 @@ def test_declared_survives_reload(tmp_path):
 
 # ── bounds + hygiene ─────────────────────────────────────────────
 
+
 def test_reason_keys_are_bounded(tel):
     for i in range(100):
         tel.record_skip("f", reason=f"reason-{i}")
@@ -230,15 +237,16 @@ def test_singleton_is_stable():
 
 # ── markdown report (v3.24.8) ────────────────────────────────────
 
+
 def test_markdown_report_written(tmp_path, tel):
     tel.declare("sim.a")
     tel.record_call("sim.a")
-    out = tel.write_markdown_report(
-        path=tmp_path / "r.md", scope="sim.")
+    out = tel.write_markdown_report(path=tmp_path / "r.md", scope="sim.")
     assert out is not None
     assert out.exists()
     assert out.read_text(encoding="utf-8").startswith(
-        "# Feature Validation & Error Report")
+        "# Feature Validation & Error Report"
+    )
 
 
 def test_markdown_separates_python_and_app_errors(tmp_path, tel):
@@ -249,9 +257,9 @@ def test_markdown_separates_python_and_app_errors(tmp_path, tel):
     tel.record_call("sim.f")
     tel.record_exception("sim.f", RecursionError("x"))
     tel.record_skip("sim.f", reason="no candle at cursor")
-    body = tel.write_markdown_report(
-        path=tmp_path / "r.md", scope="sim.").read_text(
-            encoding="utf-8")
+    body = tel.write_markdown_report(path=tmp_path / "r.md", scope="sim.").read_text(
+        encoding="utf-8"
+    )
     assert "## Python errors" in body
     assert "RecursionError" in body
     assert "## Application errors" in body
@@ -261,18 +269,18 @@ def test_markdown_separates_python_and_app_errors(tmp_path, tel):
 def test_markdown_verdict_clean_when_all_fired(tmp_path, tel):
     tel.declare("sim.a")
     tel.record_call("sim.a")
-    body = tel.write_markdown_report(
-        path=tmp_path / "r.md", scope="sim.").read_text(
-            encoding="utf-8")
+    body = tel.write_markdown_report(path=tmp_path / "r.md", scope="sim.").read_text(
+        encoding="utf-8"
+    )
     assert "all declared features fired" in body
 
 
 def test_markdown_verdict_flags_dead(tmp_path, tel):
     tel.declare("sim.dead", "sim.alive")
     tel.record_call("sim.alive")
-    body = tel.write_markdown_report(
-        path=tmp_path / "r.md", scope="sim.").read_text(
-            encoding="utf-8")
+    body = tel.write_markdown_report(path=tmp_path / "r.md", scope="sim.").read_text(
+        encoding="utf-8"
+    )
     assert "need attention" in body
     assert "`sim.dead`" in body
 
@@ -281,22 +289,27 @@ def test_markdown_includes_run_context(tmp_path, tel):
     tel.declare("sim.a")
     tel.record_call("sim.a")
     body = tel.write_markdown_report(
-        path=tmp_path / "r.md", scope="sim.",
-        run_context={"Candles played": "4,182 / 35,449"}).read_text(
-            encoding="utf-8")
+        path=tmp_path / "r.md",
+        scope="sim.",
+        run_context={"Candles played": "4,182 / 35,449"},
+    ).read_text(encoding="utf-8")
     assert "Candles played: 4,182 / 35,449" in body
 
 
 def test_markdown_handles_empty_registry(tmp_path, tel):
-    body = tel.write_markdown_report(
-        path=tmp_path / "r.md").read_text(encoding="utf-8")
+    body = tel.write_markdown_report(path=tmp_path / "r.md").read_text(encoding="utf-8")
     assert "no features recorded" in body
 
 
 def test_counter_from_dict_roundtrip():
-    c = FeatureCounter(name="x", calls=7,
-                       skips={"a": 1}, exceptions={"E": 2},
-                       first_ts=1.0, last_ts=2.0)
+    c = FeatureCounter(
+        name="x",
+        calls=7,
+        skips={"a": 1},
+        exceptions={"E": 2},
+        first_ts=1.0,
+        last_ts=2.0,
+    )
     c2 = FeatureCounter.from_dict(c.to_dict())
     assert c2.calls == 7
     assert c2.skips == {"a": 1}

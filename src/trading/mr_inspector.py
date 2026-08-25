@@ -40,16 +40,18 @@ v3.1.70 — Initial implementation
 
 from __future__ import annotations
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 logger = logging.getLogger("acervator.mr_inspector")
 
 try:
     from .ta_engine import (
-        Candle, detect_bb_proximity, detect_landing_strip_v2,
-        TighteningResult, compute_heikin_ashi,
+        Candle,
+        detect_landing_strip_v2,
+        TighteningResult,
     )
+
     _HAS_TA = True
 except ImportError:
     _HAS_TA = False
@@ -58,21 +60,23 @@ except ImportError:
 @dataclass
 class MRSignal:
     """Mean Reversion signal emitted by the inspector."""
+
     asset: str
-    signal_type: str        # "BOOST_SELL" | "BOOST_BUY" | ""
-    strength: float         # 0.0 - 1.0
+    signal_type: str  # "BOOST_SELL" | "BOOST_BUY" | ""
+    strength: float  # 0.0 - 1.0
     z_score: float
     bb_position: float
     sma20: float
-    tightening: bool        # HTF tightening confirmed
-    tight_length: int       # Number of tightening candles
-    tight_ratio: float      # How much range shrank
+    tightening: bool  # HTF tightening confirmed
+    tight_length: int  # Number of tightening candles
+    tight_ratio: float  # How much range shrank
     recommended_pct: float  # Suggested sell/buy % of holdings
 
 
 @dataclass
 class AssetState:
     """Per-asset tracking state."""
+
     z_score: float = 0.0
     bb_position: float = 0.5
     sma20: float = 0.0
@@ -98,8 +102,13 @@ class MRInspector:
     Designed to run as part of the Market Map, not as a standalone bot.
     """
 
-    def __init__(self, z_threshold: float = 1.8, cooldown_candles: int = 50,
-                 base_boost_pct: float = 0.05, max_boost_pct: float = 0.20):
+    def __init__(
+        self,
+        z_threshold: float = 1.8,
+        cooldown_candles: int = 50,
+        base_boost_pct: float = 0.05,
+        max_boost_pct: float = 0.20,
+    ):
         self._z_threshold = z_threshold
         self._cooldown = cooldown_candles
         self._base_pct = base_boost_pct
@@ -134,7 +143,7 @@ class MRInspector:
             return None
         sma = sum(closes) / 20
         variance = sum((x - sma) ** 2 for x in closes) / 20
-        std = variance ** 0.5
+        std = variance**0.5
         if std < 1e-10:
             return None
 
@@ -161,17 +170,20 @@ class MRInspector:
         # ── Layer 2: HTF Landing Strip tightening ─────────
         try:
             tight = detect_landing_strip_v2(
-                candles, min_consecutive=3,
-                shrink_threshold=0.90, bb_tolerance_pct=3.0)
+                candles, min_consecutive=3, shrink_threshold=0.90, bb_tolerance_pct=3.0
+            )
             state.tightening = tight
         except Exception:  # R28-OK: BB-tightening probe; None state is the safe default
             tight = None
             state.tightening = None
 
         tightening_confirmed = (
-            tight is not None and tight.detected and
-            ((at_upper and tight.side == "upper") or
-             (at_lower and tight.side == "lower"))
+            tight is not None
+            and tight.detected
+            and (
+                (at_upper and tight.side == "upper")
+                or (at_lower and tight.side == "lower")
+            )
         )
 
         # ── Layer 3: Signal generation ────────────────────

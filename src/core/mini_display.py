@@ -60,9 +60,8 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from enum import Enum, auto
-from pathlib import Path
-from typing import Any, Callable, Optional
+from enum import Enum
+from typing import Optional
 
 logger = logging.getLogger("acervator.mini_display")
 
@@ -70,25 +69,26 @@ logger = logging.getLogger("acervator.mini_display")
 # Enumerations
 # ---------------------------------------------------------------------------
 
+
 class DisplayType(Enum):
-    OLED_MONO   = "oled_mono"    # SSD1306 monochrome OLED
-    OLED_COLOR  = "oled_color"   # SSD1351 color OLED
-    TFT_COLOR   = "tft_color"    # ST7789 / ILI9341 TFT LCD
-    CHAR_LCD    = "char_lcd"     # HD44780 character LCD
-    E_PAPER     = "e_paper"      # WaveShare e-Paper / e-ink
+    OLED_MONO = "oled_mono"  # SSD1306 monochrome OLED
+    OLED_COLOR = "oled_color"  # SSD1351 color OLED
+    TFT_COLOR = "tft_color"  # ST7789 / ILI9341 TFT LCD
+    CHAR_LCD = "char_lcd"  # HD44780 character LCD
+    E_PAPER = "e_paper"  # WaveShare e-Paper / e-ink
 
 
 class MessageType(Enum):
-    TRADE_ALERT     = "trade_alert"    # Order placed, filled, cancelled
-    BOT_STATE       = "bot_state"      # TRADING / PAUSED / STOPPED / ERROR
-    STATUS_LINE     = "status_line"    # Single-line status string
-    PRICE_TICKER    = "price_ticker"   # Live price update (frequent)
-    NOTIFICATION    = "notification"   # General notification text
-    ERROR           = "error"          # System or exchange error
-    STARTUP_SPLASH  = "startup_splash" # Boot / startup message
-    CHART_MINI      = "chart_mini"     # Compact price chart (pixel-based)
-    RICH_TEXT       = "rich_text"      # HTML / formatted text
-    ANIMATION       = "animation"      # Frame-based animation
+    TRADE_ALERT = "trade_alert"  # Order placed, filled, cancelled
+    BOT_STATE = "bot_state"  # TRADING / PAUSED / STOPPED / ERROR
+    STATUS_LINE = "status_line"  # Single-line status string
+    PRICE_TICKER = "price_ticker"  # Live price update (frequent)
+    NOTIFICATION = "notification"  # General notification text
+    ERROR = "error"  # System or exchange error
+    STARTUP_SPLASH = "startup_splash"  # Boot / startup message
+    CHART_MINI = "chart_mini"  # Compact price chart (pixel-based)
+    RICH_TEXT = "rich_text"  # HTML / formatted text
+    ANIMATION = "animation"  # Frame-based animation
 
 
 # ---------------------------------------------------------------------------
@@ -98,27 +98,41 @@ class MessageType(Enum):
 
 INCOMPATIBLE: dict[tuple[MessageType, DisplayType], str] = {
     # CHAR_LCD limitations
-    (MessageType.CHART_MINI, DisplayType.CHAR_LCD):
-        "Character cell matrix cannot render pixel graphics",
-    (MessageType.RICH_TEXT, DisplayType.CHAR_LCD):
-        "Character LCD limited to ASCII; HTML markup not renderable",
-    (MessageType.ANIMATION, DisplayType.CHAR_LCD):
-        "No frame buffer; full repaint per write makes animation impractical",
-
+    (
+        MessageType.CHART_MINI,
+        DisplayType.CHAR_LCD,
+    ): "Character cell matrix cannot render pixel graphics",
+    (
+        MessageType.RICH_TEXT,
+        DisplayType.CHAR_LCD,
+    ): "Character LCD limited to ASCII; HTML markup not renderable",
+    (
+        MessageType.ANIMATION,
+        DisplayType.CHAR_LCD,
+    ): "No frame buffer; full repaint per write makes animation impractical",
     # E_PAPER limitations
-    (MessageType.PRICE_TICKER, DisplayType.E_PAPER):
-        "2–30s e-ink refresh cycle makes live prices meaningless; "
-        "accelerated panel wear",
-    (MessageType.ANIMATION, DisplayType.E_PAPER):
-        "Physical refresh cycle (2–30s) is incompatible with animation",
-    (MessageType.CHART_MINI, DisplayType.E_PAPER):
-        "Frequent chart redraws cause accelerated e-ink panel wear",
-
+    (
+        MessageType.PRICE_TICKER,
+        DisplayType.E_PAPER,
+    ): "2–30s e-ink refresh cycle makes live prices meaningless; "
+    "accelerated panel wear",
+    (
+        MessageType.ANIMATION,
+        DisplayType.E_PAPER,
+    ): "Physical refresh cycle (2–30s) is incompatible with animation",
+    (
+        MessageType.CHART_MINI,
+        DisplayType.E_PAPER,
+    ): "Frequent chart redraws cause accelerated e-ink panel wear",
     # OLED_MONO limitations
-    (MessageType.RICH_TEXT, DisplayType.OLED_MONO):
-        "Monochrome display cannot render colour/font formatting from HTML",
-    (MessageType.ANIMATION, DisplayType.OLED_MONO):
-        "Low-res monochrome buffer impractical for animation sequences",
+    (
+        MessageType.RICH_TEXT,
+        DisplayType.OLED_MONO,
+    ): "Monochrome display cannot render colour/font formatting from HTML",
+    (
+        MessageType.ANIMATION,
+        DisplayType.OLED_MONO,
+    ): "Low-res monochrome buffer impractical for animation sequences",
 }
 
 
@@ -132,17 +146,19 @@ def is_compatible(msg_type: MessageType, disp_type: DisplayType) -> tuple[bool, 
 # Message dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DisplayMessage:
     """A platform message to be routed to mini displays."""
-    msg_type:   MessageType
-    title:      str = ""
-    body:       str = ""
-    value:      str = ""           # e.g. price, P&L, state string
-    symbol:     str = ""
-    timestamp:  float = field(default_factory=time.time)
-    priority:   int = 5            # 1 (highest) – 10 (lowest)
-    duration_s: float = 0.0        # 0 = persistent until next message
+
+    msg_type: MessageType
+    title: str = ""
+    body: str = ""
+    value: str = ""  # e.g. price, P&L, state string
+    symbol: str = ""
+    timestamp: float = field(default_factory=time.time)
+    priority: int = 5  # 1 (highest) – 10 (lowest)
+    duration_s: float = 0.0  # 0 = persistent until next message
 
     def plain_text(self, max_cols: int = 20) -> list[str]:
         """
@@ -174,6 +190,7 @@ class DisplayMessage:
 # Abstract adapter base
 # ---------------------------------------------------------------------------
 
+
 class DisplayAdapter:
     """
     Base class for all display adapters.
@@ -183,9 +200,9 @@ class DisplayAdapter:
     display_type: DisplayType = NotImplemented
 
     def __init__(self, config: dict):
-        self.config    = config
+        self.config = config
         self.connected = False
-        self._lock     = threading.Lock()
+        self._lock = threading.Lock()
 
     def connect(self) -> bool:
         """Open connection to the display hardware. Return True on success."""
@@ -197,7 +214,6 @@ class DisplayAdapter:
 
     def clear(self):
         """Clear the display."""
-        pass
 
     def disconnect(self):
         """Close the hardware connection."""
@@ -212,7 +228,9 @@ class DisplayAdapter:
         if not ok:
             logger.debug(
                 "Display %s: skipping %s — %s",
-                self.display_type.value, msg.msg_type.value, reason
+                self.display_type.value,
+                msg.msg_type.value,
+                reason,
             )
             return False
         with self._lock:
@@ -229,6 +247,7 @@ class DisplayAdapter:
 # OLED Mono adapter (SSD1306) via luma.oled
 # ---------------------------------------------------------------------------
 
+
 class OledMonoAdapter(DisplayAdapter):
     """SSD1306 128×64 / 128×32 monochrome OLED via I2C."""
 
@@ -238,9 +257,10 @@ class OledMonoAdapter(DisplayAdapter):
         try:
             from luma.core.interface.serial import i2c
             from luma.oled.device import ssd1306
-            addr   = int(self.config.get("i2c_address", "0x3C"), 16)
-            bus    = int(self.config.get("i2c_bus", 1))
-            width  = int(self.config.get("width", 128))
+
+            addr = int(self.config.get("i2c_address", "0x3C"), 16)
+            bus = int(self.config.get("i2c_bus", 1))
+            width = int(self.config.get("width", 128))
             height = int(self.config.get("height", 64))
             serial = i2c(port=bus, address=addr)
             self._dev = ssd1306(serial, width=width, height=height)
@@ -253,13 +273,18 @@ class OledMonoAdapter(DisplayAdapter):
 
     def render(self, msg: DisplayMessage) -> bool:
         from PIL import Image, ImageDraw, ImageFont
-        w, h   = self._dev.width, self._dev.height
-        img    = Image.new("1", (w, h), 0)
-        draw   = ImageDraw.Draw(img)
+
+        w, h = self._dev.width, self._dev.height
+        img = Image.new("1", (w, h), 0)
+        draw = ImageDraw.Draw(img)
 
         try:
-            font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 9)
-            font_lg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
+            font_sm = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 9
+            )
+            font_lg = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14
+            )
         except (IOError, OSError):
             font_sm = font_lg = ImageFont.load_default()
 
@@ -282,14 +307,17 @@ class OledMonoAdapter(DisplayAdapter):
 
     def disconnect(self):
         if self.connected:
-            try: self._dev.cleanup()
-            except Exception: pass   # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
+            try:
+                self._dev.cleanup()
+            except Exception:
+                pass  # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
         super().disconnect()
 
 
 # ---------------------------------------------------------------------------
 # Color OLED adapter (SSD1351) via luma.oled
 # ---------------------------------------------------------------------------
+
 
 class OledColorAdapter(DisplayAdapter):
     """SSD1351 128×128 color OLED."""
@@ -300,6 +328,7 @@ class OledColorAdapter(DisplayAdapter):
         try:
             from luma.core.interface.serial import spi
             from luma.oled.device import ssd1351
+
             self._dev = ssd1351(spi(device=0, port=0))
             self.connected = True
             logger.info("SSD1351 color OLED connected via SPI")
@@ -310,20 +339,25 @@ class OledColorAdapter(DisplayAdapter):
 
     def render(self, msg: DisplayMessage) -> bool:
         from PIL import Image, ImageDraw, ImageFont
+
         w, h = self._dev.width, self._dev.height
-        img  = Image.new("RGB", (w, h), (0, 0, 0))
+        img = Image.new("RGB", (w, h), (0, 0, 0))
         draw = ImageDraw.Draw(img)
 
         try:
-            font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
-            font_lg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
+            font_sm = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10
+            )
+            font_lg = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14
+            )
         except (IOError, OSError):
             font_sm = font_lg = ImageFont.load_default()
 
-        RED  = (204, 0, 0)
+        RED = (204, 0, 0)
         CYAN = (0, 204, 170)
         WHITE = (255, 255, 255)
-        GREY  = (150, 150, 150)
+        GREY = (150, 150, 150)
 
         y = 4
         if msg.title:
@@ -343,14 +377,17 @@ class OledColorAdapter(DisplayAdapter):
 
     def disconnect(self):
         if self.connected:
-            try: self._dev.cleanup()
-            except Exception: pass   # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
+            try:
+                self._dev.cleanup()
+            except Exception:
+                pass  # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
         super().disconnect()
 
 
 # ---------------------------------------------------------------------------
 # TFT Color adapter (ST7789 / ILI9341)
 # ---------------------------------------------------------------------------
+
 
 class TftColorAdapter(DisplayAdapter):
     """ST7789 / ILI9341 SPI TFT display."""
@@ -360,12 +397,19 @@ class TftColorAdapter(DisplayAdapter):
     def connect(self) -> bool:
         try:
             import ST7789 as st
+
             w = int(self.config.get("width", 240))
             h = int(self.config.get("height", 240))
             self._dev = st.ST7789(
-                rotation=0, port=0, cs=1,
-                dc=9, backlight=19, width=w, height=h,
-                offset_left=0, offset_top=0,
+                rotation=0,
+                port=0,
+                cs=1,
+                dc=9,
+                backlight=19,
+                width=w,
+                height=h,
+                offset_left=0,
+                offset_top=0,
             )
             self.connected = True
             logger.info("ST7789 TFT connected (%dx%d)", w, h)
@@ -376,21 +420,26 @@ class TftColorAdapter(DisplayAdapter):
 
     def render(self, msg: DisplayMessage) -> bool:
         from PIL import Image, ImageDraw, ImageFont
+
         w = getattr(self._dev, "width", 240)
         h = getattr(self._dev, "height", 240)
-        img  = Image.new("RGB", (w, h), (0, 0, 0))
+        img = Image.new("RGB", (w, h), (0, 0, 0))
         draw = ImageDraw.Draw(img)
 
         try:
-            font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
-            font_lg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
+            font_sm = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14
+            )
+            font_lg = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20
+            )
         except (IOError, OSError):
             font_sm = font_lg = ImageFont.load_default()
 
-        RED    = (204, 0, 0)
-        CYAN   = (0, 204, 170)
-        WHITE  = (240, 240, 240)
-        GOLD   = (255, 184, 0)
+        RED = (204, 0, 0)
+        CYAN = (0, 204, 170)
+        WHITE = (240, 240, 240)
+        GOLD = (255, 184, 0)
 
         y = 10
         if msg.title:
@@ -398,7 +447,8 @@ class TftColorAdapter(DisplayAdapter):
             y += 28
         if msg.value:
             col = CYAN if msg.msg_type == MessageType.PRICE_TICKER else GOLD
-            if msg.msg_type == MessageType.ERROR: col = RED
+            if msg.msg_type == MessageType.ERROR:
+                col = RED
             draw.text((10, y), msg.value[:24], fill=col, font=font_lg)
             y += 28
         if msg.body and y < h - 20:
@@ -423,14 +473,17 @@ class TftColorAdapter(DisplayAdapter):
 
     def disconnect(self):
         if self.connected:
-            try: self._dev.set_backlight(0)
-            except Exception: pass   # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
+            try:
+                self._dev.set_backlight(0)
+            except Exception:
+                pass  # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
         super().disconnect()
 
 
 # ---------------------------------------------------------------------------
 # Character LCD adapter (HD44780 via I2C PCF8574)
 # ---------------------------------------------------------------------------
+
 
 class CharLcdAdapter(DisplayAdapter):
     """HD44780 16×2 or 20×4 character LCD via I2C PCF8574 backpack."""
@@ -440,13 +493,16 @@ class CharLcdAdapter(DisplayAdapter):
     def connect(self) -> bool:
         try:
             from RPLCD.i2c import CharLCD
+
             addr = int(self.config.get("i2c_address", "0x27"), 16)
             cols = int(self.config.get("cols", 16))
             rows = int(self.config.get("rows", 2))
-            self._lcd  = CharLCD(
+            self._lcd = CharLCD(
                 i2c_expander="PCF8574",
-                address=addr, port=1,
-                cols=cols, rows=rows,
+                address=addr,
+                port=1,
+                cols=cols,
+                rows=rows,
                 charmap="A02",
             )
             self._cols = cols
@@ -461,28 +517,34 @@ class CharLcdAdapter(DisplayAdapter):
     def render(self, msg: DisplayMessage) -> bool:
         lines = msg.plain_text(max_cols=self._cols)
         self._lcd.clear()
-        for i, line in enumerate(lines[:self._rows]):
+        for i, line in enumerate(lines[: self._rows]):
             self._lcd.cursor_pos = (i, 0)
             # HD44780 does not support Unicode — replace non-ASCII
             safe = line.encode("ascii", errors="replace").decode("ascii")
-            self._lcd.write_string(safe[:self._cols])
+            self._lcd.write_string(safe[: self._cols])
         return True
 
     def clear(self):
         if self.connected:
-            try: self._lcd.clear()
-            except Exception: pass   # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
+            try:
+                self._lcd.clear()
+            except Exception:
+                pass  # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
 
     def disconnect(self):
         if self.connected:
-            try: self._lcd.clear(); self._lcd.close(clear=True)
-            except Exception: pass   # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
+            try:
+                self._lcd.clear()
+                self._lcd.close(clear=True)
+            except Exception:
+                pass  # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
         super().disconnect()
 
 
 # ---------------------------------------------------------------------------
 # e-Paper adapter (WaveShare)
 # ---------------------------------------------------------------------------
+
 
 class EPaperAdapter(DisplayAdapter):
     """WaveShare e-Paper / e-ink display via SPI."""
@@ -496,7 +558,8 @@ class EPaperAdapter(DisplayAdapter):
         try:
             model = self.config.get("model", "epd2in13_V3")
             import importlib
-            epd_mod  = importlib.import_module(f"waveshare_epd.{model}")
+
+            epd_mod = importlib.import_module(f"waveshare_epd.{model}")
             self._epd = epd_mod.EPD()
             self._epd.init()
             self._epd.Clear()
@@ -515,14 +578,19 @@ class EPaperAdapter(DisplayAdapter):
         self._last_rendered = key
 
         from PIL import Image, ImageDraw, ImageFont
+
         w = getattr(self._epd, "width", 122)
         h = getattr(self._epd, "height", 250)
-        img  = Image.new("1", (w, h), 255)   # white background for e-paper
+        img = Image.new("1", (w, h), 255)  # white background for e-paper
         draw = ImageDraw.Draw(img)
 
         try:
-            font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
-            font_lg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
+            font_sm = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10
+            )
+            font_lg = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14
+            )
         except (IOError, OSError):
             font_sm = font_lg = ImageFont.load_default()
 
@@ -547,7 +615,8 @@ class EPaperAdapter(DisplayAdapter):
         if self.connected:
             try:
                 self._epd.sleep()
-            except Exception: pass   # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
+            except Exception:
+                pass  # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
         super().disconnect()
 
 
@@ -556,18 +625,18 @@ class EPaperAdapter(DisplayAdapter):
 # ---------------------------------------------------------------------------
 
 I2C_ADDRESSES = {
-    0x3C: (DisplayType.OLED_MONO,  {"i2c_address": "0x3C"}),
-    0x3D: (DisplayType.OLED_MONO,  {"i2c_address": "0x3D"}),
-    0x27: (DisplayType.CHAR_LCD,   {"i2c_address": "0x27", "cols": "16", "rows": "2"}),
-    0x3F: (DisplayType.CHAR_LCD,   {"i2c_address": "0x3F", "cols": "20", "rows": "4"}),
+    0x3C: (DisplayType.OLED_MONO, {"i2c_address": "0x3C"}),
+    0x3D: (DisplayType.OLED_MONO, {"i2c_address": "0x3D"}),
+    0x27: (DisplayType.CHAR_LCD, {"i2c_address": "0x27", "cols": "16", "rows": "2"}),
+    0x3F: (DisplayType.CHAR_LCD, {"i2c_address": "0x3F", "cols": "20", "rows": "4"}),
 }
 
 ADAPTER_CLASSES = {
-    DisplayType.OLED_MONO:  OledMonoAdapter,
+    DisplayType.OLED_MONO: OledMonoAdapter,
     DisplayType.OLED_COLOR: OledColorAdapter,
-    DisplayType.TFT_COLOR:  TftColorAdapter,
-    DisplayType.CHAR_LCD:   CharLcdAdapter,
-    DisplayType.E_PAPER:    EPaperAdapter,
+    DisplayType.TFT_COLOR: TftColorAdapter,
+    DisplayType.CHAR_LCD: CharLcdAdapter,
+    DisplayType.E_PAPER: EPaperAdapter,
 }
 
 
@@ -575,6 +644,7 @@ def scan_i2c(bus: int = 1) -> list[int]:
     """Return list of responding I2C addresses on the given bus."""
     try:
         import smbus2
+
         b = smbus2.SMBus(bus)
         found = []
         for addr in range(0x03, 0x78):
@@ -620,7 +690,7 @@ def detect_displays(extra_config: Optional[list[dict]] = None) -> list[DisplayAd
                 logger.info("Auto-detected: %s at I2C 0x%02X", dtype.value, addr)
 
     # 2. Configured SPI / additional displays
-    for cfg in (extra_config or []):
+    for cfg in extra_config or []:
         try:
             dtype = DisplayType(cfg.get("type", ""))
         except ValueError:
@@ -647,6 +717,7 @@ def detect_displays(extra_config: Optional[list[dict]] = None) -> list[DisplayAd
 # Display Manager — routes platform messages to all active displays
 # ---------------------------------------------------------------------------
 
+
 class MiniDisplayManager:
     """
     Central manager for all connected mini displays.
@@ -657,12 +728,12 @@ class MiniDisplayManager:
     """
 
     def __init__(self, extra_config: Optional[list[dict]] = None):
-        self._adapters:  list[DisplayAdapter] = []
-        self._queue:     list[DisplayMessage] = []
-        self._lock       = threading.Lock()
-        self._running    = False
-        self._thread:    Optional[threading.Thread] = None
-        self._extra_cfg  = extra_config or []
+        self._adapters: list[DisplayAdapter] = []
+        self._queue: list[DisplayMessage] = []
+        self._lock = threading.Lock()
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+        self._extra_cfg = extra_config or []
 
     def start(self):
         """Detect displays and start the routing thread."""
@@ -671,7 +742,7 @@ class MiniDisplayManager:
             logger.info("No mini displays detected — display manager idle")
             return
         self._running = True
-        self._thread  = threading.Thread(
+        self._thread = threading.Thread(
             target=self._loop, daemon=True, name="mini-display"
         )
         self._thread.start()
@@ -685,7 +756,8 @@ class MiniDisplayManager:
             try:
                 adapter.clear()
                 adapter.disconnect()
-            except Exception: pass   # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
+            except Exception:
+                pass  # sadp: R61 ACCEPT — hardware cleanup on disconnect is best-effort (device may already be powered off / bus disconnected / adapter removed)
         self._adapters = []
 
     def send(self, msg: DisplayMessage):
@@ -702,25 +774,32 @@ class MiniDisplayManager:
 
     def send_simple(
         self,
-        msg_type:   MessageType,
-        title:      str = "",
-        body:       str = "",
-        value:      str = "",
-        symbol:     str = "",
-        priority:   int = 5,
+        msg_type: MessageType,
+        title: str = "",
+        body: str = "",
+        value: str = "",
+        symbol: str = "",
+        priority: int = 5,
         duration_s: float = 0.0,
     ):
         """Convenience method — build and enqueue a DisplayMessage."""
-        self.send(DisplayMessage(
-            msg_type=msg_type, title=title, body=body,
-            value=value, symbol=symbol, priority=priority,
-            duration_s=duration_s,
-        ))
+        self.send(
+            DisplayMessage(
+                msg_type=msg_type,
+                title=title,
+                body=body,
+                value=value,
+                symbol=symbol,
+                priority=priority,
+                duration_s=duration_s,
+            )
+        )
 
     # ── Pre-built message helpers ─────────────────────────────────────────────
 
-    def notify_trade(self, side: str, symbol: str, qty: float,
-                     price: float, fee: float):
+    def notify_trade(
+        self, side: str, symbol: str, qty: float, price: float, fee: float
+    ):
         self.send_simple(
             MessageType.TRADE_ALERT,
             title=f"{'SCRUM' if side.upper()=='SELL' else 'FOLD'}  {symbol}",
@@ -791,7 +870,7 @@ class MiniDisplayManager:
 
     def _dispatch(self, msg: DisplayMessage):
         for adapter in self._adapters:
-            adapter.show(msg)   # show() handles compatibility internally
+            adapter.show(msg)  # show() handles compatibility internally
 
     # ── Status reporting ──────────────────────────────────────────────────────
 
@@ -799,13 +878,13 @@ class MiniDisplayManager:
         return {
             "displays": [
                 {
-                    "type":      a.display_type.value,
+                    "type": a.display_type.value,
                     "connected": a.connected,
                 }
                 for a in self._adapters
             ],
             "queue_depth": len(self._queue),
-            "active":      self._running,
+            "active": self._running,
         }
 
     def compatibility_report(self) -> str:

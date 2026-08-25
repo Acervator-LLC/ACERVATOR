@@ -8,7 +8,9 @@ version = "1.0.0"
 description = "Multi-exchange crypto auto-trading platform with Grid and Speculative Scrumming modes"
 readme = "README.md"
 license = {text = "Proprietary"}
-requires-python = ">=3.11"
+# Single supported interpreter, pinned in .python-version at the repo root.
+# Acervator targets one Python; there is no multi-version support or testing.
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "PySide6>=6.6.0",
     "ccxt>=4.2.0",
@@ -23,8 +25,53 @@ dependencies = [
     "defusedxml>=0.7.1",
 ]
 
+# Dev/CI tooling. Kept out of the runtime dependency list so a packaged
+# build never ships them. Two extras, so CI's fast lane installs only what
+# the core suite needs:
+#   [test] — the lean set to run `pytest` (fast lane, every push/PR).
+#   [dev]  — everything: [test] plus black/flake8 and the archetype analyzers
+#            (slow/full lane only, plus local development).
+[project.optional-dependencies]
+# Lean test runtime. `pytest-xdist` gives `-n auto` process parallelism, the
+# single biggest CI wall-clock win on this CPU-bound suite.
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-qt>=4.4",
+    "pytest-xdist>=3.5",
+]
+dev = [
+    # Self-reference (PEP 621): dev is a strict superset of test.
+    "quantum-auto-trader[test]",
+    "black>=24.0",
+    "flake8>=7.0",
+    # Analyzers the archetype-review harness (tools/harness/*_archetype.py)
+    # shells out to. Without them ArchetypeReport.passed fails closed
+    # ("<tool>: not installed"), so the archetype test suite needs them on
+    # PATH. `vale` (docs prose) is an optional Go binary, not pip-installable,
+    # and the docs archetype treats it as available-if-present. These are
+    # heavy (semgrep, opencv) — the fast lane deliberately does NOT install
+    # them, and the archetype tests that need them are marked so the fast
+    # lane deselects them (see the `archetype` marker below).
+    "ruff>=0.1",
+    "bandit>=1.7",
+    "mypy>=1.0",
+    "vulture>=2.0",
+    "semgrep>=1.0",
+    "proselint>=0.13",
+    "opencv-python-headless>=4.8",
+]
+
 [project.scripts]
 quantum-trader = "main:main"
+
+# ── Formatting (black) ──────────────────────────────────────────────
+# Enforced in CI by `black --check`. flake8 is configured to match (see
+# .flake8): line length 88, E203/W503 ignored because black owns them.
+[tool.black]
+line-length = 88
+target-version = ["py313"]
+extend-exclude = "tests/obsolete"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -36,6 +83,18 @@ testpaths = ["tests"]
 # TD-021: test_swarm_row_parity reads source under default codec; ignore until encoding fix ships.
 norecursedirs = ["obsolete", "__pycache__", ".git"]
 addopts = "--ignore=tests/obsolete --ignore=tests/test_swarm_row_parity.py"
+# Lanes. `tests/conftest.py::pytest_collection_modifyitems` applies these by
+# file, so no per-file `pytestmark` is needed:
+#   slow      — end-to-end engine-replay suites (full FleetReplayController
+#               runs over synthetic candles); minutes of CPU each.
+#   archetype — archetype-harness tests that shell out to heavy analyzers
+#               (semgrep/mypy/vulture/vale/opencv), installed only via [dev].
+# Fast CI lane runs `-m "not slow and not archetype"`; the full lane runs the
+# complement. Unknown-marker warnings are errors, so both must be declared.
+markers = [
+    "slow: end-to-end engine-replay suite; heavy CPU, deferred to the full CI lane",
+    "archetype: archetype-harness test needing the [dev] analyzer toolchain",
+]
 
 # v3.19.7 — Coverage configuration. Coverage is NOT enabled by default
 # (would slow the 1533-test suite by ~3×). Operator runs coverage

@@ -26,6 +26,7 @@ f-string is the authority and `TA_RAW_PREFIX` is its copy;
 `test_the_constant_is_the_string_the_engine_emits` is the check that
 the copy still matches.
 """
+
 from __future__ import annotations
 
 import ast
@@ -67,13 +68,17 @@ def _rollup(records, prefix):
     set_sink(sink)
     try:
         for name, ok in records:
-            emit(name, actual={"v": 1.0},
-                 expected=("rule" if ok is not None else None), ok=ok)
+            emit(
+                name,
+                actual={"v": 1.0},
+                expected=("rule" if ok is not None else None),
+                ok=ok,
+            )
         per = {}
         for record in sink.records():
             if not record.name.startswith(prefix):
                 continue
-            indicator = record.name[len(prefix):]
+            indicator = record.name[len(prefix) :]
             slot = per.setdefault(indicator, {"checked": 0, "violated": 0})
             if record.ok is False:
                 slot["checked"] += 1
@@ -85,10 +90,18 @@ def _rollup(records, prefix):
         set_sink(previous)
 
 
-NEW = [(TA_RAW_PREFIX + "adx", True), (TA_RAW_PREFIX + "adx", False),
-       (TA_RAW_PREFIX + "slingshot", True), (TA_RAW_PREFIX + "rsi", None)]
-OLD = [("ta.raw.adx", True), ("ta.raw.adx", False),
-       ("ta.raw.slingshot", True), ("ta.raw.rsi", None)]
+NEW = [
+    (TA_RAW_PREFIX + "adx", True),
+    (TA_RAW_PREFIX + "adx", False),
+    (TA_RAW_PREFIX + "slingshot", True),
+    (TA_RAW_PREFIX + "rsi", None),
+]
+OLD = [
+    ("ta.raw.adx", True),
+    ("ta.raw.adx", False),
+    ("ta.raw.slingshot", True),
+    ("ta.raw.rsi", None),
+]
 
 
 class TestTheTwoEndsCannotDisagree:
@@ -97,7 +110,8 @@ class TestTheTwoEndsCannotDisagree:
         heads = [
             node.values[0].value
             for node in ast.walk(_tree(ENGINE))
-            if isinstance(node, ast.JoinedStr) and node.values
+            if isinstance(node, ast.JoinedStr)
+            and node.values
             and isinstance(node.values[0], ast.Constant)
             and isinstance(node.values[0].value, str)
             and node.values[0].value.startswith("ta.")
@@ -113,7 +127,8 @@ class TestTheTwoEndsCannotDisagree:
             and isinstance(node.func, ast.Attribute)
             and node.func.attr == "startswith"
             and isinstance(node.func.value, ast.Attribute)
-            and node.func.value.attr == "name" and node.args
+            and node.func.value.attr == "name"
+            and node.args
         ]
         assert len(args) == 1
         assert isinstance(args[0], ast.Name)

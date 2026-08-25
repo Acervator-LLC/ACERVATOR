@@ -28,6 +28,7 @@ ALSO touch RAIntSimBat in the same cascade.
 
 MEM-416.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -43,6 +44,7 @@ logger = logging.getLogger("acervator.capital_registry")
 # ---------------------------------------------------------------------------
 # Public data class
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class Reservation:
@@ -63,6 +65,7 @@ class Reservation:
       bot_mode: "scrumming" or "extractor" — used by reconciliation
           and the GUI registry table (Phase D)
     """
+
     bot_id: str
     exchange_id: str
     base_currency: str
@@ -184,13 +187,13 @@ class CapitalRegistry:
             current = asyncio.get_running_loop()
         except RuntimeError:
             return  # not in an async context; sync access is allowed
-        if (self._origin_loop is not None
-                and self._origin_loop is not current):
+        if self._origin_loop is not None and self._origin_loop is not current:
             raise CrossLoopAccessError(
                 f"CapitalRegistry created in loop {id(self._origin_loop)} "
                 f"but accessed from loop {id(current)}. This causes "
                 f"silent reservation corruption — see the DataPool "
-                f"v3.16.19 / MEM-219 lineage for the same bug class.")
+                f"v3.16.19 / MEM-219 lineage for the same bug class."
+            )
 
     # ------------------------------------------------------------------
     # Public API
@@ -219,17 +222,26 @@ class CapitalRegistry:
             base = (base_currency or "").upper()
             mode = bot_mode.lower()
             if mode not in ("scrumming", "extractor"):
-                return False, (
-                    f"Unknown bot_mode {bot_mode!r}; expected "
-                    f"'scrumming' or 'extractor'"), 0.0
+                return (
+                    False,
+                    (
+                        f"Unknown bot_mode {bot_mode!r}; expected "
+                        f"'scrumming' or 'extractor'"
+                    ),
+                    0.0,
+                )
             if usd_amount <= 0:
-                return False, (
-                    f"usd_amount must be positive, got {usd_amount}"), 0.0
+                return False, (f"usd_amount must be positive, got {usd_amount}"), 0.0
             rate = float(current_rate_usd_per_base or 0)
             if rate <= 0:
-                return False, (
-                    f"current_rate_usd_per_base must be positive, "
-                    f"got {current_rate_usd_per_base}"), 0.0
+                return (
+                    False,
+                    (
+                        f"current_rate_usd_per_base must be positive, "
+                        f"got {current_rate_usd_per_base}"
+                    ),
+                    0.0,
+                )
 
             # Compute the would-be total: sum of all OTHER reservations
             # on this (exchange, base) plus the new request
@@ -251,14 +263,19 @@ class CapitalRegistry:
                 pass
             else:
                 if other_total_usd + usd_amount > wallet_usd + 1e-6:
-                    return False, (
-                        f"REFUSED — over-allocation. Bot {bot_id} "
-                        f"requested ${usd_amount:.2f} but wallet has "
-                        f"${wallet_usd:.2f} on {exchange_id}/{base} "
-                        f"and other bots already reserve "
-                        f"${other_total_usd:.2f}. Reduce other bot "
-                        f"allocations or deposit more "
-                        f"{base}."), 0.0
+                    return (
+                        False,
+                        (
+                            f"REFUSED — over-allocation. Bot {bot_id} "
+                            f"requested ${usd_amount:.2f} but wallet has "
+                            f"${wallet_usd:.2f} on {exchange_id}/{base} "
+                            f"and other bots already reserve "
+                            f"${other_total_usd:.2f}. Reduce other bot "
+                            f"allocations or deposit more "
+                            f"{base}."
+                        ),
+                        0.0,
+                    )
 
             # Grant — create or replace
             now_ts = float(time.time())
@@ -318,25 +335,38 @@ class CapitalRegistry:
         self._check_loop()
         with self._lock:
             if additional_usd <= 0:
-                return False, (
-                    f"additional_usd must be positive, got "
-                    f"{additional_usd}"), 0.0
+                return (
+                    False,
+                    (f"additional_usd must be positive, got " f"{additional_usd}"),
+                    0.0,
+                )
             r = self._reservations.get(bot_id)
             if r is None:
-                return False, (
-                    f"No existing reservation for bot {bot_id} — "
-                    f"cannot grow what doesn't exist. Call "
-                    f"request_reservation() first."), 0.0
+                return (
+                    False,
+                    (
+                        f"No existing reservation for bot {bot_id} — "
+                        f"cannot grow what doesn't exist. Call "
+                        f"request_reservation() first."
+                    ),
+                    0.0,
+                )
 
             new_usd = r.reserved_usd + additional_usd
             rate = (
                 float(current_rate_usd_per_base)
                 if current_rate_usd_per_base and current_rate_usd_per_base > 0
-                else float(r.last_rate_usd_per_base))
+                else float(r.last_rate_usd_per_base)
+            )
             if rate <= 0:
-                return False, (
-                    f"Cannot grow reservation for bot {bot_id} with "
-                    f"non-positive rate {rate}"), 0.0
+                return (
+                    False,
+                    (
+                        f"Cannot grow reservation for bot {bot_id} with "
+                        f"non-positive rate {rate}"
+                    ),
+                    0.0,
+                )
 
             # Q6 same-bot-only overshoot: the bot's own profit auto-
             # grows its reservation EVEN IF the wallet provider hasn't
@@ -368,7 +398,8 @@ class CapitalRegistry:
             if r is None:
                 return False, (
                     f"No existing reservation for bot {bot_id}; "
-                    f"call request_reservation() instead.")
+                    f"call request_reservation() instead."
+                )
             # Delegate to request_reservation (which handles the cap
             # check for the new amount).
             granted, reason, _ = self.request_reservation(
@@ -382,7 +413,10 @@ class CapitalRegistry:
             return granted, reason
 
     def refresh_rate(
-        self, *, exchange_id: str, base_currency: str,
+        self,
+        *,
+        exchange_id: str,
+        base_currency: str,
         current_rate_usd_per_base: float,
     ) -> int:
         """Refresh the snapshot rate on all reservations for the given
@@ -408,7 +442,10 @@ class CapitalRegistry:
             return n
 
     def get_free(
-        self, *, exchange_id: str, base_currency: str,
+        self,
+        *,
+        exchange_id: str,
+        base_currency: str,
         current_rate_usd_per_base: Optional[float] = None,
     ) -> tuple[float, float]:
         """Returns ``(free_usd, free_base)`` for this (exchange, base).
@@ -420,11 +457,15 @@ class CapitalRegistry:
         with self._lock:
             base = (base_currency or "").upper()
             total_usd = sum(
-                r.reserved_usd for r in self._reservations.values()
-                if r.exchange_id == exchange_id and r.base_currency == base)
+                r.reserved_usd
+                for r in self._reservations.values()
+                if r.exchange_id == exchange_id and r.base_currency == base
+            )
             total_base = sum(
-                r.reserved_base for r in self._reservations.values()
-                if r.exchange_id == exchange_id and r.base_currency == base)
+                r.reserved_base
+                for r in self._reservations.values()
+                if r.exchange_id == exchange_id and r.base_currency == base
+            )
             rate = current_rate_usd_per_base
             wallet_usd = self._wallet_usd(exchange_id, base, rate)
             if wallet_usd is None:
@@ -436,7 +477,10 @@ class CapitalRegistry:
             return free_usd, 0.0
 
     def reconcile_with_exchange(
-        self, *, exchange_id: str, base_currency: str,
+        self,
+        *,
+        exchange_id: str,
+        base_currency: str,
         exchange_balance_base: float,
         current_rate_usd_per_base: float,
     ) -> dict:
@@ -460,21 +504,24 @@ class CapitalRegistry:
             self.refresh_rate(
                 exchange_id=exchange_id,
                 base_currency=base,
-                current_rate_usd_per_base=rate)
+                current_rate_usd_per_base=rate,
+            )
             wallet_base = float(exchange_balance_base or 0)
             wallet_usd = wallet_base * rate
             reserved_usd = sum(
-                r.reserved_usd for r in self._reservations.values()
-                if r.exchange_id == exchange_id and r.base_currency == base)
+                r.reserved_usd
+                for r in self._reservations.values()
+                if r.exchange_id == exchange_id and r.base_currency == base
+            )
             reserved_base = reserved_usd / rate
             free_usd = wallet_usd - reserved_usd
             free_base = wallet_base - reserved_base
             drift_usd = wallet_usd - sum(
-                r.reserved_usd for r in self._reservations.values()
-                if r.exchange_id == exchange_id and r.base_currency == base)
-            drift_pct = (
-                100.0 * abs(drift_usd) / wallet_usd
-                if wallet_usd > 0 else 0.0)
+                r.reserved_usd
+                for r in self._reservations.values()
+                if r.exchange_id == exchange_id and r.base_currency == base
+            )
+            drift_pct = 100.0 * abs(drift_usd) / wallet_usd if wallet_usd > 0 else 0.0
             return {
                 "wallet_base": wallet_base,
                 "wallet_usd": wallet_usd,
@@ -487,7 +534,9 @@ class CapitalRegistry:
             }
 
     def get_reservations(
-        self, *, exchange_id: Optional[str] = None,
+        self,
+        *,
+        exchange_id: Optional[str] = None,
         base_currency: Optional[str] = None,
     ) -> list[Reservation]:
         """Snapshot list of reservations (optionally filtered). Used
@@ -508,14 +557,15 @@ class CapitalRegistry:
     def serialize(self) -> dict:
         """Serializable snapshot for settings.json persistence."""
         with self._lock:
-            return {_SETTINGS_KEY: [
-                r.to_dict() for r in self._reservations.values()]}
+            return {_SETTINGS_KEY: [r.to_dict() for r in self._reservations.values()]}
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
     def _wallet_usd(
-        self, exchange_id: str, base_currency: str,
+        self,
+        exchange_id: str,
+        base_currency: str,
         rate: Optional[float],
     ) -> Optional[float]:
         """Convert wallet base balance to USD using the provider + rate.
@@ -524,8 +574,7 @@ class CapitalRegistry:
         if self._wallet_provider is None:
             return None
         try:
-            wallet_base = float(self._wallet_provider(
-                exchange_id, base_currency) or 0)
+            wallet_base = float(self._wallet_provider(exchange_id, base_currency) or 0)
         except Exception:
             return None
         if base_currency.upper() in _USD_LIKE:
@@ -541,8 +590,9 @@ class CapitalRegistry:
         if self._settings_callback is None:
             return
         try:
-            payload = {_SETTINGS_KEY: [
-                r.to_dict() for r in self._reservations.values()]}
+            payload = {
+                _SETTINGS_KEY: [r.to_dict() for r in self._reservations.values()]
+            }
             self._settings_callback(payload)
         except Exception as _pers_exc:  # noqa: BLE001 - see below
             # Persistence failure must not crash the broker; the
@@ -561,13 +611,16 @@ class CapitalRegistry:
                 "Capital reservation persistence FAILED (%s): %s — "
                 "%d reservation(s) held in memory only and will be LOST "
                 "on restart",
-                type(_pers_exc).__name__, _pers_exc,
-                len(self._reservations))
+                type(_pers_exc).__name__,
+                _pers_exc,
+                len(self._reservations),
+            )
 
 
 # ---------------------------------------------------------------------------
 # Module-level convenience for the bot lifecycle
 # ---------------------------------------------------------------------------
+
 
 def settings_key() -> str:
     """The canonical settings.json key for persisted reservations."""

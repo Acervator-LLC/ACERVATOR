@@ -41,6 +41,7 @@ with ``None``. That is the realistic shape - a module that loads and does
 not carry the symbol - and the ``from ... import`` then raises
 ``ImportError``, which is what selects the fallback.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -87,7 +88,8 @@ def _binds_name(module: types.ModuleType, name: str) -> bool:
 
 
 def _same_signature(
-    left: Callable[..., object], right: Callable[..., object],
+    left: Callable[..., object],
+    right: Callable[..., object],
 ) -> bool:
     """Report whether two callables accept exactly the same parameters.
 
@@ -140,8 +142,7 @@ class TestNoGlobalPseudoRandom:
         widget = bv.BotNodeWidget()
         widget.resize(112, 98)
         assert widget._particles == []
-        widget.set_bot_data(
-            {"stats": {"total_trades": 1, "current_price": 10.0}})
+        widget.set_bot_data({"stats": {"total_trades": 1, "current_price": 10.0}})
         assert len(widget._particles) == 5
         for particle in widget._particles:
             assert -30.0 <= particle.vx <= 30.0
@@ -169,7 +170,8 @@ class TestFallbackMaskOrSignatureParity:
             sys.modules[VISUALIZER_MODULE] = saved_visualizer
 
     def test_the_fallback_is_the_one_under_test(
-        self, fallback_module: types.ModuleType,
+        self,
+        fallback_module: types.ModuleType,
     ) -> None:
         """CONTROL. Fail means the except branch was never reached, so every
         assertion below was aimed at the real helper instead.
@@ -180,13 +182,15 @@ class TestFallbackMaskOrSignatureParity:
         assert bv._mask_or.__module__ == REGISTRY_MODULE
 
     def test_fallback_signature_matches_the_real_helper(
-        self, fallback_module: types.ModuleType,
+        self,
+        fallback_module: types.ModuleType,
     ) -> None:
         """Fail means a keyword caller raises TypeError on the fallback path."""
         assert _same_signature(fallback_module._mask_or, mask_or)
 
     def test_the_signature_comparison_can_see_a_drift(self) -> None:
         """CONTROL. Fail means the comparison accepts anything."""
+
         def drifted(value: object, field_id: str, _mask: str = "****") -> str:
             del field_id
             return str(value)
@@ -200,20 +204,22 @@ class TestFallbackMaskOrSignatureParity:
         assert not _same_signature(mask_or, shorter)
 
     def test_fallback_accepts_mask_by_keyword(
-        self, fallback_module: types.ModuleType,
+        self,
+        fallback_module: types.ModuleType,
     ) -> None:
         """Fail means the two live keyword call sites raise on this path."""
-        assert fallback_module._mask_or(
-            "abcdef", "bot_swarm.identifiers", mask="********") == "abcdef"
+        assert (
+            fallback_module._mask_or("abcdef", "bot_swarm.identifiers", mask="********")
+            == "abcdef"
+        )
 
     def test_fallback_returns_the_plain_value_unmasked(
-        self, fallback_module: types.ModuleType,
+        self,
+        fallback_module: types.ModuleType,
     ) -> None:
         """Fail means discarding the parameters changed what it returns."""
-        assert fallback_module._mask_or(
-            "SOL-USD", "bot_swarm.identifiers") == "SOL-USD"
-        assert fallback_module._mask_or(
-            1234, "bot_swarm.identifiers") == "1234"
+        assert fallback_module._mask_or("SOL-USD", "bot_swarm.identifiers") == "SOL-USD"
+        assert fallback_module._mask_or(1234, "bot_swarm.identifiers") == "1234"
 
 
 class TestUnusedQtImportsStayRemoved:

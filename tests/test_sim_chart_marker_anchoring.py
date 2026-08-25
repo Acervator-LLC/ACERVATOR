@@ -30,6 +30,7 @@ SN-37 — `_markers` was an unbounded list.
 NF-51 — `clear_gates` reset five fields and not `_ls_scrum`, so the
 landing-strip override LED stayed lit through a clear.
 """
+
 from __future__ import annotations
 
 import os
@@ -49,6 +50,7 @@ SYM = "BTC/USD"
 
 def _app():
     from PySide6.QtWidgets import QApplication
+
     return QApplication.instance() or QApplication([])
 
 
@@ -106,8 +108,8 @@ class TestMarkerSitsOnTheTradeCandle:
         prices, _ = c._series[SYM]
         idx = _resolved_indices(c)[0]
         assert prices[idx] == 9999.0, (
-            f"marker at index {idx} is on price {prices[idx]}, not the "
-            f"spike candle")
+            f"marker at index {idx} is on price {prices[idx]}, not the " f"spike candle"
+        )
 
     def test_above_the_decimation_threshold(self):
         """Exit gate, run 2: long enough to force at least one halving,
@@ -119,15 +121,16 @@ class TestMarkerSitsOnTheTradeCandle:
         prices, _ = c._series[SYM]
         assert len(prices) <= c._MAX_POINTS, "no decimation occurred"
         idx = _resolved_indices(c)[0]
-        assert prices[idx] == 9999.0, (
-            f"after decimation the marker slid to price {prices[idx]}")
+        assert (
+            prices[idx] == 9999.0
+        ), f"after decimation the marker slid to price {prices[idx]}"
 
     def test_an_odd_index_survives_decimation(self):
         """The specific case `i // 2` gets wrong. An odd-indexed marker
         maps onto the preceding kept candle under the old remap."""
         c = _chart()
         n = c._MAX_POINTS * 2
-        spike = 7                      # odd
+        spike = 7  # odd
         _feed(c, n, spike_at=spike)
         prices, _ = c._series[SYM]
         idx = _resolved_indices(c)[0]
@@ -145,8 +148,8 @@ class TestMarkerSitsOnTheTradeCandle:
         stays EXACT rather than being dropped or slid onto a neighbour.
         """
         c = _chart()
-        n = c._MAX_POINTS * 4        # several halvings
-        _feed(c, n, spike_at=1)      # odd, the case [::2] discards
+        n = c._MAX_POINTS * 4  # several halvings
+        _feed(c, n, spike_at=1)  # odd, the case [::2] discards
         prices, _ = c._series[SYM]
         resolved = c.resolved_markers(SYM)
         assert len(resolved) == 1, "the marker was decimated away"
@@ -172,17 +175,30 @@ class TestOrderingIsFixedAtTheCallSite:
         drain's candle."""
         import ast
 
-        panel = (REPO_ROOT / "src" / "gui" / "simulator_tab" / "fleet"
-                 / "fleet_replay_panel.py")
+        panel = (
+            REPO_ROOT
+            / "src"
+            / "gui"
+            / "simulator_tab"
+            / "fleet"
+            / "fleet_replay_panel.py"
+        )
         tree = ast.parse(panel.read_text(encoding="utf-8"))
-        marks = [n.lineno for n in ast.walk(tree) if isinstance(n, ast.Call)
-                 and getattr(n.func, "attr", "") == "mark_trade"]
-        appends = [n.lineno for n in ast.walk(tree) if isinstance(n, ast.Call)
-                   and getattr(n.func, "attr", "") == "append_tick"]
+        marks = [
+            n.lineno
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "mark_trade"
+        ]
+        appends = [
+            n.lineno
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "append_tick"
+        ]
         assert marks and appends
         assert min(appends) < min(marks), (
             f"mark_trade at {min(marks)} runs before append_tick at "
-            f"{min(appends)}; markers pin the previous candle")
+            f"{min(appends)}; markers pin the previous candle"
+        )
 
 
 class TestMarkerLifecycle:
@@ -216,7 +232,7 @@ class TestMarkerLifecycle:
         cap = c._MAX_MARKERS
         for i in range(cap + 5):
             c.append_tick(SYM, 100.0 + i, 1.0)
-            c.mark_trade(SYM, i >= cap)       # last 5 validated=True
+            c.mark_trade(SYM, i >= cap)  # last 5 validated=True
         oks = [ok for _i, ok in c._markers[SYM]]
         assert oks[-1] is True
 

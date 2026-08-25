@@ -37,6 +37,7 @@ comparable candle-for-candle.
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

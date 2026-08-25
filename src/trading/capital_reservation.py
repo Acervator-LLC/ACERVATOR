@@ -62,14 +62,16 @@ INVARIANTS (R28 FL)
 
 sadp: R26 CHR  R28 FL  R49 MDEL  R55 GOV  R62 FRG  R68 DPA  R76 DMW
 """
+
 from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -82,10 +84,30 @@ logger = logging.getLogger("acervator.capital_reservation")
 _DEFAULT_STATE_DIR = Path.home() / ".acervator"
 _DEFAULT_STATE_FILE = _DEFAULT_STATE_DIR / "reservation_state.json"
 
+# Live-tree redirect hook, mirroring TELEMETRY_ROOT_ENV / SETTINGS_ROOT_ENV
+# in src/core. get_registry()'s singleton autosaves to reservation_state.json,
+# so every test that resolved the singleton wrote into the operator's real
+# ~/.acervator — on a clean machine (CI) it CREATED the file outright, which
+# is what turned a silent leak into a red build. When this env var is set, the
+# state file lives under it instead. Resolved at call time (never frozen at
+# import) so tests/conftest.py can point it at a tmp dir after this module is
+# already imported. The default path constant above is kept unchanged for the
+# tests that assert on its shape.
+RESERVATION_ROOT_ENV = "ACERVATOR_RESERVATION_ROOT"
+
+
+def _resolve_state_file() -> Path:
+    """The reservation-state path, honoring the redirect override."""
+    override = os.environ.get(RESERVATION_ROOT_ENV)
+    if override:
+        return Path(override) / "reservation_state.json"
+    return _DEFAULT_STATE_FILE
+
+
 # Heartbeat: bot pings every HEARTBEAT_INTERVAL; if no ping in
 # HEARTBEAT_TTL the bot's reservations are pruned as zombie.
-HEARTBEAT_INTERVAL = 30.0   # seconds between pings (advisory)
-HEARTBEAT_TTL      = 120.0  # 4 missed pings = zombie
+HEARTBEAT_INTERVAL = 30.0  # seconds between pings (advisory)
+HEARTBEAT_TTL = 120.0  # 4 missed pings = zombie
 
 # Restart grace: after a fresh process start, give all bots this long
 # to re-establish heartbeats before pruning zombies. Otherwise the
@@ -96,6 +118,7 @@ RESTART_GRACE_SECONDS = 60.0
 # ─────────────────────────────────────────────────────────────────
 # Data types
 # ─────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class Reservation:
@@ -117,14 +140,15 @@ class Reservation:
       bot_kind:     "scrumming" | "extractor" | "manual" | <other> —
                     advisory categorization for the dashboard.
     """
-    token:       str
-    bot_id:      str
-    asset:       str
-    qty:         float
-    reason:      str
+
+    token: str
+    bot_id: str
+    asset: str
+    qty: float
+    reason: str
     reserved_at: float
-    expires_at:  Optional[float] = None
-    bot_kind:    str = "unknown"
+    expires_at: Optional[float] = None
+    bot_kind: str = "unknown"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -145,6 +169,7 @@ class Reservation:
 # ─────────────────────────────────────────────────────────────────
 # Registry
 # ─────────────────────────────────────────────────────────────────
+
 
 class CapitalReservationRegistry:
     """Single source of truth for inter-bot capital reservations.
@@ -178,10 +203,12 @@ class CapitalReservationRegistry:
         registry.release(token)
     """
 
-    def __init__(self,
-                 state_path: Optional[Path] = None,
-                 autosave: bool = True,
-                 restart_grace_seconds: float = RESTART_GRACE_SECONDS):
+    def __init__(
+        self,
+        state_path: Optional[Path] = None,
+        autosave: bool = True,
+        restart_grace_seconds: float = RESTART_GRACE_SECONDS,
+    ):
         """
         Args:
             state_path: where to persist the reservation table.
@@ -196,7 +223,7 @@ class CapitalReservationRegistry:
         """
         self._lock = threading.Lock()
         self._state_path = (
-            Path(state_path) if state_path is not None else _DEFAULT_STATE_FILE
+            Path(state_path) if state_path is not None else _resolve_state_file()
         )
         self._autosave = autosave
         self._boot_time = time.time()
@@ -249,27 +276,32 @@ class CapitalReservationRegistry:
             self._heartbeats = dict(payload.get("heartbeats", {}))
             logger.info(
                 "CapitalReservationRegistry loaded %d reservations from %s",
-                len(self._reservations), self._state_path,
+                len(self._reservations),
+                self._state_path,
             )
         except Exception as e:
             logger.error(
                 "CapitalReservationRegistry load failed (%s): %s — "
                 "starting with empty state. Operator should inspect "
-                "the file for manual recovery.", self._state_path, e,
+                "the file for manual recovery.",
+                self._state_path,
+                e,
             )
 
     # ─────────────────────────────────────────────────────────
     # Core API: reserve / release / update
     # ─────────────────────────────────────────────────────────
 
-    def reserve(self,
-                bot_id: str,
-                asset: str,
-                qty: float,
-                reason: str,
-                bot_kind: str = "unknown",
-                ttl_seconds: Optional[float] = None,
-                total_holdings: Optional[float] = None) -> str:
+    def reserve(
+        self,
+        bot_id: str,
+        asset: str,
+        qty: float,
+        reason: str,
+        bot_kind: str = "unknown",
+        ttl_seconds: Optional[float] = None,
+        total_holdings: Optional[float] = None,
+    ) -> str:
         """Place a reservation. Returns a unique token used to
         release/update the reservation later.
 
@@ -297,8 +329,7 @@ class CapitalReservationRegistry:
             ValueError on qty <= 0 or over-commit.
         """
         if qty <= 0:
-            raise ValueError(
-                f"reserve: qty must be > 0, got {qty}")
+            raise ValueError(f"reserve: qty must be > 0, got {qty}")
         if not asset:
             raise ValueError("reserve: asset symbol required")
         if not bot_id:
@@ -308,8 +339,7 @@ class CapitalReservationRegistry:
             # Over-commit check (R28 FL — fail loudly)
             if total_holdings is not None:
                 existing = sum(
-                    r.qty for r in self._reservations.values()
-                    if r.asset == asset
+                    r.qty for r in self._reservations.values() if r.asset == asset
                 )
                 if existing + qty > total_holdings + 1e-12:
                     raise ValueError(
@@ -338,7 +368,11 @@ class CapitalReservationRegistry:
             self._save()
             logger.info(
                 "CRR.reserve: %s reserved %.10g %s (token %s, reason=%r)",
-                bot_id, qty, asset, token[:8], reason,
+                bot_id,
+                qty,
+                asset,
+                token[:8],
+                reason,
             )
             return token
 
@@ -364,12 +398,20 @@ class CapitalReservationRegistry:
             self._save()
             logger.info(
                 "CRR.release: %s released %s (%.10g %s)",
-                bot_id, token[:8], r.qty, r.asset,
+                bot_id,
+                token[:8],
+                r.qty,
+                r.asset,
             )
             return True
 
-    def update(self, token: str, bot_id: str, new_qty: float,
-               total_holdings: Optional[float] = None) -> bool:
+    def update(
+        self,
+        token: str,
+        bot_id: str,
+        new_qty: float,
+        total_holdings: Optional[float] = None,
+    ) -> bool:
         """Adjust an existing reservation's quantity. Used by
         Extractor as it consumes its budget in slices.
 
@@ -396,7 +438,8 @@ class CapitalReservationRegistry:
             # Over-commit check excludes the reservation being updated
             if total_holdings is not None:
                 existing = sum(
-                    rr.qty for rr in self._reservations.values()
+                    rr.qty
+                    for rr in self._reservations.values()
                     if rr.asset == r.asset and rr.token != token
                 )
                 if existing + new_qty > total_holdings + 1e-12:
@@ -412,7 +455,11 @@ class CapitalReservationRegistry:
             self._save()
             logger.info(
                 "CRR.update: %s adjusted %s on %s from %.10g to %.10g",
-                bot_id, token[:8], r.asset, old_qty, new_qty,
+                bot_id,
+                token[:8],
+                r.asset,
+                old_qty,
+                new_qty,
             )
             return True
 
@@ -431,7 +478,11 @@ class CapitalReservationRegistry:
             logger.warning(
                 "CRR.force_release: OPERATOR override — released %s "
                 "(was %s/%.10g %s). Note: %r",
-                token[:8], r.bot_id, r.qty, r.asset, operator_note,
+                token[:8],
+                r.bot_id,
+                r.qty,
+                r.asset,
+                operator_note,
             )
             return True
 
@@ -453,7 +504,9 @@ class CapitalReservationRegistry:
                 logger.warning(
                     "CRR.force_release_all: OPERATOR override — released "
                     "%d reservations held by %s. Note: %r",
-                    len(to_release), bot_id, operator_note,
+                    len(to_release),
+                    bot_id,
+                    operator_note,
                 )
             return len(to_release)
 
@@ -461,10 +514,9 @@ class CapitalReservationRegistry:
     # Query API
     # ─────────────────────────────────────────────────────────
 
-    def effective_available(self,
-                            asset: str,
-                            bot_id: str,
-                            total_holdings: float) -> float:
+    def effective_available(
+        self, asset: str, bot_id: str, total_holdings: float
+    ) -> float:
         """The core query: how much of this asset is bot_id allowed
         to consider available?
 
@@ -478,7 +530,8 @@ class CapitalReservationRegistry:
         """
         with self._lock:
             others_reserved = sum(
-                r.qty for r in self._reservations.values()
+                r.qty
+                for r in self._reservations.values()
                 if r.asset == asset and r.bot_id != bot_id
             )
             effective = total_holdings - others_reserved
@@ -491,16 +544,20 @@ class CapitalReservationRegistry:
                     "%.10g > total_holdings %.10g. Clamping to 0. "
                     "Investigate: registry state may be inconsistent with "
                     "exchange balance.",
-                    bot_id, asset, others_reserved, total_holdings,
+                    bot_id,
+                    asset,
+                    others_reserved,
+                    total_holdings,
                 )
                 return 0.0
             return effective
 
-    def reservations_for(self,
-                         asset: Optional[str] = None,
-                         bot_id: Optional[str] = None,
-                         excluding_bot_id: Optional[str] = None
-                         ) -> list[Reservation]:
+    def reservations_for(
+        self,
+        asset: Optional[str] = None,
+        bot_id: Optional[str] = None,
+        excluding_bot_id: Optional[str] = None,
+    ) -> list[Reservation]:
         """Inspect current reservations. Filters are AND-combined.
 
         Args:
@@ -544,9 +601,9 @@ class CapitalReservationRegistry:
                 total_by_asset[r.asset] = total_by_asset.get(r.asset, 0.0) + r.qty
             return {
                 "reservations": [r.to_dict() for r in self._reservations.values()],
-                "heartbeats":   dict(self._heartbeats),
+                "heartbeats": dict(self._heartbeats),
                 "total_by_asset": total_by_asset,
-                "now":          now,
+                "now": now,
             }
 
     # ─────────────────────────────────────────────────────────
@@ -606,7 +663,11 @@ class CapitalReservationRegistry:
                     pruned.append(r)
                     logger.warning(
                         "CRR.prune_expired: dropped %s/%.10g %s by %s — %s",
-                        token[:8], r.qty, r.asset, r.bot_id, drop_reason,
+                        token[:8],
+                        r.qty,
+                        r.asset,
+                        r.bot_id,
+                        drop_reason,
                     )
 
             if pruned:

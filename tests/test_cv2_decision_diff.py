@@ -17,6 +17,7 @@ hunting for a perturbation that happens to flip a gate.
 tmp_path and synthetic records only. Reads the tablet archive; writes
 nothing anywhere.
 """
+
 from __future__ import annotations
 
 import sys
@@ -31,14 +32,30 @@ if str(REPO_ROOT) not in sys.path:
 from tools.harness import decision_diff as dd  # noqa: E402
 
 
-def _rec(asset="BTC", start=0, scenario="scrum_plausible", *,
-         scrum=False, fold=False, net=1.0, bb=0.5):
+def _rec(
+    asset="BTC",
+    start=0,
+    scenario="scrum_plausible",
+    *,
+    scrum=False,
+    fold=False,
+    net=1.0,
+    bb=0.5,
+):
     return {
-        "asset": asset, "start": start, "scenario": scenario,
-        "net_score": net, "consensus": 0.2, "bb_position": bb,
-        "is_bullish": True, "is_bearish": False, "trend_hold": False,
-        "scrum_fires": scrum, "fold_fires": fold,
-        "scrum_blockers": [], "fold_blockers": [],
+        "asset": asset,
+        "start": start,
+        "scenario": scenario,
+        "net_score": net,
+        "consensus": 0.2,
+        "bb_position": bb,
+        "is_bullish": True,
+        "is_bearish": False,
+        "trend_hold": False,
+        "scrum_fires": scrum,
+        "fold_fires": fold,
+        "scrum_blockers": [],
+        "fold_blockers": [],
     }
 
 
@@ -94,20 +111,19 @@ class TestComparerIsNotOverEager:
         b = _doc([_rec(net=1.7, bb=0.61)])
         diffs, lines = dd.compare(a, b)
         assert diffs == 0
-        assert any("indicator" in ln for ln in lines), \
-            "drift must still be REPORTED, just not counted as a decision"
+        assert any(
+            "indicator" in ln for ln in lines
+        ), "drift must still be REPORTED, just not counted as a decision"
 
 
 class TestComparerCatchesStructuralChange:
     def test_a_missing_record_is_a_difference(self):
-        diffs, lines = dd.compare(_doc([_rec(), _rec(start=9)]),
-                                  _doc([_rec()]))
+        diffs, lines = dd.compare(_doc([_rec(), _rec(start=9)]), _doc([_rec()]))
         assert diffs == 1
         assert any("MISSING" in ln for ln in lines)
 
     def test_a_new_record_is_a_difference(self):
-        diffs, lines = dd.compare(_doc([_rec()]),
-                                  _doc([_rec(), _rec(start=9)]))
+        diffs, lines = dd.compare(_doc([_rec()]), _doc([_rec(), _rec(start=9)]))
         assert diffs == 1
         assert any("NEW" in ln for ln in lines)
 
@@ -115,15 +131,16 @@ class TestComparerCatchesStructuralChange:
 class TestTabletFeed:
     def test_returns_the_window_and_honours_limit(self):
         import asyncio
+
         rows = [[i, 1, 1, 1, 1 + i, 10] for i in range(500)]
         feed = dd.TabletFeed(rows)
-        got = asyncio.run(feed.get_ohlcv("BTC/USD", timeframe="1h",
-                                         limit=100))
+        got = asyncio.run(feed.get_ohlcv("BTC/USD", timeframe="1h", limit=100))
         assert len(got) == 100
         assert got[-1] == rows[-1], "must serve the window's tail"
 
     def test_is_deterministic_across_calls(self):
         import asyncio
+
         rows = [[i, 1, 1, 1, 1 + i, 10] for i in range(200)]
         feed = dd.TabletFeed(rows)
         a = asyncio.run(feed.get_ohlcv("BTC/USD", limit=50))
@@ -136,8 +153,9 @@ class TestScenariosArePinnedAndVisible:
         """A scenario missing a key would silently inherit FIXED and the
         difference between scenarios would stop being what it claims."""
         keys = [set(s) for s in dd.SCENARIOS.values()]
-        assert all(k == keys[0] for k in keys), \
-            f"scenarios disagree on fields: {[sorted(k) for k in keys]}"
+        assert all(
+            k == keys[0] for k in keys
+        ), f"scenarios disagree on fields: {[sorted(k) for k in keys]}"
 
     def test_fixed_and_scenario_fields_do_not_overlap(self):
         """An overlap means the scenario silently overrides a value the
@@ -156,7 +174,13 @@ class TestEndToEnd:
 
     def test_one_window_produces_a_decision(self):
         import asyncio
+
         res = asyncio.run(dd.run(["BTC"], per_asset=1, window=300))
+        if res["n_windows"] == 0:
+            pytest.skip(
+                "no local stone-tablet candle archive for BTC; this end-to-end "
+                "decision test needs real candle data on disk"
+            )
         assert res["n_decisions"] == len(dd.SCENARIOS)
         rec = res["records"][0]
         if rec.get("snapshot", "present") is None:
@@ -169,8 +193,10 @@ class TestEndToEnd:
         """The whole method rests on this. If a run is not reproducible,
         every diff is noise."""
         import asyncio
+
         a = asyncio.run(dd.run(["BTC"], per_asset=1, window=300))
         b = asyncio.run(dd.run(["BTC"], per_asset=1, window=300))
         diffs, lines = dd.compare(a, b)
-        assert diffs == 0 and lines == [], \
-            f"same tree produced different results: {lines[:5]}"
+        assert (
+            diffs == 0 and lines == []
+        ), f"same tree produced different results: {lines[:5]}"

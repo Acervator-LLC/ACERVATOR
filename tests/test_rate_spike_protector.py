@@ -54,6 +54,7 @@ rather than silently outliving the defect.
 Product code was not modified by this file. Findings are reported, not
 fixed.
 """
+
 from __future__ import annotations
 
 import ast
@@ -122,6 +123,7 @@ def _seed(bot: ExtractorBot, *rates: float) -> None:
 # would be testing the fixture.
 # ======================================================================
 
+
 def test_p30_threshold_and_window_are_the_documented_constants(ebot):
     """10% threshold, window of 3. Both are hardcoded with no config
     path, no setter, no env var. Pinned so a silent change is caught."""
@@ -139,6 +141,7 @@ def test_p30_fresh_bot_starts_with_an_empty_window_and_zero_counters(ebot):
 # ACCEPT PATH — P1 to P4
 # ======================================================================
 
+
 def test_p1_first_sample_is_accepted_and_reaches_the_consumer(ebot):
     """No prior rate exists to diverge from, so the first sample is
     taken at face value. Asserted at the consumer: 600 USD must convert
@@ -151,8 +154,7 @@ def test_p1_first_sample_is_accepted_and_reaches_the_consumer(ebot):
     assert ebot._base_to_usd(1.0) == 3000.0
 
 
-def test_p2_sample_inside_the_threshold_is_accepted_and_moves_the_consumer(
-        ebot):
+def test_p2_sample_inside_the_threshold_is_accepted_and_moves_the_consumer(ebot):
     """A 5% move is well inside 10%. The consumer conversion must follow
     the new rate, not stay pinned to the old one."""
     _seed(ebot, 3000.0)
@@ -190,6 +192,7 @@ def test_p4_window_never_exceeds_three_and_holds_the_last_three(ebot):
 # test written that way passes for the wrong reason.
 # ======================================================================
 
+
 def test_p5_exactly_plus_ten_percent_is_accepted(ebot):
     last_rate = 100.0
     incoming = 110.0
@@ -223,8 +226,12 @@ def test_p6_exactly_minus_ten_percent_is_accepted(ebot):
 def test_p5_exact_boundary_holds_at_several_magnitudes(ebot):
     """The boundary is a ratio, so it must behave identically whether the
     rate is a memecoin fraction or a BTC-scale number."""
-    for last, exactly_ten_pct in ((10.0, 11.0), (3000.0, 3300.0),
-                                  (64000.0, 70400.0), (64000.0, 57600.0)):
+    for last, exactly_ten_pct in (
+        (10.0, 11.0),
+        (3000.0, 3300.0),
+        (64000.0, 70400.0),
+        (64000.0, 57600.0),
+    ):
         bot = _new_bot()
         _seed(bot, last)
         divergence_ratio = abs(exactly_ten_pct - last) / last
@@ -267,8 +274,12 @@ def test_p5_one_ulp_under_the_boundary_is_accepted(ebot):
 
 def test_p7_a_cent_either_side_of_the_boundary(ebot):
     """A cent is the unit an operator would actually reason in."""
-    for value, expect_accept in ((109.99, True), (110.01, False),
-                                 (90.01, True), (89.99, False)):
+    for value, expect_accept in (
+        (109.99, True),
+        (110.01, False),
+        (90.01, True),
+        (89.99, False),
+    ):
         bot = _new_bot()
         _seed(bot, 100.0)
 
@@ -281,8 +292,7 @@ def test_p7_a_cent_either_side_of_the_boundary(ebot):
             assert bot._base_to_usd(1.0) == 100.0
 
 
-def test_p8_divergence_is_measured_against_the_last_sample_not_the_first(
-        ebot):
+def test_p8_divergence_is_measured_against_the_last_sample_not_the_first(ebot):
     """128.0 is 8.5% above the last sample (118.0) but 28% above the
     first (100.0). It must be accepted. If divergence were measured
     against the window's first entry or its median, this would refuse."""
@@ -298,6 +308,7 @@ def test_p8_divergence_is_measured_against_the_last_sample_not_the_first(
 # ======================================================================
 # SPIKE PATH — P9 to P13
 # ======================================================================
+
 
 def test_p9_spike_increments_only_the_spike_counter(ebot):
     _seed(ebot, 100.0, 101.0, 102.0)
@@ -342,7 +353,7 @@ def test_p11_substituted_value_is_the_median_of_a_full_window(ebot):
     ok, _ = ebot.update_base_usd_rate(200.0)
 
     assert ok is False
-    assert ebot._chunk_to_base_rate == 101.0        # median of 3
+    assert ebot._chunk_to_base_rate == 101.0  # median of 3
     assert ebot._base_to_usd(1.0) == 101.0
     assert ebot._usd_to_base(202.0) == 2.0
 
@@ -405,6 +416,7 @@ def test_p13_downward_spikes_are_protected_symmetrically(ebot):
 # REFUSE PATH — P15, P16, P17
 # ======================================================================
 
+
 def test_p15_none_is_refused_and_the_consumer_is_untouched(ebot):
     _seed(ebot, 3000.0)
 
@@ -427,7 +439,7 @@ def test_p16_non_positive_rates_are_refused_identically(ebot, bad):
 
     assert ok is False
     assert ebot._rate_refuse_events == 1
-    assert ebot._recent_rates == [3000.0]   # window untouched
+    assert ebot._recent_rates == [3000.0]  # window untouched
     assert ebot._chunk_to_base_rate == 3000.0
 
 
@@ -454,6 +466,7 @@ def test_p16_a_refused_first_sample_leaves_the_window_empty(ebot):
 # THE REFUSAL MESSAGE — the operator reads this string.
 # ======================================================================
 
+
 def test_refusal_message_names_the_rejected_rate(ebot):
     _seed(ebot, 3000.0)
 
@@ -464,8 +477,7 @@ def test_refusal_message_names_the_rejected_rate(ebot):
     assert "must be > 0" in why
 
 
-def test_spike_message_names_the_rate_the_divergence_and_the_substitute(
-        ebot):
+def test_spike_message_names_the_rate_the_divergence_and_the_substitute(ebot):
     """An operator reading gate.log must be able to answer: what came in,
     how far off was it, and what got used instead."""
     _seed(ebot, 100.0, 101.0, 102.0)
@@ -473,10 +485,10 @@ def test_spike_message_names_the_rate_the_divergence_and_the_substitute(
     _, why = ebot.update_base_usd_rate(200.0)
 
     assert "spike-protected" in why
-    assert "200.000000" in why     # the rejected rate
-    assert "96.08%" in why         # the divergence
-    assert "102.000000" in why     # what it diverged from
-    assert "101.000000" in why     # the substituted median
+    assert "200.000000" in why  # the rejected rate
+    assert "96.08%" in why  # the divergence
+    assert "102.000000" in why  # what it diverged from
+    assert "101.000000" in why  # the substituted median
 
 
 def test_spike_message_reports_divergence_for_a_collapsed_rate(ebot):
@@ -492,6 +504,7 @@ def test_spike_message_reports_divergence_for_a_collapsed_rate(ebot):
 # ======================================================================
 # WINDOW SHAPE — P24, P25
 # ======================================================================
+
 
 def test_p24_median_is_never_computed_on_an_empty_window(ebot):
     """The first-sample branch returns before the median code, so an
@@ -515,13 +528,14 @@ def test_p25_window_whose_last_entry_is_non_positive_triggers_recovery(ebot):
 
     assert ok is True
     assert why == "accepted (recovered from invalid window)"
-    assert ebot._recent_rates == [7.0]      # replaced, not appended
+    assert ebot._recent_rates == [7.0]  # replaced, not appended
     assert ebot._base_to_usd(1.0) == 7.0
 
 
 # ======================================================================
 # P23 — Decimal
 # ======================================================================
+
 
 def test_p23_decimal_rate_is_accepted_and_converted_to_float(ebot):
     ok, _ = ebot.update_base_usd_rate(Decimal("3000"))
@@ -537,6 +551,7 @@ def test_p23_decimal_rate_is_accepted_and_converted_to_float(ebot):
 # Pin the exact exported key set so a change on either side is caught.
 # ======================================================================
 
+
 def test_p26_export_state_carries_the_rate_but_not_its_evidence(ebot):
     """chunk_to_base_rate is exported; the window and both diagnostic
     counters are NOT. This asymmetry is what makes the post-restart gap
@@ -550,11 +565,21 @@ def test_p26_export_state_carries_the_rate_but_not_its_evidence(ebot):
     assert "rate_spike_events" not in state
     assert "rate_refuse_events" not in state
     assert set(state.keys()) == {
-        "version", "mode", "chunk_size_usd", "chunk_to_base_rate",
-        "chunk_size_base", "chunk_free_base", "chunk_extracted_total",
-        "hedge_budget_usd", "hedge_free_base", "positions",
-        "closed_position_log", "watch_list", "tick_counter",
-        "cycle_extracted_total", "lifetime_extracted_total",
+        "version",
+        "mode",
+        "chunk_size_usd",
+        "chunk_to_base_rate",
+        "chunk_size_base",
+        "chunk_free_base",
+        "chunk_extracted_total",
+        "hedge_budget_usd",
+        "hedge_free_base",
+        "positions",
+        "closed_position_log",
+        "watch_list",
+        "tick_counter",
+        "cycle_extracted_total",
+        "lifetime_extracted_total",
     }
 
 
@@ -620,7 +645,8 @@ def test_sweep_accept_refuse_verdict_across_the_threshold():
     assert checked >= 8000, f"sweep degenerated to {checked} points"
     assert not disagreements, (
         f"{len(disagreements)} of {checked} points disagreed with "
-        f"'accept iff divergence <= 10%'; first: {disagreements[:5]}")
+        f"'accept iff divergence <= 10%'; first: {disagreements[:5]}"
+    )
 
 
 def test_sweep_ulp_walk_across_the_boundary():
@@ -650,7 +676,8 @@ def test_sweep_ulp_walk_across_the_boundary():
     assert checked >= 1500, f"ulp walk degenerated to {checked} points"
     assert not disagreements, (
         f"{len(disagreements)} of {checked} ulp points disagreed; "
-        f"first: {disagreements[:5]}")
+        f"first: {disagreements[:5]}"
+    )
 
 
 # ======================================================================
@@ -660,13 +687,18 @@ def test_sweep_ulp_walk_across_the_boundary():
 # Product code was not changed to make any of them pass.
 # ======================================================================
 
-@pytest.mark.xfail(strict=True, reason=(
-    "FINDING F1 — extractor_bot.py:1012-1015. The spike path never "
-    "appends, so the window never advances and a genuine sustained >10% "
-    "move can never be adopted. Verified: window [100,101,102] then "
-    "200.0 fed 5 ticks running is refused every tick with the rate "
-    "pinned at 101.0. No escape hatch, no time decay, no counter "
-    "ceiling."))
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "FINDING F1 — extractor_bot.py:1012-1015. The spike path never "
+        "appends, so the window never advances and a genuine sustained >10% "
+        "move can never be adopted. Verified: window [100,101,102] then "
+        "200.0 fed 5 ticks running is refused every tick with the rate "
+        "pinned at 101.0. No escape hatch, no time decay, no counter "
+        "ceiling."
+    ),
+)
 def test_f1_sustained_regime_change_is_eventually_adopted():
     bot = _new_bot()
     _seed(bot, 100.0, 101.0, 102.0)
@@ -677,13 +709,17 @@ def test_f1_sustained_regime_change_is_eventually_adopted():
     assert bot._chunk_to_base_rate == 200.0
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "FINDING F2 — extractor_bot.py:977. `nan <= 0` is False and "
-    "`nan > 0.1` is False, so NaN passes BOTH the fail-closed guard and "
-    "the spike check and is ACCEPTED. _chunk_to_base_rate becomes nan, "
-    "_usd_to_base returns nan, and the `artillery_base <= 0` guard at "
-    ":1578 is also False for nan — so a NaN order size reaches "
-    "_fire_artillery. Same shape as the fabricated-1.0 incident."))
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "FINDING F2 — extractor_bot.py:977. `nan <= 0` is False and "
+        "`nan > 0.1` is False, so NaN passes BOTH the fail-closed guard and "
+        "the spike check and is ACCEPTED. _chunk_to_base_rate becomes nan, "
+        "_usd_to_base returns nan, and the `artillery_base <= 0` guard at "
+        ":1578 is also False for nan — so a NaN order size reaches "
+        "_fire_artillery. Same shape as the fabricated-1.0 incident."
+    ),
+)
 def test_f2_nan_rate_is_refused():
     bot = _new_bot()
     _seed(bot, 3000.0)
@@ -695,12 +731,16 @@ def test_f2_nan_rate_is_refused():
     assert not math.isnan(bot._usd_to_base(500.0))
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "FINDING F3 — extractor_bot.py:1017-1022. A NaN admitted to the "
-    "window is never removed. sorted([3000.0, nan, 3100.0]) returns the "
-    "list unchanged (NaN is not a valid ordering key), so the median "
-    "read at index 1 IS the nan. Every later spike re-poisons "
-    "_chunk_to_base_rate. Recovery is impossible without a restart."))
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "FINDING F3 — extractor_bot.py:1017-1022. A NaN admitted to the "
+        "window is never removed. sorted([3000.0, nan, 3100.0]) returns the "
+        "list unchanged (NaN is not a valid ordering key), so the median "
+        "read at index 1 IS the nan. Every later spike re-poisons "
+        "_chunk_to_base_rate. Recovery is impossible without a restart."
+    ),
+)
 def test_f3_a_later_sane_sample_clears_nan_from_the_window():
     bot = _new_bot()
     _seed(bot, 3000.0)
@@ -712,13 +752,17 @@ def test_f3_a_later_sane_sample_clears_nan_from_the_window():
     assert not math.isnan(bot._chunk_to_base_rate)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "FINDING F4 — extractor_bot.py:985-988 with :853. float('inf') "
-    "passes `inf <= 0` and is accepted as a FIRST sample. _usd_to_base "
-    "then returns 0.0 (500/inf), the `artillery_base <= 0` guard at "
-    ":1578 fires, and _fire_artillery returns early FOREVER with no log "
-    "line. The bot stalls silently. (As a LATER sample inf is correctly "
-    "spike-refused.)"))
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "FINDING F4 — extractor_bot.py:985-988 with :853. float('inf') "
+        "passes `inf <= 0` and is accepted as a FIRST sample. _usd_to_base "
+        "then returns 0.0 (500/inf), the `artillery_base <= 0` guard at "
+        ":1578 fires, and _fire_artillery returns early FOREVER with no log "
+        "line. The bot stalls silently. (As a LATER sample inf is correctly "
+        "spike-refused.)"
+    ),
+)
 def test_f4_infinite_first_sample_is_refused():
     bot = _new_bot()
 
@@ -728,16 +772,20 @@ def test_f4_infinite_first_sample_is_refused():
     assert bot._usd_to_base(500.0) > 0.0
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "FINDING F5 — extractor_bot.py:977-982. `True <= 0` is False and "
-    "`float(True)` is 1.0, so a bool is accepted as a rate of exactly "
-    "1.0. isinstance(True, int) is True, so no numeric type check "
-    "catches it. A rate of exactly 1.0 arriving from a bool is "
-    "PRECISELY the fabricated-1.0 defect class that rewrote a saved "
-    "claim of 0.0327 BTC to 2000 BTC. Reachable on the unguarded "
-    "first-sample path, and ALSO on the normal path whenever the last "
-    "rate sits near 1.0 — which is the honest case for a stablecoin "
-    "base currency, and is the constructor default."))
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "FINDING F5 — extractor_bot.py:977-982. `True <= 0` is False and "
+        "`float(True)` is 1.0, so a bool is accepted as a rate of exactly "
+        "1.0. isinstance(True, int) is True, so no numeric type check "
+        "catches it. A rate of exactly 1.0 arriving from a bool is "
+        "PRECISELY the fabricated-1.0 defect class that rewrote a saved "
+        "claim of 0.0327 BTC to 2000 BTC. Reachable on the unguarded "
+        "first-sample path, and ALSO on the normal path whenever the last "
+        "rate sits near 1.0 — which is the honest case for a stablecoin "
+        "base currency, and is the constructor default."
+    ),
+)
 def test_f5_bool_is_not_a_valid_rate():
     # The operator sets a real rate; the window is still empty, so the
     # next sample takes the unguarded first-sample path. This is the
@@ -755,11 +803,15 @@ def test_f5_bool_is_not_a_valid_rate():
     assert bot._usd_to_base(500.0) != 500.0
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "FINDING F5b — the same bool defect on the NORMAL accept path. With "
-    "a last rate of 1.05, True is accepted as 1.0 with reason "
-    "'accepted' — not even spike-refused, because 1.0 is within 10% of "
-    "1.05. Measured."))
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "FINDING F5b — the same bool defect on the NORMAL accept path. With "
+        "a last rate of 1.05, True is accepted as 1.0 with reason "
+        "'accepted' — not even spike-refused, because 1.0 is within 10% of "
+        "1.05. Measured."
+    ),
+)
 def test_f5b_bool_is_refused_even_when_it_lands_inside_the_threshold():
     bot = _new_bot()
     _seed(bot, 1.05)
@@ -770,13 +822,17 @@ def test_f5b_bool_is_refused_even_when_it_lands_inside_the_threshold():
     assert bot._chunk_to_base_rate == 1.05
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "FINDING F6 — extractor_bot.py:977. A numeric STRING raises an "
-    "uncaught TypeError: '<=' not supported between instances of 'str' "
-    "and 'int'. The float() coercion at :982 that would have handled it "
-    "runs AFTER the comparison. A JSON ticker field arriving as a "
-    "string crashes the caller instead of being refused, on both the "
-    "first-sample and later-sample paths."))
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "FINDING F6 — extractor_bot.py:977. A numeric STRING raises an "
+        "uncaught TypeError: '<=' not supported between instances of 'str' "
+        "and 'int'. The float() coercion at :982 that would have handled it "
+        "runs AFTER the comparison. A JSON ticker field arriving as a "
+        "string crashes the caller instead of being refused, on both the "
+        "first-sample and later-sample paths."
+    ),
+)
 def test_f6_string_rate_is_refused_not_raised():
     bot = _new_bot()
     _seed(bot, 3000.0)
@@ -787,17 +843,21 @@ def test_f6_string_rate_is_refused_not_raised():
     assert bot._chunk_to_base_rate == 3000.0
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "FINDING F7 — extractor_bot.py:985 with :2086. THE LARGEST GAP. "
-    "import_state restores chunk_to_base_rate but NOT _recent_rates, so "
-    "after every restart the window is empty while the rate is "
-    "restored. The next sample therefore takes the UNCONDITIONAL "
-    "first-sample path and silently overwrites a good persisted rate. "
-    "Verified: a bot restored at 3020.0 accepts an incoming 1.0 — a "
-    "99.97% divergence — and then converts 500 USD to 500 base units. "
-    "The fabricated-1.0 corruption class, through the front door, after "
-    "any restart. Root cause: :985 tests whether the WINDOW is empty, "
-    "not whether a trustworthy last-known rate exists."))
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "FINDING F7 — extractor_bot.py:985 with :2086. THE LARGEST GAP. "
+        "import_state restores chunk_to_base_rate but NOT _recent_rates, so "
+        "after every restart the window is empty while the rate is "
+        "restored. The next sample therefore takes the UNCONDITIONAL "
+        "first-sample path and silently overwrites a good persisted rate. "
+        "Verified: a bot restored at 3020.0 accepts an incoming 1.0 — a "
+        "99.97% divergence — and then converts 500 USD to 500 base units. "
+        "The fabricated-1.0 corruption class, through the front door, after "
+        "any restart. Root cause: :985 tests whether the WINDOW is empty, "
+        "not whether a trustworthy last-known rate exists."
+    ),
+)
 def test_f7_first_sample_after_restart_is_still_spike_checked():
     original = _new_bot()
     _seed(original, 3000.0, 3050.0, 3020.0)
@@ -811,12 +871,16 @@ def test_f7_first_sample_after_restart_is_still_spike_checked():
     assert restored._usd_to_base(500.0) != 500.0
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "FINDING F8 — extractor_bot.py:401. set_initial_chunk_rate writes "
-    "_chunk_to_base_rate without seeding _recent_rates, so the same "
-    "unguarded first-sample state is reached on the normal construction "
-    "path, not only after a restart. An operator-set 3000.0 is silently "
-    "replaced by an incoming 1.0."))
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "FINDING F8 — extractor_bot.py:401. set_initial_chunk_rate writes "
+        "_chunk_to_base_rate without seeding _recent_rates, so the same "
+        "unguarded first-sample state is reached on the normal construction "
+        "path, not only after a restart. An operator-set 3000.0 is silently "
+        "replaced by an incoming 1.0."
+    ),
+)
 def test_f8_operator_set_initial_rate_seeds_the_spike_window():
     bot = _new_bot()
     bot.set_initial_chunk_rate(3000.0)
@@ -827,14 +891,18 @@ def test_f8_operator_set_initial_rate_seeds_the_spike_window():
     assert bot._chunk_to_base_rate == 3000.0
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "FINDING F9 — extractor_bot.py:1026. The %.2f format rounds the "
-    "divergence, so a sample refused at 10.000000000000009% is logged "
-    "as 'diverges 10.00%' — an apparently LEGAL value. The %.6f on the "
-    "incoming rate rounds too, so 110.00000000000001 prints as "
-    "'110.000000', identical to an accepted 110.0. An operator reading "
-    "gate.log cannot tell the refused sample from the accepted one. "
-    "Log-legibility defect, not a behaviour bug."))
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "FINDING F9 — extractor_bot.py:1026. The %.2f format rounds the "
+        "divergence, so a sample refused at 10.000000000000009% is logged "
+        "as 'diverges 10.00%' — an apparently LEGAL value. The %.6f on the "
+        "incoming rate rounds too, so 110.00000000000001 prints as "
+        "'110.000000', identical to an accepted 110.0. An operator reading "
+        "gate.log cannot tell the refused sample from the accepted one. "
+        "Log-legibility defect, not a behaviour bug."
+    ),
+)
 def test_f9_refusal_message_distinguishes_a_refused_rate_from_a_legal_one():
     refused_bot = _new_bot()
     _seed(refused_bot, 100.0)
@@ -847,23 +915,28 @@ def test_f9_refusal_message_distinguishes_a_refused_rate_from_a_legal_one():
     # figures of an ACCEPTED one. 110.0 at exactly 10.00% is accepted,
     # so printing "110.000000 diverges 10.00%" on a refusal is
     # indistinguishable from the legal case.
-    assert not ("110.000000" in why and "10.00%" in why), (
-        f"refused sample renders as a legal one: {why}")
+    assert not (
+        "110.000000" in why and "10.00%" in why
+    ), f"refused sample renders as a legal one: {why}"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "FINDING F10 — THE ONE THAT MAKES EVERY OTHER PROPERTY THEORETICAL. "
-    "update_base_usd_rate has ZERO callers. Grep over src/, tests/, "
-    "tools/ and main.py finds the name only at extractor_bot.py:79 "
-    "(comment), :312 (comment) and :950 (the def). tick() at :1672 does "
-    "not call it. So no live tick exercises this protector, "
-    "_rate_spike_events and _rate_refuse_events are structurally always "
-    "0, and nothing reads them anyway — there is no emitter, no GUI "
-    "surface and no log line. The docstring at :956-958 asserts "
-    "'Callers (tick loop / TASignalProvider cache / connector ticker) "
-    "invoke this each tick', which the code contradicts. Corroborated "
-    "by docs/audits/2026-08-09_extractor_bot_refined_concept_and_plan"
-    ".md:64. This test failing IS the honest record of the gap."))
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "FINDING F10 — THE ONE THAT MAKES EVERY OTHER PROPERTY THEORETICAL. "
+        "update_base_usd_rate has ZERO callers. Grep over src/, tests/, "
+        "tools/ and main.py finds the name only at extractor_bot.py:79 "
+        "(comment), :312 (comment) and :950 (the def). tick() at :1672 does "
+        "not call it. So no live tick exercises this protector, "
+        "_rate_spike_events and _rate_refuse_events are structurally always "
+        "0, and nothing reads them anyway — there is no emitter, no GUI "
+        "surface and no log line. The docstring at :956-958 asserts "
+        "'Callers (tick loop / TASignalProvider cache / connector ticker) "
+        "invoke this each tick', which the code contradicts. Corroborated "
+        "by docs/audits/2026-08-09_extractor_bot_refined_concept_and_plan"
+        ".md:64. This test failing IS the honest record of the gap."
+    ),
+)
 def test_f10_the_protector_is_wired_to_something():
     """The oracle here is an AST walk, NOT a substring count.
 
@@ -896,7 +969,8 @@ def test_f10_the_protector_is_wired_to_something():
         "update_base_usd_rate is defined but never CALLED anywhere in "
         f"src/ or main.py ({len(searched)} files parsed). The rate-spike "
         "protector is dead code, so both diagnostic counters are "
-        "structurally always 0 in production.")
+        "structurally always 0 in production."
+    )
 
 
 # ======================================================================
@@ -999,11 +1073,11 @@ UNORDERABLE_ROWS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "seeded", [False, True], ids=["first-sample", "later-sample"])
+@pytest.mark.parametrize("seeded", [False, True], ids=["first-sample", "later-sample"])
 @pytest.mark.parametrize(("value", "expected_exc"), UNORDERABLE_ROWS)
 def test_p31_a_value_without_integer_ordering_escapes_uncaught(
-        ebot, value, expected_exc, seeded):
+    ebot, value, expected_exc, seeded
+):
     """The method RAISES rather than refusing, on BOTH paths.
 
     Both paths are exercised because the first-sample branch returns at
@@ -1027,8 +1101,9 @@ def test_p31_a_value_without_integer_ordering_escapes_uncaught(
 
     assert ebot._chunk_to_base_rate == rate_before
     assert ebot._recent_rates == window_before
-    assert ebot._rate_refuse_events == 0, (
-        "the value was REFUSED, not raised — the guard order changed")
+    assert (
+        ebot._rate_refuse_events == 0
+    ), "the value was REFUSED, not raised — the guard order changed"
     assert ebot._rate_spike_events == 0
 
 
@@ -1046,8 +1121,7 @@ ACCEPTED_ROWS = [
 
 
 @pytest.mark.parametrize("value", ACCEPTED_ROWS)
-def test_p32_orderable_coercible_numbers_are_accepted_and_stored_as_float(
-        ebot, value):
+def test_p32_orderable_coercible_numbers_are_accepted_and_stored_as_float(ebot, value):
     """Non-float numeric types are accepted, and STORED COERCED.
 
     The stored type is asserted because _chunk_to_base_rate is read by
@@ -1072,8 +1146,7 @@ def test_p32_orderable_coercible_numbers_are_accepted_and_stored_as_float(
     assert ebot._usd_to_base(3100.0) == pytest.approx(1.0)
 
 
-@pytest.mark.parametrize(
-    "seeded", [False, True], ids=["first-sample", "later-sample"])
+@pytest.mark.parametrize("seeded", [False, True], ids=["first-sample", "later-sample"])
 def test_p33_negative_infinity_is_refused_by_sign_not_by_spike(ebot, seeded):
     """-inf is caught by the SIGN guard, and that is worth pinning.
 
@@ -1100,13 +1173,13 @@ def test_p33_negative_infinity_is_refused_by_sign_not_by_spike(ebot, seeded):
     assert ebot._rate_refuse_events == 1
     assert ebot._rate_spike_events == 0, (
         "refused by the SPIKE guard, not the sign guard — the sign "
-        "guard no longer catches -inf")
+        "guard no longer catches -inf"
+    )
     assert ebot._chunk_to_base_rate == rate_before
     assert ebot._recent_rates == ([3000.0] if seeded else [])
 
 
-def test_p34_infinite_later_sample_is_spike_refused_and_median_substituted(
-        ebot):
+def test_p34_infinite_later_sample_is_spike_refused_and_median_substituted(ebot):
     """inf as a LATER sample is stopped, and by the spike guard.
 
     FINDING F4 pins the first-sample case, where inf IS accepted and
@@ -1209,8 +1282,7 @@ COERCION_CHANGES_VALUE_ROWS = [
 
 
 @pytest.mark.parametrize(("value", "stored"), COERCION_CHANGES_VALUE_ROWS)
-def test_p36_a_positive_value_can_still_store_an_unusable_rate(
-        ebot, value, stored):
+def test_p36_a_positive_value_can_still_store_an_unusable_rate(ebot, value, stored):
     """The fail-closed guard passes a value that becomes 0.0 or inf.
 
     `value > 0` is asserted FIRST, and deliberately: it is the guard's
@@ -1231,8 +1303,9 @@ def test_p36_a_positive_value_can_still_store_an_unusable_rate(
     assert why == "accepted (first sample)"
     assert ebot._chunk_to_base_rate == stored
     assert ebot._recent_rates == [stored]
-    assert ebot._rate_refuse_events == 0, (
-        "refused after all — the guard now reads the coerced value")
+    assert (
+        ebot._rate_refuse_events == 0
+    ), "refused after all — the guard now reads the coerced value"
     assert ebot._rate_spike_events == 0
     assert ebot._usd_to_base(500.0) == 0.0
 
@@ -1240,13 +1313,14 @@ def test_p36_a_positive_value_can_still_store_an_unusable_rate(
 @pytest.mark.xfail(
     strict=True,
     reason="FINDING F11 — a value that coerces out of the usable range "
-           "is accepted. The sign guard at :977 reads the raw object; "
-           "the coercion at :982 can return 0.0 or inf, and nothing "
-           "re-checks the result. _chunk_to_base_rate then holds "
-           "exactly the value the fail-closed guard exists to refuse.")
+    "is accepted. The sign guard at :977 reads the raw object; "
+    "the coercion at :982 can return 0.0 or inf, and nothing "
+    "re-checks the result. _chunk_to_base_rate then holds "
+    "exactly the value the fail-closed guard exists to refuse.",
+)
 @pytest.mark.parametrize(
-    "value",
-    [Decimal("1E-400"), Fraction(1, 10**400), Decimal("Infinity")])
+    "value", [Decimal("1E-400"), Fraction(1, 10**400), Decimal("Infinity")]
+)
 def test_f11_a_value_that_coerces_out_of_range_is_refused(value):
     bot = _new_bot()
 
@@ -1269,8 +1343,7 @@ TINY_POSITIVE_FLOAT_ROWS = [
 
 
 @pytest.mark.parametrize("value", TINY_POSITIVE_FLOAT_ROWS)
-def test_p37_a_tiny_positive_float_is_accepted_and_explodes_the_conversion(
-        ebot, value):
+def test_p37_a_tiny_positive_float_is_accepted_and_explodes_the_conversion(ebot, value):
     """A positive finite float, accepted, converting to ~1e300 base units.
 
     No type is involved here at all — these are plain floats, inside
@@ -1305,8 +1378,7 @@ NUMPY_ACCEPTED_ROWS = [
 
 
 @pytest.mark.parametrize("value", NUMPY_ACCEPTED_ROWS)
-def test_p38_numpy_scalars_are_accepted_and_stored_as_plain_floats(
-        ebot, value):
+def test_p38_numpy_scalars_are_accepted_and_stored_as_plain_floats(ebot, value):
     """A numpy scalar sails through, and is stored coerced.
 
     `type(...) is float` is asserted, not `isinstance`. A numpy scalar
@@ -1351,8 +1423,7 @@ def test_p38b_a_numpy_nan_is_accepted_exactly_like_a_python_nan(ebot):
 # fails to become a scalar.
 NDARRAY_ROWS = [
     pytest.param(numpy.array([3100.0]), TypeError, id="one-element-array"),
-    pytest.param(
-        numpy.array([3100.0, 3200.0]), ValueError, id="two-element-array"),
+    pytest.param(numpy.array([3100.0, 3200.0]), ValueError, id="two-element-array"),
 ]
 
 

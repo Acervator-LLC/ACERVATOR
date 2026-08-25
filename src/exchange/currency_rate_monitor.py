@@ -30,20 +30,21 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 logger = logging.getLogger("acervator.currency_rate_monitor")
 
 DEFAULT_REFRESH_SECONDS = 60.0
-SATOSHI_PER_BTC = 100_000_000            # 1 BTC = 1e8 satoshi
-WEI_PER_ETH = 10 ** 18                   # 1 ETH = 1e18 wei
-WEI_PER_GWEI = 10 ** 9                   # 1 gwei = 1e9 wei — v3.23.50
+SATOSHI_PER_BTC = 100_000_000  # 1 BTC = 1e8 satoshi
+WEI_PER_ETH = 10**18  # 1 ETH = 1e18 wei
+WEI_PER_GWEI = 10**9  # 1 gwei = 1e9 wei — v3.23.50
 
 
 @dataclass
 class CurrencyRates:
     """Snapshot of the most recent rate feed."""
+
     btc_usd: float = 0.0
     eth_usd: float = 0.0
     sat_per_dollar: float = 0.0
@@ -58,9 +59,9 @@ class CurrencyRates:
     # exact — no rounding, just a base-1e9 rescale.
     gwei_per_dollar: float = 0.0
     gwei_per_cent: float = 0.0
-    last_updated: float = 0.0            # epoch seconds
-    source: str = "none"                 # exchange id or "cache"/"none"
-    error: Optional[str] = None          # last failure text, if any
+    last_updated: float = 0.0  # epoch seconds
+    source: str = "none"  # exchange id or "cache"/"none"
+    error: Optional[str] = None  # last failure text, if any
 
     def age_seconds(self, now: Optional[float] = None) -> float:
         _now = time.time() if now is None else now
@@ -110,11 +111,12 @@ class CurrencyRateMonitor:
         # v3.23.50 — gwei-per-* derived from wei-per-* via /1e9.
         gwei_dollar = wei_dollar / WEI_PER_GWEI
         gwei_cent = wei_cent / WEI_PER_GWEI
-        return (sat_dollar, sat_cent, wei_dollar, wei_cent,
-                gwei_dollar, gwei_cent)
+        return (sat_dollar, sat_cent, wei_dollar, wei_cent, gwei_dollar, gwei_cent)
 
     def update_from_prices(
-        self, btc_usd: float, eth_usd: float,
+        self,
+        btc_usd: float,
+        eth_usd: float,
         source: str = "manual",
         now: Optional[float] = None,
     ) -> CurrencyRates:
@@ -171,8 +173,10 @@ class CurrencyRateMonitor:
             self.update_from_prices(btc, eth, source=source)
         else:
             self._snapshot.error = (
-                "; ".join(errors) if errors
-                else "no connector returned BTC/USD + ETH/USD")
+                "; ".join(errors)
+                if errors
+                else "no connector returned BTC/USD + ETH/USD"
+            )
         return self._snapshot
 
 

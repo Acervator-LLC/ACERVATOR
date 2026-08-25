@@ -40,6 +40,7 @@ pinned here so that it stays exactly as it was.
 
 Nothing here writes to disk or touches ~/.acervator.
 """
+
 from __future__ import annotations
 
 import logging
@@ -103,37 +104,75 @@ def _summaries(logs) -> list[str]:
     return [m for m in _warnings(logs) if "import accepted" in m]
 
 
-GOOD_A = {"bot_id": "botA", "asset": "BTC/USD", "total_profit": 10.0,
-          "available_profit": 4.0, "wired_in": 3.0, "wired_out": 2.0,
-          "provenance": {"SEED": 100.0}, "starting_balance": 100.0,
-          "mature_profit_allocated": 1.0}
-GOOD_B = {"bot_id": "botB", "asset": "ETH/USD", "total_profit": 20.0,
-          "available_profit": 5.0, "wired_in": 6.0, "wired_out": 1.0,
-          "provenance": {"botA": 50.0}, "starting_balance": 50.0,
-          "mature_profit_allocated": 0.0}
-RAISER = {"bot_id": "botR", "asset": "XRP/USD",
-          "total_profit": "not-a-number", "wired_in": 1.0}
+GOOD_A = {
+    "bot_id": "botA",
+    "asset": "BTC/USD",
+    "total_profit": 10.0,
+    "available_profit": 4.0,
+    "wired_in": 3.0,
+    "wired_out": 2.0,
+    "provenance": {"SEED": 100.0},
+    "starting_balance": 100.0,
+    "mature_profit_allocated": 1.0,
+}
+GOOD_B = {
+    "bot_id": "botB",
+    "asset": "ETH/USD",
+    "total_profit": 20.0,
+    "available_profit": 5.0,
+    "wired_in": 6.0,
+    "wired_out": 1.0,
+    "provenance": {"botA": 50.0},
+    "starting_balance": 50.0,
+    "mature_profit_allocated": 0.0,
+}
+RAISER = {
+    "bot_id": "botR",
+    "asset": "XRP/USD",
+    "total_profit": "not-a-number",
+    "wired_in": 1.0,
+}
 NON_DICT = ["bot_id", "botX"]
 NO_BOT_ID = {"asset": "BTC/USD", "wired_in": 5.0}
 EMPTY_BOT_ID = {"bot_id": "", "wired_in": 5.0}
 
-LEDGER_A = {"bot_id": "botA", "asset": "BTC/USD", "total_profit": 10.0,
-            "available_profit": 4.0, "wired_in": 3.0, "wired_out": 2.0,
-            "provenance": {"SEED": 100.0}, "starting_balance": 100.0,
-            "mature_profit_allocated": 1.0}
-LEDGER_B = {"bot_id": "botB", "asset": "ETH/USD", "total_profit": 20.0,
-            "available_profit": 5.0, "wired_in": 6.0, "wired_out": 1.0,
-            "provenance": {"botA": 50.0}, "starting_balance": 50.0,
-            "mature_profit_allocated": 0.0}
+LEDGER_A = {
+    "bot_id": "botA",
+    "asset": "BTC/USD",
+    "total_profit": 10.0,
+    "available_profit": 4.0,
+    "wired_in": 3.0,
+    "wired_out": 2.0,
+    "provenance": {"SEED": 100.0},
+    "starting_balance": 100.0,
+    "mature_profit_allocated": 1.0,
+}
+LEDGER_B = {
+    "bot_id": "botB",
+    "asset": "ETH/USD",
+    "total_profit": 20.0,
+    "available_profit": 5.0,
+    "wired_in": 6.0,
+    "wired_out": 1.0,
+    "provenance": {"botA": 50.0},
+    "starting_balance": 50.0,
+    "mature_profit_allocated": 0.0,
+}
 # The raiser leaves a skeleton behind: the BotLedger is created, then
 # float("not-a-number") raises before ANY overlay field is written, so
 # wired_in stays 0.0 although the row carried 1.0. That partial apply
 # is pre-existing and deliberately unchanged by this unit.
-LEDGER_R_PARTIAL = {"bot_id": "botR", "asset": "XRP/USD",
-                    "total_profit": 0.0, "available_profit": 0.0,
-                    "wired_in": 0.0, "wired_out": 0.0,
-                    "provenance": {}, "starting_balance": 0.0,
-                    "mature_profit_allocated": 0.0}
+LEDGER_R_PARTIAL = {
+    "bot_id": "botR",
+    "asset": "XRP/USD",
+    "total_profit": 0.0,
+    "available_profit": 0.0,
+    "wired_in": 0.0,
+    "wired_out": 0.0,
+    "provenance": {},
+    "starting_balance": 0.0,
+    "mature_profit_allocated": 0.0,
+}
 
 
 # --- CONTROL (a) — THE IMPORTED STATE IS UNTOUCHED --------------------
@@ -150,8 +189,12 @@ ROW_SHAPES = [
     ("an empty-string bot_id", [EMPTY_BOT_ID], 0, {}),
     ("a bot_id of int 0", [{"bot_id": 0, "wired_in": 5.0}], 0, {}),
     ("a bot_id of False", [{"bot_id": False, "wired_in": 5.0}], 0, {}),
-    ("a duplicate bot_id", [GOOD_A, dict(GOOD_A, wired_in=99.0)], 2,
-     {"botA": dict(LEDGER_A, wired_in=99.0)}),
+    (
+        "a duplicate bot_id",
+        [GOOD_A, dict(GOOD_A, wired_in=99.0)],
+        2,
+        {"botA": dict(LEDGER_A, wired_in=99.0)},
+    ),
     ("an empty list", [], 0, {}),
     ("a non-list ledgers argument", {"bot_id": "botA"}, 0, {}),
 ]
@@ -166,8 +209,9 @@ def test_a_imported_state_is_identical_to_live_for_every_row_shape():
 
 def test_a2_a_lost_row_never_reaches_the_ledger_map():
     """Counting a guard-drop must not resurrect it as a ledger."""
-    _, state, _ = _run([NON_DICT, None, NO_BOT_ID, EMPTY_BOT_ID,
-                        {"bot_id": 0}, {"bot_id": False}])
+    _, state, _ = _run(
+        [NON_DICT, None, NO_BOT_ID, EMPTY_BOT_ID, {"bot_id": 0}, {"bot_id": False}]
+    )
     assert state == {}
 
 
@@ -176,14 +220,13 @@ def test_a2_a_lost_row_never_reaches_the_ledger_map():
 # would not add up to what the caller handed in, and the operator would
 # read a loss as smaller than it is.
 
-FINDING_SIX = [GOOD_A, GOOD_B, RAISER, NON_DICT, NO_BOT_ID,
-               EMPTY_BOT_ID]
+FINDING_SIX = [GOOD_A, GOOD_B, RAISER, NON_DICT, NO_BOT_ID, EMPTY_BOT_ID]
 
 
 def test_b_the_six_row_scenario_reconciles_to_six():
     n, state, logs = _run(FINDING_SIX)
     assert len(FINDING_SIX) == 6
-    assert n == 2                       # botA and botB
+    assert n == 2  # botA and botB
     assert set(state) == {"botA", "botB", "botR"}
 
     summary = _summaries(logs)
@@ -209,8 +252,7 @@ def test_b2_the_old_undercount_is_gone():
 def test_b3_the_named_row_warning_still_fires_for_an_exception():
     """The previous unit's per-row exception WARNING is untouched."""
     _, _, logs = _run(FINDING_SIX)
-    named = [m for m in _warnings(logs)
-             if "DROPPED ledger row for botR" in m]
+    named = [m for m in _warnings(logs) if "DROPPED ledger row for botR" in m]
     assert len(named) == 1, _warnings(logs)
     assert "PARTIALLY applied" in named[0]
 
@@ -219,6 +261,7 @@ def test_b3_the_named_row_warning_still_fires_for_an_exception():
 # A failure here means the completely silent case survived: rows lost
 # only to the guards, no exception anywhere, and the operator hears
 # nothing but a cheerful "imported N ledger(s)".
+
 
 def test_c_a_guard_only_loss_is_reported():
     payload = [GOOD_A, NON_DICT, None, NO_BOT_ID, EMPTY_BOT_ID]
@@ -261,13 +304,12 @@ def test_c3_a_guard_only_loss_of_every_row_is_reported():
 # A false alarm about money history is its own defect, and it would
 # train the operator to ignore the real one.
 
+
 def _realistic_save() -> list[dict]:
     src = SmartWireManager()
     src.register_bot("botA", "BTC/USD", seed_amount=100.0)
-    src.register_bot("botB", "ETH/USD", seed_amount=50.0,
-                     funder_bot_id="botA")
-    src.register_bot("botC", "SOL/USD", seed_amount=25.0,
-                     funder_bot_id="botB")
+    src.register_bot("botB", "ETH/USD", seed_amount=50.0, funder_bot_id="botA")
+    src.register_bot("botC", "SOL/USD", seed_amount=25.0, funder_bot_id="botB")
     src._ledgers["botA"].total_profit = 40.0
     src._ledgers["botA"].wired_out = 12.5
     src._ledgers["botB"].wired_in = 12.5
@@ -282,8 +324,7 @@ def test_d_a_clean_export_import_round_trip_is_silent():
     assert n == 3
     assert set(state) == {"botA", "botB", "botC"}
     assert _warnings(logs) == [], _warnings(logs)
-    assert any(lvl == "INFO" and "imported 3 ledger(s)" in m
-               for lvl, m in logs), logs
+    assert any(lvl == "INFO" and "imported 3 ledger(s)" in m for lvl, m in logs), logs
 
 
 def test_d2_an_empty_save_is_silent():

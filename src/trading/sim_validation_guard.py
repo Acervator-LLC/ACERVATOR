@@ -49,6 +49,7 @@ the run rather than quietly degrading it.
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import logging
@@ -69,10 +70,12 @@ class ValidationIssueType:
 #: Issues that indicate the DATASET ITSELF is inconsistent. These
 #: halt immediately regardless of count — tolerating them would mean
 #: computing on data whose meaning has shifted.
-INTEGRITY_ISSUES = frozenset({
-    ValidationIssueType.SCHEMA_DRIFT,
-    ValidationIssueType.ADDRESS_MISMATCH,
-})
+INTEGRITY_ISSUES = frozenset(
+    {
+        ValidationIssueType.SCHEMA_DRIFT,
+        ValidationIssueType.ADDRESS_MISMATCH,
+    }
+)
 
 
 @dataclass
@@ -98,6 +101,7 @@ class ValidationPolicy:
     ``max_tolerated`` counts only non-integrity issues. Integrity
     issues always halt on the first occurrence.
     """
+
     max_tolerated: int = 25
     halt_on_integrity: bool = True
     enabled: bool = True
@@ -124,6 +128,7 @@ class SimValidationGuard:
     tested directly. The controller polls ``should_halt`` and calls
     its own stop path; the guard never stops anything itself.
     """
+
     policy: ValidationPolicy = field(default_factory=ValidationPolicy)
     issues: list[ValidationIssue] = field(default_factory=list)
     halted: bool = False
@@ -132,8 +137,12 @@ class SimValidationGuard:
     # ── recording ────────────────────────────────────────────────
 
     def record(
-        self, issue_type: str, symbol: str = "", bot_id: str = "",
-        trade_ts: float = 0.0, detail: str = "",
+        self,
+        issue_type: str,
+        symbol: str = "",
+        bot_id: str = "",
+        trade_ts: float = 0.0,
+        detail: str = "",
     ) -> bool:
         """Record an issue. Returns True if this triggered a halt.
 
@@ -144,20 +153,23 @@ class SimValidationGuard:
         if not self.policy.enabled:
             return False
         issue = ValidationIssue(
-            issue_type=issue_type, symbol=symbol, bot_id=bot_id,
-            trade_ts=trade_ts, detail=detail)
+            issue_type=issue_type,
+            symbol=symbol,
+            bot_id=bot_id,
+            trade_ts=trade_ts,
+            detail=detail,
+        )
         self.issues.append(issue)
 
-        if (issue_type in INTEGRITY_ISSUES
-                and self.policy.halt_on_integrity):
-            return self._halt(
-                f"dataset integrity failure — {issue.describe()}")
+        if issue_type in INTEGRITY_ISSUES and self.policy.halt_on_integrity:
+            return self._halt(f"dataset integrity failure — {issue.describe()}")
 
         if self.tolerated_count > self.policy.max_tolerated:
             return self._halt(
                 f"{self.tolerated_count} unvalidatable trade events "
                 f"exceeded the limit of {self.policy.max_tolerated} "
-                f"(most recent: {issue.describe()})")
+                f"(most recent: {issue.describe()})"
+            )
         return False
 
     def _halt(self, reason: str) -> bool:
@@ -172,13 +184,11 @@ class SimValidationGuard:
     @property
     def tolerated_count(self) -> int:
         """Issues that count against ``max_tolerated``."""
-        return sum(1 for i in self.issues
-                   if i.issue_type not in INTEGRITY_ISSUES)
+        return sum(1 for i in self.issues if i.issue_type not in INTEGRITY_ISSUES)
 
     @property
     def integrity_count(self) -> int:
-        return sum(1 for i in self.issues
-                   if i.issue_type in INTEGRITY_ISSUES)
+        return sum(1 for i in self.issues if i.issue_type in INTEGRITY_ISSUES)
 
     @property
     def should_halt(self) -> bool:
@@ -193,19 +203,17 @@ class SimValidationGuard:
     def report_lines(self, max_examples: int = 5) -> list[str]:
         lines: list[str] = []
         if not self.issues:
-            lines.append(
-                "Validation: no unvalidatable trade events.")
+            lines.append("Validation: no unvalidatable trade events.")
             return lines
-        verdict = ("HALTED" if self.halted
-                   else "completed with issues")
+        verdict = "HALTED" if self.halted else "completed with issues"
         lines.append(
             f"Validation: {verdict} — {len(self.issues):,} issue(s), "
             f"{self.integrity_count:,} integrity / "
-            f"{self.tolerated_count:,} coverage")
+            f"{self.tolerated_count:,} coverage"
+        )
         if self.halted:
             lines.append(f"  halt reason: {self.halt_reason}")
-        for itype, n in sorted(
-                self.counts_by_type().items(), key=lambda kv: -kv[1]):
+        for itype, n in sorted(self.counts_by_type().items(), key=lambda kv: -kv[1]):
             lines.append(f"  {n:>6,}  {itype}")
         shown = 0
         for i in self.issues:
@@ -214,14 +222,14 @@ class SimValidationGuard:
             lines.append(f"    e.g. {i.describe()}")
             shown += 1
         if len(self.issues) > shown:
-            lines.append(
-                f"    ... and {len(self.issues) - shown:,} more")
+            lines.append(f"    ... and {len(self.issues) - shown:,} more")
         return lines
 
 
 @dataclass
 class ScopeResult:
     """Trades split into what validation can and cannot speak to."""
+
     in_scope: list = field(default_factory=list)
     out_of_scope: list = field(default_factory=list)
     window_start_ts: float = 0.0
@@ -238,7 +246,8 @@ class ScopeResult:
             f"Validation scope: {len(self.in_scope):,} of "
             f"{self.total:,} trades fall inside the gate-log window; "
             f"{len(self.out_of_scope):,} predate it and are EXCLUDED "
-            "(not failures — no gate data could exist for them).")
+            "(not failures — no gate data could exist for them)."
+        )
 
 
 def scope_to_validatable_window(
@@ -266,12 +275,17 @@ def scope_to_validatable_window(
     ``window_end_ts <= 0`` means open-ended.
     """
     res = ScopeResult(
-        window_start_ts=float(window_start_ts),
-        window_end_ts=float(window_end_ts))
+        window_start_ts=float(window_start_ts), window_end_ts=float(window_end_ts)
+    )
     for t in trades or []:
         ts = float(
-            (t.get("timestamp", 0) if isinstance(t, dict)
-             else getattr(t, "trade_ts", 0)) or 0)
+            (
+                t.get("timestamp", 0)
+                if isinstance(t, dict)
+                else getattr(t, "trade_ts", 0)
+            )
+            or 0
+        )
         if ts <= 0:
             # Keep unparseable timestamps IN scope — that is itself
             # a defect the guard should see, not something to hide.
@@ -303,25 +317,40 @@ def validate_trade_event(
     whose indices have shifted (ADDRESS_MISMATCH).
     """
     from .stone_tablets.addressing import (
-        format_address, index_for_ts, ticker_from_symbol)
+        format_address,
+        index_for_ts,
+        ticker_from_symbol,
+    )
 
     if not trade_ts or trade_ts <= 0:
         guard.record(
-            ValidationIssueType.UNRESOLVABLE_TS, symbol, bot_id,
-            trade_ts, "timestamp missing or non-positive")
+            ValidationIssueType.UNRESOLVABLE_TS,
+            symbol,
+            bot_id,
+            trade_ts,
+            "timestamp missing or non-positive",
+        )
         return False
 
     if not candles:
         guard.record(
-            ValidationIssueType.NO_TABLET, symbol, bot_id, trade_ts,
-            "no Stone Tablet for this symbol")
+            ValidationIssueType.NO_TABLET,
+            symbol,
+            bot_id,
+            trade_ts,
+            "no Stone Tablet for this symbol",
+        )
         return False
 
     idx = index_for_ts(candles, int(trade_ts * 1000))
     if idx is None:
         guard.record(
-            ValidationIssueType.PRE_LISTING, symbol, bot_id, trade_ts,
-            "trade predates the tablet's first candle")
+            ValidationIssueType.PRE_LISTING,
+            symbol,
+            bot_id,
+            trade_ts,
+            "trade predates the tablet's first candle",
+        )
         return False
 
     if recorded_address:
@@ -329,27 +358,38 @@ def validate_trade_event(
             actual = format_address(ticker_from_symbol(symbol), idx)
         except ValueError as exc:
             guard.record(
-                ValidationIssueType.SCHEMA_DRIFT, symbol, bot_id,
-                trade_ts, f"address format failed: {exc}")
+                ValidationIssueType.SCHEMA_DRIFT,
+                symbol,
+                bot_id,
+                trade_ts,
+                f"address format failed: {exc}",
+            )
             return False
         if actual != recorded_address:
             guard.record(
-                ValidationIssueType.ADDRESS_MISMATCH, symbol, bot_id,
+                ValidationIssueType.ADDRESS_MISMATCH,
+                symbol,
+                bot_id,
                 trade_ts,
                 f"stored {recorded_address!r} but tablet resolves to "
-                f"{actual!r} — tablet indices have shifted")
+                f"{actual!r} — tablet indices have shifted",
+            )
             return False
     return True
 
 
 REQUIRED_GATE_DATA_FIELDS = (
-    "symbol", "scrum_armed", "fold_armed",
-    "scrum_blockers", "fold_blockers",
+    "symbol",
+    "scrum_armed",
+    "fold_armed",
+    "scrum_blockers",
+    "fold_blockers",
 )
 
 
 def validate_gate_entry(
-    guard: SimValidationGuard, entry: dict,
+    guard: SimValidationGuard,
+    entry: dict,
 ) -> bool:
     """Confirm a gate row still carries the fields comparison needs.
 
@@ -360,8 +400,8 @@ def validate_gate_entry(
     data = (entry or {}).get("data")
     if not isinstance(data, dict):
         guard.record(
-            ValidationIssueType.SCHEMA_DRIFT,
-            detail="gate entry has no 'data' object")
+            ValidationIssueType.SCHEMA_DRIFT, detail="gate entry has no 'data' object"
+        )
         return False
     missing = [f for f in REQUIRED_GATE_DATA_FIELDS if f not in data]
     if missing:
@@ -369,7 +409,8 @@ def validate_gate_entry(
             ValidationIssueType.SCHEMA_DRIFT,
             symbol=str(data.get("symbol", "") or ""),
             bot_id=str((entry or {}).get("bot_id", "") or ""),
-            detail=f"gate row missing fields: {', '.join(missing)}")
+            detail=f"gate row missing fields: {', '.join(missing)}",
+        )
         return False
     return True
 

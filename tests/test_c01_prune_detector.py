@@ -19,6 +19,7 @@ watches.
 
 Every test here uses tmp_path. Nothing touches ~/.acervator.
 """
+
 from __future__ import annotations
 
 import json
@@ -36,12 +37,19 @@ from src.core.state_manager import StateManager  # noqa: E402
 
 def _write_state(path: Path, bot_ids) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({
-        "version": "1.9.5",
-        "bot_count": len(bot_ids),
-        "bots": {b: {"bot_id": b, "scrumming_state": {"main_lots": [1, 2]}}
-                 for b in bot_ids},
-    }), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "version": "1.9.5",
+                "bot_count": len(bot_ids),
+                "bots": {
+                    b: {"bot_id": b, "scrumming_state": {"main_lots": [1, 2]}}
+                    for b in bot_ids
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 @pytest.fixture
@@ -82,22 +90,25 @@ class TestDetectPrune:
         assert sm._read_bot_ids(sm._path) is None
         assert sm.detect_prune({"bot-a"}) == []
 
-    def test_never_raises_even_when_everything_is_wrong(self, sm,
-                                                        monkeypatch):
+    def test_never_raises_even_when_everything_is_wrong(self, sm, monkeypatch):
         """It sits on the live save path. It may not break saving."""
+
         def boom(*_a, **_kw):
             raise RuntimeError("simulated catastrophe")
+
         monkeypatch.setattr(sm, "_read_bot_ids", boom)
         assert sm.detect_prune({"bot-a"}) == []
 
     def test_logs_at_error_when_a_prune_is_detected(self, sm, caplog):
         import logging
+
         _write_state(sm._path, ["bot-a", "bot-doomed"])
         with caplog.at_level(logging.ERROR):
             sm.detect_prune({"bot-a"})
-        assert any("PRUNE RISK" in r.message or "PRUNE RISK" in r.getMessage()
-                   for r in caplog.records), \
-            "a detected prune must be visible at ERROR"
+        assert any(
+            "PRUNE RISK" in r.message or "PRUNE RISK" in r.getMessage()
+            for r in caplog.records
+        ), "a detected prune must be visible at ERROR"
 
 
 class TestDiffPrimaryVsBackup:
@@ -126,6 +137,7 @@ class TestDiffPrimaryVsBackup:
     def test_never_raises(self, sm, monkeypatch):
         def boom(*_a, **_kw):
             raise RuntimeError("simulated catastrophe")
+
         monkeypatch.setattr(sm, "_read_bot_ids", boom)
         assert sm.diff_primary_vs_backup() == []
 
@@ -140,10 +152,10 @@ class TestSaveStateStillWorks:
         assert set(written["bots"]) == {"bot-a", "bot-b"}
         assert written["bot_count"] == 2
 
-    def test_save_still_succeeds_when_the_detector_explodes(
-            self, sm, monkeypatch):
+    def test_save_still_succeeds_when_the_detector_explodes(self, sm, monkeypatch):
         def boom(*_a, **_kw):
             raise RuntimeError("simulated catastrophe")
+
         monkeypatch.setattr(sm, "detect_prune", boom)
         with pytest.raises(RuntimeError):
             sm.save_state([{"bot_id": "bot-a"}])
@@ -152,8 +164,7 @@ class TestSaveStateStillWorks:
         # real implementation catches everything internally, which
         # test_never_raises_even_when_everything_is_wrong proves.
 
-    def test_the_prune_this_cascade_exists_to_stop_no_longer_happens(
-            self, sm, caplog):
+    def test_the_prune_this_cascade_exists_to_stop_no_longer_happens(self, sm, caplog):
         """End-to-end: a save that omits a previously-persisted bot.
 
         INVERTED BY THE FIX, DELIBERATELY. In PR-0 this test asserted
@@ -173,16 +184,18 @@ class TestSaveStateStillWorks:
         regression.
         """
         import logging
+
         _write_state(sm._path, ["bot-keeps", "bot-skipped-at-restore"])
         with caplog.at_level(logging.ERROR):
             sm.save_state([{"bot_id": "bot-keeps"}])
         written = json.loads(sm._path.read_text(encoding="utf-8"))
-        assert "bot-skipped-at-restore" in written["bots"], \
-            "a save must not remove a record it was simply not handed"
+        assert (
+            "bot-skipped-at-restore" in written["bots"]
+        ), "a save must not remove a record it was simply not handed"
         assert written["bot_count"] == 2
-        assert not any("PRUNE RISK" in r.getMessage()
-                       for r in caplog.records), \
-            "nothing was pruned, so the tripwire must stay silent"
+        assert not any(
+            "PRUNE RISK" in r.getMessage() for r in caplog.records
+        ), "nothing was pruned, so the tripwire must stay silent"
 
 
 class TestProbe:
@@ -208,11 +221,15 @@ class TestProbe:
         sm._path.write_text("{corrupt", encoding="utf-8")
         assert sm.probe() == "unreadable"
 
-    @pytest.mark.parametrize("state,expected", [
-        ("no_file", False), ("empty", False), ("has_bots", True),
-    ])
-    def test_has_saved_state_unchanged_for_healthy_cases(
-            self, sm, state, expected):
+    @pytest.mark.parametrize(
+        "state,expected",
+        [
+            ("no_file", False),
+            ("empty", False),
+            ("has_bots", True),
+        ],
+    )
+    def test_has_saved_state_unchanged_for_healthy_cases(self, sm, state, expected):
         if state == "empty":
             _write_state(sm._path, [])
         elif state == "has_bots":
@@ -235,13 +252,15 @@ class TestCorruptPrimaryCannotDestroyTheBackup:
         sm._path.parent.mkdir(parents=True, exist_ok=True)
         sm._path.write_text("{corrupt", encoding="utf-8")
 
-        sm.save_state([])          # the empty save that follows the bad boot
+        sm.save_state([])  # the empty save that follows the bad boot
 
-        assert sm._backup_path.read_bytes() == good, \
-            "a corrupt primary overwrote the last good backup"
-        assert set(json.loads(
-            sm._backup_path.read_text(encoding="utf-8"))["bots"]) == {
-                "bot-a", "bot-b"}
+        assert (
+            sm._backup_path.read_bytes() == good
+        ), "a corrupt primary overwrote the last good backup"
+        assert set(json.loads(sm._backup_path.read_text(encoding="utf-8"))["bots"]) == {
+            "bot-a",
+            "bot-b",
+        }
 
     def test_healthy_primary_still_refreshes_the_backup(self, sm):
         """Negative control: the guard must not disable backups.
@@ -253,13 +272,15 @@ class TestCorruptPrimaryCannotDestroyTheBackup:
         _write_state(sm._backup_path, ["bot-ancient"])
         sm.save_state([{"bot_id": "bot-new"}])
         # backup should now hold what the primary held BEFORE this save
-        assert set(json.loads(
-            sm._backup_path.read_text(encoding="utf-8"))["bots"]) == {"bot-old"}
+        assert set(json.loads(sm._backup_path.read_text(encoding="utf-8"))["bots"]) == {
+            "bot-old"
+        }
 
     def test_the_save_itself_still_succeeds(self, sm):
         """Refusing the backup refresh must not abort the save."""
         sm._path.parent.mkdir(parents=True, exist_ok=True)
         sm._path.write_text("{corrupt", encoding="utf-8")
         sm.save_state([{"bot_id": "bot-a"}])
-        assert set(json.loads(
-            sm._path.read_text(encoding="utf-8"))["bots"]) == {"bot-a"}
+        assert set(json.loads(sm._path.read_text(encoding="utf-8"))["bots"]) == {
+            "bot-a"
+        }

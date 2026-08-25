@@ -28,6 +28,7 @@ kind of defect it exists to catch. Each planted defect below is a
 re-implementation of the helper with ONE thing wrong, driven through
 the same assertions, and each is asserted to fail.
 """
+
 from __future__ import annotations
 
 import sys
@@ -62,8 +63,7 @@ class _Bot:
 
     _plan_fold_consumption = ScrummingBot._plan_fold_consumption
     _settle_fold_plan = ScrummingBot._settle_fold_plan
-    _top_up_remnant_fold_tranches = (
-        ScrummingBot._top_up_remnant_fold_tranches)
+    _top_up_remnant_fold_tranches = ScrummingBot._top_up_remnant_fold_tranches
 
     def __init__(self, tranches=None, created=0):
         self.bot_id = "bot-partial-0001"
@@ -73,8 +73,13 @@ class _Bot:
 
 
 def tranche(usd, units, ref, ibp, **extra) -> dict:
-    t = {"usd": usd, "units": units, "ref": ref,
-         "initial_buy_price": ibp, "created_ts": 1.0}
+    t = {
+        "usd": usd,
+        "units": units,
+        "ref": ref,
+        "initial_buy_price": ibp,
+        "created_ts": 1.0,
+    }
     t.update(extra)
     return t
 
@@ -90,21 +95,24 @@ class TestATrancheBiggerThanTheCapIsPartlyConsumed:
     def test_over_cap_tranche_is_part_consumed_and_kept(self):
         bot = _Bot([tranche(5.00, 50.0, 0.10, 0.12)])
         plan, slices, partial = bot._plan_fold_consumption(
-            list(bot._fold_tranches), 2.00)
+            list(bot._fold_tranches), 2.00
+        )
 
         assert partial == 1, "the tranche did not fit; it is a partial"
         assert len(slices) == 1
         assert slices[0]["usd"] == pytest.approx(2.00)
 
         removed, spent = bot._settle_fold_plan(plan)
-        assert removed == 0 and spent == 0, (
-            "a part-consumed tranche must NOT leave the queue")
+        assert (
+            removed == 0 and spent == 0
+        ), "a part-consumed tranche must NOT leave the queue"
         assert len(bot._fold_tranches) == 1
         assert bot._fold_tranches[0]["usd"] == pytest.approx(3.00)
         assert bot._fold_tranches[0]["fold_partial_spent"] is True
 
     def test_PLANTED_skipping_the_over_cap_tranche_fails_this(self):
         """The shipped defect: skip it whole, take nothing."""
+
         def planned_old(eligible, cap_remaining):
             plan, slices, running = [], [], 0.0
             for t in eligible:
@@ -119,10 +127,10 @@ class TestATrancheBiggerThanTheCapIsPartlyConsumed:
         plan, slices, partial = planned_old(list(bot._fold_tranches), 2.00)
         with pytest.raises(AssertionError):
             assert partial == 1, "planted: nothing was part-consumed"
-        assert slices == [], (
-            "the plant takes nothing at all, which is the defect")
-        assert bot._fold_tranches[0]["usd"] == pytest.approx(5.00), (
-            "the plant leaves the WHOLE balance, not the remaining one")
+        assert slices == [], "the plant takes nothing at all, which is the defect"
+        assert bot._fold_tranches[0]["usd"] == pytest.approx(
+            5.00
+        ), "the plant leaves the WHOLE balance, not the remaining one"
 
 
 class TestThePartsSumToTheWhole:
@@ -142,29 +150,26 @@ class TestThePartsSumToTheWhole:
     )
     def test_taken_plus_kept_equals_the_whole(self, usd, units, room):
         bot = _Bot([tranche(usd, units, 0.25, 0.30)])
-        plan, slices, _ = bot._plan_fold_consumption(
-            list(bot._fold_tranches), room)
+        plan, slices, _ = bot._plan_fold_consumption(list(bot._fold_tranches), room)
         took_usd = slices[0]["usd"]
         took_units = slices[0]["units"]
         bot._settle_fold_plan(plan)
-        kept = bot._fold_tranches[0] if bot._fold_tranches else {
-            "usd": 0.0, "units": 0.0}
+        kept = (
+            bot._fold_tranches[0] if bot._fold_tranches else {"usd": 0.0, "units": 0.0}
+        )
 
         assert round(took_usd + kept["usd"], 2) == round(usd, 2)
         assert round(took_units + kept["units"], 2) == round(units, 2)
         # Tighter than "to the cent", because a cent is coarse against
         # an 8-decimal unit count and would hide a real leak.
         assert took_usd + kept["usd"] == pytest.approx(usd, rel=1e-12)
-        assert took_units + kept["units"] == pytest.approx(
-            units, rel=1e-12)
+        assert took_units + kept["units"] == pytest.approx(units, rel=1e-12)
 
     def test_units_come_off_in_the_same_proportion_as_usd(self):
         """(b) Half the money means half the units."""
         bot = _Bot([tranche(4.00, 40.0, 0.10, 0.12)])
-        _, slices, _ = bot._plan_fold_consumption(
-            list(bot._fold_tranches), 1.00)
-        assert slices[0]["usd"] / 4.00 == pytest.approx(
-            slices[0]["units"] / 40.0)
+        _, slices, _ = bot._plan_fold_consumption(list(bot._fold_tranches), 1.00)
+        assert slices[0]["usd"] / 4.00 == pytest.approx(slices[0]["units"] / 40.0)
 
     def test_PLANTED_settling_units_by_the_usd_figure_fails_the_sum(self):
         """The plant is in the MECHANISM, not in the arithmetic of the
@@ -175,6 +180,7 @@ class TestThePartsSumToTheWhole:
         A plant that computes the remainder by subtraction would prove
         nothing, because subtraction sums to the whole by definition.
         """
+
         def planted_settle(bot, plan):
             for src, took_usd, _took_units in plan:
                 src["usd"] = max(0.0, float(src["usd"]) - took_usd)
@@ -183,19 +189,21 @@ class TestThePartsSumToTheWhole:
 
         usd, units, room = 5.00, 50.0, 2.00
         bot = _Bot([tranche(usd, units, 0.25, 0.30)])
-        plan, slices, _ = bot._plan_fold_consumption(
-            list(bot._fold_tranches), room)
+        plan, slices, _ = bot._plan_fold_consumption(list(bot._fold_tranches), room)
         planted_settle(bot, plan)
         kept = bot._fold_tranches[0]
 
         assert slices[0]["usd"] + kept["usd"] == pytest.approx(
-            usd, rel=1e-12), "money still sums; only units are wrong"
+            usd, rel=1e-12
+        ), "money still sums; only units are wrong"
         with pytest.raises(AssertionError):
             assert slices[0]["units"] + kept["units"] == pytest.approx(
-                units, rel=1e-12), "planted: units do not sum"
+                units, rel=1e-12
+            ), "planted: units do not sum"
         with pytest.raises(AssertionError):
             assert round(slices[0]["units"] + kept["units"], 2) == round(
-                units, 2), "planted: units do not sum to the cent either"
+                units, 2
+            ), "planted: units do not sum to the cent either"
 
     def test_PLANTED_proportional_check_catches_a_flat_unit_split(self):
         """Take half the money but all the units."""
@@ -203,7 +211,8 @@ class TestThePartsSumToTheWhole:
         take_usd, take_units = room, units
         with pytest.raises(AssertionError):
             assert take_usd / usd == pytest.approx(
-                take_units / units), "planted: units are not proportional"
+                take_units / units
+            ), "planted: units are not proportional"
 
 
 class TestProvenanceSurvivesTheSplit:
@@ -212,8 +221,7 @@ class TestProvenanceSurvivesTheSplit:
     def test_initial_buy_price_identical_on_slice_and_remainder(self):
         ibp = 0.12345678
         bot = _Bot([tranche(5.00, 50.0, 0.10, ibp)])
-        plan, slices, _ = bot._plan_fold_consumption(
-            list(bot._fold_tranches), 2.00)
+        plan, slices, _ = bot._plan_fold_consumption(list(bot._fold_tranches), 2.00)
         bot._settle_fold_plan(plan)
 
         assert slices[0]["initial_buy_price"] == ibp
@@ -226,13 +234,16 @@ class TestProvenanceSurvivesTheSplit:
         same expression against the slice."""
         ibp = 0.12345678
         bot = _Bot([tranche(5.00, 50.0, 0.10, ibp)])
-        _, slices, _ = bot._plan_fold_consumption(
-            list(bot._fold_tranches), 2.00)
+        _, slices, _ = bot._plan_fold_consumption(list(bot._fold_tranches), 2.00)
         buy_asset = 25.0
         total_units = sum(s["units"] for s in slices) + 1e-12
-        lots = [{"units": buy_asset * (s["units"] / total_units),
-                 "initial_buy_price": s["initial_buy_price"]}
-                for s in slices]
+        lots = [
+            {
+                "units": buy_asset * (s["units"] / total_units),
+                "initial_buy_price": s["initial_buy_price"],
+            }
+            for s in slices
+        ]
         assert len(lots) == 1
         lot_ibp = lots[0]["initial_buy_price"]
         assert lot_ibp == ibp
@@ -252,8 +263,7 @@ class TestATrancheDrainedToNothingIsRemoved:
 
     def test_exact_fit_is_removed(self):
         bot = _Bot([tranche(2.00, 20.0, 0.10, 0.12)])
-        plan, _, partial = bot._plan_fold_consumption(
-            list(bot._fold_tranches), 2.00)
+        plan, _, partial = bot._plan_fold_consumption(list(bot._fold_tranches), 2.00)
         removed, spent = bot._settle_fold_plan(plan)
         assert partial == 0
         assert (removed, spent) == (1, 1)
@@ -261,19 +271,16 @@ class TestATrancheDrainedToNothingIsRemoved:
 
     def test_a_remnant_drained_by_a_later_cycle_is_removed(self):
         bot = _Bot([tranche(5.00, 50.0, 0.10, 0.12)])
-        plan, _, _ = bot._plan_fold_consumption(
-            list(bot._fold_tranches), 2.00)
+        plan, _, _ = bot._plan_fold_consumption(list(bot._fold_tranches), 2.00)
         bot._settle_fold_plan(plan)
         assert len(bot._fold_tranches) == 1
 
-        plan2, _, _ = bot._plan_fold_consumption(
-            list(bot._fold_tranches), 99.0)
+        plan2, _, _ = bot._plan_fold_consumption(list(bot._fold_tranches), 99.0)
         removed2, spent2 = bot._settle_fold_plan(plan2)
         assert (removed2, spent2) == (1, 1)
         assert bot._fold_tranches == []
 
-    def test_PLANTED_a_value_compare_never_removes_a_part_consumed_source(
-            self):
+    def test_PLANTED_a_value_compare_never_removes_a_part_consumed_source(self):
         """The old dequeue was `t not in _eligible`, a VALUE compare.
         A partial slice differs from its source, so the source would
         never leave the queue and would never lose its balance. The
@@ -286,14 +293,17 @@ class TestATrancheDrainedToNothingIsRemoved:
         with pytest.raises(AssertionError):
             assert planted == [], (
                 "planted: the value-compare kept the whole source and "
-                "took nothing off it")
-        assert src["usd"] == pytest.approx(5.00), (
-            "the plant leaves the full balance behind")
+                "took nothing off it"
+            )
+        assert src["usd"] == pytest.approx(
+            5.00
+        ), "the plant leaves the full balance behind"
 
         removed, spent = bot._settle_fold_plan(plan)
         assert (removed, spent) == (0, 0)
-        assert src["usd"] == pytest.approx(3.00), (
-            "the shipped settle takes the money off the source")
+        assert src["usd"] == pytest.approx(
+            3.00
+        ), "the shipped settle takes the money off the source"
 
     def test_PLANTED_a_value_compare_deletes_an_identical_twin(self):
         """The other half of the same defect. Two tranches holding
@@ -311,8 +321,9 @@ class TestATrancheDrainedToNothingIsRemoved:
         # so a value-compare would look correct and prove nothing.
         planted = [t for t in [a, b] if t not in slices]  # the plant
         with pytest.raises(AssertionError):
-            assert len(planted) == 1, (
-                "planted: the value-compare deleted the twin as well")
+            assert (
+                len(planted) == 1
+            ), "planted: the value-compare deleted the twin as well"
 
         removed, spent = bot._settle_fold_plan(plan)
         assert (removed, spent) == (1, 1)
@@ -324,9 +335,11 @@ class TestATrancheThatFitsIsStillConsumedWhole:
     """(f) Today's behaviour is unchanged where it already worked."""
 
     def test_three_that_fit_are_all_taken_whole_and_removed(self):
-        ts = [tranche(0.50, 5.0, 0.10, 0.13),
-              tranche(0.30, 3.0, 0.10, 0.12),
-              tranche(0.20, 2.0, 0.10, 0.11)]
+        ts = [
+            tranche(0.50, 5.0, 0.10, 0.13),
+            tranche(0.30, 3.0, 0.10, 0.12),
+            tranche(0.20, 2.0, 0.10, 0.11),
+        ]
         bot = _Bot(list(ts))
         plan, slices, partial = bot._plan_fold_consumption(list(ts), 1.00)
         removed, spent = bot._settle_fold_plan(plan)
@@ -337,8 +350,7 @@ class TestATrancheThatFitsIsStillConsumedWhole:
 
     def test_the_cap_still_bounds_what_is_taken(self):
         """The cap is not widened. The take never exceeds the room."""
-        ts = [tranche(9.0, 90.0, 0.10, 0.13),
-              tranche(9.0, 90.0, 0.10, 0.12)]
+        ts = [tranche(9.0, 90.0, 0.10, 0.13), tranche(9.0, 90.0, 0.10, 0.12)]
         bot = _Bot(list(ts))
         _, slices, _ = bot._plan_fold_consumption(list(ts), 1.25)
         assert sum(s["usd"] for s in slices) == pytest.approx(1.25)
@@ -346,7 +358,8 @@ class TestATrancheThatFitsIsStillConsumedWhole:
     def test_no_room_takes_nothing_and_touches_nothing(self):
         bot = _Bot([tranche(5.00, 50.0, 0.10, 0.12)])
         plan, slices, partial = bot._plan_fold_consumption(
-            list(bot._fold_tranches), 0.0)
+            list(bot._fold_tranches), 0.0
+        )
         removed, spent = bot._settle_fold_plan(plan)
         assert (plan, slices, partial) == ([], [], 0)
         assert (removed, spent) == (0, 0)
@@ -357,8 +370,7 @@ class TestATrancheThatFitsIsStillConsumedWhole:
         room = 1.25
         took = 9.0  # the plant: admit the whole thing regardless
         with pytest.raises(AssertionError):
-            assert took == pytest.approx(room), (
-                "planted: the take exceeded the cap")
+            assert took == pytest.approx(room), "planted: the take exceeded the cap"
 
 
 # ---------------------------------------------------------------------
@@ -376,8 +388,7 @@ class TestTheTopUpGoesToTheLowestPricedRemnantInTheBand:
         fresh = tranche(2.0, 20.0, 0.25, 0.20)
         bot = _Bot([high, low, fresh], created=3)
 
-        merged_n, merged_usd = bot._top_up_remnant_fold_tranches(
-            2, 0.05, 0.40)
+        merged_n, merged_usd = bot._top_up_remnant_fold_tranches(2, 0.05, 0.40)
 
         assert (merged_n, merged_usd) == (1, 2.0)
         assert low["usd"] == pytest.approx(3.0)
@@ -438,8 +449,7 @@ class TestTheTopUpGoesToTheLowestPricedRemnantInTheBand:
         refs = [0.30, 0.10]
         assert min(refs) == 0.10
         with pytest.raises(AssertionError):
-            assert max(refs) == 0.10, (
-                "planted: the highest-priced remnant was chosen")
+            assert max(refs) == 0.10, "planted: the highest-priced remnant was chosen"
 
     def test_PLANTED_ignoring_the_band_picks_the_wrong_remnant(self):
         below = tranche(1.0, 10.0, 0.01, 0.20, fold_partial_spent=True)
@@ -448,7 +458,8 @@ class TestTheTopUpGoesToTheLowestPricedRemnantInTheBand:
         no_band = min([below, inside], key=lambda t: t["ref"])  # the plant
         with_band = min(
             [t for t in [below, inside] if band_lo <= t["ref"] <= band_hi],
-            key=lambda t: t["ref"])
+            key=lambda t: t["ref"],
+        )
         assert with_band is inside
         with pytest.raises(AssertionError):
             assert no_band is inside, "planted: the band was ignored"
@@ -493,8 +504,9 @@ class TestTheFloorMustMatchBeforeAnythingMerges:
         weighted_ibp = cheap_ibp * cheap_share + dear_ibp * dear_share
         assert weighted_ibp > cheap_ibp
         with pytest.raises(AssertionError):
-            assert weighted_ibp <= cheap_ibp, (
-                "planted: the weighted basis raised the cheaper floor")
+            assert (
+                weighted_ibp <= cheap_ibp
+            ), "planted: the weighted basis raised the cheaper floor"
 
 
 class TestNoCandidateIsNotAnErrorAndGetsNoFallback:
@@ -525,19 +537,25 @@ class TestNoCandidateIsNotAnErrorAndGetsNoFallback:
         target, no delta, no gate and no queue, so an absent candidate
         has nothing to block, delay or defer."""
         import inspect
-        body = inspect.getsource(
-            ScrummingBot._top_up_remnant_fold_tranches)
+
+        body = inspect.getsource(ScrummingBot._top_up_remnant_fold_tranches)
         code = "\n".join(
-            ln for ln in body.splitlines()
-            if not ln.strip().startswith("#"))
+            ln for ln in body.splitlines() if not ln.strip().startswith("#")
+        )
         _, _, after_doc = code.partition('"""')
         _, _, statements = after_doc.partition('"""')
-        for forbidden in ("_target_balance", "_target_delta",
-                          "_anchor_target_balance", "_standing_surplus",
-                          "_fold_cycle_cap_consumed", "return_defer",
-                          "_pending", "_hyst", "_chain"):
-            assert forbidden not in statements, (
-                f"the top-up must not touch {forbidden}")
+        for forbidden in (
+            "_target_balance",
+            "_target_delta",
+            "_anchor_target_balance",
+            "_standing_surplus",
+            "_fold_cycle_cap_consumed",
+            "return_defer",
+            "_pending",
+            "_hyst",
+            "_chain",
+        ):
+            assert forbidden not in statements, f"the top-up must not touch {forbidden}"
 
     def test_target_delta_rezeroes_with_no_tranche_in_the_band(self):
         """Target Delta still re-zeroes when nothing compounds. The
@@ -554,15 +572,15 @@ class TestNoCandidateIsNotAnErrorAndGetsNoFallback:
         bot = _NoTrancheGrowthBot()
 
         def gated(accum_profit, source="auto"):
-            if not bot._fold_tranches:          # the plant
+            if not bot._fold_tranches:  # the plant
                 return 0.0
             return ScrummingBot._apply_fold_target_growth(
-                bot, accum_profit, source=source)
+                bot, accum_profit, source=source
+            )
 
         applied = gated(1.0)
         with pytest.raises(AssertionError):
-            assert applied > 0.0, (
-                "planted: re-zeroing was gated on tranche presence")
+            assert applied > 0.0, "planted: re-zeroing was gated on tranche presence"
         assert bot._target_balance == 100.0, "the plant froze the target"
 
 
@@ -586,10 +604,12 @@ class _NoTrancheGrowthBot:
         class _Cfg:
             profit_folding_active = True
             max_target_growth_pct = 1.0
+
         self.config = _Cfg()
 
         class _Stats:
             standing_surplus_usd = 0.0
+
         self.stats = _Stats()
 
 
@@ -611,8 +631,9 @@ class TestTheCreatedCounterStaysHonest:
         created_after_plant, open_after = 7, 1  # the plant: no back-out
         assert created_before - open_before == 5
         with pytest.raises(AssertionError):
-            assert created_after_plant - open_after == 5, (
-                "planted: created no longer reconciles with open")
+            assert (
+                created_after_plant - open_after == 5
+            ), "planted: created no longer reconciles with open"
 
 
 # ---------------------------------------------------------------------
@@ -627,16 +648,16 @@ class TestBothHalvesTogetherStopTheRemnantsMultiplying:
         ibp = 0.20
         bot = _Bot([tranche(1.00, 10.0, 0.25, ibp)], created=1)
         for _ in range(10):
-            plan, _, _ = bot._plan_fold_consumption(
-                list(bot._fold_tranches), 0.10)
+            plan, _, _ = bot._plan_fold_consumption(list(bot._fold_tranches), 0.10)
             bot._settle_fold_plan(plan)
             first_new = len(bot._fold_tranches)
             bot._fold_tranches.append(tranche(0.10, 1.0, 0.25, ibp))
             bot._tranches_created_lifetime += 1
             bot._top_up_remnant_fold_tranches(first_new, 0.05, 0.40)
 
-        assert len(bot._fold_tranches) == 1, (
-            "the top-up is what keeps this at one record")
+        assert (
+            len(bot._fold_tranches) == 1
+        ), "the top-up is what keeps this at one record"
         assert bot._fold_tranches[0]["initial_buy_price"] == ibp
 
     def test_PLANTED_partial_consumption_alone_grows_the_queue(self):
@@ -645,12 +666,11 @@ class TestBothHalvesTogetherStopTheRemnantsMultiplying:
         ibp = 0.20
         bot = _Bot([tranche(1.00, 10.0, 0.25, ibp)], created=1)
         for _ in range(10):
-            plan, _, _ = bot._plan_fold_consumption(
-                list(bot._fold_tranches), 0.10)
+            plan, _, _ = bot._plan_fold_consumption(list(bot._fold_tranches), 0.10)
             bot._settle_fold_plan(plan)
             bot._fold_tranches.append(tranche(0.10, 1.0, 0.25, ibp))
             # the plant: no top-up call
         with pytest.raises(AssertionError):
             assert len(bot._fold_tranches) == 1, (
-                "planted: the queue grew to "
-                f"{len(bot._fold_tranches)} records")
+                "planted: the queue grew to " f"{len(bot._fold_tranches)} records"
+            )

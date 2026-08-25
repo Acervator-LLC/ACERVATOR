@@ -63,6 +63,7 @@ and ``PYTHONPATH``, which the rule does not flag and which are not
 executed. ``--root .`` names the repository because ``cwd`` is the
 repository. No suppression comment appears in this file.
 """
+
 from __future__ import annotations
 
 import os
@@ -79,7 +80,9 @@ CHECKER = REPO_ROOT / "tools" / "emitter_registry_check.py"
 
 SUMMARY_RE = re.compile(
     r"^controls: (\d+) passed, (\d+) known-red, (\d+) broken, "
-    r"(\d+) stale, of (\d+)$", re.MULTILINE)
+    r"(\d+) stale, of (\d+)$",
+    re.MULTILINE,
+)
 CONTROL_RE = re.compile(r"^  \[([A-Z-]+)\] (.+)$", re.MULTILINE)
 
 _SUMMARY_KEYS = ("passed", "known_red", "broken", "stale", "total")
@@ -105,9 +108,14 @@ def _kwargs(extra_import_path: Path | None = None) -> dict[str, Any]:
     env["PYTHONPATH"] = path
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     return {
-        "cwd": str(REPO_ROOT), "env": env, "capture_output": True,
-        "text": True, "encoding": "utf-8", "errors": "replace",
-        "timeout": 600, "check": False,
+        "cwd": str(REPO_ROOT),
+        "env": env,
+        "capture_output": True,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+        "timeout": 600,
+        "check": False,
     }
 
 
@@ -117,9 +125,11 @@ def _report(proc: subprocess.CompletedProcess[str]) -> str:
     ``exit 1 != 0`` names no control and sends the reader back to the
     command line. Every assertion below carries this instead.
     """
-    return (f"exit code {proc.returncode}\n"
-            f"--- stdout ---\n{proc.stdout}\n"
-            f"--- stderr ---\n{proc.stderr}")
+    return (
+        f"exit code {proc.returncode}\n"
+        f"--- stdout ---\n{proc.stdout}\n"
+        f"--- stderr ---\n{proc.stderr}"
+    )
 
 
 def _summary(stdout: str) -> dict[str, int] | None:
@@ -130,23 +140,21 @@ def _summary(stdout: str) -> dict[str, int] | None:
     # strict=True on purpose: if a group is added to SUMMARY_RE and
     # not to _SUMMARY_KEYS, this must raise rather than quietly drop
     # the state nobody remembered to name.
-    return dict(zip(_SUMMARY_KEYS,
-                    (int(g) for g in match.groups()), strict=True))
+    return dict(zip(_SUMMARY_KEYS, (int(g) for g in match.groups()), strict=True))
 
 
 def _labels(stdout: str, state: str) -> list[str]:
     """Every control the tool reported in ``state``."""
-    return [label for found, label in CONTROL_RE.findall(stdout)
-            if found == state]
+    return [label for found, label in CONTROL_RE.findall(stdout) if found == state]
 
 
 @pytest.fixture(scope="module")
 def selftest() -> subprocess.CompletedProcess[str]:
     """One ``--selftest`` run, shared by the assertions that read it."""
     return subprocess.run(
-        [sys.executable, "-m", "tools.emitter_registry_check",
-         "--selftest"],
-        **_kwargs())
+        [sys.executable, "-m", "tools.emitter_registry_check", "--selftest"],
+        **_kwargs(),
+    )
 
 
 class TestTheSelftestOutputCanBeRead:
@@ -159,19 +167,22 @@ class TestTheSelftestOutputCanBeRead:
     """
 
     def test_the_summary_line_is_present_and_counts_controls(
-            self, selftest: subprocess.CompletedProcess[str]) -> None:
+        self, selftest: subprocess.CompletedProcess[str]
+    ) -> None:
         """The tally exists and describes at least one control."""
         summary = _summary(selftest.stdout)
         assert summary is not None, (
             "the checker printed no `controls: ... of N` summary line, so "
-            "the state counts below would be read from nothing.\n"
-            + _report(selftest))
+            "the state counts below would be read from nothing.\n" + _report(selftest)
+        )
         assert summary["total"] > 0, (
             "the checker reported 0 controls. It planted nothing, so it "
-            "proved nothing.\n" + _report(selftest))
+            "proved nothing.\n" + _report(selftest)
+        )
 
     def test_every_control_line_is_accounted_for(
-            self, selftest: subprocess.CompletedProcess[str]) -> None:
+        self, selftest: subprocess.CompletedProcess[str]
+    ) -> None:
         """The two surfaces must agree, or one of them is stale."""
         summary = _summary(selftest.stdout)
         assert summary is not None, _report(selftest)
@@ -179,24 +190,27 @@ class TestTheSelftestOutputCanBeRead:
         assert len(lines) == summary["total"], (
             f"the summary claims {summary['total']} control(s) but "
             f"{len(lines)} per-control line(s) were printed. One of the "
-            f"two surfaces is not reporting every control.\n"
-            + _report(selftest))
+            f"two surfaces is not reporting every control.\n" + _report(selftest)
+        )
 
 
 class TestTheInstrumentReportsItselfSound:
     """What ``--selftest`` says about the checker on this tree today."""
 
     def test_selftest_exits_zero(
-            self, selftest: subprocess.CompletedProcess[str]) -> None:
+        self, selftest: subprocess.CompletedProcess[str]
+    ) -> None:
         """The gate-facing bit: every control behaved as declared."""
         assert selftest.returncode == 0, (
             "`python -m tools.emitter_registry_check --selftest` did not "
             "exit 0. The checker's own controls no longer behave as "
             "declared, so any clean result it reports about the tree is "
-            "evidence of nothing.\n" + _report(selftest))
+            "evidence of nothing.\n" + _report(selftest)
+        )
 
     def test_no_control_is_broken(
-            self, selftest: subprocess.CompletedProcess[str]) -> None:
+        self, selftest: subprocess.CompletedProcess[str]
+    ) -> None:
         """A rule that stopped firing on its own planted defect.
 
         Asserted apart from the exit code on purpose. This reads the
@@ -205,15 +219,16 @@ class TestTheInstrumentReportsItselfSound:
         """
         summary = _summary(selftest.stdout)
         broken = _labels(selftest.stdout, "BROKEN")
-        assert summary is not None and summary["broken"] == 0 and (
-            not broken), (
+        assert summary is not None and summary["broken"] == 0 and (not broken), (
             f"{len(broken)} control(s) reported BROKEN: "
             f"{'; '.join(broken) or '<none named>'}. A broken control is "
             f"a rule that no longer fires on a defect planted in front "
-            f"of it.\n" + _report(selftest))
+            f"of it.\n" + _report(selftest)
+        )
 
     def test_no_control_is_stale(
-            self, selftest: subprocess.CompletedProcess[str]) -> None:
+        self, selftest: subprocess.CompletedProcess[str]
+    ) -> None:
         """A control declared red that came back green.
 
         Not good news to be swallowed: while a false declaration stands,
@@ -222,18 +237,16 @@ class TestTheInstrumentReportsItselfSound:
         """
         summary = _summary(selftest.stdout)
         stale = _labels(selftest.stdout, "STALE")
-        assert summary is not None and summary["stale"] == 0 and (
-            not stale), (
+        assert summary is not None and summary["stale"] == 0 and (not stale), (
             f"{len(stale)} control(s) reported STALE: "
             f"{'; '.join(stale) or '<none named>'}. The defect each one "
             f"is declared red against appears to be fixed. Delete the "
-            f"declaration so the control starts reporting again.\n"
-            + _report(selftest))
+            f"declaration so the control starts reporting again.\n" + _report(selftest)
+        )
 
 
 _E4_ANCHOR = b"        if row.signal_type not in SIGNAL_TYPES:\n"
-_E4_NEUTERED = (
-    b"        if False and row.signal_type not in SIGNAL_TYPES:\n")
+_E4_NEUTERED = b"        if False and row.signal_type not in SIGNAL_TYPES:\n"
 _E4_LABEL = "E4 fires on a signal type outside the vocabulary"
 # The module name is written out at both use sites rather than held
 # in a constant. The argv below must be all-literal or ruff's S603
@@ -266,32 +279,45 @@ class TestTheSelftestFailsWhenARuleGoesBlind:
         assert CHECKER.read_bytes().count(_E4_ANCHOR) == 1, (
             f"the E4 detection line was not found exactly once in "
             f"{CHECKER}. The mutation below would be a no-op and would "
-            f"prove nothing. Re-anchor it on the current source.")
+            f"prove nothing. Re-anchor it on the current source."
+        )
 
     def test_a_copy_with_e4_detection_removed_reports_broken(
-            self, tmp_path: Path) -> None:
+        self, tmp_path: Path
+    ) -> None:
         """Blind the E4 rule in a copy; the selftest must name it."""
         before = CHECKER.read_bytes()
         mutant = tmp_path / _MUTANT_FILENAME
         mutant.write_bytes(before.replace(_E4_ANCHOR, _E4_NEUTERED))
 
         proc = subprocess.run(
-            [sys.executable, "-m", "emitter_registry_check_mutant",
-             "--selftest", "--root", "."],
-            **_kwargs(tmp_path))
+            [
+                sys.executable,
+                "-m",
+                "emitter_registry_check_mutant",
+                "--selftest",
+                "--root",
+                ".",
+            ],
+            **_kwargs(tmp_path),
+        )
         summary = _summary(proc.stdout)
 
         assert _E4_LABEL in _labels(proc.stdout, "BROKEN"), (
             f"E4's detection was removed and the selftest did not report "
             f"{_E4_LABEL!r} as BROKEN. The control cannot see its own "
-            f"rule go blind.\n" + _report(proc))
+            f"rule go blind.\n" + _report(proc)
+        )
         assert summary is not None and summary["broken"] == 1, (
             "removing E4's detection must break exactly one control. A "
             "different count means the mutation reached further than the "
-            "rule it aimed at.\n" + _report(proc))
+            "rule it aimed at.\n" + _report(proc)
+        )
         assert proc.returncode == 1, (
             "a BROKEN control must turn the exit code, or the release "
-            "gate never sees it.\n" + _report(proc))
+            "gate never sees it.\n" + _report(proc)
+        )
         assert CHECKER.read_bytes() == before, (
             f"{CHECKER} changed during this test. The mutation must only "
-            f"ever touch the temporary copy.")
+            f"ever touch the temporary copy."
+        )

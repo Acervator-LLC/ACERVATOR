@@ -28,6 +28,7 @@ would have shipped.
 Note there is no single "sim bus" to borrow — each sim bot constructs its
 own `EventBus()` — so the controller owns a dedicated one.
 """
+
 from __future__ import annotations
 
 import sys
@@ -39,7 +40,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.core.event_bus import EventBus, get_event_bus  # noqa: E402
+from src.core.event_bus import get_event_bus  # noqa: E402
 from src.gui.simulator_tab.fleet.fleet_replay_controller import (  # noqa: E501
     sim_bot_id,  # noqa: E402
     FleetReplayController,
@@ -51,13 +52,14 @@ BASE = 1_700_000_000_000
 
 
 def _candles(n=8, px=100.0):
-    return [[BASE + i * STEP, px, px * 1.01, px * 0.99, px, 10.0]
-            for i in range(n)]
+    return [[BASE + i * STEP, px, px * 1.01, px * 0.99, px, 10.0] for i in range(n)]
 
 
 def _cfg(symbol, src_id, target=100.0):
     return {
-        "mode": "scrumming", "symbol": symbol, "target_balance": target,
+        "mode": "scrumming",
+        "symbol": symbol,
+        "target_balance": target,
         "target_asset": symbol.split("/")[0],
         "base_currency": symbol.split("/")[1],
         "_src_bot_id": src_id,
@@ -69,7 +71,8 @@ def _built(configs, wires=None, acts=None):
         configs=configs,
         candles_by_symbol={c["symbol"]: _candles() for c in configs},
         smart_wires=wires,
-        activity_log_cb=(acts.append if acts is not None else None))
+        activity_log_cb=(acts.append if acts is not None else None),
+    )
     ctl._build_sim()
     return ctl
 
@@ -100,7 +103,8 @@ class TestTheWiresActuallyRoute:
         # BOTH directions.
         src = next(b for b in ctl._bots if b.config.symbol == "BTC/USD")
         assert ctl._smart_wire_mgr.get_outgoing_wires(src.bot_id) == {
-            sim_bot_id("bbbb2222"): 20.0}
+            sim_bot_id("bbbb2222"): 20.0
+        }
         assert ctl._smart_wire_mgr.get_outgoing_wires("aaaa1111") == {}
 
     def test_the_wire_resolves_through_the_bot_s_own_id(self):
@@ -117,8 +121,7 @@ class TestTheWiresActuallyRoute:
         ctl = _built(FLEET, WIRE)
         tgt = next(b for b in ctl._bots if b.config.symbol == "ETH/USD")
         seen = []
-        tgt.apply_wire_income = lambda usd, source, **kw: seen.append(
-            (usd, source))
+        tgt.apply_wire_income = lambda usd, source, **kw: seen.append((usd, source))
 
         # v3.24.82 -- sim ids are `simulated_<live id>`, and the bot
         # itself calls `distribute_fold_profit(source_id=self.bot_id)`
@@ -127,7 +130,8 @@ class TestTheWiresActuallyRoute:
         # bot takes. Verified: $20.00 delivered at the wire's 20%.
         src = next(b for b in ctl._bots if b.config.symbol == "BTC/USD")
         ctl._smart_wire_mgr.distribute_fold_profit(
-            source_id=src.bot_id, profit_usd=100.0)
+            source_id=src.bot_id, profit_usd=100.0
+        )
 
         assert seen, "no wire income reached the target bot"
         assert seen[0][0] > 0.0
@@ -141,19 +145,18 @@ class TestTheWiresActuallyRoute:
 
 class TestTheActiveCountIsEndpointResolved:
     def test_a_wire_whose_target_is_absent_is_not_counted_active(self):
-        wires = WIRE + [{"source_id": "aaaa1111",
-                         "target_id": "ghost999", "pct": 10.0}]
+        wires = WIRE + [{"source_id": "aaaa1111", "target_id": "ghost999", "pct": 10.0}]
         acts: list[str] = []
         _built(FLEET, wires, acts=acts)
         joined = " ".join(acts)
-        assert "1 of 2" in joined, (
-            f"expected an endpoint-resolved active count, got: {joined}")
+        assert (
+            "1 of 2" in joined
+        ), f"expected an endpoint-resolved active count, got: {joined}"
 
     def test_the_import_count_alone_is_never_reported_as_active(self):
         """`import_wires` returns 2 for the fixture above. Reporting that
         is precisely the green-log-zero-effect failure."""
-        wires = WIRE + [{"source_id": "ghost111",
-                         "target_id": "ghost222", "pct": 10.0}]
+        wires = WIRE + [{"source_id": "ghost111", "target_id": "ghost222", "pct": 10.0}]
         acts: list[str] = []
         _built(FLEET, wires, acts=acts)
         joined = " ".join(acts)
@@ -169,8 +172,9 @@ class TestTheActiveCountIsEndpointResolved:
 class TestNothingReachesTheLiveBus:
     def test_the_manager_does_not_hold_the_live_bus(self):
         ctl = _built(FLEET, WIRE)
-        assert ctl._smart_wire_mgr._bus is not None, (
-            "a None bus lazily resolves get_event_bus() at smart_wire.py:508")
+        assert (
+            ctl._smart_wire_mgr._bus is not None
+        ), "a None bus lazily resolves get_event_bus() at smart_wire.py:508"
         assert ctl._smart_wire_mgr._bus is not get_event_bus()
 
     @staticmethod
@@ -202,7 +206,8 @@ class TestNothingReachesTheLiveBus:
         try:
             ctl = _built(FLEET, WIRE)
             ctl._smart_wire_mgr.distribute_fold_profit(
-                source_id="aaaa1111", profit_usd=100.0)
+                source_id="aaaa1111", profit_usd=100.0
+            )
         finally:
             detach()
         assert seen == [], f"sim wire activity reached the live bus: {seen}"
@@ -215,23 +220,22 @@ class TestNothingReachesTheLiveBus:
         for entirely the wrong reason."""
         seen, detach = self._live_spy()
         try:
-            leaky = SmartWireManager()          # no bus — the :551 shape
+            leaky = SmartWireManager()  # no bus — the :551 shape
             leaky.import_wires(WIRE)
             leaky.attach_bot("aaaa1111", object())
-            leaky.distribute_fold_profit(
-                source_id="aaaa1111", profit_usd=100.0)
+            leaky.distribute_fold_profit(source_id="aaaa1111", profit_usd=100.0)
         finally:
             detach()
         assert seen, (
             "a bus-less SmartWireManager did NOT reach the live bus — the "
-            "leak test above proves nothing")
+            "leak test above proves nothing"
+        )
 
 
 class TestTheBotRefsBelongToTheSimFleet:
     def test_set_equality_with_the_sim_fleet(self):
         ctl = _built(FLEET, WIRE)
-        assert set(ctl._smart_wire_mgr._bot_refs) == {
-            b.bot_id for b in ctl._bots}
+        assert set(ctl._smart_wire_mgr._bot_refs) == {b.bot_id for b in ctl._bots}
 
     def test_every_ref_is_a_bot_this_controller_built(self):
         """Identity, not just id equality. This is what would catch a
@@ -239,8 +243,7 @@ class TestTheBotRefsBelongToTheSimFleet:
         whose _bot_refs hold the same live objects BotManager._bots does."""
         ctl = _built(FLEET, WIRE)
         mine = {id(b) for b in ctl._bots}
-        assert all(id(r) in mine
-                   for r in ctl._smart_wire_mgr._bot_refs.values())
+        assert all(id(r) in mine for r in ctl._smart_wire_mgr._bot_refs.values())
 
     def test_the_manager_is_freshly_constructed_per_replay(self):
         a, b = _built(FLEET, WIRE), _built(FLEET, WIRE)
@@ -281,42 +284,59 @@ class TestTheFeatureReachesTheRealReadPath:
     @staticmethod
     def _panel_tree():
         import ast
-        p = (REPO_ROOT / "src" / "gui" / "simulator_tab" / "fleet"
-             / "fleet_replay_panel.py")
+
+        p = (
+            REPO_ROOT
+            / "src"
+            / "gui"
+            / "simulator_tab"
+            / "fleet"
+            / "fleet_replay_panel.py"
+        )
         return ast.parse(p.read_text(encoding="utf-8"))
 
     def test_the_panel_loads_the_wires(self):
         import ast
+
         called = {
             getattr(n.func, "id", None) or getattr(n.func, "attr", None)
-            for n in ast.walk(self._panel_tree()) if isinstance(n, ast.Call)}
+            for n in ast.walk(self._panel_tree())
+            if isinstance(n, ast.Call)
+        }
         assert "load_smart_wires_from_state" in called
 
     def test_the_panel_passes_them_to_the_controller(self):
         import ast
+
         for node in ast.walk(self._panel_tree()):
-            if (isinstance(node, ast.Call)
-                    and getattr(node.func, "id", "") == "FleetReplayController"):
+            if (
+                isinstance(node, ast.Call)
+                and getattr(node.func, "id", "") == "FleetReplayController"
+            ):
                 assert any(k.arg == "smart_wires" for k in node.keywords), (
                     f"FleetReplayController built at line {node.lineno} "
                     "without smart_wires= — the manager would never be "
-                    "constructed in the real app")
+                    "constructed in the real app"
+                )
                 return
         pytest.fail("no FleetReplayController construction found in the panel")
 
     def test_the_loader_reads_the_top_level_key(self, tmp_path):
         import json
         from src.gui.simulator_tab.fleet.bot_state_loader import (
-            load_smart_wires_from_state)
+            load_smart_wires_from_state,
+        )
+
         p = tmp_path / "bot_state.json"
-        p.write_text(json.dumps({"bots": {}, "smart_wires": WIRE}),
-                     encoding="utf-8")
+        p.write_text(json.dumps({"bots": {}, "smart_wires": WIRE}), encoding="utf-8")
         assert load_smart_wires_from_state(p) == WIRE
 
     def test_a_missing_key_is_empty_not_an_error(self, tmp_path):
         import json
         from src.gui.simulator_tab.fleet.bot_state_loader import (
-            load_smart_wires_from_state)
+            load_smart_wires_from_state,
+        )
+
         p = tmp_path / "bot_state.json"
         p.write_text(json.dumps({"bots": {}}), encoding="utf-8")
         assert load_smart_wires_from_state(p) == []
@@ -331,16 +351,20 @@ class TestNuclearDoesNotLeakEither:
 
     def test_it_constructs_the_manager_with_a_bus(self):
         import ast
-        p = (REPO_ROOT / "src" / "gui" / "simulator_tab"
-             / "nuclear_fleet_controller.py")
-        found = [n for n in ast.walk(ast.parse(p.read_text(encoding="utf-8")))
-                 if isinstance(n, ast.Call)
-                 and getattr(n.func, "id", "") == "SmartWireManager"]
+
+        p = REPO_ROOT / "src" / "gui" / "simulator_tab" / "nuclear_fleet_controller.py"
+        found = [
+            n
+            for n in ast.walk(ast.parse(p.read_text(encoding="utf-8")))
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "id", "") == "SmartWireManager"
+        ]
         assert found, "no SmartWireManager construction found"
         for call in found:
             assert any(k.arg == "bus" for k in call.keywords), (
                 f"SmartWireManager built without bus= at line {call.lineno}"
-                " — smart_wire.py:508 then resolves the LIVE bus")
+                " — smart_wire.py:508 then resolves the LIVE bus"
+            )
 
 
 class TestLedgersAreNotImported:

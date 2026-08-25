@@ -55,6 +55,7 @@ reconstruction per rule, bad and good, in
 stops failing, or a corrected body starts failing, the rule has
 stopped working.
 """
+
 from __future__ import annotations
 
 import ast
@@ -121,8 +122,8 @@ BOUNDED: dict = {
 CONFIDENCE_RE = re.compile(r"(conf|confidence|probability|pct_of|ratio)$")
 
 AVERAGE_WORDS = re.compile(
-    r"\b(average|averaging|mean|/\s*period|sum\s*/\s*period|divided by)\b",
-    re.I)
+    r"\b(average|averaging|mean|/\s*period|sum\s*/\s*period|divided by)\b", re.I
+)
 
 
 class _TAAnalyzer(ast.NodeVisitor):
@@ -156,28 +157,39 @@ class _TAAnalyzer(ast.NodeVisitor):
         # division applied to that same expression is the signature.
         bare_sum = False
         for n in ast.walk(node):
-            if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-                    and n.func.id == "sum"):
+            if not (
+                isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Name)
+                and n.func.id == "sum"
+            ):
                 continue
             parent_divides = any(
                 isinstance(pn, ast.BinOp)
                 and isinstance(pn.op, (ast.Div, ast.FloorDiv))
                 and any(c is n for c in ast.walk(pn.left))
-                for pn in ast.walk(node))
+                for pn in ast.walk(node)
+            )
             if not parent_divides:
                 bare_sum = True
                 break
         if not bare_sum:
             return
-        self.findings.append(Finding(
-            tool="ta-quant", severity="high", file=str(self.path),
-            line=node.lineno, rule_id="TA001",
-            message=(
-                f"{node.name}: docstring promises an average or a "
-                f"sum/period, but the body contains no division. "
-                f"`_wilder_smooth` said 'First value = sum/period' and "
-                f"returned the sum; ADX ran at ~14x its bound for four "
-                f"minor versions.")))
+        self.findings.append(
+            Finding(
+                tool="ta-quant",
+                severity="high",
+                file=str(self.path),
+                line=node.lineno,
+                rule_id="TA001",
+                message=(
+                    f"{node.name}: docstring promises an average or a "
+                    f"sum/period, but the body contains no division. "
+                    f"`_wilder_smooth` said 'First value = sum/period' and "
+                    f"returned the sum; ADX ran at ~14x its bound for four "
+                    f"minor versions."
+                ),
+            )
+        )
 
     # -- TA002: one-sided clamp on a bounded quantity ----------------
     # Denominators that PRESERVE units. Dividing a price by a count
@@ -196,7 +208,9 @@ class _TAAnalyzer(ast.NodeVisitor):
     COUNT_DENOM = re.compile(
         r"^(period|periods|n|count|length|window|size|len|total|num|"
         r"samples?|bars?|step|step_ms|interval|interval_ms|tf|"
-        r"granularity|ms|sec|secs|seconds)$", re.I)
+        r"granularity|ms|sec|secs|seconds)$",
+        re.I,
+    )
 
     # Names that make a `/` a PATH JOIN rather than arithmetic.
     PATHISH = re.compile(r"(path|dir|folder|home|root|file)", re.I)
@@ -213,8 +227,9 @@ class _TAAnalyzer(ast.NodeVisitor):
         full scan were this.
         """
         for n in ast.walk(value):
-            if not (isinstance(n, ast.BinOp)
-                    and isinstance(n.op, (ast.Div, ast.FloorDiv))):
+            if not (
+                isinstance(n, ast.BinOp) and isinstance(n.op, (ast.Div, ast.FloorDiv))
+            ):
                 continue
             try:
                 denom = ast.unparse(n.right)
@@ -224,11 +239,9 @@ class _TAAnalyzer(ast.NodeVisitor):
                 continue
             # A string operand or a path-ish name means this is a path
             # join, not arithmetic.
-            if isinstance(n.right, ast.Constant) and isinstance(
-                    n.right.value, str):
+            if isinstance(n.right, ast.Constant) and isinstance(n.right.value, str):
                 continue
-            if isinstance(n.left, ast.Constant) and isinstance(
-                    n.left.value, str):
+            if isinstance(n.left, ast.Constant) and isinstance(n.left.value, str):
                 continue
             if self.PATHISH.search(whole):
                 continue
@@ -237,7 +250,7 @@ class _TAAnalyzer(ast.NodeVisitor):
             # price, sma, close) normalises.
             if base and all(self.COUNT_DENOM.match(b) for b in base):
                 continue
-            if not base:            # divided by a literal — not a unit change
+            if not base:  # divided by a literal — not a unit change
                 continue
             return True
         return False
@@ -275,13 +288,20 @@ class _TAAnalyzer(ast.NodeVisitor):
         other = "max(" if fn == "min" else "min("
         if other in inner:
             return
-        self.findings.append(Finding(
-            tool="ta-quant", severity="high", file=str(self.path),
-            line=node.lineno, rule_id="TA002",
-            message=(
-                f"{target} is bounded but clamped with {fn}() only. "
-                f"Slingshot `squeeze_conf` used min(1.0, ...) with no "
-                f"floor and reported -0.2722. Clamp both ends.")))
+        self.findings.append(
+            Finding(
+                tool="ta-quant",
+                severity="high",
+                file=str(self.path),
+                line=node.lineno,
+                rule_id="TA002",
+                message=(
+                    f"{target} is bounded but clamped with {fn}() only. "
+                    f"Slingshot `squeeze_conf` used min(1.0, ...) with no "
+                    f"floor and reported -0.2722. Clamp both ends."
+                ),
+            )
+        )
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._check_average_promise(node)
@@ -326,18 +346,25 @@ class _TAAnalyzer(ast.NodeVisitor):
             r_div = bool(_names(r) & self.divided)
             if l_div == r_div:
                 continue
-            self.findings.append(Finding(
-                tool="ta-quant", severity="high", file=str(self.path),
-                line=node.lineno, rule_id="TA004",
-                message=(
-                    f"units mismatch: '{left[:36]}' "
-                    f"({'dimensionless' if l_div else 'absolute'}) compared "
-                    f"against '{r[:36]}' "
-                    f"({'dimensionless' if r_div else 'absolute'}). "
-                    f"Bollinger squeeze compared a normalised band width "
-                    f"against an ABSOLUTE price width; the flag reduced "
-                    f"to `mid > 1.33` and 21 of 35 bots could never "
-                    f"fire it.")))
+            self.findings.append(
+                Finding(
+                    tool="ta-quant",
+                    severity="high",
+                    file=str(self.path),
+                    line=node.lineno,
+                    rule_id="TA004",
+                    message=(
+                        f"units mismatch: '{left[:36]}' "
+                        f"({'dimensionless' if l_div else 'absolute'}) compared "
+                        f"against '{r[:36]}' "
+                        f"({'dimensionless' if r_div else 'absolute'}). "
+                        f"Bollinger squeeze compared a normalised band width "
+                        f"against an ABSOLUTE price width; the flag reduced "
+                        f"to `mid > 1.33` and 21 of 35 bots could never "
+                        f"fire it."
+                    ),
+                )
+            )
             break
         self.generic_visit(node)
 
@@ -352,6 +379,7 @@ def _strip_prose(src: str) -> str:
     try:
         import io
         import tokenize
+
         lines = src.split(chr(10))
         starts = []
         acc = 0
@@ -364,8 +392,7 @@ def _strip_prose(src: str) -> str:
             # the strip. This archetype's own message text mentions
             # the adx threshold incident and failed itself on it.
             _prose = {tokenize.COMMENT, tokenize.STRING}
-            for _n in ('FSTRING_MIDDLE', 'FSTRING_START',
-                       'FSTRING_END'):
+            for _n in ("FSTRING_MIDDLE", "FSTRING_START", "FSTRING_END"):
                 _t = getattr(tokenize, _n, None)
                 if _t is not None:
                     _prose.add(_t)
@@ -388,9 +415,16 @@ def _run_quant(target: Path) -> list[Finding]:
         src = target.read_text(encoding="utf-8", errors="replace")
         tree = ast.parse(src)
     except (OSError, SyntaxError) as exc:
-        return [Finding(tool="ta-quant", severity="info", file=str(target),
-                        line=0, rule_id="TA000",
-                        message=f"unparsed: {exc}")]
+        return [
+            Finding(
+                tool="ta-quant",
+                severity="info",
+                file=str(target),
+                line=0,
+                rule_id="TA000",
+                message=f"unparsed: {exc}",
+            )
+        ]
     an = _TAAnalyzer(src, target)
     an.visit(tree)
     findings = list(an.findings)
@@ -417,8 +451,8 @@ def _run_quant(target: Path) -> list[Finding]:
     # of it, so `adx_threshold` still matches `adx` while `WORKER` no
     # longer matches `er`.
     for m in re.finditer(
-            r"([A-Za-z_][A-Za-z0-9_]*)\s*"
-            r"(?:=|>=|<=|>|<)\s*([0-9]+(?:\.[0-9]+)?)", code):
+        r"([A-Za-z_][A-Za-z0-9_]*)\s*" r"(?:=|>=|<=|>|<)\s*([0-9]+(?:\.[0-9]+)?)", code
+    ):
         name, value = m.group(1), float(m.group(2))
         parts = {q.lower() for q in re.split(r"[^A-Za-z0-9]+", name) if q}
         parts.add(name.lower())
@@ -427,15 +461,22 @@ def _run_quant(target: Path) -> list[Finding]:
             continue
         lo, hi = BOUNDED[key]
         if value > hi or value < lo:
-            line = code[:m.start()].count("\n") + 1
-            findings.append(Finding(
-                tool="ta-quant", severity="high", file=str(target),
-                line=line, rule_id="TA003",
-                message=(
-                    f"{m.group(1)} compared against {value}, outside the "
-                    f"definitional range [{lo}, {hi}] for '{key}'. "
-                    f"`adx_threshold = 500.0` was a recalibration around "
-                    f"a broken ADX rather than a fix.")))
+            line = code[: m.start()].count("\n") + 1
+            findings.append(
+                Finding(
+                    tool="ta-quant",
+                    severity="high",
+                    file=str(target),
+                    line=line,
+                    rule_id="TA003",
+                    message=(
+                        f"{m.group(1)} compared against {value}, outside the "
+                        f"definitional range [{lo}, {hi}] for '{key}'. "
+                        f"`adx_threshold = 500.0` was a recalibration around "
+                        f"a broken ADX rather than a fix."
+                    ),
+                )
+            )
     return findings
 
 
@@ -456,28 +497,47 @@ def _run_chart(target: Path) -> list[Finding]:
     for i, line in enumerate(src.split("\n"), start=1):
         # range normalisation without a zero guard
         if re.search(r"/\s*\(?\s*(hi|high|mx|max_v)\s*-\s*(lo|low|mn|min_v)", line):
-            window = src.split("\n")[max(0, i - 8):i + 2]
-            if not any(re.search(r"(if\s+hi\s*<=\s*lo|1e-9|or\s+1\b|max\(1)", w)
-                       for w in window):
-                findings.append(Finding(
-                    tool="ta-chart", severity="high", file=str(target),
-                    line=i, rule_id="TA010",
-                    message=(
-                        "range normalisation with no zero guard. A flat "
-                        "series (high == low) is a real market state and "
-                        "divides by zero here.")))
+            window = src.split("\n")[max(0, i - 8) : i + 2]
+            if not any(
+                re.search(r"(if\s+hi\s*<=\s*lo|1e-9|or\s+1\b|max\(1)", w)
+                for w in window
+            ):
+                findings.append(
+                    Finding(
+                        tool="ta-chart",
+                        severity="high",
+                        file=str(target),
+                        line=i,
+                        rule_id="TA010",
+                        message=(
+                            "range normalisation with no zero guard. A flat "
+                            "series (high == low) is a real market state and "
+                            "divides by zero here."
+                        ),
+                    )
+                )
         # fixed-precision rounding of a price
-        m = re.search(r"round\(\s*([\w\.\[\]'\"]*(?:price|px|close|"
-                      r"tenkan|kijun|senkou|level)[\w\.\[\]'\"]*)\s*,\s*(\d)\s*\)",
-                      line, re.I)
+        m = re.search(
+            r"round\(\s*([\w\.\[\]'\"]*(?:price|px|close|"
+            r"tenkan|kijun|senkou|level)[\w\.\[\]'\"]*)\s*,\s*(\d)\s*\)",
+            line,
+            re.I,
+        )
         if m and int(m.group(2)) <= 4:
-            findings.append(Finding(
-                tool="ta-chart", severity="medium", file=str(target),
-                line=i, rule_id="TA011",
-                message=(
-                    f"round({m.group(1)}, {m.group(2)}) on a price. Assets "
-                    f"below ~5e-5 collapse to 0.0; this fleet holds BONK "
-                    f"at 0.0000045.")))
+            findings.append(
+                Finding(
+                    tool="ta-chart",
+                    severity="medium",
+                    file=str(target),
+                    line=i,
+                    rule_id="TA011",
+                    message=(
+                        f"round({m.group(1)}, {m.group(2)}) on a price. Assets "
+                        f"below ~5e-5 collapse to 0.0; this fleet holds BONK "
+                        f"at 0.0000045."
+                    ),
+                )
+            )
     return findings
 
 
@@ -492,6 +552,7 @@ class TAArchetype:
     def load_calibration(self) -> str:
         try:
             from tools.harness.calibrations import load
+
             return load(self.calibration_name)
         except Exception:
             return ""
@@ -512,7 +573,8 @@ class TAArchetype:
             "guard (TA010); or a fixed-precision round on a price "
             "(TA011, medium, reported not blocking). "
             "tests/test_ta_archetype.py reconstructs one real "
-            "incident per rule, with the corrected body beside it.")
+            "incident per rule, with the corrected body beside it."
+        )
         if not target.exists():
             rep.errors.append(f"target not found: {target}")
             return rep
@@ -530,8 +592,7 @@ class TAArchetype:
         # both as `ok`. MEASURED 2026-08-13 on a directory: exit 0,
         # passed=True, ta-quant `ok`, nothing scanned. A source that
         # could not be read is coverage that was not provided.
-        sources, failures = read_rule_sources(
-            rule_source_files(target, (".py",)))
+        sources, failures = read_rule_sources(rule_source_files(target, (".py",)))
         if failures or not sources:
             for detail in failures:
                 rep.errors.append(f"source read failed: {detail}")
@@ -553,13 +614,24 @@ class TAArchetype:
             # runner must pass the target path, which is a variable
             # by definition.
             proc = subprocess.run(  # noqa: S603
-                [sys.executable, "-m", "ruff", "check",
-                 "--output-format=json", "--no-cache",
-                 "--select=NPY,PD,FURB,PLR2004", str(target)],
+                [
+                    sys.executable,
+                    "-m",
+                    "ruff",
+                    "check",
+                    "--output-format=json",
+                    "--no-cache",
+                    "--select=NPY,PD,FURB,PLR2004",
+                    str(target),
+                ],
                 cwd=str(REPO_ROOT),
-                capture_output=True, text=True,
-                encoding="utf-8", errors="replace",
-                check=False, timeout=60)
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+                timeout=60,
+            )
             # An absent `python -m ruff` does NOT raise: the
             # interpreter writes "No module named ruff" to stderr,
             # exits non-zero and leaves stdout EMPTY. Without this
@@ -576,15 +648,21 @@ class TAArchetype:
                     rep.tool_availability["ruff"] = "error"
                     rep.errors.append(
                         f"ruff: exited {proc.returncode} without "
-                        f"output: {detail[:240]}")
+                        f"output: {detail[:240]}"
+                    )
                 return rep
             rep.tool_availability["ruff"] = "ok"
             for item in json.loads(proc.stdout or "[]"):
-                rep.findings.append(Finding(
-                    tool="ruff", severity="low", file=str(target),
-                    line=(item.get("location") or {}).get("row", 0),
-                    rule_id=str(item.get("code") or "?"),
-                    message=str(item.get("message") or "")))
+                rep.findings.append(
+                    Finding(
+                        tool="ruff",
+                        severity="low",
+                        file=str(target),
+                        line=(item.get("location") or {}).get("row", 0),
+                        rule_id=str(item.get("code") or "?"),
+                        message=str(item.get("message") or ""),
+                    )
+                )
         except Exception as exc:
             # "error", not a free-form string. `unavailable: ...` was
             # a status no consumer matched, so a broken ruff read as

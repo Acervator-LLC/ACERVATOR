@@ -79,16 +79,12 @@ BOT_TABLE_FIELD_IDS = (
     "bot_table.fire",
 )
 
-IVP_FIELD_IDS = (
-    "ivp.bot_selector",
-)
+IVP_FIELD_IDS = ("ivp.bot_selector",)
 
 # v3.23.9 — Bot Swarm tab additions. Per operator-pinned spec Q2 (c),
 # a SINGLE field id covers BOTH bot hash IDs AND symbol labels in the
 # Bot Swarm visualizer. One red-dot toggle, one field id, masks both.
-BOT_SWARM_FIELD_IDS = (
-    "bot_swarm.identifiers",
-)
+BOT_SWARM_FIELD_IDS = ("bot_swarm.identifiers",)
 
 ALL_FIELD_IDS = (
     KPI_FIELD_IDS
@@ -109,9 +105,20 @@ assert len(ALL_FIELD_IDS) == 19, (
 # pin the leak-guard contract (these field ids must NOT be in the
 # registry's known-key list and ``mask_or`` must short-circuit on them).
 TA_FIELD_IDS_EXCLUDED = (
-    "ta.bb", "ta.vtx", "ta.macd", "ta.srsi", "ta.ichi", "ta.vol",
-    "ta.sling", "ta.adx", "ta.strd", "ta.zsc", "ta.ker", "ta.rsi",
-    "ta.net", "ta.conf",
+    "ta.bb",
+    "ta.vtx",
+    "ta.macd",
+    "ta.srsi",
+    "ta.ichi",
+    "ta.vol",
+    "ta.sling",
+    "ta.adx",
+    "ta.strd",
+    "ta.zsc",
+    "ta.ker",
+    "ta.rsi",
+    "ta.net",
+    "ta.conf",
 )
 
 
@@ -160,8 +167,7 @@ class PrivacyMaskRegistry:
     registration step. ``set_all`` only touches the 18 canonical ids.
     """
 
-    def __init__(self, settings_path: Optional[Path] = None,
-                 autosave: bool = True):
+    def __init__(self, settings_path: Optional[Path] = None, autosave: bool = True):
         self._lock = threading.RLock()
         self._mask_state: dict[str, bool] = {fid: False for fid in ALL_FIELD_IDS}
         self._settings_path = settings_path or _default_settings_path()
@@ -223,8 +229,7 @@ class PrivacyMaskRegistry:
         try:
             payload = self._load_existing_payload()
             namespace = {
-                fid: bool(self._mask_state.get(fid, False))
-                for fid in self._mask_state
+                fid: bool(self._mask_state.get(fid, False)) for fid in self._mask_state
             }
             payload["privacy_mask"] = namespace
             self._settings_path.parent.mkdir(parents=True, exist_ok=True)
@@ -235,8 +240,7 @@ class PrivacyMaskRegistry:
             )
             tmp_path.replace(self._settings_path)
         except Exception as exc:  # R28-OK: persistence best-effort
-            logger.warning(
-                "PrivacyMaskRegistry: persist failed: %s", exc)
+            logger.warning("PrivacyMaskRegistry: persist failed: %s", exc)
 
     def _load_existing_payload(self) -> dict:
         try:
@@ -248,7 +252,9 @@ class PrivacyMaskRegistry:
         except Exception as exc:  # R28-OK: corrupt file → start fresh
             logger.warning(
                 "PrivacyMaskRegistry: settings.json unreadable (%s), "
-                "starting fresh.", exc)
+                "starting fresh.",
+                exc,
+            )
         return {}
 
     def reload_from_disk(self) -> None:
@@ -257,8 +263,9 @@ class PrivacyMaskRegistry:
         process restarts. Safe to call multiple times."""
         with self._lock:
             payload = self._load_existing_payload()
-            namespace = payload.get("privacy_mask", {}) if isinstance(
-                payload, dict) else {}
+            namespace = (
+                payload.get("privacy_mask", {}) if isinstance(payload, dict) else {}
+            )
             if isinstance(namespace, dict):
                 for fid in ALL_FIELD_IDS:
                     if fid in namespace:
@@ -286,8 +293,7 @@ def get_privacy_mask_registry() -> PrivacyMaskRegistry:
             try:
                 reg.reload_from_disk()
             except Exception as exc:  # R28-OK
-                logger.warning(
-                    "PrivacyMaskRegistry: cold-load failed: %s", exc)
+                logger.warning("PrivacyMaskRegistry: cold-load failed: %s", exc)
             _SINGLETON = reg
         return _SINGLETON
 

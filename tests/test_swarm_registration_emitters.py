@@ -71,7 +71,7 @@ from src.core.signal_contract import SignalSink  # noqa: E402
 # WRAPS it and only ever adds a condition.
 from tests.test_signal_operation_duration import _busy_wait, _tracks  # noqa: E402
 
-if TYPE_CHECKING:                       # pragma: no cover
+if TYPE_CHECKING:  # pragma: no cover
     # Annotation only. PySide6 must not be imported at module scope:
     # the predicate control below is pure Python and has to run on a
     # box without Qt.
@@ -124,17 +124,25 @@ def qapp() -> QApplication:
 
 def _app():
     from PySide6.QtWidgets import QApplication
+
     return QApplication.instance() or QApplication([])
 
 
 def _tab():
     from src.gui.bot_visualizer import BotVisualizationTab
+
     return BotVisualizationTab()
 
 
 def _register(tab, layer: str, ident: str):
-    cfg = {"asset": "CHIP/USD", "pair": "CHIP/USD", "mode": layer.upper(),
-           "timeframe": "5m", "capital": 100.0, "candle_total": 10}
+    cfg = {
+        "asset": "CHIP/USD",
+        "pair": "CHIP/USD",
+        "mode": layer.upper(),
+        "timeframe": "5m",
+        "capital": 100.0,
+        "candle_total": 10,
+    }
     if layer == "sim":
         return tab.register_sim_run(ident, "CHIP", cfg)
     return tab.register_paper_run(ident, "CHIP", cfg)
@@ -144,8 +152,7 @@ def _records(sink: SignalSink, name: str):
     return [r for r in sink.records() if r.name == name]
 
 
-def _tracks_the_registration(short: float | None,
-                             long_: float | None) -> bool:
+def _tracks_the_registration(short: float | None, long_: float | None) -> bool:
     """Ask `_tracks`, then add a floor. The floor is the whole point.
 
     `_tracks` asks that the long reading be more than twice the short
@@ -174,9 +181,9 @@ def _tracks_the_registration(short: float | None,
     return _tracks(short, long_)
 
 
-def _duration_of_a_registration(monkeypatch: pytest.MonkeyPatch,
-                                emitter: str, layer: str, ident: str,
-                                burn: float) -> float | None:
+def _duration_of_a_registration(
+    monkeypatch: pytest.MonkeyPatch, emitter: str, layer: str, ident: str, burn: float
+) -> float | None:
     """Time one real registration that carries `burn` seconds of work.
 
     The extra work goes INSIDE the bracketed region. The lever wraps
@@ -271,8 +278,9 @@ def test_a_misrouted_row_is_reported(monkeypatch, emitter, layer):
         sc.set_sink(previous)
 
     rec = _records(sink, emitter)[0]
-    assert rec.actual == wrong, (
-        "the emitter reported the addressed layer, not the row's")
+    assert (
+        rec.actual == wrong
+    ), "the emitter reported the addressed layer, not the row's"
     assert rec.expected == layer
     assert rec.ok is False, "a misroute must fail the check"
 
@@ -304,8 +312,8 @@ def test_each_registration_carries_a_duration(emitter, layer):
 
 @pytest.mark.parametrize("emitter,layer", LAYERS)
 def test_the_duration_tracks_the_real_registration(
-        monkeypatch: pytest.MonkeyPatch, qapp: QApplication,
-        emitter: str, layer: str) -> None:
+    monkeypatch: pytest.MonkeyPatch, qapp: QApplication, emitter: str, layer: str
+) -> None:
     """Drive one registration at two known workloads and read the clock.
 
     THE duration control. A constant fails it; a dead clock fails it. A
@@ -319,9 +327,11 @@ def test_the_duration_tracks_the_real_registration(
     qapp.processEvents()
 
     short = _duration_of_a_registration(
-        monkeypatch, emitter, layer, f"{layer}-dur-short", LEVER_SHORT_S)
+        monkeypatch, emitter, layer, f"{layer}-dur-short", LEVER_SHORT_S
+    )
     long_ = _duration_of_a_registration(
-        monkeypatch, emitter, layer, f"{layer}-dur-long", LEVER_LONG_S)
+        monkeypatch, emitter, layer, f"{layer}-dur-long", LEVER_LONG_S
+    )
 
     assert short is not None, "no duration recorded for the short workload"
     assert long_ is not None, "no duration recorded for the long workload"
@@ -330,8 +340,9 @@ def test_the_duration_tracks_the_real_registration(
     # control; the control is the predicate below.
     assert short == pytest.approx(LEVER_SHORT_S, abs=0.020), short
     assert long_ == pytest.approx(LEVER_LONG_S, abs=0.030), long_
-    assert _tracks_the_registration(short, long_), (
-        f"the duration did not track the work: {short} vs {long_}")
+    assert _tracks_the_registration(
+        short, long_
+    ), f"the duration did not track the work: {short} vs {long_}"
 
 
 def test_the_registration_duration_predicate_can_fail() -> None:
@@ -341,14 +352,18 @@ def test_the_registration_duration_predicate_can_fail() -> None:
     nothing. Each line here is one way this site could be blinded while
     still handing the sink a `duration` field of the right shape.
     """
-    assert not _tracks_the_registration(1.0, 1.0), (
-        "a constant duration must not read as tracking")
-    assert not _tracks_the_registration(None, 0.121), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_registration(0.011, None), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_registration(0.121, 0.011), (
-        "going backwards must not read as tracking")
+    assert not _tracks_the_registration(
+        1.0, 1.0
+    ), "a constant duration must not read as tracking"
+    assert not _tracks_the_registration(
+        None, 0.121
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_registration(
+        0.011, None
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_registration(
+        0.121, 0.011
+    ), "going backwards must not read as tracking"
 
     # The zero-length bracket, and the measured reason this site carries
     # a floor that `_tracks` does not. This pair is a real one: the
@@ -357,11 +372,14 @@ def test_the_registration_duration_predicate_can_fail() -> None:
     # does not move either verdict. The shared predicate ACCEPTS it. The
     # site rule rejects it. That is an addition to `_tracks`, never a
     # relaxation of it.
-    assert _tracks(1.0e-07, 4.0e-07), (
-        "the shared predicate is expected to accept a dead clock here")
-    assert not _tracks_the_registration(1.0e-07, 4.0e-07), (
-        "a bracket that spans no work must not read as tracking")
+    assert _tracks(
+        1.0e-07, 4.0e-07
+    ), "the shared predicate is expected to accept a dead clock here"
+    assert not _tracks_the_registration(
+        1.0e-07, 4.0e-07
+    ), "a bracket that spans no work must not read as tracking"
 
     # The pair measured off the real site, 2026-08-20.
-    assert _tracks_the_registration(0.01112, 0.12135), (
-        "the real measured pair must read as tracking")
+    assert _tracks_the_registration(
+        0.01112, 0.12135
+    ), "the real measured pair must read as tracking"

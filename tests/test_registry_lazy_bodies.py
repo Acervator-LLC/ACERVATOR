@@ -27,6 +27,7 @@ equivalence tests below are the ones that matter — a metadata path that
 disagrees with the candles would be a silent wrong answer, which is worse
 than a slow correct one.
 """
+
 from __future__ import annotations
 
 import sys
@@ -39,19 +40,26 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from src.trading.stone_tablets.registry import (  # noqa: E402
-    NATIVE_TIMEFRAME, StoneTabletsRegistry, WindowStatus,
+    NATIVE_TIMEFRAME,
+    StoneTabletsRegistry,
+    WindowStatus,
 )
 from src.trading.stone_tablets.storage import (  # noqa: E402
-    Tablet, TabletEntry, write_manifest, write_tablet,
+    Tablet,
+    TabletEntry,
+    write_manifest,
+    write_tablet,
 )
 
-_BASE = 1_774_915_200_000        # 2026-04-01T00:00:00Z
-_STEP = 300_000                  # 5m
+_BASE = 1_774_915_200_000  # 2026-04-01T00:00:00Z
+_STEP = 300_000  # 5m
 
 
 def _candles(n, start_ts=_BASE, px=100.0):
-    return [[start_ts + i * _STEP, px, px * 1.01, px * 0.99,
-             px * 1.005, 10.0 + i] for i in range(n)]
+    return [
+        [start_ts + i * _STEP, px, px * 1.01, px * 0.99, px * 1.005, 10.0 + i]
+        for i in range(n)
+    ]
 
 
 @pytest.fixture
@@ -62,24 +70,38 @@ def archive(tmp_path):
     spec = {"BTC": 300, "ETH": 120, "SOL": 40}
     entries = []
     for asset, n in spec.items():
-        tab = Tablet(asset=asset, exchange_id="coinbase",
-                     timeframe=NATIVE_TIMEFRAME, year=2026,
-                     source="test", fetched_at="2026-08-04",
-                     candles=_candles(n))
+        tab = Tablet(
+            asset=asset,
+            exchange_id="coinbase",
+            timeframe=NATIVE_TIMEFRAME,
+            year=2026,
+            source="test",
+            fetched_at="2026-08-04",
+            candles=_candles(n),
+        )
         write_tablet(tab, root=root)
-        entries.append(TabletEntry(
-            asset=asset, exchange_id="coinbase",
-            timeframe=NATIVE_TIMEFRAME, year=2026,
-            file=f"{asset}_5m_2026_coinbase.json",
-            checksum_sha256=tab.compute_checksum(), candle_count=n,
-            first_ts_ms=tab.first_ts_ms, last_ts_ms=tab.last_ts_ms,
-            fetched_at="2026-08-04", source="test",
-            listed_at_ms=tab.first_ts_ms))
+        entries.append(
+            TabletEntry(
+                asset=asset,
+                exchange_id="coinbase",
+                timeframe=NATIVE_TIMEFRAME,
+                year=2026,
+                file=f"{asset}_5m_2026_coinbase.json",
+                checksum_sha256=tab.compute_checksum(),
+                candle_count=n,
+                first_ts_ms=tab.first_ts_ms,
+                last_ts_ms=tab.last_ts_ms,
+                fetched_at="2026-08-04",
+                source="test",
+                listed_at_ms=tab.first_ts_ms,
+            )
+        )
     write_manifest(entries, root=root)
     return root, spec
 
 
 # ── laziness ─────────────────────────────────────────────────────
+
 
 def test_construction_loads_no_bodies(archive):
     """The whole point: boot must not parse candle files."""
@@ -96,8 +118,8 @@ def test_boot_path_queries_load_no_bodies(archive):
     cov = reg.coverage_summary()
     stale = reg.stale_assets(now_ms=_BASE + _STEP * 400)
     assert reg._tablets == {}, (
-        "boot-path query forced a body load: "
-        f"{sorted(reg._tablets)}")
+        "boot-path query forced a body load: " f"{sorted(reg._tablets)}"
+    )
     assert len(cov) == len(spec)
     assert isinstance(stale, list)
 
@@ -112,6 +134,7 @@ def test_body_loads_only_when_candles_are_requested(archive):
 
 
 # ── metadata answers agree with bodies ───────────────────────────
+
 
 def test_coverage_totals_match_the_candle_bodies(archive):
     """Metadata-derived totals must equal what the bodies actually
@@ -159,19 +182,23 @@ def test_get_candles_returns_the_requested_window(archive):
 def test_window_availability_still_classifies(archive):
     root, _ = archive
     reg = StoneTabletsRegistry(root=root)
-    assert reg.check_window_availability(
-        "BTC", _BASE, _BASE + _STEP * 299) == WindowStatus.FULL
-    assert reg.check_window_availability(
-        "NOPE", _BASE, _BASE + _STEP) == WindowStatus.EMPTY
+    assert (
+        reg.check_window_availability("BTC", _BASE, _BASE + _STEP * 299)
+        == WindowStatus.FULL
+    )
+    assert (
+        reg.check_window_availability("NOPE", _BASE, _BASE + _STEP)
+        == WindowStatus.EMPTY
+    )
 
 
 def test_unknown_asset_returns_none(archive):
     root, _ = archive
-    assert StoneTabletsRegistry(
-        root=root).get_asset_availability("NOPE") is None
+    assert StoneTabletsRegistry(root=root).get_asset_availability("NOPE") is None
 
 
 # ── missing / corrupt files ──────────────────────────────────────
+
 
 def test_manifest_row_with_missing_file_is_skipped(archive):
     """Old behaviour was warn-and-skip at load. Lazy loading must keep
@@ -189,17 +216,18 @@ def test_corrupt_body_is_treated_as_absent(archive):
     discovered on first body read and must not raise."""
     root, _ = archive
     reg = StoneTabletsRegistry(root=root)
-    (root / "SOL_5m_2026_coinbase.json").write_text(
-        "{ not json", encoding="utf-8")
+    (root / "SOL_5m_2026_coinbase.json").write_text("{ not json", encoding="utf-8")
     assert reg.get_candles("SOL", 0, 10**15) == []
 
 
 # ── the body cache is bounded ────────────────────────────────────
 
+
 def test_cache_is_evicted_past_the_cap(archive, monkeypatch):
     """Without a cap, a 406-asset sweep re-accumulates the 2.3 GB this
     change exists to avoid."""
     from src.trading.stone_tablets import registry as R
+
     root, spec = archive
     monkeypatch.setattr(R, "_BODY_CACHE_MAX", 2)
     reg = R.StoneTabletsRegistry(root=root)
@@ -212,6 +240,7 @@ def test_eviction_does_not_lose_data(archive, monkeypatch):
     """An evicted body must reload transparently and return the same
     candles."""
     from src.trading.stone_tablets import registry as R
+
     root, spec = archive
     monkeypatch.setattr(R, "_BODY_CACHE_MAX", 1)
     reg = R.StoneTabletsRegistry(root=root)
@@ -223,6 +252,7 @@ def test_eviction_does_not_lose_data(archive, monkeypatch):
 
 
 # ── ingest ───────────────────────────────────────────────────────
+
 
 def test_ingest_appends_and_updates_metadata(archive):
     root, spec = archive
@@ -239,8 +269,11 @@ def test_ingest_survives_a_fresh_registry(archive):
     root, spec = archive
     reg = StoneTabletsRegistry(root=root)
     reg.ingest_candles(
-        "BTC", NATIVE_TIMEFRAME,
-        _candles(7, start_ts=_BASE + _STEP * 2000, px=300.0), "test")
+        "BTC",
+        NATIVE_TIMEFRAME,
+        _candles(7, start_ts=_BASE + _STEP * 2000, px=300.0),
+        "test",
+    )
     reloaded = StoneTabletsRegistry(root=root)
     cov = next(c for c in reloaded.coverage_summary() if c.asset == "BTC")
     assert cov.total_candles == spec["BTC"] + 7
@@ -253,8 +286,8 @@ def test_ingest_does_not_drop_other_manifest_rows(archive):
     root, spec = archive
     reg = StoneTabletsRegistry(root=root)
     reg.ingest_candles(
-        "BTC", NATIVE_TIMEFRAME,
-        _candles(3, start_ts=_BASE + _STEP * 3000), "test")
+        "BTC", NATIVE_TIMEFRAME, _candles(3, start_ts=_BASE + _STEP * 3000), "test"
+    )
     reloaded = StoneTabletsRegistry(root=root)
     assets = {c.asset for c in reloaded.coverage_summary()}
     assert assets == set(spec), f"manifest rows lost: {set(spec) - assets}"
@@ -263,8 +296,7 @@ def test_ingest_does_not_drop_other_manifest_rows(archive):
 def test_ingest_of_a_new_asset_works(archive):
     root, _ = archive
     reg = StoneTabletsRegistry(root=root)
-    added = reg.ingest_candles(
-        "DOGE", NATIVE_TIMEFRAME, _candles(9), "test")
+    added = reg.ingest_candles("DOGE", NATIVE_TIMEFRAME, _candles(9), "test")
     assert added == 9
     reloaded = StoneTabletsRegistry(root=root)
     assert "DOGE" in {c.asset for c in reloaded.coverage_summary()}

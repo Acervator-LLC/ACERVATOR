@@ -13,13 +13,12 @@ app, a live exchange, or a fully-constructed bot. They pin the
 STRUCTURE of the fix so a future refactor can't silently regress the
 audit findings.
 """
+
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 import pytest
-
 
 REPO = Path(__file__).resolve().parent.parent
 SCRUMMING = REPO / "src" / "trading" / "scrumming_bot.py"
@@ -62,8 +61,11 @@ class TestP1_ActiveOrdersWired:
         only count orders for THIS bot's pair. A global fetch would
         conflate every bot on the same exchange."""
         # Simple substring check for the composed form
-        assert "get_open_orders(\n                        self.config.symbol)" in scrumming_source or \
-               "get_open_orders(self.config.symbol)" in scrumming_source, (
+        assert (
+            "get_open_orders(\n                        self.config.symbol)"
+            in scrumming_source
+            or "get_open_orders(self.config.symbol)" in scrumming_source
+        ), (
             "get_open_orders must be called with self.config.symbol to "
             "scope the count to THIS bot's trading pair"
         )
@@ -87,7 +89,10 @@ class TestP2_UnrealisedCostBasisFromExchange:
         """The Unrealised P/L compute path must reference
         cost_basis_total_exchange, not just the internal _main_lots sum."""
         # Find the unrealised_pnl assignment block
-        assert "self.stats.unrealised_pnl = _market_value - _cost_basis" in scrumming_source
+        assert (
+            "self.stats.unrealised_pnl = _market_value - _cost_basis"
+            in scrumming_source
+        )
         # ... and that block must consider the exchange value first
         assert "cost_basis_total_exchange" in scrumming_source
 
@@ -158,17 +163,19 @@ class TestMarketCheckIntervalRetired:
         """The dataclass must not re-acquire market_check_interval."""
         # Tolerate the removal-note comment; reject any 'name: type' form
         import re
+
         assert not re.search(
-            r"^\s*market_check_interval\s*:\s*int",
-            container_source, re.MULTILINE
+            r"^\s*market_check_interval\s*:\s*int", container_source, re.MULTILINE
         ), "market_check_interval field re-appeared on BotConfig"
 
     def test_field_not_in_scrumming_only_allowlist(self, container_source):
         """The kwarg allowlist must not include it."""
         import re
+
         m = re.search(
-            r"_BOT_CONFIG_SCRUMMING_ONLY_FIELDS.*?frozenset\(\{(.*?)\}\)",
-            container_source, re.DOTALL,
+            r"_BOT_CONFIG_SCRUMMING_ONLY_FIELDS.*?frozenset\(\s*\{(.*?)\}\s*\)",
+            container_source,
+            re.DOTALL,
         )
         assert m, "SCRUMMING_ONLY_FIELDS allowlist not found"
         assert '"market_check_interval"' not in m.group(1), (
@@ -185,13 +192,13 @@ class TestMarketCheckIntervalRetired:
         i = src.find("def _create_settings_tab")
         assert i > 0
         # Search inside that method (a few thousand chars is enough)
-        body = src[i:i + 40000]
-        assert 'setValue(cfg.market_check_interval)' not in body, (
-            "Check Interval widget still populates from cfg.market_check_interval"
-        )
-        assert '_mark_changed("market_check_interval"' not in body, (
-            "Check Interval widget still emits mark_changed with the retired key"
-        )
+        body = src[i : i + 40000]
+        assert (
+            "setValue(cfg.market_check_interval)" not in body
+        ), "Check Interval widget still populates from cfg.market_check_interval"
+        assert (
+            '_mark_changed("market_check_interval"' not in body
+        ), "Check Interval widget still emits mark_changed with the retired key"
 
     def test_no_main_window_restore_reference(self):
         """The main_window.py restore path must not pass "

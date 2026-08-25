@@ -28,6 +28,7 @@ class RiskAction(Enum):
 @dataclass
 class RiskRule:
     """A single risk rule with threshold and action."""
+
     name: str
     description: str
     enabled: bool = True
@@ -40,6 +41,7 @@ class RiskRule:
 @dataclass
 class RiskAlert:
     """A triggered risk event."""
+
     timestamp: float
     rule_name: str
     severity: str  # "warning", "critical"
@@ -52,6 +54,7 @@ class RiskAlert:
 @dataclass
 class PortfolioSnapshot:
     """Point-in-time snapshot of portfolio state."""
+
     timestamp: float
     total_pnl: float
     total_exposure: float  # Total USD deployed across all bots
@@ -206,8 +209,13 @@ class RiskManager:
     def enabled(self, val: bool):
         self._enabled = val
 
-    def set_rule(self, name: str, threshold: float = None, enabled: bool = None,
-                 action: RiskAction = None):
+    def set_rule(
+        self,
+        name: str,
+        threshold: float = None,
+        enabled: bool = None,
+        action: RiskAction = None,
+    ):
         """Update a risk rule's parameters."""
         if name not in self._rules:
             logger.warning("Unknown risk rule: %s", name)
@@ -241,7 +249,7 @@ class RiskManager:
         snapshot = self._build_snapshot(bm, now)
         self._snapshots.append(snapshot)
         if len(self._snapshots) > self._max_snapshots:
-            self._snapshots = self._snapshots[-self._max_snapshots:]
+            self._snapshots = self._snapshots[-self._max_snapshots :]
 
         # Track peak P/L
         if snapshot.total_pnl > self._peak_pnl:
@@ -257,11 +265,14 @@ class RiskManager:
             for rule_name in ["max_drawdown", "critical_drawdown"]:
                 rule = self._rules.get(rule_name)
                 if rule and rule.enabled and snapshot.drawdown_pct >= rule.threshold:
-                    alert = self._trigger_rule(rule, now,
+                    alert = self._trigger_rule(
+                        rule,
+                        now,
                         f"Portfolio drawdown {snapshot.drawdown_pct:.1f}% exceeds "
                         f"{rule.threshold:.1f}% threshold (peak ${self._peak_pnl:.2f}, "
                         f"current ${snapshot.total_pnl:.2f})",
-                        value=snapshot.drawdown_pct)
+                        value=snapshot.drawdown_pct,
+                    )
                     if alert:
                         new_alerts.append(alert)
 
@@ -272,10 +283,14 @@ class RiskManager:
                 pnl = status.get("stats", {}).get("realised_pnl", 0)
                 bid = status.get("bot_id", "")
                 if pnl < -rule.threshold and bid not in self._paused_by_risk:
-                    alert = self._trigger_rule(rule, now,
+                    alert = self._trigger_rule(
+                        rule,
+                        now,
                         f"Bot {bid[:8]} loss ${pnl:.2f} exceeds "
                         f"${rule.threshold:.2f} limit",
-                        bot_id=bid, value=abs(pnl))
+                        bot_id=bid,
+                        value=abs(pnl),
+                    )
                     if alert:
                         new_alerts.append(alert)
 
@@ -285,10 +300,13 @@ class RiskManager:
             for asset, exposure in snapshot.asset_exposures.items():
                 pct = (exposure / snapshot.total_exposure) * 100
                 if pct >= rule.threshold:
-                    alert = self._trigger_rule(rule, now,
+                    alert = self._trigger_rule(
+                        rule,
+                        now,
                         f"{asset} concentration {pct:.1f}% exceeds "
                         f"{rule.threshold:.0f}% limit (${exposure:.2f})",
-                        value=pct)
+                        value=pct,
+                    )
                     if alert:
                         new_alerts.append(alert)
 
@@ -298,10 +316,13 @@ class RiskManager:
             for exch, exposure in snapshot.exchange_exposures.items():
                 pct = (exposure / snapshot.total_exposure) * 100
                 if pct >= rule.threshold:
-                    alert = self._trigger_rule(rule, now,
+                    alert = self._trigger_rule(
+                        rule,
+                        now,
                         f"{exch.capitalize()} concentration {pct:.1f}% exceeds "
                         f"{rule.threshold:.0f}% limit",
-                        value=pct)
+                        value=pct,
+                    )
                     if alert:
                         new_alerts.append(alert)
 
@@ -312,10 +333,13 @@ class RiskManager:
             for group_assets, combined_pct in corr_groups:
                 if combined_pct >= rule.threshold:
                     names = "+".join(group_assets)
-                    alert = self._trigger_rule(rule, now,
+                    alert = self._trigger_rule(
+                        rule,
+                        now,
                         f"Correlated assets ({names}) combined exposure "
                         f"{combined_pct:.1f}% exceeds {rule.threshold:.0f}% limit",
-                        value=combined_pct)
+                        value=combined_pct,
+                    )
                     if alert:
                         new_alerts.append(alert)
 
@@ -323,16 +347,21 @@ class RiskManager:
         rule = self._rules.get("rapid_loss")
         if rule and rule.enabled and len(self._snapshots) >= 2:
             window = 300  # 5 minutes
-            old_snaps = [s for s in self._snapshots
-                         if now - s.timestamp <= window]
+            old_snaps = [s for s in self._snapshots if now - s.timestamp <= window]
             if old_snaps and old_snaps[0].total_pnl > 0:
-                loss_pct = ((old_snaps[0].total_pnl - snapshot.total_pnl)
-                            / old_snaps[0].total_pnl * 100)
+                loss_pct = (
+                    (old_snaps[0].total_pnl - snapshot.total_pnl)
+                    / old_snaps[0].total_pnl
+                    * 100
+                )
                 if loss_pct >= rule.threshold:
-                    alert = self._trigger_rule(rule, now,
+                    alert = self._trigger_rule(
+                        rule,
+                        now,
                         f"Rapid loss {loss_pct:.1f}% in {window}s window — "
                         f"possible flash crash",
-                        value=loss_pct)
+                        value=loss_pct,
+                    )
                     if alert:
                         new_alerts.append(alert)
 
@@ -400,13 +429,21 @@ class RiskManager:
                     key = tuple(sorted([a, b]))
                     if key not in seen:
                         seen.add(key)
-                        combined = (asset_exposures[a] + asset_exposures[b]) / total * 100
+                        combined = (
+                            (asset_exposures[a] + asset_exposures[b]) / total * 100
+                        )
                         results.append(([a, b], combined))
 
         return results
 
-    def _trigger_rule(self, rule: RiskRule, now: float, message: str,
-                      bot_id: str = "", value: float = 0.0) -> Optional[RiskAlert]:
+    def _trigger_rule(
+        self,
+        rule: RiskRule,
+        now: float,
+        message: str,
+        bot_id: str = "",
+        value: float = 0.0,
+    ) -> Optional[RiskAlert]:
 
         # sadp: R28 R33  # risk trigger: fail-loudly(R28) append-only log(R33)
         """Trigger a rule if cooldown has expired."""
@@ -414,7 +451,11 @@ class RiskManager:
             return None
 
         rule.last_triggered = now
-        severity = "critical" if rule.action in (RiskAction.PAUSE_ALL, RiskAction.STOP_BOT) else "warning"
+        severity = (
+            "critical"
+            if rule.action in (RiskAction.PAUSE_ALL, RiskAction.STOP_BOT)
+            else "warning"
+        )
 
         alert = RiskAlert(
             timestamp=now,
@@ -428,9 +469,11 @@ class RiskManager:
 
         self._alerts.append(alert)
         if len(self._alerts) > self._max_alerts:
-            self._alerts = self._alerts[-self._max_alerts:]
+            self._alerts = self._alerts[-self._max_alerts :]
 
-        logger.warning("RISK ALERT [%s]: %s (action=%s)", rule.name, message, rule.action.value)
+        logger.warning(
+            "RISK ALERT [%s]: %s (action=%s)", rule.name, message, rule.action.value
+        )
 
         # Execute action
         if rule.action == RiskAction.PAUSE_BOT and bot_id:
@@ -452,9 +495,16 @@ class RiskManager:
             "drawdown_pct": latest.drawdown_pct if latest else 0,
             "peak_pnl": self._peak_pnl,
             "alerts_1h": len(recent_alerts),
-            "critical_alerts": sum(1 for a in recent_alerts if a.severity == "critical"),
+            "critical_alerts": sum(
+                1 for a in recent_alerts if a.severity == "critical"
+            ),
             "paused_by_risk": list(self._paused_by_risk),
-            "rules": {name: {"enabled": r.enabled, "threshold": r.threshold,
-                             "action": r.action.value}
-                      for name, r in self._rules.items()},
+            "rules": {
+                name: {
+                    "enabled": r.enabled,
+                    "threshold": r.threshold,
+                    "action": r.action.value,
+                }
+                for name, r in self._rules.items()
+            },
         }

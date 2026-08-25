@@ -23,6 +23,7 @@ Tests exercise the exact increment formulas by patching a minimal
 ScrummingBot-like shim so the whole tick machinery doesn't need to
 boot.
 """
+
 from __future__ import annotations
 
 import ast
@@ -34,9 +35,9 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-SCRUMMING_BOT_SRC = (
-    REPO / "src" / "trading" / "scrumming_bot.py"
-).read_text(encoding="utf-8")
+SCRUMMING_BOT_SRC = (REPO / "src" / "trading" / "scrumming_bot.py").read_text(
+    encoding="utf-8"
+)
 
 
 def _count_increment_sites(field: str) -> int:
@@ -45,7 +46,7 @@ def _count_increment_sites(field: str) -> int:
     than the exact block, so a future refactor that keeps the write
     but rearranges lines still passes."""
     pat = re.compile(
-        rf"self\.stats\.{re.escape(field)}\s*=\s*float\(getattr\(\s*"
+        rf"self\.stats\.{re.escape(field)}\s*=\s*\(?\s*float\(getattr\(\s*"
         rf"self\.stats,\s*['\"]" + re.escape(field) + r"['\"]",
         re.MULTILINE,
     )
@@ -59,14 +60,16 @@ def test_scrummed_usd_has_per_trade_write_site():
         "missing. The sell success path in _execute_sell must add "
         "_fill_usd to stats.ytd_scrummed_usd — otherwise the field "
         "only updates during the 5-min-throttled boot sync (see "
-        "operator report 2026-07-31).")
+        "operator report 2026-07-31)."
+    )
 
 
 def test_folded_usd_has_per_trade_write_site():
     """BUY success path (FOLD) must increment ytd_folded_usd."""
     assert _count_increment_sites("ytd_folded_usd") >= 1, (
         "v3.23.78 regression: ytd_folded_usd per-trade increment "
-        "missing. See matching comment on ytd_scrummed_usd.")
+        "missing. See matching comment on ytd_scrummed_usd."
+    )
 
 
 def test_increment_uses_quote_to_usd_conversion():
@@ -77,15 +80,18 @@ def test_increment_uses_quote_to_usd_conversion():
     # Every _fill_usd computation in the per-trade increment blocks
     # must include _qrate (bound from _quote_to_usd).
     fill_usd_lines = [
-        line for line in SCRUMMING_BOT_SRC.splitlines()
-        if "_fill_usd = float(amount)" in line]
+        line
+        for line in SCRUMMING_BOT_SRC.splitlines()
+        if "_fill_usd = float(amount)" in line
+    ]
     assert len(fill_usd_lines) >= 2, (
         "expected two _fill_usd computations (one in sell, one in "
-        f"buy); found {len(fill_usd_lines)}")
+        f"buy); found {len(fill_usd_lines)}"
+    )
     for line in fill_usd_lines:
         assert "_qrate" in line, (
-            f"per-trade YTD USD must apply _quote_to_usd conversion: "
-            f"{line!r}")
+            f"per-trade YTD USD must apply _quote_to_usd conversion: " f"{line!r}"
+        )
 
 
 def test_increment_blocks_are_guarded_against_bad_values():
@@ -112,11 +118,14 @@ def test_increment_blocks_are_guarded_against_bad_values():
     """
     tree = ast.parse(SCRUMMING_BOT_SRC)
     marker_lines = [
-        i for i, line in enumerate(SCRUMMING_BOT_SRC.splitlines(), 1)
-        if "v3.23.78" in line and "per-trade YTD" in line]
+        i
+        for i, line in enumerate(SCRUMMING_BOT_SRC.splitlines(), 1)
+        if "v3.23.78" in line and "per-trade YTD" in line
+    ]
     assert len(marker_lines) == 2, (
         f"expected 2 v3.23.78 increment blocks (sell + buy); "
-        f"found {len(marker_lines)}")
+        f"found {len(marker_lines)}"
+    )
 
     def _caught(handler):
         node = handler.type
@@ -126,25 +135,27 @@ def test_increment_blocks_are_guarded_against_bad_values():
             return {node.id}
         return set()
 
-    tries = sorted((n for n in ast.walk(tree) if isinstance(n, ast.Try)),
-                   key=lambda n: n.lineno)
+    tries = sorted(
+        (n for n in ast.walk(tree) if isinstance(n, ast.Try)), key=lambda n: n.lineno
+    )
     for marker in marker_lines:
         # The marker is the COMMENT that introduces the block, so it sits
         # immediately ABOVE the `try:`. Take the first Try that opens
         # after it, within the comment header's reach.
         following = [n for n in tries if marker < n.lineno <= marker + 25]
-        assert following, (
-            f"no try block follows the increment marker at line {marker}")
+        assert following, f"no try block follows the increment marker at line {marker}"
         guard = following[0]
-        qualifying = [h for h in guard.handlers
-                      if {"TypeError", "ValueError"} <= _caught(h)]
+        qualifying = [
+            h for h in guard.handlers if {"TypeError", "ValueError"} <= _caught(h)
+        ]
         assert qualifying, (
             f"the increment block at line {marker} must be guarded by "
             f"except (TypeError, ValueError); its try at line "
             f"{guard.lineno} catches "
-            f"{[sorted(_caught(h)) for h in guard.handlers]}")
+            f"{[sorted(_caught(h)) for h in guard.handlers]}"
+        )
         for handler in qualifying:
-            assert not any(isinstance(n, ast.Raise)
-                           for n in ast.walk(handler)), (
+            assert not any(isinstance(n, ast.Raise) for n in ast.walk(handler)), (
                 f"the guard at line {marker} must not re-raise; a "
-                f"malformed amount would break the fill path")
+                f"malformed amount would break the fill path"
+            )

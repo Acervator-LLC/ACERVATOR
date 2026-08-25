@@ -65,7 +65,7 @@ LOG_DIR = Path.home() / ".acervator_logs"
 HEARTBEAT_PATH = LOG_DIR / "heartbeat.txt"
 
 # Tunables (can be overridden via CLI flags)
-DEFAULT_STALL_SECONDS = 60   # must match or exceed Acervator's longest sync call (CCXT: ~15s typical, 30s timeout)
+DEFAULT_STALL_SECONDS = 60  # must match or exceed Acervator's longest sync call (CCXT: ~15s typical, 30s timeout)
 HEARTBEAT_POLL_INTERVAL = 2.0
 CAPTURE_TAIL_LINES = 200
 
@@ -73,6 +73,7 @@ CAPTURE_TAIL_LINES = 200
 # ─────────────────────────────────────────────────────────────────
 # Utilities
 # ─────────────────────────────────────────────────────────────────
+
 
 def _ts() -> str:
     return _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -97,6 +98,7 @@ def _ensure_log_dir() -> None:
 # py-spy integration (optional)
 # ─────────────────────────────────────────────────────────────────
 
+
 def _pyspy_available() -> bool:
     return shutil.which("py-spy") is not None
 
@@ -110,7 +112,8 @@ def _pyspy_dump(pid: int, out_path: Path) -> bool:
         with open(out_path, "w", encoding="utf-8") as f:
             proc = subprocess.run(
                 ["py-spy", "dump", "--pid", str(pid)],
-                stdout=f, stderr=subprocess.STDOUT,
+                stdout=f,
+                stderr=subprocess.STDOUT,
                 timeout=30,
             )
         return proc.returncode == 0
@@ -122,6 +125,7 @@ def _pyspy_dump(pid: int, out_path: Path) -> bool:
 # ─────────────────────────────────────────────────────────────────
 # Process launch + stdout/stderr tail capture
 # ─────────────────────────────────────────────────────────────────
+
 
 class ChildRunner:
     """Launches the child Acervator process and captures its output
@@ -138,10 +142,12 @@ class ChildRunner:
 
     # v3.18.5 — Rotation thresholds. 100 MB × 3 backups = 400 MB max
     # disk usage per run. Plenty for diagnostics; bounded.
-    ROTATE_BYTES: int = 100 * 1024 * 1024     # 100 MB
-    ROTATE_KEEP: int = 3                       # active + 3 backups
+    ROTATE_BYTES: int = 100 * 1024 * 1024  # 100 MB
+    ROTATE_KEEP: int = 3  # active + 3 backups
 
-    def __init__(self, cmd: list[str], log_path: Path, tail_size: int = CAPTURE_TAIL_LINES):
+    def __init__(
+        self, cmd: list[str], log_path: Path, tail_size: int = CAPTURE_TAIL_LINES
+    ):
         self.cmd = cmd
         self.log_path = log_path
         self.tail_size = tail_size
@@ -166,10 +172,12 @@ class ChildRunner:
     def _start_internal(self, env) -> None:
         _ensure_log_dir()
         # Open log file in line-buffered text mode
-        self._log_fh = open(self.log_path, "w", buffering=1, encoding="utf-8",
-                            errors="replace")
+        self._log_fh = open(
+            self.log_path, "w", buffering=1, encoding="utf-8", errors="replace"
+        )
         self._log_fh.write(
-            f"=== Acervator launched {_isoformat_now()} cmd={self.cmd} ===\n")
+            f"=== Acervator launched {_isoformat_now()} cmd={self.cmd} ===\n"
+        )
         self._log_fh.flush()
 
         # Launch. Merge stderr into stdout so we see them interleaved.
@@ -186,7 +194,8 @@ class ChildRunner:
         self.proc = subprocess.Popen(self.cmd, **popen_kwargs)
 
         self._reader_thread = threading.Thread(
-            target=self._reader_loop, name="ChildStdoutReader", daemon=True)
+            target=self._reader_loop, name="ChildStdoutReader", daemon=True
+        )
         self._reader_thread.start()
 
     def _rotate_if_needed(self) -> None:
@@ -227,11 +236,13 @@ class ChildRunner:
             except Exception:
                 pass
             # Open fresh active log.
-            self._log_fh = open(self.log_path, "w", buffering=1,
-                                encoding="utf-8", errors="replace")
+            self._log_fh = open(
+                self.log_path, "w", buffering=1, encoding="utf-8", errors="replace"
+            )
             self._log_fh.write(
                 f"=== Acervator log continued {_isoformat_now()} "
-                f"(rotated; previous chunk → {self.log_path.name}.1) ===\n")
+                f"(rotated; previous chunk → {self.log_path.name}.1) ===\n"
+            )
             self._log_fh.flush()
             self._bytes_since_rotate = 0
             _log(f"rotated console log at {self.ROTATE_BYTES // (1024*1024)} MB")
@@ -240,8 +251,9 @@ class ChildRunner:
             # If everything failed, try to recover by re-opening the original
             # in append mode so we don't lose the rest of the stream.
             try:
-                self._log_fh = open(self.log_path, "a", buffering=1,
-                                    encoding="utf-8", errors="replace")
+                self._log_fh = open(
+                    self.log_path, "a", buffering=1, encoding="utf-8", errors="replace"
+                )
             except Exception:
                 pass
 
@@ -257,8 +269,9 @@ class ChildRunner:
                     # v3.18.5 — accumulate bytes and rotate when needed.
                     # encode("utf-8") gives the on-disk byte count;
                     # cheap enough at line cadence.
-                    self._bytes_since_rotate += len(line.encode("utf-8",
-                                                                  errors="replace"))
+                    self._bytes_since_rotate += len(
+                        line.encode("utf-8", errors="replace")
+                    )
                     if self._bytes_since_rotate >= self.ROTATE_BYTES:
                         self._rotate_if_needed()
                 except Exception:
@@ -266,7 +279,7 @@ class ChildRunner:
                 with self._tail_lock:
                     self.tail.append(line)
                     if len(self.tail) > self.tail_size:
-                        self.tail = self.tail[-self.tail_size:]
+                        self.tail = self.tail[-self.tail_size :]
                 # Relay to watchdog's own stdout so user sees it live.
                 try:
                     sys.stdout.write(line)
@@ -316,6 +329,7 @@ class ChildRunner:
 # ─────────────────────────────────────────────────────────────────
 # Heartbeat monitor
 # ─────────────────────────────────────────────────────────────────
+
 
 class HeartbeatMonitor:
     """Polls the heartbeat file's mtime. Reports stall when mtime
@@ -372,17 +386,17 @@ class HeartbeatMonitor:
 # steady-state, post-write catches mid-session bloat. Total size of
 # the log dir is also reported on startup so a future incident is
 # operator-visible in the watchdog console.
-POSTMORTEM_KEEP_LATEST: int = 20             # most-recent N bundles preserved
-POSTMORTEM_MAX_AGE_DAYS: int = 30            # anything older is dropped
+POSTMORTEM_KEEP_LATEST: int = 20  # most-recent N bundles preserved
+POSTMORTEM_MAX_AGE_DAYS: int = 30  # anything older is dropped
 POSTMORTEM_SIZE_WARN_BYTES: int = 5 * 1024 * 1024 * 1024  # 5 GB warning threshold
 
 
 def _recent_file(pattern: str) -> Path | None:
     """Most recent file in LOG_DIR matching pattern (glob)."""
     try:
-        files = sorted(LOG_DIR.glob(pattern),
-                       key=lambda p: p.stat().st_mtime,
-                       reverse=True)
+        files = sorted(
+            LOG_DIR.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True
+        )
         return files[0] if files else None
     except Exception:
         return None
@@ -445,8 +459,9 @@ def prune_postmortem_bundles(
         return (0, 0)
 
     try:
-        bundles = [p for p in base.iterdir()
-                   if p.is_dir() and p.name.startswith("postmortem_")]
+        bundles = [
+            p for p in base.iterdir() if p.is_dir() and p.name.startswith("postmortem_")
+        ]
     except Exception as exc:
         _log(f"prune: could not enumerate {base}: {exc}")
         return (0, 0)
@@ -489,8 +504,10 @@ def prune_postmortem_bundles(
             _log(f"prune: could not delete {bundle.name}: {exc}")
 
     if pruned:
-        _log(f"prune: dropped {pruned} old post-mortem bundle(s), "
-             f"freed {freed / 1024 / 1024:.1f} MB")
+        _log(
+            f"prune: dropped {pruned} old post-mortem bundle(s), "
+            f"freed {freed / 1024 / 1024:.1f} MB"
+        )
     return (pruned, freed)
 
 
@@ -506,18 +523,19 @@ def report_log_dir_footprint(log_dir: Path | None = None) -> int:
     total = _dir_size_bytes(base)
     gb = total / 1024 / 1024 / 1024
     if total >= POSTMORTEM_SIZE_WARN_BYTES:
-        _log(f"WARNING: {base} is {gb:.2f} GB — exceeds "
-             f"{POSTMORTEM_SIZE_WARN_BYTES / 1024 / 1024 / 1024:.1f} GB "
-             f"threshold. Run prune_postmortem_bundles() or clear "
-             f"manually. (Background: 2026-05-20 incident where the dir "
-             f"hit ~400 GB and crashed the host.)")
+        _log(
+            f"WARNING: {base} is {gb:.2f} GB — exceeds "
+            f"{POSTMORTEM_SIZE_WARN_BYTES / 1024 / 1024 / 1024:.1f} GB "
+            f"threshold. Run prune_postmortem_bundles() or clear "
+            f"manually. (Background: 2026-05-20 incident where the dir "
+            f"hit ~400 GB and crashed the host.)"
+        )
     else:
         _log(f"log dir footprint: {base} = {gb:.3f} GB")
     return total
 
 
-def write_postmortem(runner: ChildRunner, exit_code: int | None,
-                     cause: str) -> Path:
+def write_postmortem(runner: ChildRunner, exit_code: int | None, cause: str) -> Path:
     """Assemble a post-mortem directory. cause is a human-readable
     description of why the child died (or was terminated by us)."""
     bundle = LOG_DIR / f"postmortem_{_ts()}"
@@ -528,7 +546,7 @@ def write_postmortem(runner: ChildRunner, exit_code: int | None,
         return bundle
 
     summary_lines: list[str] = []
-    summary_lines.append(f"=== Acervator post-mortem ===")
+    summary_lines.append("=== Acervator post-mortem ===")
     summary_lines.append(f"Generated:       {_isoformat_now()}")
     summary_lines.append(f"Cause:           {cause}")
     summary_lines.append(f"Child exit code: {exit_code}")
@@ -559,9 +577,11 @@ def write_postmortem(runner: ChildRunner, exit_code: int | None,
     summary_lines.append(runner.get_tail())
 
     # Try to find most recent crash log + faulthandler log
-    for pattern, label in [("crash_*.log", "MEM-216 crash log"),
-                           ("faulthandler_*.log", "MEM-217 faulthandler log"),
-                           ("thread_violation_*.log", "MEM-216 thread violation log")]:
+    for pattern, label in [
+        ("crash_*.log", "MEM-216 crash log"),
+        ("faulthandler_*.log", "MEM-217 faulthandler log"),
+        ("thread_violation_*.log", "MEM-216 thread violation log"),
+    ]:
         recent = _recent_file(pattern)
         summary_lines.append("")
         summary_lines.append(f"--- {label}: {recent} ---")
@@ -598,11 +618,12 @@ def write_postmortem(runner: ChildRunner, exit_code: int | None,
                 pass
         else:
             summary_lines.append("")
-            summary_lines.append(f"--- py-spy thread dump: not captured ---")
+            summary_lines.append("--- py-spy thread dump: not captured ---")
             summary_lines.append(
                 "Install py-spy via `pip install py-spy` for thread dumps "
                 "on hung processes (STRONGLY recommended — it shows "
-                "exactly which line every thread was on when the app froze).")
+                "exactly which line every thread was on when the app froze)."
+            )
 
     # Write the summary
     summary_path = bundle / "SUMMARY.txt"
@@ -630,23 +651,39 @@ def write_postmortem(runner: ChildRunner, exit_code: int | None,
 # Main
 # ─────────────────────────────────────────────────────────────────
 
+
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Acervator external crash watchdog")
-    parser.add_argument("--stall", type=float, default=DEFAULT_STALL_SECONDS,
-        help=f"Stall threshold in seconds (default: {DEFAULT_STALL_SECONDS})")
-    parser.add_argument("--no-postmortem-on-stall", action="store_true",
-        help="Don't write post-mortem on stall (only on exit)")
-    parser.add_argument("--no-terminate-on-stall", action="store_true",
-        help="Don't terminate the child if it stalls (just post-mortem)")
-    parser.add_argument("--python", default=sys.executable,
-        help="Python interpreter to use for the child (default: same as watchdog)")
+    parser = argparse.ArgumentParser(description="Acervator external crash watchdog")
+    parser.add_argument(
+        "--stall",
+        type=float,
+        default=DEFAULT_STALL_SECONDS,
+        help=f"Stall threshold in seconds (default: {DEFAULT_STALL_SECONDS})",
+    )
+    parser.add_argument(
+        "--no-postmortem-on-stall",
+        action="store_true",
+        help="Don't write post-mortem on stall (only on exit)",
+    )
+    parser.add_argument(
+        "--no-terminate-on-stall",
+        action="store_true",
+        help="Don't terminate the child if it stalls (just post-mortem)",
+    )
+    parser.add_argument(
+        "--python",
+        default=sys.executable,
+        help="Python interpreter to use for the child (default: same as watchdog)",
+    )
     args = parser.parse_args()
 
     cmd = [args.python, "main.py"]
-    return _run_watchdog(cmd, args.stall,
-                         postmortem_on_stall=not args.no_postmortem_on_stall,
-                         terminate_on_stall=not args.no_terminate_on_stall)
+    return _run_watchdog(
+        cmd,
+        args.stall,
+        postmortem_on_stall=not args.no_postmortem_on_stall,
+        terminate_on_stall=not args.no_terminate_on_stall,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -663,8 +700,10 @@ def main() -> int:
 # Acervator.exe, which re-entered with --child just runs main().
 # In dev mode we spawn `python main.py --child`.
 
-def run_self_watchdog(frozen: bool = False,
-                      stall_seconds: float = DEFAULT_STALL_SECONDS) -> int:
+
+def run_self_watchdog(
+    frozen: bool = False, stall_seconds: float = DEFAULT_STALL_SECONDS
+) -> int:
     """Launch the current Acervator executable with --child and supervise it.
 
     frozen: True when running from a PyInstaller .exe (sys.frozen set).
@@ -679,15 +718,17 @@ def run_self_watchdog(frozen: bool = False,
         main_py = str(SCRIPT_DIR / "main.py")
         cmd = [sys.executable, main_py, "--child"]
 
-    return _run_watchdog(cmd, stall_seconds,
-                         postmortem_on_stall=True,
-                         terminate_on_stall=True)
+    return _run_watchdog(
+        cmd, stall_seconds, postmortem_on_stall=True, terminate_on_stall=True
+    )
 
 
-def _run_watchdog(cmd: list[str],
-                  stall_seconds: float,
-                  postmortem_on_stall: bool,
-                  terminate_on_stall: bool) -> int:
+def _run_watchdog(
+    cmd: list[str],
+    stall_seconds: float,
+    postmortem_on_stall: bool,
+    terminate_on_stall: bool,
+) -> int:
     """Core watchdog loop, factored out so both `main()` CLI invocation
     and `run_self_watchdog()` (from main.py) share the same pipeline."""
     _ensure_log_dir()
@@ -716,7 +757,9 @@ def _run_watchdog(cmd: list[str],
     _log(f"console log: {console_log}")
     _log(f"heartbeat:   {HEARTBEAT_PATH}")
     _log(f"stall limit: {stall_seconds}s")
-    _log(f"py-spy:      {'available' if _pyspy_available() else 'NOT installed — run `pip install py-spy` for thread dumps'}")
+    _log(
+        f"py-spy:      {'available' if _pyspy_available() else 'NOT installed — run `pip install py-spy` for thread dumps'}"
+    )
 
     # Pass ACERVATOR_CHILD=1 to the subprocess so that even if --child
     # is stripped somewhere, the env var still identifies child mode.
@@ -780,7 +823,11 @@ def _run_watchdog(cmd: list[str],
         exit_code = runner.wait(timeout=5)
 
     finally:
-        if exit_code is not None and exit_code != 0 and termination_cause != "clean exit":
+        if (
+            exit_code is not None
+            and exit_code != 0
+            and termination_cause != "clean exit"
+        ):
             bundle = write_postmortem(runner, exit_code, termination_cause)
             _log(f"crash post-mortem at {bundle}")
         runner.close()

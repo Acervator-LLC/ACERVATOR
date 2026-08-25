@@ -87,7 +87,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 REPO = Path(__file__).resolve().parent.parent
 
-if TYPE_CHECKING:                       # pragma: no cover
+if TYPE_CHECKING:  # pragma: no cover
     # Annotation only. PySide6 must not be imported at module scope: the
     # source-reading tests below are pure Python and have to run on a box
     # without Qt. A skipped test is not evidence, so the skip is scoped
@@ -106,8 +106,7 @@ MAIN_WINDOW = REPO / "src" / "gui" / "main_window.py"
 
 # The production geometry, restated so the tests drive the real thing.
 COINBASE_PROBES = 3
-STATUSPAGE_VOCABULARY = ("none", "minor", "major", "critical",
-                         "maintenance")
+STATUSPAGE_VOCABULARY = ("none", "minor", "major", "critical", "maintenance")
 
 # THE SENTINEL. Twenty characters of mixed case and digits, with no
 # word and no punctuation in it, so that EVERY four-character window of
@@ -129,13 +128,20 @@ SENTINEL = "Kx7qZv93RtLm5PwB2sYd"
 # first six are the credential vocabulary; `bot_id` is here because
 # every other tab's register row forbids it and this tab is no
 # exception.
-FORBIDDEN = ("api_key", "apikey", "secret", "passphrase", "password",
-             "credential", "token", "bot_id")
+FORBIDDEN = (
+    "api_key",
+    "apikey",
+    "secret",
+    "passphrase",
+    "password",
+    "credential",
+    "token",
+    "bot_id",
+)
 
 # The widgets whose text is a secret, plus the symbol box, which sits
 # one row below three password fields and holds operator free text.
-CREDENTIAL_WIDGETS = ("_api_key", "_api_secret", "_api_pp",
-                      "_symbol_input")
+CREDENTIAL_WIDGETS = ("_api_key", "_api_secret", "_api_pp", "_symbol_input")
 
 # The two context KEYS allowed to contain a word from FORBIDDEN, named
 # here so the ban stays a ban everywhere else. `credentials_supplied`
@@ -143,8 +149,7 @@ CREDENTIAL_WIDGETS = ("_api_key", "_api_secret", "_api_pp",
 # credentials` is the checkbox's own state and is not
 # credential-derived at all. Both are KEYS. No VALUE anywhere in this
 # tab is computed from a credential except the first of these two.
-DECLARED_CREDENTIAL_KEYS = ("credentials_supplied",
-                            "used_stored_credentials")
+DECLARED_CREDENTIAL_KEYS = ("credentials_supplied", "used_stored_credentials")
 
 
 def _tcp_dials() -> int:
@@ -187,12 +192,12 @@ def _no_venue(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def _tripwire(address: Any, *args: Any, **kwargs: Any) -> Any:
         _ESCAPED.append((address, args, kwargs))
-        message = (f"a test tried to reach the network: {address!r} "
-                   f"{args!r} {kwargs!r}")
+        message = (
+            f"a test tried to reach the network: {address!r} " f"{args!r} {kwargs!r}"
+        )
         raise AssertionError(message)
 
-    monkeypatch.setattr(socket, "create_connection", _tripwire,
-                        raising=True)
+    monkeypatch.setattr(socket, "create_connection", _tripwire, raising=True)
 
 
 # ── Qt fixtures ────────────────────────────────────────────────────────
@@ -221,8 +226,7 @@ class _StubExchange:
     """
 
     def __init__(self) -> None:
-        self.markets = {"BTC/USDT": {"type": "spot"},
-                        "ETH/USDT": {"type": "spot"}}
+        self.markets = {"BTC/USDT": {"type": "spot"}, "ETH/USDT": {"type": "spot"}}
         self.calls: list[str] = []
 
     def fetch_ticker(self, symbol: str) -> dict:
@@ -231,18 +235,15 @@ class _StubExchange:
 
     def fetch_balance(self) -> dict:
         self.calls.append("fetch_balance")
-        return {"free": {"BTC": 1.0, "ETH": 0.0},
-                "used": {}, "total": {"BTC": 1.0}}
+        return {"free": {"BTC": 1.0, "ETH": 0.0}, "used": {}, "total": {"BTC": 1.0}}
 
     def fetch_order_book(self, symbol: str, limit: int = 20) -> dict:
         self.calls.append("fetch_order_book")
         return {"symbol": symbol, "bids": [], "asks": [], "limit": limit}
 
-    def fetch_ohlcv(self, symbol: str, timeframe: str,
-                    limit: int = 50) -> list:
+    def fetch_ohlcv(self, symbol: str, timeframe: str, limit: int = 50) -> list:
         self.calls.append(f"fetch_ohlcv {timeframe}")
-        return [[0, 1.0, 2.0, 0.5, 1.5, 10.0]
-                for _ in range(min(limit, 3))]
+        return [[0, 1.0, 2.0, 0.5, 1.5, 10.0] for _ in range(min(limit, 3))]
 
     def fetch_open_orders(self, symbol: str) -> list:
         self.calls.append(f"fetch_open_orders {symbol}")
@@ -278,11 +279,18 @@ class _StubConnector:
         self.closed = False
         type(self).built.append(exchange_id)
 
-    def sync_connect(self, api_key: str, api_secret: str,
-                     passphrase: str | None = None) -> None:
+    def sync_connect(
+        self, api_key: str, api_secret: str, passphrase: str | None = None
+    ) -> None:
         type(self).calls.append(
-            ("sync_connect", self.exchange_id,
-             bool(api_key), bool(api_secret), bool(passphrase)))
+            (
+                "sync_connect",
+                self.exchange_id,
+                bool(api_key),
+                bool(api_secret),
+                bool(passphrase),
+            )
+        )
         if type(self).raise_on_connect is not None:
             raise type(self).raise_on_connect
         if not type(self).leave_handle_empty:
@@ -300,8 +308,7 @@ class _StubConnector:
         self.closed = True
 
     def set_history_callback(self, callback: Any) -> None:
-        type(self).calls.append(
-            ("set_history_callback", callback is not None))
+        type(self).calls.append(("set_history_callback", callback is not None))
 
     @staticmethod
     def _format_exchange_error(exc: Exception) -> str:
@@ -318,11 +325,14 @@ class _StubConnector:
 class _Response:
     """What `safe_urlopen` returns: a context manager over a body."""
 
-    def __init__(self, body: bytes, status: int = 200,
-                 headers: dict | None = None) -> None:
+    def __init__(
+        self, body: bytes, status: int = 200, headers: dict | None = None
+    ) -> None:
         self.status = status
-        self.headers = headers or {"Content-Type": "application/json",
-                                   "Content-Length": str(len(body))}
+        self.headers = headers or {
+            "Content-Type": "application/json",
+            "Content-Length": str(len(body)),
+        }
         self._body = body
 
     def read(self) -> bytes:
@@ -343,12 +353,10 @@ class _Opener:
         self.urls: list[str] = []
         self.transport: list[tuple] = []
 
-    def __call__(self, req: Any, timeout: float = 10.0,
-                 context: Any = None) -> Any:
+    def __call__(self, req: Any, timeout: float = 10.0, context: Any = None) -> Any:
         self.urls.append(getattr(req, "full_url", str(req)))
         self.transport.append((timeout, context is not None))
-        answer = (self.responses.pop(0) if self.responses
-                  else _Response(b"{}"))
+        answer = self.responses.pop(0) if self.responses else _Response(b"{}")
         if isinstance(answer, Exception):
             raise answer
         return answer
@@ -403,8 +411,7 @@ def connector_class(monkeypatch: pytest.MonkeyPatch) -> type:
 
 
 @contextlib.contextmanager
-def _tab(qapp: QApplication, *,
-         exchange_id: str = "coinbase") -> Iterator[Any]:
+def _tab(qapp: QApplication, *, exchange_id: str = "coinbase") -> Iterator[Any]:
     """A REAL `APITesterTab`, parented to nothing and wired to nothing.
 
     The tab owns no timer and starts no thread, so there is nothing to
@@ -468,11 +475,11 @@ def _last(sink: SignalSink, name: str) -> Any:
     return got[-1]
 
 
-def _statuspage(indicator: str = "none",
-                description: str = "All Systems Operational") -> bytes:
+def _statuspage(
+    indicator: str = "none", description: str = "All Systems Operational"
+) -> bytes:
     """One Statuspage v2 summary document, as the venues really serve it."""
-    body: dict = {"page": {"id": "x"},
-                  "status": {"description": description}}
+    body: dict = {"page": {"id": "x"}, "status": {"description": description}}
     if indicator is not None:
         body["status"]["indicator"] = indicator
     return json.dumps(body).encode("utf-8")
@@ -490,10 +497,13 @@ def _apitest_emit_calls() -> list[ast.Call]:
     `_ex_emit` calls cannot land in this set.
     """
     tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
-    return [node for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "_api_emit"]
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_api_emit"
+    ]
 
 
 def _pin_name(call: ast.Call) -> str:
@@ -527,8 +537,11 @@ def _class_node() -> ast.ClassDef:
 def _span(function: str) -> tuple[int, int]:
     """The first and last line of one method of `APITesterTab`."""
     for node in _class_node().body:
-        if (isinstance(node, ast.FunctionDef) and node.name == function
-                and node.end_lineno is not None):
+        if (
+            isinstance(node, ast.FunctionDef)
+            and node.name == function
+            and node.end_lineno is not None
+        ):
             return (node.lineno, node.end_lineno)
     message = f"APITesterTab.{function} not found in {MAIN_WINDOW}"
     raise AssertionError(message)
@@ -538,7 +551,8 @@ def _span(function: str) -> tuple[int, int]:
 
 
 def test_a_connect_that_holds_a_session_is_green(
-        qapp: QApplication, connector_class: type) -> None:
+    qapp: QApplication, connector_class: type
+) -> None:
     """The ordinary case, so the red below is a verdict and not a mood."""
     with _collect() as sink, _tab(qapp) as tab:
         tab._api_key.setText("k")
@@ -563,7 +577,8 @@ def test_a_connect_that_holds_a_session_is_green(
 
 
 def test_a_connected_label_over_no_session_is_reported(
-        qapp: QApplication, connector_class: type) -> None:
+    qapp: QApplication, connector_class: type
+) -> None:
     """THE FALSIFIER for `16-001`, and it is the tab's own failure shape.
 
     `sync_connect` returns without raising and leaves the connector
@@ -594,7 +609,8 @@ def test_a_connected_label_over_no_session_is_reported(
 
 
 def test_a_failed_connect_reports_an_honest_green(
-        qapp: QApplication, connector_class: type) -> None:
+    qapp: QApplication, connector_class: type
+) -> None:
     """A refusal by the venue: the label says Failed and nothing is held.
 
     The pin is in the `finally`, so this path is on the record. Both
@@ -621,7 +637,8 @@ def test_a_failed_connect_reports_an_honest_green(
 
 
 def test_an_empty_credential_box_refuses_and_says_so(
-        qapp: QApplication, connector_class: type) -> None:
+    qapp: QApplication, connector_class: type
+) -> None:
     """The early return inside the try is on the record too.
 
     The label is still "Connecting to ...", which does not start with
@@ -645,8 +662,7 @@ def test_an_empty_credential_box_refuses_and_says_so(
 # ── 16-002  the session was really released ────────────────────────────
 
 
-def test_a_clean_disconnect_is_green(
-        qapp: QApplication, connector_class: type) -> None:
+def test_a_clean_disconnect_is_green(qapp: QApplication, connector_class: type) -> None:
     """Connect, disconnect, and the screen and the session agree."""
     with _collect() as sink, _tab(qapp) as tab:
         tab._api_key.setText("k")
@@ -668,7 +684,8 @@ def test_a_clean_disconnect_is_green(
 
 
 def test_a_disconnect_that_left_the_session_open_is_reported(
-        qapp: QApplication, connector_class: type) -> None:
+    qapp: QApplication, connector_class: type
+) -> None:
     """THE FALSIFIER for `16-002`, and it is the worst state in the tab.
 
     The close raises inside the worker. `_do_disconnect` drops the
@@ -700,7 +717,8 @@ def test_a_disconnect_that_left_the_session_open_is_reported(
 
 
 def test_a_disconnect_with_nothing_connected_is_green(
-        qapp: QApplication, connector_class: type) -> None:
+    qapp: QApplication, connector_class: type
+) -> None:
     """The button is reachable with no connector, and reports honestly."""
     with _collect() as sink, _tab(qapp) as tab:
         tab._do_disconnect()
@@ -727,9 +745,9 @@ def _host_without_the_exchange_widget(connector: Any) -> Any:
     from src.gui import main_window as mw
 
     names = ("_do_disconnect", "_log")
-    host = type("NoExchangeHost", (),
-                {name: getattr(mw.APITesterTab, name)
-                 for name in names})()
+    host = type(
+        "NoExchangeHost", (), {name: getattr(mw.APITesterTab, name) for name in names}
+    )()
     host._connector = connector
     host._connected = True
     host._connect_btn = QPushButton()
@@ -742,7 +760,8 @@ def _host_without_the_exchange_widget(connector: Any) -> Any:
 
 
 def test_the_pin_adds_no_precondition_to_its_host(
-        qapp: QApplication, connector_class: type) -> None:
+    qapp: QApplication, connector_class: type
+) -> None:
     """INSTRUMENTATION MAY NOT MAKE ITS HOST NEED MORE THAN IT DID.
 
     `16-002` reads `_exchange` for its context and nothing else in
@@ -798,8 +817,7 @@ def test_the_pin_adds_no_precondition_to_its_host(
 # ── 16-003  the OK headline came from a call ───────────────────────────
 
 
-def test_a_test_that_ran_is_green(
-        qapp: QApplication, connector_class: type) -> None:
+def test_a_test_that_ran_is_green(qapp: QApplication, connector_class: type) -> None:
     """A real dispatch arm, through the stub handle, with a payload."""
     with _collect() as sink, _tab(qapp) as tab:
         tab._api_key.setText("k")
@@ -823,7 +841,8 @@ def test_a_test_that_ran_is_green(
 
 
 def test_an_ok_headline_for_a_test_that_never_ran_is_reported(
-        qapp: QApplication, connector_class: type) -> None:
+    qapp: QApplication, connector_class: type
+) -> None:
     """THE FALSIFIER for `16-003`, and the arm is live in the source.
 
     The dispatch chain's last arm answers a name it does not know with
@@ -851,7 +870,8 @@ def test_an_ok_headline_for_a_test_that_never_ran_is_reported(
 
 
 def test_a_failed_test_writes_no_success_record(
-        qapp: QApplication, connector_class: type) -> None:
+    qapp: QApplication, connector_class: type
+) -> None:
     """The failure branch has no pin, and that is deliberate.
 
     A test that raised paints `<test> FAILED` in red. There is no false
@@ -874,7 +894,8 @@ def test_a_failed_test_writes_no_success_record(
 
 
 def test_an_empty_list_result_is_still_green(
-        qapp: QApplication, connector_class: type) -> None:
+    qapp: QApplication, connector_class: type
+) -> None:
     """No open orders is a real answer, and must not read as nothing.
 
     This is the pin's boundary. A count-based `actual` would paint an
@@ -894,7 +915,8 @@ def test_an_empty_list_result_is_still_green(
 
 
 def test_a_test_pressed_before_connecting_writes_no_record(
-        qapp: QApplication, connector_class: type) -> None:
+    qapp: QApplication, connector_class: type
+) -> None:
     """The guard returns before anything runs, so nothing is claimed."""
     with _collect() as sink, _tab(qapp) as tab:
         tab._run_test("fetch_ticker")
@@ -905,8 +927,9 @@ def test_a_test_pressed_before_connecting_writes_no_record(
 # ── 16-004  every green probe read a body ──────────────────────────────
 
 
-def _probe(qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-           responses: list) -> tuple:
+def _probe(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, responses: list
+) -> tuple:
     """Drive `_raw_http_probe` with the TCP dial and the opener cut.
 
     Returns the tab, the dialler and the opener so a caller can assert
@@ -925,14 +948,19 @@ def _probe(qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
 
 
 def test_every_green_probe_read_a_body(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """All three Coinbase endpoints answer with a body: green."""
     with _collect() as sink, _tab(qapp) as tab:
         dialler, opener = _probe(
-            qapp, monkeypatch,
-            [_Response(b'{"products": [1, 2]}'),
-             _Response(b'{"data": []}'),
-             _Response(b'[{"id": "BTC-USD"}]')])
+            qapp,
+            monkeypatch,
+            [
+                _Response(b'{"products": [1, 2]}'),
+                _Response(b'{"data": []}'),
+                _Response(b'[{"id": "BTC-USD"}]'),
+            ],
+        )
         tab._raw_http_probe()
         rec = _only(sink, PROBED)
         assert set(dialler.addresses) == {("api.coinbase.com", 443)}
@@ -951,7 +979,8 @@ def test_every_green_probe_read_a_body(
 
 
 def test_a_green_probe_that_read_nothing_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """THE FALSIFIER for `16-004`.
 
     The middle endpoint answers 200 with an empty body. The tab paints
@@ -961,11 +990,16 @@ def test_a_green_probe_that_read_nothing_is_reported(
     """
     with _collect() as sink, _tab(qapp) as tab:
         _dialler, opener = _probe(
-            qapp, monkeypatch,
-            [_Response(b'{"products": [1]}'),
-             _Response(b"", status=200,
-                       headers={"Content-Type": "application/json"}),
-             _Response(b'[{"id": "BTC-USD"}]')])
+            qapp,
+            monkeypatch,
+            [
+                _Response(b'{"products": [1]}'),
+                _Response(
+                    b"", status=200, headers={"Content-Type": "application/json"}
+                ),
+                _Response(b'[{"id": "BTC-USD"}]'),
+            ],
+        )
         tab._raw_http_probe()
         rec = _only(sink, PROBED)
 
@@ -980,7 +1014,8 @@ def test_a_green_probe_that_read_nothing_is_reported(
 
 
 def test_a_probe_that_raised_is_in_neither_count(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """An unreachable endpoint is an error the operator already sees.
 
     It must not turn the pin red: the pin asks about the GREENS, and a
@@ -990,10 +1025,14 @@ def test_a_probe_that_raised_is_in_neither_count(
 
     with _collect() as sink, _tab(qapp) as tab:
         _dialler, opener = _probe(
-            qapp, monkeypatch,
-            [_Response(b'{"products": [1]}'),
-             urllib.error.URLError("dns"),
-             _Response(b'[{"id": "BTC-USD"}]')])
+            qapp,
+            monkeypatch,
+            [
+                _Response(b'{"products": [1]}'),
+                urllib.error.URLError("dns"),
+                _Response(b'[{"id": "BTC-USD"}]'),
+            ],
+        )
         tab._raw_http_probe()
         rec = _only(sink, PROBED)
         assert len(opener.urls) == COINBASE_PROBES
@@ -1005,7 +1044,8 @@ def test_a_probe_that_raised_is_in_neither_count(
 
 
 def test_a_probe_that_never_reached_tcp_writes_no_record(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """`_raw_http_probe` returns before the sweep when TCP fails.
 
     Nothing was probed, so there is nothing to report and the pin is
@@ -1030,8 +1070,7 @@ def test_a_probe_that_never_reached_tcp_writes_no_record(
 # ── 16-005  the status word is one the tab can map ─────────────────────
 
 
-def _status(qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-            body: bytes) -> Any:
+def _status(qapp: QApplication, monkeypatch: pytest.MonkeyPatch, body: bytes) -> Any:
     from src.gui import main_window as mw
 
     opener = _Opener([_Response(body)])
@@ -1040,14 +1079,14 @@ def _status(qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
 
 
 def test_a_status_page_the_tab_can_map_is_green(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Coinbase's own document, with the published indicator."""
     with _collect() as sink, _tab(qapp) as tab:
         opener = _status(qapp, monkeypatch, _statuspage("none"))
         tab._check_exchange_status()
         rec = _only(sink, INDICATOR)
-        assert opener.urls == [
-            "https://status.coinbase.com/api/v2/status.json"]
+        assert opener.urls == ["https://status.coinbase.com/api/v2/status.json"]
     assert rec.ok is True
     assert rec.actual == "none"
     assert tuple(rec.expected) == STATUSPAGE_VOCABULARY
@@ -1059,7 +1098,8 @@ def test_a_status_page_the_tab_can_map_is_green(
 
 
 def test_a_declared_outage_is_still_a_green_verdict(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A real outage is a word the tab CAN map, so the pin agrees.
 
     The pin judges the vocabulary, not the weather. `level_shown` says
@@ -1075,7 +1115,8 @@ def test_a_declared_outage_is_still_a_green_verdict(
 
 
 def test_a_missing_indicator_painted_as_an_outage_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """THE FALSIFIER for `16-005`.
 
     The document carries a `status` block with no `indicator`. The
@@ -1084,8 +1125,9 @@ def test_a_missing_indicator_painted_as_an_outage_is_reported(
     venue never declared.
     """
     with _collect() as sink, _tab(qapp) as tab:
-        _status(qapp, monkeypatch,
-                json.dumps({"status": {"description": "?"}}).encode())
+        _status(
+            qapp, monkeypatch, json.dumps({"status": {"description": "?"}}).encode()
+        )
         tab._check_exchange_status()
         rec = _only(sink, INDICATOR)
 
@@ -1098,7 +1140,8 @@ def test_a_missing_indicator_painted_as_an_outage_is_reported(
 
 
 def test_an_untrusted_indicator_is_capped_before_it_is_recorded(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The word is venue text, so its length on the record is bounded."""
     with _collect() as sink, _tab(qapp) as tab:
         _status(qapp, monkeypatch, _statuspage("z" * 500))
@@ -1109,7 +1152,8 @@ def test_an_untrusted_indicator_is_capped_before_it_is_recorded(
 
 
 def test_an_exchange_with_no_status_page_writes_no_record(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The method returns before any fetch, and claims nothing."""
     from src.gui import main_window as mw
 
@@ -1154,8 +1198,7 @@ def test_no_context_expression_reads_a_credential_widget() -> None:
             assert banned not in stripped, (_pin_name(call), banned)
 
 
-def test_the_presence_boolean_is_the_only_credential_derived_value(
-) -> None:
+def test_the_presence_boolean_is_the_only_credential_derived_value() -> None:
     """One boolean, named, and it is a `bool()` of nothing else.
 
     `credentials_supplied` is the single value in this tab computed
@@ -1165,18 +1208,23 @@ def test_the_presence_boolean_is_the_only_credential_derived_value(
     """
     source = MAIN_WINDOW.read_text(encoding="utf-8")
     tree = ast.parse(source)
-    bindings = [node for node in ast.walk(tree)
-                if isinstance(node, ast.Assign)
-                and any(isinstance(t, ast.Name) and t.id == "_supplied"
-                        for t in node.targets)]
+    bindings = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "_supplied" for t in node.targets)
+    ]
     assert len(bindings) == 2, "expected the None seed and one binding"
     expressions = sorted(ast.unparse(node.value) for node in bindings)
     assert expressions == ["False", "bool(key) and bool(secret)"]
 
 
 def test_no_sentinel_credential_reaches_the_serialised_records(
-        qapp: QApplication, connector_class: type,
-        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    qapp: QApplication,
+    connector_class: type,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     """THE GATE ON THIS UNIT, driven end to end against the real writer.
 
     A known sentinel goes into the key, the secret, the passphrase AND
@@ -1193,15 +1241,18 @@ def test_no_sentinel_credential_reaches_the_serialised_records(
     from src.gui import main_window as mw
 
     path = tmp_path / "signals" / "session.jsonl"
-    opener = _Opener([_Response(b'{"products": [1]}'),
-                      _Response(b""),
-                      _Response(b'[{"id": "x"}]'),
-                      _Response(_statuspage("none"))])
+    opener = _Opener(
+        [
+            _Response(b'{"products": [1]}'),
+            _Response(b""),
+            _Response(b'[{"id": "x"}]'),
+            _Response(_statuspage("none")),
+        ]
+    )
     dialler = _Dialler()
 
     with _collect(path) as sink, _tab(qapp) as tab:
-        monkeypatch.setattr(socket, "create_connection", dialler,
-                            raising=True)
+        monkeypatch.setattr(socket, "create_connection", dialler, raising=True)
         monkeypatch.setattr(mw, "safe_urlopen", opener, raising=True)
 
         tab._api_key.setText(SENTINEL)
@@ -1229,7 +1280,8 @@ def test_no_sentinel_credential_reaches_the_serialised_records(
         # puts a live credential into an error message, and the tab
         # paints it into its own result view.
         connector_class.raise_on_connect = RuntimeError(
-            f"401 unauthorized for key={SENTINEL}")
+            f"401 unauthorized for key={SENTINEL}"
+        )
         tab._do_connect()
 
         # 8. the stored-credentials branch, which reaches the settings
@@ -1282,8 +1334,8 @@ def test_no_sentinel_credential_reaches_the_serialised_records(
 
 
 def test_no_record_from_this_tab_carries_a_forbidden_key(
-        qapp: QApplication, connector_class: type,
-        monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, connector_class: type, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The context KEYS are read at run time, not from the source.
 
     The syntax-tree test above reads the literals. This one reads the
@@ -1292,11 +1344,10 @@ def test_no_record_from_this_tab_carries_a_forbidden_key(
     """
     from src.gui import main_window as mw
 
-    monkeypatch.setattr(socket, "create_connection", _Dialler(),
-                        raising=True)
-    monkeypatch.setattr(mw, "safe_urlopen",
-                        _Opener([_Response(_statuspage("none"))]),
-                        raising=True)
+    monkeypatch.setattr(socket, "create_connection", _Dialler(), raising=True)
+    monkeypatch.setattr(
+        mw, "safe_urlopen", _Opener([_Response(_statuspage("none"))]), raising=True
+    )
     with _collect() as sink, _tab(qapp) as tab:
         tab._api_key.setText("k")
         tab._api_secret.setText("s")
@@ -1306,7 +1357,7 @@ def test_no_record_from_this_tab_carries_a_forbidden_key(
         tab._do_disconnect()
         assert len(sink.records()) == 4
         for record in sink.records():
-            for key in (record.context or {}):
+            for key in record.context or {}:
                 if key in DECLARED_CREDENTIAL_KEYS:
                     continue
                 for banned in FORBIDDEN:
@@ -1324,8 +1375,11 @@ def test_every_pin_in_this_tab_carries_a_duration() -> None:
     every path where no operation completed, which the pin tests above
     assert one by one.
     """
-    carriers = {_pin_name(call) for call in _apitest_emit_calls()
-                if _keyword(call, "duration") is not None}
+    carriers = {
+        _pin_name(call)
+        for call in _apitest_emit_calls()
+        if _keyword(call, "duration") is not None
+    }
     assert carriers == set(APITEST_PINS)
 
 
@@ -1352,19 +1406,18 @@ def test_the_tab_owns_no_timer_so_a_finger_is_the_only_cadence() -> None:
 
 def test_each_pin_sits_in_the_method_the_register_claims() -> None:
     """The cadence is a property of WHERE each pin sits."""
-    placed = {_pin_name(call): call.lineno
-              for call in _apitest_emit_calls()}
+    placed = {_pin_name(call): call.lineno for call in _apitest_emit_calls()}
     assert set(placed) == set(APITEST_PINS)
 
     for method, expected in (
-            ("_do_connect", {CONNECTED}),
-            ("_do_disconnect", {RELEASED}),
-            ("_run_test", {RAN}),
-            ("_raw_http_probe", {PROBED}),
-            ("_check_exchange_status", {INDICATOR})):
+        ("_do_connect", {CONNECTED}),
+        ("_do_disconnect", {RELEASED}),
+        ("_run_test", {RAN}),
+        ("_raw_http_probe", {PROBED}),
+        ("_check_exchange_status", {INDICATOR}),
+    ):
         low, high = _span(method)
-        inside = {name for name, line in placed.items()
-                  if low <= line <= high}
+        inside = {name for name, line in placed.items() if low <= line <= high}
         assert inside == expected, method
 
 
@@ -1378,15 +1431,21 @@ def test_every_emitting_method_is_reached_by_exactly_one_button() -> None:
     klass = _class_node()
     connected: list[str] = []
     for node in ast.walk(klass):
-        if not (isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "connect"):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "connect"
+        ):
             continue
         for argument in node.args:
             connected.append(ast.unparse(argument))
 
-    for method in ("_do_connect", "_do_disconnect", "_raw_http_probe",
-                   "_check_exchange_status"):
+    for method in (
+        "_do_connect",
+        "_do_disconnect",
+        "_raw_http_probe",
+        "_check_exchange_status",
+    ):
         hits = [c for c in connected if c.endswith(method)]
         assert len(hits) == 1, (method, hits)
 
@@ -1412,8 +1471,11 @@ def test_no_pin_compares_an_expression_with_itself() -> None:
     """E9, asked of this tab by the checker's own rule."""
     from tools.emitter_registry_check import collect_pins
 
-    pins = [pin for pin in collect_pins(MAIN_WINDOW, REPO)
-            if pin.name.startswith("apitest.")]
+    pins = [
+        pin
+        for pin in collect_pins(MAIN_WINDOW, REPO)
+        if pin.name.startswith("apitest.")
+    ]
     assert len(pins) == 5
     assert [pin.name for pin in pins if pin.vacuous_check] == []
     assert [pin.name for pin in pins if not pin.carries_duration] == []
@@ -1424,8 +1486,7 @@ def test_every_context_names_its_exchange() -> None:
     for call in _apitest_emit_calls():
         node = _keyword(call, "context")
         assert isinstance(node, ast.Dict), _pin_name(call)
-        keys = [key.value for key in node.keys
-                if isinstance(key, ast.Constant)]
+        keys = [key.value for key in node.keys if isinstance(key, ast.Constant)]
         assert "exchange" in keys, _pin_name(call)
 
 
@@ -1442,20 +1503,21 @@ def test_the_register_row_for_every_pin_points_at_its_real_line() -> None:
         parse_registry,
     )
 
-    registry = parse_registry(
-        (REPO / REGISTRY_PATH).read_text(encoding="utf-8"))
+    registry = parse_registry((REPO / REGISTRY_PATH).read_text(encoding="utf-8"))
     assert registry.parse_errors == []
-    rows = {row.name: row for row in registry.rows
-            if row.subsystem == "apitest"}
+    rows = {row.name: row for row in registry.rows if row.subsystem == "apitest"}
     assert set(rows) == set(APITEST_PINS)
 
-    pins = {pin.name: pin for pin in collect_pins(MAIN_WINDOW, REPO)
-            if pin.name.startswith("apitest.")}
+    pins = {
+        pin.name: pin
+        for pin in collect_pins(MAIN_WINDOW, REPO)
+        if pin.name.startswith("apitest.")
+    }
     for name, row in rows.items():
         assert row.file == "src/gui/main_window.py", name
         assert row.line == pins[name].line, (
-            f"{name}: register says {row.line}, the pin is at "
-            f"{pins[name].line}")
+            f"{name}: register says {row.line}, the pin is at " f"{pins[name].line}"
+        )
 
 
 # ── the tab still behaves exactly as it did ────────────────────────────
@@ -1474,35 +1536,43 @@ def _dump(tab: Any) -> tuple:
     text = re.sub(r"\[\d\d:\d\d:\d\d\]", "[--:--:--]", text)
     text = re.sub(r"\(\d+ms\)", "(--ms)", text)
     headline = re.sub(r"\(\d+ms\)", "(--ms)", tab._result_info.text())
-    return (headline,
-            tab._result_info.styleSheet(),
-            text,
-            tab._conn_status.text(),
-            tab._conn_status.styleSheet(),
-            tab._connect_btn.isEnabled(),
-            tab._disconnect_btn.isEnabled(),
-            tab._manual_frame.isVisible(),
-            tab._connector is None,
-            tab._connected)
+    return (
+        headline,
+        tab._result_info.styleSheet(),
+        text,
+        tab._conn_status.text(),
+        tab._conn_status.styleSheet(),
+        tab._connect_btn.isEnabled(),
+        tab._disconnect_btn.isEnabled(),
+        tab._manual_frame.isVisible(),
+        tab._connector is None,
+        tab._connected,
+    )
 
 
-def _script(qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-            connector_class: type) -> tuple:
+def _script(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, connector_class: type
+) -> tuple:
     """One fixed operator script, run against whatever sink is installed."""
     from src.gui import main_window as mw
 
     connector_class.raise_on_connect = None
     connector_class.raise_on_disconnect = None
     connector_class.leave_handle_empty = False
-    monkeypatch.setattr(socket, "create_connection", _Dialler(),
-                        raising=True)
+    monkeypatch.setattr(socket, "create_connection", _Dialler(), raising=True)
     monkeypatch.setattr(
-        mw, "safe_urlopen",
-        _Opener([_Response(b'{"products": [1]}'),
-                 _Response(b""),
-                 _Response(b'[{"id": "x"}]'),
-                 _Response(_statuspage("none"))]),
-        raising=True)
+        mw,
+        "safe_urlopen",
+        _Opener(
+            [
+                _Response(b'{"products": [1]}'),
+                _Response(b""),
+                _Response(b'[{"id": "x"}]'),
+                _Response(_statuspage("none")),
+            ]
+        ),
+        raising=True,
+    )
 
     with _tab(qapp) as tab:
         tab._api_key.setText("key-value")
@@ -1520,8 +1590,8 @@ def _script(qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
 
 
 def test_the_tab_renders_and_behaves_the_same_with_and_without_a_sink(
-        qapp: QApplication, connector_class: type,
-        monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, connector_class: type, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The pins observe and change nothing.
 
     The same fourteen-step script runs with no collector installed and
@@ -1543,8 +1613,8 @@ def test_the_tab_renders_and_behaves_the_same_with_and_without_a_sink(
 
 
 def test_the_behaviour_probe_would_notice_a_change(
-        qapp: QApplication, connector_class: type,
-        monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, connector_class: type, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The positive control for the test above.
 
     A comparison that cannot fail proves nothing, so one character of

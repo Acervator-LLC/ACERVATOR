@@ -33,6 +33,7 @@ constant rather than driving `tick()`, which needs a live ticker, a
 populated TA engine and an exchange. What they pin is that no input
 combination can produce a self-contradicting line.
 """
+
 from __future__ import annotations
 
 import ast
@@ -48,8 +49,7 @@ if str(REPO_ROOT) not in sys.path:
 from src.trading.scrumming_bot import _TA_CONFIDENCE_FLOOR  # noqa: E402
 from src.trading.ta_engine import SignalDirection  # noqa: E402
 
-SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(
-    encoding="utf-8")
+SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(encoding="utf-8")
 
 
 def _gate_source() -> str:
@@ -61,9 +61,11 @@ def _gate_source() -> str:
     """
     # tick() is `async def`, so AsyncFunctionDef -- filtering on
     # FunctionDef alone finds nothing and max() raises on the empty list.
-    ticks = [n for n in ast.walk(ast.parse(SRC))
-             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-             and n.name == "tick"]
+    ticks = [
+        n
+        for n in ast.walk(ast.parse(SRC))
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "tick"
+    ]
     assert ticks, "no tick() found -- the extractor is broken, not the code"
     biggest = max(ticks, key=lambda n: (n.end_lineno or 0) - n.lineno)
     return ast.get_source_segment(SRC, biggest) or ""
@@ -75,10 +77,14 @@ def _hold_reason(direction, confidence: float) -> str:
     if not dir_ok:
         return f"TA={direction.name} is not BEARISH or NEUTRAL"
     if confidence < _TA_CONFIDENCE_FLOOR:
-        return (f"TA={direction.name} but confidence {confidence:.2f} < "
-                f"{_TA_CONFIDENCE_FLOOR:.2f} floor")
-    return (f"TA={direction.name}, confidence {confidence:.2f} — blocked "
-            f"by an override, not by direction or confidence")
+        return (
+            f"TA={direction.name} but confidence {confidence:.2f} < "
+            f"{_TA_CONFIDENCE_FLOOR:.2f} floor"
+        )
+    return (
+        f"TA={direction.name}, confidence {confidence:.2f} — blocked "
+        f"by an override, not by direction or confidence"
+    )
 
 
 class TestTheFloorIsNamed:
@@ -105,14 +111,12 @@ class TestTheFloorIsNamed:
 class TestTheHoldReasonIsNeverSelfContradicting:
     @pytest.mark.parametrize("direction", list(SignalDirection))
     @pytest.mark.parametrize("confidence", [0.0, 0.10, 0.2499, 0.25, 0.9])
-    def test_it_never_says_waiting_for_what_it_reports(self, direction,
-                                                       confidence):
+    def test_it_never_says_waiting_for_what_it_reports(self, direction, confidence):
         """THE defect, stated as an invariant over every input: the line
         must not report a direction as BEARISH while claiming to wait
         for BEARISH."""
         reason = _hold_reason(direction, confidence)
-        contradiction = ("TA=BEARISH" in reason
-                         and "waiting for BEARISH" in reason)
+        contradiction = "TA=BEARISH" in reason and "waiting for BEARISH" in reason
         assert not contradiction, f"self-contradicting line: {reason!r}"
 
     def test_a_wrong_direction_names_the_direction(self):
@@ -131,10 +135,8 @@ class TestTheHoldReasonIsNeverSelfContradicting:
 
     def test_the_boundary_is_reported_correctly(self):
         """Exactly at the floor is NOT blocked -- the gate is >=."""
-        at_floor = _hold_reason(SignalDirection.BEARISH,
-                                _TA_CONFIDENCE_FLOOR)
-        below = _hold_reason(SignalDirection.BEARISH,
-                             _TA_CONFIDENCE_FLOOR - 0.01)
+        at_floor = _hold_reason(SignalDirection.BEARISH, _TA_CONFIDENCE_FLOOR)
+        below = _hold_reason(SignalDirection.BEARISH, _TA_CONFIDENCE_FLOOR - 0.01)
         # Match on "floor", not "confidence": the override branch says
         # "not by direction or confidence" and would match either way.
         assert "floor" not in at_floor, at_floor

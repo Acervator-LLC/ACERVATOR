@@ -19,6 +19,7 @@ Design: `docs/audits/2026-08-01_stone_tablets_rebuild_design.md`.
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 from .registry import (

@@ -57,7 +57,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QCoreApplication, QPoint  # noqa: E402
 from PySide6.QtGui import QColor, QImage  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
-    QAbstractItemView, QApplication, QWidget,
+    QAbstractItemView,
+    QApplication,
+    QWidget,
 )
 
 __all__ = [
@@ -84,8 +86,7 @@ def ensure_app() -> QCoreApplication:
     return app
 
 
-def render_widget(widget: QWidget,
-                  size: tuple[int, int] | None = None) -> QImage:
+def render_widget(widget: QWidget, size: tuple[int, int] | None = None) -> QImage:
     """Render `widget` offscreen and return the painted image.
 
     `ensurePolished` is what applies a stylesheet, and processEvents
@@ -103,23 +104,25 @@ def render_widget(widget: QWidget,
         raise RuntimeError(
             f"{type(widget).__name__} rendered an empty image "
             f"({image.width()}x{image.height()}); give it a size before "
-            "sampling, or the sample proves nothing.")
+            "sampling, or the sample proves nothing."
+        )
     return image
 
 
 def pixel_at(image: QImage, point: QPoint) -> str:
     """Return the painted colour at `point` as a lowercase #rrggbb."""
-    if not (0 <= point.x() < image.width()
-            and 0 <= point.y() < image.height()):
+    if not (0 <= point.x() < image.width() and 0 <= point.y() < image.height()):
         raise IndexError(
             f"sample point ({point.x()}, {point.y()}) is outside the "
             f"{image.width()}x{image.height()} render; a point off the "
-            "image would silently read as a default colour.")
+            "image would silently read as a default colour."
+        )
     return QColor(image.pixelColor(point)).name().lower()
 
 
-def sample_pixels(widget: QWidget, points: list[QPoint],
-                  size: tuple[int, int] | None = None) -> list[str]:
+def sample_pixels(
+    widget: QWidget, points: list[QPoint], size: tuple[int, int] | None = None
+) -> list[str]:
     """Render once and return the painted colour at each point."""
     image = render_widget(widget, size=size)
     return [pixel_at(image, p) for p in points]
@@ -138,9 +141,13 @@ def table_cell_centre(view: QAbstractItemView, row: int, col: int) -> QPoint:
     return QPoint(origin.x(), origin.y())
 
 
-def assert_pixel_colour(widget: QWidget, point: QPoint, expected_hex: str,
-                        size: tuple[int, int] | None = None,
-                        tolerance: int = 0) -> str:
+def assert_pixel_colour(
+    widget: QWidget,
+    point: QPoint,
+    expected_hex: str,
+    size: tuple[int, int] | None = None,
+    tolerance: int = 0,
+) -> str:
     """Assert the RENDERED pixel at `point` matches `expected_hex`.
 
     `tolerance` is a per-channel 0-255 allowance for antialiasing at an
@@ -153,14 +160,17 @@ def assert_pixel_colour(widget: QWidget, point: QPoint, expected_hex: str,
     actual = pixel_at(image, point)
     expected = QColor(expected_hex)
     got = QColor(actual)
-    deltas = (abs(got.red() - expected.red()),
-              abs(got.green() - expected.green()),
-              abs(got.blue() - expected.blue()))
+    deltas = (
+        abs(got.red() - expected.red()),
+        abs(got.green() - expected.green()),
+        abs(got.blue() - expected.blue()),
+    )
     if max(deltas) > tolerance:
         raise AssertionError(
             f"rendered pixel at ({point.x()}, {point.y()}) is {actual}, "
             f"expected {expected.name().lower()} "
             f"(per-channel delta {deltas}, tolerance {tolerance}). "
             "The widget model may still report the expected colour; the "
-            "screen does not.")
+            "screen does not."
+        )
     return actual

@@ -54,6 +54,7 @@ being mistaken for a 100%-agreement result.
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import bisect
@@ -97,6 +98,7 @@ class GateStatus:
 class TradeGatePairing:
     """One trade and the gate decision behind it (or why there is
     none)."""
+
     trade_ts: float
     bot_id: str
     symbol: str
@@ -114,15 +116,13 @@ class TradeGatePairing:
     def scrum_armed(self) -> Optional[bool]:
         if not self.gate_entry:
             return None
-        return bool(
-            (self.gate_entry.get("data") or {}).get("scrum_armed"))
+        return bool((self.gate_entry.get("data") or {}).get("scrum_armed"))
 
     @property
     def fold_armed(self) -> Optional[bool]:
         if not self.gate_entry:
             return None
-        return bool(
-            (self.gate_entry.get("data") or {}).get("fold_armed"))
+        return bool((self.gate_entry.get("data") or {}).get("fold_armed"))
 
     def blockers(self) -> list[str]:
         """Blockers recorded on the side matching this trade —
@@ -130,8 +130,7 @@ class TradeGatePairing:
         if not self.gate_entry:
             return []
         data = self.gate_entry.get("data") or {}
-        key = ("scrum_blockers" if "SELL" in self.side.upper()
-               else "fold_blockers")
+        key = "scrum_blockers" if "SELL" in self.side.upper() else "fold_blockers"
         return list(data.get(key) or [])
 
 
@@ -175,7 +174,10 @@ def _ts_of(entry: dict) -> float:
 
 
 _RETAINED_GATE_FIELDS = (
-    "scrum_armed", "fold_armed", "scrum_blockers", "fold_blockers",
+    "scrum_armed",
+    "fold_armed",
+    "scrum_blockers",
+    "fold_blockers",
 )
 """The only fields any consumer of ``TradeGatePairing.gate_entry`` reads.
 
@@ -238,15 +240,16 @@ def build_gate_index(
         lst.sort(key=lambda p: p[0])
     if dropped:
         logger.debug(
-            "gate_coverage: dropped %d entries with unparseable "
-            "timestamps", dropped)
+            "gate_coverage: dropped %d entries with unparseable " "timestamps", dropped
+        )
     if earliest == float("inf"):
         earliest = 0.0
     return index, earliest, latest
 
 
 def _nearest(
-    candidates: list[tuple[float, dict]], target: float,
+    candidates: list[tuple[float, dict]],
+    target: float,
     tolerance_s: float,
 ) -> tuple[Optional[dict], float]:
     """Closest entry within tolerance.
@@ -276,7 +279,7 @@ def _nearest(
     i = bisect.bisect_left(candidates, (target,))
     best: Optional[dict] = None
     best_drift = float("inf")
-    for j in (i - 1, i):          # order matters — see tie-break above
+    for j in (i - 1, i):  # order matters — see tie-break above
         if 0 <= j < len(candidates):
             ts, e = candidates[j]
             drift = abs(ts - target)
@@ -286,7 +289,8 @@ def _nearest(
 
 
 def _in_log_gap(
-    candidates: list[tuple[float, dict]], target: float,
+    candidates: list[tuple[float, dict]],
+    target: float,
     gap_threshold_s: float,
 ) -> bool:
     """True when target falls inside a stretch where this bot
@@ -320,16 +324,18 @@ def classify_trades(
     """
     index, earliest, latest = build_gate_index(gate_entries)
     report = GateCoverageReport(
-        gate_first_ts=earliest, gate_last_ts=latest,
-        gate_entry_count=sum(len(v) for v in index.values()))
+        gate_first_ts=earliest,
+        gate_last_ts=latest,
+        gate_entry_count=sum(len(v) for v in index.values()),
+    )
 
     for t in trades or []:
         ts = float(t.get("timestamp", 0) or 0)
         bot_id = str(t.get("bot_id", "") or "")
-        symbol = str(t.get("symbol", "")
-                     or (t.get("data") or {}).get("symbol", "") or "")
-        side = str(t.get("side", "")
-                   or (t.get("data") or {}).get("side", "") or "")
+        symbol = str(
+            t.get("symbol", "") or (t.get("data") or {}).get("symbol", "") or ""
+        )
+        side = str(t.get("side", "") or (t.get("data") or {}).get("side", "") or "")
 
         address = ""
         if address_resolver is not None and ts > 0:
@@ -337,12 +343,17 @@ def classify_trades(
                 address = address_resolver(symbol, int(ts * 1000)) or ""
             except Exception as exc:  # noqa: BLE001 - resolver is external
                 logger.debug(
-                    "gate_coverage: address resolve failed for %s: %s",
-                    symbol, exc)
+                    "gate_coverage: address resolve failed for %s: %s", symbol, exc
+                )
 
         pairing = TradeGatePairing(
-            trade_ts=ts, bot_id=bot_id, symbol=symbol, side=side,
-            status=GateStatus.NO_GATE_DATA, candle_address=address)
+            trade_ts=ts,
+            bot_id=bot_id,
+            symbol=symbol,
+            side=side,
+            status=GateStatus.NO_GATE_DATA,
+            candle_address=address,
+        )
 
         if not index:
             report.pairings.append(pairing)
@@ -377,14 +388,16 @@ def classify_trades(
 
 
 def format_coverage_lines(
-    report: GateCoverageReport, max_examples: int = 5,
+    report: GateCoverageReport,
+    max_examples: int = 5,
 ) -> list[str]:
     """Operator-facing summary for the Performance Log."""
     lines: list[str] = []
     counts = report.by_status()
     lines.append(
         f"Gate coverage: {report.covered:,} / {report.total:,} trades "
-        f"have a gate decision ({report.coverage_pct:.1f}%)")
+        f"have a gate decision ({report.coverage_pct:.1f}%)"
+    )
     if report.gate_entry_count:
         # timezone-aware: utcfromtimestamp is deprecated and slated
         # for removal (surfaced as a DeprecationWarning by the pin
@@ -392,37 +405,35 @@ def format_coverage_lines(
         def _fmt(ts: float) -> str:
             if not ts:
                 return "?"
-            return datetime.fromtimestamp(
-                ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
+            return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
+                "%Y-%m-%d %H:%M"
+            )
 
         first = _fmt(report.gate_first_ts)
         last = _fmt(report.gate_last_ts)
         lines.append(
             f"  gate log: {report.gate_entry_count:,} entries, "
-            f"{first} -> {last} UTC")
+            f"{first} -> {last} UTC"
+        )
     label = {
         GateStatus.HAS_GATE: "paired with a gate decision",
-        GateStatus.BEFORE_LOGGING:
-            "predate gate logging (blind spot — not backfillable)",
-        GateStatus.LOG_GAP:
-            "fall in a gate-log gap (app down or writer stalled)",
-        GateStatus.NO_GATE_IN_TOLERANCE:
-            "bot was logging either side, but no decision within "
-            "tolerance (investigate)",
-        GateStatus.NO_GATE_FOR_BOT:
-            "bot emitted NO gate entries (investigate)",
+        GateStatus.BEFORE_LOGGING: "predate gate logging (blind spot — not backfillable)",
+        GateStatus.LOG_GAP: "fall in a gate-log gap (app down or writer stalled)",
+        GateStatus.NO_GATE_IN_TOLERANCE: "bot was logging either side, but no decision within "
+        "tolerance (investigate)",
+        GateStatus.NO_GATE_FOR_BOT: "bot emitted NO gate entries (investigate)",
         GateStatus.NO_GATE_DATA: "no gate data supplied at all",
     }
     for status, n in sorted(counts.items(), key=lambda kv: -kv[1]):
         lines.append(f"  {n:>6,}  {label.get(status, status)}")
 
-    suspicious = [p for p in report.pairings
-                  if p.status == GateStatus.NO_GATE_FOR_BOT]
+    suspicious = [p for p in report.pairings if p.status == GateStatus.NO_GATE_FOR_BOT]
     if suspicious:
         bots = sorted({p.bot_id for p in suspicious})[:max_examples]
         lines.append(
             f"  bots with zero gate entries: {', '.join(bots)}"
-            + (" ..." if len(suspicious) > max_examples else ""))
+            + (" ..." if len(suspicious) > max_examples else "")
+        )
     return lines
 
 
@@ -464,6 +475,7 @@ __all__ = [
 class ValidationWindow:
     """Where a replay should start so every candle it plays can
     actually be validated."""
+
     soft_start_ms: int = 0
     """Oldest trade that HAS gate data — the validation floor."""
 
@@ -501,21 +513,20 @@ def compute_validation_window(
     do with strategy.
     """
     win = ValidationWindow(
-        warmup_candles=max(0, int(warmup_candles)),
-        gate_first_ts=coverage.gate_first_ts)
+        warmup_candles=max(0, int(warmup_candles)), gate_first_ts=coverage.gate_first_ts
+    )
 
-    paired = [p for p in coverage.pairings
-              if p.status == GateStatus.HAS_GATE]
+    paired = [p for p in coverage.pairings if p.status == GateStatus.HAS_GATE]
     if not paired:
         win.reason = (
             "no trade has gate data — cannot scope the window; "
-            "replay will use the full tablet span")
+            "replay will use the full tablet span"
+        )
         return win
 
     oldest = min(p.trade_ts for p in paired)
     win.soft_start_ms = int(oldest * 1000)
-    win.replay_start_ms = max(
-        0, win.soft_start_ms - win.warmup_candles * step_ms)
+    win.replay_start_ms = max(0, win.soft_start_ms - win.warmup_candles * step_ms)
     win.trades_validatable = len(paired)
 
     excluded = [p for p in coverage.pairings if p.trade_ts < oldest]
@@ -527,15 +538,15 @@ def compute_validation_window(
     win.reason = (
         f"oldest trade with gate data is "
         f"{_fmt_ts(oldest)}; {win.trades_excluded} earlier trade(s) "
-        "have no gate row and can never be validated")
+        "have no gate row and can never be validated"
+    )
     return win
 
 
 def _fmt_ts(ts: float) -> str:
     if not ts:
         return "-"
-    return datetime.fromtimestamp(
-        ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def format_window_lines(
@@ -558,11 +569,13 @@ def format_window_lines(
             f"  {win.trades_excluded} trade(s) excluded "
             f"({_fmt_ts(win.excluded_oldest_ts)} .. "
             f"{_fmt_ts(win.excluded_newest_ts)}) — no gate data exists "
-            "for them, so no sim result could be checked")
+            "for them, so no sim result could be checked"
+        )
     if full_candles and scoped_candles:
         saved = full_candles - scoped_candles
         pct = 100.0 * saved / full_candles if full_candles else 0.0
         lines.append(
             f"  window scoped {full_candles:,} -> {scoped_candles:,} "
-            f"candles ({pct:.0f}% fewer)")
+            f"candles ({pct:.0f}% fewer)"
+        )
     return lines

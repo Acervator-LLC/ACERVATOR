@@ -27,6 +27,7 @@ exactly that error.
 MEASURED at the time of writing: Ticker, Balance, Trade and OrderBook
 have identical populated field sets. `Order` differs on three fields.
 """
+
 from __future__ import annotations
 
 import ast
@@ -85,7 +86,7 @@ def _populated(path: Path) -> tuple[dict, set]:
 def _fields_set(path: Path, cls: str) -> set:
     ctor, attrs = _populated(path)
     declared = {f.name for f in dataclasses.fields(getattr(B, cls))}
-    return (ctor.get(cls, set()) | (attrs & declared))
+    return ctor.get(cls, set()) | (attrs & declared)
 
 
 @pytest.mark.parametrize("cls", DATACLASSES)
@@ -100,7 +101,8 @@ def test_sim_populates_every_field_live_does(cls):
         f"A bot reading those gets real values live and defaults in sim, "
         f"so a replay cannot reproduce the live decision. Either populate "
         f"them in FleetSimExchange or add them to KNOWN_UNPOPULATED with "
-        f"a reason and no consumer.")
+        f"a reason and no consumer."
+    )
 
 
 def test_the_exempt_fields_are_still_unread():
@@ -123,19 +125,23 @@ def test_the_exempt_fields_are_still_unread():
                         continue
                     for node in ast.walk(tree):
                         # An attribute READ, not a write and not a string.
-                        if (isinstance(node, ast.Attribute)
-                                and node.attr == field
-                                and isinstance(node.ctx, ast.Load)):
+                        if (
+                            isinstance(node, ast.Attribute)
+                            and node.attr == field
+                            and isinstance(node.ctx, ast.Load)
+                        ):
                             src = ast.unparse(node)
                             if src.startswith(("self.", "cls.")):
                                 continue
                             offenders.append(
                                 f"{py.relative_to(REPO_ROOT).as_posix()}:"
-                                f"{node.lineno} reads {src} ({cls}.{field})")
+                                f"{node.lineno} reads {src} ({cls}.{field})"
+                            )
     assert not offenders, (
         "a field exempted as unread is now being read; the Simulator "
         "must populate it or the exemption must be re-justified:\n  "
-        + "\n  ".join(sorted(set(offenders))[:10]))
+        + "\n  ".join(sorted(set(offenders))[:10])
+    )
 
 
 def test_both_sides_use_the_same_dataclasses():
@@ -145,8 +151,8 @@ def test_both_sides_use_the_same_dataclasses():
     assert "from ....exchange.base import (" in src
     for cls in DATACLASSES:
         assert f"class {cls}" not in src, (
-            f"the Simulator defines its own {cls}; it must use the one "
-            f"live returns")
+            f"the Simulator defines its own {cls}; it must use the one " f"live returns"
+        )
 
 
 def test_the_parser_sees_attribute_assignment():

@@ -102,12 +102,13 @@ class LogCategory(str, Enum):
 @dataclass
 class LogEntry:
     """Universal log entry — serialisable to JSON."""
+
     timestamp: str = ""
     category: str = ""
     exchange: str = ""
     bot_id: str = ""
     data: dict = field(default_factory=dict)
-    highlight: bool = False      # True if entry is near a scrumming trade
+    highlight: bool = False  # True if entry is near a scrumming trade
 
     def __post_init__(self) -> None:
         if not self.timestamp:
@@ -337,13 +338,12 @@ class SizeBoundedFileHandler(RotatingFileHandler):
             if self.backupCount > 0:
                 for i in range(self.backupCount - 1, 0, -1):
                     self._shift(
-                        self.rotation_filename(
-                            "%s.%d" % (self.baseFilename, i)),
-                        self.rotation_filename(
-                            "%s.%d" % (self.baseFilename, i + 1)))
+                        self.rotation_filename("%s.%d" % (self.baseFilename, i)),
+                        self.rotation_filename("%s.%d" % (self.baseFilename, i + 1)),
+                    )
                 self._shift(
-                    self.baseFilename,
-                    self.rotation_filename(self.baseFilename + ".1"))
+                    self.baseFilename, self.rotation_filename(self.baseFilename + ".1")
+                )
         finally:
             self.stream = self._open()
 
@@ -367,10 +367,10 @@ class PnLCascade:
     """
 
     PERIODS = {
-        "daily":   1,
-        "weekly":  7,
+        "daily": 1,
+        "weekly": 7,
         "monthly": 30,
-        "yearly":  365,
+        "yearly": 365,
     }
 
     def __init__(self, base_dir: Path) -> None:
@@ -399,6 +399,7 @@ class PnLCascade:
 
     def _concat_days(self, start: str, count: int, output_dir: str) -> list[dict]:
         from datetime import timedelta
+
         start_date = datetime.strptime(start, "%Y-%m-%d")
         entries: list[dict] = []
         for i in range(count):
@@ -504,8 +505,7 @@ class LogManager:
         # a widget.
         #
         # Bounded like its siblings: 50 MB x 5 backups.
-        self._diag_writer = NDJSONWriter(
-            self._trade_dir / "diagnostics.log")
+        self._diag_writer = NDJSONWriter(self._trade_dir / "diagnostics.log")
         # v3.23.6 NEW — voting.log NDJSON writer for per-trade voting-panel
         # snapshots. Per operator pin 2026-06-13: snapshot panel outputs
         # ONLY at trade execution (not per-tick), so this log fires once
@@ -582,15 +582,16 @@ class LogManager:
                 self._console_dir / "system.log",
                 maxBytes=SYSTEM_LOG_MAX_BYTES,
                 backupCount=SYSTEM_LOG_BACKUP_COUNT,
-                encoding="utf-8", errors="replace")
+                encoding="utf-8",
+                errors="replace",
+            )
             handler.setFormatter(
                 logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
             )
             self._sys_logger.addHandler(handler)
 
     # -- Internal-failure reporting -------------------------------------
-    def _note_internal_failure(
-            self, where: str, exc: BaseException) -> None:
+    def _note_internal_failure(self, where: str, exc: BaseException) -> None:
         """Record a fault inside the logging engine's own plumbing.
 
         Total by construction. Every caller is an ``except`` block whose
@@ -615,22 +616,24 @@ class LogManager:
            fails it is counted under ``_stderr`` rather than lost.
         """
         kind = type(exc).__name__
-        self._internal_failures[where] = (
-            self._internal_failures.get(where, 0) + 1)
+        self._internal_failures[where] = self._internal_failures.get(where, 0) + 1
         try:
             self._sys_logger.warning(
-                "LogManager internal failure at %s: %s: %s",
-                where, kind, exc)
+                "LogManager internal failure at %s: %s: %s", where, kind, exc
+            )
         except Exception as log_exc:
             self._internal_failures["_sys_logger"] = (
-                self._internal_failures.get("_sys_logger", 0) + 1)
+                self._internal_failures.get("_sys_logger", 0) + 1
+            )
             landed = _emergency_stderr(
                 f"[LogManager] internal failure at {where}: {kind} "
                 f"(system logger also failed: "
-                f"{type(log_exc).__name__})")
+                f"{type(log_exc).__name__})"
+            )
             if not landed:
                 self._internal_failures["_stderr"] = (
-                    self._internal_failures.get("_stderr", 0) + 1)
+                    self._internal_failures.get("_stderr", 0) + 1
+                )
 
     def internal_failure_counts(self) -> dict[str, int]:
         """Return a copy of the per-site internal-failure counters.
@@ -642,8 +645,7 @@ class LogManager:
         """
         return dict(self._internal_failures)
 
-    def set_symbol_resolver(
-            self, resolver: "Callable[[str], str]") -> None:
+    def set_symbol_resolver(self, resolver: "Callable[[str], str]") -> None:
         """v3.16.60 — register a bot_id → symbol lookup function. Used
         by _on_trade_filled_bus and _on_pnl_event_bus as fallback when
         the emitter didn't include `symbol` in the payload (which is
@@ -881,27 +883,27 @@ class LogManager:
                 bus.unsubscribe("trade.filled", self._on_trade_filled_bus)
             except Exception as exc:
                 self._note_internal_failure(
-                    "attach_to_bus/unsubscribe trade.filled", exc)
+                    "attach_to_bus/unsubscribe trade.filled", exc
+                )
             try:
                 bus.unsubscribe("pnl.event", self._on_pnl_event_bus)
             except Exception as exc:
-                self._note_internal_failure(
-                    "attach_to_bus/unsubscribe pnl.event", exc)
+                self._note_internal_failure("attach_to_bus/unsubscribe pnl.event", exc)
             try:
-                bus.unsubscribe(
-                    "bot.gate_decision", self._on_gate_decision_bus)
+                bus.unsubscribe("bot.gate_decision", self._on_gate_decision_bus)
             except Exception as exc:
                 self._note_internal_failure(
-                    "attach_to_bus/unsubscribe bot.gate_decision", exc)
+                    "attach_to_bus/unsubscribe bot.gate_decision", exc
+                )
             # v3.23.6 — voting.log unsubscribe symmetric with gate.log
             try:
                 bus.unsubscribe(
-                    "bot.voting_panel_snapshot",
-                    self._on_voting_panel_snapshot_bus)
+                    "bot.voting_panel_snapshot", self._on_voting_panel_snapshot_bus
+                )
             except Exception as exc:
                 self._note_internal_failure(
-                    "attach_to_bus/unsubscribe "
-                    "bot.voting_panel_snapshot", exc)
+                    "attach_to_bus/unsubscribe " "bot.voting_panel_snapshot", exc
+                )
             # v3.24.35 (C39g) — symmetric with the bot.log subscribe
             # below. An asymmetric teardown leaks a subscription on the
             # global bus, which is the exact shape of the Nuclear
@@ -909,8 +911,7 @@ class LogManager:
             try:
                 bus.unsubscribe("bot.log", self._on_bot_log_bus)
             except Exception as exc:
-                self._note_internal_failure(
-                    "attach_to_bus/unsubscribe bot.log", exc)
+                self._note_internal_failure("attach_to_bus/unsubscribe bot.log", exc)
         try:
             bus.subscribe("trade.filled", self._on_trade_filled_bus)
             # v3.16.59 — Wire pnl.event → log_pnl. Operator directive
@@ -931,16 +932,15 @@ class LogManager:
             # as NDJSON. SCAFFOLD-ONLY: V1-V6 verify-loop in DOCKET
             # closes the verified-wired-and-working gate before sim
             # consumes this stream.
-            bus.subscribe(
-                "bot.gate_decision", self._on_gate_decision_bus)
+            bus.subscribe("bot.gate_decision", self._on_gate_decision_bus)
             # v3.23.6 NEW — bot.voting_panel_snapshot → voting.log.
             # ScrummingBot emits this at trade-execution sites only
             # (operator pin: cadence is per-fired-trade, not per-tick).
             # Routes the VotingSummary asdict snapshot that drove the
             # decision into ~/.acervator_logs/trade/voting.log as NDJSON.
             bus.subscribe(
-                "bot.voting_panel_snapshot",
-                self._on_voting_panel_snapshot_bus)
+                "bot.voting_panel_snapshot", self._on_voting_panel_snapshot_bus
+            )
             # v3.24.35 (C39g) — bot.log → diagnostics.log. Before this,
             # `bot.log` had only GUI subscribers and every diagnostic
             # ScrummingBot emits died in a scrollback panel.
@@ -950,10 +950,10 @@ class LogManager:
                 "LogManager attached to bus: trade.filled → trade.log, "
                 "pnl.event → pnl/<day>.log, "
                 "bot.gate_decision → gate.log (v3.23.0 scaffold), "
-                "bot.voting_panel_snapshot → voting.log (v3.23.6)")
+                "bot.voting_panel_snapshot → voting.log (v3.23.6)"
+            )
         except Exception as exc:
-            self._sys_logger.warning(
-                "LogManager.attach_to_bus failed: %s", exc)
+            self._sys_logger.warning("LogManager.attach_to_bus failed: %s", exc)
 
     def _on_bot_log_bus(self, event_obj) -> None:
         """v3.24.35 (C39g) — route ``bot.log`` to disk.
@@ -977,8 +977,7 @@ class LogManager:
             data = getattr(event_obj, "data", None)
             if not isinstance(data, dict) or not data:
                 return
-            inner = data.get("data") if isinstance(
-                data.get("data"), dict) else None
+            inner = data.get("data") if isinstance(data.get("data"), dict) else None
             merged = dict(data)
             if inner is not None:
                 merged.update(inner)
@@ -994,14 +993,15 @@ class LogManager:
                 except Exception:  # R28-OK: resolver probe
                     symbol = ""
 
-            self._diag_writer.write(LogEntry(
-                category="bot_log",
-                bot_id=bot_id,
-                data={"symbol": symbol, "message": message},
-            ))
+            self._diag_writer.write(
+                LogEntry(
+                    category="bot_log",
+                    bot_id=bot_id,
+                    data={"symbol": symbol, "message": message},
+                )
+            )
         except Exception as exc:  # noqa: BLE001 - never break the loop
-            self._sys_logger.warning(
-                "LogManager._on_bot_log_bus failed: %s", exc)
+            self._sys_logger.warning("LogManager._on_bot_log_bus failed: %s", exc)
 
     def _on_gate_decision_bus(self, event_obj) -> None:
         """v3.23.0 NEW — handler for ``bot.gate_decision`` bus events.
@@ -1024,8 +1024,7 @@ class LogManager:
             data = getattr(event_obj, "data", None)
             if not isinstance(data, dict) or not data:
                 return
-            inner = data.get("data") if isinstance(
-                data.get("data"), dict) else None
+            inner = data.get("data") if isinstance(data.get("data"), dict) else None
             merged = dict(data)
             if inner is not None:
                 merged.update(inner)
@@ -1052,16 +1051,26 @@ class LogManager:
                 indicators=merged.get("indicators"),
                 state_snapshot=merged.get("state"),
                 extra={
-                    k: v for k, v in merged.items()
-                    if k not in {
-                        "bot_id", "exchange", "symbol",
-                        "scrum_armed", "fold_armed",
-                        "scrum_blockers", "fold_blockers",
+                    k: v
+                    for k, v in merged.items()
+                    if k
+                    not in {
+                        "bot_id",
+                        "exchange",
+                        "symbol",
+                        "scrum_armed",
+                        "fold_armed",
+                        "scrum_blockers",
+                        "fold_blockers",
                         "evaluated_at_tick",
-                        "scrum_fixture", "fold_fixture",
-                        "indicators", "state", "data",
+                        "scrum_fixture",
+                        "fold_fixture",
+                        "indicators",
+                        "state",
+                        "data",
                     }
-                } or None,
+                }
+                or None,
             )
         except Exception as exc:
             self._note_internal_failure("_on_gate_decision_bus", exc)
@@ -1085,8 +1094,7 @@ class LogManager:
             data = getattr(event_obj, "data", None)
             if not isinstance(data, dict) or not data:
                 return
-            inner = data.get("data") if isinstance(
-                data.get("data"), dict) else None
+            inner = data.get("data") if isinstance(data.get("data"), dict) else None
             merged = dict(data)
             if inner is not None:
                 merged.update(inner)
@@ -1111,16 +1119,23 @@ class LogManager:
                 trade_action=str(merged.get("trade_action", "") or ""),
                 panel=panel,
                 extra={
-                    k: v for k, v in merged.items()
-                    if k not in {
-                        "bot_id", "exchange", "symbol", "side",
-                        "trade_action", "panel", "data",
+                    k: v
+                    for k, v in merged.items()
+                    if k
+                    not in {
+                        "bot_id",
+                        "exchange",
+                        "symbol",
+                        "side",
+                        "trade_action",
+                        "panel",
+                        "data",
                     }
-                } or None,
+                }
+                or None,
             )
         except Exception as exc:
-            self._note_internal_failure(
-                "_on_voting_panel_snapshot_bus", exc)
+            self._note_internal_failure("_on_voting_panel_snapshot_bus", exc)
 
     def _on_pnl_event_bus(self, event_obj) -> None:
         """v3.16.59 — handler for ``pnl.event`` bus events. Routes
@@ -1134,8 +1149,7 @@ class LogManager:
             data = getattr(event_obj, "data", None)
             if not isinstance(data, dict) or not data:
                 return
-            inner = data.get("data") if isinstance(
-                data.get("data"), dict) else None
+            inner = data.get("data") if isinstance(data.get("data"), dict) else None
             merged = dict(data)
             if inner is not None:
                 merged.update(inner)
@@ -1153,18 +1167,28 @@ class LogManager:
             if kind == "SCRUM":
                 realised = float(merged.get("usd_captured", 0.0) or 0.0)
             else:
-                realised = float(
-                    merged.get("growth_applied_usd", 0.0) or 0.0)
+                realised = float(merged.get("growth_applied_usd", 0.0) or 0.0)
 
             extra: dict = {"kind": kind}
             # Forward the per-kind details so the daily cascade preserves
             # the full picture of each event.
-            for k in ("asset", "symbol", "units", "units_rebought",
-                      "units_at_scrum_refs", "extra_asset",
-                      "pct_token_gain", "fill_price", "min_ref",
-                      "pct_cheaper_vs_ref", "usd_spent",
-                      "usd_captured", "avg_entry",
-                      "pct_vs_avg_entry", "growth_applied_usd"):
+            for k in (
+                "asset",
+                "symbol",
+                "units",
+                "units_rebought",
+                "units_at_scrum_refs",
+                "extra_asset",
+                "pct_token_gain",
+                "fill_price",
+                "min_ref",
+                "pct_cheaper_vs_ref",
+                "usd_spent",
+                "usd_captured",
+                "avg_entry",
+                "pct_vs_avg_entry",
+                "growth_applied_usd",
+            ):
                 if k in merged:
                     try:
                         extra[k] = float(merged[k])
@@ -1180,8 +1204,7 @@ class LogManager:
                 extra=extra,
             )
         except Exception as exc:
-            self._sys_logger.warning(
-                "LogManager._on_pnl_event_bus raised: %s", exc)
+            self._sys_logger.warning("LogManager._on_pnl_event_bus raised: %s", exc)
 
     def _on_trade_filled_bus(self, event_obj) -> None:
         """Internal handler for ``trade.filled`` bus events. Wired by
@@ -1192,8 +1215,7 @@ class LogManager:
             data = getattr(event_obj, "data", None)
             if not isinstance(data, dict) or not data:
                 return
-            inner = data.get("data") if isinstance(
-                data.get("data"), dict) else None
+            inner = data.get("data") if isinstance(data.get("data"), dict) else None
             merged = dict(data)
             if inner is not None:
                 merged.update(inner)
@@ -1206,9 +1228,7 @@ class LogManager:
                 side = "SELL"
             else:
                 side = raw_side or ""
-            role = str(
-                merged.get("type", "") or merged.get("role", "") or ""
-            ).upper()
+            role = str(merged.get("type", "") or merged.get("role", "") or "").upper()
             try:
                 amount = float(merged.get("amount", 0) or 0)
             except (TypeError, ValueError):
@@ -1218,8 +1238,7 @@ class LogManager:
             except (TypeError, ValueError):
                 price = 0.0
             try:
-                usd = float(
-                    merged.get("usd", merged.get("size", 0)) or 0)
+                usd = float(merged.get("usd", merged.get("size", 0)) or 0)
             except (TypeError, ValueError):
                 usd = 0.0
             if usd <= 0 and amount > 0 and price > 0:
@@ -1232,8 +1251,7 @@ class LogManager:
             extra = {
                 "usd": usd,
                 "profit": profit,
-                "operator_initiated": bool(
-                    merged.get("operator_initiated", False)),
+                "operator_initiated": bool(merged.get("operator_initiated", False)),
             }
             # Best-effort confidence carry-through if present.
             if "confidence" in merged:
@@ -1255,9 +1273,8 @@ class LogManager:
             self.log_trade(
                 exchange=str(merged.get("exchange", "") or ""),
                 bot_id=bot_id,
-                action=role or ("SELL" if side == "SELL"
-                                else "BUY" if side == "BUY"
-                                else "TRADE"),
+                action=role
+                or ("SELL" if side == "SELL" else "BUY" if side == "BUY" else "TRADE"),
                 symbol=_symbol,
                 side=side,
                 amount=amount,

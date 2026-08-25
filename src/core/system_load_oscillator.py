@@ -35,6 +35,7 @@ sadp: R60 (override approved — user explicit override of 'run current
 build' queue order this turn), R61 CBF (fail-loudly at sampling
 thread boundary — no silent-swallow).
 """
+
 from __future__ import annotations
 import math
 import threading
@@ -71,22 +72,22 @@ class SystemLoadOscillator:
     """
 
     # ── Cycle geometry ─────────────────────────────────────────────
-    CYCLE_SEC         = 120.0   # full period
-    RAMP_UP_SEC       = 45.0    # cosine ease up
-    SUSTAIN_SEC       = 30.0    # flat at peak
-    RAMP_DOWN_SEC     = 45.0    # cosine ease down
+    CYCLE_SEC = 120.0  # full period
+    RAMP_UP_SEC = 45.0  # cosine ease up
+    SUSTAIN_SEC = 30.0  # flat at peak
+    RAMP_DOWN_SEC = 45.0  # cosine ease down
     # Invariant: RAMP_UP + SUSTAIN + RAMP_DOWN == CYCLE_SEC
 
     # ── Intensity ─────────────────────────────────────────────────
-    BASE_MULTIPLIER   = 1.0
-    PEAK_MULTIPLIER   = 4.0
-    COOLING_CAP       = 1.5     # max multiplier while in COOLING
+    BASE_MULTIPLIER = 1.0
+    PEAK_MULTIPLIER = 4.0
+    COOLING_CAP = 1.5  # max multiplier while in COOLING
 
     # ── COOLING state machine ─────────────────────────────────────
-    COOLING_EXIT_CALM_COUNT = 3    # consecutive CALM samples to exit
+    COOLING_EXIT_CALM_COUNT = 3  # consecutive CALM samples to exit
 
     # ── Sampling ──────────────────────────────────────────────────
-    SAMPLING_HZ       = 5.0     # samples per second (0.2s interval)
+    SAMPLING_HZ = 5.0  # samples per second (0.2s interval)
 
     def __init__(self, system_load_mr):
         """Initialize bound to a SystemLoadMR for COOLING detection.
@@ -118,8 +119,10 @@ class SystemLoadOscillator:
         if self._sysmr is not None:
             self._stop_event.clear()
             self._thread = threading.Thread(
-                target=self._monitor_loop, daemon=True,
-                name="SystemLoadOscillatorMonitor")
+                target=self._monitor_loop,
+                daemon=True,
+                name="SystemLoadOscillatorMonitor",
+            )
             self._thread.start()
 
     def stop(self):
@@ -165,8 +168,7 @@ class SystemLoadOscillator:
         elif t < self.RAMP_UP_SEC + self.SUSTAIN_SEC:
             m = self.PEAK_MULTIPLIER
         else:
-            phase = (t - self.RAMP_UP_SEC - self.SUSTAIN_SEC) \
-                      / self.RAMP_DOWN_SEC
+            phase = (t - self.RAMP_UP_SEC - self.SUSTAIN_SEC) / self.RAMP_DOWN_SEC
             m = self.PEAK_MULTIPLIER - span * _cosine_ramp(phase)
 
         # Clamp by COOLING state (read under lock)
@@ -238,8 +240,7 @@ class SystemLoadOscillator:
                     elif regime == "CALM":
                         if self._cooling:
                             self._cooling_calm_count += 1
-                            if (self._cooling_calm_count
-                                    >= self.COOLING_EXIT_CALM_COUNT):
+                            if self._cooling_calm_count >= self.COOLING_EXIT_CALM_COUNT:
                                 self._cooling = False
                                 self.cooling_exit_count += 1
                                 self._cooling_calm_count = 0
@@ -249,9 +250,10 @@ class SystemLoadOscillator:
             except Exception as exc:
                 # R61 CBF — surface, don't swallow
                 import sys as _s, traceback as _tb
+
                 _s.stderr.write(
-                    f"SystemLoadOscillator sampler: "
-                    f"{type(exc).__name__}: {exc}\n")
+                    f"SystemLoadOscillator sampler: " f"{type(exc).__name__}: {exc}\n"
+                )
                 _tb.print_exc(file=_s.stderr)
                 # Don't kill the thread; back off one interval and try
                 # again

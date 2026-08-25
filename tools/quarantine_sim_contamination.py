@@ -47,6 +47,7 @@ Usage:
     python -m tools.quarantine_sim_contamination --dry-run
     python -m tools.quarantine_sim_contamination
 """
+
 from __future__ import annotations
 
 import argparse
@@ -79,8 +80,9 @@ def _is_contaminated(row: dict, live_ids: set[str]) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--dry-run", action="store_true",
-                    help="Report the plan; write nothing.")
+    ap.add_argument(
+        "--dry-run", action="store_true", help="Report the plan; write nothing."
+    )
     ap.add_argument("--trade-log", type=Path, default=TRADE_LOG)
     ap.add_argument("--bot-state", type=Path, default=BOT_STATE)
     args = ap.parse_args(argv)
@@ -91,8 +93,11 @@ def main(argv: list[str] | None = None) -> int:
 
     live_ids = _load_live_bot_ids(args.bot_state)
     if not live_ids:
-        print("ERROR: no live bot_ids loaded — refusing to run, since "
-              "every row would look contaminated.", file=sys.stderr)
+        print(
+            "ERROR: no live bot_ids loaded — refusing to run, since "
+            "every row would look contaminated.",
+            file=sys.stderr,
+        )
         return 3
     print(f"live bot_ids in bot_state : {len(live_ids)}")
 
@@ -103,8 +108,7 @@ def main(argv: list[str] | None = None) -> int:
     by_bot: set[str] = set()
     by_action: dict[str, int] = {}
 
-    with args.trade_log.open("r", encoding="utf-8",
-                             errors="replace") as f:
+    with args.trade_log.open("r", encoding="utf-8", errors="replace") as f:
         for raw in f:
             stripped = raw.strip()
             if not stripped:
@@ -151,28 +155,23 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
-    backup = args.trade_log.with_name(
-        f"{args.trade_log.name}.pre_quarantine_{stamp}")
-    quarantine = args.trade_log.with_name(
-        f"sim_contamination_quarantine_{stamp}.log")
+    backup = args.trade_log.with_name(f"{args.trade_log.name}.pre_quarantine_{stamp}")
+    quarantine = args.trade_log.with_name(f"sim_contamination_quarantine_{stamp}.log")
 
     shutil.copy2(args.trade_log, backup)
     print(f"\nbackup written     : {backup}")
 
-    quarantine.write_text(
-        "\n".join(quarantine_lines) + "\n", encoding="utf-8")
+    quarantine.write_text("\n".join(quarantine_lines) + "\n", encoding="utf-8")
     print(f"quarantine written : {quarantine}")
 
     tmp = args.trade_log.with_suffix(".tmp")
     tmp.write_text("\n".join(keep_lines) + "\n", encoding="utf-8")
     os.replace(tmp, args.trade_log)
-    print(f"trade.log rewritten: {args.trade_log} "
-          f"({len(keep_lines)} rows)")
+    print(f"trade.log rewritten: {args.trade_log} " f"({len(keep_lines)} rows)")
 
     # Verify the rewrite parses and no longer matches the signature.
     remaining = 0
-    with args.trade_log.open("r", encoding="utf-8",
-                             errors="replace") as f:
+    with args.trade_log.open("r", encoding="utf-8", errors="replace") as f:
         for raw in f:
             stripped = raw.strip()
             if not stripped:
@@ -183,8 +182,7 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             if _is_contaminated(row, live_ids):
                 remaining += 1
-    print(f"\nverification: {remaining} contaminated row(s) remain "
-          f"(expected 0)")
+    print(f"\nverification: {remaining} contaminated row(s) remain " f"(expected 0)")
     return 0 if remaining == 0 else 4
 
 

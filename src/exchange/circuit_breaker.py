@@ -42,13 +42,14 @@ CONFIG (defaults; tuned for spot trading on Coinbase + Kraken):
   - success_threshold = 2      (HALF_OPEN: 2 consecutive successes → CLOSED)
   - rolling_window    = 60.0   (failures older than 60s don't count)
 """
+
 from __future__ import annotations
 
 import logging
 import os
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Optional, TypeVar, Awaitable
 
@@ -60,15 +61,15 @@ logger = logging.getLogger(__name__)
 # operator sees the real error message. Match by exception class NAME
 # (not isinstance) so we don't need to import every CCXT exception type.
 TRANSIENT_ERROR_NAME_PATTERNS: tuple[str, ...] = (
-    "Timeout",            # ccxt.RequestTimeout, asyncio.TimeoutError, socket.timeout
-    "ConnectionError",    # urllib3.ConnectionError, requests.ConnectionError
-    "ConnectionReset",    # connection reset by peer
-    "NetworkError",       # ccxt.NetworkError
-    "DDoSProtection",     # ccxt.DDoSProtection (cloudflare etc.)
+    "Timeout",  # ccxt.RequestTimeout, asyncio.TimeoutError, socket.timeout
+    "ConnectionError",  # urllib3.ConnectionError, requests.ConnectionError
+    "ConnectionReset",  # connection reset by peer
+    "NetworkError",  # ccxt.NetworkError
+    "DDoSProtection",  # ccxt.DDoSProtection (cloudflare etc.)
     "ExchangeNotAvailable",  # ccxt.ExchangeNotAvailable
     "RateLimitExceeded",  # ccxt.RateLimitExceeded — transient, retry will work
-    "OnMaintenance",      # ccxt.OnMaintenance
-    "BadResponse",        # ccxt.BadResponse — usually transient
+    "OnMaintenance",  # ccxt.OnMaintenance
+    "BadResponse",  # ccxt.BadResponse — usually transient
     "GatewayTimeout",
     "ServiceUnavailable",
 )
@@ -115,7 +116,8 @@ class CircuitBreakerOpenError(Exception):
     def __init__(self, key: str, cooldown_remaining: float) -> None:
         super().__init__(
             f"Circuit breaker for '{key}' is OPEN; "
-            f"cooldown remaining: {cooldown_remaining:.1f}s")
+            f"cooldown remaining: {cooldown_remaining:.1f}s"
+        )
         self.key = key
         self.cooldown_remaining = cooldown_remaining
 
@@ -225,8 +227,10 @@ class CircuitBreaker:
             self.stats.consecutive_half_open_successes = 0
             logger.warning(
                 "Circuit breaker '%s' OPEN after %d failures (last: %s)",
-                self.key, self.stats.consecutive_failures,
-                f"{type(exc).__name__}: {exc}" if exc else "n/a")
+                self.key,
+                self.stats.consecutive_failures,
+                f"{type(exc).__name__}: {exc}" if exc else "n/a",
+            )
 
     def _transition_to_closed(self) -> None:
         if self.stats.state != BreakerState.CLOSED:
@@ -237,18 +241,24 @@ class CircuitBreaker:
             logger.info("Circuit breaker '%s' CLOSED", self.key)
 
     def _maybe_transition_to_half_open(self) -> None:
-        if (self.stats.state == BreakerState.OPEN
-            and time.time() - self.stats.open_since >= self.cooldown_seconds):
+        if (
+            self.stats.state == BreakerState.OPEN
+            and time.time() - self.stats.open_since >= self.cooldown_seconds
+        ):
             self.stats.state = BreakerState.HALF_OPEN
             self.stats.consecutive_half_open_successes = 0
             logger.info(
                 "Circuit breaker '%s' HALF_OPEN (cooldown elapsed); "
-                "next call is a probe", self.key)
+                "next call is a probe",
+                self.key,
+            )
 
     def _maybe_decay_failures(self) -> None:
-        if (self.stats.state == BreakerState.CLOSED
+        if (
+            self.stats.state == BreakerState.CLOSED
             and self.stats.consecutive_failures > 0
-            and time.time() - self.stats.last_failure_at > self.rolling_window):
+            and time.time() - self.stats.last_failure_at > self.rolling_window
+        ):
             self.stats.consecutive_failures = 0
 
 
@@ -276,8 +286,9 @@ class CircuitBreakerRegistry:
 
     def all_open(self) -> list[str]:
         with self._lock:
-            return [k for k, b in self._breakers.items()
-                    if b.state() == BreakerState.OPEN]
+            return [
+                k for k, b in self._breakers.items() if b.state() == BreakerState.OPEN
+            ]
 
     def reset_all(self) -> None:
         with self._lock:
@@ -300,7 +311,8 @@ def get_breaker_registry() -> CircuitBreakerRegistry:
                 if _breaker_disabled():
                     logger.info(
                         "Circuit breaker DISABLED via "
-                        "ACERVATOR_BREAKER_DISABLE env var")
+                        "ACERVATOR_BREAKER_DISABLE env var"
+                    )
     return _registry
 
 

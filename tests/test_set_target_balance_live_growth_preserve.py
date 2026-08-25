@@ -12,6 +12,7 @@ scrumming_bot.py implementation without needing to instantiate a
 live ScrummingBot (which would drag in the whole trading engine).
 Behavioural tests against a full bot instance are 2B-scope.
 """
+
 from __future__ import annotations
 
 import re
@@ -28,16 +29,17 @@ if str(REPO) not in sys.path:
 @pytest.fixture(scope="module")
 def source() -> str:
     return (REPO / "src" / "trading" / "scrumming_bot.py").read_text(
-        encoding="utf-8", errors="replace")
+        encoding="utf-8", errors="replace"
+    )
 
 
 @pytest.fixture(scope="module")
 def method_body(source: str) -> str:
     """Isolate the body of set_target_balance_live for assertions."""
     m = re.search(
-        r"def set_target_balance_live\([^)]*\)[^:]*:(.*?)"
-        r"(?=\n    def |\n\S)",
-        source, re.DOTALL,
+        r"def set_target_balance_live\([^)]*\)[^:]*:(.*?)" r"(?=\n    def |\n\S)",
+        source,
+        re.DOTALL,
     )
     assert m, "could not locate set_target_balance_live body"
     return m.group(1)
@@ -54,7 +56,8 @@ class TestSourceShape:
         ), "accrued growth must be computed from old_t - old_a"
 
     def test_topup_branch_triggers_on_nt_greater_than_old_t_with_accrued(
-            self, method_body):
+        self, method_body
+    ):
         """Top-up branch: nt > old_t AND accrued > threshold."""
         assert re.search(
             r"if\s+nt\s*>\s*old_t\s+and\s+accrued\s*>\s*1e-9\s*:",
@@ -123,6 +126,7 @@ class TestBehavioralSemantic:
     def _call(self, stub, new_target):
         # Rebind the unbound method to the stub instance
         from src.trading.scrumming_bot import ScrummingBot
+
         return ScrummingBot.set_target_balance_live(stub, new_target)
 
     def test_topup_with_accrued_growth_preserved(self):
@@ -132,8 +136,9 @@ class TestBehavioralSemantic:
         r = self._call(stub, 250.0)
         assert r["applied"] is True
         assert stub._anchor_target_balance == 250.0, "anchor should be new"
-        assert stub._target_balance == 255.0, (
-            "target should preserve $5 accrued on top of new $250 anchor")
+        assert (
+            stub._target_balance == 255.0
+        ), "target should preserve $5 accrued on top of new $250 anchor"
         assert r["preserved_growth"] == 5.0
 
     def test_topup_with_zero_accrued_equals_old_behavior(self):
@@ -159,7 +164,7 @@ class TestBehavioralSemantic:
         target) → both := 205 (no-op-ish; target unchanged since it was
         already 205)."""
         stub = self._make_stub(target=205.0, anchor=200.0)
-        r = self._call(stub, 205.0)
+        self._call(stub, 205.0)
         # nt == old_t, so else branch fires: both = nt = 205
         # (Accrued growth is COLLAPSED — operator is explicitly
         # confirming 205 as their target so anchor moves to 205.)
@@ -178,8 +183,13 @@ class TestBehavioralSemantic:
         stub = self._make_stub(target=205.0, anchor=200.0)
         r = self._call(stub, 250.0)
         assert set(r.keys()) >= {
-            "applied", "old_target", "old_anchor", "new_target",
-            "new_anchor", "delta_usd", "preserved_growth",
+            "applied",
+            "old_target",
+            "old_anchor",
+            "new_target",
+            "new_anchor",
+            "delta_usd",
+            "preserved_growth",
         }
         assert r["old_target"] == 205.0
         assert r["old_anchor"] == 200.0

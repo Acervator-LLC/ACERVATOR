@@ -107,6 +107,7 @@ red and turns the summary line and the exit code with it. The plain run
 carries the same check, because a green banner from an unproven
 instrument says nothing.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -127,8 +128,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 REGISTRY_PATH = Path("docs/EMITTER_IDENTIFICATION.md")
 
 SIGNAL_TYPES: tuple[str, ...] = (
-    "counter", "gauge", "event", "state_transition",
-    "postcondition", "invariant",
+    "counter",
+    "gauge",
+    "event",
+    "state_transition",
+    "postcondition",
+    "invariant",
 )
 """The closed vocabulary. Every term is established terminology:
 counter and gauge are Prometheus / OpenTelemetry instrument types, event
@@ -142,8 +147,15 @@ ID_RE = re.compile(r"^(\d{2})-(\d{3})$")
 SOURCE_RE = re.compile(r"^(.+):(\d+)$")
 SUBSYSTEM_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
-MAIN_HEADER = ("ID", "subsystem", "signal type", "current name",
-               "previous name", "source", "observes")
+MAIN_HEADER = (
+    "ID",
+    "subsystem",
+    "signal type",
+    "current name",
+    "previous name",
+    "source",
+    "observes",
+)
 PLANNED_HEADER = ("ID", "planned name")
 SUBSYS_HEADER = ("subsystem", "number", "pins")
 
@@ -202,9 +214,11 @@ def render_pin_name(node: ast.Call) -> tuple[str, bool]:
         return (arg.value, False)
     if isinstance(arg, ast.JoinedStr):
         parts = [
-            piece.value
-            if isinstance(piece, ast.Constant)
-            and isinstance(piece.value, str) else "{}"
+            (
+                piece.value
+                if isinstance(piece, ast.Constant) and isinstance(piece.value, str)
+                else "{}"
+            )
             for piece in arg.values
         ]
         return ("".join(parts), True)
@@ -227,8 +241,11 @@ def _call_spans(tree: ast.AST) -> dict[tuple[int, str], ast.Call]:
             callee = func.id
         elif isinstance(func, ast.Attribute):
             receiver = func.value
-            head = (receiver.id if isinstance(receiver, ast.Name)
-                    else getattr(receiver, "attr", ""))
+            head = (
+                receiver.id
+                if isinstance(receiver, ast.Name)
+                else getattr(receiver, "attr", "")
+            )
             callee = f"{head}.{func.attr}"
         else:
             continue
@@ -250,23 +267,28 @@ def collect_pins(src_root: Path, repo_root: Path) -> list[Pin]:
         for call in calls:
             node = spans.get((call.line, call.callee))
             if node is None:
-                msg = (f"no call node for pin {call.callee} at "
-                       f"{path}:{call.line}")
+                msg = f"no call node for pin {call.callee} at " f"{path}:{call.line}"
                 raise LookupError(msg)
             name, dynamic = render_pin_name(node)
-            has_duration = any(
-                kw.arg == "duration" for kw in node.keywords)
+            has_duration = any(kw.arg == "duration" for kw in node.keywords)
             _kw = {k.arg: k.value for k in node.keywords if k.arg}
             _act, _exp = _kw.get("actual"), _kw.get("expected")
             is_vacuous = (
-                _act is not None and _exp is not None
-                and ast.dump(_act) == ast.dump(_exp))
-            pins.append(Pin(
-                file=path.resolve().relative_to(repo_root).as_posix(),
-                line=call.line, callee=call.callee,
-                name=name, dynamic=dynamic,
-                carries_duration=has_duration,
-                vacuous_check=is_vacuous))
+                _act is not None
+                and _exp is not None
+                and ast.dump(_act) == ast.dump(_exp)
+            )
+            pins.append(
+                Pin(
+                    file=path.resolve().relative_to(repo_root).as_posix(),
+                    line=call.line,
+                    callee=call.callee,
+                    name=name,
+                    dynamic=dynamic,
+                    carries_duration=has_duration,
+                    vacuous_check=is_vacuous,
+                )
+            )
     pins.sort(key=lambda pin: (pin.file, pin.line))
     return pins
 
@@ -303,20 +325,24 @@ class Registry:
 
 def _cells(line: str) -> list[str]:
     """Split one markdown table row into stripped, unbackticked cells."""
-    return [cell.strip().strip("`").strip()
-            for cell in line.strip().strip("|").split("|")]
+    return [
+        cell.strip().strip("`").strip() for cell in line.strip().strip("|").split("|")
+    ]
 
 
 def _is_header(cells: list[str], header: tuple[str, ...]) -> bool:
     """Say whether these cells are the header row of this table."""
     if len(cells) != len(header):
         return False
-    return all(cell.lower().startswith(want.lower())
-               for cell, want in zip(cells, header, strict=True))
+    return all(
+        cell.lower().startswith(want.lower())
+        for cell, want in zip(cells, header, strict=True)
+    )
 
 
-def _table_body(lines: list[str],
-                header: tuple[str, ...]) -> list[tuple[int, list[str]]]:
+def _table_body(
+    lines: list[str], header: tuple[str, ...]
+) -> list[tuple[int, list[str]]]:
     """Return (line number, cells) for every body row of one table."""
     body: list[tuple[int, list[str]]] = []
     inside = False
@@ -336,39 +362,49 @@ def _table_body(lines: list[str],
     return body
 
 
-def _parse_main(lines: list[str],
-                errors: list[str]) -> list[Row]:
+def _parse_main(lines: list[str], errors: list[str]) -> list[Row]:
     """Parse the one-row-per-emitter table."""
     rows: list[Row] = []
     for number, cells in _table_body(lines, MAIN_HEADER):
         if len(cells) != _MAIN_COLS:
-            errors.append(f"line {number}: expected {_MAIN_COLS} cells, "
-                          f"found {len(cells)}")
+            errors.append(
+                f"line {number}: expected {_MAIN_COLS} cells, " f"found {len(cells)}"
+            )
             continue
-        (emitter_id, subsystem, signal_type, name, previous_name,
-         source, observes) = cells
+        emitter_id, subsystem, signal_type, name, previous_name, source, observes = (
+            cells
+        )
         match = SOURCE_RE.match(source)
         if match is None:
-            errors.append(
-                f"line {number}: source {source!r} is not path:line")
+            errors.append(f"line {number}: source {source!r} is not path:line")
             continue
-        rows.append(Row(
-            emitter_id=emitter_id, subsystem=subsystem,
-            signal_type=signal_type, name=name,
-            previous_name=previous_name,
-            file=match.group(1), line=int(match.group(2)),
-            observes=observes, doc_line=number))
+        rows.append(
+            Row(
+                emitter_id=emitter_id,
+                subsystem=subsystem,
+                signal_type=signal_type,
+                name=name,
+                previous_name=previous_name,
+                file=match.group(1),
+                line=int(match.group(2)),
+                observes=observes,
+                doc_line=number,
+            )
+        )
     return rows
 
 
-def _parse_pairs(lines: list[str], header: tuple[str, ...], width: int,
-                 errors: list[str]) -> dict[str, str]:
+def _parse_pairs(
+    lines: list[str], header: tuple[str, ...], width: int, errors: list[str]
+) -> dict[str, str]:
     """Parse a two-or-three column lookup table into {first: second}."""
     out: dict[str, str] = {}
     for number, cells in _table_body(lines, header):
         if len(cells) != width:
-            errors.append(f"line {number}: {header[0]} table needs "
-                          f"{width} cells, found {len(cells)}")
+            errors.append(
+                f"line {number}: {header[0]} table needs "
+                f"{width} cells, found {len(cells)}"
+            )
             continue
         out[cells[0]] = cells[1]
     return out
@@ -381,9 +417,9 @@ def parse_registry(text: str) -> Registry:
     return Registry(
         rows=_parse_main(lines, errors),
         planned=_parse_pairs(lines, PLANNED_HEADER, _PLANNED_COLS, errors),
-        subsystem_numbers=_parse_pairs(
-            lines, SUBSYS_HEADER, _SUBSYS_COLS, errors),
-        parse_errors=errors)
+        subsystem_numbers=_parse_pairs(lines, SUBSYS_HEADER, _SUBSYS_COLS, errors),
+        parse_errors=errors,
+    )
 
 
 # --------------------------------------------------------------------- #
@@ -410,8 +446,10 @@ def planned_name(row: Row) -> str:
     `subsystem.slug`.
     """
     subsystem_number, emitter_number = row.emitter_id.split("-", 1)
-    return (f"{row.subsystem}.{subsystem_number}.{emitter_number}."
-            f"{row.signal_type}.{slug_of(row.previous_name)}")
+    return (
+        f"{row.subsystem}.{subsystem_number}.{emitter_number}."
+        f"{row.signal_type}.{slug_of(row.previous_name)}"
+    )
 
 
 def _check_membership(pins: list[Pin], reg: Registry) -> list[str]:
@@ -422,46 +460,51 @@ def _check_membership(pins: list[Pin], reg: Registry) -> list[str]:
     for key, seen in sorted(pin_counts.items()):
         missing = seen - row_counts.get(key, 0)
         if missing > 0:
-            where = sorted(pin.line for pin in pins
-                           if (pin.file, pin.name) == key)
+            where = sorted(pin.line for pin in pins if (pin.file, pin.name) == key)
             problems.append(
                 f"E1 {missing} pin(s) absent from the registry: "
                 f"{key[1]} in {key[0]} at line(s) "
-                f"{', '.join(str(line) for line in where)}")
+                f"{', '.join(str(line) for line in where)}"
+            )
     for key, seen in sorted(row_counts.items()):
         extra = seen - pin_counts.get(key, 0)
         if extra > 0:
-            ids = sorted(row.emitter_id for row in reg.rows
-                         if (row.file, row.name) == key)
+            ids = sorted(
+                row.emitter_id for row in reg.rows if (row.file, row.name) == key
+            )
             problems.append(
                 f"E2 {extra} registry row(s) with no pin in src: "
-                f"{key[1]} in {key[0]}, ID(s) {', '.join(ids)}")
+                f"{key[1]} in {key[0]}, ID(s) {', '.join(ids)}"
+            )
     return problems
 
 
-def _check_identity(row: Row, match: re.Match[str],
-                    reg: Registry) -> list[str]:
+def _check_identity(row: Row, match: re.Match[str], reg: Registry) -> list[str]:
     """Check one row's subsystem against its name and its number."""
     problems: list[str] = []
     if not SUBSYSTEM_RE.match(row.subsystem):
         problems.append(
             f"E5 {row.emitter_id}: subsystem {row.subsystem!r} is not a "
-            f"lowercase token")
+            f"lowercase token"
+        )
     elif row.name.split(".", 1)[0] != row.subsystem:
         problems.append(
             f"E5 {row.emitter_id}: subsystem {row.subsystem!r} is not "
             f"the prefix of name {row.name!r}; SignalSink.by_subsystem "
-            f"would file it under {row.name.split('.', 1)[0]!r}")
+            f"would file it under {row.name.split('.', 1)[0]!r}"
+        )
     declared = reg.subsystem_numbers.get(row.subsystem)
     if declared is None:
         problems.append(
             f"E5 {row.emitter_id}: subsystem {row.subsystem!r} has no "
-            f"row in the subsystem-number table")
+            f"row in the subsystem-number table"
+        )
     elif declared != match.group(1):
         problems.append(
             f"E5 {row.emitter_id}: ID carries subsystem number "
             f"{match.group(1)} but {row.subsystem!r} is numbered "
-            f"{declared}")
+            f"{declared}"
+        )
     return problems
 
 
@@ -478,15 +521,27 @@ def _check_planned(row: Row, reg: Registry) -> list[str]:
     if got is None:
         return [f"E6 {row.emitter_id}: no planned name recorded"]
     if got != want:
-        return [(f"E6 {row.emitter_id}: planned name {got!r} is not the "
-                 f"derivation of its own row, which is {want!r}")]
+        return [
+            (
+                f"E6 {row.emitter_id}: planned name {got!r} is not the "
+                f"derivation of its own row, which is {want!r}"
+            )
+        ]
     if row.name != want:
-        return [(f"E6 {row.emitter_id}: current name {row.name!r} is not "
-                 f"the planned name {want!r}; the rename did not land on "
-                 f"this row")]
+        return [
+            (
+                f"E6 {row.emitter_id}: current name {row.name!r} is not "
+                f"the planned name {want!r}; the rename did not land on "
+                f"this row"
+            )
+        ]
     if len(got.split(".", _PLANNED_FIELDS - 1)) != _PLANNED_FIELDS:
-        return [(f"E6 {row.emitter_id}: planned name {got!r} does not "
-                 f"have {_PLANNED_FIELDS} dotted fields")]
+        return [
+            (
+                f"E6 {row.emitter_id}: planned name {got!r} does not "
+                f"have {_PLANNED_FIELDS} dotted fields"
+            )
+        ]
     return []
 
 
@@ -501,12 +556,16 @@ def _check_previous(row: Row) -> list[str]:
     """
     got = row.previous_name.strip()
     if not got:
-        return [f"E7 {row.emitter_id}: previous name is empty; the "
-                f"on-disk history keyed by the old name has no way "
-                f"back to this row"]
+        return [
+            f"E7 {row.emitter_id}: previous name is empty; the "
+            f"on-disk history keyed by the old name has no way "
+            f"back to this row"
+        ]
     if got == row.name:
-        return [f"E7 {row.emitter_id}: previous name {got!r} is the "
-                f"current name, so the row records no rename"]
+        return [
+            f"E7 {row.emitter_id}: previous name {got!r} is the "
+            f"current name, so the row records no rename"
+        ]
     return []
 
 
@@ -519,26 +578,29 @@ def _check_rows(reg: Registry) -> list[str]:
         if match is None:
             problems.append(
                 f"E3 malformed ID {row.emitter_id!r} at registry line "
-                f"{row.doc_line}; the format is NN-EEE")
+                f"{row.doc_line}; the format is NN-EEE"
+            )
             continue
         if row.emitter_id in seen_ids:
             problems.append(
                 f"E3 duplicate ID {row.emitter_id} at registry line "
                 f"{row.doc_line}; first seen at line "
-                f"{seen_ids[row.emitter_id]}")
+                f"{seen_ids[row.emitter_id]}"
+            )
         else:
             seen_ids[row.emitter_id] = row.doc_line
         if row.signal_type not in SIGNAL_TYPES:
             problems.append(
                 f"E4 {row.emitter_id}: signal type {row.signal_type!r} "
-                f"is not in the vocabulary {', '.join(SIGNAL_TYPES)}")
+                f"is not in the vocabulary {', '.join(SIGNAL_TYPES)}"
+            )
         problems.extend(_check_identity(row, match, reg))
         problems.extend(_check_previous(row))
         problems.extend(_check_planned(row, reg))
     problems.extend(
-        f"E6 planned name recorded for {orphan}, which has no row in "
-        f"the main table"
-        for orphan in sorted(set(reg.planned) - set(seen_ids)))
+        f"E6 planned name recorded for {orphan}, which has no row in " f"the main table"
+        for orphan in sorted(set(reg.planned) - set(seen_ids))
+    )
     return problems
 
 
@@ -586,7 +648,8 @@ def _check_duration_shape(pins: list[Pin]) -> list[str]:
                 f"E8 {pin.name} at {pin.file}:{pin.line}: a duration may "
                 f"only ride on a {DURATION_TYPE}, not a {signal_type}. "
                 f"Only a postcondition follows a completed operation; on "
-                f"any other type the number is fabricated.")
+                f"any other type the number is fabricated."
+            )
     return problems
 
 
@@ -616,7 +679,8 @@ def _check_vacuous(pins: list[Pin]) -> list[str]:
         f"every call and this check can never fail. Compare the OBSERVED "
         f"value against the DECLARED expectation, or declare it a sample "
         f"by dropping `expected`."
-        for pin in pins if pin.vacuous_check
+        for pin in pins
+        if pin.vacuous_check
     ]
 
 
@@ -762,9 +826,14 @@ def _planted_pins() -> tuple[list[Pin], str]:
         path = root / _PLANT_MODULE
         path.write_bytes(_PLANT_SOURCE.encode("utf-8"))
         if is_exempt(path):
-            return ([], (f"the planted module at {path} is exempt "
-                         f"from the scan, so it would prove "
-                         f"nothing"))
+            return (
+                [],
+                (
+                    f"the planted module at {path} is exempt "
+                    f"from the scan, so it would prove "
+                    f"nothing"
+                ),
+            )
         return (collect_pins(root, root), "")
     except (OSError, SyntaxError, ValueError, LookupError) as exc:
         return ([], f"{type(exc).__name__}: {exc}")
@@ -772,20 +841,22 @@ def _planted_pins() -> tuple[list[Pin], str]:
         shutil.rmtree(root, ignore_errors=True)
 
 
-def _variant(reg: Registry, rows: list[Row] | None = None,
-             planned: dict[str, str] | None = None,
-             numbers: dict[str, str] | None = None) -> Registry:
+def _variant(
+    reg: Registry,
+    rows: list[Row] | None = None,
+    planned: dict[str, str] | None = None,
+    numbers: dict[str, str] | None = None,
+) -> Registry:
     """Copy the registry with one part replaced."""
     return Registry(
         rows=list(reg.rows) if rows is None else rows,
         planned=dict(reg.planned) if planned is None else planned,
-        subsystem_numbers=(dict(reg.subsystem_numbers)
-                           if numbers is None else numbers),
-        parse_errors=[])
+        subsystem_numbers=(dict(reg.subsystem_numbers) if numbers is None else numbers),
+        parse_errors=[],
+    )
 
 
-def _controls(pins: list[Pin],
-              reg: Registry) -> list[Control]:
+def _controls(pins: list[Pin], reg: Registry) -> list[Control]:
     """Plant one defect of each class and read the problem list back.
 
     EVERY HALF IS SCOPED TO ITS OWN PLANT
@@ -803,8 +874,8 @@ def _controls(pins: list[Pin],
     THAT. The silence halves were already scoped this way, and the
     reason written beside them applies to both halves equally.
     """
-    def fired(problems: list[str], code: str,
-              *needles: str) -> tuple[bool, str]:
+
+    def fired(problems: list[str], code: str, *needles: str) -> tuple[bool, str]:
         """Say whether `code` fired ON THE PLANTED THING.
 
         `needles` are the identity of the plant, and every one of them
@@ -812,8 +883,9 @@ def _controls(pins: list[Pin],
         else is somebody else's finding and is not evidence about this
         rule.
         """
-        hits = [p for p in problems
-                if p.startswith(code) and all(n in p for n in needles)]
+        hits = [
+            p for p in problems if p.startswith(code) and all(n in p for n in needles)
+        ]
         return (bool(hits), "; ".join(hits) or "silent")
 
     results: list[Control] = []
@@ -832,103 +904,143 @@ def _controls(pins: list[Pin],
     # excuse. So it goes out in the same unit as the repair, and the
     # control is a plain one again: the tree is clean, or it is not.
     clean = check(pins, reg)
-    results.append(Control(
-        label="clean tree reports nothing",
-        ok=not clean,
-        detail="; ".join(clean) or "silent"))
+    results.append(
+        Control(
+            label="clean tree reports nothing",
+            ok=not clean,
+            detail="; ".join(clean) or "silent",
+        )
+    )
 
     dropped_row = reg.rows[0]
     dropped = check(pins, _variant(reg, rows=reg.rows[1:]))
-    ok, detail = fired(dropped, "E1",
-                       f"{dropped_row.name} in {dropped_row.file}")
-    results.append(Control(
-        "E1 fires when a row is removed", ok, detail))
+    ok, detail = fired(dropped, "E1", f"{dropped_row.name} in {dropped_row.file}")
+    results.append(Control("E1 fires when a row is removed", ok, detail))
 
     phantom = Row(
-        emitter_id="99-001", subsystem="ghost", signal_type="gauge",
+        emitter_id="99-001",
+        subsystem="ghost",
+        signal_type="gauge",
         name="ghost.99.001.gauge.not_a_pin",
         previous_name="ghost.not_a_pin",
-        file="src/core/log_paths.py", line=1,
-        observes="a row for a pin that does not exist", doc_line=0)
-    added = check(pins, _variant(
-        reg, rows=[*reg.rows, phantom],
-        planned={**reg.planned, "99-001": "ghost.99.001.gauge.not_a_pin"},
-        numbers={**reg.subsystem_numbers, "ghost": "99"}))
+        file="src/core/log_paths.py",
+        line=1,
+        observes="a row for a pin that does not exist",
+        doc_line=0,
+    )
+    added = check(
+        pins,
+        _variant(
+            reg,
+            rows=[*reg.rows, phantom],
+            planned={**reg.planned, "99-001": "ghost.99.001.gauge.not_a_pin"},
+            numbers={**reg.subsystem_numbers, "ghost": "99"},
+        ),
+    )
     ok, detail = fired(added, "E2", phantom.name, phantom.emitter_id)
-    results.append(Control(
-        "E2 fires when a phantom row is added", ok, detail))
+    results.append(Control("E2 fires when a phantom row is added", ok, detail))
 
     first = reg.rows[0]
-    typed = check(pins, _variant(reg, rows=[
-        dataclasses.replace(first, signal_type="vibe"), *reg.rows[1:]]))
+    typed = check(
+        pins,
+        _variant(
+            reg, rows=[dataclasses.replace(first, signal_type="vibe"), *reg.rows[1:]]
+        ),
+    )
     ok, detail = fired(typed, "E4", first.emitter_id, "'vibe'")
-    results.append(Control(
-        "E4 fires on a signal type outside the vocabulary", ok, detail))
+    results.append(
+        Control("E4 fires on a signal type outside the vocabulary", ok, detail)
+    )
 
-    renumbered = check(pins, _variant(reg, rows=[
-        dataclasses.replace(first, emitter_id="97-001"), *reg.rows[1:]]))
-    ok, detail = fired(renumbered, "E5", "97-001",
-                       f"{first.subsystem!r} is numbered")
-    results.append(Control(
-        "E5 fires when an ID carries the wrong subsystem number",
-        ok, detail))
+    renumbered = check(
+        pins,
+        _variant(
+            reg, rows=[dataclasses.replace(first, emitter_id="97-001"), *reg.rows[1:]]
+        ),
+    )
+    ok, detail = fired(renumbered, "E5", "97-001", f"{first.subsystem!r} is numbered")
+    results.append(
+        Control("E5 fires when an ID carries the wrong subsystem number", ok, detail)
+    )
 
-    blanked = check(pins, _variant(reg, rows=[
-        dataclasses.replace(first, previous_name=""), *reg.rows[1:]]))
-    ok, detail = fired(blanked, "E7", first.emitter_id,
-                       "previous name is empty")
-    results.append(Control(
-        "E7 fires when a previous name is blanked", ok, detail))
+    blanked = check(
+        pins,
+        _variant(
+            reg, rows=[dataclasses.replace(first, previous_name=""), *reg.rows[1:]]
+        ),
+    )
+    ok, detail = fired(blanked, "E7", first.emitter_id, "previous name is empty")
+    results.append(Control("E7 fires when a previous name is blanked", ok, detail))
 
-    echoed = check(pins, _variant(reg, rows=[
-        dataclasses.replace(first, previous_name=first.name),
-        *reg.rows[1:]]))
-    ok, detail = fired(echoed, "E7", first.emitter_id,
-                       "is the current name")
-    results.append(Control(
-        "E7 fires when a previous name echoes the current name",
-        ok, detail))
+    echoed = check(
+        pins,
+        _variant(
+            reg,
+            rows=[dataclasses.replace(first, previous_name=first.name), *reg.rows[1:]],
+        ),
+    )
+    ok, detail = fired(echoed, "E7", first.emitter_id, "is the current name")
+    results.append(
+        Control("E7 fires when a previous name echoes the current name", ok, detail)
+    )
 
     # E8 and E9 are planted as SOURCE. See `_planted_pins`.
     planted, plant_error = _planted_pins()
     want = set(_PLANT_NAMES.values())
     got = want & {pin.name for pin in planted}
-    results.append(Control(
-        "the planted source module parses to its pins",
-        not plant_error and got == want,
-        plant_error or (
-            f"collected {len(planted)} pin(s) from source"
-            if got == want else
-            f"collected {len(planted)} pin(s); missing "
-            f"{', '.join(sorted(want - got))}")))
+    results.append(
+        Control(
+            "the planted source module parses to its pins",
+            not plant_error and got == want,
+            plant_error
+            or (
+                f"collected {len(planted)} pin(s) from source"
+                if got == want
+                else f"collected {len(planted)} pin(s); missing "
+                f"{', '.join(sorted(want - got))}"
+            ),
+        )
+    )
     with_plant = check([*pins, *planted], reg)
 
     ok, detail = fired(with_plant, "E8", _PLANT_NAMES["e8_fires"])
-    results.append(Control(
-        "E8 fires on a duration outside a postcondition, from source",
-        ok, detail))
+    results.append(
+        Control(
+            "E8 fires on a duration outside a postcondition, from source", ok, detail
+        )
+    )
 
     # The other half: a duration ON a postcondition, out of the same
     # parsed module, must be silent. A rule that fires on everything is
     # not a rule. Scoped to the planted pin, because a global-silence
     # check breaks as soon as the tree holds a real violation, which is
     # when the rule is working.
-    quiet8 = [p for p in with_plant
-              if p.startswith("E8") and _PLANT_NAMES["e8_quiet"] in p]
-    results.append(Control(
-        "E8 is silent on a duration ON a postcondition, from source",
-        not quiet8, "; ".join(quiet8) or "silent"))
+    quiet8 = [
+        p for p in with_plant if p.startswith("E8") and _PLANT_NAMES["e8_quiet"] in p
+    ]
+    results.append(
+        Control(
+            "E8 is silent on a duration ON a postcondition, from source",
+            not quiet8,
+            "; ".join(quiet8) or "silent",
+        )
+    )
 
     ok, detail = fired(with_plant, "E9", _PLANT_NAMES["e9_fires"])
-    results.append(Control(
-        "E9 fires on a check that can never fail, from source",
-        ok, detail))
+    results.append(
+        Control("E9 fires on a check that can never fail, from source", ok, detail)
+    )
 
-    quiet9 = [p for p in with_plant
-              if p.startswith("E9") and _PLANT_NAMES["e9_quiet"] in p]
-    results.append(Control(
-        "E9 is silent on a check that can fail, from source",
-        not quiet9, "; ".join(quiet9) or "silent"))
+    quiet9 = [
+        p for p in with_plant if p.startswith("E9") and _PLANT_NAMES["e9_quiet"] in p
+    ]
+    results.append(
+        Control(
+            "E9 is silent on a check that can fail, from source",
+            not quiet9,
+            "; ".join(quiet9) or "silent",
+        )
+    )
 
     # The blind spot, made visible. The same defect as the E9 plant
     # above, written with positional arguments. DECLARED red: the rule
@@ -938,22 +1050,28 @@ def _controls(pins: list[Pin],
     # declaration be deleted -- which is how a blind spot gets closed
     # rather than commented on.
     ok, detail = fired(with_plant, "E9", _PLANT_NAMES["e9_positional"])
-    results.append(Control(
-        label=("E9 fires on a vacuous check written with positional "
-               "arguments"),
-        ok=ok, detail=detail,
-        known=("`_check_vacuous` reads `actual` and `expected` from "
-               "`node.keywords` only, so a positional call leaves the "
-               "flag unset; owned by the detection repair, not by the "
-               "controls"),
-        as_declared=not ok))
+    results.append(
+        Control(
+            label=("E9 fires on a vacuous check written with positional " "arguments"),
+            ok=ok,
+            detail=detail,
+            known=(
+                "`_check_vacuous` reads `actual` and `expected` from "
+                "`node.keywords` only, so a positional call leaves the "
+                "flag unset; owned by the detection repair, not by the "
+                "controls"
+            ),
+            as_declared=not ok,
+        )
+    )
 
-    replanned = check(pins, _variant(
-        reg, planned={**reg.planned, first.emitter_id: "made.up.name"}))
+    replanned = check(
+        pins, _variant(reg, planned={**reg.planned, first.emitter_id: "made.up.name"})
+    )
     ok, detail = fired(replanned, "E6", first.emitter_id, "made.up.name")
-    results.append(Control(
-        "E6 fires on a planned name that is not its own derivation",
-        ok, detail))
+    results.append(
+        Control("E6 fires on a planned name that is not its own derivation", ok, detail)
+    )
     return results
 
 
@@ -974,16 +1092,19 @@ def _selftest(pins: list[Pin], reg: Registry) -> int:
             write(f"         declared red: {control.known}\n")
     tally = Counter(control.state for control in results)
     unhealthy = [control for control in results if not control.healthy]
-    write(f"controls: {tally['PASS']} passed, {tally['KNOWN-RED']} "
-          f"known-red, {tally['BROKEN']} broken, {tally['STALE']} stale, "
-          f"of {len(results)}\n")
+    write(
+        f"controls: {tally['PASS']} passed, {tally['KNOWN-RED']} "
+        f"known-red, {tally['BROKEN']} broken, {tally['STALE']} stale, "
+        f"of {len(results)}\n"
+    )
     if unhealthy:
-        write(f"SELFTEST FAIL {len(unhealthy)} control(s) did not behave "
-              f"as declared: "
-              f"{'; '.join(control.label for control in unhealthy)}\n")
+        write(
+            f"SELFTEST FAIL {len(unhealthy)} control(s) did not behave "
+            f"as declared: "
+            f"{'; '.join(control.label for control in unhealthy)}\n"
+        )
         return 1
-    write(f"SELFTEST OK {len(results)} control(s), every one behaved as "
-          f"declared\n")
+    write(f"SELFTEST OK {len(results)} control(s), every one behaved as " f"declared\n")
     return 0
 
 
@@ -995,19 +1116,25 @@ def _selftest(pins: list[Pin], reg: Registry) -> int:
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     """Build the command line."""
     parser = argparse.ArgumentParser(
-        description="check every pin in src has a registry row and back")
+        description="check every pin in src has a registry row and back"
+    )
     parser.add_argument(
-        "--root", default=str(REPO_ROOT),
-        help="repository root (default: this file's repository)")
+        "--root",
+        default=str(REPO_ROOT),
+        help="repository root (default: this file's repository)",
+    )
     parser.add_argument(
-        "--registry", default=None,
-        help=f"registry path (default: <root>/{REGISTRY_PATH.as_posix()})")
+        "--registry",
+        default=None,
+        help=f"registry path (default: <root>/{REGISTRY_PATH.as_posix()})",
+    )
     parser.add_argument(
-        "--selftest", action="store_true",
+        "--selftest",
+        action="store_true",
         help="plant one defect of each class and report whether "
-             "every control behaved as declared")
-    parser.add_argument(
-        "--json", action="store_true", help="machine-readable output")
+        "every control behaved as declared",
+    )
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
     return parser.parse_args(argv)
 
 
@@ -1015,8 +1142,7 @@ def main(argv: list[str] | None = None) -> int:
     """Compare src against the registry; exit 1 on any problem."""
     args = _parse_args(argv)
     root = Path(args.root).resolve()
-    registry_path = (Path(args.registry) if args.registry
-                     else root / REGISTRY_PATH)
+    registry_path = Path(args.registry) if args.registry else root / REGISTRY_PATH
     write = sys.stdout.write
 
     if not registry_path.exists():
@@ -1024,12 +1150,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     pins = collect_pins(root / "src", root)
-    reg = parse_registry(
-        registry_path.read_text(encoding="utf-8", errors="replace"))
+    reg = parse_registry(registry_path.read_text(encoding="utf-8", errors="replace"))
 
     if args.selftest:
-        write(f"controls against {len(pins)} pin(s) and "
-              f"{len(reg.rows)} row(s)\n")
+        write(f"controls against {len(pins)} pin(s) and " f"{len(reg.rows)} row(s)\n")
         return _selftest(pins, reg)
 
     problems = check(pins, reg)
@@ -1044,21 +1168,34 @@ def main(argv: list[str] | None = None) -> int:
     broken = [c for c in _controls(pins, reg) if not c.healthy]
 
     if args.json:
-        write(json.dumps({
-            "pins": len(pins), "rows": len(reg.rows),
-            "problems": problems, "warnings": warnings,
-            "broken_controls": [c.label for c in broken],
-            "passed": not problems and not broken}, indent=2) + "\n")
+        write(
+            json.dumps(
+                {
+                    "pins": len(pins),
+                    "rows": len(reg.rows),
+                    "problems": problems,
+                    "warnings": warnings,
+                    "broken_controls": [c.label for c in broken],
+                    "passed": not problems and not broken,
+                },
+                indent=2,
+            )
+            + "\n"
+        )
         return 1 if (problems or broken) else 0
 
     write(f"pins in src  : {len(pins)}\n")
     write(f"registry rows: {len(reg.rows)}\n")
     if broken:
-        write(f"instrument   : {len(broken)} control(s) did not behave as "
-              f"declared: {'; '.join(c.label for c in broken)}\n")
-        write("instrument   : these rules are NOT proven on this run, so "
-              "a clean result below is evidence of nothing. Run "
-              "--selftest.\n")
+        write(
+            f"instrument   : {len(broken)} control(s) did not behave as "
+            f"declared: {'; '.join(c.label for c in broken)}\n"
+        )
+        write(
+            "instrument   : these rules are NOT proven on this run, so "
+            "a clean result below is evidence of nothing. Run "
+            "--selftest.\n"
+        )
     else:
         write("instrument   : controls OK\n")
     for warning in warnings:
@@ -1068,8 +1205,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     for problem in problems:
         write(f"  {problem}\n")
-    write(f"FAIL {len(problems)} problem(s), {len(broken)} broken "
-          f"control(s)\n")
+    write(f"FAIL {len(problems)} problem(s), {len(broken)} broken " f"control(s)\n")
     return 1
 
 

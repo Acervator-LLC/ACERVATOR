@@ -28,6 +28,7 @@ to guess wrong and neither would raise -- it would just quietly corrupt
 the cache for every consumer. `TestTheFieldMappingMatchesTheConnector`
 locks them against the connector's own source.
 """
+
 from __future__ import annotations
 
 import ast
@@ -70,13 +71,20 @@ def _pool_with(*entries):
 
 
 def _entry(symbol, exchange_id="coinbase", last=0.0, fetch_time=0.0):
-    return TickerEntry(exchange_id=exchange_id, symbol=symbol, last=last,
-                       fetch_time=fetch_time)
+    return TickerEntry(
+        exchange_id=exchange_id, symbol=symbol, last=last, fetch_time=fetch_time
+    )
 
 
 def _row(last=None, bid=1.0, ask=2.0, quote_vol=999.0, ts_ms=1_700_000_000_000):
-    return {"last": last, "bid": bid, "ask": ask,
-            "quoteVolume": quote_vol, "baseVolume": 11.0, "timestamp": ts_ms}
+    return {
+        "last": last,
+        "bid": bid,
+        "ask": ask,
+        "quoteVolume": quote_vol,
+        "baseVolume": 11.0,
+        "timestamp": ts_ms,
+    }
 
 
 class TestTheInstrumentWorks:
@@ -86,8 +94,9 @@ class TestTheInstrumentWorks:
         move a price at all. If this fails the rest are vacuous."""
         e = _entry("BTC/USD", last=100.0)
         pool = _pool_with(e)
-        n = await pool.refresh_all_tickers(_Conn({"BTC/USD": _row(last=250.0)}),
-                                           "coinbase")
+        n = await pool.refresh_all_tickers(
+            _Conn({"BTC/USD": _row(last=250.0)}), "coinbase"
+        )
         assert n == 1
         assert e.last == pytest.approx(250.0)
 
@@ -98,7 +107,8 @@ class TestTheInstrumentWorks:
         e = _entry("BTC/USD", last=100.0)
         assert e.is_stale, "fetch_time=0 must read as stale"
         await _pool_with(e).refresh_all_tickers(
-            _Conn({"BTC/USD": _row(last=250.0)}), "coinbase")
+            _Conn({"BTC/USD": _row(last=250.0)}), "coinbase"
+        )
         assert not e.is_stale
 
 
@@ -110,18 +120,23 @@ class TestTheFieldMappingMatchesTheConnector:
         import src.exchange.data_pool as dp
 
         src = Path(dp.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.AsyncFunctionDef)
-                  and n.name == "refresh_all_tickers")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.AsyncFunctionDef) and n.name == "refresh_all_tickers"
+        )
         return ast.get_source_segment(src, fn) or ""
 
     def _connector_src(self):
         import src.exchange.ccxt_connector as cc
 
         src = Path(cc.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "get_ticker")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "get_ticker"
+        )
         return ast.get_source_segment(src, fn) or ""
 
     def test_both_read_quote_volume_not_base_volume(self):
@@ -141,8 +156,11 @@ class TestTheFieldMappingMatchesTheConnector:
     async def test_the_mapping_holds_at_runtime(self):
         e = _entry("BTC/USD")
         await _pool_with(e).refresh_all_tickers(
-            _Conn({"BTC/USD": _row(last=5.0, quote_vol=777.0,
-                                   ts_ms=1_700_000_000_000)}), "coinbase")
+            _Conn(
+                {"BTC/USD": _row(last=5.0, quote_vol=777.0, ts_ms=1_700_000_000_000)}
+            ),
+            "coinbase",
+        )
         assert e.volume_24h == pytest.approx(777.0)
         assert e.timestamp == pytest.approx(1_700_000_000.0)
 
@@ -155,9 +173,15 @@ class TestItOnlyTouchesWhatItShould:
         trades."""
         pool = _pool_with(_entry("BTC/USD"))
         await pool.refresh_all_tickers(
-            _Conn({"BTC/USD": _row(last=1.0),
-                   "DOGE/USD": _row(last=2.0),
-                   "SHIB/USD": _row(last=3.0)}), "coinbase")
+            _Conn(
+                {
+                    "BTC/USD": _row(last=1.0),
+                    "DOGE/USD": _row(last=2.0),
+                    "SHIB/USD": _row(last=3.0),
+                }
+            ),
+            "coinbase",
+        )
         assert set(pool._tickers) == {_ticker_key("coinbase", "BTC/USD")}
 
     @pytest.mark.asyncio
@@ -165,7 +189,8 @@ class TestItOnlyTouchesWhatItShould:
         other = _entry("BTC/USD", exchange_id="kraken", last=9.0)
         pool = _pool_with(_entry("BTC/USD", last=1.0), other)
         n = await pool.refresh_all_tickers(
-            _Conn({"BTC/USD": _row(last=500.0)}), "coinbase")
+            _Conn({"BTC/USD": _row(last=500.0)}), "coinbase"
+        )
         assert n == 1
         assert other.last == pytest.approx(9.0)
 
@@ -173,8 +198,12 @@ class TestItOnlyTouchesWhatItShould:
     async def test_a_symbol_missing_from_the_payload_is_untouched(self):
         e = _entry("RARE/USD", last=42.0)
         pool = _pool_with(e)
-        assert await pool.refresh_all_tickers(
-            _Conn({"BTC/USD": _row(last=1.0)}), "coinbase") == 0
+        assert (
+            await pool.refresh_all_tickers(
+                _Conn({"BTC/USD": _row(last=1.0)}), "coinbase"
+            )
+            == 0
+        )
         assert e.last == pytest.approx(42.0)
 
 
@@ -185,14 +214,16 @@ class TestItNeverMakesThingsWorse:
         price a few seconds old."""
         e = _entry("BTC/USD", last=100.0)
         await _pool_with(e).refresh_all_tickers(
-            _Conn({"BTC/USD": _row(last=0.0)}), "coinbase")
+            _Conn({"BTC/USD": _row(last=0.0)}), "coinbase"
+        )
         assert e.last == pytest.approx(100.0)
 
     @pytest.mark.asyncio
     async def test_a_non_dict_row_is_skipped(self):
         e = _entry("BTC/USD", last=100.0)
         await _pool_with(e).refresh_all_tickers(
-            _Conn({"BTC/USD": "not-a-row"}), "coinbase")
+            _Conn({"BTC/USD": "not-a-row"}), "coinbase"
+        )
         assert e.last == pytest.approx(100.0)
 
     @pytest.mark.asyncio
@@ -204,8 +235,12 @@ class TestItNeverMakesThingsWorse:
 
         e = _entry("BTC/USD", last=100.0, fetch_time=time.time() + 60)
         pool = _pool_with(e)
-        assert await pool.refresh_all_tickers(
-            _Conn({"BTC/USD": _row(last=500.0)}), "coinbase") == 0
+        assert (
+            await pool.refresh_all_tickers(
+                _Conn({"BTC/USD": _row(last=500.0)}), "coinbase"
+            )
+            == 0
+        )
         assert e.last == pytest.approx(100.0)
         assert pool._ticker_batch_races == 1
 
@@ -215,15 +250,18 @@ class TestItNeverMakesThingsWorse:
         down its caller is worse than a stale price."""
         e = _entry("BTC/USD", last=100.0)
         pool = _pool_with(e)
-        assert await pool.refresh_all_tickers(
-            _Conn(boom=RuntimeError("exchange down")), "coinbase") == 0
+        assert (
+            await pool.refresh_all_tickers(
+                _Conn(boom=RuntimeError("exchange down")), "coinbase"
+            )
+            == 0
+        )
         assert e.last == pytest.approx(100.0)
 
     @pytest.mark.asyncio
     async def test_a_non_dict_response_does_not_raise(self):
         pool = _pool_with(_entry("BTC/USD", last=100.0))
-        assert await pool.refresh_all_tickers(_Conn(payload=[]),
-                                               "coinbase") == 0
+        assert await pool.refresh_all_tickers(_Conn(payload=[]), "coinbase") == 0
 
 
 class TestItReplacesTrafficRatherThanAddingIt:
@@ -243,24 +281,21 @@ class TestItReplacesTrafficRatherThanAddingIt:
         in get_or_fetch_ticker. A bot that fetches anyway saves nothing."""
         e = _entry("BTC/USD")
         pool = _pool_with(e)
-        await pool.refresh_all_tickers(_Conn({"BTC/USD": _row(last=250.0)}),
-                                        "coinbase")
+        await pool.refresh_all_tickers(_Conn({"BTC/USD": _row(last=250.0)}), "coinbase")
 
         class _MustNotFetch:
             async def get_ticker(self, symbol):
-                raise AssertionError(
-                    "bot fetched despite a freshly warmed cache entry")
+                raise AssertionError("bot fetched despite a freshly warmed cache entry")
 
-        t = await pool.get_or_fetch_ticker(_MustNotFetch(), "coinbase",
-                                           "BTC/USD")
+        t = await pool.get_or_fetch_ticker(_MustNotFetch(), "coinbase", "BTC/USD")
         assert t.last == pytest.approx(250.0)
 
     @pytest.mark.asyncio
     async def test_the_batch_is_counted_for_telemetry(self):
         pool = _pool_with(_entry("BTC/USD"), _entry("ETH/USD"))
         await pool.refresh_all_tickers(
-            _Conn({"BTC/USD": _row(last=1.0), "ETH/USD": _row(last=2.0)}),
-            "coinbase")
+            _Conn({"BTC/USD": _row(last=1.0), "ETH/USD": _row(last=2.0)}), "coinbase"
+        )
         st = pool.get_status()
         assert st["ticker_batch_refreshes"] == 1
         assert st["ticker_batch_symbols"] == 2

@@ -35,6 +35,7 @@ top of the page, so the inverted reading finds only TWO "prior" prices,
 falls below the `>= 3` minimum, and drops the execution axis entirely --
 changing the denominator, not just the numerator.
 """
+
 from __future__ import annotations
 
 import statistics
@@ -59,8 +60,8 @@ SYM = "BTC/USD"
 # Newest-first, exactly as history_helpers sorts it.
 # index 0 is the most RECENT trade.
 PAGE = [
-    {"id": "n2", "symbol": SYM, "side": "BUY", "price": 90.0,  "amount": 1.0},
-    {"id": "n1", "symbol": SYM, "side": "BUY", "price": 92.0,  "amount": 1.0},
+    {"id": "n2", "symbol": SYM, "side": "BUY", "price": 90.0, "amount": 1.0},
+    {"id": "n1", "symbol": SYM, "side": "BUY", "price": 92.0, "amount": 1.0},
     {"id": "me", "symbol": SYM, "side": "BUY", "price": 100.0, "amount": 1.0},
     {"id": "o1", "symbol": SYM, "side": "BUY", "price": 101.0, "amount": 1.0},
     {"id": "o2", "symbol": SYM, "side": "BUY", "price": 102.0, "amount": 1.0},
@@ -69,8 +70,8 @@ PAGE = [
     {"id": "o5", "symbol": SYM, "side": "BUY", "price": 105.0, "amount": 1.0},
 ]
 ROW_I = 2
-NEWER = [90.0, 92.0]                          # after the trade
-OLDER = [101.0, 102.0, 103.0, 104.0, 105.0]   # before the trade
+NEWER = [90.0, 92.0]  # after the trade
+OLDER = [101.0, 102.0, 103.0, 104.0, 105.0]  # before the trade
 
 
 class _Unbound:
@@ -92,23 +93,33 @@ def _tab():
 
 
 def _record():
-    return TradeRecord(trade_id="me", timestamp=None, asset="BTC",
-                       side="buy", price=100.0, quantity=1.0, fee=0.0)
+    return TradeRecord(
+        trade_id="me",
+        timestamp=None,
+        asset="BTC",
+        side="buy",
+        price=100.0,
+        quantity=1.0,
+        fee=0.0,
+    )
 
 
 def _expected_letter():
     """Hand-derived: ref from the OLDER rows, future from the NEWER."""
     ctx = PriceContext(
         ref_price_at_decision=statistics.median(OLDER[:5]),
-        future_prices=NEWER, regime_tag="LIVE")
+        future_prices=NEWER,
+        regime_tag="LIVE",
+    )
     return grade_trade(_record(), ctx).overall
 
 
 def _inverted_letter():
     """What the page yields when the axis runs backwards: only two
     'prior' prices, so the execution axis is skipped entirely."""
-    ctx = PriceContext(ref_price_at_decision=None,
-                       future_prices=OLDER, regime_tag="LIVE")
+    ctx = PriceContext(
+        ref_price_at_decision=None, future_prices=OLDER, regime_tag="LIVE"
+    )
     return grade_trade(_record(), ctx).overall
 
 
@@ -133,24 +144,32 @@ class TestGradeUsesTheRealTimeAxis:
         got = _tab()._grade_row(ROW_I, PAGE, PAGE[ROW_I])
         assert got == _expected_letter(), (
             f"grade {got!r} does not match the hand-derived "
-            f"{_expected_letter()!r} for a newest-first page")
+            f"{_expected_letter()!r} for a newest-first page"
+        )
 
     def test_it_is_not_the_inverted_letter(self):
         """Stated separately so a regression reads unambiguously."""
-        assert _tab()._grade_row(ROW_I, PAGE, PAGE[ROW_I]) \
-            != _inverted_letter()
+        assert _tab()._grade_row(ROW_I, PAGE, PAGE[ROW_I]) != _inverted_letter()
 
     def test_both_halves_were_flipped_together(self):
         """Flipping one half alone leaves grades wrong and unflagged
         (C52 step 1). Checked by a fixture where each half on its own
         would still produce the wrong letter."""
         got = _tab()._grade_row(ROW_I, PAGE, PAGE[ROW_I])
-        half_a = grade_trade(_record(), PriceContext(
-            ref_price_at_decision=statistics.median(OLDER[:5]),
-            future_prices=OLDER, regime_tag="LIVE")).overall
-        half_b = grade_trade(_record(), PriceContext(
-            ref_price_at_decision=None,
-            future_prices=NEWER, regime_tag="LIVE")).overall
+        half_a = grade_trade(
+            _record(),
+            PriceContext(
+                ref_price_at_decision=statistics.median(OLDER[:5]),
+                future_prices=OLDER,
+                regime_tag="LIVE",
+            ),
+        ).overall
+        half_b = grade_trade(
+            _record(),
+            PriceContext(
+                ref_price_at_decision=None, future_prices=NEWER, regime_tag="LIVE"
+            ),
+        ).overall
         assert got != half_a, "future_prices half was not flipped"
         assert got != half_b, "ref_price half was not flipped"
 
@@ -163,18 +182,25 @@ class TestTheRefPriceIsTheNEARESTPriorPrices:
 
     def test_only_the_nearest_five_priors_are_used(self):
         page = list(PAGE) + [
-            {"id": f"anc{k}", "symbol": SYM, "side": "BUY",
-             "price": 500.0, "amount": 1.0} for k in range(5)
+            {
+                "id": f"anc{k}",
+                "symbol": SYM,
+                "side": "BUY",
+                "price": 500.0,
+                "amount": 1.0,
+            }
+            for k in range(5)
         ]
         got = _tab()._grade_row(ROW_I, page, page[ROW_I])
         assert got == _expected_letter(), (
             "distant ancient prices moved the ref price; the nearest "
-            "five priors should be used")
+            "five priors should be used"
+        )
 
 
 class TestDegenerateInputs:
     def test_fewer_than_three_priors_skips_execution_not_crashes(self):
-        page = PAGE[:4]           # only one older row
+        page = PAGE[:4]  # only one older row
         assert _tab()._grade_row(ROW_I, page, page[ROW_I]) is not None
 
     def test_a_lone_row_does_not_raise(self):
@@ -183,15 +209,26 @@ class TestDegenerateInputs:
 
     def test_other_symbols_are_ignored(self):
         page = list(PAGE)
-        page.insert(1, {"id": "eth", "symbol": "ETH/USD", "side": "BUY",
-                        "price": 9999.0, "amount": 1.0})
+        page.insert(
+            1,
+            {
+                "id": "eth",
+                "symbol": "ETH/USD",
+                "side": "BUY",
+                "price": 9999.0,
+                "amount": 1.0,
+            },
+        )
         got = _tab()._grade_row(ROW_I + 1, page, page[ROW_I + 1])
         assert got == _expected_letter()
 
-    @pytest.mark.parametrize("bad", [
-        {"symbol": SYM, "side": "BUY", "price": 0.0, "amount": 1.0},
-        {"symbol": SYM, "side": "BUY", "price": 100.0, "amount": 0.0},
-        {"symbol": SYM, "side": "HOLD", "price": 100.0, "amount": 1.0},
-    ])
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            {"symbol": SYM, "side": "BUY", "price": 0.0, "amount": 1.0},
+            {"symbol": SYM, "side": "BUY", "price": 100.0, "amount": 0.0},
+            {"symbol": SYM, "side": "HOLD", "price": 100.0, "amount": 1.0},
+        ],
+    )
     def test_ungradeable_rows_return_the_dash(self, bad):
         assert _tab()._grade_row(0, [bad], bad) == "—"

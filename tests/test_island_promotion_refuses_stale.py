@@ -61,7 +61,10 @@ def islands(tmp_path: Path) -> Path:
 def fork(live_root: Path, islands_root: Path, name: str = "ISL") -> Path:
     """Fork `live_root` into `islands_root` and return the island path."""
     return island.create_island(
-        live_root, islands_root, name, "unit test island",
+        live_root,
+        islands_root,
+        name,
+        "unit test island",
         ["src/trading/bot_container.py"],
     )
 
@@ -70,24 +73,24 @@ def snapshot(root: Path) -> dict[str, bytes]:
     """Return every file under `root` as raw bytes, keyed by relpath."""
     return {
         p.relative_to(root).as_posix(): p.read_bytes()
-        for p in sorted(root.rglob("*")) if p.is_file()
+        for p in sorted(root.rglob("*"))
+        if p.is_file()
     }
 
 
 def dirs(root: Path) -> set[str]:
     """Return every directory under `root`, keyed by relpath."""
-    return {
-        p.relative_to(root).as_posix()
-        for p in root.rglob("*") if p.is_dir()
-    }
+    return {p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_dir()}
 
 
 # --------------------------------------------------------------------
 # A clean island promotes, and the ledger records it.
 # --------------------------------------------------------------------
 
+
 def test_clean_island_promotes_and_writes_a_ledger_line(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """Live did not move, so the promotion lands and is recorded."""
     isl = fork(live, islands)
@@ -111,7 +114,8 @@ def test_clean_island_promotes_and_writes_a_ledger_line(
 
 
 def test_ledger_reconstructs_which_island_a_live_file_came_from(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """Two islands promote in turn; the ledger keeps both attributions."""
     first = fork(live, islands, "ISL_A")
@@ -119,16 +123,22 @@ def test_ledger_reconstructs_which_island_a_live_file_came_from(
     assert island.promote_island(first) == 0
 
     second = island.create_island(
-        live, islands, "ISL_B", "second island", ["src/trading/claims.py"],
+        live,
+        islands,
+        "ISL_B",
+        "second island",
+        ["src/trading/claims.py"],
     )
     write(second / "src" / "trading" / "claims.py", SIBLING_FIXED)
     assert island.promote_island(second) == 0
 
-    lines = (live / island.LEDGER_RELPATH).read_text(
-        encoding="utf-8").strip().splitlines()
+    lines = (
+        (live / island.LEDGER_RELPATH).read_text(encoding="utf-8").strip().splitlines()
+    )
     owners = {
         f["path"]: json.loads(line)["island"]
-        for line in lines for f in json.loads(line)["files"]
+        for line in lines
+        for f in json.loads(line)["files"]
     }
     assert owners["src/trading/bot_container.py"] == "ISL_A"
     assert owners["src/trading/claims.py"] == "ISL_B"
@@ -138,8 +148,10 @@ def test_ledger_reconstructs_which_island_a_live_file_came_from(
 # The near-miss itself: live moved, so the island is refused.
 # --------------------------------------------------------------------
 
+
 def test_stale_island_is_refused_and_live_is_byte_identical(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """The ISLAND_P2 case: live gained a fix after the island forked."""
     isl = fork(live, islands)
@@ -156,7 +168,9 @@ def test_stale_island_is_refused_and_live_is_byte_identical(
 
 
 def test_refusal_names_the_stale_file_and_says_to_rebase(
-    live: Path, islands: Path, capsys: pytest.CaptureFixture[str],
+    live: Path,
+    islands: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A refusal that does not say what to do next gets worked around."""
     isl = fork(live, islands)
@@ -172,7 +186,8 @@ def test_refusal_names_the_stale_file_and_says_to_rebase(
 
 
 def test_clean_island_is_not_refused_control_for_staleness(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """Control: the same shape with live unmoved must PASS.
 
@@ -189,8 +204,10 @@ def test_clean_island_is_not_refused_control_for_staleness(
 # All or nothing.
 # --------------------------------------------------------------------
 
+
 def test_one_stale_file_blocks_the_clean_file_too(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """A half-applied change is worse than none, so neither lands."""
     isl = fork(live, islands)
@@ -208,7 +225,8 @@ def test_one_stale_file_blocks_the_clean_file_too(
 
 
 def test_both_files_land_when_neither_is_stale_control(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """Control for all-or-nothing: two clean files both promote."""
     isl = fork(live, islands)
@@ -224,8 +242,11 @@ def test_both_files_land_when_neither_is_stale_control(
 # Unmanaged islands.
 # --------------------------------------------------------------------
 
+
 def test_unmanaged_island_is_refused(
-    live: Path, islands: Path, capsys: pytest.CaptureFixture[str],
+    live: Path,
+    islands: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """No manifest means no recorded base, so no promotion."""
     hand_rolled = islands / "ISLAND_P2"
@@ -240,7 +261,9 @@ def test_unmanaged_island_is_refused(
 
 
 def test_list_reports_unmanaged_islands_without_crashing(
-    live: Path, islands: Path, capsys: pytest.CaptureFixture[str],
+    live: Path,
+    islands: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Forty hand-rolled islands must not crash the tool."""
     for index in range(5):
@@ -255,7 +278,9 @@ def test_list_reports_unmanaged_islands_without_crashing(
 
 
 def test_island_with_no_changes_is_superseded(
-    live: Path, islands: Path, capsys: pytest.CaptureFixture[str],
+    live: Path,
+    islands: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """An island whose files all match live is litter, and says so."""
     fork(live, islands, "ISL_DONE")
@@ -267,8 +292,10 @@ def test_island_with_no_changes_is_superseded(
 # Line endings.
 # --------------------------------------------------------------------
 
+
 def test_promotion_preserves_crlf_destination_line_endings(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """A CRLF file in live stays CRLF after an LF island promotes onto it."""
     write(live / "src" / "trading" / "claims.py", SIBLING_BEFORE, eol="\r\n")
@@ -282,7 +309,8 @@ def test_promotion_preserves_crlf_destination_line_endings(
 
 
 def test_promotion_preserves_lf_destination_line_endings(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """Control: an LF destination is not converted to CRLF."""
     write(live / "src" / "trading" / "claims.py", SIBLING_BEFORE, eol="\n")
@@ -296,7 +324,8 @@ def test_promotion_preserves_lf_destination_line_endings(
 
 
 def test_line_ending_difference_alone_is_not_a_change(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """Otherwise every promotion would look stale on Windows."""
     isl = fork(live, islands)
@@ -310,7 +339,8 @@ def test_line_ending_difference_alone_is_not_a_change(
 
 
 def test_real_content_change_is_still_detected_control(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """Control: normalisation must not blind the tool to a real edit."""
     isl = fork(live, islands)
@@ -326,8 +356,11 @@ def test_real_content_change_is_still_detected_control(
 # Scope, additions, and dry run.
 # --------------------------------------------------------------------
 
+
 def test_protected_paths_are_refused_not_silently_skipped(
-    live: Path, islands: Path, capsys: pytest.CaptureFixture[str],
+    live: Path,
+    islands: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Silent dropping is the failure mode this tool exists to stop."""
     isl = fork(live, islands)
@@ -342,7 +375,8 @@ def test_protected_paths_are_refused_not_silently_skipped(
 
 
 def test_added_file_absent_from_live_promotes(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """A genuinely new file is not stale and may land."""
     isl = fork(live, islands)
@@ -353,7 +387,8 @@ def test_added_file_absent_from_live_promotes(
 
 
 def test_added_file_that_since_appeared_in_live_is_stale(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """Two authors created the same path. That is a conflict, not a copy."""
     isl = fork(live, islands)
@@ -377,7 +412,8 @@ def test_dry_run_never_writes_to_live(live: Path, islands: Path) -> None:
 
 
 def test_live_moving_alone_does_not_make_the_island_promotable(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """The island never touched the file, so it must not push its old copy."""
     isl = fork(live, islands)
@@ -396,7 +432,8 @@ def test_new_refuses_an_existing_island_name(live: Path, islands: Path) -> None:
 
 
 def test_manifest_records_base_hashes_and_declared_files(
-    live: Path, islands: Path,
+    live: Path,
+    islands: Path,
 ) -> None:
     """Without a recorded base there is nothing to judge staleness against."""
     isl = fork(live, islands)
@@ -467,7 +504,8 @@ CONTAINED_ESCAPING_NAMES = [
 
 @pytest.mark.parametrize("name", ESCAPING_NAMES)
 def test_island_dir_for_refuses_a_name_that_is_not_a_direct_child(
-    islands: Path, name: str,
+    islands: Path,
+    name: str,
 ) -> None:
     """The resolved directory must be a DIRECT child of the root."""
     with pytest.raises(island.IslandNameError) as caught:
@@ -480,7 +518,8 @@ def test_island_dir_for_refuses_a_name_that_is_not_a_direct_child(
 
 @pytest.mark.parametrize("name", ["ISL", "ISL_OK", "isl.2", "a-b_c", "ISL2"])
 def test_island_dir_for_accepts_a_simple_name_control(
-    islands: Path, name: str,
+    islands: Path,
+    name: str,
 ) -> None:
     """Control: a validator that refused everything would be bypassed."""
     assert island.island_dir_for(islands, name) == islands / name
@@ -488,7 +527,9 @@ def test_island_dir_for_accepts_a_simple_name_control(
 
 @pytest.mark.parametrize("name", CONTAINED_ESCAPING_NAMES)
 def test_create_island_refuses_a_traversal_name(
-    live: Path, islands: Path, name: str,
+    live: Path,
+    islands: Path,
+    name: str,
 ) -> None:
     """The fork itself must refuse, not only the CLI wrapper."""
     with pytest.raises(island.IslandNameError):
@@ -496,7 +537,9 @@ def test_create_island_refuses_a_traversal_name(
 
 
 def test_refused_new_creates_nothing_on_disk(
-    live: Path, islands: Path, tmp_path: Path,
+    live: Path,
+    islands: Path,
+    tmp_path: Path,
 ) -> None:
     """A refused name must not leave one byte or one directory behind.
 
@@ -518,7 +561,9 @@ def test_refused_new_creates_nothing_on_disk(
 
 
 def test_a_simple_name_still_forks_control(
-    live: Path, islands: Path, tmp_path: Path,
+    live: Path,
+    islands: Path,
+    tmp_path: Path,
 ) -> None:
     """Control for the test above: a good name DOES create a tree."""
     before_dirs = dirs(tmp_path)
@@ -529,7 +574,9 @@ def test_a_simple_name_still_forks_control(
 
 @pytest.mark.parametrize("name", ESCAPING_NAMES)
 def test_status_refuses_a_traversal_name(
-    islands: Path, monkeypatch: pytest.MonkeyPatch, name: str,
+    islands: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Every subcommand that takes a name refuses it identically."""
@@ -542,7 +589,9 @@ def test_status_refuses_a_traversal_name(
 
 @pytest.mark.parametrize("name", ESCAPING_NAMES)
 def test_promote_refuses_a_traversal_name(
-    islands: Path, monkeypatch: pytest.MonkeyPatch, name: str,
+    islands: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Promotion is the path that writes to live, so it refuses too."""
@@ -555,7 +604,9 @@ def test_promote_refuses_a_traversal_name(
 
 @pytest.mark.parametrize("name", ["..", ".", ""])
 def test_new_refuses_a_traversal_name_by_name_validation(
-    islands: Path, monkeypatch: pytest.MonkeyPatch, name: str,
+    islands: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """`new` must refuse by NAME, not by tripping over an existing dir.
@@ -573,7 +624,9 @@ def test_new_refuses_a_traversal_name_by_name_validation(
 
 
 def test_promote_refuses_a_traversal_name_even_when_it_would_have_worked(
-    live: Path, islands: Path, monkeypatch: pytest.MonkeyPatch,
+    live: Path,
+    islands: Path,
+    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """The refusal comes from the name, not from a missing manifest.
@@ -584,7 +637,11 @@ def test_promote_refuses_a_traversal_name_even_when_it_would_have_worked(
     validation can refuse it.
     """
     escaped = island.create_island(
-        live, islands.parent, "ESCAPED", "outside the islands root", [],
+        live,
+        islands.parent,
+        "ESCAPED",
+        "outside the islands root",
+        [],
     )
     write(escaped / "src" / "trading" / "claims.py", SIBLING_FIXED)
     assert island.promote_island(escaped, dry_run=True) == 0
@@ -604,7 +661,9 @@ def test_promote_refuses_a_traversal_name_even_when_it_would_have_worked(
 
 
 def test_a_simple_name_still_reaches_status_and_promote_control(
-    live: Path, islands: Path, monkeypatch: pytest.MonkeyPatch,
+    live: Path,
+    islands: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Control: validation must not refuse the names the tool needs."""
     isl = fork(live, islands, "ISL_OK")

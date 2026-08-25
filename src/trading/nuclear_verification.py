@@ -44,6 +44,7 @@ check would pass on it. ``wire_credits_rolled.by_source`` keeps
 per-source totals, so the source can actually be compared against the
 owning bot.
 """
+
 from __future__ import annotations
 
 import logging
@@ -88,13 +89,14 @@ SUBSYSTEM_FEATURES: tuple[str, ...] = (
 )
 
 ALL_FEATURES: tuple[str, ...] = tuple(
-    [f"swarm.trade.{a.lower()}" for a in TRADE_ACTIONS]
-    + list(SUBSYSTEM_FEATURES))
+    [f"swarm.trade.{a.lower()}" for a in TRADE_ACTIONS] + list(SUBSYSTEM_FEATURES)
+)
 
 
 @dataclass
 class TrancheChainResult:
     """Evidence for the scrum -> wire -> compound -> topology chain."""
+
     tranches_seen: int = 0
     tranches_wire_fed: int = 0
     wire_usd_total: float = 0.0
@@ -145,6 +147,7 @@ class TrancheChainResult:
 @dataclass
 class CoverageReport:
     """Which declared features were actually exercised."""
+
     exercised: dict = field(default_factory=dict)
     chain: TrancheChainResult = field(default_factory=TrancheChainResult)
 
@@ -155,8 +158,7 @@ class CoverageReport:
     @property
     def unverified(self) -> list:
         """Declared but never exercised. NOT the same as passing."""
-        return sorted(k for k in ALL_FEATURES
-                      if self.exercised.get(k, 0) == 0)
+        return sorted(k for k in ALL_FEATURES if self.exercised.get(k, 0) == 0)
 
     @property
     def coverage_pct(self) -> float:
@@ -201,15 +203,16 @@ class SwarmFeatureVerifier:
             self.report.exercised.setdefault(name, 0)
         try:
             from src.core.feature_telemetry import get_telemetry
+
             get_telemetry().declare(*ALL_FEATURES)
         except Exception as exc:  # noqa: BLE001 - telemetry advisory
             logger.debug("nuclear: telemetry declare failed: %s", exc)
 
     def _hit(self, name: str, count: int = 1) -> None:
-        self.report.exercised[name] = (
-            self.report.exercised.get(name, 0) + count)
+        self.report.exercised[name] = self.report.exercised.get(name, 0) + count
         try:
             from src.core.feature_telemetry import get_telemetry
+
             get_telemetry().record_call(name, count=count)
         except Exception as exc:  # noqa: BLE001 - telemetry advisory
             logger.debug("nuclear: telemetry record failed: %s", exc)
@@ -218,8 +221,9 @@ class SwarmFeatureVerifier:
         """Subscribe to one SIM bot's bus. Refuses live bots."""
         if not getattr(bot, "_sim_mode", False):
             logger.warning(
-                "nuclear verification: refusing to attach to non-sim "
-                "bot %s", getattr(bot, "bot_id", "?"))
+                "nuclear verification: refusing to attach to non-sim " "bot %s",
+                getattr(bot, "bot_id", "?"),
+            )
             return False
         bus = getattr(bot, "_bus", None)
         if bus is None or not hasattr(bus, "subscribe"):
@@ -251,8 +255,7 @@ class SwarmFeatureVerifier:
         # Reading the wrong one records zero for every trade and the
         # coverage report shows 0% while the run looks healthy — which
         # is exactly what happened before this line was corrected.
-        action = str(
-            data.get("type") or data.get("action") or "").upper()
+        action = str(data.get("type") or data.get("action") or "").upper()
         if not action:
             return
         if action in TRADE_ACTIONS:
@@ -264,7 +267,8 @@ class SwarmFeatureVerifier:
             logger.info(
                 "nuclear verification: undeclared trade action %r — "
                 "add it to TRADE_ACTIONS or it stays unverified",
-                action)
+                action,
+            )
 
     def scan_bots(self, bots: list) -> None:
         """Inspect end-of-cycle bot state for the tranche chain.
@@ -286,14 +290,12 @@ class SwarmFeatureVerifier:
                     self._hit("swarm.tranche.wire_fed")
                     self._hit("swarm.tranche.compounded")
                     for src, amt in sources.items():
-                        chain.sources[src] = round(
-                            chain.sources.get(src, 0.0) + amt, 8)
+                        chain.sources[src] = round(chain.sources.get(src, 0.0) + amt, 8)
                         # Link 4: the credit must come from a DIFFERENT
                         # bot, or the chain is self-referential.
                         if src and bot_id and src != bot_id:
                             chain.cross_bot_credits += 1
-                            self._hit(
-                                "swarm.topology.cross_bot_credit")
+                            self._hit("swarm.topology.cross_bot_credit")
 
     @staticmethod
     def _tranche_wire_usd(tranche: dict) -> tuple[float, dict]:
@@ -344,8 +346,10 @@ def format_coverage_lines(report: CoverageReport) -> list:
     ]
     unv = d["unverified"]
     if unv:
-        out.append(f"  UNVERIFIED ({len(unv)}) — exercised zero times, "
-                   "which is not the same as passing:")
+        out.append(
+            f"  UNVERIFIED ({len(unv)}) — exercised zero times, "
+            "which is not the same as passing:"
+        )
         for name in unv:
             out.append(f"    - {name}")
     else:
@@ -364,5 +368,6 @@ def format_coverage_lines(report: CoverageReport) -> list:
         f"    {c['tranches_seen']} tranche(s), "
         f"{c['tranches_wire_fed']} wire-fed, "
         f"${c['wire_usd_total']:.6f} wire USD, "
-        f"{c['cross_bot_credits']} cross-bot credit(s)")
+        f"{c['cross_bot_credits']} cross-bot credit(s)"
+    )
     return out

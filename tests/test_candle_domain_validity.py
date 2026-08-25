@@ -25,6 +25,7 @@ kills real signal costs more than the tick it blocks. So the refusal
 tests below are paired with acceptance tests for sub-cent prices, a
 zero-volume bar, a flat window and a genuine deep sell-off.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -48,8 +49,9 @@ OLD_BAD_TICK_CONFIDENCE = 1.0
 REACHABLE_BARS_BACK = (1, 2, 3, 4)
 
 
-def _bar(ts: int, open_px: float, close_px: float,
-         pad: float = 0.004, volume: float = 1000.0) -> list[float]:
+def _bar(
+    ts: int, open_px: float, close_px: float, pad: float = 0.004, volume: float = 1000.0
+) -> list[float]:
     """Build one self-consistent OHLCV row: low <= open, close <= high."""
     high = max(open_px, close_px) * (1.0 + pad)
     low = min(open_px, close_px) * (1.0 - pad)
@@ -66,16 +68,15 @@ def _rising_tape(n: int, seed: int = 12345) -> list[list[float]]:
     rows: list[list[float]] = []
     price = 100.0
     for _ in range(n):
-        state = (1103515245 * state + 12345) % (2 ** 31)
-        wobble = ((state / (2 ** 31)) - 0.5) * 0.004
+        state = (1103515245 * state + 12345) % (2**31)
+        wobble = ((state / (2**31)) - 0.5) * 0.004
         open_px = price
         price = price * (1.0 + 0.001 + wobble)
         rows.append(_bar(BASE_TS + len(rows) * STEP_MS, open_px, price))
     return rows
 
 
-def _selloff_tape(drop: float, recovery: float,
-                  n_pre: int = 60) -> list[list[float]]:
+def _selloff_tape(drop: float, recovery: float, n_pre: int = 60) -> list[list[float]]:
     """Build a quiet tape, one sharp sell-off bar, then a recovery bar.
 
     Every bar stays self-consistent, so the whole tape is inside the
@@ -98,38 +99,26 @@ def _selloff_tape(drop: float, recovery: float,
 @pytest.mark.parametrize(
     "row",
     [
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 0.0, 10.0],
-                     id="close-zero"),
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 1e-12, 10.0],
-                     id="close-tiny"),
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, -5.0, 10.0],
-                     id="close-negative"),
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, float("nan"), 10.0],
-                     id="close-nan"),
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, float("inf"), 10.0],
-                     id="close-inf"),
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, "abc", 10.0],
-                     id="close-string"),
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, True, 10.0],
-                     id="close-bool"),
-        pytest.param([BASE_TS, 0.0, 101.0, 99.0, 100.0, 10.0],
-                     id="open-zero"),
-        pytest.param([BASE_TS, 100.0, 0.0, 99.0, 100.0, 10.0],
-                     id="high-zero"),
-        pytest.param([BASE_TS, 100.0, 101.0, 0.0, 100.0, 10.0],
-                     id="low-zero"),
-        pytest.param([BASE_TS, 100.0, 99.0, 101.0, 100.0, 10.0],
-                     id="high-below-low"),
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 500.0, 10.0],
-                     id="close-above-high"),
-        pytest.param([BASE_TS, 50.0, 101.0, 99.0, 100.0, 10.0],
-                     id="open-below-low"),
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 100.0, -1.0],
-                     id="volume-negative"),
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 100.0, float("nan")],
-                     id="volume-nan"),
-        pytest.param([float("nan"), 100.0, 101.0, 99.0, 100.0, 10.0],
-                     id="timestamp-nan"),
+        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 0.0, 10.0], id="close-zero"),
+        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 1e-12, 10.0], id="close-tiny"),
+        pytest.param([BASE_TS, 100.0, 101.0, 99.0, -5.0, 10.0], id="close-negative"),
+        pytest.param([BASE_TS, 100.0, 101.0, 99.0, float("nan"), 10.0], id="close-nan"),
+        pytest.param([BASE_TS, 100.0, 101.0, 99.0, float("inf"), 10.0], id="close-inf"),
+        pytest.param([BASE_TS, 100.0, 101.0, 99.0, "abc", 10.0], id="close-string"),
+        pytest.param([BASE_TS, 100.0, 101.0, 99.0, True, 10.0], id="close-bool"),
+        pytest.param([BASE_TS, 0.0, 101.0, 99.0, 100.0, 10.0], id="open-zero"),
+        pytest.param([BASE_TS, 100.0, 0.0, 99.0, 100.0, 10.0], id="high-zero"),
+        pytest.param([BASE_TS, 100.0, 101.0, 0.0, 100.0, 10.0], id="low-zero"),
+        pytest.param([BASE_TS, 100.0, 99.0, 101.0, 100.0, 10.0], id="high-below-low"),
+        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 500.0, 10.0], id="close-above-high"),
+        pytest.param([BASE_TS, 50.0, 101.0, 99.0, 100.0, 10.0], id="open-below-low"),
+        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 100.0, -1.0], id="volume-negative"),
+        pytest.param(
+            [BASE_TS, 100.0, 101.0, 99.0, 100.0, float("nan")], id="volume-nan"
+        ),
+        pytest.param(
+            [float("nan"), 100.0, 101.0, 99.0, 100.0, 10.0], id="timestamp-nan"
+        ),
     ],
 )
 def test_row_outside_the_domain_is_refused(row: list[object]) -> None:
@@ -166,18 +155,12 @@ def test_short_row_still_raises_index_error() -> None:
 @pytest.mark.parametrize(
     "row",
     [
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 100.5, 10.0],
-                     id="ordinary-bar"),
-        pytest.param([BASE_TS, 1e-8, 1.1e-8, 0.9e-8, 1.05e-8, 10.0],
-                     id="sub-cent"),
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 100.0, 0.0],
-                     id="zero-volume"),
-        pytest.param([BASE_TS, 100.0, 100.0, 100.0, 100.0, 10.0],
-                     id="flat-bar"),
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 101.0, 10.0],
-                     id="close-at-high"),
-        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 99.0, 10.0],
-                     id="close-at-low"),
+        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 100.5, 10.0], id="ordinary-bar"),
+        pytest.param([BASE_TS, 1e-8, 1.1e-8, 0.9e-8, 1.05e-8, 10.0], id="sub-cent"),
+        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 100.0, 0.0], id="zero-volume"),
+        pytest.param([BASE_TS, 100.0, 100.0, 100.0, 100.0, 10.0], id="flat-bar"),
+        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 101.0, 10.0], id="close-at-high"),
+        pytest.param([BASE_TS, 100.0, 101.0, 99.0, 99.0, 10.0], id="close-at-low"),
         pytest.param([BASE_TS, 100, 101, 99, 100, 10], id="integer-fields"),
     ],
 )
@@ -208,8 +191,7 @@ def test_self_consistent_spike_is_deliberately_not_refused() -> None:
 # THE DEFECT: the corrupt tick can no longer cast a maximum vote
 # ---------------------------------------------------------------------
 @pytest.mark.parametrize("bars_back", REACHABLE_BARS_BACK)
-def test_zero_close_cannot_reach_slingshot_at_any_depth(
-        bars_back: int) -> None:
+def test_zero_close_cannot_reach_slingshot_at_any_depth(bars_back: int) -> None:
     """Refuse the bad tick at the boundary, so no vote is cast.
 
     Before this change each of these depths produced BULLISH at
@@ -224,8 +206,7 @@ def test_zero_close_cannot_reach_slingshot_at_any_depth(
 
 
 @pytest.mark.parametrize("bars_back", REACHABLE_BARS_BACK)
-def test_clean_control_tape_is_quiet_at_the_same_depths(
-        bars_back: int) -> None:
+def test_clean_control_tape_is_quiet_at_the_same_depths(bars_back: int) -> None:
     """Show the control arm: the tape is otherwise silent.
 
     Without this, the test above could pass on a tape that was never
@@ -278,9 +259,11 @@ def test_snapback_confidence_still_orders_by_depth() -> None:
     snapback branch so the comparison is between like and like.
     """
     deep = SlingshotIndicator().compute(
-        candles_from_raw(_selloff_tape(drop=0.034, recovery=0.02)), "1h")
+        candles_from_raw(_selloff_tape(drop=0.034, recovery=0.02)), "1h"
+    )
     shallow = SlingshotIndicator().compute(
-        candles_from_raw(_selloff_tape(drop=0.024, recovery=0.02)), "1h")
+        candles_from_raw(_selloff_tape(drop=0.024, recovery=0.02)), "1h"
+    )
     assert deep.details.get("slingshot_type") == "bullish_snapback"
     assert shallow.details.get("slingshot_type") == "bullish_snapback"
     assert deep.direction is SignalDirection.BULLISH

@@ -12,6 +12,7 @@ Verifies:
 All references are to files that MUST exist in a shipped tree. If any
 disappears, tests fail with the specific missing path.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,9 +26,14 @@ from tools.harness.coding_archetype import (
     _BANDIT_SEVERITY_OVERRIDES,
 )
 
-
 REPO = Path(__file__).resolve().parent.parent
-FIX = REPO / "docs" / "audits" / "2026-07-24_coding_archetype_multi_agent_test" / "fixtures"
+FIX = (
+    REPO
+    / "docs"
+    / "audits"
+    / "2026-07-24_coding_archetype_multi_agent_test"
+    / "fixtures"
+)
 
 
 class TestSurface:
@@ -39,8 +45,9 @@ class TestSurface:
         rested on nothing. Both are now exercised: `Finding` builds,
         and `ArchetypeReport` answers the three conditions of green.
         """
-        finding = Finding(tool="t", severity="high", file="f",
-                          line=1, rule_id="R", message="m")
+        finding = Finding(
+            tool="t", severity="high", file="f", line=1, rule_id="R", message="m"
+        )
         assert finding.to_dict()["severity"] == "high"
         report = ArchetypeReport(target="x")
         assert report.passed is False, "an unscanned report is not green"
@@ -64,11 +71,23 @@ class TestSurface:
         assert "vulture" in arch.tools
 
     def test_bandit_overrides_include_known_dangerous(self):
-        for rule in ("B101", "B105", "B106", "B107", "B303", "B324",
-                     "B501", "B502", "B506", "B602", "B605", "B609"):
-            assert _BANDIT_SEVERITY_OVERRIDES.get(rule) == "high", (
-                f"{rule} must remap to 'high'"
-            )
+        for rule in (
+            "B101",
+            "B105",
+            "B106",
+            "B107",
+            "B303",
+            "B324",
+            "B501",
+            "B502",
+            "B506",
+            "B602",
+            "B605",
+            "B609",
+        ):
+            assert (
+                _BANDIT_SEVERITY_OVERRIDES.get(rule) == "high"
+            ), f"{rule} must remap to 'high'"
 
 
 class TestFixturesExist:
@@ -132,36 +151,43 @@ class TestGroundTruthRecall:
 
     def test_D1_unused_import_caught(self, report):
         # Vulture unused-import or ruff F401
-        hits = [f for f in report.findings
-                if "unused" in f.message.lower() and "import" in f.message.lower()
-                or f.rule_id == "F401"]
+        hits = [
+            f
+            for f in report.findings
+            if "unused" in f.message.lower()
+            and "import" in f.message.lower()
+            or f.rule_id == "F401"
+        ]
         assert hits, "D1 unused_import not caught"
 
     def test_D3_missing_type_hints_caught(self, report):
         # mypy or ruff ANN family
-        hits = [f for f in report.findings
-                if f.rule_id.startswith("ANN")
-                or "type" in f.message.lower() and "hint" in f.message.lower()
-                or f.tool == "mypy" and "untyped" in f.message.lower()]
+        hits = [
+            f
+            for f in report.findings
+            if f.rule_id.startswith("ANN")
+            or "type" in f.message.lower()
+            and "hint" in f.message.lower()
+            or f.tool == "mypy"
+            and "untyped" in f.message.lower()
+        ]
         assert hits, "D3 missing_type_hints not caught"
 
     def test_D4_hardcoded_password_caught_high(self, report):
         # bandit B105 (with severity remap to high) or ruff S105
-        hits = [f for f in report.findings
-                if f.rule_id in ("B105", "S105")]
+        hits = [f for f in report.findings if f.rule_id in ("B105", "S105")]
         assert hits, "D4 hardcoded_password not caught"
-        assert any(f.severity == "high" for f in hits), (
-            "D4 must be high severity after remap"
-        )
+        assert any(
+            f.severity == "high" for f in hits
+        ), "D4 must be high severity after remap"
 
     def test_D5_assert_for_security_caught_high(self, report):
         # bandit B101 (remap to high) or ruff S101
-        hits = [f for f in report.findings
-                if f.rule_id in ("B101", "S101")]
+        hits = [f for f in report.findings if f.rule_id in ("B101", "S101")]
         assert hits, "D5 assert_for_security not caught"
-        assert any(f.severity == "high" for f in hits), (
-            "D5 must be high severity after remap"
-        )
+        assert any(
+            f.severity == "high" for f in hits
+        ), "D5 must be high severity after remap"
 
 
 class TestFalsification:

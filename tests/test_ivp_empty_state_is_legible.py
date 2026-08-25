@@ -34,6 +34,7 @@ with no data feed at all, which C51 did blank outright. Per operator
 directive 2026-08-06 the stocks panel and mode are not to be touched
 until crypto is complete, so that repair is deliberately NOT made here.
 """
+
 from __future__ import annotations
 
 import ast
@@ -86,9 +87,10 @@ def _is_ivp_update(stmt) -> bool:
     if not isinstance(stmt, ast.Expr) or not isinstance(stmt.value, ast.Call):
         return False
     func = stmt.value.func
-    return (getattr(func, "attr", "") == "update_data"
-            and getattr(getattr(func, "value", None), "attr", "")
-            == "_indicator_panel")
+    return (
+        getattr(func, "attr", "") == "update_data"
+        and getattr(getattr(func, "value", None), "attr", "") == "_indicator_panel"
+    )
 
 
 def _block_containing_ivp_update() -> list:
@@ -102,12 +104,12 @@ def _block_containing_ivp_update() -> list:
     for node in ast.walk(ast.parse(_refresh_dashboard_src())):
         for field in ("body", "orelse", "finalbody"):
             block = getattr(node, field, None)
-            if isinstance(block, list) and any(
-                    _is_ivp_update(stmt) for stmt in block):
+            if isinstance(block, list) and any(_is_ivp_update(stmt) for stmt in block):
                 return block
     raise AssertionError(
         "the real feed's `self._indicator_panel.update_data(...)` call "
-        "is no longer a statement inside _refresh_dashboard")
+        "is no longer a statement inside _refresh_dashboard"
+    )
 
 
 class _IdleOrRunningBot:
@@ -119,7 +121,8 @@ class _IdleOrRunningBot:
 
     def __init__(self, state: str):
         self.config = SimpleNamespace(
-            symbol="BTC/USD", exchange_id="coinbase", ta_timeframe="1h")
+            symbol="BTC/USD", exchange_id="coinbase", ta_timeframe="1h"
+        )
         self.state = SimpleNamespace(value=state)
         self.stats = SimpleNamespace(current_price=100.0, last_error="")
         self.position_value_usd = 100.0
@@ -158,8 +161,7 @@ def panel(qapp):
     ordering requirement explicit rather than implicit.
     """
     if qapp is None:
-        raise AssertionError(
-            "no QApplication: a QWidget cannot be constructed")
+        raise AssertionError("no QApplication: a QWidget cannot be constructed")
     p = IndicatorVotingPanel()
     yield p
     p.deleteLater()
@@ -167,13 +169,28 @@ def panel(qapp):
 
 def _populate(p):
     """Give the panel a real-shaped payload so 'cleared' means something."""
-    p.update_data({"1h": {
-        "bullish": 3, "bearish": 2, "neutral": 1,
-        "net_score": 0.4, "confidence": 0.7, "direction": "BULLISH",
-        "signals": [{"indicator": "bb", "direction": "BULLISH",
-                     "confidence": 0.7, "details": {}}],
-        "locks": [],
-    }}, "BTC/USD")
+    p.update_data(
+        {
+            "1h": {
+                "bullish": 3,
+                "bearish": 2,
+                "neutral": 1,
+                "net_score": 0.4,
+                "confidence": 0.7,
+                "direction": "BULLISH",
+                "signals": [
+                    {
+                        "indicator": "bb",
+                        "direction": "BULLISH",
+                        "confidence": 0.7,
+                        "details": {},
+                    }
+                ],
+                "locks": [],
+            }
+        },
+        "BTC/USD",
+    )
 
 
 class TestTheInstrumentWorks:
@@ -193,7 +210,7 @@ class TestShowNoDataNamesTheBot:
     def test_it_uses_the_GIVEN_symbol_not_a_stale_one(self, panel):
         """_render_no_data reused whatever symbol was last displayed, so
         an empty render could sit under the PREVIOUS bot's ticker."""
-        _populate(panel)                      # panel now says BTC/USD
+        _populate(panel)  # panel now says BTC/USD
         panel.show_no_data("botid123", "ETH/USD", "no TA read yet")
         assert panel._symbol_label_raw == "ETH/USD"
 
@@ -229,11 +246,14 @@ class TestForceRefreshIsHonest:
         import src.gui.indicator_panel as ipm
 
         src = Path(ipm.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.FunctionDef)
-                  and n.name == "force_refresh")
-        calls = [getattr(c.func, "attr", "") for c in ast.walk(fn)
-                 if isinstance(c, ast.Call)]
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.FunctionDef) and n.name == "force_refresh"
+        )
+        calls = [
+            getattr(c.func, "attr", "") for c in ast.walk(fn) if isinstance(c, ast.Call)
+        ]
         assert "_generate_demo_ta" not in calls
         assert "show_no_data" in calls
 
@@ -243,17 +263,19 @@ class TestForceRefreshIsHonest:
         import src.gui.indicator_panel as ipm
 
         src = Path(ipm.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.FunctionDef)
-                  and n.name == "force_refresh")
-        calls = [getattr(c.func, "attr", "") for c in ast.walk(fn)
-                 if isinstance(c, ast.Call)]
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.FunctionDef) and n.name == "force_refresh"
+        )
+        calls = [
+            getattr(c.func, "attr", "") for c in ast.walk(fn) if isinstance(c, ast.Call)
+        ]
         assert "blockSignals" in calls
 
     def test_a_new_bot_gets_a_named_empty_state(self, panel):
         panel._bot_selector.addItem("SOL/USD [newbot01]", "newbot01")
-        panel.force_refresh(bot_id="newbot01", symbol="SOL/USD",
-                            ta_timeframe="1h")
+        panel.force_refresh(bot_id="newbot01", symbol="SOL/USD", ta_timeframe="1h")
         assert panel._symbol_label_raw == "SOL/USD"
         assert "new bot" in panel._summary_label.text()
 
@@ -287,18 +309,19 @@ class TestTheRealFeedHasElseBranches:
         """
         block = _block_containing_ivp_update()
         logged = [
-            stmt for stmt in block
+            stmt
+            for stmt in block
             if isinstance(stmt, ast.Expr)
             and isinstance(stmt.value, ast.Call)
-            and getattr(stmt.value.func, "attr", "") in (
-                "debug", "info", "warning")
+            and getattr(stmt.value.func, "attr", "") in ("debug", "info", "warning")
             and stmt.value.args
             and isinstance(stmt.value.args[0], ast.Constant)
             and "IVP feed" in str(stmt.value.args[0].value)
         ]
         assert logged, (
             "the real feed's success path has no 'IVP feed' log call "
-            "as a sibling of its update_data call")
+            "as a sibling of its update_data call"
+        )
 
     def test_the_reason_distinguishes_idle_from_waiting(self, panel):
         """Collapsing 'never started' and 'running, no read yet' into one
@@ -318,16 +341,20 @@ class TestTheRealFeedHasElseBranches:
         rendered label cannot.
         """
         idle_cause, idle_detail = _EmptyStateShell()._ivp_empty_state_cause(
-            _IdleOrRunningBot(state="idle"), "bid-idle")
+            _IdleOrRunningBot(state="idle"), "bid-idle"
+        )
         warm_cause, warm_detail = _EmptyStateShell()._ivp_empty_state_cause(
-            _IdleOrRunningBot(state="running"), "bid-warm")
+            _IdleOrRunningBot(state="running"), "bid-warm"
+        )
         assert idle_cause != warm_cause, (idle_cause, warm_cause)
 
-        panel.show_no_data(bot_id="bid-idle", symbol="BTC/USD",
-                           cause=idle_cause, detail=idle_detail)
+        panel.show_no_data(
+            bot_id="bid-idle", symbol="BTC/USD", cause=idle_cause, detail=idle_detail
+        )
         idle_text = panel._summary_label.text()
-        panel.show_no_data(bot_id="bid-warm", symbol="BTC/USD",
-                           cause=warm_cause, detail=warm_detail)
+        panel.show_no_data(
+            bot_id="bid-warm", symbol="BTC/USD", cause=warm_cause, detail=warm_detail
+        )
         warm_text = panel._summary_label.text()
 
         assert idle_text != warm_text
@@ -348,4 +375,5 @@ class TestTheStocksPanelIsUntouched:
         src = Path(smw.__file__).read_text(encoding="utf-8")
         assert "update_data" not in src, (
             "the stocks window was modified; the operator asked for it "
-            "to be left alone until crypto is complete")
+            "to be left alone until crypto is complete"
+        )

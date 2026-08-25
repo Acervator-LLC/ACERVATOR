@@ -124,7 +124,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 REPO = Path(__file__).resolve().parent.parent
 
-if TYPE_CHECKING:                       # pragma: no cover
+if TYPE_CHECKING:  # pragma: no cover
     # Annotation only. PySide6 must not be imported at module scope: the
     # source-reading tests below are pure Python and have to run on a box
     # without Qt. A skipped test is not evidence, so the skip is scoped
@@ -154,8 +154,16 @@ PRIVACY_FIELDS = 19
 # the other tabs did not have: this tab's whole subject is WHICH BOT a
 # command reached, and the privacy registry masks that very string in
 # the table two lines away.
-FORBIDDEN = ("api_key", "apikey", "secret", "passphrase", "password",
-             "credential", "token", "bot_id")
+FORBIDDEN = (
+    "api_key",
+    "apikey",
+    "secret",
+    "passphrase",
+    "password",
+    "credential",
+    "token",
+    "bot_id",
+)
 
 
 # ── Qt fixtures ────────────────────────────────────────────────────────
@@ -175,25 +183,42 @@ def qapp() -> QApplication:
 
 def _scrum(bot_id: str, symbol: str = "BTC/USD") -> dict:
     """One Scrumming status, in the shape `BotContainer.get_status` emits."""
-    return {"bot_id": bot_id, "mode": "scrumming", "symbol": symbol,
-            "state": "running", "stats": {"total_trades": 2},
-            "target_balance": 50.0}
+    return {
+        "bot_id": bot_id,
+        "mode": "scrumming",
+        "symbol": symbol,
+        "state": "running",
+        "stats": {"total_trades": 2},
+        "target_balance": 50.0,
+    }
 
 
 def _extractor(bot_id: str, base: str = "ETH") -> dict:
     """One Extractor status, in the shape `ExtractorBot.get_status` emits."""
-    return {"bot_id": bot_id, "mode": "extractor", "symbol": f"{base}/USD",
-            "state": "running", "base_currency": base,
-            "stats": {"total_trades": 1}, "chunk_size_usd": 100.0,
-            "chunk_size_base": 1.0, "chunk_free_base": 0.5,
-            "n_positions_open": 1, "n_positions_drawdown": 0,
-            "pool_color": "green"}
+    return {
+        "bot_id": bot_id,
+        "mode": "extractor",
+        "symbol": f"{base}/USD",
+        "state": "running",
+        "base_currency": base,
+        "stats": {"total_trades": 1},
+        "chunk_size_usd": 100.0,
+        "chunk_size_base": 1.0,
+        "chunk_free_base": 0.5,
+        "n_positions_open": 1,
+        "n_positions_drawdown": 0,
+        "pool_color": "green",
+    }
 
 
 @contextlib.contextmanager
-def _tab(qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-         registry_dir: Path, *,
-         exchange_id: str = "coinbase") -> Iterator[Any]:
+def _tab(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    registry_dir: Path,
+    *,
+    exchange_id: str = "coinbase",
+) -> Iterator[Any]:
     """A REAL `ExchangeTab`, with the network and the operator's disk cut.
 
     `CryptoNewsTicker.start()` spawns a `QThread` over ten RSS feeds;
@@ -220,13 +245,12 @@ def _tab(qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
         def start(self) -> None:
             return
 
-    monkeypatch.setattr(
-        ticker_module, "CryptoNewsTicker", _InertTicker, raising=True)
+    monkeypatch.setattr(ticker_module, "CryptoNewsTicker", _InertTicker, raising=True)
 
     registry = PrivacyMaskRegistry(
-        settings_path=registry_dir / "settings.json", autosave=True)
-    monkeypatch.setattr(
-        mw, "get_privacy_mask_registry", lambda: registry, raising=True)
+        settings_path=registry_dir / "settings.json", autosave=True
+    )
+    monkeypatch.setattr(mw, "get_privacy_mask_registry", lambda: registry, raising=True)
 
     sent: list[tuple[str, str]] = []
     warnings: list[str] = []
@@ -236,9 +260,11 @@ def _tab(qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
             warnings.append(f"{level}:{message}")
 
     tab = mw.ExchangeTab(
-        exchange_id, exchange_id.capitalize(),
+        exchange_id,
+        exchange_id.capitalize(),
         on_bot_cmd=lambda bot_id, command: sent.append((bot_id, command)),
-        status_log=_StatusLog())
+        status_log=_StatusLog(),
+    )
     tab._pull_rate_timer.stop()
     tab.dispatched = sent
     tab.warnings = warnings
@@ -314,12 +340,14 @@ def _without_the_reanchor(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert callable(mw._reanchor_bot_selection)
     monkeypatch.setattr(
-        mw, "_reanchor_bot_selection",
-        lambda _table, _previous_bot_id, _bot_ids: None, raising=True)
+        mw,
+        "_reanchor_bot_selection",
+        lambda _table, _previous_bot_id, _bot_ids: None,
+        raising=True,
+    )
 
 
-def _without_the_detail_row_selection(
-        monkeypatch: pytest.MonkeyPatch) -> None:
+def _without_the_detail_row_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     """Put the tree back the way it was before the issue #52 repair.
 
     `BotStatusTable._on_detail` and `ExtractorBotTable._on_detail` both
@@ -352,8 +380,8 @@ def _without_the_detail_row_selection(
 
     assert callable(mw._select_row_for_bot)
     monkeypatch.setattr(
-        mw, "_select_row_for_bot",
-        lambda _table, _bot_id, _bot_ids: None, raising=True)
+        mw, "_select_row_for_bot", lambda _table, _bot_id, _bot_ids: None, raising=True
+    )
 
 
 def _stop_the_emitter(tab: Any) -> None:
@@ -401,10 +429,13 @@ def _exchange_emit_calls() -> list[ast.Call]:
     question.
     """
     tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
-    return [node for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "_ex_emit"]
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_ex_emit"
+    ]
 
 
 def _pin_name(call: ast.Call) -> str:
@@ -429,12 +460,14 @@ def _span(function: str) -> tuple[int, int]:
     """
     tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
     for klass in ast.walk(tree):
-        if not (isinstance(klass, ast.ClassDef)
-                and klass.name == "ExchangeTab"):
+        if not (isinstance(klass, ast.ClassDef) and klass.name == "ExchangeTab"):
             continue
         for node in klass.body:
-            if (isinstance(node, ast.FunctionDef) and node.name == function
-                    and node.end_lineno is not None):
+            if (
+                isinstance(node, ast.FunctionDef)
+                and node.name == function
+                and node.end_lineno is not None
+            ):
                 return (node.lineno, node.end_lineno)
     missing = f"ExchangeTab.{function} not found in {MAIN_WINDOW}"
     raise AssertionError(missing)
@@ -444,8 +477,8 @@ def _span(function: str) -> tuple[int, int]:
 
 
 def test_a_command_reaches_the_table_the_operator_chose(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The ordinary case, so the red below is a verdict and not a mood.
 
     The operator selects an Extractor row -- a real row selection, which
@@ -471,8 +504,8 @@ def test_a_command_reaches_the_table_the_operator_chose(
 
 
 def test_the_extractor_detail_button_carries_the_selection_with_it(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """ISSUE #52: the Detail button is a row click, so `15-001` is green.
 
     The gesture the falsifier below drives, with the repair in place and
@@ -512,8 +545,8 @@ def test_the_extractor_detail_button_carries_the_selection_with_it(
 
 
 def test_the_scrumming_detail_button_carries_the_selection_with_it(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """ISSUE #52 in the other direction, because BOTH tables have one.
 
     `delete` again -- the command with the least recoverable
@@ -545,8 +578,8 @@ def test_the_scrumming_detail_button_carries_the_selection_with_it(
 
 
 def test_a_detail_button_inside_the_selected_table_moves_the_highlight(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The same-table case, and it is a SECOND misroute issue #52 closes.
 
     `15-001` could never see this one. The operator has `s1` selected
@@ -589,9 +622,11 @@ def test_a_detail_button_inside_the_selected_table_moves_the_highlight(
 
         seen = {"scrumming": 0, "extractor": 0}
         tab._bot_table.itemSelectionChanged.connect(
-            lambda: seen.__setitem__("scrumming", seen["scrumming"] + 1))
+            lambda: seen.__setitem__("scrumming", seen["scrumming"] + 1)
+        )
         tab._extractor_table.itemSelectionChanged.connect(
-            lambda: seen.__setitem__("extractor", seen["extractor"] + 1))
+            lambda: seen.__setitem__("extractor", seen["extractor"] + 1)
+        )
 
         tab._bot_table.cellWidget(1, 9).click()
         assert tab._last_clicked_table == "scrumming"
@@ -612,8 +647,8 @@ def test_a_detail_button_inside_the_selected_table_moves_the_highlight(
 
 
 def test_the_detail_button_leaves_a_row_it_cannot_read_alone(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """A row the render SKIPPED must not be selected by the repair.
 
     `BotStatusTable.update_bots` calls `setRowCount` first and then
@@ -649,8 +684,8 @@ def test_the_detail_button_leaves_a_row_it_cannot_read_alone(
 
 
 def test_a_command_that_lands_on_the_other_tables_bot_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE FALSIFIER for `15-001`, AND IT IS THE MISROUTE ITSELF.
 
     MEM-408 in the direction the v3.20.62 fix opened. Driven, not
@@ -717,8 +752,8 @@ def test_a_command_that_lands_on_the_other_tables_bot_is_reported(
 
 
 def test_the_fallback_hijacks_in_the_other_direction_too(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The mirror image, so the pin is not one-sided.
 
     The preference is on the Scrumming table and only the Extractor
@@ -758,8 +793,8 @@ def test_the_fallback_hijacks_in_the_other_direction_too(
 
 
 def test_a_command_with_nothing_selected_writes_no_routing_record(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """No dispatch, no route to judge, no vacuous record.
 
     `_cmd` returns after warning the operator. A record here would
@@ -775,8 +810,8 @@ def test_a_command_with_nothing_selected_writes_no_routing_record(
 
 
 def test_the_routing_pin_is_written_before_the_dispatch(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """A command that raises still leaves its routing on the record.
 
     That is the whole reason the pin sits above `self._on_bot_cmd` and
@@ -803,12 +838,11 @@ def test_the_routing_pin_is_written_before_the_dispatch(
 
 
 def test_every_bot_reaches_a_table(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Both modes routed, both rendered, counted off the widgets."""
     with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
-        tab.update_bots(
-            [_scrum("s1"), _scrum("s2"), _extractor("e1")])
+        tab.update_bots([_scrum("s1"), _scrum("s2"), _extractor("e1")])
         rec = _only(sink, REACHED)
         assert tab._bot_table.item(0, 0).text() == "s1"
         assert tab._extractor_table.item(0, 0).text() == "e1"
@@ -824,8 +858,8 @@ def test_every_bot_reaches_a_table(
 
 
 def test_a_bot_both_mode_filters_drop_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE FALSIFIER for `15-002`, and it is a silent loss.
 
     `update_bots` keeps `mode == "scrumming"` in one comprehension and
@@ -854,8 +888,8 @@ def test_a_bot_both_mode_filters_drop_is_reported(
 
 
 def test_the_row_measure_sees_a_blank_row_a_skipped_render_leaves(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE POSITIVE CONTROL for the second loss `15-002` claims to see.
 
     `BotStatusTable.update_bots` calls `setRowCount(len(...))` FIRST and
@@ -873,16 +907,17 @@ def test_the_row_measure_sees_a_blank_row_a_skipped_render_leaves(
         misrouted = _extractor("wrong-home")
         table.update_bots([_scrum("s1"), misrouted])
 
-        assert table.rowCount() == 2                 # what the list said
-        drawn = sum(1 for row in range(table.rowCount())
-                    if table.item(row, 0) is not None)
-        assert drawn == 1                            # what is readable
+        assert table.rowCount() == 2  # what the list said
+        drawn = sum(
+            1 for row in range(table.rowCount()) if table.item(row, 0) is not None
+        )
+        assert drawn == 1  # what is readable
         assert table.item(1, 0) is None
 
 
 def test_the_row_count_is_read_from_the_widget_and_not_from_the_list(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE CONTROL that makes `15-002`'s widget read mean anything.
 
     MEASURED WHILE BUILDING THIS UNIT, and it is why this test exists.
@@ -925,8 +960,8 @@ def test_the_row_count_is_read_from_the_widget_and_not_from_the_list(
 
 
 def test_an_empty_fleet_is_green_and_not_an_error(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Zero bots is an ordinary state, so the pin must not paint it red.
 
     Both sections are hidden and both counts are zero. An instrument
@@ -947,8 +982,8 @@ def test_an_empty_fleet_is_green_and_not_an_error(
 
 
 def test_a_quiet_refresh_leaves_the_selection_where_it_was(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The steady state: same list, same order, same bot under the row."""
     with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
         fleet = [_scrum("s1"), _scrum("s2"), _extractor("e1")]
@@ -970,8 +1005,8 @@ def test_a_quiet_refresh_leaves_the_selection_where_it_was(
 
 
 def test_a_reordered_refresh_that_moves_the_selection_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE FALSIFIER for `15-003`, and it is the second misroute.
 
     A Qt selection is anchored to a ROW INDEX. `update_bots` rewrites
@@ -1002,7 +1037,7 @@ def test_a_reordered_refresh_that_moves_the_selection_is_reported(
         tab._bot_table.selectRow(0)
         assert tab._bot_table.get_selected_bot_id() == "s1"
 
-        _tick(tab, [_scrum("s2"), _scrum("s1")])           # one tick
+        _tick(tab, [_scrum("s2"), _scrum("s1")])  # one tick
         rec = _last(sink, SELECTION)
 
         # THE SUBSTITUTION, read off the widget.
@@ -1020,8 +1055,8 @@ def test_a_reordered_refresh_that_moves_the_selection_is_reported(
 
 
 def test_a_reordered_refresh_keeps_the_highlight_on_the_chosen_bot(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE REPAIR, on the same drive that produced the defect.
 
     Same statuses, same swap, no monkeypatch: the highlight follows the
@@ -1049,8 +1084,8 @@ def test_a_reordered_refresh_keeps_the_highlight_on_the_chosen_bot(
 
 
 def test_the_visible_highlight_lands_on_the_chosen_bots_new_row(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The HIGHLIGHT, not merely the answer `get_selected_bot_id` gives.
 
     The operator reads the screen, so the repair is only a repair if
@@ -1075,10 +1110,9 @@ def test_the_visible_highlight_lands_on_the_chosen_bots_new_row(
         assert tab._bot_table.get_selected_bot_id() == "s3"
         assert tab._bot_table.currentRow() == 2
 
-        _tick(tab, [_scrum("s2"), _scrum("s3")])           # s1 deleted
+        _tick(tab, [_scrum("s2"), _scrum("s3")])  # s1 deleted
 
-        painted = sorted({item.row()
-                          for item in tab._bot_table.selectedItems()})
+        painted = sorted({item.row() for item in tab._bot_table.selectedItems()})
         assert painted == [1], painted
         assert tab._bot_table.item(1, 0).text() == "s3"
         assert tab._bot_table.currentRow() == 1
@@ -1087,8 +1121,7 @@ def test_the_visible_highlight_lands_on_the_chosen_bots_new_row(
         # Same row count, different order: no clamping to hide behind.
         _tick(tab, [_scrum("s3"), _scrum("s2")])
 
-        painted = sorted({item.row()
-                          for item in tab._bot_table.selectedItems()})
+        painted = sorted({item.row() for item in tab._bot_table.selectedItems()})
         assert painted == [0], painted
         assert tab._bot_table.item(0, 0).text() == "s3"
         assert tab._bot_table.currentRow() == 0
@@ -1098,8 +1131,8 @@ def test_the_visible_highlight_lands_on_the_chosen_bots_new_row(
 
 
 def test_the_refresh_does_not_move_the_operators_preferred_table(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The re-anchor must not impersonate an operator click.
 
     Re-selecting a row emits `itemSelectionChanged`, and `ExchangeTab`
@@ -1165,8 +1198,8 @@ def test_the_refresh_does_not_move_the_operators_preferred_table(
 
 
 def test_a_selection_whose_bot_left_the_fleet_is_not_a_red(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE CONTROL that keeps `15-003` from being red on ordinary use.
 
     Deleting the selected bot removes its row, and the table is visibly
@@ -1180,7 +1213,7 @@ def test_a_selection_whose_bot_left_the_fleet_is_not_a_red(
         tab._bot_table.selectRow(0)
         assert tab._bot_table.get_selected_bot_id() == "s1"
 
-        _tick(tab, [])                                    # s1 deleted
+        _tick(tab, [])  # s1 deleted
         rec = _last(sink, SELECTION)
         assert tab._bot_table.get_selected_bot_id() == ""
     assert rec.ok is True, rec.context
@@ -1191,8 +1224,8 @@ def test_a_selection_whose_bot_left_the_fleet_is_not_a_red(
 
 
 def test_a_selection_whose_bot_left_the_fleet_is_dropped_not_left_behind(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The chosen answer for a bot that is gone: CLEAR the selection.
 
     Two other answers were available and both are worse. Leaving the
@@ -1212,7 +1245,7 @@ def test_a_selection_whose_bot_left_the_fleet_is_dropped_not_left_behind(
         tab._bot_table.selectRow(0)
         assert tab._bot_table.get_selected_bot_id() == "s1"
 
-        _tick(tab, [_scrum("s2")])                        # s1 deleted
+        _tick(tab, [_scrum("s2")])  # s1 deleted
 
         assert tab._bot_table.selectedItems() == []
         assert tab._bot_table.currentRow() == -1
@@ -1223,8 +1256,8 @@ def test_a_selection_whose_bot_left_the_fleet_is_dropped_not_left_behind(
 
 
 def test_a_moved_extractor_selection_is_reported_on_its_own_side(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The other table, so the pin is not scrumming-only.
 
     The context names which side moved, because the two tables carry
@@ -1250,8 +1283,8 @@ def test_a_moved_extractor_selection_is_reported_on_its_own_side(
 
 
 def test_a_reordered_extractor_refresh_keeps_its_own_selection(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The repair on the Extractor side, on the same drive.
 
     `ExtractorBotTable` is a separate class with its own `update_bots`,
@@ -1281,14 +1314,15 @@ def test_a_reordered_extractor_refresh_keeps_its_own_selection(
 
 
 def test_the_privacy_toggle_reaches_every_registered_field(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """One press masks all of them, read back out of the registry."""
     with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
         tab._on_global_privacy_clicked()
         rec = _only(sink, APPLIED)
-        assert all(tab.registry.is_masked(fid)
-                   for fid in tab.registry.known_field_ids())
+        assert all(
+            tab.registry.is_masked(fid) for fid in tab.registry.known_field_ids()
+        )
     assert rec.ok is True, rec.context
     assert rec.actual == PRIVACY_FIELDS
     assert rec.expected == PRIVACY_FIELDS
@@ -1300,16 +1334,17 @@ def test_the_privacy_toggle_reaches_every_registered_field(
 
 
 def test_a_second_press_reveals_every_field_and_is_still_green(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The unmask half. `expected` is the field COUNT either way, so the
     pin is not green only for one direction of the toggle."""
     with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
         tab._on_global_privacy_clicked()
         tab._on_global_privacy_clicked()
         rec = _records(sink, APPLIED)[-1]
-        assert not any(tab.registry.is_masked(fid)
-                       for fid in tab.registry.known_field_ids())
+        assert not any(
+            tab.registry.is_masked(fid) for fid in tab.registry.known_field_ids()
+        )
     assert rec.ok is True, rec.context
     assert rec.actual == PRIVACY_FIELDS
     assert rec.context["masking"] is False
@@ -1317,8 +1352,8 @@ def test_a_second_press_reveals_every_field_and_is_still_green(
 
 
 def test_a_partial_apply_that_leaves_fields_exposed_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE FALSIFIER for `15-004`.
 
     `set_all` persists inside its own try, and `_persist_unlocked`
@@ -1343,8 +1378,11 @@ def test_a_partial_apply_that_leaves_fields_exposed_is_reported(
         tab._on_global_privacy_clicked()
         rec = _only(sink, APPLIED)
         # The exposure itself, read off the registry.
-        leaked = [fid for fid in tab.registry.known_field_ids()
-                  if not tab.registry.is_masked(fid)]
+        leaked = [
+            fid
+            for fid in tab.registry.known_field_ids()
+            if not tab.registry.is_masked(fid)
+        ]
         assert len(leaked) == 4
     assert rec.ok is False
     assert rec.actual == PRIVACY_FIELDS - 4
@@ -1357,8 +1395,8 @@ def test_a_partial_apply_that_leaves_fields_exposed_is_reported(
 
 
 def test_the_button_agrees_with_the_registry(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Masked everything, and the label says ON."""
     with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
         tab._on_global_privacy_clicked()
@@ -1373,8 +1411,8 @@ def test_the_button_agrees_with_the_registry(
 
 
 def test_a_button_that_says_off_over_a_masked_screen_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE FALSIFIER for `15-005`, and it is the dangerous direction.
 
     `_refresh_privacy_mode_btn_style` computes `all_masked` inside a
@@ -1429,8 +1467,8 @@ def test_a_button_that_says_off_over_a_masked_screen_is_reported(
 
 
 def test_each_exchange_folds_into_its_own_green_record(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE MULTIPLICITY, driven -- and TWO HEALTHY TABS ARE NOT A FAULT.
 
     `_throttle_admit` keys its window on `(name, site, instance)`, and
@@ -1447,10 +1485,12 @@ def test_each_exchange_folds_into_its_own_green_record(
     the repair from turning ordinary multiplicity into an alarm.
     """
     with _collect() as sink:
-        with _tab(qapp, monkeypatch, tmp_path,
-                  exchange_id="coinbase") as first, \
-                _tab(qapp, monkeypatch, tmp_path / "second",
-                     exchange_id="kraken") as second:
+        with (
+            _tab(qapp, monkeypatch, tmp_path, exchange_id="coinbase") as first,
+            _tab(
+                qapp, monkeypatch, tmp_path / "second", exchange_id="kraken"
+            ) as second,
+        ):
             first.update_bots([_scrum("s1")])
             second.update_bots([_scrum("s2")])
             first.update_bots([_scrum("s1")])
@@ -1468,8 +1508,8 @@ def test_each_exchange_folds_into_its_own_green_record(
 
 
 def test_a_dead_exchange_is_visible_behind_a_healthy_one(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE FALSIFIER FOR ISSUE #57.
 
     The second tab's emitter is stopped: `exchange_id` raises, so both
@@ -1484,10 +1524,12 @@ def test_a_dead_exchange_is_visible_behind_a_healthy_one(
     fact item #14 reads.
     """
     with _collect() as sink:
-        with _tab(qapp, monkeypatch, tmp_path,
-                  exchange_id="coinbase") as first, \
-                _tab(qapp, monkeypatch, tmp_path / "second",
-                     exchange_id="kraken") as second:
+        with (
+            _tab(qapp, monkeypatch, tmp_path, exchange_id="coinbase") as first,
+            _tab(
+                qapp, monkeypatch, tmp_path / "second", exchange_id="kraken"
+            ) as second,
+        ):
             _stop_the_emitter(second)
             for _ in range(3):
                 first.update_bots([_scrum("s1")])
@@ -1495,15 +1537,14 @@ def test_a_dead_exchange_is_visible_behind_a_healthy_one(
         got = _records(sink, REACHED)
 
     assert [r.context["exchange"] for r in got] == ["coinbase"]
-    assert [r.context["exchange"]
-            for r in _records(sink, SELECTION)] == ["coinbase"]
+    assert [r.context["exchange"] for r in _records(sink, SELECTION)] == ["coinbase"]
     # The healthy tab is unharmed by its neighbour's silence.
     assert got[0].ok is True
 
 
 def test_the_two_drives_do_not_read_the_same(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE WHOLE OF ISSUE #57 IN ONE ASSERTION.
 
     The two tests above are one control between them, and a reader
@@ -1517,20 +1558,24 @@ def test_the_two_drives_do_not_read_the_same(
     record covered for the dead tab and nothing on disk said which of
     the two runs had happened.
     """
+
     def _drive(*, dead: bool) -> dict[str, list[tuple[str, int]]]:
         with _collect() as sink:
-            with _tab(qapp, monkeypatch, tmp_path,
-                      exchange_id="coinbase") as first, \
-                    _tab(qapp, monkeypatch, tmp_path / "second",
-                         exchange_id="kraken") as second:
+            with (
+                _tab(qapp, monkeypatch, tmp_path, exchange_id="coinbase") as first,
+                _tab(
+                    qapp, monkeypatch, tmp_path / "second", exchange_id="kraken"
+                ) as second,
+            ):
                 if dead:
                     _stop_the_emitter(second)
                 for _ in range(3):
                     first.update_bots([_scrum("s1")])
                     second.update_bots([_scrum("s2")])
-            return {pin: [(r.context["exchange"], r.count)
-                          for r in _records(sink, pin)]
-                    for pin in THROTTLED}
+            return {
+                pin: [(r.context["exchange"], r.count) for r in _records(sink, pin)]
+                for pin in THROTTLED
+            }
 
     healthy = _drive(dead=False)
     stopped = _drive(dead=True)
@@ -1544,8 +1589,8 @@ def test_the_two_drives_do_not_read_the_same(
 
 
 def test_a_red_is_never_folded_inside_one_exchange_window(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE THROTTLE BYPASS, DRIVEN WHERE THE KEY CANNOT FAKE IT.
 
     `emit` guards the throttle with `if _judged is not False`, so a
@@ -1568,8 +1613,8 @@ def test_a_red_is_never_folded_inside_one_exchange_window(
 
 
 def test_a_red_from_every_exchange_arrives_on_its_own_record(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE HALF THAT MADE THE SHARED WINDOW SAFE, AND STILL HOLDS.
 
     A failing check is never folded. Two exchanges, both losing a bot to
@@ -1582,10 +1627,12 @@ def test_a_red_from_every_exchange_arrives_on_its_own_record(
     stranded = _scrum("ghost")
     stranded["mode"] = "paper"
     with _collect() as sink:
-        with _tab(qapp, monkeypatch, tmp_path,
-                  exchange_id="coinbase") as first, \
-                _tab(qapp, monkeypatch, tmp_path / "second",
-                     exchange_id="kraken") as second:
+        with (
+            _tab(qapp, monkeypatch, tmp_path, exchange_id="coinbase") as first,
+            _tab(
+                qapp, monkeypatch, tmp_path / "second", exchange_id="kraken"
+            ) as second,
+        ):
             first.update_bots([_scrum("s1"), stranded])
             second.update_bots([_scrum("s2"), stranded])
         got = _records(sink, REACHED)
@@ -1596,8 +1643,8 @@ def test_a_red_from_every_exchange_arrives_on_its_own_record(
 
 
 def test_the_operator_driven_pins_carry_no_throttle(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Three presses, three records, inside one fold window.
 
     `15-001`, `15-004` and `15-005` are driven by a finger. Throttling
@@ -1611,7 +1658,10 @@ def test_the_operator_driven_pins_carry_no_throttle(
             tab._cmd(command)
         assert len(_records(sink, ROUTED)) == 3
         assert [r.context["command"] for r in _records(sink, ROUTED)] == [
-            "start", "pause", "stop"]
+            "start",
+            "pause",
+            "stop",
+        ]
 
         tab._on_global_privacy_clicked()
         tab._on_global_privacy_clicked()
@@ -1629,8 +1679,11 @@ def test_no_pin_in_this_tab_carries_a_duration() -> None:
     rows already in memory. `15-001` writes its record BEFORE the
     dispatch, so there is no completed operation to time either.
     """
-    carriers = {_pin_name(call) for call in _exchange_emit_calls()
-                if _keyword(call, "duration") is not None}
+    carriers = {
+        _pin_name(call)
+        for call in _exchange_emit_calls()
+        if _keyword(call, "duration") is not None
+    }
     assert carriers == set()
 
 
@@ -1644,14 +1697,14 @@ def test_the_cadence_declaration_is_what_the_source_does() -> None:
     every: dict[str, Any] = {}
     for call in _exchange_emit_calls():
         node = _keyword(call, "every")
-        every[_pin_name(call)] = (node.value
-                                  if isinstance(node, ast.Constant)
-                                  else None)
+        every[_pin_name(call)] = node.value if isinstance(node, ast.Constant) else None
     assert set(every) == set(EXCHANGE_PINS)
     assert {name for name, value in every.items() if value is None} == (
-        set(EXCHANGE_PINS) - set(THROTTLED))
-    assert {value for name, value in every.items()
-            if name in THROTTLED} == {FOLD_WINDOW}
+        set(EXCHANGE_PINS) - set(THROTTLED)
+    )
+    assert {value for name, value in every.items() if name in THROTTLED} == {
+        FOLD_WINDOW
+    }
 
 
 def test_each_pin_sits_in_the_method_the_register_claims() -> None:
@@ -1661,17 +1714,16 @@ def test_each_pin_sits_in_the_method_the_register_claims() -> None:
     operator-driven caller would lose the cadence the register promises
     without changing one character of its own line.
     """
-    placed = {_pin_name(call): call.lineno
-              for call in _exchange_emit_calls()}
+    placed = {_pin_name(call): call.lineno for call in _exchange_emit_calls()}
     assert set(placed) == set(EXCHANGE_PINS)
 
     for method, expected in (
-            ("_cmd", {ROUTED}),
-            ("update_bots", {REACHED, SELECTION}),
-            ("_on_global_privacy_clicked", {APPLIED, BUTTON})):
+        ("_cmd", {ROUTED}),
+        ("update_bots", {REACHED, SELECTION}),
+        ("_on_global_privacy_clicked", {APPLIED, BUTTON}),
+    ):
         low, high = _span(method)
-        inside = {name for name, line in placed.items()
-                  if low <= line <= high}
+        inside = {name for name, line in placed.items() if low <= line <= high}
         assert inside == expected, method
 
 
@@ -1685,15 +1737,18 @@ def test_the_dashboard_timer_really_is_the_cadence() -> None:
     tree = ast.parse(source)
     starts: list[int] = []
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.FunctionDef)
-                and node.name == "_setup_refresh_timer"):
+        if not (
+            isinstance(node, ast.FunctionDef) and node.name == "_setup_refresh_timer"
+        ):
             continue
         for call in ast.walk(node):
-            if (isinstance(call, ast.Call)
-                    and isinstance(call.func, ast.Attribute)
-                    and call.func.attr == "start"
-                    and call.args
-                    and isinstance(call.args[0], ast.Constant)):
+            if (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "start"
+                and call.args
+                and isinstance(call.args[0], ast.Constant)
+            ):
                 starts.append(int(call.args[0].value))
     assert starts == [DASHBOARD_INTERVAL_MS], starts
 
@@ -1718,8 +1773,11 @@ def test_no_pin_compares_an_expression_with_itself() -> None:
     """
     from tools.emitter_registry_check import collect_pins
 
-    pins = [pin for pin in collect_pins(MAIN_WINDOW, REPO)
-            if pin.name.startswith("exchange.")]
+    pins = [
+        pin
+        for pin in collect_pins(MAIN_WINDOW, REPO)
+        if pin.name.startswith("exchange.")
+    ]
     assert len(pins) == 5
     assert [pin.name for pin in pins if pin.vacuous_check] == []
     assert [pin.name for pin in pins if pin.carries_duration] == []
@@ -1755,8 +1813,7 @@ def test_every_context_names_its_exchange() -> None:
     for call in _exchange_emit_calls():
         node = _keyword(call, "context")
         assert isinstance(node, ast.Dict), _pin_name(call)
-        keys = [key.value for key in node.keys
-                if isinstance(key, ast.Constant)]
+        keys = [key.value for key in node.keys if isinstance(key, ast.Constant)]
         assert "exchange" in keys, _pin_name(call)
 
 
@@ -1773,17 +1830,18 @@ def test_the_register_row_for_every_pin_points_at_its_real_line() -> None:
         parse_registry,
     )
 
-    registry = parse_registry(
-        (REPO / REGISTRY_PATH).read_text(encoding="utf-8"))
+    registry = parse_registry((REPO / REGISTRY_PATH).read_text(encoding="utf-8"))
     assert registry.parse_errors == []
-    rows = {row.name: row for row in registry.rows
-            if row.subsystem == "exchange"}
+    rows = {row.name: row for row in registry.rows if row.subsystem == "exchange"}
     assert set(rows) == set(EXCHANGE_PINS)
 
-    pins = {pin.name: pin for pin in collect_pins(MAIN_WINDOW, REPO)
-            if pin.name.startswith("exchange.")}
+    pins = {
+        pin.name: pin
+        for pin in collect_pins(MAIN_WINDOW, REPO)
+        if pin.name.startswith("exchange.")
+    }
     for name, row in rows.items():
         assert row.file == "src/gui/main_window.py", name
         assert row.line == pins[name].line, (
-            f"{name}: register says {row.line}, the pin is at "
-            f"{pins[name].line}")
+            f"{name}: register says {row.line}, the pin is at " f"{pins[name].line}"
+        )

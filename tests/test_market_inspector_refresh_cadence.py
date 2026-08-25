@@ -46,8 +46,7 @@ class _Conn:
         self._symbols = list(symbols)
 
     async def get_all_tickers(self):
-        return {s: {"quoteVolume": 1_000_000.0, "last": 100.0}
-                for s in self._symbols}
+        return {s: {"quoteVolume": 1_000_000.0, "last": 100.0} for s in self._symbols}
 
     async def get_ohlcv(self, symbol, timeframe, limit):
         """[ts, o, h, l, c, v] — the shape `_ohlcv_to_candles` reads.
@@ -58,8 +57,10 @@ class _Conn:
         and every cadence assertion downstream then measures nothing.
         """
         bars = 200 if timeframe == "1d" else 40
-        return [[i * 86_400_000, 100.0, 101.0, 99.0, 100.5 + i, 10.0]
-                for i in range(min(limit, bars))]
+        return [
+            [i * 86_400_000, 100.0, 101.0, 99.0, 100.5 + i, 10.0]
+            for i in range(min(limit, bars))
+        ]
 
 
 def _reset():
@@ -101,7 +102,8 @@ def test_a_result_with_data_is_cached_and_served_inside_the_window(monkeypatch):
     first = _run(f.fetch_htf_universe({"cb": _Conn()}))
     assert first.candles_by_symbol_by_tf, (
         "the connector stub produced no candles, so nothing below is "
-        "measuring the cadence")
+        "measuring the cadence"
+    )
     second = _run(f.fetch_htf_universe({"cb": _Conn()}))
     assert second.meta["source"] == "cache"
     assert len(calls) == 1, "the second call went to the network"
@@ -114,8 +116,9 @@ def test_the_cached_age_is_measured_not_hardcoded(monkeypatch):
     first = _run(f.fetch_htf_universe({"cb": _Conn()}))
     assert first.candles_by_symbol_by_tf, (
         "the connector stub produced no candles, so nothing below is "
-        "measuring the cadence")
-    f._LAST_FETCH_MONO -= 12.0          # pretend 12 s elapsed
+        "measuring the cadence"
+    )
+    f._LAST_FETCH_MONO -= 12.0  # pretend 12 s elapsed
     cached = _run(f.fetch_htf_universe({"cb": _Conn()}))
     assert cached.meta["source"] == "cache"
     assert cached.meta["age_seconds"] >= 12.0, cached.meta["age_seconds"]
@@ -128,7 +131,8 @@ def test_force_network_bypasses_the_cache(monkeypatch):
     first = _run(f.fetch_htf_universe({"cb": _Conn()}))
     assert first.candles_by_symbol_by_tf, (
         "the connector stub produced no candles, so nothing below is "
-        "measuring the cadence")
+        "measuring the cadence"
+    )
     forced = _run(f.fetch_htf_universe({"cb": _Conn()}, force_network=True))
     assert forced.meta["source"] == "exchange"
     assert len(calls) == 2, "force_network did not reach the network"
@@ -141,7 +145,8 @@ def test_the_window_expiring_goes_back_to_the_network(monkeypatch):
     first = _run(f.fetch_htf_universe({"cb": _Conn()}))
     assert first.candles_by_symbol_by_tf, (
         "the connector stub produced no candles, so nothing below is "
-        "measuring the cadence")
+        "measuring the cadence"
+    )
     fresh = _run(f.fetch_htf_universe({"cb": _Conn()}, min_refresh_s=0.0))
     assert fresh.meta["source"] == "exchange"
     assert len(calls) == 2
@@ -200,6 +205,7 @@ def qapp():
     """
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication
+
     yield QApplication.instance() or QApplication(sys.argv)
 
 
@@ -223,23 +229,35 @@ def _capture_calls(monkeypatch) -> list:
     """
     seen: list = []
 
-    async def _spy(exchange_connectors, active_symbols=None,
-                   top_n=f.DEFAULT_TOP_N, progress_cb=None,
-                   force_network=False,
-                   min_refresh_s=f.DEFAULT_MIN_REFRESH_S):
-        seen.append({
-            "connectors": exchange_connectors,
-            "active_symbols": active_symbols,
-            "top_n": top_n,
-            "progress_cb": progress_cb,
-            "force_network": force_network,
-            "min_refresh_s": min_refresh_s,
-        })
+    async def _spy(
+        exchange_connectors,
+        active_symbols=None,
+        top_n=f.DEFAULT_TOP_N,
+        progress_cb=None,
+        force_network=False,
+        min_refresh_s=f.DEFAULT_MIN_REFRESH_S,
+    ):
+        seen.append(
+            {
+                "connectors": exchange_connectors,
+                "active_symbols": active_symbols,
+                "top_n": top_n,
+                "progress_cb": progress_cb,
+                "force_network": force_network,
+                "min_refresh_s": min_refresh_s,
+            }
+        )
         return f.FetchResult(
-            candles_by_symbol_by_tf={}, closes_by_symbol={},
+            candles_by_symbol_by_tf={},
+            closes_by_symbol={},
             universe=[],
-            meta={"source": "exchange", "age_seconds": 0.0,
-                  "error": None, "symbol_count": 0})
+            meta={
+                "source": "exchange",
+                "age_seconds": 0.0,
+                "error": None,
+                "symbol_count": 0,
+            },
+        )
 
     monkeypatch.setattr(f, "fetch_htf_universe", _spy)
     return seen
@@ -259,6 +277,7 @@ def _wire_tab():
     empty list as agreement.
     """
     from src.gui.market_inspector import MarketInspectorTab
+
     tab = MarketInspectorTab()
     scheduled: list = []
     tab.set_exchange_source(lambda: {"cb": _Conn()}, scheduled.append)
@@ -280,16 +299,17 @@ def _drain(qapp, scheduled: list) -> None:
     assert len(scheduled) == 1, (
         f"_start_fetch scheduled {len(scheduled)} coroutine(s), not 1; "
         "the tab refused before reaching the fetcher, so nothing here "
-        "is measuring the wiring")
+        "is measuring the wiring"
+    )
     coro = scheduled.pop()
-    assert asyncio.iscoroutine(coro), (
-        f"the scheduler was handed {type(coro)!r}, not a coroutine")
+    assert asyncio.iscoroutine(
+        coro
+    ), f"the scheduler was handed {type(coro)!r}, not a coroutine"
     _run(coro)
     qapp.processEvents()
 
 
-def test_the_refresh_button_forces_the_network_through_every_hop(
-        qapp, monkeypatch):
+def test_the_refresh_button_forces_the_network_through_every_hop(qapp, monkeypatch):
     """Press the REAL button; assert what reaches the REAL parameter.
 
     Driven through `QPushButton.click()` rather than by calling
@@ -308,7 +328,8 @@ def test_the_refresh_button_forces_the_network_through_every_hop(
         "the Refresh button did not force a network fetch: "
         f"fetch_htf_universe received force_network={_forced(seen)}. The "
         "button will serve a cached scan up to 15 minutes old while "
-        "reporting a fresh one.")
+        "reporting a fresh one."
+    )
 
 
 def test_the_unforced_path_leaves_the_cadence_in_force(qapp, monkeypatch):
@@ -329,4 +350,5 @@ def test_the_unforced_path_leaves_the_cadence_in_force(qapp, monkeypatch):
     assert _forced(seen) == [False], (
         "the unforced path forced a network fetch: fetch_htf_universe "
         f"received force_network={_forced(seen)}, so the 15-minute "
-        "cadence is bypassed on every refresh.")
+        "cadence is bypassed on every refresh."
+    )

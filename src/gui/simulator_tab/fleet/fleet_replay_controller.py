@@ -28,6 +28,7 @@ observability.
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -58,6 +59,7 @@ logger = logging.getLogger("acervator.simulator.fleet.controller")
 class ReplayProgress:
     """Snapshot of what the controller has done. Read by the GUI on
     a QTimer for the status line + per-bot trade counters."""
+
     candles_played: int = 0
     total_candles: int = 0
     bots_ticked: int = 0
@@ -130,7 +132,7 @@ def sim_bot_id(live_bot_id: str) -> str:
 def live_bot_id(sim_id: str) -> str:
     """Inverse of `sim_bot_id` -- the join back to bot_state."""
     _s = str(sim_id or "")
-    return _s[len(SIM_ID_PREFIX):] if _s.startswith(SIM_ID_PREFIX) else _s
+    return _s[len(SIM_ID_PREFIX) :] if _s.startswith(SIM_ID_PREFIX) else _s
 
 
 def _make_sim_capital_registry():
@@ -154,11 +156,12 @@ def _make_sim_capital_registry():
     try:
         import tempfile
         from pathlib import Path as _P
-        from src.trading.capital_reservation import (
-            CapitalReservationRegistry)
+        from src.trading.capital_reservation import CapitalReservationRegistry
+
         tmp = _P(tempfile.mkdtemp(prefix="acervator-sim-crr-"))
         return CapitalReservationRegistry(
-            state_path=tmp / "reservation_state.json", autosave=False)
+            state_path=tmp / "reservation_state.json", autosave=False
+        )
     except Exception as exc:
         # v3.24.35 (CV1) — FAIL CLOSED. This previously logged a warning
         # and returned None, and the comment said what that meant:
@@ -178,7 +181,9 @@ def _make_sim_capital_registry():
         # replay is cheap; corrupting live reservation state is not.
         logger.error(
             "sim capital registry could not be created (%s) — aborting "
-            "rather than resolving the process-wide registry", exc)
+            "rather than resolving the process-wide registry",
+            exc,
+        )
         raise RuntimeError(
             f"sim capital-registry isolation failed: {exc}. Refusing to "
             f"fall back to the process-wide registry, which autosaves "
@@ -223,7 +228,8 @@ def resolve_phantoms_enabled(cfg: dict, force: bool = False) -> bool:
 
 
 def _instantiate_bot(
-    cfg: dict, exchange: FleetSimExchange,
+    cfg: dict,
+    exchange: FleetSimExchange,
     capital_registry: Optional[Any] = None,
 ) -> Optional[Any]:
     """Build a ScrummingBot from a bot_state.json config against the
@@ -250,14 +256,14 @@ def _instantiate_bot(
             "no capital registry was injected, and a sim bot without one "
             "resolves the process-wide registry that persists to the "
             "operator's reservation_state.json.",
-            str(cfg.get("bot_id", "?")) if isinstance(cfg, dict) else "?")
+            str(cfg.get("bot_id", "?")) if isinstance(cfg, dict) else "?",
+        )
         return None
     try:
         from src.trading.bot_container import make_bot_config, BotMode
         from src.trading.scrumming_bot import ScrummingBot
     except Exception as _imp_exc:
-        logger.warning(
-            "FleetReplayController: bot imports failed: %s", _imp_exc)
+        logger.warning("FleetReplayController: bot imports failed: %s", _imp_exc)
         return None
 
     if cfg.get("mode", "").lower() != "scrumming":
@@ -298,7 +304,8 @@ def _instantiate_bot(
 
         _fields = {f.name for f in _dc.fields(_BC)}
         passthrough = {
-            k: v for k, v in cfg.items()
+            k: v
+            for k, v in cfg.items()
             if k in _fields
             and k not in ("mode", "exchange_id")
             and k not in _EXTRACTOR_ONLY
@@ -344,17 +351,17 @@ def _instantiate_bot(
         # "0 bots" with the reason only in a debug log.
         passthrough.setdefault("base_currency", "USD")
         passthrough.setdefault("target_asset", "BTC")
-        _dropped = sorted(
-            k for k in cfg
-            if k not in _fields and not k.startswith("_"))
+        _dropped = sorted(k for k in cfg if k not in _fields and not k.startswith("_"))
         if _dropped:
             logger.debug(
                 "sim bot %s: %d bot_state key(s) are not BotConfig "
                 "fields and were not passed: %s",
-                cfg.get("symbol", "?"), len(_dropped), _dropped)
+                cfg.get("symbol", "?"),
+                len(_dropped),
+                _dropped,
+            )
 
-        bot_config = make_bot_config(
-            BotMode.SCRUMMING, **passthrough)
+        bot_config = make_bot_config(BotMode.SCRUMMING, **passthrough)
         # v3.24.1 — sim_mode=True suppresses TRADE NOTIFICATION
         # bus emits so main_window's sound-engine handler stays
         # silent during Fleet Replay (scaffolding scan finding #3).
@@ -367,13 +374,18 @@ def _instantiate_bot(
         # C18 / SN-57 — derived from the persisted per-bot flag, not
         # hardcoded. See resolve_phantoms_enabled.
         return ScrummingBot(
-            bot_config, exchange,
+            bot_config,
+            exchange,
             enable_phantoms=resolve_phantoms_enabled(cfg),
-            sim_mode=True, capital_registry=capital_registry)
+            sim_mode=True,
+            capital_registry=capital_registry,
+        )
     except Exception as _cfg_exc:  # noqa: BLE001 - construction guard
         logger.warning(
             "FleetReplayController: skip %s config (build failed: %s)",
-            cfg.get("symbol", "?"), _cfg_exc)
+            cfg.get("symbol", "?"),
+            _cfg_exc,
+        )
         return None
 
 
@@ -524,8 +536,8 @@ class FleetReplayController:
         # because the run directory does not exist yet; records buffer in
         # memory and the path is attached below once SimRunLog opens it.
         try:
-            from src.core.signal_contract import (
-                SignalSink, get_sink, set_sink)
+            from src.core.signal_contract import SignalSink, get_sink, set_sink
+
             # v3.24.88 - remember what was collecting before this run.
             # The process-level sink installed at startup must survive
             # a replay; clearing to None at teardown used to end live
@@ -539,7 +551,8 @@ class FleetReplayController:
         if self._exchange is None or not self._bots:
             self._activity(
                 "Cannot start: no bots instantiated. "
-                "(Loaded configs OR candle series missing.)")
+                "(Loaded configs OR candle series missing.)"
+            )
             # Nothing was launched and nothing else owns this progress,
             # so close it out: a waiter must have an exit condition.
             # `stopped_event` is already set from :404, which is correct
@@ -549,8 +562,8 @@ class FleetReplayController:
         self.progress = ReplayProgress(
             total_candles=self._total_candle_count(),
             per_bot_trade_count={
-                str(getattr(b, "bot_id", i)): 0
-                for i, b in enumerate(self._bots)},
+                str(getattr(b, "bot_id", i)): 0 for i, b in enumerate(self._bots)
+            },
         )
         self.stopped_event.clear()
         self.progress.started_at_wall = time.time()
@@ -563,6 +576,7 @@ class FleetReplayController:
         # cannot see these.
         try:
             from src.trading.sim_run_log import SimRunLog
+
             self._run_log = SimRunLog()
             # ── INSTALL THE SIGNAL SINK ───────────────────────────
             # v3.24.83. Every emitter built for this cascade calls
@@ -578,31 +592,34 @@ class FleetReplayController:
             # run log and cleared in the same `finally` that closes it,
             # so signals land next to the trades and gates they explain
             # and a finished run cannot keep collecting.
-            self._run_log.start_run(config={
-                "bots": len(self._bots),
-                "symbols": sorted(self._candles_by_symbol.keys()),
-                "total_candles": self.progress.total_candles,
-                "max_candles": self._max_candles,
-                # v3.24.29 — record the EVALUATION MODE.
-                #
-                # Two runs over the same 15,211 candles produced 517 vs
-                # 510 trades, and neither meta.json said which mode it
-                # ran in, so the runs could not be told apart from their
-                # own logs. The mode is the single most important thing
-                # about a run: anchored skips bot.tick() on candles with
-                # no expected trade, so per-tick state (holdings
-                # refresh, compounding, tranche maturation, interval
-                # timers) advances differently and position sizing
-                # drifts. Measured: same timestamps and sides, ~72% of
-                # trades differing in amount.
-                #
-                # Anchored is a SCREENING mode. Parity comparisons
-                # against live must use full evaluation.
-                "anchored": bool(self._anchor_indices),
-                "full_evaluation": not bool(self._anchor_indices),
-                "anchor_candles": (len(self._anchor_indices)
-                                   if self._anchor_indices else 0),
-            })
+            self._run_log.start_run(
+                config={
+                    "bots": len(self._bots),
+                    "symbols": sorted(self._candles_by_symbol.keys()),
+                    "total_candles": self.progress.total_candles,
+                    "max_candles": self._max_candles,
+                    # v3.24.29 — record the EVALUATION MODE.
+                    #
+                    # Two runs over the same 15,211 candles produced 517 vs
+                    # 510 trades, and neither meta.json said which mode it
+                    # ran in, so the runs could not be told apart from their
+                    # own logs. The mode is the single most important thing
+                    # about a run: anchored skips bot.tick() on candles with
+                    # no expected trade, so per-tick state (holdings
+                    # refresh, compounding, tranche maturation, interval
+                    # timers) advances differently and position sizing
+                    # drifts. Measured: same timestamps and sides, ~72% of
+                    # trades differing in amount.
+                    #
+                    # Anchored is a SCREENING mode. Parity comparisons
+                    # against live must use full evaluation.
+                    "anchored": bool(self._anchor_indices),
+                    "full_evaluation": not bool(self._anchor_indices),
+                    "anchor_candles": (
+                        len(self._anchor_indices) if self._anchor_indices else 0
+                    ),
+                }
+            )
             # Attach the sink's PATH — only now does the run directory
             # exist. `SimRunLog._dir` is created by `start_run`, not by
             # `__init__`, so the previous placement (before this call)
@@ -613,19 +630,18 @@ class FleetReplayController:
                     self._signal_sink.path = _rl_dir / "signals.jsonl"
             except Exception as _spx:  # noqa: BLE001 - advisory
                 logger.debug("signal sink path attach failed: %s", _spx)
-            attached = sum(
-                1 for b in self._bots
-                if self._run_log.attach_to_bot_bus(b))
+            attached = sum(1 for b in self._bots if self._run_log.attach_to_bot_bus(b))
             self._activity(
                 f"Sim run log: {self._run_log.run_id} "
-                f"({attached}/{len(self._bots)} bot buses attached)")
+                f"({attached}/{len(self._bots)} bot buses attached)"
+            )
         except Exception as _rl_exc:  # noqa: BLE001 - logging is advisory
             self._run_log = None
-            logger.warning(
-                "sim run log unavailable: %s", _rl_exc)
+            logger.warning("sim run log unavailable: %s", _rl_exc)
         self._activity(
             f"Fleet Replay started: {len(self._bots)} bot(s) × "
-            f"{self.progress.total_candles} candles.")
+            f"{self.progress.total_candles} candles."
+        )
         self._task = asyncio.create_task(self._run())
         return True
 
@@ -786,7 +802,8 @@ class FleetReplayController:
             quote = str(cfg.get("base_currency", "USD") or "USD").upper()
             try:
                 seed_by_quote[quote] = seed_by_quote.get(quote, 0.0) + float(
-                    cfg.get("target_balance", 0.0) or 0.0)
+                    cfg.get("target_balance", 0.0) or 0.0
+                )
             except (TypeError, ValueError):
                 continue
         seed_usd = sum(seed_by_quote.values())
@@ -798,15 +815,18 @@ class FleetReplayController:
             seed_usd = 1000.0
             self._activity(
                 "Wallet seed: no target_balance found in configs — "
-                "falling back to $1,000.00 nominal.")
+                "falling back to $1,000.00 nominal."
+            )
         else:
             _detail = ", ".join(
-                f"{q} ${v:,.2f}" for q, v in sorted(seed_by_quote.items()))
+                f"{q} ${v:,.2f}" for q, v in sorted(seed_by_quote.items())
+            )
             self._activity(
                 f"Wallet seed: ${seed_usd:,.2f} across "
                 f"{len(seed_by_quote)} quote currenc"
                 f"{'y' if len(seed_by_quote) == 1 else 'ies'} "
-                f"({_detail}); spendable starts equal to locked.")
+                f"({_detail}); spendable starts equal to locked."
+            )
 
         # One private registry per REPLAY, shared by that replay's bots
         # so cross-bot reservation contention is exercised within the
@@ -831,8 +851,7 @@ class FleetReplayController:
             if not _sym:
                 continue
             try:
-                _fees[_sym] = float(
-                    cfg.get("trading_fee_pct", 0.6) or 0.0) / 100.0
+                _fees[_sym] = float(cfg.get("trading_fee_pct", 0.6) or 0.0) / 100.0
             except (TypeError, ValueError):
                 continue
         # v3.24.84 — THE SIMULATOR NOW RUNS LIVE'S CONNECTOR.
@@ -860,8 +879,10 @@ class FleetReplayController:
         # seeding. No bot ever touches it; bots see only the connector,
         # exactly as in live.
         self._tape = TabletBackend(
-            {sym: [list(r) for r in rows]
-             for sym, rows in self._candles_by_symbol.items()},
+            {
+                sym: [list(r) for r in rows]
+                for sym, rows in self._candles_by_symbol.items()
+            },
             balances=dict(seed_by_quote),
             fee_rate_by_symbol=_fees,
         )
@@ -873,7 +894,8 @@ class FleetReplayController:
             self._activity(
                 "Trading fees: charging per-symbol rates from bot_state "
                 f"({', '.join(f'{r}%' for r in _rates)}) — the sim "
-                "previously charged zero.")
+                "previously charged zero."
+            )
         self._tape.on_trade(self._on_sim_trade)
 
         # Whether the fleet joins back to bot_state at all. Decided
@@ -881,21 +903,23 @@ class FleetReplayController:
         # broken join look like a synthetic fleet.
         _n_configs = len(self._configs)
         _n_joinable = sum(
-            1 for c in self._configs
-            if str(c.get("_src_bot_id", "") or "").strip())
+            1 for c in self._configs if str(c.get("_src_bot_id", "") or "").strip()
+        )
         _joinable = _n_joinable > 0
         if _joinable and _n_joinable == _n_configs:
             self._activity(
                 f"Bot ids: joined to bot_state — {_n_joinable} bot(s) "
                 "carry their persisted id, so Smart Wires, parity "
-                "attribution and run-log correlation can resolve.")
+                "attribution and run-log correlation can resolve."
+            )
         elif not _joinable:
             self._activity(
                 f"Bot ids: SYNTHETIC — none of the {_n_configs} "
                 "config(s) carry a persisted id, so each bot gets a "
                 "fresh one. Smart Wires cannot route and parity "
                 "attribution cannot join. Expected for a proposal or "
-                "hand-built fleet; NOT expected for a bot_state replay.")
+                "hand-built fleet; NOT expected for a bot_state replay."
+            )
 
         # Instantiate bots. Skip any whose symbol isn't in the
         # candle series (can't sim without price data).
@@ -906,8 +930,7 @@ class FleetReplayController:
             sym = str(cfg.get("symbol", "") or "")
             if sym not in available_symbols:
                 continue
-            bot = _instantiate_bot(
-                cfg, self._exchange, self._sim_capital_registry)
+            bot = _instantiate_bot(cfg, self._exchange, self._sim_capital_registry)
             if bot is not None:
                 # v3.24.71 (C20) — CARRY THE PERSISTED BOT ID.
                 #
@@ -963,7 +986,8 @@ class FleetReplayController:
                             f"{_n_configs} configs in this fleet carry "
                             "one — a partial join silently drops that "
                             "bot's Smart Wires, parity attribution and "
-                            "run-log correlation")
+                            "run-log correlation"
+                        )
                     bot.bot_id = sim_bot_id(_src)
 
                 # ── IMPORT THE FLEET'S ACTUAL STATE ──────────────────
@@ -979,8 +1003,7 @@ class FleetReplayController:
                 # no holdings and the ORIGINAL config target rather than
                 # the grown one.
                 _scrum = cfg.get("_src_scrumming_state")
-                if isinstance(_scrum, dict) and hasattr(
-                        bot, "import_scrumming_state"):
+                if isinstance(_scrum, dict) and hasattr(bot, "import_scrumming_state"):
                     try:
                         bot.import_scrumming_state(_scrum)
                         _imported_state += 1
@@ -1006,20 +1029,28 @@ class FleetReplayController:
                         # exists to remove.
                         try:
                             import json as _pj
+
                             _back = bot.export_scrumming_state()
                             _bad = sorted(
-                                k for k in (set(_scrum) | set(_back))
-                                if _pj.dumps(_scrum.get(k), sort_keys=True,
-                                             default=repr)
-                                != _pj.dumps(_back.get(k), sort_keys=True,
-                                             default=repr))
+                                k
+                                for k in (set(_scrum) | set(_back))
+                                if _pj.dumps(
+                                    _scrum.get(k), sort_keys=True, default=repr
+                                )
+                                != _pj.dumps(_back.get(k), sort_keys=True, default=repr)
+                            )
                             from src.core.signal_contract import emit as _pe
-                            _pe("fleet.03.005.invariant.state_parity",
+
+                            _pe(
+                                "fleet.03.005.invariant.state_parity",
                                 actual=len(_scrum) - len(_bad),
                                 expected=len(_scrum),
-                                context={"bot_id": bot.bot_id,
-                                         "symbol": sym,
-                                         "differing": _bad})
+                                context={
+                                    "bot_id": bot.bot_id,
+                                    "symbol": sym,
+                                    "differing": _bad,
+                                },
+                            )
                         except Exception as _pex:  # noqa: BLE001
                             logger.debug("parity emit failed: %s", _pex)
                     except Exception as _isx:  # noqa: BLE001
@@ -1027,7 +1058,8 @@ class FleetReplayController:
                             f"  WARNING {sym}: scrumming_state import "
                             f"failed ({type(_isx).__name__}: {_isx}) — this "
                             "bot starts from config defaults, NOT from "
-                            "bot_state. Its run is not comparable to live.")
+                            "bot_state. Its run is not comparable to live."
+                        )
                         _import_failed += 1
                 elif _scrum is None:
                     _import_missing += 1
@@ -1049,7 +1081,8 @@ class FleetReplayController:
                         f"  WARNING {sym}: quote {_q} opened with $0.00 "
                         "— this bot cannot fund a buy and will record "
                         "no trades. Its target_balance did not reach "
-                        "the wallet seed.")
+                        "the wallet seed."
+                    )
         self._build_smart_wires(_joinable)
         # ── SEED THE EXCHANGE FROM THE FLEET'S OWN LOTS ─────────────
         # bot_state is the ONLY source of initiating state.
@@ -1069,12 +1102,13 @@ class FleetReplayController:
         _seeded = 0
         _seeded_units = 0.0
         for _b in self._bots:
-            _asset = str(getattr(getattr(_b, "config", None),
-                                 "target_asset", "") or "").upper()
+            _asset = str(
+                getattr(getattr(_b, "config", None), "target_asset", "") or ""
+            ).upper()
             if not _asset:
                 continue
             _units = 0.0
-            for _lot in (getattr(_b, "_main_lots", None) or []):
+            for _lot in getattr(_b, "_main_lots", None) or []:
                 try:
                     _units += float(_lot.get("units", 0.0) or 0.0)
                 except (TypeError, ValueError, AttributeError):
@@ -1088,13 +1122,19 @@ class FleetReplayController:
 
         try:
             from src.core.signal_contract import emit as _fs
-            _fs("fleet.03.006.postcondition.state_imported", actual=_imported_state,
+
+            _fs(
+                "fleet.03.006.postcondition.state_imported",
+                actual=_imported_state,
                 expected=len(self._bots),
-                context={"failed": _import_failed,
-                         "missing": _import_missing})
-            _fs("fleet.03.007.postcondition.positions_seeded_from_lots", actual=_seeded,
+                context={"failed": _import_failed, "missing": _import_missing},
+            )
+            _fs(
+                "fleet.03.007.postcondition.positions_seeded_from_lots",
+                actual=_seeded,
                 expected=len(self._bots),
-                context={"total_units": round(_seeded_units, 8)})
+                context={"total_units": round(_seeded_units, 8)},
+            )
         except Exception as _fx:  # noqa: BLE001 - advisory
             logger.debug("fleet state emit failed: %s", _fx)
 
@@ -1102,10 +1142,13 @@ class FleetReplayController:
             f"Opening state: {_imported_state} of {len(self._bots)} bot(s) "
             f"imported scrumming_state from bot_state; {_seeded} seeded a "
             f"position from their own restored lots."
-            + (f" {_import_failed} FAILED to import."
-               if _import_failed else "")
-            + (f" {_import_missing} had no scrumming_state in bot_state."
-               if _import_missing else ""))
+            + (f" {_import_failed} FAILED to import." if _import_failed else "")
+            + (
+                f" {_import_missing} had no scrumming_state in bot_state."
+                if _import_missing
+                else ""
+            )
+        )
 
         self._assert_capital_isolation()
 
@@ -1151,7 +1194,8 @@ class FleetReplayController:
             self._activity(
                 f"Smart Wires: unavailable ({type(_imp_exc).__name__}) — "
                 "the replay runs WITHOUT cross-bot compounding, so its "
-                "accumulation curve is not comparable to live's.")
+                "accumulation curve is not comparable to live's."
+            )
             return
 
         self._sim_bus = EventBus()
@@ -1177,7 +1221,7 @@ class FleetReplayController:
         # exactly -- same edges, same percentages, expressed in the id
         # space the sim fleet actually uses.
         _sim_wires = []
-        for _w in (self._smart_wires or []):
+        for _w in self._smart_wires or []:
             if not isinstance(_w, dict):
                 continue
             _tw = dict(_w)
@@ -1197,21 +1241,25 @@ class FleetReplayController:
         # fleet is filtered by `available_symbols` above, so a partial
         # tablet set silently produces exactly that.
         active = sum(
-            1 for w in _sim_wires
+            1
+            for w in _sim_wires
             if str(w.get("source_id", "")) in sim_ids
-            and str(w.get("target_id", "")) in sim_ids)
+            and str(w.get("target_id", "")) in sim_ids
+        )
 
         self._smart_wire_mgr = mgr
         self._activity(
             f"Smart Wires: {active} of {imported} imported wire(s) have "
             f"BOTH endpoints in this run's {len(sim_ids)}-bot fleet and "
             "can route; the rest reference bots this replay did not "
-            "instantiate.")
+            "instantiate."
+        )
         if active == 0 and imported:
             self._activity(
                 "  WARNING: no wire can route in this run. Cross-bot "
                 "compounding is inert, so the accumulation curve will "
-                "understate live's.")
+                "understate live's."
+            )
         # Ledgers are deliberately NOT imported. Live's persisted rows
         # carry accrued wired_in/wired_out totals; seeding them here
         # would make a "non-zero wired_in" check pass without a single
@@ -1260,10 +1308,12 @@ class FleetReplayController:
                 f"capital registry, which persists to the operator's "
                 f"reservation_state.json — {', '.join(leaked[:8])}"
                 f"{' ...' if len(leaked) > 8 else ''}. Refusing to start "
-                f"the replay.")
+                f"the replay."
+            )
         self._activity(
             f"  capital isolation verified: {len(self._bots)} sim bot(s) "
-            f"on private, non-persisting registries.")
+            f"on private, non-persisting registries."
+        )
 
     def _observe_ta(self, bot) -> None:
         """Compute this bot's TA on the CURRENT candle, for the record.
@@ -1302,10 +1352,13 @@ class FleetReplayController:
                 # and would record a value with no basis.
                 return
             from src.trading.ta_engine import candles_from_raw
-            _eng.compute_all(candles_from_raw([list(r) for r in _rows]), _tf,
-                             symbol=bot.config.symbol)
-            self._ta_observed[bot.bot_id] = (
-                self._ta_observed.get(bot.bot_id, 0) + 1)
+
+            _eng.compute_all(
+                candles_from_raw([list(r) for r in _rows]),
+                _tf,
+                symbol=bot.config.symbol,
+            )
+            self._ta_observed[bot.bot_id] = self._ta_observed.get(bot.bot_id, 0) + 1
         except Exception as _ox:  # noqa: BLE001 - observation is advisory
             logger.debug("TA observation skipped: %s", _ox)
 
@@ -1346,8 +1399,10 @@ class FleetReplayController:
                     side=str(getattr(side, "value", side) or ""),
                     amount=float(getattr(trade, "amount", 0) or 0),
                     price=float(getattr(trade, "price", 0) or 0),
-                    usd=(float(getattr(trade, "amount", 0) or 0)
-                         * float(getattr(trade, "price", 0) or 0)),
+                    usd=(
+                        float(getattr(trade, "amount", 0) or 0)
+                        * float(getattr(trade, "price", 0) or 0)
+                    ),
                     sim_ts_ms=raw.get("sim_master_ts_ms"),
                     # v3.24.32 — spendable at fill time. Operator
                     # directive 2026-08-05: "We can also add Spendable
@@ -1359,15 +1414,12 @@ class FleetReplayController:
                     # checked against the header — a drift between the
                     # two means the header is lying, which is how
                     # Spendable $0.00 / Locked $2,995.14 went unnoticed.
-                    extra={"spendable_usd": round(
-                        self._spendable_now(), 8)},
+                    extra={"spendable_usd": round(self._spendable_now(), 8)},
                     # v3.24.17 — tablet traceability
-                    candle_address=str(
-                        raw.get("candle_address", "") or ""),
+                    candle_address=str(raw.get("candle_address", "") or ""),
                 )
             except Exception as _rl_exc:  # noqa: BLE001 - logging is advisory
-                logger.debug(
-                    "sim run log: trade record failed: %s", _rl_exc)
+                logger.debug("sim run log: trade record failed: %s", _rl_exc)
         # v3.24.0 — attribute by symbol (single writer path,
         # actually populated). Replaces v3.23.80's trade.raw
         # bot_id lookup which was scaffolding — nothing ever
@@ -1377,8 +1429,8 @@ class FleetReplayController:
             sym = str(getattr(trade, "symbol", "") or "")
             if sym:
                 self.progress.per_symbol_trade_count[sym] = (
-                    self.progress.per_symbol_trade_count.get(sym, 0)
-                    + 1)
+                    self.progress.per_symbol_trade_count.get(sym, 0) + 1
+                )
                 # v3.24.29 — queue a chart marker. GREEN when this fill
                 # landed on a candle that carries a historical trade
                 # (validated), RED when it did not (a sim-only fire).
@@ -1402,11 +1454,10 @@ class FleetReplayController:
         if ex is None:
             return 0.0
         quotes = {
-            str(c.get("base_currency", "USD") or "USD").upper()
-            for c in self._configs}
+            str(c.get("base_currency", "USD") or "USD").upper() for c in self._configs
+        }
         try:
-            return float(sum(
-                float(ex._balances.get(q, 0.0) or 0.0) for q in quotes))
+            return float(sum(float(ex._balances.get(q, 0.0) or 0.0) for q in quotes))
         except (AttributeError, TypeError, ValueError):
             return 0.0
 
@@ -1427,8 +1478,7 @@ class FleetReplayController:
             candle_i = 0
             while True:
                 if self.progress.stop_requested:
-                    self._activity(
-                        f"Stopped after {candle_i} candle(s).")
+                    self._activity(f"Stopped after {candle_i} candle(s).")
                     break
                 # v3.24.20 — count-based yielding REMOVED. See
                 # _maybe_yield() for the measurement; in short, every
@@ -1471,13 +1521,15 @@ class FleetReplayController:
                 #
                 # Hence: screening pass, never the authoritative
                 # parity run. Default is None (evaluate everything).
-                if (self._anchor_indices is not None
-                        and candle_i not in self._anchor_indices):
+                if (
+                    self._anchor_indices is not None
+                    and candle_i not in self._anchor_indices
+                ):
                     self.progress.candles_skipped += 1
                     if not self._tape.step():
                         self._activity(
-                            f"All series exhausted at candle "
-                            f"{candle_i}.")
+                            f"All series exhausted at candle " f"{candle_i}."
+                        )
                         break
                     candle_i += 1
                     self._candle_i = candle_i
@@ -1556,7 +1608,8 @@ class FleetReplayController:
                         # look broken.
                         if self._tape.cursor_for(bot.config.symbol) > 0:
                             self._ta_eligible[bot.bot_id] = (
-                                self._ta_eligible.get(bot.bot_id, 0) + 1)
+                                self._ta_eligible.get(bot.bot_id, 0) + 1
+                            )
                         self._observe_ta(bot)
                         # ── S2 EMITTER ────────────────────────────
                         # S2 is "run front-loaded YTD + simulated bots
@@ -1593,31 +1646,28 @@ class FleetReplayController:
                     except Exception as _tick_exc:  # noqa: BLE001
                         self.progress.exceptions += 1
                         _exc_key = (
-                            f"{type(_tick_exc).__name__}: "
-                            f"{str(_tick_exc)[:120]}")
+                            f"{type(_tick_exc).__name__}: " f"{str(_tick_exc)[:120]}"
+                        )
                         self.progress.last_error = _exc_key
                         # v3.23.80 — count distinct exception
                         # signatures so 7000 identical failures
                         # collapse to a diagnosable summary.
                         self.progress.exception_samples[_exc_key] = (
-                            self.progress.exception_samples.get(
-                                _exc_key, 0) + 1)
+                            self.progress.exception_samples.get(_exc_key, 0) + 1
+                        )
                         # Log the FIRST occurrence of each distinct
                         # exception at warning level (subsequent
                         # duplicates at debug so we don't flood).
                         if self.progress.exception_samples[_exc_key] == 1:
                             logger.warning(
-                                "sim bot tick raised: %s "
-                                "(bot=%s, symbol=%s)",
+                                "sim bot tick raised: %s " "(bot=%s, symbol=%s)",
                                 _exc_key,
                                 getattr(bot, "bot_id", "?"),
-                                getattr(getattr(bot, "config", None),
-                                        "symbol", "?"),
-                                exc_info=True)
+                                getattr(getattr(bot, "config", None), "symbol", "?"),
+                                exc_info=True,
+                            )
                         else:
-                            logger.debug(
-                                "sim bot tick raised (dupe): %s",
-                                _exc_key)
+                            logger.debug("sim bot tick raised (dupe): %s", _exc_key)
                 # ── LOAD FEED ────────────────────────────────────
                 # Normally one candle per tick. Under Nuclear's load
                 # pulse, `_load_feed_cb` returns how many candles this
@@ -1647,21 +1697,18 @@ class FleetReplayController:
                 _exhausted = False
                 for _f in range(_feed):
                     if not self._tape.step():
-                        self._activity(
-                            f"All series exhausted at candle {candle_i}.")
+                        self._activity(f"All series exhausted at candle {candle_i}.")
                         _exhausted = True
                         break
                     candle_i += 1
                     self.progress.candles_played = candle_i
-                    self.progress.candles_fed_under_load += (
-                        1 if _f > 0 else 0)
+                    self.progress.candles_fed_under_load += 1 if _f > 0 else 0
                 if _exhausted:
                     break
-                if (self._max_candles is not None
-                        and candle_i >= self._max_candles):
+                if self._max_candles is not None and candle_i >= self._max_candles:
                     self._activity(
-                        f"Reached max_candles={self._max_candles}; "
-                        "stopping.")
+                        f"Reached max_candles={self._max_candles}; " "stopping."
+                    )
                     break
                 if self._tick_delay > 0:
                     await asyncio.sleep(self._tick_delay)
@@ -1672,19 +1719,21 @@ class FleetReplayController:
                     self._perf(
                         f"tick {candle_i}/{self.progress.total_candles}"
                         f" · {self.progress.trades_fired} sim trades"
-                        f" · {self.progress.exceptions} exceptions")
+                        f" · {self.progress.exceptions} exceptions"
+                    )
                 # v3.24.3 — visual refresh signal for GUI widgets
                 # (gate lights, price+VWAP chart). Fires every N
                 # candles to keep 19,680 tick replay under ~200
                 # UI updates total. Callback is set by the panel via
                 # set_visual_refresh_cb().
-                if (self._visual_refresh_cb is not None
-                        and candle_i % self._visual_refresh_every == 0):
+                if (
+                    self._visual_refresh_cb is not None
+                    and candle_i % self._visual_refresh_every == 0
+                ):
                     try:
                         self._visual_refresh_cb(candle_i)
                     except Exception as _vr_exc:  # noqa: BLE001
-                        logger.debug(
-                            "visual_refresh_cb raised: %s", _vr_exc)
+                        logger.debug("visual_refresh_cb raised: %s", _vr_exc)
         finally:
             self.progress.finished = True
             # ── S2 EMITTERS ───────────────────────────────────────
@@ -1694,6 +1743,7 @@ class FleetReplayController:
             # the same reason the sink reports its own dropped count.
             try:
                 from src.core.signal_contract import emit as _s2
+
                 _p = self.progress
                 # 10.4 - EXPECT THE TAPE THE RUN WAS ASKED TO PLAY.
                 # `total_candles` is the whole tape, but the loop stops
@@ -1733,8 +1783,11 @@ class FleetReplayController:
                 # candles against max_candles=50 - measured, and
                 # already ok=False before this change. It is now named,
                 # with `fed_under_load` beside it to attribute it.
-                _asked = (_p.total_candles if self._max_candles is None
-                          else min(_p.total_candles, self._max_candles))
+                _asked = (
+                    _p.total_candles
+                    if self._max_candles is None
+                    else min(_p.total_candles, self._max_candles)
+                )
                 if _p.stop_requested:
                     _outcome = "stopped_by_operator"
                     _cok = 0 <= _p.candles_played <= _asked
@@ -1747,17 +1800,21 @@ class FleetReplayController:
                 else:
                     _outcome = "ended_before_the_ask"
                     _cok = False
-                _s2("sim.06.001.postcondition.candles_stepped",
+                _s2(
+                    "sim.06.001.postcondition.candles_stepped",
                     actual=_p.candles_played,
                     expected=_asked,
                     ok=_cok,
-                    context={"outcome": _outcome,
-                             "stop_requested": bool(_p.stop_requested),
-                             "skipped": _p.candles_skipped,
-                             "anchored": bool(_p.anchored),
-                             "total_candles": _p.total_candles,
-                             "max_candles": self._max_candles,
-                             "fed_under_load": _p.candles_fed_under_load})
+                    context={
+                        "outcome": _outcome,
+                        "stop_requested": bool(_p.stop_requested),
+                        "skipped": _p.candles_skipped,
+                        "anchored": bool(_p.anchored),
+                        "total_candles": _p.total_candles,
+                        "max_candles": self._max_candles,
+                        "fed_under_load": _p.candles_fed_under_load,
+                    },
+                )
                 # THE ONE THAT MATTERS. `bots_ticked` counts ENTRIES;
                 # these separate work from throttle, so "the bots ran"
                 # is finally falsifiable.
@@ -1774,16 +1831,23 @@ class FleetReplayController:
                 # (an exception raised in the window between them)
                 # drives expected above actual and reports ok=False.
                 _worked = _p.bot_ticks_worked
-                _s2("sim.06.002.postcondition.bot_ticks_did_work",
+                _s2(
+                    "sim.06.002.postcondition.bot_ticks_did_work",
                     actual=_worked,
-                    expected=(_p.bots_ticked - _p.bot_ticks_throttled
-                              - _p.bot_ticks_unknown),
-                    context={"entered": _p.bots_ticked,
-                             "throttled": _p.bot_ticks_throttled,
-                             "unknown": _p.bot_ticks_unknown,
-                             "worked_pct": (
-                                 round(100.0 * _worked / _p.bots_ticked, 2)
-                                 if _p.bots_ticked else 0.0)})
+                    expected=(
+                        _p.bots_ticked - _p.bot_ticks_throttled - _p.bot_ticks_unknown
+                    ),
+                    context={
+                        "entered": _p.bots_ticked,
+                        "throttled": _p.bot_ticks_throttled,
+                        "unknown": _p.bot_ticks_unknown,
+                        "worked_pct": (
+                            round(100.0 * _worked / _p.bots_ticked, 2)
+                            if _p.bots_ticked
+                            else 0.0
+                        ),
+                    },
+                )
                 # PER-BOT TA COVERAGE: observed / that bot's own
                 # eligible candles. Emitted per bot so one starved
                 # symbol cannot hide inside a fleet average.
@@ -1866,17 +1930,20 @@ class FleetReplayController:
                         _ta_state = "eligible_not_yet_observed"
                     else:
                         _ta_state = "observed_without_eligibility"
-                    _s2("ta.07.001.postcondition.coverage_per_bot",
+                    _s2(
+                        "ta.07.001.postcondition.coverage_per_bot",
                         actual=_obs,
                         expected=_elig,
                         ok=(_obs <= _elig),
-                        context={"bot_id": _bid,
-                                 "bound": "observed <= eligible",
-                                 "state": _ta_state,
-                                 "bots_in_union": len(_ta_union),
-                                 "fleet_bots_with_no_record": _ta_absent,
-                                 "pct": (round(100.0 * _obs / _elig, 2)
-                                         if _elig else None)})
+                        context={
+                            "bot_id": _bid,
+                            "bound": "observed <= eligible",
+                            "state": _ta_state,
+                            "bots_in_union": len(_ta_union),
+                            "fleet_bots_with_no_record": _ta_absent,
+                            "pct": (round(100.0 * _obs / _elig, 2) if _elig else None),
+                        },
+                    )
                 # ── INDICATOR INVARIANTS: ONE ACTIONABLE ROW ──────
                 # The per-candle `ta.07.004.postcondition.raw.*`
                 # records now carry a verdict,
@@ -1892,6 +1959,7 @@ class FleetReplayController:
                 # path free of tallying state.
                 try:
                     from src.core.signal_contract import get_sink as _gs
+
                     # 10.2 — the prefix is a NAMED CONSTANT owned by the
                     # engine that emits it, and the leaf is taken by
                     # that constant's own length. The pair used to be a
@@ -1902,6 +1970,7 @@ class FleetReplayController:
                     # over 0 indicators. A false green from an
                     # instrument built to catch indicator faults.
                     from src.trading.ta_engine import TA_RAW_PREFIX
+
                     _sink = _gs()
                     if _sink is not None:
                         _per: dict = {}
@@ -1909,10 +1978,10 @@ class FleetReplayController:
                         for _r in _sink.records():
                             if not _r.name.startswith(TA_RAW_PREFIX):
                                 continue
-                            _ind = _r.name[len(TA_RAW_PREFIX):]
+                            _ind = _r.name[len(TA_RAW_PREFIX) :]
                             _slot = _per.setdefault(
-                                _ind, {"checked": 0, "violated": 0,
-                                       "unchecked": 0})
+                                _ind, {"checked": 0, "violated": 0, "unchecked": 0}
+                            )
                             if _r.ok is None:
                                 _slot["unchecked"] += 1
                             elif _r.ok:
@@ -1929,43 +1998,66 @@ class FleetReplayController:
                                         "rule": _r.expected,
                                         "symbol": _c.get("symbol"),
                                         "candle_ts": _c.get("candle_ts"),
-                                        "window": _c.get("window")}
+                                        "window": _c.get("window"),
+                                    }
                         _viol = sum(v["violated"] for v in _per.values())
-                        _s2("ta.07.002.invariant.invariants", actual=_viol, expected=0,
-                            context={"per_indicator": _per,
-                                     "first_violations": _firsts,
-                                     "indicators": len(_per)})
+                        _s2(
+                            "ta.07.002.invariant.invariants",
+                            actual=_viol,
+                            expected=0,
+                            context={
+                                "per_indicator": _per,
+                                "first_violations": _firsts,
+                                "indicators": len(_per),
+                            },
+                        )
                 except Exception as _inv_exc:  # noqa: BLE001
                     logger.debug("invariant rollup failed: %s", _inv_exc)
                 # Causality accounting. `expected` is not zero: on a
                 # staggered fleet these skips are CORRECT and expected,
                 # so the useful signal is the count and the share, not
                 # a pass/fail.
-                _s2("sim.06.003.counter.ticks_before_tape",
+                _s2(
+                    "sim.06.003.counter.ticks_before_tape",
                     actual=_p.bot_ticks_before_tape,
-                    context={"ticked": _p.bots_ticked,
-                             "pct_of_attempted": (
-                                 round(100.0 * _p.bot_ticks_before_tape
-                                       / (_p.bot_ticks_before_tape
-                                          + _p.bots_ticked), 2)
-                                 if (_p.bot_ticks_before_tape
-                                     + _p.bots_ticked) else 0.0)})
+                    context={
+                        "ticked": _p.bots_ticked,
+                        "pct_of_attempted": (
+                            round(
+                                100.0
+                                * _p.bot_ticks_before_tape
+                                / (_p.bot_ticks_before_tape + _p.bots_ticked),
+                                2,
+                            )
+                            if (_p.bot_ticks_before_tape + _p.bots_ticked)
+                            else 0.0
+                        ),
+                    },
+                )
                 _s2("sim.06.004.counter.trades_fired", actual=_p.trades_fired)
                 _s2("sim.06.005.invariant.exceptions", actual=_p.exceptions, expected=0)
                 # Which window was actually played — a run that cannot
                 # say what data it consumed cannot be re-checked.
                 _first = _last = None
                 try:
-                    _ts = getattr(
-                        getattr(self._exchange, "clock", None),
-                        "timestamps", None) or []
+                    _ts = (
+                        getattr(
+                            getattr(self._exchange, "clock", None), "timestamps", None
+                        )
+                        or []
+                    )
                     if _ts:
                         _first, _last = int(_ts[0]), int(_ts[-1])
                 except Exception as _wx:  # noqa: BLE001
                     logger.debug("window read failed: %s", _wx)
-                _s2("sim.06.006.event.window_played",
-                    actual={"first_ts": _first, "last_ts": _last,
-                            "symbols": len(self._candles_by_symbol or {})})
+                _s2(
+                    "sim.06.006.event.window_played",
+                    actual={
+                        "first_ts": _first,
+                        "last_ts": _last,
+                        "symbols": len(self._candles_by_symbol or {}),
+                    },
+                )
             except Exception as _s2x:  # noqa: BLE001 - never break teardown
                 logger.debug("S2 emit failed: %s", _s2x)
 
@@ -1974,6 +2066,7 @@ class FleetReplayController:
             # this did exactly that, and the file came out missing.
             try:
                 from src.core.signal_contract import set_sink as _clr
+
                 if self._signal_sink is not None:
                     self._signal_sink.flush()
                 # v3.24.88 - RESTORE, do not clear. `None` here ended
@@ -1986,7 +2079,8 @@ class FleetReplayController:
             self._perf(
                 f"Fleet Replay finished: {self.progress.candles_played}"
                 f" candles, {self.progress.trades_fired} sim trades, "
-                f"{self.progress.exceptions} exceptions.")
+                f"{self.progress.exceptions} exceptions."
+            )
             # v3.24.13 — close the run record FIRST, before the
             # telemetry/report block below, so a failure in reporting
             # cannot cost us the run's data.
@@ -2003,46 +2097,62 @@ class FleetReplayController:
                     try:
                         _el = max(
                             0.0,
-                            time.time()
-                            - float(self.progress.started_at_wall or 0.0))
+                            time.time() - float(self.progress.started_at_wall or 0.0),
+                        )
                     except (TypeError, ValueError) as _el_exc:
                         logger.debug("elapsed calc: %s", _el_exc)
-                    self._run_log.finish_run(summary={
-                        "candles_played": self.progress.candles_played,
-                        "total_candles": self.progress.total_candles,
-                        "trades_fired": self.progress.trades_fired,
-                        "bots": len(self._bots),
-                        "exceptions": self.progress.exceptions,
-                        "stop_requested": self.progress.stop_requested,
-                        "elapsed_s": round(_el, 2),
-                        "candles_per_s": (
-                            round(self.progress.candles_played / _el, 2)
-                            if _el > 0 else None),
-                        "trades_per_1k_candles": (
-                            round(1000.0 * self.progress.trades_fired
-                                  / self.progress.candles_played, 2)
-                            if self.progress.candles_played else None),
-                        "visuals_attached": bool(
-                            self._visual_refresh_cb is not None),
-                        # v3.24.20 — the throughput predictor. Under the
-                        # GUI pump each yield costs ~50 ms, so this ratio
-                        # bounds candles/s directly.
-                        "candles_skipped": self.progress.candles_skipped,
-                        "bots_ticked": self.progress.bots_ticked,
-                        "yields_emitted": self.progress.yields_emitted,
-                        "yields_per_candle": (
-                            round(self.progress.yields_emitted
-                                  / self.progress.candles_played, 4)
-                            if self.progress.candles_played else None),
-                    })
+                    self._run_log.finish_run(
+                        summary={
+                            "candles_played": self.progress.candles_played,
+                            "total_candles": self.progress.total_candles,
+                            "trades_fired": self.progress.trades_fired,
+                            "bots": len(self._bots),
+                            "exceptions": self.progress.exceptions,
+                            "stop_requested": self.progress.stop_requested,
+                            "elapsed_s": round(_el, 2),
+                            "candles_per_s": (
+                                round(self.progress.candles_played / _el, 2)
+                                if _el > 0
+                                else None
+                            ),
+                            "trades_per_1k_candles": (
+                                round(
+                                    1000.0
+                                    * self.progress.trades_fired
+                                    / self.progress.candles_played,
+                                    2,
+                                )
+                                if self.progress.candles_played
+                                else None
+                            ),
+                            "visuals_attached": bool(
+                                self._visual_refresh_cb is not None
+                            ),
+                            # v3.24.20 — the throughput predictor. Under the
+                            # GUI pump each yield costs ~50 ms, so this ratio
+                            # bounds candles/s directly.
+                            "candles_skipped": self.progress.candles_skipped,
+                            "bots_ticked": self.progress.bots_ticked,
+                            "yields_emitted": self.progress.yields_emitted,
+                            "yields_per_candle": (
+                                round(
+                                    self.progress.yields_emitted
+                                    / self.progress.candles_played,
+                                    4,
+                                )
+                                if self.progress.candles_played
+                                else None
+                            ),
+                        }
+                    )
                     _d = self._run_log.directory
                     self._perf(
                         f"Sim run persisted: {self._run_log.trade_count}"
                         f" trades, {self._run_log.gate_count} gates -> "
-                        f"{_d if _d else '(not written)'}")
+                        f"{_d if _d else '(not written)'}"
+                    )
                 except Exception as _rl_exc:  # noqa: BLE001 - advisory
-                    logger.warning(
-                        "sim run log close failed: %s", _rl_exc)
+                    logger.warning("sim run log close failed: %s", _rl_exc)
             # v3.24.8 — dump the feature-telemetry report. This is
             # the operator-facing payoff: any declared Simulator
             # feature that never fired during this replay is named
@@ -2051,6 +2161,7 @@ class FleetReplayController:
             # shows up as STALLED on the next run.
             try:
                 from src.core.feature_telemetry import get_telemetry
+
                 _tel = get_telemetry()
                 for _line in _tel.report_lines(scope="sim."):
                     self._perf(_line)
@@ -2064,17 +2175,17 @@ class FleetReplayController:
                     run_context={
                         "Candles played": (
                             f"{self.progress.candles_played:,} / "
-                            f"{self.progress.total_candles:,}"),
+                            f"{self.progress.total_candles:,}"
+                        ),
                         "Sim trades": f"{self.progress.trades_fired:,}",
                         "Bots": f"{len(self._bots)}",
-                        "Tick exceptions": (
-                            f"{self.progress.exceptions:,}"),
-                    })
+                        "Tick exceptions": (f"{self.progress.exceptions:,}"),
+                    },
+                )
                 if _md is not None:
                     self._perf(f"Feature validation report: {_md}")
             except Exception as _tel_exc:  # noqa: BLE001 - advisory
-                logger.debug(
-                    "feature telemetry report failed: %s", _tel_exc)
+                logger.debug("feature telemetry report failed: %s", _tel_exc)
             self.stopped_event.set()
 
 

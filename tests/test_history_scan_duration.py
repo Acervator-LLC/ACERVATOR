@@ -98,8 +98,7 @@ def _tracks(short: Optional[float], long_: Optional[float]) -> bool:
     return long_ > short * 2.0
 
 
-def _tracks_the_scan(short: Optional[float],
-                       long_: Optional[float]) -> bool:
+def _tracks_the_scan(short: Optional[float], long_: Optional[float]) -> bool:
     """Ask `_tracks`, then put a floor under the long reading.
 
     This ADDS a condition and relaxes none: everything `_tracks`
@@ -126,7 +125,7 @@ class _FakeConnector:
     """
 
     def __init__(self) -> None:
-        self._ccxt_sync = object()          # truthy: passes the entry guard
+        self._ccxt_sync = object()  # truthy: passes the entry guard
         self._scan_symbols = {"BTC/USD"}
         self._history_scan_lock = threading.Lock()
         self._history_analyses: dict = {}
@@ -138,14 +137,14 @@ class _FakeConnector:
 
 def _drive(monkeypatch, burn_s: float, sink: SignalSink) -> None:
     """Run the real scan path once, with the network call replaced."""
+
     # `scan_on_connect` is called entirely by keyword, so the arguments
     # this stand-in does not need are collected rather than named.
     def _fake_scan(symbols=None, **_kwargs):
         _busy_wait(burn_s)
         return {s: object() for s in (symbols or [])}
 
-    monkeypatch.setattr(
-        "src.exchange.ccxt_connector.scan_on_connect", _fake_scan)
+    monkeypatch.setattr("src.exchange.ccxt_connector.scan_on_connect", _fake_scan)
     previous = sc.get_sink()
     sc.set_sink(sink)
     try:
@@ -204,8 +203,7 @@ def test_the_duration_tracks_two_different_scan_lengths(monkeypatch):
 
     assert short == pytest.approx(SHORT_S, abs=0.005), short
     assert long_ == pytest.approx(LONG_S, abs=0.015), long_
-    assert _tracks_the_scan(short, long_), (
-        f"did not track: {short} vs {long_}")
+    assert _tracks_the_scan(short, long_), f"did not track: {short} vs {long_}"
 
 
 def test_the_tracking_predicate_rejects_a_constant_duration():
@@ -223,29 +221,36 @@ def test_the_site_predicate_rejects_a_bracket_that_spans_nothing() -> None:
     this site could be blinded while still handing the sink a
     `duration` field of exactly the right shape.
     """
-    assert not _tracks_the_scan(0.01, 0.01), (
-        "a constant duration must not read as tracking")
-    assert not _tracks_the_scan(None, LONG_S), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_scan(SHORT_S, None), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_scan(LONG_S, SHORT_S), (
-        "going backwards must not read as tracking")
+    assert not _tracks_the_scan(
+        0.01, 0.01
+    ), "a constant duration must not read as tracking"
+    assert not _tracks_the_scan(
+        None, LONG_S
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_scan(
+        SHORT_S, None
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_scan(
+        LONG_S, SHORT_S
+    ), "going backwards must not read as tracking"
 
     # THE DEAD CLOCK, and the measured reason this site carries a floor
     # the shared predicate does not. This pair is a real one, harvested
     # 2026-08-20 with the stop clock planted above the work. `_tracks`
     # accepts it. The floor rejects it. That is an addition to
     # `_tracks`, never a relaxation of it.
-    assert _tracks(0.0, 5.0e-07), (
-        "the shared predicate is expected to accept a dead clock here")
-    assert not _tracks_the_scan(0.0, 5.0e-07), (
-        "a bracket that spans no work must not read as tracking")
+    assert _tracks(
+        0.0, 5.0e-07
+    ), "the shared predicate is expected to accept a dead clock here"
+    assert not _tracks_the_scan(
+        0.0, 5.0e-07
+    ), "a bracket that spans no work must not read as tracking"
 
     # The honest pair measured off the real site, 2026-08-20, must
     # still read as tracking.
-    assert _tracks_the_scan(0.005000, 0.030001), (
-        "the real measured pair must read as tracking")
+    assert _tracks_the_scan(
+        0.005000, 0.030001
+    ), "the real measured pair must read as tracking"
 
 
 def test_the_duration_excludes_time_spent_waiting_for_the_lock(monkeypatch):
@@ -263,8 +268,7 @@ def test_the_duration_excludes_time_spent_waiting_for_the_lock(monkeypatch):
         _busy_wait(SHORT_S)
         return {s: object() for s in (symbols or [])}
 
-    monkeypatch.setattr(
-        "src.exchange.ccxt_connector.scan_on_connect", _fake_scan)
+    monkeypatch.setattr("src.exchange.ccxt_connector.scan_on_connect", _fake_scan)
 
     conn = _FakeConnector()
     released = threading.Event()
@@ -291,4 +295,5 @@ def test_the_duration_excludes_time_spent_waiting_for_the_lock(monkeypatch):
     assert got[0] == pytest.approx(SHORT_S, abs=0.010), got[0]
     assert got[0] < LOCK_HOLD_S, (
         f"duration {got[0]} includes the {LOCK_HOLD_S}s lock wait; the clock "
-        f"must start inside the lock, not before it")
+        f"must start inside the lock, not before it"
+    )

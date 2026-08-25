@@ -70,6 +70,7 @@ repository -- which is also why no assertion here depends on the
 directory pytest was started in. No suppression comment appears in
 this file.
 """
+
 from __future__ import annotations
 
 import os
@@ -121,9 +122,14 @@ def _kwargs(cwd: Path) -> dict[str, Any]:
     env["PYTHONPATH"] = str(REPO_ROOT)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     return {
-        "cwd": str(cwd), "env": env, "capture_output": True,
-        "text": True, "encoding": "utf-8", "errors": "replace",
-        "timeout": 600, "check": False,
+        "cwd": str(cwd),
+        "env": env,
+        "capture_output": True,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+        "timeout": 600,
+        "check": False,
     }
 
 
@@ -136,9 +142,11 @@ def _report(proc: subprocess.CompletedProcess[str]) -> str:
     know the register exists, so every assertion below carries the
     tool's own output, which names the ID and the file and the line.
     """
-    return (f"exit code {proc.returncode}\n"
-            f"--- stdout ---\n{proc.stdout}\n"
-            f"--- stderr ---\n{proc.stderr}")
+    return (
+        f"exit code {proc.returncode}\n"
+        f"--- stdout ---\n{proc.stdout}\n"
+        f"--- stderr ---\n{proc.stderr}"
+    )
 
 
 def _count(pattern: re.Pattern[str], stdout: str) -> int | None:
@@ -172,8 +180,10 @@ def _drift_one_row(text: str, already_drifted: set[str]) -> tuple[str, str]:
     """
     lines = text.split("\n")
     for index, raw in enumerate(lines):
-        cells = [cell.strip().strip("`").strip()
-                 for cell in raw.strip().strip("|").split("|")]
+        cells = [
+            cell.strip().strip("`").strip()
+            for cell in raw.strip().strip("|").split("|")
+        ]
         if len(cells) != _MAIN_COLS or not ID_CELL_RE.match(cells[0]):
             continue
         if cells[0] in already_drifted:
@@ -182,27 +192,32 @@ def _drift_one_row(text: str, already_drifted: set[str]) -> tuple[str, str]:
         if match is None:
             continue
         moved = f"`{match.group(1)}:{int(match.group(2)) + LINE_DRIFT}`"
-        lines[index] = raw[:match.start()] + moved + raw[match.end():]
+        lines[index] = raw[: match.start()] + moved + raw[match.end() :]
         return "\n".join(lines), cells[0]
-    msg = (f"no row of the main table in {REGISTRY} carried a "
-           f"`<path>.py:<line>` source cell that is not already drifted, "
-           f"so the plant below would have been a no-op. Re-anchor it on "
-           f"the current register.")
+    msg = (
+        f"no row of the main table in {REGISTRY} carried a "
+        f"`<path>.py:<line>` source cell that is not already drifted, "
+        f"so the plant below would have been a no-op. Re-anchor it on "
+        f"the current register."
+    )
     raise AssertionError(msg)
 
 
-def _tree_with_one_drifted_row(destination: Path,
-                               already_drifted: set[str]) -> str:
+def _tree_with_one_drifted_row(destination: Path, already_drifted: set[str]) -> str:
     """Build a copy of the tree whose register has one stale line.
 
     ``src`` is copied whole rather than sampled: the checker compares
     two multisets, so a partial tree would report every absent pin as a
     problem and drown the one warning under test.
     """
-    shutil.copytree(REPO_ROOT / "src", destination / "src",
-                    ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(
+        REPO_ROOT / "src",
+        destination / "src",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
     drifted, emitter_id = _drift_one_row(
-        REGISTRY.read_bytes().decode("utf-8"), already_drifted)
+        REGISTRY.read_bytes().decode("utf-8"), already_drifted
+    )
     target = destination / REGISTRY_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
     # write_bytes, not write_text: the text path on this box translates
@@ -215,9 +230,9 @@ def _tree_with_one_drifted_row(destination: Path,
 def plain_run() -> subprocess.CompletedProcess[str]:
     """One no-flag run over this repository, shared by its readers."""
     return subprocess.run(
-        [sys.executable, "-m", "tools.emitter_registry_check",
-         "--root", "."],
-        **_kwargs(REPO_ROOT))
+        [sys.executable, "-m", "tools.emitter_registry_check", "--root", "."],
+        **_kwargs(REPO_ROOT),
+    )
 
 
 class TestTheRunCanBeRead:
@@ -230,35 +245,40 @@ class TestTheRunCanBeRead:
     """
 
     def test_the_run_says_how_many_pins_it_found(
-            self, plain_run: subprocess.CompletedProcess[str]) -> None:
+        self, plain_run: subprocess.CompletedProcess[str]
+    ) -> None:
         """The left side of the comparison exists."""
         pins = _count(PINS_RE, plain_run.stdout)
         assert pins is not None, (
             "the checker printed no `pins in src : N` line, so nothing "
-            "below is reading a count at all.\n" + _report(plain_run))
+            "below is reading a count at all.\n" + _report(plain_run)
+        )
         assert pins > 0, (
             "the checker found 0 pins under src. It compared an empty "
             "left side against the register, so a clean result is "
-            "evidence of nothing.\n" + _report(plain_run))
+            "evidence of nothing.\n" + _report(plain_run)
+        )
 
     def test_the_run_says_how_many_rows_it_read(
-            self, plain_run: subprocess.CompletedProcess[str]) -> None:
+        self, plain_run: subprocess.CompletedProcess[str]
+    ) -> None:
         """The right side of the comparison exists."""
         rows = _count(ROWS_RE, plain_run.stdout)
-        assert rows is not None, (
-            "the checker printed no `registry rows: N` line.\n"
-            + _report(plain_run))
+        assert (
+            rows is not None
+        ), "the checker printed no `registry rows: N` line.\n" + _report(plain_run)
         assert rows > 0, (
             "the checker read 0 rows out of the register. Either the "
-            "register is empty or its table stopped parsing.\n"
-            + _report(plain_run))
+            "register is empty or its table stopped parsing.\n" + _report(plain_run)
+        )
 
 
 class TestTheTreeAndTheRegisterDescribeTheSamePins:
     """The gate-facing fact: run the checker, and it must be green."""
 
     def test_the_checker_exits_zero(
-            self, plain_run: subprocess.CompletedProcess[str]) -> None:
+        self, plain_run: subprocess.CompletedProcess[str]
+    ) -> None:
         """Every pin has a row, and every row has a pin.
 
         If this is red and you have just added an emitter: the output
@@ -269,11 +289,12 @@ class TestTheTreeAndTheRegisterDescribeTheSamePins:
             "`python -m tools.emitter_registry_check` did not exit 0. "
             "The register and the source no longer describe the same "
             "set of pins, or one of the checker's own rules failed its "
-            "control. Its account of what it found:\n"
-            + _report(plain_run))
+            "control. Its account of what it found:\n" + _report(plain_run)
+        )
 
     def test_no_row_records_a_line_that_moved(
-            self, plain_run: subprocess.CompletedProcess[str]) -> None:
+        self, plain_run: subprocess.CompletedProcess[str]
+    ) -> None:
         """No row points at a line that no longer holds its pin.
 
         Asserted apart from the exit code because the checker cannot
@@ -286,10 +307,13 @@ class TestTheTreeAndTheRegisterDescribeTheSamePins:
         ``source`` column of each ID named below.
         """
         drifted = _warnings(plain_run.stdout)
-        assert not drifted, (
-            f"{len(drifted)} register row(s) record a line that no "
-            f"longer holds their pin:\n  " + "\n  ".join(drifted)
-            + "\n" + _report(plain_run))
+        assert (
+            not drifted
+        ), f"{len(drifted)} register row(s) record a line that no " f"longer holds their pin:\n  " + "\n  ".join(
+            drifted
+        ) + "\n" + _report(
+            plain_run
+        )
 
 
 class TestADriftedRowIsVisibleToThisFile:
@@ -308,7 +332,8 @@ class TestADriftedRowIsVisibleToThisFile:
     """
 
     def test_the_drift_target_is_still_where_it_was(
-            self, plain_run: subprocess.CompletedProcess[str]) -> None:
+        self, plain_run: subprocess.CompletedProcess[str]
+    ) -> None:
         """The register still has a row this plant can move.
 
         Without this, a register whose source cells were reshaped would
@@ -317,18 +342,19 @@ class TestADriftedRowIsVisibleToThisFile:
         healthy result it was written to reject.
         """
         before = REGISTRY.read_bytes().decode("utf-8")
-        drifted, emitter_id = _drift_one_row(
-            before, set(_warned_ids(plain_run.stdout)))
+        drifted, emitter_id = _drift_one_row(before, set(_warned_ids(plain_run.stdout)))
         assert drifted != before, (
             f"the drift changed nothing in {REGISTRY}. The plant below "
-            f"would be a no-op and would prove nothing.")
+            f"would be a no-op and would prove nothing."
+        )
         assert ID_CELL_RE.match(emitter_id), (
             f"the drifted row reported its ID as {emitter_id!r}, which "
-            f"is not an emitter ID. The main table is not being read.")
+            f"is not an emitter ID. The main table is not being read."
+        )
 
     def test_a_row_moved_off_its_pin_is_reported_and_moves_no_exit_code(
-            self, tmp_path: Path,
-            plain_run: subprocess.CompletedProcess[str]) -> None:
+        self, tmp_path: Path, plain_run: subprocess.CompletedProcess[str]
+    ) -> None:
         """The whole reason the warning is asserted separately.
 
         Both assertions are DIFFERENCES against the same tree without
@@ -339,14 +365,16 @@ class TestADriftedRowIsVisibleToThisFile:
         """
         before = REGISTRY.read_bytes()
         emitter_id = _tree_with_one_drifted_row(
-            tmp_path, set(_warned_ids(plain_run.stdout)))
+            tmp_path, set(_warned_ids(plain_run.stdout))
+        )
 
         proc = subprocess.run(
-            [sys.executable, "-m", "tools.emitter_registry_check",
-             "--root", "."],
-            **_kwargs(tmp_path))
-        added = (Counter(_warned_ids(proc.stdout))
-                 - Counter(_warned_ids(plain_run.stdout)))
+            [sys.executable, "-m", "tools.emitter_registry_check", "--root", "."],
+            **_kwargs(tmp_path),
+        )
+        added = Counter(_warned_ids(proc.stdout)) - Counter(
+            _warned_ids(plain_run.stdout)
+        )
 
         assert list(added.elements()) == [emitter_id], (
             f"one row was moved off its pin, and the W1 lines this file "
@@ -354,13 +382,16 @@ class TestADriftedRowIsVisibleToThisFile:
             f"exactly [{emitter_id!r}]. Either the checker stopped "
             f"reporting line drift or this file stopped being able to "
             f"read the report, and the drift assertion above is then "
-            f"green over nothing.\n" + _report(proc))
+            f"green over nothing.\n" + _report(proc)
+        )
         assert proc.returncode == plain_run.returncode, (
             f"moving one row off its pin changed the exit code from "
             f"{plain_run.returncode} to {proc.returncode}. W1 is a "
             f"warning and cannot move it, so either the checker's exit "
             f"logic changed or the plant reached past the line number "
-            f"it aimed at.\n" + _report(proc))
+            f"it aimed at.\n" + _report(proc)
+        )
         assert REGISTRY.read_bytes() == before, (
             f"{REGISTRY} changed during this test. The plant must only "
-            f"ever touch the copy under the temporary directory.")
+            f"ever touch the copy under the temporary directory."
+        )

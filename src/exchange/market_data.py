@@ -11,7 +11,6 @@ from __future__ import annotations
 from ..core.safe_url import safe_urlopen
 import logging
 import time
-from typing import Optional
 
 logger = logging.getLogger("acervator.market_data")
 
@@ -25,11 +24,11 @@ _CACHE_TTL = 300  # 5 minutes
 
 def _load_coingecko_ids() -> None:
     """Load CoinGecko IDs from crypto_assets module."""
-    global _COINGECKO_IDS
     if _COINGECKO_IDS:
         return
     try:
         from .crypto_assets import ASSETS
+
         for sym, asset in ASSETS.items():
             if asset.coingecko_id:
                 _COINGECKO_IDS[sym] = asset.coingecko_id
@@ -38,15 +37,32 @@ def _load_coingecko_ids() -> None:
 
     # Add common ones that might be missing
     defaults = {
-        "BTC": "bitcoin", "ETH": "ethereum", "BNB": "binancecoin",
-        "SOL": "solana", "XRP": "ripple", "ADA": "cardano",
-        "DOGE": "dogecoin", "AVAX": "avalanche-2", "DOT": "polkadot",
-        "MATIC": "matic-network", "LINK": "chainlink", "SHIB": "shiba-inu",
-        "LTC": "litecoin", "UNI": "uniswap", "ATOM": "cosmos",
-        "XLM": "stellar", "ALGO": "algorand", "FIL": "filecoin",
-        "NEAR": "near", "APT": "aptos", "OP": "optimism",
-        "ARB": "arbitrum", "SUI": "sui", "SEI": "sei-network",
-        "TIA": "celestia", "INJ": "injective-protocol",
+        "BTC": "bitcoin",
+        "ETH": "ethereum",
+        "BNB": "binancecoin",
+        "SOL": "solana",
+        "XRP": "ripple",
+        "ADA": "cardano",
+        "DOGE": "dogecoin",
+        "AVAX": "avalanche-2",
+        "DOT": "polkadot",
+        "MATIC": "matic-network",
+        "LINK": "chainlink",
+        "SHIB": "shiba-inu",
+        "LTC": "litecoin",
+        "UNI": "uniswap",
+        "ATOM": "cosmos",
+        "XLM": "stellar",
+        "ALGO": "algorand",
+        "FIL": "filecoin",
+        "NEAR": "near",
+        "APT": "aptos",
+        "OP": "optimism",
+        "ARB": "arbitrum",
+        "SUI": "sui",
+        "SEI": "sei-network",
+        "TIA": "celestia",
+        "INJ": "injective-protocol",
     }
     for sym, cg_id in defaults.items():
         if sym not in _COINGECKO_IDS:
@@ -56,7 +72,7 @@ def _load_coingecko_ids() -> None:
 def fetch_market_data(symbols: list[str] = None) -> dict[str, dict]:
     """
     Fetch volume and volatility data from CoinGecko public API.
-    
+
     Returns dict mapping symbol -> {volume_24h, price_change_pct, current_price, high_24h, low_24h, volatility_pct}
     """
     global _market_cache, _cache_timestamp
@@ -84,7 +100,7 @@ def fetch_market_data(symbols: list[str] = None) -> dict[str, dict]:
     reverse_map = {v: k for k, v in cg_ids.items()}
 
     for i in range(0, len(id_list), 50):
-        batch = id_list[i:i + 50]
+        batch = id_list[i : i + 50]
         batch_data = _fetch_batch(batch, reverse_map)
         all_data.update(batch_data)
         if i + 50 < len(id_list):

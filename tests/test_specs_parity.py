@@ -14,13 +14,13 @@ If a legitimate divergence is needed (e.g., mac ships extra frameworks
 Windows can't), add it here as an explicit `# platform-only:` allowance
 so the reason is recorded.
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
 import pytest
-
 
 REPO = Path(__file__).resolve().parent.parent
 WIN_SPEC = REPO / "Acervator_win.spec"
@@ -72,9 +72,9 @@ class TestVersionHelper:
         assert re.search(r"^ACERVATOR_VERSION\s*=", win_src, re.MULTILINE)
 
     def test_mac_assigns_acervator_version(self, mac_src):
-        assert re.search(r"^ACERVATOR_VERSION\s*=", mac_src, re.MULTILINE), (
-            "mac spec must assign ACERVATOR_VERSION at module scope."
-        )
+        assert re.search(
+            r"^ACERVATOR_VERSION\s*=", mac_src, re.MULTILINE
+        ), "mac spec must assign ACERVATOR_VERSION at module scope."
 
     def test_mac_uses_acervator_version_in_bundle(self, mac_src):
         """The BUNDLE section must populate CFBundleVersion and
@@ -95,12 +95,12 @@ class TestVersionHelper:
         m = re.search(r"BUNDLE\((.*?)\)\s*\Z", mac_src, re.DOTALL)
         assert m, "could not locate BUNDLE(...) block"
         bundle = m.group(1)
-        assert re.search(r"version\s*=\s*ACERVATOR_VERSION", bundle), (
-            "BUNDLE(version=...) must be ACERVATOR_VERSION."
-        )
-        assert not re.search(r"version\s*=\s*['\"]\d+\.\d+\.\d+['\"]", bundle), (
-            "BUNDLE(version=...) must not use a hardcoded version literal."
-        )
+        assert re.search(
+            r"version\s*=\s*ACERVATOR_VERSION", bundle
+        ), "BUNDLE(version=...) must be ACERVATOR_VERSION."
+        assert not re.search(
+            r"version\s*=\s*['\"]\d+\.\d+\.\d+['\"]", bundle
+        ), "BUNDLE(version=...) must not use a hardcoded version literal."
 
 
 # ---------------------------------------------------------------------------
@@ -113,9 +113,9 @@ class TestGracefulDatasHelper:
         assert "def _build_graceful_datas" in win_src
 
     def test_mac_defines_graceful_datas(self, mac_src):
-        assert "def _build_graceful_datas" in mac_src, (
-            "mac spec must define _build_graceful_datas like the win spec."
-        )
+        assert (
+            "def _build_graceful_datas" in mac_src
+        ), "mac spec must define _build_graceful_datas like the win spec."
 
     def test_win_calls_graceful_datas(self, win_src):
         assert "_build_graceful_datas(PROJECT_ROOT)" in win_src
@@ -127,10 +127,12 @@ class TestGracefulDatasHelper:
         """RAIntSimBat parity — both specs must probe the sadp-relocated
         path first then fall back to the root-level legacy path."""
         for label, src in [("win", win_src), ("mac", mac_src)]:
-            assert "RAIntSimBat" in src, f"{label} spec must reference RAIntSimBat datas"
-            assert "sadp" in src, (
-                f"{label} spec must probe the sadp/ location before legacy"
-            )
+            assert (
+                "RAIntSimBat" in src
+            ), f"{label} spec must reference RAIntSimBat datas"
+            assert (
+                "sadp" in src
+            ), f"{label} spec must probe the sadp/ location before legacy"
 
 
 # ---------------------------------------------------------------------------
@@ -147,8 +149,13 @@ def _extract_hiddenimports(src: str) -> set[str]:
     call's `hiddenimports=(...)` argument."""
     # Grab the hiddenimports=(...) block (it wraps a tuple with a
     # list concat, so we take the outer parenthesized region).
+    # NOTE: the comment-skip is line-bounded (`#[^\n]*\n`, never `.` under
+    # DOTALL) and its trailing `\s*` stops at the next `#`/`collect_submodules`,
+    # so there is exactly one way to match any input. The old form
+    # `(?:# .*\n\s*)*` let `.`+`\s*` both consume newlines under DOTALL, which
+    # backtracked catastrophically (~180s on the real spec files — a ReDoS).
     m = re.search(
-        r"hiddenimports=\(\s*(?:# .*\n\s*)*collect_submodules\(['\"]src['\"]\)\s*\+\s*\[(.*?)\]",
+        r"hiddenimports=\(\s*(?:#[^\n]*\n\s*)*collect_submodules\(['\"]src['\"]\)\s*\+\s*\[(.*?)\]",
         src,
         re.DOTALL,
     )
@@ -227,6 +234,6 @@ class TestExcludes:
 class TestEntryPoint:
     def test_both_use_main_py(self, win_src, mac_src):
         for label, src in [("win", win_src), ("mac", mac_src)]:
-            assert "'main.py'" in src or '"main.py"' in src, (
-                f"{label} spec must build from main.py"
-            )
+            assert (
+                "'main.py'" in src or '"main.py"' in src
+            ), f"{label} spec must build from main.py"

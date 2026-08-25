@@ -46,6 +46,7 @@ without logging, (b) FIFO matching pairs buys against wrong sells,
 (d) cycle reset heuristic overstates growth by resetting more often
 than the real bot would.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,10 +55,9 @@ import json
 import re
 import sys
 from collections import defaultdict, deque
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-
 
 # ---------------------------------------------------------------------------
 # CSV parsing
@@ -94,10 +94,10 @@ def _parse_qty(raw: str) -> float:
 @dataclass
 class Trade:
     ts: datetime
-    side: str          # "BUY" or "SELL"
+    side: str  # "BUY" or "SELL"
     asset: str
-    qty: float         # always positive (absolute)
-    price: float       # USD per unit
+    qty: float  # always positive (absolute)
+    price: float  # USD per unit
 
 
 def parse_coinbase_csv(path: Path) -> list[Trade]:
@@ -143,12 +143,12 @@ class AssetResult:
     asset: str
     total_buys: int = 0
     total_sells: int = 0
-    fold_back_events: int = 0             # matched-buy events with buy < sell
-    surplus_generated_usd: float = 0.0    # sum of raw pre-cap surplus
-    growth_applied_usd: float = 0.0       # sum of growth after cap
-    cap_hits: int = 0                     # events where cap limited the drain
+    fold_back_events: int = 0  # matched-buy events with buy < sell
+    surplus_generated_usd: float = 0.0  # sum of raw pre-cap surplus
+    growth_applied_usd: float = 0.0  # sum of growth after cap
+    cap_hits: int = 0  # events where cap limited the drain
     largest_single_growth_usd: float = 0.0
-    final_target_balance: float = 200.0   # starts at simulated anchor
+    final_target_balance: float = 200.0  # starts at simulated anchor
     events: list[dict] = field(default_factory=list)
 
 
@@ -180,13 +180,11 @@ def replay_asset(
         r.total_buys += 1
         remaining_buy_qty = trade.qty
         event_surplus_total = 0.0
-        matched_any = False
         matched_at_lower_price = False
 
         while remaining_buy_qty > 1e-12 and sell_queue:
             sell_qty, sell_price, sell_ts = sell_queue[0]
             match_qty = min(remaining_buy_qty, sell_qty)
-            matched_any = True
             if trade.price < sell_price:
                 # This slice is a fold-back candidate
                 per_unit_surplus = sell_price - trade.price
@@ -222,15 +220,17 @@ def replay_asset(
         if growth_applied > r.largest_single_growth_usd:
             r.largest_single_growth_usd = growth_applied
 
-        r.events.append({
-            "ts": trade.ts.isoformat(),
-            "buy_price": trade.price,
-            "buy_qty": trade.qty,
-            "raw_surplus_usd": round(event_surplus_total, 6),
-            "growth_applied_usd": round(growth_applied, 6),
-            "cap_remaining_before": round(cap_remaining, 6),
-            "target_after": round(r.final_target_balance, 6),
-        })
+        r.events.append(
+            {
+                "ts": trade.ts.isoformat(),
+                "buy_price": trade.price,
+                "buy_qty": trade.qty,
+                "raw_surplus_usd": round(event_surplus_total, 6),
+                "growth_applied_usd": round(growth_applied, 6),
+                "cap_remaining_before": round(cap_remaining, 6),
+                "target_after": round(r.final_target_balance, 6),
+            }
+        )
 
     return r
 
@@ -240,8 +240,9 @@ def replay_asset(
 # ---------------------------------------------------------------------------
 
 
-def analyze(csv_path: Path, initial_target: float = 200.0,
-            max_target_growth_pct: float = 1.0) -> dict:
+def analyze(
+    csv_path: Path, initial_target: float = 200.0, max_target_growth_pct: float = 1.0
+) -> dict:
     trades = parse_coinbase_csv(csv_path)
     per_asset: dict[str, list[Trade]] = defaultdict(list)
     for t in trades:
@@ -250,8 +251,10 @@ def analyze(csv_path: Path, initial_target: float = 200.0,
     for a in per_asset:
         per_asset[a].sort(key=lambda t: t.ts)
 
-    results = [replay_asset(per_asset[a], initial_target, max_target_growth_pct)
-               for a in sorted(per_asset)]
+    results = [
+        replay_asset(per_asset[a], initial_target, max_target_growth_pct)
+        for a in sorted(per_asset)
+    ]
 
     total_fold_events = sum(r.fold_back_events for r in results)
     total_surplus = sum(r.surplus_generated_usd for r in results)
@@ -308,8 +311,11 @@ def analyze(csv_path: Path, initial_target: float = 200.0,
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="ytd_compounding_replay")
     p.add_argument("csv", help="Path to Coinbase Advanced Trade YTD CSV")
-    p.add_argument("--out", default="docs/audits/2026-07-25_ytd_compounding_replay",
-                   help="Output directory for JSON + per-asset events")
+    p.add_argument(
+        "--out",
+        default="docs/audits/2026-07-25_ytd_compounding_replay",
+        help="Output directory for JSON + per-asset events",
+    )
     p.add_argument("--initial-target", type=float, default=200.0)
     p.add_argument("--max-growth-pct", type=float, default=1.0)
     args = p.parse_args(argv)
@@ -324,17 +330,20 @@ def main(argv: list[str] | None = None) -> int:
         max_target_growth_pct=args.max_growth_pct,
     )
     (out_dir / "summary.json").write_text(
-        json.dumps(summary, indent=2), encoding="utf-8")
+        json.dumps(summary, indent=2), encoding="utf-8"
+    )
     (out_dir / "per_asset_events.json").write_text(
-        json.dumps({r.asset: r.events for r in results if r.events},
-                   indent=2),
-        encoding="utf-8")
+        json.dumps({r.asset: r.events for r in results if r.events}, indent=2),
+        encoding="utf-8",
+    )
 
     # Terminal summary
     t = summary["totals"]
-    print(f"YTD compounding replay — v3.23.7 surplus formula")
+    print("YTD compounding replay — v3.23.7 surplus formula")
     print(f"  CSV:            {summary['csv_path']}")
-    print(f"  Window:         {summary['csv_window']['start']} → {summary['csv_window']['end']}")
+    print(
+        f"  Window:         {summary['csv_window']['start']} → {summary['csv_window']['end']}"
+    )
     print(f"  Assets traded:  {summary['assets_traded']}")
     print(f"  Buys:           {t['buys']:,}")
     print(f"  Sells:          {t['sells']:,}")
@@ -343,14 +352,15 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Target growth applied:       ${t['growth_applied_usd']:,.4f}")
     print(f"  Cycle-cap hits:              {t['cap_hits']:,}")
     print()
-    print(f"  Top-5 assets by growth applied:")
-    top = sorted(summary["per_asset"],
-                 key=lambda x: -x["growth_applied_usd"])[:5]
+    print("  Top-5 assets by growth applied:")
+    top = sorted(summary["per_asset"], key=lambda x: -x["growth_applied_usd"])[:5]
     for r in top:
-        print(f"    {r['asset']:>8s}  fb={r['fold_back_events']:>4d}  "
-              f"surplus=${r['surplus_generated_usd']:>9.4f}  "
-              f"growth=${r['growth_applied_usd']:>9.4f}  "
-              f"target=${r['final_target_balance']:>9.4f}")
+        print(
+            f"    {r['asset']:>8s}  fb={r['fold_back_events']:>4d}  "
+            f"surplus=${r['surplus_generated_usd']:>9.4f}  "
+            f"growth=${r['growth_applied_usd']:>9.4f}  "
+            f"target=${r['final_target_balance']:>9.4f}"
+        )
     print()
     print(f"  Output: {out_dir}/summary.json")
     print(f"          {out_dir}/per_asset_events.json")

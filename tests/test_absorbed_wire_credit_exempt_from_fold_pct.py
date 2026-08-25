@@ -70,8 +70,10 @@ kind that check exists to catch, where it must raise. Both readings are
 taken at the same surface -- the tranche dict's ``usd`` and ``units``, and
 the operator log -- because that is what the money and the operator see.
 """
+
 from __future__ import annotations
 
+import ast
 import copy
 import importlib.util
 import sys
@@ -88,9 +90,9 @@ if str(REPO) not in sys.path:
 
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
-SCRUMMING_BOT_SRC = (
-    REPO / "src" / "trading" / "scrumming_bot.py"
-).read_text(encoding="utf-8")
+SCRUMMING_BOT_SRC = (REPO / "src" / "trading" / "scrumming_bot.py").read_text(
+    encoding="utf-8"
+)
 
 # The defect signal this suite must be able to see is at its smallest when
 # the parked pool is smallest and the fold percentage is highest: at
@@ -122,21 +124,44 @@ def run_shipped_fold_block(self, scrum_usd, scrum_asset,
 
 
 def _fold_block_source() -> str:
-    """Return the scrum fold-ratio block, verbatim and dedented."""
+    """Return the scrum fold-ratio block, verbatim and dedented.
+
+    The end anchor marks the block's last *logical* line -- the fold-ratio
+    operator log. That log statement is wrapped across several physical lines
+    in the shipping source (``self._bus.emit(..., message=(...))``), so the
+    anchor line itself can fall inside the still-open call. Extend the slice
+    forward from the anchor until the dedented block is a complete parse --
+    i.e. every bracket the log statement opened has closed -- so churn in how
+    the message is wrapped can never truncate the block mid-statement.
+    """
     lines = SCRUMMING_BOT_SRC.splitlines()
     starts = [i for i, line in enumerate(lines) if _BLOCK_START in line]
     ends = [i for i, line in enumerate(lines) if _BLOCK_END in line]
     assert len(starts) == 1, (
         f"expected exactly one fold-ratio block start; found {len(starts)}. "
         f"The slice anchors no longer identify one block -- fix the anchors, "
-        f"do not delete the test.")
-    assert len(ends) == 1, (
-        f"expected exactly one fold-ratio block end; found {len(ends)}")
+        f"do not delete the test."
+    )
+    assert (
+        len(ends) == 1
+    ), f"expected exactly one fold-ratio block end; found {len(ends)}"
     assert ends[0] > starts[0], "fold-ratio block end precedes its start"
-    block = textwrap.dedent("\n".join(lines[starts[0]:ends[0] + 1]))
+    end = ends[0]
+    while True:
+        block = textwrap.dedent("\n".join(lines[starts[0] : end + 1]))
+        try:
+            ast.parse(block)
+            break
+        except SyntaxError:
+            end += 1
+            assert end < len(lines), (
+                "fold-ratio block never closes after its end anchor; the log "
+                "statement's brackets stay unbalanced to end of file -- fix "
+                "the anchors, do not delete the test."
+            )
     assert block.startswith("_fold_pct"), (
-        "dedent did not land the block at column 0; the source indentation "
-        "changed")
+        "dedent did not land the block at column 0; the source indentation " "changed"
+    )
     return block
 
 
@@ -151,7 +176,8 @@ def _load_block(*mutations: tuple[str, str]):
     for old, new in mutations:
         assert old in block, (
             f"planted defect does not match the shipping source: {old!r}. "
-            f"The control cannot fire, so it proves nothing.")
+            f"The control cannot fire, so it proves nothing."
+        )
         block = block.replace(old, new)
     text = _GENERATED_MODULE.format(body=textwrap.indent(block, "    "))
     holder = tempfile.TemporaryDirectory()
@@ -169,31 +195,42 @@ CLEAN = _load_block()
 
 # The historical defect: scale the SUMMED usd, wire credit included.
 PLANT_PRE_FIX = (
-    ('_t["usd"] = _wire_usd + _scrummed_usd * _fold_frac',
-     '_t["usd"] = _full_usd * _fold_frac'),
-    ("_skim_proceeds = _scrummed_usd * (1 - _fold_frac)",
-     "_skim_proceeds = _full_usd * (1 - _fold_frac)"),
+    (
+        '_t["usd"] = _wire_usd + _scrummed_usd * _fold_frac',
+        '_t["usd"] = _full_usd * _fold_frac',
+    ),
+    (
+        "_skim_proceeds = _scrummed_usd * (1 - _fold_frac)",
+        "_skim_proceeds = _full_usd * (1 - _fold_frac)",
+    ),
 )
 
 # The plausible-but-broken fix: exempt what the `wire_credits` record
 # says instead of what the units say. Correct on a bot whose ledger
 # survived, useless on the two live bots whose ledger did not.
-_RECORDED = ("min(max(sum(float(_e.get('usd', 0.0) or 0.0) for _e in "
-             "(_t.get('wire_credits') or [])), 0.0), _full_usd)")
+_RECORDED = (
+    "min(max(sum(float(_e.get('usd', 0.0) or 0.0) for _e in "
+    "(_t.get('wire_credits') or [])), 0.0), _full_usd)"
+)
 PLANT_EXEMPT_BY_PROVENANCE = (
-    ("_wire_usd = _full_usd - _scrummed_usd",
-     f"_wire_usd = {_RECORDED}"),
-    ('_t["usd"] = _wire_usd + _scrummed_usd * _fold_frac',
-     '_t["usd"] = _wire_usd + (_full_usd - _wire_usd) * _fold_frac'),
-    ("_skim_proceeds = _scrummed_usd * (1 - _fold_frac)",
-     "_skim_proceeds = (_full_usd - _wire_usd) * (1 - _fold_frac)"),
+    ("_wire_usd = _full_usd - _scrummed_usd", f"_wire_usd = {_RECORDED}"),
+    (
+        '_t["usd"] = _wire_usd + _scrummed_usd * _fold_frac',
+        '_t["usd"] = _wire_usd + (_full_usd - _wire_usd) * _fold_frac',
+    ),
+    (
+        "_skim_proceeds = _scrummed_usd * (1 - _fold_frac)",
+        "_skim_proceeds = (_full_usd - _wire_usd) * (1 - _fold_frac)",
+    ),
 )
 
 # Drop a tenth of the folded proceeds on the floor: the split stops
 # summing to what went in.
 PLANT_VALUE_LEAK = (
-    ('_t["usd"] = _wire_usd + _scrummed_usd * _fold_frac',
-     '_t["usd"] = _wire_usd + _scrummed_usd * _fold_frac * 0.9'),
+    (
+        '_t["usd"] = _wire_usd + _scrummed_usd * _fold_frac',
+        '_t["usd"] = _wire_usd + _scrummed_usd * _fold_frac * 0.9',
+    ),
 )
 
 # The same leak, on the RETIRED side. The sweep checks the wire half
@@ -204,16 +241,13 @@ PLANT_VALUE_LEAK = (
 # `_skim_usd` leaves the tranche untouched, so the wire assertion passes
 # and conservation is the one that must go red.
 PLANT_RETIRED_LEAK = (
-    ("_skim_usd += _skim_proceeds",
-     "_skim_usd += _skim_proceeds * 0.9"),
+    ("_skim_usd += _skim_proceeds", "_skim_usd += _skim_proceeds * 0.9"),
 )
 
 # Let the block run at 100% and halve the fraction while it is there.
 PLANT_TOUCHES_FULL_FOLD_BOT = (
-    ("if _fold_pct < 100 and _new_tranches:",
-     "if _fold_pct <= 100 and _new_tranches:"),
-    ("_fold_frac = _fold_pct / 100.0",
-     "_fold_frac = _fold_pct / 200.0"),
+    ("if _fold_pct < 100 and _new_tranches:", "if _fold_pct <= 100 and _new_tranches:"),
+    ("_fold_frac = _fold_pct / 100.0", "_fold_frac = _fold_pct / 200.0"),
 )
 
 
@@ -228,8 +262,9 @@ class _Bus:
         self.messages.append((event, kwargs))
 
     def logs(self) -> list[str]:
-        return [str(kw.get("message", "")) for ev, kw in self.messages
-                if ev == "bot.log"]
+        return [
+            str(kw.get("message", "")) for ev, kw in self.messages if ev == "bot.log"
+        ]
 
 
 class _Config:
@@ -252,11 +287,15 @@ class _Bot:
         self._fold_tranches: list[dict] = []
         self._pending_wire_credits = 0.0
         self._pending_wire_ledger: list[dict] = []
-        self._add_wire_credits = types.MethodType(
-            ScrummingBot._add_wire_credits, self)
+        self._add_wire_credits = types.MethodType(ScrummingBot._add_wire_credits, self)
 
-    def park(self, usd: float, source: str = "peer-bot", entries: int = 1,
-             ledger_usd: float | None = None) -> None:
+    def park(
+        self,
+        usd: float,
+        source: str = "peer-bot",
+        entries: int = 1,
+        ledger_usd: float | None = None,
+    ) -> None:
         """Park wire income exactly as ``apply_wire_income`` case 2 does.
 
         ``ledger_usd`` models the v3.24.49 restart gap: the parked TOTAL
@@ -268,14 +307,17 @@ class _Bot:
         share = recorded / entries
         for i in range(entries):
             self._pending_wire_ledger.append(
-                {"ts": 1000.0 + i, "source": source, "usd": share,
-                 "ref": f"wire-{i}"})
+                {"ts": 1000.0 + i, "source": source, "usd": share, "ref": f"wire-{i}"}
+            )
 
-    def build_tranche(self, usd: float, units: float,
-                      initial_buy_price: float) -> dict:
-        tranche = {"usd": usd, "units": units, "ref": 100.0,
-                   "initial_buy_price": initial_buy_price,
-                   "created_ts": 1.0}
+    def build_tranche(self, usd: float, units: float, initial_buy_price: float) -> dict:
+        tranche = {
+            "usd": usd,
+            "units": units,
+            "ref": 100.0,
+            "initial_buy_price": initial_buy_price,
+            "created_ts": 1.0,
+        }
         self._fold_tranches.append(tranche)
         return tranche
 
@@ -320,9 +362,16 @@ class _Spread:
         return low + (high - low) * self._x
 
 
-def _scrum(module, bot: _Bot, parked: float, proceeds: float,
-           units: float = 1.0, price: float = 100.0,
-           entries: int = 1, ledger_usd: float | None = None) -> dict:
+def _scrum(
+    module,
+    bot: _Bot,
+    parked: float,
+    proceeds: float,
+    units: float = 1.0,
+    price: float = 100.0,
+    entries: int = 1,
+    ledger_usd: float | None = None,
+) -> dict:
     """One autonomous scrum on a bot that held zero tranches.
 
     Parks ``parked``, sells ``units`` for ``proceeds``, builds the single
@@ -347,7 +396,8 @@ def _check_absorbed_credit_lands_at_full_value(module) -> None:
     wire_present = tranche["usd"] - 100.0 * 0.5
     assert round(wire_present, 2) == 343.68, (
         f"absorbed wire credit must reach the fold queue at full value; "
-        f"tranche holds ${wire_present:.4f} of $343.68")
+        f"tranche holds ${wire_present:.4f} of $343.68"
+    )
 
 
 def _check_own_proceeds_are_still_scaled(module) -> None:
@@ -356,12 +406,14 @@ def _check_own_proceeds_are_still_scaled(module) -> None:
     proceeds_present = tranche["usd"] - 343.68
     assert round(proceeds_present, 2) == 50.00, (
         f"the scrum's OWN proceeds must still be folded at 50%; "
-        f"${proceeds_present:.4f} of $100.00 queued")
+        f"${proceeds_present:.4f} of $100.00 queued"
+    )
     assert round(bot.retired_usd(), 2) == 50.00, (
-        f"the retired half must be proceeds only; log says "
-        f"${bot.retired_usd():.4f}")
-    assert round(tranche["units"], 9) == 0.5, (
-        "units carry no wire credit and must still be scaled in full")
+        f"the retired half must be proceeds only; log says " f"${bot.retired_usd():.4f}"
+    )
+    assert (
+        round(tranche["units"], 9) == 0.5
+    ), "units carry no wire credit and must still be scaled in full"
 
 
 def _check_the_live_ledger_gap_does_not_defeat_the_fix(module) -> None:
@@ -372,13 +424,21 @@ def _check_the_live_ledger_gap_does_not_defeat_the_fix(module) -> None:
     designs apart, so it carries the provenance-based fix as its plant.
     """
     bot = _Bot(scrum_fold_pct=50)
-    tranche = _scrum(module, bot, parked=343.6824420629954, proceeds=200.0,
-                     units=0.00399929, entries=3, ledger_usd=1.425739)
+    tranche = _scrum(
+        module,
+        bot,
+        parked=343.6824420629954,
+        proceeds=200.0,
+        units=0.00399929,
+        entries=3,
+        ledger_usd=1.425739,
+    )
     wire_present = tranche["usd"] - 200.0 * 0.5
     assert round(wire_present, 2) == 343.68, (
         f"the exempt amount must follow the MONEY, not the ledger: only "
         f"${wire_present:.2f} of $343.68 survived, so ${343.68 - wire_present:.2f} "
-        f"of wired-in money was retired as cash")
+        f"of wired-in money was retired as cash"
+    )
 
 
 def _check_provenance_never_overstates(module) -> None:
@@ -391,21 +451,33 @@ def _check_provenance_never_overstates(module) -> None:
     record under-states -- a pre-existing v3.24.49 gap this change does
     not widen and does not repair.
     """
-    for entries, ledger_usd, exact in ((1, None, True), (3, None, True),
-                                       (3, 1.425739, False)):
+    for entries, ledger_usd, exact in (
+        (1, None, True),
+        (3, None, True),
+        (3, 1.425739, False),
+    ):
         bot = _Bot(scrum_fold_pct=40)
-        tranche = _scrum(module, bot, parked=343.68, proceeds=100.0,
-                         entries=entries, ledger_usd=ledger_usd)
-        recorded = sum(float(e.get("usd", 0.0) or 0.0)
-                       for e in tranche.get("wire_credits") or [])
+        tranche = _scrum(
+            module,
+            bot,
+            parked=343.68,
+            proceeds=100.0,
+            entries=entries,
+            ledger_usd=ledger_usd,
+        )
+        recorded = sum(
+            float(e.get("usd", 0.0) or 0.0) for e in tranche.get("wire_credits") or []
+        )
         present = tranche["usd"] - 100.0 * 0.40
         assert recorded <= present + MONEY_TOL_USD, (
             f"provenance over-states: the record claims ${recorded:.6f} but "
-            f"only ${present:.6f} of wire money is in the tranche")
+            f"only ${present:.6f} of wire money is in the tranche"
+        )
         if exact:
             assert round(recorded, 2) == round(present, 2), (
                 "with an intact ledger the record and the money must agree "
-                "to the cent")
+                "to the cent"
+            )
 
 
 def _check_full_fold_bot_is_untouched(module) -> None:
@@ -418,10 +490,12 @@ def _check_full_fold_bot_is_untouched(module) -> None:
 
     module.run_shipped_fold_block(bot, 100.0, 1.0, 0)
 
-    assert bot._fold_tranches == before, (
-        "a bot at scrum_fold_pct=100 must come out identical")
-    assert len(bot._bus.logs()) == logs_before, (
-        "a bot at scrum_fold_pct=100 must not emit a FOLD RATIO line")
+    assert (
+        bot._fold_tranches == before
+    ), "a bot at scrum_fold_pct=100 must come out identical"
+    assert (
+        len(bot._bus.logs()) == logs_before
+    ), "a bot at scrum_fold_pct=100 must not emit a FOLD RATIO line"
     assert round(tranche["usd"], 2) == 443.68
 
 
@@ -440,7 +514,8 @@ def _check_value_is_conserved(module) -> None:
             f"value is not conserved at scrum_fold_pct={fold_pct}: "
             f"${before:.6f} in, ${after:.6f} out "
             f"(${tranche['usd']:.6f} queued + ${bot.retired_usd():.6f} "
-            f"retired)")
+            f"retired)"
+        )
 
 
 def _check_sweep(module) -> None:
@@ -457,8 +532,7 @@ def _check_sweep(module) -> None:
     """
     spread = _Spread()
     parked_values = [0.01, 0.13, 1.0, 12.34, 343.68, 1000.0, 99999.99]
-    parked_values += [round(spread.between(0.01, 50000.0), 2)
-                      for _ in range(8)]
+    parked_values += [round(spread.between(0.01, 50000.0), 2) for _ in range(8)]
     checked = 0
     for fold_pct in range(0, 100):
         frac = fold_pct / 100.0
@@ -467,34 +541,46 @@ def _check_sweep(module) -> None:
             units = spread.between(0.001, 40.0)
             gap = parked * 0.004 if index % 3 == 0 else None
             bot = _Bot(scrum_fold_pct=fold_pct)
-            tranche = _scrum(module, bot, parked=parked, proceeds=proceeds,
-                             units=units, ledger_usd=gap)
+            tranche = _scrum(
+                module,
+                bot,
+                parked=parked,
+                proceeds=proceeds,
+                units=units,
+                ledger_usd=gap,
+            )
 
             wire_present = tranche["usd"] - proceeds * frac
             assert abs(wire_present - parked) <= MONEY_TOL_USD, (
                 f"fold_pct={fold_pct} parked=${parked} proceeds=${proceeds}: "
                 f"${wire_present:.9f} of wire money survived, expected "
-                f"${parked}")
+                f"${parked}"
+            )
 
-            recorded = sum(float(e.get("usd", 0.0) or 0.0)
-                           for e in tranche.get("wire_credits") or [])
+            recorded = sum(
+                float(e.get("usd", 0.0) or 0.0)
+                for e in tranche.get("wire_credits") or []
+            )
             assert recorded <= wire_present + MONEY_TOL_USD, (
                 f"fold_pct={fold_pct} parked=${parked}: provenance "
                 f"${recorded:.9f} over-states the ${wire_present:.9f} "
-                f"present")
+                f"present"
+            )
 
             total_out = tranche["usd"] + bot.retired_usd()
             assert abs(total_out - (parked + proceeds)) <= MONEY_TOL_USD, (
                 f"conservation broken at fold_pct={fold_pct} "
                 f"parked=${parked} proceeds=${proceeds}: "
-                f"${parked + proceeds:.9f} in, ${total_out:.9f} out")
+                f"${parked + proceeds:.9f} in, ${total_out:.9f} out"
+            )
 
-            assert abs(tranche["units"] - units * frac) <= MONEY_TOL_USD, (
-                f"fold_pct={fold_pct}: units must be scaled in full")
+            assert (
+                abs(tranche["units"] - units * frac) <= MONEY_TOL_USD
+            ), f"fold_pct={fold_pct}: units must be scaled in full"
 
-            assert abs(bot.queued_usd_from_log()
-                       - tranche["usd"]) <= 1e-4, (
-                "the FOLD RATIO log must report the queue it just wrote")
+            assert (
+                abs(bot.queued_usd_from_log() - tranche["usd"]) <= 1e-4
+            ), "the FOLD RATIO log must report the queue it just wrote"
             checked += 1
     assert checked == 100 * len(parked_values)
 
@@ -535,14 +621,16 @@ def test_sweep_over_the_whole_fold_domain():
 
 def test_control_full_value_check_fails_on_the_original_defect():
     with pytest.raises(AssertionError, match="full value"):
-        _check_absorbed_credit_lands_at_full_value(
-            _load_block(*PLANT_PRE_FIX))
+        _check_absorbed_credit_lands_at_full_value(_load_block(*PLANT_PRE_FIX))
 
 
 def test_control_proceeds_check_fails_when_the_fold_fraction_is_dropped():
     plant = _load_block(
-        ('_t["usd"] = _wire_usd + _scrummed_usd * _fold_frac',
-         '_t["usd"] = _wire_usd + _scrummed_usd'))
+        (
+            '_t["usd"] = _wire_usd + _scrummed_usd * _fold_frac',
+            '_t["usd"] = _wire_usd + _scrummed_usd',
+        )
+    )
     with pytest.raises(AssertionError, match="OWN proceeds"):
         _check_own_proceeds_are_still_scaled(plant)
 
@@ -555,7 +643,8 @@ def test_control_ledger_gap_check_fails_on_the_provenance_based_fix():
     """
     with pytest.raises(AssertionError, match="follow the MONEY"):
         _check_the_live_ledger_gap_does_not_defeat_the_fix(
-            _load_block(*PLANT_EXEMPT_BY_PROVENANCE))
+            _load_block(*PLANT_EXEMPT_BY_PROVENANCE)
+        )
 
 
 def test_control_provenance_check_fails_when_the_record_overstates():
@@ -565,8 +654,7 @@ def test_control_provenance_check_fails_when_the_record_overstates():
 
 def test_control_full_fold_check_fails_when_the_block_touches_that_bot():
     with pytest.raises(AssertionError, match="scrum_fold_pct=100"):
-        _check_full_fold_bot_is_untouched(
-            _load_block(*PLANT_TOUCHES_FULL_FOLD_BOT))
+        _check_full_fold_bot_is_untouched(_load_block(*PLANT_TOUCHES_FULL_FOLD_BOT))
 
 
 def test_control_conservation_check_fails_on_a_value_leak():

@@ -20,12 +20,11 @@ fingerprint rather than a bare count, because "+3" cannot distinguish a
 leak from legitimate growth and the failure message would be
 unactionable.
 """
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
-
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -108,8 +107,9 @@ class TestSubscriptionsCanBeRetracted:
         live = get_event_bus()
         before = live.subscription_fingerprint()
         mgr = BotManager()
-        assert live.subscription_fingerprint() != before, (
-            "a default-constructed manager should attach to the live bus")
+        assert (
+            live.subscription_fingerprint() != before
+        ), "a default-constructed manager should attach to the live bus"
         mgr.detach_bus()
         assert live.subscription_fingerprint() == before
 
@@ -131,24 +131,29 @@ class TestTheNuclearControllerInjects:
         so the fix must be visible as an argument at the call site."""
         import ast
 
-        nc = (REPO_ROOT / "src" / "gui" / "simulator_tab"
-              / "nuclear_controller.py")
+        nc = REPO_ROOT / "src" / "gui" / "simulator_tab" / "nuclear_controller.py"
         tree = ast.parse(nc.read_text(encoding="utf-8"))
-        calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
-                 and getattr(n.func, "id", "") == "BotManager"]
+        calls = [
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "BotManager"
+        ]
         assert calls, "BotManager is no longer constructed here"
         for c in calls:
             kw = {k.arg for k in c.keywords if k.arg}
             assert "bus" in kw, (
                 f"BotManager at line {c.lineno} is constructed without an "
-                f"injected bus; rebinding ._bus afterwards is too late")
+                f"injected bus; rebinding ._bus afterwards is too late"
+            )
 
     def test_teardown_detaches(self):
         import ast
 
-        nc = (REPO_ROOT / "src" / "gui" / "simulator_tab"
-              / "nuclear_controller.py")
+        nc = REPO_ROOT / "src" / "gui" / "simulator_tab" / "nuclear_controller.py"
         tree = ast.parse(nc.read_text(encoding="utf-8"))
-        calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
-                 and getattr(n.func, "attr", "") == "detach_bus"]
+        calls = [
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "detach_bus"
+        ]
         assert calls, "nuclear teardown never retracts the subscriptions"

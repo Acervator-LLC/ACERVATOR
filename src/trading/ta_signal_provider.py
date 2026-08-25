@@ -77,15 +77,15 @@ watch list per tick.
 
 sadp: R28  # TA producer: fail-loudly on bad data, fail-safe on insufficient candles
 """
+
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from .ta_engine import (
     BBProximityResult,
-    Candle,
     SignalDirection,
     VotingEngine,
     VotingSummary,
@@ -99,6 +99,7 @@ logger = logging.getLogger("acervator.ta_signal_provider")
 # ─────────────────────────────────────────────────────────────────────
 # Data container
 # ─────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class TASnapshot:
@@ -114,6 +115,7 @@ class TASnapshot:
     to the top level (e.g. the raw signal list, landing-strip
     consolidation strength).
     """
+
     # Identity
     symbol: str
     timeframe: str
@@ -153,6 +155,7 @@ class TASnapshot:
 # ─────────────────────────────────────────────────────────────────────
 # Provider
 # ─────────────────────────────────────────────────────────────────────
+
 
 class TASignalProvider:
     """Per-symbol TA snapshot producer.
@@ -233,7 +236,10 @@ class TASignalProvider:
         except Exception as exc:  # R28-OK: TA fetch is per-tick best-effort
             logger.debug(
                 "TASignalProvider %s: get_ohlcv raised %s: %s",
-                symbol, type(exc).__name__, exc)
+                symbol,
+                type(exc).__name__,
+                exc,
+            )
             return None
 
         try:
@@ -241,7 +247,10 @@ class TASignalProvider:
         except Exception as exc:  # R28-OK: malformed candle data; skip tick
             logger.debug(
                 "TASignalProvider %s: candles_from_raw raised %s: %s",
-                symbol, type(exc).__name__, exc)
+                symbol,
+                type(exc).__name__,
+                exc,
+            )
             return None
 
         if len(candles) < self._min_candles:
@@ -251,22 +260,26 @@ class TASignalProvider:
         # 7-indicator aggregator — same instance ScrummingBot uses
         # inline; just invoked from a different call site.
         try:
-            summary = self._voting_engine.compute_all(
-                candles, self._timeframe)
+            summary = self._voting_engine.compute_all(candles, self._timeframe)
         except Exception as exc:  # R28-OK: voting failure; skip tick
             logger.debug(
                 "TASignalProvider %s: voting compute_all raised %s: %s",
-                symbol, type(exc).__name__, exc)
+                symbol,
+                type(exc).__name__,
+                exc,
+            )
             return None
 
         # BB proximity (also produces landing-strip detection).
         try:
-            bb_result = detect_bb_proximity(
-                candles, tolerance_pct=self._bb_tolerance)
+            bb_result = detect_bb_proximity(candles, tolerance_pct=self._bb_tolerance)
         except Exception as exc:  # R28-OK: BB compute failure; skip tick
             logger.debug(
                 "TASignalProvider %s: detect_bb_proximity raised %s: %s",
-                symbol, type(exc).__name__, exc)
+                symbol,
+                type(exc).__name__,
+                exc,
+            )
             return None
 
         # Direction primitives.

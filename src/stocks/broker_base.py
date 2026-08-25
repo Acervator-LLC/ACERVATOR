@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
@@ -30,12 +30,12 @@ class OrderSide(Enum):
 
 
 class TimeInForce(Enum):
-    DAY = "day"         # Cancel at market close
-    GTC = "gtc"         # Good 'til cancelled
-    IOC = "ioc"         # Immediate or cancel
-    FOK = "fok"         # Fill or kill
-    OPG = "opg"         # Market on open
-    CLS = "cls"         # Market on close
+    DAY = "day"  # Cancel at market close
+    GTC = "gtc"  # Good 'til cancelled
+    IOC = "ioc"  # Immediate or cancel
+    FOK = "fok"  # Fill or kill
+    OPG = "opg"  # Market on open
+    CLS = "cls"  # Market on close
 
 
 class PositionSide(Enum):
@@ -46,6 +46,7 @@ class PositionSide(Enum):
 @dataclass
 class StockOrder:
     """Represents a stock order."""
+
     order_id: str = ""
     symbol: str = ""
     side: OrderSide = OrderSide.BUY
@@ -64,8 +65,9 @@ class StockOrder:
 @dataclass
 class StockPosition:
     """Current position in a stock."""
+
     symbol: str
-    quantity: float         # Positive = long, negative = short
+    quantity: float  # Positive = long, negative = short
     avg_entry_price: float
     current_price: float
     market_value: float
@@ -77,6 +79,7 @@ class StockPosition:
 @dataclass
 class AccountInfo:
     """Broker account summary."""
+
     account_id: str = ""
     equity: float = 0
     cash: float = 0
@@ -91,6 +94,7 @@ class AccountInfo:
 @dataclass
 class StockQuote:
     """Real-time stock quote."""
+
     symbol: str
     bid: float = 0
     ask: float = 0
@@ -138,11 +142,16 @@ class BrokerBase(ABC):
         ...
 
     @abstractmethod
-    async def place_order(self, symbol: str, side: OrderSide, quantity: float,
-                          order_type: OrderType = OrderType.MARKET,
-                          limit_price: float = 0, stop_price: float = 0,
-                          time_in_force: TimeInForce = TimeInForce.DAY
-                          ) -> StockOrder:
+    async def place_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+        quantity: float,
+        order_type: OrderType = OrderType.MARKET,
+        limit_price: float = 0,
+        stop_price: float = 0,
+        time_in_force: TimeInForce = TimeInForce.DAY,
+    ) -> StockOrder:
         """Place an order."""
         ...
 
@@ -167,8 +176,9 @@ class BrokerBase(ABC):
         ...
 
     @abstractmethod
-    async def get_bars(self, symbol: str, timeframe: str = "1D",
-                       limit: int = 100) -> list[dict]:
+    async def get_bars(
+        self, symbol: str, timeframe: str = "1D", limit: int = 100
+    ) -> list[dict]:
         """Get OHLCV bars. timeframe: 1Min, 5Min, 15Min, 1H, 1D, 1W."""
         ...
 

@@ -19,7 +19,12 @@ Usage:
     python download_archive.py --list           # Show what's been archived
 """
 
-import json, sys, time, urllib.request, os, subprocess, importlib.util
+import json
+import sys
+import time
+import urllib.request
+import subprocess
+import importlib.util
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -56,13 +61,14 @@ def check_dependencies():
             else:
                 print("FAILED")
                 print(f"    Manual install: pip install {pip_name}")
-                print(f"    Continuing with curated coins only.\n")
+                print("    Continuing with curated coins only.\n")
                 return False
         print()
         return True
     else:
         print("    Skipping — will use curated 40-coin list only.\n")
         return False
+
 
 DATA_DIR = Path(__file__).parent / "data" / "historical"
 USER_DIR = Path.home() / ".acervator" / "historical_cache"
@@ -71,9 +77,21 @@ CG_COINS_CACHE = DATA_DIR / "_coingecko_coins_list.json"
 
 # Our 15 supported exchanges (CCXT IDs)
 EXCHANGES = [
-    "binance", "coinbase", "kraken", "kucoin", "bybit",
-    "okx", "gateio", "bitget", "huobi", "mexc",
-    "bitfinex", "gemini", "poloniex", "bitstamp", "cryptocom",
+    "binance",
+    "coinbase",
+    "kraken",
+    "kucoin",
+    "bybit",
+    "okx",
+    "gateio",
+    "bitget",
+    "huobi",
+    "mexc",
+    "bitfinex",
+    "gemini",
+    "poloniex",
+    "bitstamp",
+    "cryptocom",
 ]
 
 # Quote currencies we care about (USD-equivalent pairs)
@@ -81,20 +99,46 @@ QUOTE_CURRENCIES = {"USDT", "USD", "USDC", "BUSD", "TUSD", "DAI", "FDUSD"}
 
 # Curated fallback: 40 core coins (used if exchange scan fails)
 CURATED_COINS = {
-    "BTC": "bitcoin", "ETH": "ethereum", "BNB": "binancecoin",
-    "SOL": "solana", "XRP": "ripple", "DOGE": "dogecoin",
-    "ADA": "cardano", "AVAX": "avalanche-2", "DOT": "polkadot",
-    "LINK": "chainlink", "MATIC": "matic-network", "SHIB": "shiba-inu",
-    "LTC": "litecoin", "UNI": "uniswap", "ATOM": "cosmos",
-    "XLM": "stellar", "ALGO": "algorand", "NEAR": "near",
-    "APT": "aptos", "SUI": "sui", "FIL": "filecoin",
-    "ARB": "arbitrum", "OP": "optimism", "BONK": "bonk",
-    "PEPE": "pepe", "WIF": "dogwifhat", "FLOKI": "floki",
-    "RENDER": "render-token", "INJ": "injective-protocol",
-    "SEI": "sei-network", "TIA": "celestia", "JUP": "jupiter-exchange-solana",
-    "AAVE": "aave", "MKR": "maker", "CRV": "curve-dao-token",
-    "RUNE": "thorchain", "FTM": "fantom", "SAND": "the-sandbox",
-    "MANA": "decentraland", "GRT": "the-graph",
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "BNB": "binancecoin",
+    "SOL": "solana",
+    "XRP": "ripple",
+    "DOGE": "dogecoin",
+    "ADA": "cardano",
+    "AVAX": "avalanche-2",
+    "DOT": "polkadot",
+    "LINK": "chainlink",
+    "MATIC": "matic-network",
+    "SHIB": "shiba-inu",
+    "LTC": "litecoin",
+    "UNI": "uniswap",
+    "ATOM": "cosmos",
+    "XLM": "stellar",
+    "ALGO": "algorand",
+    "NEAR": "near",
+    "APT": "aptos",
+    "SUI": "sui",
+    "FIL": "filecoin",
+    "ARB": "arbitrum",
+    "OP": "optimism",
+    "BONK": "bonk",
+    "PEPE": "pepe",
+    "WIF": "dogwifhat",
+    "FLOKI": "floki",
+    "RENDER": "render-token",
+    "INJ": "injective-protocol",
+    "SEI": "sei-network",
+    "TIA": "celestia",
+    "JUP": "jupiter-exchange-solana",
+    "AAVE": "aave",
+    "MKR": "maker",
+    "CRV": "curve-dao-token",
+    "RUNE": "thorchain",
+    "FTM": "fantom",
+    "SAND": "the-sandbox",
+    "MANA": "decentraland",
+    "GRT": "the-graph",
 }
 
 
@@ -106,13 +150,16 @@ def fetch_coingecko_coin_list() -> dict:
         age_hrs = (time.time() - CG_COINS_CACHE.stat().st_mtime) / 3600
         if age_hrs < 24:
             coins = json.loads(CG_COINS_CACHE.read_text())
-            print(f"  CoinGecko registry: {len(coins)} coins (cached {age_hrs:.0f}h ago)")
+            print(
+                f"  CoinGecko registry: {len(coins)} coins (cached {age_hrs:.0f}h ago)"
+            )
             return coins
 
     print("  Fetching CoinGecko coin registry (~15,000 coins)...")
     url = "https://api.coingecko.com/api/v3/coins/list"
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Acervator/3.1", "Accept": "application/json"})
+    req = urllib.request.Request(
+        url, headers={"User-Agent": "Acervator/3.1", "Accept": "application/json"}
+    )
     with urllib.request.urlopen(req, timeout=30) as resp:
         raw = json.loads(resp.read())
 
@@ -125,8 +172,7 @@ def fetch_coingecko_coin_list() -> dict:
         if sym and len(sym) <= 10:
             if sym not in registry:
                 registry[sym] = []
-            registry[sym].append({
-                "id": coin["id"], "name": coin.get("name", "")})
+            registry[sym].append({"id": coin["id"], "name": coin.get("name", "")})
 
     CG_COINS_CACHE.write_text(json.dumps(registry, indent=1))
     print(f"  CoinGecko registry: {len(registry)} unique symbols cached")
@@ -167,11 +213,21 @@ def scan_exchanges() -> dict:
 
     # CoinGecko exchange IDs for fallback
     CG_EXCHANGE_IDS = {
-        "bybit": "bybit_spot", "huobi": "huobi", "poloniex": "poloniex",
-        "okx": "okx", "binance": "binance", "coinbase": "gdax",
-        "kraken": "kraken", "kucoin": "kucoin", "gateio": "gate",
-        "bitget": "bitget", "mexc": "mxc", "bitfinex": "bitfinex",
-        "gemini": "gemini", "bitstamp": "bitstamp", "cryptocom": "crypto_com",
+        "bybit": "bybit_spot",
+        "huobi": "huobi",
+        "poloniex": "poloniex",
+        "okx": "okx",
+        "binance": "binance",
+        "coinbase": "gdax",
+        "kraken": "kraken",
+        "kucoin": "kucoin",
+        "gateio": "gate",
+        "bitget": "bitget",
+        "mexc": "mxc",
+        "bitfinex": "bitfinex",
+        "gemini": "gemini",
+        "bitstamp": "bitstamp",
+        "cryptocom": "crypto_com",
     }
     us_blocked = {"bybit", "huobi", "poloniex"}
 
@@ -180,11 +236,14 @@ def scan_exchanges() -> dict:
         cg_eid = CG_EXCHANGE_IDS.get(eid, eid)
         coins = set()
         for page in range(1, 6):
-            url = (f"https://api.coingecko.com/api/v3/exchanges/{cg_eid}"
-                   f"/tickers?page={page}")
-            req = urllib.request.Request(url, headers={
-                "User-Agent": "Acervator/3.1",
-                "Accept": "application/json"})
+            url = (
+                f"https://api.coingecko.com/api/v3/exchanges/{cg_eid}"
+                f"/tickers?page={page}"
+            )
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "Acervator/3.1", "Accept": "application/json"},
+            )
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read())
             tickers = data.get("tickers", [])
@@ -236,13 +295,16 @@ def scan_exchanges() -> dict:
 
 
 # ── Phase 3: Merge and map ────────────────────────────────────────
-def build_download_list(exchange_coins: dict, cg_registry: dict,
-                        curated_only: bool = False) -> list:
+def build_download_list(
+    exchange_coins: dict, cg_registry: dict, curated_only: bool = False
+) -> list:
     """Build final list of (symbol, cg_id, name, exchanges) to download."""
     if curated_only or not exchange_coins:
         # Use curated 40 only
-        return [(sym, cg_id, sym, ["curated"])
-                for sym, cg_id in sorted(CURATED_COINS.items())]
+        return [
+            (sym, cg_id, sym, ["curated"])
+            for sym, cg_id in sorted(CURATED_COINS.items())
+        ]
 
     result = []
     seen_ids = set()
@@ -268,10 +330,13 @@ def build_download_list(exchange_coins: dict, cg_registry: dict,
 # ── Phase 4: Download ─────────────────────────────────────────────
 def fetch_coingecko(cg_id: str, vs: str = "usd") -> list:
     """Source 1: CoinGecko /market_chart — free, days=max."""
-    url = (f"https://api.coingecko.com/api/v3/coins/{cg_id}"
-           f"/market_chart?vs_currency={vs}&days=max")
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Acervator/3.1", "Accept": "application/json"})
+    url = (
+        f"https://api.coingecko.com/api/v3/coins/{cg_id}"
+        f"/market_chart?vs_currency={vs}&days=max"
+    )
+    req = urllib.request.Request(
+        url, headers={"User-Agent": "Acervator/3.1", "Accept": "application/json"}
+    )
     with urllib.request.urlopen(req, timeout=30) as resp:
         prices = json.loads(resp.read()).get("prices", [])
     if not prices:
@@ -281,10 +346,10 @@ def fetch_coingecko(cg_id: str, vs: str = "usd") -> list:
 
 _ccxt_market_cache = {}  # Module-level cache: {eid: {"instance": ex, "symbols": set}}
 
+
 def fetch_ccxt_ohlcv(sym: str, vs: str = "usd") -> list:
     """Source 2: CCXT OHLCV — pre-checks pair availability on US exchanges."""
     import ccxt
-    global _ccxt_market_cache
 
     EXCHANGES = [
         ("kraken", ["USD", "USDT"]),
@@ -304,8 +369,7 @@ def fetch_ccxt_ohlcv(sym: str, vs: str = "usd") -> list:
                     continue
                 ex = ex_cls()
                 ex.load_markets()
-                _ccxt_market_cache[eid] = {
-                    "instance": ex, "symbols": set(ex.symbols)}
+                _ccxt_market_cache[eid] = {"instance": ex, "symbols": set(ex.symbols)}
             cache = _ccxt_market_cache[eid]
             for q in quotes:
                 pair = f"{sym}/{q}"
@@ -346,10 +410,13 @@ def fetch_coincap(cg_id: str) -> list:
     """Source 3: CoinCap.io — free, no auth."""
     start = int((time.time() - 365 * 10 * 86400) * 1000)
     end = int(time.time() * 1000)
-    url = (f"https://api.coincap.io/v2/assets/{cg_id}/history"
-           f"?interval=d1&start={start}&end={end}")
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Acervator/3.1", "Accept": "application/json"})
+    url = (
+        f"https://api.coincap.io/v2/assets/{cg_id}/history"
+        f"?interval=d1&start={start}&end={end}"
+    )
+    req = urllib.request.Request(
+        url, headers={"User-Agent": "Acervator/3.1", "Accept": "application/json"}
+    )
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
             data = json.loads(resp.read())
@@ -359,8 +426,11 @@ def fetch_coincap(cg_id: str) -> list:
     if not points:
         err = data.get("error", data.get("message", "empty"))
         raise ValueError(f"No data: {err}")
-    prices = [[int(p["time"]), float(p["priceUsd"])] for p in points
-              if "time" in p and "priceUsd" in p]
+    prices = [
+        [int(p["time"]), float(p["priceUsd"])]
+        for p in points
+        if "time" in p and "priceUsd" in p
+    ]
     if not prices:
         raise ValueError("No valid price points")
     return prices
@@ -368,10 +438,11 @@ def fetch_coincap(cg_id: str) -> list:
 
 def fetch_cryptocompare(sym: str, vs: str = "usd") -> list:
     """Source 4: CryptoCompare — uses ticker symbols (BTC not bitcoin)."""
-    url = (f"https://min-api.cryptocompare.com/data/v2/histoday"
-           f"?fsym={sym}&tsym={vs.upper()}&limit=2000")
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Acervator/3.1"})
+    url = (
+        f"https://min-api.cryptocompare.com/data/v2/histoday"
+        f"?fsym={sym}&tsym={vs.upper()}&limit=2000"
+    )
+    req = urllib.request.Request(url, headers={"User-Agent": "Acervator/3.1"})
     with urllib.request.urlopen(req, timeout=20) as resp:
         data = json.loads(resp.read())
     if data.get("Response") == "Error":
@@ -422,17 +493,23 @@ def download_one(sym, cg_id, vs, force):
                     d = json.loads(f.read_text())
                     p = d.get("prices", d) if isinstance(d, dict) else d
                     if isinstance(p, list) and len(p) > 50:
-                        d0 = datetime.fromtimestamp(p[0][0]/1000)
-                        d1 = datetime.fromtimestamp(p[-1][0]/1000)
+                        d0 = datetime.fromtimestamp(p[0][0] / 1000)
+                        d1 = datetime.fromtimestamp(p[-1][0] / 1000)
                         yrs = (d1 - d0).days / 365.25
                         if f == uf and not bf.exists():
                             bf.write_text(f.read_text())
-                        return {"symbol": sym, "cg_id": cg_id,
-                                "points": len(p), "years": round(yrs, 1),
-                                "from": d0.strftime("%Y-%m-%d"),
-                                "to": d1.strftime("%Y-%m-%d"),
-                                "first_price": p[0][1], "last_price": p[-1][1],
-                                "file": fname, "status": "cached"}
+                        return {
+                            "symbol": sym,
+                            "cg_id": cg_id,
+                            "points": len(p),
+                            "years": round(yrs, 1),
+                            "from": d0.strftime("%Y-%m-%d"),
+                            "to": d1.strftime("%Y-%m-%d"),
+                            "first_price": p[0][1],
+                            "last_price": p[-1][1],
+                            "file": fname,
+                            "status": "cached",
+                        }
                 except Exception:
                     continue
 
@@ -445,13 +522,20 @@ def download_one(sym, cg_id, vs, force):
     uf.write_text(blob)
     time.sleep(2.0)
 
-    d0 = datetime.fromtimestamp(prices[0][0]/1000)
-    d1 = datetime.fromtimestamp(prices[-1][0]/1000)
-    return {"symbol": sym, "cg_id": cg_id, "points": len(prices),
-            "years": round((d1-d0).days/365.25, 1),
-            "from": d0.strftime("%Y-%m-%d"), "to": d1.strftime("%Y-%m-%d"),
-            "first_price": prices[0][1], "last_price": prices[-1][1],
-            "file": fname, "status": "downloaded"}
+    d0 = datetime.fromtimestamp(prices[0][0] / 1000)
+    d1 = datetime.fromtimestamp(prices[-1][0] / 1000)
+    return {
+        "symbol": sym,
+        "cg_id": cg_id,
+        "points": len(prices),
+        "years": round((d1 - d0).days / 365.25, 1),
+        "from": d0.strftime("%Y-%m-%d"),
+        "to": d1.strftime("%Y-%m-%d"),
+        "first_price": prices[0][1],
+        "last_price": prices[-1][1],
+        "file": fname,
+        "status": "downloaded",
+    }
 
 
 # ── Main ──────────────────────────────────────────────────────────
@@ -460,12 +544,18 @@ def main():
     curated_only = scan_only = show_list = False
 
     for i, a in enumerate(sys.argv[1:], 1):
-        if a == "--update": force = True
-        elif a == "--curated-only": curated_only = True
-        elif a == "--scan-only": scan_only = True
-        elif a == "--list": show_list = True
-        elif a == "--currency" and i < len(sys.argv)-1: vs = sys.argv[i+1].lower()
-        elif a == "--workers" and i < len(sys.argv)-1: workers = int(sys.argv[i+1])
+        if a == "--update":
+            force = True
+        elif a == "--curated-only":
+            curated_only = True
+        elif a == "--scan-only":
+            scan_only = True
+        elif a == "--list":
+            show_list = True
+        elif a == "--currency" and i < len(sys.argv) - 1:
+            vs = sys.argv[i + 1].lower()
+        elif a == "--workers" and i < len(sys.argv) - 1:
+            workers = int(sys.argv[i + 1])
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     USER_DIR.mkdir(parents=True, exist_ok=True)
@@ -474,14 +564,18 @@ def main():
         if MANIFEST.exists():
             m = json.loads(MANIFEST.read_text())
             coins = m.get("coins", [])
-            print(f"\n  Archived: {len([c for c in coins if c.get('status') != 'failed'])} coins")
+            print(
+                f"\n  Archived: {len([c for c in coins if c.get('status') != 'failed'])} coins"
+            )
             for c in sorted(coins, key=lambda x: x.get("symbol", "")):
                 if c.get("status") == "failed":
                     continue
-                print(f"  {c['symbol']:8s} {c['cg_id']:30s} "
-                      f"{c.get('points',0):>7,d} pts  "
-                      f"{c.get('from','?')} → {c.get('to','?')}  "
-                      f"~{c.get('years',0):.1f}y")
+                print(
+                    f"  {c['symbol']:8s} {c['cg_id']:30s} "
+                    f"{c.get('points',0):>7,d} pts  "
+                    f"{c.get('from','?')} → {c.get('to','?')}  "
+                    f"~{c.get('years',0):.1f}y"
+                )
         else:
             print("  No archive found. Run without --list to build.")
         print()
@@ -500,7 +594,7 @@ def main():
         cg_registry = fetch_coingecko_coin_list()
     except Exception as exc:
         print(f"  CoinGecko registry fetch failed: {exc}")
-        print(f"  Falling back to curated list")
+        print("  Falling back to curated list")
         curated_only = True
     print()
 
@@ -516,8 +610,10 @@ def main():
         if not curated_only:
             exchange_coins = scan_exchanges()
             if exchange_coins:
-                print(f"\n  Discovered {len(exchange_coins)} unique coins "
-                      f"across {len(EXCHANGES)} exchanges")
+                print(
+                    f"\n  Discovered {len(exchange_coins)} unique coins "
+                    f"across {len(EXCHANGES)} exchanges"
+                )
             else:
                 print("  No exchange data — using curated list")
     else:
@@ -549,8 +645,10 @@ def main():
     ok = fail = cached = 0
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futs = {pool.submit(download_one, sym, cg_id, vs, force): sym
-                for sym, cg_id, _, _ in download_list}
+        futs = {
+            pool.submit(download_one, sym, cg_id, vs, force): sym
+            for sym, cg_id, _, _ in download_list
+        }
         done = 0
         for fut in as_completed(futs):
             done += 1
@@ -566,39 +664,59 @@ def main():
                 fail += 1
             else:
                 tag = "●" if r["status"] == "cached" else "✓"
-                if r["status"] == "cached": cached += 1
+                if r["status"] == "cached":
+                    cached += 1
                 ok += 1
-                print(f"  [{done:3d}/{total}] {s:8s} {tag} "
-                      f"{r['points']:>7,d} pts  "
-                      f"{r['from']} → {r['to']}  "
-                      f"~{r['years']:>5.1f}y  "
-                      f"${r['first_price']:>12,.4f} → ${r['last_price']:>12,.4f}")
+                print(
+                    f"  [{done:3d}/{total}] {s:8s} {tag} "
+                    f"{r['points']:>7,d} pts  "
+                    f"{r['from']} → {r['to']}  "
+                    f"~{r['years']:>5.1f}y  "
+                    f"${r['first_price']:>12,.4f} → ${r['last_price']:>12,.4f}"
+                )
 
     results.sort(key=lambda r: r.get("symbol", ""))
 
     # Write manifest
-    MANIFEST.write_text(json.dumps({
-        "generated": datetime.now().isoformat(), "vs_currency": vs,
-        "total": total, "ok": ok, "failed": fail, "cached": cached,
-        "exchange_scan": bool(exchange_coins),
-        "exchanges_scanned": len(EXCHANGES),
-        "coins": results,
-    }, indent=2))
+    MANIFEST.write_text(
+        json.dumps(
+            {
+                "generated": datetime.now().isoformat(),
+                "vs_currency": vs,
+                "total": total,
+                "ok": ok,
+                "failed": fail,
+                "cached": cached,
+                "exchange_scan": bool(exchange_coins),
+                "exchanges_scanned": len(EXCHANGES),
+                "coins": results,
+            },
+            indent=2,
+        )
+    )
 
     pts = sum(r.get("points", 0) for r in results)
     ymax = max((r.get("years", 0) for r in results), default=0)
-    mb = sum(f.stat().st_size for f in DATA_DIR.glob("*.json")
-             if f.name != "manifest.json") / 1048576
+    mb = (
+        sum(
+            f.stat().st_size
+            for f in DATA_DIR.glob("*.json")
+            if f.name != "manifest.json"
+        )
+        / 1048576
+    )
 
     print()
-    print(f"  ══════════════════════════════════════════════════════════")
+    print("  ══════════════════════════════════════════════════════════")
     print(f"  Archive: {ok}/{total} coins  |  {pts:,d} data points  |  {mb:.1f} MB")
-    print(f"  History: up to ~{ymax:.0f} years  |  {cached} cached, "
-          f"{ok-cached} downloaded, {fail} failed")
+    print(
+        f"  History: up to ~{ymax:.0f} years  |  {cached} cached, "
+        f"{ok-cached} downloaded, {fail} failed"
+    )
     print(f"  Location: {DATA_DIR.resolve()}")
     if fail:
         print(f"  ⚠ {fail} failed — run again to retry")
-    print(f"  ══════════════════════════════════════════════════════════")
+    print("  ══════════════════════════════════════════════════════════")
     print()
 
 

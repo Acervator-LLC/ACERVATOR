@@ -45,10 +45,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
-
 # ─────────────────────────────────────────────────────────────────────
 # Data containers — all stateless dataclasses
 # ─────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class GateContext:
@@ -74,22 +74,22 @@ class GateContext:
     bb_lower_dt: float
 
     # ── Position / target accounting ──
-    delta: float                 # current_value - target_balance
-    delta_pct: float             # |delta| / target_balance × 100
-    below_interval: bool          # delta_pct < scrumming_interval_pct
+    delta: float  # current_value - target_balance
+    delta_pct: float  # |delta| / target_balance × 100
+    below_interval: bool  # delta_pct < scrumming_interval_pct
 
     # ── TA voting + direction ──
-    is_bullish: bool              # raw TA voting bullish
-    is_bearish: bool              # raw TA voting bearish
-    trend_hold: bool              # sustained-uptrend gate
+    is_bullish: bool  # raw TA voting bullish
+    is_bearish: bool  # raw TA voting bearish
+    trend_hold: bool  # sustained-uptrend gate
     trend_strength: float
-    eff_direction_name: str       # "BULLISH"/"BEARISH"/"NEUTRAL"
+    eff_direction_name: str  # "BULLISH"/"BEARISH"/"NEUTRAL"
 
     # ── Effective values after v3.16.15 operator-toggle flags ──
     eff_is_bullish: bool
     eff_is_bearish: bool
     eff_trend_hold: bool
-    eff_htf_blocks_scrum: bool    # HTF defer applied (SCRUM side)
+    eff_htf_blocks_scrum: bool  # HTF defer applied (SCRUM side)
     eff_htf_blocks_fold: bool
 
     # ── Operator-toggle flag states (raw) ──
@@ -102,20 +102,20 @@ class GateContext:
     # ── BB / Detect-fire state machine ──
     bb_above_upper_dt: bool
     bb_below_lower_dt: bool
-    scrum_ok: bool                # midline gate or override
+    scrum_ok: bool  # midline gate or override
     fold_ok_midline: bool
-    target_fires: bool            # detect/fire FSM
+    target_fires: bool  # detect/fire FSM
 
     # ── Bot state for stateful gates ──
-    cb_blocks_scrum: bool         # circuit breaker SCRUM side
+    cb_blocks_scrum: bool  # circuit breaker SCRUM side
     cb_blocks_fold: bool
-    hyst_ok_scrum_side: bool      # OTD hysteresis SCRUM side
+    hyst_ok_scrum_side: bool  # OTD hysteresis SCRUM side
     hyst_ok_fold_side: bool
     hyst_armed_scrum_side: bool
     hyst_armed_fold_side: bool
-    hyst_ref_scrum_side: float    # pivot price (diagnostic)
+    hyst_ref_scrum_side: float  # pivot price (diagnostic)
     hyst_ref_fold_side: float
-    mem253_at_ceiling: bool       # MEM-244 / MEM-253 Smart Ceiling
+    mem253_at_ceiling: bool  # MEM-244 / MEM-253 Smart Ceiling
     mem253_smart_ceiling_usd: float
     mem253_current_pos: float
     has_fold_tranches: bool
@@ -123,7 +123,7 @@ class GateContext:
 
     # ── Higher-TF bias ──
     htf_bias_name: Optional[str]  # "BULLISH"/"BEARISH"/"NEUTRAL"/None
-    htf_blocks_scrum: bool        # raw (pre flag)
+    htf_blocks_scrum: bool  # raw (pre flag)
     htf_blocks_fold: bool
 
     # ── Operator settings copied for diagnostic context ──
@@ -172,6 +172,7 @@ class GateContext:
 @dataclass
 class GateResult:
     """One gate's verdict on the current GateContext."""
+
     passed: bool
     blocker_message: str = ""
     # Override gates set this to the names of OTHER gates they're
@@ -189,6 +190,7 @@ class ChainResult:
     inline code has the trigger conjunction and the diagnostic blocker
     list as two separate code paths that must stay in sync manually.
     """
+
     should_fire: bool
     passed: list[str] = field(default_factory=list)
     blocked: list[tuple[str, str]] = field(default_factory=list)
@@ -198,6 +200,7 @@ class ChainResult:
 # ─────────────────────────────────────────────────────────────────────
 # Gate ABC
 # ─────────────────────────────────────────────────────────────────────
+
 
 class Gate(ABC):
     """Abstract gate. Subclasses define name + side + evaluate()."""
@@ -220,8 +223,10 @@ class Gate(ABC):
 # parity test can prove bit-identical evaluation.
 # ─────────────────────────────────────────────────────────────────────
 
+
 class DeltaPositiveGate(Gate):
     """SCRUM-only: delta must be positive (surplus above target)."""
+
     name = "delta_positive"
     side = "scrum"
 
@@ -233,20 +238,24 @@ class DeltaPositiveGate(Gate):
 
 class IntervalGate(Gate):
     """Both sides: |Δ%| must be ≥ scrumming_interval_pct."""
+
     name = "interval"
-    side = "scrum"   # FOLD trigger doesn't include below_interval check
-                     # at the trigger line; it's checked one level up
-                     # and skipped if no tranches queued
+    side = "scrum"  # FOLD trigger doesn't include below_interval check
+    # at the trigger line; it's checked one level up
+    # and skipped if no tranches queued
 
     def evaluate(self, ctx: GateContext) -> GateResult:
         if not ctx.below_interval:
             return GateResult(passed=True)
-        return GateResult(passed=False,
-            blocker_message=f"below_interval(Δ%<{ctx.scrumming_interval_pct})")
+        return GateResult(
+            passed=False,
+            blocker_message=f"below_interval(Δ%<{ctx.scrumming_interval_pct})",
+        )
 
 
 class TranchesQueuedGate(Gate):
     """FOLD-only: at least one fold tranche must be queued."""
+
     name = "tranches_queued"
     side = "fold"
 
@@ -262,6 +271,7 @@ class TADirectionGate(Gate):
       SCRUM: eff_is_bullish = is_bullish if flag_require_ta_bullish else True
       FOLD : eff_is_bearish = is_bearish if flag_fold_require_ta_bearish else True
     """
+
     def __init__(self, side: Literal["scrum", "fold"]):
         self.side = side
         self.name = f"ta_{('bullish' if side == 'scrum' else 'bearish')}"
@@ -270,25 +280,31 @@ class TADirectionGate(Gate):
         if self.side == "scrum":
             if ctx.eff_is_bullish:
                 return GateResult(passed=True)
-            return GateResult(passed=False,
-                blocker_message=f"TA-not-bullish(dir={ctx.eff_direction_name})")
+            return GateResult(
+                passed=False,
+                blocker_message=f"TA-not-bullish(dir={ctx.eff_direction_name})",
+            )
         else:
             if ctx.eff_is_bearish:
                 return GateResult(passed=True)
-            return GateResult(passed=False,
-                blocker_message=f"TA-not-bearish(dir={ctx.eff_direction_name})")
+            return GateResult(
+                passed=False,
+                blocker_message=f"TA-not-bearish(dir={ctx.eff_direction_name})",
+            )
 
 
 class TrendHoldGate(Gate):
     """SCRUM-only: trend-hold blocks scrum (sustained uptrend)."""
+
     name = "trend_hold"
     side = "scrum"
 
     def evaluate(self, ctx: GateContext) -> GateResult:
         if not ctx.eff_trend_hold:
             return GateResult(passed=True)
-        return GateResult(passed=False,
-            blocker_message=f"trend_hold({ctx.trend_strength:.0%})")
+        return GateResult(
+            passed=False, blocker_message=f"trend_hold({ctx.trend_strength:.0%})"
+        )
 
 
 class MidlineGate(Gate):
@@ -301,6 +317,7 @@ class MidlineGate(Gate):
     into the context already overridden. So this gate just
     reads the effective value.
     """
+
     def __init__(self, side: Literal["scrum", "fold"]):
         self.side = side
         self.name = f"midline_{side}"
@@ -310,27 +327,31 @@ class MidlineGate(Gate):
         if ok:
             return GateResult(passed=True)
         label = "scrum_ok" if self.side == "scrum" else "fold_ok_midline"
-        return GateResult(passed=False,
-            blocker_message=f"{label}=False(bb_pos={ctx.bb_pos:.2f})")
+        return GateResult(
+            passed=False, blocker_message=f"{label}=False(bb_pos={ctx.bb_pos:.2f})"
+        )
 
 
 class TargetFiresGate(Gate):
     """SCRUM-only: detect/fire state machine must be in FIRE."""
+
     name = "target_fires"
     side = "scrum"
 
     def evaluate(self, ctx: GateContext) -> GateResult:
         if ctx.target_fires:
             return GateResult(passed=True)
-        return GateResult(passed=False,
-            blocker_message="target_fires=False(detect/fire)")
+        return GateResult(
+            passed=False, blocker_message="target_fires=False(detect/fire)"
+        )
 
 
 class BBProximityGate(Gate):
     """Both sides: BB position past the detect threshold.
-      SCRUM: bb_above_upper_dt
-      FOLD : bb_below_lower_dt
+    SCRUM: bb_above_upper_dt
+    FOLD : bb_below_lower_dt
     """
+
     def __init__(self, side: Literal["scrum", "fold"]):
         self.side = side
         self.name = f"bb_proximity_{side}"
@@ -339,28 +360,34 @@ class BBProximityGate(Gate):
         if self.side == "scrum":
             if ctx.bb_above_upper_dt:
                 return GateResult(passed=True)
-            return GateResult(passed=False,
+            return GateResult(
+                passed=False,
                 blocker_message=(
                     f"BB-below-upper-detect(bb_pos={ctx.bb_pos:.2f}"
-                    f"<{ctx.bb_upper_dt:.2f})"))
+                    f"<{ctx.bb_upper_dt:.2f})"
+                ),
+            )
         else:
             if ctx.bb_below_lower_dt:
                 return GateResult(passed=True)
-            return GateResult(passed=False,
+            return GateResult(
+                passed=False,
                 blocker_message=(
                     f"BB-above-lower-detect(bb_pos={ctx.bb_pos:.2f}"
-                    f">{ctx.bb_lower_dt:.2f})"))
+                    f">{ctx.bb_lower_dt:.2f})"
+                ),
+            )
 
 
 class CircuitBreakerGate(Gate):
     """Both sides: soft Circuit Breaker must not be tripped on this side."""
+
     def __init__(self, side: Literal["scrum", "fold"]):
         self.side = side
         self.name = f"circuit_breaker_{side}"
 
     def evaluate(self, ctx: GateContext) -> GateResult:
-        blocks = (ctx.cb_blocks_scrum if self.side == "scrum"
-                  else ctx.cb_blocks_fold)
+        blocks = ctx.cb_blocks_scrum if self.side == "scrum" else ctx.cb_blocks_fold
         if not blocks:
             return GateResult(passed=True)
         return GateResult(passed=False, blocker_message="CB-soft-trip")
@@ -368,16 +395,20 @@ class CircuitBreakerGate(Gate):
 
 class HTFDeferGate(Gate):
     """Both sides: higher-TF phantom defer.
-      SCRUM blocked when HTF says BULLISH (don't sell into confirmed uptrend)
-      FOLD  blocked when HTF says BEARISH (don't buy into confirmed downtrend)
+    SCRUM blocked when HTF says BULLISH (don't sell into confirmed uptrend)
+    FOLD  blocked when HTF says BEARISH (don't buy into confirmed downtrend)
     """
+
     def __init__(self, side: Literal["scrum", "fold"]):
         self.side = side
         self.name = f"htf_defer_{side}"
 
     def evaluate(self, ctx: GateContext) -> GateResult:
-        blocks = (ctx.eff_htf_blocks_scrum if self.side == "scrum"
-                  else ctx.eff_htf_blocks_fold)
+        blocks = (
+            ctx.eff_htf_blocks_scrum
+            if self.side == "scrum"
+            else ctx.eff_htf_blocks_fold
+        )
         if not blocks:
             return GateResult(passed=True)
         label = "HTF-bullish" if self.side == "scrum" else "HTF-bearish"
@@ -391,32 +422,39 @@ class HysteresisGate(Gate):
     side is disarmed OR price has moved by interval+fee from the
     pivot captured at arming.
     """
+
     def __init__(self, side: Literal["scrum", "fold"]):
         self.side = side
         self.name = f"hysteresis_{side}"
 
     def evaluate(self, ctx: GateContext) -> GateResult:
-        ok = (ctx.hyst_ok_scrum_side if self.side == "scrum"
-              else ctx.hyst_ok_fold_side)
+        ok = ctx.hyst_ok_scrum_side if self.side == "scrum" else ctx.hyst_ok_fold_side
         if ok:
             return GateResult(passed=True)
-        ref = (ctx.hyst_ref_scrum_side if self.side == "scrum"
-               else ctx.hyst_ref_fold_side)
+        ref = (
+            ctx.hyst_ref_scrum_side if self.side == "scrum" else ctx.hyst_ref_fold_side
+        )
         eff_pct = ctx.scrumming_interval_pct + ctx.trading_fee_pct
         if self.side == "scrum":
             required = ref * (1.0 + eff_pct / 100.0)
-            return GateResult(passed=False,
+            return GateResult(
+                passed=False,
                 blocker_message=(
                     f"OTD-hyst(px ${ctx.ticker_last:.8f} < "
                     f"${required:.8f}; pivot ${ref:.8f} "
-                    f"+ {eff_pct:.2f}%)"))
+                    f"+ {eff_pct:.2f}%)"
+                ),
+            )
         else:
             required = ref * (1.0 - eff_pct / 100.0)
-            return GateResult(passed=False,
+            return GateResult(
+                passed=False,
                 blocker_message=(
                     f"OTD-hyst(px ${ctx.ticker_last:.8f} > "
                     f"${required:.8f}; pivot ${ref:.8f} "
-                    f"- {eff_pct:.2f}%)"))
+                    f"- {eff_pct:.2f}%)"
+                ),
+            )
 
 
 class SmartCeilingGate(Gate):
@@ -426,20 +464,21 @@ class SmartCeilingGate(Gate):
     position_ceiling_multiple, FOLD is hard-stopped. Computed
     upstream into ctx.mem253_at_ceiling.
     """
+
     name = "smart_ceiling"
     side = "fold"
 
     def evaluate(self, ctx: GateContext) -> GateResult:
         if not ctx.mem253_at_ceiling:
             return GateResult(passed=True)
-        return GateResult(passed=False,
-            blocker_message="MEM-253-position-ceiling")
+        return GateResult(passed=False, blocker_message="MEM-253-position-ceiling")
 
 
 # ─────────────────────────────────────────────────────────────────────
 # Override gates — first-class modeling of MEM-196 ripe-harvest /
 # deep-fold pattern.
 # ─────────────────────────────────────────────────────────────────────
+
 
 class RipeHarvestScrumOverride(Gate):
     """MEM-196 v3 + MEM-202 fix: when ripe-scrum conditions hold
@@ -454,6 +493,7 @@ class RipeHarvestScrumOverride(Gate):
     class override declared up front, so the chain semantics are
     transparent rather than buried.
     """
+
     name = "ripe_harvest_override"
     side = "scrum"
     overrides = ("midline_scrum", "target_fires", "trend_hold", "ta_bullish")
@@ -473,6 +513,7 @@ class DeepFoldOverride(Gate):
     MEM-171 per-tranche initial_buy_price floor is preserved
     (not in the override list — see audit doc §6a).
     """
+
     name = "deep_fold_override"
     side = "fold"
     overrides = ("midline_fold", "ta_bearish")
@@ -486,6 +527,7 @@ class DeepFoldOverride(Gate):
 # ─────────────────────────────────────────────────────────────────────
 # v3.19.16 — Part 6 L4 second-half closure
 # ─────────────────────────────────────────────────────────────────────
+
 
 class ADXTrendSuppressionGate(Gate):
     """SCRUM-only: ADX-based strong-trend MR suppression.
@@ -540,6 +582,7 @@ class ADXTrendSuppressionGate(Gate):
                        # discipline; v3.20.22 R76 DMW empirical
                        # recalibration with documented rationale
     """
+
     name = "adx_trend_suppression"
     side = "scrum"
 
@@ -554,15 +597,19 @@ class ADXTrendSuppressionGate(Gate):
             return GateResult(passed=True)
         if ctx.adx < self.adx_threshold:
             return GateResult(passed=True)
-        return GateResult(passed=False,
+        return GateResult(
+            passed=False,
             blocker_message=(
                 f"adx_trend_suppression(ADX={ctx.adx:.1f}>"
-                f"{self.adx_threshold:.0f}; strong-trend MR suppression)"))
+                f"{self.adx_threshold:.0f}; strong-trend MR suppression)"
+            ),
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────
 # v3.19.17 — Part 6 L3.b second-half closure (Kaufman Efficiency Ratio)
 # ─────────────────────────────────────────────────────────────────────
+
 
 class EfficiencyRatioRegimeGate(Gate):
     """SCRUM-only: Kaufman Efficiency Ratio regime classifier.
@@ -600,11 +647,13 @@ class EfficiencyRatioRegimeGate(Gate):
     sadp: R28 R42 R55  # additive-first landing per the v3.18.11
                        # GateChain framework migration discipline
     """
+
     name = "efficiency_ratio_regime"
     side = "scrum"
 
-    def __init__(self, upper_threshold: float = 0.70,
-                 lower_threshold: float = 0.05) -> None:
+    def __init__(
+        self, upper_threshold: float = 0.70, lower_threshold: float = 0.05
+    ) -> None:
         self.upper_threshold = upper_threshold
         self.lower_threshold = lower_threshold
 
@@ -618,19 +667,25 @@ class EfficiencyRatioRegimeGate(Gate):
         if ctx.efficiency_ratio <= 0.0:
             return GateResult(passed=True)
         if ctx.efficiency_ratio >= self.upper_threshold:
-            return GateResult(passed=False,
+            return GateResult(
+                passed=False,
                 blocker_message=(
                     f"efficiency_ratio_regime(ER="
                     f"{ctx.efficiency_ratio:.3f}≥"
                     f"{self.upper_threshold:.2f}; strong-trend MR "
-                    f"suppression)"))
+                    f"suppression)"
+                ),
+            )
         if ctx.efficiency_ratio <= self.lower_threshold:
-            return GateResult(passed=False,
+            return GateResult(
+                passed=False,
                 blocker_message=(
                     f"efficiency_ratio_regime(ER="
                     f"{ctx.efficiency_ratio:.3f}≤"
                     f"{self.lower_threshold:.2f}; no-edge market "
-                    f"suppression)"))
+                    f"suppression)"
+                ),
+            )
         return GateResult(passed=True)
 
 
@@ -639,6 +694,7 @@ class EfficiencyRatioRegimeGate(Gate):
 # (queued from v3.19.17 plan, audit doc 2026-05-23 flagged as never
 # shipped; cross-cutting finding #5 closure)
 # ─────────────────────────────────────────────────────────────────────
+
 
 class ZScoreExtremityGate(Gate):
     """ASYMMETRIC two-sided gate: contrarian filter at statistical extremes.
@@ -684,15 +740,19 @@ class ZScoreExtremityGate(Gate):
 
     sadp: R28 FL  R55 GOV  R62 FRG  R68 DPA
     """
+
     name = "zscore_extremity"
 
-    def __init__(self, side: str = "scrum",
-                 upper_threshold: float = 2.0,
-                 lower_threshold: float = 2.0) -> None:
+    def __init__(
+        self,
+        side: str = "scrum",
+        upper_threshold: float = 2.0,
+        lower_threshold: float = 2.0,
+    ) -> None:
         if side not in ("scrum", "fold"):
             raise ValueError(
-                f"ZScoreExtremityGate side must be 'scrum' or 'fold', "
-                f"got {side!r}")
+                f"ZScoreExtremityGate side must be 'scrum' or 'fold', " f"got {side!r}"
+            )
         self.side = side
         self.upper_threshold = float(upper_threshold)
         self.lower_threshold = float(lower_threshold)
@@ -703,27 +763,34 @@ class ZScoreExtremityGate(Gate):
             # Block SCRUM when price is statistically extreme LOW —
             # selling at the bottom fights the imminent mean-reversion.
             if z < -self.lower_threshold:
-                return GateResult(passed=False,
+                return GateResult(
+                    passed=False,
                     blocker_message=(
                         f"zscore_extremity(z={z:+.2f}<"
                         f"-{self.lower_threshold:.1f}; extreme-low "
-                        f"contrarian filter — mean-reversion pending)"))
+                        f"contrarian filter — mean-reversion pending)"
+                    ),
+                )
             return GateResult(passed=True)
         # side == "fold"
         # Block FOLD when price is statistically extreme HIGH —
         # buying at the top fights the imminent mean-reversion.
         if z > self.upper_threshold:
-            return GateResult(passed=False,
+            return GateResult(
+                passed=False,
                 blocker_message=(
                     f"zscore_extremity(z={z:+.2f}>"
                     f"+{self.upper_threshold:.1f}; extreme-high "
-                    f"contrarian filter — mean-reversion pending)"))
+                    f"contrarian filter — mean-reversion pending)"
+                ),
+            )
         return GateResult(passed=True)
 
 
 # ─────────────────────────────────────────────────────────────────────
 # GateChain
 # ─────────────────────────────────────────────────────────────────────
+
 
 class GateChain:
     """Holds a list of Gates for one side; evaluates them all on a
@@ -738,8 +805,7 @@ class GateChain:
     → passed, and their names are recorded in overrides_applied.
     """
 
-    def __init__(self, gates: list[Gate],
-                 side: Literal["scrum", "fold"]) -> None:
+    def __init__(self, gates: list[Gate], side: Literal["scrum", "fold"]) -> None:
         self._side = side
         # Filter to gates applicable on this side (or "both")
         self._gates = [g for g in gates if g.side in (side, "both")]
@@ -753,7 +819,7 @@ class GateChain:
         # Pass 1: evaluate every regular gate
         passed: list[str] = []
         blocked: list[tuple[str, str]] = []
-        blocked_index: dict[str, int] = {}   # name → index into blocked
+        blocked_index: dict[str, int] = {}  # name → index into blocked
         for gate in self._regular_gates:
             result = gate.evaluate(ctx)
             if result.passed:
@@ -815,6 +881,7 @@ class GateChain:
 # current ScrummingBot.tick() trigger conjunctions.
 # ─────────────────────────────────────────────────────────────────────
 
+
 def build_scrumming_scrum_chain() -> GateChain:
     """Construct the SCRUM-side chain matching ScrummingBot.tick()
     line 5475-5478. Order is operator-meaningful in diagnostic logs;
@@ -842,10 +909,12 @@ def build_scrumming_scrum_chain() -> GateChain:
             CircuitBreakerGate(side="scrum"),
             HTFDeferGate(side="scrum"),
             HysteresisGate(side="scrum"),
-            ADXTrendSuppressionGate(),       # v3.19.16 — Part 6 L4 closure
-            EfficiencyRatioRegimeGate(),     # v3.19.17 — Part 6 L3.b closure
-            ZScoreExtremityGate(side="scrum"),  # v3.20.7 — extreme-low SCRUM contrarian filter
-            RipeHarvestScrumOverride(),      # last — runs in pass 2
+            ADXTrendSuppressionGate(),  # v3.19.16 — Part 6 L4 closure
+            EfficiencyRatioRegimeGate(),  # v3.19.17 — Part 6 L3.b closure
+            ZScoreExtremityGate(
+                side="scrum"
+            ),  # v3.20.7 — extreme-low SCRUM contrarian filter
+            RipeHarvestScrumOverride(),  # last — runs in pass 2
         ],
         side="scrum",
     )
@@ -865,7 +934,9 @@ def build_scrumming_fold_chain() -> GateChain:
             CircuitBreakerGate(side="fold"),
             HTFDeferGate(side="fold"),
             HysteresisGate(side="fold"),
-            ZScoreExtremityGate(side="fold"),  # v3.20.7 — extreme-high FOLD contrarian filter
+            ZScoreExtremityGate(
+                side="fold"
+            ),  # v3.20.7 — extreme-high FOLD contrarian filter
             DeepFoldOverride(),
         ],
         side="fold",

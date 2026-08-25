@@ -11,6 +11,7 @@ ADX ran at up to 761.5 -- seven times its definitional maximum -- across
 1174 such rows, and Slingshot reported confidences down to -0.2722.
 Neither was flagged, because nothing had been asked to flag them.
 """
+
 from __future__ import annotations
 
 import sys
@@ -51,8 +52,7 @@ class TestItCatchesTheDefectsThatActuallyHappened:
 
 class TestItPassesCorrectValues:
     def test_adx_in_range(self):
-        ok, _ = ti.check("adx", {"adx": 27.9, "di_plus": 11.13,
-                                 "di_minus": 25.94})
+        ok, _ = ti.check("adx", {"adx": 27.9, "di_plus": 11.13, "di_minus": 25.94})
         assert ok is True
 
     def test_adx_at_both_boundaries(self):
@@ -70,20 +70,23 @@ class TestFlagInvariantsActuallyEvaluate:
     never evaluated, indistinguishable from passing."""
 
     def test_exclusive_flags_are_checked_not_skipped(self):
-        ok, _ = ti.check("adx", {"ranging": True, "developing": False,
-                                 "strong_trend": False})
+        ok, _ = ti.check(
+            "adx", {"ranging": True, "developing": False, "strong_trend": False}
+        )
         assert ok is True, "flag invariant was skipped as inapplicable"
 
     def test_two_regimes_at_once_is_caught(self):
-        ok, rule = ti.check("adx", {"ranging": True, "developing": True,
-                                    "strong_trend": False})
+        ok, rule = ti.check(
+            "adx", {"ranging": True, "developing": True, "strong_trend": False}
+        )
         assert ok is False
         assert "at most one" in rule
 
     def test_cloud_position_exclusivity(self):
-        ok, _ = ti.check("ichimoku", {"tk_above_cloud": True,
-                                      "tk_below_cloud": True,
-                                      "tk_inside_cloud": False})
+        ok, _ = ti.check(
+            "ichimoku",
+            {"tk_above_cloud": True, "tk_below_cloud": True, "tk_inside_cloud": False},
+        )
         assert ok is False
 
 
@@ -119,8 +122,13 @@ class TestItDeclinesToJudgeWhatItCannotSee:
 
 class TestItNeverRaises:
     def test_hostile_inputs(self):
-        for bad in (None, {}, {"adx": object()}, {"adx": []},
-                    {"cloud_top": "x", "cloud_bottom": 1.0}):
+        for bad in (
+            None,
+            {},
+            {"adx": object()},
+            {"adx": []},
+            {"cloud_top": "x", "cloud_bottom": 1.0},
+        ):
             ti.check("adx", bad)
             ti.check("ichimoku", bad)
             ti.check("bollinger_bands", bad)
@@ -133,15 +141,15 @@ class TestTheRejectedCandidatesStayRejected:
     def test_bb_position_above_one_is_legal(self):
         """(price - lower) / (upper - lower) exceeds 1 whenever price
         breaks above the upper band. Seen on 148 of 1181 records."""
-        ok, _ = ti.check("bollinger_bands",
-                         {"bb_position": 1.1324, "lower": 1.0,
-                          "middle": 2.0, "upper": 3.0})
+        ok, _ = ti.check(
+            "bollinger_bands",
+            {"bb_position": 1.1324, "lower": 1.0, "middle": 2.0, "upper": 3.0},
+        )
         assert ok is not False
 
     def test_kijun_rising_and_flat_may_coexist(self):
         """`rising` is a sign test, `flat` is a deadband. Any delta
         inside the deadband but above zero satisfies both. Seen on 43
         of 1086 records."""
-        ok, _ = ti.check("ichimoku", {"kijun_rising": True,
-                                      "kijun_flat": True})
+        ok, _ = ti.check("ichimoku", {"kijun_rising": True, "kijun_flat": True})
         assert ok is not False

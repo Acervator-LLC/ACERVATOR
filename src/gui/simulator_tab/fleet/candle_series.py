@@ -13,6 +13,7 @@ Isolated pure module — no Qt, no exchange, no live-side coupling.
 
 sadp: R28 SSS
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -123,7 +124,8 @@ class CandleSeries:
 
 
 def build_candle_series_from_rows(
-    symbol: str, rows: list[list[float]],
+    symbol: str,
+    rows: list[list[float]],
 ) -> CandleSeries:
     """Construct a series with input validation.
 
@@ -150,8 +152,12 @@ def build_candle_series_from_rows(
             # type that only happens to be exact below 2^53.
             ts = int(r[0])
             o, h, l, c, v = (
-                float(r[1]), float(r[2]), float(r[3]),
-                float(r[4]), float(r[5]))
+                float(r[1]),
+                float(r[2]),
+                float(r[3]),
+                float(r[4]),
+                float(r[5]),
+            )
             if ts <= 0 or c <= 0:
                 continue
             clean.append([ts, o, h, l, c, v])

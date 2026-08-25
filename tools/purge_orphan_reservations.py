@@ -43,6 +43,7 @@ SAFETY
 RUN WITH THE APP CLOSED. The registry is held in memory and
 rewritten on save; purging underneath a running app would be undone.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -79,53 +80,51 @@ def main(argv: list[str] | None = None) -> int:
 
     live = _load_live_bot_ids(args.bot_state)
     if not live:
-        print("ERROR: zero live bot_ids loaded — refusing to run, "
-              "every reservation would look orphaned.",
-              file=sys.stderr)
+        print(
+            "ERROR: zero live bot_ids loaded — refusing to run, "
+            "every reservation would look orphaned.",
+            file=sys.stderr,
+        )
         return 3
 
     try:
         data = json.loads(args.state.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        print(f"ERROR: cannot parse {args.state}: {exc}",
-              file=sys.stderr)
+        print(f"ERROR: cannot parse {args.state}: {exc}", file=sys.stderr)
         return 4
 
     reservations = data.get("reservations") or []
     heartbeats = data.get("heartbeats") or {}
 
-    keep_res = [r for r in reservations
-                if isinstance(r, dict) and r.get("bot_id") in live]
-    drop_res = [r for r in reservations
-                if not (isinstance(r, dict)
-                        and r.get("bot_id") in live)]
+    keep_res = [
+        r for r in reservations if isinstance(r, dict) and r.get("bot_id") in live
+    ]
+    drop_res = [
+        r for r in reservations if not (isinstance(r, dict) and r.get("bot_id") in live)
+    ]
     keep_hb = {k: v for k, v in heartbeats.items() if k in live}
     drop_hb = {k: v for k, v in heartbeats.items() if k not in live}
 
     size_mb = args.state.stat().st_size / 1e6
     print(f"live bots              : {len(live)}")
     print(f"file size              : {size_mb:.1f} MB")
-    print(f"reservations  keep/drop: {len(keep_res):,} / "
-          f"{len(drop_res):,}")
-    print(f"heartbeats    keep/drop: {len(keep_hb):,} / "
-          f"{len(drop_hb):,}")
+    print(f"reservations  keep/drop: {len(keep_res):,} / " f"{len(drop_res):,}")
+    print(f"heartbeats    keep/drop: {len(keep_hb):,} / " f"{len(drop_hb):,}")
 
     if not drop_res and not drop_hb:
         print("\nNothing to purge — registry is clean.")
         return 0
 
     from collections import Counter
-    reasons = Counter(
-        (r.get("reason", "") or "")[:44] for r in drop_res)
+
+    reasons = Counter((r.get("reason", "") or "")[:44] for r in drop_res)
     print("\ntop orphan reasons:")
     for reason, n in reasons.most_common(5):
         print(f"  {n:>7,}  {reason}")
 
     # Per-asset view: this is what effective_available() was summing.
-    by_asset = Counter(
-        str(r.get("asset", "?")) for r in drop_res)
-    print("\ntop assets by orphan count "
-          "(these inflated 'others reserved'):")
+    by_asset = Counter(str(r.get("asset", "?")) for r in drop_res)
+    print("\ntop assets by orphan count " "(these inflated 'others reserved'):")
     for asset, n in by_asset.most_common(6):
         print(f"  {n:>7,}  {asset}")
 
@@ -134,38 +133,39 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
-    backup = args.state.with_name(
-        f"{args.state.name}.pre_purge_{stamp}")
-    quarantine = args.state.with_name(
-        f"orphan_reservations_quarantine_{stamp}.json")
+    backup = args.state.with_name(f"{args.state.name}.pre_purge_{stamp}")
+    quarantine = args.state.with_name(f"orphan_reservations_quarantine_{stamp}.json")
 
     shutil.copy2(args.state, backup)
     print(f"\nbackup written     : {backup}")
 
     quarantine.write_text(
-        json.dumps({"purged_at": stamp,
-                    "reservations": drop_res,
-                    "heartbeats": drop_hb}, indent=1),
-        encoding="utf-8")
+        json.dumps(
+            {"purged_at": stamp, "reservations": drop_res, "heartbeats": drop_hb},
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
     print(f"quarantine written : {quarantine}")
 
     data["reservations"] = keep_res
     data["heartbeats"] = keep_hb
     tmp = args.state.with_suffix(".tmp")
-    tmp.write_text(
-        json.dumps(data, separators=(",", ":")), encoding="utf-8")
+    tmp.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
     os.replace(tmp, args.state)
     new_mb = args.state.stat().st_size / 1e6
-    print(f"state rewritten    : {args.state} "
-          f"({size_mb:.1f} MB -> {new_mb:.2f} MB)")
+    print(
+        f"state rewritten    : {args.state} " f"({size_mb:.1f} MB -> {new_mb:.2f} MB)"
+    )
 
     # Verify the rewrite parses and holds only live owners.
     check = json.loads(args.state.read_text(encoding="utf-8"))
-    bad = [r for r in check.get("reservations", [])
-           if r.get("bot_id") not in live]
+    bad = [r for r in check.get("reservations", []) if r.get("bot_id") not in live]
     bad_hb = [k for k in check.get("heartbeats", {}) if k not in live]
-    print(f"\nverification: {len(bad)} orphan reservation(s), "
-          f"{len(bad_hb)} orphan heartbeat(s) remain (expected 0/0)")
+    print(
+        f"\nverification: {len(bad)} orphan reservation(s), "
+        f"{len(bad_hb)} orphan heartbeat(s) remain (expected 0/0)"
+    )
     return 0 if not bad and not bad_hb else 5
 
 

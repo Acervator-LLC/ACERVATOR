@@ -20,6 +20,7 @@ instruction for whoever fixed it -- reset the threshold to 30 -- so the
 two are pinned together here: fixing either one alone yields a gate
 that can never fire, or a gate that always fires.
 """
+
 from __future__ import annotations
 
 import math
@@ -38,9 +39,16 @@ def _trending(n=300, start=100.0, step=0.6):
     out = []
     for i in range(n):
         c = start + i * step
-        out.append(Candle(1_700_000_000_000 + i * 300_000,
-                          c - step * 0.5, c + step * 0.4,
-                          c - step * 0.6, c, 100.0))
+        out.append(
+            Candle(
+                1_700_000_000_000 + i * 300_000,
+                c - step * 0.5,
+                c + step * 0.4,
+                c - step * 0.6,
+                c,
+                100.0,
+            )
+        )
     return out
 
 
@@ -49,8 +57,9 @@ def _choppy(n=300, start=100.0):
     out = []
     for i in range(n):
         c = start + math.sin(i / 3.0) * 2.0
-        out.append(Candle(1_700_000_000_000 + i * 300_000,
-                          c - 0.3, c + 0.5, c - 0.5, c, 100.0))
+        out.append(
+            Candle(1_700_000_000_000 + i * 300_000, c - 0.3, c + 0.5, c - 0.5, c, 100.0)
+        )
     return out
 
 
@@ -67,6 +76,7 @@ class TestADXStaysInsideItsDefinition:
         """NEGATIVE CONTROL. Re-create the sum-form smoother and show
         it breaches the bound on the same input -- otherwise the two
         assertions above prove nothing about this defect."""
+
         def sum_form(values, period):
             if len(values) < period:
                 return [0.0] * len(values)
@@ -83,8 +93,7 @@ class TestADXStaysInsideItsDefinition:
             broken = ADXIndicator().compute(_trending()).details["adx"]
         finally:
             ADXIndicator._wilder_smooth = staticmethod(real)
-        assert broken > 100.0, (
-            f"the old smoother should breach the bound, got {broken}")
+        assert broken > 100.0, f"the old smoother should breach the bound, got {broken}"
 
     def test_di_is_unchanged_by_the_fix(self):
         """+DI/-DI are RATIOS of smoothed values, so dividing both by
@@ -114,11 +123,13 @@ class TestADXSeparatesRegimes:
 class TestTheGateThresholdTracksTheScale:
     def test_threshold_is_the_textbook_value(self):
         from src.trading.gate_chain import ADXTrendSuppressionGate
+
         assert ADXTrendSuppressionGate().adx_threshold == 30.0
 
     def test_a_real_trending_adx_can_reach_the_threshold(self):
         """The pairing check. With the old 500.0 default, a correct ADX
         could never trip the gate -- it is bounded at 100."""
         from src.trading.gate_chain import ADXTrendSuppressionGate
+
         adx = ADXIndicator().compute(_trending()).details["adx"]
         assert adx >= ADXTrendSuppressionGate().adx_threshold

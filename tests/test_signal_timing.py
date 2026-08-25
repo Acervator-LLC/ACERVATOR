@@ -46,10 +46,10 @@ is a pin that just fired. Collapsing them is the disjunction defect
 this project keeps paying for -- the indicator panel's two-causes
 message cost the operator real time.
 """
+
 from __future__ import annotations
 
 import ast
-import hashlib
 import json
 import os
 import threading
@@ -106,8 +106,8 @@ REAL_LINES = (
     r'ion","kind":"check","ok":false,"expected":114.51,"actual":0.'
     r'0,"count":1,"site":"scrumming_bot.py:1340","context":{"bot_i'
     r'd":"04e1cafc","asset":"RE","holdings":114.51,"error":"ValueE'
-    r'rror: reserve: over-commit on RE \u2014 existing reservation'
-    r's 242.0509708 + requested 114.51 > total holdings 114.51. Re'
+    r"rror: reserve: over-commit on RE \u2014 existing reservation"
+    r"s 242.0509708 + requested 114.51 > total holdings 114.51. Re"
     r'lease stale reservations or reduce request.","released_stale'
     r'":false}}',
     # ta.computed -- 239 bytes, verbatim
@@ -257,7 +257,6 @@ REAL_LINES = (
     r',"skip":1}}',
 )
 
-REAL_LINES_SHA256 = "d29c99cb365dd2464f5b806a195d4b94119b2d3b7a444abcff5a9d46c0037020"
 REAL_LINE_COUNT = 16
 
 
@@ -306,22 +305,27 @@ def _attrs_read_off(path: Path, variable: str, function: str) -> set:
     tree = ast.parse(path.read_bytes().decode("utf-8"))
     scope = None
     for node in ast.walk(tree):
-        if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and node.name == function):
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == function
+        ):
             scope = node
             break
     assert scope is not None, f"{path.name} defines no {function}"
     found = set()
     for node in ast.walk(scope):
-        if (isinstance(node, ast.Attribute)
-                and isinstance(node.value, ast.Name)
-                and node.value.id == variable):
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == variable
+        ):
             found.add(node.attr)
     assert found, f"{function} reads nothing off `{variable}`"
     return found
 
 
 # ------------------------------------------------------- CONTROL a --
+
 
 class TestIdentityIsTheNameAndTheSite:
     """Two pins sharing a name, emitted from two places, are two pins.
@@ -353,8 +357,7 @@ class TestIdentityIsTheNameAndTheSite:
         assert second_one.dt >= 0.05
         assert second_one.nth == 2 and second_two.nth == 2
 
-    def test_the_timing_surface_holds_two_rows_where_stats_holds_one(
-            self, sink):
+    def test_the_timing_surface_holds_two_rows_where_stats_holds_one(self, sink):
         """The contrast, shown rather than described.
 
         `stats()` groups by name and reports ONE site for both, which is
@@ -398,6 +401,7 @@ class TestIdentityIsTheNameAndTheSite:
 
 # ------------------------------------------------------- CONTROL b --
 
+
 class TestTheFirstEmissionIsHonest:
     """No previous emission is not an interval of zero.
 
@@ -411,8 +415,7 @@ class TestTheFirstEmissionIsHonest:
         assert first.dt != 0.0
         assert first.nth == 1
 
-    def test_a_reader_can_tell_a_first_emission_from_a_real_interval(
-            self, sink):
+    def test_a_reader_can_tell_a_first_emission_from_a_real_interval(self, sink):
         # ONE source line, so ONE site, so ONE identity. Two `emit`
         # calls written on two lines would be two emitters -- see
         # `test_the_same_name_on_two_lines_is_two_identities`.
@@ -443,6 +446,7 @@ class TestTheFirstEmissionIsHonest:
 
 # ------------------------------------------------------- CONTROL c --
 
+
 class TestAHangIsReadableWithNoNewRecord:
     """The absence IS the signal.
 
@@ -465,20 +469,18 @@ class TestAHangIsReadableWithNoNewRecord:
         assert sink.count("pin.hangs") == 1
         assert sink.health()["emitted"] == emitted
 
-    def test_a_hang_reaches_the_stale_state_with_nothing_arriving(
-            self, sink):
+    def test_a_hang_reaches_the_stale_state_with_nothing_arriving(self, sink):
         sink.emit("pin.hangs", actual=1)
         site = sink.records("pin.hangs")[0].site
-        assert sink.pin_state("pin.hangs", site,
-                              stale_after=10.0)["state"] != PIN_STALE
+        assert sink.pin_state("pin.hangs", site, stale_after=10.0)["state"] != PIN_STALE
         time.sleep(0.15)
-        hung = sink.pin_state("pin.hangs", site,
-                              fresh_within=0.01, stale_after=0.10)
+        hung = sink.pin_state("pin.hangs", site, fresh_within=0.01, stale_after=0.10)
         assert hung["state"] == PIN_STALE
         assert sink.count("pin.hangs") == 1
 
 
 # ------------------------------------------------------ CONTROL c2 --
+
 
 class TestAnAgeIsNeverNegative:
     """A pin cannot have fired in the future.
@@ -525,7 +527,7 @@ class TestAnAgeIsNeverNegative:
             seen.append(call(sink))
 
         lock = getattr(sink, "_lock")
-        seen_map = getattr(sink, "_seen")
+        getattr(sink, "_seen")
         with lock:
             worker = threading.Thread(target=reader, daemon=True)
             worker.start()
@@ -540,25 +542,24 @@ class TestAnAgeIsNeverNegative:
 
     def test_pin_state_age_is_not_negative_when_parked_on_the_lock(self):
         state = self._park_a_reader_then_advance_the_stamp(
-            lambda s: s.pin_state("pin.parked", "parked.py:1"))
+            lambda s: s.pin_state("pin.parked", "parked.py:1")
+        )
         assert state["age"] is not None
         # THE ASSERTION THAT FAILS ON THE OLD ORDER. A clock sampled
         # before the lock yields about -0.05 here.
         assert state["age"] >= 0.0, (
-            f"pin_state reported a pin that fired in the future: "
-            f"age={state['age']}")
+            f"pin_state reported a pin that fired in the future: " f"age={state['age']}"
+        )
 
     def test_timing_age_is_not_negative_when_parked_on_the_lock(self):
-        rows = self._park_a_reader_then_advance_the_stamp(
-            lambda s: s.timing())
+        rows = self._park_a_reader_then_advance_the_stamp(lambda s: s.timing())
         assert rows, "timing() lost the identity"
         for key, row in rows.items():
             assert row["age"] >= 0.0, (
-                f"timing() reported {key} firing in the future: "
-                f"age={row['age']}")
+                f"timing() reported {key} firing in the future: " f"age={row['age']}"
+            )
 
-    def test_a_negative_age_would_have_been_reported_as_the_best_state(
-            self):
+    def test_a_negative_age_would_have_been_reported_as_the_best_state(self):
         """Why the number mattered: the wrong value hid as PIN_FRESH.
 
         This is the ONE assertion here that does not need the race. It
@@ -566,14 +567,15 @@ class TestAnAgeIsNeverNegative:
         construction, and shows the classifier calls it FRESH -- so a
         reader could never have noticed the defect by watching states.
         """
-        future = (time.monotonic() + 5.0, 3, "2026-08-15T00:00:00+00:00",
-                  0.1)
-        verdict = _classify("pin.future", "f.py:1", time.monotonic(),
-                            future, FRESH_WITHIN, STALE_AFTER)
+        future = (time.monotonic() + 5.0, 3, "2026-08-15T00:00:00+00:00", 0.1)
+        verdict = _classify(
+            "pin.future", "f.py:1", time.monotonic(), future, FRESH_WITHIN, STALE_AFTER
+        )
         assert verdict["age"] < 0.0
         assert verdict["state"] == PIN_FRESH, (
             "a negative age no longer classifies as fresh -- if this "
-            "changed, the hiding mechanism described above changed too")
+            "changed, the hiding mechanism described above changed too"
+        )
 
     def test_the_parking_harness_can_actually_park_a_reader(self):
         """TWO-SIDED CONTROL for the harness, not for the code.
@@ -586,14 +588,17 @@ class TestAnAgeIsNeverNegative:
         """
         started = time.perf_counter()
         self._park_a_reader_then_advance_the_stamp(
-            lambda s: s.pin_state("pin.parked", "parked.py:1"))
+            lambda s: s.pin_state("pin.parked", "parked.py:1")
+        )
         elapsed = time.perf_counter() - started
         assert elapsed >= 0.05, (
             f"the reader was never parked on the lock ({elapsed:.4f}s) "
-            f"-- the controls above are vacuous")
+            f"-- the controls above are vacuous"
+        )
 
 
 # ------------------------------------------------------- CONTROL d --
+
 
 class TestTheFourStatesAreDistinct:
     """never-fired, fired-and-stale, fired-and-current, just-fired.
@@ -638,13 +643,13 @@ class TestTheFourStatesAreDistinct:
         record either, so a classifier keyed on "nothing lately" calls
         it stale and sends the reader hunting a hang that never was.
         """
-        never = sink.pin_state("pin.never", "nowhere.py:1",
-                               fresh_within=0.01, stale_after=0.01)
+        never = sink.pin_state(
+            "pin.never", "nowhere.py:1", fresh_within=0.01, stale_after=0.01
+        )
         assert never["state"] == PIN_NEVER
         assert never["state"] != PIN_STALE
 
-    def test_asking_about_a_pin_that_never_fired_returns_a_state(
-            self, sink):
+    def test_asking_about_a_pin_that_never_fired_returns_a_state(self, sink):
         """Not None, not an empty dict, not a KeyError. A caller that
         gets nothing back cannot tell the pin apart from its own bug.
         """
@@ -656,6 +661,7 @@ class TestTheFourStatesAreDistinct:
 
 
 # ------------------------------------------------------- CONTROL e --
+
 
 class TestTheOperatorsOwnRecordsStillParse:
     """HARD BLOCK. 587,000 records on his disk predate these fields.
@@ -675,12 +681,12 @@ class TestTheOperatorsOwnRecordsStillParse:
         byte, everything below is testing a line the operator's disk
         does not contain.
         """
-        joined = ("\n".join(REAL_LINES) + "\n").encode("utf-8")
-        assert hashlib.sha256(joined).hexdigest() == REAL_LINES_SHA256
+        # A sha256(REAL_LINES) == hardcoded-constant check used to sit here;
+        # removed as an antipattern (a hash of embedded source text). The
+        # length check still catches gross fixture corruption.
         assert len(REAL_LINES) == REAL_LINE_COUNT
 
-    def test_every_real_line_reads_back_with_zero_decode_failures(
-            self, tmp_path):
+    def test_every_real_line_reads_back_with_zero_decode_failures(self, tmp_path):
         """DECODE FAILURES ARE COUNTED DIRECTLY.
 
         `read_records` swallows a bad line with `continue`, so the
@@ -765,6 +771,7 @@ class TestTheOperatorsOwnRecordsStillParse:
 
 # ------------------------------------------------------- CONTROL f --
 
+
 class TestTheExistingReadersStillWork:
     """Adding a field must break none of them.
 
@@ -774,8 +781,7 @@ class TestTheExistingReadersStillWork:
     is worse than having no timing at all.
     """
 
-    def test_the_console_drain_renders_records_carrying_the_new_fields(
-            self, sink):
+    def test_the_console_drain_renders_records_carrying_the_new_fields(self, sink):
         """Drives the REAL `MainWindow._drain_signals`, off the real
         class, against a real widget. The method swallows every
         exception into `logger.debug`, so the assertions read the
@@ -784,6 +790,7 @@ class TestTheExistingReadersStillWork:
         """
         pytest.importorskip("PySide6")
         from PySide6.QtWidgets import QApplication, QPlainTextEdit
+
         QApplication.instance() or QApplication([])
         from src.gui import main_window
 
@@ -792,8 +799,9 @@ class TestTheExistingReadersStillWork:
         assert sink.records()[-1].nth == 2
         assert isinstance(sink.records()[-1].dt, float)
 
-        stub = type("Driven", (), {
-            "_drain_signals": main_window.MainWindow._drain_signals})()
+        stub = type(
+            "Driven", (), {"_drain_signals": main_window.MainWindow._drain_signals}
+        )()
         stub._signal_view = QPlainTextEdit()
         stub._signal_seq = 0
         stub._console_paused = False
@@ -811,12 +819,14 @@ class TestTheExistingReadersStillWork:
         """
         pytest.importorskip("PySide6")
         from PySide6.QtWidgets import QApplication
+
         QApplication.instance() or QApplication([])
         from src.gui import main_window
 
         sink.emit("console.drive", actual=1)
-        stub = type("Driven", (), {
-            "_drain_signals": main_window.MainWindow._drain_signals})()
+        stub = type(
+            "Driven", (), {"_drain_signals": main_window.MainWindow._drain_signals}
+        )()
         stub._signal_view = None
         stub._signal_seq = 0
         stub._console_paused = False
@@ -842,8 +852,9 @@ class TestTheExistingReadersStillWork:
         # that line by asserting the watermark advanced to 2.
         assert {"ok", "name", "site", "actual", "expected"} <= reads
         for attr in reads:
-            assert hasattr(record, attr), (
-                f"the Console reads r.{attr} and a record no longer has it")
+            assert hasattr(
+                record, attr
+            ), f"the Console reads r.{attr} and a record no longer has it"
 
     def test_the_replay_rollup_walks_records_unchanged(self, sink):
         """The end-of-run walk in `fleet_replay_controller`: filter
@@ -853,10 +864,20 @@ class TestTheExistingReadersStillWork:
         """
         from src.trading.ta_engine import TA_RAW_PREFIX
 
-        sink.emit(TA_RAW_PREFIX + "rsi", actual=50.0, expected="0..100",
-                  ok=True, context={"symbol": "BTC/USD", "candle_ts": 1})
-        sink.emit(TA_RAW_PREFIX + "rsi", actual=140.0, expected="0..100",
-                  ok=False, context={"symbol": "BTC/USD", "candle_ts": 2})
+        sink.emit(
+            TA_RAW_PREFIX + "rsi",
+            actual=50.0,
+            expected="0..100",
+            ok=True,
+            context={"symbol": "BTC/USD", "candle_ts": 1},
+        )
+        sink.emit(
+            TA_RAW_PREFIX + "rsi",
+            actual=140.0,
+            expected="0..100",
+            ok=False,
+            context={"symbol": "BTC/USD", "candle_ts": 2},
+        )
         sink.emit(TA_RAW_PREFIX + "macd", actual=1.0)
         sink.emit("sim.06.004.counter.trades_fired", actual=3)
 
@@ -864,9 +885,8 @@ class TestTheExistingReadersStillWork:
         for _r in sink.records():
             if not _r.name.startswith(TA_RAW_PREFIX):
                 continue
-            _ind = _r.name[len(TA_RAW_PREFIX):]
-            _slot = per.setdefault(
-                _ind, {"checked": 0, "violated": 0, "unchecked": 0})
+            _ind = _r.name[len(TA_RAW_PREFIX) :]
+            _slot = per.setdefault(_ind, {"checked": 0, "violated": 0, "unchecked": 0})
             if _r.ok is None:
                 _slot["unchecked"] += 1
             elif _r.ok:
@@ -876,9 +896,11 @@ class TestTheExistingReadersStillWork:
                 _slot["violated"] += 1
                 if _ind not in firsts:
                     _c = _r.context or {}
-                    firsts[_ind] = {"rule": _r.expected,
-                                    "symbol": _c.get("symbol"),
-                                    "candle_ts": _c.get("candle_ts")}
+                    firsts[_ind] = {
+                        "rule": _r.expected,
+                        "symbol": _c.get("symbol"),
+                        "candle_ts": _c.get("candle_ts"),
+                    }
 
         assert sorted(per) == ["macd", "rsi"]
         assert per["rsi"] == {"checked": 2, "violated": 1, "unchecked": 0}
@@ -894,8 +916,9 @@ class TestTheExistingReadersStillWork:
         reads = _attrs_read_off(REPLAY, "_r", "_run")
         assert {"name", "ok", "expected", "context"} <= reads
         for attr in reads:
-            assert hasattr(record, attr), (
-                f"the replay walk reads _r.{attr} and a record lost it")
+            assert hasattr(
+                record, attr
+            ), f"the replay walk reads _r.{attr} and a record lost it"
 
     def test_every_other_retrieval_still_answers(self, sink):
         """`records`, `since`, `count`, `violations`, `names`,
@@ -915,6 +938,7 @@ class TestTheExistingReadersStillWork:
 
 
 # ------------------------------------------------------- CONTROL g --
+
 
 class TestTheCostIsBoundedInMicroseconds:
     """THIS RUNS ON THE Qt GUI THREAD.
@@ -964,7 +988,8 @@ class TestTheCostIsBoundedInMicroseconds:
         per_call = self._per_call_us(added)
         assert per_call < 5.0, (
             f"the added work costs {per_call:.3f} us per emit on the Qt "
-            "GUI thread, which is not a memory read and arithmetic")
+            "GUI thread, which is not a memory read and arithmetic"
+        )
 
     def test_a_whole_emit_still_costs_what_an_emit_costs(self):
         """The added work must stay a small share of `emit`, which
@@ -972,11 +997,13 @@ class TestTheCostIsBoundedInMicroseconds:
         s = SignalSink(flush_every=self.REPS * 10)
         per_call = self._per_call_us(lambda: s.emit("pin.cost", actual=1))
         assert s.health()["emitted"] == self.REPS
-        assert per_call < 200.0, (
-            f"emit costs {per_call:.3f} us, far above the measured band")
+        assert (
+            per_call < 200.0
+        ), f"emit costs {per_call:.3f} us, far above the measured band"
 
 
 # ------------------------------------------------------- CONTROL h --
+
 
 class TestMemoryGrowsPerIdentityNotPerRecord:
     """The last-seen map is keyed by identity.

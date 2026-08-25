@@ -78,6 +78,7 @@ THE EXPECTED STRINGS BELOW WERE CAPTURED FROM LIVE, BYTE FOR BYTE,
 before the change, by driving this same method. They are positive
 controls: if the guard ever alters a readable value, they go red.
 """
+
 from __future__ import annotations
 
 import json
@@ -124,8 +125,8 @@ REFUSED = [
     pytest.param(Fraction(3, 2), "$1.5000", id="Fraction"),
     pytest.param(_FloatSub(2.5), "$2.5000", id="float-subclass"),
     pytest.param(_HasFloat(), "$7.0000", id="obj-with-__float__"),
-    pytest.param(2 ** 1023 + 1, "$8988465674311579", id="int-above-bound"),
-    pytest.param(10 ** 400, "OverflowError", id="huge-int"),
+    pytest.param(2**1023 + 1, "$8988465674311579", id="int-above-bound"),
+    pytest.param(10**400, "OverflowError", id="huge-int"),
     pytest.param([1.0], "TypeError", id="list"),
     pytest.param({"a": 1}, "TypeError", id="dict"),
 ]
@@ -139,8 +140,7 @@ ACCEPTED = [
     pytest.param(0.0, "  USD parked:    $0.0000", id="zero"),
     pytest.param(-3.25, "  USD parked:    $-3.2500", id="negative"),
     pytest.param(-0.0, "  USD parked:    $0.0000", id="negative-zero"),
-    pytest.param(2 ** 53 + 1, "  USD parked:    $9007199254740992.0000",
-                 id="2**53+1"),
+    pytest.param(2**53 + 1, "  USD parked:    $9007199254740992.0000", id="2**53+1"),
     pytest.param(5e-324, "  USD parked:    $0.0000", id="smallest-subnormal"),
 ]
 
@@ -155,7 +155,8 @@ LIVE_CONFIRM_TYPICAL = (
     "  Original cost: $0.00011111\n\n"
     "This will execute a MARKET buy at the current price, bypassing "
     "TA / OTD / Target-Delta gates. Smart Ceiling and MEM-257 "
-    "fail-closed still apply.")
+    "fail-closed still apply."
+)
 
 
 def _valid_tranche():
@@ -165,8 +166,7 @@ def _valid_tranche():
     LIVE_CONFIRM_TYPICAL is the string the shipped code produced for
     exactly this dict.
     """
-    return {"usd": 20.0, "ref": 0.00012345,
-            "initial_buy_price": 0.00011111}
+    return {"usd": 20.0, "ref": 0.00012345, "initial_buy_price": 0.00011111}
 
 
 class _Result:
@@ -240,8 +240,7 @@ def _fire(tranche, monkeypatch, answer_yes=True):
 
     class _Timer:
         def __init__(self, *_a, **_k):
-            self.timeout = types.SimpleNamespace(
-                connect=lambda *_a, **_k: None)
+            self.timeout = types.SimpleNamespace(connect=lambda *_a, **_k: None)
 
         def setInterval(self, *_a, **_k):
             pass
@@ -274,9 +273,12 @@ def _fire(tranche, monkeypatch, answer_yes=True):
     monkeypatch.setattr(_QtWidgets, "QMessageBox", _Msg)
     monkeypatch.setattr(_QtCore, "QTimer", _Timer)
     import asyncio as _asyncio
+
     monkeypatch.setattr(
-        _asyncio, "run_coroutine_threadsafe",
-        lambda *_a, **_k: types.SimpleNamespace(done=lambda: False))
+        _asyncio,
+        "run_coroutine_threadsafe",
+        lambda *_a, **_k: types.SimpleNamespace(done=lambda: False),
+    )
 
     _Dlg._on_fire_tranche_clicked(_StubDlg(), tranche)
     return res
@@ -286,6 +288,7 @@ def _fire(tranche, monkeypatch, answer_yes=True):
 # POSITIVE CONTROLS. A guard that refused everything would pass every
 # refusal test below while making the Fire button useless.
 # --------------------------------------------------------------------
+
 
 def test_valid_tranche_confirmation_is_byte_identical_to_live(monkeypatch):
     """If this fails, the guard changed what a READABLE value displays.
@@ -338,6 +341,7 @@ def test_operator_answering_no_places_no_order(monkeypatch):
 # --------------------------------------------------------------------
 # THE REFUSAL
 # --------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("bad,_live_showed", REFUSED)
 @pytest.mark.parametrize("key", MONEY_KEYS)
@@ -393,7 +397,7 @@ def test_huge_int_refused_without_raising(monkeypatch):
     one instead.
     """
     tr = _valid_tranche()
-    tr["usd"] = 10 ** 400
+    tr["usd"] = 10**400
     res = _fire(tr, monkeypatch)
     assert res.refusal is not None
     assert "unreadable" in res.refusal["title"]
@@ -406,21 +410,22 @@ def test_refusal_echo_is_bounded(monkeypatch):
     The echo exists to identify the bad field, not to reprint it.
     """
     tr = _valid_tranche()
-    tr["usd"] = 10 ** 400
+    tr["usd"] = 10**400
     res = _fire(tr, monkeypatch)
     assert "..." in res.refusal["text"]
     assert len(res.refusal["text"]) < 1200
 
 
-@pytest.mark.parametrize("literal,key", [
-    ('{"usd": NaN, "ref": 1.0, "initial_buy_price": 1.0}', "usd"),
-    ('{"usd": true, "ref": 1.0, "initial_buy_price": 1.0}', "usd"),
-    ('{"usd": 1.0, "ref": Infinity, "initial_buy_price": 1.0}', "ref"),
-    ('{"usd": 1.0, "ref": 1.0, "initial_buy_price": null}',
-     "initial_buy_price"),
-])
-def test_refusal_survives_a_real_state_file_round_trip(literal, key,
-                                                       monkeypatch):
+@pytest.mark.parametrize(
+    "literal,key",
+    [
+        ('{"usd": NaN, "ref": 1.0, "initial_buy_price": 1.0}', "usd"),
+        ('{"usd": true, "ref": 1.0, "initial_buy_price": 1.0}', "usd"),
+        ('{"usd": 1.0, "ref": Infinity, "initial_buy_price": 1.0}', "ref"),
+        ('{"usd": 1.0, "ref": 1.0, "initial_buy_price": null}', "initial_buy_price"),
+    ],
+)
+def test_refusal_survives_a_real_state_file_round_trip(literal, key, monkeypatch):
     """If this fails, the reachable shapes are not the ones pinned.
 
     These are decoded by ``json.loads`` exactly as a corrupted or
@@ -451,8 +456,7 @@ def test_present_but_none_ibp_does_not_fall_back_to_ref(monkeypatch):
     That would show the operator a real 'original cost' for a tranche
     that stores none -- the fabrication this unit exists to stop.
     """
-    res = _fire({"usd": 7.5, "ref": 3.5, "initial_buy_price": None},
-                monkeypatch)
+    res = _fire({"usd": 7.5, "ref": 3.5, "initial_buy_price": None}, monkeypatch)
     assert res.refusal is not None
     assert "initial_buy_price" in res.refusal["text"]
 

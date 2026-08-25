@@ -18,6 +18,7 @@ Coverage:
 Every test uses a per-test tmp dir so we never touch the real
 ~/.acervator/stone_tablets/ store.
 """
+
 from __future__ import annotations
 
 import json
@@ -43,19 +44,18 @@ from src.trading.stone_tablets.storage import (  # noqa: E402
     tablet_path,
 )
 
-
 _STEP_5M_MS = 300 * 1000
 _YTD_START_MS = int(datetime(2026, 4, 1, tzinfo=timezone.utc).timestamp() * 1000)
 
 
 def _synth_5m_row(ts_ms: int, base_price: float = 100.0) -> list[float]:
-    return [ts_ms, base_price, base_price + 1, base_price - 1,
-            base_price + 0.5, 10.0]
+    return [ts_ms, base_price, base_price + 1, base_price - 1, base_price + 0.5, 10.0]
 
 
 def _synth_5m_range(start_ms: int, count: int, base: float = 100.0):
-    return [_synth_5m_row(start_ms + i * _STEP_5M_MS, base + i * 0.01)
-            for i in range(count)]
+    return [
+        _synth_5m_row(start_ms + i * _STEP_5M_MS, base + i * 0.01) for i in range(count)
+    ]
 
 
 @pytest.fixture
@@ -74,8 +74,7 @@ def test_ingest_writes_tablet_and_manifest(tmp_path, reg):
     rows = _synth_5m_range(_YTD_START_MS, 12)
     n = reg.ingest_candles("BTC", NATIVE_TIMEFRAME, rows, source="test")
     assert n == 12
-    year = datetime.fromtimestamp(
-        _YTD_START_MS / 1000.0, tz=timezone.utc).year
+    year = datetime.fromtimestamp(_YTD_START_MS / 1000.0, tz=timezone.utc).year
     path = tablet_path("BTC", NATIVE_TIMEFRAME, year, root=tmp_path)
     assert path.exists()
     entries = read_manifest(tmp_path)
@@ -100,33 +99,30 @@ def test_get_candles_chronological_slice(reg):
     rows = _synth_5m_range(_YTD_START_MS, 20)
     reg.ingest_candles("ETH", NATIVE_TIMEFRAME, rows, source="test")
     got = reg.get_candles(
-        "ETH", _YTD_START_MS,
-        _YTD_START_MS + 5 * _STEP_5M_MS, NATIVE_TIMEFRAME)
-    assert len(got) == 6                       # inclusive at both ends
+        "ETH", _YTD_START_MS, _YTD_START_MS + 5 * _STEP_5M_MS, NATIVE_TIMEFRAME
+    )
+    assert len(got) == 6  # inclusive at both ends
     assert got == sorted(got, key=lambda r: r[0])
 
 
 # ── R5 ────────────────────────────────────────────────────────────
 def test_has_coverage_before_and_after(reg):
-    assert not reg.has_coverage(
-        "SOL", _YTD_START_MS, _YTD_START_MS + _STEP_5M_MS * 3)
+    assert not reg.has_coverage("SOL", _YTD_START_MS, _YTD_START_MS + _STEP_5M_MS * 3)
     rows = _synth_5m_range(_YTD_START_MS, 10)
     reg.ingest_candles("SOL", NATIVE_TIMEFRAME, rows, source="test")
-    assert reg.has_coverage(
-        "SOL", _YTD_START_MS, _YTD_START_MS + _STEP_5M_MS * 5)
+    assert reg.has_coverage("SOL", _YTD_START_MS, _YTD_START_MS + _STEP_5M_MS * 5)
 
 
 # ── R6 ────────────────────────────────────────────────────────────
 def test_missing_ranges_reports_gaps(reg):
     # Ingest 5 candles, then leave a 5-candle gap, then 5 more
     first = _synth_5m_range(_YTD_START_MS, 5)
-    second = _synth_5m_range(
-        _YTD_START_MS + 10 * _STEP_5M_MS, 5)
+    second = _synth_5m_range(_YTD_START_MS + 10 * _STEP_5M_MS, 5)
     reg.ingest_candles("SPK", NATIVE_TIMEFRAME, first, source="test")
     reg.ingest_candles("SPK", NATIVE_TIMEFRAME, second, source="test")
     gaps = reg.missing_ranges(
-        "SPK", _YTD_START_MS,
-        _YTD_START_MS + 14 * _STEP_5M_MS, NATIVE_TIMEFRAME)
+        "SPK", _YTD_START_MS, _YTD_START_MS + 14 * _STEP_5M_MS, NATIVE_TIMEFRAME
+    )
     # Expected: single gap [candle 5..candle 9] = 5*step ms
     assert len(gaps) == 1
     start, end = gaps[0]
@@ -139,19 +135,18 @@ def test_rollup_5m_to_1h():
     # 12 x 5m = 1 x 1h
     start = _YTD_START_MS
     native = [
-        [start + i * _STEP_5M_MS, 100 + i, 110 + i, 90 + i,
-         105 + i, 5.0]
-        for i in range(12)]
-    hourly = _rollup(native, factor=12,
-                     bucket_ms=3600 * 1000)
+        [start + i * _STEP_5M_MS, 100 + i, 110 + i, 90 + i, 105 + i, 5.0]
+        for i in range(12)
+    ]
+    hourly = _rollup(native, factor=12, bucket_ms=3600 * 1000)
     assert len(hourly) == 1
     bucket_ts, o, h, low, c, v = hourly[0]
-    assert bucket_ts == start                       # bucket start
-    assert o == 100                                 # first open
-    assert h == 121                                 # max high (110 + 11)
-    assert low == 90                                # min low (90 + 0)
-    assert c == 116                                 # last close (105 + 11)
-    assert v == 60.0                                # sum(5 x 12)
+    assert bucket_ts == start  # bucket start
+    assert o == 100  # first open
+    assert h == 121  # max high (110 + 11)
+    assert low == 90  # min low (90 + 0)
+    assert c == 116  # last close (105 + 11)
+    assert v == 60.0  # sum(5 x 12)
 
 
 # ── R8 ────────────────────────────────────────────────────────────
@@ -161,11 +156,11 @@ def test_rollup_5m_to_1d():
     # Ingest exactly 288 candles = 1 full day
     start = _YTD_START_MS
     native = [
-        [start + i * _STEP_5M_MS, 100.0, 100.0, 100.0, 100.0, 1.0]
-        for i in range(288)]
+        [start + i * _STEP_5M_MS, 100.0, 100.0, 100.0, 100.0, 1.0] for i in range(288)
+    ]
     daily = _rollup(native, factor=288, bucket_ms=86_400 * 1000)
     assert len(daily) == 1
-    assert daily[0][5] == 288.0                     # sum vol = 288 * 1
+    assert daily[0][5] == 288.0  # sum vol = 288 * 1
 
 
 # ── R9 ────────────────────────────────────────────────────────────
@@ -186,8 +181,7 @@ def test_checksum_drift_detected_by_recompute(tmp_path, reg):
     computed checksum differs from the on-disk stored value."""
     rows = _synth_5m_range(_YTD_START_MS, 12)
     reg.ingest_candles("BTC", NATIVE_TIMEFRAME, rows, source="test")
-    year = datetime.fromtimestamp(
-        _YTD_START_MS / 1000.0, tz=timezone.utc).year
+    year = datetime.fromtimestamp(_YTD_START_MS / 1000.0, tz=timezone.utc).year
     path = tablet_path("BTC", NATIVE_TIMEFRAME, year, root=tmp_path)
     data = json.loads(path.read_text(encoding="utf-8"))
     on_disk_checksum = data["checksum_sha256"]
@@ -199,7 +193,8 @@ def test_checksum_drift_detected_by_recompute(tmp_path, reg):
     assert computed != on_disk_checksum, (
         "checksum drift NOT detected after tampering — "
         "compute_checksum() may be reading stored value or "
-        "ignoring the tampered candle field")
+        "ignoring the tampered candle field"
+    )
 
 
 # ── R11 ───────────────────────────────────────────────────────────
@@ -227,9 +222,7 @@ def test_registry_reload_sees_prior_ingest(tmp_path):
     r1.ingest_candles("XRP", NATIVE_TIMEFRAME, rows, source="test")
     # Fresh registry pointed at the same root should see it
     r2 = StoneTabletsRegistry(root=tmp_path)
-    assert r2.has_coverage(
-        "XRP", _YTD_START_MS,
-        _YTD_START_MS + 5 * _STEP_5M_MS)
+    assert r2.has_coverage("XRP", _YTD_START_MS, _YTD_START_MS + 5 * _STEP_5M_MS)
     summary = r2.coverage_summary()
     assert len(summary) == 1
     assert summary[0].asset == "XRP"

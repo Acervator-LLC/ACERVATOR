@@ -20,27 +20,59 @@ logger = logging.getLogger("acervator.chart_data")
 
 # CoinGecko timeframe mapping (interval param for /coins/{id}/ohlc)
 COINGECKO_DAYS = {
-    "1m": 1, "5m": 1, "15m": 1, "30m": 1,
-    "1h": 2, "4h": 14, "1d": 30, "1w": 180,
+    "1m": 1,
+    "5m": 1,
+    "15m": 1,
+    "30m": 1,
+    "1h": 2,
+    "4h": 14,
+    "1d": 30,
+    "1w": 180,
 }
 
 # Common symbol → CoinGecko ID mapping
 COINGECKO_IDS = {
     # Core 40 coins — hand-verified CoinGecko IDs
-    "BTC": "bitcoin", "ETH": "ethereum", "BNB": "binancecoin",
-    "SOL": "solana", "XRP": "ripple", "DOGE": "dogecoin",
-    "ADA": "cardano", "AVAX": "avalanche-2", "DOT": "polkadot",
-    "LINK": "chainlink", "MATIC": "matic-network", "SHIB": "shiba-inu",
-    "LTC": "litecoin", "UNI": "uniswap", "ATOM": "cosmos",
-    "XLM": "stellar", "ALGO": "algorand", "NEAR": "near",
-    "APT": "aptos", "SUI": "sui", "FIL": "filecoin",
-    "ARB": "arbitrum", "OP": "optimism", "BONK": "bonk",
-    "PEPE": "pepe", "WIF": "dogwifhat", "FLOKI": "floki",
-    "RENDER": "render-token", "INJ": "injective-protocol",
-    "SEI": "sei-network", "TIA": "celestia", "JUP": "jupiter-exchange-solana",
-    "AAVE": "aave", "MKR": "maker", "CRV": "curve-dao-token",
-    "RUNE": "thorchain", "FTM": "fantom", "SAND": "the-sandbox",
-    "MANA": "decentraland", "GRT": "the-graph",
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "BNB": "binancecoin",
+    "SOL": "solana",
+    "XRP": "ripple",
+    "DOGE": "dogecoin",
+    "ADA": "cardano",
+    "AVAX": "avalanche-2",
+    "DOT": "polkadot",
+    "LINK": "chainlink",
+    "MATIC": "matic-network",
+    "SHIB": "shiba-inu",
+    "LTC": "litecoin",
+    "UNI": "uniswap",
+    "ATOM": "cosmos",
+    "XLM": "stellar",
+    "ALGO": "algorand",
+    "NEAR": "near",
+    "APT": "aptos",
+    "SUI": "sui",
+    "FIL": "filecoin",
+    "ARB": "arbitrum",
+    "OP": "optimism",
+    "BONK": "bonk",
+    "PEPE": "pepe",
+    "WIF": "dogwifhat",
+    "FLOKI": "floki",
+    "RENDER": "render-token",
+    "INJ": "injective-protocol",
+    "SEI": "sei-network",
+    "TIA": "celestia",
+    "JUP": "jupiter-exchange-solana",
+    "AAVE": "aave",
+    "MKR": "maker",
+    "CRV": "curve-dao-token",
+    "RUNE": "thorchain",
+    "FTM": "fantom",
+    "SAND": "the-sandbox",
+    "MANA": "decentraland",
+    "GRT": "the-graph",
 }
 
 
@@ -49,6 +81,7 @@ def extend_from_archive():
     Adds discovered coins to COINGECKO_IDS so the simulator can use them."""
     from pathlib import Path
     import json
+
     dirs = [
         Path(__file__).parent.parent.parent / "data" / "historical",
         Path.home() / ".acervator" / "historical_cache",
@@ -66,7 +99,9 @@ def extend_from_archive():
                         COINGECKO_IDS[sym] = cg_id
             except Exception as _sf_exc:  # noqa: BLE001
                 logger.warning(
-                    "chart data fetch failed — chart will show stale or empty series: %s", _sf_exc)
+                    "chart data fetch failed — chart will show stale or empty series: %s",
+                    _sf_exc,
+                )
         # Also scan filenames: {cg_id}_{vs}_max.json
         if d.exists():
             for f in d.glob("*_max.json"):
@@ -86,18 +121,25 @@ try:
     extend_from_archive()
 except Exception as _sf_exc:  # noqa: BLE001
     logger.warning(
-        "chart data fetch failed — chart will show stale or empty series: %s", _sf_exc)
+        "chart data fetch failed — chart will show stale or empty series: %s", _sf_exc
+    )
 
 # CCXT timeframe strings
 CCXT_TIMEFRAMES = {
-    "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
-    "1h": "1h", "4h": "4h", "1d": "1d", "1w": "1w",
+    "1m": "1m",
+    "5m": "5m",
+    "15m": "15m",
+    "30m": "30m",
+    "1h": "1h",
+    "4h": "4h",
+    "1d": "1d",
+    "1w": "1w",
 }
 
 
 @dataclass
 class OHLCVCandle:
-    time: int      # Unix timestamp (seconds)
+    time: int  # Unix timestamp (seconds)
     open: float
     high: float
     low: float
@@ -147,7 +189,9 @@ class ChartDataFetcher:
         # --- Source 1: Exchange OHLCV via CCXT ---
         if exchange is not None:
             try:
-                candles, source = await self._fetch_exchange(exchange, symbol, timeframe, limit)
+                candles, source = await self._fetch_exchange(
+                    exchange, symbol, timeframe, limit
+                )
                 if candles:
                     self._set_cache(symbol, timeframe, candles)
                     return candles, source
@@ -177,7 +221,9 @@ class ChartDataFetcher:
 
         # All sources failed
         error_detail = " | ".join(errors) if errors else "No sources available"
-        logger.warning("All OHLCV sources failed for %s %s: %s", symbol, timeframe, error_detail)
+        logger.warning(
+            "All OHLCV sources failed for %s %s: %s", symbol, timeframe, error_detail
+        )
         return [], f"FAILED: {error_detail}"
 
     async def _fetch_exchange(
@@ -193,16 +239,18 @@ class ChartDataFetcher:
         for row in raw:
             # CCXT returns [timestamp_ms, open, high, low, close, volume]
             if isinstance(row, (list, tuple)) and len(row) >= 6:
-                candles.append(OHLCVCandle(
-                    time=int(row[0] / 1000),  # ms → seconds
-                    open=float(row[1]),
-                    high=float(row[2]),
-                    low=float(row[3]),
-                    close=float(row[4]),
-                    volume=float(row[5]),
-                ))
+                candles.append(
+                    OHLCVCandle(
+                        time=int(row[0] / 1000),  # ms → seconds
+                        open=float(row[1]),
+                        high=float(row[2]),
+                        low=float(row[3]),
+                        close=float(row[4]),
+                        volume=float(row[5]),
+                    )
+                )
 
-        eid = getattr(exchange, 'exchange_id', 'exchange')
+        eid = getattr(exchange, "exchange_id", "exchange")
         return candles, f"{eid.capitalize()} OHLCV"
 
     async def _fetch_coingecko(
@@ -223,10 +271,13 @@ class ChartDataFetcher:
         import json
 
         def _do_fetch():
-            req = urllib.request.Request(url, headers={
-                "User-Agent": "Acervator/2.0",
-                "Accept": "application/json",
-            })
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Acervator/2.0",
+                    "Accept": "application/json",
+                },
+            )
             with safe_urlopen(req, timeout=10) as resp:
                 return json.loads(resp.read())
 
@@ -238,13 +289,15 @@ class ChartDataFetcher:
         for row in raw:
             # CoinGecko OHLC returns [timestamp_ms, open, high, low, close]
             if isinstance(row, (list, tuple)) and len(row) >= 5:
-                candles.append(OHLCVCandle(
-                    time=int(row[0] / 1000),
-                    open=float(row[1]),
-                    high=float(row[2]),
-                    low=float(row[3]),
-                    close=float(row[4]),
-                    volume=0.0,  # CoinGecko OHLC doesn't include volume
-                ))
+                candles.append(
+                    OHLCVCandle(
+                        time=int(row[0] / 1000),
+                        open=float(row[1]),
+                        high=float(row[2]),
+                        low=float(row[3]),
+                        close=float(row[4]),
+                        volume=0.0,  # CoinGecko OHLC doesn't include volume
+                    )
+                )
 
         return candles, f"CoinGecko ({days}d)"

@@ -15,6 +15,7 @@ This test binds the reorder helper to a synthetic QTabWidget so the
 pin can run without booting the full MainWindow (which drags in
 BotManager, event bus, splash timers, etc.).
 """
+
 from __future__ import annotations
 
 import os
@@ -33,7 +34,9 @@ if str(REPO) not in sys.path:
 pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import (  # noqa: E402
-    QApplication, QLabel, QTabWidget,
+    QApplication,
+    QLabel,
+    QTabWidget,
 )
 
 
@@ -48,6 +51,7 @@ def _bind_reorder_helper(tabs: QTabWidget) -> None:
     bind it to any object exposing ``self._main_tabs``. Keeps the
     test independent of MainWindow's full construction cost."""
     import src.gui.main_window as mw
+
     fn = mw.MainWindow.__dict__["_reorder_main_tabs"]
 
     class _Holder:
@@ -77,13 +81,17 @@ def test_reorder_produces_canonical_order(qapp):
     tabs = _make_tabs_in_wrong_order(qapp)
     reorder = _bind_reorder_helper(tabs)
     canonical = [
-        "Trading", "Market Inspector", "Bot Swarm", "Asset Charts",
-        "History", "Simulator", "Console",
+        "Trading",
+        "Market Inspector",
+        "Bot Swarm",
+        "Asset Charts",
+        "History",
+        "Simulator",
+        "Console",
     ]
     reorder(canonical)
     actual = [tabs.tabText(i) for i in range(tabs.count())]
-    assert actual == canonical, (
-        f"tab order not canonical: {actual}")
+    assert actual == canonical, f"tab order not canonical: {actual}"
     tabs.deleteLater()
 
 
@@ -92,8 +100,17 @@ def test_reorder_preserves_widgets(qapp):
     tabs = _make_tabs_in_wrong_order(qapp)
     trading_widget_before = tabs.widget(0)
     reorder = _bind_reorder_helper(tabs)
-    reorder(["Trading", "Market Inspector", "Bot Swarm",
-             "Asset Charts", "History", "Simulator", "Console"])
+    reorder(
+        [
+            "Trading",
+            "Market Inspector",
+            "Bot Swarm",
+            "Asset Charts",
+            "History",
+            "Simulator",
+            "Console",
+        ]
+    )
     assert tabs.tabText(0) == "Trading"
     assert tabs.widget(0) is trading_widget_before
     tabs.deleteLater()
@@ -122,8 +139,13 @@ def test_reorder_is_idempotent(qapp):
     tabs = _make_tabs_in_wrong_order(qapp)
     reorder = _bind_reorder_helper(tabs)
     canonical = [
-        "Trading", "Market Inspector", "Bot Swarm", "Asset Charts",
-        "History", "Simulator", "Console",
+        "Trading",
+        "Market Inspector",
+        "Bot Swarm",
+        "Asset Charts",
+        "History",
+        "Simulator",
+        "Console",
     ]
     reorder(canonical)
     first_order = [tabs.tabText(i) for i in range(tabs.count())]

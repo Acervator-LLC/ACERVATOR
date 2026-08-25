@@ -34,6 +34,7 @@ read the fold preview returns NaN, and that value is an addend in
 
 Nothing here touches ~/.acervator or any network. The recorders record.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -120,13 +121,13 @@ UNUSABLE = [
     ("__float__ to nan", _FloatsToNan()),
     ("__float__ to number", _FloatsToFive()),
     ("__index__ to number", _HasIndex()),
-    ("int too large for a float", 10 ** 400),
+    ("int too large for a float", 10**400),
     ("complex", complex(5, 0)),
 ]
 
 try:
     import numpy
-except ImportError:                                  # pragma: no cover
+except ImportError:  # pragma: no cover
     numpy = None
 else:
     UNUSABLE += [
@@ -160,33 +161,48 @@ class _Recorder:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    async def place_order(self, symbol, side, order_type, amount,
-                          price=None, client_order_id=None):
-        self.calls.append({
-            "path": "exchange.place_order",
-            "symbol": symbol,
-            "side": side,
-            "order_type": order_type,
-            "amount": repr(amount),
-            "price": price,
-            "client_order_id": client_order_id,
-        })
+    async def place_order(
+        self, symbol, side, order_type, amount, price=None, client_order_id=None
+    ):
+        self.calls.append(
+            {
+                "path": "exchange.place_order",
+                "symbol": symbol,
+                "side": side,
+                "order_type": order_type,
+                "amount": repr(amount),
+                "price": price,
+                "client_order_id": client_order_id,
+            }
+        )
         return Order(
-            id="rec", symbol=symbol, side=side, type=order_type,
-            amount=0.0, price=0.0, filled=0.0, remaining=0.0,
-            average=0.0, status=OrderStatus.CLOSED, timestamp=0.0)
+            id="rec",
+            symbol=symbol,
+            side=side,
+            type=order_type,
+            amount=0.0,
+            price=0.0,
+            filled=0.0,
+            remaining=0.0,
+            average=0.0,
+            status=OrderStatus.CLOSED,
+            timestamp=0.0,
+        )
 
-    async def execute(self, symbol, side, amount, price=0,
-                      order_type="market", exchange=None):
-        self.calls.append({
-            "path": "volume_guard.execute",
-            "symbol": symbol,
-            "side": side,
-            "order_type": order_type,
-            "amount": repr(amount),
-            "price": price,
-            "exchange": type(exchange).__name__,
-        })
+    async def execute(
+        self, symbol, side, amount, price=0, order_type="market", exchange=None
+    ):
+        self.calls.append(
+            {
+                "path": "volume_guard.execute",
+                "symbol": symbol,
+                "side": side,
+                "order_type": order_type,
+                "amount": repr(amount),
+                "price": price,
+                "exchange": type(exchange).__name__,
+            }
+        )
         return _Report()
 
     async def get_markets(self):
@@ -212,16 +228,13 @@ def _bot(regime: str, guarded: bool):
 
 async def _place(bot, amount):
     """Drive the real method. Each caller states what should happen."""
-    await bot.guarded_place_order(
-        SYMBOL, OrderSide.BUY, OrderType.MARKET, amount, None)
+    await bot.guarded_place_order(SYMBOL, OrderSide.BUY, OrderType.MARKET, amount, None)
 
 
 @pytest.mark.parametrize("regime", sorted(REGIMES))
 @pytest.mark.parametrize("guarded", [False, True])
-@pytest.mark.parametrize("label,amount", UNUSABLE,
-                         ids=[row[0] for row in UNUSABLE])
-async def test_no_unusable_shape_reaches_the_venue(
-        label, amount, regime, guarded):
+@pytest.mark.parametrize("label,amount", UNUSABLE, ids=[row[0] for row in UNUSABLE])
+async def test_no_unusable_shape_reaches_the_venue(label, amount, regime, guarded):
     """No value outside the domain reaches either dispatch path."""
     bot, venue = _bot(regime, guarded)
     with pytest.raises(Exception, match=REFUSED_BY_THE_GATE):
@@ -237,8 +250,7 @@ async def test_no_unusable_shape_reaches_the_venue(
 @pytest.mark.parametrize("regime", sorted(REGIMES))
 @pytest.mark.parametrize("guarded", [False, True])
 @pytest.mark.parametrize("amount", [5.0, 5])
-async def test_a_real_amount_still_reaches_the_venue(
-        amount, regime, guarded):
+async def test_a_real_amount_still_reaches_the_venue(amount, regime, guarded):
     """POSITIVE CONTROL. A legitimate size must still be sent.
 
     Without this the test above is satisfied by a gate that refuses

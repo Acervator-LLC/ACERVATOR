@@ -21,6 +21,7 @@ A dismissal that lapsed while the app was closed has lapsed. Importing
 it and re-suppressing would silently extend a 24 h promise across every
 restart, which is a different defect wearing the fix's clothes.
 """
+
 from __future__ import annotations
 
 import sys
@@ -79,8 +80,7 @@ class TestTheInstrumentWorks:
         """POSITIVE CONTROL for every persistence assertion below."""
         p = _pane()
         p.dismiss("prop-1", now=1000.0)
-        assert p._dismissed["prop-1"] == pytest.approx(
-            1000.0 + DISMISS_TTL_SECONDS)
+        assert p._dismissed["prop-1"] == pytest.approx(1000.0 + DISMISS_TTL_SECONDS)
 
     def test_the_ttl_really_is_24_hours(self):
         assert DISMISS_TTL_SECONDS == 24 * 60 * 60
@@ -95,7 +95,8 @@ class TestDismissalSurvivesRestart:
         p.set_dismiss_store(store)
         p.dismiss("prop-1", now=1000.0)
         assert store.data[DISMISS_SETTINGS_KEY]["prop-1"] == pytest.approx(
-            1000.0 + DISMISS_TTL_SECONDS)
+            1000.0 + DISMISS_TTL_SECONDS
+        )
 
     def test_a_fresh_pane_reloads_the_dismissal(self):
         """THE exit-gate measurement: dismiss, 'restart', still gone."""
@@ -104,7 +105,7 @@ class TestDismissalSurvivesRestart:
         first.set_dismiss_store(store)
         first.dismiss("prop-1")
 
-        second = _pane()                      # the restart
+        second = _pane()  # the restart
         second.set_dismiss_store(store)
         assert "prop-1" in second._dismissed
         assert second.is_dismissed("prop-1") is True
@@ -147,7 +148,7 @@ class TestItNeverTouchesTheOperatorsDisk:
         """Default construction must behave exactly as before."""
         p = _pane()
         p.dismiss("prop-1")
-        assert p._dismissed              # still suppressed in-session
+        assert p._dismissed  # still suppressed in-session
         assert p._dismiss_store is None
 
     def test_the_pane_constructs_no_settings_manager(self):
@@ -159,17 +160,19 @@ class TestItNeverTouchesTheOperatorsDisk:
         import src.gui.market_inspector_topologies as m
 
         src = Path(m.__file__).read_text(encoding="utf-8")
-        called = {getattr(n.func, "id", "") or getattr(n.func, "attr", "")
-                  for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.Call)}
+        called = {
+            getattr(n.func, "id", "") or getattr(n.func, "attr", "")
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.Call)
+        }
         assert "SettingsManager" not in called
 
     def test_a_failing_store_does_not_take_down_the_pane(self):
         """Losing a dismissal is a nuisance; losing the pane is not."""
         p = _pane()
-        p.set_dismiss_store(_Boom())     # get() raises during load
-        p.dismiss("prop-1")              # set() raises during write
-        assert p._dismissed              # in-memory behaviour intact
+        p.set_dismiss_store(_Boom())  # get() raises during load
+        p.dismiss("prop-1")  # set() raises during write
+        assert p._dismissed  # in-memory behaviour intact
 
     @pytest.mark.parametrize("junk", [None, [], "nope", 42])
     def test_a_malformed_persisted_value_is_ignored(self, junk):
@@ -191,17 +194,29 @@ class TestItNeverTouchesTheOperatorsDisk:
         import src.gui.main_window as mw
         import src.gui.market_inspector as mi
 
-        for mod, why in ((mw, "main_window never wires the dismiss store"),
-                         (mi, "the tab never forwards it to the pane")):
+        for mod, why in (
+            (mw, "main_window never wires the dismiss store"),
+            (mi, "the tab never forwards it to the pane"),
+        ):
             src = Path(mod.__file__).read_text(encoding="utf-8")
-            calls = [n for n in ast.walk(ast.parse(src))
-                     if isinstance(n, ast.Call)
-                     and getattr(n.func, "attr", "") == "set_dismiss_store"]
+            calls = [
+                n
+                for n in ast.walk(ast.parse(src))
+                if isinstance(n, ast.Call)
+                and getattr(n.func, "attr", "") == "set_dismiss_store"
+            ]
             assert calls, why
 
     def test_unparseable_expiry_entries_are_skipped(self):
         p = _pane()
-        p.set_dismiss_store(_Store({
-            DISMISS_SETTINGS_KEY: {"good": time.time() + 500,
-                                   "bad": "not-a-number"}}))
+        p.set_dismiss_store(
+            _Store(
+                {
+                    DISMISS_SETTINGS_KEY: {
+                        "good": time.time() + 500,
+                        "bad": "not-a-number",
+                    }
+                }
+            )
+        )
         assert "good" in p._dismissed and "bad" not in p._dismissed

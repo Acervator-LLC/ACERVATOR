@@ -67,6 +67,7 @@ REFERENCES
 
 sadp: R28 R29 R55  # buy-safety verify: fail-loudly + idempotent + invariant-preserving
 """
+
 from __future__ import annotations
 
 import logging
@@ -151,7 +152,8 @@ async def verify_buy_safe_or_refuse(
                     f"exchange reports {target_asset} total/free both 0 "
                     f"but caller's local state expects "
                     f"{expected_units:.8f} units — refusing to buy "
-                    f"against a suspicious zero")
+                    f"against a suspicious zero"
+                )
             else:
                 # Legitimately empty position. Proceed with 0.
                 _fresh_units = 0.0
@@ -159,12 +161,14 @@ async def verify_buy_safe_or_refuse(
         _refuse_reason = (
             f"fresh balance fetch raised "
             f"{type(_gb_exc).__name__}: {_gb_exc} "
-            f"— cannot verify position, fail-closed")
+            f"— cannot verify position, fail-closed"
+        )
 
     if _refuse_reason or _fresh_units is None:
         return None, (
             f"MEM-257 FAIL-CLOSED — buy REFUSED. "
             f"Path={path}. Cannot positively verify current position. "
             f"{_refuse_reason or 'fresh_units=None'}. "
-            f"No buy proceeds when position cannot be verified.")
+            f"No buy proceeds when position cannot be verified."
+        )
     return _fresh_units, ""

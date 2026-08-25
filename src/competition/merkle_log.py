@@ -16,25 +16,27 @@ Structure:
 R28: All append operations validate the incoming record before accepting it.
 R33: The log is append-only.  No record may be modified or removed.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
 from .bot_identity import BotIdentity, TradeRecord
 
-
 # ── Merkle helpers ────────────────────────────────────────────────────────────
+
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
+
 def _node_hash(left: str, right: str) -> str:
     return _sha256((left + right).encode())
+
 
 def _build_tree(leaves: List[str]) -> List[List[str]]:
     """
@@ -48,9 +50,10 @@ def _build_tree(leaves: List[str]) -> List[List[str]]:
     while len(levels[-1]) > 1:
         level = levels[-1]
         if len(level) % 2 == 1:
-            level = level + [level[-1]]   # duplicate last
-        next_level = [_node_hash(level[i], level[i+1])
-                      for i in range(0, len(level), 2)]
+            level = level + [level[-1]]  # duplicate last
+        next_level = [
+            _node_hash(level[i], level[i + 1]) for i in range(0, len(level), 2)
+        ]
         levels.append(next_level)
     return levels
 
@@ -69,14 +72,14 @@ def merkle_proof(leaves: List[str], leaf_index: int) -> List[dict]:
     if leaf_index >= len(leaves):
         raise IndexError(f"Leaf index {leaf_index} out of range ({len(leaves)} leaves)")
     levels = _build_tree(leaves)
-    proof  = []
-    idx    = leaf_index
+    proof = []
+    idx = leaf_index
     for level in levels[:-1]:
         if len(level) % 2 == 1:
             level = level + [level[-1]]
         sibling_idx = idx - 1 if idx % 2 == 1 else idx + 1
         sibling_idx = min(sibling_idx, len(level) - 1)
-        position    = "left" if idx % 2 == 1 else "right"
+        position = "left" if idx % 2 == 1 else "right"
         proof.append({"hash": level[sibling_idx], "position": position})
         idx //= 2
     return proof
@@ -95,6 +98,7 @@ def verify_proof(leaf_hash: str, proof: List[dict], root: str) -> bool:
 
 # ── Merkle log ────────────────────────────────────────────────────────────────
 
+
 class MerkleTradeLog:
     """
     Append-only log of signed trade records backed by a Merkle tree.
@@ -109,13 +113,14 @@ class MerkleTradeLog:
     Individual proofs allow third-party verification of any single trade.
     """
 
-    def __init__(self, competition_id: str, bot_id: str,
-                 log_path: Optional[str] = None):
+    def __init__(
+        self, competition_id: str, bot_id: str, log_path: Optional[str] = None
+    ):
         self.competition_id = competition_id
-        self.bot_id         = bot_id
-        self._records:  List[TradeRecord]  = []
-        self._leaves:   List[str]          = []
-        self._log_path  = Path(log_path) if log_path else None
+        self.bot_id = bot_id
+        self._records: List[TradeRecord] = []
+        self._leaves: List[str] = []
+        self._log_path = Path(log_path) if log_path else None
         self._opened_at = time.time()
 
     # ── Append ────────────────────────────────────────────────────────────────
@@ -135,14 +140,15 @@ class MerkleTradeLog:
         if record.competition != self.competition_id:
             raise ValueError(
                 f"Record competition {record.competition!r} != "
-                f"log competition {self.competition_id!r}")
+                f"log competition {self.competition_id!r}"
+            )
         if record.bot_pubkey != self.bot_id:
             raise ValueError(
                 f"Record bot_pubkey {record.bot_pubkey[:12]}... "
-                f"!= log bot_id {self.bot_id[:12]}...")
+                f"!= log bot_id {self.bot_id[:12]}..."
+            )
         if not skip_sig_verify and not BotIdentity.verify_trade(record):
-            raise ValueError(
-                f"Invalid signature on trade seq={record.trade_seq}")
+            raise ValueError(f"Invalid signature on trade seq={record.trade_seq}")
 
         leaf = record.record_hash()
         self._records.append(record)
@@ -167,16 +173,17 @@ class MerkleTradeLog:
         Generate an inclusion proof for the trade with the given sequence number.
         Returns: {"leaf_hash": hex, "proof": [...], "root": hex, "trade_seq": int}
         """
-        idx = next((i for i, r in enumerate(self._records)
-                    if r.trade_seq == trade_seq), None)
+        idx = next(
+            (i for i, r in enumerate(self._records) if r.trade_seq == trade_seq), None
+        )
         if idx is None:
             raise KeyError(f"No trade with seq={trade_seq} in log")
-        leaf  = self._leaves[idx]
+        leaf = self._leaves[idx]
         proof = merkle_proof(self._leaves, idx)
         return {
             "leaf_hash": leaf,
-            "proof":     proof,
-            "root":      self.root,
+            "proof": proof,
+            "root": self.root,
             "trade_seq": trade_seq,
         }
 
@@ -204,14 +211,14 @@ class MerkleTradeLog:
         if not self._records:
             return {"error": "No trades in log"}
         return {
-            "bot_id":        self.bot_id,
+            "bot_id": self.bot_id,
             "competition_id": self.competition_id,
-            "merkle_root":   self.root,
-            "trade_count":   self.size,
-            "opened_at":     self._opened_at,
-            "closed_at":     time.time(),
+            "merkle_root": self.root,
+            "trade_count": self.size,
+            "opened_at": self._opened_at,
+            "closed_at": time.time(),
             "first_trade_ts": self._records[0].timestamp,
-            "last_trade_ts":  self._records[-1].timestamp,
+            "last_trade_ts": self._records[-1].timestamp,
         }
 
     # ── Persistence ───────────────────────────────────────────────────────────
@@ -223,10 +230,10 @@ class MerkleTradeLog:
         self._log_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "competition_id": self.competition_id,
-            "bot_id":         self.bot_id,
-            "opened_at":      self._opened_at,
-            "merkle_root":    self.root,
-            "records":        [r.to_dict() for r in self._records],
+            "bot_id": self.bot_id,
+            "opened_at": self._opened_at,
+            "merkle_root": self.root,
+            "records": [r.to_dict() for r in self._records],
         }
         self._log_path.write_text(json.dumps(data, indent=2))
 
@@ -238,7 +245,7 @@ class MerkleTradeLog:
         self._opened_at = data.get("opened_at", self._opened_at)
         for rd in data.get("records", []):
             record = TradeRecord.from_dict(rd)
-            leaf   = record.record_hash()
+            leaf = record.record_hash()
             self._records.append(record)
             self._leaves.append(leaf)
         return self

@@ -36,6 +36,7 @@ So these tests pin the property that actually matters — **live state is
 never touched** — instead of pinning "the feature is off", which was
 only ever a means to that end.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -62,9 +63,11 @@ _LIVE_STATE = Path.home() / ".acervator" / "reservation_state.json"
 
 # ── the registry itself ──────────────────────────────────────────
 
+
 def test_registry_persists_to_the_live_runtime_dir():
     """Pins WHY isolation is needed: this is not scratch state."""
     from src.trading.capital_reservation import _DEFAULT_STATE_FILE
+
     parts = _DEFAULT_STATE_FILE.parts
     assert ".acervator" in parts
     assert _DEFAULT_STATE_FILE.name == "reservation_state.json"
@@ -73,32 +76,28 @@ def test_registry_persists_to_the_live_runtime_dir():
 def test_effective_available_clamps_and_reports(tmp_path):
     """The clamp is correct behaviour — a SIM bot reaching it against
     LIVE reservations was the wrong part."""
-    reg = CapitalReservationRegistry(
-        state_path=tmp_path / "r.json", autosave=False)
+    reg = CapitalReservationRegistry(state_path=tmp_path / "r.json", autosave=False)
     reg.reserve(bot_id="live-1", asset="ETH", qty=0.5, reason="t")
-    eff = reg.effective_available(
-        asset="ETH", bot_id="sim-1", total_holdings=0.1)
+    eff = reg.effective_available(asset="ETH", bot_id="sim-1", total_holdings=0.1)
     assert eff == 0.0, "over-reservation must clamp to zero, not negative"
 
 
 def test_own_reservations_do_not_subtract(tmp_path):
-    reg = CapitalReservationRegistry(
-        state_path=tmp_path / "r.json", autosave=False)
+    reg = CapitalReservationRegistry(state_path=tmp_path / "r.json", autosave=False)
     reg.reserve(bot_id="b1", asset="ETH", qty=0.5, reason="t")
-    eff = reg.effective_available(
-        asset="ETH", bot_id="b1", total_holdings=1.0)
+    eff = reg.effective_available(asset="ETH", bot_id="b1", total_holdings=1.0)
     assert eff == 1.0
 
 
 # ── live state is never touched ──────────────────────────────────
+
 
 def test_sim_registry_is_not_the_live_singleton():
     from src.trading.capital_reservation import get_registry
 
     sim = _make_sim_capital_registry()
     assert sim is not None, "sim registry should be constructible"
-    assert sim is not get_registry(), \
-        "sim must not share the process-wide registry"
+    assert sim is not get_registry(), "sim must not share the process-wide registry"
 
 
 def test_sim_registry_does_not_autosave():
@@ -112,8 +111,9 @@ def test_sim_registry_state_path_is_outside_the_runtime_tree():
     resolved = sim._state_path.resolve()
     assert resolved != _LIVE_STATE.resolve()
     runtime = (Path.home() / ".acervator").resolve()
-    assert runtime not in resolved.parents, \
-        f"sim state path is inside the operator runtime tree: {resolved}"
+    assert (
+        runtime not in resolved.parents
+    ), f"sim state path is inside the operator runtime tree: {resolved}"
 
 
 def test_two_sim_registries_are_independent():
@@ -125,6 +125,7 @@ def test_two_sim_registries_are_independent():
 
 
 # ── the feature RUNS rather than being skipped ───────────────────
+
 
 def test_a_sim_bot_actually_obtains_a_reservation():
     """A sim bot must RESERVE, against its own injected registry.
@@ -153,28 +154,36 @@ def test_a_sim_bot_actually_obtains_a_reservation():
     reservation can break.
     """
     private = CapitalReservationRegistry(
-        state_path=Path("nonexistent-sim.json"), autosave=False)
+        state_path=Path("nonexistent-sim.json"), autosave=False
+    )
 
     # The over-commit ceiling C16 is about: a claim ~110% of holdings.
     token = private.reserve(
-        bot_id="sim-bot", asset="BTC", qty=1.10,
-        reason="sim first ensure", bot_kind="scrumming",
-        total_holdings=None)
+        bot_id="sim-bot",
+        asset="BTC",
+        qty=1.10,
+        reason="sim first ensure",
+        bot_kind="scrumming",
+        total_holdings=None,
+    )
 
-    mine = [r for r in private._reservations.values()
-            if r.bot_id == "sim-bot"]
+    mine = [r for r in private._reservations.values() if r.bot_id == "sim-bot"]
     assert len(mine) == 1, (
-        "a sim bot obtained no reservation against its injected "
-        "registry")
+        "a sim bot obtained no reservation against its injected " "registry"
+    )
     assert token
 
     # ...and the same claim WITH holdings asserted is what used to
     # happen and still fails, which is the defect C16 removes.
     with pytest.raises(ValueError):
         private.reserve(
-            bot_id="sim-bot-2", asset="BTC", qty=1.10,
-            reason="sim first ensure", bot_kind="scrumming",
-            total_holdings=1.0)
+            bot_id="sim-bot-2",
+            asset="BTC",
+            qty=1.10,
+            reason="sim first ensure",
+            bot_kind="scrumming",
+            total_holdings=1.0,
+        )
 
 
 def test_the_ensure_path_still_reserves_rather_than_skipping():
@@ -198,7 +207,8 @@ def test_the_ensure_path_still_reserves_rather_than_skipping():
         assert not (len(body) == 1 and isinstance(body[0], ast.Return)), (
             f"bare sim-mode skip reintroduced at relative line "
             f"{node.lineno}; isolation must come from the injected "
-            f"registry, not from refusing to reserve")
+            f"registry, not from refusing to reserve"
+        )
 
 
 def test_bot_accepts_an_injected_registry():
@@ -208,7 +218,8 @@ def test_bot_accepts_an_injected_registry():
 
 def test_crr_prefers_the_injected_registry():
     private = CapitalReservationRegistry(
-        state_path=Path("nonexistent-sim.json"), autosave=False)
+        state_path=Path("nonexistent-sim.json"), autosave=False
+    )
 
     class _Stub:
         _capital_registry = private
@@ -228,13 +239,15 @@ def test_crr_falls_back_to_the_singleton_when_uninjected():
 
 # ── the fleet actually injects it ────────────────────────────────
 
+
 def test_fleet_controller_builds_and_injects_a_private_registry():
     from src.gui.simulator_tab.fleet import fleet_replay_controller as frc
 
     src = inspect.getsource(frc)
     assert "_make_sim_capital_registry" in src
-    assert "capital_registry=capital_registry" in src, \
-        "fleet controller must pass the private registry into the bot"
+    assert (
+        "capital_registry=capital_registry" in src
+    ), "fleet controller must pass the private registry into the bot"
 
 
 def test_the_phantom_subsystem_stays_reachable_in_sim():
@@ -261,16 +274,15 @@ def test_the_phantom_subsystem_stays_reachable_in_sim():
     of times at arbitrary replay positions.
     """
     from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-        resolve_phantoms_enabled)
+        resolve_phantoms_enabled,
+    )
 
     # Reachable: the per-run toggle forces them on regardless of the
     # persisted per-bot value.
-    assert resolve_phantoms_enabled({"phantoms_enabled": False},
-                                    force=True) is True
+    assert resolve_phantoms_enabled({"phantoms_enabled": False}, force=True) is True
     # ...and cannot be used to switch them off, which would be a second
     # route to a phantom-less replay that looks configured.
-    assert resolve_phantoms_enabled({"phantoms_enabled": True},
-                                    force=False) is True
+    assert resolve_phantoms_enabled({"phantoms_enabled": True}, force=False) is True
 
 
 @pytest.mark.asyncio

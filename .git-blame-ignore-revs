@@ -1,0 +1,11 @@
+# Revisions git blame should skip — bulk, mechanical reformats that would
+# otherwise attribute every line to a formatting commit.
+#
+# Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub honours this file automatically in its blame view.
+#
+# After committing the one-shot `black` reformat of the tree, add its full
+# 40-char commit SHA on its own line below (with a trailing comment):
+#
+#   <sha>  # apply black to the entire codebase

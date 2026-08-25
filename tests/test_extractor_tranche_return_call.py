@@ -26,6 +26,7 @@ THE TABLE BELOW IS THE WHOLE ACCEPTED SET. It was written before the call
 existed. Each row names what the sale did, which bots are on the books,
 and whether the parent hears about it.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -40,8 +41,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.core.event_bus import EventBus  # noqa: E402
 from src.trading.bot_container import BotManager, BotMode  # noqa: E402
-from src.trading.extractor_bot import (  # noqa: E402
-    ExtractorBot, ExtractorPosition)
+from src.trading.extractor_bot import ExtractorBot, ExtractorPosition  # noqa: E402
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
 # The one sale every row uses, so the rows differ only in the thing they
@@ -94,24 +94,29 @@ def _parent(bot_id="parent-eth", holds="ETH"):
     """
     b = object.__new__(ScrummingBot)
     b.bot_id = bot_id
-    b.config = type("C", (), {
-        "exchange_id": EXCHANGE,
-        "symbol": f"{holds}/USD",
-        "target_asset": holds,
-        "base_currency": holds,
-        "target_balance": PARENT_START_TARGET,
-        "max_target_growth_pct": 1.0,
-        "profit_folding_active": True,
-        "scrumming_interval_pct": 1.0,
-    })()
+    b.config = type(
+        "C",
+        (),
+        {
+            "exchange_id": EXCHANGE,
+            "symbol": f"{holds}/USD",
+            "target_asset": holds,
+            "base_currency": holds,
+            "target_balance": PARENT_START_TARGET,
+            "max_target_growth_pct": 1.0,
+            "profit_folding_active": True,
+            "scrumming_interval_pct": 1.0,
+        },
+    )()
     b._target_balance = PARENT_START_TARGET
     b._anchor_target_balance = PARENT_START_TARGET
     b._current_holdings = PARENT_START_HOLDINGS
     b._quote_to_usd = 1.0
     b._bus = _Bus()
     b._fold_tranches = []
-    b._main_lots = [{"units": PARENT_START_HOLDINGS,
-                     "initial_buy_price": PARENT_START_TARGET}]
+    b._main_lots = [
+        {"units": PARENT_START_HOLDINGS, "initial_buy_price": PARENT_START_TARGET}
+    ]
     b.seen = []
     real = b.apply_extractor_tranche_return
 
@@ -125,8 +130,7 @@ def _parent(bot_id="parent-eth", holds="ETH"):
 
 def _state(parent):
     """The three parent numbers an arrival is supposed to move."""
-    return (parent._target_balance, parent._current_holdings,
-            len(parent._main_lots))
+    return (parent._target_balance, parent._current_holdings, len(parent._main_lots))
 
 
 def _extractor(sale, manager):
@@ -137,16 +141,20 @@ def _extractor(sale, manager):
     """
     bot = object.__new__(ExtractorBot)
     bot.bot_id = "extract-eth"
-    bot.config = type("C", (), {
-        "exchange_id": EXCHANGE,
-        "mode": BotMode.EXTRACTOR,
-        "symbol": "LINK/ETH",
-        "target_asset": "LINK",
-        "base_currency": "ETH",
-        "extractor_direction": "normal",
-        "extractor_exit_pct": 100.0,
-        "extractor_max_compounding_tier": 1,
-    })()
+    bot.config = type(
+        "C",
+        (),
+        {
+            "exchange_id": EXCHANGE,
+            "mode": BotMode.EXTRACTOR,
+            "symbol": "LINK/ETH",
+            "target_asset": "LINK",
+            "base_currency": "ETH",
+            "extractor_direction": "normal",
+            "extractor_exit_pct": 100.0,
+            "extractor_max_compounding_tier": 1,
+        },
+    )()
     bot._bus = _Bus()
     bot._bot_manager = manager
     bot._chunk_to_base_rate = USD_PER_BASE
@@ -159,11 +167,16 @@ def _extractor(sale, manager):
     bot._last_correction_tick = {}
 
     pos = ExtractorPosition(
-        pair="LINK/ETH", state="IN_FLIGHT",
-        artillery_size_base=0.008, artillery_size_usd_at_entry=16.0,
-        alt_units=SOLD_UNITS, entry_price_base_per_alt=0.001,
-        avg_buy_price_base_per_alt=0.001, cost_basis_base=0.008,
-        opened_at=1000.0)
+        pair="LINK/ETH",
+        state="IN_FLIGHT",
+        artillery_size_base=0.008,
+        artillery_size_usd_at_entry=16.0,
+        alt_units=SOLD_UNITS,
+        entry_price_base_per_alt=0.001,
+        avg_buy_price_base_per_alt=0.001,
+        cost_basis_base=0.008,
+        opened_at=1000.0,
+    )
     bot._positions = {"LINK/ETH": pos}
 
     async def _sell(**kwargs):
@@ -208,18 +221,17 @@ NOT_TOLD = "not told"
 
 # (row name, what the sale did, which bots are on the books, outcome)
 TABLE = [
-    ("1 it sells and a parent holds the currency",
-     "fill", "eth-parent", TOLD),
-    ("2 no parent: nothing on the books holds it",
-     "fill", "btc-only", NOT_TOLD),
-    ("3 no parent: two bots hold it, so the lookup refuses",
-     "fill", "two-eth", NOT_TOLD),
-    ("4 the sale did not fill",
-     "none", "eth-parent", NOT_TOLD),
-    ("5 the sale failed outright",
-     "raise", "eth-parent", NOT_TOLD),
-    ("6 no manager is wired to this bot",
-     "fill", "no-manager", NOT_TOLD),
+    ("1 it sells and a parent holds the currency", "fill", "eth-parent", TOLD),
+    ("2 no parent: nothing on the books holds it", "fill", "btc-only", NOT_TOLD),
+    (
+        "3 no parent: two bots hold it, so the lookup refuses",
+        "fill",
+        "two-eth",
+        NOT_TOLD,
+    ),
+    ("4 the sale did not fill", "none", "eth-parent", NOT_TOLD),
+    ("5 the sale failed outright", "raise", "eth-parent", NOT_TOLD),
+    ("6 no manager is wired to this bot", "fill", "no-manager", NOT_TOLD),
 ]
 
 
@@ -243,8 +255,11 @@ def test_parent_is_told_table(sale, books, outcome):
     if outcome == NOT_TOLD:
         assert calls == [], f"a bot was told anyway: {calls}"
         for b in everyone:
-            assert _state(b) == (PARENT_START_TARGET, PARENT_START_HOLDINGS,
-                                 1), f"{b.bot_id} moved with no arrival"
+            assert _state(b) == (
+                PARENT_START_TARGET,
+                PARENT_START_HOLDINGS,
+                1,
+            ), f"{b.bot_id} moved with no arrival"
         return
 
     assert len(calls) == 1, f"expected exactly one call, got {len(calls)}"
@@ -297,10 +312,8 @@ def test_the_booking_accepts_what_is_handed_to_it():
     finally:
         manager.detach_bus()
 
-    assert parent._target_balance == pytest.approx(
-        PARENT_START_TARGET + USD_BACK)
-    assert parent._current_holdings == pytest.approx(
-        PARENT_START_HOLDINGS + BASE_BACK)
+    assert parent._target_balance == pytest.approx(PARENT_START_TARGET + USD_BACK)
+    assert parent._current_holdings == pytest.approx(PARENT_START_HOLDINGS + BASE_BACK)
 
 
 def test_a_broken_lookup_does_not_break_the_sale():
@@ -354,8 +367,12 @@ def test_the_sale_completes_on_every_row():
     the sale really happened on the rows where the exchange filled it, so
     the silence is the caller declining and not the exit dying early.
     """
-    for sale, books in (("fill", "eth-parent"), ("fill", "btc-only"),
-                        ("fill", "two-eth"), ("fill", "no-manager")):
+    for sale, books in (
+        ("fill", "eth-parent"),
+        ("fill", "btc-only"),
+        ("fill", "two-eth"),
+        ("fill", "no-manager"),
+    ):
         parent = _parent()
         manager, _everyone = _books(books, parent)
         bot, pos = _extractor(sale, manager)

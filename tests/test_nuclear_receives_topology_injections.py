@@ -23,6 +23,7 @@ assert the separation, not just the connection.
 NOTE ON NUMBERS. Fixtures here are small synthetic proposals. The operator's
 real fleet is 35 bots / 40 persisted wires; nothing here touches it.
 """
+
 from __future__ import annotations
 
 import ast
@@ -52,6 +53,7 @@ PROPOSAL = {
 @pytest.fixture(scope="module")
 def qapp():
     from PySide6.QtWidgets import QApplication
+
     return QApplication.instance() or QApplication([])
 
 
@@ -60,6 +62,7 @@ def panel_parent(qapp):
     """Owns every panel built here — see test_nuclear_panel_drives_v2 for the
     SIGSEGV this prevents."""
     from PySide6.QtWidgets import QWidget
+
     holder = QWidget()
     yield holder
     holder.setParent(None)
@@ -68,9 +71,13 @@ def panel_parent(qapp):
 
 def _panel(parent, topo_getter=None):
     from src.gui.simulator_tab.nuclear_mode_panel import NuclearModePanel
+
     p = NuclearModePanel(
-        activity_log_cb=lambda _m: None, perf_log_cb=lambda _m: None,
-        async_loop_getter=lambda: None, parent=parent)
+        activity_log_cb=lambda _m: None,
+        perf_log_cb=lambda _m: None,
+        async_loop_getter=lambda: None,
+        parent=parent,
+    )
     if topo_getter is not None:
         p.set_topology_getter(topo_getter)
     return p
@@ -78,8 +85,8 @@ def _panel(parent, topo_getter=None):
 
 class TestTheProposalsAreReadableWithoutAdopting:
     def test_the_pane_exposes_its_current_proposals(self, qapp):
-        from src.gui.market_inspector_topologies import (
-            MarketInspectorTopologies)
+        from src.gui.market_inspector_topologies import MarketInspectorTopologies
+
         pane = MarketInspectorTopologies()
         pane.set_proposal_source(lambda: [dict(PROPOSAL)])
         pane.refresh()
@@ -88,8 +95,8 @@ class TestTheProposalsAreReadableWithoutAdopting:
     def test_the_accessor_hands_back_a_copy(self, qapp):
         """A consumer must not be able to mutate the pane's list — the
         Nuclear path reads it every Start."""
-        from src.gui.market_inspector_topologies import (
-            MarketInspectorTopologies)
+        from src.gui.market_inspector_topologies import MarketInspectorTopologies
+
         pane = MarketInspectorTopologies()
         pane.set_proposal_source(lambda: [dict(PROPOSAL)])
         pane.refresh()
@@ -100,8 +107,8 @@ class TestTheProposalsAreReadableWithoutAdopting:
     def test_it_is_empty_before_a_refresh(self, qapp):
         """POSITIVE CONTROL — if it returned proposals unconditionally the
         assertions above would pass without the wiring working."""
-        from src.gui.market_inspector_topologies import (
-            MarketInspectorTopologies)
+        from src.gui.market_inspector_topologies import MarketInspectorTopologies
+
         assert MarketInspectorTopologies().current_proposals() == []
 
 
@@ -117,8 +124,10 @@ class TestTheSeamReachesNuclear:
     def test_a_failing_getter_degrades_to_none(self, panel_parent):
         """A broken Market Inspector must cost the soak its injection, not
         its ability to run."""
+
         def _boom():
             raise RuntimeError("inspector exploded")
+
         panel = _panel(panel_parent, topo_getter=_boom)
         assert panel._resolve_topologies() == []
 
@@ -131,8 +140,9 @@ class TestTheSeamReachesNuclear:
             for n in ast.walk(ast.parse(PANEL.read_text(encoding="utf-8")))
             if isinstance(n, ast.Call)
         }
-        assert "set_topologies" in names, (
-            "the injection seam is still unwired at the panel")
+        assert (
+            "set_topologies" in names
+        ), "the injection seam is still unwired at the panel"
 
     def test_main_window_supplies_the_getter(self):
         names = {
@@ -141,24 +151,35 @@ class TestTheSeamReachesNuclear:
             if isinstance(n, ast.Call)
         }
         assert "set_topology_getter" in names, (
-            "MainWindow never hands Market Inspector proposals to the "
-            "Simulator tab")
+            "MainWindow never hands Market Inspector proposals to the " "Simulator tab"
+        )
 
 
 class TestTheInjectionRoutesTheProposalsWires:
     def test_an_injected_proposal_supplies_the_pairs(self):
         from src.gui.simulator_tab.nuclear_fleet_controller import (
-            NuclearFleetController)
+            NuclearFleetController,
+        )
+
         ctl = NuclearFleetController()
         ctl._configs = [
-            {"mode": "scrumming", "symbol": "BTC/USD", "target_asset": "BTC",
-             "_src_bot_id": "aaaa1111"},
-            {"mode": "scrumming", "symbol": "ETH/USD", "target_asset": "ETH",
-             "_src_bot_id": "bbbb2222"},
+            {
+                "mode": "scrumming",
+                "symbol": "BTC/USD",
+                "target_asset": "BTC",
+                "_src_bot_id": "aaaa1111",
+            },
+            {
+                "mode": "scrumming",
+                "symbol": "ETH/USD",
+                "target_asset": "ETH",
+                "_src_bot_id": "bbbb2222",
+            },
         ]
         ctl.set_topologies([dict(PROPOSAL)])
         assert ctl._topology_pairs(["aaaa1111", "bbbb2222"]) == [
-            ("aaaa1111", "bbbb2222", 15.0)]
+            ("aaaa1111", "bbbb2222", 15.0)
+        ]
 
 
 class TestTheStressPathNeverAdoptsLiveBots:
@@ -168,13 +189,19 @@ class TestTheStressPathNeverAdoptsLiveBots:
         src = PANEL.read_text(encoding="utf-8")
         names = {
             getattr(n.func, "attr", None)
-            for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Call)
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.Call)
         }
         forbidden = names & {
-            "_adopt_topology_proposal", "set_adopt_handler",
-            "adoptRequested", "create_bot", "add_bot"}
-        assert not forbidden, (
-            f"the Nuclear stress path can reach live bot creation: {forbidden}")
+            "_adopt_topology_proposal",
+            "set_adopt_handler",
+            "adoptRequested",
+            "create_bot",
+            "add_bot",
+        }
+        assert (
+            not forbidden
+        ), f"the Nuclear stress path can reach live bot creation: {forbidden}"
 
     def test_the_adopt_handler_still_points_at_main_window(self):
         """NEGATIVE CONTROL — the live adopt journey must remain intact and
@@ -182,8 +209,11 @@ class TestTheStressPathNeverAdoptsLiveBots:
         adoption rather than by keeping the two apart."""
         src = MAIN.read_text(encoding="utf-8")
         found = [
-            n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Call)
-            and getattr(n.func, "attr", "") == "set_adopt_handler"]
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "attr", "") == "set_adopt_handler"
+        ]
         assert found, "the live adopt wiring disappeared"
 
     def test_the_controller_only_reads_wires_from_a_proposal(self):
@@ -191,20 +221,29 @@ class TestTheStressPathNeverAdoptsLiveBots:
         `bots` — that key is the adopt path's instruction to CREATE bots,
         and a stress run instantiates only the fleet from bot_state."""
         from src.gui.simulator_tab.nuclear_fleet_controller import (
-            NuclearFleetController)
+            NuclearFleetController,
+        )
+
         src = ast.parse(
-            (REPO_ROOT / "src/gui/simulator_tab/nuclear_fleet_controller.py"
-             ).read_text(encoding="utf-8"))
+            (REPO_ROOT / "src/gui/simulator_tab/nuclear_fleet_controller.py").read_text(
+                encoding="utf-8"
+            )
+        )
         fn = next(
-            n for n in ast.walk(src)
-            if isinstance(n, ast.FunctionDef) and n.name == "_topology_pairs")
+            n
+            for n in ast.walk(src)
+            if isinstance(n, ast.FunctionDef) and n.name == "_topology_pairs"
+        )
         keys = {
-            n.args[0].value for n in ast.walk(fn)
+            n.args[0].value
+            for n in ast.walk(fn)
             if isinstance(n, ast.Call)
             and getattr(n.func, "attr", "") == "get"
-            and n.args and isinstance(n.args[0], ast.Constant)
+            and n.args
+            and isinstance(n.args[0], ast.Constant)
         }
         assert "bots" not in keys, (
             "the stress path reads the proposal's `bots` key, which is the "
-            "adopt path's create-these-bots instruction")
+            "adopt path's create-these-bots instruction"
+        )
         assert NuclearFleetController is not None

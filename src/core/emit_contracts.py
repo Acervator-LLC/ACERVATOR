@@ -46,6 +46,7 @@ this validates trading emissions, and an assertion that killed a live
 tick to report a schema nit would be a worse defect than the nit.
 Violations are collected and reported.
 """
+
 from __future__ import annotations
 
 import logging
@@ -64,6 +65,7 @@ class EmitContract:
     payload one level down, so a contract that checked the top level
     would report every required field missing.
     """
+
     topic: str
     required: tuple[str, ...] = ()
     optional: tuple[str, ...] = ()
@@ -84,7 +86,7 @@ class EmitContract:
 @dataclass
 class Violation:
     topic: str
-    kind: str          # "missing_field" | "bad_value" | "never_emitted"
+    kind: str  # "missing_field" | "bad_value" | "never_emitted"
     detail: str
     count: int = 1
 
@@ -102,8 +104,15 @@ class Violation:
 # what this module exists to surface rather than paper over.
 
 TRADE_TYPES: tuple[str, ...] = (
-    "SCRUM", "FOLD", "CARTRIDGE_SCRUM", "CARTRIDGE_FOLD", "ENTRY",
-    "HEDGE", "DIST", "AUTO_DETONATION", "SELF_DESTRUCT",
+    "SCRUM",
+    "FOLD",
+    "CARTRIDGE_SCRUM",
+    "CARTRIDGE_FOLD",
+    "ENTRY",
+    "HEDGE",
+    "DIST",
+    "AUTO_DETONATION",
+    "SELF_DESTRUCT",
     "MANUAL_TRANCHE_FOLD",
 )
 
@@ -114,13 +123,19 @@ CONTRACTS: tuple[EmitContract, ...] = (
         optional=("type", "usd", "profit", "operator_initiated"),
         vocab={"side": ("BUY", "SELL", "buy", "sell")},
         description="A fill. NOTE: the trade kind is `type` here, not "
-                    "`action` — the log schema uses `action`.",
+        "`action` — the log schema uses `action`.",
     ),
     EmitContract(
         topic="bot.gate_decision",
         required=("symbol",),
-        optional=("scrum_armed", "fold_armed", "scrum_blockers",
-                  "fold_blockers", "scrum_fixture", "fold_fixture"),
+        optional=(
+            "scrum_armed",
+            "fold_armed",
+            "scrum_blockers",
+            "fold_blockers",
+            "scrum_fixture",
+            "fold_fixture",
+        ),
         description="Gate evaluation snapshot at fire time.",
     ),
     EmitContract(
@@ -149,12 +164,10 @@ class EmitObserver:
     """
 
     def __init__(self, contracts: Optional[tuple] = None) -> None:
-        self._contracts = {
-            c.topic: c for c in (contracts or CONTRACTS)}
+        self._contracts = {c.topic: c for c in (contracts or CONTRACTS)}
         self.seen: dict = {t: 0 for t in self._contracts}
         self._violations: dict = {}
-        self.field_presence: dict = {
-            t: {} for t in self._contracts}
+        self.field_presence: dict = {t: {} for t in self._contracts}
 
     def attach(self, bus: Any) -> bool:
         if bus is None or not hasattr(bus, "subscribe"):
@@ -170,6 +183,7 @@ class EmitObserver:
             except Exception as exc:  # noqa: BLE001 - observation must
                 # never break the producer it is watching.
                 logger.debug("emit observer(%s) failed: %s", topic, exc)
+
         return _handler
 
     def observe(self, topic: str, event_data: dict) -> None:
@@ -185,18 +199,26 @@ class EmitObserver:
 
         for fieldname in contract.required:
             if fieldname not in payload:
-                self._add(Violation(
-                    topic, "missing_field",
-                    f"required field {fieldname!r} absent; payload had "
-                    f"{sorted(payload)[:8]}"))
+                self._add(
+                    Violation(
+                        topic,
+                        "missing_field",
+                        f"required field {fieldname!r} absent; payload had "
+                        f"{sorted(payload)[:8]}",
+                    )
+                )
 
         for fieldname, allowed in (contract.vocab or {}).items():
             if fieldname in payload:
                 val = payload.get(fieldname)
                 if val not in allowed:
-                    self._add(Violation(
-                        topic, "bad_value",
-                        f"{fieldname}={val!r} not in {list(allowed)}"))
+                    self._add(
+                        Violation(
+                            topic,
+                            "bad_value",
+                            f"{fieldname}={val!r} not in {list(allowed)}",
+                        )
+                    )
 
     def _add(self, v: Violation) -> None:
         k = v.key()
@@ -215,15 +237,19 @@ class EmitObserver:
         """
         for topic, n in self.seen.items():
             if n == 0:
-                self._add(Violation(
-                    topic, "never_emitted",
-                    "declared but never emitted during this run"))
+                self._add(
+                    Violation(
+                        topic,
+                        "never_emitted",
+                        "declared but never emitted during this run",
+                    )
+                )
 
     @property
     def violations(self) -> list:
         return sorted(
-            self._violations.values(),
-            key=lambda v: (v.kind, v.topic, v.detail))
+            self._violations.values(), key=lambda v: (v.kind, v.topic, v.detail)
+        )
 
     def to_dict(self) -> dict:
         return {
@@ -231,12 +257,13 @@ class EmitObserver:
             "topics_seen": sum(1 for n in self.seen.values() if n > 0),
             "emissions": dict(sorted(self.seen.items())),
             "violations": [
-                {"topic": v.topic, "kind": v.kind,
-                 "detail": v.detail, "count": v.count}
-                for v in self.violations],
+                {"topic": v.topic, "kind": v.kind, "detail": v.detail, "count": v.count}
+                for v in self.violations
+            ],
             "field_presence": {
                 t: dict(sorted(f.items()))
-                for t, f in sorted(self.field_presence.items())},
+                for t, f in sorted(self.field_presence.items())
+            },
         }
 
 
@@ -255,8 +282,9 @@ def format_observer_lines(obs: EmitObserver) -> list:
     for topic, n in d["emissions"].items():
         fields = d["field_presence"].get(topic) or {}
         shown = ", ".join(f"{k}:{c}" for k, c in list(fields.items())[:8])
-        out.append(f"  {topic:24} {n:>6} emission(s)"
-                   + (f"  [{shown}]" if shown else ""))
+        out.append(
+            f"  {topic:24} {n:>6} emission(s)" + (f"  [{shown}]" if shown else "")
+        )
     viols = d["violations"]
     if not viols:
         out.append("  no contract violations")
@@ -265,5 +293,6 @@ def format_observer_lines(obs: EmitObserver) -> list:
     for v in viols:
         out.append(
             f"    [{v['kind']}] {v['topic']}: {v['detail']}"
-            + (f"  (x{v['count']})" if v["count"] > 1 else ""))
+            + (f"  (x{v['count']})" if v["count"] > 1 else "")
+        )
     return out

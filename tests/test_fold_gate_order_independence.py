@@ -100,6 +100,7 @@ No test here plants a defect to watch it go red: the reds that shaped
 this file were the real ones the change produced while it was being
 written, and they are recorded in the unit's report.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -155,8 +156,7 @@ class _Ticker:
         self.last = last
 
 
-def _bot(tranches, *, holdings=50.0, target=None, price=0.5,
-         interval=1.0, fee=0.6):
+def _bot(tranches, *, holdings=50.0, target=None, price=0.5, interval=1.0, fee=0.6):
     """A bot that runs the REAL ``_execute_manual_rebalance``.
 
     Only the outward edges are stubbed -- exchange, emitters, settled
@@ -213,8 +213,7 @@ def _bot(tranches, *, holdings=50.0, target=None, price=0.5,
 
     async def _balance(currency):
         free = holdings if currency == "CHIP" else 1_000_000.0
-        return type("B", (), {"total": free, "free": free,
-                              "absent": False})()
+        return type("B", (), {"total": free, "free": free, "absent": False})()
 
     def _ignore(*args, **kwargs):
         del args, kwargs
@@ -264,8 +263,11 @@ def _decision(tranches, price=0.5, intent="max_cartridge", **kw):
     except Exception as exc:
         return f"RAISED {type(exc).__name__}"
     if bot.seen["placed"] is None:
-        refused = [m for m in bot._bus.messages
-                   if "AUTONOMOUS FIRE REFUSED (opposing distance" in m]
+        refused = [
+            m
+            for m in bot._bus.messages
+            if "AUTONOMOUS FIRE REFUSED (opposing distance" in m
+        ]
         return "REFUSED" if refused else "NO-ORDER-NO-REFUSAL"
     side = getattr(bot.seen["placed"].get("side"), "value", "?")
     return "ALLOWED" if side == "buy" else "SCRUMMED"
@@ -318,8 +320,10 @@ def test_the_gate_gives_one_answer_per_ladder_content(label, refs, intent):
     assert len(answers) == 1, (
         f"{label} / {intent}: {len(answers)} different answers over "
         f"{math.factorial(len(refs))} permutations of ONE ladder content — "
-        + "; ".join(f"{a} from {len(p)} perm(s) e.g. {p[0]}"
-                    for a, p in answers.items()))
+        + "; ".join(
+            f"{a} from {len(p)} perm(s) e.g. {p[0]}" for a, p in answers.items()
+        )
+    )
 
 
 @pytest.mark.parametrize("label, refs", LADDERS, ids=[r[0] for r in LADDERS])
@@ -334,13 +338,13 @@ def test_the_permutation_sweep_actually_varies_the_ladder(label, refs):
     was reordered, which is an oracle false negative — the exact shape
     the repo's two-sided-control rule exists to catch.
     """
-    seen = {tuple(
-        "nan" if r != r else r for r in [refs[i] for i in perm])
-        for perm in itertools.permutations(range(len(refs)))}
+    seen = {
+        tuple("nan" if r != r else r for r in [refs[i] for i in perm])
+        for perm in itertools.permutations(range(len(refs)))
+    }
     distinct_values = len({"nan" if r != r else r for r in refs})
     if distinct_values > 1:
-        assert len(seen) > 1, (
-            f"{label}: the sweep produced one ordering only")
+        assert len(seen) > 1, f"{label}: the sweep produced one ordering only"
 
 
 # ── b. THE IN-SPEC FOLD IS UNTOUCHED ─────────────────────────────────
@@ -353,9 +357,16 @@ def test_the_permutation_sweep_actually_varies_the_ladder(label, refs):
 # EXACTLY, so no all-finite ladder can have moved.
 
 FINITE_LADDERS = [
-    (1.0,), (1.0, 0.9), (2.0, 0.1), (0.0, 1.0), (-1.0, 1.0),
-    (0.0, -1.0), (1.0, 1.0, 1.0), (5.0, 0.2, 0.9, 3.3),
-    (1e-9, 1.0), (1e9, 1.0),
+    (1.0,),
+    (1.0, 0.9),
+    (2.0, 0.1),
+    (0.0, 1.0),
+    (-1.0, 1.0),
+    (0.0, -1.0),
+    (1.0, 1.0, 1.0),
+    (5.0, 0.2, 0.9, 3.3),
+    (1e-9, 1.0),
+    (1e9, 1.0),
 ]
 
 
@@ -380,11 +391,13 @@ def test_an_all_finite_ladder_keeps_the_old_threshold_to_the_bit(refs):
 
     assert _decision(_ladder(*refs), price=edge) == "ALLOWED", (
         f"price exactly ON the old formula's threshold {edge!r} was "
-        f"refused; the rule is `<=` and this ladder has not moved")
+        f"refused; the rule is `<=` and this ladder has not moved"
+    )
     above = math.nextafter(edge, math.inf)
     assert _decision(_ladder(*refs), price=above) == "REFUSED", (
         f"one float above the old formula's threshold {edge!r} was still "
-        f"admitted; the boundary moved")
+        f"admitted; the boundary moved"
+    )
 
 
 def test_the_factor_is_always_finite_so_only_the_ref_needs_testing():
@@ -434,8 +447,7 @@ def test_a_skipped_row_is_reported_on_the_fire_it_allows(intent):
     assert bot.seen["placed"] is not None, "this row is meant to fire"
     line = [m for m in msgs if "FOLD REF UNREADABLE" in m]
     assert len(line) == 1, msgs
-    for fragment in ("1 of 3", "not a finite number",
-                     "2 readable", "NOT altered"):
+    for fragment in ("1 of 3", "not a finite number", "2 readable", "NOT altered"):
         assert fragment in line[0], f"{fragment!r} missing from {line[0]!r}"
 
 
@@ -452,8 +464,7 @@ def test_the_refusal_says_when_the_ladder_was_unreadable():
     """
     msgs, bot = _messages(_ladder(NAN, INF))
     assert bot.seen["placed"] is None
-    refusal = [m for m in msgs
-               if "AUTONOMOUS FIRE REFUSED (opposing distance)" in m]
+    refusal = [m for m in msgs if "AUTONOMOUS FIRE REFUSED (opposing distance)" in m]
     assert len(refusal) == 1, msgs
     assert "2 of the 2 queued tranche(s)" in refusal[0]
     assert "0 readable tranche(s)" in refusal[0]
@@ -492,11 +503,14 @@ def test_a_refused_fire_leaves_every_unreadable_row_in_the_ladder():
         after = bot._fold_tranches
         assert len(after) == len(before), (
             f"{refs}: the ladder went from {len(before)} rows to "
-            f"{len(after)} on a fire that never happened")
+            f"{len(after)} on a fire that never happened"
+        )
         assert sum(1 for t in after if t["ref"] != t["ref"]) == sum(
-            1 for r in refs if r != r), f"{refs}: a nan row was removed"
-        assert bot._tranches_malformed_dropped == 0, (
-            "the gate bumped the tick path's malformed-drop counter")
+            1 for r in refs if r != r
+        ), f"{refs}: a nan row was removed"
+        assert (
+            bot._tranches_malformed_dropped == 0
+        ), "the gate bumped the tick path's malformed-drop counter"
 
 
 def test_an_allowed_fire_does_not_purge_for_unreadability_either():
@@ -521,11 +535,11 @@ def test_an_allowed_fire_does_not_purge_for_unreadability_either():
     asyncio.run(bot._execute_manual_rebalance(_Ticker(0.5), "wire_stack"))
     assert bot.seen["placed"] is not None, "this row is meant to fire"
     assert bot._tranches_malformed_dropped == 0
-    assert len(bot._fold_tranches) == 3, (
-        f"a row was removed: {bot._fold_tranches}")
+    assert len(bot._fold_tranches) == 3, f"a row was removed: {bot._fold_tranches}"
     assert any(t["ref"] != t["ref"] for t in bot._fold_tranches), (
         "the nan row vanished although the fill was far too small to "
-        "consume it, so it was purged rather than spent")
+        "consume it, so it was purged rather than spent"
+    )
 
 
 # ── d. THE FULL VALUE DOMAIN ON ref, EACH IN BOTH POSITIONS ──────────
@@ -543,7 +557,7 @@ DOMAIN = [
     ("int zero", _row(0), "ALLOWED"),
     ("float zero", _row(0.0), "ALLOWED"),
     ("negative", _row(-5.0), "ALLOWED"),
-    ("huge int 10**400", _row(10 ** 400), "REFUSED"),
+    ("huge int 10**400", _row(10**400), "REFUSED"),
     ("None", _row(None), "REFUSED"),
     ("numeric string", _row("2.0"), "RAISED TypeError"),
     ("bool True", _row(True), "ALLOWED"),
@@ -552,10 +566,8 @@ DOMAIN = [
 ]
 
 
-@pytest.mark.parametrize(
-    "label, bad, expected", DOMAIN, ids=[r[0] for r in DOMAIN])
-def test_the_ref_domain_answers_the_same_in_either_position(
-        label, bad, expected):
+@pytest.mark.parametrize("label, bad, expected", DOMAIN, ids=[r[0] for r in DOMAIN])
+def test_the_ref_domain_answers_the_same_in_either_position(label, bad, expected):
     """THE CLOSED VALUE DOMAIN, read at both positions.
 
     A type gate does not close a float's value range: ``nan``, ``inf``
@@ -580,10 +592,10 @@ def test_the_ref_domain_answers_the_same_in_either_position(
     """
     first = _decision([dict(bad), _row(GOOD)])
     second = _decision([_row(GOOD), dict(bad)])
-    assert first == second, (
-        f"{label}: [bad, good] gave {first} but [good, bad] gave {second}")
-    assert first == expected, (
-        f"{label}: expected {expected}, observed {first}")
+    assert (
+        first == second
+    ), f"{label}: [bad, good] gave {first} but [good, bad] gave {second}"
+    assert first == expected, f"{label}: expected {expected}, observed {first}"
 
 
 ALONE = [
@@ -592,15 +604,14 @@ ALONE = [
     ("-inf", _row(float("-inf")), "REFUSED"),
     ("int zero", _row(0), "REFUSED"),
     ("negative", _row(-5.0), "REFUSED"),
-    ("huge int 10**400", _row(10 ** 400), "REFUSED"),
+    ("huge int 10**400", _row(10**400), "REFUSED"),
     ("None", _row(None), "REFUSED"),
     ("bool False", _row(False), "REFUSED"),
     ("missing key", _row(None, present=False), "REFUSED"),
 ]
 
 
-@pytest.mark.parametrize(
-    "label, bad, expected", ALONE, ids=[r[0] for r in ALONE])
+@pytest.mark.parametrize("label, bad, expected", ALONE, ids=[r[0] for r in ALONE])
 def test_a_ladder_of_one_unreadable_row_refuses(label, bad, expected):
     """NO READABLE ROW MEANS NO THRESHOLD MEANS NO FIRE.
 
@@ -686,10 +697,16 @@ TRUNCATING = (0.56, 0.55, 0.54)
 
 
 def _sizing_bot(refs):
-    bot = _bot([{"usd": 10.0, "units": SIZING_UNITS,
-                 "initial_buy_price": 0.4, "ref": r} for r in refs],
-               holdings=SIZING_HOLDINGS, target=SIZING_TARGET,
-               price=SIZING_PRICE, **OPERATOR_CFG)
+    bot = _bot(
+        [
+            {"usd": 10.0, "units": SIZING_UNITS, "initial_buy_price": 0.4, "ref": r}
+            for r in refs
+        ],
+        holdings=SIZING_HOLDINGS,
+        target=SIZING_TARGET,
+        price=SIZING_PRICE,
+        **OPERATOR_CFG,
+    )
     return bot
 
 
@@ -705,18 +722,17 @@ def _answer(refs, intent):
     """
     bot = _sizing_bot(refs)
     try:
-        asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE),
-                                                  intent))
+        asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE), intent))
     except Exception as exc:
         return (f"RAISED {type(exc).__name__}", None)
     placed = bot.seen["placed"]
     if placed is None:
-        refused = any("AUTONOMOUS FIRE REFUSED (opposing distance" in m
-                      for m in bot._bus.messages)
+        refused = any(
+            "AUTONOMOUS FIRE REFUSED (opposing distance" in m for m in bot._bus.messages
+        )
         return ("REFUSED" if refused else "NO-ORDER-NO-REFUSAL", None)
     side = getattr(placed.get("side"), "value", "?")
-    return (("ALLOWED" if side == "buy" else "SCRUMMED"),
-            float(placed["amount"]).hex())
+    return (("ALLOWED" if side == "buy" else "SCRUMMED"), float(placed["amount"]).hex())
 
 
 def _buckets(size, intent):
@@ -725,8 +741,7 @@ def _buckets(size, intent):
     for combo in itertools.product(ALPHABET, repeat=size):
         names = tuple(n for n, _ in combo)
         got = _answer(tuple(v for _, v in combo), intent)
-        out.setdefault(tuple(sorted(names)), {}).setdefault(
-            got, []).append(names)
+        out.setdefault(tuple(sorted(names)), {}).setdefault(got, []).append(names)
     return out
 
 
@@ -757,10 +772,13 @@ def test_one_answer_per_multiset_at_both_sites(size, intent):
         f"size {size} / {intent}: {len(split)} of {len(buckets)} multisets "
         f"gave more than one answer — "
         + "; ".join(
-            f"{'/'.join(k)} -> " + " vs ".join(
-                f"{a[0]}@{None if a[1] is None else float.fromhex(a[1])}"
-                for a in v)
-            for k, v in list(split.items())[:4]))
+            f"{'/'.join(k)} -> "
+            + " vs ".join(
+                f"{a[0]}@{None if a[1] is None else float.fromhex(a[1])}" for a in v
+            )
+            for k, v in list(split.items())[:4]
+        )
+    )
 
 
 @pytest.mark.parametrize("intent", EVERY_INTENT)
@@ -777,11 +795,11 @@ def test_the_sweep_actually_contains_more_than_one_ordering(size, intent):
     sweep that never reordered anything — an oracle false negative.
     """
     buckets = _buckets(size, intent)
-    multi = sum(1 for v in buckets.values()
-                if sum(len(o) for o in v.values()) > 1)
+    multi = sum(1 for v in buckets.values() if sum(len(o) for o in v.values()) > 1)
     assert multi >= len(buckets) // 2, (
         f"size {size} / {intent}: only {multi} of {len(buckets)} buckets "
-        f"held more than one ordering")
+        f"held more than one ordering"
+    )
 
 
 def test_the_sweep_is_not_vacuous_on_the_amount():
@@ -803,12 +821,12 @@ def test_the_sweep_is_not_vacuous_on_the_amount():
     amounts = set()
     for size in (2, 3, 4):
         for combo in itertools.product(ALPHABET, repeat=size):
-            amounts.add(_answer(tuple(v for _, v in combo),
-                                "manual_button")[1])
+            amounts.add(_answer(tuple(v for _, v in combo), "manual_button")[1])
     assert len(amounts) >= 3, (
         f"the sweep produced only {len(amounts)} distinct amount(s); the "
         f"growth is clamped or the ladder never truncates, so the sort "
-        f"cannot influence the amount and the sweep is vacuous")
+        f"cannot influence the amount and the sweep is vacuous"
+    )
 
     # And the truncation itself, OBSERVED THROUGH THE SHIPPING METHOD.
     #
@@ -836,24 +854,26 @@ def test_the_sweep_is_not_vacuous_on_the_amount():
         return _real_preview(units, price)
 
     probe._preview_fold_growth = _capture
-    asyncio.run(probe._execute_manual_rebalance(
-        _Ticker(SIZING_PRICE), "manual_button"))
+    asyncio.run(probe._execute_manual_rebalance(_Ticker(SIZING_PRICE), "manual_button"))
     assert seen, "the caller never previewed growth, so nothing was sized"
     real_units = seen[-1]
 
-    full = _sizing_bot(TRUNCATING)._preview_fold_growth(
-        real_units, SIZING_PRICE)
+    full = _sizing_bot(TRUNCATING)._preview_fold_growth(real_units, SIZING_PRICE)
     less_lowest = _sizing_bot(TRUNCATING[:-1])._preview_fold_growth(
-        real_units, SIZING_PRICE)
+        real_units, SIZING_PRICE
+    )
     less_highest = _sizing_bot(TRUNCATING[1:])._preview_fold_growth(
-        real_units, SIZING_PRICE)
+        real_units, SIZING_PRICE
+    )
     assert full == less_lowest, (
         f"dropping the lowest-ref row moved the growth {full} -> "
         f"{less_lowest}, so the discharge reached that row; the buy "
-        f"consumes the whole ladder and row order cannot matter")
+        f"consumes the whole ladder and row order cannot matter"
+    )
     assert full != less_highest, (
         f"dropping the highest-ref row left the growth at {full}, so no "
-        f"row contributes and the equality above is vacuous")
+        f"row contributes and the equality above is vacuous"
+    )
 
 
 # ── c. THE SORT IS A TOTAL ORDER ─────────────────────────────────────
@@ -914,13 +934,14 @@ def test_the_sort_key_never_receives_a_non_finite_value(monkeypatch):
 
     assert len(spy.calls) >= len(refs), (
         f"{len(spy.calls)} finiteness tests for {len(refs)} rows; a row "
-        f"reached the ordering without being tested")
-    ref_phase = spy.calls[:len(refs)]
+        f"reached the ordering without being tested"
+    )
+    ref_phase = spy.calls[: len(refs)]
     seen = [v for v, _ in ref_phase]
-    assert all(a is b or a == b or (a != a and b != b)
-               for a, b in zip(seen, refs)), (
+    assert all(a is b or a == b or (a != a and b != b) for a, b in zip(seen, refs)), (
         f"the ref phase tested {seen}, not the ladder's own refs "
-        f"{list(refs)} in order")
+        f"{list(refs)} in order"
+    )
     admitted = [v for v, ok in spy.calls if ok]
     refused = [v for v, ok in ref_phase if not ok]
     assert all(math.isfinite(v) for v in admitted), admitted
@@ -979,11 +1000,10 @@ def test_a_row_skipped_by_the_SIZING_is_reported(intent):
     total = len(refs)
     assert unreadable == 2 and total == 5, "the fixture drifted"
 
-    lines = [m for m in bot._bus.messages
-             if "FOLD SIZING REF UNREADABLE" in m]
+    lines = [m for m in bot._bus.messages if "FOLD SIZING REF UNREADABLE" in m]
     assert len(lines) == 1, (
-        f"expected exactly one sizing notice, got {len(lines)}: "
-        f"{bot._bus.messages}")
+        f"expected exactly one sizing notice, got {len(lines)}: " f"{bot._bus.messages}"
+    )
     line = lines[0]
     assert f"{unreadable} of {total} queued tranche(s)" in line, line
     assert f"sized on the {total - unreadable} readable one(s)" in line, line
@@ -1004,10 +1024,10 @@ def test_a_clean_ladder_says_nothing_about_unreadable_refs():
     file is damaged.
     """
     bot = _sizing_bot((0.6, 0.6, 0.0))
-    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE),
-                                              "manual_button"))
-    assert not [m for m in bot._bus.messages
-                if "FOLD SIZING REF UNREADABLE" in m], bot._bus.messages
+    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE), "manual_button"))
+    assert not [
+        m for m in bot._bus.messages if "FOLD SIZING REF UNREADABLE" in m
+    ], bot._bus.messages
     assert bot._fold_preview_unreadable_refs == 0
 
 
@@ -1031,16 +1051,15 @@ def test_the_skip_counter_does_not_carry_over_between_folds():
     told the same rows are still broken.
     """
     bot = _sizing_bot((NAN, 0.6))
-    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE),
-                                              "manual_button"))
+    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE), "manual_button"))
     assert bot.seen["placed"] is not None, "the first fire must fold"
     assert bot._fold_preview_unreadable_refs == 1
 
-    bot._fold_tranches = [{"usd": 10.0, "units": SIZING_UNITS,
-                           "initial_buy_price": 0.4, "ref": 0.6}]
+    bot._fold_tranches = [
+        {"usd": 10.0, "units": SIZING_UNITS, "initial_buy_price": 0.4, "ref": 0.6}
+    ]
     bot._current_holdings = SIZING_HOLDINGS
-    bot._main_lots = [{"units": SIZING_HOLDINGS,
-                       "initial_buy_price": SIZING_PRICE}]
+    bot._main_lots = [{"units": SIZING_HOLDINGS, "initial_buy_price": SIZING_PRICE}]
     bot._target_balance = SIZING_TARGET
     bot._anchor_target_balance = SIZING_TARGET
     bot._fold_cycle_cap_consumed = 0.0
@@ -1048,10 +1067,9 @@ def test_the_skip_counter_does_not_carry_over_between_folds():
     bot.seen["placed"] = None
     bot._bus.messages.clear()
     bot._manual_fire_pending = True
-    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE),
-                                              "manual_button"))
+    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE), "manual_button"))
     assert bot.seen["placed"] is not None, "the second fire must fold too"
-    assert bot._fold_preview_unreadable_refs == 0, (
-        "the count from the previous fold survived into this one")
-    assert not [m for m in bot._bus.messages
-                if "FOLD SIZING REF UNREADABLE" in m]
+    assert (
+        bot._fold_preview_unreadable_refs == 0
+    ), "the count from the previous fold survived into this one"
+    assert not [m for m in bot._bus.messages if "FOLD SIZING REF UNREADABLE" in m]

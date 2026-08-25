@@ -21,10 +21,8 @@ import logging
 
 import base64
 import hashlib
-import json
-import os
 import secrets
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 logger = logging.getLogger("acervator.encryption")
@@ -47,9 +45,9 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-_SALT_LEN = 16          # 128-bit salt
-_NONCE_LEN = 12         # 96-bit nonce (recommended for AES-GCM)
-_KEY_LEN = 32           # 256-bit key
+_SALT_LEN = 16  # 128-bit salt
+_NONCE_LEN = 12  # 96-bit nonce (recommended for AES-GCM)
+_KEY_LEN = 32  # 256-bit key
 _KDF_ITERATIONS = 600_000  # OWASP 2023 recommendation for PBKDF2-SHA256
 _KEYRING_SERVICE = "acervator"
 
@@ -121,7 +119,9 @@ def decrypt(token: str, passphrase: str) -> str:
         else:
             plaintext = _fallback_decrypt(key, nonce, ct)
     except Exception as exc:
-        raise ValueError("Decryption failed — wrong passphrase or corrupted data") from exc
+        raise ValueError(
+            "Decryption failed — wrong passphrase or corrupted data"
+        ) from exc
 
     return plaintext.decode("utf-8")
 
@@ -192,9 +192,14 @@ class KeyringManager:
         self._kr = None
         try:
             import keyring as _kr
+
             # Probe: is the backend real, or the PlaintextKeyring / FailKeyring?
             backend_name = type(_kr.get_keyring()).__name__.lower()
-            if "plaintext" in backend_name or "fail" in backend_name or "null" in backend_name:
+            if (
+                "plaintext" in backend_name
+                or "fail" in backend_name
+                or "null" in backend_name
+            ):
                 # Backend is nominally present but stores nothing useful.
                 # Treat as if unavailable so the caller can make an informed choice.
                 self._kr = None
@@ -249,7 +254,10 @@ class KeyringManager:
                 self._kr.delete_password(_KEYRING_SERVICE, username)
             except Exception as _sf_exc:  # noqa: BLE001
                 logger.debug(
-                    "v3.24.21 keyring delete for %r failed (absent key is success): %s", "?", _sf_exc)
+                    "v3.24.21 keyring delete for %r failed (absent key is success): %s",
+                    "?",
+                    _sf_exc,
+                )
         else:
             self._memory_store.pop(username, None)
 
@@ -260,9 +268,10 @@ class KeyringManager:
 @dataclass
 class EncryptedCredential:
     """An encrypted API key + secret + optional passphrase, JSON-serialisable."""
+
     exchange: str
-    api_key_enc: str       # Base64 AES-GCM ciphertext
-    api_secret_enc: str    # Base64 AES-GCM ciphertext
+    api_key_enc: str  # Base64 AES-GCM ciphertext
+    api_secret_enc: str  # Base64 AES-GCM ciphertext
     passphrase_enc: str = ""  # Base64 AES-GCM ciphertext (empty if not needed)
 
     def to_dict(self) -> dict:
@@ -300,8 +309,9 @@ class CredentialVault:
         self._credentials: dict[str, EncryptedCredential] = {}
 
     # -- Store / retrieve ------------------------------------------------
-    def store(self, exchange: str, api_key: str, api_secret: str,
-              passphrase: str = "") -> None:
+    def store(
+        self, exchange: str, api_key: str, api_secret: str, passphrase: str = ""
+    ) -> None:
         """Encrypt and store credentials for *exchange*."""
         self._credentials[exchange] = EncryptedCredential(
             exchange=exchange,

@@ -34,6 +34,7 @@ logger = logging.getLogger("acervator.events")
 @dataclass
 class Event:
     """Immutable event payload."""
+
     topic: str
     timestamp: float = field(default_factory=time.time)
     data: dict = field(default_factory=dict)
@@ -245,7 +246,7 @@ class EventBus:
             # Maintain bounded history
             self._history.append(event)
             if len(self._history) > self._max_history:
-                self._history = self._history[-self._max_history:]
+                self._history = self._history[-self._max_history :]
 
         # Invoke outside the lock to avoid deadlocks
         for sub in matching:
@@ -261,10 +262,7 @@ class EventBus:
         with self._lock:
             if topic is None:
                 return list(self._history[-limit:])
-            return [
-                e for e in self._history[-limit:]
-                if self._matches(topic, e.topic)
-            ]
+            return [e for e in self._history[-limit:] if self._matches(topic, e.topic)]
 
     def clear(self) -> None:
         """Remove all subscribers and history."""

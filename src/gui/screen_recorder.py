@@ -36,17 +36,21 @@ logger = logging.getLogger("acervator.gui.recorder")
 log = logging.getLogger("acervator.recorder")
 
 # ── Tuning constants ──────────────────────────────────────────────────────────
-CHUNK_SECONDS   = 30          # encode a new chunk every this many seconds
-GIF_SAMPLE_RATE = 3           # keep 1 in every N frames for GIF (= fps/N effective fps)
-MAX_GIF_FRAMES  = 600         # max frames held in memory for GIF (~60s at 10fps)
+CHUNK_SECONDS = 30  # encode a new chunk every this many seconds
+GIF_SAMPLE_RATE = 3  # keep 1 in every N frames for GIF (= fps/N effective fps)
+MAX_GIF_FRAMES = 600  # max frames held in memory for GIF (~60s at 10fps)
 # ─────────────────────────────────────────────────────────────────────────────
 
 try:
     from PySide6.QtWidgets import (
-        QWidget, QHBoxLayout, QPushButton, QLabel,
+        QWidget,
+        QHBoxLayout,
+        QPushButton,
+        QLabel,
     )
-    from PySide6.QtCore import Qt, QTimer, Signal, QObject
+    from PySide6.QtCore import QTimer, Signal, QObject
     from PySide6.QtGui import QImage
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -54,9 +58,11 @@ except ImportError:
 
 # ── Capability detection ──────────────────────────────────────────────────────
 
+
 def _has_cv2() -> bool:
     try:
         import cv2  # noqa
+
         return True
     except ImportError:
         return False
@@ -64,8 +70,7 @@ def _has_cv2() -> bool:
 
 def _has_ffmpeg() -> bool:
     try:
-        r = subprocess.run(["ffmpeg", "-version"],
-                           capture_output=True, timeout=3)
+        r = subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=3)
         return r.returncode == 0
     except Exception:
         return False
@@ -74,30 +79,39 @@ def _has_ffmpeg() -> bool:
 def _has_pillow() -> bool:
     try:
         from PIL import Image  # noqa
+
         return True
     except ImportError:
         return False
 
 
 def _best_engine() -> str:
-    if _has_cv2():    return "cv2"
-    if _has_ffmpeg(): return "ffmpeg"
-    if _has_pillow(): return "gif"
+    if _has_cv2():
+        return "cv2"
+    if _has_ffmpeg():
+        return "ffmpeg"
+    if _has_pillow():
+        return "gif"
     return "png"
 
 
 # ── Signals ───────────────────────────────────────────────────────────────────
 
 if _HAS_QT:
+
     class _RecorderSignals(QObject):
         status_changed = Signal(str, str)
         frame_captured = Signal(int)
+
 else:
+
     class _RecorderSignals:  # type: ignore
-        def __init__(self): pass
+        def __init__(self):
+            pass
 
 
 # ── Core recorder ─────────────────────────────────────────────────────────────
+
 
 class ScreenRecorder:
     """
@@ -113,39 +127,40 @@ class ScreenRecorder:
     """
 
     def __init__(self, target, fps: int = 30, output_dir: str = ""):
-        self._target    = target
-        self._fps       = fps
+        self._target = target
+        self._fps = fps
         if not output_dir:
             import sys as _sr_sys
+
             if getattr(_sr_sys, "frozen", False):
                 _proj = Path(_sr_sys.executable).parent
             else:
                 _proj = Path(__file__).resolve().parent.parent.parent
             output_dir = str(_proj / "logs" / "simulator" / "recordings")
-        self._out_dir   = Path(output_dir)
+        self._out_dir = Path(output_dir)
         self._out_dir.mkdir(parents=True, exist_ok=True)
-        self._engine    = _best_engine()
+        self._engine = _best_engine()
 
         # cv2 state
-        self._writer    = None
+        self._writer = None
 
         # ffmpeg chunk state
         self._frame_dir: Optional[Path] = None
         self._chunk_dir: Optional[Path] = None
         self._chunks: list[Path] = []
-        self._chunk_frame_start = 0     # frame_n when current chunk started
-        self._chunk_n = 0               # chunk counter
+        self._chunk_frame_start = 0  # frame_n when current chunk started
+        self._chunk_n = 0  # chunk counter
 
         # GIF state
-        self._gif_frames: list = []     # PIL Image objects (sampled)
+        self._gif_frames: list = []  # PIL Image objects (sampled)
 
         # Common
-        self._timer     = None
-        self._running   = False
-        self._frame_n   = 0
-        self._start_ts  = 0.0
+        self._timer = None
+        self._running = False
+        self._frame_n = 0
+        self._start_ts = 0.0
         self.last_output: str = ""
-        self.signals    = _RecorderSignals()
+        self.signals = _RecorderSignals()
         log.info(f"ScreenRecorder engine: {self._engine}")
 
     @property
@@ -176,10 +191,10 @@ class ScreenRecorder:
         if not ok:
             return False
 
-        self._running  = True
-        self._frame_n  = 0
+        self._running = True
+        self._frame_n = 0
         self._start_ts = time.time()
-        self._timer    = QTimer()
+        self._timer = QTimer()
         self._timer.setInterval(max(1, 1000 // self._fps))
         self._timer.timeout.connect(self._capture_frame)
         self._timer.start()
@@ -188,6 +203,7 @@ class ScreenRecorder:
 
     def _start_cv2(self, ts: str) -> bool:
         import cv2
+
         out_path = self._out_dir / f"ACV_Sim_{ts}.mp4"
         self.last_output = str(out_path)
         px = self._grab_pixmap()
@@ -274,7 +290,8 @@ class ScreenRecorder:
             self._writer = None
         log.info(f"Saved: {self.last_output} ({self._frame_n}f {elapsed:.1f}s)")
         self.signals.status_changed.emit(
-            f"Saved {Path(self.last_output).name}", "#00ff88")
+            f"Saved {Path(self.last_output).name}", "#00ff88"
+        )
 
     def _stop_ffmpeg(self, elapsed: float):
         # Encode any remaining frames in the current partial chunk
@@ -302,27 +319,32 @@ class ScreenRecorder:
                     shutil.rmtree(self._chunk_dir, ignore_errors=True)
                 log.info(f"Saved (1 chunk): {self.last_output}")
                 self.signals.status_changed.emit(
-                    f"Saved {Path(self.last_output).name}", "#00ff88")
+                    f"Saved {Path(self.last_output).name}", "#00ff88"
+                )
             except Exception as e:
                 log.error(f"Chunk rename failed: {e}")
                 self.last_output = str(self._chunks[0])
                 self.signals.status_changed.emit(
-                    f"Saved {Path(self._chunks[0]).name}", "#00ff88")
+                    f"Saved {Path(self._chunks[0]).name}", "#00ff88"
+                )
         else:
             # Concatenate all chunks
             self.signals.status_changed.emit(
-                f"Joining {len(self._chunks)} chunks...", "#ffaa00")
+                f"Joining {len(self._chunks)} chunks...", "#ffaa00"
+            )
             ok = self._concat_chunks()
             if self._chunk_dir:
                 shutil.rmtree(self._chunk_dir, ignore_errors=True)
             if ok:
                 self.signals.status_changed.emit(
-                    f"Saved {Path(self.last_output).name}", "#00ff88")
+                    f"Saved {Path(self.last_output).name}", "#00ff88"
+                )
             else:
                 # Keep first chunk as fallback
                 self.last_output = str(self._chunks[0])
                 self.signals.status_changed.emit(
-                    f"Partial: {Path(self._chunks[0]).name}", "#ffaa00")
+                    f"Partial: {Path(self._chunks[0]).name}", "#ffaa00"
+                )
 
         self._chunks = []
         self._chunk_dir = None
@@ -332,9 +354,11 @@ class ScreenRecorder:
             self.signals.status_changed.emit("No frames", "#ff3366")
             return
         self.signals.status_changed.emit(
-            f"Writing GIF ({len(self._gif_frames)}f)...", "#ffaa00")
+            f"Writing GIF ({len(self._gif_frames)}f)...", "#ffaa00"
+        )
         try:
-            from PIL import Image
+            pass
+
             duration = max(50, int(1000 / (self._fps / GIF_SAMPLE_RATE)))
             self._gif_frames[0].save(
                 self.last_output,
@@ -342,11 +366,15 @@ class ScreenRecorder:
                 append_images=self._gif_frames[1:],
                 optimize=False,
                 duration=duration,
-                loop=0)
-            log.info(f"GIF saved: {self.last_output} "
-                     f"({len(self._gif_frames)}f {elapsed:.1f}s)")
+                loop=0,
+            )
+            log.info(
+                f"GIF saved: {self.last_output} "
+                f"({len(self._gif_frames)}f {elapsed:.1f}s)"
+            )
             self.signals.status_changed.emit(
-                f"Saved {Path(self.last_output).name}", "#00ff88")
+                f"Saved {Path(self.last_output).name}", "#00ff88"
+            )
         except Exception as e:
             log.error(f"GIF write failed: {e}")
             self.signals.status_changed.emit(f"GIF failed: {e}", "#ff3366")
@@ -354,12 +382,12 @@ class ScreenRecorder:
             self._gif_frames = []
 
     def _stop_png_rolling(self, elapsed: float):
-        remaining = self._frame_n - self._chunk_frame_start
         if self._frame_dir and self._frame_dir.exists():
             count = len(list(self._frame_dir.glob("*.png")))
             log.info(f"PNG rolling: {count} frames kept in {self._frame_dir}")
             self.signals.status_changed.emit(
-                f"{count}f → {self._frame_dir.name}/", "#ffaa00")
+                f"{count}f → {self._frame_dir.name}/", "#ffaa00"
+            )
         self._frame_dir = None
 
     # ── Chunk encoding helpers ─────────────────────────────────────────────────
@@ -375,19 +403,30 @@ class ScreenRecorder:
             # Build input pattern — frames are named frame_NNNNNN.png
             # We pass the starting number so ffmpeg picks up the right subset
             cmd = [
-                "ffmpeg", "-y",
-                "-framerate", str(self._fps),
-                "-start_number", str(frame_start),
-                "-i", str(self._frame_dir / "frame_%06d.png"),
-                "-frames:v", str(frame_count),
-                "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",
-                str(chunk_path)
+                "ffmpeg",
+                "-y",
+                "-framerate",
+                str(self._fps),
+                "-start_number",
+                str(frame_start),
+                "-i",
+                str(self._frame_dir / "frame_%06d.png"),
+                "-frames:v",
+                str(frame_count),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+                str(chunk_path),
             ]
             r = subprocess.run(cmd, capture_output=True, timeout=120)
             if r.returncode != 0:
-                log.error(f"Chunk encode failed: "
-                          f"{r.stderr.decode(errors="replace")[-300:]}")
+                log.error(
+                    f"Chunk encode failed: "
+                    f"{r.stderr.decode(errors="replace")[-300:]}"
+                )
                 return None
 
             # Delete the PNGs that were just encoded
@@ -398,8 +437,10 @@ class ScreenRecorder:
                 except FileNotFoundError:
                     pass
 
-            log.info(f"Chunk {self._chunk_n-1} encoded: "
-                     f"{frame_count}f → {chunk_path.name}")
+            log.info(
+                f"Chunk {self._chunk_n-1} encoded: "
+                f"{frame_count}f → {chunk_path.name}"
+            )
             return chunk_path
         except Exception as e:
             log.error(f"Chunk encode error: {e}")
@@ -413,16 +454,23 @@ class ScreenRecorder:
                 for chunk in self._chunks:
                     f.write("file '" + str(chunk.resolve()) + "'\n")
             cmd = [
-                "ffmpeg", "-y",
-                "-f", "concat", "-safe", "0",
-                "-i", str(list_path),
-                "-c", "copy",
-                self.last_output
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(list_path),
+                "-c",
+                "copy",
+                self.last_output,
             ]
             r = subprocess.run(cmd, capture_output=True, timeout=300)
             if r.returncode == 0:
-                log.info(f"Concatenated {len(self._chunks)} chunks → "
-                         f"{self.last_output}")
+                log.info(
+                    f"Concatenated {len(self._chunks)} chunks → " f"{self.last_output}"
+                )
                 return True
             log.error(f"Concat failed: {r.stderr.decode(errors="replace")[-300:]}")
             return False
@@ -464,7 +512,8 @@ class ScreenRecorder:
                     target=self._encode_chunk_async,
                     args=(start, count),
                     name="screen-recorder",
-                    daemon=True)
+                    daemon=True,
+                )
                 t.start()
 
         elif self._engine == "gif":
@@ -472,16 +521,21 @@ class ScreenRecorder:
             if self._frame_n % GIF_SAMPLE_RATE == 0:
                 try:
                     from PIL import Image
-                    img = px.toImage().convertToFormat(
-                        QImage.Format.Format_RGB888)
+
+                    img = px.toImage().convertToFormat(QImage.Format.Format_RGB888)
                     pil = Image.frombytes(
-                        "RGB", (img.width(), img.height()),
+                        "RGB",
+                        (img.width(), img.height()),
                         bytes(img.bits()),
-                        "raw", "RGB", img.bytesPerLine(), 1)
+                        "raw",
+                        "RGB",
+                        img.bytesPerLine(),
+                        1,
+                    )
                     # Halve resolution to keep GIF manageable
                     pil = pil.resize(
-                        (img.width() // 2, img.height() // 2),
-                        Image.LANCZOS)
+                        (img.width() // 2, img.height() // 2), Image.LANCZOS
+                    )
                     self._gif_frames.append(pil)
                     # Cap memory usage
                     if len(self._gif_frames) > MAX_GIF_FRAMES:
@@ -504,14 +558,17 @@ class ScreenRecorder:
         elapsed = int(time.time() - self._start_ts)
         if self._frame_n % (max(1, self._fps) * 2) == 0:
             self.signals.status_changed.emit(
-                f"● REC  {elapsed}s  ({self._frame_n}f)", "#ff3366")
+                f"● REC  {elapsed}s  ({self._frame_n}f)", "#ff3366"
+            )
 
     def _write_cv2(self, pixmap):
         try:
             import cv2, numpy as np
+
             img = pixmap.toImage().convertToFormat(QImage.Format.Format_RGB888)
             arr = np.frombuffer(img.bits(), dtype=np.uint8).reshape(
-                img.height(), img.width(), 3)
+                img.height(), img.width(), 3
+            )
             self._writer.write(cv2.cvtColor(arr, cv2.COLOR_RGB2BGR))
         except Exception as e:
             log.debug(f"cv2 write: {e}")
@@ -537,26 +594,24 @@ if _HAS_QT:
     class RecorderToolbarWidget(QWidget):
         """Compact recorder control bar for embedding in the simulator toolbar."""
 
-        _BG     = "#070710"
+        _BG = "#070710"
         _BORDER = "#1a1a3f"
-        _GREY   = "#667799"
-        _RED    = "#ff3366"
-        _GREEN  = "#00ff88"
-        _CYAN   = "#00FFEE"
-        _GOLD   = "#ffaa00"
+        _GREY = "#667799"
+        _RED = "#ff3366"
+        _GREEN = "#00ff88"
+        _CYAN = "#00FFEE"
+        _GOLD = "#ffaa00"
 
-        def __init__(self,
-                     target_widget=None,
-                     fps: int = 30,
-                     output_dir: str = "",
-                     parent=None):
+        def __init__(
+            self, target_widget=None, fps: int = 30, output_dir: str = "", parent=None
+        ):
             super().__init__(parent)
             self._target_ref = target_widget
-            self._fps        = fps
+            self._fps = fps
             self._output_dir = output_dir
-            self._recorder   = None
+            self._recorder = None
             self._flash_state = False
-            self._engine     = _best_engine()
+            self._engine = _best_engine()
             self._setup_ui()
             self._setup_flash_timer()
 
@@ -570,21 +625,24 @@ if _HAS_QT:
             lay.setContentsMargins(2, 0, 2, 0)
             lay.setSpacing(3)
 
-            ss = ("QPushButton{{background:{bg};color:{fg};"
-                  "border:1px solid {bd};border-radius:3px;"
-                  "font-size:8px;font-weight:bold;padding:1px 6px;"
-                  "font-family:Consolas;}}"
-                  "QPushButton:hover{{border-color:{hv};}}")
+            ss = (
+                "QPushButton{{background:{bg};color:{fg};"
+                "border:1px solid {bd};border-radius:3px;"
+                "font-size:8px;font-weight:bold;padding:1px 6px;"
+                "font-family:Consolas;}}"
+                "QPushButton:hover{{border-color:{hv};}}"
+            )
 
             self._rec_btn = QPushButton("● REC")
             self._rec_btn.setFixedHeight(20)
-            self._rec_btn.setStyleSheet(ss.format(
-                bg=self._BG, fg=self._RED, bd=self._RED, hv=self._CYAN))
+            self._rec_btn.setStyleSheet(
+                ss.format(bg=self._BG, fg=self._RED, bd=self._RED, hv=self._CYAN)
+            )
             tips = {
-                "cv2":    "Record → MP4 (OpenCV — direct stream, no temp files)",
+                "cv2": "Record → MP4 (OpenCV — direct stream, no temp files)",
                 "ffmpeg": "Record → MP4 (ffmpeg — 30s rolling chunks, auto-purge)",
-                "gif":    "Record → GIF (Pillow — sampled at 10fps, held in memory)",
-                "png":    "Record → PNG rolling window (last 30s kept on disk)",
+                "gif": "Record → GIF (Pillow — sampled at 10fps, held in memory)",
+                "png": "Record → PNG rolling window (last 30s kept on disk)",
             }
             self._rec_btn.setToolTip(tips.get(self._engine, "Record"))
             self._rec_btn.clicked.connect(self._toggle_recording)
@@ -592,8 +650,9 @@ if _HAS_QT:
 
             self._open_btn = QPushButton("📁")
             self._open_btn.setFixedSize(22, 20)
-            self._open_btn.setStyleSheet(ss.format(
-                bg=self._BG, fg=self._GREY, bd=self._BORDER, hv=self._CYAN))
+            self._open_btn.setStyleSheet(
+                ss.format(bg=self._BG, fg=self._GREY, bd=self._BORDER, hv=self._CYAN)
+            )
             self._open_btn.setToolTip("Open recordings folder")
             self._open_btn.clicked.connect(self._open_folder)
             lay.addWidget(self._open_btn)
@@ -601,16 +660,17 @@ if _HAS_QT:
             self._status_lbl = QLabel("")
             self._status_lbl.setStyleSheet(
                 f"color:{self._GREY};font-size:7px;font-family:Consolas;"
-                f"background:transparent;")
+                f"background:transparent;"
+            )
             self._status_lbl.setFixedHeight(20)
             self._status_lbl.setMinimumWidth(55)
             lay.addWidget(self._status_lbl)
 
             col = {
-                "cv2":    self._GREEN,
+                "cv2": self._GREEN,
                 "ffmpeg": self._GOLD,
-                "gif":    self._CYAN,
-                "png":    self._GREY,
+                "gif": self._CYAN,
+                "png": self._GREY,
             }.get(self._engine, self._GREY)
             self._set_status(self._engine, col)
 
@@ -626,7 +686,8 @@ if _HAS_QT:
                 f"QPushButton{{background:{bg};color:{self._RED};"
                 f"border:1px solid {self._RED};border-radius:3px;"
                 f"font-size:8px;font-weight:bold;padding:1px 6px;"
-                f"font-family:Consolas;}}")
+                f"font-family:Consolas;}}"
+            )
 
         def _toggle_recording(self):
             if self._recorder and self._recorder.is_recording:
@@ -640,7 +701,8 @@ if _HAS_QT:
                 self._set_status("No target", self._RED)
                 return
             self._recorder = ScreenRecorder(
-                target, fps=self._fps, output_dir=self._output_dir)
+                target, fps=self._fps, output_dir=self._output_dir
+            )
             self._recorder.signals.status_changed.connect(self._set_status)
             if self._recorder.start():
                 self._rec_btn.setText("■ STOP")
@@ -649,7 +711,8 @@ if _HAS_QT:
                     f"border:1px solid {self._RED};border-radius:3px;"
                     f"font-size:8px;font-weight:bold;padding:1px 6px;"
                     f"font-family:Consolas;}}"
-                    f"QPushButton:hover{{border-color:{self._CYAN};}}")
+                    f"QPushButton:hover{{border-color:{self._CYAN};}}"
+                )
                 self._flash_timer.start()
             else:
                 self._recorder = None
@@ -662,7 +725,8 @@ if _HAS_QT:
                 f"border:1px solid {self._RED};border-radius:3px;"
                 f"font-size:8px;font-weight:bold;padding:1px 6px;"
                 f"font-family:Consolas;}}"
-                f"QPushButton:hover{{border-color:{self._CYAN};}}")
+                f"QPushButton:hover{{border-color:{self._CYAN};}}"
+            )
             if self._recorder:
                 self._recorder.stop()
                 self._recorder = None
@@ -678,11 +742,14 @@ if _HAS_QT:
                     subprocess.Popen(["xdg-open", folder])
             except Exception as _sf_exc:  # noqa: BLE001
                 logger.warning(
-                    "screen recorder cleanup failed — temp capture files may remain: %s", _sf_exc)
+                    "screen recorder cleanup failed — temp capture files may remain: %s",
+                    _sf_exc,
+                )
 
         def _set_status(self, msg: str, color: str = None):
             self._status_lbl.setText(msg)
             if color:
                 self._status_lbl.setStyleSheet(
                     f"color:{color};font-size:7px;font-family:Consolas;"
-                    f"background:transparent;")
+                    f"background:transparent;"
+                )

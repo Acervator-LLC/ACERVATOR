@@ -32,6 +32,7 @@ TA011 is MEDIUM by design, so a file carrying only that finding still
 reports passed=True. Its test asserts the FINDING, not the verdict;
 asserting the verdict would silently pass if the rule went dead.
 """
+
 from __future__ import annotations
 
 import sys
@@ -64,8 +65,7 @@ class TestFixturesExist:
     def test_bad_fixture_exists(self, rule):
         assert (FIX / f"known_bad_{rule.lower()}.py").is_file()
 
-    @pytest.mark.parametrize("rule", ("TA001", "TA002", "TA003",
-                                      "TA010", "TA011"))
+    @pytest.mark.parametrize("rule", ("TA001", "TA002", "TA003", "TA010", "TA011"))
     def test_good_fixture_exists(self, rule):
         assert (FIX / f"known_good_{rule.lower()}.py").is_file()
 
@@ -80,7 +80,8 @@ class TestEveryRuleFiresOnItsOwnIncident:
         hits = [f for f in report.findings if f.rule_id == rule]
         assert hits, (
             f"{rule} did not fire on its own reconstruction; the rule is "
-            f"dead and every clean report it appears in says nothing")
+            f"dead and every clean report it appears in says nothing"
+        )
 
     @pytest.mark.parametrize("rule", BLOCKING_RULES)
     def test_blocking_rule_blocks(self, rule):
@@ -99,14 +100,14 @@ class TestEveryRuleFiresOnItsOwnIncident:
 class TestTheCorrectedBodiesAreClean:
     """NEGATIVE CONTROLS. Without these, "always red" would pass above."""
 
-    @pytest.mark.parametrize("rule", ("TA001", "TA002", "TA003",
-                                      "TA010", "TA011"))
+    @pytest.mark.parametrize("rule", ("TA001", "TA002", "TA003", "TA010", "TA011"))
     def test_good_fixture_is_clean(self, rule):
         report = _review(f"known_good_{rule.lower()}.py")
         assert report.scanned is True
         assert report.findings == [], (
             f"the corrected {rule} body reported "
-            f"{[(f.rule_id, f.message) for f in report.findings]}")
+            f"{[(f.rule_id, f.message) for f in report.findings]}"
+        )
         assert report.passed is True
 
 
@@ -119,19 +120,21 @@ class TestTA001Domain:
         path = tmp_path / "accumulate.py"
         path.write_text(
             '"""A module."""\n'
-            '\n'
-            '\n'
-            'def smooth(values, period):\n'
+            "\n"
+            "\n"
+            "def smooth(values, period):\n"
             '    """Return the average of the first `period` values."""\n'
-            '    total = 0.0\n'
-            '    for value in values[:period]:\n'
-            '        total += value\n'
-            '    return total\n',
-            encoding="utf-8")
+            "    total = 0.0\n"
+            "    for value in values[:period]:\n"
+            "        total += value\n"
+            "    return total\n",
+            encoding="utf-8",
+        )
         report = TAArchetype().review(path)
         assert not [f for f in report.findings if f.rule_id == "TA001"], (
             "TA001 now sees accumulation loops; widen this test rather "
-            "than delete it")
+            "than delete it"
+        )
 
 
 class TestReportShape:
@@ -141,9 +144,9 @@ class TestReportShape:
         payload = _review("known_bad_ta002.py").to_dict()
         assert "by_severity" in payload, (
             "the gate sums this key to print the finding count; a missing "
-            "key sums to 0 and prints '0 findings' over a real report")
-        assert sum(payload["by_severity"].values()) == len(
-            payload["findings"]) == 1
+            "key sums to 0 and prints '0 findings' over a real report"
+        )
+        assert sum(payload["by_severity"].values()) == len(payload["findings"]) == 1
 
     def test_a_zero_finding_report_prints_zero(self):
         """The N = 0 half of the same control."""

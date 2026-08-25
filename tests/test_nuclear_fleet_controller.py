@@ -32,6 +32,7 @@ SAFETY
 A 4x pulse shares a machine with the live trading engine, so an
 unsensed run must stay capped. That is asserted, not assumed.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -52,8 +53,8 @@ from src.gui.simulator_tab.nuclear_fleet_controller import (  # noqa: E402
     _make_oscillator,
 )
 
-
 # ── the sensor contract ──────────────────────────────────────────
+
 
 def test_sensor_matches_what_the_oscillator_actually_calls():
     """Regression pin for the guessed interface.
@@ -64,13 +65,15 @@ def test_sensor_matches_what_the_oscillator_actually_calls():
     """
     osc, sensed = _make_oscillator()
     if not sensed:
-        return          # psutil absent on this machine; nothing to pin
+        return  # psutil absent on this machine; nothing to pin
     sensor = osc._sysmr
-    assert hasattr(sensor, "sample"), \
-        "oscillator calls sample(now); sensor does not provide it"
+    assert hasattr(
+        sensor, "sample"
+    ), "oscillator calls sample(now); sensor does not provide it"
     sensor.sample(0.0)
-    assert isinstance(sensor.current_regime, str), \
-        "current_regime must be an attribute holding a string"
+    assert isinstance(
+        sensor.current_regime, str
+    ), "current_regime must be an attribute holding a string"
     assert sensor.current_regime in ("CALM", "STRESS", "CRITICAL")
 
 
@@ -85,8 +88,9 @@ def test_monitor_thread_actually_samples():
     osc.start()
     try:
         time.sleep(0.8)
-        assert osc.samples_taken > 0, \
-            "monitor thread took zero samples — COOLING is dead"
+        assert (
+            osc.samples_taken > 0
+        ), "monitor thread took zero samples — COOLING is dead"
     finally:
         osc.stop()
 
@@ -100,6 +104,7 @@ def test_is_cooling_is_read_as_a_property():
 
 # ── load application ─────────────────────────────────────────────
 
+
 def test_unsensed_load_is_capped():
     """An unmonitored 4x pulse shares the machine with live trading."""
     c = NuclearFleetController(load_oscillation=True, seed=1)
@@ -110,8 +115,8 @@ def test_unsensed_load_is_capped():
         for _ in range(40):
             mult, _cool = c._current_load()
             assert mult <= UNSENSED_LOAD_CAP + 1e-9, (
-                f"unsensed multiplier {mult} exceeds the "
-                f"{UNSENSED_LOAD_CAP}x cap")
+                f"unsensed multiplier {mult} exceeds the " f"{UNSENSED_LOAD_CAP}x cap"
+            )
     finally:
         c._osc.stop()
 
@@ -150,6 +155,7 @@ def test_jitter_varies_between_reads():
 
 # ── cycle bookkeeping ────────────────────────────────────────────
 
+
 def test_cycle_reports_rate_and_workers():
     cyc = NuclearCycle(index=1)
     cyc.elapsed_s = 4.0
@@ -174,13 +180,12 @@ def test_cycle_with_error_is_not_ok():
 
 # ── refusal paths ────────────────────────────────────────────────
 
+
 def test_start_refuses_without_a_fleet(monkeypatch):
     """A run that cannot start must say why, not raise."""
     import src.gui.simulator_tab.fleet.bot_state_loader as bsl
 
-    monkeypatch.setattr(
-        bsl, "load_bot_configs_from_state",
-        lambda *_args, **_kw: [])
+    monkeypatch.setattr(bsl, "load_bot_configs_from_state", lambda *_args, **_kw: [])
     msgs: list = []
     c = NuclearFleetController(activity_cb=msgs.append)
     assert c.prepare() is False

@@ -30,6 +30,7 @@ DEFECT 3 — the bug that started it
     handler. Ruff DOES emit F821 for it, but F -> "medium", so it
     shipped.
 """
+
 from __future__ import annotations
 
 import sys
@@ -55,23 +56,26 @@ def _write(tmp_path, body: str) -> str:
 
 # ── DEFECT 1: binding-kind triage ────────────────────────────────
 
+
 def test_import_bound_name_is_classified_as_import(tmp_path):
     """The Qt guard pattern: 2,456 of 2,465 real occurrences."""
-    path = _write(tmp_path, "try:\n"
-                            "    from PySide6.QtWidgets import QWidget\n"
-                            "    _HAS_QT = True\n"
-                            "except ImportError:\n"
-                            "    _HAS_QT = False\n")
+    path = _write(
+        tmp_path,
+        "try:\n"
+        "    from PySide6.QtWidgets import QWidget\n"
+        "    _HAS_QT = True\n"
+        "except ImportError:\n"
+        "    _HAS_QT = False\n",
+    )
     imported, assigned = _module_binding_kinds(path)
     assert "QWidget" in imported
     assert "QWidget" not in assigned
 
 
 def test_assignment_bound_name_is_classified_as_assignment(tmp_path):
-    path = _write(tmp_path, "def f(flag):\n"
-                            "    if flag:\n"
-                            "        n = 1\n"
-                            "    return n\n")
+    path = _write(
+        tmp_path, "def f(flag):\n" "    if flag:\n" "        n = 1\n" "    return n\n"
+    )
     imported, assigned = _module_binding_kinds(path)
     assert "n" in assigned
     assert "n" not in imported
@@ -80,73 +84,78 @@ def test_assignment_bound_name_is_classified_as_assignment(tmp_path):
 def test_qt_guard_symbol_stays_low(tmp_path):
     """Must not block: this pattern is everywhere and is safe behind
     the `if _HAS_QT:` guard."""
-    path = _write(tmp_path, "try:\n"
-                            "    from PySide6.QtWidgets import QWidget\n"
-                            "except ImportError:\n"
-                            "    pass\n")
-    assert _possibly_unbound_severity(
-        '"QWidget" is possibly unbound', path) == "low"
+    path = _write(
+        tmp_path,
+        "try:\n"
+        "    from PySide6.QtWidgets import QWidget\n"
+        "except ImportError:\n"
+        "    pass\n",
+    )
+    assert _possibly_unbound_severity('"QWidget" is possibly unbound', path) == "low"
 
 
 def test_conditional_local_is_promoted_to_high(tmp_path):
     """This is the main.py:1107 shape. It MUST block."""
-    path = _write(tmp_path, "def f(flag):\n"
-                            "    if flag:\n"
-                            "        count = 1\n"
-                            "    return count\n")
-    assert _possibly_unbound_severity(
-        '"count" is possibly unbound', path) == "high"
+    path = _write(
+        tmp_path,
+        "def f(flag):\n" "    if flag:\n" "        count = 1\n" "    return count\n",
+    )
+    assert _possibly_unbound_severity('"count" is possibly unbound', path) == "high"
 
 
 def test_for_target_counts_as_assignment(tmp_path):
     """A loop variable read after an empty loop is the same defect."""
-    path = _write(tmp_path, "def f(xs):\n"
-                            "    for row in xs:\n"
-                            "        pass\n"
-                            "    return row\n")
-    assert _possibly_unbound_severity(
-        '"row" is possibly unbound', path) == "high"
+    path = _write(
+        tmp_path,
+        "def f(xs):\n" "    for row in xs:\n" "        pass\n" "    return row\n",
+    )
+    assert _possibly_unbound_severity('"row" is possibly unbound', path) == "high"
 
 
 def test_with_as_target_counts_as_assignment(tmp_path):
-    path = _write(tmp_path, "def f(flag, cm):\n"
-                            "    if flag:\n"
-                            "        with cm as handle:\n"
-                            "            pass\n"
-                            "    return handle\n")
-    assert _possibly_unbound_severity(
-        '"handle" is possibly unbound', path) == "high"
+    path = _write(
+        tmp_path,
+        "def f(flag, cm):\n"
+        "    if flag:\n"
+        "        with cm as handle:\n"
+        "            pass\n"
+        "    return handle\n",
+    )
+    assert _possibly_unbound_severity('"handle" is possibly unbound', path) == "high"
 
 
 def test_walrus_target_counts_as_assignment(tmp_path):
-    path = _write(tmp_path, "def f(flag):\n"
-                            "    if flag and (val := 1):\n"
-                            "        pass\n"
-                            "    return val\n")
-    assert _possibly_unbound_severity(
-        '"val" is possibly unbound', path) == "high"
+    path = _write(
+        tmp_path,
+        "def f(flag):\n"
+        "    if flag and (val := 1):\n"
+        "        pass\n"
+        "    return val\n",
+    )
+    assert _possibly_unbound_severity('"val" is possibly unbound', path) == "high"
 
 
 def test_unparseable_module_never_blocks(tmp_path):
     """A promotion must never turn a parse failure into a blocked
     release — that would be worse than the bug it catches."""
     path = _write(tmp_path, "def f(:\n  syntax error\n")
-    assert _possibly_unbound_severity('"x" is possibly unbound',
-                                      path) == "low"
+    assert _possibly_unbound_severity('"x" is possibly unbound', path) == "low"
 
 
 def test_missing_file_never_blocks():
-    assert _possibly_unbound_severity(
-        '"x" is possibly unbound', "no/such/file.py") == "low"
+    assert (
+        _possibly_unbound_severity('"x" is possibly unbound', "no/such/file.py")
+        == "low"
+    )
 
 
 def test_unquoted_message_never_blocks(tmp_path):
     path = _write(tmp_path, "x = 1\n")
-    assert _possibly_unbound_severity(
-        "something is possibly unbound", path) == "low"
+    assert _possibly_unbound_severity("something is possibly unbound", path) == "low"
 
 
 # ── DEFECT 2: ruff family longest-prefix ─────────────────────────
+
 
 def _sev(code: str) -> str:
     for fam in _RUFF_FAMILIES_BY_LEN:
@@ -193,12 +202,14 @@ def test_unknown_code_defaults_to_low():
 
 # ── DEFECT 3 + the startup crash: source regressions ─────────────
 
+
 def test_apply_stat_fields_does_not_reference_stale_exc_name():
     """v3.24.19 renamed the caught exception to `_ap_exc` but left a
     `_ss_exc` reference on the next line — a NameError inside an error
     handler, which the gate passed."""
-    src = (REPO / "src" / "gui" / "simulator_tab" / "fleet"
-           / "fleet_replay_panel.py").read_text(encoding="utf-8")
+    src = (
+        REPO / "src" / "gui" / "simulator_tab" / "fleet" / "fleet_replay_panel.py"
+    ).read_text(encoding="utf-8")
     body = src.split("def _apply_stat_fields", 1)
     assert len(body) == 2, "_apply_stat_fields not found"
     seg = body[1].split("\n        def ", 1)[0]

@@ -76,6 +76,7 @@ refused, (e) any returned fold price is <= 0, (f) tranche prices are not
 strictly monotonically increasing, (g) two returned tranches sit within
 0.1% of each other, or (h) the sum of tranche sizes exceeds `scrum_size`.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -108,9 +109,10 @@ MAX_FOLD_DISTANCE_PCT = 100.0
 @dataclass
 class Tranche:
     """One Stack tranche: sell `size` units at `price`."""
-    index: int      # 0-based position after merging (0 = closest to scrum_price)
-    price: float    # target sell price in quote currency
-    size: float     # size in base asset (units)
+
+    index: int  # 0-based position after merging (0 = closest to scrum_price)
+    price: float  # target sell price in quote currency
+    size: float  # size in base asset (units)
 
     def to_dict(self) -> dict:
         return {"index": self.index, "price": self.price, "size": self.size}
@@ -132,8 +134,8 @@ def _number(name: str, value: object) -> float:
     if type(value) is int:
         return float(value)
     raise ValueError(
-        f"{name} must be an int or float; got {value!r} "
-        f"({type(value).__name__})")
+        f"{name} must be an int or float; got {value!r} " f"({type(value).__name__})"
+    )
 
 
 def _fibonacci_multipliers(levels: int) -> list[float]:
@@ -166,7 +168,8 @@ def level_multipliers(
     if spacing_mode not in SPACING_MODES:
         raise ValueError(
             f"unknown spacing_mode {spacing_mode!r}; "
-            f"expected one of {SPACING_MODES}")
+            f"expected one of {SPACING_MODES}"
+        )
     if spacing_mode == "quadratic":
         return [float(n * n) for n in range(1, levels + 1)]
     if spacing_mode == "linear":
@@ -176,8 +179,8 @@ def level_multipliers(
     ratio = _number("exponential_ratio", exponential_ratio)
     if ratio <= 1.0:
         raise ValueError(
-            f"exponential_ratio must be > 1.0 for a rising ladder; "
-            f"got {ratio}")
+            f"exponential_ratio must be > 1.0 for a rising ladder; " f"got {ratio}"
+        )
     return [ratio ** (n - 1) for n in range(1, levels + 1)]
 
 
@@ -195,8 +198,7 @@ def ladder_offsets_pct(
     gap = _number("initial_gap_pct", initial_gap_pct)
     if gap < 0:
         raise ValueError(f"initial_gap_pct must be >= 0; got {gap}")
-    return [m * gap for m in level_multipliers(
-        spacing_mode, levels, exponential_ratio)]
+    return [m * gap for m in level_multipliers(spacing_mode, levels, exponential_ratio)]
 
 
 def _enforce_level_one_inside_band(
@@ -215,19 +217,21 @@ def _enforce_level_one_inside_band(
         return
     if not isinstance(bb_bounds, (tuple, list)) or len(bb_bounds) != 2:
         raise ValueError(
-            f"bb_bounds must be a (lower, upper) pair or None; "
-            f"got {bb_bounds!r}")
+            f"bb_bounds must be a (lower, upper) pair or None; " f"got {bb_bounds!r}"
+        )
     lower = _number("bb_bounds lower", bb_bounds[0])
     upper = _number("bb_bounds upper", bb_bounds[1])
     if not 0 < lower < upper:
         raise ValueError(
             f"bb_bounds must satisfy 0 < lower < upper; "
-            f"got lower={lower}, upper={upper}")
+            f"got lower={lower}, upper={upper}"
+        )
     if not lower <= level_one_price <= upper:
         raise ValueError(
             f"level 1 at {level_one_price} is outside the local BB range "
             f"[{lower}, {upper}]. The initial position of a spaced stack "
-            f"cannot sit outside the local BB range; levels 2+ may.")
+            f"cannot sit outside the local BB range; levels 2+ may."
+        )
 
 
 def _ladder_prices(
@@ -251,7 +255,8 @@ def _ladder_prices(
     if otd < 0:
         raise ValueError(f"min_opposing_pct must be >= 0; got {otd}")
     offsets = ladder_offsets_pct(
-        levels, initial_gap_pct, spacing_mode, exponential_ratio)
+        levels, initial_gap_pct, spacing_mode, exponential_ratio
+    )
 
     # Fibonacci is measured from the LAST CANDLE CLOSE, which is what
     # makes its rungs move as candles close. Anchoring it on the trigger
@@ -264,11 +269,11 @@ def _ladder_prices(
                 "candle close, so its levels move as candles close. "
                 "Pass last_candle_close=<close of the most recent "
                 "candle>. Refusing to anchor on the trigger price, "
-                "which would give a ladder that never moves.")
+                "which would give a ladder that never moves."
+            )
         base = _number("last_candle_close", last_candle_close)
         if base <= 0:
-            raise ValueError(
-                f"last_candle_close must be positive; got {base}")
+            raise ValueError(f"last_candle_close must be positive; got {base}")
     else:
         base = px
 
@@ -276,7 +281,8 @@ def _ladder_prices(
     if anchor <= 0:
         raise ValueError(
             f"min_opposing_pct {otd} puts the ladder anchor at {anchor}; "
-            f"an anchor must stay a real price")
+            f"an anchor must stay a real price"
+        )
 
     prices: list[float] = []
     for n, off in enumerate(offsets, start=1):
@@ -286,7 +292,8 @@ def _ladder_prices(
                 f"a {initial_gap_pct}% initial gap sits {off}% below the "
                 f"anchor, and a fold rung cannot be {MAX_FOLD_DISTANCE_PCT}% "
                 f"or more below it. Lower the level count or the initial "
-                f"gap so the ladder stays reachable.")
+                f"gap so the ladder stays reachable."
+            )
         prices.append(anchor * (1.0 + direction * off / 100.0))
 
     _enforce_level_one_inside_band(prices[0], bb_bounds)
@@ -312,8 +319,16 @@ def scrum_ladder_prices(
     against it.
     """
     return _ladder_prices(
-        +1, trigger_price, levels, initial_gap_pct, spacing_mode,
-        min_opposing_pct, exponential_ratio, last_candle_close, bb_bounds)
+        +1,
+        trigger_price,
+        levels,
+        initial_gap_pct,
+        spacing_mode,
+        min_opposing_pct,
+        exponential_ratio,
+        last_candle_close,
+        bb_bounds,
+    )
 
 
 def fold_ladder_prices(
@@ -334,8 +349,16 @@ def fold_ladder_prices(
     decided here.
     """
     return _ladder_prices(
-        -1, trigger_price, levels, initial_gap_pct, spacing_mode,
-        min_opposing_pct, exponential_ratio, last_candle_close, bb_bounds)
+        -1,
+        trigger_price,
+        levels,
+        initial_gap_pct,
+        spacing_mode,
+        min_opposing_pct,
+        exponential_ratio,
+        last_candle_close,
+        bb_bounds,
+    )
 
 
 def _apply_merge_rule(tranches: list[Tranche]) -> list[Tranche]:
@@ -370,7 +393,7 @@ def _apply_merge_rule(tranches: list[Tranche]) -> list[Tranche]:
         if (cur.price - prev.price) < prev.price * MERGE_THRESHOLD:
             # Merge: sum sizes, keep the higher (cur) price
             merged = Tranche(
-                index=prev.index,   # will be re-indexed at the end
+                index=prev.index,  # will be re-indexed at the end
                 price=cur.price,
                 size=prev.size + cur.size,
             )
@@ -393,9 +416,9 @@ def _max_slices(total_size: float, min_order_size: float) -> int:
     return int(total_size // min_order_size)
 
 
-def _apply_min_order_size(tranches: list[Tranche],
-                          total_size: float,
-                          min_order_size: float) -> list[Tranche]:
+def _apply_min_order_size(
+    tranches: list[Tranche], total_size: float, min_order_size: float
+) -> list[Tranche]:
     """Enforce exchange minimum order size. If any tranche's per-slice
     size is below `min_order_size`, reduce the tranche count and
     redistribute so every remaining tranche is at least min_order_size.
@@ -483,12 +506,12 @@ def split_scrum_into_tranches(
         raise ValueError(f"n_target must be >= 1; got {n_target}")
     gap = _number("split_distance_pct", split_distance_pct)
     if gap < 0:
-        raise ValueError(
-            f"split_distance_pct must be >= 0; got {gap}")
+        raise ValueError(f"split_distance_pct must be >= 0; got {gap}")
     if spacing_mode not in SPACING_MODES:
         raise ValueError(
             f"unknown spacing_mode {spacing_mode!r}; "
-            f"expected one of {SPACING_MODES}")
+            f"expected one of {SPACING_MODES}"
+        )
 
     prices = scrum_ladder_prices(
         trigger_price=price,
@@ -503,8 +526,9 @@ def split_scrum_into_tranches(
 
     # Even initial per-tranche size (rebalanced later if merges happen)
     initial_per_slice = size / n_target
-    tranches = [Tranche(index=i, price=p, size=initial_per_slice)
-                for i, p in enumerate(prices)]
+    tranches = [
+        Tranche(index=i, price=p, size=initial_per_slice) for i, p in enumerate(prices)
+    ]
 
     # Apply merge rule (0.1% collision → combine upwards)
     tranches = _apply_merge_rule(tranches)
@@ -517,8 +541,10 @@ def split_scrum_into_tranches(
     # ladder with the check silently gone.
     for k in range(1, len(tranches)):
         if tranches[k].price <= tranches[k - 1].price:
-            msg = (f"non-monotone tranche prices: "
-                   f"{tranches[k - 1].price} !< {tranches[k].price}")
+            msg = (
+                f"non-monotone tranche prices: "
+                f"{tranches[k - 1].price} !< {tranches[k].price}"
+            )
             raise ValueError(msg)
 
     return tranches

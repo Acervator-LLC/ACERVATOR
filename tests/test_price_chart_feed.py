@@ -23,6 +23,7 @@ replay, when someone is collecting.
 The two are different instruments for different moments, and only this
 one runs unattended.
 """
+
 from __future__ import annotations
 
 import sys
@@ -50,7 +51,7 @@ def _destroy_widgets():
     yield
     try:
         from PySide6.QtWidgets import QApplication
-    except ImportError:                                   # pragma: no cover
+    except ImportError:  # pragma: no cover
         return
     app = QApplication.instance()
     if app is None:
@@ -61,6 +62,7 @@ def _destroy_widgets():
         w.deleteLater()
     app.processEvents()
 
+
 SYMS = ("CHIP/USD", "SPK/USD")
 T0 = 1_776_778_500_000
 STEP = 300_000
@@ -69,7 +71,7 @@ STEP = 300_000
 def _qapp():
     try:
         from PySide6.QtWidgets import QApplication
-    except ImportError:                                   # pragma: no cover
+    except ImportError:  # pragma: no cover
         pytest.skip("PySide6 unavailable")
     return QApplication.instance() or QApplication([])
 
@@ -85,20 +87,31 @@ def _rows(n=400, px0=1.0):
 def _panel_with_run():
     """A panel wired to a controller mid-replay, as the GUI has it."""
     _qapp()
-    from src.gui.simulator_tab.fleet.fleet_replay_panel import (
-        FleetReplayPanel)
+    from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
     from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-        FleetReplayController)
-    cfgs = [{"mode": "scrumming", "symbol": s,
-             "target_balance": 100.0, "target_asset": s.split("/")[0],
-             "base_currency": "USD", "_src_bot_id": f"bot{i:04d}"}
-            for i, s in enumerate(SYMS)]
+        FleetReplayController,
+    )
+
+    cfgs = [
+        {
+            "mode": "scrumming",
+            "symbol": s,
+            "target_balance": 100.0,
+            "target_asset": s.split("/")[0],
+            "base_currency": "USD",
+            "_src_bot_id": f"bot{i:04d}",
+        }
+        for i, s in enumerate(SYMS)
+    ]
     ctl = FleetReplayController(
         configs=cfgs,
         candles_by_symbol={s: _rows() for s in SYMS},
-        smart_wires=[], tick_delay_s=0.0, max_candles=50,
+        smart_wires=[],
+        tick_delay_s=0.0,
+        max_candles=50,
         activity_log_cb=lambda *_: None,
-        performance_log_cb=lambda *_: None)
+        performance_log_cb=lambda *_: None,
+    )
     ctl._build_sim()
     for _ in range(120):
         ctl._tape.step()
@@ -166,6 +179,7 @@ class TestTheEmitterExistsForRuntime:
     def test_the_feed_emitter_is_declared(self):
         """The runtime complement. It only reports when a sink is
         installed, which is why the tests above are the real guard."""
-        src = (REPO_ROOT / "src/gui/simulator_tab/fleet"
-               / "fleet_replay_panel.py").read_text(encoding="utf-8")
+        src = (
+            REPO_ROOT / "src/gui/simulator_tab/fleet" / "fleet_replay_panel.py"
+        ).read_text(encoding="utf-8")
         assert "sim.06.011.postcondition.price_chart.fed" in src

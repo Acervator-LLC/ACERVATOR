@@ -33,6 +33,7 @@ class AlertPriority(Enum):
 
 class AlertEvent(Enum):
     """Events that can trigger notifications."""
+
     BOT_STARTED = "bot_started"
     BOT_STOPPED = "bot_stopped"
     BOT_ERROR = "bot_error"
@@ -51,6 +52,7 @@ class AlertEvent(Enum):
 @dataclass
 class AlertRule:
     """Maps an event to notification channels."""
+
     event: AlertEvent
     enabled: bool = True
     channels: list[AlertChannel] = field(default_factory=lambda: [AlertChannel.IN_APP])
@@ -62,6 +64,7 @@ class AlertRule:
 @dataclass
 class Notification:
     """A single notification record."""
+
     timestamp: float
     event: AlertEvent
     priority: AlertPriority
@@ -80,62 +83,80 @@ class NotificationManager:
         AlertEvent.BOT_STARTED: AlertRule(
             event=AlertEvent.BOT_STARTED,
             channels=[AlertChannel.IN_APP],
-            priority=AlertPriority.LOW),
+            priority=AlertPriority.LOW,
+        ),
         AlertEvent.BOT_STOPPED: AlertRule(
             event=AlertEvent.BOT_STOPPED,
             channels=[AlertChannel.IN_APP],
-            priority=AlertPriority.MEDIUM),
+            priority=AlertPriority.MEDIUM,
+        ),
         AlertEvent.BOT_ERROR: AlertRule(
             event=AlertEvent.BOT_ERROR,
             channels=[AlertChannel.IN_APP, AlertChannel.SOUND],
-            priority=AlertPriority.HIGH),
+            priority=AlertPriority.HIGH,
+        ),
         AlertEvent.BOT_PAUSED_BY_RISK: AlertRule(
             event=AlertEvent.BOT_PAUSED_BY_RISK,
             channels=[AlertChannel.IN_APP, AlertChannel.TELEGRAM, AlertChannel.SOUND],
-            priority=AlertPriority.CRITICAL),
+            priority=AlertPriority.CRITICAL,
+        ),
         AlertEvent.TRADE_EXECUTED: AlertRule(
             event=AlertEvent.TRADE_EXECUTED,
             channels=[AlertChannel.IN_APP],
             priority=AlertPriority.LOW,
-            cooldown_seconds=10),
+            cooldown_seconds=10,
+        ),
         AlertEvent.PNL_MILESTONE: AlertRule(
             event=AlertEvent.PNL_MILESTONE,
             channels=[AlertChannel.IN_APP, AlertChannel.TELEGRAM],
             priority=AlertPriority.MEDIUM,
-            cooldown_seconds=3600),
+            cooldown_seconds=3600,
+        ),
         AlertEvent.DRAWDOWN_WARNING: AlertRule(
             event=AlertEvent.DRAWDOWN_WARNING,
             channels=[AlertChannel.IN_APP, AlertChannel.SOUND],
             priority=AlertPriority.HIGH,
-            cooldown_seconds=300),
+            cooldown_seconds=300,
+        ),
         AlertEvent.DRAWDOWN_CRITICAL: AlertRule(
             event=AlertEvent.DRAWDOWN_CRITICAL,
-            channels=[AlertChannel.IN_APP, AlertChannel.TELEGRAM, AlertChannel.SMS, AlertChannel.SOUND],
+            channels=[
+                AlertChannel.IN_APP,
+                AlertChannel.TELEGRAM,
+                AlertChannel.SMS,
+                AlertChannel.SOUND,
+            ],
             priority=AlertPriority.CRITICAL,
-            cooldown_seconds=600),
+            cooldown_seconds=600,
+        ),
         AlertEvent.TA_CONSENSUS_FLIP: AlertRule(
             event=AlertEvent.TA_CONSENSUS_FLIP,
             channels=[AlertChannel.IN_APP],
             priority=AlertPriority.MEDIUM,
-            cooldown_seconds=300),
+            cooldown_seconds=300,
+        ),
         AlertEvent.SPREAD_DETECTED: AlertRule(
             event=AlertEvent.SPREAD_DETECTED,
             channels=[AlertChannel.IN_APP],
             priority=AlertPriority.LOW,
-            cooldown_seconds=120),
+            cooldown_seconds=120,
+        ),
         AlertEvent.CONNECTION_LOST: AlertRule(
             event=AlertEvent.CONNECTION_LOST,
             channels=[AlertChannel.IN_APP, AlertChannel.TELEGRAM, AlertChannel.SOUND],
-            priority=AlertPriority.HIGH),
+            priority=AlertPriority.HIGH,
+        ),
         AlertEvent.CONNECTION_RESTORED: AlertRule(
             event=AlertEvent.CONNECTION_RESTORED,
             channels=[AlertChannel.IN_APP],
-            priority=AlertPriority.MEDIUM),
+            priority=AlertPriority.MEDIUM,
+        ),
         AlertEvent.DAILY_SUMMARY: AlertRule(
             event=AlertEvent.DAILY_SUMMARY,
             channels=[AlertChannel.TELEGRAM],
             priority=AlertPriority.LOW,
-            cooldown_seconds=82800),  # 23 hours
+            cooldown_seconds=82800,
+        ),  # 23 hours
     }
 
     def __init__(self):
@@ -151,7 +172,7 @@ class NotificationManager:
         self._history: list[Notification] = []
         self._max_history = 1000
         self._telegram_config: dict = {}  # bot_token, chat_id
-        self._sms_config: dict = {}       # phone, provider
+        self._sms_config: dict = {}  # phone, provider
         self._enabled = True
         self._pnl_milestones_hit: set[int] = set()  # Track which $ milestones sent
 
@@ -182,19 +203,34 @@ class NotificationManager:
     def configure_telegram(self, bot_token: str, chat_id: str):
         """Set Telegram bot credentials."""
         self._telegram_config = {"bot_token": bot_token, "chat_id": chat_id}
-        logger.info("Telegram notifications configured (chat_id=%s)", chat_id[:6] + "...")
+        logger.info(
+            "Telegram notifications configured (chat_id=%s)", chat_id[:6] + "..."
+        )
 
-    def configure_sms(self, phone: str, provider: str = "twilio",
-                      account_sid: str = "", auth_token: str = "", from_number: str = ""):
+    def configure_sms(
+        self,
+        phone: str,
+        provider: str = "twilio",
+        account_sid: str = "",
+        auth_token: str = "",
+        from_number: str = "",
+    ):
         """Set SMS credentials."""
         self._sms_config = {
-            "phone": phone, "provider": provider,
-            "account_sid": account_sid, "auth_token": auth_token,
+            "phone": phone,
+            "provider": provider,
+            "account_sid": account_sid,
+            "auth_token": auth_token,
             "from_number": from_number,
         }
 
-    def set_rule(self, event: AlertEvent, enabled: bool = None,
-                 channels: list[AlertChannel] = None, priority: AlertPriority = None):
+    def set_rule(
+        self,
+        event: AlertEvent,
+        enabled: bool = None,
+        channels: list[AlertChannel] = None,
+        priority: AlertPriority = None,
+    ):
         """Update an alert rule."""
         if event not in self._rules:
             return
@@ -206,8 +242,9 @@ class NotificationManager:
         if priority is not None:
             rule.priority = priority
 
-    def send(self, event: AlertEvent, title: str, message: str,
-             force: bool = False) -> Optional[Notification]:
+    def send(
+        self, event: AlertEvent, title: str, message: str, force: bool = False
+    ) -> Optional[Notification]:
         """
         Send a notification for an event.
         Returns the Notification if sent, None if suppressed.
@@ -245,7 +282,7 @@ class NotificationManager:
         )
         self._history.append(notification)
         if len(self._history) > self._max_history:
-            self._history = self._history[-self._max_history:]
+            self._history = self._history[-self._max_history :]
 
         return notification
 
@@ -255,9 +292,11 @@ class NotificationManager:
         for m in milestones:
             if total_pnl >= m and m not in self._pnl_milestones_hit:
                 self._pnl_milestones_hit.add(m)
-                self.send(AlertEvent.PNL_MILESTONE,
-                          f"P/L Milestone: ${m}",
-                          f"Portfolio has reached ${total_pnl:,.2f} in realized P/L!")
+                self.send(
+                    AlertEvent.PNL_MILESTONE,
+                    f"P/L Milestone: ${m}",
+                    f"Portfolio has reached ${total_pnl:,.2f} in realized P/L!",
+                )
 
     def acknowledge_all(self):
         """Mark all notifications as acknowledged."""
@@ -285,11 +324,12 @@ class NotificationManager:
 
     def _send_in_app(self, title: str, message: str, priority: AlertPriority):
         """In-app notification (logged, picked up by GUI)."""
-        level = "info"
-        if priority == AlertPriority.HIGH:
-            level = "warning"
-        elif priority == AlertPriority.CRITICAL:
-            level = "error"
+        # NOTE: this handler logs every priority at logger.info. A prior
+        # `level` ladder (warning for HIGH, error for CRITICAL) was computed
+        # here but never used — removed as dead code. Flagged for review: if
+        # in-app alerts should log at their priority's severity, wire the
+        # level into a logger.log(...) call rather than reinstating the dead
+        # variable.
         logger.info("NOTIFICATION [%s]: %s — %s", priority.value, title, message)
 
     def _send_telegram(self, title: str, message: str, priority: AlertPriority):
@@ -301,19 +341,21 @@ class NotificationManager:
             return
 
         icon = {"low": "ℹ️", "medium": "📊", "high": "⚠️", "critical": "🚨"}.get(
-            priority.value, "📌")
+            priority.value, "📌"
+        )
         text = f"{icon} *{title}*\n{message}"
 
         try:
             import urllib.request
             import json
+
             url = f"https://api.telegram.org/bot{token}/sendMessage"
-            data = json.dumps({
-                "chat_id": chat_id, "text": text,
-                "parse_mode": "Markdown"
-            }).encode()
-            req = urllib.request.Request(url, data=data,
-                headers={"Content-Type": "application/json"})
+            data = json.dumps(
+                {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+            ).encode()
+            req = urllib.request.Request(
+                url, data=data, headers={"Content-Type": "application/json"}
+            )
             safe_urlopen(req, timeout=10)
             logger.debug("Telegram sent: %s", title)
         except Exception as e:
@@ -326,6 +368,7 @@ class NotificationManager:
             return
         try:
             from ..core.sms_engine import get_sms_engine
+
             engine = get_sms_engine()
             engine.send(phone, f"{title}: {message}")
         except Exception as e:
@@ -335,6 +378,7 @@ class NotificationManager:
         """Play alert sound."""
         try:
             from ..core.sound_engine import get_sound_engine
+
             se = get_sound_engine()
             if priority == AlertPriority.CRITICAL:
                 se.play_error()
@@ -343,8 +387,7 @@ class NotificationManager:
             else:
                 se.play_state_change()
         except Exception as _sf_exc:  # noqa: BLE001
-            logger.debug(
-                "alert sound playback failed: %s", _sf_exc)
+            logger.debug("alert sound playback failed: %s", _sf_exc)
 
 
 # Singleton

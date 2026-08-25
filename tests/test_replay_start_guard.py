@@ -13,6 +13,7 @@ These tests drive `_run_in_flight` through the four states that matter.
 No fleet, no tablets, no Qt event loop: the guard is a pure function of
 the controller it is given.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -20,7 +21,8 @@ import pytest
 pytest.importorskip("PySide6")
 
 from src.gui.simulator_tab.fleet.fleet_replay_panel import (  # noqa: E402
-    FleetReplayPanel)
+    FleetReplayPanel,
+)
 
 
 class _Progress:
@@ -50,8 +52,10 @@ def _guard(ctl) -> bool:
     `_run_in_flight` reads only `self._controller`, so binding it to a
     plain object exercises the shipped code without building a widget.
     """
+
     class _Panel:
         pass
+
     p = _Panel()
     p._controller = ctl
     return FleetReplayPanel._run_in_flight(p)
@@ -82,8 +86,7 @@ def test_running_task_is_in_flight():
 
 
 def test_completed_task_is_not_in_flight():
-    ctl = _Ctl(_Progress(started_at_wall=1.0, finished=True),
-               task=_Task(done=True))
+    ctl = _Ctl(_Progress(started_at_wall=1.0, finished=True), task=_Task(done=True))
     assert _guard(ctl) is False
 
 
@@ -95,6 +98,7 @@ def test_started_run_without_a_task_reference_is_in_flight():
 
 def test_unreadable_progress_assumes_in_flight():
     """Failing safe means never discarding a run we cannot read."""
+
     class _Bad:
         _task = None
 

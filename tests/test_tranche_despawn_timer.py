@@ -49,6 +49,7 @@ and `TestPlantedFailures` runs the same function against a deliberately
 broken mechanism, requiring it to fail. A plant judged by a re-written
 assertion instead of the real oracle would prove nothing, so none is.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -73,7 +74,7 @@ from src.trading.bot_container import (
 from src.trading.scrumming_bot import ScrummingBot
 
 DAY = 86400.0
-NOW = 1_760_000_000.0        # fixed clock; the sweep takes `now` injected
+NOW = 1_760_000_000.0  # fixed clock; the sweep takes `now` injected
 
 NAN = float("nan")
 INF = float("inf")
@@ -112,10 +113,14 @@ class _Bot:
 
     def __init__(self, fold=(), stack=(), days=0, pending=0.0):
         self.bot_id = "bot-despawn-0001"
-        self.config = type("C", (), {
-            "symbol": "RAVE/USD",
-            "tranche_despawn_days": days,
-        })()
+        self.config = type(
+            "C",
+            (),
+            {
+                "symbol": "RAVE/USD",
+                "tranche_despawn_days": days,
+            },
+        )()
         self._fold_tranches = [dict(t) for t in fold]
         self._stack_tranches = [dict(t) for t in stack]
         # The guarded reader, not the sibling `float(x or 0)`
@@ -123,8 +128,8 @@ class _Bot:
         # carries a usd that the sibling expression cannot convert. See
         # `test_the_sibling_expression_really_does_raise`.
         self._fold_queue_usd = sum(
-            (as_finite_float(t.get("usd", 0)) or 0.0)
-            for t in self._fold_tranches)
+            (as_finite_float(t.get("usd", 0)) or 0.0) for t in self._fold_tranches
+        )
         self._pending_wire_credits = pending
         self._tranches_created_lifetime = 40
         self._tranches_closed_lifetime = 40 - len(self._fold_tranches)
@@ -154,14 +159,19 @@ def fold_tr(age_days, usd=1.0, units=3.0, ref=0.30, ibp=0.35, dated=True):
     return t
 
 
-def stack_tr(age_days, index=0, status="pending", order_id=None,
-             dated=True):
+def stack_tr(age_days, index=0, status="pending", order_id=None, dated=True):
     """A stack tranche `age_days` old, Invisible-mode by default
     (`order_id=None`, which is what `_open_stack_from_scrum` writes when
     the bot is not in Visible mode)."""
-    t = {"index": index, "price": 0.40, "size": 2.0, "status": status,
-         "order_id": order_id, "visible": order_id is not None,
-         "activated": False}
+    t = {
+        "index": index,
+        "price": 0.40,
+        "size": 2.0,
+        "status": status,
+        "order_id": order_id,
+        "visible": order_id is not None,
+        "activated": False,
+    }
     if dated:
         t["opened_ts"] = NOW - age_days * DAY
     return t
@@ -189,16 +199,18 @@ def _check_old_fold_is_delisted(bot) -> None:
     """A fold tranche older than the threshold must be gone."""
     bot._despawn_aged_tranches(now=NOW)
     refs = [t.get("created_ts") for t in bot._fold_tranches]
-    assert NOW - 40 * DAY not in refs, (
-        "a 40-day fold tranche survived a 7-day despawn threshold")
+    assert (
+        NOW - 40 * DAY not in refs
+    ), "a 40-day fold tranche survived a 7-day despawn threshold"
 
 
 def _check_young_fold_survives(bot) -> None:
     """A fold tranche younger than the threshold must remain."""
     bot._despawn_aged_tranches(now=NOW)
     refs = [t.get("created_ts") for t in bot._fold_tranches]
-    assert NOW - 2 * DAY in refs, (
-        "a 2-day fold tranche was delisted at a 7-day threshold")
+    assert (
+        NOW - 2 * DAY in refs
+    ), "a 2-day fold tranche was delisted at a 7-day threshold"
 
 
 def _check_boundary_is_inclusive(bot) -> None:
@@ -206,7 +218,8 @@ def _check_boundary_is_inclusive(bot) -> None:
     bot._despawn_aged_tranches(now=NOW)
     assert bot._fold_tranches == [], (
         "a tranche aged EXACTLY the threshold survived; the documented "
-        "rule is age >= threshold")
+        "rule is age >= threshold"
+    )
 
 
 def _check_ageless_is_kept(bot) -> None:
@@ -215,7 +228,8 @@ def _check_ageless_is_kept(bot) -> None:
     bot._despawn_aged_tranches(now=NOW)
     assert len(bot._fold_tranches) == before, (
         "an undated tranche was delisted; the rule is that the timer "
-        "delists on MEASURED age and there is none")
+        "delists on MEASURED age and there is none"
+    )
 
 
 def _check_off_delists_nothing(bot) -> None:
@@ -223,10 +237,12 @@ def _check_off_delists_nothing(bot) -> None:
     fold_before = len(bot._fold_tranches)
     stack_before = len(bot._stack_tranches)
     bot._despawn_aged_tranches(now=NOW)
-    assert len(bot._fold_tranches) == fold_before, (
-        "fold tranches were delisted with the timer switched off")
-    assert len(bot._stack_tranches) == stack_before, (
-        "stack tranches were delisted with the timer switched off")
+    assert (
+        len(bot._fold_tranches) == fold_before
+    ), "fold tranches were delisted with the timer switched off"
+    assert (
+        len(bot._stack_tranches) == stack_before
+    ), "stack tranches were delisted with the timer switched off"
 
 
 def _check_both_sides_agree(bot) -> None:
@@ -238,7 +254,8 @@ def _check_both_sides_agree(bot) -> None:
     stack_gone = stack_before - len(bot._stack_tranches)
     assert fold_gone == stack_gone == 1, (
         f"the same setting delisted {fold_gone} fold and {stack_gone} "
-        f"stack tranche(s) from identically-aged ledgers")
+        f"stack tranche(s) from identically-aged ledgers"
+    )
 
 
 def _fold_ledger(bot) -> tuple[int, int]:
@@ -284,39 +301,63 @@ def _check_both_ledgers_reconcile(bot) -> None:
         f"{bot._tranches_created_lifetime} - closed "
         f"{bot._tranches_closed_lifetime} - discarded "
         f"{bot._tranches_discarded_lifetime} = {fold_lhs}, but "
-        f"{fold_standing} tranche(s) are standing")
+        f"{fold_standing} tranche(s) are standing"
+    )
     stack_lhs, stack_standing = _stack_ledger(bot)
     assert stack_lhs == stack_standing, (
         f"STACK ledger does not reconcile after the sweep: created "
         f"{bot._stack_created} - closed "
         f"{getattr(bot, '_stack_closed', 0)} - discarded "
         f"{bot._stack_discarded} = {stack_lhs}, but {stack_standing} "
-        f"tranche(s) are standing. Every removal must record itself.")
+        f"tranche(s) are standing. Every removal must record itself."
+    )
 
 
-ALLOWED_REACHES = frozenset({
-    "_despawn_aged_tranches", "_despawn_threshold_days",
-    "_tranche_age_seconds",
-    "config", "_fold_tranches", "_stack_tranches",
-    "_tranches_discarded_lifetime", "stats", "_pending_wire_credits",
-    "_bus", "bot_id", "_fold_queue_usd",
-    # The stack ledger's own discard counter. Admitted for exactly the
-    # reason `_tranches_discarded_lifetime` is: it is record-keeping,
-    # not money. A sweep that removes records without recording the
-    # removal is what this name exists to stop.
-    "_stack_discarded",
-})
+ALLOWED_REACHES = frozenset(
+    {
+        "_despawn_aged_tranches",
+        "_despawn_threshold_days",
+        "_tranche_age_seconds",
+        "config",
+        "_fold_tranches",
+        "_stack_tranches",
+        "_tranches_discarded_lifetime",
+        "stats",
+        "_pending_wire_credits",
+        "_bus",
+        "bot_id",
+        "_fold_queue_usd",
+        # The stack ledger's own discard counter. Admitted for exactly the
+        # reason `_tranches_discarded_lifetime` is: it is record-keeping,
+        # not money. A sweep that removes records without recording the
+        # removal is what this name exists to stop.
+        "_stack_discarded",
+    }
+)
 
 #: Names whose mere READ would mean the sweep had gone near an order or
 #: a balance. Kept explicit as well as the subset rule above, so the
 #: failure message names the thing that was touched.
-MONEY_REACHES = frozenset({
-    "exchange", "exchange_interface", "guarded_place_order",
-    "place_order", "cancel_order", "_execute_sell", "_execute_buy",
-    "_execute_detonation", "_current_holdings", "_main_lots",
-    "_target_balance", "_anchor_target_balance", "_quote_to_usd",
-    "phantom_balance", "_phantom_balance", "_hedge_balance",
-})
+MONEY_REACHES = frozenset(
+    {
+        "exchange",
+        "exchange_interface",
+        "guarded_place_order",
+        "place_order",
+        "cancel_order",
+        "_execute_sell",
+        "_execute_buy",
+        "_execute_detonation",
+        "_current_holdings",
+        "_main_lots",
+        "_target_balance",
+        "_anchor_target_balance",
+        "_quote_to_usd",
+        "phantom_balance",
+        "_phantom_balance",
+        "_hedge_balance",
+    }
+)
 
 
 class _Spy(_Bot):
@@ -349,11 +390,13 @@ def _check_no_money_was_reached(spy) -> None:
     touched_money = sorted(reached & MONEY_REACHES)
     assert touched_money == [], (
         f"the despawn sweep reached for {touched_money}; delisting a "
-        f"record must not go near an order or a balance")
+        f"record must not go near an order or a balance"
+    )
     stray = sorted(reached - ALLOWED_REACHES)
     assert stray == [], (
         f"the despawn sweep reached for {stray}, which is outside the "
-        f"record-keeping surface it is allowed to touch")
+        f"record-keeping surface it is allowed to touch"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -366,8 +409,7 @@ class TestTheInstrumentWorks:
     pass against a bot that never held a tranche."""
 
     def test_the_fixture_starts_populated(self):
-        bot = _Bot(fold=[fold_tr(40), fold_tr(2)],
-                   stack=[stack_tr(40)], days=7)
+        bot = _Bot(fold=[fold_tr(40), fold_tr(2)], stack=[stack_tr(40)], days=7)
         assert len(bot._fold_tranches) == 2
         assert len(bot._stack_tranches) == 1
 
@@ -378,12 +420,10 @@ class TestTheInstrumentWorks:
 
 class TestAgeDecidesIt:
     def test_older_than_the_threshold_is_delisted(self):
-        _check_old_fold_is_delisted(
-            _Bot(fold=[fold_tr(40), fold_tr(2)], days=7))
+        _check_old_fold_is_delisted(_Bot(fold=[fold_tr(40), fold_tr(2)], days=7))
 
     def test_younger_than_the_threshold_survives(self):
-        _check_young_fold_survives(
-            _Bot(fold=[fold_tr(40), fold_tr(2)], days=7))
+        _check_young_fold_survives(_Bot(fold=[fold_tr(40), fold_tr(2)], days=7))
 
     def test_exactly_at_the_threshold_is_delisted(self):
         """The documented boundary. `age >= threshold` delists, so a
@@ -416,8 +456,7 @@ class TestTheAgelessRule:
     is exactly why it must be pinned rather than assumed away."""
 
     def test_a_tranche_with_no_timestamp_key_is_kept(self):
-        _check_ageless_is_kept(
-            _Bot(fold=[fold_tr(40, dated=False)], days=7))
+        _check_ageless_is_kept(_Bot(fold=[fold_tr(40, dated=False)], days=7))
 
     def test_a_none_timestamp_is_kept(self):
         bot = _Bot(fold=[fold_tr(40)], days=7)
@@ -460,7 +499,7 @@ class TestTheAgelessRule:
         """`float()` of an int this large raises OverflowError, so it is
         refused by an integer comparison rather than converted."""
         bot = _Bot(fold=[fold_tr(40)], days=7)
-        bot._fold_tranches[0]["created_ts"] = 10 ** 400
+        bot._fold_tranches[0]["created_ts"] = 10**400
         _check_ageless_is_kept(bot)
 
     def test_a_decimal_timestamp_is_kept(self):
@@ -510,7 +549,7 @@ THRESHOLD_TABLE = [
     ("-0.5", -0.5, 0),
     ("large finite float saturates", 1e300, DESPAWN_MAX_DAYS),
     ("DESPAWN_MAX_DAYS itself", DESPAWN_MAX_DAYS, DESPAWN_MAX_DAYS),
-    ("int beyond float range is refused", 10 ** 400, 0),
+    ("int beyond float range is refused", 10**400, 0),
     # --- TYPE rows
     ("True", True, 0),
     ("False", False, 0),
@@ -541,8 +580,8 @@ def _check_threshold_table(reader) -> None:
                 f"ends the tick."
             ) from exc
         assert got == expected, (
-            f"{label}: stored {raw!r} read back as {got!r}, expected "
-            f"{expected!r}")
+            f"{label}: stored {raw!r} read back as {got!r}, expected " f"{expected!r}"
+        )
 
 
 def _type_only_gate(config) -> int:
@@ -566,20 +605,23 @@ class TestTheThresholdValueTable:
     def test_a_config_without_the_field_is_off(self):
         assert despawn_threshold_days(_cfg_without()) == 0
 
-    @pytest.mark.parametrize("label,raw,expected", THRESHOLD_TABLE,
-                             ids=[r[0] for r in THRESHOLD_TABLE])
+    @pytest.mark.parametrize(
+        "label,raw,expected", THRESHOLD_TABLE, ids=[r[0] for r in THRESHOLD_TABLE]
+    )
     def test_each_row_individually(self, label, raw, expected):
         """Per-row too, so a failure names the shape rather than the
         table."""
         assert despawn_threshold_days(_cfg_with(raw)) == expected
 
-    @pytest.mark.parametrize("raw", [NAN, INF, NINF, 10 ** 400, "30",
-                                     None, True, Decimal("30")])
+    @pytest.mark.parametrize(
+        "raw", [NAN, INF, NINF, 10**400, "30", None, True, Decimal("30")]
+    )
     def test_a_refused_setting_delists_nothing_on_a_real_sweep(self, raw):
         """Read at the ledger, not at the reader. A threshold that reads
         as 0 must also leave a 400-day-old tranche standing."""
         _check_off_delists_nothing(
-            _Bot(fold=[fold_tr(400)], stack=[stack_tr(400)], days=raw))
+            _Bot(fold=[fold_tr(400)], stack=[stack_tr(400)], days=raw)
+        )
 
     @pytest.mark.parametrize("raw", [1e300, DESPAWN_MAX_DAYS])
     def test_an_absurd_threshold_delists_nothing_either(self, raw):
@@ -587,24 +629,46 @@ class TestTheThresholdValueTable:
         one is refused -- and converge on the same observable: nothing
         is ever that old, so nothing goes."""
         _check_off_delists_nothing(
-            _Bot(fold=[fold_tr(400)], stack=[stack_tr(400)], days=raw))
+            _Bot(fold=[fold_tr(400)], stack=[stack_tr(400)], days=raw)
+        )
 
 
 class TestTheSharedFiniteReader:
     """`as_finite_float` is the one rule every conversion in this unit
     goes through, so its own domain is pinned directly as well."""
 
-    @pytest.mark.parametrize("raw", [NAN, INF, NINF, 10 ** 400, True,
-                                     False, "30", None, Decimal("30"),
-                                     Fraction(30, 1), _HasFloat(),
-                                     _FloatSubclass(30.0)])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            NAN,
+            INF,
+            NINF,
+            10**400,
+            True,
+            False,
+            "30",
+            None,
+            Decimal("30"),
+            Fraction(30, 1),
+            _HasFloat(),
+            _FloatSubclass(30.0),
+        ],
+    )
     def test_refused_values_read_as_none(self, raw):
         assert as_finite_float(raw) is None
 
-    @pytest.mark.parametrize("raw,expected", [
-        (0, 0.0), (-0.0, -0.0), (1, 1.0), (-1, -1.0),
-        (30.7, 30.7), (365, 365.0), (1e300, 1e300),
-    ])
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            (0, 0.0),
+            (-0.0, -0.0),
+            (1, 1.0),
+            (-1, -1.0),
+            (30.7, 30.7),
+            (365, 365.0),
+            (1e300, 1e300),
+        ],
+    )
     def test_accepted_values_read_back_exactly(self, raw, expected):
         got = as_finite_float(raw)
         assert got == expected
@@ -630,8 +694,9 @@ class TestNoConversionInThisUnitCanRaise:
         bot._stack_tranches[0]["opened_ts"] = INF
         assert bot._despawn_aged_tranches(now=NOW)["ageless_kept"] == 1
 
-    @pytest.mark.parametrize("bad", [NAN, INF, NINF, "now",
-                                     Decimal("1760000000"), True])
+    @pytest.mark.parametrize(
+        "bad", [NAN, INF, NINF, "now", Decimal("1760000000"), True]
+    )
     def test_site_3_the_injected_now(self, bad):
         """An unmeasurable clock delists nothing rather than raising."""
         bot = _Bot(fold=[fold_tr(400)], days=7)
@@ -643,16 +708,16 @@ class TestNoConversionInThisUnitCanRaise:
         bot = _Bot(fold=[fold_tr(400, usd=NAN)], days=7)
         report = bot._despawn_aged_tranches(now=NOW)
         assert report["fold_delisted"] == 1
-        assert report["usd_delisted"] == 0.0, (
-            "a non-finite usd was added to the report total")
+        assert (
+            report["usd_delisted"] == 0.0
+        ), "a non-finite usd was added to the report total"
 
     def test_site_5_the_queue_total_recompute(self):
         """A SURVIVING tranche carrying an out-of-float-range usd. The
         six sibling recompute sites would raise OverflowError here; this
         one is deliberately stricter, which is the documented
         divergence."""
-        bot = _Bot(fold=[fold_tr(400, usd=2.0), fold_tr(1, usd=10 ** 400)],
-                   days=7)
+        bot = _Bot(fold=[fold_tr(400, usd=2.0), fold_tr(1, usd=10**400)], days=7)
         bot._despawn_aged_tranches(now=NOW)
         assert bot._fold_queue_usd == 0.0
         assert math.isfinite(bot._fold_queue_usd)
@@ -662,49 +727,62 @@ class TestNoConversionInThisUnitCanRaise:
         it. Site 5 is stricter than the six sibling recompute sites only
         because the shared expression genuinely raises on this value."""
         with pytest.raises(OverflowError):
-            float({"usd": 10 ** 400}.get("usd", 0) or 0)
+            float({"usd": 10**400}.get("usd", 0) or 0)
 
     def test_site_6_the_parked_credit_read(self):
         bot = _Bot(fold=[fold_tr(400)], days=7, pending=NAN)
         bot._despawn_aged_tranches(now=NOW)
-        assert "absorb window" not in bot._bus.text(), (
-            "a non-finite parked total produced a dollar warning")
+        assert (
+            "absorb window" not in bot._bus.text()
+        ), "a non-finite parked total produced a dollar warning"
 
 
 class TestOffByDefault:
     def test_the_dataclass_default_is_zero(self):
         field = {f.name: f for f in dataclasses.fields(BotConfig)}.get(
-            "tranche_despawn_days")
+            "tranche_despawn_days"
+        )
         assert field is not None, "BotConfig has no tranche_despawn_days"
         assert field.default == 0, (
             f"default is {field.default!r}; a timer that shipped enabled "
             f"would start delisting standing records on the first tick "
-            f"after upgrade, on bots that never opted in")
+            f"after upgrade, on bots that never opted in"
+        )
 
     def test_zero_delists_nothing(self):
         _check_off_delists_nothing(
-            _Bot(fold=[fold_tr(400)], stack=[stack_tr(400)], days=0))
+            _Bot(fold=[fold_tr(400)], stack=[stack_tr(400)], days=0)
+        )
 
     def test_a_bot_built_with_defaults_delists_nothing(self):
         """Read through the factory, not the dataclass, because that is
         what every creation path actually calls."""
-        cfg = make_bot_config(BotMode.SCRUMMING, exchange_id="coinbase",
-                              base_currency="USD", target_asset="RAVE",
-                              symbol="RAVE/USD")
+        cfg = make_bot_config(
+            BotMode.SCRUMMING,
+            exchange_id="coinbase",
+            base_currency="USD",
+            target_asset="RAVE",
+            symbol="RAVE/USD",
+        )
         bot = _Bot(fold=[fold_tr(400)], stack=[stack_tr(400)])
         bot.config = cfg
         _check_off_delists_nothing(bot)
 
     def test_a_negative_setting_is_off(self):
         _check_off_delists_nothing(
-            _Bot(fold=[fold_tr(400)], stack=[stack_tr(400)], days=-5))
+            _Bot(fold=[fold_tr(400)], stack=[stack_tr(400)], days=-5)
+        )
 
 
 class TestBothSidesMirror:
     def test_the_same_setting_sweeps_both_ledgers(self):
         _check_both_sides_agree(
-            _Bot(fold=[fold_tr(40), fold_tr(2)],
-                 stack=[stack_tr(40), stack_tr(2, index=1)], days=7))
+            _Bot(
+                fold=[fold_tr(40), fold_tr(2)],
+                stack=[stack_tr(40), stack_tr(2, index=1)],
+                days=7,
+            )
+        )
 
     def test_the_stack_side_ages_on_opened_ts(self):
         """Its own field, not the fold side's. A stack tranche carrying
@@ -725,8 +803,7 @@ class TestBothSidesMirror:
         pending tranche owns a resting LIMIT order; dropping the record
         would leave that order on the book with nothing tracking it,
         which is the single way this sweep could strand something."""
-        bot = _Bot(stack=[stack_tr(40, status="pending",
-                                   order_id="ORD-1")], days=7)
+        bot = _Bot(stack=[stack_tr(40, status="pending", order_id="ORD-1")], days=7)
         report = bot._despawn_aged_tranches(now=NOW)
         assert len(bot._stack_tranches) == 1
         assert report["stack_kept_live_order"] == 1
@@ -735,8 +812,7 @@ class TestBothSidesMirror:
     def test_a_cancelled_visible_tranche_is_delisted(self):
         """NEGATIVE CONTROL for the rule above: the guard is about a
         LIVE order, not about having an order_id at all."""
-        bot = _Bot(stack=[stack_tr(40, status="cancelled",
-                                   order_id="ORD-1")], days=7)
+        bot = _Bot(stack=[stack_tr(40, status="cancelled", order_id="ORD-1")], days=7)
         bot._despawn_aged_tranches(now=NOW)
         assert bot._stack_tranches == []
 
@@ -763,14 +839,14 @@ class TestTheStackHalfShipsDormant:
 class TestItTouchesNothingElse:
     def test_no_order_and_no_balance_was_reached(self):
         _check_no_money_was_reached(
-            _Spy(fold=[fold_tr(40)], stack=[stack_tr(40)], days=7))
+            _Spy(fold=[fold_tr(40)], stack=[stack_tr(40)], days=7)
+        )
 
     def test_holdings_and_lots_are_unchanged(self):
         bot = _Bot(fold=[fold_tr(40)], days=7)
         bot._despawn_aged_tranches(now=NOW)
         assert bot._current_holdings == pytest.approx(12.5)
-        assert bot._main_lots == [
-            {"units": 12.5, "initial_buy_price": 0.30}]
+        assert bot._main_lots == [{"units": 12.5, "initial_buy_price": 0.30}]
 
     def test_target_and_anchor_are_unchanged(self):
         bot = _Bot(fold=[fold_tr(40)], days=7)
@@ -790,8 +866,7 @@ class TestItTouchesNothingElse:
     def test_no_absorb_warning_when_tranches_remain(self):
         """NEGATIVE CONTROL: warning on every sweep would train the
         operator to ignore it."""
-        bot = _Bot(fold=[fold_tr(40), fold_tr(2)], days=7,
-                   pending=342.26)
+        bot = _Bot(fold=[fold_tr(40), fold_tr(2)], days=7, pending=342.26)
         bot._despawn_aged_tranches(now=NOW)
         assert "absorb window" not in bot._bus.text()
 
@@ -801,8 +876,7 @@ class TestTheDerivedBookkeeping:
         """A stale `_fold_queue_usd` would keep the tick's `== 0`
         short-circuit and the panel's Parked USD both reporting money
         with no tranche behind it."""
-        bot = _Bot(fold=[fold_tr(40, usd=4.0), fold_tr(2, usd=1.5)],
-                   days=7)
+        bot = _Bot(fold=[fold_tr(40, usd=4.0), fold_tr(2, usd=1.5)], days=7)
         bot._despawn_aged_tranches(now=NOW)
         assert bot._fold_queue_usd == pytest.approx(1.5)
 
@@ -818,10 +892,11 @@ class TestTheDerivedBookkeeping:
     def test_created_minus_closed_minus_discarded_is_standing(self):
         bot = _Bot(fold=[fold_tr(40), fold_tr(2)], days=7)
         bot._despawn_aged_tranches(now=NOW)
-        assert (bot._tranches_created_lifetime
-                - bot._tranches_closed_lifetime
-                - bot._tranches_discarded_lifetime
-                ) == len(bot._fold_tranches)
+        assert (
+            bot._tranches_created_lifetime
+            - bot._tranches_closed_lifetime
+            - bot._tranches_discarded_lifetime
+        ) == len(bot._fold_tranches)
 
     def test_a_stack_despawn_counts_as_discarded_too(self):
         """The mirror. Round 2 dropped stack records and touched no
@@ -835,8 +910,12 @@ class TestTheDerivedBookkeeping:
 
     def test_both_ledgers_reconcile_after_a_sweep(self):
         _check_both_ledgers_reconcile(
-            _Bot(fold=[fold_tr(40), fold_tr(2)],
-                 stack=[stack_tr(40), stack_tr(2, index=1)], days=7))
+            _Bot(
+                fold=[fold_tr(40), fold_tr(2)],
+                stack=[stack_tr(40), stack_tr(2, index=1)],
+                days=7,
+            )
+        )
 
     def test_both_ledgers_reconcile_when_nothing_ages_out(self):
         """NEGATIVE CONTROL: a sweep that delists nothing must not
@@ -849,9 +928,13 @@ class TestTheDerivedBookkeeping:
     def test_a_kept_live_order_is_not_counted_as_discarded(self):
         """The one asymmetry must not leak into the ledger: a tranche
         that was KEPT was not removed, so nothing was discarded."""
-        bot = _Bot(stack=[stack_tr(40, status="pending",
-                                   order_id="ORD-1"),
-                          stack_tr(40, index=1)], days=7)
+        bot = _Bot(
+            stack=[
+                stack_tr(40, status="pending", order_id="ORD-1"),
+                stack_tr(40, index=1),
+            ],
+            days=7,
+        )
         _check_both_ledgers_reconcile(bot)
         assert bot._stack_discarded == 1
 
@@ -867,16 +950,16 @@ class TestTheDerivedBookkeeping:
 
     def test_repeated_sweeps_accumulate_on_both_ledgers(self):
         """The counters are running totals, not per-sweep ones."""
-        bot = _Bot(fold=[fold_tr(40), fold_tr(30), fold_tr(2)],
-                   stack=[stack_tr(40), stack_tr(30, index=1),
-                          stack_tr(2, index=2)], days=7)
+        bot = _Bot(
+            fold=[fold_tr(40), fold_tr(30), fold_tr(2)],
+            stack=[stack_tr(40), stack_tr(30, index=1), stack_tr(2, index=2)],
+            days=7,
+        )
         bot._despawn_aged_tranches(now=NOW)
-        assert (bot._tranches_discarded_lifetime, bot._stack_discarded) == (
-            2, 2)
+        assert (bot._tranches_discarded_lifetime, bot._stack_discarded) == (2, 2)
         # Second sweep, clock advanced so the survivor is now old too.
         bot._despawn_aged_tranches(now=NOW + 10 * DAY)
-        assert (bot._tranches_discarded_lifetime, bot._stack_discarded) == (
-            3, 3)
+        assert (bot._tranches_discarded_lifetime, bot._stack_discarded) == (3, 3)
         _check_both_ledgers_reconcile(bot)
 
     def test_it_is_logged_as_not_a_trade(self):
@@ -901,9 +984,13 @@ class TestTheDerivedBookkeeping:
 class TestItRoundTrips:
     def test_the_factory_accepts_it_for_scrumming(self):
         cfg = make_bot_config(
-            BotMode.SCRUMMING, exchange_id="coinbase",
-            base_currency="USD", target_asset="RAVE", symbol="RAVE/USD",
-            tranche_despawn_days=45)
+            BotMode.SCRUMMING,
+            exchange_id="coinbase",
+            base_currency="USD",
+            target_asset="RAVE",
+            symbol="RAVE/USD",
+            tranche_despawn_days=45,
+        )
         assert cfg.tranche_despawn_days == 45
 
     def test_it_survives_asdict_and_rebuild(self):
@@ -911,39 +998,52 @@ class TestItRoundTrips:
         and the restore path rebuilds through the factory. This is that
         loop, run for real."""
         cfg = make_bot_config(
-            BotMode.SCRUMMING, exchange_id="coinbase",
-            base_currency="USD", target_asset="RAVE", symbol="RAVE/USD",
-            tranche_despawn_days=45)
+            BotMode.SCRUMMING,
+            exchange_id="coinbase",
+            base_currency="USD",
+            target_asset="RAVE",
+            symbol="RAVE/USD",
+            tranche_despawn_days=45,
+        )
         saved = dataclasses.asdict(cfg)
         assert saved["tranche_despawn_days"] == 45
         rebuilt = make_bot_config(
-            BotMode.SCRUMMING, exchange_id=saved["exchange_id"],
+            BotMode.SCRUMMING,
+            exchange_id=saved["exchange_id"],
             base_currency=saved["base_currency"],
-            target_asset=saved["target_asset"], symbol=saved["symbol"],
-            tranche_despawn_days=saved["tranche_despawn_days"])
+            target_asset=saved["target_asset"],
+            symbol=saved["symbol"],
+            tranche_despawn_days=saved["tranche_despawn_days"],
+        )
         assert rebuilt.tranche_despawn_days == 45
 
     def test_an_older_state_file_restores_to_off(self):
         """No state file written before 2026-08-13 carries the key."""
         cfg = make_bot_config(
-            BotMode.SCRUMMING, exchange_id="coinbase",
-            base_currency="USD", target_asset="RAVE", symbol="RAVE/USD")
+            BotMode.SCRUMMING,
+            exchange_id="coinbase",
+            base_currency="USD",
+            target_asset="RAVE",
+            symbol="RAVE/USD",
+        )
         assert cfg.tranche_despawn_days == 0
 
     def test_it_is_declared_on_the_dataclass_not_merely_set(self):
         """`asdict` only saves DECLARED fields, and `_apply_changes`
         writes a field only when `hasattr(cfg, field)` already holds. An
         attribute stuck on at runtime would survive neither."""
-        assert "tranche_despawn_days" in {
-            f.name for f in dataclasses.fields(BotConfig)}
+        assert "tranche_despawn_days" in {f.name for f in dataclasses.fields(BotConfig)}
 
     def test_it_is_scrumming_only(self):
         """The two ledgers it sweeps are ScrummingBot state; neither
         exists on ExtractorBot."""
         with pytest.raises(ValueError):
             make_bot_config(
-                BotMode.EXTRACTOR, exchange_id="coinbase",
-                base_currency="USD", tranche_despawn_days=45)
+                BotMode.EXTRACTOR,
+                exchange_id="coinbase",
+                base_currency="USD",
+                tranche_despawn_days=45,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -962,15 +1062,30 @@ class _ExportBot:
     def __init__(self):
         self.bot_id = "bot-despawn-0001"
         self.config = type("C", (), {"symbol": "RAVE/USD"})()
-        for _n in ("_main_lots", "_fold_tranches", "_stack_tranches",
-                   "_pending_wire_ledger"):
+        for _n in (
+            "_main_lots",
+            "_fold_tranches",
+            "_stack_tranches",
+            "_pending_wire_ledger",
+        ):
             setattr(self, _n, [])
-        for _n in ("_last_trade_side", "_scrum_target_mode",
-                   "_scrum_target_side", "_target_grow_last_side"):
+        for _n in (
+            "_last_trade_side",
+            "_scrum_target_mode",
+            "_scrum_target_side",
+            "_target_grow_last_side",
+        ):
             setattr(self, _n, "")
-        for _n in ("_target_balance", "_anchor_target_balance",
-                   "_last_trade_price", "_quote_to_usd", "_fold_queue_usd",
-                   "_dist_accumulator", "_hedge_bal", "_hedge_trades"):
+        for _n in (
+            "_target_balance",
+            "_anchor_target_balance",
+            "_last_trade_price",
+            "_quote_to_usd",
+            "_fold_queue_usd",
+            "_dist_accumulator",
+            "_hedge_bal",
+            "_hedge_trades",
+        ):
             setattr(self, _n, 0.0)
         self._stack_created = 0
         self._stack_discarded = 0
@@ -983,8 +1098,7 @@ class _RestoreBot:
 
     def __init__(self):
         self.bot_id = "bot-despawn-0001"
-        self.config = type("C", (), {
-            "symbol": "RAVE/USD", "target_balance": 50.0})()
+        self.config = type("C", (), {"symbol": "RAVE/USD", "target_balance": 50.0})()
         self._bus = _Bus()
         self._current_holdings = 0.0
         self._anchor_target_balance = 50.0
@@ -1048,8 +1162,9 @@ class TestTheStackDiscardCounterPersists:
 
         restored = _RestoreBot()
         restored.import_scrumming_state(saved)
-        assert (restored._stack_created - restored._stack_discarded
-                ) == len(restored._stack_tranches)
+        assert (restored._stack_created - restored._stack_discarded) == len(
+            restored._stack_tranches
+        )
 
     def test_dropping_the_counter_from_the_file_breaks_the_round_trip(self):
         """PLANTED FAILURE: the state file a build without this key
@@ -1066,8 +1181,9 @@ class TestTheStackDiscardCounterPersists:
 
         restored = _RestoreBot()
         restored.import_scrumming_state(saved)
-        assert (restored._stack_created - restored._stack_discarded
-                ) != len(restored._stack_tranches)
+        assert (restored._stack_created - restored._stack_discarded) != len(
+            restored._stack_tranches
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1078,8 +1194,13 @@ class TestTheStackDiscardCounterPersists:
 
 def _scrum_config(**kw):
     return make_bot_config(
-        BotMode.SCRUMMING, exchange_id="coinbase", base_currency="USD",
-        target_asset="RAVE", symbol="RAVE/USD", **kw)
+        BotMode.SCRUMMING,
+        exchange_id="coinbase",
+        base_currency="USD",
+        target_asset="RAVE",
+        symbol="RAVE/USD",
+        **kw,
+    )
 
 
 class _GuiBot:
@@ -1099,7 +1220,10 @@ def _build_settings_tab(cfg=None, cls=None):
     exchange and a bus. The tab itself is built by the code under test.
     """
     from PySide6.QtWidgets import (
-        QApplication, QDialog, QLabel, QPushButton,
+        QApplication,
+        QDialog,
+        QLabel,
+        QPushButton,
     )
     from src.gui.bot_live_settings import BotLiveSettingsDialog
 
@@ -1129,25 +1253,31 @@ def _check_the_control_is_really_on_the_tab(dlg, tab) -> None:
 
     spin = getattr(dlg, "_tranche_despawn_days", None)
     assert spin is not None, "the dialog built no despawn control at all"
-    assert isinstance(spin, QSpinBox), (
-        f"the despawn control is a {type(spin).__name__}, not a spin box")
+    assert isinstance(
+        spin, QSpinBox
+    ), f"the despawn control is a {type(spin).__name__}, not a spin box"
     assert spin.parentWidget() is not None, (
         "the despawn spin box has no parent: it was constructed and "
-        "never added to a layout, so nothing ever shows it")
-    assert spin in tab.findChildren(QSpinBox), (
-        "the despawn spin box is not in the Settings tab's widget tree")
+        "never added to a layout, so nothing ever shows it"
+    )
+    assert spin in tab.findChildren(
+        QSpinBox
+    ), "the despawn spin box is not in the Settings tab's widget tree"
 
     layout = spin.parentWidget().layout()
     assert isinstance(layout, QFormLayout), (
         f"the despawn control sits in a {type(layout).__name__}, not the "
-        f"QFormLayout the rest of the Advanced group uses")
+        f"QFormLayout the rest of the Advanced group uses"
+    )
     row: int = layout.getWidgetPosition(spin)[0]
     assert row >= 0, "the despawn spin box is not in a form row"
     label = layout.itemAt(row, QFormLayout.ItemRole.LabelRole)
-    assert label is not None and label.widget() is not None, (
-        "the despawn row has no label, so the control is unnamed")
-    assert "Despawn" in label.widget().text(), (
-        f"the despawn row is labelled {label.widget().text()!r}")
+    assert (
+        label is not None and label.widget() is not None
+    ), "the despawn row has no label, so the control is unnamed"
+    assert (
+        "Despawn" in label.widget().text()
+    ), f"the despawn row is labelled {label.widget().text()!r}"
 
 
 def _check_a_change_reaches_the_consumer(dlg) -> None:
@@ -1159,11 +1289,13 @@ def _check_a_change_reaches_the_consumer(dlg) -> None:
     """
     assert despawn_threshold_days(dlg._bot.config) == 0
     dlg._tranche_despawn_days.setValue(30)
-    assert dlg._changes.get("tranche_despawn_days") == 30, (
-        "moving the control registered no pending change")
+    assert (
+        dlg._changes.get("tranche_despawn_days") == 30
+    ), "moving the control registered no pending change"
     dlg._apply_changes()
-    assert despawn_threshold_days(dlg._bot.config) == 30, (
-        "Apply did not reach the value the sweep reads")
+    assert (
+        despawn_threshold_days(dlg._bot.config) == 30
+    ), "Apply did not reach the value the sweep reads"
 
 
 class TestTheLiveSettingsSurface:
@@ -1174,14 +1306,14 @@ class TestTheLiveSettingsSurface:
     def test_it_reads_off_by_default(self):
         dlg, _tab = _build_settings_tab()
         assert dlg._tranche_despawn_days.value() == 0
-        assert dlg._tranche_despawn_days.specialValueText() == "Off", (
-            "0 must read as Off rather than as '0 days'")
+        assert (
+            dlg._tranche_despawn_days.specialValueText() == "Off"
+        ), "0 must read as Off rather than as '0 days'"
 
     def test_seeding_the_control_is_not_an_operator_edit(self):
         """`setValue` runs before `valueChanged` is connected, so simply
         opening the dialog must not arm Apply."""
-        dlg, _tab = _build_settings_tab(_scrum_config(
-            tranche_despawn_days=45))
+        dlg, _tab = _build_settings_tab(_scrum_config(tranche_despawn_days=45))
         assert dlg._tranche_despawn_days.value() == 45
         assert dlg._changes == {}
 
@@ -1208,8 +1340,12 @@ class TestTheLiveSettingsSurface:
         """`_create_settings_tab` runs for every mode; the Advanced
         group is not behind the scrumming branch."""
         cfg = make_bot_config(
-            BotMode.EXTRACTOR, exchange_id="coinbase",
-            base_currency="USD", target_asset="*", symbol="")
+            BotMode.EXTRACTOR,
+            exchange_id="coinbase",
+            base_currency="USD",
+            target_asset="*",
+            symbol="",
+        )
         dlg, tab = _build_settings_tab(cfg)
         _check_the_control_is_really_on_the_tab(dlg, tab)
 
@@ -1237,15 +1373,17 @@ class _GuiStackBot:
         """Seeded from a bot that has actually run the sweep, so the
         panel is driven by the production ledger rather than by numbers
         the test made up."""
-        return cls(bot._stack_tranches, bot._stack_created,
-                   bot._stack_discarded)
+        return cls(bot._stack_tranches, bot._stack_created, bot._stack_discarded)
 
 
 def _build_stack_tab(bot, cls=None):
     """Build the REAL Stack Tranches tab, same construction route the
     Settings tab test uses."""
     from PySide6.QtWidgets import (
-        QApplication, QDialog, QLabel, QPushButton,
+        QApplication,
+        QDialog,
+        QLabel,
+        QPushButton,
     )
     from src.gui.bot_live_settings import BotLiveSettingsDialog
 
@@ -1300,25 +1438,28 @@ def _check_the_stack_panel_accounts_for_discards(bot, tab) -> None:
     rows = _panel_rows(tab)
     opened = _row_matching(rows, "opened")
     assert opened is not None, (
-        f"the Stack panel reports no lifetime opened total; rows="
-        f"{sorted(rows)}")
+        f"the Stack panel reports no lifetime opened total; rows=" f"{sorted(rows)}"
+    )
     discarded = _row_matching(rows, "discarded")
     assert discarded is not None, (
         f"the Stack panel shows no discarded row, so its fill ratio "
         f"{_row_matching(rows, 'fill ratio')!r} fell after the sweep "
         f"with nothing on screen accounting for the "
-        f"{bot._stack_discarded} delisted tranche(s); rows={sorted(rows)}")
+        f"{bot._stack_discarded} delisted tranche(s); rows={sorted(rows)}"
+    )
     assert discarded == str(bot._stack_discarded), (
         f"the panel reports {discarded!r} discarded, the ledger says "
-        f"{bot._stack_discarded}")
+        f"{bot._stack_discarded}"
+    )
     standing = sum(
-        int(_row_matching(rows, w) or 0)
-        for w in ("pending", "filled", "cancelled"))
+        int(_row_matching(rows, w) or 0) for w in ("pending", "filled", "cancelled")
+    )
     assert standing + int(discarded) == int(opened), (
         f"the panel does not add up: {standing} standing + {discarded} "
         f"discarded != {opened} opened. Every tranche ever created must "
         f"be on screen as either standing or discarded, or the ratio "
-        f"drop is unexplained.")
+        f"drop is unexplained."
+    )
 
 
 def _blinded_stack_dialog():
@@ -1352,9 +1493,15 @@ def _strip_discarded_row(tab) -> None:
 
 def _swept_stack_bot():
     """Four stack tranches, two of them aged out by a real sweep."""
-    bot = _Bot(stack=[stack_tr(40), stack_tr(40, index=1, status="filled"),
-                      stack_tr(2, index=2),
-                      stack_tr(2, index=3, status="filled")], days=7)
+    bot = _Bot(
+        stack=[
+            stack_tr(40),
+            stack_tr(40, index=1, status="filled"),
+            stack_tr(2, index=2),
+            stack_tr(2, index=3, status="filled"),
+        ],
+        days=7,
+    )
     report = bot._despawn_aged_tranches(now=NOW)
     assert report["stack_delisted"] == 2, "fixture did not delist two"
     return bot
@@ -1406,15 +1553,19 @@ def _tickable_bot(days=7):
     and its AttributeError is caught there."""
     bot = object.__new__(ScrummingBot)
     bot.bot_id = "bot-tick-0001"
-    bot.config = type("C", (), {
-        "symbol": "RAVE/USD",
-        "scrum_read_rate_min": 0,      # bypasses the read-rate skip gate
-        "tranche_despawn_days": days,
-    })()
-    bot._initialised = True            # skips the initialisation branch
-    bot._manual_fire_pending = False   # read by the gate's elif branch
+    bot.config = type(
+        "C",
+        (),
+        {
+            "symbol": "RAVE/USD",
+            "scrum_read_rate_min": 0,  # bypasses the read-rate skip gate
+            "tranche_despawn_days": days,
+        },
+    )()
+    bot._initialised = True  # skips the initialisation branch
+    bot._manual_fire_pending = False  # read by the gate's elif branch
     bot._reconcile_tick_counter = 0
-    bot._reconcile_interval = 0        # skips the periodic reconcile
+    bot._reconcile_interval = 0  # skips the periodic reconcile
     bot._last_price = 100.0
     # `tick_interval` is a read-only property and is not set here: with
     # `scrum_read_rate_min` at 0 the read-rate gate short-circuits
@@ -1450,8 +1601,9 @@ def _tick_reaches_the_sweep(bot) -> list:
 
 class TestItIsWiredIn:
     def test_running_a_tick_runs_the_sweep(self):
-        assert _tick_reaches_the_sweep(_tickable_bot()) == [None], (
-            "a full tick never reached the despawn sweep")
+        assert _tick_reaches_the_sweep(_tickable_bot()) == [
+            None
+        ], "a full tick never reached the despawn sweep"
 
     def test_the_tick_passes_no_clock_so_the_sweep_uses_its_own(self):
         assert _tick_reaches_the_sweep(_tickable_bot())[0] is None
@@ -1459,8 +1611,7 @@ class TestItIsWiredIn:
     def test_it_is_not_a_coroutine(self):
         """Every coroutine in this platform runs on the Qt GUI thread.
         A list filter has no reason to be one."""
-        assert not inspect.iscoroutinefunction(
-            ScrummingBot._despawn_aged_tranches)
+        assert not inspect.iscoroutinefunction(ScrummingBot._despawn_aged_tranches)
 
     def test_it_runs_above_the_below_interval_return(self):
         """That return ends the tick on every quiet cycle, so below it
@@ -1473,7 +1624,8 @@ class TestItIsWiredIn:
         call_line, quiet_line = _tick_statement_lines()
         assert call_line < quiet_line, (
             f"the sweep is called at line {call_line}, below the "
-            f"below-interval return at {quiet_line}")
+            f"below-interval return at {quiet_line}"
+        )
 
 
 def _tick_statement_lines() -> tuple[int, int]:
@@ -1481,16 +1633,22 @@ def _tick_statement_lines() -> tuple[int, int]:
     source = Path(inspect.getsourcefile(ScrummingBot))
     tree = ast.parse(source.read_text(encoding="utf-8"))
     tick = next(
-        n for n in ast.walk(tree)
-        if isinstance(n, ast.AsyncFunctionDef) and n.name == "tick")
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "tick"
+    )
     call_line = next(
-        n.lineno for n in ast.walk(tick)
+        n.lineno
+        for n in ast.walk(tick)
         if isinstance(n, ast.Call)
         and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "_despawn_aged_tranches")
+        and n.func.attr == "_despawn_aged_tranches"
+    )
     quiet_line = min(
-        n.lineno for n in ast.walk(tick)
-        if isinstance(n, ast.Name) and n.id == "below_interval")
+        n.lineno
+        for n in ast.walk(tick)
+        if isinstance(n, ast.Name) and n.id == "below_interval"
+    )
     return call_line, quiet_line
 
 
@@ -1528,7 +1686,7 @@ HOSTILES = [
     ("None", None),
     ("True", True),
     ("Decimal('30')", Decimal("30")),
-    ("10**400", 10 ** 400),
+    ("10**400", 10**400),
     ("1e308", 1e308),
     ("float subclass", _FloatSubclass(30.0)),
     ("object with __float__", _HasFloat()),
@@ -1569,8 +1727,9 @@ def _site_05_injected_now(raw):
 def _site_06_cutoff_arithmetic(raw):
     """`_cutoff = _days * 86400.0`, the multiplication `DESPAWN_MAX_DAYS`
     exists to keep in range."""
-    _Bot(fold=[fold_tr(400)], stack=[stack_tr(400)], days=raw
-         )._despawn_aged_tranches(now=NOW)
+    _Bot(fold=[fold_tr(400)], stack=[stack_tr(400)], days=raw)._despawn_aged_tranches(
+        now=NOW
+    )
 
 
 def _site_07_delisted_usd_total(raw):
@@ -1581,8 +1740,9 @@ def _site_07_delisted_usd_total(raw):
 def _site_08_queue_total_recompute(raw):
     """The `sum(...)` over SURVIVING tranches. Deliberately stricter than
     its six siblings, which is the documented divergence."""
-    _Bot(fold=[fold_tr(400), fold_tr(1, usd=raw)], days=7
-         )._despawn_aged_tranches(now=NOW)
+    _Bot(fold=[fold_tr(400), fold_tr(1, usd=raw)], days=7)._despawn_aged_tranches(
+        now=NOW
+    )
 
 
 def _site_09_fold_discard_counter(raw):
@@ -1603,8 +1763,7 @@ def _site_10_stack_discard_counter(raw):
 def _site_11_parked_wire_credit(raw):
     """`_parked = as_finite_float(...)` and the `${_parked:.4f}` format
     that follows it."""
-    _Bot(fold=[fold_tr(400)], days=7, pending=raw
-         )._despawn_aged_tranches(now=NOW)
+    _Bot(fold=[fold_tr(400)], days=7, pending=raw)._despawn_aged_tranches(now=NOW)
 
 
 def _site_12_state_export(raw):
@@ -1636,8 +1795,7 @@ def _site_15_stack_panel_discarded_row(raw):
 
 CONVERSION_SITES = [
     ("01 shared reader `as_finite_float`", _site_01_shared_reader),
-    ("02 threshold reader `despawn_threshold_days`",
-     _site_02_threshold_reader),
+    ("02 threshold reader `despawn_threshold_days`", _site_02_threshold_reader),
     ("03 fold timestamp `created_ts`", _site_03_fold_timestamp),
     ("04 stack timestamp `opened_ts`", _site_04_stack_timestamp),
     ("05 injected `now`", _site_05_injected_now),
@@ -1672,10 +1830,10 @@ def _check_a_site_refuses_by_value(driver, label, raw) -> None:
 
 
 class TestEveryConversionSiteSurvivesEveryHostile:
-    @pytest.mark.parametrize("label,driver", CONVERSION_SITES,
-                             ids=[s[0] for s in CONVERSION_SITES])
-    @pytest.mark.parametrize("hostile,raw", HOSTILES,
-                             ids=[h[0] for h in HOSTILES])
+    @pytest.mark.parametrize(
+        "label,driver", CONVERSION_SITES, ids=[s[0] for s in CONVERSION_SITES]
+    )
+    @pytest.mark.parametrize("hostile,raw", HOSTILES, ids=[h[0] for h in HOSTILES])
     def test_site(self, label, driver, hostile, raw):
         _check_a_site_refuses_by_value(driver, f"{label} [{hostile}]", raw)
 
@@ -1735,8 +1893,7 @@ class TestThePlantedConversionDefect:
         """The same oracle the fifteen sites are judged by, run against
         the expression they replaced."""
         with pytest.raises(AssertionError, match="raised"):
-            _check_a_site_refuses_by_value(
-                _bare_int_counter, "the bare int()", raw)
+            _check_a_site_refuses_by_value(_bare_int_counter, "the bare int()", raw)
 
     @pytest.mark.parametrize("raw", [NAN, INF, NINF, "30", [1], b"30"])
     def test_the_guarded_counter_survives_the_same_rows(self, raw):
@@ -1764,8 +1921,8 @@ def _rewire_to_undeclared_field(dlg) -> None:
     so `_apply_changes` skips it and the setting never lands."""
     dlg._tranche_despawn_days.valueChanged.disconnect()
     dlg._tranche_despawn_days.valueChanged.connect(
-        lambda v: dlg._mark_changed(
-            "tranche_despawn_days_NOT_A_FIELD", v))
+        lambda v: dlg._mark_changed("tranche_despawn_days_NOT_A_FIELD", v)
+    )
 
 
 def _blinded_dialog(blind):
@@ -1793,18 +1950,28 @@ class _BlindNeverDelists(_Bot):
     nothing."""
 
     def _despawn_aged_tranches(self, now=None):
-        return {"threshold_days": 0, "fold_delisted": 0,
-                "stack_delisted": 0, "stack_kept_live_order": 0,
-                "ageless_kept": 0, "usd_delisted": 0.0}
+        return {
+            "threshold_days": 0,
+            "fold_delisted": 0,
+            "stack_delisted": 0,
+            "stack_kept_live_order": 0,
+            "ageless_kept": 0,
+            "usd_delisted": 0.0,
+        }
 
 
 class _BlindDelistsEverything(_Bot):
     def _despawn_aged_tranches(self, now=None):
         self._fold_tranches = []
         self._stack_tranches = []
-        return {"threshold_days": 1, "fold_delisted": 0,
-                "stack_delisted": 0, "stack_kept_live_order": 0,
-                "ageless_kept": 0, "usd_delisted": 0.0}
+        return {
+            "threshold_days": 1,
+            "fold_delisted": 0,
+            "stack_delisted": 0,
+            "stack_kept_live_order": 0,
+            "ageless_kept": 0,
+            "usd_delisted": 0.0,
+        }
 
 
 class _BlindExclusiveBoundary(_Bot):
@@ -1816,9 +1983,10 @@ class _BlindExclusiveBoundary(_Bot):
             return {"fold_delisted": 0}
         cut = days * DAY
         self._fold_tranches = [
-            t for t in self._fold_tranches
-            if not ((t.get("created_ts") or 0) > 0
-                    and (now - t["created_ts"]) > cut)]
+            t
+            for t in self._fold_tranches
+            if not ((t.get("created_ts") or 0) > 0 and (now - t["created_ts"]) > cut)
+        ]
         return {"fold_delisted": 0}
 
 
@@ -1832,8 +2000,10 @@ class _BlindAgelessIsAncient(_Bot):
             return {"fold_delisted": 0}
         cut = days * DAY
         self._fold_tranches = [
-            t for t in self._fold_tranches
-            if (now - float(t.get("created_ts") or 0)) < cut]
+            t
+            for t in self._fold_tranches
+            if (now - float(t.get("created_ts") or 0)) < cut
+        ]
         return {"fold_delisted": 0}
 
 
@@ -1847,9 +2017,13 @@ class _BlindIsinstanceTimestamp(_Bot):
             return {"fold_delisted": 0}
         cut = days * DAY
         self._fold_tranches = [
-            t for t in self._fold_tranches
-            if not (isinstance(t.get("created_ts"), (int, float))
-                    and (now - float(t["created_ts"])) >= cut)]
+            t
+            for t in self._fold_tranches
+            if not (
+                isinstance(t.get("created_ts"), (int, float))
+                and (now - float(t["created_ts"])) >= cut
+            )
+        ]
         return {"fold_delisted": 0}
 
 
@@ -1857,11 +2031,15 @@ class _BlindIgnoresTheOffSwitch(_Bot):
     def _despawn_aged_tranches(self, now=None):
         cut = 7 * DAY
         self._fold_tranches = [
-            t for t in self._fold_tranches
-            if (now - float(t.get("created_ts") or now)) < cut]
+            t
+            for t in self._fold_tranches
+            if (now - float(t.get("created_ts") or now)) < cut
+        ]
         self._stack_tranches = [
-            t for t in self._stack_tranches
-            if (now - float(t.get("opened_ts") or now)) < cut]
+            t
+            for t in self._stack_tranches
+            if (now - float(t.get("opened_ts") or now)) < cut
+        ]
         return {"fold_delisted": 0}
 
 
@@ -1874,8 +2052,10 @@ class _BlindSweepsFoldOnly(_Bot):
             return {"fold_delisted": 0}
         cut = days * DAY
         self._fold_tranches = [
-            t for t in self._fold_tranches
-            if (now - float(t.get("created_ts") or now)) < cut]
+            t
+            for t in self._fold_tranches
+            if (now - float(t.get("created_ts") or now)) < cut
+        ]
         return {"fold_delisted": 0}
 
 
@@ -1941,25 +2121,26 @@ class TestPlantedFailures:
     def test_never_delisting_fails_the_old_tranche_check(self):
         with pytest.raises(AssertionError):
             _check_old_fold_is_delisted(
-                _BlindNeverDelists(fold=[fold_tr(40), fold_tr(2)],
-                                   days=7))
+                _BlindNeverDelists(fold=[fold_tr(40), fold_tr(2)], days=7)
+            )
 
     def test_delisting_everything_fails_the_young_tranche_check(self):
         with pytest.raises(AssertionError):
             _check_young_fold_survives(
-                _BlindDelistsEverything(fold=[fold_tr(40), fold_tr(2)],
-                                        days=7))
+                _BlindDelistsEverything(fold=[fold_tr(40), fold_tr(2)], days=7)
+            )
 
     def test_an_exclusive_boundary_fails_the_boundary_check(self):
         with pytest.raises(AssertionError):
             _check_boundary_is_inclusive(
-                _BlindExclusiveBoundary(fold=[fold_tr(7)], days=7))
+                _BlindExclusiveBoundary(fold=[fold_tr(7)], days=7)
+            )
 
     def test_treating_ageless_as_ancient_fails_the_ageless_check(self):
         with pytest.raises(AssertionError):
             _check_ageless_is_kept(
-                _BlindAgelessIsAncient(fold=[fold_tr(40, dated=False)],
-                                       days=7))
+                _BlindAgelessIsAncient(fold=[fold_tr(40, dated=False)], days=7)
+            )
 
     def test_an_isinstance_timestamp_gate_fails_the_ageless_check(self):
         """`True` is an `int` by isinstance, so the blinded sweep dates
@@ -1973,14 +2154,19 @@ class TestPlantedFailures:
         with pytest.raises(AssertionError):
             _check_off_delists_nothing(
                 _BlindIgnoresTheOffSwitch(
-                    fold=[fold_tr(400)], stack=[stack_tr(400)], days=0))
+                    fold=[fold_tr(400)], stack=[stack_tr(400)], days=0
+                )
+            )
 
     def test_sweeping_one_side_fails_the_mirror_check(self):
         with pytest.raises(AssertionError):
             _check_both_sides_agree(
                 _BlindSweepsFoldOnly(
                     fold=[fold_tr(40), fold_tr(2)],
-                    stack=[stack_tr(40), stack_tr(2, index=1)], days=7))
+                    stack=[stack_tr(40), stack_tr(2, index=1)],
+                    days=7,
+                )
+            )
 
     # -- the ledger accounting, broken on each side in turn -------------
 
@@ -1989,7 +2175,10 @@ class TestPlantedFailures:
             _check_both_ledgers_reconcile(
                 _BlindFoldDiscardNotCounted(
                     fold=[fold_tr(40), fold_tr(2)],
-                    stack=[stack_tr(40), stack_tr(2, index=1)], days=7))
+                    stack=[stack_tr(40), stack_tr(2, index=1)],
+                    days=7,
+                )
+            )
 
     def test_an_uncounted_stack_discard_fails_the_ledger_check(self):
         """THE GAP ROUND 2 LEFT. Its stack branch removed records and
@@ -1998,37 +2187,45 @@ class TestPlantedFailures:
             _check_both_ledgers_reconcile(
                 _BlindStackDiscardNotCounted(
                     fold=[fold_tr(40), fold_tr(2)],
-                    stack=[stack_tr(40), stack_tr(2, index=1)], days=7))
+                    stack=[stack_tr(40), stack_tr(2, index=1)],
+                    days=7,
+                )
+            )
 
     def test_each_break_is_caught_on_its_OWN_side(self):
         """Neither plant may be caught by the other side's assertion, or
         the oracle would be reporting one ledger under two names."""
         fold_blind = _BlindFoldDiscardNotCounted(
             fold=[fold_tr(40), fold_tr(2)],
-            stack=[stack_tr(40), stack_tr(2, index=1)], days=7)
+            stack=[stack_tr(40), stack_tr(2, index=1)],
+            days=7,
+        )
         fold_blind._despawn_aged_tranches(now=NOW)
         assert _stack_ledger(fold_blind)[0] == _stack_ledger(fold_blind)[1]
         stack_blind = _BlindStackDiscardNotCounted(
             fold=[fold_tr(40), fold_tr(2)],
-            stack=[stack_tr(40), stack_tr(2, index=1)], days=7)
+            stack=[stack_tr(40), stack_tr(2, index=1)],
+            days=7,
+        )
         stack_blind._despawn_aged_tranches(now=NOW)
         assert _fold_ledger(stack_blind)[0] == _fold_ledger(stack_blind)[1]
 
     def test_booking_a_discard_as_closed_fails_the_split_check(self):
         """The ledger still reconciles under this defect, which is why
         the separate counters are asserted separately."""
-        bot = _BlindDiscardCountedAsClosed(
-            fold=[fold_tr(40), fold_tr(2)], days=7)
+        bot = _BlindDiscardCountedAsClosed(fold=[fold_tr(40), fold_tr(2)], days=7)
         bot._despawn_aged_tranches(now=NOW)
-        assert _fold_ledger(bot)[0] == _fold_ledger(bot)[1], (
-            "the plant was meant to keep the ledger balanced")
+        assert (
+            _fold_ledger(bot)[0] == _fold_ledger(bot)[1]
+        ), "the plant was meant to keep the ledger balanced"
         assert bot._tranches_discarded_lifetime == 0
         assert bot._tranches_closed_lifetime == 39
 
     def test_reaching_for_the_position_fails_the_no_money_check(self):
         with pytest.raises(AssertionError):
             _check_no_money_was_reached(
-                _SpyThatTouchesMoney(fold=[fold_tr(40)], days=7))
+                _SpyThatTouchesMoney(fold=[fold_tr(40)], days=7)
+            )
 
     def test_the_reach_recorder_actually_records(self):
         """The no-money oracle is only worth anything if the recorder
@@ -2047,13 +2244,15 @@ class TestPlantedFailures:
         with pytest.raises(AssertionError):
             _check_threshold_table(_type_only_gate)
 
-    @pytest.mark.parametrize("label,raw,exc", [
-        ("nan", NAN, ValueError),
-        ("inf", INF, OverflowError),
-        ("-inf", NINF, OverflowError),
-    ])
-    def test_the_old_gate_raises_on_each_non_finite_row(
-            self, label, raw, exc):
+    @pytest.mark.parametrize(
+        "label,raw,exc",
+        [
+            ("nan", NAN, ValueError),
+            ("inf", INF, OverflowError),
+            ("-inf", NINF, OverflowError),
+        ],
+    )
+    def test_the_old_gate_raises_on_each_non_finite_row(self, label, raw, exc):
         """Named individually, because "the table failed" does not say
         which rows carried it. Each of these left the sweep and
         propagated out of `tick`."""
@@ -2089,13 +2288,13 @@ class TestPlantedFailures:
         with pytest.raises(AssertionError):
             _check_a_change_reaches_the_consumer(dlg)
 
-    def test_a_field_missing_from_the_dataclass_fails_the_consumer_check(
-            self):
+    def test_a_field_missing_from_the_dataclass_fails_the_consumer_check(self):
         """`_apply_changes` writes only where `hasattr(cfg, field)`, so
         a widget whose key is not a declared field silently applies
         nothing. This is why bot_container.py is in the touch set."""
         dlg, _tab = _build_settings_tab(
-            cls=_blinded_dialog(_rewire_to_undeclared_field))
+            cls=_blinded_dialog(_rewire_to_undeclared_field)
+        )
         with pytest.raises(AssertionError):
             _check_a_change_reaches_the_consumer(dlg)
 
@@ -2106,8 +2305,7 @@ class TestPlantedFailures:
         never bumped the counter, so the panel has four opened, two
         standing and nothing saying where the other two went."""
         swept = _swept_stack_bot()
-        gui_bot = _GuiStackBot(swept._stack_tranches, swept._stack_created,
-                               discarded=0)
+        gui_bot = _GuiStackBot(swept._stack_tranches, swept._stack_created, discarded=0)
         _dlg, tab = _build_stack_tab(gui_bot)
         with pytest.raises(AssertionError, match="no discarded row"):
             _check_the_stack_panel_accounts_for_discards(gui_bot, tab)
@@ -2124,8 +2322,9 @@ class TestPlantedFailures:
         """A row that is present but wrong is the third way the surface
         can lie, and the arithmetic assertion is what catches it."""
         swept = _swept_stack_bot()
-        gui_bot = _GuiStackBot(swept._stack_tranches, swept._stack_created,
-                               discarded=99)
+        gui_bot = _GuiStackBot(
+            swept._stack_tranches, swept._stack_created, discarded=99
+        )
         _dlg, tab = _build_stack_tab(gui_bot)
         with pytest.raises(AssertionError, match="does not add up"):
             _check_the_stack_panel_accounts_for_discards(gui_bot, tab)

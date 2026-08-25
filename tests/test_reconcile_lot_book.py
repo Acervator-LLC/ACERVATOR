@@ -84,6 +84,7 @@ agrees with itself. ``test_the_deadband_decision_matches_an_independent
 _model`` sweeps the ratio instead and compares every outcome against a
 model written from the tolerance rule alone.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -98,30 +99,103 @@ from src.trading.scrumming_bot import ScrummingBot
 
 # ORCA's real book, 48 lots, from the 2026-08-13T19:18:32Z pin.
 ORCA_UNITS = (
-    1.7652658685753126, 0.8748767081914804, 0.2360478787022957,
-    0.38852154583977605, 0.29047286294813196, 1.2073185489325209,
-    1.0963999940422426, 3.1861695485046857, 0.3399731647384277,
-    0.0015985228388475583, 0.07737179731963027, 0.04072237921584787,
-    0.1879377624912088, 0.2848984255605254, 0.46427544871914256,
-    0.46979487575392176, 0.32524729103550837, 0.03873009622465764,
-    0.4571573978299236, 0.7615015366744311, 0.023219324199201703,
-    0.11712866479168059, 5.621341529445916, 2.2195092732274384,
-    1.8813795251632013, 0.1013763614684873, 0.3696227460384178,
-    0.7527348482830185, 0.06123787707883497, 0.9633958789710729,
-    0.08146952771754509, 0.27756796746624557, 1.9850073873635223,
-    0.8026706693558375, 3.0353296010040745, 4.6887172591441315,
-    5.4687405232864075, 7.000526027990965, 0.6181511692746956,
-    0.06721344278205922, 0.2825467025555889, 0.6244848264810394,
-    0.3832539493799721, 1.2683456154771273, 0.0653547695707293,
-    0.22880069375348386, 0.12999999999999992, 2.44,
+    1.7652658685753126,
+    0.8748767081914804,
+    0.2360478787022957,
+    0.38852154583977605,
+    0.29047286294813196,
+    1.2073185489325209,
+    1.0963999940422426,
+    3.1861695485046857,
+    0.3399731647384277,
+    0.0015985228388475583,
+    0.07737179731963027,
+    0.04072237921584787,
+    0.1879377624912088,
+    0.2848984255605254,
+    0.46427544871914256,
+    0.46979487575392176,
+    0.32524729103550837,
+    0.03873009622465764,
+    0.4571573978299236,
+    0.7615015366744311,
+    0.023219324199201703,
+    0.11712866479168059,
+    5.621341529445916,
+    2.2195092732274384,
+    1.8813795251632013,
+    0.1013763614684873,
+    0.3696227460384178,
+    0.7527348482830185,
+    0.06123787707883497,
+    0.9633958789710729,
+    0.08146952771754509,
+    0.27756796746624557,
+    1.9850073873635223,
+    0.8026706693558375,
+    3.0353296010040745,
+    4.6887172591441315,
+    5.4687405232864075,
+    7.000526027990965,
+    0.6181511692746956,
+    0.06721344278205922,
+    0.2825467025555889,
+    0.6244848264810394,
+    0.3832539493799721,
+    1.2683456154771273,
+    0.0653547695707293,
+    0.22880069375348386,
+    0.12999999999999992,
+    2.44,
 )
 ORCA_PRICES = (
-    1.715, 1.715, 1.6245, 1.6245, 1.6245, 1.6245, 1.6245, 1.5427,
-    1.5134, 1.5134, 1.5134, 1.5134, 1.5134, 1.5134, 1.5134, 1.4866,
-    1.4866, 1.485, 1.4825, 1.4825, 1.4825, 1.4825, 1.4605, 1.4605,
-    1.4605, 1.1584, 1.1584, 1.1584, 1.1584, 1.1584, 1.1584, 1.1584,
-    1.1389, 1.1312, 1.103, 1.0621, 1.0225, 0.9715, 0.9681, 1.7699,
-    1.7699, 1.7699, 1.7699, 1.7699, 1.7699, 1.715, 1.0894,
+    1.715,
+    1.715,
+    1.6245,
+    1.6245,
+    1.6245,
+    1.6245,
+    1.6245,
+    1.5427,
+    1.5134,
+    1.5134,
+    1.5134,
+    1.5134,
+    1.5134,
+    1.5134,
+    1.5134,
+    1.4866,
+    1.4866,
+    1.485,
+    1.4825,
+    1.4825,
+    1.4825,
+    1.4825,
+    1.4605,
+    1.4605,
+    1.4605,
+    1.1584,
+    1.1584,
+    1.1584,
+    1.1584,
+    1.1584,
+    1.1584,
+    1.1584,
+    1.1389,
+    1.1312,
+    1.103,
+    1.0621,
+    1.0225,
+    0.9715,
+    0.9681,
+    1.7699,
+    1.7699,
+    1.7699,
+    1.7699,
+    1.7699,
+    1.7699,
+    1.715,
+    1.0894,
     1.0356741075,
 )
 ORCA_WALLET = 48.73
@@ -162,13 +236,17 @@ def _bot(*, lots, scalar, venue, asset="ORCA", free=None, absent=False):
     """
     bot = object.__new__(ScrummingBot)
     bot.bot_id = "recon-test"
-    bot.config = type("C", (), {
-        "symbol": f"{asset}/USD",
-        "target_asset": asset,
-        "base_currency": asset,
-        "target_balance": 250.0,
-        "max_target_growth_pct": 1.0,
-    })()
+    bot.config = type(
+        "C",
+        (),
+        {
+            "symbol": f"{asset}/USD",
+            "target_asset": asset,
+            "base_currency": asset,
+            "target_balance": 250.0,
+            "max_target_growth_pct": 1.0,
+        },
+    )()
     bot._target_balance = 250.0
     bot._anchor_target_balance = 250.0
     bot._current_holdings = scalar
@@ -182,17 +260,26 @@ def _bot(*, lots, scalar, venue, asset="ORCA", free=None, absent=False):
     async def _balance(currency):
         if currency != asset:
             raise RuntimeError(f"asked for {currency!r}, not {asset!r}")
-        return type("B", (), {"free": _free, "total": venue,
-                              "used": _used_of(venue, _free),
-                              "absent": absent})()
+        return type(
+            "B",
+            (),
+            {
+                "free": _free,
+                "total": venue,
+                "used": _used_of(venue, _free),
+                "absent": absent,
+            },
+        )()
 
     bot._get_balance = _balance
     return bot
 
 
 def _orca_book():
-    return [{"units": u, "initial_buy_price": p, "operator_initiated": True}
-            for u, p in zip(ORCA_UNITS, ORCA_PRICES, strict=True)]
+    return [
+        {"units": u, "initial_buy_price": p, "operator_initiated": True}
+        for u, p in zip(ORCA_UNITS, ORCA_PRICES, strict=True)
+    ]
 
 
 def _run(bot):
@@ -200,8 +287,7 @@ def _run(bot):
 
 
 def _messages(bot):
-    return [kw.get("message", "") for name, kw in bot._bus.emits
-            if name == "bot.log"]
+    return [kw.get("message", "") for name, kw in bot._bus.emits if name == "bot.log"]
 
 
 def _book_sum(bot):
@@ -210,13 +296,15 @@ def _book_sum(bot):
 
 # ── the fixture's own control ───────────────────────────────────────
 
+
 def test_the_recorded_orca_book_is_the_one_the_docstring_describes():
     """A fixture that did not reproduce the pin would prove nothing."""
     assert len(ORCA_UNITS) == 48
     assert len(ORCA_PRICES) == 48
     assert sum(ORCA_UNITS) == 54.053407815409216
-    assert sum(ORCA_UNITS) > ORCA_WALLET, (
-        "the whole unit is about a book that sits ABOVE the wallet")
+    assert (
+        sum(ORCA_UNITS) > ORCA_WALLET
+    ), "the whole unit is about a book that sits ABOVE the wallet"
     excess = sum(ORCA_UNITS) - ORCA_WALLET
     assert excess == pytest.approx(5.3234078154, abs=1e-9)
     # And the excess must clear the deadband, or the positive control
@@ -225,6 +313,7 @@ def test_the_recorded_orca_book_is_the_one_the_docstring_describes():
 
 
 # ── THE POSITIVE CONTROL ────────────────────────────────────────────
+
 
 def test_the_lot_book_above_the_venue_fires_and_is_brought_down():
     """ORCA's real book against a scalar AND a venue of 48.73.
@@ -242,8 +331,7 @@ def test_the_lot_book_above_the_venue_fires_and_is_brought_down():
     assert _run(bot) is True
 
     messages = _messages(bot)
-    assert len(messages) == 1, (
-        f"expected exactly one operator line, got {messages}")
+    assert len(messages) == 1, f"expected exactly one operator line, got {messages}"
     assert messages[0].startswith("BALANCE DRIFT (test):")
     assert "internal=54.053408" in messages[0]
     assert "exchange=48.730000" in messages[0]
@@ -253,10 +341,11 @@ def test_the_lot_book_above_the_venue_fires_and_is_brought_down():
     assert _book_sum(bot) == pytest.approx(ORCA_WALLET, abs=1e-9)
     assert bot._current_holdings == pytest.approx(ORCA_WALLET, abs=1e-12)
     assert len(bot._main_lots) == 48, (
-        "a rescale changes units, never the number of lots or their "
-        "cost basis")
-    assert [lot["initial_buy_price"] for lot in bot._main_lots] == \
-        list(ORCA_PRICES), "MEM-171 cost basis must survive the rescale"
+        "a rescale changes units, never the number of lots or their " "cost basis"
+    )
+    assert [lot["initial_buy_price"] for lot in bot._main_lots] == list(
+        ORCA_PRICES
+    ), "MEM-171 cost basis must survive the rescale"
 
 
 def test_the_rescale_preserves_every_lot_share_of_the_book():
@@ -282,16 +371,20 @@ def test_the_rescale_preserves_every_lot_share_of_the_book():
 
 # ── THE NEGATIVE CONTROL ────────────────────────────────────────────
 
+
 def test_an_already_aligned_bot_stays_silent_with_an_unchanged_book():
     """Nothing to reconcile means nothing said and nothing written."""
-    lots = [{"units": 30.0, "initial_buy_price": 1.10},
-            {"units": 18.73, "initial_buy_price": 1.25}]
+    lots = [
+        {"units": 30.0, "initial_buy_price": 1.10},
+        {"units": 18.73, "initial_buy_price": 1.25},
+    ]
     bot = _bot(lots=lots, scalar=ORCA_WALLET, venue=ORCA_WALLET)
     before = copy.deepcopy(bot._main_lots)
 
     assert _run(bot) is True
-    assert bot._bus.emits == [], (
-        "an aligned bot must not reach the operator's log at all")
+    assert (
+        bot._bus.emits == []
+    ), "an aligned bot must not reach the operator's log at all"
     assert bot._main_lots == before
     assert bot._current_holdings == ORCA_WALLET
 
@@ -319,8 +412,9 @@ def test_drift_up_above_both_counters_is_still_not_claimed():
     assert _run(bot) is True
     messages = _messages(bot)
     assert any("DRIFT UP" in m for m in messages)
-    assert "5.94659218" in " ".join(messages), (
-        "the surplus is measured against the BOOK now, not the scalar")
+    assert "5.94659218" in " ".join(
+        messages
+    ), "the surplus is measured against the BOOK now, not the scalar"
     assert bot._main_lots == before
     assert bot._current_holdings == 48.73
 
@@ -333,16 +427,24 @@ def test_drift_up_above_both_counters_is_still_not_claimed():
 ACCEPT_ROWS = [
     ("empty book, sum([]) is int 0", [], 0.0, 0.0, True),
     ("ordinary positive floats", [{"units": 48.73}], 48.73, 48.73, True),
-    ("a -0.0 lot is a zero",
-     [{"units": 48.73}, {"units": -0.0}], 48.73, 48.73, True),
+    ("a -0.0 lot is a zero", [{"units": 48.73}, {"units": -0.0}], 48.73, 48.73, True),
     ("a -0.0 scalar is a zero", [{"units": 0.0}], -0.0, 0.0, True),
     ("a -0.0 venue is a zero", [{"units": 0.0}], 0.0, -0.0, True),
-    ("a lot with no units key counts as zero",
-     [{"units": 48.73}, {"initial_buy_price": 1.25}], 48.73, 48.73, True),
-    ("a None units value counts as zero",
-     [{"units": None}, {"units": 48.73}], 48.73, 48.73, True),
-    ("a zero venue is a real reading",
-     [{"units": 48.73}], 48.73, 0.0, True),
+    (
+        "a lot with no units key counts as zero",
+        [{"units": 48.73}, {"initial_buy_price": 1.25}],
+        48.73,
+        48.73,
+        True,
+    ),
+    (
+        "a None units value counts as zero",
+        [{"units": None}, {"units": 48.73}],
+        48.73,
+        48.73,
+        True,
+    ),
+    ("a zero venue is a real reading", [{"units": 48.73}], 48.73, 0.0, True),
 ]
 
 REFUSE_ROWS = [
@@ -351,12 +453,24 @@ REFUSE_ROWS = [
     ("inf lot", [{"units": 30.0}, {"units": INF}], 48.73, 48.73),
     ("-inf lot", [{"units": 30.0}, {"units": -INF}], 48.73, 48.73),
     ("negative lot", [{"units": 30.0}, {"units": -5.0}], 48.73, 48.73),
-    ("lot units past the float range",
-     [{"units": 30.0}, {"units": 10 ** 400}], 48.73, 48.73),
-    ("book sums past the float range",
-     [{"units": 1e308}, {"units": 1e308}], 48.73, 48.73),
-    ("a lot that is not a dict at all",
-     [{"units": 48.73}, ["not", "a", "dict"]], 48.73, 48.73),
+    (
+        "lot units past the float range",
+        [{"units": 30.0}, {"units": 10**400}],
+        48.73,
+        48.73,
+    ),
+    (
+        "book sums past the float range",
+        [{"units": 1e308}, {"units": 1e308}],
+        48.73,
+        48.73,
+    ),
+    (
+        "a lot that is not a dict at all",
+        [{"units": 48.73}, ["not", "a", "dict"]],
+        48.73,
+        48.73,
+    ),
     ("nan scalar", [{"units": 48.73}], NAN, 48.73),
     ("inf scalar", [{"units": 48.73}], INF, 48.73),
     ("-inf scalar", [{"units": 48.73}], -INF, 48.73),
@@ -369,16 +483,18 @@ REFUSE_ROWS = [
 
 
 @pytest.mark.parametrize(
-    "label,lots,scalar,venue,expected",
-    ACCEPT_ROWS, ids=[r[0] for r in ACCEPT_ROWS])
+    "label,lots,scalar,venue,expected", ACCEPT_ROWS, ids=[r[0] for r in ACCEPT_ROWS]
+)
 def test_accepted_value_rows_complete_the_reconcile(
-        label, lots, scalar, venue, expected):
+    label, lots, scalar, venue, expected
+):
     bot = _bot(lots=lots, scalar=scalar, venue=venue)
     assert _run(bot) is expected, label
 
 
 @pytest.mark.parametrize(
-    "label,lots,scalar,venue", REFUSE_ROWS, ids=[r[0] for r in REFUSE_ROWS])
+    "label,lots,scalar,venue", REFUSE_ROWS, ids=[r[0] for r in REFUSE_ROWS]
+)
 def test_refused_value_rows_touch_nothing(label, lots, scalar, venue):
     """REFUSE means False, no operator line, and no write of any kind.
 
@@ -390,15 +506,17 @@ def test_refused_value_rows_touch_nothing(label, lots, scalar, venue):
     before_scalar = bot._current_holdings
 
     assert _run(bot) is False, label
-    assert bot._bus.emits == [], (
-        f"{label}: a refusal reached the operator's log")
-    assert repr(bot._main_lots) == repr(before_lots), (
-        f"{label}: a refusal wrote to the book")
-    assert repr(bot._current_holdings) == repr(before_scalar), (
-        f"{label}: a refusal wrote to the scalar")
+    assert bot._bus.emits == [], f"{label}: a refusal reached the operator's log"
+    assert repr(bot._main_lots) == repr(
+        before_lots
+    ), f"{label}: a refusal wrote to the book"
+    assert repr(bot._current_holdings) == repr(
+        before_scalar
+    ), f"{label}: a refusal wrote to the scalar"
 
 
 # ── the nan row, at the surface it destroys ─────────────────────────
+
 
 def test_a_nan_lot_no_longer_reaches_the_ratio_that_drops_it():
     """THE ROW THAT MATTERS, pinned as a behaviour and not as a guard.
@@ -412,16 +530,19 @@ def test_a_nan_lot_no_longer_reaches_the_ratio_that_drops_it():
     ``json.loads('NaN')`` returns nan, so a hand-edited or half-written
     state file reaches this.
     """
-    lots = [{"units": 30.0, "initial_buy_price": 1.10},
-            {"units": NAN, "initial_buy_price": 1.25}]
+    lots = [
+        {"units": 30.0, "initial_buy_price": 1.10},
+        {"units": NAN, "initial_buy_price": 1.25},
+    ]
     bot = _bot(lots=lots, scalar=48.73, venue=40.0)
 
     assert _run(bot) is False
-    assert len(bot._main_lots) == 2, (
-        "the nan lot was dropped -- the book has been destroyed")
+    assert (
+        len(bot._main_lots) == 2
+    ), "the nan lot was dropped -- the book has been destroyed"
     assert bot._main_lots[0]["units"] == 30.0, (
-        "the surviving lot was rescaled against a book that had already "
-        "lost units")
+        "the surviving lot was rescaled against a book that had already " "lost units"
+    )
     assert math.isnan(bot._main_lots[1]["units"])
     assert bot._current_holdings == 48.73
     assert bot._bus.emits == []
@@ -434,8 +555,7 @@ def test_a_lot_with_no_units_key_no_longer_raises_mid_rescale():
     The keyless lot is worth zero units, so a firing reconcile scales
     it to zero and the existing filter drops it. Nothing raises.
     """
-    lots = [{"units": 48.73, "initial_buy_price": 1.10},
-            {"initial_buy_price": 1.25}]
+    lots = [{"units": 48.73, "initial_buy_price": 1.10}, {"initial_buy_price": 1.25}]
     bot = _bot(lots=lots, scalar=48.73, venue=40.0)
 
     assert _run(bot) is True
@@ -462,21 +582,25 @@ def test_a_string_units_lot_is_refused_and_still_never_raises():
     bot = _bot(lots=lots, scalar=12.5, venue=10.0)
 
     assert _run(bot) is False
-    assert bot._main_lots[0]["units"] == "12.5", (
-        "a refusal must leave the book exactly as it found it")
+    assert (
+        bot._main_lots[0]["units"] == "12.5"
+    ), "a refusal must leave the book exactly as it found it"
     assert bot._current_holdings == 12.5
     assert bot._bus.emits == []
 
 
 # ── the guard's own two-sided control ───────────────────────────────
 
+
 def test_the_coercion_accepts_and_refuses_the_right_values():
     """``_reconcilable_units`` read directly, so the table above cannot
     pass by never reaching it."""
+
     def coerce(value):
         number, why = ScrummingBot._reconcilable_units(value, "probe")
-        assert (number is None) != (why is None), (
-            f"{value!r}: a reading and a refusal must not both be set")
+        assert (number is None) != (
+            why is None
+        ), f"{value!r}: a reading and a refusal must not both be set"
         return number
 
     assert coerce(0) == 0.0
@@ -489,9 +613,24 @@ def test_the_coercion_accepts_and_refuses_the_right_values():
     # refused now -- strictly fewer inputs accepted, never more.
     # `type(True) is bool` and bool subclasses int, so `float(True)` is
     # 1.0 and every numeric test below would have passed it through.
-    for bad in (NAN, INF, -INF, -1e-9, -5.0, 10 ** 400, None, [], (),
-                object(), "banana", "", "12.5", True, False,
-                complex(1, 0)):
+    for bad in (
+        NAN,
+        INF,
+        -INF,
+        -1e-9,
+        -5.0,
+        10**400,
+        None,
+        [],
+        (),
+        object(),
+        "banana",
+        "",
+        "12.5",
+        True,
+        False,
+        complex(1, 0),
+    ):
         assert coerce(bad) is None, f"{bad!r} was accepted"
 
 
@@ -501,8 +640,7 @@ def test_a_refusal_says_which_input_it_refused():
     assert why == "exchange balance must be finite; got nan"
     _, why = ScrummingBot._reconcilable_units(-2.0, "_current_holdings")
     assert why == "_current_holdings must be >= 0; got -2.0"
-    bot = _bot(lots=[{"units": 1.0}, {"units": NAN}], scalar=1.0,
-               venue=1.0)
+    bot = _bot(lots=[{"units": 1.0}, {"units": NAN}], scalar=1.0, venue=1.0)
     per_lot, why = bot._reconcilable_lot_book()
     assert per_lot is None
     assert why == "_main_lots[1]['units'] must be finite; got nan"
@@ -519,7 +657,7 @@ def test_max_would_have_swallowed_the_nan_the_guard_catches():
     assert not (NAN > 48.73)
     assert not (NAN < 48.73)
     with pytest.raises(OverflowError):
-        float(10 ** 400)
+        float(10**400)
 
 
 def test_the_audited_total_matches_the_scalar_the_restore_path_builds():
@@ -533,8 +671,7 @@ def test_the_audited_total_matches_the_scalar_the_restore_path_builds():
     per_lot, why = bot._reconcilable_lot_book()
     assert why is None
     total = sum(per_lot)
-    restore_idiom = sum(float(lot.get("units", 0) or 0)
-                        for lot in bot._main_lots)
+    restore_idiom = sum(float(lot.get("units", 0) or 0) for lot in bot._main_lots)
     assert total == restore_idiom
     assert len(per_lot) == 48
     accumulator_loop = 0.0
@@ -542,10 +679,12 @@ def test_the_audited_total_matches_the_scalar_the_restore_path_builds():
         accumulator_loop += units
     assert accumulator_loop != total, (
         "if these ever agree, the ULP note above is stale -- rewrite it "
-        "rather than deleting the test")
+        "rather than deleting the test"
+    )
 
 
 # ── RULE 2: sweep the threshold, do not tabulate it ─────────────────
+
 
 def _model(scalar, book, venue):
     """The decision, written from the tolerance rule alone.
@@ -572,8 +711,9 @@ def test_the_deadband_decision_matches_an_independent_model(step):
     """
     venue = 100.0
     book = venue * (1.0 + step / 10000.0)
-    bot = _bot(lots=[{"units": book, "initial_buy_price": 1.0}],
-               scalar=venue, venue=venue)
+    bot = _bot(
+        lots=[{"units": book, "initial_buy_price": 1.0}], scalar=venue, venue=venue
+    )
     assert _run(bot) is True
 
     expected = _model(venue, book, venue)
@@ -586,15 +726,15 @@ def test_the_deadband_decision_matches_an_independent_model(step):
         assert expected == "down", f"step {step}: model said {expected}"
         assert len(messages) == 1, f"step {step}: {messages}"
         assert messages[0].startswith("BALANCE DRIFT (test):")
-        assert bot._main_lots[0]["units"] == pytest.approx(venue,
-                                                           abs=1e-9)
+        assert bot._main_lots[0]["units"] == pytest.approx(venue, abs=1e-9)
         assert bot._current_holdings == venue
 
 
 def test_POSITIVE_CONTROL_the_sweep_covers_both_verdicts():
     """A sweep that never changed its answer would prove nothing."""
-    verdicts = {_model(100.0, 100.0 * (1.0 + s / 10000.0), 100.0)
-                for s in range(0, 401)}
+    verdicts = {
+        _model(100.0, 100.0 * (1.0 + s / 10000.0), 100.0) for s in range(0, 401)
+    }
     assert verdicts == {"silent", "down"}
 
 
@@ -614,26 +754,34 @@ def test_the_venue_reading_is_the_wallet_total_not_the_free_balance():
     their cost basis permanently, because the drift-UP branch never
     claims units back.
     """
-    assert FREE_WITH_A_RESTING_ORDER != TOTAL_WITH_A_RESTING_ORDER, (
-        "with total == free this test cannot tell the two fields apart")
-    lots = [{"units": TOTAL_WITH_A_RESTING_ORDER,
-             "initial_buy_price": 1.10}]
-    bot = _bot(lots=lots, scalar=TOTAL_WITH_A_RESTING_ORDER,
-               venue=TOTAL_WITH_A_RESTING_ORDER,
-               free=FREE_WITH_A_RESTING_ORDER)
+    assert (
+        FREE_WITH_A_RESTING_ORDER != TOTAL_WITH_A_RESTING_ORDER
+    ), "with total == free this test cannot tell the two fields apart"
+    lots = [{"units": TOTAL_WITH_A_RESTING_ORDER, "initial_buy_price": 1.10}]
+    bot = _bot(
+        lots=lots,
+        scalar=TOTAL_WITH_A_RESTING_ORDER,
+        venue=TOTAL_WITH_A_RESTING_ORDER,
+        free=FREE_WITH_A_RESTING_ORDER,
+    )
 
     assert _run(bot) is True
-    assert bot._bus.emits == [], (
-        "reading total, this bot is aligned and says nothing")
+    assert bot._bus.emits == [], "reading total, this bot is aligned and says nothing"
     assert bot._main_lots[0]["units"] == TOTAL_WITH_A_RESTING_ORDER
     assert bot._current_holdings == TOTAL_WITH_A_RESTING_ORDER
 
     # The other half: what reading `free` would have done to it.
-    assert _model(TOTAL_WITH_A_RESTING_ORDER,
-                  TOTAL_WITH_A_RESTING_ORDER,
-                  FREE_WITH_A_RESTING_ORDER) == "down", (
+    assert (
+        _model(
+            TOTAL_WITH_A_RESTING_ORDER,
+            TOTAL_WITH_A_RESTING_ORDER,
+            FREE_WITH_A_RESTING_ORDER,
+        )
+        == "down"
+    ), (
         "if free no longer fires here the fixture stopped modelling a "
-        "resting order and this test proves nothing")
+        "resting order and this test proves nothing"
+    )
 
 
 def test_the_venue_falls_back_to_free_exactly_as_the_handshake_does():
@@ -664,17 +812,19 @@ def test_the_reconcile_reads_the_same_field_as_the_startup_handshake():
     """
     recon = inspect.getsource(ScrummingBot._reconcile_holdings)
     assert 'getattr(balance, "total", 0)' in recon
-    assert "float(balance.free or 0.0)" not in recon, (
-        "the reconcile is reading FREE as its venue number again")
-    assert recon.index('getattr(balance, "total", 0)') < \
-        recon.index("or balance.free"), (
-        "free must be the fallback, never the first choice")
+    assert (
+        "float(balance.free or 0.0)" not in recon
+    ), "the reconcile is reading FREE as its venue number again"
+    assert recon.index('getattr(balance, "total", 0)') < recon.index(
+        "or balance.free"
+    ), "free must be the fallback, never the first choice"
     # The fail-closed pin, at the source. A `getattr` DEFAULT on free
     # is what let a None balance become an invented 0.0, and a 0.0
     # against a real book is a 100% drift DOWN that empties it.
     assert 'getattr(balance, "free"' not in recon, (
         "a getattr default on free swallows a broken balance object; "
-        "the read must be bare so it raises into the fetch handler")
+        "the read must be bare so it raises into the fetch handler"
+    )
 
     handshake = inspect.getsource(ScrummingBot.tick)
     assert 'getattr(_bal1, "total", 0)' in handshake
@@ -684,8 +834,8 @@ def test_the_reconcile_reads_the_same_field_as_the_startup_handshake():
 
 # ── AN ABSENT READING IS NOT A ZERO ─────────────────────────────────
 
-def test_an_absent_venue_reading_reconciles_nothing_and_says_why(
-        capture_log):
+
+def test_an_absent_venue_reading_reconciles_nothing_and_says_why(capture_log):
     """The exchange omitted the coin. That is no information.
 
     WHAT A FAILURE HERE WOULD MEAN. `absent=True` is being read as a
@@ -694,8 +844,7 @@ def test_an_absent_venue_reading_reconciles_nothing_and_says_why(
     the `> 1e-12` filter, holdings 0.0. A whole position and its entire
     cost basis erased from a response that never mentioned the coin.
     """
-    bot = _bot(lots=_orca_book(), scalar=ORCA_WALLET, venue=0.0,
-               absent=True)
+    bot = _bot(lots=_orca_book(), scalar=ORCA_WALLET, venue=0.0, absent=True)
     before = copy.deepcopy(bot._main_lots)
 
     with capture_log("acervator.scrumming") as records:
@@ -712,13 +861,14 @@ def test_an_absent_venue_reading_reconciles_nothing_and_says_why(
     assert "OMITTED" in messages[0]
     assert "UNKNOWN, not" in messages[0] and "zero" in messages[0]
     assert "ORCA" in messages[0]
-    assert not any(m.startswith("BALANCE DRIFT") for m in messages), (
-        "a refusal must never claim it reset anything")
+    assert not any(
+        m.startswith("BALANCE DRIFT") for m in messages
+    ), "a refusal must never claim it reset anything"
 
-    warnings = [r.getMessage() for r in records
-                if r.levelno >= logging.WARNING]
-    assert any("REFUSED" in m and "UNKNOWN" in m for m in warnings), (
-        f"the reason never reached the developer log: {warnings}")
+    warnings = [r.getMessage() for r in records if r.levelno >= logging.WARNING]
+    assert any(
+        "REFUSED" in m and "UNKNOWN" in m for m in warnings
+    ), f"the reason never reached the developer log: {warnings}"
 
 
 def test_an_absent_marker_wins_even_when_the_numbers_look_healthy():
@@ -728,8 +878,7 @@ def test_an_absent_marker_wins_even_when_the_numbers_look_healthy():
     a zero instead of reading the flag, so a connector that sets the
     flag alongside a stale non-zero figure would still be trusted.
     """
-    bot = _bot(lots=_orca_book(), scalar=ORCA_WALLET,
-               venue=ORCA_WALLET, absent=True)
+    bot = _bot(lots=_orca_book(), scalar=ORCA_WALLET, venue=ORCA_WALLET, absent=True)
     assert _run(bot) is False
     assert _book_sum(bot) == 54.053407815409216
 
@@ -744,11 +893,11 @@ def test_a_genuine_zero_venue_keeps_the_behaviour_it_already_had():
     This outcome is destructive AND correct: the exchange said zero.
     The contrast with the test above is the whole point of the fix.
     """
-    bot = _bot(lots=_orca_book(), scalar=ORCA_WALLET, venue=0.0,
-               absent=False)
+    bot = _bot(lots=_orca_book(), scalar=ORCA_WALLET, venue=0.0, absent=False)
     assert _run(bot) is True
-    assert bot._main_lots == [], (
-        "a real zero rescales the book to nothing and the filter drops it")
+    assert (
+        bot._main_lots == []
+    ), "a real zero rescales the book to nothing and the filter drops it"
     assert bot._current_holdings == 0.0
     assert any(m.startswith("BALANCE DRIFT") for m in _messages(bot))
 
@@ -763,8 +912,7 @@ def test_a_balance_object_with_no_absent_attribute_is_not_absent():
     bot = _bot(lots=[{"units": 48.73}], scalar=48.73, venue=48.73)
 
     async def _bare(_currency):
-        return type("B", (), {"free": 48.73, "total": 48.73,
-                              "used": 0.0})()
+        return type("B", (), {"free": 48.73, "total": 48.73, "used": 0.0})()
 
     bot._get_balance = _bare
     assert _run(bot) is True
@@ -773,8 +921,8 @@ def test_a_balance_object_with_no_absent_attribute_is_not_absent():
 
 # ── THE HOLE A NAIVE max() WOULD HAVE OPENED ────────────────────────
 
-def test_an_inf_lot_is_refused_out_loud_and_never_reads_as_aligned(
-        capture_log):
+
+def test_an_inf_lot_is_refused_out_loud_and_never_reads_as_aligned(capture_log):
     """Drive it. A refusal and an alignment both leave the book alone.
 
     WHAT A FAILURE HERE WOULD MEAN. The audit went permanently silent
@@ -785,8 +933,10 @@ def test_an_inf_lot_is_refused_out_loud_and_never_reads_as_aligned(
     indistinguishable at the book, so the discriminator asserted here
     is the return value plus the developer log.
     """
-    lots = [{"units": 30.0, "initial_buy_price": 1.10},
-            {"units": INF, "initial_buy_price": 1.25}]
+    lots = [
+        {"units": 30.0, "initial_buy_price": 1.10},
+        {"units": INF, "initial_buy_price": 1.25},
+    ]
     bot = _bot(lots=lots, scalar=48.73, venue=48.73)
 
     with capture_log("acervator.scrumming") as records:
@@ -794,10 +944,10 @@ def test_an_inf_lot_is_refused_out_loud_and_never_reads_as_aligned(
 
     assert result is False, "an inf lot read as aligned"
     assert bot._bus.emits == []
-    warnings = [r.getMessage() for r in records
-                if r.levelno >= logging.WARNING]
-    assert any("REFUSED" in m for m in warnings), (
-        f"silence and refusal are not the same thing: {warnings}")
+    warnings = [r.getMessage() for r in records if r.levelno >= logging.WARNING]
+    assert any(
+        "REFUSED" in m for m in warnings
+    ), f"silence and refusal are not the same thing: {warnings}"
     assert any("must be finite" in m for m in warnings)
 
 
@@ -806,6 +956,7 @@ def test_POSITIVE_CONTROL_the_naive_widening_really_does_go_silent():
 
     A model of `internal = max(sum(lots), scalar)` with no guards.
     """
+
     def naive(scalar, lots, venue):
         internal = max(sum(lots), scalar)
         tolerance = abs(internal) * TOLERANCE_PCT / 100.0
@@ -816,8 +967,7 @@ def test_POSITIVE_CONTROL_the_naive_widening_really_does_go_silent():
     assert naive(48.73, [30.0, INF], 1e300) == "silent"
     # and the guarded path refuses every one of those three
     for venue in (48.73, 0.0, 1e300):
-        bot = _bot(lots=[{"units": 30.0}, {"units": INF}],
-                   scalar=48.73, venue=venue)
+        bot = _bot(lots=[{"units": 30.0}, {"units": INF}], scalar=48.73, venue=venue)
         assert _run(bot) is False, venue
 
 
@@ -829,8 +979,11 @@ def test_POSITIVE_CONTROL_the_naive_widening_really_does_go_silent():
 
 
 def _bot_with_balance(balance_factory, *, lots=None, scalar=48.73):
-    bot = _bot(lots=lots or [{"units": 48.73, "initial_buy_price": 1.10}],
-               scalar=scalar, venue=scalar)
+    bot = _bot(
+        lots=lots or [{"units": 48.73, "initial_buy_price": 1.10}],
+        scalar=scalar,
+        venue=scalar,
+    )
 
     async def _get(_currency):
         return balance_factory()
@@ -845,8 +998,9 @@ BROKEN_BALANCES = [
 ]
 
 
-@pytest.mark.parametrize("label,factory", BROKEN_BALANCES,
-                         ids=[r[0] for r in BROKEN_BALANCES])
+@pytest.mark.parametrize(
+    "label,factory", BROKEN_BALANCES, ids=[r[0] for r in BROKEN_BALANCES]
+)
 def test_a_broken_balance_object_fails_closed(label, factory):
     """WHAT A FAILURE HERE WOULD MEAN. The venue read is using a
     `getattr` DEFAULT where it needs a bare attribute access, so a
@@ -866,22 +1020,26 @@ def test_a_broken_balance_object_fails_closed(label, factory):
     assert bot._main_lots == before, f"{label}: the book was rewritten"
     assert bot._current_holdings == 48.73
     assert bot._bus.emits == [], (
-        f"{label}: a fetch that could not be read reached the operator "
-        f"as a drift")
+        f"{label}: a fetch that could not be read reached the operator " f"as a drift"
+    )
 
 
 WORKING_ONE_FIELD = [
-    ("total only, no free attribute",
-     lambda: type("B", (), {"total": 48.73, "absent": False})()),
-    ("free only, no total attribute",
-     lambda: type("B", (), {"free": 48.73, "absent": False})()),
+    (
+        "total only, no free attribute",
+        lambda: type("B", (), {"total": 48.73, "absent": False})(),
+    ),
+    (
+        "free only, no total attribute",
+        lambda: type("B", (), {"free": 48.73, "absent": False})(),
+    ),
 ]
 
 
-@pytest.mark.parametrize("label,factory", WORKING_ONE_FIELD,
-                         ids=[r[0] for r in WORKING_ONE_FIELD])
-def test_one_field_is_enough_exactly_as_it_is_for_the_handshake(
-        label, factory):
+@pytest.mark.parametrize(
+    "label,factory", WORKING_ONE_FIELD, ids=[r[0] for r in WORKING_ONE_FIELD]
+)
+def test_one_field_is_enough_exactly_as_it_is_for_the_handshake(label, factory):
     """WHAT A FAILURE HERE WOULD MEAN. The fail-closed fix over-reached
     and now demands BOTH fields, so a connector that reports only one
     would stop reconciling although the handshake reads it fine.

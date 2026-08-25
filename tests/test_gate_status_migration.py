@@ -17,6 +17,7 @@ measured the pitch correctly. This is a MOVE: the same `GateLightsCell`
 draws, and `update_gates` keeps its signature, so the colour semantics
 the operator reads are untouched.
 """
+
 from __future__ import annotations
 
 import sys
@@ -44,7 +45,7 @@ def _destroy_widgets():
     yield
     try:
         from PySide6.QtWidgets import QApplication
-    except ImportError:                                   # pragma: no cover
+    except ImportError:  # pragma: no cover
         return
     app = QApplication.instance()
     if app is None:
@@ -54,6 +55,7 @@ def _destroy_widgets():
         w.setParent(None)
         w.deleteLater()
     app.processEvents()
+
 
 SYMS = ["CHIP/USD", "SPK/USD", "XRP/USD"]
 
@@ -65,7 +67,7 @@ def _qapp():
     file would then be lost in the noise."""
     try:
         from PySide6.QtWidgets import QApplication
-    except ImportError:                                   # pragma: no cover
+    except ImportError:  # pragma: no cover
         pytest.skip("PySide6 unavailable")
     return QApplication.instance() or QApplication([])
 
@@ -74,6 +76,7 @@ def _qapp():
 def panel():
     _qapp()
     from src.gui.simulator_tab.fleet.sim_visuals import GateStatusPanel
+
     p = GateStatusPanel()
     p.set_symbols(SYMS)
     return p
@@ -85,6 +88,7 @@ class TestThePanelHoldsOneRowPerBot:
 
     def test_each_row_is_a_real_gate_cell(self, panel):
         from src.gui.simulator_tab.fleet.sim_visuals import GateLightsCell
+
         for sym in SYMS:
             assert isinstance(panel.cell_for(sym), GateLightsCell)
 
@@ -109,17 +113,21 @@ class TestTheCellContractIsUnchanged:
         snapshot dispatcher calls this exact signature."""
         cell = panel.cell_for("CHIP/USD")
         cell.update_gates(
-            scrum_armed=True, fold_armed=False,
-            scrum_blockers=["TA"], fold_blockers=[],
-            landing_strip_side=None)
+            scrum_armed=True,
+            fold_armed=False,
+            scrum_blockers=["TA"],
+            fold_blockers=[],
+            landing_strip_side=None,
+        )
         assert cell is panel.cell_for("CHIP/USD")
 
 
 class TestTheRenderPathReportsWhereItPainted:
     def test_the_emitter_name_and_fields_exist(self):
         """The contract this migration is verified against."""
-        src = (REPO_ROOT / "src/gui/simulator_tab/fleet"
-               / "fleet_replay_panel.py").read_text(encoding="utf-8")
+        src = (
+            REPO_ROOT / "src/gui/simulator_tab/fleet" / "fleet_replay_panel.py"
+        ).read_text(encoding="utf-8")
         assert "sim.06.012.postcondition.gate_status.rendered" in src
         assert "_gate_expected" in src
         assert "_gate_actual" in src
@@ -129,8 +137,9 @@ class TestTheRenderPathReportsWhereItPainted:
         """`_gate_cell_for` is the single point that decides where a
         gate row comes from. If the loop went back to reading
         `_gate_cells` directly, the panel would be bypassed silently."""
-        src = (REPO_ROOT / "src/gui/simulator_tab/fleet"
-               / "fleet_replay_panel.py").read_text(encoding="utf-8")
+        src = (
+            REPO_ROOT / "src/gui/simulator_tab/fleet" / "fleet_replay_panel.py"
+        ).read_text(encoding="utf-8")
         assert "cell = self._gate_cell_for(sym)" in src
 
     def test_the_accessor_prefers_the_panel(self):
@@ -138,8 +147,8 @@ class TestTheRenderPathReportsWhereItPainted:
         its cells, not the table's."""
         _qapp()
         from src.gui.simulator_tab.fleet.sim_visuals import GateStatusPanel
-        from src.gui.simulator_tab.fleet.fleet_replay_panel import (
-            FleetReplayPanel)
+        from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
+
         p = FleetReplayPanel()
         gp = GateStatusPanel()
         gp.set_symbols(SYMS)
@@ -149,8 +158,8 @@ class TestTheRenderPathReportsWhereItPainted:
     def test_the_host_is_the_panel(self):
         """MIGRATION PIN. `host` is what proves the display moved."""
         _qapp()
-        from src.gui.simulator_tab.fleet.fleet_replay_panel import (
-            FleetReplayPanel)
+        from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
+
         p = FleetReplayPanel()
         assert getattr(p, "_gate_host_kind", "table") == "panel"
 
@@ -159,6 +168,6 @@ class TestTheGatesColumnIsGone:
     def test_the_table_no_longer_carries_a_gates_column(self):
         """MIGRATION PIN. Leaving the column in place would mean the
         display was duplicated, not moved."""
-        from src.gui.simulator_tab.fleet.fleet_replay_panel import (
-            FleetReplayPanel)
+        from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
+
         assert "Gates" not in FleetReplayPanel.COLUMNS

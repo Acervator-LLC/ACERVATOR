@@ -52,8 +52,7 @@ from src.gui.simulator_tab.fleet import simulator_bot_state as sbs
 from src.trading.stone_tablets import registry as tablet_registry
 
 OWNER = "sim.06.007.postcondition.fleet_spawned"
-SIBLINGS = ("sim.06.008.invariant.state_persisted",
-            "sim.06.009.invariant.spawn_drift")
+SIBLINGS = ("sim.06.008.invariant.state_persisted", "sim.06.009.invariant.spawn_drift")
 
 SHORT_S = 0.005
 LONG_S = 0.030
@@ -134,8 +133,7 @@ def _tracks(short: Optional[float], long_: Optional[float]) -> bool:
     return long_ > short * 2.0
 
 
-def _tracks_the_spawn(short: Optional[float],
-                        long_: Optional[float]) -> bool:
+def _tracks_the_spawn(short: Optional[float], long_: Optional[float]) -> bool:
     """Ask `_tracks`, then put a floor under the long reading.
 
     This ADDS a condition and relaxes none: everything `_tracks`
@@ -157,8 +155,11 @@ class _Panel:
     """The minimum surface `_spawn_sim_fleet` touches."""
 
     def __init__(self, configs=None) -> None:
-        self._configs = configs if configs is not None else [
-            {"symbol": "BTC/USD", "exchange_id": "coinbase"}]
+        self._configs = (
+            configs
+            if configs is not None
+            else [{"symbol": "BTC/USD", "exchange_id": "coinbase"}]
+        )
         self._smart_wires: list = []
         self._controller = None
         self._activity_log_cb = None
@@ -175,8 +176,7 @@ def _sim_state_under_tmp_path(monkeypatch, tmp_path):
     `tmp_path`; ~/.acervator is the operator's, and the suite does not write
     there.
     """
-    monkeypatch.setattr(
-        sbs, "SIM_STATE_PATH", tmp_path / "simulator_bot_state.json")
+    monkeypatch.setattr(sbs, "SIM_STATE_PATH", tmp_path / "simulator_bot_state.json")
 
 
 class _SlowLoader:
@@ -232,7 +232,8 @@ class _SlowReimport:
             return None
         self.hits.append(fullname)
         return importlib.util.spec_from_loader(
-            fullname, _SlowLoader(module, self._delay_s))
+            fullname, _SlowLoader(module, self._delay_s)
+        )
 
     # -- lifecycle ----------------------------------------------------
     def install(self) -> None:
@@ -245,7 +246,8 @@ class _SlowReimport:
             self._saved[name] = module
             self._saved_attrs[name] = (
                 getattr(module, "__spec__", None),
-                getattr(module, "__loader__", None))
+                getattr(module, "__loader__", None),
+            )
             del sys.modules[name]
         sys.meta_path.insert(0, self)
         self._installed = True
@@ -254,7 +256,7 @@ class _SlowReimport:
         if self._installed:
             try:
                 sys.meta_path.remove(self)
-            except ValueError:                       # pragma: no cover
+            except ValueError:  # pragma: no cover
                 pass
             self._installed = False
         for name, module in self._saved.items():
@@ -283,7 +285,7 @@ def slow_reimport():
         guard.restore()
         sys.meta_path[:] = meta_before
         for name, module in mods_before.items():
-            if module is None:                       # pragma: no cover
+            if module is None:  # pragma: no cover
                 sys.modules.pop(name, None)
             else:
                 sys.modules[name] = module
@@ -309,8 +311,9 @@ def _install(monkeypatch, read_s: float, build_s: float, rows=(1, 2, 3)):
     monkeypatch.setattr(frc, "FleetReplayController", _Controller)
 
 
-def _drive(monkeypatch, sink, read_s=SHORT_S, build_s=SHORT_S,
-           rows=(1, 2, 3), configs=None) -> int:
+def _drive(
+    monkeypatch, sink, read_s=SHORT_S, build_s=SHORT_S, rows=(1, 2, 3), configs=None
+) -> int:
     _install(monkeypatch, read_s, build_s, rows)
     previous = sc.get_sink()
     sc.set_sink(sink)
@@ -368,8 +371,9 @@ def test_the_duration_tracks_the_build_cost(monkeypatch):
     short = _fastest_spawn(monkeypatch, build_s=SHORT_S)
     long_ = _fastest_spawn(monkeypatch, build_s=LONG_S)
 
-    assert _tracks_the_spawn(short, long_), (
-        f"did not track the build: {short} vs {long_}")
+    assert _tracks_the_spawn(
+        short, long_
+    ), f"did not track the build: {short} vs {long_}"
     assert long_ == pytest.approx(LONG_S, abs=0.020), long_
 
 
@@ -382,8 +386,9 @@ def test_the_duration_also_tracks_the_tablet_read_cost(monkeypatch):
     short = _fastest_spawn(monkeypatch, read_s=SHORT_S)
     long_ = _fastest_spawn(monkeypatch, read_s=LONG_S)
 
-    assert _tracks_the_spawn(short, long_), (
-        f"did not track the read: {short} vs {long_}")
+    assert _tracks_the_spawn(
+        short, long_
+    ), f"did not track the read: {short} vs {long_}"
 
 
 def test_the_tracking_predicate_rejects_a_constant_duration():
@@ -401,29 +406,36 @@ def test_the_site_predicate_rejects_a_bracket_that_spans_nothing() -> None:
     this site could be blinded while still handing the sink a
     `duration` field of exactly the right shape.
     """
-    assert not _tracks_the_spawn(0.01, 0.01), (
-        "a constant duration must not read as tracking")
-    assert not _tracks_the_spawn(None, LONG_S), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_spawn(SHORT_S, None), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_spawn(LONG_S, SHORT_S), (
-        "going backwards must not read as tracking")
+    assert not _tracks_the_spawn(
+        0.01, 0.01
+    ), "a constant duration must not read as tracking"
+    assert not _tracks_the_spawn(
+        None, LONG_S
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_spawn(
+        SHORT_S, None
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_spawn(
+        LONG_S, SHORT_S
+    ), "going backwards must not read as tracking"
 
     # THE DEAD CLOCK, and the measured reason this site carries a floor
     # the shared predicate does not. This pair is a real one, harvested
     # 2026-08-20 with the stop clock planted above the work. `_tracks`
     # accepts it. The floor rejects it. That is an addition to
     # `_tracks`, never a relaxation of it.
-    assert _tracks(0.0, 6.0e-07), (
-        "the shared predicate is expected to accept a dead clock here")
-    assert not _tracks_the_spawn(0.0, 6.0e-07), (
-        "a bracket that spans no work must not read as tracking")
+    assert _tracks(
+        0.0, 6.0e-07
+    ), "the shared predicate is expected to accept a dead clock here"
+    assert not _tracks_the_spawn(
+        0.0, 6.0e-07
+    ), "a bracket that spans no work must not read as tracking"
 
     # The honest pair measured off the real site, 2026-08-20, must
     # still read as tracking.
-    assert _tracks_the_spawn(0.0100073, 0.0350065), (
-        "the real measured pair must read as tracking")
+    assert _tracks_the_spawn(
+        0.0100073, 0.0350065
+    ), "the real measured pair must read as tracking"
 
 
 @pytest.mark.parametrize("sibling", SIBLINGS)
@@ -431,8 +443,9 @@ def test_a_sibling_never_claims_the_spawn_duration(monkeypatch, sibling):
     """Finding 1. Whether or not the sibling fires, it must never carry one."""
     sink = SignalSink()
     _drive(monkeypatch, sink)
-    assert all(d is None for d in _durations(sink, sibling)), (
-        f"{sibling} claimed a duration it does not own")
+    assert all(
+        d is None for d in _durations(sink, sibling)
+    ), f"{sibling} claimed a duration it does not own"
 
 
 def test_a_spawn_with_no_configs_emits_nothing(monkeypatch):
@@ -474,7 +487,8 @@ def _drive_cold(monkeypatch, sink, guard) -> float:
 
 
 def test_the_duration_excludes_the_cost_of_its_own_lazy_imports(
-        monkeypatch, slow_reimport):
+    monkeypatch, slow_reimport
+):
     """THE pin. The clock must start BELOW the two `import` statements.
 
     Warm spawn and cold spawn do the same amount of spawn work -- same fake
@@ -486,19 +500,21 @@ def test_the_duration_excludes_the_cost_of_its_own_lazy_imports(
     """
     sink = SignalSink()
 
-    _drive(monkeypatch, sink)                       # warm: imports are cached
+    _drive(monkeypatch, sink)  # warm: imports are cached
     wall = _drive_cold(monkeypatch, sink, slow_reimport)
 
     # POSITIVE CONTROL, before reading the durations at all. A zero here
     # would be a statement about the instrument, not about the code: if the
     # eviction or the finder silently did nothing, the two spawns are
     # identical and the assertion below passes while measuring nothing.
-    assert sorted(slow_reimport.hits) == sorted(LAZY_IMPORTS), (
-        f"the finder did not serve both imports: {slow_reimport.hits}")
+    assert sorted(slow_reimport.hits) == sorted(
+        LAZY_IMPORTS
+    ), f"the finder did not serve both imports: {slow_reimport.hits}"
     injected = IMPORT_DELAY_S * len(LAZY_IMPORTS)
     assert wall >= injected * 0.8, (
         f"the cold spawn only took {wall:.3f}s wall, so the {injected:.3f}s "
-        f"of import cost was never actually paid")
+        f"of import cost was never actually paid"
+    )
 
     warm, cold = _durations(sink)
     assert warm is not None and cold is not None
@@ -506,11 +522,11 @@ def test_the_duration_excludes_the_cost_of_its_own_lazy_imports(
         f"the duration grew by {cold - warm:.3f}s when the only thing that "
         f"changed was {injected:.3f}s of module loading: the clock starts "
         f"above the lazy imports, so record 1 of a process is inflated and "
-        f"is not comparable to record 2")
+        f"is not comparable to record 2"
+    )
 
 
-def test_the_cold_spawn_still_reports_the_spawn_work(monkeypatch,
-                                                     slow_reimport):
+def test_the_cold_spawn_still_reports_the_spawn_work(monkeypatch, slow_reimport):
     """The other half: excluding the imports must not exclude the spawn.
 
     A clock started after `_build_sim` would also pass the pin above -- it
@@ -530,12 +546,14 @@ def test_the_cold_spawn_still_reports_the_spawn_work(monkeypatch,
         slow_reimport.restore()
         sc.set_sink(previous)
 
-    assert sorted(slow_reimport.hits) == sorted(LAZY_IMPORTS), (
-        f"the finder did not serve both imports: {slow_reimport.hits}")
-    cold, = _durations(sink)
+    assert sorted(slow_reimport.hits) == sorted(
+        LAZY_IMPORTS
+    ), f"the finder did not serve both imports: {slow_reimport.hits}"
+    (cold,) = _durations(sink)
     assert cold is not None
-    assert cold >= LONG_S * 0.8, (
-        f"cold duration {cold:.3f}s did not contain the {LONG_S:.3f}s build")
+    assert (
+        cold >= LONG_S * 0.8
+    ), f"cold duration {cold:.3f}s did not contain the {LONG_S:.3f}s build"
 
 
 def test_the_reimport_guard_leaves_the_process_as_it_found_it(slow_reimport):

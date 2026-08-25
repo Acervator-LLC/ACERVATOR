@@ -88,7 +88,8 @@ _TA_SNAPSHOT_KEEP = 400
 #: Characters kept verbatim in a snapshot filename. Everything else is
 #: replaced, so a bot_id can never walk out of the snapshot directory.
 _SAFE_ID_CHARS = frozenset(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+)
 
 
 def _default_ta_state_dir() -> Path:
@@ -169,9 +170,10 @@ def _prune_snapshots(directory: Path, keep: int = _TA_SNAPSHOT_KEEP) -> int:
     """Delete the oldest snapshots past `keep`. Returns the count removed."""
     files = sorted(
         (p for p in directory.glob("*.json") if p.is_file()),
-        key=lambda p: p.stat().st_mtime)
+        key=lambda p: p.stat().st_mtime,
+    )
     removed = 0
-    for stale in files[:max(0, len(files) - keep)]:
+    for stale in files[: max(0, len(files) - keep)]:
         try:
             stale.unlink()
             removed += 1
@@ -216,13 +218,16 @@ def save_ta_snapshot(
         logger.warning(
             "TA snapshot for %s not written (%s); this bot will show an "
             "empty panel after a restart instead of its last reading",
-            str(bot_id)[:8], exc)
+            str(bot_id)[:8],
+            exc,
+        )
         return None
     return dest
 
 
 def load_ta_snapshot(
-    bot_id: str, state_dir: Path | None = None,
+    bot_id: str,
+    state_dir: Path | None = None,
 ) -> dict | None:
     """The stored TA read for one bot, or None when there is not one.
 
@@ -240,14 +245,19 @@ def load_ta_snapshot(
     except (OSError, ValueError) as exc:
         logger.warning(
             "TA snapshot for %s unreadable (%s); treating it as absent",
-            str(bot_id)[:8], exc)
+            str(bot_id)[:8],
+            exc,
+        )
         return None
     if not isinstance(payload, dict):
         return None
     if payload.get("schema") != _TA_SNAPSHOT_SCHEMA:
         logger.info(
             "TA snapshot for %s has schema %r, not %d; ignoring it",
-            str(bot_id)[:8], payload.get("schema"), _TA_SNAPSHOT_SCHEMA)
+            str(bot_id)[:8],
+            payload.get("schema"),
+            _TA_SNAPSHOT_SCHEMA,
+        )
         return None
     timeframes = payload.get("timeframes")
     if not isinstance(timeframes, dict) or not timeframes:
@@ -296,8 +306,7 @@ def format_age(seconds: float) -> str:
 #: them produced "just now ago" on the first real render of the stale
 #: banner, which is the kind of wrong-sounding text an operator reads as
 #: a broken panel.
-_AGE_PHRASES_THAT_STAND_ALONE = frozenset(
-    {"just now", "clock skew", "age unknown"})
+_AGE_PHRASES_THAT_STAND_ALONE = frozenset({"just now", "clock skew", "age unknown"})
 
 
 def age_phrase(seconds: float) -> str:
@@ -330,36 +339,33 @@ def age_phrase(seconds: float) -> str:
 # ---------------------------------------------------------------------------
 
 _NO_DATA_CAUSE_TEXT: dict[str, str] = {
-    "no_selection":
-        "no bot is selected — pick one from the Bot dropdown.",
-    "bot_missing":
-        "bot {bot} is selected but no longer present in the fleet.",
-    "not_running":
-        "bot is {state} — a bot that is not running evaluates no TA.",
-    "bot_error":
-        "bot stopped in ERROR: {error}",
-    "parked_at_target":
-        "parked at target — position ${position} against target "
-        "${target} (delta ${delta}). The tick exits before the TA "
-        "block by design, so this bot computes no TA while it sits "
-        "here. Not a fault, and not transient.",
-    "cold_start":
-        "cold start — this bot is running and has computed no TA since "
-        "the platform launched. Its first read lands on the next TA "
-        "evaluation.",
-    "too_few_candles":
-        "too few candles — {candles} cached for {symbol} {timeframe}, "
-        "and the TA engine needs 30.",
-    "new_bot":
-        "new bot — created just now, still ahead of its first TA read.",
+    "no_selection": "no bot is selected — pick one from the Bot dropdown.",
+    "bot_missing": "bot {bot} is selected but no longer present in the fleet.",
+    "not_running": "bot is {state} — a bot that is not running evaluates no TA.",
+    "bot_error": "bot stopped in ERROR: {error}",
+    "parked_at_target": "parked at target — position ${position} against target "
+    "${target} (delta ${delta}). The tick exits before the TA "
+    "block by design, so this bot computes no TA while it sits "
+    "here. Not a fault, and not transient.",
+    "cold_start": "cold start — this bot is running and has computed no TA since "
+    "the platform launched. Its first read lands on the next TA "
+    "evaluation.",
+    "too_few_candles": "too few candles — {candles} cached for {symbol} {timeframe}, "
+    "and the TA engine needs 30.",
+    "new_bot": "new bot — created just now, still ahead of its first TA read.",
 }
 
 #: Causes for which a stored reading is worth showing. A cause with no
 #: bot behind it (nothing selected, bot gone) has nothing to restore.
-_CAUSES_THAT_MAY_SHOW_STORED = frozenset({
-    "not_running", "parked_at_target", "cold_start",
-    "too_few_candles", "new_bot",
-})
+_CAUSES_THAT_MAY_SHOW_STORED = frozenset(
+    {
+        "not_running",
+        "parked_at_target",
+        "cold_start",
+        "too_few_candles",
+        "new_bot",
+    }
+)
 
 #: Fallback when a caller passes a cause this module does not know. It
 #: names the unknown token instead of inventing an explanation.
@@ -400,20 +406,34 @@ def describe_no_data_cause(cause: str, detail: dict | None = None) -> str:
         return template.format(**fields)
     except (KeyError, IndexError, ValueError) as exc:
         logger.error(
-            "empty-state text for cause %r could not be filled (%s)",
-            cause, exc)
+            "empty-state text for cause %r could not be filled (%s)", cause, exc
+        )
         return _UNKNOWN_CAUSE_TEXT.format(cause=str(cause))
 
 
 try:
     from PySide6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
-        QTableWidgetItem, QHeaderView, QGroupBox, QSizePolicy,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QTableWidget,
+        QTableWidgetItem,
+        QHeaderView,
+        QGroupBox,
         QPushButton,
     )
     from PySide6.QtCore import Qt, QTimer, QRectF
-    from PySide6.QtGui import (QColor, QFont, QBrush, QFontMetrics,
-                               QPainter, QPen, QLinearGradient)
+    from PySide6.QtGui import (
+        QColor,
+        QFont,
+        QBrush,
+        QFontMetrics,
+        QPainter,
+        QPen,
+        QLinearGradient,
+    )
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -444,8 +464,7 @@ if _HAS_QT:
         def _on_click(self):
             try:
                 reg = get_privacy_mask_registry()
-                reg.set_masked(
-                    self._field_id, not reg.is_masked(self._field_id))
+                reg.set_masked(self._field_id, not reg.is_masked(self._field_id))
             except Exception as _reg_exc:  # noqa: BLE001 - mask toggle best-effort
                 logger.debug("privacy mask toggle failed: %s", _reg_exc)
             self.refresh()
@@ -453,13 +472,11 @@ if _HAS_QT:
                 try:
                     self._on_toggle()
                 except Exception as _cb_exc:  # noqa: BLE001 - callback best-effort
-                    logger.debug(
-                        "privacy toggle callback raised: %s", _cb_exc)
+                    logger.debug("privacy toggle callback raised: %s", _cb_exc)
 
         def refresh(self) -> None:
             try:
-                masked = get_privacy_mask_registry().is_masked(
-                    self._field_id)
+                masked = get_privacy_mask_registry().is_masked(self._field_id)
             except Exception:
                 masked = False
             color = "#1a2a4a" if masked else "#3344ff"
@@ -475,7 +492,8 @@ if _HAS_QT:
             )
             self.setToolTip(
                 f"{self._field_id}: {state}. "
-                f"Click to {'reveal' if masked else 'mask'}.")
+                f"Click to {'reveal' if masked else 'mask'}."
+            )
 
     # Indicator short names and category for all 12 indicators.
     # (key, label, group)  groups: T=Trend  M=Momentum  S=Structure
@@ -484,18 +502,18 @@ if _HAS_QT:
     # drift detector pins this list against VotingEngine's actual voter
     # set so a future voter addition surfaces here automatically.
     INDICATOR_COLS = [
-        ("bollinger_bands", "BB",    "S"),
-        ("vortex",          "VTX",   "T"),
-        ("macd",            "MACD",  "M"),
-        ("stochastic_rsi",  "SRsi",  "M"),
-        ("ichimoku",        "Ichi",  "T"),
-        ("volume",          "Vol",   "S"),
-        ("slingshot",       "Sling", "S"),
-        ("adx",             "ADX",   "T"),
-        ("supertrend",      "STrd",  "T"),
-        ("zscore",          "ZSc",   "M"),
-        ("kaufman_er",      "KER",   "M"),
-        ("rsi",             "RSI",   "M"),     # v3.19.22 — was missing
+        ("bollinger_bands", "BB", "S"),
+        ("vortex", "VTX", "T"),
+        ("macd", "MACD", "M"),
+        ("stochastic_rsi", "SRsi", "M"),
+        ("ichimoku", "Ichi", "T"),
+        ("volume", "Vol", "S"),
+        ("slingshot", "Sling", "S"),
+        ("adx", "ADX", "T"),
+        ("supertrend", "STrd", "T"),
+        ("zscore", "ZSc", "M"),
+        ("kaufman_er", "KER", "M"),
+        ("rsi", "RSI", "M"),  # v3.19.22 — was missing
     ]
 
     # v3.23.52 — split the 12 indicators into two symmetrical mini-
@@ -505,21 +523,21 @@ if _HAS_QT:
     # QTableWidget (header + 1 data row per TF) stacked above its own
     # ConfidenceBarsWidget. Column widths roughly double vs. the
     # previous all-in-one layout, keeping headers legible.
-    _ROW_A_INDICATOR_COLS = INDICATOR_COLS[:6]     # BB VTX MACD SRsi Ichi Vol
-    _ROW_B_INDICATOR_COLS = INDICATOR_COLS[6:]     # Sling ADX STrd ZSc KER RSI
+    _ROW_A_INDICATOR_COLS = INDICATOR_COLS[:6]  # BB VTX MACD SRsi Ichi Vol
+    _ROW_B_INDICATOR_COLS = INDICATOR_COLS[6:]  # Sling ADX STrd ZSc KER RSI
 
     # Group accent colours (used in header and cell tint)
     GROUP_COLORS = {
-        "T": "#00AAFF",   # Trend   — blue
-        "M": "#FFAA00",   # Momentum — amber
-        "S": "#00FFAA",   # Structure — teal
+        "T": "#00AAFF",  # Trend   — blue
+        "M": "#FFAA00",  # Momentum — amber
+        "S": "#00FFAA",  # Structure — teal
     }
 
     # Symbols for direction
     DIR_SYMBOLS = {
-        "BULLISH":  "▲",
-        "BEARISH":  "▼",
-        "NEUTRAL":  "─",
+        "BULLISH": "▲",
+        "BEARISH": "▼",
+        "NEUTRAL": "─",
     }
 
     class ConfidenceBarsWidget(QWidget):
@@ -535,12 +553,13 @@ if _HAS_QT:
 
         def __init__(self, parent=None):
             super().__init__(parent)
-            self._bars: list[dict] = []        # [{name, confidence, direction}]
-            self._anim_bars: list[dict] = []   # Current animated positions
-            self._target_bars: list[dict] = [] # Target positions
+            self._bars: list[dict] = []  # [{name, confidence, direction}]
+            self._anim_bars: list[dict] = []  # Current animated positions
+            self._target_bars: list[dict] = []  # Target positions
             self._col_positions: list[tuple] = []  # [(x, width), ...] from table header
             self.setMinimumHeight(100)
             from PySide6.QtWidgets import QSizePolicy
+
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             # v3.23.40 — accessibility anchor. GUI001 satisfaction:
             # screen readers announce this widget as the indicator
@@ -548,7 +567,8 @@ if _HAS_QT:
             self.setToolTip(
                 "Animated bar graph: per-indicator vote confidence for "
                 "the parent bot's timeframe, colour-coded by direction "
-                "(green=bullish, red=bearish, grey=neutral).")
+                "(green=bullish, red=bearish, grey=neutral)."
+            )
             self.setAccessibleName("Indicator Confidence Bar Graph")
 
             # Animation timer — 16ms = ~60fps
@@ -567,8 +587,7 @@ if _HAS_QT:
             # Initialize anim_bars if first data
             if not self._anim_bars or len(self._anim_bars) != len(bars):
                 self._anim_bars = [
-                    {"name": b["name"], "confidence": 0.0,
-                     "direction": b["direction"]}
+                    {"name": b["name"], "confidence": 0.0, "direction": b["direction"]}
                     for b in bars
                 ]
             # Start animation
@@ -613,8 +632,7 @@ if _HAS_QT:
             if not bars:
                 p.setPen(QPen(QColor(60, 60, 80)))
                 p.setFont(QFont("Segoe UI", 9))
-                p.drawText(QRectF(0, 0, w, h), Qt.AlignCenter,
-                           "Awaiting TA signals...")
+                p.drawText(QRectF(0, 0, w, h), Qt.AlignCenter, "Awaiting TA signals...")
                 p.end()
                 return
 
@@ -632,9 +650,7 @@ if _HAS_QT:
             # and never exceeds that column's width. When no positions
             # are provided (fallback), spread bars evenly across the
             # full widget width.
-            use_cols = (
-                self._col_positions
-                and len(self._col_positions) >= (n + 1))
+            use_cols = self._col_positions and len(self._col_positions) >= (n + 1)
             if use_cols:
                 right_edge = w - margin_right
             else:
@@ -649,8 +665,7 @@ if _HAS_QT:
 
             gap = 6
             bar_area_w = w - margin_left - margin_right
-            fallback_bar_w = max(
-                12, (bar_area_w - gap * (n - 1)) / n)
+            fallback_bar_w = max(12, (bar_area_w - gap * (n - 1)) / n)
             for i, bar in enumerate(bars):
                 if use_cols and (i + 1) < len(self._col_positions):
                     # Align bar to table column (i+1), skipping TF col 0.
@@ -711,14 +726,18 @@ if _HAS_QT:
                     shine.setColorAt(1, QColor(255, 255, 255, 0))
                     p.setBrush(shine)
                     p.setPen(Qt.NoPen)
-                    p.drawRoundedRect(QRectF(x + 1, y + 1, bar_w - 2,
-                                             min(bar_h * 0.3, 20)), 2, 2)
+                    p.drawRoundedRect(
+                        QRectF(x + 1, y + 1, bar_w - 2, min(bar_h * 0.3, 20)), 2, 2
+                    )
 
                 # Label below bar
                 p.setPen(QPen(QColor(160, 160, 190)))
                 p.setFont(QFont("Consolas", 8, QFont.Bold))
-                p.drawText(QRectF(label_x, h - margin_bottom + 4,
-                                  label_w, 16), Qt.AlignCenter, name)
+                p.drawText(
+                    QRectF(label_x, h - margin_bottom + 4, label_w, 16),
+                    Qt.AlignCenter,
+                    name,
+                )
 
                 # v3.23.50 — per-bar % label removed (operator directive
                 # 2026-07-28: redundant with bar height + axis; consumed
@@ -730,14 +749,17 @@ if _HAS_QT:
                     p.setPen(QPen(QColor(255, 255, 255, 150)))
                     p.setFont(QFont("Segoe UI", 12))
                     arrow = {"BULLISH": "▲", "BEARISH": "▼", "NEUTRAL": "─"}.get(
-                        direction, "─")
-                    p.drawText(QRectF(x, y + bar_h * 0.3, bar_w, 20),
-                               Qt.AlignCenter, arrow)
+                        direction, "─"
+                    )
+                    p.drawText(
+                        QRectF(x, y + bar_h * 0.3, bar_w, 20), Qt.AlignCenter, arrow
+                    )
 
             # Baseline
             p.setPen(QPen(QColor(40, 40, 60), 1))
-            p.drawLine(int(margin_left), h - margin_bottom,
-                       int(right_edge), h - margin_bottom)
+            p.drawLine(
+                int(margin_left), h - margin_bottom, int(right_edge), h - margin_bottom
+            )
 
             p.end()
 
@@ -783,6 +805,7 @@ if _HAS_QT:
             # than a live one.
             self._showing_stored: bool = False
             from PySide6.QtWidgets import QSizePolicy
+
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             # Auto-populate with demo after short delay
             QTimer.singleShot(3000, self._auto_init_demo)
@@ -800,6 +823,7 @@ if _HAS_QT:
             header.addWidget(self._title)
 
             from PySide6.QtWidgets import QComboBox
+
             header.addWidget(QLabel("Bot:"))
             self._bot_selector = QComboBox()
             self._bot_selector.setMinimumWidth(180)
@@ -811,8 +835,8 @@ if _HAS_QT:
             # label to the right. The dropdown's userData (bot_id) is
             # preserved so selection still works while masked.
             self._privacy_dot = _IVPPrivacyDot(
-                "ivp.bot_selector",
-                on_toggle=self._apply_privacy_mask)
+                "ivp.bot_selector", on_toggle=self._apply_privacy_mask
+            )
             header.addWidget(self._privacy_dot)
 
             header.addStretch()
@@ -836,19 +860,22 @@ if _HAS_QT:
             self._staleness_label.setStyleSheet(
                 "color: #ffb020; font-family: Consolas; font-size: 10px; "
                 "padding: 2px 6px; background: rgba(60, 45, 15, 90); "
-                "border-radius: 2px;")
+                "border-radius: 2px;"
+            )
             self._staleness_label.setWordWrap(True)
             self._staleness_label.setAccessibleName("TA Staleness Banner")
             self._staleness_label.setToolTip(
                 "Shown when the panel is displaying the LAST TA read "
                 "this bot produced rather than a current one, with the "
                 "age of that reading and the reason no current one "
-                "exists. Nothing is recomputed to draw it.")
+                "exists. Nothing is recomputed to draw it."
+            )
             self._staleness_label.hide()
             layout.addWidget(self._staleness_label)
 
             # --- Timeframe Lock selector ---
             from PySide6.QtWidgets import QComboBox
+
             lock_row = QHBoxLayout()
             lock_row.setContentsMargins(4, 0, 4, 0)
             lock_row.addWidget(QLabel("TF Lock:"))
@@ -861,7 +888,8 @@ if _HAS_QT:
                 "Higher-timeframe lock prevents trades that contradict\n"
                 "the signal from this timeframe and above.\n"
                 "Feeds directly into active Scrumming Bots.\n"
-                "E.g. '1h' locks out lower-TF trades that oppose the 1h signal.")
+                "E.g. '1h' locks out lower-TF trades that oppose the 1h signal."
+            )
             self._tf_lock_combo.setMaximumWidth(180)
             self._tf_lock_combo.currentIndexChanged.connect(self._on_tf_lock_changed)
             lock_row.addWidget(self._tf_lock_combo)
@@ -879,26 +907,29 @@ if _HAS_QT:
             # operator directive 2026-07-27). Populated via
             # update_currency_rates() which the main_window pushes
             # each dashboard tick.
-            self._rate_strip = QLabel(
-                "BTC —   ETH —   (currency rates pending)")
+            self._rate_strip = QLabel("BTC —   ETH —   (currency rates pending)")
             self._rate_strip.setStyleSheet(
                 "color: #66ccff; font-family: Consolas; "
                 "font-size: 10px; padding: 2px 6px; "
                 "background: rgba(30, 40, 60, 60); "
-                "border-radius: 2px;")
+                "border-radius: 2px;"
+            )
             self._rate_strip.setToolTip(
                 "Live BTC/USD and ETH/USD spot from the connected "
                 "exchange plus satoshi-per-USD and gwei-per-USD "
                 "conversions (1 gwei = 10⁹ wei). Refreshed on the "
-                "dashboard tick.")
-            self._rate_strip.setAccessibleName(
-                "Currency Rate Strip")
+                "dashboard tick."
+            )
+            self._rate_strip.setAccessibleName("Currency Rate Strip")
             layout.addWidget(self._rate_strip)
             # Sim mode: hide bot selector and TF lock (single sim bot)
             if getattr(self, "_sim_mode", False):
                 self._bot_selector.hide()
-                self._bot_selector.parent().hide() \
-                    if self._bot_selector.parent() else None
+                (
+                    self._bot_selector.parent().hide()
+                    if self._bot_selector.parent()
+                    else None
+                )
                 self._tf_lock_combo.hide()
                 self._lock_status.hide()
 
@@ -921,26 +952,33 @@ if _HAS_QT:
             self._HEADER_TOOLTIPS = {
                 "TF": (
                     "Timeframe identifier. Each row = one timeframe's "
-                    "verdict (5m/15m/1h/4h/1d/phantoms)."),
+                    "verdict (5m/15m/1h/4h/1d/phantoms)."
+                ),
                 "BB": (
                     "Bollinger Bands — distance from band extremes as "
                     "% conviction. ▲▼ shows direction; NN% shows "
-                    "vote confidence."),
+                    "vote confidence."
+                ),
                 "VTX": (
                     "Vortex — VI+ vs VI− crossover conviction. "
-                    "▲▼ direction + NN% confidence."),
+                    "▲▼ direction + NN% confidence."
+                ),
                 "MACD": (
                     "MACD — histogram + crossover + divergence. "
-                    "▲▼ direction + NN% confidence."),
+                    "▲▼ direction + NN% confidence."
+                ),
                 "SRsi": (
                     "Stochastic RSI — K/D crossover in oversold/"
-                    "overbought zones. ▲▼ direction + NN% confidence."),
+                    "overbought zones. ▲▼ direction + NN% confidence."
+                ),
                 "Ichi": (
                     "Ichimoku Cloud — future twist + cloud breakout + "
-                    "Tenkan/Kijun. ▲▼ direction + NN% confidence."),
+                    "Tenkan/Kijun. ▲▼ direction + NN% confidence."
+                ),
                 "Vol": (
                     "Volume composite — OBV divergence + MFI + CMF + "
-                    "volume spike ratio. ▲▼ direction + NN% confidence."),
+                    "volume spike ratio. ▲▼ direction + NN% confidence."
+                ),
                 "Sling": (
                     # v3.20.10 — attribution updated per v3.20.8 audit
                     # correction. Base concept is Chris Moody's
@@ -950,7 +988,8 @@ if _HAS_QT:
                     # rate-scaled confidence.
                     "Slingshot — CM (Chris Moody) public-domain squeeze "
                     "→ snapback detector + Acervator refinements for "
-                    "explosive moves. ▲▼ direction + NN% confidence."),
+                    "explosive moves. ▲▼ direction + NN% confidence."
+                ),
                 "ADX": (
                     # v3.20.10 — dual-threshold explainer added per
                     # v3.20.6 audit §2.8 sub-finding (intentional but
@@ -967,11 +1006,13 @@ if _HAS_QT:
                     "scrum. So an ADX of 25 shows ▲ 25 on the panel "
                     "(voter sees developing trend), but the gate "
                     "still suppresses scrum (gate is more "
-                    "conservative)."),
+                    "conservative)."
+                ),
                 "STrd": (
                     "Supertrend — ATR-banded trend line. ▲▼ direction "
                     "+ NN% confidence (proportional to distance from "
-                    "band)."),
+                    "band)."
+                ),
                 "ZSc": (
                     "Z-Score — statistical extremity. Cell shows the "
                     "RAW signed z-value (NOT a percentage). "
@@ -983,7 +1024,8 @@ if _HAS_QT:
                     "statistical top). High +z is exactly the right "
                     "condition for SCRUM; low -z is exactly the right "
                     "condition for FOLD; the gate filters only the "
-                    "contrarian-wrong action on each side."),
+                    "contrarian-wrong action on each side."
+                ),
                 "KER": (
                     # v3.20.10 — full direction-semantics explainer
                     # per v3.20.6 audit Finding #8. Closes the
@@ -1003,16 +1045,19 @@ if _HAS_QT:
                     "(intentional): voter activates at ER ≥0.50; gate "
                     "(EfficiencyRatioRegimeGate) activates at ER "
                     "<0.25. Different consumers, different "
-                    "thresholds, same field."),
+                    "thresholds, same field."
+                ),
                 "RSI": (
                     "RSI — classic 70/30 overbought/oversold + "
-                    "divergence. ▲▼ direction + NN% confidence."),
+                    "divergence. ▲▼ direction + NN% confidence."
+                ),
                 "Net": (
                     "Net — weighted bull − bear vote tally. "
                     "Sum of (confidence × weight) for BULLISH voters "
                     "minus same for BEARISH voters. NEUTRAL voters "
                     "contribute 0. Theoretical range ±11.7; in "
-                    "practice rarely outside ±3."),
+                    "practice rarely outside ±3."
+                ),
                 "Comp": (
                     "Composite Net — parent Net rank-weighted with all "
                     "active higher-TF phantom bot summaries. "
@@ -1020,27 +1065,29 @@ if _HAS_QT:
                     "the parent's signal only when Phantom Balance "
                     "Bots are enabled and have completed their first "
                     "signal cycle. Populated on the parent bot's TF "
-                    "row only; phantom TF rows read “—”."),
+                    "row only; phantom TF rows read “—”."
+                ),
                 "Conf": (
                     "Confidence — |Net| / total_weight_of_active_voters, "
                     "capped at 1.0. Reflects BREADTH of agreement, not "
                     "magnitude. A 30% reading typically means 6 voters "
                     "strongly agree + 6 are NEUTRAL — not 'panel "
-                    "disagrees'. Green ≥60%, amber ≥30%, gray <30%."),
+                    "disagrees'. Green ≥60%, amber ≥30%, gray <30%."
+                ),
             }
             # v3.23.52 — two-row SYMMETRICAL split. Instantiate two
             # mini-panels (each = table + bars) via _make_indicator_row.
             # Row A carries indicators BB..Vol PLUS aggregates
             # (Net / Comp Net / Conf); Row B carries Sling..RSI. Both
             # rows get equal stretch so the panel splits ~50/50.
-            row_a_container, self._table_a, self._conf_bars_a = \
+            row_a_container, self._table_a, self._conf_bars_a = (
+                self._make_indicator_row(_ROW_A_INDICATOR_COLS, include_aggregates=True)
+            )
+            row_b_container, self._table_b, self._conf_bars_b = (
                 self._make_indicator_row(
-                    _ROW_A_INDICATOR_COLS,
-                    include_aggregates=True)
-            row_b_container, self._table_b, self._conf_bars_b = \
-                self._make_indicator_row(
-                    _ROW_B_INDICATOR_COLS,
-                    include_aggregates=False)
+                    _ROW_B_INDICATOR_COLS, include_aggregates=False
+                )
+            )
             layout.addWidget(row_a_container, stretch=1)
             layout.addWidget(row_b_container, stretch=1)
             # Back-compat aliases (a few helpers still reference the
@@ -1061,8 +1108,9 @@ if _HAS_QT:
             return self._tf_lock_combo.currentData() or ""
 
         def _make_indicator_row(
-                self, indicator_subset: list,
-                include_aggregates: bool,
+            self,
+            indicator_subset: list,
+            include_aggregates: bool,
         ) -> tuple:
             """v3.23.52 — build one symmetrical mini-panel:
             compact QTableWidget (TF + N indicator cols + optional
@@ -1072,6 +1120,7 @@ if _HAS_QT:
             Returns ``(container_widget, table, bars)``.
             """
             from PySide6.QtWidgets import QSizePolicy
+
             container = QWidget()
             cl = QVBoxLayout(container)
             cl.setContentsMargins(0, 0, 0, 0)
@@ -1085,13 +1134,11 @@ if _HAS_QT:
             # Row-height floor (v3.23.50.1 discipline).
             table.verticalHeader().setDefaultSectionSize(28)
             table.verticalHeader().setMinimumSectionSize(28)
-            table.setSizePolicy(
-                QSizePolicy.Expanding, QSizePolicy.Fixed)
+            table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-            col_names = (["TF"]
-                         + [short for _, short, _ in indicator_subset])
+            col_names = ["TF"] + [short for _, short, _ in indicator_subset]
             if include_aggregates:
                 # v3.24.96 - "Comp Net" shortened to "Comp".
                 #
@@ -1110,8 +1157,7 @@ if _HAS_QT:
             for _idx, _name in enumerate(col_names):
                 _hdr = table.horizontalHeaderItem(_idx)
                 if _hdr is not None:
-                    _hdr.setToolTip(
-                        self._HEADER_TOOLTIPS.get(_name, _name))
+                    _hdr.setToolTip(self._HEADER_TOOLTIPS.get(_name, _name))
             hdr = table.horizontalHeader()
 
             # v3.24.87 - COLUMNS SIZE TO THEIR CONTENT, NOT EVENLY.
@@ -1152,8 +1198,8 @@ if _HAS_QT:
             # its own text.
             _fm = QFontMetrics(hdr.font())
             _widest = max(
-                (_fm.horizontalAdvance(str(_n)) for _n in col_names),
-                default=40)
+                (_fm.horizontalAdvance(str(_n)) for _n in col_names), default=40
+            )
             # +2, not +10. MEASURED: at 1600x900 the 10-column table
             # gets a 544px viewport, so each column may be at most
             # 54px. A +10 pad set the floor at 58 and forced 580px of
@@ -1178,12 +1224,11 @@ if _HAS_QT:
             # Clamp table height to header + a few rows of slack so
             # the bars beneath it consume the rest of the row.
             table.setFixedHeight(
-                table.horizontalHeader().sizeHint().height()
-                + 28 * 2 + 4)
+                table.horizontalHeader().sizeHint().height() + 28 * 2 + 4
+            )
 
             bars = ConfidenceBarsWidget()
-            bars.setSizePolicy(
-                QSizePolicy.Expanding, QSizePolicy.Expanding)
+            bars.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
             cl.addWidget(table, stretch=0)
             cl.addWidget(bars, stretch=1)
@@ -1218,12 +1263,11 @@ if _HAS_QT:
             out: dict = {}
             try:
                 from PySide6.QtWidgets import QTableWidget
-            except ImportError:                       # pragma: no cover
+            except ImportError:  # pragma: no cover
                 return out
             for t in self.findChildren(QTableWidget):
                 hdr = t.horizontalHeader()
-                wanted = sum(hdr.sectionSizeHint(c)
-                             for c in range(t.columnCount()))
+                wanted = sum(hdr.sectionSizeHint(c) for c in range(t.columnCount()))
                 have = t.viewport().width()
                 short: dict = {}
                 if wanted > have:
@@ -1255,14 +1299,19 @@ if _HAS_QT:
             """
             try:
                 from src.core.signal_contract import emit as _fit_emit
+
                 rep = self.header_fit_report()
                 cols = sum(v["columns"] for v in rep.values())
                 bad = sum(len(v["truncated"]) for v in rep.values())
-                _fit_emit("gui.04.001.postcondition.voting_panel.fit",
-                          actual=cols - bad, expected=cols,
-                          context={"where": where or "unknown",
-                                   "detail": {k: v["truncated"]
-                                              for k, v in rep.items()}})
+                _fit_emit(
+                    "gui.04.001.postcondition.voting_panel.fit",
+                    actual=cols - bad,
+                    expected=cols,
+                    context={
+                        "where": where or "unknown",
+                        "detail": {k: v["truncated"] for k, v in rep.items()},
+                    },
+                )
             except Exception:  # noqa: BLE001,S110 - instrumentation is advisory
                 pass
 
@@ -1278,8 +1327,7 @@ if _HAS_QT:
             an em-dash instead of showing 0.
             """
             if snapshot is None:
-                self._rate_strip.setText(
-                    "BTC —   ETH —   (currency rates unavailable)")
+                self._rate_strip.setText("BTC —   ETH —   (currency rates unavailable)")
                 return
             btc_usd = float(getattr(snapshot, "btc_usd", 0) or 0)
             eth_usd = float(getattr(snapshot, "eth_usd", 0) or 0)
@@ -1291,7 +1339,8 @@ if _HAS_QT:
                 parts.append(
                     f"BTC ${btc_usd:,.2f}  "
                     f"1$={sat_1:,.0f} sat  "
-                    f"1¢={sat_c:,.0f} sat")
+                    f"1¢={sat_c:,.0f} sat"
+                )
             else:
                 parts.append("BTC —")
             if eth_usd > 0:
@@ -1304,7 +1353,8 @@ if _HAS_QT:
                 parts.append(
                     f"ETH ${eth_usd:,.2f}  "
                     f"1$={gwei_1:,.0f} gwei  "
-                    f"1¢={gwei_c:,.0f} gwei")
+                    f"1¢={gwei_c:,.0f} gwei"
+                )
             else:
                 parts.append("ETH —")
             tail = f"  ·  {src}" if src and src != "none" else ""
@@ -1332,43 +1382,49 @@ if _HAS_QT:
                 raw = self._bot_selector.itemData(i, Qt.UserRole + 1)
                 if raw is None:
                     raw = self._bot_selector.itemText(i)
-                    self._bot_selector.setItemData(
-                        i, raw, Qt.UserRole + 1)
+                    self._bot_selector.setItemData(i, raw, Qt.UserRole + 1)
                 if masked:
                     self._bot_selector.setItemText(i, "****")
                 else:
                     self._bot_selector.setItemText(i, str(raw))
             # Symbol label
             self._symbol_label.setText(
-                mask_or(self._symbol_label_raw, "ivp.bot_selector"))
+                mask_or(self._symbol_label_raw, "ivp.bot_selector")
+            )
 
         def refresh_privacy_dot(self) -> None:
             """v3.23.7 — global Privacy Mode hook for MainWindow."""
             try:
                 self._privacy_dot.refresh()
             except Exception as _dot_exc:  # noqa: BLE001 - dot best-effort
-                logger.debug(
-                    "privacy dot refresh raised: %s", _dot_exc)
+                logger.debug("privacy dot refresh raised: %s", _dot_exc)
             self._apply_privacy_mask()
 
         def _on_tf_lock_changed(self):
             tf = self.lock_timeframe
             if tf:
-                self._lock_status.setText(f"Active: trades below {tf} locked to {tf} direction")
+                self._lock_status.setText(
+                    f"Active: trades below {tf} locked to {tf} direction"
+                )
                 from ..core.event_bus import get_event_bus
+
                 get_event_bus().emit("indicator.tf_lock_changed", timeframe=tf)
             else:
                 self._lock_status.setText("")
                 from ..core.event_bus import get_event_bus
+
                 get_event_bus().emit("indicator.tf_lock_changed", timeframe="")
 
         def _on_bot_selected(self):
             self._selected_bot_id = self._bot_selector.currentData() or ""
             from ..core.event_bus import get_event_bus
+
             get_event_bus().emit("indicator.bot_selected", bot_id=self._selected_bot_id)
-            logger.info("INDICATOR PANEL: bot selected = '%s', has data = %s",
-                        self._selected_bot_id[:12] if self._selected_bot_id else "(none)",
-                        bool(self._data))
+            logger.info(
+                "INDICATOR PANEL: bot selected = '%s', has data = %s",
+                self._selected_bot_id[:12] if self._selected_bot_id else "(none)",
+                bool(self._data),
+            )
             # Generate demo TA immediately when bot selected and no data exists
             if self._selected_bot_id and not self._data:
                 self._generate_demo_ta()
@@ -1392,7 +1448,9 @@ if _HAS_QT:
                 # would license fabrication on a panel we cannot read.
                 logger.warning(
                     "INDICATOR PANEL: bot selector unreadable (%s); "
-                    "treating as populated so demo TA stays blocked", exc)
+                    "treating as populated so demo TA stays blocked",
+                    exc,
+                )
                 return True
             return False
 
@@ -1406,7 +1464,9 @@ if _HAS_QT:
             if self._sim_mode:
                 return True, ""
             if self._selected_bot_id and self._selected_bot_id not in (
-                    "demo", "default"):
+                "demo",
+                "default",
+            ):
                 return False, f"bot {self._selected_bot_id[:8]} is real"
             if self._has_real_bots():
                 return False, "real bots are loaded"
@@ -1427,7 +1487,8 @@ if _HAS_QT:
                 logger.error(
                     "INDICATOR PANEL: could not render the no-data state "
                     "(%s); the panel may still be showing older values",
-                    exc)
+                    exc,
+                )
 
         def set_ta_state_dir(self, state_dir) -> None:
             """Point the snapshot store at the LIVE state directory.
@@ -1447,8 +1508,7 @@ if _HAS_QT:
                 self._ta_written_fingerprint.clear()
             self._ta_state_dir = new_dir
 
-        def remember_ta(self, bot_id: str, symbol: str,
-                        multi_tf_summary: dict) -> None:
+        def remember_ta(self, bot_id: str, symbol: str, multi_tf_summary: dict) -> None:
             """Persist the reading the tick just handed us.
 
             UNIT 1. Called by MainWindow immediately after a successful
@@ -1468,8 +1528,12 @@ if _HAS_QT:
             if self._ta_written_fingerprint.get(str(bot_id)) == fingerprint:
                 return
             written = save_ta_snapshot(
-                bot_id, symbol, multi_tf_summary,
-                state_dir=self._ta_state_dir, taken_at=stamp)
+                bot_id,
+                symbol,
+                multi_tf_summary,
+                state_dir=self._ta_state_dir,
+                taken_at=stamp,
+            )
             if written is None:
                 return
             self._ta_written_fingerprint[str(bot_id)] = fingerprint
@@ -1495,8 +1559,7 @@ if _HAS_QT:
                 tf_data = multi_tf_summary.get(tf_name) or {}
                 if not isinstance(tf_data, dict):
                     continue
-                for key in ("net_score", "confidence", "bullish",
-                            "bearish", "neutral"):
+                for key in ("net_score", "confidence", "bullish", "bearish", "neutral"):
                     try:
                         total += float(tf_data.get(key, 0) or 0)
                     except (TypeError, ValueError):
@@ -1517,12 +1580,18 @@ if _HAS_QT:
                 return None
             if key not in self._ta_snapshot_cache:
                 self._ta_snapshot_cache[key] = load_ta_snapshot(
-                    key, state_dir=self._ta_state_dir)
+                    key, state_dir=self._ta_state_dir
+                )
             return self._ta_snapshot_cache[key]
 
-        def show_no_data(self, bot_id: str = "", symbol: str = "",
-                         reason: str = "", cause: str = "",
-                         detail: dict | None = None) -> None:
+        def show_no_data(
+            self,
+            bot_id: str = "",
+            symbol: str = "",
+            reason: str = "",
+            cause: str = "",
+            detail: dict | None = None,
+        ) -> None:
             """Render the empty state, naming the ONE cause that applies.
 
             UNIT 2. This method used to take a free-text ``reason`` and
@@ -1553,14 +1622,18 @@ if _HAS_QT:
             """
             symbol_text = str(symbol or "")
             message = (
-                describe_no_data_cause(cause, detail) if cause
-                else (reason or "waiting for the TA engine"))
+                describe_no_data_cause(cause, detail)
+                if cause
+                else (reason or "waiting for the TA engine")
+            )
             self._no_data_cause = str(cause or "")
             self._no_data_message = message
             try:
-                stored = (self._stored_reading(bot_id)
-                          if cause in _CAUSES_THAT_MAY_SHOW_STORED
-                          else None)
+                stored = (
+                    self._stored_reading(bot_id)
+                    if cause in _CAUSES_THAT_MAY_SHOW_STORED
+                    else None
+                )
                 if stored:
                     self._render_stored_reading(stored, symbol_text, message)
                     return
@@ -1573,15 +1646,19 @@ if _HAS_QT:
                     "INDICATOR PANEL: empty state for %s (%s) [%s]: %s",
                     str(bot_id)[:8] or "(none)",
                     symbol_text or "(no symbol)",
-                    self._no_data_cause or "free-text", message)
+                    self._no_data_cause or "free-text",
+                    message,
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.error(
                     "INDICATOR PANEL: could not render the no-data state "
                     "(%s); the panel may still be showing older values",
-                    exc)
+                    exc,
+                )
 
-        def _render_stored_reading(self, stored: dict, symbol: str,
-                                   message: str) -> None:
+        def _render_stored_reading(
+            self, stored: dict, symbol: str, message: str
+        ) -> None:
             """Draw a persisted reading and say how old it is.
 
             UNIT 1. The age is not decoration. A four-minute-old vote is
@@ -1593,19 +1670,21 @@ if _HAS_QT:
             taken_at = float(stored.get("taken_at", 0.0) or 0.0)
             age_s = max(0.0, time.time() - taken_at)
             stored_symbol = str(stored.get("symbol") or symbol or "")
-            self.update_data(dict(stored.get("timeframes") or {}),
-                             stored_symbol)
+            self.update_data(dict(stored.get("timeframes") or {}), stored_symbol)
             self._showing_stored = True
             when = time.strftime("%H:%M:%S", time.localtime(taken_at))
             self._staleness_label.setText(
                 f"⏱ LAST TA READ, NOT CURRENT — taken {when}, "
-                f"{age_phrase(age_s)}. {message}")
+                f"{age_phrase(age_s)}. {message}"
+            )
             self._staleness_label.show()
             logger.info(
-                "INDICATOR PANEL: showing STORED TA for %s (%s), age %s "
-                "[%s]", str(stored.get("bot_id", ""))[:8],
-                stored_symbol or "(no symbol)", format_age(age_s),
-                self._no_data_cause or "free-text")
+                "INDICATOR PANEL: showing STORED TA for %s (%s), age %s " "[%s]",
+                str(stored.get("bot_id", ""))[:8],
+                stored_symbol or "(no symbol)",
+                format_age(age_s),
+                self._no_data_cause or "free-text",
+            )
 
         def stored_reading_age_seconds(self) -> float | None:
             """Age of the reading currently on screen, or None if live.
@@ -1639,7 +1718,9 @@ if _HAS_QT:
                 logger.warning(
                     "INDICATOR PANEL: REFUSED to fabricate TA (%s). "
                     "Rendering the empty state instead — real indicator "
-                    "values must come from the engine.", why)
+                    "values must come from the engine.",
+                    why,
+                )
                 self._render_no_data("waiting for the TA engine")
                 return
             logger.info("INDICATOR PANEL: generating demo TA...")
@@ -1653,10 +1734,11 @@ if _HAS_QT:
                 # color per bot ID); usedforsecurity=False suppresses the
                 # bandit B324 false positive.
                 seed = int(
-                    hashlib.md5(
-                        bid.encode(), usedforsecurity=False
-                    ).hexdigest()[:8], 16)
-                rng = random.Random(seed)  # noqa: S311 - deterministic demo data, not cryptographic
+                    hashlib.md5(bid.encode(), usedforsecurity=False).hexdigest()[:8], 16
+                )
+                rng = random.Random(
+                    seed
+                )  # noqa: S311 - deterministic demo data, not cryptographic
                 price = 100.0
                 candles = []
                 for i in range(60):
@@ -1664,25 +1746,36 @@ if _HAS_QT:
                     c = o * (1 + rng.gauss(0, 0.015))
                     h = max(o, c) * (1 + rng.uniform(0, 0.005))
                     l = min(o, c) * (1 - rng.uniform(0, 0.005))
-                    candles.append(Candle(
-                        timestamp=int(_time.time()) - (60 - i) * 3600,
-                        open=o, high=h, low=l, close=c,
-                        volume=rng.uniform(1000, 5000)))
+                    candles.append(
+                        Candle(
+                            timestamp=int(_time.time()) - (60 - i) * 3600,
+                            open=o,
+                            high=h,
+                            low=l,
+                            close=c,
+                            volume=rng.uniform(1000, 5000),
+                        )
+                    )
                     price = c
 
                 summary = VotingEngine().compute_all(candles, ta_tf)
-                logger.info("INDICATOR PANEL: demo TA computed — %s %s%% (%d signals) TF=%s",
-                            summary.consensus_direction.name,
-                            f"{summary.consensus_confidence:.0%}",
-                            len(summary.signals), ta_tf)
+                logger.info(
+                    "INDICATOR PANEL: demo TA computed — %s %s%% (%d signals) TF=%s",
+                    summary.consensus_direction.name,
+                    f"{summary.consensus_confidence:.0%}",
+                    len(summary.signals),
+                    ta_tf,
+                )
                 # v3.23.7 — currentText() returns the masked "****" when
                 # the IVP bot selector privacy mask is active. Pull the
                 # raw display text from the userData slot we cached in
                 # _apply_privacy_mask. Falls back to the visible text
                 # when the slot is empty (pre-mask first render).
                 cur_idx = self._bot_selector.currentIndex()
-                raw_text = self._bot_selector.itemData(
-                    cur_idx, Qt.UserRole + 1) or self._bot_selector.currentText()
+                raw_text = (
+                    self._bot_selector.itemData(cur_idx, Qt.UserRole + 1)
+                    or self._bot_selector.currentText()
+                )
                 sym_text = str(raw_text).split(" [")[0] or "SIM"
                 tf_data = {
                     "bullish": summary.bullish_count,
@@ -1692,15 +1785,21 @@ if _HAS_QT:
                     "confidence": summary.consensus_confidence,
                     "direction": summary.consensus_direction.name,
                     "signals": [
-                        {"indicator": s.indicator, "direction": s.direction.name,
-                         "confidence": s.confidence, "details": {}}
+                        {
+                            "indicator": s.indicator,
+                            "direction": s.direction.name,
+                            "confidence": s.confidence,
+                            "details": {},
+                        }
                         for s in summary.signals
                     ],
                     "locks": [],
                 }
                 self.update_data({ta_tf: tf_data}, sym_text)
-                logger.info("INDICATOR PANEL: update_data called, table rows = %d",
-                            self._table_a.rowCount())
+                logger.info(
+                    "INDICATOR PANEL: update_data called, table rows = %d",
+                    self._table_a.rowCount(),
+                )
             except Exception as exc:
                 # v3.24.38 (C51) — this swallowed everything including
                 # the RNG construction and the candle loop, then
@@ -1710,6 +1809,7 @@ if _HAS_QT:
                 self._last_demo_error = f"{type(exc).__name__}: {exc}"
                 logger.error("INDICATOR PANEL: demo TA FAILED: %s", exc)
                 import traceback
+
                 traceback.print_exc()
                 self._render_no_data("TA generation failed")
 
@@ -1720,8 +1820,9 @@ if _HAS_QT:
                 self._selected_bot_id = self._selected_bot_id or "demo"
                 self._generate_demo_ta()
 
-        def force_refresh(self, bot_id: str = "", symbol: str = "",
-                          ta_timeframe: str = ""):
+        def force_refresh(
+            self, bot_id: str = "", symbol: str = "", ta_timeframe: str = ""
+        ):
             """Force panel to refresh — called externally after bot creation.
 
             v3.24.54 (R3). This did `self._data = {}` then called the
@@ -1758,8 +1859,8 @@ if _HAS_QT:
             # state is told apart from a cold start and from a parked
             # bot in the log and on the panel.
             self.show_no_data(
-                bot_id=bot_id or self._selected_bot_id,
-                symbol=symbol, cause="new_bot")
+                bot_id=bot_id or self._selected_bot_id, symbol=symbol, cause="new_bot"
+            )
 
         def update_bot_list(self, bot_statuses: list[dict]):
             """Refresh the bot selector — accumulation bots only, rebuild only on change.
@@ -1770,8 +1871,9 @@ if _HAS_QT:
             renamed the user-facing term without changing the enum.
             """
             _accum_names = {"accumulation", "scrumming"}
-            accumulation_bots = [s for s in bot_statuses
-                              if s.get("mode", "").lower() in _accum_names]
+            accumulation_bots = [
+                s for s in bot_statuses if s.get("mode", "").lower() in _accum_names
+            ]
             new_ids = [s.get("bot_id", "") for s in accumulation_bots]
 
             # Only rebuild dropdown if the bot list actually changed
@@ -1803,8 +1905,7 @@ if _HAS_QT:
             try:
                 self._apply_privacy_mask()
             except Exception as _pm_exc:  # noqa: BLE001 - mask best-effort
-                logger.debug(
-                    "privacy mask re-apply raised: %s", _pm_exc)
+                logger.debug("privacy mask re-apply raised: %s", _pm_exc)
             self._on_bot_selected()
 
         def update_data(self, multi_tf_summary: dict, symbol: str = "") -> None:
@@ -1834,12 +1935,41 @@ if _HAS_QT:
             # v3.23.7 — cache raw symbol then pass through mask_or.
             self._symbol_label_raw = str(symbol)
             self._symbol_label.setText(
-                mask_or(self._symbol_label_raw, "ivp.bot_selector"))
+                mask_or(self._symbol_label_raw, "ivp.bot_selector")
+            )
 
             timeframes = sorted(
                 multi_tf_summary.keys(),
-                key=lambda tf: ["1m","5m","15m","30m","1h","2h","4h","6h","12h","1d","1w"].index(tf)
-                if tf in ["1m","5m","15m","30m","1h","2h","4h","6h","12h","1d","1w"] else 99,
+                key=lambda tf: (
+                    [
+                        "1m",
+                        "5m",
+                        "15m",
+                        "30m",
+                        "1h",
+                        "2h",
+                        "4h",
+                        "6h",
+                        "12h",
+                        "1d",
+                        "1w",
+                    ].index(tf)
+                    if tf
+                    in [
+                        "1m",
+                        "5m",
+                        "15m",
+                        "30m",
+                        "1h",
+                        "2h",
+                        "4h",
+                        "6h",
+                        "12h",
+                        "1d",
+                        "1w",
+                    ]
+                    else 99
+                ),
             )
 
             # v3.23.52 — populate BOTH mini-panel tables. Each shows
@@ -1857,8 +1987,7 @@ if _HAS_QT:
                 total_bull += tf_data.get("bullish", 0)
                 total_bear += tf_data.get("bearish", 0)
                 total_neutral += tf_data.get("neutral", 0)
-                signals = {s["indicator"]: s
-                           for s in tf_data.get("signals", [])}
+                signals = {s["indicator"]: s for s in tf_data.get("signals", [])}
 
                 # TF column in both tables.
                 for _tbl in (self._table_a, self._table_b):
@@ -1868,27 +1997,32 @@ if _HAS_QT:
                     _tbl.setItem(row, 0, tf_item)
 
                 # Row A: indicator columns 1..6
-                for col_idx, (ind_key, _, grp) in enumerate(
-                        _ROW_A_INDICATOR_COLS):
+                for col_idx, (ind_key, _, grp) in enumerate(_ROW_A_INDICATOR_COLS):
                     self._populate_indicator_cell(
-                        self._table_a, row, col_idx + 1,
-                        ind_key, grp, signals.get(ind_key))
+                        self._table_a,
+                        row,
+                        col_idx + 1,
+                        ind_key,
+                        grp,
+                        signals.get(ind_key),
+                    )
                 # Row A: aggregates at columns 7 (Net), 8 (Comp Net),
                 # 9 (Conf).
                 _agg_col = 1 + len(_ROW_A_INDICATOR_COLS)
-                self._populate_net_cell(
-                    self._table_a, row, _agg_col, tf_data)
-                self._populate_comp_net_cell(
-                    self._table_a, row, _agg_col + 1, tf_data)
-                self._populate_conf_cell(
-                    self._table_a, row, _agg_col + 2, tf_data)
+                self._populate_net_cell(self._table_a, row, _agg_col, tf_data)
+                self._populate_comp_net_cell(self._table_a, row, _agg_col + 1, tf_data)
+                self._populate_conf_cell(self._table_a, row, _agg_col + 2, tf_data)
 
                 # Row B: indicator columns 1..6 (no aggregates).
-                for col_idx, (ind_key, _, grp) in enumerate(
-                        _ROW_B_INDICATOR_COLS):
+                for col_idx, (ind_key, _, grp) in enumerate(_ROW_B_INDICATOR_COLS):
                     self._populate_indicator_cell(
-                        self._table_b, row, col_idx + 1,
-                        ind_key, grp, signals.get(ind_key))
+                        self._table_b,
+                        row,
+                        col_idx + 1,
+                        ind_key,
+                        grp,
+                        signals.get(ind_key),
+                    )
 
                 all_locks.extend(tf_data.get("locks", []))
 
@@ -1924,23 +2058,28 @@ if _HAS_QT:
                     self._conf_bars_b.set_bars([])
                 except Exception as _cb_exc:  # noqa: BLE001
                     logger.debug(
-                        "INDICATOR PANEL: bar reset on empty render "
-                        "failed: %s", _cb_exc)
+                        "INDICATOR PANEL: bar reset on empty render " "failed: %s",
+                        _cb_exc,
+                    )
             if timeframes:
                 primary_tf = timeframes[0]
                 tf_data = multi_tf_summary[primary_tf]
-                signals = {s["indicator"]: s
-                           for s in tf_data.get("signals", [])}
+                signals = {s["indicator"]: s for s in tf_data.get("signals", [])}
 
                 def _bars_for(subset):
-                    return [{
-                        "name":       short_name,
-                        "confidence": (signals.get(ind_key, {})
-                                       .get("confidence", 0)),
-                        "direction":  (signals.get(ind_key, {})
-                                       .get("direction", "NEUTRAL")),
-                        "group":      grp,
-                    } for ind_key, short_name, grp in subset]
+                    return [
+                        {
+                            "name": short_name,
+                            "confidence": (
+                                signals.get(ind_key, {}).get("confidence", 0)
+                            ),
+                            "direction": (
+                                signals.get(ind_key, {}).get("direction", "NEUTRAL")
+                            ),
+                            "group": grp,
+                        }
+                        for ind_key, short_name, grp in subset
+                    ]
 
                 self._conf_bars_a.set_bars(_bars_for(_ROW_A_INDICATOR_COLS))
                 self._conf_bars_b.set_bars(_bars_for(_ROW_B_INDICATOR_COLS))
@@ -1953,7 +2092,13 @@ if _HAS_QT:
         # v3.23.52 — cell-population helpers. Extracted so the two
         # mini-panel tables share the same cell-building code paths.
         def _populate_indicator_cell(
-                self, table, row, col, ind_key, grp, sig,
+            self,
+            table,
+            row,
+            col,
+            ind_key,
+            grp,
+            sig,
         ) -> None:
             if sig is None:
                 sig = {"direction": "NEUTRAL", "confidence": 0}
@@ -1978,19 +2123,14 @@ if _HAS_QT:
             alpha = int(min(confidence, 1.0) * 50) + 5
             if direction == "BULLISH":
                 cell.setForeground(QBrush(QColor("#00ff88")))
-                cell.setBackground(
-                    QBrush(QColor(0, 200, 100, alpha)))
+                cell.setBackground(QBrush(QColor(0, 200, 100, alpha)))
             elif direction == "BEARISH":
                 cell.setForeground(QBrush(QColor("#ff3366")))
-                cell.setBackground(
-                    QBrush(QColor(255, 51, 100, alpha)))
+                cell.setBackground(QBrush(QColor(255, 51, 100, alpha)))
             else:
                 cell.setForeground(QBrush(QColor("#888888")))
-                cell.setBackground(
-                    QBrush(QColor(60, 60, 80, 12)))
-            tip_lines = [
-                f"{ind_key.upper()}: {direction}  "
-                f"({confidence:.0%} conf)"]
+                cell.setBackground(QBrush(QColor(60, 60, 80, 12)))
+            tip_lines = [f"{ind_key.upper()}: {direction}  " f"({confidence:.0%} conf)"]
             for k, v in details.items():
                 if isinstance(v, bool):
                     if v:
@@ -2012,8 +2152,7 @@ if _HAS_QT:
                 item.setForeground(QBrush(QColor("#ff3366")))
             table.setItem(row, col, item)
 
-        def _populate_comp_net_cell(
-                self, table, row, col, tf_data) -> None:
+        def _populate_comp_net_cell(self, table, row, col, tf_data) -> None:
             comp = tf_data.get("composite_net")
             if comp is None:
                 item = QTableWidgetItem("—")
@@ -2030,8 +2169,7 @@ if _HAS_QT:
 
         def _populate_conf_cell(self, table, row, col, tf_data) -> None:
             conf = tf_data.get("confidence", 0)
-            conf_bar = ("█" * int(conf * 10)
-                        + "░" * (10 - int(conf * 10)))
+            conf_bar = "█" * int(conf * 10) + "░" * (10 - int(conf * 10))
             item = QTableWidgetItem(f"{conf_bar} {conf:.0%}")
             item.setTextAlignment(Qt.AlignCenter)
             item.setFont(QFont("Consolas", 8))
@@ -2058,6 +2196,7 @@ if _HAS_QT:
             try:
                 hdr = table.horizontalHeader()
                 from PySide6.QtCore import QPoint
+
                 positions = []
                 for col in range(table.columnCount()):
                     sec_x = hdr.sectionPosition(col)
@@ -2068,8 +2207,7 @@ if _HAS_QT:
                     positions.append((local_pt.x(), sec_w))
                 bars.set_column_positions(positions)
             except Exception as _sync_exc:  # noqa: BLE001 - sync best-effort
-                logger.debug(
-                    "mini-panel bar sync raised: %s", _sync_exc)
+                logger.debug("mini-panel bar sync raised: %s", _sync_exc)
 
         def resizeEvent(self, event):
             """v3.23.53 — re-sync bar column positions on any resize
@@ -2111,7 +2249,6 @@ if _HAS_QT:
             """Return the current voting data for external access."""
             return self._data
 
-
     class IndicatorDetailDialog(QWidget):
         """
         Detailed view for a single indicator's signal history and
@@ -2125,9 +2262,9 @@ if _HAS_QT:
             # v3.23.40 — accessibility anchor. GUI001 satisfaction.
             self.setToolTip(
                 f"Detailed signal history and response controls for "
-                f"the {indicator_name} indicator.")
-            self.setAccessibleName(
-                f"{indicator_name} Signal Detail Dialog")
+                f"the {indicator_name} indicator."
+            )
+            self.setAccessibleName(f"{indicator_name} Signal Detail Dialog")
 
             layout = QVBoxLayout(self)
 
@@ -2147,8 +2284,10 @@ if _HAS_QT:
             # Response controls
             controls = QGroupBox("Signal Response Controls")
             ctrl_layout = QVBoxLayout(controls)
-            ctrl_layout.addWidget(QLabel(
-                "Configure how this indicator's signals affect trade decisions. "
-                "Adjust weight, enable/disable, or set confidence thresholds."
-            ))
+            ctrl_layout.addWidget(
+                QLabel(
+                    "Configure how this indicator's signals affect trade decisions. "
+                    "Adjust weight, enable/disable, or set confidence thresholds."
+                )
+            )
             layout.addWidget(controls)

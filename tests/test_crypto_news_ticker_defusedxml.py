@@ -16,6 +16,7 @@ ruff S314 and semgrep use-defused-xml on the test file itself. The
 comparison was run as a scratchpad measurement instead, and its results
 are the numbers quoted below.
 """
+
 from __future__ import annotations
 
 import logging
@@ -44,14 +45,17 @@ CANARY = "XXE_CANARY_LOCAL_DISK_CONTENT"
 # the real entry point walks them exactly as it walks a feed.
 # ------------------------------------------------------------------
 
+
 def _entity_doc(body: str, refs: int = 1) -> bytes:
     """A feed that DECLARES one internal entity and references it."""
-    return ("<?xml version='1.0'?>\n<!DOCTYPE rss [\n"
-            f'  <!ENTITY big "{body}">\n'
-            "]>\n<rss version='2.0'><channel><item><title>"
-            + "&big;" * refs
-            + "</title><link>https://example.invalid/e</link>"
-              "</item></channel></rss>").encode()
+    return (
+        "<?xml version='1.0'?>\n<!DOCTYPE rss [\n"
+        f'  <!ENTITY big "{body}">\n'
+        "]>\n<rss version='2.0'><channel><item><title>"
+        + "&big;" * refs
+        + "</title><link>https://example.invalid/e</link>"
+        "</item></channel></rss>"
+    ).encode()
 
 
 def _billion_laughs() -> bytes:
@@ -59,22 +63,24 @@ def _billion_laughs() -> bytes:
     decls = ['  <!ENTITY a0 "lol">']
     for i in range(1, 10):
         decls.append(f'  <!ENTITY a{i} "' + f"&a{i - 1};" * 10 + '">')
-    return ("<?xml version='1.0'?>\n<!DOCTYPE rss [\n"
-            + "\n".join(decls)
-            + "\n]>\n<rss version='2.0'><channel><item>"
-              "<title>&a9;</title>"
-              "<link>https://example.invalid/bomb</link>"
-              "</item></channel></rss>").encode()
+    return (
+        "<?xml version='1.0'?>\n<!DOCTYPE rss [\n"
+        + "\n".join(decls)
+        + "\n]>\n<rss version='2.0'><channel><item>"
+        "<title>&a9;</title>"
+        "<link>https://example.invalid/bomb</link>"
+        "</item></channel></rss>"
+    ).encode()
 
 
 def _deep_feed(depth: int) -> bytes:
     """A valid feed buried under ``depth`` nested wrapper elements."""
     head = "".join(f"<n{i}>" for i in range(depth))
     tail = "".join(f"</n{i}>" for i in reversed(range(depth)))
-    return ("<rss version='2.0'><channel>" + head
-            + "<item><title>Deep headline</title>"
-              "<link>https://example.invalid/deep</link></item>"
-            + tail + "</channel></rss>").encode()
+    return (
+        "<rss version='2.0'><channel>" + head + "<item><title>Deep headline</title>"
+        "<link>https://example.invalid/deep</link></item>" + tail + "</channel></rss>"
+    ).encode()
 
 
 # ------------------------------------------------------------------
@@ -86,6 +92,7 @@ def _deep_feed(depth: int) -> bytes:
 # that matters is the one BELOW expat's own guard, which is what
 # TestSubThresholdBand covers.
 # ------------------------------------------------------------------
+
 
 class TestEntityDeclarationsRefused:
     def test_a_single_harmless_entity_declaration_is_refused(self):
@@ -100,16 +107,17 @@ class TestEntityDeclarationsRefused:
         assert parse_rss(_billion_laughs(), SRC) == []
 
     def test_unparsed_ndata_entity_is_refused(self):
-        raw = (b"<?xml version='1.0'?>\n<!DOCTYPE r [\n"
-               b" <!ENTITY img SYSTEM \"file:///c:/win.ini\" NDATA gif>\n"
-               b" <!NOTATION gif PUBLIC \"gif\">\n]>\n"
-               b"<rss version='2.0'><channel><item>"
-               b"<title>t</title><link>https://example.invalid/n</link>"
-               b"</item></channel></rss>")
+        raw = (
+            b"<?xml version='1.0'?>\n<!DOCTYPE r [\n"
+            b' <!ENTITY img SYSTEM "file:///c:/win.ini" NDATA gif>\n'
+            b' <!NOTATION gif PUBLIC "gif">\n]>\n'
+            b"<rss version='2.0'><channel><item>"
+            b"<title>t</title><link>https://example.invalid/n</link>"
+            b"</item></channel></rss>"
+        )
         assert parse_rss(raw, SRC) == []
 
-    def test_refusal_is_logged_as_a_warning_naming_the_source(
-            self, capture_log):
+    def test_refusal_is_logged_as_a_warning_naming_the_source(self, capture_log):
         """A refused feed must not be a silent zero.
 
         A failure here means a feed host could start shipping entity
@@ -159,15 +167,16 @@ class TestSubThresholdBand:
         sits far above the first and far below the other two.
         """
         doc = _entity_doc("A" * 20_000, refs=150)
-        parse_rss(_entity_doc("warm"), SRC)     # pay one-time parser setup
+        parse_rss(_entity_doc("warm"), SRC)  # pay one-time parser setup
         tracemalloc.start()
         try:
             assert parse_rss(doc, SRC) == []
             _current, peak = tracemalloc.get_traced_memory()
         finally:
             tracemalloc.stop()
-        assert peak < 4 * 1024 * 1024, (
-            f"parse allocated {peak} bytes refusing a {len(doc)}-byte feed")
+        assert (
+            peak < 4 * 1024 * 1024
+        ), f"parse allocated {peak} bytes refusing a {len(doc)}-byte feed"
 
 
 # ------------------------------------------------------------------
@@ -184,17 +193,21 @@ class TestSubThresholdBand:
 # default can quietly change.
 # ------------------------------------------------------------------
 
+
 class TestExternalEntitiesNeverRead:
     def test_internal_dtd_file_entity_is_refused_and_never_read(
-            self, tmp_path, capture_log):
+        self, tmp_path, capture_log
+    ):
         target = tmp_path / "secret.txt"
         target.write_text(CANARY, encoding="utf-8")
-        raw = ("<?xml version='1.0'?>\n"
-               f'<!DOCTYPE rss [ <!ENTITY xxe SYSTEM "{target.as_uri()}"> ]>\n'
-               "<rss version='2.0'><channel><item>"
-               "<title>&xxe;</title>"
-               "<link>https://example.invalid/x</link>"
-               "</item></channel></rss>").encode()
+        raw = (
+            "<?xml version='1.0'?>\n"
+            f'<!DOCTYPE rss [ <!ENTITY xxe SYSTEM "{target.as_uri()}"> ]>\n'
+            "<rss version='2.0'><channel><item>"
+            "<title>&xxe;</title>"
+            "<link>https://example.invalid/x</link>"
+            "</item></channel></rss>"
+        ).encode()
 
         with capture_log("acervator.crypto_news_ticker") as records:
             out = parse_rss(raw, SRC)
@@ -211,12 +224,14 @@ class TestExternalEntitiesNeverRead:
         """
         dtd = tmp_path / "leak.dtd"
         dtd.write_text(f'<!ENTITY leak "{CANARY}">', encoding="utf-8")
-        raw = ("<?xml version='1.0'?>\n"
-               f'<!DOCTYPE rss SYSTEM "{dtd.as_uri()}">\n'
-               "<rss version='2.0'><channel><item>"
-               "<title>&leak;</title>"
-               "<link>https://example.invalid/d</link>"
-               "</item></channel></rss>").encode()
+        raw = (
+            "<?xml version='1.0'?>\n"
+            f'<!DOCTYPE rss SYSTEM "{dtd.as_uri()}">\n'
+            "<rss version='2.0'><channel><item>"
+            "<title>&leak;</title>"
+            "<link>https://example.invalid/d</link>"
+            "</item></channel></rss>"
+        ).encode()
 
         out = parse_rss(raw, SRC)
         assert out == []
@@ -231,53 +246,61 @@ class TestExternalEntitiesNeverRead:
 # previous parser, measured side by side.
 # ------------------------------------------------------------------
 
+
 class TestOrdinaryFeedsStillParse:
     def test_rss_2_0_yields_headlines_in_order(self):
-        raw = ("<?xml version='1.0' encoding='UTF-8'?>\n"
-               '<rss version="2.0"><channel>\n'
-               "  <title>Acervator Test Wire</title>\n"
-               "  <item><title>Bitcoin clears 70k on ETF inflows</title>"
-               "<link>https://example.invalid/story-1</link>"
-               "<pubDate>Mon, 28 Jul 2026 12:00:00 GMT</pubDate></item>\n"
-               "  <item><title>Cash &amp; carry spread narrows</title>"
-               "<link>https://example.invalid/story-2</link>"
-               "<pubDate>Sun, 27 Jul 2026 09:30:00 GMT</pubDate></item>\n"
-               "</channel></rss>").encode()
+        raw = (
+            "<?xml version='1.0' encoding='UTF-8'?>\n"
+            '<rss version="2.0"><channel>\n'
+            "  <title>Acervator Test Wire</title>\n"
+            "  <item><title>Bitcoin clears 70k on ETF inflows</title>"
+            "<link>https://example.invalid/story-1</link>"
+            "<pubDate>Mon, 28 Jul 2026 12:00:00 GMT</pubDate></item>\n"
+            "  <item><title>Cash &amp; carry spread narrows</title>"
+            "<link>https://example.invalid/story-2</link>"
+            "<pubDate>Sun, 27 Jul 2026 09:30:00 GMT</pubDate></item>\n"
+            "</channel></rss>"
+        ).encode()
         out = parse_rss(raw, SRC)
         assert [(h.title, h.url) for h in out] == [
-            ("Bitcoin clears 70k on ETF inflows",
-             "https://example.invalid/story-1"),
-            ("Cash & carry spread narrows",
-             "https://example.invalid/story-2"),
+            ("Bitcoin clears 70k on ETF inflows", "https://example.invalid/story-1"),
+            ("Cash & carry spread narrows", "https://example.invalid/story-2"),
         ]
         assert out[0].published_ts > 0
 
     def test_atom_attribute_link_is_read(self):
-        raw = (b"<?xml version='1.0' encoding='UTF-8'?>\n"
-               b"<feed xmlns='http://www.w3.org/2005/Atom'>"
-               b"<entry><title>DeFi TVL crosses 200B</title>"
-               b"<link href='https://example.invalid/atom-1'/>"
-               b"<updated>2026-07-28T12:34:56Z</updated></entry>"
-               b"</feed>")
+        raw = (
+            b"<?xml version='1.0' encoding='UTF-8'?>\n"
+            b"<feed xmlns='http://www.w3.org/2005/Atom'>"
+            b"<entry><title>DeFi TVL crosses 200B</title>"
+            b"<link href='https://example.invalid/atom-1'/>"
+            b"<updated>2026-07-28T12:34:56Z</updated></entry>"
+            b"</feed>"
+        )
         out = parse_rss(raw, SRC)
         assert [(h.title, h.url) for h in out] == [
-            ("DeFi TVL crosses 200B", "https://example.invalid/atom-1")]
+            ("DeFi TVL crosses 200B", "https://example.invalid/atom-1")
+        ]
 
     def test_predefined_and_numeric_references_survive(self):
         """Refusing DECLARATIONS must not break the five built-ins."""
-        raw = (b"<rss version='2.0'><channel><item>"
-               b"<title>A &amp; B &lt;C&gt; &#39;D&#x27;</title>"
-               b"<link>https://example.invalid/e?a=1&amp;b=2</link>"
-               b"</item></channel></rss>")
+        raw = (
+            b"<rss version='2.0'><channel><item>"
+            b"<title>A &amp; B &lt;C&gt; &#39;D&#x27;</title>"
+            b"<link>https://example.invalid/e?a=1&amp;b=2</link>"
+            b"</item></channel></rss>"
+        )
         out = parse_rss(raw, SRC)
         assert out[0].title == "A & B <C> 'D'"
         assert out[0].url == "https://example.invalid/e?a=1&b=2"
 
     def test_cdata_is_plain_text(self):
-        raw = (b"<rss version='2.0'><channel><item>"
-               b"<title><![CDATA[Cash & <carry>]]></title>"
-               b"<link>https://example.invalid/c</link>"
-               b"</item></channel></rss>")
+        raw = (
+            b"<rss version='2.0'><channel><item>"
+            b"<title><![CDATA[Cash & <carry>]]></title>"
+            b"<link>https://example.invalid/c</link>"
+            b"</item></channel></rss>"
+        )
         assert parse_rss(raw, SRC)[0].title == "Cash & <carry>"
 
     def test_a_doctype_without_entities_is_still_accepted(self):
@@ -286,26 +309,30 @@ class TestOrdinaryFeedsStillParse:
         A failure here means the hardening refuses a bare doctype, which
         is a real feed shape and not an attack.
         """
-        raw = (b"<?xml version='1.0'?>\n<!DOCTYPE rss>\n"
-               b"<rss version='2.0'><channel><item>"
-               b"<title>Plain doctype</title>"
-               b"<link>https://example.invalid/dt</link>"
-               b"</item></channel></rss>")
+        raw = (
+            b"<?xml version='1.0'?>\n<!DOCTYPE rss>\n"
+            b"<rss version='2.0'><channel><item>"
+            b"<title>Plain doctype</title>"
+            b"<link>https://example.invalid/dt</link>"
+            b"</item></channel></rss>"
+        )
         assert [h.title for h in parse_rss(raw, SRC)] == ["Plain doctype"]
 
     def test_limit_and_truncation_are_unchanged(self):
         entries = "".join(
             f"<item><title>t{i}</title>"
             f"<link>https://example.invalid/{i}</link></item>"
-            for i in range(20))
-        raw = ("<rss version='2.0'><channel>" + entries
-               + "</channel></rss>").encode()
+            for i in range(20)
+        )
+        raw = ("<rss version='2.0'><channel>" + entries + "</channel></rss>").encode()
         assert len(parse_rss(raw, SRC, limit=5)) == 5
 
-        long_raw = ("<rss version='2.0'><channel><item><title>"
-                    + "A" * 500
-                    + "</title><link>https://example.invalid/l</link>"
-                      "</item></channel></rss>").encode()
+        long_raw = (
+            "<rss version='2.0'><channel><item><title>"
+            + "A" * 500
+            + "</title><link>https://example.invalid/l</link>"
+            "</item></channel></rss>"
+        ).encode()
         assert len(parse_rss(long_raw, SRC)[0].title) == 220
 
 
@@ -317,14 +344,18 @@ class TestOrdinaryFeedsStillParse:
 # and breaks the sentence written above the function.
 # ------------------------------------------------------------------
 
+
 class TestMalformedNeverRaises:
-    @pytest.mark.parametrize("raw", [
-        b"",
-        b"<not-valid-xml",
-        b"404 Not Found",
-        b"<rss><channel><item><title>unclosed</title>",
-        b"\xff\xfe\x00garbage",
-    ])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            b"",
+            b"<not-valid-xml",
+            b"404 Not Found",
+            b"<rss><channel><item><title>unclosed</title>",
+            b"\xff\xfe\x00garbage",
+        ],
+    )
     def test_returns_empty_list(self, raw):
         assert parse_rss(raw, SRC) == []
 
@@ -352,6 +383,7 @@ class TestMalformedNeverRaises:
 # be made to allocate; it does nothing about a plain oversized body.
 # ------------------------------------------------------------------
 
+
 class _Resp:
     def __init__(self, body: bytes) -> None:
         self._body = body
@@ -376,22 +408,26 @@ class TestResponseSizeCap:
         """A failure means ``resp.read()`` was called with no argument,
         which reads until the peer stops sending."""
         from src.gui import crypto_news_ticker as cnt
-        resp = _Resp(b"<rss version='2.0'><channel><item>"
-                     b"<title>Small</title>"
-                     b"<link>https://example.invalid/s</link>"
-                     b"</item></channel></rss>")
+
+        resp = _Resp(
+            b"<rss version='2.0'><channel><item>"
+            b"<title>Small</title>"
+            b"<link>https://example.invalid/s</link>"
+            b"</item></channel></rss>"
+        )
         monkeypatch.setattr(cnt, "safe_urlopen", lambda *_a, **_k: resp)
         assert [h.title for h in cnt.fetch_one(SRC)] == ["Small"]
         assert resp.read_args == [MAX_FEED_BYTES + 1]
 
-    def test_oversized_body_is_dropped_and_logged(
-            self, monkeypatch, capture_log):
+    def test_oversized_body_is_dropped_and_logged(self, monkeypatch, capture_log):
         from src.gui import crypto_news_ticker as cnt
-        oversized = (b"<rss version='2.0'><channel><item>"
-                     b"<title>Huge</title>"
-                     b"<link>https://example.invalid/h</link>"
-                     b"</item></channel></rss>"
-                     + b" " * (MAX_FEED_BYTES + 1))
+
+        oversized = (
+            b"<rss version='2.0'><channel><item>"
+            b"<title>Huge</title>"
+            b"<link>https://example.invalid/h</link>"
+            b"</item></channel></rss>" + b" " * (MAX_FEED_BYTES + 1)
+        )
         resp = _Resp(oversized)
         monkeypatch.setattr(cnt, "safe_urlopen", lambda *_a, **_k: resp)
 
@@ -410,16 +446,18 @@ class TestResponseSizeCap:
         early, which would silently drop a source.
         """
         from src.gui import crypto_news_ticker as cnt
-        head = (b"<rss version='2.0'><channel><item>"
-                b"<title>Edge</title>"
-                b"<link>https://example.invalid/edge</link>"
-                b"</item></channel><!--")
+
+        head = (
+            b"<rss version='2.0'><channel><item>"
+            b"<title>Edge</title>"
+            b"<link>https://example.invalid/edge</link>"
+            b"</item></channel><!--"
+        )
         tail = b"--></rss>"
         pad = MAX_FEED_BYTES - len(head) - len(tail)
         body = head + b"x" * pad + tail
         assert len(body) == MAX_FEED_BYTES
-        monkeypatch.setattr(
-            cnt, "safe_urlopen", lambda *_a, **_k: _Resp(body))
+        monkeypatch.setattr(cnt, "safe_urlopen", lambda *_a, **_k: _Resp(body))
         assert [h.title for h in cnt.fetch_one(SRC)] == ["Edge"]
 
 
@@ -430,25 +468,30 @@ class TestResponseSizeCap:
 # beside a suppression rather than code that runs.
 # ------------------------------------------------------------------
 
+
 class TestFetchRoutesThroughSafeUrl:
     def test_module_holds_no_bare_urlopen_or_request(self):
         from src.gui import crypto_news_ticker as cnt
+
         assert not hasattr(cnt, "urlopen")
         assert not hasattr(cnt, "Request")
         assert hasattr(cnt, "safe_urlopen")
         assert hasattr(cnt, "SafeRequest")
 
     def test_source_file_carries_no_suppression_for_this_unit(self):
-        path = (Path(__file__).resolve().parents[1]
-                / "src" / "gui" / "crypto_news_ticker.py")
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "gui"
+            / "crypto_news_ticker.py"
+        )
         text = path.read_text(encoding="utf-8")
         assert "S310" not in text
         assert "S314" not in text
         assert "nosec" not in text
         assert "type: ignore" not in text
 
-    def test_fetch_one_hands_safe_urlopen_a_checked_request(
-            self, monkeypatch):
+    def test_fetch_one_hands_safe_urlopen_a_checked_request(self, monkeypatch):
         from src.core.safe_url import SafeRequest
         from src.gui import crypto_news_ticker as cnt
 
@@ -457,10 +500,12 @@ class TestFetchRoutesThroughSafeUrl:
         def _fake(req, *_a, **kw):
             seen["req"] = req
             seen["timeout"] = kw.get("timeout")
-            return _Resp(b"<rss version='2.0'><channel><item>"
-                         b"<title>Routed</title>"
-                         b"<link>https://example.invalid/r</link>"
-                         b"</item></channel></rss>")
+            return _Resp(
+                b"<rss version='2.0'><channel><item>"
+                b"<title>Routed</title>"
+                b"<link>https://example.invalid/r</link>"
+                b"</item></channel></rss>"
+            )
 
         monkeypatch.setattr(cnt, "safe_urlopen", _fake)
         out = cnt.fetch_one(SRC, timeout=3.5)
@@ -471,6 +516,7 @@ class TestFetchRoutesThroughSafeUrl:
 
     def test_headers_are_still_sent(self, monkeypatch):
         from src.gui import crypto_news_ticker as cnt
+
         seen: dict[str, dict[str, str]] = {}
 
         def _fake(req, *_a, **_kw):
@@ -482,8 +528,7 @@ class TestFetchRoutesThroughSafeUrl:
         assert "AcervatorNewsTicker" in seen["headers"]["User-agent"]
         assert "application/rss+xml" in seen["headers"]["Accept"]
 
-    def test_file_scheme_source_is_refused_and_never_read(
-            self, tmp_path, capture_log):
+    def test_file_scheme_source_is_refused_and_never_read(self, tmp_path, capture_log):
         """The scheme family that already hid a real file:/// hole."""
         secret = tmp_path / "secret.xml"
         secret.write_text(
@@ -491,7 +536,8 @@ class TestFetchRoutesThroughSafeUrl:
             f"<title>{CANARY}</title>"
             "<link>https://example.invalid/leak</link>"
             "</item></channel></rss>",
-            encoding="utf-8")
+            encoding="utf-8",
+        )
         bad = NewsSource("bad", "Bad Feed", secret.as_uri())
         assert bad.url.startswith("file:")
 
@@ -506,6 +552,7 @@ class TestFetchRoutesThroughSafeUrl:
 
     def test_every_shipped_source_survives_the_allowlist(self):
         from src.core.safe_url import SafeRequest
+
         for source in NEWS_SOURCES:
             assert SafeRequest(source.url).full_url == source.url
 
@@ -519,11 +566,13 @@ class TestFetchRoutesThroughSafeUrl:
 # the rest of the file mean what it says.
 # ------------------------------------------------------------------
 
+
 class TestTheParserIsTheDefusedOne:
     def test_module_fromstring_is_defusedxmls(self):
         import defusedxml.ElementTree as defused
 
         from src.gui import crypto_news_ticker as cnt
+
         assert cnt.fromstring is defused.fromstring
 
     def test_the_caught_type_is_the_type_actually_raised(self):
@@ -539,5 +588,6 @@ class TestTheParserIsTheDefusedOne:
         import defusedxml.ElementTree as defused
 
         from src.gui import crypto_news_ticker as cnt
+
         with pytest.raises(cnt.DefusedXmlException):
             defused.fromstring(_entity_doc("boom"))

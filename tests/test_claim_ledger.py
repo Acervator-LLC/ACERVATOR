@@ -10,10 +10,10 @@ Verify the ledger:
 Uses a temporary ledger path to avoid touching the real
 docs/audits/CLAIMS.jsonl during test.
 """
+
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -96,7 +96,7 @@ class TestListOpen:
 
     def test_list_open_filters_by_session(self):
         c1 = claim_ledger.log_claim("A", "e1", session="s1")
-        c2 = claim_ledger.log_claim("B", "e2", session="s2")
+        claim_ledger.log_claim("B", "e2", session="s2")
         s1_open = {c.id for c in claim_ledger.list_open("s1")}
         assert s1_open == {c1.id}
 
@@ -122,10 +122,15 @@ class TestCheck:
 
 class TestCli:
     def test_log_and_check_via_cli(self, capsys):
-        assert claim_ledger.main(["log", "the sky is blue", "--evidence", "look up"]) == 0
+        assert (
+            claim_ledger.main(["log", "the sky is blue", "--evidence", "look up"]) == 0
+        )
         assert claim_ledger.main(["check"]) == 1  # open claim exists
         # capture the claim ID from the ledger to verify
         open_claims = claim_ledger.list_open()
         assert len(open_claims) == 1
-        assert claim_ledger.main(["verify", open_claims[0].id, "--note", "looked; blue"]) == 0
+        assert (
+            claim_ledger.main(["verify", open_claims[0].id, "--note", "looked; blue"])
+            == 0
+        )
         assert claim_ledger.main(["check"]) == 0

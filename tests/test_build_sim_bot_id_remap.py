@@ -34,6 +34,7 @@ SCOPE. This file pins the id only. Whether wires actually route is a
 separate question with its own test, because an id that matches proves
 nothing about money moving.
 """
+
 from __future__ import annotations
 
 import json
@@ -57,8 +58,7 @@ BASE = 1_700_000_000_000
 
 
 def _candles(n=8, px=100.0):
-    return [[BASE + i * STEP, px, px * 1.01, px * 0.99, px, 10.0]
-            for i in range(n)]
+    return [[BASE + i * STEP, px, px * 1.01, px * 0.99, px, 10.0] for i in range(n)]
 
 
 def _cfg(symbol, src_id, target=100.0):
@@ -75,9 +75,11 @@ def _cfg(symbol, src_id, target=100.0):
 def _built(configs, symbols=None, acts=None):
     ctl = FleetReplayController(
         configs=configs,
-        candles_by_symbol={s: _candles() for s in (
-            symbols or [c["symbol"] for c in configs])},
-        activity_log_cb=(acts.append if acts is not None else None))
+        candles_by_symbol={
+            s: _candles() for s in (symbols or [c["symbol"] for c in configs])
+        },
+        activity_log_cb=(acts.append if acts is not None else None),
+    )
     ctl._build_sim()
     return ctl
 
@@ -86,21 +88,27 @@ class TestTheInstrumentWorks:
     def test_bots_are_actually_constructed(self):
         """POSITIVE CONTROL. Every id assertion below is vacuous on an
         empty fleet, and `_build_sim` returns early in several ways."""
-        ctl = _built([_cfg("BTC/USD", "aaaa1111"),
-                      _cfg("ETH/USD", "bbbb2222")])
+        ctl = _built([_cfg("BTC/USD", "aaaa1111"), _cfg("ETH/USD", "bbbb2222")])
         assert len(ctl._bots) == 2
 
 
 class TestTheIdIsThePersistedOne:
     def test_every_sim_bot_carries_its_persisted_id(self):
-        ctl = _built([_cfg("BTC/USD", "aaaa1111"),
-                      _cfg("ETH/USD", "bbbb2222"),
-                      _cfg("SOL/USD", "cccc3333")])
+        ctl = _built(
+            [
+                _cfg("BTC/USD", "aaaa1111"),
+                _cfg("ETH/USD", "bbbb2222"),
+                _cfg("SOL/USD", "cccc3333"),
+            ]
+        )
         # v3.24.82 -- ids are `simulated_<live id>`: self-identifying
         # (a sim row can never be read as live) AND joinable (strip the
         # prefix to get back to bot_state).
         assert {live_bot_id(b.bot_id) for b in ctl._bots} == {
-            "aaaa1111", "bbbb2222", "cccc3333"}
+            "aaaa1111",
+            "bbbb2222",
+            "cccc3333",
+        }
 
     def test_the_id_is_not_a_fresh_uuid(self):
         """The discriminating assertion. A uuid4 hex slice is 8 chars of
@@ -121,9 +129,9 @@ class TestTheIdIsThePersistedOne:
         """Partial fleets are normal — only symbols with a Stone Tablet
         spawn. The ids must follow the bots that exist, not the configs."""
         ctl = FleetReplayController(
-            configs=[_cfg("BTC/USD", "aaaa1111"),
-                     _cfg("NOTAPE/USD", "bbbb2222")],
-            candles_by_symbol={"BTC/USD": _candles()})
+            configs=[_cfg("BTC/USD", "aaaa1111"), _cfg("NOTAPE/USD", "bbbb2222")],
+            candles_by_symbol={"BTC/USD": _candles()},
+        )
         ctl._build_sim()
         # v3.24.82 -- ids are `simulated_<live id>`: self-identifying
         # (a sim row can never be read as live) AND joinable (strip the
@@ -157,7 +165,7 @@ class TestSyntheticFleetsAreLegITIMATEAndKeepTheirUuids:
         del cfg["_src_bot_id"]
         ctl = _built([cfg])
         assert len(ctl._bots) == 1
-        assert ctl._bots[0].bot_id           # a uuid4, not empty
+        assert ctl._bots[0].bot_id  # a uuid4, not empty
         assert live_bot_id(ctl._bots[0].bot_id) != "aaaa1111"
 
     def test_a_synthetic_fleet_says_so_rather_than_going_quiet(self):
@@ -217,13 +225,16 @@ class TestTheLoaderStillSuppliesTheKey:
 
     def test_the_loader_stamps_src_bot_id(self, tmp_path):
         from src.gui.simulator_tab.fleet.bot_state_loader import (
-            load_bot_configs_from_state)
-        p = self._state_file(tmp_path, {
-            "abc12345": {"config": {"mode": "scrumming",
-                                    "symbol": "BTC/USD"}},
-            "def67890": {"config": {"mode": "scrumming",
-                                    "symbol": "ETH/USD"}},
-        })
+            load_bot_configs_from_state,
+        )
+
+        p = self._state_file(
+            tmp_path,
+            {
+                "abc12345": {"config": {"mode": "scrumming", "symbol": "BTC/USD"}},
+                "def67890": {"config": {"mode": "scrumming", "symbol": "ETH/USD"}},
+            },
+        )
         out = load_bot_configs_from_state(p, mode_filter="scrumming")
         assert {c["_src_bot_id"] for c in out} == {"abc12345", "def67890"}
 
@@ -231,10 +242,21 @@ class TestTheLoaderStillSuppliesTheKey:
         """`setdefault`, not `[...] =` — pinned because a caller may
         already have joined the id in."""
         from src.gui.simulator_tab.fleet.bot_state_loader import (
-            load_bot_configs_from_state)
-        p = self._state_file(tmp_path, {"abc12345": {"config": {
-            "mode": "scrumming", "symbol": "BTC/USD",
-            "_src_bot_id": "preset99"}}})
+            load_bot_configs_from_state,
+        )
+
+        p = self._state_file(
+            tmp_path,
+            {
+                "abc12345": {
+                    "config": {
+                        "mode": "scrumming",
+                        "symbol": "BTC/USD",
+                        "_src_bot_id": "preset99",
+                    }
+                }
+            },
+        )
         out = load_bot_configs_from_state(p, mode_filter="scrumming")
         assert out[0]["_src_bot_id"] == "preset99"
 
@@ -246,14 +268,27 @@ class TestTheLoaderStillSuppliesTheKey:
         typed configs. Pinned so a future tidy-up cannot quietly break it.
         """
         from src.gui.simulator_tab.fleet.bot_state_loader import (
-            load_bot_configs_from_state)
-        p = self._state_file(tmp_path, {"abc12345": {"config": {
-            "mode": "scrumming", "symbol": "BTC/USD",
-            "target_balance": 100.0, "target_asset": "BTC",
-            "base_currency": "USD"}}})
+            load_bot_configs_from_state,
+        )
+
+        p = self._state_file(
+            tmp_path,
+            {
+                "abc12345": {
+                    "config": {
+                        "mode": "scrumming",
+                        "symbol": "BTC/USD",
+                        "target_balance": 100.0,
+                        "target_asset": "BTC",
+                        "base_currency": "USD",
+                    }
+                }
+            },
+        )
         cfgs = load_bot_configs_from_state(p, mode_filter="scrumming")
         ctl = FleetReplayController(
-            configs=cfgs, candles_by_symbol={"BTC/USD": _candles()})
+            configs=cfgs, candles_by_symbol={"BTC/USD": _candles()}
+        )
         ctl._build_sim()
         assert [b.bot_id for b in ctl._bots] == [sim_bot_id("abc12345")]
         assert [live_bot_id(b.bot_id) for b in ctl._bots] == ["abc12345"]

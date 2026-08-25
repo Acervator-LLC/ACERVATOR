@@ -12,11 +12,11 @@ in the whole exchange stack and is out of scope here. Behavioural
 integration is covered by the existing suite; these pins just lock
 the reservation math + lifecycle.
 """
+
 from __future__ import annotations
 
 import asyncio
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from types import MethodType, SimpleNamespace
 from unittest.mock import patch
@@ -39,6 +39,7 @@ def _run(coro):
 # Stubs
 # ---------------------------------------------------------------------
 
+
 class _StubRegistry:
     """Records reserve/update/release/heartbeat calls; supplies
     deterministic tokens."""
@@ -50,20 +51,33 @@ class _StubRegistry:
         self.heartbeats: list = []
         self._next_token = 0
 
-    def reserve(self, bot_id, asset, qty, reason, bot_kind="unknown",
-                total_holdings=None):
+    def reserve(
+        self, bot_id, asset, qty, reason, bot_kind="unknown", total_holdings=None
+    ):
         self._next_token += 1
         tok = f"tok-{self._next_token:04d}"
-        self.reserved.append({
-            "bot_id": bot_id, "asset": asset, "qty": qty,
-            "reason": reason, "bot_kind": bot_kind, "token": tok,
-            "total_holdings": total_holdings})
+        self.reserved.append(
+            {
+                "bot_id": bot_id,
+                "asset": asset,
+                "qty": qty,
+                "reason": reason,
+                "bot_kind": bot_kind,
+                "token": tok,
+                "total_holdings": total_holdings,
+            }
+        )
         return tok
 
     def update(self, token, bot_id, new_qty, total_holdings=None):
-        self.updated.append({
-            "token": token, "bot_id": bot_id, "new_qty": new_qty,
-            "total_holdings": total_holdings})
+        self.updated.append(
+            {
+                "token": token,
+                "bot_id": bot_id,
+                "new_qty": new_qty,
+                "total_holdings": total_holdings,
+            }
+        )
 
     def release(self, token, bot_id):
         self.released.append({"token": token, "bot_id": bot_id})
@@ -104,9 +118,12 @@ def _mk_stub_bot(
     # _get_cached_exchange_balance to short-circuit the exchange call
     # in tests. Seed with a fresh timestamp so the TTL logic returns it.
     import time as _t
+
     stub._exchange_balance_cache = (
         {target_asset.upper(): (cached_balance, _t.time())}
-        if cached_balance is not None else {})
+        if cached_balance is not None
+        else {}
+    )
     stub.config = SimpleNamespace(
         target_asset=target_asset,
         personal_hold_qty=personal_hold_qty,
@@ -116,16 +133,21 @@ def _mk_stub_bot(
     # nested self._compute_reservation_qty() calls inside
     # _ensure_capital_reservation resolve to the real math.
     stub._compute_reservation_qty = MethodType(
-        ScrummingBot._compute_reservation_qty, stub)
+        ScrummingBot._compute_reservation_qty, stub
+    )
     stub._get_cached_exchange_balance = MethodType(
-        ScrummingBot._get_cached_exchange_balance, stub)
+        ScrummingBot._get_cached_exchange_balance, stub
+    )
+
     # exchange.get_balance is only called when the cache is empty /
     # stale. Provide a default that raises so tests fail loud if
     # they exercise the un-cached path unintentionally.
     async def _no_exchange(*_a, **_kw):
         raise RuntimeError(
             "test stub: exchange.get_balance was called; seed "
-            "cached_balance in _mk_stub_bot or mock stub.exchange")
+            "cached_balance in _mk_stub_bot or mock stub.exchange"
+        )
+
     stub.exchange = SimpleNamespace(get_balance=_no_exchange)
     return stub
 
@@ -133,6 +155,7 @@ def _mk_stub_bot(
 # ---------------------------------------------------------------------
 # _compute_reservation_qty
 # ---------------------------------------------------------------------
+
 
 class TestComputeReservationQty:
     def test_zero_price_returns_zero(self):
@@ -157,8 +180,7 @@ class TestComputeReservationQty:
 
     def test_zero_target_still_reserves_personal_hold(self):
         # No trading target but operator wants a hold-out
-        stub = _mk_stub_bot(
-            target_balance=0.0, personal_hold_qty=3.5)
+        stub = _mk_stub_bot(target_balance=0.0, personal_hold_qty=3.5)
         q = ScrummingBot._compute_reservation_qty(stub, 100.0)
         assert q == pytest.approx(3.5)
 
@@ -173,11 +195,10 @@ class TestComputeReservationQty:
 # _ensure_capital_reservation
 # ---------------------------------------------------------------------
 
+
 class TestEnsureReservation:
     def _patch_registry(self, reg):
-        return patch(
-            "src.trading.capital_reservation.get_registry",
-            return_value=reg)
+        return patch("src.trading.capital_reservation.get_registry", return_value=reg)
 
     def test_disabled_skips(self):
         reg = _StubRegistry()
@@ -225,7 +246,7 @@ class TestEnsureReservation:
             _run(ScrummingBot._ensure_capital_reservation(stub, 100.0))
             _run(ScrummingBot._ensure_capital_reservation(stub, 100.0))
         assert len(reg.reserved) == 1  # no re-reserve
-        assert reg.updated == []       # no drift → no update
+        assert reg.updated == []  # no drift → no update
         assert reg.heartbeats == [stub.bot_id, stub.bot_id]
 
     def test_target_increase_triggers_update(self):
@@ -244,6 +265,7 @@ class TestEnsureReservation:
     def test_registry_error_on_reserve_clears_state(self):
         """Fresh bot with no token: reserve() raises → token stays None,
         last_qty stays 0.0 so the next tick retries cleanly."""
+
         class _BrokenOnReserve:
             def reserve(self, *a, **kw):
                 raise RuntimeError("registry down")
@@ -254,8 +276,9 @@ class TestEnsureReservation:
         stub = _mk_stub_bot(target_balance=200.0)
         assert stub._crr_token is None
         with patch(
-                "src.trading.capital_reservation.get_registry",
-                return_value=_BrokenOnReserve()):
+            "src.trading.capital_reservation.get_registry",
+            return_value=_BrokenOnReserve(),
+        ):
             _run(ScrummingBot._ensure_capital_reservation(stub, 100.0))
         assert stub._crr_token is None
         assert stub._crr_last_reserved_qty == 0.0
@@ -263,6 +286,7 @@ class TestEnsureReservation:
     def test_registry_error_on_update_clears_token(self):
         """Bot with pre-existing token + drift: update() raises →
         token cleared so next tick attempts a fresh reserve()."""
+
         class _BrokenOnUpdate:
             def update(self, *a, **kw):
                 raise RuntimeError("update failed")
@@ -274,8 +298,9 @@ class TestEnsureReservation:
         stub._crr_token = "pre-existing"
         stub._crr_last_reserved_qty = 5.0  # drift vs new 2.2 forces update
         with patch(
-                "src.trading.capital_reservation.get_registry",
-                return_value=_BrokenOnUpdate()):
+            "src.trading.capital_reservation.get_registry",
+            return_value=_BrokenOnUpdate(),
+        ):
             _run(ScrummingBot._ensure_capital_reservation(stub, 100.0))
         assert stub._crr_token is None
         assert stub._crr_last_reserved_qty == 0.0
@@ -285,13 +310,12 @@ class TestEnsureReservation:
 # _release_capital_reservation
 # ---------------------------------------------------------------------
 
+
 class TestReleaseReservation:
     def test_no_token_is_noop(self):
         reg = _StubRegistry()
         stub = _mk_stub_bot()
-        with patch(
-                "src.trading.capital_reservation.get_registry",
-                return_value=reg):
+        with patch("src.trading.capital_reservation.get_registry", return_value=reg):
             ScrummingBot._release_capital_reservation(stub)
         assert reg.released == []
 
@@ -300,12 +324,9 @@ class TestReleaseReservation:
         stub = _mk_stub_bot()
         stub._crr_token = "tok-0001"
         stub._crr_last_reserved_qty = 2.5
-        with patch(
-                "src.trading.capital_reservation.get_registry",
-                return_value=reg):
+        with patch("src.trading.capital_reservation.get_registry", return_value=reg):
             ScrummingBot._release_capital_reservation(stub)
-        assert reg.released == [
-            {"token": "tok-0001", "bot_id": stub.bot_id}]
+        assert reg.released == [{"token": "tok-0001", "bot_id": stub.bot_id}]
         assert stub._crr_token is None
         assert stub._crr_last_reserved_qty == 0.0
 
@@ -317,8 +338,9 @@ class TestReleaseReservation:
         stub = _mk_stub_bot()
         stub._crr_token = "tok-0001"
         with patch(
-                "src.trading.capital_reservation.get_registry",
-                return_value=_BrokenRegistry()):
+            "src.trading.capital_reservation.get_registry",
+            return_value=_BrokenRegistry(),
+        ):
             # Should not raise; token intentionally NOT cleared so
             # a subsequent retry / TTL-prune can clean up.
             ScrummingBot._release_capital_reservation(stub)
@@ -329,12 +351,17 @@ class TestReleaseReservation:
 # BotConfig integration
 # ---------------------------------------------------------------------
 
+
 class TestBotConfigDefaults:
     def _mk_cfg(self):
         from src.trading.bot_container import BotConfig
+
         return BotConfig(
-            symbol="BTC/USD", exchange_id="coinbase",
-            base_currency="USD", target_asset="BTC")
+            symbol="BTC/USD",
+            exchange_id="coinbase",
+            base_currency="USD",
+            target_asset="BTC",
+        )
 
     def test_self_reserve_capital_defaults_true(self):
         cfg = self._mk_cfg()
@@ -345,19 +372,16 @@ class TestBotConfigDefaults:
         assert cfg.personal_hold_qty == 0.0
 
     def test_both_are_scrumming_fields(self):
-        from src.trading.bot_container import (
-            _BOT_CONFIG_SCRUMMING_ONLY_FIELDS)
-        assert (
-            "self_reserve_capital"
-            in _BOT_CONFIG_SCRUMMING_ONLY_FIELDS)
-        assert (
-            "personal_hold_qty"
-            in _BOT_CONFIG_SCRUMMING_ONLY_FIELDS)
+        from src.trading.bot_container import _BOT_CONFIG_SCRUMMING_ONLY_FIELDS
+
+        assert "self_reserve_capital" in _BOT_CONFIG_SCRUMMING_ONLY_FIELDS
+        assert "personal_hold_qty" in _BOT_CONFIG_SCRUMMING_ONLY_FIELDS
 
 
 # ---------------------------------------------------------------------
 # v3.23.46 correctness regression tests
 # ---------------------------------------------------------------------
+
 
 class TestV32346Correctness:
     """Pins the two correctness fixes from v3.23.46:
@@ -372,9 +396,7 @@ class TestV32346Correctness:
     """
 
     def _patch_registry(self, reg):
-        return patch(
-            "src.trading.capital_reservation.get_registry",
-            return_value=reg)
+        return patch("src.trading.capital_reservation.get_registry", return_value=reg)
 
     def test_reserve_passes_total_holdings_argument(self):
         """v3.23.46 §5.1 — the CRR reserve() must receive
@@ -383,8 +405,7 @@ class TestV32346Correctness:
         silently skipped, allowing two bots to over-commit the same
         asset."""
         reg = _StubRegistry()
-        stub = _mk_stub_bot(
-            target_balance=200.0, cached_balance=5.0)
+        stub = _mk_stub_bot(target_balance=200.0, cached_balance=5.0)
         with self._patch_registry(reg):
             _run(ScrummingBot._ensure_capital_reservation(stub, 100.0))
         assert len(reg.reserved) == 1
@@ -394,8 +415,7 @@ class TestV32346Correctness:
         """v3.23.46 §5.1 (companion) — update() must also carry the
         total_holdings kwarg. Same rationale as reserve()."""
         reg = _StubRegistry()
-        stub = _mk_stub_bot(
-            target_balance=200.0, cached_balance=5.0)
+        stub = _mk_stub_bot(target_balance=200.0, cached_balance=5.0)
         with self._patch_registry(reg):
             _run(ScrummingBot._ensure_capital_reservation(stub, 100.0))
             # Force a drift-triggering update
@@ -404,8 +424,7 @@ class TestV32346Correctness:
         assert len(reg.updated) == 1
         assert reg.updated[0]["total_holdings"] == pytest.approx(5.0)
 
-    def test_reservation_qty_is_usd_denominated_on_btc_quoted_pair(
-            self):
+    def test_reservation_qty_is_usd_denominated_on_btc_quoted_pair(self):
         """v3.23.46 §5.2 — an ETH/BTC bot with a $200 USD target at
         an ETH price of ~$3,000 (BTC/USD = $50,000, so
         current_price = 0.06 BTC/ETH) should reserve ~0.067 ETH
@@ -423,7 +442,8 @@ class TestV32346Correctness:
         assert qty < 1.0, (
             "Pre-fix bug reserved thousands of ETH on BTC-quoted "
             f"pairs; got {qty:.6f}. Formula must divide by "
-            "current_price × _quote_to_usd, not by current_price alone.")
+            "current_price × _quote_to_usd, not by current_price alone."
+        )
 
     def test_reservation_qty_unchanged_on_usd_quoted_pair(self):
         """USD/USDC quoted pairs keep the original math (quote_to_usd
@@ -450,22 +470,24 @@ class TestRegistryOverCommitInvariant:
     registry level."""
 
     def test_two_bots_cannot_over_commit(self, tmp_path):
-        from src.trading.capital_reservation import (
-            CapitalReservationRegistry)
+        from src.trading.capital_reservation import CapitalReservationRegistry
+
         reg = CapitalReservationRegistry(
             state_path=tmp_path / "reservation_state.json",
-            autosave=False, restart_grace_seconds=0)
+            autosave=False,
+            restart_grace_seconds=0,
+        )
         # Exchange balance: 10 ETH.
         reg.reserve(
-            bot_id="bot-A", asset="ETH", qty=6.0,
-            reason="test", total_holdings=10.0)
+            bot_id="bot-A", asset="ETH", qty=6.0, reason="test", total_holdings=10.0
+        )
         # Bot A took 6 of 10. Bot B tries 5 more → 6+5=11 > 10 → reject.
         with pytest.raises(ValueError, match="over-commit"):
             reg.reserve(
-                bot_id="bot-B", asset="ETH", qty=5.0,
-                reason="test", total_holdings=10.0)
+                bot_id="bot-B", asset="ETH", qty=5.0, reason="test", total_holdings=10.0
+            )
         # But 4 more is fine: 6+4=10, right at the boundary.
         tok_b = reg.reserve(
-            bot_id="bot-B", asset="ETH", qty=4.0,
-            reason="test", total_holdings=10.0)
+            bot_id="bot-B", asset="ETH", qty=4.0, reason="test", total_holdings=10.0
+        )
         assert tok_b

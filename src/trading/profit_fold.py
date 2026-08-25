@@ -35,8 +35,8 @@ field and adds spillover to realised_pnl.
 
 sadp: R42 R44 ADR-024 ADR-029
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 # Numerical guards — same magnitudes used elsewhere in the codebase
 _EPS = 1e-12
@@ -124,8 +124,12 @@ if __name__ == "__main__":
     # Case 1: cap=1.0, profit=$10 on target=$100, entry=price, large portfolio
     #   → adjusted=10, cap_amount=1, applied=1, spillover=9
     new_t, spill = apply_profit_fold(
-        profit=10.0, price=100.0, target=100.0,
-        entry_price=100.0, portfolio_value=10000.0, cap_pct=1.0,
+        profit=10.0,
+        price=100.0,
+        target=100.0,
+        entry_price=100.0,
+        portfolio_value=10000.0,
+        cap_pct=1.0,
     )
     assert abs(new_t - 101.0) < 1e-9, f"case 1 new_t: {new_t}"
     assert abs(spill - 9.0) < 1e-9, f"case 1 spill: {spill}"
@@ -133,16 +137,24 @@ if __name__ == "__main__":
     # Case 2: cap=100.0 (back-compat), profit=$10, target=$100 → no cap
     #   → adjusted=10, applied=10, spillover=0
     new_t, spill = apply_profit_fold(
-        profit=10.0, price=100.0, target=100.0,
-        entry_price=100.0, portfolio_value=10000.0, cap_pct=100.0,
+        profit=10.0,
+        price=100.0,
+        target=100.0,
+        entry_price=100.0,
+        portfolio_value=10000.0,
+        cap_pct=100.0,
     )
     assert abs(new_t - 110.0) < 1e-9, f"case 2 new_t: {new_t}"
     assert abs(spill - 0.0) < 1e-9, f"case 2 spill: {spill}"
 
     # Case 3: profit below cap → full applied, no spillover
     new_t, spill = apply_profit_fold(
-        profit=0.005, price=100.0, target=100.0,
-        entry_price=100.0, portfolio_value=10000.0, cap_pct=1.0,
+        profit=0.005,
+        price=100.0,
+        target=100.0,
+        entry_price=100.0,
+        portfolio_value=10000.0,
+        cap_pct=1.0,
     )
     assert abs(new_t - 100.005) < 1e-9, f"case 3 new_t: {new_t}"
     assert abs(spill - 0.0) < 1e-9, f"case 3 spill: {spill}"
@@ -151,8 +163,12 @@ if __name__ == "__main__":
     #   profit=$10, price=$110, entry=$100 → ref=$100, adjusted = 10 * 100/110 ≈ 9.0909
     #   cap=100%, so applied=9.0909, spillover=0
     new_t, spill = apply_profit_fold(
-        profit=10.0, price=110.0, target=100.0,
-        entry_price=100.0, portfolio_value=10000.0, cap_pct=100.0,
+        profit=10.0,
+        price=110.0,
+        target=100.0,
+        entry_price=100.0,
+        portfolio_value=10000.0,
+        cap_pct=100.0,
     )
     assert abs(new_t - (100.0 + 10.0 * 100.0 / 110.0)) < 1e-6, f"case 4 new_t: {new_t}"
     assert abs(spill - 0.0) < 1e-9, f"case 4 spill: {spill}"
@@ -162,8 +178,12 @@ if __name__ == "__main__":
     #   adjusted=20, applied=20, raw new=120 → ceiling: 110 * 0.995 = 109.45
     #   spillover=0 (cap didn't trip; ceiling swallowed silently per sim convention)
     new_t, spill = apply_profit_fold(
-        profit=20.0, price=100.0, target=100.0,
-        entry_price=100.0, portfolio_value=110.0, cap_pct=100.0,
+        profit=20.0,
+        price=100.0,
+        target=100.0,
+        entry_price=100.0,
+        portfolio_value=110.0,
+        cap_pct=100.0,
     )
     assert abs(new_t - 109.45) < 1e-9, f"case 5 new_t: {new_t}"
     assert abs(spill - 0.0) < 1e-9, f"case 5 spill: {spill}"
@@ -173,23 +193,35 @@ if __name__ == "__main__":
     #   target=$100, profit=$1000, cap=100% → cap_amount=100, applied=100, spillover=900
     #   new=200 → ceiling: 110*0.995 = 109.45. 90.55 of "applied" lost silently.
     new_t, spill = apply_profit_fold(
-        profit=1000.0, price=100.0, target=100.0,
-        entry_price=100.0, portfolio_value=110.0, cap_pct=100.0,
+        profit=1000.0,
+        price=100.0,
+        target=100.0,
+        entry_price=100.0,
+        portfolio_value=110.0,
+        cap_pct=100.0,
     )
     assert abs(new_t - 109.45) < 1e-9, f"case 5b new_t: {new_t}"
     assert abs(spill - 900.0) < 1e-6, f"case 5b spill: {spill}"
 
     # Case 6: profit <= 0 → no-op
     new_t, spill = apply_profit_fold(
-        profit=0.0, price=100.0, target=100.0,
-        entry_price=100.0, portfolio_value=10000.0, cap_pct=1.0,
+        profit=0.0,
+        price=100.0,
+        target=100.0,
+        entry_price=100.0,
+        portfolio_value=10000.0,
+        cap_pct=1.0,
     )
     assert new_t == 100.0 and spill == 0.0, f"case 6: {new_t}, {spill}"
 
     # Case 7: entry_price <= 0 (caller has no entry concept) → ref = price, no adjustment
     new_t, spill = apply_profit_fold(
-        profit=10.0, price=100.0, target=100.0,
-        entry_price=0.0, portfolio_value=10000.0, cap_pct=100.0,
+        profit=10.0,
+        price=100.0,
+        target=100.0,
+        entry_price=0.0,
+        portfolio_value=10000.0,
+        cap_pct=100.0,
     )
     assert abs(new_t - 110.0) < 1e-9, f"case 7 new_t: {new_t}"
     assert abs(spill - 0.0) < 1e-9, f"case 7 spill: {spill}"

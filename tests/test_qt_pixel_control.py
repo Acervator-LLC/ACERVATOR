@@ -27,7 +27,10 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
 
 from tests.qt_pixel import (
-    assert_pixel_colour, ensure_app, pixel_at, render_widget,
+    assert_pixel_colour,
+    ensure_app,
+    pixel_at,
+    render_widget,
     table_cell_centre,
 )
 

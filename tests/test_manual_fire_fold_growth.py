@@ -27,6 +27,7 @@ Buying more units discharges more tranches, which yields more growth.
 The feedback term is bounded by the cycle cap and strictly decreasing,
 so it converges in one or two passes.
 """
+
 from __future__ import annotations
 
 import ast
@@ -42,15 +43,28 @@ if str(REPO_ROOT) not in sys.path:
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
 
-def _bot(tranches=None, *, anchor=100.0, target=100.0, cap_pct=1.0,
-         consumed=0.0, pool=0.0, active=True, qrate=1.0):
+def _bot(
+    tranches=None,
+    *,
+    anchor=100.0,
+    target=100.0,
+    cap_pct=1.0,
+    consumed=0.0,
+    pool=0.0,
+    active=True,
+    qrate=1.0,
+):
     b = object.__new__(ScrummingBot)
     b.bot_id = "b1"
-    b.config = type("C", (), {
-        "max_target_growth_pct": cap_pct,
-        "profit_folding_active": active,
-        "symbol": "BTC/USD",
-    })()
+    b.config = type(
+        "C",
+        (),
+        {
+            "max_target_growth_pct": cap_pct,
+            "profit_folding_active": active,
+            "symbol": "BTC/USD",
+        },
+    )()
     b._fold_tranches = list(tranches or [])
     b._anchor_target_balance = anchor
     b._target_balance = target
@@ -70,8 +84,7 @@ def _bot(tranches=None, *, anchor=100.0, target=100.0, cap_pct=1.0,
 
 
 def _tr(units, ref, usd=None):
-    return {"units": units, "ref": ref, "usd": usd if usd is not None
-            else units * ref}
+    return {"units": units, "ref": ref, "usd": usd if usd is not None else units * ref}
 
 
 class TestTheInstrumentWorks:
@@ -91,9 +104,14 @@ class TestItMatchesTheRealFormula:
     growth that never lands -- replacing an undershoot with an
     overshoot."""
 
-    @pytest.mark.parametrize("units,price,ref", [
-        (1.0, 50.0, 60.0), (2.0, 10.0, 12.5), (0.5, 100.0, 140.0),
-    ])
+    @pytest.mark.parametrize(
+        "units,price,ref",
+        [
+            (1.0, 50.0, 60.0),
+            (2.0, 10.0, 12.5),
+            (0.5, 100.0, 140.0),
+        ],
+    )
     def test_preview_equals_what_apply_actually_adds(self, units, price, ref):
         tranches = [_tr(units, ref)]
         preview = _bot(list(tranches))._preview_fold_growth(units, price)
@@ -168,8 +186,9 @@ class TestPreviewingChangesNothing:
 
 
 class TestDegenerateInputs:
-    @pytest.mark.parametrize("units,price", [(0.0, 50.0), (1.0, 0.0),
-                                             (-1.0, 50.0), (1.0, -5.0)])
+    @pytest.mark.parametrize(
+        "units,price", [(0.0, 50.0), (1.0, 0.0), (-1.0, 50.0), (1.0, -5.0)]
+    )
     def test_no_crash_and_no_growth(self, units, price):
         assert _bot([_tr(1.0, 60.0)])._preview_fold_growth(units, price) == 0.0
 
@@ -190,15 +209,22 @@ class TestTheSizingActuallyUsesIt:
         import src.trading.scrumming_bot as m
 
         src = Path(m.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_execute_manual_rebalance")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "_execute_manual_rebalance"
+        )
         return fn, src
 
     def test_manual_fire_calls_the_preview(self):
         fn, _ = self._fold_branch()
-        calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call)
-                 and getattr(n.func, "attr", "") == "_preview_fold_growth"]
+        calls = [
+            n
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "attr", "") == "_preview_fold_growth"
+        ]
         assert calls, "the fold still sizes against the pre-growth target"
 
     def test_the_buy_target_is_no_longer_the_bare_delta(self):
@@ -206,27 +232,40 @@ class TestTheSizingActuallyUsesIt:
         exactly the defect."""
         fn, src = self._fold_branch()
         for n in ast.walk(fn):
-            if (isinstance(n, ast.Assign)
-                    and any(getattr(t, "id", "") == "buy_usd_target"
-                            for t in n.targets)):
+            if isinstance(n, ast.Assign) and any(
+                getattr(t, "id", "") == "buy_usd_target" for t in n.targets
+            ):
                 seg = ast.get_source_segment(src, n.value) or ""
-                assert seg.strip() != "-delta_usd", \
-                    "buy_usd_target must include the prospective growth"
+                assert (
+                    seg.strip() != "-delta_usd"
+                ), "buy_usd_target must include the prospective growth"
 
     def test_the_preview_runs_before_the_order(self):
         """Sizing after the order would be no fix at all."""
         fn, _ = self._fold_branch()
-        prev = [n.lineno for n in ast.walk(fn) if isinstance(n, ast.Call)
-                and getattr(n.func, "attr", "") == "_preview_fold_growth"]
-        orders = [n.lineno for n in ast.walk(fn) if isinstance(n, ast.Call)
-                  and getattr(n.func, "attr", "") == "guarded_place_order"]
+        prev = [
+            n.lineno
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "attr", "") == "_preview_fold_growth"
+        ]
+        orders = [
+            n.lineno
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "attr", "") == "guarded_place_order"
+        ]
         assert prev and orders and min(prev) < max(orders)
 
     def test_growth_is_still_applied_exactly_once_after_the_fill(self):
         """Sizing for the growth must not ALSO double-apply it."""
         fn, _ = self._fold_branch()
-        applies = [n for n in ast.walk(fn) if isinstance(n, ast.Call)
-                   and getattr(n.func, "attr", "") ==
-                   "_apply_fold_target_growth"]
-        assert len(applies) == 1, \
-            f"expected one growth application, found {len(applies)}"
+        applies = [
+            n
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "attr", "") == "_apply_fold_target_growth"
+        ]
+        assert (
+            len(applies) == 1
+        ), f"expected one growth application, found {len(applies)}"
