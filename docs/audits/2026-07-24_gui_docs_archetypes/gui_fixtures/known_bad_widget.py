@@ -13,10 +13,10 @@ Not-labeled but potentially caught by ruff:
   - Missing function type hints on __init__ (ANN)
   - No F/E/W issues intentionally.
 """
+
 from __future__ import annotations
 
 from PySide6.QtWidgets import QLineEdit, QPushButton, QWidget
-
 
 ADMIN_PASSWORD = "letmein"  # G5 hardcoded credential — Bandit B105
 

@@ -34,6 +34,7 @@ outside these CLI commands so IDs collide, (b) a claim marked
 'verified' points to evidence files that don't exist on disk, (c) a
 process bypasses the ledger and ships a claim without logging it.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,7 +43,6 @@ import sys
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parent.parent.parent
 LEDGER_PATH = REPO / "docs" / "audits" / "CLAIMS.jsonl"
@@ -54,7 +54,7 @@ class Claim:
     created: str
     claim: str
     evidence_required: str
-    status: str = "open"                       # "open" | "verified" | "refuted"
+    status: str = "open"  # "open" | "verified" | "refuted"
     session: str | None = None
     evidence: dict | None = None
     resolved: str | None = None
@@ -64,7 +64,12 @@ class Claim:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def _load_all() -> list[Claim]:
@@ -100,8 +105,9 @@ def _next_id(claims: list[Claim]) -> str:
     return f"{prefix}{n:03d}"
 
 
-def log_claim(claim_text: str, evidence_required: str,
-              session: str | None = None) -> Claim:
+def log_claim(
+    claim_text: str, evidence_required: str, session: str | None = None
+) -> Claim:
     """Log a new claim in `open` state. Returns the created Claim."""
     claims = _load_all()
     c = Claim(
@@ -145,16 +151,18 @@ def refute(claim_id: str, note: str) -> Claim:
 
 
 def list_open(session: str | None = None) -> list[Claim]:
-    return [c for c in _load_all()
-            if c.status == "open" and (session is None or c.session == session)]
+    return [
+        c
+        for c in _load_all()
+        if c.status == "open" and (session is None or c.session == session)
+    ]
 
 
 def check_no_open(session: str | None = None) -> int:
     """Pre-cascade check: return exit code (0 = clean, 1 = open claims)."""
     open_claims = list_open(session)
     if not open_claims:
-        print("[OK] no open claims" +
-              (f" for session {session}" if session else ""))
+        print("[OK] no open claims" + (f" for session {session}" if session else ""))
         return 0
     print(f"[FAIL] {len(open_claims)} open claim(s):")
     for c in open_claims:
@@ -162,7 +170,9 @@ def check_no_open(session: str | None = None) -> int:
         print(f"    evidence required: {c.evidence_required}")
     print()
     print("Resolve each with:")
-    print("  python -m tools.harness.claim_ledger verify <ID> --note '...' [--file path ...]")
+    print(
+        "  python -m tools.harness.claim_ledger verify <ID> --note '...' [--file path ...]"
+    )
     print("or, if the claim was wrong:")
     print("  python -m tools.harness.claim_ledger refute <ID> --note '...'")
     return 1
@@ -174,21 +184,28 @@ def check_no_open(session: str | None = None) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="claim_ledger",
-                                description="structural show-don't-tell")
+    p = argparse.ArgumentParser(
+        prog="claim_ledger", description="structural show-don't-tell"
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
     log = sub.add_parser("log", help="log a new claim")
     log.add_argument("claim", help="the assertion")
-    log.add_argument("--evidence", required=True,
-                     help="what would verify or refute this claim")
+    log.add_argument(
+        "--evidence", required=True, help="what would verify or refute this claim"
+    )
     log.add_argument("--session", default=None)
 
     ver = sub.add_parser("verify", help="mark a claim verified")
     ver.add_argument("claim_id")
     ver.add_argument("--note", required=True)
-    ver.add_argument("--file", action="append", default=[],
-                     dest="files", help="evidence file (repeatable)")
+    ver.add_argument(
+        "--file",
+        action="append",
+        default=[],
+        dest="files",
+        help="evidence file (repeatable)",
+    )
 
     ref = sub.add_parser("refute", help="mark a claim refuted")
     ref.add_argument("claim_id")
@@ -197,8 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     op = sub.add_parser("open", help="list open claims")
     op.add_argument("--session", default=None)
 
-    ck = sub.add_parser("check",
-                        help="fail if any open claims (pre-cascade gate)")
+    ck = sub.add_parser("check", help="fail if any open claims (pre-cascade gate)")
     ck.add_argument("--session", default=None)
 
     args = p.parse_args(argv)

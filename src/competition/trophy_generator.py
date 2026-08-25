@@ -1,24 +1,40 @@
 """trophy_generator.py — ACRV Trophy NFT Visual Generator (Hermetic Edition)"""
+
 from __future__ import annotations
 import math, random
 from dataclasses import dataclass
 
+
 @dataclass
 class TrophyData:
-    tier:str; season:int; competition_id:str; rank:int
-    field_size:int; advantage_pct:float; bot_id:str
-    @property
-    def rank_pct(self): return f"Top {self.rank/max(self.field_size,1)*100:.0f}%"
-    @property
-    def short_comp(self): return self.competition_id[:12]
+    tier: str
+    season: int
+    competition_id: str
+    rank: int
+    field_size: int
+    advantage_pct: float
+    bot_id: str
 
-def _poly(cx,cy,r,n,offset=0):
-    return " ".join(f"{cx+r*math.cos(math.radians(360*i/n+offset)):.1f},{cy+r*math.sin(math.radians(360*i/n+offset)):.1f}" for i in range(n))
+    @property
+    def rank_pct(self):
+        return f"Top {self.rank/max(self.field_size,1)*100:.0f}%"
+
+    @property
+    def short_comp(self):
+        return self.competition_id[:12]
+
+
+def _poly(cx, cy, r, n, offset=0):
+    return " ".join(
+        f"{cx+r*math.cos(math.radians(360*i/n+offset)):.1f},{cy+r*math.sin(math.radians(360*i/n+offset)):.1f}"
+        for i in range(n)
+    )
 
 
 def harvest_svg(d: TrophyData) -> str:
     adv = f"{d.advantage_pct:+.1f}"
-    return """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    return (
+        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
 <defs><style>@keyframes ourorot{to{transform:rotate(360deg)}}@keyframes rrot{to{transform:rotate(-360deg)}}@keyframes solflicker{0%,100%{opacity:.75}42%{opacity:.5}48%{opacity:.95}}@keyframes crowbob{0%,100%{transform:translateY(0px)}50%{transform:translateY(-5px)}}@keyframes ep{0%,100%{filter:drop-shadow(0 0 6px #882200)}50%{filter:drop-shadow(0 0 18px #CC3300)}}.ouro{animation:ourorot 30s linear infinite;transform-origin:200px 200px;}.outerring{animation:rrot 50s linear infinite;transform-origin:200px 200px;}.sol_niger{animation:solflicker 4s ease-in-out infinite;}.crow_g{animation:crowbob 3.2s ease-in-out infinite;}.cauldron{animation:ep 3s ease-in-out infinite;}</style>
 <radialGradient id="nbg" cx="50%" cy="58%" r="55%"><stop offset="0%" stop-color="#100A00"/><stop offset="100%" stop-color="#020200"/></radialGradient>
 <radialGradient id="snakeGrad" cx="50%" cy="30%" r="70%"><stop offset="0%" stop-color="#3D2800"/><stop offset="100%" stop-color="#1A0F00"/></radialGradient>
@@ -37,11 +53,18 @@ def harvest_svg(d: TrophyData) -> str:
 <text x="200" y="348" text-anchor="middle" font-family="serif" font-size="20" font-weight="bold" fill="#886600" letter-spacing="3">HARVEST</text>
 <text x="200" y="364" text-anchor="middle" font-family="serif" font-size="10" fill="#553300" letter-spacing="4">NIGREDO · THE DARKENING</text>
 <text x="200" y="380" text-anchor="middle" font-family="monospace" font-size="9" fill="#3D2200">Season __S__ · __C__ · __A__%</text>
-</svg>""".replace("__S__", str(d.season)).replace("__C__", d.short_comp).replace("__A__", adv)
+</svg>""".replace(
+            "__S__", str(d.season)
+        )
+        .replace("__C__", d.short_comp)
+        .replace("__A__", adv)
+    )
+
 
 def gold_fold_svg(d: TrophyData) -> str:
     adv = f"{d.advantage_pct:+.1f}"
-    return """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    return (
+        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
 <defs><style>@keyframes moongl{0%,100%{opacity:.93}50%{opacity:1}}@keyframes dovefly{0%,100%{transform:translate(0px,0px) rotate(-5deg)}50%{transform:translate(-5px,-7px) rotate(6deg)}}@keyframes silverp{0%,100%{opacity:.4}50%{opacity:.72}}@keyframes tw1{0%,100%{opacity:.2}50%{opacity:1}}@keyframes tw2{0%,100%{opacity:.5}50%{opacity:.9}}.moon{animation:moongl 4s ease-in-out infinite;}.dove_g{animation:dovefly 5s ease-in-out infinite;transform-origin:198px 115px;}.rings{animation:silverp 3.5s ease-in-out infinite;}.tw1{animation:tw1 2.2s ease-in-out infinite;}.tw2{animation:tw2 3s ease-in-out .6s infinite;}</style>
 <radialGradient id="abg" cx="50%" cy="35%" r="60%"><stop offset="0%" stop-color="#040918"/><stop offset="100%" stop-color="#010307"/></radialGradient>
 <radialGradient id="moonFill" cx="32%" cy="28%" r="72%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="40%" stop-color="#E4EEFF"/><stop offset="100%" stop-color="#8AAAD0"/></radialGradient>
@@ -70,11 +93,18 @@ def gold_fold_svg(d: TrophyData) -> str:
 <text x="200" y="348" text-anchor="middle" font-family="serif" font-size="20" font-weight="bold" fill="#C0D8F0" letter-spacing="3">GOLD FOLD</text>
 <text x="200" y="364" text-anchor="middle" font-family="serif" font-size="10" fill="#607898" letter-spacing="4">ALBEDO · THE WHITENING</text>
 <text x="200" y="380" text-anchor="middle" font-family="monospace" font-size="9" fill="#3A5060">Season __S__ · __C__ · __A__%</text>
-</svg>""".replace("__S__", str(d.season)).replace("__C__", d.short_comp).replace("__A__", adv)
+</svg>""".replace(
+            "__S__", str(d.season)
+        )
+        .replace("__C__", d.short_comp)
+        .replace("__A__", adv)
+    )
+
 
 def bear_slayer_svg(d: TrophyData) -> str:
     adv = f"{d.advantage_pct:+.1f}"
-    return """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    return (
+        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
 <defs><style>@keyframes solpulse{0%,100%{filter:drop-shadow(0 0 12px #FF8800)}50%{filter:drop-shadow(0 0 32px #FFCC22)}}@keyframes rayrot{to{transform:rotate(360deg)}}@keyframes rrayrot{to{transform:rotate(-360deg)}}@keyframes manep{0%,100%{opacity:.88}50%{opacity:1}}@keyframes cadp{0%,100%{opacity:.55}50%{opacity:.85}}@keyframes dawnp{0%,100%{opacity:.55}50%{opacity:.85}}.sol{animation:solpulse 2.8s ease-in-out infinite;}.rays1{animation:rayrot 20s linear infinite;transform-origin:200px 188px;}.rays2{animation:rrayrot 30s linear infinite;transform-origin:200px 188px;}.mane_g{animation:manep 4s ease-in-out infinite;}.cad{animation:cadp 5s ease-in-out infinite;}.dawn{animation:dawnp 4s ease-in-out infinite;}</style>
 <radialGradient id="cbg" cx="50%" cy="55%" r="60%"><stop offset="0%" stop-color="#1E0800"/><stop offset="100%" stop-color="#050200"/></radialGradient>
 <radialGradient id="solGrad" cx="38%" cy="32%" r="68%"><stop offset="0%" stop-color="#FFF0A0"/><stop offset="55%" stop-color="#FFAA00"/><stop offset="100%" stop-color="#CC4400"/></radialGradient>
@@ -110,11 +140,18 @@ def bear_slayer_svg(d: TrophyData) -> str:
 <text x="200" y="348" text-anchor="middle" font-family="serif" font-size="18" font-weight="bold" fill="#FFCC44" letter-spacing="3">BEAR SLAYER</text>
 <text x="200" y="365" text-anchor="middle" font-family="serif" font-size="10" fill="#AA6600" letter-spacing="4">CITRINITAS · THE SOLAR DAWN</text>
 <text x="200" y="381" text-anchor="middle" font-family="monospace" font-size="9" fill="#664400">Season __S__ · __C__ · __A__%</text>
-</svg>""".replace("__S__", str(d.season)).replace("__C__", d.short_comp).replace("__A__", adv)
+</svg>""".replace(
+            "__S__", str(d.season)
+        )
+        .replace("__C__", d.short_comp)
+        .replace("__A__", adv)
+    )
+
 
 def grand_accumulator_svg(d: TrophyData) -> str:
     adv = f"{d.advantage_pct:+.1f}"
-    return """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    return (
+        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
 <defs><style>@keyframes rot1{to{transform:rotate(360deg)}}@keyframes rot2{to{transform:rotate(-360deg)}}@keyframes rubpulse{0%,100%{filter:drop-shadow(0 0 10px #880022)}50%{filter:drop-shadow(0 0 28px #CC0044)}}@keyframes monadp{0%,100%{filter:drop-shadow(0 0 8px #FFEE88)}50%{filter:drop-shadow(0 0 22px #FFFFFF)}}@keyframes rebisf{0%,100%{opacity:.82}50%{opacity:1}}@keyframes outring{to{transform:rotate(360deg)}}.tri_sol{animation:rubpulse 3s ease-in-out infinite;transform-origin:200px 195px;}.tri_lun{animation:rubpulse 3.7s ease-in-out .5s infinite;transform-origin:200px 195px;}.monad{animation:monadp 2.5s ease-in-out infinite;}.outer{animation:outring 60s linear infinite;transform-origin:200px 195px;}.rebis_fig{animation:rebisf 4s ease-in-out infinite;}</style>
 <radialGradient id="rbg" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#1A0010"/><stop offset="100%" stop-color="#040106"/></radialGradient>
 <radialGradient id="solTri" cx="50%" cy="20%" r="80%"><stop offset="0%" stop-color="#FF8844" stop-opacity=".88"/><stop offset="100%" stop-color="#AA2200" stop-opacity=".6"/></radialGradient>
@@ -137,11 +174,18 @@ def grand_accumulator_svg(d: TrophyData) -> str:
 <text x="200" y="346" text-anchor="middle" font-family="serif" font-size="12" font-weight="bold" fill="#CC4466" letter-spacing="2">GRAND ACCUMULATOR</text>
 <text x="200" y="363" text-anchor="middle" font-family="serif" font-size="10" fill="#880033" letter-spacing="4">RUBEDO · THE GREAT WORK</text>
 <text x="200" y="379" text-anchor="middle" font-family="monospace" font-size="9" fill="#550022">Season __S__ · __C__ · __A__%</text>
-</svg>""".replace("__S__", str(d.season)).replace("__C__", d.short_comp).replace("__A__", adv)
+</svg>""".replace(
+            "__S__", str(d.season)
+        )
+        .replace("__C__", d.short_comp)
+        .replace("__A__", adv)
+    )
+
 
 def ekthelius_svg(d: TrophyData) -> str:
     adv = f"{d.advantage_pct:+.1f}"
-    return """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+    return (
+        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
 <defs><style>@keyframes orbit1{to{transform:rotate(360deg)}}@keyframes orbit2{to{transform:rotate(-360deg)}}@keyframes orbit3{to{transform:rotate(360deg)}}@keyframes ourorot{to{transform:rotate(360deg)}}@keyframes coreg{0%,100%{filter:drop-shadow(0 0 14px #FF00AA)}50%{filter:drop-shadow(0 0 40px #FF88DD)}}@keyframes crowng{0%,100%{filter:drop-shadow(0 0 10px #FFD700)}50%{filter:drop-shadow(0 0 26px #FFFFFF)}}@keyframes nebula{0%,100%{opacity:.35}50%{opacity:.6}}@keyframes tw1{0%,100%{opacity:.25}50%{opacity:1}}@keyframes tw2{0%,100%{opacity:.5}50%{opacity:.85}}@keyframes monadg{0%,100%{filter:drop-shadow(0 0 16px #FFFFFF)}50%{filter:drop-shadow(0 0 40px #FFEEAA)}}@keyframes rcross{0%,100%{opacity:.6}50%{opacity:1}}.ouro_anim{animation:ourorot 45s linear infinite;transform-origin:200px 190px;}.o1{animation:orbit1 7s linear infinite;transform-origin:200px 190px;}.o2{animation:orbit2 12s linear infinite;transform-origin:200px 190px;}.o3{animation:orbit3 22s linear infinite;transform-origin:200px 190px;}.core{animation:coreg 2.5s ease-in-out infinite;}.crown_g{animation:crowng 3s ease-in-out infinite;}.neb{animation:nebula 6s ease-in-out infinite;}.tw1{animation:tw1 2.2s ease-in-out infinite;}.tw2{animation:tw2 3s ease-in-out .7s infinite;}.monad{animation:monadg 3s ease-in-out infinite;}.rcross{animation:rcross 4s ease-in-out infinite;}</style>
 <radialGradient id="umbg" cx="50%" cy="45%" r="55%"><stop offset="0%" stop-color="#14001E"/><stop offset="65%" stop-color="#07000D"/><stop offset="100%" stop-color="#000000"/></radialGradient>
 <radialGradient id="nebGrad" cx="50%" cy="50%" r="52%"><stop offset="0%" stop-color="#440066" stop-opacity=".35"/><stop offset="55%" stop-color="#FF00AA" stop-opacity=".1"/><stop offset="100%" stop-color="#000000" stop-opacity="0"/></radialGradient>
@@ -167,34 +211,85 @@ def ekthelius_svg(d: TrophyData) -> str:
 <text x="200" y="350" text-anchor="middle" font-family="serif" font-size="24" font-weight="bold" fill="#FF00AA" letter-spacing="5" filter="url(#umf1)">EKTHELIUS</text>
 <text x="200" y="366" text-anchor="middle" font-family="serif" font-size="10" fill="#880055" letter-spacing="4">UNIO MYSTICA · RETURN TO THE ALL</text>
 <text x="200" y="382" text-anchor="middle" font-family="monospace" font-size="9" fill="#440028">Season __S__ · __C__</text>
-</svg>""".replace("__S__", str(d.season)).replace("__C__", d.short_comp).replace("__A__", adv)
+</svg>""".replace(
+            "__S__", str(d.season)
+        )
+        .replace("__C__", d.short_comp)
+        .replace("__A__", adv)
+    )
+
 
 GENERATORS = {
-    "Harvest":           harvest_svg,
-    "Gold Fold":         gold_fold_svg,
-    "Bear Slayer":       bear_slayer_svg,
+    "Harvest": harvest_svg,
+    "Gold Fold": gold_fold_svg,
+    "Bear Slayer": bear_slayer_svg,
     "Grand Accumulator": grand_accumulator_svg,
-    "Ekthelius":         ekthelius_svg,
+    "Ekthelius": ekthelius_svg,
 }
+
 
 def generate_trophy(tier: str, data: TrophyData) -> str:
     fn = GENERATORS.get(tier)
-    if not fn: raise ValueError(f"Unknown tier: {tier!r}")
+    if not fn:
+        raise ValueError(f"Unknown tier: {tier!r}")
     return fn(data)
+
 
 def generate_preview_html(output_path: str = "trophy_preview.html"):
     from pathlib import Path
-    tiers  = list(GENERATORS.keys())
-    stages = {"Harvest":"NIGREDO","Gold Fold":"ALBEDO","Bear Slayer":"CITRINITAS","Grand Accumulator":"RUBEDO","Ekthelius":"UNIO MYSTICA"}
-    latin  = {"Harvest":"Prima Materia · The Darkening","Gold Fold":"Purificatio · The Whitening","Bear Slayer":"Sol Devoratur · The Solar Dawn","Grand Accumulator":"Opus Magnum · The Great Work","Ekthelius":"Hen To Pan · Return to the All"}
-    colors = {"Harvest":"#886600","Gold Fold":"#C0D8F0","Bear Slayer":"#FFCC44","Grand Accumulator":"#CC4466","Ekthelius":"#FF00AA"}
-    supply = {"Harvest":"Unlimited","Gold Fold":"Unlimited","Bear Slayer":"10,000","Grand Accumulator":"1,000","Ekthelius":"21 ever"}
-    advs   = [29.5, 31.6, 24.5, 45.8, 98.7]
-    cards  = ""
+
+    tiers = list(GENERATORS.keys())
+    stages = {
+        "Harvest": "NIGREDO",
+        "Gold Fold": "ALBEDO",
+        "Bear Slayer": "CITRINITAS",
+        "Grand Accumulator": "RUBEDO",
+        "Ekthelius": "UNIO MYSTICA",
+    }
+    latin = {
+        "Harvest": "Prima Materia · The Darkening",
+        "Gold Fold": "Purificatio · The Whitening",
+        "Bear Slayer": "Sol Devoratur · The Solar Dawn",
+        "Grand Accumulator": "Opus Magnum · The Great Work",
+        "Ekthelius": "Hen To Pan · Return to the All",
+    }
+    colors = {
+        "Harvest": "#886600",
+        "Gold Fold": "#C0D8F0",
+        "Bear Slayer": "#FFCC44",
+        "Grand Accumulator": "#CC4466",
+        "Ekthelius": "#FF00AA",
+    }
+    supply = {
+        "Harvest": "Unlimited",
+        "Gold Fold": "Unlimited",
+        "Bear Slayer": "10,000",
+        "Grand Accumulator": "1,000",
+        "Ekthelius": "21 ever",
+    }
+    advs = [29.5, 31.6, 24.5, 45.8, 98.7]
+    cards = ""
     for i, tier in enumerate(tiers):
-        td  = TrophyData(tier, 1, f"COMP-{i+1:04d}", 1, 50, advs[i], "bot123abc")
+        td = TrophyData(tier, 1, f"COMP-{i+1:04d}", 1, 50, advs[i], "bot123abc")
         svg = generate_trophy(tier, td)
-        c   = colors[tier]
-        cards += f'''<div style="background:#060610;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:20px;text-align:center;min-width:240px;flex:1 1 240px;max-width:310px;"><div style="font-family:Georgia,serif;font-size:9px;letter-spacing:4px;color:#444455;margin-bottom:10px;">''' + stages[tier] + f'''</div>''' + svg + f'''<div style="font-family:Georgia,serif;font-size:11px;color:''' + c + f'''margin-top:12px;letter-spacing:3px;">''' + latin[tier] + f'''</div><div style="font-family:monospace;font-size:10px;color:#333344;margin-top:4px;">Supply: ''' + supply[tier] + '''</div></div>'''
-    Path(output_path).write_text(f'''<!DOCTYPE html><html><head><meta charset="UTF-8"><title>ACRV Trophies</title><style>body{{background:#000;margin:0;padding:40px 20px;}}h1{{color:#AA8866;text-align:center;font-family:Georgia,serif;font-size:28px;font-style:italic;}}.sub{{text-align:center;color:#444;font-family:monospace;font-size:11px;letter-spacing:4px;margin-bottom:36px;}}.grid{{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;}}</style></head><body><h1>Acervator Trophy NFTs — Hermetic Edition</h1><div class="sub">CORPUS HERMETICUM · BASE (COINBASE L2) · 5 RARITY TIERS</div><div class="grid">''' + cards + '''</div></body></html>''', encoding="utf-8")
+        c = colors[tier]
+        cards += (
+            f"""<div style="background:#060610;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:20px;text-align:center;min-width:240px;flex:1 1 240px;max-width:310px;"><div style="font-family:Georgia,serif;font-size:9px;letter-spacing:4px;color:#444455;margin-bottom:10px;">"""
+            + stages[tier]
+            + f"""</div>"""
+            + svg
+            + f"""<div style="font-family:Georgia,serif;font-size:11px;color:"""
+            + c
+            + f"""margin-top:12px;letter-spacing:3px;">"""
+            + latin[tier]
+            + f"""</div><div style="font-family:monospace;font-size:10px;color:#333344;margin-top:4px;">Supply: """
+            + supply[tier]
+            + """</div></div>"""
+        )
+    Path(output_path).write_text(
+        f"""<!DOCTYPE html><html><head><meta charset="UTF-8"><title>ACRV Trophies</title><style>body{{background:#000;margin:0;padding:40px 20px;}}h1{{color:#AA8866;text-align:center;font-family:Georgia,serif;font-size:28px;font-style:italic;}}.sub{{text-align:center;color:#444;font-family:monospace;font-size:11px;letter-spacing:4px;margin-bottom:36px;}}.grid{{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;}}</style></head><body><h1>Acervator Trophy NFTs — Hermetic Edition</h1><div class="sub">CORPUS HERMETICUM · BASE (COINBASE L2) · 5 RARITY TIERS</div><div class="grid">"""
+        + cards
+        + """</div></body></html>""",
+        encoding="utf-8",
+    )
     return output_path

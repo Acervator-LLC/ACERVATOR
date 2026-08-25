@@ -82,8 +82,7 @@ LARGE_FLOOR_S = 0.0005
 
 
 def _rows(k: int) -> list[dict]:
-    return [{"source_id": f"s{i}", "target_id": f"t{i}", "pct": 5.0}
-            for i in range(k)]
+    return [{"source_id": f"s{i}", "target_id": f"t{i}", "pct": 5.0} for i in range(k)]
 
 
 def _tracks(small: Optional[float], large: Optional[float]) -> bool:
@@ -92,8 +91,7 @@ def _tracks(small: Optional[float], large: Optional[float]) -> bool:
     return large > small * 2.0
 
 
-def _tracks_the_import(small: Optional[float],
-                       large: Optional[float]) -> bool:
+def _tracks_the_import(small: Optional[float], large: Optional[float]) -> bool:
     """Ask `_tracks`, then put a floor under the large reading.
 
     This ADDS a condition and relaxes none: everything `_tracks`
@@ -177,7 +175,8 @@ def test_the_duration_tracks_a_genuinely_larger_import():
 
     assert _tracks_the_import(small, large), (
         f"{LARGE_ROWS} rows did not record longer than {SMALL_ROWS}: "
-        f"{small} vs {large}")
+        f"{small} vs {large}"
+    )
 
 
 def test_the_tracking_predicate_rejects_a_constant_duration():
@@ -195,29 +194,36 @@ def test_the_site_predicate_rejects_a_bracket_that_spans_nothing() -> None:
     this site could be blinded while still handing the sink a
     `duration` field of exactly the right shape.
     """
-    assert not _tracks_the_import(0.01, 0.01), (
-        "a constant duration must not read as tracking")
-    assert not _tracks_the_import(None, 0.0032), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_import(0.0003, None), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_import(0.0032, 0.0003), (
-        "going backwards must not read as tracking")
+    assert not _tracks_the_import(
+        0.01, 0.01
+    ), "a constant duration must not read as tracking"
+    assert not _tracks_the_import(
+        None, 0.0032
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_import(
+        0.0003, None
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_import(
+        0.0032, 0.0003
+    ), "going backwards must not read as tracking"
 
     # THE DEAD CLOCK, and the measured reason this site carries a floor
     # the shared predicate does not. This pair is a real one: it came
     # off the 2026-08-20 run with the stop clock planted above the
     # import loop. `_tracks` accepts it. The floor rejects it. That is
     # an addition to `_tracks`, never a relaxation of it.
-    assert _tracks(0.0, 3.0e-07), (
-        "the shared predicate is expected to accept a dead clock here")
-    assert not _tracks_the_import(0.0, 3.0e-07), (
-        "a bracket that spans no work must not read as tracking")
+    assert _tracks(
+        0.0, 3.0e-07
+    ), "the shared predicate is expected to accept a dead clock here"
+    assert not _tracks_the_import(
+        0.0, 3.0e-07
+    ), "a bracket that spans no work must not read as tracking"
 
     # The honest pair measured off the real site, 2026-08-20, must
     # still read as tracking.
-    assert _tracks_the_import(0.000307, 0.003174), (
-        "the real measured pair must read as tracking")
+    assert _tracks_the_import(
+        0.000307, 0.003174
+    ), "the real measured pair must read as tracking"
 
 
 def test_a_refused_import_emits_nothing():
@@ -244,7 +250,10 @@ def test_the_sibling_emitter_never_carries_a_duration():
     finally:
         sc.set_sink(previous)
 
-    sibling = [r.duration for r in sink.records()
-               if r.name == "topology.09.001.state_transition.bot_attached"]
+    sibling = [
+        r.duration
+        for r in sink.records()
+        if r.name == "topology.09.001.state_transition.bot_attached"
+    ]
     assert sibling, "the sibling did not fire; the control proves nothing"
     assert all(d is None for d in sibling), sibling

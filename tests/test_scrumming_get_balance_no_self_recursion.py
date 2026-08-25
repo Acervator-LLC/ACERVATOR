@@ -16,6 +16,7 @@ None` and a fake exchange, calls the method, and asserts:
       RecursionError
   (b) the fake exchange's `get_balance` was called EXACTLY ONCE
 """
+
 from __future__ import annotations
 
 import asyncio

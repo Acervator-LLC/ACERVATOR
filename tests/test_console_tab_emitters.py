@@ -165,7 +165,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 REPO = Path(__file__).resolve().parent.parent
 
-if TYPE_CHECKING:                       # pragma: no cover
+if TYPE_CHECKING:  # pragma: no cover
     # Annotation only. PySide6 must not be imported at module scope: the
     # source-reading tests below are pure Python and have to run on a box
     # without Qt. A skipped test is not evidence, so the skip is scoped
@@ -197,8 +197,16 @@ SIGNALS_FILE = "~/.acervator_logs/signals/session.jsonl"
 # Substrings that must never appear in a record this tab writes. A
 # context is written to disk, and a bot id is operator-chosen text the
 # privacy registry masks in the bot table.
-FORBIDDEN = ("api_key", "apikey", "secret", "passphrase", "password",
-             "credential", "token", "bot_id")
+FORBIDDEN = (
+    "api_key",
+    "apikey",
+    "secret",
+    "passphrase",
+    "password",
+    "credential",
+    "token",
+    "bot_id",
+)
 
 
 # ── Qt fixtures ────────────────────────────────────────────────────────
@@ -230,8 +238,7 @@ class _Handler:
     duration bracket claims to measure.
     """
 
-    def __init__(self, widget: Any, *, cap: int = 5000,
-                 delay: float = 0.0) -> None:
+    def __init__(self, widget: Any, *, cap: int = 5000, delay: float = 0.0) -> None:
         self._te = widget
         self._paused = False
         self._buffer: list[str] = []
@@ -259,7 +266,8 @@ class _Handler:
             if self._buffer_dropped > 0:
                 self._paint(
                     f"[CONSOLE PAUSE] {self._buffer_dropped} messages "
-                    f"dropped (buffer cap={self._buffer_max})")
+                    f"dropped (buffer cap={self._buffer_max})"
+                )
                 self._buffer_dropped = 0
 
     # -- what a logger call does ---------------------------------------
@@ -288,8 +296,9 @@ class _Handler:
 
 
 @contextlib.contextmanager
-def _console(qapp: QApplication, *, handler_cap: int = 5000,
-             handler_delay: float = 0.0) -> Iterator[Any]:
+def _console(
+    qapp: QApplication, *, handler_cap: int = 5000, handler_delay: float = 0.0
+) -> Iterator[Any]:
     """The four REAL `MainWindow` methods over REAL Console widgets.
 
     No `MainWindow` is constructed. The methods are taken off the class
@@ -309,13 +318,16 @@ def _console(qapp: QApplication, *, handler_cap: int = 5000,
 
     from src.gui.main_window import MainWindow
 
-    driven = type("DrivenConsole", (), {
-        "_drain_signals": MainWindow._drain_signals,
-        "_emit_console_health": MainWindow._emit_console_health,
-        "_toggle_console_pause": MainWindow._toggle_console_pause,
-        "_refresh_console_pause_indicator":
-            MainWindow._refresh_console_pause_indicator,
-    })()
+    driven = type(
+        "DrivenConsole",
+        (),
+        {
+            "_drain_signals": MainWindow._drain_signals,
+            "_emit_console_health": MainWindow._emit_console_health,
+            "_toggle_console_pause": MainWindow._toggle_console_pause,
+            "_refresh_console_pause_indicator": MainWindow._refresh_console_pause_indicator,
+        },
+    )()
 
     driven._signal_view = QPlainTextEdit()
     driven._signal_view.setReadOnly(True)
@@ -345,7 +357,8 @@ def _console(qapp: QApplication, *, handler_cap: int = 5000,
     driven._console_pause_btn.setCheckable(True)
     driven._console_pause_indicator = QLabel("")
     driven._console_log_handler = _Handler(
-        driven._console, cap=handler_cap, delay=handler_delay)
+        driven._console, cap=handler_cap, delay=handler_delay
+    )
 
     try:
         yield driven
@@ -450,9 +463,12 @@ def _fragment_formats(block: Any) -> list[tuple[str | None, str]]:
         if fragment.isValid():
             fmt = fragment.charFormat()
             painted = fmt.background().style() != Qt.BrushStyle.NoBrush
-            out.append((
-                fmt.background().color().name() if painted else None,
-                fmt.foreground().color().name()))
+            out.append(
+                (
+                    fmt.background().color().name() if painted else None,
+                    fmt.foreground().color().name(),
+                )
+            )
         it += 1
     return out
 
@@ -502,8 +518,7 @@ def _without_the_console_pause_flag(monkeypatch: pytest.MonkeyPatch) -> None:
         """
         assert isinstance(paused, bool)
 
-    monkeypatch.setattr(
-        mw, "_set_console_paused", _pre_repair_no_op, raising=True)
+    monkeypatch.setattr(mw, "_set_console_paused", _pre_repair_no_op, raising=True)
 
 
 def _without_the_gap_marker(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -551,8 +566,7 @@ def _without_the_gap_marker(monkeypatch: pytest.MonkeyPatch) -> None:
         assert isinstance(skipped, int)
         return 0
 
-    monkeypatch.setattr(
-        mw, "_draw_signal_gap_marker", _pre_repair_no_op, raising=True)
+    monkeypatch.setattr(mw, "_draw_signal_gap_marker", _pre_repair_no_op, raising=True)
 
 
 # ── the syntax tree ────────────────────────────────────────────────────
@@ -566,10 +580,13 @@ def _console_emit_calls() -> list[ast.Call]:
     question.
     """
     tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
-    return [node for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "_co_emit"]
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_co_emit"
+    ]
 
 
 def _pin_name(call: ast.Call) -> str:
@@ -589,8 +606,11 @@ def _span(function: str) -> tuple[int, int]:
     """The first and last line of one method of `MainWindow`."""
     tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
-        if (isinstance(node, ast.FunctionDef) and node.name == function
-                and node.end_lineno is not None):
+        if (
+            isinstance(node, ast.FunctionDef)
+            and node.name == function
+            and node.end_lineno is not None
+        ):
             return (node.lineno, node.end_lineno)
     missing = f"{function} not found in {MAIN_WINDOW}"
     raise AssertionError(missing)
@@ -610,11 +630,11 @@ def test_the_drain_emits_nothing_on_any_path() -> None:
     from tools.emitter_registry_check import collect_pins
 
     low, high = _span("_drain_signals")
-    inside = [pin for pin in collect_pins(MAIN_WINDOW, REPO)
-              if low <= pin.line <= high]
+    inside = [pin for pin in collect_pins(MAIN_WINDOW, REPO) if low <= pin.line <= high]
     assert inside == [], (
         "a pin inside the drain writes into the sink it is draining: "
-        f"{[(p.name, p.line) for p in inside]}")
+        f"{[(p.name, p.line) for p in inside]}"
+    )
 
     # The sentinel. If the span ever silently resolved to the wrong
     # function this test would pass over nothing at all.
@@ -623,8 +643,7 @@ def test_the_drain_emits_nothing_on_any_path() -> None:
     assert high > low
 
 
-def test_two_hundred_drains_do_not_grow_the_sink(
-        qapp: QApplication) -> None:
+def test_two_hundred_drains_do_not_grow_the_sink(qapp: QApplication) -> None:
     """THE FIXED POINT, driven on the real drain and a real sink.
 
     With no other producer the sink must not gain one record however
@@ -644,8 +663,7 @@ def test_two_hundred_drains_do_not_grow_the_sink(
         assert stub._signal_view.blockCount() == 3
 
 
-def test_the_write_rate_does_not_depend_on_the_drain(
-        qapp: QApplication) -> None:
+def test_the_write_rate_does_not_depend_on_the_drain(qapp: QApplication) -> None:
     """The emission rate is a function of the clock and of nothing else.
 
     Five health passes with the drain never called, and five with it
@@ -653,6 +671,7 @@ def test_the_write_rate_does_not_depend_on_the_drain(
     That is what "independent of the sink" means, and it is the property
     `every=` cannot supply.
     """
+
     def _run(drains_per_look: int) -> int:
         with _collect() as sink, _console(qapp) as stub:
             _seed(sink, 5)
@@ -660,15 +679,14 @@ def test_the_write_rate_does_not_depend_on_the_drain(
                 for _ in range(drains_per_look):
                     stub._drain_signals()
                 _look(stub)
-            return sink.count() - 5          # discard the seed
+            return sink.count() - 5  # discard the seed
 
     quiet = _run(0)
     busy = _run(40)
     assert quiet == busy == 15, (quiet, busy)
 
 
-def test_a_pin_on_the_drain_path_really_does_run_away(
-        qapp: QApplication) -> None:
+def test_a_pin_on_the_drain_path_really_does_run_away(qapp: QApplication) -> None:
     """THE POSITIVE CONTROL for the two tests above.
 
     A green from an instrument that cannot go red is evidence of
@@ -726,7 +744,8 @@ def test_records_rendered_is_reported(qapp: QApplication) -> None:
 
 
 def test_records_the_slice_threw_away_after_the_watermark_moved_are_reported(
-        qapp: QApplication) -> None:
+    qapp: QApplication,
+) -> None:
     """THE FALSIFIER for `14-001`, and it is a live defect.
 
     `_drain_signals` assigns the watermark from `new[-1].seq` and THEN
@@ -782,8 +801,7 @@ def test_the_pane_holds_what_the_drain_wrote(qapp: QApplication) -> None:
     assert rec.duration is None
 
 
-def test_a_pane_emptied_behind_the_drain_is_reported(
-        qapp: QApplication) -> None:
+def test_a_pane_emptied_behind_the_drain_is_reported(qapp: QApplication) -> None:
     """THE FALSIFIER for `14-002`.
 
     The Clear button is wired straight to `self._console.clear` -- the
@@ -799,13 +817,14 @@ def test_a_pane_emptied_behind_the_drain_is_reported(
         stub._emit_console_health()
         rec = _only(sink, HOLDS)
     assert rec.ok is False
-    assert rec.actual == 1                  # an empty pane holds one block
+    assert rec.actual == 1  # an empty pane holds one block
     assert rec.expected == 4
     assert rec.context["evicted"] == 3
 
 
 def test_the_block_cap_is_reported_as_a_number_and_not_as_a_red(
-        qapp: QApplication) -> None:
+    qapp: QApplication,
+) -> None:
     """A saturated pane is by design, so it must not paint the pin red.
 
     2600 records drained 200 at a time -- the slice's own limit, so
@@ -864,9 +883,9 @@ def test_a_drain_that_stopped_is_reported(qapp: QApplication) -> None:
     """
     with _collect() as sink, _console(qapp) as stub:
         stub._drain_signals()
-        stub._emit_console_health()             # green, and admitted
-        stub._signal_timer.stop()               # the timer dies
-        stub._emit_console_health()             # no tick since the last
+        stub._emit_console_health()  # green, and admitted
+        stub._signal_timer.stop()  # the timer dies
+        stub._emit_console_health()  # no tick since the last
         got = _records(sink, ALIVE)
     assert len(got) == 2, [r.ok for r in got]
     assert got[0].ok is True
@@ -881,7 +900,8 @@ def test_a_drain_that_stopped_is_reported(qapp: QApplication) -> None:
 
 
 def test_a_pause_that_quiets_only_one_pane_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """THE FALSIFIER for `14-004`, reached rather than waited for.
 
     It WAS a live defect and issue #49 closed it, so the pin is green
@@ -923,7 +943,8 @@ def test_a_pause_that_quiets_only_one_pane_is_reported(
         stub._drain_signals()
         assert stub._signal_view.blockCount() == 6, (
             "the paused drain rendered nothing; the falsifier patched "
-            "nothing and this test proves nothing")
+            "nothing and this test proves nothing"
+        )
         assert stub._console.document().isEmpty()
     assert rec.ok is False
     assert rec.actual is False
@@ -933,8 +954,7 @@ def test_a_pause_that_quiets_only_one_pane_is_reported(
     assert rec.duration is None
 
 
-def test_a_pause_quiets_the_signals_pane_as_well_as_the_log(
-        qapp: QApplication) -> None:
+def test_a_pause_quiets_the_signals_pane_as_well_as_the_log(qapp: QApplication) -> None:
     """THE REPAIR, issue #49, driven rather than asserted about.
 
     ONE PRESS, TWO MECHANISMS. `set_paused` buffers the log pane;
@@ -982,8 +1002,7 @@ def test_a_pause_quiets_the_signals_pane_as_well_as_the_log(
     assert rec.duration is None
 
 
-def test_a_pause_does_not_make_the_drain_look_dead(
-        qapp: QApplication) -> None:
+def test_a_pause_does_not_make_the_drain_look_dead(qapp: QApplication) -> None:
     """The repair must not turn `14-003` red every time Pause is held.
 
     `_signal_drain_ticks` is incremented as the FIRST statement of
@@ -1030,8 +1049,7 @@ def test_a_resume_leaves_both_panes_agreeing(qapp: QApplication) -> None:
     assert rec.context["log_pane_paused"] is False
 
 
-def test_the_flag_the_drain_reads_is_assigned_exactly_once_in_the_tree(
-        ) -> None:
+def test_the_flag_the_drain_reads_is_assigned_exactly_once_in_the_tree() -> None:
     """The measurement behind `14-004`, read off the syntax tree.
 
     IT USED TO ASSERT ZERO. That walk found no assignment to
@@ -1057,19 +1075,17 @@ def test_the_flag_the_drain_reads_is_assigned_exactly_once_in_the_tree(
             if "__pycache__" in path.parts:
                 continue
             try:
-                tree = ast.parse(path.read_text(encoding="utf-8",
-                                                errors="replace"))
-            except SyntaxError:                     # pragma: no cover
+                tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+            except SyntaxError:  # pragma: no cover
                 continue
             for node in ast.walk(tree):
-                if not isinstance(node, (ast.Assign, ast.AugAssign,
-                                         ast.AnnAssign)):
+                if not isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
                     continue
-                written = (node.targets if isinstance(node, ast.Assign)
-                           else [node.target])
+                written = (
+                    node.targets if isinstance(node, ast.Assign) else [node.target]
+                )
                 for target in written:
-                    if (isinstance(target, ast.Attribute)
-                            and target.attr == attribute):
+                    if isinstance(target, ast.Attribute) and target.attr == attribute:
                         hits.append(f"{path.name}:{node.lineno}")
         return hits
 
@@ -1080,7 +1096,8 @@ def test_the_flag_the_drain_reads_is_assigned_exactly_once_in_the_tree(
 
 
 def test_a_resume_delivers_the_backlog_and_the_slice_reports_what_it_ate(
-        qapp: QApplication) -> None:
+    qapp: QApplication,
+) -> None:
     """WHAT THE ISSUE #49 PAUSE HANDS TO `14-001`, AS NUMBERS.
 
     A paused drain advances no watermark, so the sink keeps every record
@@ -1120,6 +1137,7 @@ def test_a_resume_delivers_the_backlog_and_the_slice_reports_what_it_ate(
     history that was already there. `14-002` reports that separately,
     through `evicted`.
     """
+
     def _resume_after(backlog: int) -> tuple[int, int, int, int, Any]:
         with _collect() as sink, _console(qapp) as stub:
             stub._console_pause_btn.setChecked(True)
@@ -1131,11 +1149,13 @@ def test_a_resume_delivers_the_backlog_and_the_slice_reports_what_it_ate(
             stub._toggle_console_pause()
             stub._drain_signals()
             _look(stub)
-            return (stub._signal_rendered,
-                    stub._signal_slice_dropped,
-                    stub._signal_view.blockCount(),
-                    stub._signal_markers,
-                    _only(sink, RENDERED))
+            return (
+                stub._signal_rendered,
+                stub._signal_slice_dropped,
+                stub._signal_view.blockCount(),
+                stub._signal_markers,
+                _only(sink, RENDERED),
+            )
 
     rendered, dropped, blocks, markers, rec = _resume_after(50)
     assert (rendered, dropped, blocks, markers) == (53, 0, 53, 0)
@@ -1182,8 +1202,7 @@ def test_a_resume_delivers_the_backlog_and_the_slice_reports_what_it_ate(
 # read it rather than to hunt a defect that is not there.
 
 
-def test_the_marker_says_the_records_are_not_lost_and_where_they_are(
-) -> None:
+def test_the_marker_says_the_records_are_not_lost_and_where_they_are() -> None:
     """THE WORDING, PINNED AS A LITERAL AND NOT AS A ROUND TRIP.
 
     Every other test here asks the production helper for the string and
@@ -1200,12 +1219,13 @@ def test_the_marker_says_the_records_are_not_lost_and_where_they_are(
     assert line == (
         "──── [SIGNALS GAP] 4800 earlier records skipped to stay "
         "current · NOT LOST · on disk in "
-        "~/.acervator_logs/signals/session.jsonl ────")
+        "~/.acervator_logs/signals/session.jsonl ────"
+    )
     # The three things it has to carry, asserted one at a time so a
     # failure names which one went.
-    assert "4800" in line                     # how many
-    assert "NOT LOST" in line                 # they still exist
-    assert SIGNALS_FILE in line               # and where
+    assert "4800" in line  # how many
+    assert "NOT LOST" in line  # they still exist
+    assert SIGNALS_FILE in line  # and where
     # The count leads, so the eye finds it without reading the sentence.
     assert line.index("4800") < line.index("NOT LOST")
     # A record line never starts this way.
@@ -1213,8 +1233,7 @@ def test_the_marker_says_the_records_are_not_lost_and_where_they_are(
     assert line.endswith(" ────")
 
 
-def test_a_live_burst_draws_the_gap_it_stepped_over(
-        qapp: QApplication) -> None:
+def test_a_live_burst_draws_the_gap_it_stepped_over(qapp: QApplication) -> None:
     """PATH B -- issue #48's own path. No pause anywhere in this drive.
 
     250 records inside one 500 ms window. The watermark moves past all
@@ -1233,8 +1252,7 @@ def test_a_live_burst_draws_the_gap_it_stepped_over(
         assert lines.count(_marker(50)) == 1
 
 
-def test_a_resume_draws_the_gap_it_stepped_over(
-        qapp: QApplication) -> None:
+def test_a_resume_draws_the_gap_it_stepped_over(qapp: QApplication) -> None:
     """PATH A -- the resume issue #49's repair created.
 
     The operator pauses, 5000 records arrive, he resumes. The drain
@@ -1261,8 +1279,7 @@ def test_a_resume_draws_the_gap_it_stepped_over(
         assert lines[0] == _marker(4803)
 
 
-def test_a_pass_that_kept_everything_draws_no_marker(
-        qapp: QApplication) -> None:
+def test_a_pass_that_kept_everything_draws_no_marker(qapp: QApplication) -> None:
     """A quiet window leaves no trace at all.
 
     A marker on every pass would be furniture the operator learns to
@@ -1278,8 +1295,7 @@ def test_a_pass_that_kept_everything_draws_no_marker(
         assert GAP_TAG not in text
 
 
-def test_the_marker_sits_above_the_records_it_describes(
-        qapp: QApplication) -> None:
+def test_the_marker_sits_above_the_records_it_describes(qapp: QApplication) -> None:
     """PLACEMENT, DRIVEN.
 
     The skipped records are OLDER than the 200 the pass draws, so the
@@ -1300,8 +1316,7 @@ def test_the_marker_sits_above_the_records_it_describes(
     assert lines[-1].endswith("got=999")
 
 
-def test_the_marker_is_not_evicted_by_its_own_pass(
-        qapp: QApplication) -> None:
+def test_the_marker_is_not_evicted_by_its_own_pass(qapp: QApplication) -> None:
     """A pass appends at most 1 marker + 200 records against a 2000 cap.
 
     Driven on a pane ALREADY AT ITS CAP, which is the only state where
@@ -1330,8 +1345,7 @@ def test_the_marker_is_not_evicted_by_its_own_pass(
     assert marker_at >= PANE_BLOCKS - (SLICE_CAP + 1)
 
 
-def test_the_marker_cannot_be_misread_as_a_record(
-        qapp: QApplication) -> None:
+def test_the_marker_cannot_be_misread_as_a_record(qapp: QApplication) -> None:
     """VISUALLY DISTINCT, ASKED OF THE DOCUMENT AND NOT OF THE SOURCE.
 
     Records are green / red / grey TEXT on the pane's own ground and
@@ -1353,8 +1367,8 @@ def test_the_marker_cannot_be_misread_as_a_record(
     assert marker_text == _marker(50)
     assert len(marker_formats) == 1
     ground, ink = marker_formats[0]
-    assert ground == "#33220a"                  # its own ground
-    assert ink == "#ffb000"                     # amber, used nowhere else
+    assert ground == "#33220a"  # its own ground
+    assert ink == "#ffb000"  # amber, used nowhere else
     # No record fragment paints a ground at all.
     assert record_formats
     assert all(g is None for g, _ in record_formats)
@@ -1364,8 +1378,7 @@ def test_the_marker_cannot_be_misread_as_a_record(
         assert not marker_text.startswith(lead)
 
 
-def test_the_pane_holds_the_markers_as_well_as_the_records(
-        qapp: QApplication) -> None:
+def test_the_pane_holds_the_markers_as_well_as_the_records(qapp: QApplication) -> None:
     """`14-002` RESTATED, AND THIS IS THE RESTATEMENT DRIVEN.
 
     Before issue #48 the pin compared the pane's block count against
@@ -1396,8 +1409,7 @@ def test_the_pane_holds_the_markers_as_well_as_the_records(
     assert rec.context["evicted"] == 0
 
 
-def test_a_marker_the_drain_did_not_draw_is_reported(
-        qapp: QApplication) -> None:
+def test_a_marker_the_drain_did_not_draw_is_reported(qapp: QApplication) -> None:
     """THE FALSIFIER for the RESTATED `14-002`.
 
     A line on the pane that the drain's ledger does not know about is
@@ -1418,13 +1430,12 @@ def test_a_marker_the_drain_did_not_draw_is_reported(
         _look(stub)
         rec = _only(sink, HOLDS)
     assert rec.ok is False
-    assert rec.actual == 5                  # four records and the marker
-    assert rec.expected == 4                # the ledger knows of four
+    assert rec.actual == 5  # four records and the marker
+    assert rec.expected == 4  # the ledger knows of four
     assert rec.context["gap_markers"] == 0
 
 
-def test_a_marker_does_not_count_as_a_record_rendered(
-        qapp: QApplication) -> None:
+def test_a_marker_does_not_count_as_a_record_rendered(qapp: QApplication) -> None:
     """`14-001` IS UNCHANGED, and that is asserted rather than assumed.
 
     A Console that quietly keeps up and one that quietly skips have to
@@ -1439,7 +1450,7 @@ def test_a_marker_does_not_count_as_a_record_rendered(
         _look(stub)
         rec = _only(sink, RENDERED)
     assert rec.ok is False
-    assert rec.actual == 200                # records, not 201
+    assert rec.actual == 200  # records, not 201
     assert rec.expected == 250
     assert rec.context["lost_to_slice"] == 50
     assert rec.context["slice_cap"] == SLICE_CAP
@@ -1447,7 +1458,8 @@ def test_a_marker_does_not_count_as_a_record_rendered(
 
 
 def test_a_drain_that_skips_in_silence_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """THE FALSIFIER for the marker, and it is the pre-repair pane.
 
     `_without_the_gap_marker` puts the tree back the way it was: the
@@ -1482,8 +1494,7 @@ def test_a_drain_that_skips_in_silence_is_reported(
 # ── 14-005  the resume put the buffer on the pane ──────────────────────
 
 
-def test_a_resume_delivers_every_buffered_line(
-        qapp: QApplication) -> None:
+def test_a_resume_delivers_every_buffered_line(qapp: QApplication) -> None:
     """The operator pauses, thirty lines arrive, the resume paints them."""
     with _collect() as sink, _console(qapp) as stub:
         stub._console_pause_btn.setChecked(True)
@@ -1506,8 +1517,7 @@ def test_a_resume_delivers_every_buffered_line(
     assert rec.duration is not None and rec.duration >= 0.0
 
 
-def test_a_resume_the_pane_cap_eats_is_reported(
-        qapp: QApplication) -> None:
+def test_a_resume_the_pane_cap_eats_is_reported(qapp: QApplication) -> None:
     """THE FALSIFIER for `14-005`, and the loss the operator feels.
 
     The buffer held every line, which is what it is for. The pane's own
@@ -1538,7 +1548,8 @@ def test_a_resume_the_pane_cap_eats_is_reported(
 
 
 def test_the_buffer_cap_adds_the_notice_line_to_what_the_resume_owes(
-        qapp: QApplication) -> None:
+    qapp: QApplication,
+) -> None:
     """The second loss, and the pin counts the notice `set_paused` adds.
 
     Driven on a small buffer cap so the drop path runs in a test rather
@@ -1563,8 +1574,7 @@ def test_the_buffer_cap_adds_the_notice_line_to_what_the_resume_owes(
     assert rec.context["buffer_cap"] == 5
 
 
-def test_the_pause_press_itself_writes_no_delivery_record(
-        qapp: QApplication) -> None:
+def test_the_pause_press_itself_writes_no_delivery_record(qapp: QApplication) -> None:
     """`14-005` is the RESUME half only.
 
     The pause press delivers nothing, so there is nothing to judge and a
@@ -1578,8 +1588,7 @@ def test_the_pause_press_itself_writes_no_delivery_record(
     assert len(_records(sink, QUIETS)) == 1
 
 
-def test_the_duration_tracks_two_different_resume_workloads(
-        qapp: QApplication) -> None:
+def test_the_duration_tracks_two_different_resume_workloads(qapp: QApplication) -> None:
     """THE CONTROL for the duration on `14-005`.
 
     A number that is the same for a quick resume and a slow one is not a
@@ -1588,6 +1597,7 @@ def test_the_duration_tracks_two_different_resume_workloads(
     delay -- which also proves the bracket spans that call rather than
     reporting a constant beside it.
     """
+
     def _resume(delay: float) -> float:
         with _collect() as sink, _console(qapp, handler_delay=delay) as stub:
             stub._console_pause_btn.setChecked(True)
@@ -1612,8 +1622,11 @@ def test_only_the_resume_pin_carries_a_duration() -> None:
     """E8 in this tab: one postcondition behind a real bounded
     operation, and nothing else. The other four read counters and a
     flag."""
-    carriers = {_pin_name(call) for call in _console_emit_calls()
-                if _keyword(call, "duration") is not None}
+    carriers = {
+        _pin_name(call)
+        for call in _console_emit_calls()
+        if _keyword(call, "duration") is not None
+    }
     assert carriers == {DELIVERED}
 
 
@@ -1627,14 +1640,10 @@ def test_the_cadence_declaration_is_what_the_source_does() -> None:
     every: dict[str, Any] = {}
     for call in _console_emit_calls():
         node = _keyword(call, "every")
-        every[_pin_name(call)] = (node.value
-                                  if isinstance(node, ast.Constant)
-                                  else None)
+        every[_pin_name(call)] = node.value if isinstance(node, ast.Constant) else None
     assert set(every) == set(CONSOLE_PINS)
-    assert {name for name, value in every.items() if value is None} == set(
-        UNTHROTTLED)
-    assert {value for name, value in every.items()
-            if name not in UNTHROTTLED} == {30.0}
+    assert {name for name, value in every.items() if value is None} == set(UNTHROTTLED)
+    assert {value for name, value in every.items() if name not in UNTHROTTLED} == {30.0}
 
 
 def test_the_cadence_pins_all_live_in_the_health_pass() -> None:
@@ -1648,14 +1657,17 @@ def test_the_cadence_pins_all_live_in_the_health_pass() -> None:
     holds the second half.
     """
     low, high = _span("_emit_console_health")
-    placed = {_pin_name(call): low <= call.lineno <= high
-              for call in _console_emit_calls()}
+    placed = {
+        _pin_name(call): low <= call.lineno <= high for call in _console_emit_calls()
+    }
     assert {name for name, inside in placed.items() if inside} == {
-        RENDERED, HOLDS, ALIVE}
+        RENDERED,
+        HOLDS,
+        ALIVE,
+    }
 
     toggle_low, toggle_high = _span("_toggle_console_pause")
-    assert {name for name, inside in placed.items() if not inside} == set(
-        UNTHROTTLED)
+    assert {name for name, inside in placed.items() if not inside} == set(UNTHROTTLED)
     for call in _console_emit_calls():
         if _pin_name(call) in UNTHROTTLED:
             assert toggle_low <= call.lineno <= toggle_high

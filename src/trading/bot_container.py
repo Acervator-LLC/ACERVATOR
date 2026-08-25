@@ -58,9 +58,17 @@ logger = logging.getLogger("acervator.bot")
 # dollar per unit is the true price, not a stand-in for a price we
 # could not get. Kept in ONE place: two copies of a money list is how
 # the two copies come to disagree.
-DOLLAR_PEGGED_CURRENCIES = frozenset({
-    "USD", "USDC", "USDT", "DAI", "BUSD", "PYUSD", "FDUSD",
-})
+DOLLAR_PEGGED_CURRENCIES = frozenset(
+    {
+        "USD",
+        "USDC",
+        "USDT",
+        "DAI",
+        "BUSD",
+        "PYUSD",
+        "FDUSD",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -98,10 +106,11 @@ class BotMode(str, Enum):
 @dataclass
 class BotConfig:
     """Immutable configuration snapshot for a bot instance."""
+
     exchange_id: str
-    base_currency: str          # e.g. "USDT"
-    target_asset: str           # e.g. "BTC"
-    symbol: str = ""            # Derived: "BTC/USDT"
+    base_currency: str  # e.g. "USDT"
+    target_asset: str  # e.g. "BTC"
+    symbol: str = ""  # Derived: "BTC/USDT"
     # v3.20.4 — default changed from BotMode.GRID to BotMode.SCRUMMING
     # alongside the BotMode.GRID enum removal. SCRUMMING is the only
     # historically-real default for a freshly-constructed BotConfig
@@ -109,9 +118,11 @@ class BotConfig:
     mode: BotMode = BotMode.SCRUMMING
 
     # --- Sizing ---
-    investment_amount: float = 200.0    # Total bot capital
-    increment_style: str = "linear"     # "linear" or "logarithmic"
-    spacing_style: str = "expanding"    # "expanding" (wider gaps) or "stacked" (fixed gap)
+    investment_amount: float = 200.0  # Total bot capital
+    increment_style: str = "linear"  # "linear" or "logarithmic"
+    spacing_style: str = (
+        "expanding"  # "expanding" (wider gaps) or "stacked" (fixed gap)
+    )
     # v3.23.25 — market_check_interval removed. Was declared as
     # "Seconds between price checks (Invisible mode)" but never read
     # at runtime (tick_interval hardcoded 5.0). Operator directive
@@ -122,7 +133,7 @@ class BotConfig:
     profit_folding_active: bool = True
 
     # --- Scrumming-specific ---
-    target_balance: float = 200.0       # Balance the bot trades relative to
+    target_balance: float = 200.0  # Balance the bot trades relative to
     # v3.24.92 — MAXIMUM USD THIS BOT MAY ADOPT FROM THE EXCHANGE.
     #
     # 0.0 means "use target_balance", which is the sane default: a bot
@@ -155,11 +166,13 @@ class BotConfig:
     # Researched 2026-08-09, see
     # docs/audits/2026-08-09_position_attribution_shared_account_research.md
     max_adoptable_usd: float = 0.0
-    scrumming_interval_pct: float = 1.0 # % market move between actions
+    scrumming_interval_pct: float = 1.0  # % market move between actions
 
     # Scrumming: Profit routing (where excess delta goes after sell)
-    profit_route: str = "fold_to_target"  # "fold_to_target" | "spendable" | "split" | "cross_bot"
-    profit_route_bot_id: str = ""         # Target bot ID for cross-bot routing
+    profit_route: str = (
+        "fold_to_target"  # "fold_to_target" | "spendable" | "split" | "cross_bot"
+    )
+    profit_route_bot_id: str = ""  # Target bot ID for cross-bot routing
 
     # Scrumming: Scrum-to-fold reentry ratio (MEM-234)
     # Controls what % of scrum sale proceeds queue for fold-back rebuy.
@@ -167,7 +180,7 @@ class BotConfig:
     # 50 = half the proceeds queue for fold, half realized as cash profit.
     # Low values preserve cash buffer — safer when price keeps falling
     # after the scrum. Default 100 preserves pre-MEM-234 behavior.
-    scrum_fold_pct: int = 100             # 1-100: % of scrum proceeds queued for fold
+    scrum_fold_pct: int = 100  # 1-100: % of scrum proceeds queued for fold
 
     # Item 9 (2026-08-13) — Tranche despawn timer.
     # Operator spec: "We can also add a tranche despawn timer that
@@ -185,7 +198,7 @@ class BotConfig:
     # NEVER READ THIS FIELD RAW. `despawn_threshold_days()` below is the
     # one rule, and both the sweep and the live-settings spinbox go
     # through it.
-    tranche_despawn_days: int = 0         # 0 = off; else delist at >= N days
+    tranche_despawn_days: int = 0  # 0 = off; else delist at >= N days
 
     # Scrumming: Max target-balance growth per completed cycle (ADR-029 / MEM-247 pending)
     # Caps how much _target_balance can increase from a single profit-fold event.
@@ -195,33 +208,35 @@ class BotConfig:
     # Valid range: 1-100. Slice 2 only declares the field; it is INERT until slice 4
     # wires up the shared helper src/trading/profit_fold.py per PLAN_MEM246 Step 2.
     # sadp: R42 R44 (cap must be mirrored live↔sim↔battery via shared helper)
-    max_target_growth_pct: float = 1.0    # 1-100: cap on target growth per cycle as %
+    max_target_growth_pct: float = 1.0  # 1-100: cap on target growth per cycle as %
 
     # Scrumming: Bollinger Band proximity settings
-    bb_tolerance_pct: float = 1.0         # 0.25% to 5% tolerance for BB proximity
-    bb_landing_strip_candles: int = 3     # Min consecutive tight HA candles for landing strip
-    ta_timeframe: str = "1h"              # Timeframe for TA indicator calculations
+    bb_tolerance_pct: float = 1.0  # 0.25% to 5% tolerance for BB proximity
+    bb_landing_strip_candles: int = (
+        3  # Min consecutive tight HA candles for landing strip
+    )
+    ta_timeframe: str = "1h"  # Timeframe for TA indicator calculations
 
     # Scrumming: advanced signal & risk parameters
     # v3.13.8 MEM-182 / P1.9 — added for Real/Sim UI parity. Were previously
     # sim-only; now canonical on both sides. Defaults match the sim's
     # existing defaults so current sim behavior is preserved.
-    scrum_detect_pct: int = 75            # DETECT threshold — % distance from BB midline
-                                          # before switching SEARCH→TRACK (10-90)
-    scrum_fire_pct: float = 0.5           # FIRE threshold — % distance from BB band
-                                          # to trigger a trade (0.1-10.0)
-    bb_midline_gate: bool = True          # When True: scrums only above midline,
-                                          # folds only below midline (bear-market friendly)
-    scrum_read_rate_min: int = 5          # SEARCH-mode read rate in minutes; TRACK mode
-                                          # reads 10x faster automatically
-    band_travel_pct: int = 70             # Secondary harvest trigger — % of BB band width
-                                          # price must travel since last fold (0 = off)
-    bb_bullseye_check: bool = True        # Rapid Fire override when price touches a BB
-                                          # band within 0.1% (overrides other gates)
-    hedge_rebalance_active: bool = True   # Enable a separate USD reserve for buying on
-                                          # sharp drawdowns (lets bot keep buying the dip)
-    hedge_balance: float = 200.0          # USD reserve amount for hedge rebalancing
-                                          # (not taken from target_balance)
+    scrum_detect_pct: int = 75  # DETECT threshold — % distance from BB midline
+    # before switching SEARCH→TRACK (10-90)
+    scrum_fire_pct: float = 0.5  # FIRE threshold — % distance from BB band
+    # to trigger a trade (0.1-10.0)
+    bb_midline_gate: bool = True  # When True: scrums only above midline,
+    # folds only below midline (bear-market friendly)
+    scrum_read_rate_min: int = 5  # SEARCH-mode read rate in minutes; TRACK mode
+    # reads 10x faster automatically
+    band_travel_pct: int = 70  # Secondary harvest trigger — % of BB band width
+    # price must travel since last fold (0 = off)
+    bb_bullseye_check: bool = True  # Rapid Fire override when price touches a BB
+    # band within 0.1% (overrides other gates)
+    hedge_rebalance_active: bool = True  # Enable a separate USD reserve for buying on
+    # sharp drawdowns (lets bot keep buying the dip)
+    hedge_balance: float = 200.0  # USD reserve amount for hedge rebalancing
+    # (not taken from target_balance)
 
     # v3.15.58 — Circuit Breakers (operator directive 2026-04-25).
     # Soft = time-delay interrupt on the move's side of the market;
@@ -229,9 +244,9 @@ class BotConfig:
     # measured as (high - low) / open × 100. Direction inferred from
     # close vs open: close>=open → "up" (interrupt SCRUM side);
     # close<open → "down" (interrupt FOLD side).
-    circuit_breaker_soft_pct: float = 25.0    # Soft trip threshold (default 25%)
-    circuit_breaker_hard_pct: float = 35.0    # Hard trip threshold (default 35%)
-    circuit_breaker_cooldown_candles: int = 3 # Candles to wait before soft re-opens
+    circuit_breaker_soft_pct: float = 25.0  # Soft trip threshold (default 25%)
+    circuit_breaker_hard_pct: float = 35.0  # Hard trip threshold (default 35%)
+    circuit_breaker_cooldown_candles: int = 3  # Candles to wait before soft re-opens
 
     # v3.15.63 — Maximum Cartridge Size (operator directive 2026-04-26).
     # Target Delta cap as % of target balance. When |delta| ≥ this %,
@@ -286,16 +301,24 @@ class BotConfig:
     # Smart Cartridge for HTF capture).
     #
     # SCRUM-side gates (sell at top):
-    scrum_require_ta_bullish: bool = True   # Gate: is_bullish required for auto-scrum
-    scrum_hold_in_uptrend: bool = True       # Gate: trend_hold blocks scrum during sustained uptrend
-    scrum_defer_to_htf: bool = True          # Gate: refuse scrum when higher-TF phantom is BULLISH
+    scrum_require_ta_bullish: bool = True  # Gate: is_bullish required for auto-scrum
+    scrum_hold_in_uptrend: bool = (
+        True  # Gate: trend_hold blocks scrum during sustained uptrend
+    )
+    scrum_defer_to_htf: bool = (
+        True  # Gate: refuse scrum when higher-TF phantom is BULLISH
+    )
     # FOLD-side gates (buy at bottom, mirror semantics):
-    fold_require_ta_bearish: bool = True     # Gate: is_bearish required for auto-fold
-    fold_hold_in_downtrend: bool = True      # Gate: trend_hold blocks fold during sustained downtrend
-    fold_defer_to_htf: bool = True           # Gate: refuse fold when higher-TF phantom is BEARISH
+    fold_require_ta_bearish: bool = True  # Gate: is_bearish required for auto-fold
+    fold_hold_in_downtrend: bool = (
+        True  # Gate: trend_hold blocks fold during sustained downtrend
+    )
+    fold_defer_to_htf: bool = (
+        True  # Gate: refuse fold when higher-TF phantom is BEARISH
+    )
 
     # --- Both modes ---
-    visibility: str = "orderbook"       # "orderbook" or "internal"
+    visibility: str = "orderbook"  # "orderbook" or "internal"
     # v3.23.25 — Aggressive Trading redefined per operator directive
     # 2026-07-25: forces all engine-initiated trades to execute as
     # IOC-limit taker orders (immediate-or-cancel limit priced through
@@ -410,8 +433,8 @@ class BotConfig:
     position_ceiling_enabled: bool = False
     position_ceiling_multiple: float = 5.0  # Range [1.0, 10.0], default 5x
     detonation_enabled: bool = False
-    detonation_timeframe: str = "1d"        # "1d", "1w"
-    detonation_confidence_min: float = 0.75 # Fixed per operator Q4
+    detonation_timeframe: str = "1d"  # "1d", "1w"
+    detonation_confidence_min: float = 0.75  # Fixed per operator Q4
 
     # v3.23.42 — Interoperability: capital reservation + operator hold-out
     # (per docs/audits/2026-07-27_interop_usd_denom_settlement_audit_and_design.md
@@ -421,8 +444,8 @@ class BotConfig:
     # ``personal_hold_qty`` is target-asset units the operator keeps
     # out of the bot's decision math AND augments the registry
     # reservation so no other bot touches it either.
-    self_reserve_capital: bool = True       # Default ON per operator Q1
-    personal_hold_qty: float = 0.0          # Target-asset units held out
+    self_reserve_capital: bool = True  # Default ON per operator Q1
+    personal_hold_qty: float = 0.0  # Target-asset units held out
 
     # ─── v3.19.1 — Extractor Bot (mode == EXTRACTOR) ─────────────────
     # See docs/audits/2026-05-20_extractor_bot_design.md and
@@ -461,50 +484,50 @@ class BotConfig:
     extractor_direction: str = "normal"
     inverted_extractor_standing_alt_units: float = 0.0
     extractor_chunk_size_usd: float = 100.0
-        # USD-equivalent of base currency this bot OWNS. Converted to
-        # base units at bot creation using quote_to_usd; thereafter
-        # tracked in base units (so base-USD price drift doesn't
-        # silently shrink/grow the bot's chunk).
+    # USD-equivalent of base currency this bot OWNS. Converted to
+    # base units at bot creation using quote_to_usd; thereafter
+    # tracked in base units (so base-USD price drift doesn't
+    # silently shrink/grow the bot's chunk).
     extractor_artillery_size_usd: float = 5.0
-        # USD-equivalent per artillery round. Converted to base units
-        # at FIRING time (each round may consume slightly different
-        # base units as base-USD price drifts).
+    # USD-equivalent per artillery round. Converted to base units
+    # at FIRING time (each round may consume slightly different
+    # base units as base-USD price drifts).
     extractor_scan_top_n: int = 8
-        # Top-N */<base> pairs by 24h volume kept on the watch list.
-        # Range [5, 10] per design doc § 6.
+    # Top-N */<base> pairs by 24h volume kept on the watch list.
+    # Range [5, 10] per design doc § 6.
     extractor_scan_refresh_candles: int = 60
-        # Re-rank top-N every N ticks. Default 60 = once per hour at
-        # 1m cadence. Prevents thrashing while staying responsive.
+    # Re-rank top-N every N ticks. Default 60 = once per hour at
+    # 1m cadence. Prevents thrashing while staying responsive.
     extractor_pool_reserve_pct: float = 50.0
-        # % of chunk that stays free as reserve. New artillery only
-        # fires if (chunk_free − artillery_size) ≥ reserve.
+    # % of chunk that stays free as reserve. New artillery only
+    # fires if (chunk_free − artillery_size) ≥ reserve.
     extractor_exit_pct: float = 100.0
-        # % of alt position sold on bullish trigger. 100 = full exit;
-        # <100 leaves a "rider" tail. Operator-tunable per bot.
+    # % of alt position sold on bullish trigger. 100 = full exit;
+    # <100 leaves a "rider" tail. Operator-tunable per bot.
     extractor_drawdown_threshold_pct: float = 3.0
-        # USD-value drawdown threshold below which averaging-down may
-        # fire. Drawdown computed in USD (double-layer valuation per
-        # design doc §6a) — catches base-currency exchange-rate skew.
+    # USD-value drawdown threshold below which averaging-down may
+    # fire. Drawdown computed in USD (double-layer valuation per
+    # design doc §6a) — catches base-currency exchange-rate skew.
     extractor_correction_skip_candles: int = 4
-        # Minimum candles between consecutive averaging-down fires on
-        # the same position. Throttles correction frequency.
+    # Minimum candles between consecutive averaging-down fires on
+    # the same position. Throttles correction frequency.
     extractor_max_cost_basis_multiple: float = 2.0
-        # Safety cap: cost basis of any position can't exceed
-        # multiplier × original artillery_size. Hard floor against
-        # runaway averaging-down drawdown.
+    # Safety cap: cost basis of any position can't exceed
+    # multiplier × original artillery_size. Hard floor against
+    # runaway averaging-down drawdown.
     extractor_max_compounding_tier: int = 3
-        # Per-position ephemeral tier counter (operator directive
-        # 2026-05-20 — dies with the round). Tier N = roll N-1 times
-        # then lock realized base gain to pool. Tier 1 always locks
-        # to pool. Range [1, 10].
+    # Per-position ephemeral tier counter (operator directive
+    # 2026-05-20 — dies with the round). Tier N = roll N-1 times
+    # then lock realized base gain to pool. Tier 1 always locks
+    # to pool. Range [1, 10].
     extractor_hedge_budget_usd: float = 0.0
-        # Optional separate base-currency reserve that powers
-        # averaging-down corrections WITHOUT eating into chunk_free.
-        # 0 = disabled; corrections come from chunk_free.
+    # Optional separate base-currency reserve that powers
+    # averaging-down corrections WITHOUT eating into chunk_free.
+    # 0 = disabled; corrections come from chunk_free.
     extractor_trend_strength_threshold: float = 0.65
-        # Trend-hold threshold for the per-symbol TASignalProvider
-        # (mirrors ScrummingBot's inline 0.65 default). Above this
-        # fraction of recent green candles, trend_hold = True.
+    # Trend-hold threshold for the per-symbol TASignalProvider
+    # (mirrors ScrummingBot's inline 0.65 default). Above this
+    # fraction of recent green candles, trend_hold = True.
 
     # v3.19.26 (P0 ExtractorBot wizard Symptom 1 closure) — operator-
     # selected alt targets from the wizard's ExtractorPoolPage.
@@ -573,27 +596,32 @@ class BotConfig:
                     f"sigil). This is likely a stale pre-v3.19.28 "
                     f"wizard write or a mode-tag drift bug — the "
                     f"value will leak into the startup notification "
-                    f"as an unrelated wallet balance.")
+                    f"as an unrelated wallet balance."
+                )
             if self.extractor_chunk_size_usd <= 0:
                 violations.append(
                     f"Extractor config has "
                     f"extractor_chunk_size_usd="
                     f"{self.extractor_chunk_size_usd}; must be "
-                    f"positive (bot needs a pool to deploy).")
+                    f"positive (bot needs a pool to deploy)."
+                )
         elif self.mode == BotMode.SCRUMMING:
             if self.target_asset == "*":
                 violations.append(
                     f"Scrumming config has target_asset='*' (the "
                     f"Extractor pool sigil); Scrumming is "
-                    f"single-pair and needs a real ticker.")
+                    f"single-pair and needs a real ticker."
+                )
             if not self.target_asset:
                 violations.append(
                     f"Scrumming config has empty target_asset; "
-                    f"needs a real ticker (e.g. 'BTC').")
+                    f"needs a real ticker (e.g. 'BTC')."
+                )
             if not self.base_currency:
                 violations.append(
                     f"Scrumming config has empty base_currency; "
-                    f"needs a real quote currency (e.g. 'USDC').")
+                    f"needs a real quote currency (e.g. 'USDC')."
+                )
         return violations
 
 
@@ -622,85 +650,113 @@ class BotConfig:
 #: Fields whose meaning + values are the SAME across both modes.
 #: Anything in this set may be passed to make_bot_config(...) for
 #: either mode without warning.
-_BOT_CONFIG_SHARED_FIELDS: frozenset = frozenset({
-    "exchange_id", "base_currency", "target_asset", "symbol",
-    "mode",
-    "target_balance",   # mode-overloaded but always required
-    "ta_timeframe",
-    "trading_fee_pct",
-    "visibility",
-    "aggressive_trading",
-    # v3.23.25 — bulk_trading renamed to stack_mode; new fields join
-    # the shared allowlist since they may be surfaced for both modes.
-    "stack_mode",
-    "split_distance",
-    "stack_tranche_count_target",
-    "stack_spacing_mode",
-    # v3.23.25 — bulk_partial_on_return retired (see BotConfig comment)
-    "max_entry_price",
-    "min_entry_price",
-})
+_BOT_CONFIG_SHARED_FIELDS: frozenset = frozenset(
+    {
+        "exchange_id",
+        "base_currency",
+        "target_asset",
+        "symbol",
+        "mode",
+        "target_balance",  # mode-overloaded but always required
+        "ta_timeframe",
+        "trading_fee_pct",
+        "visibility",
+        "aggressive_trading",
+        # v3.23.25 — bulk_trading renamed to stack_mode; new fields join
+        # the shared allowlist since they may be surfaced for both modes.
+        "stack_mode",
+        "split_distance",
+        "stack_tranche_count_target",
+        "stack_spacing_mode",
+        # v3.23.25 — bulk_partial_on_return retired (see BotConfig comment)
+        "max_entry_price",
+        "min_entry_price",
+    }
+)
 
 #: Fields that are ONLY meaningful for ScrummingBot. Passing any of
 #: these to make_bot_config(mode=EXTRACTOR, ...) raises ValueError —
 #: this is the structural enforcement that prevents stale
 #: ScrummingBot config defaults from leaking into Extractor configs.
-_BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset({
-    # v3.23.3 R-CLN Phase 1: 8 grid-legacy dead fields excised after
-    # empirical grep confirmed zero references in scrumming_bot.py.
-    # See docs/audits/2026-06-12_scrumming_bot_field_alignment.md for
-    # the field list. Operator-approved scope.
-    "investment_amount",
-    "increment_style", "spacing_style",  # v3.23.25 market_check_interval removed
-    "profit_folding_active",
-    # Scrumming-specific accumulation/routing
-    "scrumming_interval_pct",
-    "profit_route", "profit_route_bot_id",
-    "scrum_fold_pct", "max_target_growth_pct",
-    # Item 9 — despawn timer. Scrumming-only: the two ledgers it
-    # sweeps (`_fold_tranches`, `_stack_tranches`) are ScrummingBot
-    # state and neither exists on ExtractorBot.
-    "tranche_despawn_days",
-    "bb_tolerance_pct", "bb_landing_strip_candles",
-    "scrum_detect_pct", "scrum_fire_pct", "bb_midline_gate",
-    "scrum_read_rate_min", "band_travel_pct", "bb_bullseye_check",
-    "hedge_rebalance_active", "hedge_balance",
-    "circuit_breaker_soft_pct", "circuit_breaker_hard_pct",
-    "circuit_breaker_cooldown_candles",
-    "max_cartridge_size_pct",
-    "max_cartridge_smart", "max_cartridge_smart_ceiling_pct",
-    "wire_inflow_stack_pct",
-    # v3.16.15 strategy gates
-    "scrum_require_ta_bullish", "scrum_hold_in_uptrend",
-    "scrum_defer_to_htf",
-    "fold_require_ta_bearish", "fold_hold_in_downtrend",
-    "fold_defer_to_htf",
-    # MEM-244 risk controls
-    "position_ceiling_enabled", "position_ceiling_multiple",
-    "detonation_enabled", "detonation_timeframe",
-    "detonation_confidence_min",
-    # v3.23.42 interop
-    "self_reserve_capital", "personal_hold_qty",
-})
+_BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
+    {
+        # v3.23.3 R-CLN Phase 1: 8 grid-legacy dead fields excised after
+        # empirical grep confirmed zero references in scrumming_bot.py.
+        # See docs/audits/2026-06-12_scrumming_bot_field_alignment.md for
+        # the field list. Operator-approved scope.
+        "investment_amount",
+        "increment_style",
+        "spacing_style",  # v3.23.25 market_check_interval removed
+        "profit_folding_active",
+        # Scrumming-specific accumulation/routing
+        "scrumming_interval_pct",
+        "profit_route",
+        "profit_route_bot_id",
+        "scrum_fold_pct",
+        "max_target_growth_pct",
+        # Item 9 — despawn timer. Scrumming-only: the two ledgers it
+        # sweeps (`_fold_tranches`, `_stack_tranches`) are ScrummingBot
+        # state and neither exists on ExtractorBot.
+        "tranche_despawn_days",
+        "bb_tolerance_pct",
+        "bb_landing_strip_candles",
+        "scrum_detect_pct",
+        "scrum_fire_pct",
+        "bb_midline_gate",
+        "scrum_read_rate_min",
+        "band_travel_pct",
+        "bb_bullseye_check",
+        "hedge_rebalance_active",
+        "hedge_balance",
+        "circuit_breaker_soft_pct",
+        "circuit_breaker_hard_pct",
+        "circuit_breaker_cooldown_candles",
+        "max_cartridge_size_pct",
+        "max_cartridge_smart",
+        "max_cartridge_smart_ceiling_pct",
+        "wire_inflow_stack_pct",
+        # v3.16.15 strategy gates
+        "scrum_require_ta_bullish",
+        "scrum_hold_in_uptrend",
+        "scrum_defer_to_htf",
+        "fold_require_ta_bearish",
+        "fold_hold_in_downtrend",
+        "fold_defer_to_htf",
+        # MEM-244 risk controls
+        "position_ceiling_enabled",
+        "position_ceiling_multiple",
+        "detonation_enabled",
+        "detonation_timeframe",
+        "detonation_confidence_min",
+        # v3.23.42 interop
+        "self_reserve_capital",
+        "personal_hold_qty",
+    }
+)
 
 #: Fields that are ONLY meaningful for ExtractorBot. Passing any of
 #: these to make_bot_config(mode=SCRUMMING, ...) raises ValueError.
-_BOT_CONFIG_EXTRACTOR_ONLY_FIELDS: frozenset = frozenset({
-    "extractor_chunk_size_usd", "extractor_artillery_size_usd",
-    "extractor_scan_top_n", "extractor_scan_refresh_candles",
-    "extractor_pool_reserve_pct", "extractor_exit_pct",
-    "extractor_drawdown_threshold_pct",
-    "extractor_correction_skip_candles",
-    "extractor_max_cost_basis_multiple",
-    "extractor_max_compounding_tier",
-    "extractor_hedge_budget_usd",
-    "extractor_trend_strength_threshold",
-    "extractor_alt_targets",
-    # v3.20.74 — Inverted Extractor direction flag + standing-position
-    # import (Q6/Q7/Q8/Q9 locks)
-    "extractor_direction",
-    "inverted_extractor_standing_alt_units",
-})
+_BOT_CONFIG_EXTRACTOR_ONLY_FIELDS: frozenset = frozenset(
+    {
+        "extractor_chunk_size_usd",
+        "extractor_artillery_size_usd",
+        "extractor_scan_top_n",
+        "extractor_scan_refresh_candles",
+        "extractor_pool_reserve_pct",
+        "extractor_exit_pct",
+        "extractor_drawdown_threshold_pct",
+        "extractor_correction_skip_candles",
+        "extractor_max_cost_basis_multiple",
+        "extractor_max_compounding_tier",
+        "extractor_hedge_budget_usd",
+        "extractor_trend_strength_threshold",
+        "extractor_alt_targets",
+        # v3.20.74 — Inverted Extractor direction flag + standing-position
+        # import (Q6/Q7/Q8/Q9 locks)
+        "extractor_direction",
+        "inverted_extractor_standing_alt_units",
+    }
+)
 
 
 # v3.23.25 — deprecated kwargs that may appear in older bot_state.json
@@ -710,23 +766,30 @@ _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS: frozenset = frozenset({
 # practice; we can drop the key without behaviour loss because the
 # new stack_mode replacement defaults to False (same effective
 # behaviour). bulk_partial_on_return was declared but never read.
-_DEPRECATED_KWARGS: frozenset = frozenset({
-    "bulk_trading",             # renamed to stack_mode; historically always False
-    "bulk_partial_on_return",   # retired; never had a runtime consumer
-    "market_check_interval",    # retired v3.23.25; never had a runtime consumer
-    # v3.23.3 R-CLN Phase 1 grid-legacy fields (kept here so any
-    # bot_state.json still carrying them doesn't crash on load):
-    "position_count", "position_distance_pct",
-    "fold_mode", "fold_target", "fold_target_count", "profit_fold_pct",
-    "distribute_target", "distribute_target_count",
-})
+_DEPRECATED_KWARGS: frozenset = frozenset(
+    {
+        "bulk_trading",  # renamed to stack_mode; historically always False
+        "bulk_partial_on_return",  # retired; never had a runtime consumer
+        "market_check_interval",  # retired v3.23.25; never had a runtime consumer
+        # v3.23.3 R-CLN Phase 1 grid-legacy fields (kept here so any
+        # bot_state.json still carrying them doesn't crash on load):
+        "position_count",
+        "position_distance_pct",
+        "fold_mode",
+        "fold_target",
+        "fold_target_count",
+        "profit_fold_pct",
+        "distribute_target",
+        "distribute_target_count",
+    }
+)
 
 
 #: An int this large already exceeds float range, so converting one
 #: raises OverflowError rather than returning inf. Ints outside the
 #: bound are refused instead of converted; 2**1023 is under the float
 #: maximum (~1.798e308) and no real timestamp or setting approaches it.
-_FLOAT_SAFE_INT: int = 2 ** 1023
+_FLOAT_SAFE_INT: int = 2**1023
 
 #: Saturation bound for the despawn threshold: 10,000 years in days.
 #: Beyond this the value stops meaning anything different — no record
@@ -864,7 +927,8 @@ def make_bot_config(mode, **kwargs) -> BotConfig:
     if not isinstance(mode, BotMode):
         raise TypeError(
             f"make_bot_config(): mode must be BotMode enum, got "
-            f"{type(mode).__name__}={mode!r}")
+            f"{type(mode).__name__}={mode!r}"
+        )
 
     # v3.23.25 — drop deprecated keys from bot_state.json before any
     # mode-shape validation. Prevents the "position_count-class"
@@ -892,13 +956,13 @@ def make_bot_config(mode, **kwargs) -> BotConfig:
             f"would silently store nonsense values that leak into "
             f"downstream display/persistence. See "
             f"_BOT_CONFIG_SCRUMMING_ONLY_FIELDS / "
-            f"_BOT_CONFIG_EXTRACTOR_ONLY_FIELDS in bot_container.py.")
+            f"_BOT_CONFIG_EXTRACTOR_ONLY_FIELDS in bot_container.py."
+        )
 
     # Mode-aware default for target_asset (Extractor: "*" sigil;
     # Scrumming: "BTC" legacy fallback). Caller-provided value wins.
     if "target_asset" not in kwargs:
-        kwargs["target_asset"] = (
-            "*" if mode == BotMode.EXTRACTOR else "BTC")
+        kwargs["target_asset"] = "*" if mode == BotMode.EXTRACTOR else "BTC"
 
     # Construct + validate. If validate_mode_shape returns
     # violations, raise — the operator shouldn't see those as
@@ -908,8 +972,8 @@ def make_bot_config(mode, **kwargs) -> BotConfig:
     if violations:
         raise ValueError(
             f"make_bot_config(mode={mode.value}): construction "
-            f"produced an invalid config. Violations:\n  "
-            + "\n  ".join(violations))
+            f"produced an invalid config. Violations:\n  " + "\n  ".join(violations)
+        )
     return cfg
 
 
@@ -919,17 +983,18 @@ def make_bot_config(mode, **kwargs) -> BotConfig:
 @dataclass
 class BotStats:
     """Mutable runtime statistics — updated by the bot during operation."""
+
     total_trades: int = 0
     total_buys: int = 0
     total_sells: int = 0
-    trade_volume: float = 0.0               # Cumulative USD volume traded
+    trade_volume: float = 0.0  # Cumulative USD volume traded
     realised_pnl: float = 0.0
     unrealised_pnl: float = 0.0
     active_buy_orders: int = 0
     active_sell_orders: int = 0
     current_price: float = 0.0
     position_value: float = 0.0
-    accumulated_fold: float = 0.0       # Tracks toward extended position
+    accumulated_fold: float = 0.0  # Tracks toward extended position
     accumulated_distribute: float = 0.0  # Tracks toward extended position
     # v3.24.44 — fold tranches DISCARDED by an operator clear, never
     # folded. Deliberately separate from any "closed" counter so that one
@@ -985,12 +1050,12 @@ class BotStats:
     # unrealised_pnl) that were previously the sole source.
     # Default 0 means "not yet refreshed" — call sites should respect
     # exchange_data_fresh_ts to know if the value is stale.
-    realized_pnl_exchange: float = 0.0    # FIFO-matched realized P/L
-    avg_entry_exchange: float = 0.0       # weighted-avg cost basis
+    realized_pnl_exchange: float = 0.0  # FIFO-matched realized P/L
+    avg_entry_exchange: float = 0.0  # weighted-avg cost basis
     cost_basis_total_exchange: float = 0.0  # qty × avg_entry
     fees_paid_exchange: float = 0.0
     exchange_trade_count: int = 0
-    exchange_data_fresh_ts: float = 0.0   # unix-seconds of last refresh
+    exchange_data_fresh_ts: float = 0.0  # unix-seconds of last refresh
     # v3.16.48 — Operator directive 2026-05-10: "Pull the data and
     # display it. Spendable balance is my cash." The Spendable header
     # widget should show actual exchange wallet cash (USD + USDC),
@@ -1060,7 +1125,7 @@ class BotContainer:
         self._start_time: float = 0.0
         self._bus = get_event_bus()
         self._volume_guard = None  # Set by BotManager if available
-        self._data_pool = None     # Set by BotManager if available
+        self._data_pool = None  # Set by BotManager if available
         # v3.15.78 — Pre-flight precision-check cache. Operator
         # directive 2026-04-27: "We should not be spamming the APIs
         # with improperly valued orders." Maps symbol → (min_amount,
@@ -1113,7 +1178,8 @@ class BotContainer:
         return
 
     async def _get_market_limits(
-        self, symbol: str,
+        self,
+        symbol: str,
     ) -> tuple[float, float, int]:
         """v3.15.78 — Return ``(min_amount, min_cost, amount_precision)``
         for ``symbol`` from the exchange's market metadata. Cached on
@@ -1135,7 +1201,9 @@ class BotContainer:
         except Exception as exc:
             logger.debug(
                 "Bot %s could not fetch markets for precision check: %s",
-                self.bot_id, exc)
+                self.bot_id,
+                exc,
+            )
             # Negative-cache the failure briefly so we don't spam
             # get_markets() on every order. Fail-open with
             # zero-min so trades still flow.
@@ -1157,8 +1225,12 @@ class BotContainer:
         return fallback
 
     async def guarded_place_order(
-        self, symbol: str, side: "OrderSide", order_type: "OrderType",
-        amount: float, price: Optional[float] = None,
+        self,
+        symbol: str,
+        side: "OrderSide",
+        order_type: "OrderType",
+        amount: float,
+        price: Optional[float] = None,
         purpose: str = "trade",
     ) -> "Order":
 
@@ -1238,15 +1310,20 @@ class BotContainer:
                 "Bot %s PRE-FLIGHT REJECTED %s %s: amount is not a finite "
                 "positive number: %r (type %s). Upstream produced an "
                 "unusable size; the API was not called.",
-                getattr(self, "bot_id", "?"), _side_str, symbol, amount,
-                type(amount).__name__)
+                getattr(self, "bot_id", "?"),
+                _side_str,
+                symbol,
+                amount,
+                type(amount).__name__,
+            )
             raise Exception(
                 f"PRE-FLIGHT REJECTED: {_side_str} {symbol} amount is not "
                 f"a finite positive number: {amount!r} "
                 f"(type {type(amount).__name__}). An amount that is not a "
                 f"number cannot be sized, compared or sent, and this one "
                 f"means an upstream value is already corrupt. "
-                f"API not called.")
+                f"API not called."
+            )
 
         # ============================================================
         # v3.15.78 — Pre-flight precision check.
@@ -1258,8 +1335,7 @@ class BotContainer:
         # "amount precision" errors like the operator-reported RAVE
         # case from 2026-04-27).
         try:
-            _min_amount, _min_cost, _amount_prec = (
-                await self._get_market_limits(symbol))
+            _min_amount, _min_cost, _amount_prec = await self._get_market_limits(symbol)
         except Exception:  # R28-OK: market-limits probe; safe defaults if fetch fails
             _min_amount, _min_cost, _amount_prec = 0.0, 0.0, 8
 
@@ -1289,6 +1365,7 @@ class BotContainer:
         # rejection message can quote the truncated size back to the
         # operator.
         import math as _math
+
         _amt_steps: Optional[int] = None
         _min_steps: Optional[int] = None
         if _amount_prec >= 0:
@@ -1316,7 +1393,8 @@ class BotContainer:
                 f"PRE-FLIGHT REJECTED: {_side_str} amount {_amt:.8f} "
                 f"({_amt_trunc:.{max(_amount_prec,0)}f} after truncating "
                 f"to precision={_amount_prec}) is below {symbol} "
-                f"min_amount {_min_amount}. API not called.")
+                f"min_amount {_min_amount}. API not called."
+            )
 
         if _min_cost > 0 and price is not None:
             try:
@@ -1330,7 +1408,8 @@ class BotContainer:
                         f"PRE-FLIGHT REJECTED: {_side_str} notional "
                         f"${_notional:.4f} ({_amt:.8f} \u00d7 ${_px:.8f}) "
                         f"is below {symbol} min_cost ${_min_cost:.4f}. "
-                        f"API not called.")
+                        f"API not called."
+                    )
 
         # ============================================================
         # End of pre-flight check. Continue to existing dispatch.
@@ -1340,13 +1419,16 @@ class BotContainer:
             side_str = "buy" if side == OrderSide.BUY else "sell"
             ot_str = "market" if order_type == OrderType.MARKET else "limit"
             report = await self._volume_guard.execute(
-                symbol, side_str, amount,
-                price=price or 0, order_type=ot_str,
-                exchange=self.exchange)
+                symbol,
+                side_str,
+                amount,
+                price=price or 0,
+                order_type=ot_str,
+                exchange=self.exchange,
+            )
 
             if not report.success:
-                raise Exception(
-                    f"VolumeGuard execution failed: {report.reason}")
+                raise Exception(f"VolumeGuard execution failed: {report.reason}")
 
             # Construct a synthetic Order from the report
             return Order(
@@ -1359,8 +1441,11 @@ class BotContainer:
                 filled=report.executed_amount,
                 remaining=report.requested_amount - report.executed_amount,
                 average=report.avg_fill_price,
-                status=OrderStatus.CLOSED if report.executed_amount > 0
-                       else OrderStatus.FAILED,
+                status=(
+                    OrderStatus.CLOSED
+                    if report.executed_amount > 0
+                    else OrderStatus.FAILED
+                ),
                 timestamp=time.time(),
             )
 
@@ -1374,8 +1459,8 @@ class BotContainer:
         # Binance -2010), preventing double-fills from network-timeout
         # retry storms. See src/exchange/idempotency.py for the full
         # design rationale.
-        from ..exchange.idempotency import (
-            get_idempotency_layer, TradeIntent)
+        from ..exchange.idempotency import get_idempotency_layer, TradeIntent
+
         _idem = get_idempotency_layer()
         _intent = TradeIntent(
             symbol=symbol,
@@ -1390,8 +1475,8 @@ class BotContainer:
         # No guard — direct execution
         try:
             order = await self.exchange.place_order(
-                symbol, side, order_type, amount, price,
-                client_order_id=_coid)
+                symbol, side, order_type, amount, price, client_order_id=_coid
+            )
             _idem.mark_fulfilled(_intent)
             return order
         except Exception:
@@ -1424,8 +1509,10 @@ class BotContainer:
         # Register with shared data pool
         if self._data_pool:
             self._data_pool.register(
-                self.config.exchange_id, self.config.symbol,
-                getattr(self.config, 'ta_timeframe', '1h'))
+                self.config.exchange_id,
+                self.config.symbol,
+                getattr(self.config, "ta_timeframe", "1h"),
+            )
         self._task = asyncio.create_task(self._run_with_guard())
         self._bus.emit("bot.started", bot_id=self.bot_id, config=self.config)
         logger.info("Bot %s starting on %s", self.bot_id, self.config.symbol)
@@ -1445,8 +1532,10 @@ class BotContainer:
         # Unregister from shared data pool
         if self._data_pool:
             self._data_pool.unregister(
-                self.config.exchange_id, self.config.symbol,
-                getattr(self.config, 'ta_timeframe', '1h'))
+                self.config.exchange_id,
+                self.config.symbol,
+                getattr(self.config, "ta_timeframe", "1h"),
+            )
         self._bus.emit("bot.stopped", bot_id=self.bot_id)
         logger.info("Bot %s stopped", self.bot_id)
 
@@ -1498,8 +1587,7 @@ class BotContainer:
                     # never increments while the bot is running. Cheap
                     # operation; safe to do every tick.
                     if self._start_time:
-                        self.stats.uptime_seconds = (
-                            time.monotonic() - self._start_time)
+                        self.stats.uptime_seconds = time.monotonic() - self._start_time
 
                 except asyncio.CancelledError:
                     raise  # Let cancellation propagate
@@ -1538,7 +1626,8 @@ class BotContainer:
                         self._bus.emit("bot.cooldown", bot_id=self.bot_id)
                         logger.warning(
                             "Bot %s entering cooldown for %ds",
-                            self.bot_id, self.COOLDOWN_SECONDS,
+                            self.bot_id,
+                            self.COOLDOWN_SECONDS,
                         )
                         await asyncio.sleep(self.COOLDOWN_SECONDS)
                         self.stats.consecutive_errors = 0
@@ -1600,15 +1689,15 @@ class BotContainer:
         try:
             _budget = (
                 float(getattr(self, "_anchor_target_balance", 0.0) or 0.0)
-                * float(getattr(
-                    self.config, "max_target_growth_pct", 0.0) or 0.0)
-                / 100.0)
+                * float(getattr(self.config, "max_target_growth_pct", 0.0) or 0.0)
+                / 100.0
+            )
             if _budget > 0:
                 _over = [
                     float(_t.get("usd", 0) or 0)
                     for _t in (getattr(self, "_fold_tranches", []) or [])
-                    if isinstance(_t, dict)
-                    and float(_t.get("usd", 0) or 0) > _budget]
+                    if isinstance(_t, dict) and float(_t.get("usd", 0) or 0) > _budget
+                ]
                 _over_cap_summary = {
                     "tranches_over_cycle_cap": len(_over),
                     "tranches_over_cycle_cap_usd": round(sum(_over), 8),
@@ -1616,7 +1705,9 @@ class BotContainer:
         except Exception as _oc_exc:  # noqa: BLE001 - status must not raise
             logger.debug(
                 "over-cap tranche summary unavailable for %s: %s",
-                getattr(self, "bot_id", "?"), _oc_exc)
+                getattr(self, "bot_id", "?"),
+                _oc_exc,
+            )
 
         return {
             "bot_id": self.bot_id,
@@ -1629,16 +1720,16 @@ class BotContainer:
             # MEM-244 Risk Controls
             "anchor_target_balance": anchor_tb,
             "position_ceiling_enabled": getattr(
-                self.config, "position_ceiling_enabled", False),
+                self.config, "position_ceiling_enabled", False
+            ),
             "position_ceiling_multiple": getattr(
-                self.config, "position_ceiling_multiple", 5.0),
+                self.config, "position_ceiling_multiple", 5.0
+            ),
             "position_ceiling_usd": ceiling_usd,
             "ceiling_ratio": ceiling_ratio,
             "fold_rate_taper": fold_taper,
-            "detonation_enabled": getattr(
-                self.config, "detonation_enabled", False),
-            "detonation_timeframe": getattr(
-                self.config, "detonation_timeframe", "1d"),
+            "detonation_enabled": getattr(self.config, "detonation_enabled", False),
+            "detonation_timeframe": getattr(self.config, "detonation_timeframe", "1d"),
             "target_balance": self.config.target_balance,
             # v3.24.50 (Phase 1 Step 3) — the COMPOUNDING SURFACE.
             #
@@ -1653,23 +1744,25 @@ class BotContainer:
             # trading decision; they exist so Phase 2 and Phase 3 are
             # observable, because the failure mode this whole cascade is
             # fixing is "it silently did nothing and nobody could tell".
-            "live_target_balance": float(
-                getattr(self, "_target_balance", 0.0) or 0.0),
+            "live_target_balance": float(getattr(self, "_target_balance", 0.0) or 0.0),
             "standing_surplus_usd": float(
-                getattr(self, "_standing_surplus_usd", 0.0) or 0.0),
+                getattr(self, "_standing_surplus_usd", 0.0) or 0.0
+            ),
             "fold_cycle_cap_consumed": float(
-                getattr(self, "_fold_cycle_cap_consumed", 0.0) or 0.0),
+                getattr(self, "_fold_cycle_cap_consumed", 0.0) or 0.0
+            ),
             "cycle_growth_budget_usd": round(
                 float(getattr(self, "_anchor_target_balance", 0.0) or 0.0)
-                * float(getattr(
-                    self.config, "max_target_growth_pct", 0.0) or 0.0)
-                / 100.0, 8),
+                * float(getattr(self.config, "max_target_growth_pct", 0.0) or 0.0)
+                / 100.0,
+                8,
+            ),
             # How much queued tranche capital the per-cycle filter can
             # never admit, because a tranche is only taken if it fits
             # ENTIRELY. Counted here rather than in the GUI so the
             # arithmetic lives beside the fields it reads.
             **_over_cap_summary,
-            "ta_timeframe": getattr(self.config, 'ta_timeframe', '1h') or '1h',
+            "ta_timeframe": getattr(self.config, "ta_timeframe", "1h") or "1h",
             # MEM-248: expose current_holdings so the GUI Ammo column can
             # compute position_value = holdings × price even when the tick
             # loop hasn't yet populated stats.position_value. Without this,
@@ -1692,7 +1785,8 @@ class BotContainer:
                 # exchange, not internal accumulators.
                 "total_trades": (
                     int(getattr(self.stats, "exchange_trade_count", 0) or 0)
-                    if float(getattr(self.stats, "exchange_data_fresh_ts", 0.0) or 0.0) > 0
+                    if float(getattr(self.stats, "exchange_data_fresh_ts", 0.0) or 0.0)
+                    > 0
                     else self.stats.total_trades
                 ),
                 "trade_volume": round(self.stats.trade_volume, 2),
@@ -1701,8 +1795,7 @@ class BotContainer:
                 "active_buys": self.stats.active_buy_orders,
                 "active_sells": self.stats.active_sell_orders,
                 "current_price": self.stats.current_price,
-                "position_value": round(
-                    getattr(self.stats, "position_value", 0.0), 4),
+                "position_value": round(getattr(self.stats, "position_value", 0.0), 4),
                 "extended_positions": self.stats.extended_positions_created,
                 # v3.16.5 — live uptime computation. Operator-reported
                 # 2026-04-28: dashboard Uptime field never incremented
@@ -1712,11 +1805,16 @@ class BotContainer:
                 # dataclass default (0.0). Compute the live elapsed time
                 # here so the dashboard always sees the current value.
                 "uptime": round(
-                    (time.monotonic() - self._start_time)
-                    if (self._start_time and self.state in (
-                        BotState.RUNNING, BotState.STARTING))
-                    else self.stats.uptime_seconds,
-                    1),
+                    (
+                        (time.monotonic() - self._start_time)
+                        if (
+                            self._start_time
+                            and self.state in (BotState.RUNNING, BotState.STARTING)
+                        )
+                        else self.stats.uptime_seconds
+                    ),
+                    1,
+                ),
                 "last_error": self.stats.last_error,
                 # v3.24.40 (C54 / NF-83) — THIS BOT'S OWN accumulators.
                 # Consumers read these per row; the producer never
@@ -1726,13 +1824,15 @@ class BotContainer:
                 # fleet-wide sum, and sourcing a per-bot key from it
                 # would make every row show the fleet total.
                 "total_scrummed_usd": round(
-                    getattr(self.stats, "total_scrummed_usd", 0.0), 4),
+                    getattr(self.stats, "total_scrummed_usd", 0.0), 4
+                ),
                 "total_folded_usd": round(
-                    getattr(self.stats, "total_folded_usd", 0.0), 4),
+                    getattr(self.stats, "total_folded_usd", 0.0), 4
+                ),
                 "ytd_scrummed_usd": round(
-                    getattr(self.stats, "ytd_scrummed_usd", 0.0), 4),
-                "ytd_folded_usd": round(
-                    getattr(self.stats, "ytd_folded_usd", 0.0), 4),
+                    getattr(self.stats, "ytd_scrummed_usd", 0.0), 4
+                ),
+                "ytd_folded_usd": round(getattr(self.stats, "ytd_folded_usd", 0.0), 4),
             },
             # v3.24.40 (C54) — this bot's contribution to portfolio
             # value, at the TOP level because check_live_monitor reads
@@ -1740,24 +1840,33 @@ class BotContainer:
             # portfolio_value field on BotStats; a single bot's
             # portfolio contribution IS its position value.
             "portfolio_value": round(
-                getattr(self.stats, "position_value", 0.0) or 0.0, 4),
+                getattr(self.stats, "position_value", 0.0) or 0.0, 4
+            ),
             # v3.16.16 — auto-fire eligibility snapshot from last tick.
             # GUI fire button reads this to render solid (auto would
             # fire) vs outline (manual override only) and tooltip the
             # specific blocking gate(s). Falls back to defaults for
             # bot subclasses that don't maintain _last_gate_state.
-            "auto_fire": dict(getattr(self, "_last_gate_state", {
-                "scrum_armed": False, "fold_armed": False,
-                "scrum_blockers": ["pre-tick"],
-                "fold_blockers": ["pre-tick"],
-                "evaluated_at_tick": 0,
-            })),
+            "auto_fire": dict(
+                getattr(
+                    self,
+                    "_last_gate_state",
+                    {
+                        "scrum_armed": False,
+                        "fold_armed": False,
+                        "scrum_blockers": ["pre-tick"],
+                        "fold_blockers": ["pre-tick"],
+                        "evaluated_at_tick": 0,
+                    },
+                )
+            ),
         }
 
     def get_full_state(self) -> dict:
         """Export complete bot state for persistence. Includes config, stats,
         grid levels, and all data needed to restore without re-executing trades."""
         from dataclasses import asdict
+
         state = {
             "bot_id": self.bot_id,
             "state_when_saved": self.state.value,
@@ -1804,8 +1913,8 @@ class BotContainer:
                 state["scrumming_state"] = _export_scrumming()
             except Exception as exc:
                 logger.warning(
-                    "export_scrumming_state failed on %s: %s",
-                    self.bot_id, exc)
+                    "export_scrumming_state failed on %s: %s", self.bot_id, exc
+                )
 
         # v3.20.4 — Extractor runtime state (positions, chunk, hedge,
         # watch list, tick counter). Without this, every restart of a
@@ -1822,14 +1931,13 @@ class BotContainer:
         # ExtractorBot, not to this shared parent. The mode check is
         # kept and still comes first.
         _export_extractor = getattr(self, "export_state", None)
-        if (self.config.mode == BotMode.EXTRACTOR
-                and _export_extractor is not None):
+        if self.config.mode == BotMode.EXTRACTOR and _export_extractor is not None:
             try:
                 state["extractor_state"] = _export_extractor()
             except Exception as exc:
                 logger.warning(
-                    "export_state (extractor) failed on %s: %s",
-                    self.bot_id, exc)
+                    "export_state (extractor) failed on %s: %s", self.bot_id, exc
+                )
 
         return state
 
@@ -1879,19 +1987,19 @@ class BotManager:
         # _restore_ledger is written ONLY by code that OBSERVED a bot
         # fail to load, so it can distinguish the two. PR-0 records and
         # reports; PR-1 uses it to decide what a save must carry.
-        self._restore_ledger: dict[str, str] = {}   # bot_id -> reason
-        self._boot_state_records: dict = {}         # bot_id -> record
+        self._restore_ledger: dict[str, str] = {}  # bot_id -> reason
+        self._boot_state_records: dict = {}  # bot_id -> record
         self._restore_completed: bool = False
         # C17 — resolved HERE, ~40 lines ahead of the three subscribes
         # below, so an injected bus is the one they land on.
         self._bus = bus if bus is not None else get_event_bus()
         self._state_manager = None
-        self._volume_guard = None   # Shared VolumeGuard for all bots
-        self._data_pool = None      # Shared MarketDataPool for API efficiency
-        self._ticker_refresh_task = None   # Bulk ticker refresher handle
+        self._volume_guard = None  # Shared VolumeGuard for all bots
+        self._data_pool = None  # Shared MarketDataPool for API efficiency
+        self._ticker_refresh_task = None  # Bulk ticker refresher handle
         self._ticker_refresh_stop = False
-        self._live_monitor = None   # AI feedback loop (LiveMonitor)
-        self._connector = None      # CcxtConnector — set via set_connector()
+        self._live_monitor = None  # AI feedback loop (LiveMonitor)
+        self._connector = None  # CcxtConnector — set via set_connector()
         # v3.20.71 Phase B-2 — CapitalRegistry broker integration.
         # Wired by main.py via set_capital_registry() AFTER settings.json
         # is loaded so initial_reservations can rehydrate from disk. When
@@ -1922,6 +2030,7 @@ class BotManager:
         # wires happens via the Bot Swarm GUI; actual fold-profit routing
         # fires from each source bot's fold success path.
         from .smart_wire import SmartWireManager
+
         # C17 — the wire manager emits bot.log on two paths and resolved
         # get_event_bus() lazily, so a SIM manager's wire activity
         # reached the LIVE bus even after this manager was isolated.
@@ -1930,15 +2039,18 @@ class BotManager:
         # C17 — the closures are RETAINED now. Discarding them is what
         # left three handlers per sim replay permanently attached to the
         # process-wide bus.
-        self._bus_unsubs.append(self._bus.subscribe(
-            "profit.cross_bot", self._on_cross_bot_profit))
+        self._bus_unsubs.append(
+            self._bus.subscribe("profit.cross_bot", self._on_cross_bot_profit)
+        )
         # P1b — GUI wire drag events land on the manager + register/
         # unregister with the SmartWireManager so the fold path can see
         # them. Source-side routing fires per fold inside ScrummingBot.
-        self._bus_unsubs.append(self._bus.subscribe(
-            "wire.created", self._on_wire_created_mgr))
-        self._bus_unsubs.append(self._bus.subscribe(
-            "wire.removed", self._on_wire_removed_mgr))
+        self._bus_unsubs.append(
+            self._bus.subscribe("wire.created", self._on_wire_created_mgr)
+        )
+        self._bus_unsubs.append(
+            self._bus.subscribe("wire.removed", self._on_wire_removed_mgr)
+        )
 
     def detach_bus(self) -> int:
         """Retract every subscription this manager made.
@@ -1990,15 +2102,22 @@ class BotManager:
                         "BotManager wire.created: engine REFUSED %s -> %s "
                         "@ %r (%s); anything drawing this wire is showing "
                         "a routing that will never carry profit",
-                        src, tgt, pct, res.get("reason", "no reason given"))
+                        src,
+                        tgt,
+                        pct,
+                        res.get("reason", "no reason given"),
+                    )
                 elif res.get("replaced_pct") is not None:
                     logger.warning(
                         "BotManager wire.created: %s -> %s OVERWROTE an "
                         "existing %.2f%% with %.2f%%",
-                        src, tgt, res["replaced_pct"], res.get("pct", 0.0))
+                        src,
+                        tgt,
+                        res["replaced_pct"],
+                        res.get("pct", 0.0),
+                    )
         except Exception as exc:
-            logger.warning("BotManager wire.created handler raised: %s",
-                           exc)
+            logger.warning("BotManager wire.created handler raised: %s", exc)
 
     def _on_wire_removed_mgr(self, event) -> None:
         """GUI wire disconnect → unregister."""
@@ -2008,8 +2127,7 @@ class BotManager:
             if src and tgt:
                 self._smart_wire_mgr.unregister_wire(src, tgt)
         except Exception as exc:
-            logger.warning("BotManager wire.removed handler raised: %s",
-                           exc)
+            logger.warning("BotManager wire.removed handler raised: %s", exc)
 
     def _on_cross_bot_profit(self, event) -> None:
         """Handle cross-bot profit transfer.
@@ -2035,16 +2153,26 @@ class BotManager:
         if target_bot and amount > 0:
             # Route to realised_pnl — NOT to target_balance. Target stays frozen.
             # sadp: R1 R28 — fold-only target growth; fail loudly if anyone else tries.
-            if hasattr(target_bot, "stats") and hasattr(target_bot.stats, "realised_pnl"):
+            if hasattr(target_bot, "stats") and hasattr(
+                target_bot.stats, "realised_pnl"
+            ):
                 target_bot.stats.realised_pnl += float(amount)
-            self._bus.emit("bot.log", bot_id=target_id,
-                message=(f"CROSS-BOT RECEIVED: +${amount:.4f} from "
-                         f"{source_id[:8]} booked to realised_pnl "
-                         f"(Target frozen at ${target_bot.config.target_balance:.2f} — "
-                         f"MEM-249 cross-wire no longer touches Target)."))
+            self._bus.emit(
+                "bot.log",
+                bot_id=target_id,
+                message=(
+                    f"CROSS-BOT RECEIVED: +${amount:.4f} from "
+                    f"{source_id[:8]} booked to realised_pnl "
+                    f"(Target frozen at ${target_bot.config.target_balance:.2f} — "
+                    f"MEM-249 cross-wire no longer touches Target)."
+                ),
+            )
         elif not target_bot:
-            self._bus.emit("bot.log", bot_id=source_id,
-                message=f"CROSS-BOT FAILED: target bot {target_id[:8]} not found")
+            self._bus.emit(
+                "bot.log",
+                bot_id=source_id,
+                message=f"CROSS-BOT FAILED: target bot {target_id[:8]} not found",
+            )
 
     def set_state_manager(self, sm) -> None:
         """Attach a StateManager for persistence."""
@@ -2089,16 +2217,18 @@ class BotManager:
         self._volume_guard = guard
         for bot in self._bots.values():
             bot._volume_guard = guard
-        logger.info("VolumeGuard attached to BotManager (%d existing bots)",
-                    len(self._bots))
+        logger.info(
+            "VolumeGuard attached to BotManager (%d existing bots)", len(self._bots)
+        )
 
     def set_data_pool(self, pool) -> None:
         """Attach shared MarketDataPool for efficient API usage."""
         self._data_pool = pool
         for bot in self._bots.values():
             bot._data_pool = pool
-        logger.info("DataPool attached to BotManager (%d existing bots)",
-                    len(self._bots))
+        logger.info(
+            "DataPool attached to BotManager (%d existing bots)", len(self._bots)
+        )
 
     # ── Bulk ticker refresh (operator item 1, 2026-08-06) ───────────
 
@@ -2119,7 +2249,10 @@ class BotManager:
                 # a bot that never gets fresh prices.
                 logger.warning(
                     "Ticker refresh: cannot read exchange handle for %s "
-                    "(%s); that bot keeps its own fetch path.", bot_id, exc)
+                    "(%s); that bot keeps its own fetch path.",
+                    bot_id,
+                    exc,
+                )
                 continue
             if exch_id and conn is not None and exch_id not in out:
                 out[exch_id] = conn
@@ -2138,9 +2271,10 @@ class BotManager:
         for exch_id, conn in self._connectors_by_exchange().items():
             try:
                 total += await pool.refresh_all_tickers(conn, exch_id)
-            except Exception as exc:  # R28-OK: refresher is best-effort; bots keep their own fetch path
-                logger.warning(
-                    "Bulk ticker refresh raised for %s: %s", exch_id, exc)
+            except (
+                Exception
+            ) as exc:  # R28-OK: refresher is best-effort; bots keep their own fetch path
+                logger.warning("Bulk ticker refresh raised for %s: %s", exch_id, exc)
         return total
 
     async def _ticker_refresh_loop(self, interval: float) -> None:
@@ -2175,7 +2309,9 @@ class BotManager:
                 await self.refresh_all_tickers_once()
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # R28-OK: the loop must survive any single failed cycle
+            except (
+                Exception
+            ) as exc:  # R28-OK: the loop must survive any single failed cycle
                 logger.warning("Ticker refresh cycle failed: %s", exc)
         logger.info("Bulk ticker refresher stopped.")
 
@@ -2185,12 +2321,12 @@ class BotManager:
             return False
         loop = getattr(self, "_async_loop", None)
         if loop is None:
-            logger.warning(
-                "Bulk ticker refresher not started: no async loop attached.")
+            logger.warning("Bulk ticker refresher not started: no async loop attached.")
             return False
         self._ticker_refresh_stop = False
         self._ticker_refresh_task = asyncio.run_coroutine_threadsafe(
-            self._ticker_refresh_loop(interval), loop)
+            self._ticker_refresh_loop(interval), loop
+        )
         return True
 
     def stop_ticker_refresher(self) -> None:
@@ -2213,8 +2349,10 @@ class BotManager:
         v3.16.19 for the full root-cause writeup.
         """
         self._async_loop = loop
-        logger.info("AsyncLoop attached to BotManager (id=%s)",
-                    id(loop) if loop is not None else "None")
+        logger.info(
+            "AsyncLoop attached to BotManager (id=%s)",
+            id(loop) if loop is not None else "None",
+        )
 
     def _dispatch_bootstrap(self, bot, source: str) -> None:
         """v3.16.19 — Run ``bot.bootstrap_exchange_state()`` on the
@@ -2253,21 +2391,32 @@ class BotManager:
                 def _on_done(_fut, _bid=bot.bot_id, _src=source):
                     try:
                         _exc = _fut.exception()
-                    except Exception as _probe_exc:  # R28-OK: future-state probe; defensive against future cancellation surfacing as a non-Exception
+                    except (
+                        Exception
+                    ) as _probe_exc:  # R28-OK: future-state probe; defensive against future cancellation surfacing as a non-Exception
                         logger.debug(
                             "Bot %s bootstrap (%s) future probe raised %s",
-                            _bid, _src, _probe_exc)
+                            _bid,
+                            _src,
+                            _probe_exc,
+                        )
                         return
                     if _exc is not None:
                         logger.warning(
                             "Bot %s bootstrap dispatch (%s) raised: %s",
-                            _bid, _src, _exc)
+                            _bid,
+                            _src,
+                            _exc,
+                        )
 
                 fut.add_done_callback(_on_done)
             except Exception as exc:
                 logger.warning(
                     "Bot %s bootstrap scheduling (%s) failed: %s",
-                    bot.bot_id, source, exc)
+                    bot.bot_id,
+                    source,
+                    exc,
+                )
             return
         # Fallback: no persistent loop wired (test harness path).
         # Close the coroutine first if we can't dispatch — leaving
@@ -2285,7 +2434,10 @@ class BotManager:
             logger.debug(
                 "Bot %s could not close the unused start-up job from "
                 "%s (%s). Carrying on to start a fresh one.",
-                bot.bot_id, source, _close_exc)
+                bot.bot_id,
+                source,
+                _close_exc,
+            )
         try:
             import threading
             import asyncio as _aio
@@ -2296,21 +2448,31 @@ class BotManager:
                 except Exception as _exc:
                     logger.warning(
                         "Bot %s bootstrap dispatch (%s, fallback) failed: %s",
-                        _b.bot_id, _src, _exc)
+                        _b.bot_id,
+                        _src,
+                        _exc,
+                    )
+
             threading.Thread(
-                target=_boot, daemon=True,
+                target=_boot,
+                daemon=True,
                 name=f"bot-bootstrap-{source[:6]}-{bot.bot_id[:8]}",
             ).start()
         except Exception as exc:
             logger.warning(
                 "Bot %s bootstrap scheduling (%s, fallback) failed: %s",
-                bot.bot_id, source, exc)
+                bot.bot_id,
+                source,
+                exc,
+            )
 
     def set_live_monitor(self, monitor) -> None:
         """Attach LiveMonitor for AI feedback loop."""
         self._live_monitor = monitor
-        logger.info("LiveMonitor attached to BotManager (enabled=%s)",
-                    monitor.enabled if monitor else False)
+        logger.info(
+            "LiveMonitor attached to BotManager (enabled=%s)",
+            monitor.enabled if monitor else False,
+        )
 
     def configure_live_monitor(self, settings: dict) -> None:
         """Create or reconfigure LiveMonitor from settings dict.
@@ -2323,6 +2485,7 @@ class BotManager:
             logger.info("LiveMonitor disabled")
             return
         from .live_monitor import LiveMonitor, TradeJournal
+
         journal = TradeJournal()
         self._live_monitor = LiveMonitor(
             api_key=settings["api_key"],
@@ -2331,9 +2494,11 @@ class BotManager:
             connect_phrase=settings.get("connect_phrase", ""),
             confirm_phrase=settings.get("confirm_phrase", ""),
         )
-        logger.info("LiveMonitor configured (interval=%.1fh, phrase='%s')",
-                    settings.get("interval_hours", 4.0),
-                    settings.get("connect_phrase", "")[:20])
+        logger.info(
+            "LiveMonitor configured (interval=%.1fh, phrase='%s')",
+            settings.get("interval_hours", 4.0),
+            settings.get("connect_phrase", "")[:20],
+        )
 
     async def check_live_monitor(self) -> dict | None:
         """Run AI feedback check if due. Returns feedback dict or None."""
@@ -2364,7 +2529,9 @@ class BotManager:
             except Exception as exc:  # R28-OK: lifecycle/state best-effort
                 logger.warning(
                     "live monitor: get_status failed for a bot (%s); it "
-                    "is excluded from the portfolio total", exc)
+                    "is excluded from the portfolio total",
+                    exc,
+                )
                 continue
             if "portfolio_value" in s:
                 total_port += float(s.get("portfolio_value") or 0.0)
@@ -2373,9 +2540,12 @@ class BotManager:
             logger.warning(
                 "live monitor: only %d of %d bots reported a portfolio "
                 "value; the figure sent for analysis is PARTIAL",
-                contributing, len(self._bots))
+                contributing,
+                len(self._bots),
+            )
         result = await self._live_monitor.analyze(
-            portfolio=total_port, passive=None, bots=len(self._bots))
+            portfolio=total_port, passive=None, bots=len(self._bots)
+        )
         if result.get("feedback"):
             self._bus.emit("ai.feedback", data=result)
             logger.info("AI feedback received: %s", result.get("feedback", "")[:80])
@@ -2424,7 +2594,8 @@ class BotManager:
                         "(%s). It has no connector and cannot trade "
                         "until one is attached.",
                         getattr(bot, "bot_id", "<unknown bot>"),
-                        _attach_exc)
+                        _attach_exc,
+                    )
             # Fire the one-shot live-pull on the persistent asyncio
             # loop when available (v3.16.19 fix for cross-loop Lock
             # poisoning). Falls back to the legacy throwaway-thread
@@ -2433,9 +2604,11 @@ class BotManager:
             # attach a persistent loop.
             if hasattr(bot, "bootstrap_exchange_state"):
                 self._dispatch_bootstrap(bot, "set_connector")
-        logger.info("Connector attached to BotManager — "
-                    "%d symbol(s) registered for history scanning + bootstrap",
-                    len(self._bots))
+        logger.info(
+            "Connector attached to BotManager — "
+            "%d symbol(s) registered for history scanning + bootstrap",
+            len(self._bots),
+        )
 
     # ------------------------------------------------------------------
     # v3.20.71 Phase B-2 — CapitalRegistry broker integration
@@ -2454,7 +2627,10 @@ class BotManager:
         return self._capital_registry
 
     def reconcile_capital_registry(
-        self, *, exchange_id: str, base_currency: str,
+        self,
+        *,
+        exchange_id: str,
+        base_currency: str,
         drift_threshold_pct: float = 5.0,
     ) -> "Optional[dict]":
         """v3.20.73 Phase D — periodic reconciliation of one
@@ -2483,12 +2659,10 @@ class BotManager:
             return None
         try:
             # Fetch wallet balance via the connector's sync interface
-            if not self._connector or not hasattr(
-                    self._connector, "_ccxt_sync"):
+            if not self._connector or not hasattr(self._connector, "_ccxt_sync"):
                 return None
             balances = self._connector._ccxt_sync.fetch_balance()
-            free = balances.get("free", {}) if isinstance(
-                balances, dict) else {}
+            free = balances.get("free", {}) if isinstance(balances, dict) else {}
             wallet_base = float(free.get(base_currency, 0) or 0)
             # Rate lookup (USD-like = 1.0)
             rate = self._usd_per_base_for(exchange_id, base_currency)
@@ -2502,14 +2676,18 @@ class BotManager:
                     "Skipped the %s/%s capital check: no %s price is "
                     "available. The saved claims are left exactly as "
                     "they are.",
-                    exchange_id, base_currency, base_currency)
+                    exchange_id,
+                    base_currency,
+                    base_currency,
+                )
                 return None
             # Reconcile
             report = self._capital_registry.reconcile_with_exchange(
                 exchange_id=exchange_id,
                 base_currency=base_currency,
                 exchange_balance_base=wallet_base,
-                current_rate_usd_per_base=rate)
+                current_rate_usd_per_base=rate,
+            )
             # Drift alert
             drift_pct = float(report.get("drift_pct", 0.0) or 0.0)
             if abs(drift_pct) > drift_threshold_pct:
@@ -2518,22 +2696,33 @@ class BotManager:
                     exchange_id=exchange_id,
                     base_currency=base_currency,
                     drift_pct=drift_pct,
-                    report=report)
+                    report=report,
+                )
                 logger.warning(
                     "v3.20.73 capital drift on %s/%s: %.2f%% "
                     "(wallet $%.2f vs reserved $%.2f)",
-                    exchange_id, base_currency, drift_pct,
+                    exchange_id,
+                    base_currency,
+                    drift_pct,
                     report.get("wallet_usd", 0.0),
-                    report.get("reserved_usd", 0.0))
+                    report.get("reserved_usd", 0.0),
+                )
             return report
-        except Exception as _exc:  # R28-OK: reconcile best-effort; never block bot lifecycle
+        except (
+            Exception
+        ) as _exc:  # R28-OK: reconcile best-effort; never block bot lifecycle
             logger.warning(
-                "v3.20.73 reconcile_capital_registry failed "
-                "for %s/%s: %s", exchange_id, base_currency, _exc)
+                "v3.20.73 reconcile_capital_registry failed " "for %s/%s: %s",
+                exchange_id,
+                base_currency,
+                _exc,
+            )
             return None
 
     def reconcile_all_capital(
-        self, *, drift_threshold_pct: float = 5.0,
+        self,
+        *,
+        drift_threshold_pct: float = 5.0,
     ) -> list[dict]:
         """v3.20.73 Phase D — reconcile every (exchange, base) tuple
         that has at least one active reservation. Returns the list of
@@ -2551,8 +2740,10 @@ class BotManager:
         reports: list[dict] = []
         for exch, base in sorted(pools):
             rep = self.reconcile_capital_registry(
-                exchange_id=exch, base_currency=base,
-                drift_threshold_pct=drift_threshold_pct)
+                exchange_id=exch,
+                base_currency=base,
+                drift_threshold_pct=drift_threshold_pct,
+            )
             if rep is not None:
                 rep["exchange_id"] = exch
                 rep["base_currency"] = base
@@ -2560,7 +2751,10 @@ class BotManager:
         return reports
 
     def notify_bot_profit(
-        self, *, bot_id: str, profit_usd: float,
+        self,
+        *,
+        bot_id: str,
+        profit_usd: float,
     ) -> tuple[bool, "Optional[str]"]:
         """v3.20.72 Phase C-1 — relay an Extractor profit credit to
         the CapitalRegistry so the bot's reservation grows by the
@@ -2581,15 +2775,19 @@ class BotManager:
         if self._capital_registry is None or profit_usd <= 0:
             return False, None
         try:
-            granted, reason, _ = (
-                self._capital_registry.grow_reservation(
-                    bot_id=bot_id, additional_usd=profit_usd))
+            granted, reason, _ = self._capital_registry.grow_reservation(
+                bot_id=bot_id, additional_usd=profit_usd
+            )
             return granted, reason
-        except Exception as _exc:  # R28-OK: best-effort registry growth; never block trade
+        except (
+            Exception
+        ) as _exc:  # R28-OK: best-effort registry growth; never block trade
             logger.warning(
-                "v3.20.72 notify_bot_profit failed for bot %s "
-                "(+$%.2f): %s",
-                bot_id, profit_usd, _exc)
+                "v3.20.72 notify_bot_profit failed for bot %s " "(+$%.2f): %s",
+                bot_id,
+                profit_usd,
+                _exc,
+            )
             return False, str(_exc)
 
     def _reservation_usd_and_mode(self, bot) -> tuple[float, str]:
@@ -2599,19 +2797,21 @@ class BotManager:
         lowercase, matching the broker's expected enum."""
         try:
             mode_val = getattr(bot.config, "mode", None)
-            mode_str = (str(mode_val.value if hasattr(mode_val, "value")
-                            else mode_val) or "").lower()
+            mode_str = (
+                str(mode_val.value if hasattr(mode_val, "value") else mode_val) or ""
+            ).lower()
         except Exception:  # R28-OK: best-effort mode probe; default to scrumming
             mode_str = "scrumming"
         if "extractor" in mode_str:
-            usd_amount = float(getattr(
-                bot.config, "extractor_chunk_size_usd", 0) or 0)
+            usd_amount = float(getattr(bot.config, "extractor_chunk_size_usd", 0) or 0)
             return usd_amount, "extractor"
         usd_amount = float(getattr(bot.config, "target_balance", 0) or 0)
         return usd_amount, "scrumming"
 
     def _usd_per_base_for(
-        self, exchange_id: str, base_currency: str,
+        self,
+        exchange_id: str,
+        base_currency: str,
     ) -> "Optional[float]":
         """How many dollars one unit of ``base_currency`` is worth.
 
@@ -2641,12 +2841,15 @@ class BotManager:
         base = (base_currency or "").upper()
         if base in DOLLAR_PEGGED_CURRENCIES:
             return 1.0
-        if not self._connector or not hasattr(self._connector,
-                                              "_ccxt_sync"):
+        if not self._connector or not hasattr(self._connector, "_ccxt_sync"):
             logger.warning(
                 "No exchange connection, so no %s price for %s. "
                 "Returning no rate rather than pretending one %s is "
-                "worth one dollar.", base, exchange_id, base)
+                "worth one dollar.",
+                base,
+                exchange_id,
+                base,
+            )
             return None
         try:
             t = self._connector._ccxt_sync.fetch_ticker(f"{base}/USD")
@@ -2655,14 +2858,23 @@ class BotManager:
             logger.warning(
                 "Could not read the %s/USD price on %s (%s). Returning "
                 "no rate rather than pretending one %s is worth one "
-                "dollar.", base, exchange_id, _rate_exc, base)
+                "dollar.",
+                base,
+                exchange_id,
+                _rate_exc,
+                base,
+            )
             return None
         if rate <= 0:
             logger.warning(
                 "The %s/USD price on %s came back as %r, which cannot "
                 "be a price. Returning no rate rather than pretending "
                 "one %s is worth one dollar.",
-                base, exchange_id, rate, base)
+                base,
+                exchange_id,
+                rate,
+                base,
+            )
             return None
         return rate
 
@@ -2695,7 +2907,8 @@ class BotManager:
                 usd_amount, mode_str = self._reservation_usd_and_mode(bot)
                 if usd_amount > 0:
                     rate = self._usd_per_base_for(
-                        bot.config.exchange_id, bot.config.base_currency)
+                        bot.config.exchange_id, bot.config.base_currency
+                    )
                     if rate is None:
                         # No price means the claim cannot be sized. See
                         # _usd_per_base_for for why nothing is returned.
@@ -2711,18 +2924,20 @@ class BotManager:
                             "how much %s its $%.2f allocation comes to "
                             "cannot be worked out. Its money is not "
                             "held aside, so another bot may claim it.",
-                            bot.bot_id, bot.config.base_currency,
-                            bot.config.base_currency, usd_amount)
+                            bot.bot_id,
+                            bot.config.base_currency,
+                            bot.config.base_currency,
+                            usd_amount,
+                        )
                     else:
-                        granted, reason, _ = (
-                            self._capital_registry.request_reservation(
-                                bot_id=bot.bot_id,
-                                exchange_id=bot.config.exchange_id,
-                                base_currency=bot.config.base_currency,
-                                usd_amount=usd_amount,
-                                current_rate_usd_per_base=rate,
-                                bot_mode=mode_str,
-                            ))
+                        granted, reason, _ = self._capital_registry.request_reservation(
+                            bot_id=bot.bot_id,
+                            exchange_id=bot.config.exchange_id,
+                            base_currency=bot.config.base_currency,
+                            usd_amount=usd_amount,
+                            current_rate_usd_per_base=rate,
+                            bot_mode=mode_str,
+                        )
                         if not granted:
                             self._bus.emit(
                                 "bot.register_refused",
@@ -2737,12 +2952,14 @@ class BotManager:
                 logger.warning(
                     "v3.20.71 CapitalRegistry consult failed for bot %s; "
                     "proceeding without reservation: %s",
-                    bot.bot_id, _reg_exc)
+                    bot.bot_id,
+                    _reg_exc,
+                )
 
         self._bots[bot.bot_id] = bot
         if self._volume_guard:
             bot._volume_guard = self._volume_guard
-        if hasattr(self, '_data_pool') and self._data_pool:
+        if hasattr(self, "_data_pool") and self._data_pool:
             bot._data_pool = self._data_pool
         # Session 26 P1b — attach SmartWireManager to every new bot so
         # (a) source-side fold routing can find outgoing wires via the
@@ -2765,23 +2982,22 @@ class BotManager:
                 bot.set_smart_wire(self._smart_wire_mgr)
             # v3.16.46 — ensure ledger entry exists for this bot
             try:
-                _existing_ledgers = getattr(
-                    self._smart_wire_mgr, "_ledgers", {}) or {}
+                _existing_ledgers = getattr(self._smart_wire_mgr, "_ledgers", {}) or {}
                 if bot.bot_id not in _existing_ledgers:
-                    _seed = float(getattr(
-                        bot.config, "target_balance", 0) or 0)
-                    _asset = str(getattr(
-                        bot.config, "target_asset", "")
-                        or getattr(bot.config, "symbol", ""))
+                    _seed = float(getattr(bot.config, "target_balance", 0) or 0)
+                    _asset = str(
+                        getattr(bot.config, "target_asset", "")
+                        or getattr(bot.config, "symbol", "")
+                    )
                     self._smart_wire_mgr.register_bot(
-                        bot.bot_id, _asset, seed_amount=_seed)
+                        bot.bot_id, _asset, seed_amount=_seed
+                    )
             except Exception as _reg_exc:
                 logger.warning(
-                    "Bot %s SmartWire ledger register failed: %s",
-                    bot.bot_id, _reg_exc)
+                    "Bot %s SmartWire ledger register failed: %s", bot.bot_id, _reg_exc
+                )
         except Exception as _sw_exc:
-            logger.warning("Bot %s SmartWire attach failed: %s",
-                           bot.bot_id, _sw_exc)
+            logger.warning("Bot %s SmartWire attach failed: %s", bot.bot_id, _sw_exc)
         # v3.15.56 — give the bot a back-reference to this manager so it
         # can answer questions about siblings (multi-base attribution).
         # Operator directive 2026-04-25: a RAVE/USDC bot must NOT see
@@ -2790,24 +3006,23 @@ class BotManager:
             try:
                 bot.set_bot_manager(self)
             except Exception as _bm_exc:
-                logger.warning("Bot %s set_bot_manager failed: %s",
-                               bot.bot_id, _bm_exc)
+                logger.warning("Bot %s set_bot_manager failed: %s", bot.bot_id, _bm_exc)
         # v3.23.47 — attach the process-wide MarketPairsScout so the
         # bot (and eventually the Bot Details Status tab) can see all
         # pairs trading its target asset. Read-only in this cascade.
         if hasattr(bot, "set_market_pairs_scout"):
             try:
                 from ..exchange.market_pairs_scout import get_scout
+
                 bot.set_market_pairs_scout(get_scout())
             except Exception as _scout_exc:
                 logger.warning(
-                    "Bot %s set_market_pairs_scout failed: %s",
-                    bot.bot_id, _scout_exc)
+                    "Bot %s set_market_pairs_scout failed: %s", bot.bot_id, _scout_exc
+                )
         # Register symbol for trade history scanning on next connect
         if self._connector:
             self._connector.add_scan_symbol(bot.config.symbol)
-            logger.debug("Registered %s for trade history scanning",
-                         bot.config.symbol)
+            logger.debug("Registered %s for trade history scanning", bot.config.symbol)
             # Ensure bot.exchange points to the connector (idempotent).
             if not getattr(bot, "exchange", None):
                 try:
@@ -2824,7 +3039,8 @@ class BotManager:
                         "(%s). It has no connector and cannot trade "
                         "until one is attached.",
                         getattr(bot, "bot_id", "<unknown bot>"),
-                        _attach_exc)
+                        _attach_exc,
+                    )
             # MEM-256 — fire the bootstrap live-pull for this bot now.
             if hasattr(bot, "bootstrap_exchange_state"):
                 self._dispatch_bootstrap(bot, "register")
@@ -2863,7 +3079,9 @@ class BotManager:
                 logger.error(
                     "unregister(%s): disk delete failed (%s) — the record "
                     "remains on disk and will be carried forward",
-                    bot_id, exc)
+                    bot_id,
+                    exc,
+                )
         # v3.20.71 — release capital reservation before tearing down
         # other linkages (the bot's claim must not outlive its place
         # in the manager registry).
@@ -2873,12 +3091,15 @@ class BotManager:
             except Exception as _rel_exc:
                 logger.warning(
                     "v3.20.71 CapitalRegistry release failed for bot %s: %s",
-                    bot_id, _rel_exc)
+                    bot_id,
+                    _rel_exc,
+                )
         bot = self._bots.pop(bot_id, None)
         if bot and self._connector:
             # Only remove symbol if no other bot is trading it
-            still_used = any(b.config.symbol == bot.config.symbol
-                             for b in self._bots.values())
+            still_used = any(
+                b.config.symbol == bot.config.symbol for b in self._bots.values()
+            )
             if not still_used:
                 self._connector.remove_scan_symbol(bot.config.symbol)
         # Session 26 P1b — clear bot from SmartWireManager (drops bot
@@ -2886,8 +3107,7 @@ class BotManager:
         try:
             self._smart_wire_mgr.detach_bot(bot_id)
         except Exception as _sw_exc:
-            logger.warning("Bot %s SmartWire detach failed: %s",
-                           bot_id, _sw_exc)
+            logger.warning("Bot %s SmartWire detach failed: %s", bot_id, _sw_exc)
         self._bus.emit("bot.unregistered", bot_id=bot_id)
 
     def get_trade_history(self, symbol: str):
@@ -2916,8 +3136,8 @@ class BotManager:
     # Extractor Tranche parent lookup
     # ------------------------------------------------------------------
     def list_parent_bot_candidates_for_base_currency(
-            self, base_currency: object, *,
-            exchange_id: object) -> list[tuple[str, BotContainer]]:
+        self, base_currency: object, *, exchange_id: object
+    ) -> list[tuple[str, BotContainer]]:
         """Return the Scrumming Bots on this exchange holding a currency.
 
         The answer is ``(bot_id, bot)`` pairs, in registration order.
@@ -2958,12 +3178,15 @@ class BotManager:
         # Imported here, not at module scope: scrumming_bot imports this
         # module, so a top-level import would be circular.
         from .scrumming_bot import ScrummingBot
+
         holders: list[tuple[str, BotContainer]] = []
         for bot_id, bot in self._bots.items():
             if not isinstance(bot, ScrummingBot):
                 continue
-            if getattr(getattr(bot, "config", None),
-                       "exchange_id", None) != exchange_id:
+            if (
+                getattr(getattr(bot, "config", None), "exchange_id", None)
+                != exchange_id
+            ):
                 continue
             held = getattr(getattr(bot, "config", None), "target_asset", "")
             if not isinstance(held, str):
@@ -2973,8 +3196,8 @@ class BotManager:
         return holders
 
     def find_parent_bot_for_base_currency(
-            self, base_currency: Any, *,
-            exchange_id: Any) -> Optional[BotContainer]:
+        self, base_currency: Any, *, exchange_id: Any
+    ) -> Optional[BotContainer]:
         """Return the Scrumming Bot that holds this currency, or None.
 
         An Extractor works in one base currency and hands that currency
@@ -3028,9 +3251,13 @@ class BotManager:
         rules above are unchanged; only their one copy moved.
         """
         holders = self.list_parent_bot_candidates_for_base_currency(
-            base_currency, exchange_id=exchange_id)
-        wanted = base_currency.strip().upper() if isinstance(
-            base_currency, str) else base_currency
+            base_currency, exchange_id=exchange_id
+        )
+        wanted = (
+            base_currency.strip().upper()
+            if isinstance(base_currency, str)
+            else base_currency
+        )
         if len(holders) == 1:
             return holders[0][1]
         if len(holders) > 1:
@@ -3038,12 +3265,15 @@ class BotManager:
                 "extractor parent lookup REFUSED %s: %d Scrumming Bots "
                 "hold it (%s). Returning nothing rather than guessing an "
                 "owner — the returned base currency stays where it is.",
-                wanted, len(holders),
-                ", ".join(bid for bid, _ in holders))
+                wanted,
+                len(holders),
+                ", ".join(bid for bid, _ in holders),
+            )
         return None
 
     def list_extractor_children_for_parent(
-            self, parent: object) -> list[tuple[str, object]]:
+        self, parent: object
+    ) -> list[tuple[str, object]]:
         """Return the Extractors that spend this Scrumming Bot's asset.
 
         Item 4, operator design 2026-08-09: an Extractor's in-flight
@@ -3074,6 +3304,7 @@ class BotManager:
         # one, so a top-level import would be circular.
         from .scrumming_bot import ScrummingBot
         from .extractor_bot import ExtractorBot
+
         if not isinstance(parent, ScrummingBot):
             return []
         p_cfg = getattr(parent, "config", None)
@@ -3142,7 +3373,11 @@ class BotManager:
                     "Sibling check for %s skipped bot %s: its coin "
                     "setting could not be read (%s). That bot is not "
                     "counted as sharing %s.",
-                    bot_id, other_id, _read_exc, target_norm or "the coin")
+                    bot_id,
+                    other_id,
+                    _read_exc,
+                    target_norm or "the coin",
+                )
                 continue
             if other_target == target_norm and target_norm:
                 return True
@@ -3175,7 +3410,11 @@ class BotManager:
                     "Tracked-units total for %s skipped bot %s: its "
                     "coin setting could not be read (%s). None of that "
                     "bot's %s is counted in the total.",
-                    bot_id, other_id, _read_exc, target_norm or "coin")
+                    bot_id,
+                    other_id,
+                    _read_exc,
+                    target_norm or "coin",
+                )
                 continue
             try:
                 lots = getattr(other_bot, "_main_lots", []) or []
@@ -3192,12 +3431,19 @@ class BotManager:
                     "through bot %s: one of its purchase records "
                     "could not be read (%s). The total is short by "
                     "that bot's remaining %s.",
-                    bot_id, other_id, _lot_exc, target_norm or "coin")
+                    bot_id,
+                    other_id,
+                    _lot_exc,
+                    target_norm or "coin",
+                )
                 continue
         return total
 
     def _one_sibling_claim(
-        self, other_bot: Any, other_cfg: Any, dollar_pegged: bool,
+        self,
+        other_bot: Any,
+        other_cfg: Any,
+        dollar_pegged: bool,
     ) -> "tuple[Optional[float], str]":
         """What one other bot has claimed from the shared pool.
 
@@ -3216,8 +3462,7 @@ class BotManager:
         """
         claim = 0.0
         try:
-            target_usd = float(
-                getattr(other_cfg, "target_balance", 0) or 0)
+            target_usd = float(getattr(other_cfg, "target_balance", 0) or 0)
         except Exception as _t_exc:
             return None, f"its dollar allocation could not be read ({_t_exc})"
         if not math.isfinite(target_usd):
@@ -3225,15 +3470,15 @@ class BotManager:
         if target_usd < 0:
             return None, (
                 f"its dollar allocation is negative ({target_usd}), which "
-                f"cannot be an amount of money")
+                f"cannot be an amount of money"
+            )
         if target_usd > 0:
             rate, why = self._sibling_pool_rate(other_bot, dollar_pegged)
             if rate is None:
                 return None, why
             claim += target_usd / rate
         try:
-            chunk_base = float(
-                getattr(other_bot, "_chunk_size_base", 0) or 0)
+            chunk_base = float(getattr(other_bot, "_chunk_size_base", 0) or 0)
         except Exception as _c_exc:
             return None, f"its allocated chunk could not be read ({_c_exc})"
         if not math.isfinite(chunk_base):
@@ -3241,11 +3486,14 @@ class BotManager:
         if chunk_base < 0:
             return None, (
                 f"its allocated chunk is negative ({chunk_base}), which "
-                f"cannot be an amount held")
+                f"cannot be an amount held"
+            )
         return claim + chunk_base, ""
 
     def _sibling_pool_rate(
-        self, other_bot: Any, dollar_pegged: bool,
+        self,
+        other_bot: Any,
+        dollar_pegged: bool,
     ) -> "tuple[Optional[float], str]":
         """How many dollars one unit of the pool currency is worth,
         taken from the other bot's own cached rate.
@@ -3278,10 +3526,14 @@ class BotManager:
             return 1.0, ""
         return None, (
             f"its cached rate is {raw!r}, so its dollar allocation "
-            f"cannot be turned into pool units")
+            f"cannot be turned into pool units"
+        )
 
     def sum_sibling_base_currency_claims(
-        self, bot_id: str, exchange_id: str, currency: str,
+        self,
+        bot_id: str,
+        exchange_id: str,
+        currency: str,
     ) -> "Optional[float]":
         """Sum of base-currency (quote-currency) claims by OTHER bots
         on the same exchange.
@@ -3354,7 +3606,8 @@ class BotManager:
                 "Asked what the other bots have claimed on %s, but no "
                 "currency was named. Returning no total rather than "
                 "zero, because zero would say the whole pool is free.",
-                exchange_id)
+                exchange_id,
+            )
             return None
         dollar_pegged = currency_norm in DOLLAR_PEGGED_CURRENCIES
         total = 0.0
@@ -3365,23 +3618,20 @@ class BotManager:
             try:
                 other_cfg = other_bot.config
                 same_exchange = other_cfg.exchange_id == exchange_id
-                other_base = (
-                    getattr(other_cfg, "base_currency", "") or ""
-                ).upper()
+                other_base = (getattr(other_cfg, "base_currency", "") or "").upper()
             except Exception as _cfg_exc:
                 # This bot may or may not be in the pool. It cannot be
                 # skipped on the strength of a failed read: if it IS in
                 # the pool, skipping it hides its claim.
                 unread.append(
-                    f"{other_id} (its settings could not be read: "
-                    f"{_cfg_exc})")
+                    f"{other_id} (its settings could not be read: " f"{_cfg_exc})"
+                )
                 continue
             if not same_exchange or other_base != currency_norm:
                 # A different exchange or a different currency is a
                 # different pool of money. Not a claim on this one.
                 continue
-            claim, why = self._one_sibling_claim(
-                other_bot, other_cfg, dollar_pegged)
+            claim, why = self._one_sibling_claim(other_bot, other_cfg, dollar_pegged)
             if claim is None:
                 unread.append(f"{other_id} ({why})")
                 continue
@@ -3393,8 +3643,13 @@ class BotManager:
                 "have reported %.8f %s, which is lower than the truth "
                 "and would let a bot spend money another bot has "
                 "already claimed. Returning no total instead.",
-                len(unread), exchange_id, currency_norm,
-                "; ".join(unread), total, currency_norm)
+                len(unread),
+                exchange_id,
+                currency_norm,
+                "; ".join(unread),
+                total,
+                currency_norm,
+            )
             return None
         return total
 
@@ -3425,7 +3680,8 @@ class BotManager:
         ledgers: list = []
         try:
             if self._smart_wire_mgr is not None and hasattr(
-                    self._smart_wire_mgr, "export_wires"):
+                self._smart_wire_mgr, "export_wires"
+            ):
                 wires = self._smart_wire_mgr.export_wires()
         except Exception as exc:
             logger.warning("save_all_state: smart wire export raised: %s", exc)
@@ -3436,17 +3692,18 @@ class BotManager:
         # not the ledger state.
         try:
             if self._smart_wire_mgr is not None and hasattr(
-                    self._smart_wire_mgr, "export_ledgers"):
+                self._smart_wire_mgr, "export_ledgers"
+            ):
                 ledgers = self._smart_wire_mgr.export_ledgers()
         except Exception as exc:
-            logger.warning(
-                "save_all_state: smart wire ledger export raised: %s", exc)
+            logger.warning("save_all_state: smart wire ledger export raised: %s", exc)
         # v3.24.35 (C01) — the DRY-RUN block that stood here is gone.
         # It computed which records a future merge WOULD carry forward
         # and then did not carry them. save_state now carries them for
         # real, and keeping both would leave two answers to one question.
         self._state_manager.save_state(
-            states, smart_wires=wires, smart_wire_ledgers=ledgers)
+            states, smart_wires=wires, smart_wire_ledgers=ledgers
+        )
 
     def restore_smart_wires_from_state(self, state: dict) -> int:
         """v3.15.68 — restore the Smart Wire registry from saved state.
@@ -3455,8 +3712,7 @@ class BotManager:
         on-screen wire list.
         """
         wires = state.get("smart_wires", []) if isinstance(state, dict) else []
-        ledgers = (state.get("smart_wire_ledgers", [])
-                   if isinstance(state, dict) else [])
+        ledgers = state.get("smart_wire_ledgers", []) if isinstance(state, dict) else []
         if (not wires and not ledgers) or self._smart_wire_mgr is None:
             return 0
         n = 0
@@ -3464,8 +3720,7 @@ class BotManager:
             if wires and hasattr(self._smart_wire_mgr, "import_wires"):
                 n = self._smart_wire_mgr.import_wires(wires)
         except Exception as exc:
-            logger.warning(
-                "restore_smart_wires_from_state: import raised: %s", exc)
+            logger.warning("restore_smart_wires_from_state: import raised: %s", exc)
             return 0
         # v3.16.57 — restore per-bot ledger totals so wired_in /
         # wired_out / provenance survive restart. Attach_bot at startup
@@ -3475,12 +3730,11 @@ class BotManager:
             if ledgers and hasattr(self._smart_wire_mgr, "import_ledgers"):
                 _l = self._smart_wire_mgr.import_ledgers(ledgers)
                 if _l > 0:
-                    logger.info(
-                        "Bot Swarm restored: %d ledger(s) rehydrated", _l)
+                    logger.info("Bot Swarm restored: %d ledger(s) rehydrated", _l)
         except Exception as exc:
             logger.warning(
-                "restore_smart_wires_from_state: ledger import raised: %s",
-                exc)
+                "restore_smart_wires_from_state: ledger import raised: %s", exc
+            )
         # Re-emit wire.created events so the GUI visualizer (which
         # subscribes to the event bus) draws them. Skip if both
         # endpoints aren't currently registered — orphaned wires after
@@ -3494,8 +3748,7 @@ class BotManager:
                     continue
                 if src not in self._bots or tgt not in self._bots:
                     continue
-                self._bus.emit("wire.created",
-                               source_id=src, target_id=tgt, pct=pct)
+                self._bus.emit("wire.created", source_id=src, target_id=tgt, pct=pct)
             except Exception as _wire_exc:
                 # Skipping a saved link that cannot be read is right —
                 # one bad record must not stop the rest being drawn.
@@ -3506,10 +3759,12 @@ class BotManager:
                 logger.warning(
                     "Skipped a saved bot-to-bot link while restoring: "
                     "the record could not be read (%s). Record: %r. "
-                    "It is not drawn.", _wire_exc, w)
+                    "It is not drawn.",
+                    _wire_exc,
+                    w,
+                )
                 continue
-        logger.info(
-            "Bot Swarm restored: %d Smart Wire(s) rehydrated from state", n)
+        logger.info("Bot Swarm restored: %d Smart Wire(s) rehydrated from state", n)
         return n
 
     def get_saved_state(self) -> dict:
@@ -3559,13 +3814,16 @@ class BotManager:
         # without performing a read — a read there could fail and freeze
         # persistence for the whole fleet.
         import copy as _copy
+
         try:
             self._boot_state_records = _copy.deepcopy(bots_data) or {}
         except Exception as _cp_exc:  # noqa: BLE001 - never block restore
             self._boot_state_records = {}
             logger.error(
                 "C01: could not snapshot boot records (%s); carry-forward "
-                "will be unavailable this session", _cp_exc)
+                "will be unavailable this session",
+                _cp_exc,
+            )
         self._restore_ledger = {}
         self._restore_completed = False
 
@@ -3588,7 +3846,9 @@ class BotManager:
                     "Bot %s SKIPPED during restore: persisted config has "
                     "no exchange_id. Its saved record (lots, tranches, "
                     "anchor balance) is NOT loaded and must not be "
-                    "overwritten.", bid)
+                    "overwritten.",
+                    bid,
+                )
                 self._ledger_skip(bid, "no exchange_id in persisted config")
                 continue
 
@@ -3612,7 +3872,10 @@ class BotManager:
                     "removed v3.20.4; persisted grid bots are not "
                     "restorable. Add an explicit branch in "
                     "restore_bots_from_state() if you intend to "
-                    "support a new mode.)", bid, _mode_str)
+                    "support a new mode.)",
+                    bid,
+                    _mode_str,
+                )
                 self._ledger_skip(bid, "legacy grid mode (unrestorable)")
                 continue
             # v3.20.35 — restore path migrated to make_bot_config
@@ -3639,19 +3902,15 @@ class BotManager:
                 "target_balance": cfg.get("target_balance", 200.0),
                 "ta_timeframe": cfg.get("ta_timeframe", "1h"),
                 "visibility": cfg.get("visibility", "orderbook"),
-                "aggressive_trading": cfg.get(
-                    "aggressive_trading", False),
+                "aggressive_trading": cfg.get("aggressive_trading", False),
                 # v3.23.25 — Stack Mode (renamed from bulk_trading).
                 # Older bot_state.json files with `bulk_trading: false`
                 # are handled by _sanitize_deprecated_kwargs() at the
                 # top of make_bot_config; the new field defaults False.
-                "stack_mode": cfg.get(
-                    "stack_mode", cfg.get("bulk_trading", False)),
+                "stack_mode": cfg.get("stack_mode", cfg.get("bulk_trading", False)),
                 "split_distance": cfg.get("split_distance", 1.0),
-                "stack_tranche_count_target": cfg.get(
-                    "stack_tranche_count_target", 3),
-                "stack_spacing_mode": cfg.get(
-                    "stack_spacing_mode", "linear"),
+                "stack_tranche_count_target": cfg.get("stack_tranche_count_target", 3),
+                "stack_spacing_mode": cfg.get("stack_spacing_mode", "linear"),
                 # v3.23.25 bulk_partial_on_return retired
                 "max_entry_price": cfg.get("max_entry_price", None),
                 "min_entry_price": cfg.get("min_entry_price", None),
@@ -3665,130 +3924,115 @@ class BotManager:
                 # carry these keys — silently ignored by cleaned code.
                 # GUI wizard/settings cleanup deferred to R-CLN Phase 2.
                 _mode_kwargs = {
-                    "investment_amount": cfg.get(
-                        "investment_amount", 200.0),
-                    "increment_style": cfg.get(
-                        "increment_style", "linear"),
-                    "spacing_style": cfg.get(
-                        "spacing_style", "expanding"),
+                    "investment_amount": cfg.get("investment_amount", 200.0),
+                    "increment_style": cfg.get("increment_style", "linear"),
+                    "spacing_style": cfg.get("spacing_style", "expanding"),
                     # v3.23.25 market_check_interval kwarg removed
-                    "profit_folding_active": cfg.get(
-                        "profit_folding_active", True),
-                    "scrumming_interval_pct": cfg.get(
-                        "scrumming_interval_pct", 1.0),
-                    "profit_route": cfg.get(
-                        "profit_route", "fold_to_target"),
-                    "profit_route_bot_id": cfg.get(
-                        "profit_route_bot_id", ""),
+                    "profit_folding_active": cfg.get("profit_folding_active", True),
+                    "scrumming_interval_pct": cfg.get("scrumming_interval_pct", 1.0),
+                    "profit_route": cfg.get("profit_route", "fold_to_target"),
+                    "profit_route_bot_id": cfg.get("profit_route_bot_id", ""),
                     "scrum_fold_pct": cfg.get("scrum_fold_pct", 100),
                     # Item 9 — despawn timer. Absent from every
                     # state file written before 2026-08-13, so the
                     # default here is what those bots restore with: 0.
-                    "tranche_despawn_days": cfg.get(
-                        "tranche_despawn_days", 0),
-                    "max_target_growth_pct": cfg.get(
-                        "max_target_growth_pct", 1.0),
-                    "bb_tolerance_pct": cfg.get(
-                        "bb_tolerance_pct", 1.0),
-                    "bb_landing_strip_candles": cfg.get(
-                        "bb_landing_strip_candles", 3),
-                    "scrum_detect_pct": cfg.get(
-                        "scrum_detect_pct", 75),
+                    "tranche_despawn_days": cfg.get("tranche_despawn_days", 0),
+                    "max_target_growth_pct": cfg.get("max_target_growth_pct", 1.0),
+                    "bb_tolerance_pct": cfg.get("bb_tolerance_pct", 1.0),
+                    "bb_landing_strip_candles": cfg.get("bb_landing_strip_candles", 3),
+                    "scrum_detect_pct": cfg.get("scrum_detect_pct", 75),
                     "scrum_fire_pct": cfg.get("scrum_fire_pct", 0.5),
-                    "bb_midline_gate": cfg.get(
-                        "bb_midline_gate", True),
-                    "scrum_read_rate_min": cfg.get(
-                        "scrum_read_rate_min", 5),
-                    "band_travel_pct": cfg.get(
-                        "band_travel_pct", 70),
-                    "bb_bullseye_check": cfg.get(
-                        "bb_bullseye_check", True),
-                    "hedge_rebalance_active": cfg.get(
-                        "hedge_rebalance_active", True),
+                    "bb_midline_gate": cfg.get("bb_midline_gate", True),
+                    "scrum_read_rate_min": cfg.get("scrum_read_rate_min", 5),
+                    "band_travel_pct": cfg.get("band_travel_pct", 70),
+                    "bb_bullseye_check": cfg.get("bb_bullseye_check", True),
+                    "hedge_rebalance_active": cfg.get("hedge_rebalance_active", True),
                     "hedge_balance": cfg.get("hedge_balance", 200.0),
                     "position_ceiling_enabled": cfg.get(
-                        "position_ceiling_enabled", False),
+                        "position_ceiling_enabled", False
+                    ),
                     "position_ceiling_multiple": cfg.get(
-                        "position_ceiling_multiple", 5.0),
-                    "detonation_enabled": cfg.get(
-                        "detonation_enabled", False),
-                    "detonation_timeframe": cfg.get(
-                        "detonation_timeframe", "1d"),
+                        "position_ceiling_multiple", 5.0
+                    ),
+                    "detonation_enabled": cfg.get("detonation_enabled", False),
+                    "detonation_timeframe": cfg.get("detonation_timeframe", "1d"),
                     "detonation_confidence_min": cfg.get(
-                        "detonation_confidence_min", 0.75),
+                        "detonation_confidence_min", 0.75
+                    ),
                     # v3.23.42 interop
-                    "self_reserve_capital": cfg.get(
-                        "self_reserve_capital", True),
-                    "personal_hold_qty": cfg.get(
-                        "personal_hold_qty", 0.0),
+                    "self_reserve_capital": cfg.get("self_reserve_capital", True),
+                    "personal_hold_qty": cfg.get("personal_hold_qty", 0.0),
                     "circuit_breaker_soft_pct": cfg.get(
-                        "circuit_breaker_soft_pct", 25.0),
+                        "circuit_breaker_soft_pct", 25.0
+                    ),
                     "circuit_breaker_hard_pct": cfg.get(
-                        "circuit_breaker_hard_pct", 35.0),
+                        "circuit_breaker_hard_pct", 35.0
+                    ),
                     "circuit_breaker_cooldown_candles": cfg.get(
-                        "circuit_breaker_cooldown_candles", 3),
-                    "max_cartridge_size_pct": cfg.get(
-                        "max_cartridge_size_pct", 10.0),
-                    "max_cartridge_smart": cfg.get(
-                        "max_cartridge_smart", False),
+                        "circuit_breaker_cooldown_candles", 3
+                    ),
+                    "max_cartridge_size_pct": cfg.get("max_cartridge_size_pct", 10.0),
+                    "max_cartridge_smart": cfg.get("max_cartridge_smart", False),
                     "max_cartridge_smart_ceiling_pct": cfg.get(
-                        "max_cartridge_smart_ceiling_pct", 30.0),
-                    "wire_inflow_stack_pct": cfg.get(
-                        "wire_inflow_stack_pct", 1.0),
+                        "max_cartridge_smart_ceiling_pct", 30.0
+                    ),
+                    "wire_inflow_stack_pct": cfg.get("wire_inflow_stack_pct", 1.0),
                     "scrum_require_ta_bullish": cfg.get(
-                        "scrum_require_ta_bullish", True),
-                    "scrum_hold_in_uptrend": cfg.get(
-                        "scrum_hold_in_uptrend", True),
-                    "scrum_defer_to_htf": cfg.get(
-                        "scrum_defer_to_htf", True),
-                    "fold_require_ta_bearish": cfg.get(
-                        "fold_require_ta_bearish", True),
-                    "fold_hold_in_downtrend": cfg.get(
-                        "fold_hold_in_downtrend", True),
-                    "fold_defer_to_htf": cfg.get(
-                        "fold_defer_to_htf", True),
+                        "scrum_require_ta_bullish", True
+                    ),
+                    "scrum_hold_in_uptrend": cfg.get("scrum_hold_in_uptrend", True),
+                    "scrum_defer_to_htf": cfg.get("scrum_defer_to_htf", True),
+                    "fold_require_ta_bearish": cfg.get("fold_require_ta_bearish", True),
+                    "fold_hold_in_downtrend": cfg.get("fold_hold_in_downtrend", True),
+                    "fold_defer_to_htf": cfg.get("fold_defer_to_htf", True),
                 }
             else:  # BotMode.EXTRACTOR
                 _mode_kwargs = {
                     "extractor_chunk_size_usd": cfg.get(
-                        "extractor_chunk_size_usd", 100.0),
+                        "extractor_chunk_size_usd", 100.0
+                    ),
                     "extractor_artillery_size_usd": cfg.get(
-                        "extractor_artillery_size_usd", 5.0),
-                    "extractor_scan_top_n": cfg.get(
-                        "extractor_scan_top_n", 8),
+                        "extractor_artillery_size_usd", 5.0
+                    ),
+                    "extractor_scan_top_n": cfg.get("extractor_scan_top_n", 8),
                     "extractor_scan_refresh_candles": cfg.get(
-                        "extractor_scan_refresh_candles", 60),
+                        "extractor_scan_refresh_candles", 60
+                    ),
                     "extractor_pool_reserve_pct": cfg.get(
-                        "extractor_pool_reserve_pct", 50.0),
-                    "extractor_exit_pct": cfg.get(
-                        "extractor_exit_pct", 100.0),
+                        "extractor_pool_reserve_pct", 50.0
+                    ),
+                    "extractor_exit_pct": cfg.get("extractor_exit_pct", 100.0),
                     "extractor_drawdown_threshold_pct": cfg.get(
-                        "extractor_drawdown_threshold_pct", 3.0),
+                        "extractor_drawdown_threshold_pct", 3.0
+                    ),
                     "extractor_correction_skip_candles": cfg.get(
-                        "extractor_correction_skip_candles", 4),
+                        "extractor_correction_skip_candles", 4
+                    ),
                     "extractor_max_cost_basis_multiple": cfg.get(
-                        "extractor_max_cost_basis_multiple", 2.0),
+                        "extractor_max_cost_basis_multiple", 2.0
+                    ),
                     "extractor_max_compounding_tier": cfg.get(
-                        "extractor_max_compounding_tier", 3),
+                        "extractor_max_compounding_tier", 3
+                    ),
                     "extractor_hedge_budget_usd": cfg.get(
-                        "extractor_hedge_budget_usd", 0.0),
+                        "extractor_hedge_budget_usd", 0.0
+                    ),
                     "extractor_trend_strength_threshold": cfg.get(
-                        "extractor_trend_strength_threshold", 0.65),
-                    "extractor_alt_targets": list(cfg.get(
-                        "extractor_alt_targets", []) or []),
+                        "extractor_trend_strength_threshold", 0.65
+                    ),
+                    "extractor_alt_targets": list(
+                        cfg.get("extractor_alt_targets", []) or []
+                    ),
                     # v3.20.74 — Inverted Extractor (Q6/Q7/Q8/Q9):
                     # direction flag + standing-position import unit
                     # count for Inverted variants.
-                    "extractor_direction": cfg.get(
-                        "extractor_direction", "normal"),
+                    "extractor_direction": cfg.get("extractor_direction", "normal"),
                     "inverted_extractor_standing_alt_units": float(
-                        cfg.get(
-                            "inverted_extractor_standing_alt_units",
-                            0.0) or 0.0),
+                        cfg.get("inverted_extractor_standing_alt_units", 0.0) or 0.0
+                    ),
                 }
             try:
-                config = make_bot_config(
-                    mode, **_shared_kwargs, **_mode_kwargs)
+                config = make_bot_config(mode, **_shared_kwargs, **_mode_kwargs)
             except (ValueError, TypeError) as _restore_err:
                 logger.error(
                     "Bot %s restoration FAILED — mode-shape "
@@ -3799,7 +4043,9 @@ class BotManager:
                     "recover: delete the bot's entry from state "
                     "and recreate via the wizard, OR fix the "
                     "persisted JSON to match mode invariants.)",
-                    bid, _restore_err)
+                    bid,
+                    _restore_err,
+                )
                 self._ledger_skip(bid, "mode-shape violation in persisted config")
                 continue
 
@@ -3835,24 +4081,27 @@ class BotManager:
             try:
                 if mode == BotMode.EXTRACTOR:
                     from ..trading.extractor_bot import ExtractorBot
+
                     bot = ExtractorBot(
                         config,
                         _PlaceholderExchangeForRestore(cfg["exchange_id"]),
                         enable_phantoms=False,
                     )
                     logger.info(
-                        "Restore: constructed ExtractorBot for %s "
-                        "(mode=%s)", bid[:8], _mode_str)
+                        "Restore: constructed ExtractorBot for %s " "(mode=%s)",
+                        bid[:8],
+                        _mode_str,
+                    )
                 elif mode == BotMode.SCRUMMING:
                     from ..trading.scrumming_bot import ScrummingBot
+
                     # v3.16.27 P0g — restore phantom enabled flag from
                     # saved state. Default: True (matches
                     # ScrummingBot.__init__ default — preserves
                     # prior-version behavior for save files that don't
                     # carry the flag yet). Once a bot has been saved
                     # by v3.16.27+ it round-trips correctly.
-                    _restored_phantoms_enabled = bot_data.get(
-                        "phantoms_enabled", True)
+                    _restored_phantoms_enabled = bot_data.get("phantoms_enabled", True)
                     bot = ScrummingBot(
                         config,
                         _PlaceholderExchangeForRestore(cfg["exchange_id"]),
@@ -3879,7 +4128,8 @@ class BotManager:
                         bid[:8],
                         _restored_phantoms_enabled,
                         bool(_restored_phantoms_enabled),
-                        bot._phantoms_enabled)
+                        bot._phantoms_enabled,
+                    )
                 else:
                     # Defensive — should be unreachable because the
                     # mode-parsing step above already skips unknown
@@ -3891,7 +4141,10 @@ class BotManager:
                         "construction branch in "
                         "restore_bots_from_state — skipping. Add an "
                         "explicit branch for this BotMode value.",
-                        bid, mode, _mode_str)
+                        bid,
+                        mode,
+                        _mode_str,
+                    )
                     self._ledger_skip(bid, "no construction branch for mode")
                     continue
             except Exception as exc:
@@ -3899,7 +4152,9 @@ class BotManager:
                     "Bot %s construction failed during restore (%s) — "
                     "skipping. Other bots in the saved state will "
                     "still be restored. Platform launch continues.",
-                    bid, exc)
+                    bid,
+                    exc,
+                )
                 self._ledger_skip(bid, "construction failed")
                 continue
 
@@ -3945,17 +4200,19 @@ class BotManager:
                             len(getattr(bot, "_positions", {})),
                             getattr(bot, "_chunk_free_base", 0.0),
                             getattr(bot, "_hedge_free_base", 0.0),
-                            len(getattr(bot, "_watch_list", [])))
+                            len(getattr(bot, "_watch_list", [])),
+                        )
                     except Exception as exc:
                         bot._state_import_failed = True
-                        self._ledger_skip(
-                            bid, "extractor import_state failed")
+                        self._ledger_skip(bid, "extractor import_state failed")
                         logger.error(
                             "Extractor import_state FAILED on %s: %s. The "
                             "bot is registered with DEFAULT state, so the "
                             "next save would overwrite its persisted "
                             "record. Do not let that record be replaced.",
-                            bid, exc)
+                            bid,
+                            exc,
+                        )
             else:
                 scrum_state = bot_data.get("scrumming_state")
                 if scrum_state and hasattr(bot, "import_scrumming_state"):
@@ -3970,11 +4227,11 @@ class BotManager:
                             len(getattr(bot, "_fold_tranches", [])),
                             getattr(bot, "_target_balance", 0.0),
                             getattr(bot, "_anchor_target_balance", 0.0),
-                            getattr(bot, "_current_holdings", 0.0))
+                            getattr(bot, "_current_holdings", 0.0),
+                        )
                     except Exception as exc:
                         bot._state_import_failed = True
-                        self._ledger_skip(
-                            bid, "import_scrumming_state failed")
+                        self._ledger_skip(bid, "import_scrumming_state failed")
                         # v3.24.48 (Phase 1 Step 5) — this used to log
                         # the hazard and then fall through to register()
                         # anyway, with DEFAULT state. The message below
@@ -4006,7 +4263,9 @@ class BotManager:
                             "forward intact rather than overwritten with "
                             "defaults. It will be ABSENT from the fleet "
                             "until the state record is repaired.",
-                            bid, exc)
+                            bid,
+                            exc,
+                        )
                         # The bot vanishing from the fleet must never
                         # read as a silent deletion, so say so on the
                         # operator's own surface, not just in a log file.
@@ -4024,13 +4283,18 @@ class BotManager:
                                     f"this launch. Its saved lots and "
                                     f"tranches are INTACT on disk and "
                                     f"were not overwritten. Repair the "
-                                    f"record and relaunch."))
+                                    f"record and relaunch."
+                                ),
+                            )
                         except Exception as _emit_exc:  # noqa: BLE001
                             logger.error(
                                 "restore-failure banner could not be "
                                 "emitted for %s (%s); the bot is missing "
                                 "from the fleet with no operator-facing "
-                                "notice", bid, _emit_exc)
+                                "notice",
+                                bid,
+                                _emit_exc,
+                            )
                         continue
 
             # Mark as restored — stays IDLE until user starts
@@ -4041,7 +4305,8 @@ class BotManager:
             # path (start_all with eligible_filter) uses this to decide
             # which bots to bring back online.
             bot._was_running = (
-                str(bot_data.get("state_when_saved", "")).lower() == "running")
+                str(bot_data.get("state_when_saved", "")).lower() == "running"
+            )
 
             # v3.24.35 (C01 PR-0) — register() returns
             # (granted, refusal_reason) and its result was DISCARDED, so
@@ -4056,13 +4321,20 @@ class BotManager:
                 logger.error(
                     "Bot %s REFUSED registration during restore (%s). Its "
                     "saved record is NOT loaded and must not be "
-                    "overwritten.", bid, _refusal)
+                    "overwritten.",
+                    bid,
+                    _refusal,
+                )
                 self._ledger_skip(bid, "registration refused")
                 continue
             restored.append(bid)
-            logger.info("Restored bot %s (%s on %s) in IDLE state%s",
-                        bid, config.symbol, config.exchange_id,
-                        " (was RUNNING at save)" if bot._was_running else "")
+            logger.info(
+                "Restored bot %s (%s on %s) in IDLE state%s",
+                bid,
+                config.symbol,
+                config.exchange_id,
+                " (was RUNNING at save)" if bot._was_running else "",
+            )
 
         # v3.24.35 (C01 PR-0) — restore reached its end.
         #
@@ -4078,21 +4350,24 @@ class BotManager:
                 "Their records are still on disk and will be DELETED by "
                 "the next save (PR-0 is log-only).",
                 len(self._restore_ledger),
-                ", ".join(f"{b} ({r})"
-                          for b, r in list(self._restore_ledger.items())[:8]))
+                ", ".join(
+                    f"{b} ({r})" for b, r in list(self._restore_ledger.items())[:8]
+                ),
+            )
         else:
             logger.info(
-                "C01: restore completed, all %d persisted bot(s) loaded",
-                len(bots_data))
+                "C01: restore completed, all %d persisted bot(s) loaded", len(bots_data)
+            )
 
         return restored
 
     # -- Bulk operations ------------------------------------------------
-    async def start_all(self,
-                        verify_timeout_seconds: float = 10.0,
-                        min_gap_seconds: float = 0.6,
-                        eligible_filter: Optional[Callable[["BotContainer"], bool]] = None,
-                        ) -> None:
+    async def start_all(
+        self,
+        verify_timeout_seconds: float = 10.0,
+        min_gap_seconds: float = 0.6,
+        eligible_filter: Optional[Callable[["BotContainer"], bool]] = None,
+    ) -> None:
         """v3.16.11 — VERIFY-THEN-NEXT staggered start. Operator directive
         2026-04-28 (clarification): "Should have a delay between bots hence
         staggered. One should start, be verified running, then the next
@@ -4129,30 +4404,37 @@ class BotManager:
         crash scenario).
         """
         eligible = [
-            b for b in self._bots.values()
+            b
+            for b in self._bots.values()
             if b.state in (BotState.IDLE, BotState.STOPPED)
             and (eligible_filter is None or eligible_filter(b))
         ]
         total = len(eligible)
         self._start_all_cancel = False
         self._bus.emit(
-            "bot_manager.start_all_progress",
-            phase="begin", total=total, started=0)
+            "bot_manager.start_all_progress", phase="begin", total=total, started=0
+        )
         if total == 0:
             self._bus.emit(
-                "bot_manager.start_all_progress",
-                phase="done", total=0, started=0)
+                "bot_manager.start_all_progress", phase="done", total=0, started=0
+            )
             return
         for i, bot in enumerate(eligible):
             if getattr(self, "_start_all_cancel", False):
                 self._bus.emit(
                     "bot_manager.start_all_progress",
-                    phase="cancelled", total=total, started=i)
+                    phase="cancelled",
+                    total=total,
+                    started=i,
+                )
                 return
             self._bus.emit(
                 "bot_manager.start_all_progress",
                 phase="bot_starting",
-                total=total, started=i, bot_id=bot.bot_id)
+                total=total,
+                started=i,
+                bot_id=bot.bot_id,
+            )
             await bot.start()
             # Verify-then-next: poll until state==RUNNING or timeout.
             verified = False
@@ -4170,7 +4452,10 @@ class BotManager:
                 self._bus.emit(
                     "bot_manager.start_all_progress",
                     phase="bot_started",
-                    total=total, started=i + 1, bot_id=bot.bot_id)
+                    total=total,
+                    started=i + 1,
+                    bot_id=bot.bot_id,
+                )
             else:
                 # Timeout — proceed to next bot anyway. The slow bot
                 # may still come up; the operator can see the timeout
@@ -4178,15 +4463,18 @@ class BotManager:
                 self._bus.emit(
                     "bot_manager.start_all_progress",
                     phase="bot_timeout",
-                    total=total, started=i + 1, bot_id=bot.bot_id,
-                    timeout_seconds=verify_timeout_seconds)
+                    total=total,
+                    started=i + 1,
+                    bot_id=bot.bot_id,
+                    timeout_seconds=verify_timeout_seconds,
+                )
             # Small cooldown before next bot to space out exchange-API
             # bursts (each bot does its own handshake during start).
             if i < len(eligible) - 1:
                 await asyncio.sleep(min_gap_seconds)
         self._bus.emit(
-            "bot_manager.start_all_progress",
-            phase="done", total=total, started=total)
+            "bot_manager.start_all_progress", phase="done", total=total, started=total
+        )
 
     def cancel_start_all(self) -> None:
         """Operator-callable: abort an in-flight start_all. The current
@@ -4243,29 +4531,27 @@ class BotManager:
         # v3.16.48 — wallet cash + crypto position aggregates pulled
         # from exchange. Operator directive: "Pull the data and
         # display it. Spendable balance is my cash."
-        wallet_cash_usd = 0.0          # max across bots (shared wallet)
+        wallet_cash_usd = 0.0  # max across bots (shared wallet)
         crypto_position_value_usd = 0.0  # sum of per-bot position values
 
         for bot in self._bots.values():
             total_pnl += bot.stats.realised_pnl
             total_trades += bot.stats.total_trades
-            total_scrummed += float(getattr(
-                bot.stats, "total_scrummed_usd", 0.0) or 0.0)
-            total_folded += float(getattr(
-                bot.stats, "total_folded_usd", 0.0) or 0.0)
+            total_scrummed += float(
+                getattr(bot.stats, "total_scrummed_usd", 0.0) or 0.0
+            )
+            total_folded += float(getattr(bot.stats, "total_folded_usd", 0.0) or 0.0)
             # v3.23.60 — YTD from exchange sync
-            total_scrummed_ytd += float(getattr(
-                bot.stats, "ytd_scrummed_usd", 0.0) or 0.0)
-            total_folded_ytd += float(getattr(
-                bot.stats, "ytd_folded_usd", 0.0) or 0.0)
-            total_errors_lifetime += int(getattr(
-                bot.stats, "total_errors", 0) or 0)
+            total_scrummed_ytd += float(
+                getattr(bot.stats, "ytd_scrummed_usd", 0.0) or 0.0
+            )
+            total_folded_ytd += float(getattr(bot.stats, "ytd_folded_usd", 0.0) or 0.0)
+            total_errors_lifetime += int(getattr(bot.stats, "total_errors", 0) or 0)
             # v3.16.46 — exchange-pulled aggregates
             _re = float(getattr(bot.stats, "realized_pnl_exchange", 0.0) or 0.0)
             _ue = float(getattr(bot.stats, "unrealised_pnl", 0.0) or 0.0)
             _fe = float(getattr(bot.stats, "fees_paid_exchange", 0.0) or 0.0)
-            _fresh_ts = float(getattr(
-                bot.stats, "exchange_data_fresh_ts", 0.0) or 0.0)
+            _fresh_ts = float(getattr(bot.stats, "exchange_data_fresh_ts", 0.0) or 0.0)
             total_realized_exchange += _re
             total_unrealized_exchange += _ue
             total_fees_exchange += _fe
@@ -4274,8 +4560,7 @@ class BotManager:
             # v3.16.48 — wallet cash: shared across bots, take max
             # (freshest non-zero value wins). Crypto position: sum
             # per-bot position values (each bot owns its own asset).
-            _bot_cash = float(getattr(
-                bot.stats, "cash_balance_usd", 0.0) or 0.0)
+            _bot_cash = float(getattr(bot.stats, "cash_balance_usd", 0.0) or 0.0)
             if _bot_cash > wallet_cash_usd:
                 wallet_cash_usd = _bot_cash
             # v3.24.55 — recompute rather than trusting the cached
@@ -4296,8 +4581,7 @@ class BotManager:
             # This was the last consumer still summing the stale value,
             # and it is the one the headline portfolio figure is built
             # from.
-            _bot_pos_val = float(getattr(
-                bot.stats, "position_value", 0.0) or 0.0)
+            _bot_pos_val = float(getattr(bot.stats, "position_value", 0.0) or 0.0)
             try:
                 _h = float(getattr(bot, "_current_holdings", 0.0) or 0.0)
                 _p = float(getattr(bot.stats, "current_price", 0.0) or 0.0)
@@ -4313,7 +4597,9 @@ class BotManager:
                 logger.debug(
                     "aggregate: position recompute failed for %s (%s); "
                     "using the cached value",
-                    getattr(bot, "bot_id", "?"), _pv_exc)
+                    getattr(bot, "bot_id", "?"),
+                    _pv_exc,
+                )
             crypto_position_value_usd += _bot_pos_val
             if bot.state == BotState.RUNNING:
                 running += 1
@@ -4323,7 +4609,7 @@ class BotManager:
         return {
             "total_bots": len(self._bots),
             "running": running,
-            "errored": errored,                    # CURRENT-state bots in ERROR
+            "errored": errored,  # CURRENT-state bots in ERROR
             "total_errors_lifetime": total_errors_lifetime,  # CUMULATIVE error count
             # v3.16.46 — exchange-pulled position health aggregates
             "total_realized_exchange": round(total_realized_exchange, 4),
@@ -4336,7 +4622,8 @@ class BotManager:
             "wallet_cash_usd": round(wallet_cash_usd, 4),
             "crypto_position_value_usd": round(crypto_position_value_usd, 4),
             "total_account_value_usd": round(
-                wallet_cash_usd + crypto_position_value_usd, 4),
+                wallet_cash_usd + crypto_position_value_usd, 4
+            ),
             "total_realised_pnl": round(total_pnl, 4),
             "total_trades": total_trades,
             # v3.23.60 — dashboard prefers the YTD sums when any bot
@@ -4344,11 +4631,11 @@ class BotManager:
             # run accumulators otherwise so fresh installs / new
             # bots aren't blank.
             "total_scrummed_usd": round(
-                total_scrummed_ytd if total_scrummed_ytd > 0
-                else total_scrummed, 4),
+                total_scrummed_ytd if total_scrummed_ytd > 0 else total_scrummed, 4
+            ),
             "total_folded_usd": round(
-                total_folded_ytd if total_folded_ytd > 0
-                else total_folded, 4),
+                total_folded_ytd if total_folded_ytd > 0 else total_folded, 4
+            ),
             # Also expose raw YTD + lifetime separately for callers
             # that want to distinguish them.
             "total_scrummed_usd_ytd": round(total_scrummed_ytd, 4),
@@ -4360,6 +4647,7 @@ class BotManager:
 
 class _PlaceholderExchangeForRestore:
     """Minimal placeholder used during state restore. Replaced on bot start."""
+
     def __init__(self, exchange_id: str):
         self.exchange_id = exchange_id
         self.display_name = exchange_id.capitalize()

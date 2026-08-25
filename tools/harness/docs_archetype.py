@@ -20,6 +20,7 @@ Design (in one paragraph):
   legitimate docs as mode-less, (d) it fails to distinguish the
   ground-truth good/bad fixture pair.
 """
+
 # ruff: noqa: S603
 # S607 WAS SUPPRESSED HERE AND IT WAS NOT A FALSE POSITIVE.
 #
@@ -80,8 +81,8 @@ __all__ = ["ArchetypeReport", "DocsArchetype", "Finding", "main"]
 # A curated set of proselint check families we consider material for a
 # technical-documentation harness. Others still surface as low.
 _PROSELINT_HIGH_FAMILIES = {
-    "misc.illogic",         # logical errors
-    "security",             # credentials-in-docs class
+    "misc.illogic",  # logical errors
+    "security",  # credentials-in-docs class
 }
 
 # v3.24.20 — typography.symbols DEMOTED out of the blocking set.
@@ -171,6 +172,7 @@ class DocsArchetype:
 
     def load_calibration(self) -> str:
         from tools.harness.calibrations import load
+
         return load(self.calibration_name)
 
     _DIATAXIS_KEYWORDS = re.compile(
@@ -231,12 +233,15 @@ class DocsArchetype:
         # DIRECTORY target reported none and stayed green. For a single
         # file `files` is [target], so nothing changes there.
         scan_rule_modules(
-            report, target,
+            report,
+            target,
             (
                 ("scaffolding", "tools.harness.rules.scaffolding"),
                 ("hallucination", "tools.harness.rules.hallucination"),
             ),
-            (".md", ".txt"), files=files)
+            (".md", ".txt"),
+            files=files,
+        )
 
         report.falsification = self._build_falsification(report)
         return report
@@ -288,8 +293,7 @@ class DocsArchetype:
     def _enumerate(self, target: Path) -> list[Path]:
         if target.is_file():
             return [target]
-        files = sorted(
-            list(target.rglob("*.md")) + list(target.rglob("*.txt")))
+        files = sorted(list(target.rglob("*.md")) + list(target.rglob("*.txt")))
         return [p for p in files if not self._is_excluded(p)]
 
     @staticmethod
@@ -332,9 +336,9 @@ class DocsArchetype:
             tmp: Optional[Path] = None
             try:
                 stripped = _strip_markdown_code(
-                    f.read_text(encoding="utf-8", errors="replace"))
-                fd, tmp_name = tempfile.mkstemp(
-                    suffix=".md", prefix="proselint_")
+                    f.read_text(encoding="utf-8", errors="replace")
+                )
+                fd, tmp_name = tempfile.mkstemp(suffix=".md", prefix="proselint_")
                 os.close(fd)
                 tmp = Path(tmp_name)
                 tmp.write_text(stripped, encoding="utf-8")
@@ -346,8 +350,11 @@ class DocsArchetype:
             proc = subprocess.run(
                 [sys.executable, "-m", "proselint", "check", str(target)],
                 cwd=str(REPO_ROOT),
-                capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=120,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=120,
             )
             if tmp is not None:
                 tmp.unlink(missing_ok=True)
@@ -359,16 +366,18 @@ class DocsArchetype:
                 if not m:
                     continue
                 check = m.group("check")
-                findings.append(Finding(
-                    tool="proselint",
-                    # proselint's text format doesn't carry severity;
-                    # normalize by check-family only.
-                    severity=_normalize_proselint_severity(check, "warning"),
-                    file=str(f),
-                    line=int(m.group("line")),
-                    rule_id=check,
-                    message=m.group("msg"),
-                ))
+                findings.append(
+                    Finding(
+                        tool="proselint",
+                        # proselint's text format doesn't carry severity;
+                        # normalize by check-family only.
+                        severity=_normalize_proselint_severity(check, "warning"),
+                        file=str(f),
+                        line=int(m.group("line")),
+                        rule_id=check,
+                        message=m.group("msg"),
+                    )
+                )
         return findings, "ok"
 
     def _run_vale(self, files: list[Path]) -> tuple[list[Finding], str]:
@@ -388,8 +397,11 @@ class DocsArchetype:
                 # review.
                 [vale_bin, "--output=JSON", str(f)],
                 cwd=str(REPO_ROOT),
-                capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=120,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=120,
             )
             # v3.24.34 (C43 follow-on) — vale reports RUNTIME errors as
             # JSON on STDERR and leaves stdout EMPTY. The bare
@@ -417,15 +429,21 @@ class DocsArchetype:
             for _, alerts in data.items():
                 for alert in alerts:
                     sev = alert.get("Severity", "warning").lower()
-                    sev_map = {"error": "high", "warning": "medium", "suggestion": "low"}
-                    findings.append(Finding(
-                        tool="vale",
-                        severity=sev_map.get(sev, "low"),
-                        file=str(f),
-                        line=alert.get("Line", 0),
-                        rule_id=alert.get("Check", "unknown"),
-                        message=alert.get("Message", ""),
-                    ))
+                    sev_map = {
+                        "error": "high",
+                        "warning": "medium",
+                        "suggestion": "low",
+                    }
+                    findings.append(
+                        Finding(
+                            tool="vale",
+                            severity=sev_map.get(sev, "low"),
+                            file=str(f),
+                            line=alert.get("Line", 0),
+                            rule_id=alert.get("Check", "unknown"),
+                            message=alert.get("Message", ""),
+                        )
+                    )
         return findings, "ok"
 
     def _run_structure(self, files: list[Path]) -> tuple[list[Finding], str]:
@@ -435,17 +453,27 @@ class DocsArchetype:
             # H1 check: file should have exactly one H1 near the top
             h1s = re.findall(r"^# +\S.*$", text, re.MULTILINE)
             if not h1s:
-                findings.append(Finding(
-                    tool="structure", severity="medium",
-                    file=str(f), line=1, rule_id="DOC001",
-                    message="No H1 heading (single '# Title' line) found; the doc has no anchor.",
-                ))
+                findings.append(
+                    Finding(
+                        tool="structure",
+                        severity="medium",
+                        file=str(f),
+                        line=1,
+                        rule_id="DOC001",
+                        message="No H1 heading (single '# Title' line) found; the doc has no anchor.",
+                    )
+                )
             elif len(h1s) > 1:
-                findings.append(Finding(
-                    tool="structure", severity="low",
-                    file=str(f), line=1, rule_id="DOC002",
-                    message=f"Multiple H1 headings ({len(h1s)}). Conventional Markdown uses one H1 as title.",
-                ))
+                findings.append(
+                    Finding(
+                        tool="structure",
+                        severity="low",
+                        file=str(f),
+                        line=1,
+                        rule_id="DOC002",
+                        message=f"Multiple H1 headings ({len(h1s)}). Conventional Markdown uses one H1 as title.",
+                    )
+                )
             # Duplicate-heading check (DOC005) — added 2026-07-24
             # Parse every heading (H1-H6) and flag any repeated text.
             heading_lines: list[tuple[int, str]] = []
@@ -456,36 +484,51 @@ class DocsArchetype:
             seen: dict[str, int] = {}
             for line_no, htext in heading_lines:
                 if htext in seen:
-                    findings.append(Finding(
-                        tool="structure", severity="high",
-                        file=str(f), line=line_no, rule_id="DOC005",
-                        message=(
-                            f"Duplicate heading text {htext!r} (also appears "
-                            f"at line {seen[htext]}). Breaks TOC generation "
-                            f"and reader navigation."
-                        ),
-                    ))
+                    findings.append(
+                        Finding(
+                            tool="structure",
+                            severity="high",
+                            file=str(f),
+                            line=line_no,
+                            rule_id="DOC005",
+                            message=(
+                                f"Duplicate heading text {htext!r} (also appears "
+                                f"at line {seen[htext]}). Breaks TOC generation "
+                                f"and reader navigation."
+                            ),
+                        )
+                    )
                 else:
                     seen[htext] = line_no
             # Diataxis-mode signal in first 500 chars
             head = text[:500]
             if not self._DIATAXIS_KEYWORDS.search(head):
-                findings.append(Finding(
-                    tool="structure", severity="low",
-                    file=str(f), line=1, rule_id="DOC003",
-                    message=(
-                        "No Diataxis-mode signal in the document's opening 500 chars "
-                        "(Tutorial / How-to / Reference / Explanation). "
-                        "Consider stating the doc's mode explicitly."
-                    ),
-                ))
+                findings.append(
+                    Finding(
+                        tool="structure",
+                        severity="low",
+                        file=str(f),
+                        line=1,
+                        rule_id="DOC003",
+                        message=(
+                            "No Diataxis-mode signal in the document's opening 500 chars "
+                            "(Tutorial / How-to / Reference / Explanation). "
+                            "Consider stating the doc's mode explicitly."
+                        ),
+                    )
+                )
             # Empty file guard
             if not text.strip():
-                findings.append(Finding(
-                    tool="structure", severity="high",
-                    file=str(f), line=1, rule_id="DOC004",
-                    message="Document is empty or whitespace-only.",
-                ))
+                findings.append(
+                    Finding(
+                        tool="structure",
+                        severity="high",
+                        file=str(f),
+                        line=1,
+                        rule_id="DOC004",
+                        message="Document is empty or whitespace-only.",
+                    )
+                )
         return findings, "ok"
 
 
@@ -493,7 +536,9 @@ def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if not argv or argv[0] in ("-h", "--help"):
         print("usage: python -m tools.harness.docs_archetype <path>")
-        print("       reviews Markdown/text docs with proselint (+ vale if installed) + structure check")
+        print(
+            "       reviews Markdown/text docs with proselint (+ vale if installed) + structure check"
+        )
         return 2
     target = Path(argv[0])
     report = DocsArchetype().review(target)

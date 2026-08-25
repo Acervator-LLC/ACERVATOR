@@ -25,6 +25,7 @@ so nothing here compares trades to YTD or live. Nuclear runs AFTER trade-logic
 alignment is proven on the real tablets; its criteria are coverage and survival.
 See the audit's section 1.0.
 """
+
 from __future__ import annotations
 
 import sys
@@ -47,8 +48,9 @@ STEP = 300_000
 
 
 def _rows(n=60, px=100.0):
-    return [[BASE + i * STEP, px, px * 1.02, px * 0.98, px * 1.01, 5.0]
-            for i in range(n)]
+    return [
+        [BASE + i * STEP, px, px * 1.02, px * 0.98, px * 1.01, 5.0] for i in range(n)
+    ]
 
 
 class TestTheInstrumentWorks:
@@ -104,8 +106,9 @@ class TestAPerturbedCandleIsStillAWellFormedCandle:
     def test_timestamps_are_never_touched(self):
         src = _rows()
         out, _ = noised_series(src, seed=3)
-        assert [r[0] for r in out] == [r[0] for r in src], (
-            "the master clock must stay authoritative")
+        assert [r[0] for r in out] == [
+            r[0] for r in src
+        ], "the master clock must stay authoritative"
 
     def test_the_ohlc_invariant_holds(self):
         out, _ = noised_series(_rows(), seed=5)
@@ -133,6 +136,7 @@ class TestOneImplementationNotThree:
 
     def test_topology_stress_produces_the_identical_series(self):
         from src.trading.topology_stress import _noised_rows
+
         src = _rows()
         a, pa = _noised_rows(src, seed=17)
         b, pb = noised_series(src, seed=17)
@@ -146,7 +150,9 @@ class TestTheControllerVariesStructurePerCycle:
     @staticmethod
     def _ctl():
         from src.gui.simulator_tab.nuclear_fleet_controller import (
-            NuclearFleetController)
+            NuclearFleetController,
+        )
+
         ctl = NuclearFleetController()
         ctl._candles = {"BTC/USD": _rows(), "ETH/USD": _rows(px=50.0)}
         return ctl
@@ -157,7 +163,8 @@ class TestTheControllerVariesStructurePerCycle:
         c1, _ = ctl._noised_candles_for_cycle(1)
         assert c0["BTC/USD"] != c1["BTC/USD"], (
             "every cycle replayed a byte-identical tape; the loop varied "
-            "system load only")
+            "system load only"
+        )
 
     def test_the_same_cycle_index_is_reproducible(self):
         """A soak that cannot be re-run is not a diagnostic."""
@@ -175,8 +182,7 @@ class TestTheControllerVariesStructurePerCycle:
 
     def test_the_loaded_tablets_are_never_mutated(self):
         ctl = self._ctl()
-        before = {s: [list(r) for r in rows]
-                  for s, rows in ctl._candles.items()}
+        before = {s: [list(r) for r in rows] for s, rows in ctl._candles.items()}
         for i in range(4):
             ctl._noised_candles_for_cycle(i)
         assert ctl._candles == before
@@ -193,7 +199,9 @@ class TestTheControllerVariesStructurePerCycle:
         stressor. Two calls for the same index agree, which is what lets
         all workers share one tape."""
         ctl = self._ctl()
-        assert ctl._noised_candles_for_cycle(2)[1] == ctl._noised_candles_for_cycle(2)[1]
+        assert (
+            ctl._noised_candles_for_cycle(2)[1] == ctl._noised_candles_for_cycle(2)[1]
+        )
 
 
 class TestNoiseCanBeDisabled:
@@ -201,7 +209,9 @@ class TestNoiseCanBeDisabled:
         """Needed to isolate a defect: if a soak fails, the first question
         is whether it fails on the unperturbed tape too."""
         from src.gui.simulator_tab.nuclear_fleet_controller import (
-            NuclearFleetController)
+            NuclearFleetController,
+        )
+
         ctl = NuclearFleetController(noise_enabled=False)
         ctl._candles = {"BTC/USD": _rows()}
         out, pct = ctl._noised_candles_for_cycle(0)

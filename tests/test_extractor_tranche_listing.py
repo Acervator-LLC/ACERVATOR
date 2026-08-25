@@ -30,6 +30,7 @@ EVERY MECHANISM HERE HAS A PAIRED CONTROL. A test that passes when the
 mechanism is blinded is not evidence, so each group carries a control
 that must fail if the thing under test stopped working.
 """
+
 from __future__ import annotations
 
 import sys
@@ -44,7 +45,8 @@ if str(REPO_ROOT) not in sys.path:
 from src.core.event_bus import EventBus  # noqa: E402
 from src.trading.bot_container import BotManager, BotMode  # noqa: E402
 from src.trading.extractor_bot import (  # noqa: E402
-    ExtractorBot, ExtractorPosition,
+    ExtractorBot,
+    ExtractorPosition,
 )
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
@@ -74,9 +76,12 @@ def _parent(bot_id="scrum-eth", target_asset=ETH, exchange=COINBASE):
     bot = object.__new__(ScrummingBot)
     bot.bot_id = bot_id
     bot.config = _cfg(
-        exchange_id=exchange, mode=BotMode.SCRUMMING,
-        target_asset=target_asset, base_currency="USD",
-        scrumming_interval_pct=2.0, name=bot_id,
+        exchange_id=exchange,
+        mode=BotMode.SCRUMMING,
+        target_asset=target_asset,
+        base_currency="USD",
+        scrumming_interval_pct=2.0,
+        name=bot_id,
     )
     bot._bot_manager = None
     # The parent's own books. Everything the trading path reads.
@@ -113,14 +118,17 @@ def _parent(bot_id="scrum-eth", target_asset=ETH, exchange=COINBASE):
     return bot
 
 
-def _child(bot_id="ext-1", base_currency=ETH, exchange=COINBASE,
-           rate_usd_per_base=3000.0):
+def _child(
+    bot_id="ext-1", base_currency=ETH, exchange=COINBASE, rate_usd_per_base=3000.0
+):
     """An Extractor spending `base_currency`, holding nothing yet."""
     bot = object.__new__(ExtractorBot)
     bot.bot_id = bot_id
     bot.config = _cfg(
-        exchange_id=exchange, mode=BotMode.EXTRACTOR,
-        target_asset="ALT", base_currency=base_currency,
+        exchange_id=exchange,
+        mode=BotMode.EXTRACTOR,
+        target_asset="ALT",
+        base_currency=base_currency,
         name=f"name-of-{bot_id}",
         extractor_direction="normal",
         inverted_extractor_standing_alt_units=0,
@@ -152,8 +160,14 @@ def _child(bot_id="ext-1", base_currency=ETH, exchange=COINBASE,
     return bot
 
 
-def _position(pair="SOL/ETH", alt_units=100.0, entry_price=0.005,
-              mark=None, opened_at=1000.0, state="in_flight"):
+def _position(
+    pair="SOL/ETH",
+    alt_units=100.0,
+    entry_price=0.005,
+    mark=None,
+    opened_at=1000.0,
+    state="in_flight",
+):
     """One open Extractor position.
 
     The ENTRY PRICE is the input and the cost basis follows from it by
@@ -351,8 +365,7 @@ def test_an_unpriced_position_reports_no_mark_rather_than_cost_basis():
 def test_base_deployed_needs_no_price_at_all():
     """How much of MY asset is out on lease is exact, not marked."""
     parent, _ = _family(mark=None, entry_price=0.0042)
-    assert parent.open_extractor_tranches()[0]["base_deployed"] == (
-        pytest.approx(0.42))
+    assert parent.open_extractor_tranches()[0]["base_deployed"] == (pytest.approx(0.42))
 
 
 def test_the_child_records_the_price_its_own_tick_already_fetched():
@@ -383,11 +396,11 @@ def test_listing_performs_no_network_call():
     parent, child = _family()
 
     def _explode(*_a, **_kw):
-        raise AssertionError(
-            "open_extractor_tranches touched the exchange")
+        raise AssertionError("open_extractor_tranches touched the exchange")
 
-    child.exchange = type("_Ex", (), {
-        "get_ticker": _explode, "fetch_ticker": _explode})()
+    child.exchange = type(
+        "_Ex", (), {"get_ticker": _explode, "fetch_ticker": _explode}
+    )()
     rows = parent.open_extractor_tranches()
     assert len(rows) == 1
 
@@ -444,8 +457,11 @@ def test_hazard_2_the_fold_buy_eligible_set_is_empty():
     parent.open_extractor_tranches()
     otd_factor = 0.98
     ticker_last = 1.0
-    eligible = [t for t in parent._fold_tranches
-                if ticker_last <= float(t.get("ref", 0)) * otd_factor]
+    eligible = [
+        t
+        for t in parent._fold_tranches
+        if ticker_last <= float(t.get("ref", 0)) * otd_factor
+    ]
     assert eligible == []
 
 
@@ -495,10 +511,22 @@ def test_hazard_8_the_manual_fire_index_still_maps_to_fold_tranches():
     would sell the wrong tranche.
     """
     parent, _ = _family()
-    fold = [{"usd": 10.0, "units": 1.0, "ref": 100.0,
-             "initial_buy_price": 90.0, "created_ts": 1.0},
-            {"usd": 20.0, "units": 2.0, "ref": 200.0,
-             "initial_buy_price": 180.0, "created_ts": 2.0}]
+    fold = [
+        {
+            "usd": 10.0,
+            "units": 1.0,
+            "ref": 100.0,
+            "initial_buy_price": 90.0,
+            "created_ts": 1.0,
+        },
+        {
+            "usd": 20.0,
+            "units": 2.0,
+            "ref": 200.0,
+            "initial_buy_price": 180.0,
+            "created_ts": 2.0,
+        },
+    ]
     parent._fold_tranches = fold
     assert len(parent.open_extractor_tranches()) == 1
     # Each fold tranche still answers at its own index.
@@ -515,8 +543,11 @@ def test_hazard_9_no_extractor_tranche_is_dropped_as_malformed():
     parent.open_extractor_tranches()
     kept = [t for t in parent._fold_tranches if t.get("ref", 0) > 0]
     assert kept == list(parent._fold_tranches)
-    assert parent._tranches_malformed_dropped == 0 if hasattr(
-        parent, "_tranches_malformed_dropped") else True
+    assert (
+        parent._tranches_malformed_dropped == 0
+        if hasattr(parent, "_tranches_malformed_dropped")
+        else True
+    )
     # And the tranche is still listed after the filter would have run.
     assert len(parent.open_extractor_tranches()) == 1
 
@@ -526,10 +557,11 @@ def test_hazard_10_clearing_fold_tranches_does_not_destroy_the_record():
     `self._fold_tranches = []`. None of them can reach a child's live
     position, so the parent's record of it survives."""
     parent, _ = _family()
-    parent._fold_tranches = [{"usd": 5.0, "units": 1.0, "ref": 100.0,
-                              "initial_buy_price": 90.0}]
+    parent._fold_tranches = [
+        {"usd": 5.0, "units": 1.0, "ref": 100.0, "initial_buy_price": 90.0}
+    ]
     assert len(parent.open_extractor_tranches()) == 1
-    parent._fold_tranches = []          # what the Clear button does
+    parent._fold_tranches = []  # what the Clear button does
     assert len(parent.open_extractor_tranches()) == 1
 
 
@@ -548,9 +580,10 @@ def test_hazard_12_prospective_surplus_preview_is_unmoved():
     parent, _ = _family()
     parent.open_extractor_tranches()
     price = 100.0
-    preview = sum(float(t["units"]) * (float(t["ref"]) - price)
-                  for t in sorted(parent._fold_tranches,
-                                  key=lambda t: t["ref"]))
+    preview = sum(
+        float(t["units"]) * (float(t["ref"]) - price)
+        for t in sorted(parent._fold_tranches, key=lambda t: t["ref"])
+    )
     assert preview == 0.0
 
 
@@ -559,7 +592,7 @@ def test_hazard_13_the_min_ref_diagnostic_finds_no_extractor_tranche():
     HOLD-FOLD diagnostic, which raises on a missing key."""
     parent, _ = _family()
     parent.open_extractor_tranches()
-    assert parent._fold_tranches == []   # min() is never reached
+    assert parent._fold_tranches == []  # min() is never reached
 
 
 def test_hazard_17_current_holdings_excludes_the_leased_units():
@@ -612,10 +645,8 @@ def test_hazard_no_money_moves_and_no_order_is_placed():
     different item."""
     parent, child = _family()
     calls = []
-    for name in ("create_order", "place_order", "market_sell",
-                 "market_buy"):
-        setattr(parent, name,
-                lambda *a, _n=name, **kw: calls.append(_n))
+    for name in ("create_order", "place_order", "market_sell", "market_buy"):
+        setattr(parent, name, lambda *a, _n=name, **kw: calls.append(_n))
     parent.open_extractor_tranches()
     assert calls == []
     assert child._chunk_free_base == 1.0
@@ -631,8 +662,9 @@ def test_a_scrumming_state_without_the_new_field_loads_unchanged():
     parent = _parent()
     state = {
         "main_lots": [{"units": 1.5, "initial_buy_price": 2000.0}],
-        "fold_tranches": [{"usd": 10.0, "units": 0.1, "ref": 2100.0,
-                           "initial_buy_price": 2000.0}],
+        "fold_tranches": [
+            {"usd": 10.0, "units": 0.1, "ref": 2100.0, "initial_buy_price": 2000.0}
+        ],
         "tranches_created_lifetime": 7,
         "tranches_closed_lifetime": 4,
     }
@@ -659,20 +691,22 @@ def test_an_extractor_position_saved_before_item_4_loads_with_no_mark():
     priced" — not a fabricated price of zero treated as real."""
     child = _child()
     legacy = {
-        "positions": [{
-            "pair": "SOL/ETH",
-            "state": "in_flight",
-            "artillery_size_base": 0.5,
-            "artillery_size_usd_at_entry": 1500.0,
-            "alt_units": 100.0,
-            "entry_price_base_per_alt": 0.005,
-            "avg_buy_price_base_per_alt": 0.005,
-            "cost_basis_base": 0.5,
-            "compounding_tier": 1,
-            "corrections_fired": 0,
-            "last_correction_ts": 0.0,
-            "opened_at": 1000.0,
-        }],
+        "positions": [
+            {
+                "pair": "SOL/ETH",
+                "state": "in_flight",
+                "artillery_size_base": 0.5,
+                "artillery_size_usd_at_entry": 1500.0,
+                "alt_units": 100.0,
+                "entry_price_base_per_alt": 0.005,
+                "avg_buy_price_base_per_alt": 0.005,
+                "cost_basis_base": 0.5,
+                "compounding_tier": 1,
+                "corrections_fired": 0,
+                "last_correction_ts": 0.0,
+                "opened_at": 1000.0,
+            }
+        ],
     }
     assert "last_price_base_per_alt" not in legacy["positions"][0]
     child.import_state(legacy)
@@ -722,8 +756,7 @@ def test_the_tranche_id_survives_a_resort():
     c1._positions["SOL/ETH"] = _position(mark=0.006)
     c2._positions["AVAX/ETH"] = _position(pair="AVAX/ETH", mark=0.002)
     _wire(parent, c1, c2)
-    before = {r["tranche_id"]: r["pair"]
-              for r in parent.open_extractor_tranches()}
+    before = {r["tranche_id"]: r["pair"] for r in parent.open_extractor_tranches()}
     rows = parent.open_extractor_tranches()
     rows.sort(key=lambda r: -float(r["alt_units"]))
     rows.sort(key=lambda r: r["pair"])
@@ -738,8 +771,7 @@ def test_the_tranche_id_survives_another_tranche_closing():
     goer._positions["AVAX/ETH"] = _position(pair="AVAX/ETH", mark=0.002)
     _wire(parent, keeper, goer)
     rows = parent.open_extractor_tranches()
-    keeper_id = next(r["tranche_id"] for r in rows
-                     if r["child_bot_id"] == "ext-keep")
+    keeper_id = next(r["tranche_id"] for r in rows if r["child_bot_id"] == "ext-keep")
     # The other position closes.
     goer._positions.clear()
     rows_after = parent.open_extractor_tranches()
@@ -803,9 +835,12 @@ def _srgb_to_linear(c: float) -> float:
 
 def _luminance(hex_colour: str) -> float:
     raw = hex_colour.lstrip("#")
-    r, g, b = (int(raw[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
-    return (0.2126 * _srgb_to_linear(r) + 0.7152 * _srgb_to_linear(g)
-            + 0.0722 * _srgb_to_linear(b))
+    r, g, b = (int(raw[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+    return (
+        0.2126 * _srgb_to_linear(r)
+        + 0.7152 * _srgb_to_linear(g)
+        + 0.0722 * _srgb_to_linear(b)
+    )
 
 
 def _contrast(fg: str, bg: str) -> float:
@@ -816,8 +851,10 @@ def _contrast(fg: str, bg: str) -> float:
 
 def test_the_red_row_passes_wcag_aa_for_normal_text():
     from src.gui.bot_live_settings import (
-        EXTRACTOR_TRANCHE_BG_HEX, EXTRACTOR_TRANCHE_FG_HEX,
+        EXTRACTOR_TRANCHE_BG_HEX,
+        EXTRACTOR_TRANCHE_FG_HEX,
     )
+
     ratio = _contrast(EXTRACTOR_TRANCHE_FG_HEX, EXTRACTOR_TRANCHE_BG_HEX)
     assert ratio >= 4.5, f"white on {EXTRACTOR_TRANCHE_BG_HEX} is {ratio:.2f}:1"
     assert ratio == pytest.approx(6.54, abs=0.05)
@@ -844,24 +881,26 @@ def test_the_cell_texts_never_mix_denominations():
     from src.gui.bot_live_settings import (
         _compose_extractor_tranche_cells,
     )
+
     parent, _ = _family(mark=0.006, alt_units=100.0)
     row = parent.open_extractor_tranches()[0]
     cells = _compose_extractor_tranche_cells(row, 1600.0)
     assert len(cells) == 10
-    assert cells[0] == "EXT"          # never a fold index
-    assert cells[2] == "0.500000"     # base on lease
+    assert cells[0] == "EXT"  # never a fold index
+    assert cells[2] == "0.500000"  # base on lease
     assert cells[3] == "$1,800.0000"  # marked value
-    assert cells[4] == "—"            # Sell ref $
-    assert cells[5] == "—"            # Original cost $
-    assert cells[6] == "—"            # Min rebuy $
+    assert cells[4] == "—"  # Sell ref $
+    assert cells[5] == "—"  # Original cost $
+    assert cells[6] == "—"  # Min rebuy $
     assert cells[8] == "extractor SOL/ETH"
-    assert cells[9] == "—"            # Fire
+    assert cells[9] == "—"  # Fire
 
 
 def test_an_unpriced_row_shows_a_dash_not_a_dollar_figure():
     from src.gui.bot_live_settings import (
         _compose_extractor_tranche_cells,
     )
+
     parent, _ = _family(mark=None)
     row = parent.open_extractor_tranches()[0]
     cells = _compose_extractor_tranche_cells(row, 1600.0)
@@ -883,7 +922,9 @@ def _tab():
     the production code under test.
     """
     from PySide6.QtWidgets import (
-        QApplication, QDialog, QTableWidget,
+        QApplication,
+        QDialog,
+        QTableWidget,
     )
     from src.gui.bot_live_settings import BotLiveSettingsDialog
 
@@ -891,11 +932,16 @@ def _tab():
         QApplication([])
 
     parent, _ = _family(mark=0.006, alt_units=100.0)
-    parent._fold_tranches = [{
-        "usd": 25.0, "units": 0.01, "ref": 2100.0,
-        "initial_buy_price": 2000.0, "created_ts": 1.0,
-        "operator_initiated": True,
-    }]
+    parent._fold_tranches = [
+        {
+            "usd": 25.0,
+            "units": 0.01,
+            "ref": 2100.0,
+            "initial_buy_price": 2000.0,
+            "created_ts": 1.0,
+            "operator_initiated": True,
+        }
+    ]
     parent.get_status = lambda: {"stats": {"current_price": 2000.0}}
 
     dlg = BotLiveSettingsDialog.__new__(BotLiveSettingsDialog)
@@ -927,15 +973,19 @@ def test_the_extractor_row_is_red_with_white_text_in_every_column(_tab):
     a red row.
     """
     from src.gui.bot_live_settings import (
-        EXTRACTOR_TRANCHE_BG_HEX, EXTRACTOR_TRANCHE_FG_HEX,
+        EXTRACTOR_TRANCHE_BG_HEX,
+        EXTRACTOR_TRANCHE_FG_HEX,
     )
+
     for col in range(_tab.columnCount()):
         cell = _tab.item(1, col)
         assert cell is not None, f"column {col} has no item to paint"
         assert cell.background().color().name() == (
-            EXTRACTOR_TRANCHE_BG_HEX), f"column {col} is not red"
+            EXTRACTOR_TRANCHE_BG_HEX
+        ), f"column {col} is not red"
         assert cell.foreground().color().name() == (
-            EXTRACTOR_TRANCHE_FG_HEX), f"column {col} is not white"
+            EXTRACTOR_TRANCHE_FG_HEX
+        ), f"column {col} is not white"
     assert EXTRACTOR_TRANCHE_BG_HEX == "#b3261e"
     assert EXTRACTOR_TRANCHE_FG_HEX == "#ffffff"
 
@@ -959,7 +1009,8 @@ def test_the_ordinary_tranche_row_is_not_repainted(_tab):
     blue failing to paint.
     """
     from src.gui.bot_live_settings import (
-        EXTRACTOR_TRANCHE_BG_HEX, FOLD_TRANCHE_BG_HEX,
+        EXTRACTOR_TRANCHE_BG_HEX,
+        FOLD_TRANCHE_BG_HEX,
     )
 
     source_cell = _tab.item(0, 8)

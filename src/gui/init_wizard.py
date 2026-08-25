@@ -10,16 +10,24 @@ logger = logging.getLogger("acervator.gui")
 
 try:
     from PySide6.QtWidgets import (
-        QWizard, QWizardPage, QVBoxLayout,
-        QLabel, QLineEdit, QComboBox, QCheckBox, QMessageBox,
-        QPushButton, QHBoxLayout, QTextEdit,
+        QWizard,
+        QWizardPage,
+        QVBoxLayout,
+        QLabel,
+        QLineEdit,
+        QComboBox,
+        QCheckBox,
+        QMessageBox,
+        QPushButton,
+        QHBoxLayout,
+        QTextEdit,
     )
     from PySide6.QtCore import Qt
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
 from src.gui.qt_safe_events import safe_process_events  # v3.15.99 P4.1
-
 
 if _HAS_QT:
 
@@ -53,7 +61,9 @@ if _HAS_QT:
                 )
             else:
                 page1.setTitle("Welcome to Acervator")
-                page1.setSubTitle("Set up your trading environment. You can skip this entirely.")
+                page1.setSubTitle(
+                    "Set up your trading environment. You can skip this entirely."
+                )
             p1_layout = QVBoxLayout(page1)
 
             p1_layout.addWidget(QLabel("Username:"))
@@ -63,7 +73,9 @@ if _HAS_QT:
             p1_layout.addWidget(self._username)
 
             if is_upgrade:
-                self._fresh_start = QCheckBox("Start fresh (clear all previous settings and exchanges)")
+                self._fresh_start = QCheckBox(
+                    "Start fresh (clear all previous settings and exchanges)"
+                )
                 self._fresh_start.setToolTip(
                     "Check this to remove all saved exchanges, credentials, and settings "
                     "from the previous version. Useful if you're seeing stale data."
@@ -75,7 +87,9 @@ if _HAS_QT:
             p1_layout.addSpacing(20)
 
             skip_btn = QPushButton("Skip Setup")
-            skip_btn.setToolTip("Skip the setup wizard entirely. No exchanges will be configured.")
+            skip_btn.setToolTip(
+                "Skip the setup wizard entirely. No exchanges will be configured."
+            )
             skip_btn.clicked.connect(self._on_skip)
             skip_btn.setStyleSheet("color: #888; padding: 8px;")
             p1_layout.addWidget(skip_btn)
@@ -83,11 +97,17 @@ if _HAS_QT:
             # --- Page 2: Exchange ---
             page2 = QWizardPage()
             page2.setTitle("Select Your Exchange")
-            page2.setSubTitle("Choose your primary exchange. You can add more later in Settings.")
+            page2.setSubTitle(
+                "Choose your primary exchange. You can add more later in Settings."
+            )
             p2_layout = QVBoxLayout(page2)
             p2_layout.addWidget(QLabel("Exchange:"))
             self._exchange_combo = QComboBox()
-            from ..exchange.ccxt_connector import SUPPORTED_EXCHANGES, PASSPHRASE_EXCHANGES
+            from ..exchange.ccxt_connector import (
+                SUPPORTED_EXCHANGES,
+                PASSPHRASE_EXCHANGES,
+            )
+
             self._passphrase_exchanges = PASSPHRASE_EXCHANGES
             for eid in sorted(SUPPORTED_EXCHANGES.keys()):
                 label = eid.capitalize()
@@ -107,7 +127,9 @@ if _HAS_QT:
 
             p3_layout.addWidget(QLabel("API Key:"))
             self._api_key = QLineEdit()
-            self._api_key.setPlaceholderText("API key or organizations/.../apiKeys/... (CDP)")
+            self._api_key.setPlaceholderText(
+                "API key or organizations/.../apiKeys/... (CDP)"
+            )
             self._api_key.setEchoMode(QLineEdit.Password)
             p3_layout.addWidget(self._api_key)
 
@@ -119,23 +141,25 @@ if _HAS_QT:
             self._api_secret = QTextEdit()
             self._api_secret.setMaximumHeight(60)
             self._api_secret.setPlaceholderText(
-                "API secret or EC private key (PEM with \\n is OK)")
+                "API secret or EC private key (PEM with \\n is OK)"
+            )
             self._api_secret.setToolTip(
                 "For Coinbase CDP keys, paste the full PEM key.\n"
-                "Literal \\n characters will be auto-converted.")
+                "Literal \\n characters will be auto-converted."
+            )
             p3_layout.addWidget(self._api_secret)
 
             # Passphrase
             self._passphrase_label = QLabel("API Passphrase:")
             p3_layout.addWidget(self._passphrase_label)
             self._passphrase = QLineEdit()
-            self._passphrase.setPlaceholderText("Passphrase you chose when creating the API key")
+            self._passphrase.setPlaceholderText(
+                "Passphrase you chose when creating the API key"
+            )
             self._passphrase.setEchoMode(QLineEdit.Password)
             p3_layout.addWidget(self._passphrase)
 
-            self._passphrase_hint = QLabel(
-                "This exchange requires an API passphrase."
-            )
+            self._passphrase_hint = QLabel("This exchange requires an API passphrase.")
             self._passphrase_hint.setWordWrap(True)
             self._passphrase_hint.setProperty("muted", True)
             p3_layout.addWidget(self._passphrase_hint)
@@ -177,7 +201,9 @@ if _HAS_QT:
             if show:
                 self._api_secret.setStyleSheet("")
             else:
-                self._api_secret.setStyleSheet("color: transparent; background-selection-color: transparent;")
+                self._api_secret.setStyleSheet(
+                    "color: transparent; background-selection-color: transparent;"
+                )
 
         def _on_page_changed(self, page_id: int) -> None:
             if page_id == 2:
@@ -203,10 +229,12 @@ if _HAS_QT:
             self._feedback.setStyleSheet("color: #00aaff;")
             self._test_btn.setEnabled(False)
             from PySide6.QtWidgets import QApplication
+
             safe_process_events("legacy P4.1 site")
 
             try:
                 from ..exchange.api_validator import validate_credentials
+
                 result = validate_credentials(eid, key, secret, passphrase)
                 if result.success:
                     self._feedback.setText(result.message)
@@ -225,7 +253,9 @@ if _HAS_QT:
             if page_id == 0:
                 name = self._username.text().strip()
                 if not name:
-                    QMessageBox.warning(self, "Username Required", "Please enter a username.")
+                    QMessageBox.warning(
+                        self, "Username Required", "Please enter a username."
+                    )
                     return False
             return True
 
@@ -237,5 +267,7 @@ if _HAS_QT:
                 "api_key": "" if skip else self._api_key.text().strip(),
                 "api_secret": "" if skip else self._api_secret.toPlainText().strip(),
                 "passphrase": "" if skip else self._passphrase.text().strip(),
-                "fresh_start": self._fresh_start.isChecked() if self._fresh_start else False,
+                "fresh_start": (
+                    self._fresh_start.isChecked() if self._fresh_start else False
+                ),
             }

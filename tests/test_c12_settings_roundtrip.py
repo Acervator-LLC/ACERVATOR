@@ -33,6 +33,7 @@ NOTHING HERE CONSTRUCTS A SettingsManager. Its default config_dir is
 that constructs one writes there for real. Field inspection and AST are
 sufficient, and cannot touch anything.
 """
+
 from __future__ import annotations
 
 import ast
@@ -75,23 +76,27 @@ def _keys_the_dialog_writes() -> set[str]:
 
     # 1. literal-argument calls: self._sm.set("key", ...)
     for n in ast.walk(tree):
-        if not (isinstance(n, ast.Call)
-                and isinstance(n.func, ast.Attribute)
-                and n.func.attr == "set"):
+        if not (
+            isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "set"
+        ):
             continue
         recv = n.func.value
         if not (isinstance(recv, ast.Attribute) and recv.attr == "_sm"):
             continue
-        if n.args and isinstance(n.args[0], ast.Constant) \
-                and isinstance(n.args[0].value, str):
+        if (
+            n.args
+            and isinstance(n.args[0], ast.Constant)
+            and isinstance(n.args[0].value, str)
+        ):
             out.add(n.args[0].value)
 
     # 2. the `pairs = {...}` dict driving the loop
     for n in ast.walk(tree):
         if not isinstance(n, ast.Assign):
             continue
-        if not any(isinstance(t, ast.Name) and t.id == "pairs"
-                   for t in n.targets):
+        if not any(isinstance(t, ast.Name) and t.id == "pairs" for t in n.targets):
             continue
         if isinstance(n.value, ast.Dict):
             for k in n.value.keys:
@@ -122,12 +127,19 @@ class TestEveryWrittenKeyIsAField:
             f"the Settings dialog writes {len(orphans)} key(s) that are "
             f"not AppSettings fields: {orphans}. SettingsManager.set() "
             f"raises KeyError for each, so these are silently discarded "
-            f"on every save.")
+            f"on every save."
+        )
 
-    @pytest.mark.parametrize("key", [
-        "font_family", "font_size", "heading_font_size",
-        "log_font_size", "ai_monitor",
-    ])
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "font_family",
+            "font_size",
+            "heading_font_size",
+            "log_font_size",
+            "ai_monitor",
+        ],
+    )
     def test_each_previously_discarded_key_now_exists(self, key):
         assert key in _fields()
 
@@ -136,12 +148,15 @@ class TestDefaultsMatchTheDialogWidgets:
     """An unsaved install and a saved one must agree, or the UI jumps
     the first time the operator presses Save."""
 
-    @pytest.mark.parametrize("key,expected", [
-        ("font_family", "Segoe UI"),   # settings_dialog :520
-        ("font_size", 11),             # :526
-        ("heading_font_size", 14),     # :533
-        ("log_font_size", 10),         # :539
-    ])
+    @pytest.mark.parametrize(
+        "key,expected",
+        [
+            ("font_family", "Segoe UI"),  # settings_dialog :520
+            ("font_size", 11),  # :526
+            ("heading_font_size", 14),  # :533
+            ("log_font_size", 10),  # :539
+        ],
+    )
     def test_font_default(self, key, expected):
         assert getattr(AppSettings(), key) == expected
 
@@ -151,8 +166,14 @@ class TestDefaultsMatchTheDialogWidgets:
         ai = AppSettings().ai_monitor
         assert isinstance(ai, dict)
         assert set(ai) == {
-            "api_key", "interval_hours", "connect_phrase",
-            "confirm_phrase", "enabled", "auto_handshake", "log_feedback"}
+            "api_key",
+            "interval_hours",
+            "connect_phrase",
+            "confirm_phrase",
+            "enabled",
+            "auto_handshake",
+            "log_feedback",
+        }
         assert ai["interval_hours"] == 4.0
         assert ai["enabled"] is False
 
@@ -166,30 +187,40 @@ class TestPartialSaveIsNotReportedAsSuccess:
         assert "failed: list[str] = []" in src
         assert src.count("failed.append(") >= 4, (
             "each save site must record its failure, or a partial save "
-            "is under-reported")
+            "is under-reported"
+        )
 
     def test_success_message_is_conditional(self):
         src = DIALOG.read_text(encoding="utf-8")
-        assert "PARTIALLY saved" in src, (
-            "a save that dropped keys must not log at success level")
+        assert (
+            "PARTIALLY saved" in src
+        ), "a save that dropped keys must not log at success level"
 
     def test_the_dialog_still_always_closes(self):
         """The 'ALWAYS close' guarantee is load-bearing and predates
         this cascade. A warning box must not be able to strand the
         dialog open."""
         tree = ast.parse(DIALOG.read_text(encoding="utf-8"))
-        fn = next(n for n in ast.walk(tree)
-                  if isinstance(n, ast.FunctionDef) and n.name == "_save")
-        accepts = [n for n in ast.walk(fn)
-                   if isinstance(n, ast.Call)
-                   and getattr(n.func, "attr", "") == "accept"]
+        fn = next(
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "_save"
+        )
+        accepts = [
+            n
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "accept"
+        ]
         assert accepts, "_save no longer calls accept()"
-        msgboxes = [n.lineno for n in ast.walk(fn)
-                    if isinstance(n, ast.Call)
-                    and getattr(n.func, "attr", "") == "warning"
-                    and getattr(getattr(n.func, "value", None), "id", "")
-                    == "QMessageBox"]
+        msgboxes = [
+            n.lineno
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "attr", "") == "warning"
+            and getattr(getattr(n.func, "value", None), "id", "") == "QMessageBox"
+        ]
         for mb in msgboxes:
             assert mb < max(a.lineno for a in accepts), (
                 "the partial-save warning must precede accept(), and "
-                "accept() must remain unconditional")
+                "accept() must remain unconditional"
+            )

@@ -83,6 +83,7 @@ from pathlib import Path
 MANIFEST_NAME = ".island.json"
 LEDGER_RELPATH = "tools/.island_ledger.jsonl"
 
+
 def _islands_root() -> Path:
     """Where islands are forked. DERIVED, never hardcoded.
 
@@ -109,23 +110,36 @@ def _islands_root() -> Path:
 
 ISLANDS_ROOT = _islands_root()
 
-SKIP_DIR_NAMES = frozenset({
-    ".git", "__pycache__", ".pytest_cache", ".venv", "node_modules",
-})
+SKIP_DIR_NAMES = frozenset(
+    {
+        ".git",
+        "__pycache__",
+        ".pytest_cache",
+        ".venv",
+        "node_modules",
+    }
+)
 
 PROMOTABLE_ROOTS = ("src/", "tests/")
 
 PROTECTED_PREFIXES = ("tools/harness/", ".claude/")
-PROTECTED_EXACT = frozenset({
-    "src/__init__.py",
-    "main.py",
-    "conftest.py",
-    "pyproject.toml",
-    "setup.py",
-    "setup.cfg",
-})
+PROTECTED_EXACT = frozenset(
+    {
+        "src/__init__.py",
+        "main.py",
+        "conftest.py",
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+    }
+)
 PROTECTED_SUFFIXES = (
-    ".toml", ".cfg", ".ini", ".yaml", ".yml", ".json",
+    ".toml",
+    ".cfg",
+    ".ini",
+    ".yaml",
+    ".yml",
+    ".json",
 )
 
 # Verdict kinds.
@@ -292,9 +306,14 @@ def _classify_one(
     def make(kind: str, stale: bool, note: str) -> Verdict:
         """Build a verdict carrying the three hashes already in hand."""
         return Verdict(
-            rel=rel, kind=kind, stale=stale, scope=scope,
-            base_hash=base_hash, live_hash=live_hash,
-            island_hash=island_hash, note=note,
+            rel=rel,
+            kind=kind,
+            stale=stale,
+            scope=scope,
+            base_hash=base_hash,
+            live_hash=live_hash,
+            island_hash=island_hash,
+            note=note,
         )
 
     if island_hash == live_hash:
@@ -303,18 +322,21 @@ def _classify_one(
         if live_hash is None:
             return make(ADDED, False, "new file, absent from live")
         return make(
-            ADDED, True,
+            ADDED,
+            True,
             "island adds this path but live has since created it",
         )
     if island_hash == base_hash:
         return make(
-            LIVE_MOVED, False,
+            LIVE_MOVED,
+            False,
             "island did not touch it; live moved ahead",
         )
     if live_hash == base_hash:
         return make(CHANGED, False, "live still at fork base")
     return make(
-        CHANGED, True,
+        CHANGED,
+        True,
         "live changed after this island forked",
     )
 
@@ -329,9 +351,14 @@ def classify(island_dir: Path, manifest: dict) -> list[Verdict]:
         island_hash = hash_file(path)
         if island_hash is None:
             continue
-        verdicts.append(_classify_one(
-            rel, island_hash, base.get(rel), hash_file(live_root / rel),
-        ))
+        verdicts.append(
+            _classify_one(
+                rel,
+                island_hash,
+                base.get(rel),
+                hash_file(live_root / rel),
+            )
+        )
     verdicts.sort(key=lambda v: v.rel)
     return verdicts
 
@@ -358,10 +385,7 @@ def load_manifest(island_dir: Path) -> dict | None:
 def _copy_ignore(directory: str, names: list[str]) -> set[str]:
     """Return the entries of `directory` that must not be copied."""
     base = Path(directory)
-    skip = {
-        name for name in names
-        if name in SKIP_DIR_NAMES or name.endswith(".pyc")
-    }
+    skip = {name for name in names if name in SKIP_DIR_NAMES or name.endswith(".pyc")}
     for name in names:
         if (base / name / MANIFEST_NAME).is_file():
             skip.add(name)
@@ -387,12 +411,10 @@ def _syntax_refusal(name: str) -> str | None:
     """
     checks = (
         (not name.strip(), "island name is empty"),
-        ("/" in name or "\\" in name,
-         "island name contains a path separator"),
+        ("/" in name or "\\" in name, "island name contains a path separator"),
         (":" in name, "island name contains a drive or stream marker"),
         (set(name) == {"."}, "island name is made only of dots"),
-        (name.endswith((".", " ")),
-         "island name ends in a dot or a space"),
+        (name.endswith((".", " ")), "island name ends in a dot or a space"),
     )
     for failed, reason in checks:
         if failed:
@@ -513,7 +535,10 @@ def divergence(island_file: Path, live_file: Path) -> str:
     added = 0
     removed = 0
     for line in difflib.unified_diff(
-        left.splitlines(), right.splitlines(), n=0, lineterm="",
+        left.splitlines(),
+        right.splitlines(),
+        n=0,
+        lineterm="",
     ):
         if line.startswith("+") and not line.startswith("+++"):
             added += 1
@@ -533,8 +558,7 @@ def append_ledger(live_root: Path, manifest: dict, promoted: list[Verdict]) -> P
         "forked_at": manifest.get("created"),
         "live_root": str(live_root),
         "files": [
-            {"path": v.rel, "hash": v.island_hash, "kind": v.kind}
-            for v in promoted
+            {"path": v.rel, "hash": v.island_hash, "kind": v.kind} for v in promoted
         ],
     }
     with ledger.open("a", encoding="utf-8", newline="\n") as handle:
@@ -582,7 +606,9 @@ def render_status(island_dir: Path) -> int:
     live_root = Path(str(manifest["live_root"]))
     _say(f"island   {manifest.get('name')}")
     _say(f"purpose  {manifest.get('purpose')}")
-    _say(f"forked   {manifest.get('created')}  ({_age(str(manifest.get('created')))} ago)")
+    _say(
+        f"forked   {manifest.get('created')}  ({_age(str(manifest.get('created')))} ago)"
+    )
     _say(f"live     {live_root}")
     if not live_root.is_dir():
         _say("WARNING: live root no longer exists; staleness cannot be judged.")
@@ -610,8 +636,10 @@ def render_status(island_dir: Path) -> int:
 
     stale = [v for v in cands if v.stale and v.scope == PROMOTABLE]
     _say("")
-    _say(f"{len(stale)} in-scope file(s) STALE. "
-          f"{'Promotion will refuse.' if stale else 'Promotion may proceed.'}")
+    _say(
+        f"{len(stale)} in-scope file(s) STALE. "
+        f"{'Promotion will refuse.' if stale else 'Promotion may proceed.'}"
+    )
     return 0
 
 
@@ -630,7 +658,9 @@ def _refuse_protected(protected: list[Verdict]) -> int:
 
 
 def _refuse_stale(
-    stale: list[Verdict], island_dir: Path, live_root: Path,
+    stale: list[Verdict],
+    island_dir: Path,
+    live_root: Path,
 ) -> int:
     """Print the staleness refusal and return its exit code."""
     _say(f"REFUSED: {len(stale)} file(s) went STALE — live changed after")
@@ -692,8 +722,10 @@ def promote_island(island_dir: Path, dry_run: bool = False) -> int:
     declared = set(manifest.get("declared_files") or [])
     undeclared = [v.rel for v in in_scope if v.rel not in declared]
 
-    _say(f"{'WOULD PROMOTE' if dry_run else 'PROMOTING'} "
-          f"{len(in_scope)} file(s) to {live_root}:")
+    _say(
+        f"{'WOULD PROMOTE' if dry_run else 'PROMOTING'} "
+        f"{len(in_scope)} file(s) to {live_root}:"
+    )
     for verdict in in_scope:
         _say(f"  {verdict.kind:<8} {verdict.rel}")
     if undeclared:
@@ -736,8 +768,10 @@ def list_islands(islands_root: Path) -> int:
         _summarise_managed(island_dir, manifest)
 
     _say("")
-    _say(f"{len(entries)} island(s): {managed} managed, "
-          f"{len(entries) - managed} unmanaged.")
+    _say(
+        f"{len(entries)} island(s): {managed} managed, "
+        f"{len(entries) - managed} unmanaged."
+    )
     return 0
 
 
@@ -758,8 +792,10 @@ def _summarise_managed(island_dir: Path, manifest: dict) -> None:
         state = "STALE"
     else:
         state = "READY"
-    _say(f"  {state:<11} {island_dir.name}  ({age} old, "
-          f"{len(cands)} changed, {len(stale)} stale)")
+    _say(
+        f"  {state:<11} {island_dir.name}  ({age} old, "
+        f"{len(cands)} changed, {len(stale)} stale)"
+    )
     if purpose:
         _say(f"              {purpose}")
 
@@ -812,7 +848,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "new":
         try:
             island = create_island(
-                live_root, ISLANDS_ROOT, args.name, args.purpose, args.touches,
+                live_root,
+                ISLANDS_ROOT,
+                args.name,
+                args.purpose,
+                args.touches,
             )
         except FileExistsError as exc:
             _say(f"REFUSED: {exc}")

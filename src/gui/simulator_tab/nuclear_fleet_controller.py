@@ -49,6 +49,7 @@ against live trading is not a trade worth making.
 
 Stone Tablets are READ ONLY throughout.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -103,6 +104,7 @@ presenting identical load while leaving the cosine ramp continuous."""
 @dataclass
 class NuclearCycle:
     """One pass of the fleet over the tablet window."""
+
     index: int
     started_at: float = 0.0
     elapsed_s: float = 0.0
@@ -145,13 +147,16 @@ class NuclearCycle:
             "error": self.error,
             "candles_per_s": (
                 round(self.candles_played / self.elapsed_s, 2)
-                if self.elapsed_s > 0 else None),
+                if self.elapsed_s > 0
+                else None
+            ),
         }
 
 
 @dataclass
 class NuclearState:
     """Live status for the GUI panel."""
+
     running: bool = False
     started_at: float = 0.0
     cycles_completed: int = 0
@@ -218,7 +223,7 @@ def _make_oscillator():
                 else:
                     self.current_regime = "CALM"
 
-        psutil.cpu_percent(interval=None)   # prime the sampler
+        psutil.cpu_percent(interval=None)  # prime the sampler
         sensor = _Sensor()
         sensed = True
     except ImportError:
@@ -226,7 +231,9 @@ def _make_oscillator():
             "nuclear: psutil unavailable — machine load cannot be "
             "sampled, so the load multiplier is capped at %.1fx. An "
             "unmonitored 4x pulse shares this machine with the live "
-            "trading engine.", UNSENSED_LOAD_CAP)
+            "trading engine.",
+            UNSENSED_LOAD_CAP,
+        )
     return SystemLoadOscillator(sensor), sensed
 
 
@@ -270,8 +277,7 @@ class NuclearFleetController:
         # structure to how many unrelated jitter draws preceded it, so
         # the same cycle index would differ between runs that took
         # different load paths. Pass `seed=` for a different sequence.
-        self._noise_seed_base = (
-            DEFAULT_NOISE_SEED if seed is None else int(seed))
+        self._noise_seed_base = DEFAULT_NOISE_SEED if seed is None else int(seed)
         self.state = NuclearState()
         self._task: Optional[asyncio.Task] = None
         self._osc = None
@@ -361,18 +367,19 @@ class NuclearFleetController:
             return False
         if not self._configs:
             self._activity(
-                "Nuclear: bot_state has no scrumming bots — nothing to "
-                "stress.")
+                "Nuclear: bot_state has no scrumming bots — nothing to " "stress."
+            )
             return False
 
-        symbols = sorted({
-            str(c.get("symbol", "") or "") for c in self._configs
-            if c.get("symbol")})
+        symbols = sorted(
+            {str(c.get("symbol", "") or "") for c in self._configs if c.get("symbol")}
+        )
         self._candles = self._load_tablet_series(symbols)
         if not self._candles:
             self._activity(
                 "Nuclear: no Stone Tablet history for any fleet symbol. "
-                "Build the archive before running.")
+                "Build the archive before running."
+            )
             return False
 
         self.state.fleet_size = len(self._configs)
@@ -381,8 +388,8 @@ class NuclearFleetController:
         self._activity(
             f"Nuclear: fleet {len(self._configs)} bot(s), "
             f"{len(self._candles)} symbol(s) with tablet history"
-            + (f"; {missing} symbol(s) have none and are excluded"
-               if missing else ""))
+            + (f"; {missing} symbol(s) have none and are excluded" if missing else "")
+        )
         return True
 
     def _load_tablet_series(self, symbols: list[str]) -> dict[str, list]:
@@ -398,8 +405,7 @@ class NuclearFleetController:
             try:
                 rows = reg.get_candles(asset, YTD_START_MS, now_ms)
             except (KeyError, ValueError, OSError) as exc:
-                logger.debug("nuclear: %s tablet read failed: %s",
-                             asset, exc)
+                logger.debug("nuclear: %s tablet read failed: %s", asset, exc)
                 continue
             if rows and len(rows) >= 120:
                 out[sym] = rows
@@ -415,19 +421,21 @@ class NuclearFleetController:
                 return False
 
         self._osc, self._sensed = (
-            _make_oscillator() if self._load_oscillation else (None, False))
+            _make_oscillator() if self._load_oscillation else (None, False)
+        )
         if self._osc is not None:
             self._osc.start()
 
         try:
-            from src.trading.nuclear_verification import (
-                SwarmFeatureVerifier)
+            from src.trading.nuclear_verification import SwarmFeatureVerifier
+
             self._verifier = SwarmFeatureVerifier()
         except Exception as exc:  # noqa: BLE001 - verification advisory
             logger.warning("nuclear: verifier unavailable: %s", exc)
             self._verifier = None
         try:
             from src.core.emit_contracts import EmitObserver
+
             self._emit_obs = EmitObserver()
         except Exception as exc:  # noqa: BLE001 - observation advisory
             logger.warning("nuclear: emit observer unavailable: %s", exc)
@@ -488,10 +496,8 @@ class NuclearFleetController:
         try:
             idx = 0
             while not self.state.stop_requested:
-                if (self._max_cycles is not None
-                        and idx >= self._max_cycles):
-                    self._activity(
-                        f"Nuclear: reached max_cycles={self._max_cycles}.")
+                if self._max_cycles is not None and idx >= self._max_cycles:
+                    self._activity(f"Nuclear: reached max_cycles={self._max_cycles}.")
                     break
                 idx += 1
                 self.state.current_cycle = idx
@@ -505,8 +511,7 @@ class NuclearFleetController:
                     self.state.total_exceptions += cyc.exceptions
                 else:
                     self.state.last_error = cyc.error
-                    self._activity(
-                        f"Nuclear cycle {idx} FAILED: {cyc.error}")
+                    self._activity(f"Nuclear cycle {idx} FAILED: {cyc.error}")
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - loop guard
@@ -629,6 +634,7 @@ class NuclearFleetController:
         cyc.workers = 1
         results: list = []
         try:
+
             async def _one(worker_idx: int):
                 ctl = FleetReplayController(
                     configs=self._configs,
@@ -639,7 +645,9 @@ class NuclearFleetController:
                     # per-tick via set_load_feed below.
                     tick_delay_s=(
                         self._osc.effective_tick_interval(0.8)
-                        if self._osc is not None else 0.0),
+                        if self._osc is not None
+                        else 0.0
+                    ),
                     max_candles=self._cycle_candles,
                     activity_log_cb=lambda _m: None,
                     performance_log_cb=lambda _m: None,
@@ -698,13 +706,17 @@ class NuclearFleetController:
                         # names the CYCLE. "fleet 1/4" described the
                         # cloning that v3.24.83 removed.
                         _label = f"Nuclear cycle {idx}"
-                        self._swarm_register(sim_id, _label, {
-                            "asset": _label,
-                            "mode": "NUCLEAR",
-                            "timeframe": "5m",
-                            "capital": 0,
-                            "candle_total": self._cycle_candles,
-                        })
+                        self._swarm_register(
+                            sim_id,
+                            _label,
+                            {
+                                "asset": _label,
+                                "mode": "NUCLEAR",
+                                "timeframe": "5m",
+                                "capital": 0,
+                                "candle_total": self._cycle_candles,
+                            },
+                        )
                     except Exception as exc:  # noqa: BLE001
                         logger.debug("swarm register failed: %s", exc)
 
@@ -743,7 +755,8 @@ class NuclearFleetController:
                     self._activity(
                         f"  cycle {idx} worker {worker_idx}: fleet "
                         "refused to start (no bots instantiated) — "
-                        "skipping. This worker contributes no candles.")
+                        "skipping. This worker contributes no candles."
+                    )
                     return ctl.progress
                 _deadline = time.monotonic() + WORKER_WAIT_CAP_S
                 while not ctl.progress.finished:
@@ -764,7 +777,8 @@ class NuclearFleetController:
                                 sim_id,
                                 0.0,
                                 int(ctl.progress.trades_fired),
-                                int(ctl.progress.candles_played))
+                                int(ctl.progress.candles_played),
+                            )
                         except Exception as exc:  # noqa: BLE001
                             logger.debug("swarm update failed: %s", exc)
                     # v3.24.75 (C23 step 3) — honour Stop INSIDE the
@@ -780,11 +794,11 @@ class NuclearFleetController:
                             f"  cycle {idx} worker {worker_idx}: still "
                             f"unfinished after {WORKER_WAIT_CAP_S:.0f}s — "
                             "abandoning the wait. Its partial progress is "
-                            "still counted.")
+                            "still counted."
+                        )
                         break
                     try:
-                        await asyncio.wait_for(
-                            ctl.stopped_event.wait(), timeout=0.5)
+                        await asyncio.wait_for(ctl.stopped_event.wait(), timeout=0.5)
                     except asyncio.TimeoutError:
                         continue
                     # The event is set. Either the run really finished
@@ -794,30 +808,26 @@ class NuclearFleetController:
                     await asyncio.sleep(0)
                 try:
                     await asyncio.wait_for(
-                        ctl.stopped_event.wait(),
-                        timeout=WORKER_WAIT_CAP_S)
+                        ctl.stopped_event.wait(), timeout=WORKER_WAIT_CAP_S
+                    )
                 except asyncio.TimeoutError:
                     logger.debug(
-                        "cycle %s worker %s: stopped_event never set",
-                        idx, worker_idx)
+                        "cycle %s worker %s: stopped_event never set", idx, worker_idx
+                    )
 
                 if self._verifier is not None:
-                    self._verifier.scan_bots(
-                        getattr(ctl, "_bots", None) or [])
+                    self._verifier.scan_bots(getattr(ctl, "_bots", None) or [])
                 if self._swarm_stop is not None:
                     try:
                         # v3.24.77 — 0.0 PnL, same reason as the update
                         # call above: Nuclear does not measure P&L.
-                        self._swarm_stop(
-                            sim_id, 0.0,
-                            int(ctl.progress.trades_fired))
+                        self._swarm_stop(sim_id, 0.0, int(ctl.progress.trades_fired))
                     except Exception as exc:  # noqa: BLE001
                         logger.debug("swarm stop failed: %s", exc)
                 return ctl.progress
 
             try:
-                results = list(await asyncio.gather(
-                    _one(0), return_exceptions=True))
+                results = list(await asyncio.gather(_one(0), return_exceptions=True))
             finally:
                 # v3.24.75 (C23 step 3) — drain the registry whatever
                 # happened. A crashed worker must not leave a dead
@@ -838,14 +848,15 @@ class NuclearFleetController:
             logger.exception("nuclear: cycle %d failed", idx)
         cyc.elapsed_s = time.monotonic() - cyc.started_at
 
-        rate = (cyc.candles_played / cyc.elapsed_s
-                if cyc.elapsed_s > 0 else 0.0)
+        rate = cyc.candles_played / cyc.elapsed_s if cyc.elapsed_s > 0 else 0.0
         # Mean candles fed per engine tick — the honest load figure for
         # a looper. ticks = candles - extra_fed, so the ratio is depth.
         try:
             _extra = sum(
                 getattr(r, "candles_fed_under_load", 0)
-                for r in results if hasattr(r, "candles_fed_under_load"))
+                for r in results
+                if hasattr(r, "candles_fed_under_load")
+            )
             _ticks = max(1, cyc.candles_played - _extra)
             cyc.candles_per_tick = round(cyc.candles_played / _ticks, 2)
         except Exception as _cpx:  # noqa: BLE001
@@ -856,7 +867,8 @@ class NuclearFleetController:
             f"{cyc.trades_fired} trades · {cyc.exceptions} exceptions · "
             f"{rate:.1f} c/s · load {mult:.2f}x "
             f"(1 fleet, {cyc.candles_per_tick} candle/tick avg)"
-            + ("  [COOLING]" if cooling else ""))
+            + ("  [COOLING]" if cooling else "")
+        )
         return cyc
 
     def _wire_topology(self, bots: list) -> None:
@@ -942,12 +954,14 @@ class NuclearFleetController:
                         "Wires — bot_state carried none and no Market "
                         "Inspector proposal was injected. Cross-bot "
                         "compounding is inert this run; tranche-chain "
-                        "coverage will read 0 for the wire-fed links.")
+                        "coverage will read 0 for the wire-fed links."
+                    )
                 else:
                     self._activity(
                         f"  cycle wiring: using the fleet's own topology "
                         f"from bot_state across {len(ids)} bot(s); no "
-                        "Market Inspector proposal injected.")
+                        "Market Inspector proposal injected."
+                    )
                 return
 
             # A proposal WAS injected. Register it onto the fleet's
@@ -969,10 +983,11 @@ class NuclearFleetController:
             self._activity(
                 f"  cycle wiring: injected {wired} of {len(pairs)} Market "
                 f"Inspector proposal wire(s) across {len(ids)} bot(s), on "
-                "top of the fleet's own bot_state topology.")
+                "top of the fleet's own bot_state topology."
+            )
             logger.info(
-                "nuclear: smart wire — %d bot(s), %d injected wire(s)",
-                len(ids), wired)
+                "nuclear: smart wire — %d bot(s), %d injected wire(s)", len(ids), wired
+            )
         except Exception as exc:  # noqa: BLE001 - wiring must not end
             # the soak; an unwired cycle is still a valid load cycle.
             logger.warning("nuclear: smart wire setup failed: %s", exc)
@@ -1061,18 +1076,20 @@ class NuclearFleetController:
     def _open_log(self) -> None:
         try:
             from src.trading.sim_run_log import SimRunLog
+
             self._log = SimRunLog()
-            self._log.start_run(config={
-                "mode": "nuclear",
-                "bots": len(self._configs),
-                "symbols": sorted(self._candles.keys()),
-                "cycle_candles": self._cycle_candles,
-                "load_oscillation": self._load_oscillation,
-                "load_sensed": self._sensed,
-                "max_cycles": self._max_cycles,
-            })
-            self._activity(
-                f"Nuclear log: {self._log.run_id}")
+            self._log.start_run(
+                config={
+                    "mode": "nuclear",
+                    "bots": len(self._configs),
+                    "symbols": sorted(self._candles.keys()),
+                    "cycle_candles": self._cycle_candles,
+                    "load_oscillation": self._load_oscillation,
+                    "load_sensed": self._sensed,
+                    "max_cycles": self._max_cycles,
+                }
+            )
+            self._activity(f"Nuclear log: {self._log.run_id}")
         except Exception as exc:  # noqa: BLE001 - logging is advisory
             self._log = None
             logger.warning("nuclear: run log unavailable: %s", exc)
@@ -1082,8 +1099,8 @@ class NuclearFleetController:
             return
         try:
             self._log.record_gate(
-                bot_id="nuclear", symbol="",
-                payload={"nuclear_cycle": cyc.to_dict()})
+                bot_id="nuclear", symbol="", payload={"nuclear_cycle": cyc.to_dict()}
+            )
         except Exception as exc:  # noqa: BLE001 - advisory
             logger.debug("nuclear: cycle record failed: %s", exc)
 
@@ -1095,42 +1112,45 @@ class NuclearFleetController:
                 logger.debug("nuclear: oscillator stop failed: %s", exc)
         if self._log is not None:
             try:
-                self._log.finish_run(summary={
-                    "cycles_completed": self.state.cycles_completed,
-                    "total_candles": self.state.total_candles,
-                    "total_trades": self.state.total_trades,
-                    "total_exceptions": self.state.total_exceptions,
-                    "failed_cycles": sum(
-                        1 for c in self.state.cycles if not c.ok),
-                    "uptime_s": round(self.state.uptime_s, 1),
-                })
+                self._log.finish_run(
+                    summary={
+                        "cycles_completed": self.state.cycles_completed,
+                        "total_candles": self.state.total_candles,
+                        "total_trades": self.state.total_trades,
+                        "total_exceptions": self.state.total_exceptions,
+                        "failed_cycles": sum(1 for c in self.state.cycles if not c.ok),
+                        "uptime_s": round(self.state.uptime_s, 1),
+                    }
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.debug("nuclear: log close failed: %s", exc)
         if self._emit_obs is not None:
             try:
-                from src.core.emit_contracts import (
-                    format_observer_lines)
+                from src.core.emit_contracts import format_observer_lines
+
                 self._emit_obs.finish()
                 for line in format_observer_lines(self._emit_obs):
                     self._perf(line)
                 if self._log is not None:
                     self._log.record_gate(
-                        bot_id="nuclear", symbol="",
-                        payload={"emit_contracts":
-                                 self._emit_obs.to_dict()})
+                        bot_id="nuclear",
+                        symbol="",
+                        payload={"emit_contracts": self._emit_obs.to_dict()},
+                    )
             except Exception as exc:  # noqa: BLE001
                 logger.debug("nuclear: emit report failed: %s", exc)
         if self._verifier is not None:
             try:
-                from src.trading.nuclear_verification import (
-                    format_coverage_lines)
+                from src.trading.nuclear_verification import format_coverage_lines
+
                 for line in format_coverage_lines(self._verifier.report):
                     self._perf(line)
                 if self._log is not None:
                     self._log.record_gate(
-                        bot_id="nuclear", symbol="",
-                        payload={"coverage":
-                                 self._verifier.report.to_dict()})
+                        bot_id="nuclear",
+                        symbol="",
+                        payload={"coverage": self._verifier.report.to_dict()},
+                    )
             except Exception as exc:  # noqa: BLE001
                 logger.debug("nuclear: coverage report failed: %s", exc)
         self.state.running = False
@@ -1139,7 +1159,8 @@ class NuclearFleetController:
             f"Nuclear stopped: {self.state.cycles_completed} cycle(s), "
             f"{self.state.total_candles:,} candles, "
             f"{self.state.total_trades} trades, "
-            f"{self.state.total_exceptions} exceptions.")
+            f"{self.state.total_exceptions} exceptions."
+        )
 
     # ── GUI snapshot ─────────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 """The TA010 body, corrected: the span cannot be zero."""
+
 from PySide6.QtGui import QPainter
 
 

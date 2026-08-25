@@ -14,6 +14,7 @@ Storage layout (per operator directive 2026-08-01):
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -33,8 +34,7 @@ logger = logging.getLogger("acervator.stone_tablets.storage")
 # Paths                                                                 #
 # --------------------------------------------------------------------- #
 
-STONE_TABLETS_DIR: Path = Path(
-    os.path.expanduser("~/.acervator/stone_tablets"))
+STONE_TABLETS_DIR: Path = Path(os.path.expanduser("~/.acervator/stone_tablets"))
 MANIFEST_PATH: Path = STONE_TABLETS_DIR / "MANIFEST.json"
 SCRATCH_DIR: Path = STONE_TABLETS_DIR / "_scratch"
 
@@ -57,6 +57,7 @@ class TabletEntry:
     scaffolded now so multi-exchange doesn't require a schema
     migration later.
     """
+
     asset: str
     exchange_id: str
     timeframe: str
@@ -85,14 +86,14 @@ class TabletEntry:
         ts = self.listed_at_ms or self.first_ts_ms
         if ts <= 0:
             return ""
-        return datetime.fromtimestamp(
-            ts / 1000.0, tz=timezone.utc).strftime("%Y-%m-%d")
+        return datetime.fromtimestamp(ts / 1000.0, tz=timezone.utc).strftime("%Y-%m-%d")
 
 
 @dataclass
 class Tablet:
     """Full tablet contents — schema v2 (v3.23.98 adds exchange_id,
     v3.24.6 adds listed_at_ms as a computed property)."""
+
     asset: str
     exchange_id: str
     timeframe: str
@@ -133,8 +134,7 @@ class Tablet:
     def compute_checksum(self) -> str:
         """SHA-256 over the candles list only — deterministic
         regardless of fetched_at / source metadata drift."""
-        payload = json.dumps(
-            self.candles, sort_keys=True, separators=(",", ":"))
+        payload = json.dumps(self.candles, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def to_dict(self) -> dict:
@@ -155,7 +155,9 @@ class Tablet:
 
 
 def tablet_filename(
-    asset: str, timeframe: str, year: int,
+    asset: str,
+    timeframe: str,
+    year: int,
     exchange_id: str = "coinbase",
 ) -> str:
     # v3.23.98: exchange_id in filename so multi-exchange tablets
@@ -164,12 +166,15 @@ def tablet_filename(
 
 
 def tablet_path(
-    asset: str, timeframe: str, year: int,
+    asset: str,
+    timeframe: str,
+    year: int,
     root: Optional[Path] = None,
     exchange_id: str = "coinbase",
 ) -> Path:
     return (root or STONE_TABLETS_DIR) / tablet_filename(
-        asset, timeframe, year, exchange_id=exchange_id)
+        asset, timeframe, year, exchange_id=exchange_id
+    )
 
 
 # --------------------------------------------------------------------- #
@@ -188,9 +193,7 @@ def _atomic_write_text(path: Path, text: str) -> None:
     """Write via tempfile + rename so a crash mid-write doesn't
     leave a half-written tablet."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(
-        dir=str(path.parent), prefix=".tmp_",
-        suffix=".json")
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp_", suffix=".json")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
@@ -208,8 +211,7 @@ def read_tablet(path: Path) -> Optional[Tablet]:
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
-        logger.warning(
-            "stone_tablets: failed to read %s: %s", path, exc)
+        logger.warning("stone_tablets: failed to read %s: %s", path, exc)
         return None
     tab = Tablet(
         asset=str(data.get("asset", "")),
@@ -219,8 +221,7 @@ def read_tablet(path: Path) -> Optional[Tablet]:
         source=str(data.get("source", "unknown")),
         fetched_at=str(data.get("fetched_at", "")),
         candles=list(data.get("candles", [])),
-        schema_version=int(data.get(
-            "schema_version", SCHEMA_VERSION)),
+        schema_version=int(data.get("schema_version", SCHEMA_VERSION)),
     )
     # Checksum audit — log if drift detected
     on_disk = str(data.get("checksum_sha256", ""))
@@ -229,15 +230,18 @@ def read_tablet(path: Path) -> Optional[Tablet]:
         logger.warning(
             "stone_tablets: checksum drift in %s "
             "(on_disk=%s, computed=%s) — tablet may be tampered",
-            path, on_disk[:12], computed[:12])
+            path,
+            on_disk[:12],
+            computed[:12],
+        )
     return tab
 
 
 def write_tablet(tab: Tablet, root: Optional[Path] = None) -> Path:
     r = ensure_root(root)
     path = tablet_path(
-        tab.asset, tab.timeframe, tab.year, root=r,
-        exchange_id=tab.exchange_id)
+        tab.asset, tab.timeframe, tab.year, root=r, exchange_id=tab.exchange_id
+    )
     text = json.dumps(tab.to_dict(), separators=(",", ":"))
     _atomic_write_text(path, text)
     return path
@@ -259,8 +263,7 @@ def read_manifest(
         with p.open("r", encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
-        logger.warning(
-            "stone_tablets: MANIFEST read failed: %s", exc)
+        logger.warning("stone_tablets: MANIFEST read failed: %s", exc)
         return []
     out: list[TabletEntry] = []
     for row in data.get("tablets", []):
@@ -273,20 +276,22 @@ def read_manifest(
             # without a migration step.
             _first_ts = int(row["first_ts_ms"])
             _listed_at = int(row.get("listed_at_ms", 0) or _first_ts)
-            out.append(TabletEntry(
-                asset=str(row["asset"]),
-                exchange_id=str(row.get("exchange_id", "coinbase")),
-                timeframe=str(row["timeframe"]),
-                year=int(row["year"]),
-                file=str(row["file"]),
-                checksum_sha256=str(row["checksum_sha256"]),
-                candle_count=int(row["candle_count"]),
-                first_ts_ms=_first_ts,
-                last_ts_ms=int(row["last_ts_ms"]),
-                fetched_at=str(row["fetched_at"]),
-                source=str(row["source"]),
-                listed_at_ms=_listed_at,
-            ))
+            out.append(
+                TabletEntry(
+                    asset=str(row["asset"]),
+                    exchange_id=str(row.get("exchange_id", "coinbase")),
+                    timeframe=str(row["timeframe"]),
+                    year=int(row["year"]),
+                    file=str(row["file"]),
+                    checksum_sha256=str(row["checksum_sha256"]),
+                    candle_count=int(row["candle_count"]),
+                    first_ts_ms=_first_ts,
+                    last_ts_ms=int(row["last_ts_ms"]),
+                    fetched_at=str(row["fetched_at"]),
+                    source=str(row["source"]),
+                    listed_at_ms=_listed_at,
+                )
+            )
         except (KeyError, TypeError, ValueError):
             continue
     return out
@@ -300,8 +305,7 @@ def write_manifest(
     p = r / "MANIFEST.json"
     payload = {
         "schema_version": SCHEMA_VERSION,
-        "generated_at": datetime.now(timezone.utc).isoformat(
-            timespec="seconds"),
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "tablets": [asdict(e) for e in entries],
     }
     _atomic_write_text(p, json.dumps(payload, indent=2))
@@ -315,8 +319,8 @@ def entry_from_tablet(tab: Tablet) -> TabletEntry:
         timeframe=tab.timeframe,
         year=tab.year,
         file=tablet_filename(
-            tab.asset, tab.timeframe, tab.year,
-            exchange_id=tab.exchange_id),
+            tab.asset, tab.timeframe, tab.year, exchange_id=tab.exchange_id
+        ),
         checksum_sha256=tab.compute_checksum(),
         candle_count=tab.candle_count,
         first_ts_ms=tab.first_ts_ms,

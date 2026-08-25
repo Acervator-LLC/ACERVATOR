@@ -34,6 +34,7 @@ The growth call sits BEFORE the tranche is dequeued. Booking after
 removal is Break 7 in the audit; this path is now correct by
 construction.
 """
+
 from __future__ import annotations
 
 import ast
@@ -48,14 +49,12 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
-SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(
-    encoding="utf-8")
+SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(encoding="utf-8")
 
 
 def _fn(name: str):
     for n in ast.walk(ast.parse(SRC)):
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) \
-                and n.name == name:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
             return n
     raise AssertionError(f"{name} not found")
 
@@ -78,9 +77,9 @@ class _Bot:
 
     def __init__(self, anchor=200.0, cap_pct=1.0):
         self.bot_id = "bot-test-0001"
-        self.config = type("C", (), {
-            "max_target_growth_pct": cap_pct,
-            "profit_folding_active": True})()
+        self.config = type(
+            "C", (), {"max_target_growth_pct": cap_pct, "profit_folding_active": True}
+        )()
         self._bus = _Bus()
         self._quote_to_usd = 1.0
         self._anchor_target_balance = anchor
@@ -103,8 +102,7 @@ class TestTheFormula:
         computes it."""
         cost, fill, ref = 10.0, 0.95, 1.00
         extra_asset = cost * (1.0 / fill - 1.0 / ref)
-        assert _manual_profit(cost, fill, ref) == pytest.approx(
-            extra_asset * fill)
+        assert _manual_profit(cost, fill, ref) == pytest.approx(extra_asset * fill)
 
     def test_buying_at_ref_yields_nothing(self):
         assert _manual_profit(10.0, 1.00, 1.00) == pytest.approx(0.0)
@@ -120,8 +118,8 @@ class TestItMovesTheTarget:
         whole. Current code moved the target $0.00."""
         b = _Bot(anchor=200.0, cap_pct=1.0)
         applied = b._apply_fold_target_growth(
-            _manual_profit(10.0, 0.95, 1.00),
-            source="MANUAL_TRANCHE_FOLD")
+            _manual_profit(10.0, 0.95, 1.00), source="MANUAL_TRANCHE_FOLD"
+        )
         assert applied == pytest.approx(0.50)
         assert b._target_balance == pytest.approx(200.50)
 
@@ -130,8 +128,8 @@ class TestItMovesTheTarget:
         REDUCE the target, which nothing else in the system can do."""
         b = _Bot(anchor=200.0)
         applied = b._apply_fold_target_growth(
-            _manual_profit(10.0, 1.10, 1.00),
-            source="MANUAL_TRANCHE_FOLD")
+            _manual_profit(10.0, 1.10, 1.00), source="MANUAL_TRANCHE_FOLD"
+        )
         assert applied == 0.0
         assert b._target_balance == pytest.approx(200.0)
 
@@ -139,16 +137,17 @@ class TestItMovesTheTarget:
         """A huge manual fold cannot exceed the per-cycle budget."""
         b = _Bot(anchor=100.0, cap_pct=1.0)
         applied = b._apply_fold_target_growth(
-            _manual_profit(1000.0, 0.50, 1.00),
-            source="MANUAL_TRANCHE_FOLD")
+            _manual_profit(1000.0, 0.50, 1.00), source="MANUAL_TRANCHE_FOLD"
+        )
         assert applied == pytest.approx(1.0)
 
 
 class TestTheCallSiteIsWired:
     def test_manual_fire_calls_the_growth_helper(self):
         seg = ast.get_source_segment(SRC, _fn("manual_fire_tranche")) or ""
-        assert "_apply_fold_target_growth" in seg, (
-            "manual_fire_tranche books no target growth")
+        assert (
+            "_apply_fold_target_growth" in seg
+        ), "manual_fire_tranche books no target growth"
 
     def test_it_uses_the_manual_source_tag(self):
         seg = ast.get_source_segment(SRC, _fn("manual_fire_tranche")) or ""
@@ -158,8 +157,7 @@ class TestTheCallSiteIsWired:
         """Break 7 in the audit. Booking after removal loses the surplus
         if anything between them returns early."""
         seg = ast.get_source_segment(SRC, _fn("manual_fire_tranche")) or ""
-        assert seg.index("_apply_fold_target_growth") < seg.index(
-            "_removed_ok")
+        assert seg.index("_apply_fold_target_growth") < seg.index("_removed_ok")
 
     def test_a_booking_failure_cannot_raise_over_a_filled_buy(self):
         """The order has already executed by this point. A bookkeeping
@@ -174,13 +172,15 @@ class TestTheCallSiteIsWired:
             if not isinstance(node, ast.Try):
                 continue
             for inner in ast.walk(node):
-                if (isinstance(inner, ast.Call)
-                        and getattr(inner.func, "attr", "")
-                        == "_apply_fold_target_growth"):
+                if (
+                    isinstance(inner, ast.Call)
+                    and getattr(inner.func, "attr", "") == "_apply_fold_target_growth"
+                ):
                     guarded = bool(node.handlers)
         assert guarded, (
             "the growth call is not inside a try/except; a bookkeeping "
-            "exception would propagate back over an already-filled buy")
+            "exception would propagate back over an already-filled buy"
+        )
 
     def test_both_emits_carry_the_profit(self):
         """They carried no profit field, so a profitable manual fold was

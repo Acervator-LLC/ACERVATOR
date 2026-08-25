@@ -1,4 +1,5 @@
 """Fixture: zero scaffolding defects. Should produce 0 findings."""
+
 from __future__ import annotations
 
 import asyncio
@@ -12,8 +13,7 @@ class GoodPanel:
 
     def on_click_good(self) -> None:
         loop = asyncio.new_event_loop()
-        future = asyncio.run_coroutine_threadsafe(
-            self._do_work(), loop)
+        future = asyncio.run_coroutine_threadsafe(self._do_work(), loop)
         future.add_done_callback(self._on_done)
 
     async def _do_work(self) -> None:

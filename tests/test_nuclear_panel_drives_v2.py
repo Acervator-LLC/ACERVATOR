@@ -33,6 +33,7 @@ WHAT THESE PINS CANNOT DO. They cannot prove the operator sees a working panel.
 Qt rendering, timer cadence and button state under a real event loop are not
 covered here; this is the headless half. The soak itself needs a human click.
 """
+
 from __future__ import annotations
 
 import ast
@@ -53,6 +54,7 @@ PANEL = REPO_ROOT / "src/gui/simulator_tab/nuclear_mode_panel.py"
 @pytest.fixture(scope="module")
 def qapp():
     from PySide6.QtWidgets import QApplication
+
     return QApplication.instance() or QApplication([])
 
 
@@ -79,6 +81,7 @@ def panel_parent(qapp):
     imply a live C++ object, and the reverse is equally true.
     """
     from PySide6.QtWidgets import QWidget
+
     holder = QWidget()
     yield holder
     holder.setParent(None)
@@ -87,11 +90,13 @@ def panel_parent(qapp):
 
 def _panel(parent, said=None, loop_getter=None):
     from src.gui.simulator_tab.nuclear_mode_panel import NuclearModePanel
+
     return NuclearModePanel(
         activity_log_cb=(said.append if said is not None else (lambda _m: None)),
         perf_log_cb=lambda _m: None,
         async_loop_getter=(loop_getter or (lambda: None)),
-        parent=parent)
+        parent=parent,
+    )
 
 
 class TestItConstructsTheFleetController:
@@ -100,8 +105,9 @@ class TestItConstructsTheFleetController:
         for n in ast.walk(ast.parse(PANEL.read_text(encoding="utf-8"))):
             if isinstance(n, ast.ImportFrom):
                 names.update(a.name for a in n.names)
-        assert "NuclearFleetController" in names, (
-            "the panel still hosts only the single-tape prototype")
+        assert (
+            "NuclearFleetController" in names
+        ), "the panel still hosts only the single-tape prototype"
 
     def test_it_constructs_v2_not_v1(self):
         built = [
@@ -110,8 +116,9 @@ class TestItConstructsTheFleetController:
             if isinstance(n, ast.Call)
         ]
         assert "NuclearFleetController" in built
-        assert "NuclearController" not in built, (
-            "the tape prototype is still being constructed")
+        assert (
+            "NuclearController" not in built
+        ), "the tape prototype is still being constructed"
 
 
 class TestTheAsyncLifecycleIsHonoured:
@@ -123,38 +130,49 @@ class TestTheAsyncLifecycleIsHonoured:
         """POSITIVE CONTROL — if v2's start ever became sync, the scheduling
         pin below would be enforcing a stale contract."""
         from src.gui.simulator_tab.nuclear_fleet_controller import (
-            NuclearFleetController)
+            NuclearFleetController,
+        )
+
         assert inspect.iscoroutinefunction(NuclearFleetController.start)
 
     def test_v1_start_is_not(self):
         """The asymmetry that makes the repoint dangerous, pinned so the
         reason for the scheduling code stays legible."""
         from src.gui.simulator_tab.nuclear_controller import NuclearController
+
         assert not inspect.iscoroutinefunction(NuclearController.start)
 
     def test_the_panel_schedules_the_coroutine(self):
         src = PANEL.read_text(encoding="utf-8")
         calls = {
             getattr(n.func, "attr", None)
-            for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Call)
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.Call)
         }
         assert "run_coroutine_threadsafe" in calls, (
             "v2's start() is a coroutine and must be scheduled on the app "
-            "loop; a bare call leaves it un-awaited and silently does nothing")
+            "loop; a bare call leaves it un-awaited and silently does nothing"
+        )
 
     def test_prepare_is_called_before_start(self):
         src = PANEL.read_text(encoding="utf-8")
         tree = ast.parse(src)
         prepare_lines = [
-            n.lineno for n in ast.walk(tree) if isinstance(n, ast.Call)
-            and getattr(n.func, "attr", "") == "prepare"]
+            n.lineno
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "prepare"
+        ]
         sched_lines = [
-            n.lineno for n in ast.walk(tree) if isinstance(n, ast.Call)
-            and getattr(n.func, "attr", "") == "run_coroutine_threadsafe"]
+            n.lineno
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "attr", "") == "run_coroutine_threadsafe"
+        ]
         assert prepare_lines, "prepare() is never called; v2 gates on it"
         assert sched_lines
-        assert min(prepare_lines) < min(sched_lines), (
-            "start is scheduled before prepare() has a chance to refuse")
+        assert min(prepare_lines) < min(
+            sched_lines
+        ), "start is scheduled before prepare() has a chance to refuse"
 
 
 class TestTheSwarmHooksAreHandedOverBeforeStart:
@@ -162,10 +180,12 @@ class TestTheSwarmHooksAreHandedOverBeforeStart:
         src = PANEL.read_text(encoding="utf-8")
         names = {
             getattr(n.func, "attr", None)
-            for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Call)
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.Call)
         }
-        assert "set_swarm_hooks" in names, (
-            "the swarm seam is still unwired at the panel")
+        assert (
+            "set_swarm_hooks" in names
+        ), "the swarm seam is still unwired at the panel"
 
 
 class TestTheStatusReadoutSpeaksV2:
@@ -175,7 +195,9 @@ class TestTheStatusReadoutSpeaksV2:
     @staticmethod
     def _v2_snapshot_keys():
         from src.gui.simulator_tab.nuclear_fleet_controller import (
-            NuclearFleetController)
+            NuclearFleetController,
+        )
+
         ctl = NuclearFleetController()
         return set(ctl.snapshot().keys())
 
@@ -186,25 +208,38 @@ class TestTheStatusReadoutSpeaksV2:
 
     def test_every_status_field_exists_in_the_snapshot(self):
         from src.gui.simulator_tab.nuclear_mode_panel import _STATUS_FIELDS
+
         keys = self._v2_snapshot_keys()
         missing = [k for _label, k in _STATUS_FIELDS if k not in keys]
         assert not missing, (
             f"the readout asks for {missing}, which v2 never emits — those "
-            "rows would render permanently blank")
+            "rows would render permanently blank"
+        )
 
     def test_the_tape_vocabulary_is_gone(self):
         from src.gui.simulator_tab.nuclear_mode_panel import _STATUS_FIELDS
+
         keys = {k for _l, k in _STATUS_FIELDS}
         stale = keys & {
-            "scout_state", "scout_holdings", "scout_target", "tape_position",
-            "tape_direction", "tape_wraps", "world_clock_ticks",
-            "trade_count", "scrum_fold", "error_count", "exception_count"}
+            "scout_state",
+            "scout_holdings",
+            "scout_target",
+            "tape_position",
+            "tape_direction",
+            "tape_wraps",
+            "world_clock_ticks",
+            "trade_count",
+            "scrum_fold",
+            "error_count",
+            "exception_count",
+        }
         assert not stale, f"single-tape fields remain in the readout: {stale}"
 
     def test_the_market_noise_is_visible(self):
         """C23's headline feature. A varied market structure the operator
         cannot see is indistinguishable from an unvaried one."""
         from src.gui.simulator_tab.nuclear_mode_panel import _STATUS_FIELDS
+
         assert "noise_pct" in {k for _l, k in _STATUS_FIELDS}
 
     def test_the_fleet_topology_is_visible(self):
@@ -212,6 +247,7 @@ class TestTheStatusReadoutSpeaksV2:
         included. A run that silently loaded zero wires must be readable off
         the panel, not just the activity log."""
         from src.gui.simulator_tab.nuclear_mode_panel import _STATUS_FIELDS
+
         assert "wires_loaded" in {k for _l, k in _STATUS_FIELDS}
 
 
@@ -256,7 +292,9 @@ class TestTheStatusRowsActuallyGetFilled:
     @staticmethod
     def _driven(parent):
         from src.gui.simulator_tab.nuclear_fleet_controller import (
-            NuclearFleetController)
+            NuclearFleetController,
+        )
+
         panel = _panel(parent)
         ctl = NuclearFleetController()
         ctl.state.running = True
@@ -275,10 +313,14 @@ class TestTheStatusRowsActuallyGetFilled:
 
     def test_every_declared_row_is_populated(self, panel_parent):
         from src.gui.simulator_tab.nuclear_mode_panel import _STATUS_FIELDS
+
         panel = self._driven(panel_parent)
-        blank = [k for _l, k in _STATUS_FIELDS
-                 if k != "last_error"
-                 and panel._status_labels[k].text() in ("", "-", "\u2014")]
+        blank = [
+            k
+            for _l, k in _STATUS_FIELDS
+            if k != "last_error"
+            and panel._status_labels[k].text() in ("", "-", "\u2014")
+        ]
         assert not blank, f"rows never filled by _refresh_status: {blank}"
 
     def test_the_market_noise_is_shown_as_a_percentage(self, panel_parent):

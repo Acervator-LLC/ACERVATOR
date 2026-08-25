@@ -15,6 +15,7 @@ semantics.
 These tests mirror the exact caller shapes in main.py:1103 / 1111 and
 also assert generic *args forwarding.
 """
+
 from __future__ import annotations
 
 import sys
@@ -36,6 +37,7 @@ def lm(tmp_path):
 
 # ---- Exact shutdown-path shapes ---------------------------------------- #
 
+
 def test_info_accepts_printf_args_matching_main_py_1103(lm):
     """main.py:1103 — `info("Cancelling %d ... tasks", len(_pending))`.
     Must not raise regardless of arg count."""
@@ -46,18 +48,18 @@ def test_info_accepts_printf_args_matching_main_py_1103(lm):
 def test_warning_accepts_printf_args_matching_main_py_1111(lm):
     """main.py:1111 — `warning("drain raised: %s", _cancel_exc)`.
     Must not raise regardless of arg count."""
-    lm.warning("pending-task drain at shutdown raised: %s",
-               RuntimeError("boom"))
+    lm.warning("pending-task drain at shutdown raised: %s", RuntimeError("boom"))
 
 
 # ---- Symmetry across all four wrappers -------------------------------- #
 
+
 @pytest.mark.parametrize("method", ["info", "warning", "error", "debug"])
 def test_wrapper_forwards_positional_args(lm, method):
     fn = getattr(lm, method)
-    fn("single arg")           # 0 extra
-    fn("count=%d", 7)          # 1 extra
-    fn("%s / %s", "a", "b")    # 2 extra
+    fn("single arg")  # 0 extra
+    fn("count=%d", 7)  # 1 extra
+    fn("%s / %s", "a", "b")  # 2 extra
 
 
 @pytest.mark.parametrize("method", ["info", "warning", "error", "debug"])

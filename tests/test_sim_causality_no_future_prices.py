@@ -31,6 +31,7 @@ The docstring on `FleetSimExchange.step` asserted the opposite of what
 the code did: "no future data -- causal". That is the same failure as
 `_wilder_smooth` claiming "sum/period" while returning the sum.
 """
+
 from __future__ import annotations
 
 import sys
@@ -47,15 +48,14 @@ from src.gui.simulator_tab.fleet.sim_exchange import (  # noqa: E402
 
 STEP = 300_000
 T0 = 1_776_778_500_000
-LATE = 100          # candles the second symbol starts after the first
+LATE = 100  # candles the second symbol starts after the first
 
 
 def _rows(n, start_ts):
     out, px = [], 10.0
     for i in range(n):
         px *= 1.0 + ((i % 5) - 2) * 0.002
-        out.append([start_ts + i * STEP, px, px * 1.004, px * 0.996,
-                    px, 25.0])
+        out.append([start_ts + i * STEP, px, px * 1.004, px * 0.996, px, 25.0])
     return out
 
 
@@ -64,11 +64,14 @@ def _staggered():
     the shape of the real fleet, where 13 of 35 tablets begin after the
     earliest one."""
     return FleetSimExchange(
-        make_symbol_series_map({
-            "EARLY/USD": _rows(300, T0),
-            "LATE/USD": _rows(300, T0 + LATE * STEP),
-        }),
-        starting_balances={"USD": 10_000.0})
+        make_symbol_series_map(
+            {
+                "EARLY/USD": _rows(300, T0),
+                "LATE/USD": _rows(300, T0 + LATE * STEP),
+            }
+        ),
+        starting_balances={"USD": 10_000.0},
+    )
 
 
 class TestNoCandleIsServedFromTheFuture:
@@ -85,13 +88,15 @@ class TestNoCandleIsServedFromTheFuture:
             if ex.has_data("LATE/USD"):
                 assert candle_ts <= clock, (
                     "a symbol reported as having data served a candle "
-                    f"{(candle_ts - clock) // 60_000} min ahead")
+                    f"{(candle_ts - clock) // 60_000} min ahead"
+                )
             elif candle_ts > clock:
                 future += 1
                 worst = max(worst, candle_ts - clock)
         assert future > 0, (
             "the staggered fixture must reproduce the lead-in, else "
-            "has_data is being tested against a case that cannot occur")
+            "has_data is being tested against a case that cannot occur"
+        )
         assert worst >= LATE * STEP - STEP, worst
 
     def test_has_data_is_false_exactly_during_the_lead_in(self):
@@ -132,14 +137,15 @@ class TestNoCandleIsServedFromTheFuture:
 
 class TestTheControllerRefusesToTickBeforeTheTape:
     def test_the_guard_is_wired_to_has_data(self):
-        src = (REPO_ROOT / "src/gui/simulator_tab/fleet"
-               / "fleet_replay_controller.py").read_text(encoding="utf-8")
+        src = (
+            REPO_ROOT / "src/gui/simulator_tab/fleet" / "fleet_replay_controller.py"
+        ).read_text(encoding="utf-8")
         assert "self._tape.has_data(bot.config.symbol)" in src
         assert "bot_ticks_before_tape" in src
 
     def test_skipped_ticks_are_counted_not_dropped(self):
         """A skip that leaves no trace is indistinguishable from a bot
         that never ran at all."""
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-            ReplayProgress)
+        from src.gui.simulator_tab.fleet.fleet_replay_controller import ReplayProgress
+
         assert hasattr(ReplayProgress(), "bot_ticks_before_tape")

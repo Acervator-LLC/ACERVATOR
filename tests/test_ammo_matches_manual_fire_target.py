@@ -37,6 +37,7 @@ so the bot SHOULD trade against the grown value, and the display was the
 side that was wrong. This is a display-only change: no order size, no
 order timing, and no engine path is touched.
 """
+
 from __future__ import annotations
 
 import ast
@@ -61,7 +62,8 @@ def _target_val_line() -> str:
     tree = ast.parse(GUI_SRC)
     for n in ast.walk(tree):
         if isinstance(n, ast.Assign) and any(
-                getattr(t, "id", "") == "target_val" for t in n.targets):
+            getattr(t, "id", "") == "target_val" for t in n.targets
+        ):
             return ast.unparse(n.value)
     raise AssertionError("target_val is never assigned")
 
@@ -76,7 +78,8 @@ class TestTheDisplayUsesTheEngineTarget:
     def test_it_reads_the_live_target(self):
         assert "live_target_balance" in _target_val_line(), (
             "the Ammo is measured against config.target_balance while "
-            "Manual Fire re-zeroes to the live grown target")
+            "Manual Fire re-zeroes to the live grown target"
+        )
 
     def test_it_falls_back_to_the_config_value(self):
         """A bot type that does not export the live key must render as
@@ -88,9 +91,12 @@ class TestTheDisplayUsesTheEngineTarget:
         """The other half of the agreement. If the ENGINE ever moved to
         the config value, this fix would silently invert the mismatch
         instead of removing it."""
-        fn = next(n for n in ast.walk(ast.parse(BOT_SRC))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_execute_manual_rebalance")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(BOT_SRC))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "_execute_manual_rebalance"
+        )
         seg = ast.get_source_segment(BOT_SRC, fn) or ""
         assert "current_value - self._target_balance" in seg
         assert "config.target_balance" not in seg
@@ -100,23 +106,27 @@ class TestTheArithmeticAgrees:
     """The property that matters: for the same position, the Ammo and
     the manual-rebalance delta must be the same number."""
 
-    @pytest.mark.parametrize("cfg,live,pos", [
-        (50.00, 55.41, 60.00),    # CAP/USD, the worst live mismatch
-        (250.00, 253.10, 240.00),  # BILL/USD, fold side
-        (50.00, 50.00, 55.00),    # RAVE/USD, never compounded
-        (100.00, 102.61, 102.61),  # exactly at the live target
-    ])
+    @pytest.mark.parametrize(
+        "cfg,live,pos",
+        [
+            (50.00, 55.41, 60.00),  # CAP/USD, the worst live mismatch
+            (250.00, 253.10, 240.00),  # BILL/USD, fold side
+            (50.00, 50.00, 55.00),  # RAVE/USD, never compounded
+            (100.00, 102.61, 102.61),  # exactly at the live target
+        ],
+    )
     def test_display_delta_equals_engine_delta(self, cfg, live, pos):
         from src.gui.main_window import _compose_ammo_cell
 
         # The display, post-fix, resolves target_val to the live value.
         cell = _compose_ammo_cell(
-            stats_pv=pos, holdings=1.0, cur_price=pos, qrate=1.0,
-            target_val=live)
+            stats_pv=pos, holdings=1.0, cur_price=pos, qrate=1.0, target_val=live
+        )
         engine_delta = pos - live
         assert cell["delta"] == pytest.approx(engine_delta), (
             f"Ammo shows {cell['delta']:+.4f} but Manual Fire would "
-            f"transact against {engine_delta:+.4f}")
+            f"transact against {engine_delta:+.4f}"
+        )
 
     def test_the_old_behaviour_disagreed(self):
         """POSITIVE CONTROL on the whole premise: using the config value

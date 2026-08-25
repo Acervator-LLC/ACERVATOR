@@ -17,12 +17,21 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore  import Qt, QTimer, Signal, QObject
-from PySide6.QtGui   import QColor, QFont
+from PySide6.QtCore import Qt, QTimer, Signal, QObject
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QGroupBox, QFrame, QMessageBox, QProgressBar,
-    QSizePolicy, QScrollArea,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QComboBox,
+    QGroupBox,
+    QFrame,
+    QMessageBox,
+    QProgressBar,
+    QSizePolicy,
+    QScrollArea,
 )
 
 logger = logging.getLogger("acervator.gui.usb_auth")
@@ -31,16 +40,16 @@ logger = logging.getLogger("acervator.gui.usb_auth")
 # ---------------------------------------------------------------------------
 # Colours (matches Acervator dark palette)
 # ---------------------------------------------------------------------------
-_C_BG       = "#0A0A14"
-_C_PANEL    = "#0D0D20"
-_C_BORDER   = "#1a1a3f"
-_C_CYAN     = "#00CCAA"
-_C_BLUE     = "#4488FF"
-_C_GOLD     = "#FFB800"
-_C_RED      = "#FF4444"
-_C_GREY     = "#667799"
-_C_TEXT     = "#C8D8F0"
-_C_LOCKED   = "#FF6666"
+_C_BG = "#0A0A14"
+_C_PANEL = "#0D0D20"
+_C_BORDER = "#1a1a3f"
+_C_CYAN = "#00CCAA"
+_C_BLUE = "#4488FF"
+_C_GOLD = "#FFB800"
+_C_RED = "#FF4444"
+_C_GREY = "#667799"
+_C_TEXT = "#C8D8F0"
+_C_LOCKED = "#FF6666"
 _C_UNLOCKED = "#00FF88"
 
 
@@ -48,25 +57,31 @@ _C_UNLOCKED = "#00FF88"
 # Worker thread for async USB operations
 # ---------------------------------------------------------------------------
 
+
 class _USBWorker(QObject):
     """Runs USB scan / export / verify off the main thread."""
-    scan_complete   = Signal(list)    # list[USBVolume]
+
+    scan_complete = Signal(list)  # list[USBVolume]
     export_complete = Signal(bool, str)
     verify_complete = Signal(bool, str)
 
     def scan(self):
-        threading.Thread(target=self._do_scan, daemon=True, name="usb-auth-scan").start()
+        threading.Thread(
+            target=self._do_scan, daemon=True, name="usb-auth-scan"
+        ).start()
 
     def export(self, volume, vault, passphrase):
         threading.Thread(
-            target=self._do_export, args=(volume, vault, passphrase),
+            target=self._do_export,
+            args=(volume, vault, passphrase),
             name="usb-auth-export",
-            daemon=True
+            daemon=True,
         ).start()
 
     def _do_scan(self):
         try:
             from ..core.usb_auth import list_usb_volumes
+
             vols = list_usb_volumes()
         except Exception as e:
             vols = []
@@ -75,6 +90,7 @@ class _USBWorker(QObject):
     def _do_export(self, volume, vault, passphrase):
         try:
             from ..core.usb_auth import export_credentials_to_usb
+
             ok, msg = export_credentials_to_usb(volume, vault, passphrase)
             self.export_complete.emit(ok, msg)
         except Exception as e:
@@ -84,6 +100,7 @@ class _USBWorker(QObject):
 # ---------------------------------------------------------------------------
 # USB Status Indicator (compact, for toolbar/status bar)
 # ---------------------------------------------------------------------------
+
 
 class USBStatusIndicator(QWidget):
     """
@@ -95,7 +112,7 @@ class USBStatusIndicator(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._state = "inactive"   # "inactive" | "present" | "missing"
+        self._state = "inactive"  # "inactive" | "present" | "missing"
         self._exchange_label = ""
         self.setFixedSize(22, 22)
         self.setToolTip("USB Hardware Key: inactive")
@@ -105,8 +122,8 @@ class USBStatusIndicator(QWidget):
         self._exchange_label = label
         tips = {
             "inactive": "USB Hardware Key: software credentials",
-            "present":  f"USB Hardware Key: authenticated ({label})",
-            "missing":  f"USB Hardware Key: REQUIRED but not found ({label})",
+            "present": f"USB Hardware Key: authenticated ({label})",
+            "missing": f"USB Hardware Key: REQUIRED but not found ({label})",
         }
         self.setToolTip(tips.get(state, "USB Hardware Key"))
         self.update()
@@ -116,8 +133,8 @@ class USBStatusIndicator(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         colours = {
             "inactive": QColor(_C_GREY),
-            "present":  QColor(_C_UNLOCKED),
-            "missing":  QColor(_C_LOCKED),
+            "present": QColor(_C_UNLOCKED),
+            "missing": QColor(_C_LOCKED),
         }
         colour = colours.get(self._state, QColor(_C_GREY))
         p.setPen(QPen(colour.darker(150), 1))
@@ -129,17 +146,25 @@ class USBStatusIndicator(QWidget):
 # Per-exchange hardware mode status row
 # ---------------------------------------------------------------------------
 
+
 class _ExchangeHWRow(QFrame):
     """One row in the exchange hardware-mode list."""
-    mode_changed = Signal(str, bool)   # (exchange_id, hardware_mode)
 
-    def __init__(self, exchange_id: str, display_name: str,
-                 hardware_mode: bool, volume_serial: str, parent=None):
+    mode_changed = Signal(str, bool)  # (exchange_id, hardware_mode)
+
+    def __init__(
+        self,
+        exchange_id: str,
+        display_name: str,
+        hardware_mode: bool,
+        volume_serial: str,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setAccessibleName("Exchange H W Row")
-        self.exchange_id  = exchange_id
-        self._hw_mode     = hardware_mode
-        self._serial      = volume_serial
+        self.exchange_id = exchange_id
+        self._hw_mode = hardware_mode
+        self._serial = volume_serial
 
         self.setStyleSheet(f"""
             QFrame {{
@@ -154,11 +179,15 @@ class _ExchangeHWRow(QFrame):
 
         # Exchange name
         self._name_lbl = QLabel(display_name or exchange_id.title())
-        self._name_lbl.setStyleSheet(f"color: {_C_TEXT}; font-weight: bold; font-size: 12px;")
+        self._name_lbl.setStyleSheet(
+            f"color: {_C_TEXT}; font-weight: bold; font-size: 12px;"
+        )
         layout.addWidget(self._name_lbl)
 
         # Serial display
-        self._serial_lbl = QLabel(f"Key: {volume_serial[:8]}..." if volume_serial else "No key assigned")
+        self._serial_lbl = QLabel(
+            f"Key: {volume_serial[:8]}..." if volume_serial else "No key assigned"
+        )
         self._serial_lbl.setStyleSheet(f"color: {_C_GREY}; font-size: 10px;")
         layout.addWidget(self._serial_lbl)
 
@@ -166,8 +195,11 @@ class _ExchangeHWRow(QFrame):
 
         # Status LED
         self._led = USBStatusIndicator()
-        self._led.set_state("present" if hardware_mode and volume_serial else
-                           "missing"  if hardware_mode else "inactive")
+        self._led.set_state(
+            "present"
+            if hardware_mode and volume_serial
+            else "missing" if hardware_mode else "inactive"
+        )
         layout.addWidget(self._led)
 
         # Toggle button
@@ -202,29 +234,36 @@ class _ExchangeHWRow(QFrame):
     def _on_toggle(self, checked: bool):
         if checked and not self._serial:
             QMessageBox.warning(
-                self, "No Key Assigned",
+                self,
+                "No Key Assigned",
                 "Export credentials to a USB drive first to assign a hardware key.\n\n"
-                "Use the 'Export to USB Key' section above."
+                "Use the 'Export to USB Key' section above.",
             )
             self._toggle_btn.setChecked(False)
             return
         self._hw_mode = checked
-        self._toggle_btn.setText("Hardware Mode: ON" if checked else "Hardware Mode: OFF")
+        self._toggle_btn.setText(
+            "Hardware Mode: ON" if checked else "Hardware Mode: OFF"
+        )
         self._apply_toggle_style(checked)
         self._led.set_state(
-            "present" if checked and self._serial else
-            "missing" if checked else "inactive"
+            "present"
+            if checked and self._serial
+            else "missing" if checked else "inactive"
         )
         self.mode_changed.emit(self.exchange_id, checked)
 
     def update_serial(self, serial: str):
         self._serial = serial
-        self._serial_lbl.setText(f"Key: {serial[:8]}..." if serial else "No key assigned")
+        self._serial_lbl.setText(
+            f"Key: {serial[:8]}..." if serial else "No key assigned"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Main USB Auth Management Widget
 # ---------------------------------------------------------------------------
+
 
 class USBAuthWidget(QWidget):
     """
@@ -239,9 +278,9 @@ class USBAuthWidget(QWidget):
         super().__init__(parent)
         self.setAccessibleName("U S B Auth Widget")
         self._settings = settings_manager
-        self._vault    = vault
-        self._usb_vols  = []
-        self._worker    = _USBWorker()
+        self._vault = vault
+        self._usb_vols = []
+        self._worker = _USBWorker()
         self._worker.scan_complete.connect(self._on_scan_complete)
         self._worker.export_complete.connect(self._on_export_complete)
 
@@ -363,9 +402,11 @@ class USBAuthWidget(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setMaximumHeight(200)
-        scroll.setStyleSheet(f"QScrollArea {{ border: none; background: transparent; }}")
+        scroll.setStyleSheet(
+            f"QScrollArea {{ border: none; background: transparent; }}"
+        )
         self._rows_container = QWidget()
-        self._rows_layout    = QVBoxLayout(self._rows_container)
+        self._rows_layout = QVBoxLayout(self._rows_container)
         self._rows_layout.setContentsMargins(0, 0, 0, 0)
         self._rows_layout.setSpacing(4)
         scroll.setWidget(self._rows_container)
@@ -386,17 +427,19 @@ class USBAuthWidget(QWidget):
 
         exchanges = self._settings._settings.exchanges if self._settings else []
         if not exchanges:
-            lbl = QLabel("No exchanges configured. Add exchanges in the API Keys settings.")
+            lbl = QLabel(
+                "No exchanges configured. Add exchanges in the API Keys settings."
+            )
             lbl.setStyleSheet(f"color: {_C_GREY}; font-size: 10px;")
             self._rows_layout.addWidget(lbl)
             return
 
         for ex_dict in exchanges:
             row = _ExchangeHWRow(
-                exchange_id   = ex_dict.get("exchange_id", ""),
-                display_name  = ex_dict.get("display_name", ""),
-                hardware_mode = ex_dict.get("hardware_mode", False),
-                volume_serial = ex_dict.get("hw_volume_serial", ""),
+                exchange_id=ex_dict.get("exchange_id", ""),
+                display_name=ex_dict.get("display_name", ""),
+                hardware_mode=ex_dict.get("hardware_mode", False),
+                volume_serial=ex_dict.get("hw_volume_serial", ""),
             )
             row.mode_changed.connect(self._on_mode_changed)
             self._rows_layout.addWidget(row)
@@ -415,8 +458,7 @@ class USBAuthWidget(QWidget):
         try:
             self._settings.save()
         except Exception as _sf_exc:  # noqa: BLE001
-            logger.warning(
-                "USB auth widget refresh failed: %s", _sf_exc)
+            logger.warning("USB auth widget refresh failed: %s", _sf_exc)
 
     # ── USB scan ──────────────────────────────────────────────────────────
 
@@ -474,13 +516,17 @@ class USBAuthWidget(QWidget):
             QMessageBox.warning(self, "No Drive", "Select a USB drive first.")
             return
         if self._vault is None:
-            QMessageBox.warning(self, "No Vault",
+            QMessageBox.warning(
+                self,
+                "No Vault",
                 "Credential vault not available. "
-                "Please add exchange API keys in Settings first.")
+                "Please add exchange API keys in Settings first.",
+            )
             return
 
         reply = QMessageBox.question(
-            self, "Export API Keys",
+            self,
+            "Export API Keys",
             f"This will encrypt ALL exchange API keys to:\n\n"
             f"  {vol.mount_point / '.acervator_auth'}\n\n"
             f"Drive:  {vol.label}\n"
@@ -518,12 +564,12 @@ class USBAuthWidget(QWidget):
                 try:
                     self._settings.save()
                 except Exception as _sf_exc:  # noqa: BLE001
-                    logger.warning(
-                        "USB auth widget refresh failed: %s", _sf_exc)
+                    logger.warning("USB auth widget refresh failed: %s", _sf_exc)
                 self._rebuild_exchange_rows()
             QMessageBox.information(
-                self, "Export Successful",
-                f"{message}\n\nYou can now enable Hardware Mode for each exchange below."
+                self,
+                "Export Successful",
+                f"{message}\n\nYou can now enable Hardware Mode for each exchange below.",
             )
 
     def _on_verify(self):
@@ -533,27 +579,31 @@ class USBAuthWidget(QWidget):
             return
         if not vol.has_auth_file:
             QMessageBox.warning(
-                self, "No Auth File",
+                self,
+                "No Auth File",
                 f"No .acervator_auth file found on {vol.label}.\n"
-                "Export credentials first."
+                "Export credentials first.",
             )
             return
 
         from ..core.usb_auth import verify_auth_file
+
         ok = verify_auth_file(vol.auth_file, vol.serial)
         if ok:
             QMessageBox.information(
-                self, "Verification Passed",
+                self,
+                "Verification Passed",
                 f"✓ Auth file on {vol.label} decrypts successfully.\n"
                 f"Serial: {vol.serial}\n"
-                "This USB is a valid Acervator hardware key."
+                "This USB is a valid Acervator hardware key.",
             )
         else:
             QMessageBox.critical(
-                self, "Verification Failed",
+                self,
+                "Verification Failed",
                 f"✗ Auth file on {vol.label} could not be verified.\n"
                 "It may be corrupted or from a different installation.\n"
-                "Try re-exporting."
+                "Try re-exporting.",
             )
 
     # ── Helpers ───────────────────────────────────────────────────────────

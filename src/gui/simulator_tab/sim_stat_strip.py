@@ -22,8 +22,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QWidget
 
-
-_PLACEHOLDER = "—"   # em-dash; matches live strip's "no data" rendering
+_PLACEHOLDER = "—"  # em-dash; matches live strip's "no data" rendering
 
 
 class _StatCell(QFrame):
@@ -38,13 +37,11 @@ class _StatCell(QFrame):
         layout.setSpacing(6)
 
         self._label = QLabel(f"{label}:")
-        self._label.setStyleSheet(
-            "color: #88aaff; font-size: 11px;")
+        self._label.setStyleSheet("color: #88aaff; font-size: 11px;")
         layout.addWidget(self._label)
 
         self._value = QLabel(_PLACEHOLDER)
-        self._value.setStyleSheet(
-            "color: #ffffff; font-size: 13px; font-weight: bold;")
+        self._value.setStyleSheet("color: #ffffff; font-size: 13px; font-weight: bold;")
         layout.addWidget(self._value)
 
     def set_value(self, text: str) -> None:
@@ -65,8 +62,16 @@ class SimStatStrip(QWidget):
     """
 
     FIELDS = (
-        "Spendable", "Realised", "Locked", "Mature", "Exch",
-        "Scrummed", "Folded", "Trades", "Bots", "Errors",
+        "Spendable",
+        "Realised",
+        "Locked",
+        "Mature",
+        "Exch",
+        "Scrummed",
+        "Folded",
+        "Trades",
+        "Bots",
+        "Errors",
     )
 
     def __init__(self, parent: QWidget | None = None) -> None:

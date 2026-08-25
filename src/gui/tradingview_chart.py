@@ -24,9 +24,17 @@ from typing import Optional
 logger = logging.getLogger("acervator.gui")
 
 try:
-    from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton, QLabel
+    from PySide6.QtWidgets import (
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QComboBox,
+        QPushButton,
+        QLabel,
+    )
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtCore import Qt, QUrl, Slot
+
     _HAS_WEBENGINE = True
 except ImportError:
     _HAS_WEBENGINE = False
@@ -204,29 +212,54 @@ chart.applyOptions({ width: window.innerWidth, height: window.innerHeight });
 # ---------------------------------------------------------------------------
 CHART_THEMES = {
     "cyberpunk_dark": {
-        "bg": "#0a0a0f", "text": "#e0e0f0", "grid": "#1a1a28",
-        "border": "#2a2a44", "accent": "#00ffcc", "btn_bg": "#12121a",
-        "btn_hover": "#1e1e35", "watermark": "rgba(0,255,204,0.07)",
+        "bg": "#0a0a0f",
+        "text": "#e0e0f0",
+        "grid": "#1a1a28",
+        "border": "#2a2a44",
+        "accent": "#00ffcc",
+        "btn_bg": "#12121a",
+        "btn_hover": "#1e1e35",
+        "watermark": "rgba(0,255,204,0.07)",
     },
     "neon_light": {
-        "bg": "#f5f5fa", "text": "#1a1a2e", "grid": "#e5e5f0",
-        "border": "#ccccdd", "accent": "#6600cc", "btn_bg": "#eeeef5",
-        "btn_hover": "#e0e0f0", "watermark": "rgba(102,0,204,0.07)",
+        "bg": "#f5f5fa",
+        "text": "#1a1a2e",
+        "grid": "#e5e5f0",
+        "border": "#ccccdd",
+        "accent": "#6600cc",
+        "btn_bg": "#eeeef5",
+        "btn_hover": "#e0e0f0",
+        "watermark": "rgba(102,0,204,0.07)",
     },
     "classic_terminal": {
-        "bg": "#0a0a0a", "text": "#00ff00", "grid": "#181818",
-        "border": "#003300", "accent": "#00ff00", "btn_bg": "#111111",
-        "btn_hover": "#1a1a1a", "watermark": "rgba(0,255,0,0.05)",
+        "bg": "#0a0a0a",
+        "text": "#00ff00",
+        "grid": "#181818",
+        "border": "#003300",
+        "accent": "#00ff00",
+        "btn_bg": "#111111",
+        "btn_hover": "#1a1a1a",
+        "watermark": "rgba(0,255,0,0.05)",
     },
     "minimal_modern": {
-        "bg": "#fafafa", "text": "#1a1a1a", "grid": "#e8e8e8",
-        "border": "#e0e0e0", "accent": "#2563eb", "btn_bg": "#f0f0f0",
-        "btn_hover": "#eeeeee", "watermark": "rgba(37,99,235,0.05)",
+        "bg": "#fafafa",
+        "text": "#1a1a1a",
+        "grid": "#e8e8e8",
+        "border": "#e0e0e0",
+        "accent": "#2563eb",
+        "btn_bg": "#f0f0f0",
+        "btn_hover": "#eeeeee",
+        "watermark": "rgba(37,99,235,0.05)",
     },
     "glass_metal": {
-        "bg": "#1c1c24", "text": "#d0d0e0", "grid": "#2c2c3a",
-        "border": "#3a3a50", "accent": "#88ccff", "btn_bg": "#242430",
-        "btn_hover": "#30303f", "watermark": "rgba(136,204,255,0.07)",
+        "bg": "#1c1c24",
+        "text": "#d0d0e0",
+        "grid": "#2c2c3a",
+        "border": "#3a3a50",
+        "accent": "#88ccff",
+        "btn_bg": "#242430",
+        "btn_hover": "#30303f",
+        "watermark": "rgba(136,204,255,0.07)",
     },
 }
 

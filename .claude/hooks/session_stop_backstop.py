@@ -34,6 +34,7 @@ Hook contract per Claude Code:
   - stdout: arbitrary (ignored)
   - exit 0: continue with normal Stop behavior (NEVER block)
 """
+
 from __future__ import annotations
 import json
 import re
@@ -97,7 +98,10 @@ def _run_git(repo_root: Path, args: list, timeout: int) -> str:
     try:
         r = subprocess.run(  # noqa: S603
             [exe, "-C", str(repo_root), *args],
-            capture_output=True, text=True, check=False, timeout=timeout,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout,
         )
     except (OSError, subprocess.TimeoutExpired):
         return ""
@@ -228,15 +232,16 @@ def main() -> int:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
         # Quiet success — stderr only if operator wants to see it
-        print(f"[session_stop_backstop] captured {files_total} files at v{version} -> "
-              f"{diff_path.relative_to(repo_root)}",
-              file=sys.stderr)
+        print(
+            f"[session_stop_backstop] captured {files_total} files at v{version} -> "
+            f"{diff_path.relative_to(repo_root)}",
+            file=sys.stderr,
+        )
         return 0
 
     except Exception as exc:  # noqa: BLE001
         # Never block session shutdown.
-        print(f"[session_stop_backstop] non-fatal error: {exc!r}",
-              file=sys.stderr)
+        print(f"[session_stop_backstop] non-fatal error: {exc!r}", file=sys.stderr)
         return 0
 
 

@@ -43,6 +43,7 @@ caller must use ``urllib`` directly and justify it at its own site.
 
 sadp: R28 R71 R76
 """
+
 from __future__ import annotations
 
 import urllib.parse
@@ -69,14 +70,17 @@ def _extract_url(req_or_url: Union[str, urllib.request.Request]) -> str:
 
 
 def _require_allowed_scheme(
-    url: str, allowed_schemes: Optional[Iterable[str]] = None,
+    url: str,
+    allowed_schemes: Optional[Iterable[str]] = None,
 ) -> None:
     """Raise ValueError unless ``url``'s scheme is in the allowlist."""
     parsed = urllib.parse.urlparse(url)
     scheme = (parsed.scheme or "").lower()
-    allowed = (frozenset(s.lower() for s in allowed_schemes)
-               if allowed_schemes is not None
-               else DEFAULT_ALLOWED_SCHEMES)
+    allowed = (
+        frozenset(s.lower() for s in allowed_schemes)
+        if allowed_schemes is not None
+        else DEFAULT_ALLOWED_SCHEMES
+    )
     if scheme not in allowed:
         raise ValueError(
             f"safe_urlopen: refused scheme {scheme!r} "

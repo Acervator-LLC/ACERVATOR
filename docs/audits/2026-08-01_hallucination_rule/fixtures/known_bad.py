@@ -8,6 +8,7 @@ Ground truth:
     D5 (H003, medium) — import from src.trading.hallucinated_module line ~25
     D6 (H003, medium) — import src.nonexistent.thing                line ~26
 """
+
 from __future__ import annotations
 
 # D1: See src/trading/nonexistent.py for the pattern.
@@ -21,6 +22,7 @@ from __future__ import annotations
 # The imports below don't resolve.
 # D5:
 from src.trading.hallucinated_module import fake_symbol  # noqa
+
 # D6:
 import src.nonexistent.thing  # noqa
 

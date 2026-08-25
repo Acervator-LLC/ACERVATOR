@@ -31,6 +31,7 @@ logger = logging.getLogger("acervator.execution")
 # Configuration
 # ───────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class VolumeGuardConfig:
     """Tunable parameters for volume-aware execution."""
@@ -48,9 +49,9 @@ class VolumeGuardConfig:
     max_slippage_pct: float = 1.0  # 1% max acceptable slippage
 
     # Chunk execution timing
-    min_chunk_delay_ms: int = 200      # Minimum ms between chunks
-    max_chunk_delay_ms: int = 5000     # Maximum ms between chunks
-    chunk_headroom_pct: float = 0.7    # Use 70% of safe size per chunk
+    min_chunk_delay_ms: int = 200  # Minimum ms between chunks
+    max_chunk_delay_ms: int = 5000  # Maximum ms between chunks
+    chunk_headroom_pct: float = 0.7  # Use 70% of safe size per chunk
 
     # Orderbook analysis depth (levels from top)
     book_depth_levels: int = 20
@@ -69,9 +70,11 @@ class VolumeGuardConfig:
 # Market Profile (point-in-time snapshot)
 # ───────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class MarketProfile:
     """Snapshot of market conditions for a symbol at a given moment."""
+
     symbol: str
     timestamp: float
 
@@ -82,36 +85,37 @@ class MarketProfile:
     spread_pct: float = 0  # (ask - bid) / mid * 100
 
     # Volume
-    volume_24h_quote: float = 0      # Total 24h volume in quote currency
-    volume_hourly_est: float = 0     # Estimated hourly volume
-    avg_trade_size_est: float = 0    # Estimated average trade size (quote)
+    volume_24h_quote: float = 0  # Total 24h volume in quote currency
+    volume_hourly_est: float = 0  # Estimated hourly volume
+    avg_trade_size_est: float = 0  # Estimated average trade size (quote)
 
     # Orderbook depth
-    bid_depth_quote: float = 0       # Total bid liquidity in quote (N levels)
-    ask_depth_quote: float = 0       # Total ask liquidity in quote (N levels)
-    bid_depth_levels: int = 0        # Number of bid levels analyzed
-    ask_depth_levels: int = 0        # Number of ask levels analyzed
+    bid_depth_quote: float = 0  # Total bid liquidity in quote (N levels)
+    ask_depth_quote: float = 0  # Total ask liquidity in quote (N levels)
+    bid_depth_levels: int = 0  # Number of bid levels analyzed
+    ask_depth_levels: int = 0  # Number of ask levels analyzed
 
     # Computed safe sizes
-    safe_single_order_quote: float = 0   # Max safe order in quote currency
-    safe_single_order_base: float = 0    # Max safe order in base currency
-    hourly_budget_remaining: float = 0   # Quote budget for this hour
+    safe_single_order_quote: float = 0  # Max safe order in quote currency
+    safe_single_order_base: float = 0  # Max safe order in base currency
+    hourly_budget_remaining: float = 0  # Quote budget for this hour
 
     # Market health indicators
     is_tradeable: bool = True
-    thin_market: bool = False        # Low liquidity warning
-    wide_spread: bool = False        # Spread > 0.5%
-    low_volume: bool = False         # Volume below threshold
+    thin_market: bool = False  # Low liquidity warning
+    wide_spread: bool = False  # Spread > 0.5%
+    low_volume: bool = False  # Volume below threshold
 
 
 @dataclass
 class ChunkPlan:
     """Execution plan: how to split a large order into market-safe chunks."""
-    original_amount: float       # Requested trade amount (base)
+
+    original_amount: float  # Requested trade amount (base)
     original_quote_value: float  # Estimated quote value
-    needs_chunking: bool         # Whether splitting is needed
+    needs_chunking: bool  # Whether splitting is needed
     chunks: list[float] = field(default_factory=list)  # Chunk sizes (base)
-    chunk_delay_ms: int = 500    # Delay between chunks
+    chunk_delay_ms: int = 500  # Delay between chunks
     estimated_slippage_pct: float = 0
     reason: str = ""
     market_profile: Optional[MarketProfile] = None
@@ -120,6 +124,7 @@ class ChunkPlan:
 @dataclass
 class ExecutionReport:
     """Post-execution report for a volume-guarded trade."""
+
     success: bool
     symbol: str
     side: str
@@ -141,6 +146,7 @@ class ExecutionReport:
 # Volume Guard
 # ───────────────────────────────────────────────────────────────────
 
+
 class VolumeGuard:
     """
     Volume-aware trade execution guard.
@@ -159,11 +165,11 @@ class VolumeGuard:
     # Estimated trades per day for common market tiers
     # (Used to estimate avg trade size when recent trade data unavailable)
     TRADES_PER_DAY_EST = {
-        "mega":   200_000,   # BTC/ETH top pairs: ~200K trades/day
-        "large":   50_000,   # Top 20 coins: ~50K trades/day
-        "mid":     15_000,   # Top 100 coins: ~15K trades/day
-        "small":    3_000,   # Long tail: ~3K trades/day
-        "micro":      500,   # Very low volume: ~500 trades/day
+        "mega": 200_000,  # BTC/ETH top pairs: ~200K trades/day
+        "large": 50_000,  # Top 20 coins: ~50K trades/day
+        "mid": 15_000,  # Top 100 coins: ~15K trades/day
+        "small": 3_000,  # Long tail: ~3K trades/day
+        "micro": 500,  # Very low volume: ~500 trades/day
     }
 
     def __init__(self, exchange=None, config: VolumeGuardConfig = None):
@@ -197,9 +203,15 @@ class VolumeGuard:
 
     # ─── Main execution entry point ────────────────────────────────
 
-    async def execute(self, symbol: str, side: str, amount: float,
-                      price: float = 0, order_type: str = "market",
-                      exchange=None) -> ExecutionReport:
+    async def execute(
+        self,
+        symbol: str,
+        side: str,
+        amount: float,
+        price: float = 0,
+        order_type: str = "market",
+        exchange=None,
+    ) -> ExecutionReport:
 
         # sadp: R28 R29  # volume-gated order: fail-loudly(R28) idempotent(R29)
         """
@@ -227,47 +239,67 @@ class VolumeGuard:
         # Pass-through if disabled
         if not self.config.enabled:
             return await self._execute_passthrough(
-                symbol, side, amount, price, order_type, start, ex)
+                symbol, side, amount, price, order_type, start, ex
+            )
 
         if not ex:
             return ExecutionReport(
-                success=False, symbol=symbol, side=side,
-                requested_amount=amount, executed_amount=0,
-                chunks_planned=0, chunks_executed=0,
-                avg_fill_price=0, estimated_slippage_pct=0,
-                actual_slippage_pct=0, total_quote=0,
-                execution_time_ms=0, strategy="error",
-                reason="No exchange connector set")
+                success=False,
+                symbol=symbol,
+                side=side,
+                requested_amount=amount,
+                executed_amount=0,
+                chunks_planned=0,
+                chunks_executed=0,
+                avg_fill_price=0,
+                estimated_slippage_pct=0,
+                actual_slippage_pct=0,
+                total_quote=0,
+                execution_time_ms=0,
+                strategy="error",
+                reason="No exchange connector set",
+            )
 
         # 1. Profile the market
         profile = await self._get_market_profile(symbol, ex)
 
         if not profile.is_tradeable:
-            logger.warning("VolumeGuard: %s not tradeable — %s",
-                          symbol,
-                          "low volume" if profile.low_volume else "no data")
+            logger.warning(
+                "VolumeGuard: %s not tradeable — %s",
+                symbol,
+                "low volume" if profile.low_volume else "no data",
+            )
             # Still allow the trade but log warning
             return await self._execute_passthrough(
-                symbol, side, amount, price, order_type, start, ex)
+                symbol, side, amount, price, order_type, start, ex
+            )
 
         # 2. Plan the execution
         ref_price = price if price > 0 else profile.last_price
         plan = self._compute_chunk_plan(amount, ref_price, side, profile)
 
-        logger.info("VolumeGuard [%s %s %s]: amount=%.8f, quote=$%.2f, "
-                    "safe=$%.2f, chunks=%d, reason=%s",
-                    side.upper(), symbol, "CHUNK" if plan.needs_chunking else "PASS",
-                    amount, plan.original_quote_value,
-                    profile.safe_single_order_quote,
-                    len(plan.chunks), plan.reason)
+        logger.info(
+            "VolumeGuard [%s %s %s]: amount=%.8f, quote=$%.2f, "
+            "safe=$%.2f, chunks=%d, reason=%s",
+            side.upper(),
+            symbol,
+            "CHUNK" if plan.needs_chunking else "PASS",
+            amount,
+            plan.original_quote_value,
+            profile.safe_single_order_quote,
+            len(plan.chunks),
+            plan.reason,
+        )
 
         # 3. Execute
         if not plan.needs_chunking:
             report = await self._execute_single(
-                symbol, side, amount, price, order_type, profile, start, ex)
+                symbol, side, amount, price, order_type, profile, start, ex
+            )
         else:
             report = await self._execute_iceberg(
-                symbol, side, plan, price, order_type, profile, start, ex)
+                symbol, side, plan, price, order_type, profile, start, ex
+            )
 
         # 4. Track hourly usage
         self._track_hourly_usage(symbol, report.total_quote)
@@ -275,7 +307,7 @@ class VolumeGuard:
         # 5. Record history
         self._execution_history.append(report)
         if len(self._execution_history) > self._max_history:
-            self._execution_history = self._execution_history[-self._max_history:]
+            self._execution_history = self._execution_history[-self._max_history :]
 
         return report
 
@@ -291,7 +323,8 @@ class VolumeGuard:
         if cached and (now - cached.timestamp) < self.config.profile_cache_ttl:
             # Update hourly budget from current usage
             cached.hourly_budget_remaining = self._get_hourly_budget(
-                symbol, cached.volume_hourly_est)
+                symbol, cached.volume_hourly_est
+            )
             return cached
 
         profile = MarketProfile(symbol=symbol, timestamp=now)
@@ -305,15 +338,23 @@ class VolumeGuard:
             profile.volume_24h_quote = ticker.volume_24h
 
             # Spread analysis
-            mid = (ticker.bid + ticker.ask) / 2 if (ticker.bid and ticker.ask) else ticker.last
+            mid = (
+                (ticker.bid + ticker.ask) / 2
+                if (ticker.bid and ticker.ask)
+                else ticker.last
+            )
             if mid > 0 and ticker.bid > 0 and ticker.ask > 0:
                 profile.spread_pct = (ticker.ask - ticker.bid) / mid * 100
             profile.wide_spread = profile.spread_pct > 0.5
 
             # Volume analysis
             profile.volume_hourly_est = profile.volume_24h_quote / 24
-            profile.low_volume = profile.volume_24h_quote < self.config.min_daily_volume_usd
-            profile.is_tradeable = not profile.low_volume or profile.volume_24h_quote > 0
+            profile.low_volume = (
+                profile.volume_24h_quote < self.config.min_daily_volume_usd
+            )
+            profile.is_tradeable = (
+                not profile.low_volume or profile.volume_24h_quote > 0
+            )
 
             # Estimate average trade size
             tier = self._classify_volume_tier(profile.volume_24h_quote)
@@ -323,14 +364,19 @@ class VolumeGuard:
             # Fetch orderbook for depth analysis
             try:
                 book = await exchange.get_orderbook(
-                    symbol, self.config.book_depth_levels)
+                    symbol, self.config.book_depth_levels
+                )
                 profile.bid_depth_quote = sum(
-                    p * a for p, a in book.bids[:self.config.book_depth_levels])
+                    p * a for p, a in book.bids[: self.config.book_depth_levels]
+                )
                 profile.ask_depth_quote = sum(
-                    p * a for p, a in book.asks[:self.config.book_depth_levels])
+                    p * a for p, a in book.asks[: self.config.book_depth_levels]
+                )
                 profile.bid_depth_levels = len(book.bids)
                 profile.ask_depth_levels = len(book.asks)
-            except Exception:  # R28-OK: orderbook probe; volume-derived estimate is the documented fallback
+            except (
+                Exception
+            ):  # R28-OK: orderbook probe; volume-derived estimate is the documented fallback
                 # Orderbook unavailable — use volume-only estimates
                 profile.bid_depth_quote = profile.volume_hourly_est * 0.1
                 profile.ask_depth_quote = profile.volume_hourly_est * 0.1
@@ -360,8 +406,10 @@ class VolumeGuard:
         # Method 2: Orderbook depth limit
         # Don't take more than X% of visible book depth
         if profile.bid_depth_quote > 0 and profile.ask_depth_quote > 0:
-            book_limit_quote = (min(profile.bid_depth_quote, profile.ask_depth_quote)
-                                * cfg.max_book_depth_pct)
+            book_limit_quote = (
+                min(profile.bid_depth_quote, profile.ask_depth_quote)
+                * cfg.max_book_depth_pct
+            )
         else:
             book_limit_quote = vol_limit_quote  # Fallback to volume-only
 
@@ -373,7 +421,7 @@ class VolumeGuard:
         # Take the most conservative (smallest) limit
         safe_quote = max(
             min(vol_limit_quote, book_limit_quote, avg_limit_quote),
-            0.01  # Absolute minimum to avoid zero
+            0.01,  # Absolute minimum to avoid zero
         )
 
         profile.safe_single_order_quote = safe_quote
@@ -384,31 +432,34 @@ class VolumeGuard:
 
         # Hourly participation budget
         profile.hourly_budget_remaining = self._get_hourly_budget(
-            profile.symbol, profile.volume_hourly_est)
+            profile.symbol, profile.volume_hourly_est
+        )
 
     def _classify_volume_tier(self, daily_volume_quote: float) -> str:
         """Classify a market's volume tier."""
-        if daily_volume_quote >= 100_000_000:    # $100M+
+        if daily_volume_quote >= 100_000_000:  # $100M+
             return "mega"
-        if daily_volume_quote >= 10_000_000:     # $10M+
+        if daily_volume_quote >= 10_000_000:  # $10M+
             return "large"
-        if daily_volume_quote >= 1_000_000:      # $1M+
+        if daily_volume_quote >= 1_000_000:  # $1M+
             return "mid"
-        if daily_volume_quote >= 100_000:        # $100K+
+        if daily_volume_quote >= 100_000:  # $100K+
             return "small"
         return "micro"
 
     # ─── Chunk Planning ────────────────────────────────────────────
 
-    def _compute_chunk_plan(self, amount: float, ref_price: float,
-                            side: str, profile: MarketProfile) -> ChunkPlan:
+    def _compute_chunk_plan(
+        self, amount: float, ref_price: float, side: str, profile: MarketProfile
+    ) -> ChunkPlan:
         """Determine if and how to split an order into chunks."""
         quote_value = amount * ref_price if ref_price > 0 else 0
         plan = ChunkPlan(
             original_amount=amount,
             original_quote_value=quote_value,
             needs_chunking=False,
-            market_profile=profile)
+            market_profile=profile,
+        )
 
         safe_quote = profile.safe_single_order_quote
         safe_base = profile.safe_single_order_base
@@ -438,7 +489,7 @@ class VolumeGuard:
         # Adjust last chunk for remainder
         total_planned = sum(plan.chunks)
         if total_planned != amount:
-            plan.chunks[-1] += (amount - total_planned)
+            plan.chunks[-1] += amount - total_planned
 
         # Compute inter-chunk delay
         # Higher volume → shorter delays (market absorbs faster)
@@ -447,15 +498,18 @@ class VolumeGuard:
             # At $1M/hr volume, ~500ms delay; at $10K/hr, ~3000ms
             volume_factor = min(profile.volume_hourly_est / 100_000, 10)
             delay = int(self.config.max_chunk_delay_ms / max(volume_factor, 0.5))
-            delay = max(self.config.min_chunk_delay_ms,
-                       min(delay, self.config.max_chunk_delay_ms))
+            delay = max(
+                self.config.min_chunk_delay_ms,
+                min(delay, self.config.max_chunk_delay_ms),
+            )
         else:
             delay = self.config.max_chunk_delay_ms
         plan.chunk_delay_ms = delay
 
         # Estimate slippage from orderbook depth
-        relevant_depth = (profile.ask_depth_quote if side == "buy"
-                          else profile.bid_depth_quote)
+        relevant_depth = (
+            profile.ask_depth_quote if side == "buy" else profile.bid_depth_quote
+        )
         if relevant_depth > 0:
             plan.estimated_slippage_pct = (quote_value / relevant_depth) * 100
             plan.estimated_slippage_pct = min(plan.estimated_slippage_pct, 10)
@@ -475,92 +529,153 @@ class VolumeGuard:
 
     # ─── Execution Strategies ──────────────────────────────────────
 
-    async def _execute_passthrough(self, symbol: str, side: str,
-                                    amount: float, price: float,
-                                    order_type: str, start: float,
-                                    ex=None) -> ExecutionReport:
+    async def _execute_passthrough(
+        self,
+        symbol: str,
+        side: str,
+        amount: float,
+        price: float,
+        order_type: str,
+        start: float,
+        ex=None,
+    ) -> ExecutionReport:
 
         # sadp: R28 R29  # volume-gated order: fail-loudly(R28) idempotent(R29)
         """Execute without any volume protection (disabled or fallback)."""
         from ..exchange.base import OrderSide, OrderType as OT
+
         exchange = ex or self._exchange
         os = OrderSide.BUY if side == "buy" else OrderSide.SELL
         ot = OT.MARKET if order_type == "market" else OT.LIMIT
 
         try:
             order = await exchange.place_order(
-                symbol, os, ot, amount, price if price > 0 else None)
+                symbol, os, ot, amount, price if price > 0 else None
+            )
             fill_price = order.average or price or 0
             elapsed = (time.monotonic() - start) * 1000
             return ExecutionReport(
-                success=True, symbol=symbol, side=side,
-                requested_amount=amount, executed_amount=order.filled or amount,
-                chunks_planned=1, chunks_executed=1,
+                success=True,
+                symbol=symbol,
+                side=side,
+                requested_amount=amount,
+                executed_amount=order.filled or amount,
+                chunks_planned=1,
+                chunks_executed=1,
                 avg_fill_price=fill_price,
-                estimated_slippage_pct=0, actual_slippage_pct=0,
+                estimated_slippage_pct=0,
+                actual_slippage_pct=0,
                 total_quote=fill_price * (order.filled or amount),
-                execution_time_ms=elapsed, strategy="passthrough",
-                fills=[{"price": fill_price, "amount": order.filled or amount}])
-        except Exception as exc:  # R28-OK: error surfaced via ExecutionReport(success=False)
+                execution_time_ms=elapsed,
+                strategy="passthrough",
+                fills=[{"price": fill_price, "amount": order.filled or amount}],
+            )
+        except (
+            Exception
+        ) as exc:  # R28-OK: error surfaced via ExecutionReport(success=False)
             elapsed = (time.monotonic() - start) * 1000
             return ExecutionReport(
-                success=False, symbol=symbol, side=side,
-                requested_amount=amount, executed_amount=0,
-                chunks_planned=1, chunks_executed=0,
-                avg_fill_price=0, estimated_slippage_pct=0,
-                actual_slippage_pct=0, total_quote=0,
-                execution_time_ms=elapsed, strategy="passthrough",
-                reason=str(exc))
+                success=False,
+                symbol=symbol,
+                side=side,
+                requested_amount=amount,
+                executed_amount=0,
+                chunks_planned=1,
+                chunks_executed=0,
+                avg_fill_price=0,
+                estimated_slippage_pct=0,
+                actual_slippage_pct=0,
+                total_quote=0,
+                execution_time_ms=elapsed,
+                strategy="passthrough",
+                reason=str(exc),
+            )
 
-    async def _execute_single(self, symbol: str, side: str,
-                               amount: float, price: float,
-                               order_type: str, profile: MarketProfile,
-                               start: float, ex=None) -> ExecutionReport:
+    async def _execute_single(
+        self,
+        symbol: str,
+        side: str,
+        amount: float,
+        price: float,
+        order_type: str,
+        profile: MarketProfile,
+        start: float,
+        ex=None,
+    ) -> ExecutionReport:
 
         # sadp: R28 R29  # volume-gated order: fail-loudly(R28) idempotent(R29)
         """Execute a single order that's within safe limits."""
         from ..exchange.base import OrderSide, OrderType as OT
+
         exchange = ex or self._exchange
         os = OrderSide.BUY if side == "buy" else OrderSide.SELL
         ot = OT.MARKET if order_type == "market" else OT.LIMIT
 
         try:
             order = await exchange.place_order(
-                symbol, os, ot, amount, price if price > 0 else None)
+                symbol, os, ot, amount, price if price > 0 else None
+            )
             fill_price = order.average or price or profile.last_price
             elapsed = (time.monotonic() - start) * 1000
             actual_slip = 0
             if profile.last_price > 0 and fill_price > 0:
-                actual_slip = abs(fill_price - profile.last_price) / profile.last_price * 100
+                actual_slip = (
+                    abs(fill_price - profile.last_price) / profile.last_price * 100
+                )
 
             return ExecutionReport(
-                success=True, symbol=symbol, side=side,
-                requested_amount=amount, executed_amount=order.filled or amount,
-                chunks_planned=1, chunks_executed=1,
+                success=True,
+                symbol=symbol,
+                side=side,
+                requested_amount=amount,
+                executed_amount=order.filled or amount,
+                chunks_planned=1,
+                chunks_executed=1,
                 avg_fill_price=fill_price,
-                estimated_slippage_pct=0, actual_slippage_pct=actual_slip,
+                estimated_slippage_pct=0,
+                actual_slippage_pct=actual_slip,
                 total_quote=fill_price * (order.filled or amount),
-                execution_time_ms=elapsed, strategy="single",
-                fills=[{"price": fill_price, "amount": order.filled or amount}])
-        except Exception as exc:  # R28-OK: error surfaced via ExecutionReport(success=False)
+                execution_time_ms=elapsed,
+                strategy="single",
+                fills=[{"price": fill_price, "amount": order.filled or amount}],
+            )
+        except (
+            Exception
+        ) as exc:  # R28-OK: error surfaced via ExecutionReport(success=False)
             elapsed = (time.monotonic() - start) * 1000
             return ExecutionReport(
-                success=False, symbol=symbol, side=side,
-                requested_amount=amount, executed_amount=0,
-                chunks_planned=1, chunks_executed=0,
-                avg_fill_price=0, estimated_slippage_pct=0,
-                actual_slippage_pct=0, total_quote=0,
-                execution_time_ms=elapsed, strategy="single",
-                reason=str(exc))
+                success=False,
+                symbol=symbol,
+                side=side,
+                requested_amount=amount,
+                executed_amount=0,
+                chunks_planned=1,
+                chunks_executed=0,
+                avg_fill_price=0,
+                estimated_slippage_pct=0,
+                actual_slippage_pct=0,
+                total_quote=0,
+                execution_time_ms=elapsed,
+                strategy="single",
+                reason=str(exc),
+            )
 
-    async def _execute_iceberg(self, symbol: str, side: str,
-                                plan: ChunkPlan, price: float,
-                                order_type: str, profile: MarketProfile,
-                                start: float, ex=None) -> ExecutionReport:
+    async def _execute_iceberg(
+        self,
+        symbol: str,
+        side: str,
+        plan: ChunkPlan,
+        price: float,
+        order_type: str,
+        profile: MarketProfile,
+        start: float,
+        ex=None,
+    ) -> ExecutionReport:
 
         # sadp: R28 R29  # volume-gated order: fail-loudly(R28) idempotent(R29)
         """Execute as volume-aware iceberg: adaptive chunks with delays."""
         from ..exchange.base import OrderSide, OrderType as OT
+
         exchange = ex or self._exchange
         os = OrderSide.BUY if side == "buy" else OrderSide.SELL
         ot = OT.MARKET if order_type == "market" else OT.LIMIT
@@ -570,16 +685,21 @@ class VolumeGuard:
         total_quote = 0.0
         chunks_done = 0
 
-        logger.info("VolumeGuard ICEBERG: %s %s — %d chunks, %.0fms delay, "
-                    "est slippage %.2f%%",
-                    side.upper(), symbol, len(plan.chunks),
-                    plan.chunk_delay_ms, plan.estimated_slippage_pct)
+        logger.info(
+            "VolumeGuard ICEBERG: %s %s — %d chunks, %.0fms delay, "
+            "est slippage %.2f%%",
+            side.upper(),
+            symbol,
+            len(plan.chunks),
+            plan.chunk_delay_ms,
+            plan.estimated_slippage_pct,
+        )
 
         for i, chunk_amount in enumerate(plan.chunks):
             try:
                 order = await exchange.place_order(
-                    symbol, os, ot, chunk_amount,
-                    price if price > 0 else None)
+                    symbol, os, ot, chunk_amount, price if price > 0 else None
+                )
 
                 fill_price = order.average or price or profile.last_price
                 filled = order.filled or chunk_amount
@@ -587,20 +707,27 @@ class VolumeGuard:
                 total_quote += fill_price * filled
                 chunks_done += 1
 
-                fills.append({
-                    "chunk": i + 1,
-                    "price": fill_price,
-                    "amount": filled,
-                })
+                fills.append(
+                    {
+                        "chunk": i + 1,
+                        "price": fill_price,
+                        "amount": filled,
+                    }
+                )
 
-                logger.debug("  Chunk %d/%d: %.8f @ $%.8f",
-                            i + 1, len(plan.chunks), filled, fill_price)
+                logger.debug(
+                    "  Chunk %d/%d: %.8f @ $%.8f",
+                    i + 1,
+                    len(plan.chunks),
+                    filled,
+                    fill_price,
+                )
 
             except Exception as exc:
                 logger.warning("  Chunk %d/%d FAILED: %s", i + 1, len(plan.chunks), exc)
-                fills.append({
-                    "chunk": i + 1, "price": 0, "amount": 0,
-                    "error": str(exc)})
+                fills.append(
+                    {"chunk": i + 1, "price": 0, "amount": 0, "error": str(exc)}
+                )
 
             # Inter-chunk delay (skip after last chunk)
             if i < len(plan.chunks) - 1:
@@ -612,8 +739,11 @@ class VolumeGuard:
                         fresh = await self._get_market_profile(symbol)
                         # Abort if market conditions deteriorated
                         if fresh.spread_pct > self.config.max_slippage_pct * 2:
-                            logger.warning("VolumeGuard: Spread widened to %.2f%%, "
-                                         "aborting remaining chunks", fresh.spread_pct)
+                            logger.warning(
+                                "VolumeGuard: Spread widened to %.2f%%, "
+                                "aborting remaining chunks",
+                                fresh.spread_pct,
+                            )
                             break
                     except Exception:  # R28-OK: volume probe best-effort fallback
                         pass
@@ -628,7 +758,8 @@ class VolumeGuard:
 
         return ExecutionReport(
             success=total_filled > 0,
-            symbol=symbol, side=side,
+            symbol=symbol,
+            side=side,
             requested_amount=plan.original_amount,
             executed_amount=total_filled,
             chunks_planned=len(plan.chunks),
@@ -640,7 +771,8 @@ class VolumeGuard:
             execution_time_ms=elapsed,
             strategy=f"iceberg_{len(plan.chunks)}",
             reason=plan.reason,
-            fills=fills)
+            fills=fills,
+        )
 
     # ─── Hourly Participation Tracking ─────────────────────────────
 
@@ -654,7 +786,9 @@ class VolumeGuard:
             self._hourly_usage.clear()
             self._last_hour_reset = now
 
-        self._hourly_usage[symbol] = self._hourly_usage.get(symbol, 0) + abs(quote_amount)
+        self._hourly_usage[symbol] = self._hourly_usage.get(symbol, 0) + abs(
+            quote_amount
+        )
 
     def _get_hourly_budget(self, symbol: str, hourly_volume: float) -> float:
         """Get remaining hourly participation budget."""
@@ -666,8 +800,11 @@ class VolumeGuard:
 
     def get_status(self) -> dict:
         """Return current guard status and statistics."""
-        recent = [r for r in self._execution_history
-                  if time.time() - r.execution_time_ms / 1000 < 3600]
+        recent = [
+            r
+            for r in self._execution_history
+            if time.time() - r.execution_time_ms / 1000 < 3600
+        ]
         icebergs = [r for r in recent if r.strategy.startswith("iceberg")]
 
         return {

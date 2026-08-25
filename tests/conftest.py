@@ -18,6 +18,7 @@ Scope note: this redirects the SIM log root only. ``~/.acervator``
 (bot_state.json, credentials) is operator-owned and read-only to the
 suite; nothing here grants write access to it.
 """
+
 from __future__ import annotations
 
 import os
@@ -77,8 +78,11 @@ def _live_app_running() -> bool:
     """
     try:
         import psutil  # type: ignore[import-untyped]
-        return any("acervator" in (p.info.get("name") or "").lower()
-                   for p in psutil.process_iter(["name"]))
+
+        return any(
+            "acervator" in (p.info.get("name") or "").lower()
+            for p in psutil.process_iter(["name"])
+        )
     except Exception:  # noqa: BLE001 - absence of psutil must not fail a run
         return False
 
@@ -103,7 +107,7 @@ def _snapshot(roots: tuple[Path, ...]) -> dict[str, tuple[int, int]]:
                     st = f.stat()
                     out[str(f)] = (st.st_size, st.st_mtime_ns)
             except OSError:
-                continue          # vanished mid-walk; the live app rotates logs
+                continue  # vanished mid-walk; the live app rotates logs
     return out
 
 
@@ -229,9 +233,11 @@ def _redirect_writable_roots():
                 os.environ[k] = v
 
 
-def _classify(before: dict[str, tuple[int, int]],
-              after: dict[str, tuple[int, int]],
-              tablet_root: Path) -> tuple[list[str], list[str], list[str]]:
+def _classify(
+    before: dict[str, tuple[int, int]],
+    after: dict[str, tuple[int, int]],
+    tablet_root: Path,
+) -> tuple[list[str], list[str], list[str]]:
     """Split the diff into (created, tablet_touched, modified).
 
     Separated from the fixture so it can be unit-tested on synthetic
@@ -239,11 +245,11 @@ def _classify(before: dict[str, tuple[int, int]],
     """
     created = sorted(set(after) - set(before))
     removed = sorted(set(before) - set(after))
-    modified = sorted(p for p in (set(before) & set(after))
-                      if before[p] != after[p])
+    modified = sorted(p for p in (set(before) & set(after)) if before[p] != after[p])
     tr = str(tablet_root)
     tablet_touched = sorted(
-        p for p in (created + removed + modified) if p.startswith(tr))
+        p for p in (created + removed + modified) if p.startswith(tr)
+    )
     created = [p for p in created if not p.startswith(tr)]
     modified = [p for p in modified if not p.startswith(tr)]
     # A removal outside the tablet archive is reported with modifications;
@@ -330,29 +336,33 @@ def _assert_no_live_tree_writes(_redirect_sim_log_root):
             f"tablet {len(tablet_touched)}\n"
             f"  This run does NOT verify test isolation. Re-run with "
             f"Acervator closed for that.\n  "
-            + "\n  ".join((created + modified + tablet_touched)[:8]))
+            + "\n  ".join((created + modified + tablet_touched)[:8])
+        )
     else:
         if created:
             problems.append(
                 f"created {len(created)} path(s) in the operator's live "
-                f"tree:\n  " + "\n  ".join(created[:10]))
+                f"tree:\n  " + "\n  ".join(created[:10])
+            )
         if tablet_touched:
             problems.append(
                 f"touched {len(tablet_touched)} Stone Tablet file(s) -- the "
-                f"archive is immutable:\n  "
-                + "\n  ".join(tablet_touched[:10]))
+                f"archive is immutable:\n  " + "\n  ".join(tablet_touched[:10])
+            )
         if modified:
             problems.append(
                 f"modified {len(modified)} pre-existing file(s) with no live "
-                f"Acervator process running:\n  " + "\n  ".join(modified[:10]))
+                f"Acervator process running:\n  " + "\n  ".join(modified[:10])
+            )
 
     assert not problems, (
         "the test suite mutated the operator's runtime tree.\n\n"
         + "\n\n".join(problems)
         + "\n\nTests must never write to ~/.acervator or ~/.acervator_logs. "
-          "Redirect the writer at its root-resolution point (see "
-          "SIM_LOG_ROOT_ENV / ACERVATOR_TELEMETRY_ROOT for the pattern)."
+        "Redirect the writer at its root-resolution point (see "
+        "SIM_LOG_ROOT_ENV / ACERVATOR_TELEMETRY_ROOT for the pattern)."
     )
+
 
 # ── Qt widget teardown, suite-wide ───────────────────────────────────
 #
@@ -372,7 +382,7 @@ def _destroy_qt_widgets():
     yield
     try:
         from PySide6.QtWidgets import QApplication
-    except ImportError:                                # pragma: no cover
+    except ImportError:  # pragma: no cover
         return
     app = QApplication.instance()
     if app is None:

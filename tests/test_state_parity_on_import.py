@@ -21,6 +21,7 @@ lot list of the right length with wrong contents must fail.
 
 Measured on the operator's real fleet: 38 of 38 fields identical on every bot.
 """
+
 from __future__ import annotations
 
 import json
@@ -58,8 +59,10 @@ STEP = 300_000
 _OVERRIDES = {
     "anchor_target_balance": 250.0,
     "target_balance": 252.13907101630653,
-    "main_lots": [{"units": 4.5, "price": 1.25, "ts": 1.0},
-                  {"units": 2.25, "price": 1.30, "ts": 2.0}],
+    "main_lots": [
+        {"units": 4.5, "price": 1.25, "ts": 1.0},
+        {"units": 2.25, "price": 1.30, "ts": 2.0},
+    ],
     "fold_tranches": [{"usd": 10.0, "created_ts": 3.0}],
     "fold_queue_usd": 10.0,
     "last_trade_price": 1.31,
@@ -70,31 +73,43 @@ _OVERRIDES = {
 
 
 def _cfg():
-    return {"mode": "scrumming", "symbol": "BTC/USD", "target_balance": 250.0,
-            "target_asset": "BTC", "base_currency": "USD",
-            "_src_bot_id": "aaaa1111",
-            "_src_scrumming_state": dict(FIXTURE_STATE)}  # noqa: F821
+    return {
+        "mode": "scrumming",
+        "symbol": "BTC/USD",
+        "target_balance": 250.0,
+        "target_asset": "BTC",
+        "base_currency": "USD",
+        "_src_bot_id": "aaaa1111",
+        "_src_scrumming_state": dict(FIXTURE_STATE),
+    }  # noqa: F821
 
 
 def _rows(n=50):
-    return [[BASE + i * STEP, 100.0, 101.0, 99.0, 100.0, 5.0]
-            for i in range(n)]
+    return [[BASE + i * STEP, 100.0, 101.0, 99.0, 100.0, 5.0] for i in range(n)]
 
 
 def _bot():
-    ex = FleetSimExchange(make_symbol_series_map({"BTC/USD": _rows()}),
-                          starting_balances={"USD": 10_000.0})
-    return frc._instantiate_bot(_cfg(), ex,
-                                frc._make_sim_capital_registry())
+    ex = FleetSimExchange(
+        make_symbol_series_map({"BTC/USD": _rows()}),
+        starting_balances={"USD": 10_000.0},
+    )
+    return frc._instantiate_bot(_cfg(), ex, frc._make_sim_capital_registry())
 
 
 def _make_fixture_state() -> dict:
     """A COMPLETE state with the exporter's own shape, then overridden."""
-    ex = FleetSimExchange(make_symbol_series_map({"BTC/USD": _rows()}),
-                          starting_balances={"USD": 10_000.0})
-    seed = {"mode": "scrumming", "symbol": "BTC/USD",
-            "target_balance": 250.0, "target_asset": "BTC",
-            "base_currency": "USD", "_src_bot_id": "seed0000"}
+    ex = FleetSimExchange(
+        make_symbol_series_map({"BTC/USD": _rows()}),
+        starting_balances={"USD": 10_000.0},
+    )
+    seed = {
+        "mode": "scrumming",
+        "symbol": "BTC/USD",
+        "target_balance": 250.0,
+        "target_asset": "BTC",
+        "base_currency": "USD",
+        "_src_bot_id": "seed0000",
+    }
     b = frc._instantiate_bot(seed, ex, frc._make_sim_capital_registry())
     state = dict(b.export_scrumming_state())
     state.update(_OVERRIDES)
@@ -106,9 +121,11 @@ FIXTURE_STATE = _make_fixture_state()
 
 def _diff(a: dict, b: dict) -> list:
     return sorted(
-        k for k in (set(a) | set(b))
+        k
+        for k in (set(a) | set(b))
         if json.dumps(a.get(k), sort_keys=True, default=repr)
-        != json.dumps(b.get(k), sort_keys=True, default=repr))
+        != json.dumps(b.get(k), sort_keys=True, default=repr)
+    )
 
 
 @pytest.fixture
@@ -132,8 +149,7 @@ class TestTheRoundTripIsTheCheck:
         b.import_scrumming_state(dict(FIXTURE_STATE))
         tampered = dict(FIXTURE_STATE)
         tampered["target_balance"] = 999.0
-        assert "target_balance" in _diff(tampered,
-                                         b.export_scrumming_state())
+        assert "target_balance" in _diff(tampered, b.export_scrumming_state())
 
     def test_lot_contents_are_compared_not_just_length(self):
         """A lot list of the right LENGTH with wrong contents must fail --
@@ -142,8 +158,10 @@ class TestTheRoundTripIsTheCheck:
         b.import_scrumming_state(dict(FIXTURE_STATE))
         back = b.export_scrumming_state()
         wrong = dict(FIXTURE_STATE)
-        wrong["main_lots"] = [{"units": 9.9, "price": 9.9, "ts": 1.0},
-                              {"units": 8.8, "price": 8.8, "ts": 2.0}]
+        wrong["main_lots"] = [
+            {"units": 9.9, "price": 9.9, "ts": 1.0},
+            {"units": 8.8, "price": 8.8, "ts": 2.0},
+        ]
         assert len(wrong["main_lots"]) == len(back["main_lots"])
         assert "main_lots" in _diff(wrong, back)
 
@@ -178,24 +196,39 @@ class TestTheStateActuallyArrives:
 class TestNoSecondSourceOfInitiatingState:
     def test_build_sim_does_not_synthesise_a_position(self):
         import ast
-        src = (REPO_ROOT
-               / "src/gui/simulator_tab/fleet/fleet_replay_controller.py"
-               ).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.FunctionDef) and n.name == "_build_sim")
-        exprs = {ast.unparse(n) for n in ast.walk(fn)
-                 if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Div)}
-        assert not any("open_px" in t for t in exprs), (
-            f"a synthesised opening position remains: {exprs}")
+
+        src = (
+            REPO_ROOT / "src/gui/simulator_tab/fleet/fleet_replay_controller.py"
+        ).read_text(encoding="utf-8")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.FunctionDef) and n.name == "_build_sim"
+        )
+        exprs = {
+            ast.unparse(n)
+            for n in ast.walk(fn)
+            if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Div)
+        }
+        assert not any(
+            "open_px" in t for t in exprs
+        ), f"a synthesised opening position remains: {exprs}"
 
     def test_the_loader_carries_the_whole_entry(self, tmp_path):
         from src.gui.simulator_tab.fleet.bot_state_loader import (
-            load_bot_configs_from_state)
-        st = {"bots": {"aaaa1111": {
-            "bot_id": "aaaa1111",
-            "config": {"mode": "scrumming", "symbol": "BTC/USD"},
-            "scrumming_state": dict(FIXTURE_STATE),
-            "stats": {"position_value": 252.7}}}}
+            load_bot_configs_from_state,
+        )
+
+        st = {
+            "bots": {
+                "aaaa1111": {
+                    "bot_id": "aaaa1111",
+                    "config": {"mode": "scrumming", "symbol": "BTC/USD"},
+                    "scrumming_state": dict(FIXTURE_STATE),
+                    "stats": {"position_value": 252.7},
+                }
+            }
+        }
         p = tmp_path / "s.json"
         p.write_text(json.dumps(st), encoding="utf-8")
         cfgs = load_bot_configs_from_state(path=p)
@@ -208,17 +241,24 @@ class TestTheParityEmitter:
         b = _bot()
         b.import_scrumming_state(dict(FIXTURE_STATE))
         bad = _diff(dict(FIXTURE_STATE), b.export_scrumming_state())
-        emit("fleet.03.005.invariant.state_parity",
-             actual=len(FIXTURE_STATE) - len(bad),
-             expected=len(FIXTURE_STATE), context={"differing": bad})
+        emit(
+            "fleet.03.005.invariant.state_parity",
+            actual=len(FIXTURE_STATE) - len(bad),
+            expected=len(FIXTURE_STATE),
+            context={"differing": bad},
+        )
         r = sink.records("fleet.03.005.invariant.state_parity")[0]
         assert r.ok is True
         assert r.context["differing"] == ()
 
     def test_it_names_the_field_when_parity_breaks(self, sink):
         """A count alone would say parity broke without saying where."""
-        emit("fleet.03.005.invariant.state_parity", actual=37, expected=38,
-             context={"differing": ["target_balance"]})
+        emit(
+            "fleet.03.005.invariant.state_parity",
+            actual=37,
+            expected=38,
+            context={"differing": ["target_balance"]},
+        )
         r = sink.records("fleet.03.005.invariant.state_parity")[0]
         assert r.ok is False
         assert r.context["differing"] == ("target_balance",)

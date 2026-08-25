@@ -3,6 +3,7 @@
 Assets below about 5e-5 collapse to 0.0, and this fleet holds one
 at 0.0000045.
 """
+
 from PySide6.QtGui import QPainter
 
 

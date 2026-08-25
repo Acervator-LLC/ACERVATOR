@@ -38,7 +38,6 @@ unconditionally without separate "ensure exists" steps.
 
 from pathlib import Path
 
-
 # Single canonical root — all log buckets live under here.
 _LOG_ROOT = Path.home() / ".acervator_logs"
 

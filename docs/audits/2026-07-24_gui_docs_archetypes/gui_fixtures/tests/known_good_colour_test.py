@@ -8,6 +8,7 @@ Named `*_test.py` so the archetype's `_is_test_file` recognises it.
 It lives under docs/audits and is never collected by pytest, which
 only walks `tests/`.
 """
+
 from __future__ import annotations
 
 from PySide6.QtGui import QColor

@@ -52,6 +52,7 @@ CLI
 
 sadp: R28 FL · R55 GOV · R62 FRG · R68 DPA · R76 DMW
 """
+
 from __future__ import annotations
 
 import argparse
@@ -71,9 +72,18 @@ _REPO = Path(__file__).resolve().parent.parent
 # JUNK — excluded from BOTH zips (true bloat, machine-specific, or
 # regenerable build artifacts).
 JUNK_DIRS = {
-    ".git", ".venv", "__pycache__", ".pytest_cache",
-    ".hypothesis", ".mypy_cache", ".ruff_cache",
-    "node_modules", "dist", "build", ".idea", ".vscode",
+    ".git",
+    ".venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".hypothesis",
+    ".mypy_cache",
+    ".ruff_cache",
+    "node_modules",
+    "dist",
+    "build",
+    ".idea",
+    ".vscode",
     # v3.24.35 — agent worktree scratch. Measured on the v3.24.35
     # build: 1,414 of 1,901 primary-zip files (~30 MB) came from
     # .claude/worktrees, swamping the 487 files of actual project
@@ -93,20 +103,22 @@ JUNK_BASENAMES = {".coverage"}
 #   *.log.[0-9]+   — rotated NDJSON files (gate.log.1, trade.log.2, etc.)
 # These can grow large + machine-specific; never ship in any zip.
 JUNK_NAME_SUBSTRINGS = (
-    ".log.scrubbed", ".log.bak",
+    ".log.scrubbed",
+    ".log.bak",
     # In-session backup files written before risky edits
     # (e.g. main_window.py.PRIVACY_ARC_BACKUP_2026-06-14,
     # bot_visualizer.py.BOT_SWARM_ARC_BACKUP_2026-06-14,
     # scrumming_bot.py.RECOVERY_PRE_v3_23_7.BAK,
     # history_tab.py.D01_BACKUP_2026-06-14).
     # These are scratch — never ship in any zip.
-    ".PRIVACY_ARC_BACKUP_", ".BOT_SWARM_ARC_BACKUP_", ".RECOVERY_PRE_",
+    ".PRIVACY_ARC_BACKUP_",
+    ".BOT_SWARM_ARC_BACKUP_",
+    ".RECOVERY_PRE_",
     ".D01_BACKUP_",
 )
 JUNK_ROTATED_LOG_RE = re.compile(r"\.log\.\d+$")
 
-MANUAL_RE = re.compile(
-    r"^acervator_product_manual_v(\d+)_(\d+)_(\d+)\.pdf$")
+MANUAL_RE = re.compile(r"^acervator_product_manual_v(\d+)_(\d+)_(\d+)\.pdf$")
 
 # ADDITIONAL — route to the supplementary zip rather than the primary.
 # These are NOT junk (preserved for archival) but DO bloat the primary
@@ -115,8 +127,8 @@ MANUAL_RE = re.compile(
 
 # Top-level directories that go in their entirety to ADDITIONAL.
 ADDITIONAL_DIRS = {
-    ".session26_backups",            # 1.7 MB · session-26 .bak files
-    "_archive",                      # 2026-07-25 audit: all migrated content
+    ".session26_backups",  # 1.7 MB · session-26 .bak files
+    "_archive",  # 2026-07-25 audit: all migrated content
 }
 
 # Top-level files that go to ADDITIONAL (exact-match by repo-relative
@@ -208,9 +220,7 @@ def _is_junk(rel_path: Path) -> bool:
     return False
 
 
-def _is_older_manual(
-        rel_path: Path,
-        latest_manual_name: Optional[str]) -> bool:
+def _is_older_manual(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
     """True if this is a product-manual PDF that ISN'T the latest
     version (routes to ADDITIONAL)."""
     if not MANUAL_RE.match(rel_path.name):
@@ -226,11 +236,13 @@ def _is_older_manual(
 # proof files cited verbatim by CHANGELOG / Chronicle / HOP. Those stay
 # in PRIMARY for chain-of-evidence integrity.
 _RAINTSIMBAT_REPORTS_REL = ("sadp", "RAIntSimBat", "reports")
-RAINTSIMBAT_REPORTS_PRIMARY_KEEP = frozenset({
-    "RAIntSimBat_20260421_055850.json",          # HOP4/HOP5 cited
-    "RAIntSimBat_RESULTS_20260427_183334.json",  # CHANGELOG + Chronicle cited
-    "RAIntSimBat_RESULTS_20260428_095359.json",  # CHANGELOG cited
-})
+RAINTSIMBAT_REPORTS_PRIMARY_KEEP = frozenset(
+    {
+        "RAIntSimBat_20260421_055850.json",  # HOP4/HOP5 cited
+        "RAIntSimBat_RESULTS_20260427_183334.json",  # CHANGELOG + Chronicle cited
+        "RAIntSimBat_RESULTS_20260428_095359.json",  # CHANGELOG cited
+    }
+)
 
 
 def _is_raintsimbat_reports_archive(rel_path: Path) -> bool:
@@ -246,9 +258,7 @@ def _is_raintsimbat_reports_archive(rel_path: Path) -> bool:
     return True
 
 
-def _is_additional(
-        rel_path: Path,
-        latest_manual_name: Optional[str]) -> bool:
+def _is_additional(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
     """True if the path routes to the ADDITIONAL_ITEMS zip rather
     than the primary release zip. Junk filtering is checked BEFORE
     this in `classify_path` — so anything reaching here is genuinely
@@ -270,9 +280,7 @@ def _is_additional(
     return False
 
 
-def classify_path(
-        rel_path: Path,
-        latest_manual_name: Optional[str]) -> str:
+def classify_path(rel_path: Path, latest_manual_name: Optional[str]) -> str:
     """Return 'junk', 'additional', or 'primary' for the given path.
     The partition is mutually exclusive: every file lands in exactly
     one bucket."""
@@ -288,9 +296,8 @@ def classify_path(
 # from v3.20.35. Returns True for PRIMARY bucket only.
 # ─────────────────────────────────────────────────────────────────────
 
-def should_include(
-        rel_path: Path,
-        latest_manual_name: Optional[str]) -> bool:
+
+def should_include(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
     """Legacy API kept for v3.20.35-era test compatibility. Returns
     True iff the path lands in the PRIMARY bucket."""
     return classify_path(rel_path, latest_manual_name) == "primary"
@@ -307,14 +314,15 @@ EXCLUDE_BASENAMES = JUNK_BASENAMES
 # Build orchestration
 # ─────────────────────────────────────────────────────────────────────
 
+
 def read_version() -> Optional[str]:
     """Read src/__init__.py.__version__. Used to name the zip."""
     init = _REPO / "src" / "__init__.py"
     if not init.exists():
         return None
     m = re.search(
-        r'__version__\s*=\s*"(\d+\.\d+\.\d+)"',
-        init.read_text(encoding="utf-8"))
+        r'__version__\s*=\s*"(\d+\.\d+\.\d+)"', init.read_text(encoding="utf-8")
+    )
     return m.group(1) if m else None
 
 
@@ -323,19 +331,22 @@ def read_session_number() -> int:
     back to 27 (current session) if unparseable."""
     try:
         import json
+
         p = _REPO / "sadp" / "EPISODIC_MEMORY.json"
         data = json.loads(p.read_text(encoding="utf-8"))
-        sessions = [e.get("session") for e in data
-                    if isinstance(e, dict)
-                    and isinstance(e.get("session"), int)]
+        sessions = [
+            e.get("session")
+            for e in data
+            if isinstance(e, dict) and isinstance(e.get("session"), int)
+        ]
         return max(sessions) if sessions else 27
     except (OSError, json.JSONDecodeError, ValueError):
         return 27
 
 
 def _walk_and_partition(
-        latest_name: Optional[str]
-        ) -> tuple[list[Path], list[Path], list[Path]]:
+    latest_name: Optional[str],
+) -> tuple[list[Path], list[Path], list[Path]]:
     """Walk the repo and partition every file into
     (primary, additional, junk). Same walk pass for all three lists
     so the partition is provably mutually exclusive."""
@@ -356,15 +367,11 @@ def _walk_and_partition(
     return primary, additional, junk
 
 
-def _write_zip(
-        out_path: Path, arc_root: str,
-        files: list[Path]) -> tuple[int, float]:
+def _write_zip(out_path: Path, arc_root: str, files: list[Path]) -> tuple[int, float]:
     """Write the zip and return (total_src_bytes, elapsed_seconds)."""
     t0 = time.time()
     total_src_bytes = 0
-    with zipfile.ZipFile(
-            out_path, "w", zipfile.ZIP_DEFLATED,
-            compresslevel=6) as zf:
+    with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
         for rel in files:
             full = _REPO / rel
             arcname = str(Path(arc_root) / rel)
@@ -374,13 +381,11 @@ def _write_zip(
 
 
 def build(
-        dry_run: bool = False,
-        primary_only: bool = False,
-        additional_only: bool = False) -> int:
+    dry_run: bool = False, primary_only: bool = False, additional_only: bool = False
+) -> int:
     version = read_version()
     if version is None:
-        print("ERROR: could not read version from src/__init__.py",
-              file=sys.stderr)
+        print("ERROR: could not read version from src/__init__.py", file=sys.stderr)
         return 1
 
     session = read_session_number()
@@ -436,8 +441,7 @@ def build(
             print("\n(no ADDITIONAL items — skipping supplementary zip)")
         else:
             arc_root_add = f"{base}_additional_items"
-            bytes_a, elapsed_a = _write_zip(
-                additional_path, arc_root_add, additional)
+            bytes_a, elapsed_a = _write_zip(additional_path, arc_root_add, additional)
             size_mb = additional_path.stat().st_size / (1024 * 1024)
             print(f"\nBuilt ADDITIONAL: {additional_path}")
             print(f"  files:         {len(additional):,}")
@@ -452,20 +456,28 @@ def main(argv: Optional[list[str]] = None) -> int:
         description=(
             "Build the v{VERSION} release zip suite (PRIMARY + "
             "ADDITIONAL_ITEMS). Primary stays lean; supplementary "
-            "preserves archival material without bloating it."))
+            "preserves archival material without bloating it."
+        )
+    )
     parser.add_argument(
-        "--dry-run", action="store_true",
-        help="List partition counts + samples without writing zips")
+        "--dry-run",
+        action="store_true",
+        help="List partition counts + samples without writing zips",
+    )
     parser.add_argument(
-        "--primary-only", action="store_true",
-        help="Build only the primary release zip")
+        "--primary-only", action="store_true", help="Build only the primary release zip"
+    )
     parser.add_argument(
-        "--additional-only", action="store_true",
-        help="Build only the additional-items zip")
+        "--additional-only",
+        action="store_true",
+        help="Build only the additional-items zip",
+    )
     parser.add_argument(
-        "--print-latest-manual", action="store_true",
+        "--print-latest-manual",
+        action="store_true",
         help="Print the filename of the latest manual that would be "
-             "kept in the primary zip, then exit 0")
+        "kept in the primary zip, then exit 0",
+    )
     args = parser.parse_args(argv)
 
     if args.print_latest_manual:
@@ -476,7 +488,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     return build(
         dry_run=args.dry_run,
         primary_only=args.primary_only,
-        additional_only=args.additional_only)
+        additional_only=args.additional_only,
+    )
 
 
 if __name__ == "__main__":

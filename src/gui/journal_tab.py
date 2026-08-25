@@ -14,12 +14,23 @@ logger = logging.getLogger("acervator.gui")
 
 try:
     from PySide6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-        QTableWidget, QTableWidgetItem, QHeaderView, QComboBox,
-        QPushButton, QGroupBox, QSplitter, QTextEdit,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QFrame,
+        QTableWidget,
+        QTableWidgetItem,
+        QHeaderView,
+        QComboBox,
+        QPushButton,
+        QGroupBox,
+        QSplitter,
+        QTextEdit,
     )
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor, QFont
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -29,8 +40,9 @@ if _HAS_QT:
     class JournalTab(QWidget):
         """Trade Journal & Recovery tab."""
 
-        def __init__(self, journal=None, reconciliation=None,
-                     crash_recovery=None, parent=None):
+        def __init__(
+            self, journal=None, reconciliation=None, crash_recovery=None, parent=None
+        ):
             super().__init__(parent)
             self.setAccessibleName("Journal Tab")
             self._journal = journal
@@ -47,7 +59,9 @@ if _HAS_QT:
             header = QHBoxLayout()
 
             self._lbl_stats = QLabel("Journal: 0 entries")
-            self._lbl_stats.setStyleSheet("color: #00ffcc; font-size: 13px; font-weight: bold;")
+            self._lbl_stats.setStyleSheet(
+                "color: #00ffcc; font-size: 13px; font-weight: bold;"
+            )
             header.addWidget(self._lbl_stats)
 
             header.addStretch()
@@ -60,8 +74,13 @@ if _HAS_QT:
             header.addWidget(self._filter_bot)
 
             self._filter_hours = QComboBox()
-            for label, hours in [("1 Hour", 1), ("6 Hours", 6), ("24 Hours", 24),
-                                  ("7 Days", 168), ("30 Days", 720)]:
+            for label, hours in [
+                ("1 Hour", 1),
+                ("6 Hours", 6),
+                ("24 Hours", 24),
+                ("7 Days", 168),
+                ("30 Days", 720),
+            ]:
                 self._filter_hours.addItem(label, hours)
             self._filter_hours.setCurrentIndex(2)  # Default 24h
             self._filter_hours.currentIndexChanged.connect(lambda: self.refresh())
@@ -79,15 +98,29 @@ if _HAS_QT:
             journal_group = QGroupBox("Trade Journal")
             journal_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }")
+                "border-radius: 6px; color: #00ffcc; }"
+            )
             journal_layout = QVBoxLayout(journal_group)
 
             self._journal_table = QTableWidget()
             self._journal_table.setColumnCount(10)
-            self._journal_table.setHorizontalHeaderLabels([
-                "Time", "Bot", "Symbol", "Action", "Side", "Price",
-                "Qty", "P/L", "TA Dir", "Reason"])
-            self._journal_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            self._journal_table.setHorizontalHeaderLabels(
+                [
+                    "Time",
+                    "Bot",
+                    "Symbol",
+                    "Action",
+                    "Side",
+                    "Price",
+                    "Qty",
+                    "P/L",
+                    "TA Dir",
+                    "Reason",
+                ]
+            )
+            self._journal_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.Stretch
+            )
             self._journal_table.setAlternatingRowColors(True)
             self._journal_table.setEditTriggers(QTableWidget.NoEditTriggers)
             self._journal_table.verticalHeader().setVisible(False)
@@ -105,13 +138,15 @@ if _HAS_QT:
             detail_group = QGroupBox("Entry Detail")
             detail_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }")
+                "border-radius: 6px; color: #00ffcc; }"
+            )
             detail_layout = QVBoxLayout(detail_group)
             self._detail_view = QTextEdit()
             self._detail_view.setReadOnly(True)
             self._detail_view.setFont(QFont("Consolas", 9))
             self._detail_view.setStyleSheet(
-                "QTextEdit { background: #0a0a12; color: #c0c0c0; border: none; }")
+                "QTextEdit { background: #0a0a12; color: #c0c0c0; border: none; }"
+            )
             detail_layout.addWidget(self._detail_view)
             bottom.addWidget(detail_group)
 
@@ -119,7 +154,8 @@ if _HAS_QT:
             recovery_group = QGroupBox("State Recovery")
             recovery_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }")
+                "border-radius: 6px; color: #00ffcc; }"
+            )
             recovery_layout = QVBoxLayout(recovery_group)
 
             self._lbl_snapshot = QLabel("Last Snapshot: None")
@@ -143,14 +179,16 @@ if _HAS_QT:
             self._btn_recon.setStyleSheet(
                 "QPushButton { background: #1a1a3f; color: #00ffcc; "
                 "border: 1px solid #00ffcc; border-radius: 4px; padding: 6px 12px; }"
-                "QPushButton:hover { background: #2a2a5f; }")
+                "QPushButton:hover { background: #2a2a5f; }"
+            )
             btn_row.addWidget(self._btn_recon)
 
             self._btn_snapshot = QPushButton("Save Snapshot")
             self._btn_snapshot.setStyleSheet(
                 "QPushButton { background: #1a1a3f; color: #00aaff; "
                 "border: 1px solid #00aaff; border-radius: 4px; padding: 6px 12px; }"
-                "QPushButton:hover { background: #2a2a5f; }")
+                "QPushButton:hover { background: #2a2a5f; }"
+            )
             btn_row.addWidget(self._btn_snapshot)
             recovery_layout.addLayout(btn_row)
 
@@ -194,25 +232,34 @@ if _HAS_QT:
             sigs = entry.get("ta_signals", {})
             if sigs:
                 lines.append("")
-                lines.append('<span style="color:#ffaa00; font-weight:bold">Indicator Votes</span>')
+                lines.append(
+                    '<span style="color:#ffaa00; font-weight:bold">Indicator Votes</span>'
+                )
                 for ind, direction in sigs.items():
-                    color = "#00ff88" if direction == "BULLISH" else "#ff3366" if direction == "BEARISH" else "#888"
-                    lines.append(f'  <span style="color:{color}">{ind}: {direction}</span>')
+                    color = (
+                        "#00ff88"
+                        if direction == "BULLISH"
+                        else "#ff3366" if direction == "BEARISH" else "#888"
+                    )
+                    lines.append(
+                        f'  <span style="color:{color}">{ind}: {direction}</span>'
+                    )
 
             # Execution
-            lines.extend([
-                "",
-                f'<span style="color:#888">Exchange:</span> {entry.get("exchange_id", "")}',
-                f'<span style="color:#888">Order ID:</span> {entry.get("order_id", "N/A")}',
-                f'<span style="color:#888">Strategy:</span> {entry.get("execution_strategy", "market")}',
-                f'<span style="color:#888">Slippage:</span> {entry.get("slippage_pct", 0):.4f}%',
-                f'<span style="color:#888">Reason:</span> {entry.get("reason", "N/A")}',
-            ])
+            lines.extend(
+                [
+                    "",
+                    f'<span style="color:#888">Exchange:</span> {entry.get("exchange_id", "")}',
+                    f'<span style="color:#888">Order ID:</span> {entry.get("order_id", "N/A")}',
+                    f'<span style="color:#888">Strategy:</span> {entry.get("execution_strategy", "market")}',
+                    f'<span style="color:#888">Slippage:</span> {entry.get("slippage_pct", 0):.4f}%',
+                    f'<span style="color:#888">Reason:</span> {entry.get("reason", "N/A")}',
+                ]
+            )
 
             self._detail_view.setHtml("<br>".join(lines))
 
-        def refresh(self, journal=None, reconciliation=None,
-                    crash_recovery=None):
+        def refresh(self, journal=None, reconciliation=None, crash_recovery=None):
             """Refresh journal display."""
             j = journal or self._journal
             if not j:
@@ -223,7 +270,8 @@ if _HAS_QT:
             self._lbl_stats.setText(
                 f"Journal: {stats.get('total_entries', 0)} entries | "
                 f"{stats.get('unique_bots', 0)} bots | "
-                f"P/L: ${stats.get('total_pnl', 0):+,.4f}")
+                f"P/L: ${stats.get('total_pnl', 0):+,.4f}"
+            )
 
             # Get filtered entries
             bot_id = self._filter_bot.currentData() or ""
@@ -234,7 +282,9 @@ if _HAS_QT:
 
             self._journal_table.setRowCount(len(entries))
             for row, entry in enumerate(entries):
-                ts = time.strftime("%H:%M:%S", time.localtime(entry.get("timestamp", 0)))
+                ts = time.strftime(
+                    "%H:%M:%S", time.localtime(entry.get("timestamp", 0))
+                )
                 pnl = entry.get("pnl", 0)
                 items = [
                     ts,
@@ -270,9 +320,11 @@ if _HAS_QT:
                     age = info.get("snapshot_age", 0)
                     age_str = f"{age:.0f}s ago" if age < 60 else f"{age / 60:.1f}m ago"
                     self._lbl_snapshot.setText(
-                        f"Last Snapshot: {age_str} ({info.get('snapshot_bots', 0)} bots)")
+                        f"Last Snapshot: {age_str} ({info.get('snapshot_bots', 0)} bots)"
+                    )
                 self._lbl_journal_files.setText(
-                    f"Journal Files: {info.get('journal_files', 0)}")
+                    f"Journal Files: {info.get('journal_files', 0)}"
+                )
 
             # Reconciliation info
             rc = reconciliation or self._recon
@@ -281,9 +333,11 @@ if _HAS_QT:
                 if latest:
                     ts = time.strftime("%H:%M:%S", time.localtime(latest["timestamp"]))
                     self._lbl_recon.setText(
-                        f"Last Reconciliation: {ts} ({latest['exchange']})")
+                        f"Last Reconciliation: {ts} ({latest['exchange']})"
+                    )
                     self._lbl_orphans.setText(
-                        f"Orphaned Orders: {latest.get('orphaned_count', 0)}")
+                        f"Orphaned Orders: {latest.get('orphaned_count', 0)}"
+                    )
 
         def update_bot_filter(self, bot_statuses: list[dict]):
             """Update the bot filter dropdown."""

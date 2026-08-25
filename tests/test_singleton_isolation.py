@@ -24,6 +24,7 @@ path — not the singleton, not autosaving, path outside the runtime
 tree, independent per replay. None of them exercise the failure branch,
 which is why a fail-open sat there unnoticed.
 """
+
 from __future__ import annotations
 
 import ast
@@ -65,22 +66,23 @@ _LIVE_NAMES = {name for _mod, name in LIVE_SINGLETONS}
 class TestFailsClosed:
     """M10. The whole point of this file."""
 
-    def test_raises_rather_than_returning_none_when_isolation_fails(
-            self, monkeypatch):
+    def test_raises_rather_than_returning_none_when_isolation_fails(self, monkeypatch):
         """Force the private-registry construction to fail.
 
         Before the fix this returned None, and None means the bot
         resolves the live autosaving registry.
         """
+
         def boom(*_a, **_kw):
             raise OSError("simulated: cannot create temp dir")
 
         monkeypatch.setattr(tempfile, "mkdtemp", boom)
         with pytest.raises(Exception) as exc:
             _make_sim_capital_registry()
-        assert "isolation" in str(exc.value).lower() or \
-               "registry" in str(exc.value).lower(), (
-            f"the abort must say WHY, got: {exc.value!r}")
+        assert (
+            "isolation" in str(exc.value).lower()
+            or "registry" in str(exc.value).lower()
+        ), f"the abort must say WHY, got: {exc.value!r}"
 
     def test_never_returns_none_on_the_happy_path(self):
         assert _make_sim_capital_registry() is not None
@@ -92,11 +94,15 @@ class TestInjectedRegistryWins:
         bot must use it rather than the singleton."""
         import inspect
         from src.trading import scrumming_bot as sb
-        src = inspect.getsource(sb.ScrummingBot._crr.fget
-                                if isinstance(sb.ScrummingBot._crr, property)
-                                else sb.ScrummingBot._crr)
-        assert "_capital_registry is not None" in src, (
-            "_crr no longer prefers the injected registry")
+
+        src = inspect.getsource(
+            sb.ScrummingBot._crr.fget
+            if isinstance(sb.ScrummingBot._crr, property)
+            else sb.ScrummingBot._crr
+        )
+        assert (
+            "_capital_registry is not None" in src
+        ), "_crr no longer prefers the injected registry"
 
 
 class TestNoSimPathResolvesALiveSingleton:
@@ -113,8 +119,7 @@ class TestNoSimPathResolvesALiveSingleton:
     def _sim_modules(self) -> list[Path]:
         out: list[Path] = []
         for d in SIM_DIRS:
-            out.extend(p for p in d.rglob("*.py")
-                       if "__pycache__" not in p.parts)
+            out.extend(p for p in d.rglob("*.py") if "__pycache__" not in p.parts)
         return sorted(out)
 
     def test_sim_modules_exist(self):
@@ -158,12 +163,14 @@ class TestNoSimPathResolvesALiveSingleton:
                 if name in bindings:
                     offenders.append(
                         f"{p.relative_to(REPO_ROOT)}:{node.lineno} -> "
-                        f"{name}() from {bindings[name]}")
+                        f"{name}() from {bindings[name]}"
+                    )
         assert not offenders, (
             "sim path(s) resolve process-wide live state:\n  "
             + "\n  ".join(offenders)
             + "\n\nSim must construct its own private instance and abort "
-              "if it cannot (M10).")
+            "if it cannot (M10)."
+        )
 
     def test_the_guard_can_actually_see_an_offender(self, tmp_path):
         """Positive control.
@@ -177,13 +184,17 @@ class TestNoSimPathResolvesALiveSingleton:
         bad.write_text(
             "from src.trading.capital_reservation import get_registry\n"
             "def go():\n"
-            "    return get_registry()\n", encoding="utf-8")
+            "    return get_registry()\n",
+            encoding="utf-8",
+        )
         tree = ast.parse(bad.read_text(encoding="utf-8"))
         bindings = self._live_bindings(tree)
         assert bindings == {"get_registry": "capital_reservation"}
-        calls = [n for n in ast.walk(tree)
-                 if isinstance(n, ast.Call)
-                 and getattr(n.func, "id", None) in bindings]
+        calls = [
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and getattr(n.func, "id", None) in bindings
+        ]
         assert calls, "guard failed to flag a deliberately leaky module"
 
     def test_the_guard_ignores_the_stone_tablet_registry(self, tmp_path):
@@ -196,6 +207,8 @@ class TestNoSimPathResolvesALiveSingleton:
         ok.write_text(
             "from src.trading.stone_tablets import get_registry\n"
             "def go():\n"
-            "    return get_registry()\n", encoding="utf-8")
+            "    return get_registry()\n",
+            encoding="utf-8",
+        )
         tree = ast.parse(ok.read_text(encoding="utf-8"))
         assert self._live_bindings(tree) == {}

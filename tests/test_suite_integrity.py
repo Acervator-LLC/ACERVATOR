@@ -29,6 +29,7 @@ Three properties, all of which the suite lacked:
 Raising a floor is a deliberate act. Lowering one requires saying, in
 the commit, what coverage was given up and why.
 """
+
 from __future__ import annotations
 
 import ast
@@ -62,9 +63,11 @@ def _count_test_functions() -> int:
         except (SyntaxError, OSError):
             continue
         total += sum(
-            1 for n in ast.walk(tree)
+            1
+            for n in ast.walk(tree)
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and n.name.startswith("test_"))
+            and n.name.startswith("test_")
+        )
     return total
 
 
@@ -74,13 +77,15 @@ class TestCollectionFloors:
         assert len(files) >= MIN_TEST_FILES, (
             f"only {len(files)} test files on disk, floor is "
             f"{MIN_TEST_FILES}. Coverage was removed without the suite "
-            f"failing -- exactly what happened on 2026-07-25.")
+            f"failing -- exactly what happened on 2026-07-25."
+        )
 
     def test_test_function_count_has_not_collapsed(self):
         n = _count_test_functions()
         assert n >= MIN_TEST_FUNCTIONS, (
             f"only {n} test functions across {len(_test_files())} files, "
-            f"floor is {MIN_TEST_FUNCTIONS}.")
+            f"floor is {MIN_TEST_FUNCTIONS}."
+        )
 
     def test_floors_are_not_above_reality(self):
         """Positive control: a floor set above the real count would make
@@ -109,9 +114,11 @@ class TestQtMustFailNotSkip:
         resolved TRUE.
         """
         from src.gui import bot_visualizer as bv
+
         assert getattr(bv, "_HAS_QT", False) is True, (
             "bot_visualizer._HAS_QT is False -- Qt did not import, so "
-            "every GUI class in that module is undefined")
+            "every GUI class in that module is undefined"
+        )
         assert hasattr(bv, "BotVisualizationTab")
 
 
@@ -157,20 +164,23 @@ class TestBootSmoke:
         }
         assert "set_bot_viz" not in called, (
             "main_window still calls set_bot_viz, which is defined "
-            "nowhere in the repo")
+            "nowhere in the repo"
+        )
 
         # ...and it is still undefined, so the call could not be
         # reinstated safely either. POSITIVE CONTROL on the premise.
         defined = []
         for path in (Path(mw.__file__).parent).rglob("*.py"):
-            tree = ast.parse(path.read_text(encoding="utf-8",
-                                            errors="replace"))
-            defined += [n.name for n in ast.walk(tree)
-                        if isinstance(n, (ast.FunctionDef,
-                                          ast.AsyncFunctionDef))]
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+            defined += [
+                n.name
+                for n in ast.walk(tree)
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            ]
         assert "set_bot_viz" not in defined, (
             "set_bot_viz now exists; the C11 deletion should be "
-            "revisited rather than left as a hole")
+            "revisited rather than left as a hole"
+        )
 
     def test_the_unreachable_paper_trader_branch_is_gone(self):
         """C11 / NF-109. `_paper_trader` and its stack/crypto/equity
@@ -193,8 +203,7 @@ class TestBootSmoke:
                 continue
             if getattr(node.func, "attr", "") != "set_bot_viz":
                 continue
-            raise AssertionError(
-                f"a set_bot_viz call survives at line {node.lineno}")
+            raise AssertionError(f"a set_bot_viz call survives at line {node.lineno}")
 
     def test_the_simulator_tab_never_grew_the_missing_method(self):
         """Constructed live, not read from source.
@@ -215,7 +224,8 @@ class TestBootSmoke:
                 pytest.skip("simulator tab not constructed in this build")
             assert not hasattr(sim, "set_bot_viz"), (
                 "SimulatorTab grew set_bot_viz after C11 deleted its "
-                "only caller; revisit the disposition")
+                "only caller; revisit the disposition"
+            )
         finally:
             w.close()
             w.deleteLater()
@@ -235,7 +245,8 @@ class TestBootSmoke:
         try:
             assert src.__version__ in w.windowTitle(), (
                 f"title {w.windowTitle()!r} does not carry "
-                f"src.__version__=={src.__version__}")
+                f"src.__version__=={src.__version__}"
+            )
         finally:
             w.close()
             w.deleteLater()

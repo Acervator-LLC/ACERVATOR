@@ -52,6 +52,7 @@ old predicate, recomputed inline, shown disagreeing on the same candles.
 Without that, a green test proves only that today's code does what
 today's code does.
 """
+
 from __future__ import annotations
 
 import math
@@ -71,12 +72,17 @@ TAIL = 35
 
 def _row(i: int, close: float, amp: float, vol: float = 100.0) -> Candle:
     half = abs(amp) * 0.5
-    return Candle(TS0 + i * STEP, close, close + half, close - half,
-                  close, vol)
+    return Candle(TS0 + i * STEP, close, close + half, close - half, close, vol)
 
 
-def _chop(wide_end: int, amp: float, coil: float, tail: tuple,
-          n: int = 80, base: float = 100.0) -> list:
+def _chop(
+    wide_end: int,
+    amp: float,
+    coil: float,
+    tail: tuple,
+    n: int = 80,
+    base: float = 100.0,
+) -> list:
     """Wide chop, then a tight coil, then explicit resolution bars.
 
     Every tuple used below was found by grid search against the
@@ -88,8 +94,7 @@ def _chop(wide_end: int, amp: float, coil: float, tail: tuple,
         c = base + (a if i % 2 == 0 else -a)
         out.append(_row(i, c, a))
     for k, off in enumerate(tail):
-        out.append(_row(n - len(tail) + k, base + off,
-                        max(coil, abs(off)) or 0.01))
+        out.append(_row(n - len(tail) + k, base + off, max(coil, abs(off)) or 0.01))
     return out
 
 
@@ -100,6 +105,7 @@ def _bb_mid(candles: list) -> float:
 
 
 # ── D1: DIRECTION COMES FROM MOMENTUM, NOT THE MIDLINE ───────────────
+
 
 class TestDirectionIsMomentumNotMidline:
     """The root defect. Canon: CM SlingShot pairs a BULLISH state with
@@ -147,13 +153,17 @@ class TestDirectionIsMomentumNotMidline:
     def test_the_two_flags_stay_mutually_exclusive(self):
         """`ta_invariants.py:217` pins `_excl(squeeze_bull,
         squeeze_bear)`. A momentum sign cannot be both."""
-        for params in (self.BULL_BELOW_MID, self.BEAR_ABOVE_MID,
-                       (44, 2.0, 0.01, (0.0, 0.0, 1.0))):
+        for params in (
+            self.BULL_BELOW_MID,
+            self.BEAR_ABOVE_MID,
+            (44, 2.0, 0.01, (0.0, 0.0, 1.0)),
+        ):
             d = SlingshotIndicator().compute(_chop(*params)).details
             assert not (d["squeeze_bull"] and d["squeeze_bear"]), params
 
 
 # ── D3: THE CANONICAL MOMENTUM VALUE EXISTS AND IS CORRECT ───────────
+
 
 class TestLinearRegressionEndpoint:
     """`linreg` appeared nowhere in ta_engine.py. Slingshot computes its
@@ -184,11 +194,12 @@ class TestLinearRegressionEndpoint:
         assert SlingshotIndicator._linreg_endpoint([7.5]) == 7.5
         # A flat series has zero slope: the endpoint is the mean.
         assert math.isclose(
-            SlingshotIndicator._linreg_endpoint([2.0] * 20), 2.0,
-            rel_tol=1e-12)
+            SlingshotIndicator._linreg_endpoint([2.0] * 20), 2.0, rel_tol=1e-12
+        )
 
 
 # ── D2: THE SQUEEZE IS BOLLINGER-INSIDE-KELTNER ──────────────────────
+
 
 class TestSqueezeIsBollingerInsideKeltner:
     """Canon compares two DIFFERENT volatility measures (standard
@@ -204,14 +215,15 @@ class TestSqueezeIsBollingerInsideKeltner:
         sma = _sma_tail(closes, PERIOD, tail=TAIL)
         std = [None] * n
         for i in range(n - TAIL, n):
-            w = closes[max(0, i - PERIOD + 1):i + 1]
+            w = closes[max(0, i - PERIOD + 1) : i + 1]
             m = sum(w) / len(w)
             std[i] = math.sqrt(sum((x - m) ** 2 for x in w) / len(w))
         tr = [cs[0].high - cs[0].low]
         for i in range(1, n):
             pc = cs[i - 1].close
-            tr.append(max(cs[i].high - cs[i].low,
-                          abs(cs[i].high - pc), abs(cs[i].low - pc)))
+            tr.append(
+                max(cs[i].high - cs[i].low, abs(cs[i].high - pc), abs(cs[i].low - pc))
+            )
         trma = _sma_tail(tr, PERIOD, tail=TAIL)
 
         i = n - 1
@@ -226,14 +238,19 @@ class TestSqueezeIsBollingerInsideKeltner:
     def test_bandwidth_telemetry_is_retained(self):
         """A designed behaviour is not deleted. The bandwidth fields
         still report even though they no longer decide the squeeze."""
-        d = SlingshotIndicator().compute(
-            _chop(44, 2.0, 0.01, (0.0, 0.0, 1.0))).details
-        for key in ("was_squeezed", "curr_bw", "avg_bw", "squeeze_depth",
-                    "expansion_rate"):
+        d = SlingshotIndicator().compute(_chop(44, 2.0, 0.01, (0.0, 0.0, 1.0))).details
+        for key in (
+            "was_squeezed",
+            "curr_bw",
+            "avg_bw",
+            "squeeze_depth",
+            "expansion_rate",
+        ):
             assert key in d, key
 
 
 # ── D4 + D5: THE BONUS IS SEQUENTIAL, AND IT MOVES THE NUMBER ────────
+
 
 class TestAgreementBonus:
     """Was unsatisfiable (D1) AND saturated (D5): `squeeze_conf` was
@@ -273,10 +290,13 @@ class TestAgreementBonus:
         """
         for params in (self.AGREE_BULL, self.AGREE_BEAR):
             sig = SlingshotIndicator().compute(_chop(*params))
-            base = sig.details["squeeze_conf"]        # rounded to 4 dp
+            base = sig.details["squeeze_conf"]  # rounded to 4 dp
             assert base < 1.0, ("saturated again", params, base)
-            assert math.isclose(sig.confidence, base + 0.15,
-                                abs_tol=5e-5), (params, base, sig.confidence)
+            assert math.isclose(sig.confidence, base + 0.15, abs_tol=5e-5), (
+                params,
+                base,
+                sig.confidence,
+            )
             # The bonus must be the WHOLE of the movement, not a
             # rounding artefact: a no-op bonus would leave this at 0.
             assert sig.confidence - base > 0.1, (params, sig.confidence, base)
@@ -297,11 +317,13 @@ class TestAgreementBonus:
         close = cs[-1].close
         old_squeeze_bull = close > mid
         old_snapback_gate = close > mid - 1e9 and close < mid
-        assert not (old_squeeze_bull and old_snapback_gate), \
-            "the old conjunction must be unsatisfiable"
+        assert not (
+            old_squeeze_bull and old_snapback_gate
+        ), "the old conjunction must be unsatisfiable"
 
 
 # ── D7: SNAPBACK NEEDS RE-ENTRY, NOTHING MORE ────────────────────────
+
 
 class TestSnapbackFollowsBollingerRule8:
     def test_snapback_survives_a_close_past_the_midline(self):
@@ -320,6 +342,7 @@ class TestSnapbackFollowsBollingerRule8:
 
 # ── D6: THE OPPOSING CO-OCCURRENCE IS NO LONGER SILENT ───────────────
 
+
 class TestOpposingSignalIsRecorded:
     CONFLICT = (44, 2.0, 0.01, (-14.0, -14.0, -10.0))
 
@@ -334,26 +357,32 @@ class TestOpposingSignalIsRecorded:
         assert d["slingshot_type"] == "squeeze_bear"
 
     def test_no_conflict_flag_when_they_agree(self):
-        d = SlingshotIndicator().compute(
-            _chop(*TestAgreementBonus.AGREE_BULL)).details
+        d = SlingshotIndicator().compute(_chop(*TestAgreementBonus.AGREE_BULL)).details
         assert d["snapback_conflict"] is False, d
 
 
 # ── NO BLENDING ──────────────────────────────────────────────────────
+
 
 class TestNoBlending:
     """Every input must be raw candle data or Slingshot's own
     arithmetic. This is a source-level check because a runtime one
     would pass whenever the forbidden branch simply did not execute."""
 
-    FORBIDDEN = ("compute_heikin_ashi", "ATRIndicator", "BollingerBands",
-                 "IchimokuCloud", "_true_range")
+    FORBIDDEN = (
+        "compute_heikin_ashi",
+        "ATRIndicator",
+        "BollingerBands",
+        "IchimokuCloud",
+        "_true_range",
+    )
 
     def _source(self):
         import ast
         import inspect
 
         from src.trading import ta_engine
+
         src = inspect.getsource(ta_engine.SlingshotIndicator)
         return src, ast.parse(src.lstrip())
 
@@ -366,8 +395,7 @@ class TestNoBlending:
         src, _ = self._source()
         # The shared scalar maths helpers are allowed; indicator
         # classes are not. Assert the allowed set is what is used.
-        for allowed in ("_sma_tail", "_stdev_tail", "_linreg_endpoint",
-                        "_bandwidth"):
+        for allowed in ("_sma_tail", "_stdev_tail", "_linreg_endpoint", "_bandwidth"):
             assert allowed in src, allowed
 
     def test_heikin_ashi_is_not_claimed_as_a_direction_input(self):
@@ -381,6 +409,7 @@ class TestNoBlending:
         what the first version of this test did.
         """
         from src.trading.ta_engine import SlingshotIndicator as S
+
         doc = S.__doc__ or ""
         assert "• HA candle direction" not in doc
         assert "Direction determined by:" not in doc
@@ -388,18 +417,31 @@ class TestNoBlending:
 
 # ── DOMAIN + INVARIANTS ──────────────────────────────────────────────
 
+
 class TestDomainAndInvariants:
     def _series(self):
-        flat = [Candle(TS0 + i * STEP, 100.0, 100.0, 100.0, 100.0, 100.0)
-                for i in range(80)]
+        flat = [
+            Candle(TS0 + i * STEP, 100.0, 100.0, 100.0, 100.0, 100.0) for i in range(80)
+        ]
         subcent = _chop(44, 2.4e-7, 1e-9, (0.0, 0.0, 1e-7), base=1.2e-5)
-        zerovol = [_row(i, 100.0 + i * 0.05, 0.05,
-                        vol=0.0 if i == 75 else 100.0) for i in range(80)]
+        zerovol = [
+            _row(i, 100.0 + i * 0.05, 0.05, vol=0.0 if i == 75 else 100.0)
+            for i in range(80)
+        ]
         single = [_row(0, 100.0, 1.0)]
-        gap = [_row(i, 100.0 * (1.3 if i >= 60 else 1.0)
-                    + (0.05 if i % 2 else -0.05), 0.10) for i in range(80)]
-        return {"flat": flat, "subcent": subcent, "zero_volume": zerovol,
-                "single": single, "gap": gap}
+        gap = [
+            _row(
+                i, 100.0 * (1.3 if i >= 60 else 1.0) + (0.05 if i % 2 else -0.05), 0.10
+            )
+            for i in range(80)
+        ]
+        return {
+            "flat": flat,
+            "subcent": subcent,
+            "zero_volume": zerovol,
+            "single": single,
+            "gap": gap,
+        }
 
     def test_no_domain_series_raises(self):
         for name, cs in self._series().items():
@@ -438,10 +480,19 @@ class TestDomainAndInvariants:
     def test_details_schema_keeps_every_consumed_field(self):
         """`ta_invariants.py:212-218` reads five of these, and the
         `ta.raw.slingshot` emitter payload carries all twelve."""
-        d = SlingshotIndicator().compute(
-            _chop(44, 2.0, 0.01, (0.0, 0.0, 1.0))).details
-        for key in ("slingshot_type", "squeeze_active", "squeeze_bull",
-                    "squeeze_bear", "squeeze_depth", "squeeze_conf",
-                    "expansion_rate", "was_squeezed", "snapback_type",
-                    "snapback_conf", "curr_bw", "avg_bw"):
+        d = SlingshotIndicator().compute(_chop(44, 2.0, 0.01, (0.0, 0.0, 1.0))).details
+        for key in (
+            "slingshot_type",
+            "squeeze_active",
+            "squeeze_bull",
+            "squeeze_bear",
+            "squeeze_depth",
+            "squeeze_conf",
+            "expansion_rate",
+            "was_squeezed",
+            "snapback_type",
+            "snapback_conf",
+            "curr_bw",
+            "avg_bw",
+        ):
             assert key in d, key

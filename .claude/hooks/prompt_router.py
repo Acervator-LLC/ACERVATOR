@@ -60,6 +60,7 @@ This hook is wrong if:
   (d) A named skill file does not exist on disk and the miss is silent.
   (e) Any output mentions tokens, context fill, a budget or a handoff.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -168,15 +169,17 @@ def _skill_exists(slug: str) -> bool:
 
 
 def _build_domain_section(
-    domain: str, archetype_module: str, skill_slugs: tuple[str, ...],
+    domain: str,
+    archetype_module: str,
+    skill_slugs: tuple[str, ...],
 ) -> str:
     """Name the archetype and the skills for one matched domain."""
     lines = [f"[routing] task appears to involve **{domain}**."]
     if _archetype_module_exists(archetype_module):
+        lines.append(f"  - After the work, run: `python -m {archetype_module} <path>`")
         lines.append(
-            f"  - After the work, run: `python -m {archetype_module} <path>`")
-        lines.append(
-            "    A `passed=False` archetype report blocks self-reporting done.")
+            "    A `passed=False` archetype report blocks self-reporting done."
+        )
     for slug in skill_slugs:
         if _skill_exists(slug):
             lines.append(f"  - Consult skill: `{slug}`")
@@ -185,7 +188,8 @@ def _build_domain_section(
             # authorship rule stayed unwired. Say it out loud.
             lines.append(
                 f"  - [router defect] skill `{slug}` has no "
-                f".claude/skills/{slug}/SKILL.md on disk.")
+                f".claude/skills/{slug}/SKILL.md on disk."
+            )
     return "\n".join(lines)
 
 
@@ -248,14 +252,18 @@ def _bump_turn(session: str) -> int:
 def _build_law(turn: int) -> str:
     """Render the authorship rule. Long form on the interval, else one line."""
     if turn == 1 or turn % _LAW_FULL_EVERY == 0:
-        return "\n".join([
-            f"[harness-law] turn {turn}",
-            "  The archetype authors code. You referee its findings.",
-            ("  Run `python -m tools.harness.coding_archetype <path>` on "
-             "every file you touch."),
-            "  Report `passed`, never a delta. No archetype run = INVALID.",
-            f"  Skill: `{_LAW_SKILL}`",
-        ])
+        return "\n".join(
+            [
+                f"[harness-law] turn {turn}",
+                "  The archetype authors code. You referee its findings.",
+                (
+                    "  Run `python -m tools.harness.coding_archetype <path>` on "
+                    "every file you touch."
+                ),
+                "  Report `passed`, never a delta. No archetype run = INVALID.",
+                f"  Skill: `{_LAW_SKILL}`",
+            ]
+        )
     return (
         f"[harness-law] turn {turn} - archetype authors, you referee; report "
         f"`passed`, not a delta; no run = INVALID. Skill: `{_LAW_SKILL}`"
@@ -318,7 +326,8 @@ def main() -> int:
     for domain, pattern, archetype_module, skill_slugs in _DOMAIN_RULES:
         if pattern.search(prompt):
             sections.append(
-                _build_domain_section(domain, archetype_module, skill_slugs))
+                _build_domain_section(domain, archetype_module, skill_slugs)
+            )
     if _CASCADE_KEYWORDS.search(prompt):
         sections.append(_build_cascade_reminder())
     if not sections:

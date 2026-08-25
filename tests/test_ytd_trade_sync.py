@@ -6,6 +6,7 @@ refresh_exchange_position_health capping at get_my_trades(limit=500).
 This paginating boot-time sync fixes it and self-heals on subsequent
 starts.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -40,25 +41,24 @@ def _make_stub_bot(persisted_count: int, exchange, symbol="CHIP/USD"):
     stub.exchange = exchange
     stub.config = SimpleNamespace(symbol=symbol, exchange_id="test")
     stub.stats = SimpleNamespace(
-        total_trades=persisted_count,
-        exchange_trade_count=0,
-        exchange_data_fresh_ts=0.0)
+        total_trades=persisted_count, exchange_trade_count=0, exchange_data_fresh_ts=0.0
+    )
     stub.YTD_TRADE_ANCHOR_UTC = ScrummingBot.YTD_TRADE_ANCHOR_UTC
     stub.YTD_TRADE_PAGE_LIMIT = ScrummingBot.YTD_TRADE_PAGE_LIMIT
     stub.YTD_TRADE_MAX_PAGES = ScrummingBot.YTD_TRADE_MAX_PAGES
-    stub.sync_ytd_trade_count = MethodType(
-        ScrummingBot.sync_ytd_trade_count, stub)
+    stub.sync_ytd_trade_count = MethodType(ScrummingBot.sync_ytd_trade_count, stub)
     return stub
 
 
 class TestYTDAnchor:
     def test_anchor_is_2026_04_01_utc(self):
         from datetime import datetime, timezone
-        expected = int(datetime(
-            2026, 4, 1, 0, 0, 0, tzinfo=timezone.utc).timestamp())
+
+        expected = int(datetime(2026, 4, 1, 0, 0, 0, tzinfo=timezone.utc).timestamp())
         assert ScrummingBot.YTD_TRADE_ANCHOR_UTC == float(expected), (
             "YTD anchor must be 2026-04-01T00:00:00Z per operator "
-            "directive 2026-07-28.")
+            "directive 2026-07-28."
+        )
 
 
 class TestSyncBehavior:
@@ -87,30 +87,34 @@ class TestSyncBehavior:
         window 1 returns 400 unique trades; window 2 returns 500
         but 100 overlap window 1; total unique = 800."""
         anchor = ScrummingBot.YTD_TRADE_ANCHOR_UTC
+
         # Make trades with explicit IDs so dedupe can work.
         def _t(i, ts_offset=0.0):
             tr = _make_trade(anchor + ts_offset + i * 10.0)
-            tr.id = f'trade-{i}'
+            tr.id = f"trade-{i}"
             return tr
+
         window_pages = [
-            [_t(i) for i in range(400)],                # w1: 400 unique
-            [_t(i) for i in range(300, 800)],           # w2: 300-799 (100 overlap)
-        ] + [[]] * 20  # empty for subsequent windows
+            [_t(i) for i in range(400)],  # w1: 400 unique
+            [_t(i) for i in range(300, 800)],  # w2: 300-799 (100 overlap)
+        ] + [
+            []
+        ] * 20  # empty for subsequent windows
         pages_iter = iter(window_pages)
         ex = SimpleNamespace(
-            get_my_trades=AsyncMock(
-                side_effect=lambda *a, **k: next(pages_iter)))
+            get_my_trades=AsyncMock(side_effect=lambda *a, **k: next(pages_iter))
+        )
         stub = _make_stub_bot(persisted_count=0, exchange=ex)
         result = _run(stub.sync_ytd_trade_count())
         # 400 + 500 - 100 overlap = 800 unique
-        assert result == 800, (
-            f'expected 800 unique after dedupe, got {result}')
+        assert result == 800, f"expected 800 unique after dedupe, got {result}"
         # Assert paginate + until were passed on each window call.
         _, kwargs = ex.get_my_trades.await_args
-        assert kwargs.get('params', {}).get('paginate') is True
-        assert 'until' in kwargs.get('params', {}), (
-            'Each window must pass an `until` bracket so Coinbase '
-            "returns only the window's trades.")
+        assert kwargs.get("params", {}).get("paginate") is True
+        assert "until" in kwargs.get("params", {}), (
+            "Each window must pass an `until` bracket so Coinbase "
+            "returns only the window's trades."
+        )
 
     def test_never_lowers_persisted_count(self):
         """Persisted 750; exchange returns 400 (partial or transient
@@ -122,7 +126,8 @@ class TestSyncBehavior:
         result = _run(stub.sync_ytd_trade_count())
         assert result == 750, (
             "Never overwrite a higher persisted count with a lower "
-            "API result — protects against partial pages / rate limits.")
+            "API result — protects against partial pages / rate limits."
+        )
         assert stub.stats.total_trades == 750
         # v3.23.56 — exchange_trade_count also floored at the max
         # of (persisted, previous_exchange, this_sync). Prevents the
@@ -140,18 +145,16 @@ class TestSyncBehavior:
         readers must never see a downward blip."""
         anchor = ScrummingBot.YTD_TRADE_ANCHOR_UTC
         thin_page = [_make_trade(anchor + i * 10.0) for i in range(400)]
-        ex = SimpleNamespace(
-            get_my_trades=AsyncMock(return_value=thin_page))
+        ex = SimpleNamespace(get_my_trades=AsyncMock(return_value=thin_page))
         stub = _make_stub_bot(persisted_count=0, exchange=ex)
         # Simulate a previous successful sync having stamped 1200.
         stub.stats.exchange_trade_count = 1200
         result = _run(stub.sync_ytd_trade_count())
-        assert result == 1200, (
-            "Reconciled must be max(persisted, prev_exchange, this)."
-        )
+        assert result == 1200, "Reconciled must be max(persisted, prev_exchange, this)."
         assert stub.stats.exchange_trade_count == 1200, (
             "Counter must never toggle downward — that's the "
-            "operator-reported startup-toggle bug.")
+            "operator-reported startup-toggle bug."
+        )
 
     def test_returns_none_when_no_exchange(self):
         stub = _make_stub_bot(persisted_count=100, exchange=None)
@@ -167,8 +170,9 @@ class TestSyncBehavior:
         assert stub.stats.total_trades == 100
 
     def test_returns_none_on_api_exception(self):
-        ex = SimpleNamespace(get_my_trades=AsyncMock(
-            side_effect=RuntimeError("rate limit hit")))
+        ex = SimpleNamespace(
+            get_my_trades=AsyncMock(side_effect=RuntimeError("rate limit hit"))
+        )
         stub = _make_stub_bot(persisted_count=100, exchange=ex)
         result = _run(stub.sync_ytd_trade_count())
         assert result is None

@@ -13,12 +13,24 @@ logger = logging.getLogger("acervator.gui")
 
 try:
     from PySide6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-        QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox,
-        QPushButton, QGroupBox, QSplitter, QLineEdit, QFormLayout,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QFrame,
+        QTableWidget,
+        QTableWidgetItem,
+        QHeaderView,
+        QCheckBox,
+        QPushButton,
+        QGroupBox,
+        QSplitter,
+        QLineEdit,
+        QFormLayout,
     )
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor, QFont
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -51,7 +63,8 @@ if _HAS_QT:
             # Status
             self._lbl_status = QLabel("Notifications: Active")
             self._lbl_status.setStyleSheet(
-                "color: #00ffcc; font-size: 14px; font-weight: bold;")
+                "color: #00ffcc; font-size: 14px; font-weight: bold;"
+            )
             left_layout.addWidget(self._lbl_status)
 
             self._lbl_unread = QLabel("Unread: 0")
@@ -62,7 +75,8 @@ if _HAS_QT:
             tg_group = QGroupBox("Telegram Bot")
             tg_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }")
+                "border-radius: 6px; color: #00ffcc; }"
+            )
             tg_form = QFormLayout(tg_group)
 
             self._tg_token = QLineEdit()
@@ -77,7 +91,8 @@ if _HAS_QT:
             self._tg_test = QPushButton("Test Telegram")
             self._tg_test.setStyleSheet(
                 "QPushButton { background: #1a1a3f; color: #00aaff; "
-                "border: 1px solid #00aaff; border-radius: 4px; padding: 6px; }")
+                "border: 1px solid #00aaff; border-radius: 4px; padding: 6px; }"
+            )
             self._tg_test.clicked.connect(self._test_telegram)
             tg_form.addRow(self._tg_test)
 
@@ -89,7 +104,8 @@ if _HAS_QT:
             sms_group = QGroupBox("SMS Alerts")
             sms_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }")
+                "border-radius: 6px; color: #00ffcc; }"
+            )
             sms_form = QFormLayout(sms_group)
 
             self._sms_phone = QLineEdit()
@@ -107,7 +123,8 @@ if _HAS_QT:
                 "QPushButton { background: #00ffcc; color: #0a0a12; "
                 "border: none; border-radius: 4px; padding: 8px; "
                 "font-weight: bold; }"
-                "QPushButton:hover { background: #00ddaa; }")
+                "QPushButton:hover { background: #00ddaa; }"
+            )
             self._btn_save.clicked.connect(self._save_config)
             left_layout.addWidget(self._btn_save)
 
@@ -123,14 +140,18 @@ if _HAS_QT:
             rules_group = QGroupBox("Event Routing")
             rules_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }")
+                "border-radius: 6px; color: #00ffcc; }"
+            )
             rules_layout = QVBoxLayout(rules_group)
 
             self._rules_table = QTableWidget()
             self._rules_table.setColumnCount(5)
-            self._rules_table.setHorizontalHeaderLabels([
-                "Event", "Priority", "In-App", "Telegram", "Sound"])
-            self._rules_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            self._rules_table.setHorizontalHeaderLabels(
+                ["Event", "Priority", "In-App", "Telegram", "Sound"]
+            )
+            self._rules_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.Stretch
+            )
             self._rules_table.setAlternatingRowColors(True)
             self._rules_table.verticalHeader().setVisible(False)
             rules_layout.addWidget(self._rules_table)
@@ -140,7 +161,8 @@ if _HAS_QT:
             history_group = QGroupBox("Notification History")
             history_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }")
+                "border-radius: 6px; color: #00ffcc; }"
+            )
             history_layout = QVBoxLayout(history_group)
 
             ack_row = QHBoxLayout()
@@ -148,16 +170,20 @@ if _HAS_QT:
             self._btn_ack = QPushButton("Acknowledge All")
             self._btn_ack.setStyleSheet(
                 "QPushButton { background: #1a1a3f; color: #ffaa00; "
-                "border: 1px solid #ffaa00; border-radius: 4px; padding: 4px 10px; }")
+                "border: 1px solid #ffaa00; border-radius: 4px; padding: 4px 10px; }"
+            )
             self._btn_ack.clicked.connect(self._acknowledge_all)
             ack_row.addWidget(self._btn_ack)
             history_layout.addLayout(ack_row)
 
             self._history_table = QTableWidget()
             self._history_table.setColumnCount(5)
-            self._history_table.setHorizontalHeaderLabels([
-                "Time", "Priority", "Title", "Message", "Channels"])
-            self._history_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            self._history_table.setHorizontalHeaderLabels(
+                ["Time", "Priority", "Title", "Message", "Channels"]
+            )
+            self._history_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.Stretch
+            )
             self._history_table.setAlternatingRowColors(True)
             self._history_table.setEditTriggers(QTableWidget.NoEditTriggers)
             self._history_table.verticalHeader().setVisible(False)
@@ -184,7 +210,8 @@ if _HAS_QT:
                 self._notif._send_telegram(
                     "Acervator",
                     "Test notification — Telegram is configured correctly!",
-                    None)
+                    None,
+                )
                 self._tg_status.setText("Test sent successfully!")
                 self._tg_status.setStyleSheet("color: #00ff88;")
             except Exception as e:
@@ -275,8 +302,12 @@ if _HAS_QT:
                     item = QTableWidgetItem(text)
                     item.setTextAlignment(Qt.AlignCenter)
                     if col == 1:
-                        pcolors = {"low": "#888", "medium": "#00aaff",
-                                   "high": "#ffaa00", "critical": "#ff3366"}
+                        pcolors = {
+                            "low": "#888",
+                            "medium": "#00aaff",
+                            "high": "#ffaa00",
+                            "critical": "#ff3366",
+                        }
                         item.setForeground(QColor(pcolors.get(text, "#888")))
                     if not notif.acknowledged:
                         item.setForeground(QColor("#e0e0f0"))

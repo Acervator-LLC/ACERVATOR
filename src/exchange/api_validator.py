@@ -16,6 +16,7 @@ logger = logging.getLogger("acervator.exchange")
 @dataclass
 class ValidationResult:
     """Result of an API credential validation test."""
+
     success: bool
     exchange_id: str
     message: str
@@ -57,7 +58,7 @@ def validate_credentials(
         connector.sync_connect(api_key, api_secret, passphrase)
 
         # Fetch balances using the sync exchange directly
-        sync_exch = getattr(connector, '_ccxt_sync', None)
+        sync_exch = getattr(connector, "_ccxt_sync", None)
         bal_summary = ""
         bal_dict = {}
         asset_count = 0
@@ -103,6 +104,7 @@ def validate_credentials(
     except Exception as exc:  # R28-OK: error surfaced via ValidationResult below
         elapsed = (time.monotonic() - start) * 1000
         from .ccxt_connector import CCXTConnector
+
         detail = CCXTConnector._format_exchange_error(exc)
         return ValidationResult(
             success=False,

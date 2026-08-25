@@ -21,6 +21,7 @@ sadp: R44  # DRY consolidation
 sadp: R55  # Verify Hit semantics
 sadp: R57  # engine parity artifact
 """
+
 from __future__ import annotations
 
 import random
@@ -31,10 +32,10 @@ from typing import Optional, Tuple
 # Sim engine (RAIntSimBat) defines its own copies because its slippage
 # model is different (per-asset SPREADS + microstructure fn), but the
 # thresholds (MIN_PROFIT, DRIFT_PCT, MAX_SAMPLES) must match exactly.
-VERIFY_HIT_ENABLED: bool  = True
-VERIFY_MAX_SAMPLES: int   = 5       # ultra-sampling budget
-VERIFY_DRIFT_PCT:   float = 0.005   # 0.5% compounding drift → cancel
-LIVE_SPREAD_PCT:    float = 0.0008  # 0.08% Gaussian slippage std dev
+VERIFY_HIT_ENABLED: bool = True
+VERIFY_MAX_SAMPLES: int = 5  # ultra-sampling budget
+VERIFY_DRIFT_PCT: float = 0.005  # 0.5% compounding drift → cancel
+LIVE_SPREAD_PCT: float = 0.0008  # 0.08% Gaussian slippage std dev
 
 # R55 v3 — per-asset-class slippage tolerances (MEM-123).
 # R55 v2's uniform 2% tolerance was too tight for crypto/meme/pandemic-
@@ -46,26 +47,61 @@ LIVE_SPREAD_PCT:    float = 0.0008  # 0.08% Gaussian slippage std dev
 # Pass criteria per R56 ABV: full 6-portfolio A/B with aggregate
 # delta ≥ 0 AND regressions < improvements.
 VERIFY_MIN_PROFIT_BY_CLASS = {
-    'crypto':  0.04,   # 4% — crypto microstructure can spike hard
-    'meme':    0.04,   # 4% — pandemic/meme names in drawdown regime
-    'equity':  0.02,   # 2% — typical equity microstructure
-    'bond':    0.01,   # 1% — bonds are tight; preserve strict discipline
-    'etf':     0.015,  # 1.5% — index/commodity ETFs usually tight
-    'default': 0.02,   # fallback matches v2 uniform
+    "crypto": 0.04,  # 4% — crypto microstructure can spike hard
+    "meme": 0.04,  # 4% — pandemic/meme names in drawdown regime
+    "equity": 0.02,  # 2% — typical equity microstructure
+    "bond": 0.01,  # 1% — bonds are tight; preserve strict discipline
+    "etf": 0.015,  # 1.5% — index/commodity ETFs usually tight
+    "default": 0.02,  # fallback matches v2 uniform
 }
-VERIFY_MIN_PROFIT:  float = VERIFY_MIN_PROFIT_BY_CLASS['default']  # legacy
+VERIFY_MIN_PROFIT: float = VERIFY_MIN_PROFIT_BY_CLASS["default"]  # legacy
 
 # Asset-class classifier. Membership derived from RAIntSimBat SPREADS
 # groupings and A/B portfolio composition. Symbols not listed fall to
 # 'default' tolerance. Lives here (not in RAIntSimBat) because R57 EPM
 # requires all live-path engines to classify identically.
-_CRYPTO  = {'BTC','ETH','SOL','XRP','BNB','ADA','DOGE','TRX','AVAX','DOT',
-            'COIN','LINK','MATIC','ATOM'}
-_BOND    = {'TLT','IEF','TIP','AGG','BND'}
-_ETF_IDX = {'SPY','QQQ','IWM','GLD','SLV','USO','VNQ','XLU','MCHI'}
-_MEME    = {'GME','AMC','BBBY','KOSS','EXPR','SNDL','PTON','ZM','TDOC',
-            'ROKU','CVNA','DKNG','OPEN','UWMC','IPOF','CCIV',
-            'ARKK','ARKG','ARKW','ARKF','PRNT','NIO'}
+_CRYPTO = {
+    "BTC",
+    "ETH",
+    "SOL",
+    "XRP",
+    "BNB",
+    "ADA",
+    "DOGE",
+    "TRX",
+    "AVAX",
+    "DOT",
+    "COIN",
+    "LINK",
+    "MATIC",
+    "ATOM",
+}
+_BOND = {"TLT", "IEF", "TIP", "AGG", "BND"}
+_ETF_IDX = {"SPY", "QQQ", "IWM", "GLD", "SLV", "USO", "VNQ", "XLU", "MCHI"}
+_MEME = {
+    "GME",
+    "AMC",
+    "BBBY",
+    "KOSS",
+    "EXPR",
+    "SNDL",
+    "PTON",
+    "ZM",
+    "TDOC",
+    "ROKU",
+    "CVNA",
+    "DKNG",
+    "OPEN",
+    "UWMC",
+    "IPOF",
+    "CCIV",
+    "ARKK",
+    "ARKG",
+    "ARKW",
+    "ARKF",
+    "PRNT",
+    "NIO",
+}
 # Everything else with a ticker is assumed equity.
 
 
@@ -74,17 +110,21 @@ def classify_symbol(symbol: str) -> str:
     source — any live-path engine calling this gets the same answer.
     sadp: R29 R55 R57"""
     if not symbol:
-        return 'default'
+        return "default"
     s = symbol.upper().strip()
     # Strip quote suffix like '/USD' or '-USD'
-    for sep in ('/', '-'):
+    for sep in ("/", "-"):
         if sep in s:
             s = s.split(sep)[0]
-    if s in _CRYPTO:  return 'crypto'
-    if s in _BOND:    return 'bond'
-    if s in _ETF_IDX: return 'etf'
-    if s in _MEME:    return 'meme'
-    return 'equity'
+    if s in _CRYPTO:
+        return "crypto"
+    if s in _BOND:
+        return "bond"
+    if s in _ETF_IDX:
+        return "etf"
+    if s in _MEME:
+        return "meme"
+    return "equity"
 
 
 def verify_min_profit(symbol: str | None = None) -> float:
@@ -92,14 +132,14 @@ def verify_min_profit(symbol: str | None = None) -> float:
     Falls back to the uniform 'default' tolerance if symbol is None
     or not classifiable. sadp: R55"""
     if symbol is None:
-        return VERIFY_MIN_PROFIT_BY_CLASS['default']
+        return VERIFY_MIN_PROFIT_BY_CLASS["default"]
     cls = classify_symbol(symbol)
-    return VERIFY_MIN_PROFIT_BY_CLASS.get(cls,
-                                          VERIFY_MIN_PROFIT_BY_CLASS['default'])
+    return VERIFY_MIN_PROFIT_BY_CLASS.get(cls, VERIFY_MIN_PROFIT_BY_CLASS["default"])
 
 
-def fill_price(intended_price: float, side: str,
-               spread: float = LIVE_SPREAD_PCT) -> float:
+def fill_price(
+    intended_price: float, side: str, spread: float = LIVE_SPREAD_PCT
+) -> float:
     """Half-normal ADVERSE slippage draw. Sells fill below ask, buys
     fill above bid. Parity with RAIntSimBat's closure-based _fill_price
     on equivalent slippage input.
@@ -130,16 +170,18 @@ def fill_price(intended_price: float, side: str,
     if intended_price <= 0:
         return intended_price
     slip = abs(random.gauss(0.0, spread))
-    if side == 'sell':
+    if side == "sell":
         return intended_price * (1.0 - slip)
     return intended_price * (1.0 + slip)
 
 
-def verify_hit(intended_price: float, side: str,
-               symbol: Optional[str] = None,
-               spread: Optional[float] = None,
-               min_profit: Optional[float] = None
-               ) -> Tuple[Optional[float], str, int]:
+def verify_hit(
+    intended_price: float,
+    side: str,
+    symbol: Optional[str] = None,
+    spread: Optional[float] = None,
+    min_profit: Optional[float] = None,
+) -> Tuple[Optional[float], str, int]:
     """R55 VH v3 — per-asset-class slippage tolerance guard.
 
     Ultra-sample the fill. Cancel when effective fill degrades more than
@@ -168,9 +210,9 @@ def verify_hit(intended_price: float, side: str,
             min_profit = VERIFY_MIN_PROFIT
 
     if not VERIFY_HIT_ENABLED:
-        return fill_price(intended_price, side, spread), 'clean', 1
+        return fill_price(intended_price, side, spread), "clean", 1
 
-    if side == 'sell':
+    if side == "sell":
         floor = intended_price * (1.0 - min_profit)
     else:
         floor = intended_price * (1.0 + min_profit)
@@ -178,18 +220,18 @@ def verify_hit(intended_price: float, side: str,
     prev = None
     for i in range(VERIFY_MAX_SAMPLES):
         sample = fill_price(intended_price, side, spread)
-        ok = (sample >= floor) if side == 'sell' else (sample <= floor)
+        ok = (sample >= floor) if side == "sell" else (sample <= floor)
         if ok:
-            return sample, ('clean' if i == 0 else 'adjusted'), i + 1
+            return sample, ("clean" if i == 0 else "adjusted"), i + 1
         if prev is not None:
-            if side == 'sell':
+            if side == "sell":
                 drift = (prev - sample) / max(intended_price, 1e-9)
             else:
                 drift = (sample - prev) / max(intended_price, 1e-9)
             if drift > VERIFY_DRIFT_PCT:
-                return None, 'canceled', i + 1
+                return None, "canceled", i + 1
         prev = sample
-    return None, 'canceled', VERIFY_MAX_SAMPLES
+    return None, "canceled", VERIFY_MAX_SAMPLES
 
 
 # Legacy-name aliases for backward compatibility during migration.

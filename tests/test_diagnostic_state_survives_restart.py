@@ -36,6 +36,7 @@ ones. Both directions are pinned below.
 No back-fill is attempted for any of them. Fabricating a historical
 value would corrupt the very counters these exist to make trustworthy.
 """
+
 from __future__ import annotations
 
 import sys
@@ -49,9 +50,13 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
-FIELDS = ("_pending_wire_ledger", "_fold_accumulator",
-          "_tranches_malformed_dropped", "_stack_tranches",
-          "_stack_created")
+FIELDS = (
+    "_pending_wire_ledger",
+    "_fold_accumulator",
+    "_tranches_malformed_dropped",
+    "_stack_tranches",
+    "_stack_created",
+)
 
 
 class _Bus:
@@ -66,8 +71,7 @@ class _Bot:
 
     def __init__(self):
         self.bot_id = "bot-test-0001"
-        self.config = type("C", (), {
-            "symbol": "RAVE/USD", "target_balance": 50.0})()
+        self.config = type("C", (), {"symbol": "RAVE/USD", "target_balance": 50.0})()
         self._bus = _Bus()
         self._current_holdings = 0.0
         self._anchor_target_balance = 50.0
@@ -90,7 +94,9 @@ class _Bot:
 
 POPULATED = {
     "pending_wire_ledger": [
-        {"usd": 4.0, "src": "bot-x"}, {"usd": 5.45, "src": "bot-y"}],
+        {"usd": 4.0, "src": "bot-x"},
+        {"usd": 5.45, "src": "bot-y"},
+    ],
     "fold_accumulator": 12.3456,
     "tranches_malformed_dropped": 7,
     "stack_tranches": [{"usd": 1.0, "ref": 0.5}],
@@ -153,10 +159,12 @@ class TestAnOlderFileStillLoads:
     def test_junk_entries_are_filtered_not_trusted(self, bot):
         """The ledger is a list of dicts. A non-dict entry from a
         corrupt file must not reach code that will subscript it."""
-        bot.import_scrumming_state({
-            "pending_wire_ledger": [{"usd": 1.0}, "not-a-dict", None],
-            "stack_tranches": ["junk", {"usd": 2.0}],
-        })
+        bot.import_scrumming_state(
+            {
+                "pending_wire_ledger": [{"usd": 1.0}, "not-a-dict", None],
+                "stack_tranches": ["junk", {"usd": 2.0}],
+            }
+        )
         assert bot._pending_wire_ledger == [{"usd": 1.0}]
         assert bot._stack_tranches == [{"usd": 2.0}]
 
@@ -174,13 +182,19 @@ class TestBothSidesExist:
         src = Path(sbm.__file__).read_text(encoding="utf-8")
         key = field.lstrip("_")
         tree = ast.parse(src)
-        exp = next(n for n in ast.walk(tree)
-                   if isinstance(n, ast.FunctionDef)
-                   and n.name == "export_scrumming_state")
-        imp = next(n for n in ast.walk(tree)
-                   if isinstance(n, ast.FunctionDef)
-                   and n.name == "import_scrumming_state")
-        assert f'"{key}"' in (ast.get_source_segment(src, exp) or ""), \
-            f"{key} is not exported"
-        assert f'"{key}"' in (ast.get_source_segment(src, imp) or ""), \
-            f"{key} is exported but never restored -- write-only"
+        exp = next(
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "export_scrumming_state"
+        )
+        imp = next(
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "import_scrumming_state"
+        )
+        assert f'"{key}"' in (
+            ast.get_source_segment(src, exp) or ""
+        ), f"{key} is not exported"
+        assert f'"{key}"' in (
+            ast.get_source_segment(src, imp) or ""
+        ), f"{key} is exported but never restored -- write-only"

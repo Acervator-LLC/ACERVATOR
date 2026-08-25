@@ -25,6 +25,7 @@ this and report cleanly; (b) any archetype's fixtures were deleted or
 modified so the self-check doesn't reflect real behavior; (c) the sidecar
 is edited outside this tool.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,9 +45,30 @@ SIDECAR_PATH = REPO / ".release_ready.json"
 TESTS_DIR = REPO / "tests"
 
 # Fixtures the archetype self-check runs against
-CODING_GOOD = REPO / "docs" / "audits" / "2026-07-24_coding_archetype_multi_agent_test" / "fixtures" / "known_good.py"
-GUI_GOOD    = REPO / "docs" / "audits" / "2026-07-24_gui_docs_archetypes" / "gui_fixtures" / "known_good_widget.py"
-DOCS_GOOD   = REPO / "docs" / "audits" / "2026-07-24_gui_docs_archetypes" / "docs_fixtures" / "known_good.md"
+CODING_GOOD = (
+    REPO
+    / "docs"
+    / "audits"
+    / "2026-07-24_coding_archetype_multi_agent_test"
+    / "fixtures"
+    / "known_good.py"
+)
+GUI_GOOD = (
+    REPO
+    / "docs"
+    / "audits"
+    / "2026-07-24_gui_docs_archetypes"
+    / "gui_fixtures"
+    / "known_good_widget.py"
+)
+DOCS_GOOD = (
+    REPO
+    / "docs"
+    / "audits"
+    / "2026-07-24_gui_docs_archetypes"
+    / "docs_fixtures"
+    / "known_good.md"
+)
 
 # Analyzers whose absence is reported but does not fail the gate.
 # Everything NOT listed here is required: if it cannot run, the run is
@@ -80,7 +102,12 @@ OPTIONAL_ANALYZERS: frozenset[str] = _SHARED_OPTIONAL_ANALYZERS
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def _read_version() -> str:
@@ -88,7 +115,9 @@ def _read_version() -> str:
     p = REPO / "src" / "__init__.py"
     if not p.exists():
         return "unknown"
-    m = re.search(r'__version__\s*=\s*[\'"]([^\'"]+)[\'"]', p.read_text(encoding="utf-8"))
+    m = re.search(
+        r'__version__\s*=\s*[\'"]([^\'"]+)[\'"]', p.read_text(encoding="utf-8")
+    )
     return m.group(1) if m else "unknown"
 
 
@@ -120,14 +149,23 @@ def _run_pytest() -> tuple[bool, int, str]:
         proc = subprocess.run(
             [sys.executable, "-m", "pytest", "tests", "-q", "--tb=no"],
             cwd=str(REPO),
-            capture_output=True, text=True, encoding="utf-8",
-            errors="replace", check=False, timeout=1800,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=1800,
         )
     except subprocess.TimeoutExpired as exc:
-        return False, 0, (
-            f"pytest did not finish within {exc.timeout} seconds and was "
-            f"killed. The suite never reported, so this run is not "
-            f"evidence and the gate is RED.")
+        return (
+            False,
+            0,
+            (
+                f"pytest did not finish within {exc.timeout} seconds and was "
+                f"killed. The suite never reported, so this run is not "
+                f"evidence and the gate is RED."
+            ),
+        )
     output = proc.stdout + proc.stderr
     # Parse summary line like "36 passed, 1 warning in 1.62s" or "1 failed, 5 passed"
     passed_match = re.search(r"(\d+)\s+passed", output)
@@ -158,8 +196,8 @@ def _run_archetype_selfcheck() -> tuple[bool, list[str], list[str]]:
 
     for label, arch, fixture in [
         ("coding", CodingArchetype(), CODING_GOOD),
-        ("gui",    GUIArchetype(),    GUI_GOOD),
-        ("docs",   DocsArchetype(),   DOCS_GOOD),
+        ("gui", GUIArchetype(), GUI_GOOD),
+        ("docs", DocsArchetype(), DOCS_GOOD),
     ]:
         if not fixture.exists():
             errors.append(f"{label}: known_good fixture missing at {fixture}")
@@ -170,8 +208,11 @@ def _run_archetype_selfcheck() -> tuple[bool, list[str], list[str]]:
             errors.append(f"{label}: review raised {type(e).__name__}: {e}")
             continue
         if not report.passed:
-            highs = [f"{f.tool}:{f.rule_id}" for f in report.findings
-                     if f.severity in ("critical", "high")]
+            highs = [
+                f"{f.tool}:{f.rule_id}"
+                for f in report.findings
+                if f.severity in ("critical", "high")
+            ]
             errors.append(
                 f"{label}: known_good fixture no longer passes; "
                 f"reasons: {report.why_not_green()}; "
@@ -189,20 +230,24 @@ def _run_archetype_selfcheck() -> tuple[bool, list[str], list[str]]:
         # gate on a prose linter, and passing silently is the defect
         # this closes. An optional analyzer's absence is REPORTED, so
         # the coverage gap is visible instead of invisible.
-        absent = sorted(t for t, s in
-                        getattr(report, "tool_availability", {}).items()
-                        if s in ("missing", "error"))
+        absent = sorted(
+            t
+            for t, s in getattr(report, "tool_availability", {}).items()
+            if s in ("missing", "error")
+        )
         required_absent = [t for t in absent if t not in OPTIONAL_ANALYZERS]
         optional_absent = [t for t in absent if t in OPTIONAL_ANALYZERS]
         if required_absent:
             errors.append(
                 f"{label}: required analyzer(s) unavailable: "
                 f"{', '.join(required_absent)} - coverage is incomplete, "
-                f"so this run is not evidence")
+                f"so this run is not evidence"
+            )
         if optional_absent:
             notes.append(
                 f"{label}: optional analyzer(s) not installed: "
-                f"{', '.join(optional_absent)}")
+                f"{', '.join(optional_absent)}"
+            )
     return len(errors) == 0, errors, notes
 
 
@@ -248,20 +293,23 @@ def main(argv: list[str] | None = None) -> int:
         prog="check_release_readiness",
         description="Release-readiness gate; must be [OK] before banner-bump cascade.",
     )
-    p.add_argument("--no-pytest", action="store_true",
-                   help="skip pytest suite (dev only)")
-    p.add_argument("--no-archetypes", action="store_true",
-                   help="skip archetype self-check (dev only)")
-    p.add_argument("--no-claims", action="store_true",
-                   help="skip claim-ledger check (dev only)")
+    p.add_argument(
+        "--no-pytest", action="store_true", help="skip pytest suite (dev only)"
+    )
+    p.add_argument(
+        "--no-archetypes",
+        action="store_true",
+        help="skip archetype self-check (dev only)",
+    )
+    p.add_argument(
+        "--no-claims", action="store_true", help="skip claim-ledger check (dev only)"
+    )
     args = p.parse_args(argv)
 
     version = _read_version()
     failures: list[str] = []
     test_count = 0
-    checks_run = {"pytest": "skipped",
-                  "archetypes": "skipped",
-                  "claims": "skipped"}
+    checks_run = {"pytest": "skipped", "archetypes": "skipped", "claims": "skipped"}
 
     # 1. pytest
     if not args.no_pytest:
@@ -276,15 +324,17 @@ def main(argv: list[str] | None = None) -> int:
             # anything. Parse failure or an empty run both land here.
             failures.append(
                 "pytest reported 0 collected tests - a green run that "
-                "collected nothing cannot support a release claim.")
+                "collected nothing cannot support a release claim."
+            )
 
     # 2. archetype self-check
     if not args.no_archetypes:
         checks_run["archetypes"] = "ran"
         arch_ok, arch_errors, arch_notes = _run_archetype_selfcheck()
         if not arch_ok:
-            failures.append("archetype self-check failed:\n  " +
-                            "\n  ".join(arch_errors))
+            failures.append(
+                "archetype self-check failed:\n  " + "\n  ".join(arch_errors)
+            )
         for note in arch_notes:
             print(f"[NOTE] {note}")
 
@@ -302,8 +352,10 @@ def main(argv: list[str] | None = None) -> int:
     skipped = sorted(k for k, v in checks_run.items() if v == "skipped")
     if skipped:
         failures.append(
-            "checks skipped: " + ", ".join(skipped) +
-            " - re-run without the --no-* flag(s) before claiming ready.")
+            "checks skipped: "
+            + ", ".join(skipped)
+            + " - re-run without the --no-* flag(s) before claiming ready."
+        )
 
     if failures:
         print(f"[FAIL] Release-not-ready (v{version})")

@@ -27,6 +27,7 @@ Design (in one paragraph):
   for the setter, (c) tests against the fixture pair fail to
   distinguish good from bad.
 """
+
 # ruff: noqa: S603
 # The S607 half was DEAD and is removed. Measured 2026-08-13 by
 # stripping the whole directive and re-running ruff 0.16 with
@@ -73,12 +74,29 @@ __all__ = ["ArchetypeReport", "Finding", "GUIArchetype", "main"]
 # ---------------------------------------------------------------------------
 
 _QT_WIDGET_BASES: set[str] = {
-    "QWidget", "QDialog", "QMainWindow", "QFrame",
-    "QPushButton", "QLineEdit", "QTextEdit", "QLabel", "QCheckBox",
-    "QRadioButton", "QComboBox", "QSpinBox", "QDoubleSpinBox",
-    "QSlider", "QProgressBar", "QToolButton", "QTabWidget",
-    "QListWidget", "QTreeWidget", "QTableWidget", "QGroupBox",
-    "QScrollArea", "QDockWidget",
+    "QWidget",
+    "QDialog",
+    "QMainWindow",
+    "QFrame",
+    "QPushButton",
+    "QLineEdit",
+    "QTextEdit",
+    "QLabel",
+    "QCheckBox",
+    "QRadioButton",
+    "QComboBox",
+    "QSpinBox",
+    "QDoubleSpinBox",
+    "QSlider",
+    "QProgressBar",
+    "QToolButton",
+    "QTabWidget",
+    "QListWidget",
+    "QTreeWidget",
+    "QTableWidget",
+    "QGroupBox",
+    "QScrollArea",
+    "QDockWidget",
     # v3.24.xx — CHANGE 2. Every name below is a QWidget subclass that
     # the analyzer previously did not recognise, so a class deriving
     # from one was graded by NO GUI rule at all. MEASURED before the
@@ -92,39 +110,72 @@ _QT_WIDGET_BASES: set[str] = {
     # QObject and QThread are deliberately NOT here. They are not
     # widgets, they paint nothing, and GUI001 (accessible name) and
     # GUI003 (layout vs setGeometry) are meaningless against them.
-    "QWizard", "QWizardPage",
-    "QTableView", "QListView", "QTreeView", "QColumnView",
-    "QPlainTextEdit", "QTextBrowser",
-    "QStackedWidget", "QSplitter", "QScrollBar",
-    "QMenu", "QMenuBar", "QToolBar", "QStatusBar",
-    "QAbstractButton", "QAbstractItemView", "QAbstractScrollArea",
-    "QAbstractSpinBox", "QAbstractSlider",
+    "QWizard",
+    "QWizardPage",
+    "QTableView",
+    "QListView",
+    "QTreeView",
+    "QColumnView",
+    "QPlainTextEdit",
+    "QTextBrowser",
+    "QStackedWidget",
+    "QSplitter",
+    "QScrollBar",
+    "QMenu",
+    "QMenuBar",
+    "QToolBar",
+    "QStatusBar",
+    "QAbstractButton",
+    "QAbstractItemView",
+    "QAbstractScrollArea",
+    "QAbstractSpinBox",
+    "QAbstractSlider",
 }
 
 _INTERACTIVE_QT_WIDGETS: set[str] = {
-    "QPushButton", "QToolButton", "QLineEdit", "QTextEdit",
-    "QCheckBox", "QRadioButton", "QComboBox", "QSpinBox",
-    "QDoubleSpinBox", "QSlider", "QListWidget", "QTreeWidget",
+    "QPushButton",
+    "QToolButton",
+    "QLineEdit",
+    "QTextEdit",
+    "QCheckBox",
+    "QRadioButton",
+    "QComboBox",
+    "QSpinBox",
+    "QDoubleSpinBox",
+    "QSlider",
+    "QListWidget",
+    "QTreeWidget",
     "QTableWidget",
 }
 
 _ACCESSIBLE_SETTER_METHODS: set[str] = {
-    "setAccessibleName", "setAccessibleDescription",
-    "setToolTip", "setWhatsThis",
+    "setAccessibleName",
+    "setAccessibleDescription",
+    "setToolTip",
+    "setWhatsThis",
 }
 
 # Signals a well-formed interactive widget typically has connected somewhere.
 # When we see `self._foo.<one of these>.connect(...)`, we mark `_foo` as wired.
 _INTERACTIVE_SIGNALS: set[str] = {
-    "clicked", "pressed", "released",             # QPushButton / QToolButton
-    "triggered",                                   # QAction / QToolButton menu
-    "returnPressed", "editingFinished",            # QLineEdit
-    "textChanged", "textEdited",                   # QLineEdit / QTextEdit
-    "valueChanged", "sliderMoved",                 # QSpinBox / QSlider
-    "currentIndexChanged", "currentTextChanged",   # QComboBox
-    "activated", "highlighted",                    # QComboBox
-    "stateChanged", "toggled",                     # QCheckBox / QRadioButton
-    "itemClicked", "itemActivated",                # QListWidget / QTreeWidget
+    "clicked",
+    "pressed",
+    "released",  # QPushButton / QToolButton
+    "triggered",  # QAction / QToolButton menu
+    "returnPressed",
+    "editingFinished",  # QLineEdit
+    "textChanged",
+    "textEdited",  # QLineEdit / QTextEdit
+    "valueChanged",
+    "sliderMoved",  # QSpinBox / QSlider
+    "currentIndexChanged",
+    "currentTextChanged",  # QComboBox
+    "activated",
+    "highlighted",  # QComboBox
+    "stateChanged",
+    "toggled",  # QCheckBox / QRadioButton
+    "itemClicked",
+    "itemActivated",  # QListWidget / QTreeWidget
     "itemSelectionChanged",
 }
 
@@ -140,7 +191,8 @@ def _class_bases(node: ast.ClassDef) -> list[str]:
 
 
 def _is_qt_widget_class(
-        node: ast.ClassDef, local_widgets: frozenset[str] = frozenset()) -> bool:
+    node: ast.ClassDef, local_widgets: frozenset[str] = frozenset()
+) -> bool:
     """True when this class is a Qt widget, directly or via a sibling.
 
     `local_widgets` holds the names of classes defined in the SAME module
@@ -149,8 +201,7 @@ def _is_qt_widget_class(
     behaviour is byte-identical to the direct-base-only check that
     existed before.
     """
-    return any(b in _QT_WIDGET_BASES or b in local_widgets
-               for b in _class_bases(node))
+    return any(b in _QT_WIDGET_BASES or b in local_widgets for b in _class_bases(node))
 
 
 def _local_widget_classes(tree: ast.AST) -> frozenset[str]:
@@ -200,8 +251,9 @@ def _local_widget_classes(tree: ast.AST) -> frozenset[str]:
 class _GUIAnalyzer(ast.NodeVisitor):
     """AST walker that collects GUI-specific findings."""
 
-    def __init__(self, source_path: str,
-                 local_widgets: frozenset[str] = frozenset()) -> None:
+    def __init__(
+        self, source_path: str, local_widgets: frozenset[str] = frozenset()
+    ) -> None:
         self.source_path = source_path
         self._local_widgets = local_widgets
         self.findings: list[Finding] = []
@@ -214,8 +266,12 @@ class _GUIAnalyzer(ast.NodeVisitor):
         self._interactive_instantiations_without_parent: list[tuple[str, int]] = []
         self._interactive_instantiations_with_parent: list[tuple[str, int]] = []
         # GUI005 signal-wiring tracking
-        self._interactive_instances: dict[str, tuple[str, int]] = {}  # attr -> (widget_class, line)
-        self._wired_instances: set[str] = set()  # attrs seen with .<signal>.connect(...)
+        self._interactive_instances: dict[str, tuple[str, int]] = (
+            {}
+        )  # attr -> (widget_class, line)
+        self._wired_instances: set[str] = (
+            set()
+        )  # attrs seen with .<signal>.connect(...)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         if not _is_qt_widget_class(node, self._local_widgets):
@@ -252,92 +308,122 @@ class _GUIAnalyzer(ast.NodeVisitor):
         line = node.lineno
         base_list = _class_bases(node)
         is_interactive_widget = any(
-            b in _INTERACTIVE_QT_WIDGETS or b in _QT_WIDGET_BASES
+            b in _INTERACTIVE_QT_WIDGETS
+            or b in _QT_WIDGET_BASES
             or b in self._local_widgets
-            for b in base_list)
+            for b in base_list
+        )
 
         if is_interactive_widget and not self._class_calls_accessible:
-            self.findings.append(Finding(
-                tool="gui-static", severity="high",
-                file=self.source_path, line=line,
-                rule_id="GUI001",
-                message=(
-                    f"Qt widget class {cls_name!r} does not call any of "
-                    f"{sorted(_ACCESSIBLE_SETTER_METHODS)} on its widgets; "
-                    "accessibility APIs (screen readers, keyboard navigation) "
-                    "have no anchor to announce."
-                ),
-            ))
+            self.findings.append(
+                Finding(
+                    tool="gui-static",
+                    severity="high",
+                    file=self.source_path,
+                    line=line,
+                    rule_id="GUI001",
+                    message=(
+                        f"Qt widget class {cls_name!r} does not call any of "
+                        f"{sorted(_ACCESSIBLE_SETTER_METHODS)} on its widgets; "
+                        "accessibility APIs (screen readers, keyboard navigation) "
+                        "have no anchor to announce."
+                    ),
+                )
+            )
 
         if not self._class_has_docstring:
-            self.findings.append(Finding(
-                tool="gui-static", severity="medium",
-                file=self.source_path, line=line,
-                rule_id="GUI002",
-                message=f"Qt widget class {cls_name!r} has no docstring.",
-            ))
+            self.findings.append(
+                Finding(
+                    tool="gui-static",
+                    severity="medium",
+                    file=self.source_path,
+                    line=line,
+                    rule_id="GUI002",
+                    message=f"Qt widget class {cls_name!r} has no docstring.",
+                )
+            )
 
         if self._class_uses_setgeometry and not self._class_uses_layout:
             for setg_line in self._class_uses_setgeometry:
-                self.findings.append(Finding(
-                    tool="gui-static", severity="high",
-                    file=self.source_path, line=setg_line,
-                    rule_id="GUI003",
-                    message=(
-                        "setGeometry used without any QLayout — the widget "
-                        "will not respond to resize / high-DPI / accessibility "
-                        "scaling. Use QVBoxLayout / QHBoxLayout / QGridLayout."
-                    ),
-                ))
+                self.findings.append(
+                    Finding(
+                        tool="gui-static",
+                        severity="high",
+                        file=self.source_path,
+                        line=setg_line,
+                        rule_id="GUI003",
+                        message=(
+                            "setGeometry used without any QLayout — the widget "
+                            "will not respond to resize / high-DPI / accessibility "
+                            "scaling. Use QVBoxLayout / QHBoxLayout / QGridLayout."
+                        ),
+                    )
+                )
 
         for widget_name, w_line in self._interactive_instantiations_without_parent:
-            self.findings.append(Finding(
-                tool="gui-static", severity="medium",
-                file=self.source_path, line=w_line,
-                rule_id="GUI004",
-                message=(
-                    f"Interactive widget {widget_name}(...) instantiated without "
-                    "a parent argument; risks orphaned widget lifetime and "
-                    "layout ambiguity."
-                ),
-            ))
+            self.findings.append(
+                Finding(
+                    tool="gui-static",
+                    severity="medium",
+                    file=self.source_path,
+                    line=w_line,
+                    rule_id="GUI004",
+                    message=(
+                        f"Interactive widget {widget_name}(...) instantiated without "
+                        "a parent argument; risks orphaned widget lifetime and "
+                        "layout ambiguity."
+                    ),
+                )
+            )
 
         # GUI005 — signal wiring. Any interactive instance (self._foo = QPushButton(...))
         # that never appears as `self._foo.<signal>.connect(...)` is inert.
         for attr, (widget_class, w_line) in self._interactive_instances.items():
             if attr not in self._wired_instances:
-                self.findings.append(Finding(
-                    tool="gui-static", severity="medium",
-                    file=self.source_path, line=w_line,
-                    rule_id="GUI005",
-                    message=(
-                        f"Interactive widget self.{attr} ({widget_class}) has no "
-                        f".<signal>.connect(...) anywhere in {cls_name!r}; widget "
-                        "is functionally inert."
-                    ),
-                ))
+                self.findings.append(
+                    Finding(
+                        tool="gui-static",
+                        severity="medium",
+                        file=self.source_path,
+                        line=w_line,
+                        rule_id="GUI005",
+                        message=(
+                            f"Interactive widget self.{attr} ({widget_class}) has no "
+                            f".<signal>.connect(...) anywhere in {cls_name!r}; widget "
+                            "is functionally inert."
+                        ),
+                    )
+                )
 
         # restore parent state
-        (self._current_class,
-         self._class_calls_accessible,
-         self._class_has_docstring,
-         self._class_uses_layout,
-         self._class_uses_setgeometry,
-         self._interactive_instantiations_without_parent,
-         self._interactive_instantiations_with_parent,
-         self._interactive_instances,
-         self._wired_instances) = prev
+        (
+            self._current_class,
+            self._class_calls_accessible,
+            self._class_has_docstring,
+            self._class_uses_layout,
+            self._class_uses_setgeometry,
+            self._interactive_instantiations_without_parent,
+            self._interactive_instantiations_with_parent,
+            self._interactive_instances,
+            self._wired_instances,
+        ) = prev
 
     def visit_Assign(self, node: ast.Assign) -> None:
         """Track `self._foo = QPushButton(...)` for GUI005 wiring check."""
         if self._current_class is not None and len(node.targets) == 1:
             tgt = node.targets[0]
-            if (isinstance(tgt, ast.Attribute)
-                    and isinstance(tgt.value, ast.Name)
-                    and tgt.value.id == "self"
-                    and isinstance(node.value, ast.Call)):
+            if (
+                isinstance(tgt, ast.Attribute)
+                and isinstance(tgt.value, ast.Name)
+                and tgt.value.id == "self"
+                and isinstance(node.value, ast.Call)
+            ):
                 v = node.value.func
-                callee = v.id if isinstance(v, ast.Name) else (v.attr if isinstance(v, ast.Attribute) else None)
+                callee = (
+                    v.id
+                    if isinstance(v, ast.Name)
+                    else (v.attr if isinstance(v, ast.Attribute) else None)
+                )
                 if callee in _INTERACTIVE_QT_WIDGETS:
                     self._interactive_instances[tgt.attr] = (callee, node.lineno)
         self.generic_visit(node)
@@ -353,14 +439,18 @@ class _GUIAnalyzer(ast.NodeVisitor):
             if method == "setGeometry":
                 self._class_uses_setgeometry.append(node.lineno)
             # GUI005 wiring: `self._foo.<signal>.connect(...)`
-            if (method == "connect"
-                    and isinstance(node.func.value, ast.Attribute)
-                    and node.func.value.attr in _INTERACTIVE_SIGNALS):
+            if (
+                method == "connect"
+                and isinstance(node.func.value, ast.Attribute)
+                and node.func.value.attr in _INTERACTIVE_SIGNALS
+            ):
                 # walk down to `self.<attr>`
                 receiver = node.func.value.value
-                if (isinstance(receiver, ast.Attribute)
-                        and isinstance(receiver.value, ast.Name)
-                        and receiver.value.id == "self"):
+                if (
+                    isinstance(receiver, ast.Attribute)
+                    and isinstance(receiver.value, ast.Name)
+                    and receiver.value.id == "self"
+                ):
                     self._wired_instances.add(receiver.attr)
 
         # widget instantiation: QPushButton(...) or QLineEdit(...)
@@ -381,7 +471,13 @@ class _GUIAnalyzer(ast.NodeVisitor):
                 self._interactive_instantiations_without_parent.append(entry)
 
         # constructor with layout: layout = QVBoxLayout() etc — also counts as layout usage
-        if callee in ("QVBoxLayout", "QHBoxLayout", "QGridLayout", "QFormLayout", "QStackedLayout"):
+        if callee in (
+            "QVBoxLayout",
+            "QHBoxLayout",
+            "QGridLayout",
+            "QFormLayout",
+            "QStackedLayout",
+        ):
             self._class_uses_layout = True
 
         self.generic_visit(node)
@@ -401,37 +497,66 @@ class _GUIAnalyzer(ast.NodeVisitor):
 # the other colour.
 #
 # Only CALLS match. A local variable named `palette` is not a read.
-_MODEL_COLOUR_READS: frozenset[str] = frozenset({
-    "background", "foreground", "brush", "palette", "styleSheet",
-    "backgroundBrush", "foregroundBrush", "backgroundColor",
-    "textColor", "textBackgroundColor", "penColor", "brushColor",
-})
+_MODEL_COLOUR_READS: frozenset[str] = frozenset(
+    {
+        "background",
+        "foreground",
+        "brush",
+        "palette",
+        "styleSheet",
+        "backgroundBrush",
+        "foregroundBrush",
+        "backgroundColor",
+        "textColor",
+        "textBackgroundColor",
+        "penColor",
+        "brushColor",
+    }
+)
 
 # Constructs that prove the test looked at a RENDERED pixel. Any one of
 # these anywhere in the test function disarms GUI006 for that function.
 # Names are matched as call targets, attributes, or bare names, so both
 # `w.grab().toImage()` and a helper import are recognised.
-_PIXEL_CONSTRUCTS: frozenset[str] = frozenset({
-    "grab", "grabWidget", "grabWindow", "render", "toImage",
-    "pixelColor", "pixel", "QPixmap", "QImage", "QPainter",
-    # tests/qt_pixel.py — the helper shipped with this change
-    "render_widget", "sample_pixel", "sample_pixels",
-    "assert_pixel_colour", "assert_pixel_color", "pixel_at",
-})
+_PIXEL_CONSTRUCTS: frozenset[str] = frozenset(
+    {
+        "grab",
+        "grabWidget",
+        "grabWindow",
+        "render",
+        "toImage",
+        "pixelColor",
+        "pixel",
+        "QPixmap",
+        "QImage",
+        "QPainter",
+        # tests/qt_pixel.py — the helper shipped with this change
+        "render_widget",
+        "sample_pixel",
+        "sample_pixels",
+        "assert_pixel_colour",
+        "assert_pixel_color",
+        "pixel_at",
+    }
+)
 
 
 def _is_test_path(path: Path) -> bool:
     """True for a pytest module, by the same shape coding_archetype uses."""
     name = path.name
-    return (name.startswith("test_") or name.endswith("_test.py")
-            or "tests" in path.parts)
+    return (
+        name.startswith("test_") or name.endswith("_test.py") or "tests" in path.parts
+    )
 
 
 def _has_model_colour_read(node: ast.AST) -> bool:
     """True when a subtree CALLS a live-object model colour getter."""
     for n in ast.walk(node):
-        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                and n.func.attr in _MODEL_COLOUR_READS):
+        if (
+            isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr in _MODEL_COLOUR_READS
+        ):
             return True
     return False
 
@@ -483,8 +608,7 @@ def _tainted_locals(fn: ast.AST) -> set[str]:
     return tainted
 
 
-def _scan_model_only_colour_asserts(
-        path: Path, tree: ast.AST) -> list[Finding]:
+def _scan_model_only_colour_asserts(path: Path, tree: ast.AST) -> list[Finding]:
     """GUI006 — a colour assertion on a live widget with no pixel check.
 
     Scope: TEST FILES ONLY. Production widget code does not assert its
@@ -526,21 +650,25 @@ def _scan_model_only_colour_asserts(
             indirect = bool(_names_in(node.test) & tainted)
             if not (direct or indirect):
                 continue
-            findings.append(Finding(
-                tool="gui-static", severity="high",
-                file=str(path), line=node.lineno,
-                rule_id="GUI006",
-                message=(
-                    f"Test {fn.name!r} asserts a colour read off a live Qt "
-                    "object (background/foreground/palette/styleSheet) and "
-                    "never samples a rendered pixel. The getter reports what "
-                    "the widget was TOLD to paint; a stylesheet rule for the "
-                    "same element overrides it and the getter keeps returning "
-                    "the old value, so this assertion can pass while the "
-                    "screen shows a different colour. Render the widget and "
-                    "sample the pixel (see tests/qt_pixel.py)."
-                ),
-            ))
+            findings.append(
+                Finding(
+                    tool="gui-static",
+                    severity="high",
+                    file=str(path),
+                    line=node.lineno,
+                    rule_id="GUI006",
+                    message=(
+                        f"Test {fn.name!r} asserts a colour read off a live Qt "
+                        "object (background/foreground/palette/styleSheet) and "
+                        "never samples a rendered pixel. The getter reports what "
+                        "the widget was TOLD to paint; a stylesheet rule for the "
+                        "same element overrides it and the getter keeps returning "
+                        "the old value, so this assertion can pass while the "
+                        "screen shows a different colour. Render the widget and "
+                        "sample the pixel (see tests/qt_pixel.py)."
+                    ),
+                )
+            )
     return findings
 
 
@@ -558,12 +686,16 @@ def _run_gui_static(target: Path) -> list[Finding]:
             src = f.read_text(encoding="utf-8", errors="replace")
             tree = ast.parse(src, filename=str(f))
         except SyntaxError as e:
-            findings.append(Finding(
-                tool="gui-static", severity="high",
-                file=str(f), line=e.lineno or 0,
-                rule_id="SYNTAX",
-                message=f"cannot parse file: {e.msg}",
-            ))
+            findings.append(
+                Finding(
+                    tool="gui-static",
+                    severity="high",
+                    file=str(f),
+                    line=e.lineno or 0,
+                    rule_id="SYNTAX",
+                    message=f"cannot parse file: {e.msg}",
+                )
+            )
             continue
         analyzer = _GUIAnalyzer(str(f), _local_widget_classes(tree))
         analyzer.visit(tree)
@@ -578,9 +710,18 @@ def _run_gui_static(target: Path) -> list[Finding]:
 
 
 _BANDIT_SEVERITY_OVERRIDES: dict[str, str] = {
-    "B101": "high", "B105": "high", "B106": "high", "B107": "high",
-    "B303": "high", "B324": "high", "B501": "high", "B502": "high",
-    "B506": "high", "B602": "high", "B605": "high", "B609": "high",
+    "B101": "high",
+    "B105": "high",
+    "B106": "high",
+    "B107": "high",
+    "B303": "high",
+    "B324": "high",
+    "B501": "high",
+    "B502": "high",
+    "B506": "high",
+    "B602": "high",
+    "B605": "high",
+    "B609": "high",
 }
 
 
@@ -600,6 +741,7 @@ class GUIArchetype:
 
     def load_calibration(self) -> str:
         from tools.harness.calibrations import load
+
         return load(self.calibration_name)
 
     def review(self, target: Path) -> ArchetypeReport:
@@ -625,7 +767,10 @@ class GUIArchetype:
             report.errors.append(f"gui-static: {type(e).__name__}: {e}")
 
         # Ruff pass
-        for tool_name, runner in [("ruff", self._run_ruff), ("bandit", self._run_bandit)]:
+        for tool_name, runner in [
+            ("ruff", self._run_ruff),
+            ("bandit", self._run_bandit),
+        ]:
             try:
                 findings, status = runner(target)
                 report.findings.extend(findings)
@@ -651,12 +796,14 @@ class GUIArchetype:
         # itself, substitute "" when the read failed, scan the empty
         # string and still report both modules `ok`.
         scan_rule_modules(
-            report, target,
+            report,
+            target,
             (
                 ("scaffolding", "tools.harness.rules.scaffolding"),
                 ("hallucination", "tools.harness.rules.hallucination"),
             ),
-            (".py",))
+            (".py",),
+        )
 
         report.falsification = self._build_falsification(report)
         return report
@@ -739,9 +886,9 @@ class GUIArchetype:
     # not a rule that is merely inconvenient. Every other ruff and
     # bandit rule stays live on test files, so nothing in src/ changes.
     _TEST_FILE_EXEMPT = (
-        "S101",   # assert -- the mechanism pytest is built on
-        "S105",   # hardcoded password -- fixture credentials are fake
-        "S106",   # ditto, as a keyword argument
+        "S101",  # assert -- the mechanism pytest is built on
+        "S105",  # hardcoded password -- fixture credentials are fake
+        "S106",  # ditto, as a keyword argument
         "PLR2004",  # magic value in comparison -- expected values ARE literal
         "SLF001",  # private member access -- tests verify internals
     )
@@ -749,21 +896,34 @@ class GUIArchetype:
     @staticmethod
     def _is_test_file(target: Path) -> bool:
         name = target.name
-        return (name.startswith("test_") or name.endswith("_test.py")
-                or "tests" in target.parts)
+        return (
+            name.startswith("test_")
+            or name.endswith("_test.py")
+            or "tests" in target.parts
+        )
 
     def _run_ruff(self, target: Path) -> tuple[list[Finding], str]:
         # Use a curated GUI-relevant selection (not --select=ALL which produces noise)
-        cmd = [sys.executable, "-m", "ruff", "check", "--output-format=json",
-               "--no-cache", "--select=F,E,W,B,S,ANN,D"]
+        cmd = [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--output-format=json",
+            "--no-cache",
+            "--select=F,E,W,B,S,ANN,D",
+        ]
         if self._is_test_file(target):
             cmd.append("--ignore=" + ",".join(self._TEST_FILE_EXEMPT))
         cmd.append(str(target))
         proc = subprocess.run(
             cmd,
             cwd=str(REPO_ROOT),
-            capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=120,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
         )
         if self._module_absent(proc, "ruff"):
             return [], "missing"
@@ -778,21 +938,31 @@ class GUIArchetype:
         for item in data:
             code = item.get("code") or "no-code"
             fam = code[0] if code and code[0].isalpha() else "?"
-            sev_map = {"F": "medium", "E": "medium", "W": "low",
-                       "S": "high", "B": "medium", "ANN": "medium", "D": "low"}
+            sev_map = {
+                "F": "medium",
+                "E": "medium",
+                "W": "low",
+                "S": "high",
+                "B": "medium",
+                "ANN": "medium",
+                "D": "low",
+            }
             severity = sev_map.get(fam if fam != "A" else "ANN", "low")
             if code.startswith("ANN"):
                 severity = "medium"
             elif code.startswith("D"):
                 severity = "low"
             loc = item.get("location", {})
-            findings.append(Finding(
-                tool="ruff", severity=severity,
-                file=item.get("filename", str(target)),
-                line=loc.get("row", 0),
-                rule_id=code,
-                message=item.get("message", ""),
-            ))
+            findings.append(
+                Finding(
+                    tool="ruff",
+                    severity=severity,
+                    file=item.get("filename", str(target)),
+                    line=loc.get("row", 0),
+                    rule_id=code,
+                    message=item.get("message", ""),
+                )
+            )
         return findings, "ok"
 
     def _run_bandit(self, target: Path) -> tuple[list[Finding], str]:
@@ -801,11 +971,13 @@ class GUIArchetype:
             # file at all and exits 0 with an empty results array, so
             # this runner reported `ok` having read nothing. `-r` over a
             # single file is the same scan.
-            [sys.executable, "-m", "bandit", "-f", "json", "-q", "-r",
-             str(target)],
+            [sys.executable, "-m", "bandit", "-f", "json", "-q", "-r", str(target)],
             cwd=str(REPO_ROOT),
-            capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=120,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
         )
         if self._module_absent(proc, "bandit"):
             return [], "missing"
@@ -834,13 +1006,16 @@ class GUIArchetype:
             severity = _BANDIT_SEVERITY_OVERRIDES.get(
                 rule_id, sev_map.get(issue.get("issue_severity", ""), "medium")
             )
-            findings.append(Finding(
-                tool="bandit", severity=severity,
-                file=issue.get("filename", str(target)),
-                line=issue.get("line_number", 0),
-                rule_id=rule_id,
-                message=issue.get("issue_text", ""),
-            ))
+            findings.append(
+                Finding(
+                    tool="bandit",
+                    severity=severity,
+                    file=issue.get("filename", str(target)),
+                    line=issue.get("line_number", 0),
+                    rule_id=rule_id,
+                    message=issue.get("issue_text", ""),
+                )
+            )
         return findings, "ok"
 
 

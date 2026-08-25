@@ -109,7 +109,7 @@ if str(REPO) not in sys.path:
 from src.core import signal_contract as sc  # noqa: E402
 from src.core.signal_contract import SignalSink  # noqa: E402
 
-if TYPE_CHECKING:                       # pragma: no cover
+if TYPE_CHECKING:  # pragma: no cover
     # Annotation only. PySide6 must not be imported at module scope: the
     # two source-reading tests below are pure Python and have to run on a
     # box without Qt.
@@ -142,8 +142,15 @@ BUS_HANDLERS = (
 # Substrings that must never appear in a record this tab writes. A
 # context is written to disk and the Trading tab is the tab that handles
 # exchange credentials.
-FORBIDDEN = ("api_key", "apikey", "secret", "passphrase", "password",
-             "credential", "token")
+FORBIDDEN = (
+    "api_key",
+    "apikey",
+    "secret",
+    "passphrase",
+    "password",
+    "credential",
+    "token",
+)
 
 
 # ── Qt fixtures ────────────────────────────────────────────────────────
@@ -183,9 +190,10 @@ class _Settings:
     """
 
     def __init__(self, *exchange_ids: str) -> None:
-        self._rows = [{"exchange_id": eid,
-                       "display_name": eid.capitalize()}
-                      for eid in exchange_ids]
+        self._rows = [
+            {"exchange_id": eid, "display_name": eid.capitalize()}
+            for eid in exchange_ids
+        ]
 
     def list_exchanges(self) -> list[dict]:
         return list(self._rows)
@@ -283,10 +291,13 @@ def _trading_emit_calls() -> list[ast.Call]:
     question.
     """
     tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
-    return [node for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "_tr_emit"]
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_tr_emit"
+    ]
 
 
 # ── 12-001  the tab assembled itself the way it claims ─────────────────
@@ -310,8 +321,8 @@ def test_tab_assembly_is_reported(qapp: QApplication) -> None:
 
 
 def test_an_indicator_panel_that_never_reached_the_splitter_is_reported(
-        qapp: QApplication,
-        monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """THE FALSIFIER for `12-001`.
 
     The seam is `QSplitter.addWidget`, wrapped so that the indicator
@@ -369,8 +380,7 @@ def test_exchange_tab_routing_is_reported(qapp: QApplication) -> None:
     assert stock.context["exchange"] == "alpaca"
 
 
-def test_a_tab_that_never_reached_its_layer_bar_is_reported(
-        qapp: QApplication) -> None:
+def test_a_tab_that_never_reached_its_layer_bar_is_reported(qapp: QApplication) -> None:
     """THE FALSIFIER for `12-002`.
 
     The stock layer's tab bar is made to refuse the tab. Everything else
@@ -411,7 +421,8 @@ def test_exchange_tab_sync_is_reported(qapp: QApplication) -> None:
 
 
 def test_a_configured_exchange_missing_from_its_bar_is_reported(
-        qapp: QApplication) -> None:
+    qapp: QApplication,
+) -> None:
     """THE FALSIFIER for `12-003`.
 
     The crypto bar refuses its tab, so one of the two configured
@@ -436,8 +447,8 @@ def test_a_configured_exchange_missing_from_its_bar_is_reported(
 def test_active_layer_alias_is_reported(qapp: QApplication) -> None:
     """Both directions of the toggle, both aliases in step."""
     with _collect() as sink, _window(qapp) as win:
-        win._toggle_trading_mode()          # crypto -> stock
-        win._toggle_trading_mode()          # stock  -> crypto
+        win._toggle_trading_mode()  # crypto -> stock
+        win._toggle_trading_mode()  # stock  -> crypto
         got = _records(sink, ALIAS)
 
     assert len(got) == 2
@@ -452,8 +463,7 @@ def test_active_layer_alias_is_reported(qapp: QApplication) -> None:
     assert to_crypto.context["mode"] == "crypto"
 
 
-def test_the_alias_falls_behind_a_stack_that_did_not_move(
-        qapp: QApplication) -> None:
+def test_the_alias_falls_behind_a_stack_that_did_not_move(qapp: QApplication) -> None:
     """THE FALSIFIER for `12-004`, and the reason the pin exists.
 
     The stack is made not to move while the toggle repoints all three
@@ -496,8 +506,7 @@ def test_activity_log_pause_is_reported(qapp: QApplication) -> None:
     assert off.actual is False and off.expected is False
 
 
-def test_a_pause_that_did_not_take_is_reported(
-        qapp: QApplication) -> None:
+def test_a_pause_that_did_not_take_is_reported(qapp: QApplication) -> None:
     """THE FALSIFIER for `12-005`.
 
     `StatusLog.pause` is made a no-op. The button latches, the caption
@@ -536,8 +545,7 @@ def test_notification_relay_is_reported(qapp: QApplication) -> None:
     assert rec.context["parts"] == 2
 
 
-def test_a_notification_the_log_never_took_is_reported(
-        qapp: QApplication) -> None:
+def test_a_notification_the_log_never_took_is_reported(qapp: QApplication) -> None:
     """THE FALSIFIER for `12-006`.
 
     The log's `append` is made a no-op, which is what the stub's own
@@ -555,7 +563,8 @@ def test_a_notification_the_log_never_took_is_reported(
 
 
 def test_the_revision_read_survives_markup_that_defeats_a_text_read(
-        qapp: QApplication) -> None:
+    qapp: QApplication,
+) -> None:
     """The control for the design choice `12-006` makes.
 
     A message holding a tag-like fragment goes through Qt's rich-text
@@ -572,7 +581,8 @@ def test_the_revision_read_survives_markup_that_defeats_a_text_read(
 
     assert message not in tail, (
         "Qt kept the markup verbatim, so the measurement this pin's "
-        "design rests on no longer holds on this Qt build")
+        "design rests on no longer holds on this Qt build"
+    )
     assert rec.ok is True, "the revision read must still see the append"
     assert rec.actual is True
 
@@ -595,15 +605,14 @@ def test_no_trading_pin_carries_a_duration(qapp: QApplication) -> None:
         win._spool.notify("anything")
         got = [r for r in sink.records() if r.name in TRADING_PINS]
 
-    assert {r.name for r in got} == set(TRADING_PINS), (
-        f"only {sorted({r.name for r in got})} fired")
-    offenders = [(r.name, r.duration) for r in got
-                 if r.duration is not None]
+    assert {r.name for r in got} == set(
+        TRADING_PINS
+    ), f"only {sorted({r.name for r in got})} fired"
+    offenders = [(r.name, r.duration) for r in got if r.duration is not None]
     assert offenders == [], offenders
 
 
-def test_no_context_carries_credential_material(
-        qapp: QApplication) -> None:
+def test_no_context_carries_credential_material(qapp: QApplication) -> None:
     """A context is written to disk. This tab handles exchange keys.
 
     Asserted over every key AND every value of every record the tab
@@ -624,7 +633,8 @@ def test_no_context_carries_credential_material(
         blob = " ".join(
             [str(k) for k in (rec.context or {})]
             + [str(v) for v in (rec.context or {}).values()]
-            + [str(rec.actual), str(rec.expected)]).lower()
+            + [str(rec.actual), str(rec.expected)]
+        ).lower()
         hits = [word for word in FORBIDDEN if word in blob]
         assert hits == [], f"{rec.name} context carries {hits}: {blob}"
 
@@ -640,8 +650,7 @@ def test_no_trading_pin_declares_a_cadence() -> None:
     """
     calls = _trading_emit_calls()
     assert len(calls) == 6, f"expected 6 pin sites, found {len(calls)}"
-    throttled = [kw.arg for call in calls for kw in call.keywords
-                 if kw.arg == "every"]
+    throttled = [kw.arg for call in calls for kw in call.keywords if kw.arg == "every"]
     assert throttled == [], throttled
 
 

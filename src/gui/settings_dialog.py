@@ -11,13 +11,30 @@ logger = logging.getLogger("acervator.gui")
 
 try:
     from PySide6.QtWidgets import (
-        QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget,
-        QLabel, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox,
-        QCheckBox, QRadioButton, QGroupBox,
-        QPushButton, QSlider, QListWidget, QTextEdit,
-        QFormLayout, QDialogButtonBox, QApplication, QMessageBox,
+        QDialog,
+        QVBoxLayout,
+        QHBoxLayout,
+        QTabWidget,
+        QWidget,
+        QLabel,
+        QLineEdit,
+        QComboBox,
+        QSpinBox,
+        QDoubleSpinBox,
+        QCheckBox,
+        QRadioButton,
+        QGroupBox,
+        QPushButton,
+        QSlider,
+        QListWidget,
+        QTextEdit,
+        QFormLayout,
+        QDialogButtonBox,
+        QApplication,
+        QMessageBox,
     )
     from PySide6.QtCore import Qt, Signal
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -30,8 +47,14 @@ if _HAS_QT:
     # both lists are the single source of truth for "this id
     # belongs to the stock layer."
     EQUITY_EXCHANGE_IDS = {
-        "alpaca", "ibkr", "schwab", "tdameritrade",
-        "webull", "tastytrade", "fidelity", "etrade",
+        "alpaca",
+        "ibkr",
+        "schwab",
+        "tdameritrade",
+        "webull",
+        "tastytrade",
+        "fidelity",
+        "etrade",
         "interactivebrokers",
     }
 
@@ -39,8 +62,9 @@ if _HAS_QT:
 
         settings_changed = Signal()
 
-        def __init__(self, settings_manager, status_log=None, parent=None,
-                     wing: str = "crypto"):
+        def __init__(
+            self, settings_manager, status_log=None, parent=None, wing: str = "crypto"
+        ):
             """v3.16.20 — wing-aware Settings dialog.
 
             Parameters
@@ -64,7 +88,8 @@ if _HAS_QT:
             self.setWindowTitle(
                 f"Settings — {wing.capitalize()} Wing"
                 if wing in ("crypto", "stock")
-                else "Settings")
+                else "Settings"
+            )
             self.setMinimumSize(700, 600)
             self._sm = settings_manager
             self._status_log = status_log
@@ -133,20 +158,24 @@ if _HAS_QT:
 
             self._exchange_list = QListWidget()
             _list_label = (
-                "Configured Stock Brokers:" if self._wing == "stock"
+                "Configured Stock Brokers:"
+                if self._wing == "stock"
                 else "Configured Crypto Exchanges:"
             )
             layout.addWidget(QLabel(_list_label))
             layout.addWidget(self._exchange_list)
 
             add_group = QGroupBox(
-                "Add Stock Broker" if self._wing == "stock"
-                else "Add Crypto Exchange"
+                "Add Stock Broker" if self._wing == "stock" else "Add Crypto Exchange"
             )
             add_form = QFormLayout(add_group)
 
             self._new_exchange = QComboBox()
-            from src.exchange.ccxt_connector import SUPPORTED_EXCHANGES, PASSPHRASE_EXCHANGES
+            from src.exchange.ccxt_connector import (
+                SUPPORTED_EXCHANGES,
+                PASSPHRASE_EXCHANGES,
+            )
+
             self._passphrase_exchanges = PASSPHRASE_EXCHANGES
 
             # v3.16.20 — populate the dropdown by wing.
@@ -169,18 +198,24 @@ if _HAS_QT:
             add_form.addRow("Exchange:", self._new_exchange)
 
             self._new_api_key = QLineEdit()
-            self._new_api_key.setPlaceholderText("API Key or organizations/.../.../apiKeys/...")
-            self._new_api_key.setToolTip("For Coinbase CDP keys, paste the full organizations/.../apiKeys/... string")
+            self._new_api_key.setPlaceholderText(
+                "API Key or organizations/.../.../apiKeys/..."
+            )
+            self._new_api_key.setToolTip(
+                "For Coinbase CDP keys, paste the full organizations/.../apiKeys/... string"
+            )
             add_form.addRow("API Key:", self._new_api_key)
 
             self._new_api_secret = QTextEdit()
             self._new_api_secret.setMaximumHeight(60)
             self._new_api_secret.setPlaceholderText(
-                "API Secret or EC Private Key (PEM format with \\n is OK)")
+                "API Secret or EC Private Key (PEM format with \\n is OK)"
+            )
             self._new_api_secret.setToolTip(
                 "For Coinbase CDP keys, paste the full PEM key including\n"
                 "-----BEGIN EC PRIVATE KEY----- and -----END EC PRIVATE KEY-----\n"
-                "Literal \\n characters will be auto-converted to newlines.")
+                "Literal \\n characters will be auto-converted to newlines."
+            )
             add_form.addRow("API Secret:", self._new_api_secret)
 
             self._pp_check = QCheckBox("This exchange uses an API passphrase")
@@ -191,7 +226,9 @@ if _HAS_QT:
 
             self._new_passphrase = QLineEdit()
             self._new_passphrase.setEchoMode(QLineEdit.Password)
-            self._new_passphrase.setPlaceholderText("Passphrase set when creating API key")
+            self._new_passphrase.setPlaceholderText(
+                "Passphrase set when creating API key"
+            )
             self._new_passphrase.setVisible(False)
             add_form.addRow("", self._new_passphrase)
 
@@ -220,13 +257,20 @@ if _HAS_QT:
                     "no live brokers ship yet. Use the Crypto Wing "
                     "for active trading."
                 )
-                for _w in (self._test_btn, self._add_btn,
-                           self._new_api_key, self._new_api_secret,
-                           self._new_passphrase, self._pp_check):
+                for _w in (
+                    self._test_btn,
+                    self._add_btn,
+                    self._new_api_key,
+                    self._new_api_secret,
+                    self._new_passphrase,
+                    self._pp_check,
+                ):
                     try:
                         _w.setEnabled(False)
                         _w.setToolTip(_disabled_tip)
-                    except Exception:  # R28-OK: defensive disable; tooltip is best-effort UX
+                    except (
+                        Exception
+                    ):  # R28-OK: defensive disable; tooltip is best-effort UX
                         pass
 
             layout.addWidget(add_group)
@@ -249,7 +293,11 @@ if _HAS_QT:
             eid = self._new_exchange.currentData()
             key = self._new_api_key.text().strip()
             secret = self._new_api_secret.toPlainText().strip()
-            pp = self._new_passphrase.text().strip() if self._pp_check.isChecked() else ""
+            pp = (
+                self._new_passphrase.text().strip()
+                if self._pp_check.isChecked()
+                else ""
+            )
 
             if not key or not secret:
                 self._set_feedback("Enter API key and secret first.", "error")
@@ -262,6 +310,7 @@ if _HAS_QT:
 
             try:
                 from src.exchange.api_validator import validate_credentials
+
                 result = validate_credentials(eid, key, secret, pp)
                 if result.success:
                     msg = result.message
@@ -280,7 +329,9 @@ if _HAS_QT:
                         msg += f"\n{result.details}"
                     self._set_feedback(msg, "error")
                     if self._status_log:
-                        self._status_log.log(f"API failed ({eid}): {result.message}", "error")
+                        self._status_log.log(
+                            f"API failed ({eid}): {result.message}", "error"
+                        )
                     self._last_validation = None
                     return None
             except Exception as exc:
@@ -292,7 +343,12 @@ if _HAS_QT:
                 self._add_btn.setEnabled(True)
 
         def _set_feedback(self, message: str, level: str = "info") -> None:
-            colors = {"info": "#00aaff", "success": "#00ff88", "warning": "#ffaa00", "error": "#ff3366"}
+            colors = {
+                "info": "#00aaff",
+                "success": "#00ff88",
+                "warning": "#ffaa00",
+                "error": "#ff3366",
+            }
             self._api_feedback.setText(message)
             self._api_feedback.setStyleSheet(f"color: {colors.get(level, '#e0e0f0')};")
 
@@ -306,7 +362,11 @@ if _HAS_QT:
                 eid = self._new_exchange.currentData()
                 key = self._new_api_key.text().strip()
                 secret = self._new_api_secret.toPlainText().strip()
-                pp = self._new_passphrase.text().strip() if self._pp_check.isChecked() else ""
+                pp = (
+                    self._new_passphrase.text().strip()
+                    if self._pp_check.isChecked()
+                    else ""
+                )
 
                 if key and secret:
                     result = self._test_api_connection()
@@ -314,10 +374,12 @@ if _HAS_QT:
                         return
 
                 from src.core.settings import ExchangeConfig
+
                 config = ExchangeConfig(exchange_id=eid, display_name=eid.capitalize())
 
                 if key and secret:
                     from src.core.encryption import encrypt
+
                     master = f"qat_{self._sm.get('username', 'user')}_vault"
                     config.api_key_enc = encrypt(key, master)
                     config.api_secret_enc = encrypt(secret, master)
@@ -330,14 +392,20 @@ if _HAS_QT:
                 self._new_api_secret.clear()
                 self._new_passphrase.clear()
 
-                has_creds = "with credentials (verified)" if key else "without credentials"
+                has_creds = (
+                    "with credentials (verified)" if key else "without credentials"
+                )
                 self._set_feedback(f"{eid.capitalize()} added {has_creds}.", "success")
                 if self._status_log:
-                    self._status_log.log(f"Exchange added: {eid.capitalize()} ({has_creds})", "success")
+                    self._status_log.log(
+                        f"Exchange added: {eid.capitalize()} ({has_creds})", "success"
+                    )
                 QMessageBox.information(
-                    self, "Exchange Added",
+                    self,
+                    "Exchange Added",
                     f"{eid.capitalize()} has been added {has_creds}.\n"
-                    f"The exchange tab will appear in the main window.")
+                    f"The exchange tab will appear in the main window.",
+                )
                 self.accept()
             finally:
                 self._add_btn.setEnabled(True)
@@ -387,7 +455,9 @@ if _HAS_QT:
         def _create_folding_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
-            self._folding_active = QCheckBox("Profit Folding / Upward Distribution Active")
+            self._folding_active = QCheckBox(
+                "Profit Folding / Upward Distribution Active"
+            )
             layout.addWidget(self._folding_active)
 
             mode_group = QGroupBox("Distribution Mode")
@@ -441,6 +511,7 @@ if _HAS_QT:
             layout = QVBoxLayout(w)
             layout.addWidget(QLabel("Adjust indicator weights in the voting engine."))
             from src.trading.ta_engine import DEFAULT_WEIGHTS
+
             self._ta_weight_sliders = {}
             for ind_name, default_w in DEFAULT_WEIGHTS.items():
                 row = QHBoxLayout()
@@ -453,7 +524,9 @@ if _HAS_QT:
                 row.addWidget(slider)
                 val_label = QLabel(f"{default_w:.2f}")
                 val_label.setMinimumWidth(40)
-                slider.valueChanged.connect(lambda v, lbl=val_label: lbl.setText(f"{v/100:.2f}"))
+                slider.valueChanged.connect(
+                    lambda v, lbl=val_label: lbl.setText(f"{v/100:.2f}")
+                )
                 row.addWidget(val_label)
                 self._ta_weight_sliders[ind_name] = slider
                 layout.addLayout(row)
@@ -464,13 +537,27 @@ if _HAS_QT:
         def _create_phantom_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
-            self._phantoms_enabled = QCheckBox("Enable Phantom Balance Bots for Scrumming")
+            self._phantoms_enabled = QCheckBox(
+                "Enable Phantom Balance Bots for Scrumming"
+            )
             self._phantoms_enabled.setChecked(True)
             layout.addWidget(self._phantoms_enabled)
             layout.addWidget(QLabel("Default Phantom Timeframes:"))
             self._phantom_tf_checks = {}
             tf_grid = QHBoxLayout()
-            for tf in ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"]:
+            for tf in [
+                "1m",
+                "5m",
+                "15m",
+                "30m",
+                "1h",
+                "2h",
+                "4h",
+                "6h",
+                "12h",
+                "1d",
+                "1w",
+            ]:
                 cb = QCheckBox(tf)
                 cb.setChecked(tf in ["5m", "15m", "1h", "4h", "1d"])
                 self._phantom_tf_checks[tf] = cb
@@ -495,6 +582,7 @@ if _HAS_QT:
             layout.addWidget(QLabel("Visual Theme:"))
             self._theme_combo = QComboBox()
             from src.gui.theme_engine import THEMES
+
             for name, tokens in THEMES.items():
                 self._theme_combo.addItem(tokens.display_name, name)
             layout.addWidget(self._theme_combo)
@@ -512,9 +600,18 @@ if _HAS_QT:
             self._font_family.setEditable(True)
             # Common monospace and UI fonts
             fonts = [
-                "Segoe UI", "Consolas", "Cascadia Code", "Courier New",
-                "Arial", "Helvetica", "Roboto", "Fira Code",
-                "JetBrains Mono", "Source Code Pro", "Ubuntu", "Verdana",
+                "Segoe UI",
+                "Consolas",
+                "Cascadia Code",
+                "Courier New",
+                "Arial",
+                "Helvetica",
+                "Roboto",
+                "Fira Code",
+                "JetBrains Mono",
+                "Source Code Pro",
+                "Ubuntu",
+                "Verdana",
             ]
             self._font_family.addItems(fonts)
             self._font_family.setCurrentText("Segoe UI")
@@ -539,7 +636,9 @@ if _HAS_QT:
             self._log_font_size.setRange(8, 18)
             self._log_font_size.setValue(10)
             self._log_font_size.setSuffix(" pt")
-            self._log_font_size.setToolTip("Font size for Activity Log and API Log panels")
+            self._log_font_size.setToolTip(
+                "Font size for Activity Log and API Log panels"
+            )
             font_form.addRow("Log Font Size:", self._log_font_size)
 
             self._font_preview = QLabel("The quick brown fox jumps over the lazy dog")
@@ -564,10 +663,14 @@ if _HAS_QT:
         def _create_logging_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
-            self._ta_logging = QCheckBox("Log TA signal samples with all values and timestamps")
+            self._ta_logging = QCheckBox(
+                "Log TA signal samples with all values and timestamps"
+            )
             self._ta_logging.setChecked(True)
             layout.addWidget(self._ta_logging)
-            self._highlight_trades = QCheckBox("Highlight entries near Scrumming Bot trades")
+            self._highlight_trades = QCheckBox(
+                "Highlight entries near Scrumming Bot trades"
+            )
             self._highlight_trades.setChecked(True)
             layout.addWidget(self._highlight_trades)
             layout.addWidget(QLabel("P/L Log Periodicity:"))
@@ -596,12 +699,16 @@ if _HAS_QT:
             layout.addWidget(QLabel("Sound Events:"))
             self._sound_buy = QCheckBox("Buy order fills (blurb + squirt tone)")
             self._sound_buy.setChecked(True)
-            self._sound_buy.setToolTip("Plays a low bubbly rising tone when a buy order is filled")
+            self._sound_buy.setToolTip(
+                "Plays a low bubbly rising tone when a buy order is filled"
+            )
             layout.addWidget(self._sound_buy)
 
             self._sound_sell = QCheckBox("Sell order fills (bell + jingle tone)")
             self._sound_sell.setChecked(True)
-            self._sound_sell.setToolTip("Plays a high bright bell tone when a sell order is filled")
+            self._sound_sell.setToolTip(
+                "Plays a high bright bell tone when a sell order is filled"
+            )
             layout.addWidget(self._sound_sell)
 
             self._sound_error = QCheckBox("Errors (alert tone)")
@@ -613,41 +720,43 @@ if _HAS_QT:
             layout.addWidget(self._sound_state)
 
             # MEM-236 — Fire SFX (sniper rifle shot) + Tracking beep toggles
-            self._sound_fire = QCheckBox(
-                "Scrum/Fold Fire (sniper rifle shot)")
+            self._sound_fire = QCheckBox("Scrum/Fold Fire (sniper rifle shot)")
             self._sound_fire.setChecked(True)
             self._sound_fire.setToolTip(
                 "Synthesized rifle shot plays when a scrum or fold\n"
-                "actually executes. Also plays on Manual Fire.")
+                "actually executes. Also plays on Manual Fire."
+            )
             layout.addWidget(self._sound_fire)
 
             self._sound_track = QCheckBox(
-                "Tracking beeps (speeds up as bot closes on fire)")
+                "Tracking beeps (speeds up as bot closes on fire)"
+            )
             self._sound_track.setChecked(True)
             self._sound_track.setToolTip(
                 "Short beep paced by scrum phase:\n"
                 "  SEARCH = silent\n"
                 "  TRACK  = slow beep (800ms)\n"
-                "  FIRE   = fast beep (200ms)")
+                "  FIRE   = fast beep (200ms)"
+            )
             layout.addWidget(self._sound_track)
 
             # MEM-238 — Profit + Drip SFX toggles
-            self._sound_profit = QCheckBox(
-                "P/L increase (coins dropping into bucket)")
+            self._sound_profit = QCheckBox("P/L increase (coins dropping into bucket)")
             self._sound_profit.setChecked(True)
             self._sound_profit.setToolTip(
                 "Synthesized 3-coin bucket drop plays on any trade\n"
                 "event with realized profit > 0. Fires on grid and\n"
-                "scrumming bots alike.")
+                "scrumming bots alike."
+            )
             layout.addWidget(self._sound_profit)
 
-            self._sound_drip = QCheckBox(
-                "Accumulation (water drip)")
+            self._sound_drip = QCheckBox("Accumulation (water drip)")
             self._sound_drip.setChecked(True)
             self._sound_drip.setToolTip(
                 "Water drip plays on FOLD events — the canonical\n"
                 "Acervator accumulation moment (buying back more asset\n"
-                "than was sold). Does not fire on SCRUM or DIST.")
+                "than was sold). Does not fire on SCRUM or DIST."
+            )
             layout.addWidget(self._sound_drip)
 
             vol_row = QHBoxLayout()
@@ -658,14 +767,14 @@ if _HAS_QT:
             vol_row.addWidget(self._sound_volume)
             self._vol_label = QLabel("70%")
             self._sound_volume.valueChanged.connect(
-                lambda v: self._vol_label.setText(f"{v}%"))
+                lambda v: self._vol_label.setText(f"{v}%")
+            )
             # MEM-236 — actually wire slider to sound engine. Prior
             # implementation only updated the label; volume in
             # SoundConfig stayed at its default 0.7 regardless of
             # slider position. Must regenerate wav cache because
             # volume is baked into the sample values at synth time.
-            self._sound_volume.valueChanged.connect(
-                self._on_sfx_volume_changed)
+            self._sound_volume.valueChanged.connect(self._on_sfx_volume_changed)
             vol_row.addWidget(self._vol_label)
             layout.addLayout(vol_row)
 
@@ -705,8 +814,8 @@ if _HAS_QT:
             clear the cache and re-generate. The regen happens lazily
             on next play(), so cost here is just clearing state."""
             try:
-                from src.core.sound_engine import (
-                    get_sound_engine, SoundConfig)
+                from src.core.sound_engine import get_sound_engine, SoundConfig
+
                 se = get_sound_engine()
                 new_cfg = SoundConfig(
                     enabled=self._sound_enabled.isChecked(),
@@ -717,7 +826,7 @@ if _HAS_QT:
                     fire_sound=self._sound_fire.isChecked(),
                     track_sound=self._sound_track.isChecked(),
                     profit_sound=self._sound_profit.isChecked(),  # MEM-238
-                    drip_sound=self._sound_drip.isChecked(),      # MEM-238
+                    drip_sound=self._sound_drip.isChecked(),  # MEM-238
                     volume=v / 100.0,
                 )
                 se.update_config(new_cfg)
@@ -726,10 +835,13 @@ if _HAS_QT:
                 se._cache = {}
             except Exception as _sf_exc:  # noqa: BLE001
                 logger.warning(
-                    "settings widget population failed — a field may show a default instead of its saved value: %s", _sf_exc)
+                    "settings widget population failed — a field may show a default instead of its saved value: %s",
+                    _sf_exc,
+                )
 
         def _test_sound(self, name: str) -> None:
             from src.core.sound_engine import get_sound_engine
+
             # Apply current UI state to the engine before playing so
             # the operator hears the current slider volume.
             self._on_sfx_volume_changed(self._sound_volume.value())
@@ -749,7 +861,9 @@ if _HAS_QT:
             layout.setSpacing(8)
 
             self._sms_enabled = QCheckBox("Enable SMS notifications")
-            self._sms_enabled.setToolTip("Send text messages to your phone for trading events")
+            self._sms_enabled.setToolTip(
+                "Send text messages to your phone for trading events"
+            )
             layout.addWidget(self._sms_enabled)
 
             provider_group = QGroupBox("SMS Provider")
@@ -774,6 +888,7 @@ if _HAS_QT:
             self._sms_carrier = QComboBox()
             self._sms_carrier.setMinimumHeight(28)
             from src.core.sms_engine import CARRIER_GATEWAYS
+
             for carrier in CARRIER_GATEWAYS:
                 self._sms_carrier.addItem(carrier)
             pf.addRow("Carrier:", self._sms_carrier)
@@ -792,7 +907,9 @@ if _HAS_QT:
             self._sms_smtp_pass = QLineEdit()
             self._sms_smtp_pass.setMinimumHeight(28)
             self._sms_smtp_pass.setEchoMode(QLineEdit.Password)
-            self._sms_smtp_pass.setPlaceholderText("App password (not regular password)")
+            self._sms_smtp_pass.setPlaceholderText(
+                "App password (not regular password)"
+            )
             pf.addRow("SMTP Password:", self._sms_smtp_pass)
 
             layout.addWidget(provider_group)
@@ -852,6 +969,7 @@ if _HAS_QT:
         # -- AI Monitor tab ---
         def _create_ai_monitor_tab(self) -> QWidget:
             from PySide6.QtWidgets import QScrollArea
+
             QFL = QFormLayout
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
@@ -890,7 +1008,8 @@ if _HAS_QT:
             info = QLabel(
                 "The connect phrase is embedded in the system prompt sent to Claude.\n"
                 "The confirm phrase is what Claude must respond with to prove identity.\n"
-                "Change both phrases together. Keep them secret.")
+                "Change both phrases together. Keep them secret."
+            )
             info.setStyleSheet("color: #888; font-size: 10px;")
             info.setWordWrap(True)
             hf.addRow(info)
@@ -949,7 +1068,8 @@ if _HAS_QT:
             self._ai_test_btn.setMinimumHeight(32)
             self._ai_test_btn.setStyleSheet(
                 "background: #1a3a4a; color: #00ddff; border: 1px solid #00aacc; "
-                "border-radius: 4px; font-weight: bold;")
+                "border-radius: 4px; font-weight: bold;"
+            )
             self._ai_test_btn.clicked.connect(self._test_ai_handshake)
             sf.addRow(self._ai_test_btn)
 
@@ -982,7 +1102,9 @@ if _HAS_QT:
             self._username.setText(self._sm.get("username", ""))
             self._pos_distance.setValue(self._sm.get("position_distance_pct", 2.0))
             self._default_positions.setValue(self._sm.get("default_position_count", 10))
-            self._default_balance.setValue(self._sm.get("default_target_balance", 200.0))
+            self._default_balance.setValue(
+                self._sm.get("default_target_balance", 200.0)
+            )
             self._accent_color.setText(self._sm.get("accent_color", "#00ffcc"))
 
             # AI Monitor
@@ -1023,10 +1145,15 @@ if _HAS_QT:
         def _save(self) -> None:
             """Save all settings and close. ALWAYS closes the dialog."""
             import sys
+
             print("[SETTINGS] _save called", file=sys.stderr, flush=True)
 
             if not self._sm:
-                print("[SETTINGS] No settings manager, closing", file=sys.stderr, flush=True)
+                print(
+                    "[SETTINGS] No settings manager, closing",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 self.accept()
                 return
 
@@ -1067,52 +1194,75 @@ if _HAS_QT:
             # Profit folding
             try:
                 fold_target = "all_buy"
-                if self._fold_x.isChecked(): fold_target = "x_buy"
-                elif self._fold_recent.isChecked(): fold_target = "most_recent_buy"
+                if self._fold_x.isChecked():
+                    fold_target = "x_buy"
+                elif self._fold_recent.isChecked():
+                    fold_target = "most_recent_buy"
                 dist_target = "all_sell"
-                if self._dist_x.isChecked(): dist_target = "x_sell"
-                elif self._dist_recent.isChecked(): dist_target = "most_recent_sell"
-                self._sm.set("profit_folding", {
-                    "active": self._folding_active.isChecked(),
-                    "mode": "logarithmic" if self._fold_log.isChecked() else "equal",
-                    "fold_target": fold_target,
-                    "fold_target_count": self._fold_x_count.value(),
-                    "distribute_target": dist_target,
-                    "distribute_target_count": self._dist_x_count.value(),
-                })
+                if self._dist_x.isChecked():
+                    dist_target = "x_sell"
+                elif self._dist_recent.isChecked():
+                    dist_target = "most_recent_sell"
+                self._sm.set(
+                    "profit_folding",
+                    {
+                        "active": self._folding_active.isChecked(),
+                        "mode": (
+                            "logarithmic" if self._fold_log.isChecked() else "equal"
+                        ),
+                        "fold_target": fold_target,
+                        "fold_target_count": self._fold_x_count.value(),
+                        "distribute_target": dist_target,
+                        "distribute_target_count": self._dist_x_count.value(),
+                    },
+                )
                 saved += 1
             except Exception as e:
                 failed.append(f"profit_folding ({e})")
-                print(f"[SETTINGS ERROR] profit_folding: {e}", file=sys.stderr, flush=True)
+                print(
+                    f"[SETTINGS ERROR] profit_folding: {e}", file=sys.stderr, flush=True
+                )
 
             # Data logging
             try:
                 periods = []
-                if self._log_24h.isChecked(): periods.append("24h")
-                if self._log_1w.isChecked(): periods.append("1_week")
-                if self._log_1m.isChecked(): periods.append("1_month")
-                if self._log_1y.isChecked(): periods.append("1_year")
-                self._sm.set("data_logging", {
-                    "ta_signal_logging": self._ta_logging.isChecked(),
-                    "highlight_trade_proximity": self._highlight_trades.isChecked(),
-                    "active_periodicities": periods,
-                })
+                if self._log_24h.isChecked():
+                    periods.append("24h")
+                if self._log_1w.isChecked():
+                    periods.append("1_week")
+                if self._log_1m.isChecked():
+                    periods.append("1_month")
+                if self._log_1y.isChecked():
+                    periods.append("1_year")
+                self._sm.set(
+                    "data_logging",
+                    {
+                        "ta_signal_logging": self._ta_logging.isChecked(),
+                        "highlight_trade_proximity": self._highlight_trades.isChecked(),
+                        "active_periodicities": periods,
+                    },
+                )
                 saved += 1
             except Exception as e:
                 failed.append(f"data_logging ({e})")
-                print(f"[SETTINGS ERROR] data_logging: {e}", file=sys.stderr, flush=True)
+                print(
+                    f"[SETTINGS ERROR] data_logging: {e}", file=sys.stderr, flush=True
+                )
 
             # AI Monitor
             try:
-                self._sm.set("ai_monitor", {
-                    "api_key": self._ai_api_key.text().strip(),
-                    "interval_hours": self._ai_interval.value(),
-                    "connect_phrase": self._ai_connect_phrase.text().strip(),
-                    "confirm_phrase": self._ai_confirm_phrase.text().strip(),
-                    "enabled": self._ai_enabled.isChecked(),
-                    "auto_handshake": self._ai_auto_handshake.isChecked(),
-                    "log_feedback": self._ai_log_feedback.isChecked(),
-                })
+                self._sm.set(
+                    "ai_monitor",
+                    {
+                        "api_key": self._ai_api_key.text().strip(),
+                        "interval_hours": self._ai_interval.value(),
+                        "connect_phrase": self._ai_connect_phrase.text().strip(),
+                        "confirm_phrase": self._ai_confirm_phrase.text().strip(),
+                        "enabled": self._ai_enabled.isChecked(),
+                        "auto_handshake": self._ai_auto_handshake.isChecked(),
+                        "log_feedback": self._ai_log_feedback.isChecked(),
+                    },
+                )
                 saved += 1
             except Exception as e:
                 failed.append(f"ai_monitor ({e})")
@@ -1123,7 +1273,9 @@ if _HAS_QT:
                 self.settings_changed.emit()
             except Exception as _sf_exc:  # noqa: BLE001
                 logger.warning(
-                    "settings save step failed — a field may not have persisted: %s", _sf_exc)
+                    "settings save step failed — a field may not have persisted: %s",
+                    _sf_exc,
+                )
 
             # Log to status
             #
@@ -1139,15 +1291,23 @@ if _HAS_QT:
                         self._status_log.log(
                             f"Settings PARTIALLY saved: {saved} ok, "
                             f"{len(failed)} FAILED — {'; '.join(failed)}",
-                            "error")
+                            "error",
+                        )
                     else:
                         self._status_log.log(
-                            f"Settings saved ({saved} groups).", "success")
+                            f"Settings saved ({saved} groups).", "success"
+                        )
             except Exception as _sf_exc:  # noqa: BLE001
                 logger.warning(
-                    "settings save step failed — a field may not have persisted: %s", _sf_exc)
+                    "settings save step failed — a field may not have persisted: %s",
+                    _sf_exc,
+                )
 
-            print(f"[SETTINGS] Saved {saved} groups, closing dialog", file=sys.stderr, flush=True)
+            print(
+                f"[SETTINGS] Saved {saved} groups, closing dialog",
+                file=sys.stderr,
+                flush=True,
+            )
 
             # v3.24.36 (C12) — surface a partial save to the operator.
             # The status line above scrolls; this does not. A setting
@@ -1161,15 +1321,16 @@ if _HAS_QT:
             if failed:
                 try:
                     QMessageBox.warning(
-                        self, "Settings partially saved",
+                        self,
+                        "Settings partially saved",
                         f"{saved} setting group(s) saved, but "
                         f"{len(failed)} FAILED and were discarded:\n\n"
                         + "\n".join(f"  • {f}" for f in failed)
                         + "\n\nThese values are NOT persisted and will "
-                          "revert when the dialog is reopened.")
+                        "revert when the dialog is reopened.",
+                    )
                 except Exception as _mb_exc:  # noqa: BLE001
-                    logger.warning(
-                        "could not show partial-save warning: %s", _mb_exc)
+                    logger.warning("could not show partial-save warning: %s", _mb_exc)
 
             # ALWAYS close the dialog - this line must execute no matter what
             self.accept()

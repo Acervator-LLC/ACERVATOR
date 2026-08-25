@@ -18,6 +18,7 @@ to be wrong while leaving the first in place.
 These pins therefore test WHEN resolution happens, not merely that an
 override exists. tmp_path only.
 """
+
 from __future__ import annotations
 
 import sys
@@ -31,8 +32,7 @@ from src.core import feature_telemetry as ft  # noqa: E402
 
 
 class TestResolutionHappensAtCallTime:
-    def test_override_set_AFTER_import_is_honoured(self, tmp_path,
-                                                   monkeypatch):
+    def test_override_set_AFTER_import_is_honoured(self, tmp_path, monkeypatch):
         """The whole defect in one assertion.
 
         The module is already imported at this point — exactly the sim
@@ -43,13 +43,13 @@ class TestResolutionHappensAtCallTime:
         assert ft.telemetry_path().parent == tmp_path
 
     def test_a_tracker_built_after_the_override_writes_there(
-            self, tmp_path, monkeypatch):
+        self, tmp_path, monkeypatch
+    ):
         monkeypatch.setenv(ft.TELEMETRY_ROOT_ENV, str(tmp_path))
         tracker = ft.FeatureTelemetry(autoload=False)
         assert tracker._path.parent == tmp_path
 
-    def test_two_trackers_can_target_different_roots(self, tmp_path,
-                                                     monkeypatch):
+    def test_two_trackers_can_target_different_roots(self, tmp_path, monkeypatch):
         """Import-time binding made every tracker share one path. Sim and
         live coexist in one process, so they must be able to differ."""
         a_dir, b_dir = tmp_path / "a", tmp_path / "b"
@@ -69,7 +69,8 @@ class TestDefaultIsUnchanged:
         and a fix that broke that would be a worse regression."""
         monkeypatch.delenv(ft.TELEMETRY_ROOT_ENV, raising=False)
         assert ft.telemetry_path() == (
-            Path.home() / ".acervator" / "feature_telemetry.json")
+            Path.home() / ".acervator" / "feature_telemetry.json"
+        )
 
     def test_an_explicit_path_still_wins(self, tmp_path, monkeypatch):
         monkeypatch.setenv(ft.TELEMETRY_ROOT_ENV, str(tmp_path / "env"))
@@ -79,8 +80,7 @@ class TestDefaultIsUnchanged:
 
 
 class TestItActuallyWritesWhereItSays:
-    def test_a_flush_lands_in_the_override_root(self, tmp_path,
-                                                monkeypatch):
+    def test_a_flush_lands_in_the_override_root(self, tmp_path, monkeypatch):
         """Path resolution is necessary but not sufficient — prove the
         bytes land there. The conftest live-tree guard would fail this
         run if they went to ~/.acervator instead."""

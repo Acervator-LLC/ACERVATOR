@@ -33,7 +33,6 @@ import pytest
 
 from src.exchange import ccxt_connector as CC
 
-
 CALLING_THREAD_TOLERANCE_S = 0.5
 FAKE_MARKETS = {"BTC/USD": {"id": "BTC-USD"}, "ETH/USD": {"id": "ETH-USD"}}
 
@@ -73,11 +72,9 @@ def _install_fake_ccxt(monkeypatch, sleep_s: float, fail_attempts: int):
             state.load_threads.append(threading.current_thread().name)
             time.sleep(sleep_s)
             if state.load_calls <= fail_attempts:
-                raise RuntimeError(
-                    f"fake venue refused attempt {state.load_calls}")
+                raise RuntimeError(f"fake venue refused attempt {state.load_calls}")
             self.markets = dict(FAKE_MARKETS)
-            self.markets_by_id = {
-                v["id"]: k for k, v in FAKE_MARKETS.items()}
+            self.markets_by_id = {v["id"]: k for k, v in FAKE_MARKETS.items()}
             self.currencies = {"BTC": {}, "ETH": {}, "USD": {}}
             self.symbols = sorted(FAKE_MARKETS)
             return self.markets
@@ -102,6 +99,7 @@ def _install_fake_ccxt(monkeypatch, sleep_s: float, fail_attempts: int):
     sync_mod.async_support = async_mod
 
     import sys
+
     monkeypatch.setitem(sys.modules, "ccxt", sync_mod)
     monkeypatch.setitem(sys.modules, "ccxt.async_support", async_mod)
     # A pre-flight is a real urlopen. This suite never touches the wire.
@@ -141,7 +139,7 @@ def _drive_connect_and_watch(conn):
     async def _main():
         stop = asyncio.Event()
         watcher = asyncio.ensure_future(_ticker(stop))
-        await asyncio.sleep(0.05)          # let the ticker settle
+        await asyncio.sleep(0.05)  # let the ticker settle
         t0 = time.monotonic()
         await conn.connect("fake-key", "fake-secret", "")
         wall = time.monotonic() - t0
@@ -193,7 +191,8 @@ def test_connect_leaves_the_calling_thread_free_to_work(monkeypatch):
     assert wall >= sleep_s, "the fake did not actually sleep"
     assert max_gap < CALLING_THREAD_TOLERANCE_S, (
         f"calling thread was held {max_gap:.3f}s during a {wall:.3f}s "
-        f"connect; the blocking call is back on the caller")
+        f"connect; the blocking call is back on the caller"
+    )
     assert tick_count > 20, tick_count
 
 
@@ -215,8 +214,9 @@ def test_connect_retry_path_also_stays_off_the_calling_thread(monkeypatch):
     assert set(state.load_threads) == {"ccxt-coinbase_0"}, state.load_threads
     # 2 s + 4 s of production backoff really elapsed.
     assert wall >= 6.0, wall
-    assert max_gap < CALLING_THREAD_TOLERANCE_S, (
-        f"calling thread was held {max_gap:.3f}s across the retry path")
+    assert (
+        max_gap < CALLING_THREAD_TOLERANCE_S
+    ), f"calling thread was held {max_gap:.3f}s across the retry path"
 
 
 def test_connect_still_connects(monkeypatch):
@@ -305,13 +305,16 @@ def test_api_validator_still_validates(monkeypatch):
     # neutralised on the class rather than on an instance.
     scanned: list[str] = []
     monkeypatch.setattr(
-        CC.CCXTConnector, "_scan_trade_history",
-        lambda self: scanned.append(self._exchange_id))
+        CC.CCXTConnector,
+        "_scan_trade_history",
+        lambda self: scanned.append(self._exchange_id),
+    )
 
     from src.exchange import api_validator
 
     result = api_validator.validate_credentials(
-        "coinbase", "fake-key", "fake-secret", "")
+        "coinbase", "fake-key", "fake-secret", ""
+    )
 
     assert result.success is True, result.message
     assert result.exchange_id == "coinbase"

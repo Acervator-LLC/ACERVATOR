@@ -72,13 +72,13 @@ logger = logging.getLogger("acervator.usb_auth")
 # Constants
 # ---------------------------------------------------------------------------
 
-MAGIC_HEADER   = b"ACERVKEY"
-FILE_VERSION   = b"\x00\x01\x00\x00"
-AUTH_FILENAME  = ".acervator_auth"
-PBKDF2_ITERS   = 260_000
-SALT_LEN       = 32
-NONCE_LEN      = 12
-KEY_LEN        = 32   # AES-256
+MAGIC_HEADER = b"ACERVKEY"
+FILE_VERSION = b"\x00\x01\x00\x00"
+AUTH_FILENAME = ".acervator_auth"
+PBKDF2_ITERS = 260_000
+SALT_LEN = 32
+NONCE_LEN = 12
+KEY_LEN = 32  # AES-256
 
 # App-specific secret — incorporated into key derivation so the file
 # can only be decrypted by Acervator. Not a user-facing secret.
@@ -91,6 +91,7 @@ _APP_HMAC_SECRET = (
 # ---------------------------------------------------------------------------
 # Key derivation
 # ---------------------------------------------------------------------------
+
 
 def _derive_usb_key(volume_serial: str, salt: bytes) -> bytes:
     """Derive AES-256 key from app secret + volume serial + salt."""
@@ -113,10 +114,12 @@ def _app_id_fingerprint() -> str:
 # AES-GCM (or fallback AES-CTR + HMAC)
 # ---------------------------------------------------------------------------
 
+
 def _aes_gcm_encrypt(key: bytes, nonce: bytes, plaintext: bytes) -> bytes:
     """AES-256-GCM encrypt. Returns nonce + ciphertext + tag (16 bytes)."""
     try:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
         aes = AESGCM(key)
         return nonce + aes.encrypt(nonce, plaintext, None)
     except ImportError:
@@ -127,9 +130,10 @@ def _aes_gcm_encrypt(key: bytes, nonce: bytes, plaintext: bytes) -> bytes:
 def _aes_gcm_decrypt(key: bytes, data: bytes) -> bytes:
     """Decrypt data produced by _aes_gcm_encrypt."""
     nonce = data[:NONCE_LEN]
-    ct    = data[NONCE_LEN:]
+    ct = data[NONCE_LEN:]
     try:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
         return AESGCM(key).decrypt(nonce, ct, None)
     except ImportError:
         return _fallback_decrypt(key, nonce, ct)
@@ -138,6 +142,7 @@ def _aes_gcm_decrypt(key: bytes, data: bytes) -> bytes:
 def _fallback_encrypt(key: bytes, nonce: bytes, data: bytes) -> bytes:
     """AES-CTR + HMAC-SHA256 using only stdlib."""
     from hashlib import sha256
+
     stream = _kdf_stream(key, nonce, len(data))
     ct = bytes(a ^ b for a, b in zip(data, stream))
     tag = hmac.new(key, nonce + ct, sha256).digest()
@@ -146,11 +151,14 @@ def _fallback_encrypt(key: bytes, nonce: bytes, data: bytes) -> bytes:
 
 def _fallback_decrypt(key: bytes, nonce: bytes, ct_and_tag: bytes) -> bytes:
     from hashlib import sha256
-    ct  = ct_and_tag[:-32]
+
+    ct = ct_and_tag[:-32]
     tag = ct_and_tag[-32:]
     expected = hmac.new(key, nonce + ct, sha256).digest()
     if not hmac.compare_digest(expected, tag):
-        raise ValueError("Authentication tag mismatch — file may be corrupted or tampered.")
+        raise ValueError(
+            "Authentication tag mismatch — file may be corrupted or tampered."
+        )
     stream = _kdf_stream(key, nonce, len(ct))
     return bytes(a ^ b for a, b in zip(ct, stream))
 
@@ -169,14 +177,16 @@ def _kdf_stream(key: bytes, nonce: bytes, length: int) -> bytes:
 # USB volume discovery
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class USBVolume:
     """Represents a detected removable USB volume."""
+
     mount_point: Path
-    label:       str
-    serial:      str   # Volume serial number (platform-specific)
-    size_gb:     float
-    auth_file:   Optional[Path] = field(default=None)
+    label: str
+    serial: str  # Volume serial number (platform-specific)
+    size_gb: float
+    auth_file: Optional[Path] = field(default=None)
 
     @property
     def has_auth_file(self) -> bool:
@@ -212,9 +222,9 @@ def _list_usb_windows() -> list[USBVolume]:
     import ctypes
     import ctypes.wintypes as wt
 
-    GetLogicalDrives   = ctypes.windll.kernel32.GetLogicalDriveStringsW
-    GetDriveType       = ctypes.windll.kernel32.GetDriveTypeW
-    GetVolumeInfo      = ctypes.windll.kernel32.GetVolumeInformationW
+    GetLogicalDrives = ctypes.windll.kernel32.GetLogicalDriveStringsW
+    GetDriveType = ctypes.windll.kernel32.GetDriveTypeW
+    GetVolumeInfo = ctypes.windll.kernel32.GetVolumeInformationW
     GetDiskFreeSpaceEx = ctypes.windll.kernel32.GetDiskFreeSpaceExW
 
     DRIVE_REMOVABLE = 2
@@ -230,26 +240,30 @@ def _list_usb_windows() -> list[USBVolume]:
         if dtype != DRIVE_REMOVABLE:
             continue
 
-        label_buf   = ctypes.create_unicode_buffer(256)
-        serial_buf  = wt.DWORD(0)
-        fs_buf      = ctypes.create_unicode_buffer(256)
-        GetVolumeInfo(drive, label_buf, 256, ctypes.byref(serial_buf),
-                      None, None, fs_buf, 256)
+        label_buf = ctypes.create_unicode_buffer(256)
+        serial_buf = wt.DWORD(0)
+        fs_buf = ctypes.create_unicode_buffer(256)
+        GetVolumeInfo(
+            drive, label_buf, 256, ctypes.byref(serial_buf), None, None, fs_buf, 256
+        )
 
         # Disk size
-        free_bytes  = wt.ULARGE_INTEGER(0)
+        free_bytes = wt.ULARGE_INTEGER(0)
         total_bytes = wt.ULARGE_INTEGER(0)
-        GetDiskFreeSpaceEx(drive, ctypes.byref(free_bytes),
-                           ctypes.byref(total_bytes), None)
-        size_gb = total_bytes.value / (1024 ** 3)
-        serial  = f"{serial_buf.value:08X}"
+        GetDiskFreeSpaceEx(
+            drive, ctypes.byref(free_bytes), ctypes.byref(total_bytes), None
+        )
+        size_gb = total_bytes.value / (1024**3)
+        serial = f"{serial_buf.value:08X}"
 
-        volumes.append(USBVolume(
-            mount_point=Path(drive),
-            label=label_buf.value or "USB Drive",
-            serial=serial,
-            size_gb=round(size_gb, 1),
-        ))
+        volumes.append(
+            USBVolume(
+                mount_point=Path(drive),
+                label=label_buf.value or "USB Drive",
+                serial=serial,
+                size_gb=round(size_gb, 1),
+            )
+        )
     return volumes
 
 
@@ -259,33 +273,42 @@ def _list_usb_macos() -> list[USBVolume]:
     try:
         result = subprocess.run(
             ["diskutil", "list", "-plist", "external"],
-            capture_output=True, text=True, timeout=5
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         import plistlib
+
         data = plistlib.loads(result.stdout.encode())
         for disk in data.get("AllDisksAndPartitions", []):
             for part in disk.get("Partitions", []):
                 mp = part.get("MountPoint", "")
                 if not mp:
                     continue
-                name  = part.get("VolumeName", "USB Drive")
+                name = part.get("VolumeName", "USB Drive")
                 # Get serial from diskutil info
                 info = subprocess.run(
                     ["diskutil", "info", "-plist", part.get("DeviceIdentifier", "")],
-                    capture_output=True, text=True, timeout=5
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 info_data = plistlib.loads(info.stdout.encode()) if info.stdout else {}
-                serial    = info_data.get("VolumeUUID", "UNKNOWN")
-                size_gb   = part.get("Size", 0) / (1024 ** 3)
-                volumes.append(USBVolume(
-                    mount_point=Path(mp),
-                    label=name,
-                    serial=serial,
-                    size_gb=round(size_gb, 1),
-                ))
+                serial = info_data.get("VolumeUUID", "UNKNOWN")
+                size_gb = part.get("Size", 0) / (1024**3)
+                volumes.append(
+                    USBVolume(
+                        mount_point=Path(mp),
+                        label=name,
+                        serial=serial,
+                        size_gb=round(size_gb, 1),
+                    )
+                )
     except Exception as _sf_exc:  # noqa: BLE001
         logger.warning(
-            "macOS USB volume enumeration failed — no drives will be offered for auth: %s", _sf_exc)
+            "macOS USB volume enumeration failed — no drives will be offered for auth: %s",
+            _sf_exc,
+        )
     return volumes
 
 
@@ -307,27 +330,33 @@ def _list_usb_linux() -> list[USBVolume]:
             try:
                 info = subprocess.run(
                     ["lsblk", "-no", "RM,SIZE,LABEL,SERIAL", device],
-                    capture_output=True, text=True, timeout=3
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
                 )
                 cols = info.stdout.strip().split()
                 if not cols or cols[0] != "1":
                     continue
                 size_str = cols[1] if len(cols) > 1 else "0G"
-                size_gb  = float(size_str.rstrip("GgMm")) if size_str else 0.0
-                label    = cols[2] if len(cols) > 2 else "USB Drive"
-                serial   = cols[3] if len(cols) > 3 else device.split("/")[-1]
+                size_gb = float(size_str.rstrip("GgMm")) if size_str else 0.0
+                label = cols[2] if len(cols) > 2 else "USB Drive"
+                serial = cols[3] if len(cols) > 3 else device.split("/")[-1]
             except Exception:
                 serial, label, size_gb = device.split("/")[-1], "USB Drive", 0.0
 
-            volumes.append(USBVolume(
-                mount_point=Path(mount),
-                label=label,
-                serial=serial,
-                size_gb=round(size_gb, 1),
-            ))
+            volumes.append(
+                USBVolume(
+                    mount_point=Path(mount),
+                    label=label,
+                    serial=serial,
+                    size_gb=round(size_gb, 1),
+                )
+            )
     except Exception as _sf_exc:  # noqa: BLE001
         logger.warning(
-            "Linux USB volume enumeration failed — no drives will be offered for auth: %s", _sf_exc)
+            "Linux USB volume enumeration failed — no drives will be offered for auth: %s",
+            _sf_exc,
+        )
     return volumes
 
 
@@ -346,10 +375,13 @@ def find_auth_volume(volume_serial: str) -> Optional[USBVolume]:
 # Auth file: read / write
 # ---------------------------------------------------------------------------
 
+
 def write_auth_file(
     usb_path: Path,
     volume_serial: str,
-    credentials: list[dict],  # [{"exchange_id":…,"api_key":…,"api_secret":…,"passphrase":…}]
+    credentials: list[
+        dict
+    ],  # [{"exchange_id":…,"api_key":…,"api_secret":…,"passphrase":…}]
 ) -> Path:
     """
     Encrypt credentials and write .acervator_auth to *usb_path*.
@@ -358,21 +390,23 @@ def write_auth_file(
     credentials: list of dicts, each with:
         exchange_id, api_key, api_secret, passphrase (may be empty)
     """
-    salt  = os.urandom(SALT_LEN)
+    salt = os.urandom(SALT_LEN)
     nonce = os.urandom(NONCE_LEN)
-    key   = _derive_usb_key(volume_serial, salt)
+    key = _derive_usb_key(volume_serial, salt)
 
-    payload = json.dumps({
-        "version":   1,
-        "app_id":    _app_id_fingerprint(),
-        "exchanges": credentials,
-    }).encode("utf-8")
+    payload = json.dumps(
+        {
+            "version": 1,
+            "app_id": _app_id_fingerprint(),
+            "exchanges": credentials,
+        }
+    ).encode("utf-8")
 
     ct = _aes_gcm_encrypt(key, nonce, payload)
 
     # Build file
     count_bytes = struct.pack("<I", len(credentials))
-    file_data   = MAGIC_HEADER + FILE_VERSION + count_bytes + salt + ct
+    file_data = MAGIC_HEADER + FILE_VERSION + count_bytes + salt + ct
 
     out_path = usb_path / AUTH_FILENAME
     out_path.write_bytes(file_data)
@@ -392,10 +426,10 @@ def read_auth_file(auth_file: Path, volume_serial: str) -> list[dict]:
         raise ValueError("Not a valid Acervator auth file (bad magic header).")
     # version at [8:12] — reserved for future migration
     # count at [12:16] — informational
-    salt = data[16:16 + SALT_LEN]
-    ct   = data[16 + SALT_LEN:]
+    salt = data[16 : 16 + SALT_LEN]
+    ct = data[16 + SALT_LEN :]
 
-    key     = _derive_usb_key(volume_serial, salt)
+    key = _derive_usb_key(volume_serial, salt)
     payload = _aes_gcm_decrypt(key, ct)
 
     parsed = json.loads(payload.decode("utf-8"))
@@ -421,9 +455,10 @@ def verify_auth_file(auth_file: Path, volume_serial: str) -> bool:
 # High-level export / import
 # ---------------------------------------------------------------------------
 
+
 def export_credentials_to_usb(
     usb_volume: USBVolume,
-    vault,          # CredentialVault instance from encryption.py
+    vault,  # CredentialVault instance from encryption.py
     passphrase: str,
 ) -> tuple[bool, str]:
     """
@@ -440,18 +475,18 @@ def export_credentials_to_usb(
         for eid in exchange_ids:
             try:
                 api_key, api_secret, api_pass = vault.retrieve(eid)
-                creds.append({
-                    "exchange_id": eid,
-                    "api_key":     api_key,
-                    "api_secret":  api_secret,
-                    "passphrase":  api_pass or "",
-                })
+                creds.append(
+                    {
+                        "exchange_id": eid,
+                        "api_key": api_key,
+                        "api_secret": api_secret,
+                        "passphrase": api_pass or "",
+                    }
+                )
             except Exception as e:
                 return False, f"Failed to decrypt credentials for {eid}: {e}"
 
-        auth_path = write_auth_file(
-            usb_volume.mount_point, usb_volume.serial, creds
-        )
+        auth_path = write_auth_file(usb_volume.mount_point, usb_volume.serial, creds)
 
         # Verify immediately after write
         if not verify_auth_file(auth_path, usb_volume.serial):
@@ -464,7 +499,10 @@ def export_credentials_to_usb(
         )
 
     except PermissionError:
-        return False, "Permission denied writing to USB. Check drive is not write-protected."
+        return (
+            False,
+            "Permission denied writing to USB. Check drive is not write-protected.",
+        )
     except OSError as e:
         return False, f"Write error: {e}"
     except Exception as e:
@@ -482,9 +520,13 @@ def import_credentials_from_usb(
     """
     vol = find_auth_volume(volume_serial)
     if vol is None:
-        return False, [], (
-            "Hardware key not found. Insert the USB drive associated with "
-            f"serial {volume_serial} to access this exchange."
+        return (
+            False,
+            [],
+            (
+                "Hardware key not found. Insert the USB drive associated with "
+                f"serial {volume_serial} to access this exchange."
+            ),
         )
 
     try:

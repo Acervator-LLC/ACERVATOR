@@ -7,6 +7,7 @@ multi-base coordination cascade
 enforce that discipline by exercising the public API and asserting
 what it does and does not expose.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -38,26 +39,47 @@ def _run(coro):
 def _sample_tickers():
     return {
         "ETH/USD": {
-            "last": 3000.0, "bid": 2999.5, "ask": 3000.5,
-            "percentage": 1.2, "baseVolume": 12500.0},
+            "last": 3000.0,
+            "bid": 2999.5,
+            "ask": 3000.5,
+            "percentage": 1.2,
+            "baseVolume": 12500.0,
+        },
         "ETH/USDC": {
-            "last": 3001.0, "bid": 3000.9, "ask": 3001.1,
-            "percentage": 1.3, "baseVolume": 8000.0},
+            "last": 3001.0,
+            "bid": 3000.9,
+            "ask": 3001.1,
+            "percentage": 1.3,
+            "baseVolume": 8000.0,
+        },
         "ETH/BTC": {
-            "last": 0.06, "bid": 0.0599, "ask": 0.0601,
-            "percentage": 0.4, "baseVolume": 500.0},
+            "last": 0.06,
+            "bid": 0.0599,
+            "ask": 0.0601,
+            "percentage": 0.4,
+            "baseVolume": 500.0,
+        },
         "BTC/USD": {
-            "last": 50000.0, "bid": 49995.0, "ask": 50005.0,
-            "percentage": 0.8, "baseVolume": 1200.0},
+            "last": 50000.0,
+            "bid": 49995.0,
+            "ask": 50005.0,
+            "percentage": 0.8,
+            "baseVolume": 1200.0,
+        },
         "XRP/USDC": {
-            "last": 0.55, "bid": 0.549, "ask": 0.551,
-            "percentage": -2.1, "baseVolume": 400000.0},
+            "last": 0.55,
+            "bid": 0.549,
+            "ask": 0.551,
+            "percentage": -2.1,
+            "baseVolume": 400000.0,
+        },
     }
 
 
 # -----------------------------------------------------------------
 # ingest_tickers
 # -----------------------------------------------------------------
+
 
 class TestIngest:
     def test_records_pair_count(self):
@@ -92,7 +114,8 @@ class TestIngest:
     def test_close_used_when_last_missing(self):
         s = MarketPairsScout()
         s.ingest_tickers(
-            "coinbase", {"BONK/USD": {"close": 0.000012, "percentage": 5.0}})
+            "coinbase", {"BONK/USD": {"close": 0.000012, "percentage": 5.0}}
+        )
         pair = s.get_pair("BONK", "USD")
         assert pair is not None
         assert pair.last == pytest.approx(0.000012)
@@ -101,6 +124,7 @@ class TestIngest:
 # -----------------------------------------------------------------
 # pairs_for / quote_currencies_for / get_pair / has_pair
 # -----------------------------------------------------------------
+
 
 class TestQueryAPI:
     def _seeded(self):
@@ -111,8 +135,7 @@ class TestQueryAPI:
     def test_pairs_for_returns_three_eth_pairs(self):
         s = self._seeded()
         pairs = s.pairs_for("ETH")
-        assert [p.symbol for p in pairs] == [
-            "ETH/BTC", "ETH/USD", "ETH/USDC"]
+        assert [p.symbol for p in pairs] == ["ETH/BTC", "ETH/USD", "ETH/USDC"]
 
     def test_pairs_for_case_insensitive(self):
         s = self._seeded()
@@ -145,23 +168,24 @@ class TestQueryAPI:
         future routing layer into the awareness layer, contra the
         prior-art research (§3, DEX-pathfinder category error)."""
         s = MarketPairsScout()
-        forbidden = ("best_pair", "rank", "rank_by",
-                     "recommend", "route_to")
+        forbidden = ("best_pair", "rank", "rank_by", "recommend", "route_to")
         for name in forbidden:
             assert not hasattr(s, name), (
                 f"MarketPairsScout should not expose {name!r} — "
-                "ranking / routing belongs to a later cascade")
+                "ranking / routing belongs to a later cascade"
+            )
 
 
 # -----------------------------------------------------------------
 # PairSnapshot properties + usd_per_base helper
 # -----------------------------------------------------------------
 
+
 class TestPairSnapshot:
     def _mk(self, **kw):
         base = dict(
-            symbol="ETH/BTC", base="ETH", quote="BTC",
-            last=0.06, bid=0.0599, ask=0.0601)
+            symbol="ETH/BTC", base="ETH", quote="BTC", last=0.06, bid=0.0599, ask=0.0601
+        )
         base.update(kw)
         return PairSnapshot(**base)
 
@@ -170,8 +194,7 @@ class TestPairSnapshot:
 
     def test_spread_pct(self):
         # (0.0601 - 0.0599) / 0.06 × 100 ≈ 0.3333
-        assert self._mk().spread_pct == pytest.approx(
-            0.3333, rel=1e-3)
+        assert self._mk().spread_pct == pytest.approx(0.3333, rel=1e-3)
 
     def test_spread_zero_when_bid_missing(self):
         assert self._mk(bid=0.0).spread == 0.0
@@ -208,6 +231,7 @@ class TestPairSnapshot:
 # refresh_from_connectors
 # -----------------------------------------------------------------
 
+
 class _StubConn:
     def __init__(self, tickers, raises=None):
         self._tickers = tickers
@@ -222,15 +246,15 @@ class _StubConn:
 class TestRefresh:
     def test_refresh_populates(self):
         s = MarketPairsScout()
-        result = _run(s.refresh_from_connectors(
-            {"coinbase": _StubConn(_sample_tickers())}))
+        result = _run(
+            s.refresh_from_connectors({"coinbase": _StubConn(_sample_tickers())})
+        )
         assert result == {"coinbase": 5}
         assert len(s.pairs_for("ETH")) == 3
 
     def test_refresh_skips_when_fresh(self):
         s = MarketPairsScout(refresh_seconds=100.0)
-        _run(s.refresh_from_connectors(
-            {"coinbase": _StubConn(_sample_tickers())}))
+        _run(s.refresh_from_connectors({"coinbase": _StubConn(_sample_tickers())}))
         # Second call: connector's get_all_tickers should NOT be
         # invoked because is_stale() returns False.
         called = {"n": 0}
@@ -245,8 +269,7 @@ class TestRefresh:
 
     def test_refresh_force_bypasses_freshness(self):
         s = MarketPairsScout(refresh_seconds=100.0)
-        _run(s.refresh_from_connectors(
-            {"coinbase": _StubConn(_sample_tickers())}))
+        _run(s.refresh_from_connectors({"coinbase": _StubConn(_sample_tickers())}))
         called = {"n": 0}
 
         class _CountConn:
@@ -254,20 +277,20 @@ class TestRefresh:
                 called["n"] += 1
                 return _sample_tickers()
 
-        _run(s.refresh_from_connectors(
-            {"coinbase": _CountConn()}, force=True))
+        _run(s.refresh_from_connectors({"coinbase": _CountConn()}, force=True))
         assert called["n"] == 1
 
     def test_failed_connector_retains_last_snapshot(self):
         s = MarketPairsScout()
-        _run(s.refresh_from_connectors(
-            {"coinbase": _StubConn(_sample_tickers())}))
+        _run(s.refresh_from_connectors({"coinbase": _StubConn(_sample_tickers())}))
         first_count = len(s.pairs_for("ETH"))
 
         # Simulate a network error on the second refresh.
-        _run(s.refresh_from_connectors(
-            {"coinbase": _StubConn(None, raises=RuntimeError("net"))},
-            force=True))
+        _run(
+            s.refresh_from_connectors(
+                {"coinbase": _StubConn(None, raises=RuntimeError("net"))}, force=True
+            )
+        )
         # Previous snapshot should still be there
         assert len(s.pairs_for("ETH")) == first_count
         assert "RuntimeError" in (s.last_error("coinbase") or "")
@@ -280,6 +303,7 @@ class TestRefresh:
 # -----------------------------------------------------------------
 # Module singleton
 # -----------------------------------------------------------------
+
 
 class TestSingleton:
     def teardown_method(self):
@@ -305,6 +329,7 @@ class TestSingleton:
 # ScrummingBot wiring
 # -----------------------------------------------------------------
 
+
 class TestScrummingBotWiring:
     """v3.23.47 — ScrummingBot exposes the read-only scout surface
     but never mutates through it. These pins hold that discipline
@@ -313,14 +338,18 @@ class TestScrummingBotWiring:
     def _mk_stub_bot(self, target_asset="ETH", exchange_id="coinbase"):
         from src.trading.scrumming_bot import ScrummingBot
         from types import MethodType, SimpleNamespace
+
         stub = SimpleNamespace()
         stub.bot_id = "bot-scout01"
         stub.config = SimpleNamespace(
-            target_asset=target_asset, exchange_id=exchange_id)
+            target_asset=target_asset, exchange_id=exchange_id
+        )
         stub.set_market_pairs_scout = MethodType(
-            ScrummingBot.set_market_pairs_scout, stub)
+            ScrummingBot.set_market_pairs_scout, stub
+        )
         stub.get_target_asset_pairs = MethodType(
-            ScrummingBot.get_target_asset_pairs, stub)
+            ScrummingBot.get_target_asset_pairs, stub
+        )
         return stub
 
     def test_no_scout_attached_returns_empty(self):
@@ -333,19 +362,15 @@ class TestScrummingBotWiring:
         scout.ingest_tickers("coinbase", _sample_tickers())
         stub.set_market_pairs_scout(scout)
         pairs = stub.get_target_asset_pairs()
-        assert [p.symbol for p in pairs] == [
-            "ETH/BTC", "ETH/USD", "ETH/USDC"]
+        assert [p.symbol for p in pairs] == ["ETH/BTC", "ETH/USD", "ETH/USDC"]
 
     def test_attached_scout_filters_by_exchange(self):
         """Bot on 'coinbase' must not see pairs the scout observed on
         a hypothetical other exchange for the same asset."""
-        stub = self._mk_stub_bot(
-            target_asset="ETH", exchange_id="coinbase")
+        stub = self._mk_stub_bot(target_asset="ETH", exchange_id="coinbase")
         scout = MarketPairsScout()
-        scout.ingest_tickers("coinbase", {
-            "ETH/USD": _sample_tickers()["ETH/USD"]})
-        scout.ingest_tickers("kraken", {
-            "ETH/EUR": {"last": 2800.0, "percentage": 0.5}})
+        scout.ingest_tickers("coinbase", {"ETH/USD": _sample_tickers()["ETH/USD"]})
+        scout.ingest_tickers("kraken", {"ETH/EUR": {"last": 2800.0, "percentage": 0.5}})
         stub.set_market_pairs_scout(scout)
         pairs = stub.get_target_asset_pairs()
         assert [p.symbol for p in pairs] == ["ETH/USD"]

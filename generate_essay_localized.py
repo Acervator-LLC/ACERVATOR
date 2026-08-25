@@ -5,6 +5,7 @@ generate_essay_localized.py — Multi-language essay generator
 Generates the Acervator technical essay in:
   English (en), Japanese (ja), Spanish (es), French (fr), German (de)
 """
+
 import sys
 from pathlib import Path
 from reportlab.lib.pagesizes import letter
@@ -12,7 +13,12 @@ from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor, white, black
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak,
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    PageBreak,
 )
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
 
@@ -229,72 +235,127 @@ TRANSLATIONS = {
     },
 }
 
+
 def generate_localized_essay(lang="en"):
     """Generate essay PDF in specified language."""
-    T = lambda key: TRANSLATIONS.get(key, {}).get(lang, TRANSLATIONS.get(key, {}).get("en", key))
-    
-    is_ja = (lang == "ja")
+    T = lambda key: TRANSLATIONS.get(key, {}).get(
+        lang, TRANSLATIONS.get(key, {}).get("en", key)
+    )
+
+    is_ja = lang == "ja"
     output_path = f"acervator_product_manual_v3.7.0_{lang}.pdf"
-    
-    doc = SimpleDocTemplate(output_path, pagesize=letter,
-                            topMargin=0.6*inch, bottomMargin=0.6*inch,
-                            leftMargin=0.75*inch, rightMargin=0.75*inch)
-    
+
+    doc = SimpleDocTemplate(
+        output_path,
+        pagesize=letter,
+        topMargin=0.6 * inch,
+        bottomMargin=0.6 * inch,
+        leftMargin=0.75 * inch,
+        rightMargin=0.75 * inch,
+    )
+
     # Fonts
     if is_ja:
         from reportlab.pdfbase.cidfonts import UnicodeCIDFont
         from reportlab.pdfbase import pdfmetrics
-        pdfmetrics.registerFont(UnicodeCIDFont('HeiseiKakuGo-W5'))
-        pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))
-        body_font = 'HeiseiMin-W3'
-        heading_font = 'HeiseiKakuGo-W5'
+
+        pdfmetrics.registerFont(UnicodeCIDFont("HeiseiKakuGo-W5"))
+        pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))
+        body_font = "HeiseiMin-W3"
+        heading_font = "HeiseiKakuGo-W5"
     else:
-        body_font = 'Helvetica'
-        heading_font = 'Helvetica-Bold'
-    
+        body_font = "Helvetica"
+        heading_font = "Helvetica-Bold"
+
     SS = {
-        'Title': ParagraphStyle('Title', fontName=heading_font, fontSize=22,
-                                leading=26, textColor=HexColor("#1a1a2e"), alignment=TA_CENTER,
-                                spaceAfter=6),
-        'H1': ParagraphStyle('H1', fontName=heading_font, fontSize=14, leading=18,
-                             textColor=HexColor("#2a2a5e"), spaceBefore=16, spaceAfter=8),
-        'SH': ParagraphStyle('SH', fontName=heading_font, fontSize=10, leading=14,
-                             textColor=HexColor("#4a4a8e"), spaceBefore=10, spaceAfter=4),
-        'Body': ParagraphStyle('Body', fontName=body_font, fontSize=9, leading=13,
-                               textColor=black, alignment=TA_JUSTIFY, spaceAfter=6),
-        'Caption': ParagraphStyle('Caption', fontName=body_font, fontSize=7, leading=10,
-                                  textColor=HexColor("#666666"), alignment=TA_CENTER, spaceAfter=8),
-        'Cover': ParagraphStyle('Cover', fontName=heading_font, fontSize=11, leading=14,
-                                textColor=HexColor("#555555"), alignment=TA_CENTER),
-        'Small': ParagraphStyle('Small', fontName=body_font, fontSize=7, leading=10,
-                                textColor=HexColor("#888888"), alignment=TA_CENTER),
+        "Title": ParagraphStyle(
+            "Title",
+            fontName=heading_font,
+            fontSize=22,
+            leading=26,
+            textColor=HexColor("#1a1a2e"),
+            alignment=TA_CENTER,
+            spaceAfter=6,
+        ),
+        "H1": ParagraphStyle(
+            "H1",
+            fontName=heading_font,
+            fontSize=14,
+            leading=18,
+            textColor=HexColor("#2a2a5e"),
+            spaceBefore=16,
+            spaceAfter=8,
+        ),
+        "SH": ParagraphStyle(
+            "SH",
+            fontName=heading_font,
+            fontSize=10,
+            leading=14,
+            textColor=HexColor("#4a4a8e"),
+            spaceBefore=10,
+            spaceAfter=4,
+        ),
+        "Body": ParagraphStyle(
+            "Body",
+            fontName=body_font,
+            fontSize=9,
+            leading=13,
+            textColor=black,
+            alignment=TA_JUSTIFY,
+            spaceAfter=6,
+        ),
+        "Caption": ParagraphStyle(
+            "Caption",
+            fontName=body_font,
+            fontSize=7,
+            leading=10,
+            textColor=HexColor("#666666"),
+            alignment=TA_CENTER,
+            spaceAfter=8,
+        ),
+        "Cover": ParagraphStyle(
+            "Cover",
+            fontName=heading_font,
+            fontSize=11,
+            leading=14,
+            textColor=HexColor("#555555"),
+            alignment=TA_CENTER,
+        ),
+        "Small": ParagraphStyle(
+            "Small",
+            fontName=body_font,
+            fontSize=7,
+            leading=10,
+            textColor=HexColor("#888888"),
+            alignment=TA_CENTER,
+        ),
     }
-    
+
     story = []
-    
+
     # ── COVER PAGE ────────────────────────────────────────
     story.append(Spacer(1, 80))
-    story.append(Paragraph(T("title"), SS['Title']))
+    story.append(Paragraph(T("title"), SS["Title"]))
     story.append(Spacer(1, 12))
-    story.append(Paragraph(T("subtitle").replace("\n", "<br/>"), SS['Cover']))
+    story.append(Paragraph(T("subtitle").replace("\n", "<br/>"), SS["Cover"]))
     story.append(Spacer(1, 20))
-    story.append(Paragraph(T("version_line"), SS['Cover']))
+    story.append(Paragraph(T("version_line"), SS["Cover"]))
     story.append(Spacer(1, 8))
-    story.append(Paragraph(T("stats_line"), SS['Small']))
+    story.append(Paragraph(T("stats_line"), SS["Small"]))
     story.append(Spacer(1, 40))
-    story.append(Paragraph(T("disclaimer"), SS['Small']))
+    story.append(Paragraph(T("disclaimer"), SS["Small"]))
     story.append(PageBreak())
-    
+
     # ── EXECUTIVE SUMMARY ─────────────────────────────────
-    story.append(Paragraph(T("ch1_title"), SS['H1']))
-    story.append(Paragraph(T("ch1_body"), SS['Body']))
+    story.append(Paragraph(T("ch1_title"), SS["H1"]))
+    story.append(Paragraph(T("ch1_body"), SS["Body"]))
     story.append(Spacer(1, 12))
-    
+
     # ── INNOVATION ASSESSMENT ─────────────────────────────
-    story.append(Paragraph(T("innovation_title"), SS['H1']))
-    story.append(Paragraph(T("innovation_body"), SS['Body']))
+    story.append(Paragraph(T("innovation_title"), SS["H1"]))
+    story.append(Paragraph(T("innovation_body"), SS["Body"]))
     story.append(Spacer(1, 8))
-    
+
     # Innovation scoring table (universal — numbers don't need translation)
     scores = [
         ["Category", "Score", ""],
@@ -311,27 +372,31 @@ def generate_localized_essay(lang="en"):
         ["OVERALL", "8.3/10", ""],
     ]
     st = Table(scores, colWidths=[140, 50, 200])
-    st.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#333355")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), white),
-        ('FONTNAME', (0, 0), (-1, 0), heading_font),
-        ('FONTSIZE', (0, 0), (-1, -1), 7),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [HexColor("#F4F6FA"), white]),
-        ('BACKGROUND', (0, -1), (-1, -1), HexColor("#2a2a4e")),
-        ('TEXTCOLOR', (0, -1), (-1, -1), white),
-        ('FONTNAME', (0, -1), (-1, -1), heading_font),
-        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#CCCCDD")),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-    ]))
+    st.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), HexColor("#333355")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), white),
+                ("FONTNAME", (0, 0), (-1, 0), heading_font),
+                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -2), [HexColor("#F4F6FA"), white]),
+                ("BACKGROUND", (0, -1), (-1, -1), HexColor("#2a2a4e")),
+                ("TEXTCOLOR", (0, -1), (-1, -1), white),
+                ("FONTNAME", (0, -1), (-1, -1), heading_font),
+                ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#CCCCDD")),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
     story.append(st)
     story.append(Spacer(1, 12))
-    
+
     # ── PHANTOM BALANCE RESULTS ───────────────────────────
-    story.append(Paragraph(T("phantom_title"), SS['H1']))
-    story.append(Paragraph(T("phantom_body"), SS['Body']))
+    story.append(Paragraph(T("phantom_title"), SS["H1"]))
+    story.append(Paragraph(T("phantom_body"), SS["Body"]))
     story.append(Spacer(1, 8))
-    
+
     phantom_data = [
         ["Scenario", "Baseline (1h)", "Phantom (Multi-TF)", "Delta"],
         ["Range-Bound", "-$0.65", "-$0.21", "+$0.44"],
@@ -342,24 +407,29 @@ def generate_localized_essay(lang="en"):
         ["TOTAL", "-$5.04", "-$3.62", "+$1.42"],
     ]
     pt = Table(phantom_data, colWidths=[120, 90, 105, 75])
-    pt.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), HexColor("#333355")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), white),
-        ('FONTNAME', (0, 0), (-1, 0), heading_font),
-        ('FONTSIZE', (0, 0), (-1, -1), 7),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [HexColor("#F4F6FA"), white]),
-        ('BACKGROUND', (0, -1), (-1, -1), HexColor("#2a2a4e")),
-        ('TEXTCOLOR', (0, -1), (-1, -1), white),
-        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#CCCCDD")),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-    ]))
+    pt.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), HexColor("#333355")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), white),
+                ("FONTNAME", (0, 0), (-1, 0), heading_font),
+                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -2), [HexColor("#F4F6FA"), white]),
+                ("BACKGROUND", (0, -1), (-1, -1), HexColor("#2a2a4e")),
+                ("TEXTCOLOR", (0, -1), (-1, -1), white),
+                ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#CCCCDD")),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
     story.append(pt)
     story.append(Spacer(1, 20))
-    story.append(Paragraph(T("disclaimer"), SS['Small']))
-    
+    story.append(Paragraph(T("disclaimer"), SS["Small"]))
+
     doc.build(story)
     return output_path
+
 
 # ── Generate all languages ────────────────────────────────
 if __name__ == "__main__":

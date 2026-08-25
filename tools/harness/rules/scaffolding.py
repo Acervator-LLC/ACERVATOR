@@ -57,6 +57,7 @@ FALSIFICATION — this rule module is wrong if:
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import ast
@@ -86,16 +87,30 @@ class Finding:
 # --------------------------------------------------------------------- #
 
 _FALLBACK_PHRASES = (
-    "returned no ", "no trades", "no results", "no data",
-    "check console log", "check the console", "check the log",
-    "unavailable", "no such", "not wired", "not yet available",
+    "returned no ",
+    "no trades",
+    "no results",
+    "no data",
+    "check console log",
+    "check the console",
+    "check the log",
+    "unavailable",
+    "no such",
+    "not wired",
+    "not yet available",
     "load failed",
 )
 
 # String literals inside these callables are the ones we flag.
 _STATUS_CALL_NAMES = {
-    "setText", "setPlainText", "setStatusTip",
-    "info", "warning", "error", "debug", "log",
+    "setText",
+    "setPlainText",
+    "setStatusTip",
+    "info",
+    "warning",
+    "error",
+    "debug",
+    "log",
     "print",
 }
 
@@ -104,12 +119,19 @@ _STATUS_CALL_NAMES = {
 # Placeholder-text vocabulary (S004)                                    #
 # --------------------------------------------------------------------- #
 
-_PLACEHOLDER_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
-    r"\bTODO\b", r"\bFIXME\b", r"\bXXX\b",
-    r"not yet wired", r"not yet implemented",
-    r"Phase\s+[A-Z]\+", r"will land in v",
-    r"pending Phase",
-))
+_PLACEHOLDER_PATTERNS = tuple(
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"\bTODO\b",
+        r"\bFIXME\b",
+        r"\bXXX\b",
+        r"not yet wired",
+        r"not yet implemented",
+        r"Phase\s+[A-Z]\+",
+        r"will land in v",
+        r"pending Phase",
+    )
+)
 
 
 # --------------------------------------------------------------------- #
@@ -134,13 +156,11 @@ def _find_wallclock_completion_functions(tree: ast.AST) -> list[tuple[int, str]]
                 # QTimer setInterval + connect to *_done slot
                 if _call_name_ends_with(sub, "connect"):
                     arg_names = [_slot_name(a) for a in sub.args]
-                    if any(n and n.endswith("_done")
-                           for n in arg_names):
+                    if any(n and n.endswith("_done") for n in arg_names):
                         has_done_timer = True
                 if _call_name_ends_with(sub, "add_done_callback"):
                     has_add_done_callback = True
-        if (has_schedule and has_done_timer
-                and not has_add_done_callback):
+        if has_schedule and has_done_timer and not has_add_done_callback:
             hits.append((node.lineno, node.name))
     return hits
 
@@ -174,16 +194,39 @@ def _slot_name(node: ast.AST) -> str | None:
 _INHERITED_ATTRS_BY_BASE: dict[str, frozenset[str]] = {
     "NodeVisitor": frozenset({"visit", "generic_visit"}),
     "NodeTransformer": frozenset({"visit", "generic_visit"}),
-    "TestCase": frozenset({
-        "assertEqual", "assertNotEqual", "assertTrue", "assertFalse",
-        "assertIsNone", "assertIsNotNone", "assertIs", "assertIsNot",
-        "assertIn", "assertNotIn", "assertRaises", "assertAlmostEqual",
-        "assertGreater", "assertLess", "assertGreaterEqual",
-        "assertLessEqual", "assertRegex", "assertNotRegex",
-        "assertDictEqual", "assertListEqual", "assertTupleEqual",
-        "assertSetEqual", "setUp", "tearDown", "addCleanup",
-        "skipTest", "fail", "id", "shortDescription",
-    }),
+    "TestCase": frozenset(
+        {
+            "assertEqual",
+            "assertNotEqual",
+            "assertTrue",
+            "assertFalse",
+            "assertIsNone",
+            "assertIsNotNone",
+            "assertIs",
+            "assertIsNot",
+            "assertIn",
+            "assertNotIn",
+            "assertRaises",
+            "assertAlmostEqual",
+            "assertGreater",
+            "assertLess",
+            "assertGreaterEqual",
+            "assertLessEqual",
+            "assertRegex",
+            "assertNotRegex",
+            "assertDictEqual",
+            "assertListEqual",
+            "assertTupleEqual",
+            "assertSetEqual",
+            "setUp",
+            "tearDown",
+            "addCleanup",
+            "skipTest",
+            "fail",
+            "id",
+            "shortDescription",
+        }
+    ),
     # Qt widget bases share so many methods that trying to list them
     # ends up net-noisy. Suppress S003 entirely for classes inheriting
     # from any QWidget-family base by mapping to a sentinel value.
@@ -243,8 +286,7 @@ def _collect_alias_map(tree: ast.AST) -> dict[str, str]:
             for alias in node.names:
                 if alias.asname:
                     # For "import a.b.c as x", real name = "c"
-                    aliases[alias.asname] = alias.name.rsplit(
-                        ".", 1)[-1]
+                    aliases[alias.asname] = alias.name.rsplit(".", 1)[-1]
     return aliases
 
 
@@ -300,14 +342,24 @@ def _class_skips_s003(
         if allowed is not None and "*" in allowed:
             return True
         if allowed is not None:
-            continue          # known base with a known attr set
+            continue  # known base with a known attr set
         if name in local:
-            continue          # defined here; we can read its __init__
-        if name in ("object", "ABC", "Protocol", "Generic",
-                    "Enum", "IntEnum", "StrEnum", "Exception",
-                    "BaseException", "NamedTuple", "TypedDict"):
-            continue          # assigns nothing interesting
-        return True           # unresolvable base -> cannot judge
+            continue  # defined here; we can read its __init__
+        if name in (
+            "object",
+            "ABC",
+            "Protocol",
+            "Generic",
+            "Enum",
+            "IntEnum",
+            "StrEnum",
+            "Exception",
+            "BaseException",
+            "NamedTuple",
+            "TypedDict",
+        ):
+            continue  # assigns nothing interesting
+        return True  # unresolvable base -> cannot judge
     return False
 
 
@@ -340,13 +392,11 @@ def _collect_init_attrs(cls: ast.ClassDef) -> set[str]:
             for tgt in node.targets:
                 if isinstance(tgt, ast.Name):
                     attrs.add(tgt.id)
-        elif isinstance(node, ast.AnnAssign) and isinstance(
-                node.target, ast.Name):
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             attrs.add(node.target.id)
     # (c) attributes assigned in __init__
     for node in cls.body:
-        if not isinstance(
-                node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         if node.name != "__init__":
             continue
@@ -362,9 +412,11 @@ def _collect_init_attrs(cls: ast.ClassDef) -> set[str]:
 
 
 def _add_self_attr(target: ast.AST, attrs: set[str]) -> None:
-    if (isinstance(target, ast.Attribute)
-            and isinstance(target.value, ast.Name)
-            and target.value.id == "self"):
+    if (
+        isinstance(target, ast.Attribute)
+        and isinstance(target.value, ast.Name)
+        and target.value.id == "self"
+    ):
         attrs.add(target.attr)
     elif isinstance(target, (ast.Tuple, ast.List)):
         for elt in target.elts:
@@ -423,10 +475,12 @@ def _find_uninitialized_attrs(
                 if tgt is not None:
                     _add_self_attr(tgt, method_stores)
         for sub in ast.walk(node):
-            if (isinstance(sub, ast.Attribute)
-                    and isinstance(sub.value, ast.Name)
-                    and sub.value.id == "self"
-                    and isinstance(sub.ctx, ast.Load)):
+            if (
+                isinstance(sub, ast.Attribute)
+                and isinstance(sub.value, ast.Name)
+                and sub.value.id == "self"
+                and isinstance(sub.ctx, ast.Load)
+            ):
                 attr = sub.attr
                 if attr.startswith("__"):  # dunder / mangled
                     continue
@@ -526,55 +580,83 @@ def scan(target: Path, source: str) -> list[Any]:
             tree = None
         if tree is not None:
             for line, name, phrase in _find_fallback_strings(tree):
-                findings.append(Finding(
-                    tool="scaffolding", severity="medium",
-                    file=str(target), line=line, rule_id="S001",
-                    message=(
-                        f"fallback string '{phrase}' passed to "
-                        f"{name}(...) — verify the operation was "
-                        "actually attempted before reporting failure "
-                        "(v3.23.85 defect pattern).")))
+                findings.append(
+                    Finding(
+                        tool="scaffolding",
+                        severity="medium",
+                        file=str(target),
+                        line=line,
+                        rule_id="S001",
+                        message=(
+                            f"fallback string '{phrase}' passed to "
+                            f"{name}(...) — verify the operation was "
+                            "actually attempted before reporting failure "
+                            "(v3.23.85 defect pattern)."
+                        ),
+                    )
+                )
             for line, fn in _find_wallclock_completion_functions(tree):
-                findings.append(Finding(
-                    tool="scaffolding", severity="high",
-                    file=str(target), line=line, rule_id="S002",
-                    message=(
-                        f"function {fn!r} schedules an async task "
-                        "via run_coroutine_threadsafe AND wires a "
-                        "wall-clock QTimer to a *_done slot but "
-                        "does not add_done_callback on the future. "
-                        "The timer will fire before the coroutine "
-                        "completes (v3.23.85 defect pattern).")))
+                findings.append(
+                    Finding(
+                        tool="scaffolding",
+                        severity="high",
+                        file=str(target),
+                        line=line,
+                        rule_id="S002",
+                        message=(
+                            f"function {fn!r} schedules an async task "
+                            "via run_coroutine_threadsafe AND wires a "
+                            "wall-clock QTimer to a *_done slot but "
+                            "does not add_done_callback on the future. "
+                            "The timer will fire before the coroutine "
+                            "completes (v3.23.85 defect pattern)."
+                        ),
+                    )
+                )
             aliases = _collect_alias_map(tree)
             # v3.24.10 — index every class declared in this file so
             # _find_uninitialized_attrs can merge base-class __init__
             # attrs when the base is visible, and suppress cleanly
             # when it is not.
             local_classes: dict[str, ast.ClassDef] = {
-                n.name: n for n in ast.walk(tree)
-                if isinstance(n, ast.ClassDef)}
+                n.name: n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)
+            }
             for cls in ast.walk(tree):
                 if not isinstance(cls, ast.ClassDef):
                     continue
                 for line, attr in _find_uninitialized_attrs(
-                        cls, aliases, local_classes):
-                    findings.append(Finding(
-                        tool="scaffolding", severity="high",
-                        file=str(target), line=line, rule_id="S003",
-                        message=(
-                            f"self.{attr} referenced in {cls.name} "
-                            "method but not assigned in __init__. "
-                            "AttributeError may be silently swallowed "
-                            "by Qt slot try/except (v3.23.87 defect "
-                            "pattern).")))
+                    cls, aliases, local_classes
+                ):
+                    findings.append(
+                        Finding(
+                            tool="scaffolding",
+                            severity="high",
+                            file=str(target),
+                            line=line,
+                            rule_id="S003",
+                            message=(
+                                f"self.{attr} referenced in {cls.name} "
+                                "method but not assigned in __init__. "
+                                "AttributeError may be silently swallowed "
+                                "by Qt slot try/except (v3.23.87 defect "
+                                "pattern)."
+                            ),
+                        )
+                    )
 
     # Text-scan detectors — Python + Markdown
     if suffix in (".py", ".md", ".markdown"):
         for line, token in _find_placeholder_text(source):
-            findings.append(Finding(
-                tool="scaffolding", severity="low",
-                file=str(target), line=line, rule_id="S004",
-                message=f"placeholder token '{token}' — scaffolding marker."))
+            findings.append(
+                Finding(
+                    tool="scaffolding",
+                    severity="low",
+                    file=str(target),
+                    line=line,
+                    rule_id="S004",
+                    message=f"placeholder token '{token}' — scaffolding marker.",
+                )
+            )
 
     return findings
 

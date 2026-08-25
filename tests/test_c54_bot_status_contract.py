@@ -37,6 +37,7 @@ nowhere. It is now reported as unavailable rather than as $0.00, because
 a buy-and-hold baseline needs each position's entry basis and inventing
 a zero for it is exactly what made this wrong.
 """
+
 from __future__ import annotations
 
 import sys
@@ -50,9 +51,12 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.trading.bot_container import BotState  # noqa: E402
 
-
-PER_BOT_KEYS = ("total_scrummed_usd", "total_folded_usd",
-                "ytd_scrummed_usd", "ytd_folded_usd")
+PER_BOT_KEYS = (
+    "total_scrummed_usd",
+    "total_folded_usd",
+    "ytd_scrummed_usd",
+    "ytd_folded_usd",
+)
 
 
 class _Stats:
@@ -60,13 +64,24 @@ class _Stats:
 
     def __init__(self, **kw):
         defaults = dict(
-            total_trades=0, exchange_trade_count=0, exchange_data_fresh_ts=0.0,
-            trade_volume=0.0, realised_pnl=0.0, unrealised_pnl=0.0,
-            active_buy_orders=0, active_sell_orders=0, current_price=0.0,
-            position_value=0.0, extended_positions_created=0,
-            uptime_seconds=0.0, last_error="",
-            total_scrummed_usd=0.0, total_folded_usd=0.0,
-            ytd_scrummed_usd=0.0, ytd_folded_usd=0.0)
+            total_trades=0,
+            exchange_trade_count=0,
+            exchange_data_fresh_ts=0.0,
+            trade_volume=0.0,
+            realised_pnl=0.0,
+            unrealised_pnl=0.0,
+            active_buy_orders=0,
+            active_sell_orders=0,
+            current_price=0.0,
+            position_value=0.0,
+            extended_positions_created=0,
+            uptime_seconds=0.0,
+            last_error="",
+            total_scrummed_usd=0.0,
+            total_folded_usd=0.0,
+            ytd_scrummed_usd=0.0,
+            ytd_folded_usd=0.0,
+        )
         defaults.update(kw)
         for k, v in defaults.items():
             setattr(self, k, v)
@@ -94,12 +109,18 @@ def _status_of(**stat_values) -> dict:
             self.stats = st
             # Exactly the four config attributes get_status() reads,
             # extracted from its AST rather than guessed.
-            self.config = type("C", (), {
-                "symbol": "BTC/USD", "exchange_id": "coinbase",
-                # get_status reads config.mode.value -- it is an enum,
-                # not a string.
-                "mode": type("M", (), {"value": "live"})(),
-                "target_balance": 50.0})()
+            self.config = type(
+                "C",
+                (),
+                {
+                    "symbol": "BTC/USD",
+                    "exchange_id": "coinbase",
+                    # get_status reads config.mode.value -- it is an enum,
+                    # not a string.
+                    "mode": type("M", (), {"value": "live"})(),
+                    "target_balance": 50.0,
+                },
+            )()
 
     bot = _Bot(_Stats(**stat_values))
     return BotContainer.get_status(bot)
@@ -123,17 +144,22 @@ class TestTheInstrumentWorks:
 class TestPerBotKeysAreEmitted:
     @pytest.mark.parametrize("key", PER_BOT_KEYS)
     def test_the_key_is_present(self, key):
-        assert key in _status_of()["stats"], (
-            f"{key} is read by consumers but never emitted")
+        assert (
+            key in _status_of()["stats"]
+        ), f"{key} is read by consumers but never emitted"
 
     def test_portfolio_value_is_present_at_the_root(self):
         """check_live_monitor reads it off the status ROOT, not stats."""
         assert "portfolio_value" in _status_of()
 
     def test_the_values_are_this_bot_s_own(self):
-        s = _status_of(ytd_scrummed_usd=11.0, ytd_folded_usd=22.0,
-                       total_scrummed_usd=33.0, total_folded_usd=44.0,
-                       position_value=55.0)["stats"]
+        s = _status_of(
+            ytd_scrummed_usd=11.0,
+            ytd_folded_usd=22.0,
+            total_scrummed_usd=33.0,
+            total_folded_usd=44.0,
+            position_value=55.0,
+        )["stats"]
         assert s["ytd_scrummed_usd"] == pytest.approx(11.0)
         assert s["ytd_folded_usd"] == pytest.approx(22.0)
         assert s["total_scrummed_usd"] == pytest.approx(33.0)
@@ -145,10 +171,8 @@ class TestTwoBotsDoNotShareValues:
     distinguish 'this bot's value' from 'the fleet total'."""
 
     def test_two_bots_report_different_values(self):
-        a = _status_of(ytd_scrummed_usd=10.0, ytd_folded_usd=1.0,
-                       position_value=100.0)
-        b = _status_of(ytd_scrummed_usd=25.0, ytd_folded_usd=2.0,
-                       position_value=250.0)
+        a = _status_of(ytd_scrummed_usd=10.0, ytd_folded_usd=1.0, position_value=100.0)
+        b = _status_of(ytd_scrummed_usd=25.0, ytd_folded_usd=2.0, position_value=250.0)
         assert a["stats"]["ytd_scrummed_usd"] != b["stats"]["ytd_scrummed_usd"]
         assert a["portfolio_value"] != b["portfolio_value"]
 
@@ -159,8 +183,9 @@ class TestTwoBotsDoNotShareValues:
         total = 35.0
         assert a["stats"]["ytd_scrummed_usd"] != pytest.approx(total)
         assert b["stats"]["ytd_scrummed_usd"] != pytest.approx(total)
-        assert (a["stats"]["ytd_scrummed_usd"]
-                + b["stats"]["ytd_scrummed_usd"]) == pytest.approx(total)
+        assert (
+            a["stats"]["ytd_scrummed_usd"] + b["stats"]["ytd_scrummed_usd"]
+        ) == pytest.approx(total)
 
 
 class TestErrorStateIsReachable:
@@ -185,7 +210,8 @@ class TestErrorStateIsReachable:
                 writes.append(node.lineno)
         assert writes, (
             "BotState.ERROR is assigned nowhere; get_aggregate_stats "
-            "counts bots in that state, so 'errored' is pinned at 0")
+            "counts bots in that state, so 'errored' is pinned at 0"
+        )
 
     def test_it_is_also_cleared(self):
         """A state that is set but never cleared would latch: one
@@ -197,8 +223,7 @@ class TestErrorStateIsReachable:
         src = Path(bc.__file__).read_text(encoding="utf-8")
         cleared = False
         for node in ast.walk(ast.parse(src)):
-            if isinstance(node, ast.If) and "BotState.ERROR" in ast.unparse(
-                    node.test):
+            if isinstance(node, ast.If) and "BotState.ERROR" in ast.unparse(node.test):
                 if "BotState.RUNNING" in ast.unparse(node):
                     cleared = True
         assert cleared, "ERROR is set but never cleared on a good tick"
@@ -222,8 +247,9 @@ class TestTheAIMonitorIsNotFedZeroes:
         from src.trading.bot_container import BotManager
 
         src = inspect.getsource(BotManager.check_live_monitor)
-        assert 's.get("passive_value", 0)' not in src, (
-            "still defaulting a key that is emitted nowhere")
+        assert (
+            's.get("passive_value", 0)' not in src
+        ), "still defaulting a key that is emitted nowhere"
         assert "passive=None" in src
 
     def test_a_partial_portfolio_is_flagged(self):

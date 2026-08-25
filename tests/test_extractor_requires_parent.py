@@ -42,6 +42,7 @@ parent however well its currency matches, so it does not satisfy the
 requirement. Rows 4a/4b below differ in the holder's exchange and in
 nothing else, so 4b refusing can only be the exchange.
 """
+
 from __future__ import annotations
 
 import os
@@ -80,12 +81,16 @@ def _scrumming_bot(bot_id: str, target_asset: str, exchange: str):
     """
     bot = object.__new__(ScrummingBot)
     bot.bot_id = bot_id
-    bot.config = type("_Cfg", (), {
-        "exchange_id": exchange,
-        "mode": BotMode.SCRUMMING,
-        "target_asset": target_asset,
-        "base_currency": "USD",
-    })()
+    bot.config = type(
+        "_Cfg",
+        (),
+        {
+            "exchange_id": exchange,
+            "mode": BotMode.SCRUMMING,
+            "target_asset": target_asset,
+            "base_currency": "USD",
+        },
+    )()
     return bot
 
 
@@ -157,7 +162,8 @@ class _Dialogs:
     def question(self, *args, **kwargs):
         raise AssertionError(
             f"the Extractor path must not reach a question dialog "
-            f"(called with {args!r} {kwargs!r})")
+            f"(called with {args!r} {kwargs!r})"
+        )
 
     def warning(self, parent, title, text):
         self.critical_calls.append((title, text))
@@ -185,8 +191,7 @@ class _Window:
         return self._bar
 
     _extractor_parent_refusal = MainWindow._extractor_parent_refusal
-    _refuse_extractor_without_parent = (
-        MainWindow._refuse_extractor_without_parent)
+    _refuse_extractor_without_parent = MainWindow._refuse_extractor_without_parent
     _create_bot = MainWindow._create_bot
 
 
@@ -285,8 +290,7 @@ def _open_wizard(monkeypatch, manager, config, extractor_class):
     dialogs = _Dialogs()
     WIZARD_OPENINGS.clear()
     monkeypatch.setattr(main_window, "QMessageBox", dialogs)
-    monkeypatch.setattr(
-        bot_wizard, "BotCreationWizard", _wizard_returning(config))
+    monkeypatch.setattr(bot_wizard, "BotCreationWizard", _wizard_returning(config))
     monkeypatch.setattr(extractor_bot, "ExtractorBot", extractor_class)
     return window, dialogs
 
@@ -296,8 +300,7 @@ def _run_wizard(monkeypatch, manager, config):
 
     Returns ``(window, dialogs, reached_construction)``.
     """
-    window, dialogs = _open_wizard(
-        monkeypatch, manager, config, _ProbeExtractorBot)
+    window, dialogs = _open_wizard(monkeypatch, manager, config, _ProbeExtractorBot)
     reached = False
     try:
         window._create_bot(exchange_id=config["exchange_id"])
@@ -312,8 +315,7 @@ def _run_wizard_to_registration(monkeypatch, manager, config):
     Returns ``(window, dialogs)``. Use where the question is what ended
     up on the books, not where control stopped.
     """
-    window, dialogs = _open_wizard(
-        monkeypatch, manager, config, _RecordingExtractorBot)
+    window, dialogs = _open_wizard(monkeypatch, manager, config, _RecordingExtractorBot)
     window._create_bot(exchange_id=config["exchange_id"])
     return window, dialogs
 
@@ -325,29 +327,31 @@ class TestNoHolder:
     def test_creation_is_refused(self, monkeypatch, books):
         manager = books([("scrum-btc", "BTC", COINBASE)])
         _win, dialogs, reached = _run_wizard(
-            monkeypatch, manager, _extractor_config("ETH"))
+            monkeypatch, manager, _extractor_config("ETH")
+        )
 
         assert reached is False, (
-            "the ExtractorBot was constructed with no Scrumming Bot "
-            "holding ETH")
+            "the ExtractorBot was constructed with no Scrumming Bot " "holding ETH"
+        )
         assert len(dialogs.critical_calls) == 1, (
             "the refusal was silent; the operator would see a wizard "
-            "close and no bot appear")
+            "close and no bot appear"
+        )
 
-    def test_the_operator_is_told_to_create_the_parent_first(
-            self, monkeypatch, books):
+    def test_the_operator_is_told_to_create_the_parent_first(self, monkeypatch, books):
         manager = books([("scrum-btc", "BTC", COINBASE)])
         _win, dialogs, _reached = _run_wizard(
-            monkeypatch, manager, _extractor_config("ETH"))
+            monkeypatch, manager, _extractor_config("ETH")
+        )
 
         text = dialogs.last_text()
         assert "ETH" in text
         assert COINBASE in text
-        assert "Create a Scrumming Bot" in text, (
-            f"the remedy is not stated; operator saw: {text!r}")
+        assert (
+            "Create a Scrumming Bot" in text
+        ), f"the remedy is not stated; operator saw: {text!r}"
 
-    def test_no_bot_is_created_and_no_state_is_written(
-            self, monkeypatch, books):
+    def test_no_bot_is_created_and_no_state_is_written(self, monkeypatch, books):
         """The refusal happens before construction AND before
         registration, so the roster is exactly what it was. Absence from
         the roster is what keeps the save timer from writing anything:
@@ -361,40 +365,44 @@ class TestNoHolder:
         """
         manager = books([("scrum-btc", "BTC", COINBASE)])
         before = set(manager._bots)
-        _run_wizard_to_registration(
-            monkeypatch, manager, _extractor_config("ETH"))
+        _run_wizard_to_registration(monkeypatch, manager, _extractor_config("ETH"))
 
         assert set(manager._bots) == before, (
             "the wizard put a bot on the books; the next save writes it "
-            "to bot_state.json")
+            "to bot_state.json"
+        )
         assert CREATED_BOT_ID not in manager._bots
 
     def test_control_the_same_run_does_register_when_a_parent_exists(
-            self, monkeypatch, books):
+        self, monkeypatch, books
+    ):
         """CONTROL for the test above. Without it, "the roster is
         unchanged" would also pass if registration never happened for
         some unrelated reason.
         """
         manager = books([("scrum-eth", "ETH", COINBASE)])
-        _run_wizard_to_registration(
-            monkeypatch, manager, _extractor_config("ETH"))
+        _run_wizard_to_registration(monkeypatch, manager, _extractor_config("ETH"))
 
         assert CREATED_BOT_ID in manager._bots, (
             "an allowed creation did not reach registration, so the "
-            "refusal test above proves nothing")
+            "refusal test above proves nothing"
+        )
 
     def test_the_refusal_is_on_the_record(self, monkeypatch, books):
         manager = books([("scrum-btc", "BTC", COINBASE)])
         window, _dialogs, _reached = _run_wizard(
-            monkeypatch, manager, _extractor_config("ETH"))
+            monkeypatch, manager, _extractor_config("ETH")
+        )
 
-        assert any(level == "error" and "REFUSED" in msg
-                   for level, msg in window._status_log.entries), (
+        assert any(
+            level == "error" and "REFUSED" in msg
+            for level, msg in window._status_log.entries
+        ), (
             f"nothing in the activity log records the refusal: "
-            f"{window._status_log.entries!r}")
+            f"{window._status_log.entries!r}"
+        )
 
-    def test_the_wizard_was_opened_before_it_was_refused(
-            self, monkeypatch, books):
+    def test_the_wizard_was_opened_before_it_was_refused(self, monkeypatch, books):
         """CONTROL for every `reached is False` in this file. A wizard
         that never opened would also never construct a bot, so without
         this the refusal assertions could be satisfied by a broken
@@ -402,10 +410,10 @@ class TestNoHolder:
         """
         manager = books([("scrum-btc", "BTC", COINBASE)])
         window, _dialogs, _reached = _run_wizard(
-            monkeypatch, manager, _extractor_config("ETH"))
+            monkeypatch, manager, _extractor_config("ETH")
+        )
 
-        assert len(WIZARD_OPENINGS) == 1, (
-            "the creation wizard was never opened")
+        assert len(WIZARD_OPENINGS) == 1, "the creation wizard was never opened"
         _exchanges, _defaults, parent = WIZARD_OPENINGS[0]
         assert parent is window
 
@@ -414,48 +422,48 @@ class TestNoHolder:
 # 2 -- two hold it, and that is a different problem
 # ----------------------------------------------------------------------
 class TestTwoHolders:
-    HOLDERS = [("scrum-eth-a", "ETH", COINBASE),
-               ("scrum-eth-b", "ETH", COINBASE)]
+    HOLDERS = [("scrum-eth-a", "ETH", COINBASE), ("scrum-eth-b", "ETH", COINBASE)]
 
     def test_creation_is_refused(self, monkeypatch, books):
         manager = books(self.HOLDERS)
         _win, dialogs, reached = _run_wizard(
-            monkeypatch, manager, _extractor_config("ETH"))
+            monkeypatch, manager, _extractor_config("ETH")
+        )
 
         assert reached is False, (
             "an Extractor was created against an ambiguous parent; the "
-            "return would raise the wrong bot's target")
+            "return would raise the wrong bot's target"
+        )
         assert len(dialogs.critical_calls) == 1
 
     def test_both_candidates_are_named(self, monkeypatch, books):
         """The operator cannot decide between bots nobody listed."""
         manager = books(self.HOLDERS)
         _win, dialogs, _reached = _run_wizard(
-            monkeypatch, manager, _extractor_config("ETH"))
+            monkeypatch, manager, _extractor_config("ETH")
+        )
 
         text = dialogs.last_text()
         assert "scrum-eth-a" in text
         assert "scrum-eth-b" in text
 
-    def test_the_message_differs_from_the_no_holder_message(
-            self, monkeypatch, books):
+    def test_the_message_differs_from_the_no_holder_message(self, monkeypatch, books):
         """THE distinction. The remedies are opposite: one wants a bot
         created, the other wants two reduced to one. A shared message
         would send the operator to build a third ETH bot.
         """
         crowded = books(self.HOLDERS)
-        _w1, d_two, _r1 = _run_wizard(
-            monkeypatch, crowded, _extractor_config("ETH"))
+        _w1, d_two, _r1 = _run_wizard(monkeypatch, crowded, _extractor_config("ETH"))
 
         empty = books([("scrum-btc", "BTC", COINBASE)])
-        _w2, d_none, _r2 = _run_wizard(
-            monkeypatch, empty, _extractor_config("ETH"))
+        _w2, d_none, _r2 = _run_wizard(monkeypatch, empty, _extractor_config("ETH"))
 
         assert d_two.last_text() != d_none.last_text()
         assert "ambiguous" in d_two.last_text()
         assert "Create a Scrumming Bot" not in d_two.last_text(), (
             "the ambiguous case tells the operator to create another "
-            "holder, which is the opposite of the remedy")
+            "holder, which is the opposite of the remedy"
+        )
 
 
 # ----------------------------------------------------------------------
@@ -470,14 +478,17 @@ class TestExactlyOneHolder:
         """
         manager = books([("scrum-eth", "ETH", COINBASE)])
         _win, dialogs, reached = _run_wizard(
-            monkeypatch, manager, _extractor_config("ETH"))
+            monkeypatch, manager, _extractor_config("ETH")
+        )
 
         assert reached is True, (
             "creation did not reach the ExtractorBot constructor even "
-            "though one Scrumming Bot holds ETH")
+            "though one Scrumming Bot holds ETH"
+        )
         assert dialogs.critical_calls == [], (
             f"an allowed creation still showed a refusal: "
-            f"{dialogs.critical_calls!r}")
+            f"{dialogs.critical_calls!r}"
+        )
 
 
 # ----------------------------------------------------------------------
@@ -487,54 +498,63 @@ class TestExchangeBound:
     """4a and 4b are one pair. They differ in the holder's exchange and
     in nothing else, so 4b refusing can only be the exchange."""
 
-    def test_4a_a_holder_on_this_exchange_satisfies_it(
-            self, monkeypatch, books):
+    def test_4a_a_holder_on_this_exchange_satisfies_it(self, monkeypatch, books):
         manager = books([("scrum-eth", "ETH", COINBASE)])
         _win, _dialogs, reached = _run_wizard(
-            monkeypatch, manager, _extractor_config("ETH", COINBASE))
+            monkeypatch, manager, _extractor_config("ETH", COINBASE)
+        )
         assert reached is True
 
-    def test_4b_the_only_holder_is_on_another_exchange(
-            self, monkeypatch, books):
+    def test_4b_the_only_holder_is_on_another_exchange(self, monkeypatch, books):
         manager = books([("scrum-eth", "ETH", KRAKEN)])
         _win, dialogs, reached = _run_wizard(
-            monkeypatch, manager, _extractor_config("ETH", COINBASE))
+            monkeypatch, manager, _extractor_config("ETH", COINBASE)
+        )
 
         assert reached is False, (
             "a Kraken bot was accepted as the parent of a Coinbase "
             "Extractor; there is no cross-exchange arbitrage and the "
-            "return would pay a bot that never received the money")
+            "return would pay a bot that never received the money"
+        )
         assert "Create a Scrumming Bot" in dialogs.last_text(), (
-            "an off-exchange holder must read as NO holder, not as an "
-            "ambiguous one")
+            "an off-exchange holder must read as NO holder, not as an " "ambiguous one"
+        )
 
 
 # ----------------------------------------------------------------------
 # 5 -- the asset is matched loosely, exactly as the lookup matches it
 # ----------------------------------------------------------------------
 class TestAssetMatching:
-    @pytest.mark.parametrize("held,asked", [
-        ("ETH", "eth"),
-        ("eth", "ETH"),
-        ("ETH", "  ETH  "),
-        ("  ETH  ", "ETH"),
-    ], ids=["asked lower", "held lower", "asked padded", "held padded"])
+    @pytest.mark.parametrize(
+        "held,asked",
+        [
+            ("ETH", "eth"),
+            ("eth", "ETH"),
+            ("ETH", "  ETH  "),
+            ("  ETH  ", "ETH"),
+        ],
+        ids=["asked lower", "held lower", "asked padded", "held padded"],
+    )
     def test_case_and_spaces_do_not_break_the_match(
-            self, monkeypatch, books, held, asked):
+        self, monkeypatch, books, held, asked
+    ):
         manager = books([("scrum-eth", held, COINBASE)])
         _win, dialogs, reached = _run_wizard(
-            monkeypatch, manager, _extractor_config(asked))
+            monkeypatch, manager, _extractor_config(asked)
+        )
 
         assert reached is True, (
             f"holder {held!r} did not satisfy an Extractor asking "
-            f"{asked!r}; operator saw: {dialogs.last_text()!r}")
+            f"{asked!r}; operator saw: {dialogs.last_text()!r}"
+        )
 
     def test_a_different_asset_still_refuses(self, monkeypatch, books):
         """CONTROL for the four rows above. Without this, a match that
         accepted anything at all would pass every one of them."""
         manager = books([("scrum-eth", "ETH", COINBASE)])
         _win, _dialogs, reached = _run_wizard(
-            monkeypatch, manager, _extractor_config("SOL"))
+            monkeypatch, manager, _extractor_config("SOL")
+        )
         assert reached is False
 
 
@@ -582,8 +602,12 @@ class TestRestoreStillTolerates:
         manager = BotManager(bus=EventBus())
         try:
             manager.restore_bots_from_state(
-                {"bots": {"orphan-extractor":
-                          self._extractor_record("orphan-extractor")}})
+                {
+                    "bots": {
+                        "orphan-extractor": self._extractor_record("orphan-extractor")
+                    }
+                }
+            )
             loaded = set(manager._bots)
         finally:
             manager.detach_bus()
@@ -591,7 +615,8 @@ class TestRestoreStillTolerates:
         assert "orphan-extractor" in loaded, (
             "the restore path refused an Extractor with no parent. Its "
             "open position is now unmanaged and the next save will "
-            "erase its record.")
+            "erase its record."
+        )
 
     def test_it_is_not_in_the_skip_ledger(self):
         """A bot can also be lost by being skipped rather than refused.
@@ -600,15 +625,20 @@ class TestRestoreStillTolerates:
         manager = BotManager(bus=EventBus())
         try:
             manager.restore_bots_from_state(
-                {"bots": {"orphan-extractor":
-                          self._extractor_record("orphan-extractor")}})
+                {
+                    "bots": {
+                        "orphan-extractor": self._extractor_record("orphan-extractor")
+                    }
+                }
+            )
             ledger = dict(manager._restore_ledger or {})
         finally:
             manager.detach_bus()
 
         assert "orphan-extractor" not in ledger, (
             f"restore skipped the parentless Extractor: "
-            f"{ledger.get('orphan-extractor')!r}")
+            f"{ledger.get('orphan-extractor')!r}"
+        )
 
     def test_the_restore_path_does_not_consult_the_parent_lookup(self):
         """CONTROL: the two tests above would also pass if restore
@@ -622,14 +652,19 @@ class TestRestoreStillTolerates:
             raise AssertionError(
                 "restore_bots_from_state consulted the parent lookup; "
                 "the creation-time requirement has leaked into the "
-                "load path")
+                "load path"
+            )
 
         manager.find_parent_bot_for_base_currency = _explode
         manager.list_parent_bot_candidates_for_base_currency = _explode
         try:
             manager.restore_bots_from_state(
-                {"bots": {"orphan-extractor":
-                          self._extractor_record("orphan-extractor")}})
+                {
+                    "bots": {
+                        "orphan-extractor": self._extractor_record("orphan-extractor")
+                    }
+                }
+            )
             loaded = set(manager._bots)
         finally:
             manager.detach_bus()

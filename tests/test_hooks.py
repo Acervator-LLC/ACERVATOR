@@ -11,6 +11,7 @@ The tests verify:
 None of the hooks may crash Claude Code — a hook that raises should still
 exit 0 (silent fail-open). These tests pin that behavior.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,7 +20,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 
 REPO = Path(__file__).resolve().parent.parent
 HOOKS = REPO / ".claude" / "hooks"
@@ -60,15 +60,18 @@ class TestPromptRouter:
         context-fill figure. That telemetry is permanently banned by
         operator directive.
         """
-        r = _run_hook("prompt_router.py",
-                      json.dumps({"user_prompt": "What time is it?"}))
+        r = _run_hook(
+            "prompt_router.py", json.dumps({"user_prompt": "What time is it?"})
+        )
         assert r.returncode == 0
-        assert "harness-law" in r.stdout, (
-            f"the authorship rule must reach every turn; got {r.stdout!r}")
+        assert (
+            "harness-law" in r.stdout
+        ), f"the authorship rule must reach every turn; got {r.stdout!r}"
         low = r.stdout.lower()
         for banned in ("token", "context window", "% full", "budget"):
-            assert banned not in low, (
-                f"router must not emit context telemetry; found {banned!r}")
+            assert (
+                banned not in low
+            ), f"router must not emit context telemetry; found {banned!r}"
 
     def test_silent_on_empty_prompt(self):
         r = _run_hook("prompt_router.py", json.dumps({"user_prompt": ""}))
@@ -76,35 +79,44 @@ class TestPromptRouter:
         assert r.stdout.strip() == ""
 
     def test_coding_keywords_route_to_coding_archetype(self):
-        r = _run_hook("prompt_router.py",
-                      json.dumps({"user_prompt": "refactor the pytest suite"}))
+        r = _run_hook(
+            "prompt_router.py", json.dumps({"user_prompt": "refactor the pytest suite"})
+        )
         assert r.returncode == 0
         assert "coding" in r.stdout.lower()
         assert "coding_archetype" in r.stdout
 
     def test_gui_keywords_route_to_gui_archetype(self):
-        r = _run_hook("prompt_router.py",
-                      json.dumps({"user_prompt": "add a QPushButton to the widget"}))
+        r = _run_hook(
+            "prompt_router.py",
+            json.dumps({"user_prompt": "add a QPushButton to the widget"}),
+        )
         assert r.returncode == 0
         assert "gui" in r.stdout.lower()
         assert "gui_archetype" in r.stdout
 
     def test_docs_keywords_route_to_docs_archetype(self):
-        r = _run_hook("prompt_router.py",
-                      json.dumps({"user_prompt": "write a how-to guide for the API"}))
+        r = _run_hook(
+            "prompt_router.py",
+            json.dumps({"user_prompt": "write a how-to guide for the API"}),
+        )
         assert r.returncode == 0
         assert "docs" in r.stdout.lower() or "documentation" in r.stdout.lower()
         assert "docs_archetype" in r.stdout
 
     def test_cascade_keywords_trigger_reminder(self):
-        r = _run_hook("prompt_router.py",
-                      json.dumps({"user_prompt": "ship the release with a version bump"}))
+        r = _run_hook(
+            "prompt_router.py",
+            json.dumps({"user_prompt": "ship the release with a version bump"}),
+        )
         assert r.returncode == 0
         assert "cascade" in r.stdout.lower() or "check_release_readiness" in r.stdout
 
     def test_multi_domain_prompt_surfaces_all(self):
-        r = _run_hook("prompt_router.py",
-                      json.dumps({"user_prompt": "refactor the QWidget documentation"}))
+        r = _run_hook(
+            "prompt_router.py",
+            json.dumps({"user_prompt": "refactor the QWidget documentation"}),
+        )
         assert r.returncode == 0
         # coding (refactor) + gui (QWidget) + docs (documentation)
         low = r.stdout.lower()
@@ -123,10 +135,12 @@ class TestPromptRouter:
 class TestArchetypeGate:
     def test_skip_docs_audits_path(self, tmp_path):
         # Any file under docs/audits/ is a known-noise path
-        stdin = json.dumps({
-            "tool_name": "Write",
-            "tool_input": {"file_path": "docs/audits/2026-07-24_x/foo.py"},
-        })
+        stdin = json.dumps(
+            {
+                "tool_name": "Write",
+                "tool_input": {"file_path": "docs/audits/2026-07-24_x/foo.py"},
+            }
+        )
         r = _run_hook("archetype_gate.py", stdin)
         assert r.returncode == 0
         # skip = no output
@@ -144,26 +158,33 @@ class TestArchetypeGate:
 
         Hook files are now graded like any other Python file.
         """
-        stdin = json.dumps({
-            "tool_name": "Edit",
-            "tool_input": {"file_path": ".claude/hooks/prompt_router.py"},
-        })
+        stdin = json.dumps(
+            {
+                "tool_name": "Edit",
+                "tool_input": {"file_path": ".claude/hooks/prompt_router.py"},
+            }
+        )
         r = _run_hook("archetype_gate.py", stdin)
         assert r.returncode == 0
         assert "archetype-gate" in r.stdout, (
-            f"a hook file must receive a verdict, not silence; "
-            f"got {r.stdout!r}")
+            f"a hook file must receive a verdict, not silence; " f"got {r.stdout!r}"
+        )
 
     def test_non_write_tool_ignored(self):
-        stdin = json.dumps({
-            "tool_name": "Read",
-            "tool_input": {"file_path": "src/__init__.py"},
-        })
+        stdin = json.dumps(
+            {
+                "tool_name": "Read",
+                "tool_input": {"file_path": "src/__init__.py"},
+            }
+        )
         r = _run_hook("archetype_gate.py", stdin)
         assert r.returncode == 0
         # gate only fires for Write|Edit; other tools produce no archetype run
-        assert r.stdout.strip() == "" or "not applicable" in r.stdout.lower() or \
-               "not run" in r.stdout.lower()
+        assert (
+            r.stdout.strip() == ""
+            or "not applicable" in r.stdout.lower()
+            or "not run" in r.stdout.lower()
+        )
 
     def test_malformed_stdin_does_not_crash(self):
         r = _run_hook("archetype_gate.py", "not json {")
@@ -193,25 +214,42 @@ class TestArchetypeGate:
         DOCS = "tools.harness.docs_archetype"
 
         # A Qt widget is BOTH a GUI file and a Python file.
-        gui_fixture = REPO / "docs" / "audits" / "2026-07-24_gui_docs_archetypes" \
-                    / "gui_fixtures" / "known_good_widget.py"
-        got = pick(gui_fixture, gui_fixture.read_text(encoding='utf-8'))
+        gui_fixture = (
+            REPO
+            / "docs"
+            / "audits"
+            / "2026-07-24_gui_docs_archetypes"
+            / "gui_fixtures"
+            / "known_good_widget.py"
+        )
+        got = pick(gui_fixture, gui_fixture.read_text(encoding="utf-8"))
         assert CODING in got, f"coding must run on every .py file, got {got}"
         assert GUI in got, f"Qt widget must also get gui, got {got}"
 
         # A plain Python file gets coding and NOT gui. This is the
         # negative half: without it, a router that returned every
         # archetype for every file would pass the assertion above.
-        coding_fixture = REPO / "docs" / "audits" \
-                       / "2026-07-24_coding_archetype_multi_agent_test" \
-                       / "fixtures" / "known_good.py"
-        got = pick(coding_fixture, coding_fixture.read_text(encoding='utf-8'))
+        coding_fixture = (
+            REPO
+            / "docs"
+            / "audits"
+            / "2026-07-24_coding_archetype_multi_agent_test"
+            / "fixtures"
+            / "known_good.py"
+        )
+        got = pick(coding_fixture, coding_fixture.read_text(encoding="utf-8"))
         assert CODING in got
         assert GUI not in got, f"plain .py must not get gui, got {got}"
 
         # Markdown → docs only.
-        md = REPO / "docs" / "audits" / "2026-07-24_gui_docs_archetypes" \
-           / "docs_fixtures" / "known_good.md"
+        md = (
+            REPO
+            / "docs"
+            / "audits"
+            / "2026-07-24_gui_docs_archetypes"
+            / "docs_fixtures"
+            / "known_good.md"
+        )
         assert pick(md, md.read_text(encoding="utf-8")) == [DOCS]
 
         # v3.25.6 - routing must follow the PENDING source, not the
@@ -222,15 +260,18 @@ class TestArchetypeGate:
         # before the fix: on-disk routing [coding], pending routing
         # [coding, gui].
         widget_pending = (
-            "from PySide6.QtWidgets import QWidget\n\n"
-            "class W(QWidget):\n    pass\n"
+            "from PySide6.QtWidgets import QWidget\n\n" "class W(QWidget):\n    pass\n"
         )
         got = pick(coding_fixture, widget_pending)
         assert GUI in got, (
             "a pending write that adds a Qt widget must reach the "
             f"GUI archetype even though the file on disk has none; "
-            f"got {got}")
-        assert pick(REPO / "README.md", (REPO / "README.md").read_text(encoding="utf-8", errors="replace")) == [DOCS]
+            f"got {got}"
+        )
+        assert pick(
+            REPO / "README.md",
+            (REPO / "README.md").read_text(encoding="utf-8", errors="replace"),
+        ) == [DOCS]
 
         # Unknown extension → nothing.
         assert pick(REPO / "LICENSE", "") == []
@@ -249,19 +290,23 @@ class TestArchetypeGate:
 
 class TestVerifyReleaseGate:
     def test_non_banner_path_passes_through(self):
-        stdin = json.dumps({
-            "tool_name": "Edit",
-            "tool_input": {"file_path": "tools/harness/foo.py"},
-        })
+        stdin = json.dumps(
+            {
+                "tool_name": "Edit",
+                "tool_input": {"file_path": "tools/harness/foo.py"},
+            }
+        )
         r = _run_hook("verify_release_gate.py", stdin)
         assert r.returncode == 0
         assert r.stdout.strip() == ""
 
     def test_non_write_tool_passes_through(self):
-        stdin = json.dumps({
-            "tool_name": "Read",
-            "tool_input": {"file_path": "src/__init__.py"},
-        })
+        stdin = json.dumps(
+            {
+                "tool_name": "Read",
+                "tool_input": {"file_path": "src/__init__.py"},
+            }
+        )
         r = _run_hook("verify_release_gate.py", stdin)
         assert r.returncode == 0
         assert r.stdout.strip() == ""
@@ -274,17 +319,21 @@ class TestVerifyReleaseGate:
             backup = tmp_path / "sidecar.bak"
             sidecar.rename(backup)
         try:
-            stdin = json.dumps({
-                "tool_name": "Edit",
-                "tool_input": {"file_path": "main.py"},
-            })
+            stdin = json.dumps(
+                {
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "main.py"},
+                }
+            )
             r = _run_hook("verify_release_gate.py", stdin)
             assert r.returncode == 0
             assert r.stdout.strip(), "expected deny payload"
             payload = json.loads(r.stdout)
             assert payload["decision"] == "deny"
-            assert "banner" in payload["reason"].lower() or \
-                   "release" in payload["reason"].lower()
+            assert (
+                "banner" in payload["reason"].lower()
+                or "release" in payload["reason"].lower()
+            )
         finally:
             if backup is not None:
                 backup.rename(sidecar)
@@ -302,6 +351,7 @@ class TestVerifyReleaseGate:
         old shape as "allow" would have pinned the defect.
         """
         from datetime import datetime, timezone
+
         sidecar = REPO / ".release_ready.json"
         backup = None
         if sidecar.exists():
@@ -310,21 +360,33 @@ class TestVerifyReleaseGate:
         try:
             now = datetime.now(timezone.utc).replace(microsecond=0)
             iso = now.isoformat().replace("+00:00", "Z")
-            sidecar.write_text(json.dumps({
-                "version": "test", "tests": 1105,
-                "checks_run": {"pytest": "ran", "archetypes": "ran",
-                               "claims": "ran"},
-                "timestamp": iso, "generator": "test_hooks",
-            }), encoding="utf-8")
-            stdin = json.dumps({
-                "tool_name": "Write",
-                "tool_input": {"file_path": "src/__init__.py"},
-            })
+            sidecar.write_text(
+                json.dumps(
+                    {
+                        "version": "test",
+                        "tests": 1105,
+                        "checks_run": {
+                            "pytest": "ran",
+                            "archetypes": "ran",
+                            "claims": "ran",
+                        },
+                        "timestamp": iso,
+                        "generator": "test_hooks",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            stdin = json.dumps(
+                {
+                    "tool_name": "Write",
+                    "tool_input": {"file_path": "src/__init__.py"},
+                }
+            )
             r = _run_hook("verify_release_gate.py", stdin)
             assert r.returncode == 0
-            assert r.stdout.strip() == "", (
-                f"fresh sidecar should allow banner write; got {r.stdout!r}"
-            )
+            assert (
+                r.stdout.strip() == ""
+            ), f"fresh sidecar should allow banner write; got {r.stdout!r}"
         finally:
             sidecar.unlink(missing_ok=True)
             if backup is not None:

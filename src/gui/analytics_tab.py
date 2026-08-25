@@ -14,12 +14,23 @@ logger = logging.getLogger("acervator.gui")
 
 try:
     from PySide6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-        QTableWidget, QTableWidgetItem, QHeaderView, QComboBox,
-        QPushButton, QGroupBox, QSplitter, QScrollArea,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QFrame,
+        QTableWidget,
+        QTableWidgetItem,
+        QHeaderView,
+        QComboBox,
+        QPushButton,
+        QGroupBox,
+        QSplitter,
+        QScrollArea,
     )
     from PySide6.QtCore import Qt, QTimer, QPointF
     from PySide6.QtGui import QPainter, QColor, QPen, QLinearGradient, QFont, QPolygonF
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -28,29 +39,36 @@ if _HAS_QT:
 
     class MetricCard(QFrame):
         """Small card showing a single metric."""
+
         def __init__(self, label: str, value: str = "---", parent=None):
             super().__init__(parent)
             self.setAccessibleName("Metric Card")
             self.setFrameShape(QFrame.StyledPanel)
             self.setStyleSheet(
                 "MetricCard { background: #12121f; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; }")
+                "border-radius: 6px; }"
+            )
             layout = QVBoxLayout(self)
             layout.setContentsMargins(10, 8, 10, 8)
             layout.setSpacing(2)
             self._label = QLabel(label)
             self._label.setStyleSheet("color: #888; font-size: 10px;")
             self._value = QLabel(value)
-            self._value.setStyleSheet("color: #e0e0f0; font-size: 16px; font-weight: bold;")
+            self._value.setStyleSheet(
+                "color: #e0e0f0; font-size: 16px; font-weight: bold;"
+            )
             layout.addWidget(self._label)
             layout.addWidget(self._value)
 
         def set_value(self, value: str, color: str = "#e0e0f0"):
             self._value.setText(value)
-            self._value.setStyleSheet(f"color: {color}; font-size: 16px; font-weight: bold;")
+            self._value.setStyleSheet(
+                f"color: {color}; font-size: 16px; font-weight: bold;"
+            )
 
     class MiniEquityChart(QWidget):
         """Simple painted equity curve chart."""
+
         def __init__(self, parent=None):
             super().__init__(parent)
             self.setAccessibleName("Mini Equity Chart")
@@ -122,8 +140,9 @@ if _HAS_QT:
                 # Line
                 p.setPen(QPen(line_color, 2))
                 for i in range(len(points) - 1):
-                    p.drawLine(points[i][0], points[i][1],
-                              points[i + 1][0], points[i + 1][1])
+                    p.drawLine(
+                        points[i][0], points[i][1], points[i + 1][0], points[i + 1][1]
+                    )
 
             # Current value label
             if equities:
@@ -160,9 +179,16 @@ if _HAS_QT:
             self._card_expect = MetricCard("Expectancy")
             self._card_today = MetricCard("Trades Today")
 
-            for card in [self._card_pnl, self._card_winrate, self._card_sharpe,
-                         self._card_pf, self._card_trades, self._card_dd,
-                         self._card_expect, self._card_today]:
+            for card in [
+                self._card_pnl,
+                self._card_winrate,
+                self._card_sharpe,
+                self._card_pf,
+                self._card_trades,
+                self._card_dd,
+                self._card_expect,
+                self._card_today,
+            ]:
                 metrics_row.addWidget(card)
             layout.addLayout(metrics_row)
 
@@ -175,7 +201,8 @@ if _HAS_QT:
             chart_group = QGroupBox("Equity Curve")
             chart_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; font-weight: bold; }")
+                "border-radius: 6px; color: #00ffcc; font-weight: bold; }"
+            )
             chart_layout = QVBoxLayout(chart_group)
             self._equity_chart = MiniEquityChart()
             chart_layout.addWidget(self._equity_chart)
@@ -190,14 +217,26 @@ if _HAS_QT:
             bot_group = QGroupBox("Bot Performance")
             bot_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }")
+                "border-radius: 6px; color: #00ffcc; }"
+            )
             bot_layout = QVBoxLayout(bot_group)
 
             self._bot_table = QTableWidget()
             self._bot_table.setColumnCount(10)
-            self._bot_table.setHorizontalHeaderLabels([
-                "Bot", "Symbol", "Trades", "Win%", "P/L",
-                "Profit Factor", "Sharpe", "Max DD%", "Avg Hold", "$/Trade"])
+            self._bot_table.setHorizontalHeaderLabels(
+                [
+                    "Bot",
+                    "Symbol",
+                    "Trades",
+                    "Win%",
+                    "P/L",
+                    "Profit Factor",
+                    "Sharpe",
+                    "Max DD%",
+                    "Avg Hold",
+                    "$/Trade",
+                ]
+            )
             self._bot_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
             self._bot_table.setAlternatingRowColors(True)
             self._bot_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -210,13 +249,15 @@ if _HAS_QT:
             tf_group = QGroupBox("Timeframe Performance")
             tf_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }")
+                "border-radius: 6px; color: #00ffcc; }"
+            )
             tf_layout = QVBoxLayout(tf_group)
 
             self._tf_table = QTableWidget()
             self._tf_table.setColumnCount(4)
-            self._tf_table.setHorizontalHeaderLabels([
-                "Timeframe", "Trades", "Win Rate", "Total P/L"])
+            self._tf_table.setHorizontalHeaderLabels(
+                ["Timeframe", "Trades", "Win Rate", "Total P/L"]
+            )
             self._tf_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
             self._tf_table.setAlternatingRowColors(True)
             self._tf_table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -243,7 +284,7 @@ if _HAS_QT:
             self._card_winrate.set_value(f"{summary.get('win_rate', 0):.1f}%")
             self._card_sharpe.set_value(f"{summary.get('sharpe_ratio', 0):.2f}")
             pf = summary.get("profit_factor", 0)
-            pf_str = f"{pf:.2f}" if pf != float('inf') else "∞"
+            pf_str = f"{pf:.2f}" if pf != float("inf") else "∞"
             self._card_pf.set_value(pf_str)
             self._card_trades.set_value(str(summary.get("total_trades", 0)))
             self._card_dd.set_value(f"{summary.get('max_drawdown', 0):.1f}%", "#ffaa00")
@@ -264,7 +305,11 @@ if _HAS_QT:
                     str(perf.total_trades),
                     f"{perf.win_rate:.1f}%",
                     f"${perf.total_pnl:+,.4f}",
-                    f"{perf.profit_factor:.2f}" if perf.profit_factor != float('inf') else "∞",
+                    (
+                        f"{perf.profit_factor:.2f}"
+                        if perf.profit_factor != float("inf")
+                        else "∞"
+                    ),
                     f"{perf.sharpe_ratio:.2f}",
                     f"{perf.max_drawdown_pct:.1f}%",
                     eng._format_duration(perf.avg_hold_seconds),
@@ -274,7 +319,11 @@ if _HAS_QT:
                     item = QTableWidgetItem(text)
                     item.setTextAlignment(Qt.AlignCenter)
                     if col == 4:  # P/L column
-                        color = QColor("#00ff88") if perf.total_pnl >= 0 else QColor("#ff3366")
+                        color = (
+                            QColor("#00ff88")
+                            if perf.total_pnl >= 0
+                            else QColor("#ff3366")
+                        )
                         item.setForeground(color)
                     self._bot_table.setItem(row, col, item)
 

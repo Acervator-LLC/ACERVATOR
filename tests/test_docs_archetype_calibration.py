@@ -27,6 +27,7 @@ Acting on either would have corrupted the code sample. These tests pin
 both halves of the fix: code is stripped before linting, and typography is
 advisory rather than blocking.
 """
+
 from __future__ import annotations
 
 import sys
@@ -41,8 +42,8 @@ from tools.harness.docs_archetype import (  # noqa: E402
     _strip_markdown_code,
 )
 
-
 # ── the stripper ─────────────────────────────────────────────────
+
 
 def test_line_count_is_preserved_exactly():
     """Line numbers in findings must still resolve against the real
@@ -53,8 +54,7 @@ def test_line_count_is_preserved_exactly():
     off-by-one this test exists to catch.
     """
     src = "para one\n\n```python\nx = 1\ny = 2\n```\n\npara two\n"
-    assert len(_strip_markdown_code(src).split("\n")) == \
-        len(src.split("\n"))
+    assert len(_strip_markdown_code(src).split("\n")) == len(src.split("\n"))
 
 
 def test_fenced_block_contents_are_removed():
@@ -112,35 +112,39 @@ def test_big_o_in_a_table_is_not_code_stripped():
 
 # ── severity calibration ─────────────────────────────────────────
 
+
 def test_typography_is_advisory_not_blocking():
     """735 of 747 blocking findings were this one check."""
-    for check in ("typography.symbols.curly_quotes",
-                  "typography.symbols.ellipsis",
-                  "typography.symbols.trademark",
-                  "typography.symbols.copyright",
-                  "typography.diacritical_marks"):
-        assert _normalize_proselint_severity(check, "warning") == "low", \
-            f"{check} must not block the docs gate"
+    for check in (
+        "typography.symbols.curly_quotes",
+        "typography.symbols.ellipsis",
+        "typography.symbols.trademark",
+        "typography.symbols.copyright",
+        "typography.diacritical_marks",
+    ):
+        assert (
+            _normalize_proselint_severity(check, "warning") == "low"
+        ), f"{check} must not block the docs gate"
 
 
 def test_substantive_families_still_block():
     """The demotion must not disarm the gate entirely."""
     for check in ("misc.illogic.misc", "security.credentials"):
-        assert _normalize_proselint_severity(check, "warning") == "high", \
-            f"{check} must still block"
+        assert (
+            _normalize_proselint_severity(check, "warning") == "high"
+        ), f"{check} must still block"
 
 
 def test_unknown_family_defaults_to_medium():
-    assert _normalize_proselint_severity(
-        "weasel_words.misc", "warning") == "medium"
+    assert _normalize_proselint_severity("weasel_words.misc", "warning") == "medium"
 
 
 def test_suggestion_severity_maps_low():
-    assert _normalize_proselint_severity(
-        "cliches.misc", "suggestion") == "low"
+    assert _normalize_proselint_severity("cliches.misc", "suggestion") == "low"
 
 
 # ── end-to-end: the gate verdict ─────────────────────────────────
+
 
 def test_code_heavy_audit_doc_passes_the_gate(tmp_path):
     """An audit report whose body is quoted source code is the normal
@@ -159,10 +163,11 @@ def test_code_heavy_audit_doc_passes_the_gate(tmp_path):
         "if _autostart_bot_count > 0:\n"
         "```\n\n"
         "| fn | now | better |\n|---|---|---|\n| f | O(R) | O(1) |\n",
-        encoding="utf-8")
+        encoding="utf-8",
+    )
 
     report = DocsArchetype().review(doc)
-    blocking = [f for f in report.findings
-                if f.severity in ("high", "critical")]
-    assert report.passed, \
-        f"code-heavy audit doc blocked by: {[f.rule_id for f in blocking]}"
+    blocking = [f for f in report.findings if f.severity in ("high", "critical")]
+    assert (
+        report.passed
+    ), f"code-heavy audit doc blocked by: {[f.rule_id for f in blocking]}"

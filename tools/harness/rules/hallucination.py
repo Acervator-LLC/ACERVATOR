@@ -44,6 +44,7 @@ FALSIFICATION — this rule module is wrong if:
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import ast
@@ -80,13 +81,20 @@ _PATH_PATTERN = re.compile(
 # resolved relative to it. Any path starting with these + is a valid
 # extension is checked against disk.
 _REPO_PATH_PREFIXES = (
-    "src/", "src\\",
-    "tests/", "tests\\",
-    "tools/", "tools\\",
-    "docs/", "docs\\",
-    ".claude/", ".claude\\",
-    "_archive/", "_archive\\",
-    "_logs/", "_logs\\",
+    "src/",
+    "src\\",
+    "tests/",
+    "tests\\",
+    "tools/",
+    "tools\\",
+    "docs/",
+    "docs\\",
+    ".claude/",
+    ".claude\\",
+    "_archive/",
+    "_archive\\",
+    "_logs/",
+    "_logs\\",
 )
 
 
@@ -98,8 +106,9 @@ def _find_dead_paths(source: str, repo_root: Path) -> list[tuple[int, str]]:
             raw = match.group(0)
             norm = raw.replace("\\", "/")
             # Only check paths that look repo-relative
-            if not any(norm.startswith(p.replace("\\", "/"))
-                       for p in _REPO_PATH_PREFIXES):
+            if not any(
+                norm.startswith(p.replace("\\", "/")) for p in _REPO_PATH_PREFIXES
+            ):
                 continue
             candidate = (repo_root / norm).resolve()
             # Guard against path traversal outside the repo
@@ -122,9 +131,12 @@ def _find_dead_paths(source: str, repo_root: Path) -> list[tuple[int, str]]:
 # --------------------------------------------------------------------- #
 
 _RETIRED_NAMES = (
-    "sadp/", "sadp\\",
-    "deprecated_sadp/", "deprecated_sadp\\",
-    "RAIntSimBat/", "RAIntSimBat\\",
+    "sadp/",
+    "sadp\\",
+    "deprecated_sadp/",
+    "deprecated_sadp\\",
+    "RAIntSimBat/",
+    "RAIntSimBat\\",
     "basic_modes_panel",  # retired v3.23.79-A
 )
 
@@ -132,22 +144,26 @@ _RETIRED_NAMES = (
 # (they're the retirement documentation itself, changelogs, or archived
 # copies that predate the retirement).
 _H002_EXEMPT_DIRS = (
-    "_archive/", "_archive\\",
-    "docs/audits/",  "docs\\audits\\",
-    "docs/hop_scratch/",  "docs\\hop_scratch\\",
+    "_archive/",
+    "_archive\\",
+    "docs/audits/",
+    "docs\\audits\\",
+    "docs/hop_scratch/",
+    "docs\\hop_scratch\\",
 )
 
 
 def _find_dead_architecture(
-    source: str, target: Path, repo_root: Path,
+    source: str,
+    target: Path,
+    repo_root: Path,
 ) -> list[tuple[int, str]]:
     try:
         rel = str(target.resolve().relative_to(repo_root.resolve()))
     except ValueError:
         rel = str(target)
     rel_norm = rel.replace("\\", "/")
-    if any(rel_norm.startswith(e.replace("\\", "/"))
-           for e in _H002_EXEMPT_DIRS):
+    if any(rel_norm.startswith(e.replace("\\", "/")) for e in _H002_EXEMPT_DIRS):
         return []
     hits: list[tuple[int, str]] = []
     for i, line in enumerate(source.splitlines(), start=1):
@@ -183,16 +199,14 @@ def _find_dead_imports(tree: ast.AST, repo_root: Path) -> list[tuple[int, str]]:
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             module = node.module or ""
-            if not any(module.startswith(p)
-                       for p in _LOCAL_IMPORT_PREFIXES):
+            if not any(module.startswith(p) for p in _LOCAL_IMPORT_PREFIXES):
                 continue
             if _resolve_module_path(module) is None:
                 hits.append((node.lineno, module))
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 name = alias.name
-                if not any(name.startswith(p)
-                           for p in _LOCAL_IMPORT_PREFIXES):
+                if not any(name.startswith(p) for p in _LOCAL_IMPORT_PREFIXES):
                     continue
                 if _resolve_module_path(name) is None:
                     hits.append((node.lineno, name))
@@ -213,8 +227,7 @@ def _find_repo_root(start: Path) -> Path:
     for candidate in [cur, *cur.parents]:
         if (candidate / "pyproject.toml").exists():
             return candidate
-        if ((candidate / "src").is_dir()
-                and (candidate / "tools").is_dir()):
+        if (candidate / "src").is_dir() and (candidate / "tools").is_dir():
             return candidate
     return start.parent if start.is_file() else start
 
@@ -234,23 +247,37 @@ def scan(target: Path, source: str) -> list[Any]:
     findings: list[Any] = []
 
     for line, path in _find_dead_paths(source, repo_root):
-        findings.append(Finding(
-            tool="hallucination", severity="medium",
-            file=str(target), line=line, rule_id="H001",
-            message=(
-                f"referenced path {path!r} does not exist on disk. "
-                "Common hallucination when copying old code or when "
-                "a file was renamed/archived without updating this "
-                "reference.")))
+        findings.append(
+            Finding(
+                tool="hallucination",
+                severity="medium",
+                file=str(target),
+                line=line,
+                rule_id="H001",
+                message=(
+                    f"referenced path {path!r} does not exist on disk. "
+                    "Common hallucination when copying old code or when "
+                    "a file was renamed/archived without updating this "
+                    "reference."
+                ),
+            )
+        )
 
     for line, token in _find_dead_architecture(source, target, repo_root):
-        findings.append(Finding(
-            tool="hallucination", severity="low",
-            file=str(target), line=line, rule_id="H002",
-            message=(
-                f"reference to retired subsystem {token!r} outside "
-                "an exempt archive/audits directory. This name no "
-                "longer exists in the current tree.")))
+        findings.append(
+            Finding(
+                tool="hallucination",
+                severity="low",
+                file=str(target),
+                line=line,
+                rule_id="H002",
+                message=(
+                    f"reference to retired subsystem {token!r} outside "
+                    "an exempt archive/audits directory. This name no "
+                    "longer exists in the current tree."
+                ),
+            )
+        )
 
     if suffix == ".py":
         try:
@@ -259,13 +286,20 @@ def scan(target: Path, source: str) -> list[Any]:
             tree = None
         if tree is not None:
             for line, module in _find_dead_imports(tree, repo_root):
-                findings.append(Finding(
-                    tool="hallucination", severity="medium",
-                    file=str(target), line=line, rule_id="H003",
-                    message=(
-                        f"import of local module {module!r} does "
-                        "not resolve to a file on disk. Typo, "
-                        "rename, or hallucinated module name.")))
+                findings.append(
+                    Finding(
+                        tool="hallucination",
+                        severity="medium",
+                        file=str(target),
+                        line=line,
+                        rule_id="H003",
+                        message=(
+                            f"import of local module {module!r} does "
+                            "not resolve to a file on disk. Typo, "
+                            "rename, or hallucinated module name."
+                        ),
+                    )
+                )
 
     return findings
 

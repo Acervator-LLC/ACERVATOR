@@ -41,6 +41,7 @@ pre-flight, the read-back, the snapshot, and the orphan report, plus the
 engine-level overwrite disclosure. The end-to-end wizard sequence is NOT
 covered and still needs the operator's manual confirmation.
 """
+
 from __future__ import annotations
 
 import json
@@ -68,8 +69,7 @@ class _FakeStateManager:
 class _FakeBotManager:
     def __init__(self, mgr, state_dir=None):
         self.smart_wire_manager = mgr
-        self._state_manager = (
-            _FakeStateManager(state_dir) if state_dir else None)
+        self._state_manager = _FakeStateManager(state_dir) if state_dir else None
 
 
 class _Log:
@@ -141,7 +141,8 @@ class TestCollisionPreflight:
         stub = _Stub(mgr)
         got = stub._topology_wire_collisions(
             [{"source_asset": "ETH", "target_asset": "BTC", "pct": 50.0}],
-            {"ETH": "bot_eth", "BTC": "bot_btc"})
+            {"ETH": "bot_eth", "BTC": "bot_btc"},
+        )
         assert len(got) == 1
         assert got[0]["current_pct"] == 20.0
         assert got[0]["proposed_pct"] == 50.0
@@ -153,7 +154,8 @@ class TestCollisionPreflight:
         stub = _Stub(mgr)
         got = stub._topology_wire_collisions(
             [{"source_asset": "SOL", "target_asset": "BTC", "pct": 50.0}],
-            {"SOL": "bot_sol", "BTC": "bot_btc"})
+            {"SOL": "bot_sol", "BTC": "bot_btc"},
+        )
         assert got == []
 
     def test_a_new_bot_cannot_collide(self, mgr):
@@ -161,21 +163,30 @@ class TestCollisionPreflight:
         stub = _Stub(mgr)
         got = stub._topology_wire_collisions(
             [{"source_asset": "ETH", "target_asset": "BTC", "pct": 50.0}],
-            {"BTC": "bot_btc"})          # ETH not yet created
+            {"BTC": "bot_btc"},
+        )  # ETH not yet created
         assert got == []
 
     def test_it_never_raises_on_junk(self, mgr):
         """A pre-flight that can abort the adopt is worse than one that
         discloses nothing."""
         stub = _Stub(mgr)
-        assert stub._topology_wire_collisions(
-            [None, {}, {"source_asset": object()}], {"A": "b"}) == []
+        assert (
+            stub._topology_wire_collisions(
+                [None, {}, {"source_asset": object()}], {"A": "b"}
+            )
+            == []
+        )
 
     def test_no_manager_means_no_claim(self):
         stub = _Stub(None)
-        assert stub._topology_wire_collisions(
-            [{"source_asset": "ETH", "target_asset": "BTC", "pct": 5.0}],
-            {"ETH": "e", "BTC": "b"}) == []
+        assert (
+            stub._topology_wire_collisions(
+                [{"source_asset": "ETH", "target_asset": "BTC", "pct": 5.0}],
+                {"ETH": "e", "BTC": "b"},
+            )
+            == []
+        )
 
 
 # ---------------------------------------------------------------- 3 --
@@ -186,7 +197,7 @@ class TestEngineReadBack:
 
     def test_a_refused_wire_reads_back_false(self, mgr):
         """THE defect: the adopt counted this as drawn."""
-        mgr.register_wire("a", "b", 999.0)      # refused
+        mgr.register_wire("a", "b", 999.0)  # refused
         assert _Stub(mgr)._wire_is_registered("a", "b") is False
 
     def test_unknown_is_not_reported_as_refused(self):
@@ -208,8 +219,7 @@ class TestSnapshotAndOrphans:
         assert tmp_path in dest.parents
         body = json.loads(dest.read_text(encoding="utf-8"))
         assert body["title"] == "my topology"
-        pairs = {(w["source_id"], w["target_id"], w["pct"])
-                 for w in body["wires"]}
+        pairs = {(w["source_id"], w["target_id"], w["pct"]) for w in body["wires"]}
         assert pairs == {("a", "b", 20.0), ("b", "c", 30.0)}
 
     def test_snapshot_failure_does_not_raise(self, mgr):
@@ -235,6 +245,7 @@ class TestSnapshotAndOrphans:
         """Destroying a bot the operator may have wanted is a worse
         failure than leaving one. The report must not remove them."""
         import inspect
+
         src = inspect.getsource(MainWindow._report_adopt_orphans)
         assert "delete" not in src.lower().replace("deleted", "")
 
@@ -251,15 +262,18 @@ class TestAdoptAppliesTheWholeTopology:
 
     def test_no_policy_gate_remains(self):
         import inspect
+
         src = inspect.getsource(MainWindow._adopt_topology_proposal)
         assert "ADOPT_MAY_OVERWRITE" not in src, (
             "the adopt still branches on an overwrite policy; a pct is "
-            "a user setting, not a permission")
+            "a user setting, not a permission"
+        )
 
     def test_colliding_pairs_are_not_skipped(self):
         """The whole proposal must be applied. A 'continue' that drops
         a disclosed pair is what this decision removed."""
         import inspect
+
         src = inspect.getsource(MainWindow._adopt_topology_proposal)
         assert "skip_pairs" not in src
 
@@ -268,6 +282,7 @@ class TestAdoptAppliesTheWholeTopology:
         mutate. Matching on the CALL, not the name, since the rationale
         comment above also mentions the helper."""
         import inspect
+
         src = inspect.getsource(MainWindow._adopt_topology_proposal)
         assert "ALREADY EXIST" in src
         disclose = src.index("Adopting CHANGES them")
@@ -275,11 +290,13 @@ class TestAdoptAppliesTheWholeTopology:
         snapshot = src.index("self._snapshot_wires_for_adopt(")
         assert disclose < confirm < snapshot, (
             f"expected disclose < confirm < snapshot, got "
-            f"{disclose} / {confirm} / {snapshot}")
+            f"{disclose} / {confirm} / {snapshot}"
+        )
 
     def test_a_rollback_path_exists(self):
         """Disclosure without recovery would just be a warning."""
         import inspect
+
         src = inspect.getsource(MainWindow._adopt_topology_proposal)
         assert "self._snapshot_wires_for_adopt(" in src
 
@@ -287,7 +304,9 @@ class TestAdoptAppliesTheWholeTopology:
         """Structural pin on defect 1 -- the misrouting guard must sit
         between the wizard and the asset_to_bot assignment."""
         import inspect
+
         src = inspect.getsource(MainWindow._adopt_topology_proposal)
         assert "made_base" in src
         assert src.index("made_base != asset") < src.index(
-            "asset_to_bot[asset] = chosen")
+            "asset_to_bot[asset] = chosen"
+        )

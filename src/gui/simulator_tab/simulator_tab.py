@@ -26,8 +26,15 @@ from PySide6.QtCore import Qt
 
 logger = logging.getLogger("acervator.simulator_tab")
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton,
-    QScrollArea, QSplitter, QStackedWidget, QVBoxLayout,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QPushButton,
+    QScrollArea,
+    QSplitter,
+    QStackedWidget,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -47,6 +54,7 @@ try:
 except Exception:  # noqa: BLE001 - GUI-import guard
     NuclearModePanel = None
 from .sim_stat_strip import SimStatStrip
+
 # v3.23.72 — Fleet Replay mode (loads live bot configs against a
 # fake exchange driven by YTD candles).
 try:
@@ -113,6 +121,7 @@ class SimulatorTab(QWidget):
         # says so out loud instead of showing dashes forever.
         try:
             from ...core.feature_telemetry import get_telemetry
+
             get_telemetry().declare(
                 "sim.stat_strip.feed",
                 "sim.price_chart.append",
@@ -179,6 +188,7 @@ class SimulatorTab(QWidget):
         # Nuclear's oscillation and swarm; Nuclear is the same looper
         # WITH them. One implementation, two configurations.
         from PySide6.QtWidgets import QComboBox as _ModeCB
+
         _mode_row = QHBoxLayout()
         _mode_row.setContentsMargins(6, 2, 6, 2)
         _mode_lbl = QLabel("Mode:")
@@ -189,15 +199,16 @@ class SimulatorTab(QWidget):
         for _label, _key, _tip in self.SIM_MODES:
             self._mode_selector.addItem(_label, _key)
             self._mode_selector.setItemData(
-                self._mode_selector.count() - 1, _tip, Qt.ToolTipRole)
+                self._mode_selector.count() - 1, _tip, Qt.ToolTipRole
+            )
         self._mode_selector.setToolTip(
             "Validation — gate parity against documented YTD events.\n"
             "Looping Back Test — tablets looped with noise, for "
             "strategy work.\n"
             "Nuclear — load oscillation and swarm stress; measures the "
-            "system, not the trades.")
-        self._mode_selector.currentIndexChanged.connect(
-            self._on_sim_mode_changed)
+            "system, not the trades."
+        )
+        self._mode_selector.currentIndexChanged.connect(self._on_sim_mode_changed)
         _mode_row.addWidget(self._mode_selector)
         self._mode_hint = QLabel("")
         self._mode_hint.setStyleSheet("color:#666677;font-size:11px;")
@@ -217,6 +228,7 @@ class SimulatorTab(QWidget):
             # panel's adapter so the dropdown and the table cannot show
             # different sets.
             from PySide6.QtWidgets import QComboBox as _ABCB
+
             self._bot_area_host = QWidget()
             _bah = QVBoxLayout(self._bot_area_host)
             _bah.setContentsMargins(0, 0, 0, 0)
@@ -229,15 +241,15 @@ class SimulatorTab(QWidget):
             self._active_bot_picker = _ABCB()
             self._active_bot_picker.setMinimumWidth(220)
             self._active_bot_picker.setToolTip(
-                "Bots currently loaded into the Simulator fleet.")
+                "Bots currently loaded into the Simulator fleet."
+            )
             self._active_bot_picker.addItem("All bots", "")
             _ab_row.addWidget(self._active_bot_picker)
             _ab_row.addStretch()
             _bah.addLayout(_ab_row)
             # v3.23.79-A — wire the async-loop getter so Start Replay
             # can schedule the tick controller on the app loop.
-            self.fleet_replay.set_async_loop_getter(
-                lambda: self._async_loop)
+            self.fleet_replay.set_async_loop_getter(lambda: self._async_loop)
             # v3.23.80 — connectors getter for Fetch YTD.
             # set_connectors is called by MainWindow after mount.
             self._connectors_getter = None
@@ -247,11 +259,12 @@ class SimulatorTab(QWidget):
             # (scaffolding scan finding #1).
             if hasattr(self.fleet_replay, "set_log_callbacks"):
                 self.fleet_replay.set_log_callbacks(
-                    self.log_activity, self.log_performance)
+                    self.log_activity, self.log_performance
+                )
         else:
             from PySide6.QtWidgets import QLabel as _Lbl
-            self.fleet_replay = _Lbl(
-                "FleetReplayPanel unavailable (import failed).")
+
+            self.fleet_replay = _Lbl("FleetReplayPanel unavailable (import failed).")
         # Nuclear panel still hosts the old tape-based prototype.
         # v3.23.79-B will repurpose it as the topology stress harness.
         #
@@ -273,19 +286,21 @@ class SimulatorTab(QWidget):
                     async_loop_getter=lambda: self._async_loop,
                 )
             except Exception as _nuc_exc:  # noqa: BLE001 - GUI-build guard
-                logger.exception(
-                    "Nuclear Mode panel failed to construct: %s", _nuc_exc)
+                logger.exception("Nuclear Mode panel failed to construct: %s", _nuc_exc)
                 try:
                     self.log_activity(
                         f"Nuclear Mode unavailable: "
-                        f"{type(_nuc_exc).__name__}: {_nuc_exc}")
+                        f"{type(_nuc_exc).__name__}: {_nuc_exc}"
+                    )
                 except Exception:  # noqa: BLE001,S110 - log path best-effort
                     pass
         if self.nuclear_mode is None:
             from PySide6.QtWidgets import QLabel as _NucLbl
+
             self.nuclear_mode = _NucLbl(
                 "Nuclear Mode unavailable (panel failed to load). "
-                "See the Activity log for the reason.")
+                "See the Activity log for the reason."
+            )
         # v3.24.91 - the bot area rides ON the Fleet Replay page.
         #
         # `_bot_area_host` carries the active-bots dropdown and hosts
@@ -358,6 +373,7 @@ class SimulatorTab(QWidget):
         _ind_inner.setSpacing(0)
         try:
             from .fleet.sim_visuals import SimPriceVwapChart
+
             self._sim_price_chart = SimPriceVwapChart()
             # v3.24.81 — USE THE REAL PANEL, not a lookalike.
             #
@@ -373,6 +389,7 @@ class SimulatorTab(QWidget):
             # panel must BE the Trading Tab's panel. Same class, same
             # feed contract: `update_data(multi_tf_summary, symbol)`.
             from ..indicator_panel import IndicatorVotingPanel
+
             self._sim_voting_readout = IndicatorVotingPanel()
 
             # v3.24.14 — each half goes inside its OWN scroll area.
@@ -392,8 +409,7 @@ class SimulatorTab(QWidget):
                 area.setWidget(widget)
                 area.setWidgetResizable(True)
                 area.setFrameShape(QFrame.NoFrame)
-                area.setHorizontalScrollBarPolicy(
-                    Qt.ScrollBarAlwaysOff)
+                area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
                 # Let the splitter shrink this below content height.
                 area.setMinimumHeight(80)
                 return area
@@ -409,8 +425,7 @@ class SimulatorTab(QWidget):
             # charts, but the charts are not a voting panel — the table
             # below them is. Labelling each half puts the name on the
             # thing it describes.
-            def _titled(widget: QWidget, title: str,
-                        scroll: QScrollArea) -> QWidget:
+            def _titled(widget: QWidget, title: str, scroll: QScrollArea) -> QWidget:
                 from PySide6.QtWidgets import QPushButton
                 from .fleet.sim_visuals import _show_expanded
 
@@ -426,15 +441,17 @@ class SimulatorTab(QWidget):
                 btn = QPushButton("⤢ Expand")
                 btn.setToolTip(
                     f"Open {title} at full display width, half height, "
-                    "centred on this screen.")
+                    "centred on this screen."
+                )
                 btn.setStyleSheet(
                     "QPushButton{background:#1a1a3a;color:#88aaff;"
                     "border:1px solid #88aaff;border-radius:3px;"
                     "padding:1px 8px;font-size:10px;}"
-                    "QPushButton:hover{background:#222250;}")
+                    "QPushButton:hover{background:#222250;}"
+                )
                 btn.clicked.connect(
-                    lambda _c=False, w=widget, t=title:
-                    _show_expanded(w, t))
+                    lambda _c=False, w=widget, t=title: _show_expanded(w, t)
+                )
                 head.addWidget(btn)
                 lay.addLayout(head)
                 lay.addWidget(scroll, stretch=1)
@@ -443,7 +460,8 @@ class SimulatorTab(QWidget):
             _chart_scroll = _titled(
                 self._sim_price_chart,
                 "Historical Price vs. Position VWAP",
-                _scrolled(self._sim_price_chart))
+                _scrolled(self._sim_price_chart),
+            )
             # v3.24.89 - BOT PICKER for the chart.
             #
             # Operator, 2026-08-08: "This needs to be changed to show
@@ -456,6 +474,7 @@ class SimulatorTab(QWidget):
             # index 1 of the titled box -- directly under its header and
             # above the chart, so the control sits with what it drives.
             from PySide6.QtWidgets import QComboBox as _QCB
+
             _pick_row = QHBoxLayout()
             _pick_row.setContentsMargins(6, 0, 6, 2)
             _pick_lbl = QLabel("Bot:")
@@ -465,10 +484,12 @@ class SimulatorTab(QWidget):
             self._chart_bot_picker.setMinimumWidth(150)
             self._chart_bot_picker.setToolTip(
                 "Which bot's Stone Tablet candles and VWAP to chart. "
-                "Select a bot to chart its VWAP and Stone Tablet candles.")
+                "Select a bot to chart its VWAP and Stone Tablet candles."
+            )
             self._chart_bot_picker.addItem("(select a bot)", "")
             self._chart_bot_picker.currentIndexChanged.connect(
-                self._on_chart_bot_changed)
+                self._on_chart_bot_changed
+            )
             _pick_row.addWidget(self._chart_bot_picker)
             _pick_row.addStretch()
             _chart_scroll.layout().insertLayout(1, _pick_row)
@@ -476,7 +497,8 @@ class SimulatorTab(QWidget):
             _vote_scroll = _titled(
                 self._sim_voting_readout,
                 "Indicator Voting Panel",
-                _scrolled(self._sim_voting_readout))
+                _scrolled(self._sim_voting_readout),
+            )
 
             _ind_splitter = QSplitter(Qt.Vertical)
             _ind_splitter.setHandleWidth(4)
@@ -498,7 +520,8 @@ class SimulatorTab(QWidget):
                 self.fleet_replay.set_visual_widgets(
                     price_chart=self._sim_price_chart,
                     voting_readout=self._sim_voting_readout,
-                    stat_strip=self.stat_strip)
+                    stat_strip=self.stat_strip,
+                )
             # v3.24.28 — Nuclear Mode gets the SAME panels.
             #
             # Operator 2026-08-04: "No activity in any of these panel
@@ -512,10 +535,10 @@ class SimulatorTab(QWidget):
                 self.nuclear_mode.set_visual_widgets(
                     price_chart=self._sim_price_chart,
                     voting_readout=self._sim_voting_readout,
-                    stat_strip=self.stat_strip)
+                    stat_strip=self.stat_strip,
+                )
         except Exception as _vis_exc:  # noqa: BLE001 - GUI import guard
-            logger.debug(
-                "sim visuals unavailable: %s", _vis_exc)
+            logger.debug("sim visuals unavailable: %s", _vis_exc)
             self._sim_price_chart = None
             self._sim_voting_readout = None
         ind_lay.addWidget(self._indicator_container, stretch=1)
@@ -602,14 +625,12 @@ class SimulatorTab(QWidget):
         self._gate_status_host = QWidget()
         _gh = QVBoxLayout(self._gate_status_host)
         _gh.setContentsMargins(0, 0, 0, 0)
-        _gate_panel = getattr(
-            getattr(self, "fleet_replay", None), "_gate_panel", None)
+        _gate_panel = getattr(getattr(self, "fleet_replay", None), "_gate_panel", None)
         if _gate_panel is not None:
             _gh.addWidget(_gate_panel)
         else:
             _placeholder = QLabel("Gate status unavailable.")
-            _placeholder.setStyleSheet(
-                "color:#666677;font-size:11px;padding:8px;")
+            _placeholder.setStyleSheet("color:#666677;font-size:11px;padding:8px;")
             _gh.addWidget(_placeholder)
             _gh.addStretch()
         gate_lay.addWidget(self._gate_status_host)
@@ -661,8 +682,7 @@ class SimulatorTab(QWidget):
             # automation. The buttons are disabled below so the
             # operator is told that rather than left clicking a dead
             # control.
-            widget = cls(on_bot_clicked=self._on_sim_bot_detail,
-                         on_fire_clicked=None)
+            widget = cls(on_bot_clicked=self._on_sim_bot_detail, on_fire_clicked=None)
         except Exception as exc:  # noqa: BLE001 - construction guard
             logger.debug("BotStatusTable construction failed: %s", exc)
             return False
@@ -683,15 +703,19 @@ class SimulatorTab(QWidget):
         panel = getattr(self, "fleet_replay", None)
         ctl = getattr(panel, "_controller", None) if panel else None
         bots = list(getattr(ctl, "_bots", []) or []) if ctl else []
-        bot = next((b for b in bots
-                    if str(getattr(b, "bot_id", "")) == str(bot_id)), None)
+        bot = next(
+            (b for b in bots if str(getattr(b, "bot_id", "")) == str(bot_id)), None
+        )
         if bot is None:
             logger.warning(
                 "sim detail: no simulated bot %r (live bots are NOT "
-                "reachable from here)", bot_id)
+                "reachable from here)",
+                bot_id,
+            )
             return
         try:
             from ..bot_live_settings import BotLiveSettingsDialog
+
             dlg = BotLiveSettingsDialog(bot, None, self)
             dlg.exec()
         except Exception as exc:  # noqa: BLE001
@@ -720,7 +744,8 @@ class SimulatorTab(QWidget):
                     "Manual Fire is disabled in the Simulator. This "
                     "surface tests trading AUTOMATION; a result that "
                     "depended on operator intervention would not "
-                    "measure the thing being tested.")
+                    "measure the thing being tested."
+                )
 
     def refresh_active_bot_roster(self, statuses=None) -> None:
         """Repopulate the ACTIVE SIMULATOR BOTS dropdown.
@@ -737,8 +762,7 @@ class SimulatorTab(QWidget):
             return
         panel = getattr(self, "fleet_replay", None)
         if statuses is None:
-            statuses = (panel.sim_bot_statuses()
-                        if panel is not None else [])
+            statuses = panel.sim_bot_statuses() if panel is not None else []
         keep = picker.currentData() or ""
         picker.blockSignals(True)
         picker.clear()
@@ -759,19 +783,25 @@ class SimulatorTab(QWidget):
 
     # (label, key, tooltip) — the operator's three modes.
     SIM_MODES = (
-        ("Validation",
-         "validation",
-         "Stone Tablets paired with YTD data. Verifies trade-gate "
-         "parity at documented events."),
-        ("Looping Back Test",
-         "looping",
-         "Loops the tablets with market-restructuring noise at a fixed "
-         "rate. Strategy development and calibration."),
-        ("Nuclear",
-         "nuclear",
-         "Load oscillation, swarm injection and high-traffic smart "
-         "wire. Measures performance, stability and reliability — not "
-         "trade validity."),
+        (
+            "Validation",
+            "validation",
+            "Stone Tablets paired with YTD data. Verifies trade-gate "
+            "parity at documented events.",
+        ),
+        (
+            "Looping Back Test",
+            "looping",
+            "Loops the tablets with market-restructuring noise at a fixed "
+            "rate. Strategy development and calibration.",
+        ),
+        (
+            "Nuclear",
+            "nuclear",
+            "Load oscillation, swarm injection and high-traffic smart "
+            "wire. Measures performance, stability and reliability — not "
+            "trade validity.",
+        ),
     )
 
     def sim_mode(self) -> str:
@@ -795,14 +825,16 @@ class SimulatorTab(QWidget):
             stack.setCurrentIndex(1 if key == "nuclear" else 0)
         hint = getattr(self, "_mode_hint", None)
         if hint is not None:
-            hint.setText({
-                "validation": "collects: gate-latch parity vs documented "
-                              "YTD events",
-                "looping": "collects: strategy behaviour under looped "
-                           "tapes + noise",
-                "nuclear": "collects: performance, stability, reliability "
-                           "(NOT trade validity)",
-            }.get(key, ""))
+            hint.setText(
+                {
+                    "validation": "collects: gate-latch parity vs documented "
+                    "YTD events",
+                    "looping": "collects: strategy behaviour under looped "
+                    "tapes + noise",
+                    "nuclear": "collects: performance, stability, reliability "
+                    "(NOT trade validity)",
+                }.get(key, "")
+            )
         panel = getattr(self, "fleet_replay", None)
         if panel is not None and hasattr(panel, "set_sim_mode"):
             try:
@@ -811,6 +843,7 @@ class SimulatorTab(QWidget):
                 logger.debug("panel mode set failed: %s", exc)
         try:
             from src.core.signal_contract import emit as _md_emit
+
             # 10.4 - READ THE TRANSITION BACK OFF THE WIDGET.
             # `actual` and `expected` were both `key`, so `ok` derived
             # True on every call whatever the stack did. The state this
@@ -821,14 +854,16 @@ class SimulatorTab(QWidget):
             # above swallows its own exception, so a refused transition
             # was invisible twice over. The mode key moves to context,
             # where it is still recorded.
-            _md_emit("sim.06.013.state_transition.mode_selected",
-                     actual=(stack.currentIndex()
-                             if stack is not None else None),
-                     expected=(1 if key == "nuclear" else 0),
-                     context={"mode": key,
-                              "page": ("nuclear" if key == "nuclear"
-                                       else "fleet"),
-                              "stack": stack is not None})
+            _md_emit(
+                "sim.06.013.state_transition.mode_selected",
+                actual=(stack.currentIndex() if stack is not None else None),
+                expected=(1 if key == "nuclear" else 0),
+                context={
+                    "mode": key,
+                    "page": ("nuclear" if key == "nuclear" else "fleet"),
+                    "stack": stack is not None,
+                },
+            )
         except Exception:  # noqa: BLE001,S110 - advisory
             pass
 
@@ -842,7 +877,7 @@ class SimulatorTab(QWidget):
         if panel is None:
             return
         syms = []
-        for c in (configs or []):
+        for c in configs or []:
             s = str((c or {}).get("symbol", "") or "")
             if s:
                 syms.append(s)
@@ -882,44 +917,51 @@ class SimulatorTab(QWidget):
                 # fallback of last resort, per bot_state being the only
                 # source of initiating state.
                 statuses = []
-                for c in (configs or []):
+                for c in configs or []:
                     c = c or {}
                     ss = c.get("_src_scrumming_state") or {}
                     stx = c.get("_src_stats") or {}
                     units = sum(
                         float(l.get("units", 0) or 0)
                         for l in (ss.get("main_lots") or [])
-                        if isinstance(l, dict))
+                        if isinstance(l, dict)
+                    )
                     px = float(stx.get("current_price", 0.0) or 0.0)
                     pv = float(stx.get("position_value", 0.0) or 0.0)
                     if pv <= 0 and px > 0:
                         pv = units * px
-                    statuses.append({
-                        "bot_id": str(c.get("_src_bot_id", "") or ""),
-                        "symbol": str(c.get("symbol", "") or ""),
-                        "mode": str(c.get("mode", "scrumming") or "scrumming"),
-                        "state": str(c.get("_src_state", "") or "IDLE"),
-                        "exchange": str(c.get("exchange_id", "coinbase")
-                                        or "coinbase"),
-                        # The operator's INPUT anchor, as the Trading
-                        # Tab's Target column shows.
-                        "target_balance": float(
-                            ss.get("anchor_target_balance",
-                                   c.get("target_balance", 0.0)) or 0.0),
-                        # The GROWN target the bot actually trades on.
-                        "live_target_balance": float(
-                            ss.get("target_balance",
-                                   c.get("target_balance", 0.0)) or 0.0),
-                        "current_holdings": units,
-                        "quote_to_usd": float(
-                            ss.get("quote_to_usd", 1.0) or 1.0),
-                        "stats": {
-                            "current_price": px,
-                            "position_value": pv,
-                            "total_trades": int(
-                                stx.get("total_trades", 0) or 0),
-                        },
-                    })
+                    statuses.append(
+                        {
+                            "bot_id": str(c.get("_src_bot_id", "") or ""),
+                            "symbol": str(c.get("symbol", "") or ""),
+                            "mode": str(c.get("mode", "scrumming") or "scrumming"),
+                            "state": str(c.get("_src_state", "") or "IDLE"),
+                            "exchange": str(
+                                c.get("exchange_id", "coinbase") or "coinbase"
+                            ),
+                            # The operator's INPUT anchor, as the Trading
+                            # Tab's Target column shows.
+                            "target_balance": float(
+                                ss.get(
+                                    "anchor_target_balance",
+                                    c.get("target_balance", 0.0),
+                                )
+                                or 0.0
+                            ),
+                            # The GROWN target the bot actually trades on.
+                            "live_target_balance": float(
+                                ss.get("target_balance", c.get("target_balance", 0.0))
+                                or 0.0
+                            ),
+                            "current_holdings": units,
+                            "quote_to_usd": float(ss.get("quote_to_usd", 1.0) or 1.0),
+                            "stats": {
+                                "current_price": px,
+                                "position_value": pv,
+                                "total_trades": int(stx.get("total_trades", 0) or 0),
+                            },
+                        }
+                    )
             widget = getattr(panel, "_bot_status_table_widget", None)
             if widget is not None:
                 widget.update_bots(statuses)
@@ -963,8 +1005,7 @@ class SimulatorTab(QWidget):
 
     def _on_activity_paused(self, checked: bool) -> None:
         self._activity_paused = checked
-        self._activity_pause_btn.setText(
-            "▶  Resume" if checked else "⏸  Pause")
+        self._activity_pause_btn.setText("▶  Resume" if checked else "⏸  Pause")
 
     # v3.24.85 - `_on_perf_paused` removed with the second pane. It
     # set `_perf_pause_btn.setText(...)` on a button that no longer
@@ -996,6 +1037,7 @@ class SimulatorTab(QWidget):
         """Record one log line and the stream that produced it."""
         try:
             from ...core.signal_contract import emit as _emit
+
             # 10.4 - A SAMPLE, NOT A CHECK. `actual` and `expected`
             # were both `stream`, so `ok` derived True for ever. No
             # independent expectation exists at this point and one must
@@ -1007,10 +1049,11 @@ class SimulatorTab(QWidget):
             # grouping ACROSS records, never inside one. Dropping
             # `expected` makes `kind` "sample", which is what this
             # always was, and matches the `event` in its own name.
-            _emit("sim.06.014.event.log.line",
-                  actual=stream,
-                  context={"delivered": bool(delivered),
-                           "chars": len(line or "")})
+            _emit(
+                "sim.06.014.event.log.line",
+                actual=stream,
+                context={"delivered": bool(delivered), "chars": len(line or "")},
+            )
         except Exception:  # noqa: BLE001,S110 - instrumentation is advisory
             pass
 
@@ -1044,6 +1087,7 @@ class SimulatorTab(QWidget):
     def _tel_call(name: str, count: int = 1) -> None:
         try:
             from ...core.feature_telemetry import get_telemetry
+
             get_telemetry().record_call(name, count=count)
         except Exception:  # noqa: BLE001,S110 - advisory only
             pass
@@ -1052,6 +1096,7 @@ class SimulatorTab(QWidget):
     def _tel_skip(name: str, reason: str) -> None:
         try:
             from ...core.feature_telemetry import get_telemetry
+
             get_telemetry().record_skip(name, reason=reason)
         except Exception:  # noqa: BLE001,S110 - advisory only
             pass

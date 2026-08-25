@@ -21,6 +21,7 @@ of the replay. The tape opens with warm-up candles that precede any gate
 decision; shading those as validated would assert coverage that does not
 exist -- the same error as counting warm-up ticks toward TA coverage.
 """
+
 from __future__ import annotations
 
 import sys
@@ -48,7 +49,7 @@ def _destroy_widgets():
     yield
     try:
         from PySide6.QtWidgets import QApplication
-    except ImportError:                                   # pragma: no cover
+    except ImportError:  # pragma: no cover
         return
     app = QApplication.instance()
     if app is None:
@@ -59,6 +60,7 @@ def _destroy_widgets():
         w.deleteLater()
     app.processEvents()
 
+
 SYMS = ["CHIP/USD", "SPK/USD"]
 T0 = 1_776_778_500_000
 STEP = 300_000
@@ -67,7 +69,7 @@ STEP = 300_000
 def _qapp():
     try:
         from PySide6.QtWidgets import QApplication
-    except ImportError:                                   # pragma: no cover
+    except ImportError:  # pragma: no cover
         pytest.skip("PySide6 unavailable")
     return QApplication.instance() or QApplication([])
 
@@ -75,6 +77,7 @@ def _qapp():
 def _chart(symbols=None):
     _qapp()
     from src.gui.simulator_tab.fleet.sim_visuals import SimPriceVwapChart
+
     c = SimPriceVwapChart()
     c.set_symbols(list(symbols or SYMS))
     return c
@@ -85,9 +88,14 @@ def _feed(chart, sym, n=60, px0=1.0):
     for i in range(n):
         px *= 1.0 + ((i % 5) - 2) * 0.004
         chart.append_tick(
-            sym, close_price=px, volume=50.0,
+            sym,
+            close_price=px,
+            volume=50.0,
             ts=T0 + i * STEP,
-            open_price=px * 0.999, high=px * 1.005, low=px * 0.995)
+            open_price=px * 0.999,
+            high=px * 1.005,
+            low=px * 0.995,
+        )
 
 
 class TestCandlesAreStored:
@@ -191,6 +199,7 @@ class TestItPaints:
     @staticmethod
     def _render(c):
         from PySide6.QtGui import QPixmap
+
         c.resize(700, 300)
         pm = QPixmap(700, 300)
         c.render(pm)
@@ -218,9 +227,15 @@ class TestItPaints:
         """high == low across the window is a real market condition."""
         c = _chart()
         for i in range(30):
-            c.append_tick(SYMS[0], close_price=5.0, volume=1.0,
-                          ts=T0 + i * STEP, open_price=5.0,
-                          high=5.0, low=5.0)
+            c.append_tick(
+                SYMS[0],
+                close_price=5.0,
+                volume=1.0,
+                ts=T0 + i * STEP,
+                open_price=5.0,
+                high=5.0,
+                low=5.0,
+            )
         c.set_focus_symbol(SYMS[0])
         assert not self._render(c).isNull()
 
@@ -229,6 +244,7 @@ class TestThePicker:
     def _tab(self):
         _qapp()
         from src.gui.simulator_tab.simulator_tab import SimulatorTab
+
         t = SimulatorTab()
         t.resize(1600, 900)
         return t
@@ -242,8 +258,9 @@ class TestThePicker:
         t = self._tab()
         t._sim_price_chart.set_symbols(SYMS)
         t.refresh_chart_bot_roster(SYMS)
-        items = [t._chart_bot_picker.itemData(i)
-                 for i in range(t._chart_bot_picker.count())]
+        items = [
+            t._chart_bot_picker.itemData(i) for i in range(t._chart_bot_picker.count())
+        ]
         assert items == [""] + sorted(SYMS)
 
     def test_choosing_a_bot_focuses_the_chart(self):
@@ -270,8 +287,7 @@ class TestThePicker:
         t = self._tab()
         t._sim_price_chart.set_symbols(SYMS)
         t.refresh_chart_bot_roster(SYMS)
-        t._chart_bot_picker.setCurrentIndex(
-            t._chart_bot_picker.findData(SYMS[0]))
+        t._chart_bot_picker.setCurrentIndex(t._chart_bot_picker.findData(SYMS[0]))
         t._sim_price_chart.set_symbols(["BTC/USD"])
         t.refresh_chart_bot_roster(["BTC/USD"])
         assert t._chart_bot_picker.currentData() == ""

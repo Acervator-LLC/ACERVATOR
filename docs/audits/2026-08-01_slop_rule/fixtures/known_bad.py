@@ -8,6 +8,7 @@ SL003 (file too big) is NOT triggered here — this fixture is under 3000
 lines. That detector has its own smoke test in the module docstring
 scan below the fixtures.
 """
+
 from __future__ import annotations
 
 

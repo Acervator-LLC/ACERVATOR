@@ -38,6 +38,7 @@ block and read by both it and the executor. Two copies of that
 arithmetic is precisely how they drifted apart, so the pins below assert
 there is exactly one assignment.
 """
+
 from __future__ import annotations
 
 import ast
@@ -48,15 +49,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(
-    encoding="utf-8")
+SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(encoding="utf-8")
 TREE = ast.parse(SRC)
 
 
 def _tick():
-    ticks = [n for n in ast.walk(TREE)
-             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-             and n.name == "tick"]
+    ticks = [
+        n
+        for n in ast.walk(TREE)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "tick"
+    ]
     assert ticks, "no tick() found -- extractor broken, not the code"
     return max(ticks, key=lambda n: (n.end_lineno or 0) - n.lineno)
 
@@ -86,7 +88,8 @@ class TestOnePredicate:
         cmps = _comparisons_against("_otd_factor")
         assert len(cmps) >= 2, (
             f"expected the diagnostic AND the executor to share the "
-            f"predicate; found {len(cmps)}: {cmps}")
+            f"predicate; found {len(cmps)}: {cmps}"
+        )
         for c in cmps:
             assert "ticker.last <=" in c, c
             assert "_otd_factor" in c
@@ -96,8 +99,8 @@ class TestOnePredicate:
         measuring a gate that does not run."""
         for c in _comparisons_against("_otd_factor"):
             assert "initial_buy_price" not in c, (
-                f"an eligibility predicate still mixes in "
-                f"initial_buy_price: {c}")
+                f"an eligibility predicate still mixes in " f"initial_buy_price: {c}"
+            )
 
     def test_the_strict_less_than_form_is_gone(self):
         """`ticker.last < ref` (strict) disagrees with the executor's
@@ -109,9 +112,13 @@ class TestOnePredicate:
         hysteresis against `_hyst_ref_scrum_side` and has nothing to do
         with fold eligibility -- the test was wrong, not the code.
         """
-        bad = [c for c in _comparisons_against("ticker.last")
-               if "ticker.last <" in c and "ticker.last <=" not in c
-               and ("ref" in c or "_t.get" in c or "t.get" in c)]
+        bad = [
+            c
+            for c in _comparisons_against("ticker.last")
+            if "ticker.last <" in c
+            and "ticker.last <=" not in c
+            and ("ref" in c or "_t.get" in c or "t.get" in c)
+        ]
         assert not bad, f"strict-< eligibility comparison survives: {bad}"
 
 
@@ -119,13 +126,16 @@ class TestSingleBinding:
     def test_otd_factor_is_assigned_exactly_once(self):
         """Two copies of the arithmetic is how the instrument and the
         executor drifted apart. One binding makes that impossible."""
-        assigns = [n for n in ast.walk(_tick())
-                   if isinstance(n, ast.Assign)
-                   and any(getattr(t, "id", "") == "_otd_factor"
-                           for t in n.targets)]
+        assigns = [
+            n
+            for n in ast.walk(_tick())
+            if isinstance(n, ast.Assign)
+            and any(getattr(t, "id", "") == "_otd_factor" for t in n.targets)
+        ]
         assert len(assigns) == 1, (
             f"_otd_factor is assigned {len(assigns)} times; it must be "
-            f"computed once and shared")
+            f"computed once and shared"
+        )
 
     def test_it_is_bound_before_the_diagnostic_block(self):
         seg = ast.get_source_segment(SRC, _tick()) or ""
@@ -140,6 +150,7 @@ class TestTheSecondaryReadingIsLabelled:
         seg = ast.get_source_segment(SRC, _tick()) or ""
         assert "_patent_only_eligible" in seg
         i = seg.index("_patent_only_eligible")
-        assert "not a gate" in seg[max(0, i - 700):i].lower(), (
+        assert "not a gate" in seg[max(0, i - 700) : i].lower(), (
             "the secondary reading is unlabelled and will be mistaken "
-            "for an eligibility criterion again")
+            "for an eligibility criterion again"
+        )

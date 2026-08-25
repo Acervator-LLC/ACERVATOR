@@ -56,13 +56,14 @@ class PairSnapshot:
     rendering AND any future Approach-B calibration work (spread,
     volume, drift are all here).
     """
-    symbol: str            # e.g. "ETH/BTC"
-    base: str              # e.g. "ETH"
-    quote: str             # e.g. "BTC"
-    last: float = 0.0      # last trade price, in quote units per base
-    pct_24h: float = 0.0   # 24h % change, from ccxt ticker.percentage
-    bid: float = 0.0       # best-bid price (quote per base)
-    ask: float = 0.0       # best-ask price (quote per base)
+
+    symbol: str  # e.g. "ETH/BTC"
+    base: str  # e.g. "ETH"
+    quote: str  # e.g. "BTC"
+    last: float = 0.0  # last trade price, in quote units per base
+    pct_24h: float = 0.0  # 24h % change, from ccxt ticker.percentage
+    bid: float = 0.0  # best-bid price (quote per base)
+    ask: float = 0.0  # best-ask price (quote per base)
     volume_24h: float = 0.0  # 24h base-unit volume
     exchange_id: str = ""
     last_updated: float = 0.0
@@ -129,7 +130,8 @@ class MarketPairsScout:
         return self._refresh_s
 
     def pairs_for(
-        self, asset: str,
+        self,
+        asset: str,
         exchange_id: Optional[str] = None,
     ) -> list[PairSnapshot]:
         """All pairs whose BASE == asset. If ``exchange_id`` is given,
@@ -143,27 +145,27 @@ class MarketPairsScout:
         out: list[PairSnapshot] = []
         if exchange_id is not None:
             book = self._snapshots.get(exchange_id, {})
-            out.extend(
-                s for s in book.values() if s.base == _asset)
+            out.extend(s for s in book.values() if s.base == _asset)
         else:
             for book in self._snapshots.values():
-                out.extend(
-                    s for s in book.values() if s.base == _asset)
+                out.extend(s for s in book.values() if s.base == _asset)
         out.sort(key=lambda s: s.symbol)
         return out
 
     def quote_currencies_for(
-        self, asset: str,
+        self,
+        asset: str,
         exchange_id: Optional[str] = None,
     ) -> list[str]:
         """Return the unique quote currencies (uppercased) for the
         given base asset across polled exchanges. Order deterministic.
         """
-        return sorted({
-            s.quote for s in self.pairs_for(asset, exchange_id)})
+        return sorted({s.quote for s in self.pairs_for(asset, exchange_id)})
 
     def has_pair(
-        self, base: str, quote: str,
+        self,
+        base: str,
+        quote: str,
         exchange_id: Optional[str] = None,
     ) -> bool:
         _b = (base or "").upper()
@@ -174,7 +176,9 @@ class MarketPairsScout:
         return False
 
     def get_pair(
-        self, base: str, quote: str,
+        self,
+        base: str,
+        quote: str,
         exchange_id: Optional[str] = None,
     ) -> Optional[PairSnapshot]:
         _b = (base or "").upper()
@@ -191,7 +195,8 @@ class MarketPairsScout:
         return self._last_error.get(exchange_id)
 
     def is_stale(
-        self, exchange_id: str,
+        self,
+        exchange_id: str,
         now: Optional[float] = None,
     ) -> bool:
         """True when the exchange's last refresh was longer than
@@ -208,7 +213,9 @@ class MarketPairsScout:
     # -------------------------------------------------------------
 
     def ingest_tickers(
-        self, exchange_id: str, tickers: dict,
+        self,
+        exchange_id: str,
+        tickers: dict,
         now: Optional[float] = None,
     ) -> int:
         """Fold a raw CCXT ``fetch_tickers`` dict into the snapshot.
@@ -236,24 +243,34 @@ class MarketPairsScout:
                 pct = float(row.get("percentage", 0) or 0)
                 vol = float(row.get("baseVolume", 0) or 0)
                 snap = PairSnapshot(
-                    symbol=symbol, base=base, quote=quote,
-                    last=last, pct_24h=pct,
-                    bid=bid, ask=ask, volume_24h=vol,
-                    exchange_id=exchange_id, last_updated=_now,
+                    symbol=symbol,
+                    base=base,
+                    quote=quote,
+                    last=last,
+                    pct_24h=pct,
+                    bid=bid,
+                    ask=ask,
+                    volume_24h=vol,
+                    exchange_id=exchange_id,
+                    last_updated=_now,
                 )
                 book[symbol] = snap
                 good += 1
             except Exception as _row_exc:  # noqa: BLE001 - per-row best-effort
                 logger.debug(
                     "MarketPairsScout: skip row %s on %s (%s)",
-                    symbol, exchange_id, _row_exc)
+                    symbol,
+                    exchange_id,
+                    _row_exc,
+                )
         self._snapshots[exchange_id] = book
         self._last_refresh[exchange_id] = _now
         self._last_error[exchange_id] = None
         return good
 
     async def refresh_from_connectors(
-        self, connectors: dict,
+        self,
+        connectors: dict,
         force: bool = False,
     ) -> dict[str, int]:
         """Poll ``get_all_tickers`` on each connector, ingest results.
@@ -276,12 +293,11 @@ class MarketPairsScout:
                 raw = await connector.get_all_tickers()
                 out[eid] = self.ingest_tickers(eid, raw)
             except Exception as _conn_exc:  # noqa: BLE001 - per-connector probe
-                self._last_error[eid] = (
-                    f"{type(_conn_exc).__name__}: {_conn_exc}")
+                self._last_error[eid] = f"{type(_conn_exc).__name__}: {_conn_exc}"
                 out[eid] = len(self._snapshots.get(eid, {}))
                 logger.debug(
-                    "MarketPairsScout: connector %s refresh failed: %s",
-                    eid, _conn_exc)
+                    "MarketPairsScout: connector %s refresh failed: %s", eid, _conn_exc
+                )
         return out
 
 

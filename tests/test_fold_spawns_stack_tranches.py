@@ -27,6 +27,7 @@ FUNCTION against a deliberately broken mechanism and requires it to go
 red. A plant that re-asserted a hand-written constant instead of driving
 the real oracle would prove nothing, so none of them do that.
 """
+
 import ast
 import asyncio
 import inspect
@@ -143,8 +144,7 @@ class _SpawnStubBot:
         return await ScrummingBot._open_stack_from_scrum(self, **kwargs)
 
     def log_messages(self) -> list[str]:
-        return [str(kwargs.get("message", ""))
-                for _, kwargs in self._bus.messages]
+        return [str(kwargs.get("message", "")) for _, kwargs in self._bus.messages]
 
 
 class _BuyStubBot(_SpawnStubBot):
@@ -187,22 +187,24 @@ class _BuyStubBot(_SpawnStubBot):
         self.offered_price = FOLD_PRICE
         self.fill_ratio = 0.97
 
-    async def _verify_buy_safe_or_refuse(
-            self, path: str = "") -> tuple[float, str]:
+    async def _verify_buy_safe_or_refuse(self, path: str = "") -> tuple[float, str]:
         """MEM-257 verification satisfied: units known, no refusal."""
         self.reconcile_reasons.append(f"verify:{path}")
         return 0.0, ""
 
-    def _emit_trade_notification(self, kind: str, state: str,
-                                 detail: str) -> None:
+    def _emit_trade_notification(self, kind: str, state: str, detail: str) -> None:
         self.notifications.append((kind, state, detail))
 
-    async def guarded_place_order(self, symbol, side, order_type, amount,
-                                  price):
-        self.placed_orders.append({
-            "symbol": symbol, "side": side, "order_type": order_type,
-            "amount": amount, "price": price,
-        })
+    async def guarded_place_order(self, symbol, side, order_type, amount, price):
+        self.placed_orders.append(
+            {
+                "symbol": symbol,
+                "side": side,
+                "order_type": order_type,
+                "amount": amount,
+                "price": price,
+            }
+        )
         # Invisible mode sends MARKET with price=None, so the fill is
         # derived from the OFFERED price the test handed _execute_buy,
         # scaled by fill_ratio. See the fill_ratio note in __init__.
@@ -226,21 +228,28 @@ def _spawn(bot, **kwargs):
 def _buy(bot, cost, price, path):
     """Drive the REAL ``_execute_buy`` on a stub."""
     bot.offered_price = price
-    return asyncio.run(ScrummingBot._execute_buy(
-        bot, cost=cost, price=price, summary=_Summary(),
-        trace_context={"path": path}))
+    return asyncio.run(
+        ScrummingBot._execute_buy(
+            bot,
+            cost=cost,
+            price=price,
+            summary=_Summary(),
+            trace_context={"path": path},
+        )
+    )
 
 
 def _self_calls(func_name: str) -> set[str]:
     """Every ``self.<attr>()`` a named ScrummingBot method makes."""
-    src = textwrap.dedent(inspect.getsource(
-        getattr(ScrummingBot, func_name)))
+    src = textwrap.dedent(inspect.getsource(getattr(ScrummingBot, func_name)))
     out: set[str] = set()
     for node in ast.walk(ast.parse(src)):
-        if (isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "self"):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "self"
+        ):
             out.add(node.func.attr)
     return out
 
@@ -262,27 +271,31 @@ def _check_only_a_fold_spawned(opened: int, tranches: list[dict]) -> None:
     assert tranches == [], "a non-fold path populated the stack ledger"
 
 
-def _check_ladder_is_a_sell_side_above(anchor_price: float,
-                                       prices: list[float]) -> None:
+def _check_ladder_is_a_sell_side_above(
+    anchor_price: float, prices: list[float]
+) -> None:
     assert prices, "no ladder at all"
     assert prices == sorted(prices), f"ladder is not ascending: {prices}"
     assert all(p > anchor_price for p in prices), (
         f"a fold-spawned stack must sell ABOVE the fold at "
-        f"{anchor_price}; got {prices}")
+        f"{anchor_price}; got {prices}"
+    )
 
 
 def _check_spacing_mode_reached_the_ladder(
-        linear_prices: list[float], quad_prices: list[float]) -> None:
+    linear_prices: list[float], quad_prices: list[float]
+) -> None:
     assert linear_prices != quad_prices, (
         "the fold spawn ignored stack_spacing_mode -- two different "
-        "modes produced the same ladder")
+        "modes produced the same ladder"
+    )
 
 
-def _check_anchored_on_the_fill(spawned_anchor: float,
-                                fill_price: float) -> None:
+def _check_anchored_on_the_fill(spawned_anchor: float, fill_price: float) -> None:
     assert spawned_anchor == fill_price, (
         f"the ladder was anchored on {spawned_anchor} but the fold "
-        f"filled at {fill_price}")
+        f"filled at {fill_price}"
+    )
 
 
 def _check_terminal_never_reaches_the_buy_executor(calls: set[str]) -> None:
@@ -292,18 +305,20 @@ def _check_terminal_never_reaches_the_buy_executor(calls: set[str]) -> None:
 
 
 def _check_sell_still_spawns_fold_tranches(calls: set[str]) -> None:
-    assert "_open_stack_from_scrum" in calls, (
-        "_execute_sell lost its stack intercept")
+    assert "_open_stack_from_scrum" in calls, "_execute_sell lost its stack intercept"
     assert "_spawn_stack_from_fold" not in calls, (
         "the fold spawn leaked onto the sell path -- that opens a stack "
-        "on top of a stack")
+        "on top of a stack"
+    )
 
 
 def _check_the_fill_survived(fill, messages: list[str]) -> None:
-    assert fill is not None and fill > 0, (
-        "a bookkeeping spawn was allowed to fail a filled trade")
-    assert not any("BUY FAILED" in m for m in messages), (
-        "the buy reported failure after it had already filled")
+    assert (
+        fill is not None and fill > 0
+    ), "a bookkeeping spawn was allowed to fail a filled trade"
+    assert not any(
+        "BUY FAILED" in m for m in messages
+    ), "the buy reported failure after it had already filled"
 
 
 # ---------------------------------------------------------------------------
@@ -319,19 +334,24 @@ def _check_the_fill_survived(fill, messages: list[str]) -> None:
 class TestTheHarnessCanSeeASpawn:
     def test_the_stub_reaches_the_real_opener(self):
         bot = _SpawnStubBot()
-        opened = asyncio.run(ScrummingBot._open_stack_from_scrum(
-            bot, scrum_price=FOLD_PRICE, scrum_size=FOLD_SIZE))
+        opened = asyncio.run(
+            ScrummingBot._open_stack_from_scrum(
+                bot, scrum_price=FOLD_PRICE, scrum_size=FOLD_SIZE
+            )
+        )
         assert opened == 3
         assert len(bot._stack_tranches) == 3
 
     def test_execute_buy_reaches_the_spawn_site(self):
         bot = _BuyStubBot()
         fill = _buy(bot, cost=100.0, price=FOLD_PRICE, path="fold_rebuy")
-        assert fill is not None and fill > 0, (
-            f"the buy stub never filled; logs: {bot.log_messages()}")
+        assert (
+            fill is not None and fill > 0
+        ), f"the buy stub never filled; logs: {bot.log_messages()}"
         assert bot.spawn_calls, (
             "_execute_buy did not call _spawn_stack_from_fold at all -- "
-            "every no-spawn assertion below would be vacuous")
+            "every no-spawn assertion below would be vacuous"
+        )
 
     def test_the_call_reader_is_not_blind(self):
         """The known edge must be visible, or the terminal-path zeros
@@ -351,7 +371,8 @@ class TestTheHarnessCanSeeASpawn:
         fill = _buy(bot, cost=100.0, price=FOLD_PRICE, path="fold_rebuy")
         assert fill != FOLD_PRICE, (
             "the stub fills at the offered price, so the anchor check "
-            "cannot tell the two apart and proves nothing")
+            "cannot tell the two apart and proves nothing"
+        )
         assert bot.spawn_calls, "no spawn to read an anchor from"
 
 
@@ -363,8 +384,13 @@ class TestTheHarnessCanSeeASpawn:
 class TestAFoldSpawnsStackTranches:
     def test_a_fold_spawns_when_the_gate_allows(self):
         bot = _SpawnStubBot(stack_mode=True)
-        opened = _spawn(bot, fold_price=FOLD_PRICE, fold_size=FOLD_SIZE,
-                        summary=_Summary(), path="fold_rebuy")
+        opened = _spawn(
+            bot,
+            fold_price=FOLD_PRICE,
+            fold_size=FOLD_SIZE,
+            summary=_Summary(),
+            path="fold_rebuy",
+        )
         assert opened == 3
         assert len(bot._stack_tranches) == 3
         assert bot._stack_created == 3
@@ -373,13 +399,19 @@ class TestAFoldSpawnsStackTranches:
         """A fold buys; the ladder it spawns sells higher. That is what
         closes the pair."""
         bot = _SpawnStubBot()
-        _spawn(bot, fold_price=FOLD_PRICE, fold_size=FOLD_SIZE,
-               summary=_Summary(), path="fold_rebuy")
+        _spawn(
+            bot,
+            fold_price=FOLD_PRICE,
+            fold_size=FOLD_SIZE,
+            summary=_Summary(),
+            path="fold_rebuy",
+        )
         _check_ladder_is_a_sell_side_above(
-            FOLD_PRICE, [t["price"] for t in bot._stack_tranches])
+            FOLD_PRICE, [t["price"] for t in bot._stack_tranches]
+        )
 
     def test_the_anchor_is_one_min_opposing_distance_above_the_fold(self):
-        """"...starting at the minimum opposing trade distance."
+        """ "...starting at the minimum opposing trade distance."
 
         The opener reads that distance as
         ``scrumming_interval_pct + trading_fee_pct``, 1.6% here, and
@@ -388,12 +420,18 @@ class TestAFoldSpawnsStackTranches:
         on its own instead of hiding inside one product.
         """
         bot = _SpawnStubBot()
-        _spawn(bot, fold_price=FOLD_PRICE, fold_size=FOLD_SIZE,
-               summary=_Summary(), path="fold_rebuy")
+        _spawn(
+            bot,
+            fold_price=FOLD_PRICE,
+            fold_size=FOLD_SIZE,
+            summary=_Summary(),
+            path="fold_rebuy",
+        )
         anchor = FOLD_PRICE * (1.0 + MIN_OPPOSING_PCT / 100.0)
         assert anchor == pytest.approx(101.6, rel=1e-12)
         assert bot._stack_tranches[0]["price"] == pytest.approx(
-            anchor * (1.0 + OPENER_GAP_PCT / 100.0), rel=1e-9)
+            anchor * (1.0 + OPENER_GAP_PCT / 100.0), rel=1e-9
+        )
 
     def test_the_anchor_is_the_FILL_price_not_the_offered_price(self):
         bot = _BuyStubBot()
@@ -417,37 +455,54 @@ class TestAFoldSpawnsStackTranches:
         bot = _BuyStubBot()
         _buy(bot, cost=250.0, price=FOLD_PRICE, path="fold_rebuy")
         booked = bot.placed_orders[-1]["amount"]
-        assert bot.spawn_calls[0]["fold_size"] == pytest.approx(
-            booked, rel=1e-12), (
+        assert bot.spawn_calls[0]["fold_size"] == pytest.approx(booked, rel=1e-12), (
             "the ladder must sell back the base units the buy booked, "
-            "not the USD it spent and not a re-derived number")
-        assert booked != 250.0, (
-            "USD and units must differ here or this check is blind")
+            "not the USD it spent and not a re-derived number"
+        )
+        assert booked != 250.0, "USD and units must differ here or this check is blind"
 
     def test_the_tranche_records_that_a_fold_opened_it(self):
         bot = _SpawnStubBot()
-        _spawn(bot, fold_price=FOLD_PRICE, fold_size=FOLD_SIZE,
-               summary=_Summary(), path="fold_rebuy")
+        _spawn(
+            bot,
+            fold_price=FOLD_PRICE,
+            fold_size=FOLD_SIZE,
+            summary=_Summary(),
+            path="fold_rebuy",
+        )
         assert all(t["origin"] == "fold" for t in bot._stack_tranches)
 
     def test_a_scrum_opened_stack_still_records_scrum(self):
         """The default keeps every existing caller unchanged."""
         bot = _SpawnStubBot()
-        asyncio.run(ScrummingBot._open_stack_from_scrum(
-            bot, scrum_price=FOLD_PRICE, scrum_size=FOLD_SIZE))
+        asyncio.run(
+            ScrummingBot._open_stack_from_scrum(
+                bot, scrum_price=FOLD_PRICE, scrum_size=FOLD_SIZE
+            )
+        )
         assert all(t["origin"] == "scrum" for t in bot._stack_tranches)
 
     def test_a_series_of_folds_spawns_a_series_of_tranches(self):
-        """"Bear Trends will spawn multiple Stack Tranches in a series."
+        """ "Bear Trends will spawn multiple Stack Tranches in a series."
 
         Each fold ADDS to the ledger; a later fold does not replace an
         earlier fold's rungs.
         """
         bot = _SpawnStubBot()
-        _spawn(bot, fold_price=FOLD_PRICE, fold_size=FOLD_SIZE,
-               summary=_Summary(), path="fold_rebuy")
-        _spawn(bot, fold_price=90.0, fold_size=FOLD_SIZE,
-               summary=_Summary(), path="fold_rebuy")
+        _spawn(
+            bot,
+            fold_price=FOLD_PRICE,
+            fold_size=FOLD_SIZE,
+            summary=_Summary(),
+            path="fold_rebuy",
+        )
+        _spawn(
+            bot,
+            fold_price=90.0,
+            fold_size=FOLD_SIZE,
+            summary=_Summary(),
+            path="fold_rebuy",
+        )
         assert len(bot._stack_tranches) == 6
         assert bot._stack_created == 6
 
@@ -455,8 +510,13 @@ class TestAFoldSpawnsStackTranches:
 class TestTheGateIsInherited:
     def test_a_fold_spawns_none_when_stack_mode_is_off(self):
         bot = _SpawnStubBot(stack_mode=False)
-        opened = _spawn(bot, fold_price=FOLD_PRICE, fold_size=FOLD_SIZE,
-                        summary=_Summary(), path="fold_rebuy")
+        opened = _spawn(
+            bot,
+            fold_price=FOLD_PRICE,
+            fold_size=FOLD_SIZE,
+            summary=_Summary(),
+            path="fold_rebuy",
+        )
         _check_gate_withheld_the_spawn(opened, bot._stack_tranches)
         assert bot._stack_created == 0
 
@@ -471,8 +531,13 @@ class TestTheGateIsInherited:
     def test_a_missing_stack_mode_attribute_spawns_none(self):
         bot = _SpawnStubBot()
         delattr(bot.config, "stack_mode")
-        opened = _spawn(bot, fold_price=FOLD_PRICE, fold_size=FOLD_SIZE,
-                        summary=_Summary(), path="fold_rebuy")
+        opened = _spawn(
+            bot,
+            fold_price=FOLD_PRICE,
+            fold_size=FOLD_SIZE,
+            summary=_Summary(),
+            path="fold_rebuy",
+        )
         _check_gate_withheld_the_spawn(opened, bot._stack_tranches)
 
 
@@ -482,41 +547,57 @@ class TestOnlyAFoldSpawns:
     @pytest.mark.parametrize("path", ["fold_rebuy", "manual_tranche_fire"])
     def test_the_fold_paths_spawn(self, path):
         bot = _SpawnStubBot()
-        assert _spawn(bot, fold_price=FOLD_PRICE, fold_size=FOLD_SIZE,
-                      summary=_Summary(), path=path) == 3
+        assert (
+            _spawn(
+                bot,
+                fold_price=FOLD_PRICE,
+                fold_size=FOLD_SIZE,
+                summary=_Summary(),
+                path=path,
+            )
+            == 3
+        )
 
-    @pytest.mark.parametrize("path", [
-        "zero_balance_initial_entry",
-        "hedge_replenish",
-        "unspecified",
-        "",
-        "FOLD_REBUY",
-        "fold_rebuy ",
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "zero_balance_initial_entry",
+            "hedge_replenish",
+            "unspecified",
+            "",
+            "FOLD_REBUY",
+            "fold_rebuy ",
+        ],
+    )
     def test_every_other_path_spawns_nothing(self, path):
         bot = _SpawnStubBot()
-        opened = _spawn(bot, fold_price=FOLD_PRICE, fold_size=FOLD_SIZE,
-                        summary=_Summary(), path=path)
+        opened = _spawn(
+            bot,
+            fold_price=FOLD_PRICE,
+            fold_size=FOLD_SIZE,
+            summary=_Summary(),
+            path=path,
+        )
         _check_only_a_fold_spawned(opened, bot._stack_tranches)
 
     def test_an_entry_through_the_real_executor_spawns_nothing(self):
         bot = _BuyStubBot()
-        fill = _buy(bot, cost=100.0, price=FOLD_PRICE,
-                    path="zero_balance_initial_entry")
+        fill = _buy(
+            bot, cost=100.0, price=FOLD_PRICE, path="zero_balance_initial_entry"
+        )
         _check_the_fill_survived(fill, bot.log_messages())
         _check_only_a_fold_spawned(0, bot._stack_tranches)
 
     def test_a_hedge_through_the_real_executor_spawns_nothing(self):
         bot = _BuyStubBot()
         bot._hedge_bal = 500.0
-        fill = _buy(bot, cost=100.0, price=FOLD_PRICE,
-                    path="hedge_replenish")
+        fill = _buy(bot, cost=100.0, price=FOLD_PRICE, path="hedge_replenish")
         _check_the_fill_survived(fill, bot.log_messages())
         _check_only_a_fold_spawned(0, bot._stack_tranches)
 
 
 class TestTerminalActionsSpawnNothing:
-    """"Detonations and Self-Destruct actions do not spawn or populate
+    """ "Detonations and Self-Destruct actions do not spawn or populate
     tranches. These two are considered terminal actions."
 
     They are terminal by CONSTRUCTION, not by a check: neither reaches
@@ -525,8 +606,10 @@ class TestTerminalActionsSpawnNothing:
     rather than in a live account.
     """
 
-    @pytest.mark.parametrize("terminal", [
-        "self_destruct", "_execute_detonation", "_check_detonation_trigger"])
+    @pytest.mark.parametrize(
+        "terminal",
+        ["self_destruct", "_execute_detonation", "_check_detonation_trigger"],
+    )
     def test_a_terminal_action_never_reaches_the_buy_executor(self, terminal):
         _check_terminal_never_reaches_the_buy_executor(_self_calls(terminal))
 
@@ -535,8 +618,13 @@ class TestTerminalActionsSpawnNothing:
         terminal action here, its label is not in the accepted set."""
         bot = _SpawnStubBot()
         for label in ("AUTO_DETONATION", "SELF_DESTRUCT", "detonation"):
-            opened = _spawn(bot, fold_price=FOLD_PRICE, fold_size=FOLD_SIZE,
-                            summary=_Summary(), path=label)
+            opened = _spawn(
+                bot,
+                fold_price=FOLD_PRICE,
+                fold_size=FOLD_SIZE,
+                summary=_Summary(),
+                path=label,
+            )
             _check_only_a_fold_spawned(opened, bot._stack_tranches)
 
 
@@ -550,28 +638,41 @@ class TestTheSpawnFollowsTheConfiguredSpacing:
     @staticmethod
     def _ladder(mode: str) -> list[float]:
         bot = _SpawnStubBot(stack_spacing_mode=mode)
-        _spawn(bot, fold_price=FOLD_PRICE, fold_size=FOLD_SIZE,
-               summary=_Summary(), path="fold_rebuy")
+        _spawn(
+            bot,
+            fold_price=FOLD_PRICE,
+            fold_size=FOLD_SIZE,
+            summary=_Summary(),
+            path="fold_rebuy",
+        )
         return [t["price"] for t in bot._stack_tranches]
 
     def test_two_modes_give_two_different_ladders_from_one_fold(self):
         _check_spacing_mode_reached_the_ladder(
-            self._ladder("linear"), self._ladder("quadratic"))
+            self._ladder("linear"), self._ladder("quadratic")
+        )
 
     def test_the_ladder_is_the_one_stack_math_computes(self):
         """Read against the item-6 helper itself, so the spawn cannot
         drift onto arithmetic of its own."""
         expected = stack_math.scrum_ladder_prices(
-            trigger_price=FOLD_PRICE, levels=3,
-            initial_gap_pct=OPENER_GAP_PCT, spacing_mode="quadratic",
-            min_opposing_pct=MIN_OPPOSING_PCT)
-        assert self._ladder("quadratic") == pytest.approx(
-            expected, rel=1e-12)
+            trigger_price=FOLD_PRICE,
+            levels=3,
+            initial_gap_pct=OPENER_GAP_PCT,
+            spacing_mode="quadratic",
+            min_opposing_pct=MIN_OPPOSING_PCT,
+        )
+        assert self._ladder("quadratic") == pytest.approx(expected, rel=1e-12)
 
     def test_an_unknown_spacing_mode_spawns_nothing_and_says_so(self):
         bot = _SpawnStubBot(stack_spacing_mode="not-a-mode")
-        opened = _spawn(bot, fold_price=FOLD_PRICE, fold_size=FOLD_SIZE,
-                        summary=_Summary(), path="fold_rebuy")
+        opened = _spawn(
+            bot,
+            fold_price=FOLD_PRICE,
+            fold_size=FOLD_SIZE,
+            summary=_Summary(),
+            path="fold_rebuy",
+        )
         _check_only_a_fold_spawned(opened, bot._stack_tranches)
         assert any("STACK OPEN FAILED" in m for m in bot.log_messages())
 
@@ -609,19 +710,27 @@ class TestTheSpawnCannotFailTheTrade:
         fill = _buy(bot, cost=100.0, price=FOLD_PRICE, path="fold_rebuy")
         assert reached, (
             "the planted raise was never reached, so a green result here "
-            "says nothing about the handler")
+            "says nothing about the handler"
+        )
         _check_the_fill_survived(fill, bot.log_messages())
-        assert any("FOLD STACK SPAWN FAILED" in m
-                   for m in bot.log_messages())
+        assert any("FOLD STACK SPAWN FAILED" in m for m in bot.log_messages())
 
-    @pytest.mark.parametrize("price,size", [
-        (0.0, FOLD_SIZE), (-1.0, FOLD_SIZE), (FOLD_PRICE, 0.0),
-        (FOLD_PRICE, -1.0), (None, FOLD_SIZE), (FOLD_PRICE, None),
-    ])
+    @pytest.mark.parametrize(
+        "price,size",
+        [
+            (0.0, FOLD_SIZE),
+            (-1.0, FOLD_SIZE),
+            (FOLD_PRICE, 0.0),
+            (FOLD_PRICE, -1.0),
+            (None, FOLD_SIZE),
+            (FOLD_PRICE, None),
+        ],
+    )
     def test_a_nonsense_fill_spawns_nothing_without_raising(self, price, size):
         bot = _SpawnStubBot()
-        opened = _spawn(bot, fold_price=price, fold_size=size,
-                        summary=_Summary(), path="fold_rebuy")
+        opened = _spawn(
+            bot, fold_price=price, fold_size=size, summary=_Summary(), path="fold_rebuy"
+        )
         _check_only_a_fold_spawned(opened, bot._stack_tranches)
 
 
@@ -639,8 +748,11 @@ async def _ungated_spawn(bot, fold_price, fold_size, summary, path):
     if path not in ("fold_rebuy", "manual_tranche_fire"):
         return 0
     return await bot._open_stack_from_scrum(
-        scrum_price=float(fold_price), scrum_size=float(fold_size),
-        summary=summary, origin="fold")
+        scrum_price=float(fold_price),
+        scrum_size=float(fold_size),
+        summary=summary,
+        origin="fold",
+    )
 
 
 async def _any_path_spawn(bot, fold_price, fold_size, summary, path):
@@ -649,8 +761,11 @@ async def _any_path_spawn(bot, fold_price, fold_size, summary, path):
         return 0
     assert path is not None
     return await bot._open_stack_from_scrum(
-        scrum_price=float(fold_price), scrum_size=float(fold_size),
-        summary=summary, origin="fold")
+        scrum_price=float(fold_price),
+        scrum_size=float(fold_size),
+        summary=summary,
+        origin="fold",
+    )
 
 
 async def _leaky_spawn(bot, fold_price, fold_size, summary, path):
@@ -659,30 +774,37 @@ async def _leaky_spawn(bot, fold_price, fold_size, summary, path):
     if path not in ("fold_rebuy", "manual_tranche_fire"):
         return 0
     return await bot._open_stack_from_scrum(
-        scrum_price=float(fold_price), scrum_size=float(fold_size),
-        summary=summary, origin="fold")
+        scrum_price=float(fold_price),
+        scrum_size=float(fold_size),
+        summary=summary,
+        origin="fold",
+    )
 
 
 class TestPlantedFailures:
     def test_PLANT_a_spawn_that_ignores_stack_mode_goes_red(self):
         bot = _SpawnStubBot(stack_mode=False)
-        opened = asyncio.run(_ungated_spawn(
-            bot, FOLD_PRICE, FOLD_SIZE, _Summary(), "fold_rebuy"))
+        opened = asyncio.run(
+            _ungated_spawn(bot, FOLD_PRICE, FOLD_SIZE, _Summary(), "fold_rebuy")
+        )
         with pytest.raises(AssertionError):
             _check_gate_withheld_the_spawn(opened, bot._stack_tranches)
 
     def test_PLANT_a_spawn_on_a_non_fold_path_goes_red(self):
         bot = _SpawnStubBot()
-        opened = asyncio.run(_any_path_spawn(
-            bot, FOLD_PRICE, FOLD_SIZE, _Summary(),
-            "zero_balance_initial_entry"))
+        opened = asyncio.run(
+            _any_path_spawn(
+                bot, FOLD_PRICE, FOLD_SIZE, _Summary(), "zero_balance_initial_entry"
+            )
+        )
         with pytest.raises(AssertionError):
             _check_only_a_fold_spawned(opened, bot._stack_tranches)
 
     def test_PLANT_a_terminal_label_that_spawns_goes_red(self):
         bot = _SpawnStubBot()
-        opened = asyncio.run(_any_path_spawn(
-            bot, FOLD_PRICE, FOLD_SIZE, _Summary(), "AUTO_DETONATION"))
+        opened = asyncio.run(
+            _any_path_spawn(bot, FOLD_PRICE, FOLD_SIZE, _Summary(), "AUTO_DETONATION")
+        )
         with pytest.raises(AssertionError):
             _check_only_a_fold_spawned(opened, bot._stack_tranches)
 
@@ -690,21 +812,26 @@ class TestPlantedFailures:
         """The spawn builds a FOLD ladder, below the buy, instead of a
         STACK ladder above it -- the wrong side of the pair."""
         wrong = stack_math.fold_ladder_prices(
-            trigger_price=FOLD_PRICE, levels=3,
-            initial_gap_pct=OPENER_GAP_PCT, spacing_mode="linear",
-            min_opposing_pct=MIN_OPPOSING_PCT)
+            trigger_price=FOLD_PRICE,
+            levels=3,
+            initial_gap_pct=OPENER_GAP_PCT,
+            spacing_mode="linear",
+            min_opposing_pct=MIN_OPPOSING_PCT,
+        )
         with pytest.raises(AssertionError):
             _check_ladder_is_a_sell_side_above(FOLD_PRICE, list(wrong))
 
     def test_PLANT_a_ladder_that_ignores_spacing_mode_goes_red(self):
         """Both modes hard-wired to linear."""
         hardwired = stack_math.scrum_ladder_prices(
-            trigger_price=FOLD_PRICE, levels=3,
-            initial_gap_pct=OPENER_GAP_PCT, spacing_mode="linear",
-            min_opposing_pct=MIN_OPPOSING_PCT)
+            trigger_price=FOLD_PRICE,
+            levels=3,
+            initial_gap_pct=OPENER_GAP_PCT,
+            spacing_mode="linear",
+            min_opposing_pct=MIN_OPPOSING_PCT,
+        )
         with pytest.raises(AssertionError):
-            _check_spacing_mode_reached_the_ladder(
-                list(hardwired), list(hardwired))
+            _check_spacing_mode_reached_the_ladder(list(hardwired), list(hardwired))
 
     def test_PLANT_an_anchor_on_the_offered_price_goes_red(self):
         """`_execute_buy` hands the spawn its OFFERED price while the
@@ -730,17 +857,20 @@ class TestPlantedFailures:
     def test_PLANT_a_terminal_routed_to_the_buy_executor_goes_red(self):
         with pytest.raises(AssertionError):
             _check_terminal_never_reaches_the_buy_executor(
-                {"_execute_buy", "guarded_place_order"})
+                {"_execute_buy", "guarded_place_order"}
+            )
 
     def test_PLANT_a_sell_that_lost_the_opener_goes_red(self):
         with pytest.raises(AssertionError):
             _check_sell_still_spawns_fold_tranches(
-                {"guarded_place_order", "_emit_trade_notification"})
+                {"guarded_place_order", "_emit_trade_notification"}
+            )
 
     def test_PLANT_the_fold_spawn_leaking_onto_the_sell_path_goes_red(self):
         with pytest.raises(AssertionError):
             _check_sell_still_spawns_fold_tranches(
-                {"_open_stack_from_scrum", "_spawn_stack_from_fold"})
+                {"_open_stack_from_scrum", "_spawn_stack_from_fold"}
+            )
 
     def test_PLANT_a_spawn_that_fails_the_trade_goes_red(self):
         """The helper lets the exception escape, so `_execute_buy`
@@ -757,7 +887,7 @@ class TestPlantedFailures:
         bot._spawn_stack_from_fold = _leaky
         fill = _buy(bot, cost=100.0, price=FOLD_PRICE, path="fold_rebuy")
         assert any("BUY FAILED" in m for m in bot.log_messages()), (
-            "the plant never reached _execute_buy's handler, so it "
-            "proves nothing")
+            "the plant never reached _execute_buy's handler, so it " "proves nothing"
+        )
         with pytest.raises(AssertionError):
             _check_the_fill_survived(fill, bot.log_messages())

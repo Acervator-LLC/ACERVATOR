@@ -57,6 +57,7 @@ Tablets in a fleet start on different dates, so a symbol whose tape has
 not begun has NO price — `has_data()` reports that and the read methods
 raise rather than serve row 0 from the symbol's own future.
 """
+
 from __future__ import annotations
 
 import logging
@@ -72,7 +73,7 @@ logger = logging.getLogger(__name__)
 # every call because of the `since`-slot defect described above.
 DEFAULT_PAGE_SIZE = 300
 
-NATIVE_TIMEFRAME = "5m"    # what the Stone Tablets store
+NATIVE_TIMEFRAME = "5m"  # what the Stone Tablets store
 
 
 class TabletNotStarted(Exception):
@@ -106,7 +107,8 @@ class TabletBackend:
     ) -> None:
         self._rows: dict[str, list[list]] = {
             str(s): [list(r) for r in (rows or [])]
-            for s, rows in (rows_by_symbol or {}).items()}
+            for s, rows in (rows_by_symbol or {}).items()
+        }
         self._cursor: dict[str, int] = {s: 0 for s in self._rows}
         # Higher-timeframe series, keyed (symbol, timeframe). A request
         # for a timeframe with no series is an ERROR, not a fallback to
@@ -115,7 +117,8 @@ class TabletBackend:
         # same signal counted N times, and it gates SCRUM.
         self._tf_rows: dict[tuple, list[list]] = {
             (str(k[0]), str(k[1])): [list(r) for r in v]
-            for k, v in (tf_rows or {}).items()}
+            for k, v in (tf_rows or {}).items()
+        }
         self._tf_cursor: dict[tuple, int] = {k: 0 for k in self._tf_rows}
         self._balances: dict[str, float] = dict(balances or {})
         self._reserved: dict[str, float] = {}
@@ -140,7 +143,8 @@ class TabletBackend:
         self._clock_i: int = 0
 
         self.markets: dict[str, dict] = dict(markets or {}) or {
-            s: self._default_market(s) for s in self._rows}
+            s: self._default_market(s) for s in self._rows
+        }
 
     # -- market metadata ------------------------------------------------
     @staticmethod
@@ -175,7 +179,7 @@ class TabletBackend:
         # ccxt returns a STRING, and truncates rather than rounds. Both
         # matter: the connector re-floats the result, and rounding UP
         # here would submit more than the caller sized.
-        factor = 10 ** prec
+        factor = 10**prec
         return f"{int(float(amount) * factor) / factor:.{prec}f}"
 
     def price_to_precision(self, symbol: str, price: float) -> str:
@@ -255,7 +259,7 @@ class TabletBackend:
         quirk -- this is for the Simulator's own observation pass, which
         is not pretending to be an exchange call.
         """
-        return [list(r) for r in self._visible(symbol)[-int(limit):]]
+        return [list(r) for r in self._visible(symbol)[-int(limit) :]]
 
     def symbols(self) -> list[str]:
         return sorted(self._rows)
@@ -296,16 +300,20 @@ class TabletBackend:
         if not self.has_data(sym):
             raise TabletNotStarted(
                 f"{sym} has no candle at master ts {self.current_ts_ms()}; "
-                f"its tablet begins {int(rows[0][0])}")
-        return rows[:self._cursor.get(sym, 0) + 1]
+                f"its tablet begins {int(rows[0][0])}"
+            )
+        return rows[: self._cursor.get(sym, 0) + 1]
 
     def _last_close(self, symbol: str) -> float:
         return float(self._visible(symbol)[-1][4])
 
     # -- ccxt: market data ----------------------------------------------
     def fetch_ohlcv(
-        self, symbol: str, timeframe: str = "1m",
-        since: Optional[int] = None, limit: Optional[int] = None,
+        self,
+        symbol: str,
+        timeframe: str = "1m",
+        since: Optional[int] = None,
+        limit: Optional[int] = None,
         params: Optional[dict] = None,
     ) -> list[list]:
         """ccxt's real signature — see the module note on the quirk.
@@ -325,14 +333,14 @@ class TabletBackend:
             raise ValueError(
                 f"no {tf} series for {symbol!r}. Serving the native "
                 f"{NATIVE_TIMEFRAME} series instead would make every "
-                f"timeframe agree with itself; supply tf_rows[{key!r}].")
+                f"timeframe agree with itself; supply tf_rows[{key!r}]."
+            )
         ts = self.current_ts_ms()
         if ts is None or not rows or int(ts) < int(rows[0][0]):
             raise TabletNotStarted(f"{symbol} {tf} series has not begun")
-        return [list(r) for r in rows[:self._tf_cursor.get(key, 0) + 1][-n:]]
+        return [list(r) for r in rows[: self._tf_cursor.get(key, 0) + 1][-n:]]
 
-    def fetch_ticker(self, symbol: str,
-                     params: Optional[dict] = None) -> dict:
+    def fetch_ticker(self, symbol: str, params: Optional[dict] = None) -> dict:
         rows = self._visible(symbol)
         last = float(rows[-1][4])
         ts = int(rows[-1][0])
@@ -350,10 +358,11 @@ class TabletBackend:
             "info": {"sim_master_ts_ms": self.current_ts_ms()},
         }
 
-    def fetch_tickers(self, symbols: Optional[list] = None,
-                      params: Optional[dict] = None) -> dict:
+    def fetch_tickers(
+        self, symbols: Optional[list] = None, params: Optional[dict] = None
+    ) -> dict:
         out: dict = {}
-        for sym in (symbols or list(self._rows)):
+        for sym in symbols or list(self._rows):
             try:
                 out[str(sym)] = self.fetch_ticker(sym)
             except (TabletNotStarted, ValueError):
@@ -363,11 +372,16 @@ class TabletBackend:
                 continue
         return out
 
-    def fetch_order_book(self, symbol: str, limit: int = 20,
-                         params: Optional[dict] = None) -> dict:
+    def fetch_order_book(
+        self, symbol: str, limit: int = 20, params: Optional[dict] = None
+    ) -> dict:
         px = self._last_close(symbol)
-        return {"symbol": str(symbol), "bids": [[px, 1e9]],
-                "asks": [[px, 1e9]], "timestamp": self.current_ts_ms()}
+        return {
+            "symbol": str(symbol),
+            "bids": [[px, 1e9]],
+            "asks": [[px, 1e9]],
+            "timestamp": self.current_ts_ms(),
+        }
 
     # -- ccxt: account --------------------------------------------------
     def fetch_balance(self, params: Optional[dict] = None) -> dict:
@@ -390,19 +404,30 @@ class TabletBackend:
 
     # -- ccxt: orders ---------------------------------------------------
     def create_order(
-        self, symbol: str, type: str, side: str,  # noqa: A002 - ccxt name
-        amount: float, price: Optional[float] = None,
+        self,
+        symbol: str,
+        type: str,
+        side: str,  # noqa: A002 - ccxt name
+        amount: float,
+        price: Optional[float] = None,
         params: Optional[dict] = None,
     ) -> dict:
         sym = str(symbol)
         px_now = self._last_close(sym)
         oid = f"sim_{uuid.uuid4().hex[:16]}"
         order = {
-            "id": oid, "symbol": sym, "type": str(type),
-            "side": str(side).lower(), "amount": float(amount),
+            "id": oid,
+            "symbol": sym,
+            "type": str(type),
+            "side": str(side).lower(),
+            "amount": float(amount),
             "price": float(price) if price is not None else None,
-            "filled": 0.0, "remaining": float(amount), "average": None,
-            "cost": 0.0, "status": "open", "fee": None,
+            "filled": 0.0,
+            "remaining": float(amount),
+            "average": None,
+            "cost": 0.0,
+            "status": "open",
+            "fee": None,
             "timestamp": self.current_ts_ms(),
             # ccxt echoes venue params back on the order's `info`. The
             # connector sends client_order_id here, and dropping it
@@ -416,10 +441,12 @@ class TabletBackend:
             str(type).lower() == "market"
             or price is None
             or (str(side).lower() == "buy" and float(price) >= px_now)
-            or (str(side).lower() == "sell" and float(price) <= px_now))
+            or (str(side).lower() == "sell" and float(price) <= px_now)
+        )
         if marketable:
-            self._settle(order, px_now if str(type).lower() == "market"
-                         else float(price))
+            self._settle(
+                order, px_now if str(type).lower() == "market" else float(price)
+            )
         else:
             self._open.append(oid)
         return dict(order)
@@ -454,17 +481,25 @@ class TabletBackend:
             self._adjust(base, -amount)
             self._adjust(quote, +(notional - fee))
 
-        order.update({
-            "status": "closed", "filled": amount, "remaining": 0.0,
-            "average": float(fill_px), "price": order["price"] or float(fill_px),
-            "cost": notional,
-            "fee": {"cost": fee, "currency": quote,
-                    "rate": self._fee_rate(sym)},
-        })
+        order.update(
+            {
+                "status": "closed",
+                "filled": amount,
+                "remaining": 0.0,
+                "average": float(fill_px),
+                "price": order["price"] or float(fill_px),
+                "cost": notional,
+                "fee": {"cost": fee, "currency": quote, "rate": self._fee_rate(sym)},
+            }
+        )
         _t = {
-            "id": f"t_{uuid.uuid4().hex[:12]}", "order": order["id"],
-            "symbol": sym, "side": order["side"], "amount": amount,
-            "price": float(fill_px), "cost": notional,
+            "id": f"t_{uuid.uuid4().hex[:12]}",
+            "order": order["id"],
+            "symbol": sym,
+            "side": order["side"],
+            "amount": amount,
+            "price": float(fill_px),
+            "cost": notional,
             "fee": {"cost": fee, "currency": quote},
             "timestamp": self.current_ts_ms(),
         }
@@ -478,8 +513,8 @@ class TabletBackend:
                 # observer means the run log quietly stops recording
                 # trades, which reads as "no trades happened".
                 logger.warning(
-                    "on_trade observer raised for %s fill: %s",
-                    _t.get("symbol"), exc)
+                    "on_trade observer raised for %s fill: %s", _t.get("symbol"), exc
+                )
 
     def _sweep_open_orders(self) -> None:
         """Fill resting orders the new candle crosses."""
@@ -498,15 +533,18 @@ class TabletBackend:
             if px is None:
                 still.append(oid)
                 continue
-            if (o["side"] == "buy" and lo <= px) or (
-                    o["side"] == "sell" and hi >= px):
+            if (o["side"] == "buy" and lo <= px) or (o["side"] == "sell" and hi >= px):
                 self._settle(o, px)
             else:
                 still.append(oid)
         self._open = still
 
-    def cancel_order(self, id: str, symbol: Optional[str] = None,  # noqa: A002
-                     params: Optional[dict] = None) -> dict:
+    def cancel_order(
+        self,
+        id: str,
+        symbol: Optional[str] = None,  # noqa: A002
+        params: Optional[dict] = None,
+    ) -> dict:
         o = self._orders.get(str(id))
         if o is None:
             raise ValueError(f"no such order {id!r}")
@@ -516,26 +554,34 @@ class TabletBackend:
                 self._open.remove(str(id))
         return dict(o)
 
-    def fetch_order(self, id: str, symbol: Optional[str] = None,  # noqa: A002
-                    params: Optional[dict] = None) -> dict:
+    def fetch_order(
+        self,
+        id: str,
+        symbol: Optional[str] = None,  # noqa: A002
+        params: Optional[dict] = None,
+    ) -> dict:
         o = self._orders.get(str(id))
         if o is None:
             raise ValueError(f"no such order {id!r}")
         return dict(o)
 
-    def fetch_open_orders(self, symbol: Optional[str] = None,
-                          since: Optional[int] = None,
-                          limit: Optional[int] = None,
-                          params: Optional[dict] = None) -> list[dict]:
-        out = [dict(self._orders[i]) for i in self._open
-               if i in self._orders]
+    def fetch_open_orders(
+        self,
+        symbol: Optional[str] = None,
+        since: Optional[int] = None,
+        limit: Optional[int] = None,
+        params: Optional[dict] = None,
+    ) -> list[dict]:
+        out = [dict(self._orders[i]) for i in self._open if i in self._orders]
         if symbol is not None:
             out = [o for o in out if o["symbol"] == str(symbol)]
         return out
 
     def fetch_my_trades(
-        self, symbol: Optional[str] = None,
-        since: Optional[int] = None, limit: Optional[int] = None,
+        self,
+        symbol: Optional[str] = None,
+        since: Optional[int] = None,
+        limit: Optional[int] = None,
         params: Optional[dict] = None,
     ) -> list[dict]:
         out = [dict(t) for t in self._trades]
@@ -544,5 +590,5 @@ class TabletBackend:
         if since is not None:
             out = [t for t in out if int(t["timestamp"] or 0) >= int(since)]
         if limit:
-            out = out[-int(limit):]
+            out = out[-int(limit) :]
         return out

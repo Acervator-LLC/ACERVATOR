@@ -62,6 +62,7 @@ FALSIFICATION — this rule module is wrong if:
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import ast
@@ -90,7 +91,11 @@ _NUMERIC_TYPE_NAMES = frozenset({"int", "float"})
 
 # Statement kinds that make an `if` branch a GATE rather than a note.
 _GATING_STATEMENTS = (
-    ast.Return, ast.Raise, ast.Assign, ast.AugAssign, ast.AnnAssign,
+    ast.Return,
+    ast.Raise,
+    ast.Assign,
+    ast.AugAssign,
+    ast.AnnAssign,
 )
 
 # Comparison operators that read as an exact type test.
@@ -99,7 +104,10 @@ _EXACT_TYPE_OPS = (ast.Is, ast.IsNot, ast.In, ast.NotIn, ast.Eq, ast.NotEq)
 # Node kinds that open a new scope. Each is scanned on its own, so a
 # finding names the function it lives in and not the whole module.
 _NESTED_SCOPES = (
-    ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda,
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
+    ast.Lambda,
 )
 
 
@@ -151,9 +159,11 @@ def _isinstance_calls_in_test(test: ast.AST) -> list[ast.Call]:
             stack.append(node.operand)
         elif isinstance(node, ast.BoolOp):
             stack.extend(node.values)
-        elif (isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id == "isinstance"):
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "isinstance"
+        ):
             found.append(node)
     return found
 
@@ -185,10 +195,12 @@ def _float_coercions(nodes: list[ast.AST]) -> dict[str, list[int]]:
     """Map each name passed to `float()` to the lines where that happens."""
     coerced: dict[str, list[int]] = {}
     for sub in nodes:
-        if not (isinstance(sub, ast.Call)
-                and isinstance(sub.func, ast.Name)
-                and sub.func.id == "float"
-                and len(sub.args) == 1):
+        if not (
+            isinstance(sub, ast.Call)
+            and isinstance(sub.func, ast.Name)
+            and sub.func.id == "float"
+            and len(sub.args) == 1
+        ):
             continue
         name = _dotted(sub.args[0])
         if name:
@@ -203,10 +215,12 @@ def _exact_type_tested(nodes: list[ast.AST]) -> set[str]:
         if not isinstance(sub, ast.Compare):
             continue
         left = sub.left
-        if not (isinstance(left, ast.Call)
-                and isinstance(left.func, ast.Name)
-                and left.func.id == "type"
-                and len(left.args) == 1):
+        if not (
+            isinstance(left, ast.Call)
+            and isinstance(left.func, ast.Name)
+            and left.func.id == "type"
+            and len(left.args) == 1
+        ):
             continue
         if not all(isinstance(op, _EXACT_TYPE_OPS) for op in sub.ops):
             continue
@@ -259,8 +273,7 @@ def scan(target: Path, source: str) -> list[Any]:
         return []
 
     scopes: list[ast.AST] = [tree]
-    scopes.extend(node for node in ast.walk(tree)
-                  if isinstance(node, _NESTED_SCOPES))
+    scopes.extend(node for node in ast.walk(tree) if isinstance(node, _NESTED_SCOPES))
 
     seen: set[tuple[int, str]] = set()
     findings: list[Any] = []
@@ -270,15 +283,22 @@ def scan(target: Path, source: str) -> list[Any]:
             if key in seen:
                 continue
             seen.add(key)
-            findings.append(Finding(
-                tool="numeric_guard", severity="high",
-                file=str(target), line=line, rule_id="NG001",
-                message=(
-                    f"isinstance guard on {name!r} in {scope_name!r} admits "
-                    "subclasses, so bool and any float subclass pass it, and "
-                    f"{name!r} is then coerced with float(). Use an exact "
-                    f"test: type({name}) is float, or "
-                    f"type({name}) in (int, float).")))
+            findings.append(
+                Finding(
+                    tool="numeric_guard",
+                    severity="high",
+                    file=str(target),
+                    line=line,
+                    rule_id="NG001",
+                    message=(
+                        f"isinstance guard on {name!r} in {scope_name!r} admits "
+                        "subclasses, so bool and any float subclass pass it, and "
+                        f"{name!r} is then coerced with float(). Use an exact "
+                        f"test: type({name}) is float, or "
+                        f"type({name}) in (int, float)."
+                    ),
+                )
+            )
     return findings
 
 

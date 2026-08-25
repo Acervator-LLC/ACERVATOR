@@ -83,6 +83,7 @@ MEM_220_CALL_TIMEOUT_SEC: float = 25.0
 # forces it.
 EFFECTIVE_OHLCV_PAGE_SIZE = 300
 
+
 class CCXTQueueFullError(RuntimeError):
     """Raised by _call_sync when the per-connector queue is at capacity.
 
@@ -91,6 +92,7 @@ class CCXTQueueFullError(RuntimeError):
     preferable to the alternative (native access violation from
     concurrent CCXT access).
     """
+
     pass
 
 
@@ -108,6 +110,7 @@ def _fmt_p(value) -> str:
         return f"{v:.6f}"
     else:
         return f"{v:.8f}"
+
 
 from .base import (
     AssetInfo,
@@ -128,21 +131,21 @@ logger = logging.getLogger("acervator.exchange")
 # Supported exchanges — maps exchange_id to the CCXT class name
 # ---------------------------------------------------------------------------
 SUPPORTED_EXCHANGES: dict[str, str] = {
-    "binance":    "binance",
-    "coinbase":   "coinbase",
-    "kraken":     "kraken",
-    "kucoin":     "kucoin",
-    "bybit":      "bybit",
-    "okx":        "okx",
-    "gateio":     "gateio",
-    "bitget":     "bitget",
-    "huobi":      "huobi",       # Alias for HTX in newer CCXT versions
-    "mexc":       "mexc",
-    "bitfinex":   "bitfinex",
-    "gemini":     "gemini",
-    "poloniex":   "poloniex",    # NOT available to US users since Nov 2019
-    "bitstamp":   "bitstamp",
-    "cryptocom":  "cryptocom",
+    "binance": "binance",
+    "coinbase": "coinbase",
+    "kraken": "kraken",
+    "kucoin": "kucoin",
+    "bybit": "bybit",
+    "okx": "okx",
+    "gateio": "gateio",
+    "bitget": "bitget",
+    "huobi": "huobi",  # Alias for HTX in newer CCXT versions
+    "mexc": "mexc",
+    "bitfinex": "bitfinex",
+    "gemini": "gemini",
+    "poloniex": "poloniex",  # NOT available to US users since Nov 2019
+    "bitstamp": "bitstamp",
+    "cryptocom": "cryptocom",
 }
 
 # Exchanges that require a user-chosen API passphrase in addition to key+secret.
@@ -155,27 +158,27 @@ PASSPHRASE_EXCHANGES: set[str] = {
 
 # Exchanges NOT available to US residents (API blocked by geo-IP)
 US_RESTRICTED_EXCHANGES: set[str] = {
-    "poloniex",   # Exited US market Nov 2019
-    "huobi",      # HTX restricts US users
-    "bybit",      # 403 Forbidden via CloudFront for US IPs
+    "poloniex",  # Exited US market Nov 2019
+    "huobi",  # HTX restricts US users
+    "bybit",  # 403 Forbidden via CloudFront for US IPs
 }
 
 # Pre-flight test URLs — public endpoints requiring no auth
 PREFLIGHT_URLS: dict[str, str] = {
-    "binance":   "https://api.binance.com/api/v3/ping",
-    "coinbase":  "https://api.coinbase.com/api/v3/brokerage/market/products?limit=1",
-    "kraken":    "https://api.kraken.com/0/public/SystemStatus",
-    "kucoin":    "https://api.kucoin.com/api/v1/timestamp",
-    "bybit":     "https://api.bybit.com/v5/market/time",
-    "okx":       "https://www.okx.com/api/v5/public/time",
-    "gateio":    "https://api.gateio.ws/api/v4/spot/currencies",
-    "bitget":    "https://api.bitget.com/api/v2/public/time",
-    "huobi":     "https://api.huobi.pro/v1/common/timestamp",
-    "mexc":      "https://api.mexc.com/api/v3/ping",
-    "bitfinex":  "https://api-pub.bitfinex.com/v2/platform/status",
-    "gemini":    "https://api.gemini.com/v1/symbols",
-    "poloniex":  "https://api.poloniex.com/markets",
-    "bitstamp":  "https://www.bitstamp.net/api/v2/ticker/btcusd/",
+    "binance": "https://api.binance.com/api/v3/ping",
+    "coinbase": "https://api.coinbase.com/api/v3/brokerage/market/products?limit=1",
+    "kraken": "https://api.kraken.com/0/public/SystemStatus",
+    "kucoin": "https://api.kucoin.com/api/v1/timestamp",
+    "bybit": "https://api.bybit.com/v5/market/time",
+    "okx": "https://www.okx.com/api/v5/public/time",
+    "gateio": "https://api.gateio.ws/api/v4/spot/currencies",
+    "bitget": "https://api.bitget.com/api/v2/public/time",
+    "huobi": "https://api.huobi.pro/v1/common/timestamp",
+    "mexc": "https://api.mexc.com/api/v3/ping",
+    "bitfinex": "https://api-pub.bitfinex.com/v2/platform/status",
+    "gemini": "https://api.gemini.com/v1/symbols",
+    "poloniex": "https://api.poloniex.com/markets",
+    "bitstamp": "https://www.bitstamp.net/api/v2/ticker/btcusd/",
     "cryptocom": "https://api.crypto.com/exchange/v1/public/get-instruments",
 }
 
@@ -193,7 +196,7 @@ EXCHANGE_OPTIONS: dict[str, dict] = {
 
 # Exchanges where fetchCurrencies must be disabled (deprecated v2 endpoints)
 DISABLE_FETCH_CURRENCIES: set[str] = {
-    "coinbase",   # v2/currencies deprecated for CDP keys
+    "coinbase",  # v2/currencies deprecated for CDP keys
 }
 
 # Logo CDN fallback
@@ -206,6 +209,7 @@ _LOGO_FALLBACK = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
 # ---------------------------------------------------------------------------
 def _with_retry(max_retries: int = 3, base_delay: float = 1.0):
     """Decorator: retry async methods on transient exchange errors."""
+
     def decorator(func):
         async def wrapper(self, *args, **kwargs):
             last_exc = None
@@ -222,14 +226,20 @@ def _with_retry(max_retries: int = 3, base_delay: float = 1.0):
                     )
                     if not retryable or attempt == max_retries - 1:
                         raise
-                    delay = base_delay * (2 ** attempt)
+                    delay = base_delay * (2**attempt)
                     logger.warning(
                         "%s on %s (attempt %d/%d), retrying in %.1fs",
-                        exc_name, func.__name__, attempt + 1, max_retries, delay,
+                        exc_name,
+                        func.__name__,
+                        attempt + 1,
+                        max_retries,
+                        delay,
                     )
                     await asyncio.sleep(delay)
             raise last_exc  # Should not reach here
+
         return wrapper
+
     return decorator
 
 
@@ -259,8 +269,8 @@ class CCXTConnector(ExchangeInterface):
         # Non-None only when a backend is attached (Simulator / Paper).
         # Live never sets it, so `_ex` resolves exactly as before.
         self._injected_ex: Any = None
-        self._ccxt: Any = None           # ccxt.async_support exchange instance
-        self._ccxt_sync: Any = None      # ccxt (sync) exchange instance
+        self._ccxt: Any = None  # ccxt.async_support exchange instance
+        self._ccxt_sync: Any = None  # ccxt (sync) exchange instance
         self._connected = False
         self._markets_cache: list[AssetInfo] | None = None
         self._last_request_time: float = 0.0
@@ -319,7 +329,9 @@ class CCXTConnector(ExchangeInterface):
         return self._connected
 
     # -- Connection lifecycle -------------------------------------------
-    async def connect(self, api_key: str, api_secret: str, passphrase: str = "") -> None:
+    async def connect(
+        self, api_key: str, api_secret: str, passphrase: str = ""
+    ) -> None:
         """Connect without holding the calling thread.
 
         ``sync_connect`` is synchronous by design and by name, and its
@@ -373,11 +385,11 @@ class CCXTConnector(ExchangeInterface):
                 )
 
         import functools
+
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
             executor,
-            functools.partial(
-                self.sync_connect, api_key, api_secret, passphrase),
+            functools.partial(self.sync_connect, api_key, api_secret, passphrase),
         )
 
     def sync_connect(
@@ -424,17 +436,23 @@ class CCXTConnector(ExchangeInterface):
                 api_secret = api_secret.replace("\\n", "\n")
                 config["secret"] = api_secret
             if "BEGIN EC PRIVATE KEY" in api_secret and "\n" not in api_secret.strip():
-                api_secret = api_secret.replace("-----BEGIN EC PRIVATE KEY-----", "-----BEGIN EC PRIVATE KEY-----\n")
-                api_secret = api_secret.replace("-----END EC PRIVATE KEY-----", "\n-----END EC PRIVATE KEY-----\n")
+                api_secret = api_secret.replace(
+                    "-----BEGIN EC PRIVATE KEY-----", "-----BEGIN EC PRIVATE KEY-----\n"
+                )
+                api_secret = api_secret.replace(
+                    "-----END EC PRIVATE KEY-----", "\n-----END EC PRIVATE KEY-----\n"
+                )
                 config["secret"] = api_secret
 
             is_cdp = api_key.startswith("organizations/")
             # sadp: R28 — TD-013: do NOT log key prefix. Last-4 only, banking convention.
             _key_tail = api_key[-4:] if len(api_key) >= 4 else "****"
             _log.record(
-                exchange=self._exchange_id, action="KEY_TYPE_DETECTED",
+                exchange=self._exchange_id,
+                action="KEY_TYPE_DETECTED",
                 reason=f"{'CDP (JWT/ECDSA)' if is_cdp else 'Legacy (HMAC)'} API key format",
-                result=f"Key ...{_key_tail} (prefix redacted per TD-013)", level="info",
+                result=f"Key ...{_key_tail} (prefix redacted per TD-013)",
+                level="info",
                 data_usage="CDP keys use JWT auth with EC signing. Legacy keys use HMAC-SHA256.",
             )
 
@@ -448,33 +466,40 @@ class CCXTConnector(ExchangeInterface):
             if not passphrase:
                 raise ValueError(
                     f"{self.display_name} requires an API passphrase. "
-                    f"This is set when you create the API key on the exchange.")
+                    f"This is set when you create the API key on the exchange."
+                )
             config["password"] = passphrase
 
         # --- US restriction warning ---
         if self._exchange_id in US_RESTRICTED_EXCHANGES:
             _log.record(
-                exchange=self._exchange_id, action="US_RESTRICTION_WARNING",
+                exchange=self._exchange_id,
+                action="US_RESTRICTION_WARNING",
                 reason=f"{self.display_name} may restrict US-based users",
                 result="Proceeding with connection attempt. If it fails with 403/Forbidden, "
-                       "this exchange does not serve your region.",
-                level="warning", data_usage="Check exchange terms of service for your region.",
+                "this exchange does not serve your region.",
+                level="warning",
+                data_usage="Check exchange terms of service for your region.",
             )
 
         # --- Pre-flight connectivity check ---
         preflight_url = PREFLIGHT_URLS.get(self._exchange_id)
         if preflight_url:
             _log.record(
-                exchange=self._exchange_id, action="PREFLIGHT_CHECK",
+                exchange=self._exchange_id,
+                action="PREFLIGHT_CHECK",
                 reason=f"Testing connectivity to {preflight_url}",
-                result="Checking...", level="info",
+                result="Checking...",
+                level="info",
                 data_usage="Direct HTTP request to verify endpoint is reachable",
             )
             import ssl as _ssl
+
             try:
                 ssl_ctx = _ssl.create_default_context()
                 try:
                     import certifi
+
                     ssl_ctx = _ssl.create_default_context(cafile=certifi.where())
                 except ImportError:
                     pass
@@ -485,15 +510,18 @@ class CCXTConnector(ExchangeInterface):
                 with safe_urlopen(req, timeout=15, context=ssl_ctx) as resp:
                     elapsed = (time.monotonic() - start) * 1000
                     _log.record(
-                        exchange=self._exchange_id, action="PREFLIGHT_OK",
+                        exchange=self._exchange_id,
+                        action="PREFLIGHT_OK",
                         reason=f"HTTP {resp.status} from {preflight_url}",
                         result=f"Endpoint reachable ({elapsed:.0f}ms)",
-                        elapsed_ms=elapsed, level="success",
+                        elapsed_ms=elapsed,
+                        level="success",
                         data_usage="Pre-flight passed. Proceeding with CCXT.",
                     )
             except Exception as pf_exc:
                 _log.record(
-                    exchange=self._exchange_id, action="PREFLIGHT_FAILED",
+                    exchange=self._exchange_id,
+                    action="PREFLIGHT_FAILED",
                     reason=f"Cannot reach {preflight_url}",
                     result=f"{type(pf_exc).__name__}: {pf_exc}",
                     level="error",
@@ -502,14 +530,18 @@ class CCXTConnector(ExchangeInterface):
                 raise ConnectionError(
                     f"Cannot reach {self._exchange_id} API. "
                     f"Pre-flight check failed: {type(pf_exc).__name__}: {pf_exc} | "
-                    f"URL: {preflight_url}")
+                    f"URL: {preflight_url}"
+                )
 
         # --- Create SYNC CCXT exchange and load markets ---
         _log.record(
-            exchange=self._exchange_id, action="CONNECTING",
+            exchange=self._exchange_id,
+            action="CONNECTING",
             reason="Creating synchronous CCXT connection",
-            endpoint="load_markets", params={"exchange": self._exchange_id},
-            result="Connecting...", level="info",
+            endpoint="load_markets",
+            params={"exchange": self._exchange_id},
+            result="Connecting...",
+            level="info",
             data_usage="Sync CCXT (requests library, not aiohttp)",
         )
 
@@ -525,13 +557,16 @@ class CCXTConnector(ExchangeInterface):
                 start = time.monotonic()
                 sync_exchange.load_markets()
                 elapsed = (time.monotonic() - start) * 1000
-                market_count = len(sync_exchange.markets) if sync_exchange.markets else 0
+                market_count = (
+                    len(sync_exchange.markets) if sync_exchange.markets else 0
+                )
                 self._connected = True
                 self._ccxt_sync = sync_exchange
 
                 # Prepare async exchange for trading loop (shares loaded markets)
                 try:
                     import ccxt.async_support as ccxt_async
+
                     async_class = getattr(ccxt_async, self._ccxt_id)
                     self._ccxt = async_class(config)
                     if self._exchange_id in DISABLE_FETCH_CURRENCIES:
@@ -540,24 +575,32 @@ class CCXTConnector(ExchangeInterface):
                     self._ccxt.markets_by_id = sync_exchange.markets_by_id
                     self._ccxt.currencies = sync_exchange.currencies
                     self._ccxt.symbols = sync_exchange.symbols
-                except Exception:  # R28-OK: field-copy fallback; whole exchange swap is the recovery
+                except (
+                    Exception
+                ):  # R28-OK: field-copy fallback; whole exchange swap is the recovery
                     self._ccxt = sync_exchange
 
                 _log.record(
-                    exchange=self._exchange_id, action="CONNECTED",
+                    exchange=self._exchange_id,
+                    action="CONNECTED",
                     reason="Markets loaded successfully",
-                    endpoint="load_markets", params={"attempt": attempt + 1},
+                    endpoint="load_markets",
+                    params={"attempt": attempt + 1},
                     result=f"Connected to {self.display_name}. {market_count} trading pairs.",
-                    elapsed_ms=elapsed, level="success",
+                    elapsed_ms=elapsed,
+                    level="success",
                     data_usage="Market metadata cached for trading.",
                 )
-                logger.info("Connected to %s (%d markets)", self.display_name, market_count)
+                logger.info(
+                    "Connected to %s (%d markets)", self.display_name, market_count
+                )
 
                 # ── Trade history scan on connect (R29 — idempotent) ──────
                 # Runs in a background thread so it never delays GUI startup.
                 # Results are stored in self._history_analyses and reported
                 # via self._on_history_ready callback if set.
                 import threading
+
                 threading.Thread(
                     target=self._scan_trade_history,
                     daemon=True,
@@ -570,12 +613,16 @@ class CCXTConnector(ExchangeInterface):
                 last_error = exc
                 detail = self._format_exchange_error(exc)
                 _log.record(
-                    exchange=self._exchange_id, action="CONNECT_RETRY",
+                    exchange=self._exchange_id,
+                    action="CONNECT_RETRY",
                     reason=f"Attempt {attempt + 1}/3 failed",
-                    endpoint="load_markets", params={"attempt": attempt + 1},
+                    endpoint="load_markets",
+                    params={"attempt": attempt + 1},
                     result=detail,
                     level="warning" if attempt < 2 else "error",
-                    data_usage="Retrying..." if attempt < 2 else "All attempts exhausted",
+                    data_usage=(
+                        "Retrying..." if attempt < 2 else "All attempts exhausted"
+                    ),
                 )
                 if attempt < 2:
                     time.sleep(2 * (attempt + 1))
@@ -644,8 +691,10 @@ class CCXTConnector(ExchangeInterface):
             if kwargs:
                 # run_in_executor doesn't accept kwargs — wrap in functools.partial
                 import functools
+
                 fut = loop.run_in_executor(
-                    executor, functools.partial(fn, *args, **kwargs))
+                    executor, functools.partial(fn, *args, **kwargs)
+                )
             else:
                 fut = loop.run_in_executor(executor, fn, *args)
 
@@ -662,7 +711,7 @@ class CCXTConnector(ExchangeInterface):
                     "(%ss) for %s on %s; worker thread is leaked until "
                     "CCXT's own timeout fires",
                     MEM_220_CALL_TIMEOUT_SEC,
-                    getattr(fn, '__name__', repr(fn)),
+                    getattr(fn, "__name__", repr(fn)),
                     self._exchange_id,
                 )
                 raise
@@ -722,16 +771,21 @@ class CCXTConnector(ExchangeInterface):
         #
         # Passing the list in removes the shared mutable state, and with
         # it the race.
-        symbols = ([str(x) for x in symbols]
-                   if symbols is not None
-                   else (list(self._scan_symbols)
-                         if self._scan_symbols else []))
+        symbols = (
+            [str(x) for x in symbols]
+            if symbols is not None
+            else (list(self._scan_symbols) if self._scan_symbols else [])
+        )
         if not symbols:
             logger.info("TradeHistorian: no symbols registered — skipping auto-scan")
             return
 
-        logger.info("TradeHistorian: starting post-connect history scan "
-                    "for %d symbol(s): %s", len(symbols), symbols)
+        logger.info(
+            "TradeHistorian: starting post-connect history scan "
+            "for %d symbol(s): %s",
+            len(symbols),
+            symbols,
+        )
         # v3.24.95 - SERIALISED AND PACED.
         #
         # `TradeHistorian._fetch_sync` calls the RAW ccxt object, so it
@@ -762,23 +816,27 @@ class CCXTConnector(ExchangeInterface):
                 # separate observation and would be its own emitter.
                 _dur_t0 = time.monotonic()
                 results = scan_on_connect(
-                    exchange   = self._ccxt_sync,
-                    symbols    = symbols,
-                    on_result  = self._on_history_result,
-                    pace_s     = float(
-                        getattr(self, "_min_request_interval", 0.1) or 0.0),
+                    exchange=self._ccxt_sync,
+                    symbols=symbols,
+                    on_result=self._on_history_result,
+                    pace_s=float(getattr(self, "_min_request_interval", 0.1) or 0.0),
                 )
                 _dur_elapsed = time.monotonic() - _dur_t0
                 self._history_analyses.update(results)
                 logger.info(
                     "TradeHistorian: scan complete — %d symbol(s) analysed",
-                    len(results))
+                    len(results),
+                )
                 try:
                     from src.core.signal_contract import emit as _hs_emit
-                    _hs_emit("history.05.001.postcondition.scan_complete",
-                             actual=len(results), expected=len(symbols),
-                             duration=_dur_elapsed,
-                             context={"symbols": len(symbols)})
+
+                    _hs_emit(
+                        "history.05.001.postcondition.scan_complete",
+                        actual=len(results),
+                        expected=len(symbols),
+                        duration=_dur_elapsed,
+                        context={"symbols": len(symbols)},
+                    )
                 except Exception:  # noqa: BLE001,S110 - advisory
                     pass
             except Exception as e:
@@ -786,7 +844,9 @@ class CCXTConnector(ExchangeInterface):
                 logger.error("TradeHistorian: scan failed: %s", e)
 
     def _on_history_result(
-        self, symbol: str, analysis: HistoryAnalysis,
+        self,
+        symbol: str,
+        analysis: HistoryAnalysis,
     ) -> None:
         """Called by scan_on_connect for each symbol as it completes."""
         self._history_analyses[symbol] = analysis
@@ -817,6 +877,7 @@ class CCXTConnector(ExchangeInterface):
         if self._ccxt_sync is not None:
             try:
                 import threading
+
                 threading.Thread(
                     target=self.refresh_history,
                     kwargs={"symbol": symbol},
@@ -825,11 +886,13 @@ class CCXTConnector(ExchangeInterface):
                 ).start()
                 logger.info(
                     "TradeHistorian: late registration for %s — "
-                    "spawning targeted scan in background", symbol)
-            except Exception as exc:   # sadp: R28 — surface
+                    "spawning targeted scan in background",
+                    symbol,
+                )
+            except Exception as exc:  # sadp: R28 — surface
                 logger.warning(
-                    "TradeHistorian: late-scan spawn failed for %s: %s",
-                    symbol, exc)
+                    "TradeHistorian: late-scan spawn failed for %s: %s", symbol, exc
+                )
 
     def remove_scan_symbol(self, symbol: str):
         self._scan_symbols.discard(symbol)
@@ -885,6 +948,7 @@ class CCXTConnector(ExchangeInterface):
         parsed = getattr(exc, "response", None)
         if parsed and isinstance(parsed, dict):
             import json
+
             body = json.dumps(parsed, indent=2)[:500]
 
         if body:
@@ -897,16 +961,31 @@ class CCXTConnector(ExchangeInterface):
         code_str = str(code)
 
         if "ExchangeNotAvailable" in exc_name:
-            if code_str.startswith("5") or "503" in exc_str or "502" in exc_str or "500" in exc_str:
-                parts.append(f"DIAGNOSIS: Server error (HTTP {code or '5xx'}). Exchange is likely under maintenance.")
+            if (
+                code_str.startswith("5")
+                or "503" in exc_str
+                or "502" in exc_str
+                or "500" in exc_str
+            ):
+                parts.append(
+                    f"DIAGNOSIS: Server error (HTTP {code or '5xx'}). Exchange is likely under maintenance."
+                )
             elif code_str == "403" or "403" in exc_str:
-                parts.append("DIAGNOSIS: HTTP 403 Forbidden. Your API key may lack permissions, or your IP may be blocked by the exchange.")
+                parts.append(
+                    "DIAGNOSIS: HTTP 403 Forbidden. Your API key may lack permissions, or your IP may be blocked by the exchange."
+                )
             elif code_str == "429" or "429" in exc_str:
-                parts.append("DIAGNOSIS: HTTP 429 Rate Limited. Too many requests. Wait 60 seconds.")
+                parts.append(
+                    "DIAGNOSIS: HTTP 429 Rate Limited. Too many requests. Wait 60 seconds."
+                )
             elif code_str == "401" or "401" in exc_str:
-                parts.append("DIAGNOSIS: HTTP 401 Unauthorized. API credentials are invalid or expired.")
+                parts.append(
+                    "DIAGNOSIS: HTTP 401 Unauthorized. API credentials are invalid or expired."
+                )
             elif "cloudflare" in exc_str.lower() or "ddos" in exc_str.lower():
-                parts.append("DIAGNOSIS: DDoS protection triggered. Wait 30 seconds and retry.")
+                parts.append(
+                    "DIAGNOSIS: DDoS protection triggered. Wait 30 seconds and retry."
+                )
             elif not code:
                 parts.append(
                     "DIAGNOSIS: No HTTP status received. Likely causes: "
@@ -917,17 +996,25 @@ class CCXTConnector(ExchangeInterface):
                     "3) Try again in 60 seconds (transient outage)."
                 )
             else:
-                parts.append(f"DIAGNOSIS: HTTP {code}. Unexpected status. Check Response Body above for details.")
+                parts.append(
+                    f"DIAGNOSIS: HTTP {code}. Unexpected status. Check Response Body above for details."
+                )
         elif "AuthenticationError" in exc_name:
-            parts.append("DIAGNOSIS: API credentials rejected. Verify key, secret, and passphrase. Ensure trading permissions are enabled on the exchange website.")
+            parts.append(
+                "DIAGNOSIS: API credentials rejected. Verify key, secret, and passphrase. Ensure trading permissions are enabled on the exchange website."
+            )
         elif "RateLimitExceeded" in exc_name or "429" in exc_str:
             parts.append("DIAGNOSIS: Rate limited. Application will retry after delay.")
         elif "NetworkError" in exc_name or "Timeout" in exc_name:
-            parts.append("DIAGNOSIS: Network connectivity issue. Check internet connection and firewall.")
+            parts.append(
+                "DIAGNOSIS: Network connectivity issue. Check internet connection and firewall."
+            )
         elif "PermissionDenied" in exc_name or "403" in exc_str:
             parts.append("DIAGNOSIS: API key lacks required permissions.")
         elif "BadRequest" in exc_name or "400" in exc_str:
-            parts.append("DIAGNOSIS: Malformed request. May indicate CCXT version mismatch. Try: pip install ccxt --upgrade")
+            parts.append(
+                "DIAGNOSIS: Malformed request. May indicate CCXT version mismatch. Try: pip install ccxt --upgrade"
+            )
 
         return " | ".join(parts)
 
@@ -991,10 +1078,10 @@ class CCXTConnector(ExchangeInterface):
         Live is untouched: with nothing injected this is the original
         expression, evaluated in the original order.
         """
-        injected = getattr(self, '_injected_ex', None)
+        injected = getattr(self, "_injected_ex", None)
         if injected is not None:
             return injected
-        return getattr(self, '_ccxt_sync', None) or self._ccxt
+        return getattr(self, "_ccxt_sync", None) or self._ccxt
 
     def attach_backend(self, backend: Any) -> None:
         """Serve every ccxt call from *backend* instead of the network.
@@ -1052,11 +1139,14 @@ class CCXTConnector(ExchangeInterface):
             timestamp=float(raw.get("timestamp", 0) or 0) / 1000,
         )
         _log.record(
-            exchange=self._exchange_id, action="FETCH_TICKER",
+            exchange=self._exchange_id,
+            action="FETCH_TICKER",
             reason=f"Get current price for {symbol}",
-            endpoint="fetch_ticker", params={"symbol": symbol},
+            endpoint="fetch_ticker",
+            params={"symbol": symbol},
             result=f"last={_fmt_p(ticker.last)} bid={_fmt_p(ticker.bid)} ask={_fmt_p(ticker.ask)} vol24h={ticker.volume_24h:.0f}",
-            elapsed_ms=elapsed, level="success",
+            elapsed_ms=elapsed,
+            level="success",
             data_usage="Used by bots for delta calculation, grid level checks, and P/L computation",
         )
         return ticker
@@ -1093,7 +1183,10 @@ class CCXTConnector(ExchangeInterface):
 
     @_with_retry()
     async def get_ohlcv(
-        self, symbol: str, timeframe: str = "1h", limit: int = 100,
+        self,
+        symbol: str,
+        timeframe: str = "1h",
+        limit: int = 100,
         since: Optional[int] = None,
     ) -> list[list[float]]:
         """Fetch OHLCV candles.
@@ -1137,19 +1230,25 @@ class CCXTConnector(ExchangeInterface):
         if since is None:
             # Legacy path — unchanged, including the positional quirk
             # documented above. Live callers land here.
-            data = await self._call_sync(
-                self._ex.fetch_ohlcv, symbol, timeframe, limit)
+            data = await self._call_sync(self._ex.fetch_ohlcv, symbol, timeframe, limit)
         else:
             data = await self._call_sync(
-                self._ex.fetch_ohlcv, symbol, timeframe,
-                int(since), int(limit))
+                self._ex.fetch_ohlcv, symbol, timeframe, int(since), int(limit)
+            )
         elapsed = (time.monotonic() - start) * 1000
         _log.record(
-            exchange=self._exchange_id, action="FETCH_OHLCV",
+            exchange=self._exchange_id,
+            action="FETCH_OHLCV",
             reason=f"Get {limit} candles ({timeframe}) for {symbol} - needed for TA indicator computation",
-            endpoint="fetch_ohlcv", params={"symbol": symbol, "timeframe": timeframe, "limit": limit},
-            result=f"{len(data)} candles received, latest close={_fmt_p(data[-1][4])}" if data else "No data",
-            elapsed_ms=elapsed, level="success",
+            endpoint="fetch_ohlcv",
+            params={"symbol": symbol, "timeframe": timeframe, "limit": limit},
+            result=(
+                f"{len(data)} candles received, latest close={_fmt_p(data[-1][4])}"
+                if data
+                else "No data"
+            ),
+            elapsed_ms=elapsed,
+            level="success",
             data_usage="Fed into 7-indicator TA engine (BB, Vortex, MACD, StochRSI, Ichimoku, Volume, Slingshot) for voting",
         )
         return data
@@ -1170,15 +1269,23 @@ class CCXTConnector(ExchangeInterface):
                 free = float(raw.get("free", {}).get(currency, 0) or 0)
                 used = float(raw.get("used", {}).get(currency, 0) or 0)
                 result[currency] = Balance(
-                    currency=currency, free=free, used=used, total=total,
+                    currency=currency,
+                    free=free,
+                    used=used,
+                    total=total,
                 )
-        bal_summary = ", ".join(f"{c}: {b.total:.6g}" for c, b in list(result.items())[:8])
+        bal_summary = ", ".join(
+            f"{c}: {b.total:.6g}" for c, b in list(result.items())[:8]
+        )
         _log.record(
-            exchange=self._exchange_id, action="FETCH_BALANCES",
+            exchange=self._exchange_id,
+            action="FETCH_BALANCES",
             reason="Retrieve account balances to verify funds and calculate position values",
-            endpoint="fetch_balance", params={},
+            endpoint="fetch_balance",
+            params={},
             result=f"{len(result)} assets with balance. {bal_summary}",
-            elapsed_ms=elapsed, level="success",
+            elapsed_ms=elapsed,
+            level="success",
             data_usage="Compared against bot target balances to determine available resources and P/L",
         )
         return result
@@ -1203,13 +1310,13 @@ class CCXTConnector(ExchangeInterface):
         if currency in total_map:
             # Exchange explicitly reported this currency, value was zero
             # (or a rounding-down to zero). Treat as a legitimate zero.
-            return Balance(currency=currency, free=0.0, used=0.0, total=0.0,
-                           absent=False)
+            return Balance(
+                currency=currency, free=0.0, used=0.0, total=0.0, absent=False
+            )
 
         # Currency not in raw response at all — the exchange did NOT
         # report it. Caller must decide whether to trust this as real.
-        return Balance(currency=currency, free=0.0, used=0.0, total=0.0,
-                       absent=True)
+        return Balance(currency=currency, free=0.0, used=0.0, total=0.0, absent=True)
 
     # -- Orders ---------------------------------------------------------
     # TD-014: NO @_with_retry on order submission. Rationale: create_order
@@ -1242,14 +1349,13 @@ class CCXTConnector(ExchangeInterface):
         # depletion. Failure threshold + cooldown defaults are tuned for
         # spot trading; tighter thresholds for low-volume venues are an
         # operator-tunable next-session item.
-        from .circuit_breaker import (
-            get_breaker_registry, CircuitBreakerOpenError)
+        from .circuit_breaker import get_breaker_registry, CircuitBreakerOpenError
+
         _breaker_key = f"{self._exchange_id}:{symbol}"
         _breaker = get_breaker_registry().get(_breaker_key)
         if not _breaker.is_call_allowed():
             _breaker.record_short_circuit()
-            raise CircuitBreakerOpenError(
-                _breaker_key, _breaker.cooldown_remaining())
+            raise CircuitBreakerOpenError(_breaker_key, _breaker.cooldown_remaining())
         _log = get_api_log()
 
         market = self._ex.market(symbol)
@@ -1259,7 +1365,11 @@ class CCXTConnector(ExchangeInterface):
         # orders on spot to calculate total cost (amount * price).
         # If price is None for a market buy, fetch current price.
         exec_price = price
-        if order_type == OrderType.MARKET and side == OrderSide.BUY and exec_price is None:
+        if (
+            order_type == OrderType.MARKET
+            and side == OrderSide.BUY
+            and exec_price is None
+        ):
             try:
                 ticker = await self._call_sync(self._ex.fetch_ticker, symbol)
                 exec_price = float(ticker.get("last", 0) or ticker.get("ask", 0) or 0)
@@ -1272,12 +1382,20 @@ class CCXTConnector(ExchangeInterface):
             exec_price = float(self._ex.price_to_precision(symbol, exec_price))
 
         _log.record(
-            exchange=self._exchange_id, action="PLACE_ORDER",
+            exchange=self._exchange_id,
+            action="PLACE_ORDER",
             reason=f"Execute {side.value.upper()} {order_type.value} order for {symbol}",
             endpoint="create_order",
-            params={"symbol": symbol, "side": side.value, "type": order_type.value,
-                    "amount": float(amount), "price": exec_price},
-            result="Sending to exchange...", elapsed_ms=0, level="info",
+            params={
+                "symbol": symbol,
+                "side": side.value,
+                "type": order_type.value,
+                "amount": float(amount),
+                "price": exec_price,
+            },
+            result="Sending to exchange...",
+            elapsed_ms=0,
+            level="info",
             data_usage="Order will be tracked for fill status; fills trigger profit folding or grid cycling",
         )
 
@@ -1317,13 +1435,21 @@ class CCXTConnector(ExchangeInterface):
             if extra_params:
                 raw = await self._call_sync(
                     self._ex.create_order,
-                    symbol, _ccxt_type, side.value, float(amount), exec_price,
+                    symbol,
+                    _ccxt_type,
+                    side.value,
+                    float(amount),
+                    exec_price,
                     extra_params,
                 )
             else:
                 raw = await self._call_sync(
                     self._ex.create_order,
-                    symbol, _ccxt_type, side.value, float(amount), exec_price,
+                    symbol,
+                    _ccxt_type,
+                    side.value,
+                    float(amount),
+                    exec_price,
                 )
         except Exception as _exc:
             # v3.15.98 — record failure with the breaker. The breaker will
@@ -1336,12 +1462,14 @@ class CCXTConnector(ExchangeInterface):
         order = self._parse_order(raw)
 
         _log.record(
-            exchange=self._exchange_id, action="ORDER_PLACED",
+            exchange=self._exchange_id,
+            action="ORDER_PLACED",
             reason=f"{side.value.upper()} order accepted by exchange",
             endpoint="create_order",
             params={"order_id": order.id},
             result=f"ID={order.id} status={order.status.value} filled={order.filled}/{float(amount)}",
-            elapsed_ms=elapsed, level="success",
+            elapsed_ms=elapsed,
+            level="success",
             data_usage="Order ID stored for fill monitoring. Bot will check status each tick cycle.",
         )
         return order
@@ -1374,10 +1502,13 @@ class CCXTConnector(ExchangeInterface):
     # P/L from authoritative trade records instead of approximations
     # like ticker.last-at-init or internal accumulators.
     @_with_retry()
-    async def get_my_trades(self, symbol: str,
-                             since: Optional[float] = None,
-                             limit: Optional[int] = None,
-                             params: Optional[dict] = None) -> list:
+    async def get_my_trades(
+        self,
+        symbol: str,
+        since: Optional[float] = None,
+        limit: Optional[int] = None,
+        params: Optional[dict] = None,
+    ) -> list:
         """Fetch executed trades. Accepts an optional ``params`` dict
         that forwards to ccxt (per-exchange overrides). v3.23.57
         callers use ``params={'paginate': True}`` for automatic
@@ -1386,14 +1517,15 @@ class CCXTConnector(ExchangeInterface):
         N within window" rather than oldest-first — our manual
         forward-cursor loop can't paginate that shape."""
         from .base import Trade, OrderSide
+
         self._ensure_connected()
         await self._rate_limit()
         # ccxt's `since` is millisecond unix; convert from seconds
         _since_ms = int(since * 1000) if since else None
         _params = params if params is not None else {}
         raw_list = await self._call_sync(
-            self._ex.fetch_my_trades,
-            symbol, _since_ms, limit, _params)
+            self._ex.fetch_my_trades, symbol, _since_ms, limit, _params
+        )
         result: list = []
         for r in raw_list or []:
             try:
@@ -1403,20 +1535,25 @@ class CCXTConnector(ExchangeInterface):
                 _fee_dict = r.get("fee") or {}
                 _fee_amt = float(_fee_dict.get("cost", 0) or 0)
                 _fee_cur = str(_fee_dict.get("currency", "") or "")
-                result.append(Trade(
-                    id=str(r.get("id", "") or ""),
-                    symbol=str(r.get("symbol", symbol) or symbol),
-                    side=_side,
-                    amount=float(r.get("amount", 0) or 0),
-                    price=float(r.get("price", 0) or 0),
-                    fee=_fee_amt,
-                    fee_currency=_fee_cur,
-                    timestamp=_ts,
-                    raw=r,
-                ))
+                result.append(
+                    Trade(
+                        id=str(r.get("id", "") or ""),
+                        symbol=str(r.get("symbol", symbol) or symbol),
+                        side=_side,
+                        amount=float(r.get("amount", 0) or 0),
+                        price=float(r.get("price", 0) or 0),
+                        fee=_fee_amt,
+                        fee_currency=_fee_cur,
+                        timestamp=_ts,
+                        raw=r,
+                    )
+                )
             except (TypeError, ValueError, KeyError) as _exc:
-                logger.warning("get_my_trades: skipping malformed trade %s: %s",
-                               r.get("id", "?"), _exc)
+                logger.warning(
+                    "get_my_trades: skipping malformed trade %s: %s",
+                    r.get("id", "?"),
+                    _exc,
+                )
                 continue
         return result
 
@@ -1435,18 +1572,20 @@ class CCXTConnector(ExchangeInterface):
             precision = info.get("precision", {})
             fees = info.get("fees", info.get("maker", {}))
 
-            markets.append(AssetInfo(
-                symbol=sym,
-                base=info.get("base", ""),
-                quote=info.get("quote", ""),
-                min_amount=float(limits.get("amount", {}).get("min", 0) or 0),
-                min_cost=float(limits.get("cost", {}).get("min", 0) or 0),
-                price_precision=int(precision.get("price", 8) or 8),
-                amount_precision=int(precision.get("amount", 8) or 8),
-                maker_fee=float(info.get("maker", 0.001) or 0.001),
-                taker_fee=float(info.get("taker", 0.001) or 0.001),
-                active=info.get("active", True),
-            ))
+            markets.append(
+                AssetInfo(
+                    symbol=sym,
+                    base=info.get("base", ""),
+                    quote=info.get("quote", ""),
+                    min_amount=float(limits.get("amount", {}).get("min", 0) or 0),
+                    min_cost=float(limits.get("cost", {}).get("min", 0) or 0),
+                    price_precision=int(precision.get("price", 8) or 8),
+                    amount_precision=int(precision.get("amount", 8) or 8),
+                    maker_fee=float(info.get("maker", 0.001) or 0.001),
+                    taker_fee=float(info.get("taker", 0.001) or 0.001),
+                    active=info.get("active", True),
+                )
+            )
         self._markets_cache = markets
         return markets
 

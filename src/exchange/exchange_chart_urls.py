@@ -12,47 +12,42 @@ than opening a broken link.
 
 sadp: R28 SSS
 """
+
 from __future__ import annotations
 
 from typing import Callable, Optional
 
-
 # Each entry: exchange_id (lowercase) -> URL builder taking
 # (base, quote) already uppercased.
 _URL_BUILDERS: dict[str, Callable[[str, str], str]] = {
-    "coinbase": lambda b, q: (
-        f"https://www.coinbase.com/advanced-trade/spot/{b}-{q}"),
+    "coinbase": lambda b, q: (f"https://www.coinbase.com/advanced-trade/spot/{b}-{q}"),
     "coinbaseexchange": lambda b, q: (
-        f"https://www.coinbase.com/advanced-trade/spot/{b}-{q}"),
+        f"https://www.coinbase.com/advanced-trade/spot/{b}-{q}"
+    ),
     "coinbasepro": lambda b, q: (
-        f"https://www.coinbase.com/advanced-trade/spot/{b}-{q}"),
+        f"https://www.coinbase.com/advanced-trade/spot/{b}-{q}"
+    ),
     "kraken": lambda b, q: (
-        f"https://pro.kraken.com/app/trade/{b.lower()}-{q.lower()}"),
-    "binance": lambda b, q: (
-        f"https://www.binance.com/en/trade/{b}_{q}"),
-    "binanceus": lambda b, q: (
-        f"https://www.binance.us/en/trade/{b}_{q}"),
-    "gemini": lambda b, q: (
-        f"https://exchange.gemini.com/trade/{b}{q}"),
+        f"https://pro.kraken.com/app/trade/{b.lower()}-{q.lower()}"
+    ),
+    "binance": lambda b, q: (f"https://www.binance.com/en/trade/{b}_{q}"),
+    "binanceus": lambda b, q: (f"https://www.binance.us/en/trade/{b}_{q}"),
+    "gemini": lambda b, q: (f"https://exchange.gemini.com/trade/{b}{q}"),
     "bitstamp": lambda b, q: (
-        f"https://www.bitstamp.net/markets/{b.lower()}/{q.lower()}/"),
-    "kucoin": lambda b, q: (
-        f"https://www.kucoin.com/trade/{b}-{q}"),
-    "okx": lambda b, q: (
-        f"https://www.okx.com/trade-spot/{b.lower()}-{q.lower()}"),
-    "bybit": lambda b, q: (
-        f"https://www.bybit.com/en/trade/spot/{b}/{q}"),
-    "bitfinex": lambda b, q: (
-        f"https://trading.bitfinex.com/t/{b}:{q}"),
-    "gate": lambda b, q: (
-        f"https://www.gate.io/trade/{b}_{q}"),
-    "gateio": lambda b, q: (
-        f"https://www.gate.io/trade/{b}_{q}"),
+        f"https://www.bitstamp.net/markets/{b.lower()}/{q.lower()}/"
+    ),
+    "kucoin": lambda b, q: (f"https://www.kucoin.com/trade/{b}-{q}"),
+    "okx": lambda b, q: (f"https://www.okx.com/trade-spot/{b.lower()}-{q.lower()}"),
+    "bybit": lambda b, q: (f"https://www.bybit.com/en/trade/spot/{b}/{q}"),
+    "bitfinex": lambda b, q: (f"https://trading.bitfinex.com/t/{b}:{q}"),
+    "gate": lambda b, q: (f"https://www.gate.io/trade/{b}_{q}"),
+    "gateio": lambda b, q: (f"https://www.gate.io/trade/{b}_{q}"),
 }
 
 
 def chart_url(
-    exchange_id: str, symbol: str,
+    exchange_id: str,
+    symbol: str,
 ) -> Optional[str]:
     """Return a chart URL string for ``symbol`` on ``exchange_id``,
     or ``None`` when the exchange isn't in the mapping or the symbol

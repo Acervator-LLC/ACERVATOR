@@ -31,6 +31,7 @@ None. Three real instances found in this codebase within one session:
 The third is a live data-integrity defect found by running the observer,
 not by reading code.
 """
+
 from __future__ import annotations
 
 import sys
@@ -59,12 +60,14 @@ def _obs():
 
 # ── the three failure classes ────────────────────────────────────
 
+
 def test_missing_required_field_is_reported():
     """The HEDGE case: `size` present, `amount` absent."""
     o = _obs()
-    o.observe("trade.filled", {
-        "bot_id": "b", "side": "buy", "type": "HEDGE",
-        "price": 1.0, "size": 5.0})
+    o.observe(
+        "trade.filled",
+        {"bot_id": "b", "side": "buy", "type": "HEDGE", "price": 1.0, "size": 5.0},
+    )
     v = [x for x in o.violations if x.kind == "missing_field"]
     assert v, "missing `amount` not reported"
     assert "amount" in v[0].detail
@@ -72,16 +75,16 @@ def test_missing_required_field_is_reported():
 
 def test_complete_payload_produces_no_violation():
     o = _obs()
-    o.observe("trade.filled", {
-        "bot_id": "b", "side": "BUY", "amount": 2.0, "price": 10.0,
-        "type": "SCRUM"})
+    o.observe(
+        "trade.filled",
+        {"bot_id": "b", "side": "BUY", "amount": 2.0, "price": 10.0, "type": "SCRUM"},
+    )
     assert not [x for x in o.violations if x.kind == "missing_field"]
 
 
 def test_bad_value_is_reported():
     o = _obs()
-    o.observe("trade.filled", {
-        "side": "SIDEWAYS", "amount": 1.0, "price": 1.0})
+    o.observe("trade.filled", {"side": "SIDEWAYS", "amount": 1.0, "price": 1.0})
     assert [x for x in o.violations if x.kind == "bad_value"]
 
 
@@ -97,32 +100,39 @@ def test_never_emitted_is_reported_only_after_finish():
 
 def test_observed_topic_is_not_flagged_never_emitted():
     o = _obs()
-    o.observe("trade.filled", {
-        "side": "BUY", "amount": 1.0, "price": 1.0})
+    o.observe("trade.filled", {"side": "BUY", "amount": 1.0, "price": 1.0})
     o.finish()
-    assert not [x for x in o.violations
-                if x.kind == "never_emitted" and x.topic == "trade.filled"]
+    assert not [
+        x
+        for x in o.violations
+        if x.kind == "never_emitted" and x.topic == "trade.filled"
+    ]
 
 
 # ── both payload shapes ──────────────────────────────────────────
+
 
 def test_nested_payload_is_unwrapped():
     """Five emit sites nest under data={...}; a contract that only
     checked the top level would report every field missing."""
     o = _obs()
-    o.observe("trade.filled", {
-        "bot_id": "b",
-        "data": {"side": "SELL", "amount": 3.0, "price": 9.0,
-                 "type": "SCRUM"}})
+    o.observe(
+        "trade.filled",
+        {
+            "bot_id": "b",
+            "data": {"side": "SELL", "amount": 3.0, "price": 9.0, "type": "SCRUM"},
+        },
+    )
     assert not [x for x in o.violations if x.kind == "missing_field"]
 
 
 def test_flat_payload_is_accepted():
     """The other five sites pass kwargs flat, with no data wrapper."""
     o = _obs()
-    o.observe("trade.filled", {
-        "bot_id": "b", "side": "BUY", "amount": 3.0, "price": 9.0,
-        "type": "ENTRY"})
+    o.observe(
+        "trade.filled",
+        {"bot_id": "b", "side": "BUY", "amount": 3.0, "price": 9.0, "type": "ENTRY"},
+    )
     assert not [x for x in o.violations if x.kind == "missing_field"]
 
 
@@ -131,8 +141,10 @@ def test_field_presence_makes_a_rename_diagnosable():
     whole diagnosis in one line."""
     o = _obs()
     for _ in range(3):
-        o.observe("trade.filled", {
-            "side": "BUY", "amount": 1.0, "price": 1.0, "type": "SCRUM"})
+        o.observe(
+            "trade.filled",
+            {"side": "BUY", "amount": 1.0, "price": 1.0, "type": "SCRUM"},
+        )
     pres = o.to_dict()["field_presence"]["trade.filled"]
     assert pres.get("type") == 3
     assert "action" not in pres
@@ -140,10 +152,11 @@ def test_field_presence_makes_a_rename_diagnosable():
 
 # ── it must never break the producer ─────────────────────────────
 
+
 def test_observation_never_raises_on_garbage():
     o = _obs()
     for junk in (None, [], "text", 42, {"data": "not-a-dict"}):
-        o.observe("trade.filled", junk)   # must not raise
+        o.observe("trade.filled", junk)  # must not raise
 
 
 def test_unknown_topic_is_ignored():
@@ -163,7 +176,7 @@ def test_handler_swallows_downstream_errors():
         def data(self):
             raise RuntimeError("boom")
 
-    handler(_Bad())    # must not raise
+    handler(_Bad())  # must not raise
 
 
 def test_attach_refuses_a_busless_object():
@@ -172,6 +185,7 @@ def test_attach_refuses_a_busless_object():
 
 
 # ── repeated violations collapse ─────────────────────────────────
+
 
 def test_repeat_violations_are_counted_not_duplicated():
     o = _obs()
@@ -191,6 +205,7 @@ def test_report_lines_lead_with_violations():
 
 
 # ── custom contracts ─────────────────────────────────────────────
+
 
 def test_custom_contract_is_honoured():
     c = EmitContract(topic="x.y", required=("q",), nested_key=None)

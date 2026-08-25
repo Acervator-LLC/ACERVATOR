@@ -33,6 +33,7 @@ THE TRAP THIS FILE EXISTS TO CATCH
 
 tmp_path only. Nothing here touches ~/.acervator.
 """
+
 from __future__ import annotations
 
 import json
@@ -63,8 +64,7 @@ def _rec(bot_id: str, lots: int = 2, tranches: int = 1) -> dict:
 def sm(tmp_path, monkeypatch):
     mgr = StateManager()
     monkeypatch.setattr(mgr, "_path", tmp_path / "bot_state.json")
-    monkeypatch.setattr(mgr, "_backup_path",
-                        tmp_path / "bot_state.backup.json")
+    monkeypatch.setattr(mgr, "_backup_path", tmp_path / "bot_state.backup.json")
     return mgr
 
 
@@ -76,7 +76,7 @@ class TestSaveNeverRemoves:
     def test_a_bot_absent_from_memory_survives_the_save(self, sm):
         """The headline. Before C01 this record was erased."""
         sm.save_state([_rec("keeps"), _rec("skipped-at-restore")])
-        sm.save_state([_rec("keeps")])          # skipped bot not passed
+        sm.save_state([_rec("keeps")])  # skipped bot not passed
         assert set(_bots(sm)) == {"keeps", "skipped-at-restore"}
 
     def test_the_carried_record_is_preserved_intact(self, sm):
@@ -133,11 +133,16 @@ class TestDeletedBotStaysDeleted:
         48 rows on the live file are exactly that."""
         sm.save_state(
             [_rec("a"), _rec("gone")],
-            smart_wires=[{"source_id": "a", "target_id": "gone", "pct": 50},
-                         {"source_id": "gone", "target_id": "a", "pct": 10},
-                         {"source_id": "a", "target_id": "a2", "pct": 5}],
-            smart_wire_ledgers=[{"bot_id": "a", "wired_out": 1.0},
-                                {"bot_id": "gone", "wired_out": 2.0}])
+            smart_wires=[
+                {"source_id": "a", "target_id": "gone", "pct": 50},
+                {"source_id": "gone", "target_id": "a", "pct": 10},
+                {"source_id": "a", "target_id": "a2", "pct": 5},
+            ],
+            smart_wire_ledgers=[
+                {"bot_id": "a", "wired_out": 1.0},
+                {"bot_id": "gone", "wired_out": 2.0},
+            ],
+        )
         sm.delete_bot("gone")
         state = json.loads(sm._path.read_text(encoding="utf-8"))
         assert [r["bot_id"] for r in state["smart_wire_ledgers"]] == ["a"]
@@ -149,6 +154,7 @@ class TestDeletedBotStaysDeleted:
         findable in the logs a year from now — today it is recorded
         NOWHERE, which is how the operator lost track of past deletes."""
         import logging
+
         sm.save_state([_rec("doomed", lots=7, tranches=3)])
         with caplog.at_level(logging.ERROR):
             sm.delete_bot("doomed")
@@ -169,6 +175,7 @@ class TestUnregisterReachesDisk:
     @pytest.fixture
     def mgr(self, sm):
         from src.trading.bot_container import BotManager
+
         m = BotManager()
         m.set_state_manager(sm)
         return m
@@ -183,8 +190,7 @@ class TestUnregisterReachesDisk:
         mgr.unregister("doomed")
         assert set(_bots(sm)) == {"keep"}
 
-    def test_the_deleted_bot_does_not_return_on_the_next_save(self, mgr,
-                                                              sm):
+    def test_the_deleted_bot_does_not_return_on_the_next_save(self, mgr, sm):
         """The regression that 'saves never delete' would introduce
         without delete_bot(): a delete that does not reach disk is
         undone by the very next carry-forward."""
@@ -195,8 +201,7 @@ class TestUnregisterReachesDisk:
         mgr.save_all_state()
         assert "doomed" not in _bots(sm)
 
-    def test_a_bot_that_failed_to_restore_is_NOT_deleted_by_a_save(
-            self, mgr, sm):
+    def test_a_bot_that_failed_to_restore_is_NOT_deleted_by_a_save(self, mgr, sm):
         """The whole point of the cascade, end to end.
 
         A bot whose persisted config lacks exchange_id is skipped at
@@ -228,22 +233,21 @@ class TestTheMergeCannotBreakSaving:
         sm.save_state([_rec("a")])
         assert set(_bots(sm)) == {"a"}
 
-    def test_a_failing_reader_does_not_abort_the_save(self, sm,
-                                                      monkeypatch):
+    def test_a_failing_reader_does_not_abort_the_save(self, sm, monkeypatch):
         def boom(*_a, **_kw):
             raise RuntimeError("simulated")
+
         sm.save_state([_rec("a")])
         monkeypatch.setattr(sm, "_read_bot_records", boom)
         sm.save_state([_rec("b")])
         assert "b" in _bots(sm)
 
-    def test_delete_failure_leaves_the_record_intact(self, sm,
-                                                     monkeypatch):
+    def test_delete_failure_leaves_the_record_intact(self, sm, monkeypatch):
         """Better to keep a record that should have gone than to lose
         one that should have stayed."""
         sm.save_state([_rec("a"), _rec("b")])
         monkeypatch.setattr(
-            json, "dump",
-            lambda *_a, **_kw: (_ for _ in ()).throw(OSError("simulated")))
+            json, "dump", lambda *_a, **_kw: (_ for _ in ()).throw(OSError("simulated"))
+        )
         assert sm.delete_bot("b") is False
         assert set(_bots(sm)) == {"a", "b"}

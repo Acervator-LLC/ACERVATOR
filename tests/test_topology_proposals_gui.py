@@ -7,6 +7,7 @@ Covers tests 10 + 12 from design doc § 8:
 Headless Qt (offscreen) — mirrors the pattern used across the
 existing Qt pin-test files in this repo.
 """
+
 from __future__ import annotations
 
 import os
@@ -27,7 +28,8 @@ pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from src.gui.market_inspector_topologies import (  # noqa: E402
-    MarketInspectorTopologies, TopologyPreviewDialog,
+    MarketInspectorTopologies,
+    TopologyPreviewDialog,
     DISMISS_TTL_SECONDS,
 )
 
@@ -47,24 +49,43 @@ def _make_proposal(pid: str = "test:AAA-BBB"):
         "score": 82.0,
         "assets": ["AAA", "BBB"],
         "bots": [
-            {"asset": "AAA", "quote": "USD", "symbol": "AAA/USD",
-             "existing_bot_id": "", "role": "peer_a",
-             "suggested_target_usd": 25.0},
-            {"asset": "BBB", "quote": "USD", "symbol": "BBB/USD",
-             "existing_bot_id": "bot-42", "role": "peer_b",
-             "suggested_target_usd": 100.0},
+            {
+                "asset": "AAA",
+                "quote": "USD",
+                "symbol": "AAA/USD",
+                "existing_bot_id": "",
+                "role": "peer_a",
+                "suggested_target_usd": 25.0,
+            },
+            {
+                "asset": "BBB",
+                "quote": "USD",
+                "symbol": "BBB/USD",
+                "existing_bot_id": "bot-42",
+                "role": "peer_b",
+                "suggested_target_usd": 100.0,
+            },
         ],
         "wires": [
-            {"source_asset": "AAA", "target_asset": "BBB",
-             "pct": 25.0, "rationale": "anti-corr"},
-            {"source_asset": "BBB", "target_asset": "AAA",
-             "pct": 25.0, "rationale": "anti-corr"},
+            {
+                "source_asset": "AAA",
+                "target_asset": "BBB",
+                "pct": 25.0,
+                "rationale": "anti-corr",
+            },
+            {
+                "source_asset": "BBB",
+                "target_asset": "AAA",
+                "pct": 25.0,
+                "rationale": "anti-corr",
+            },
         ],
         "adopt_notes": ["Bidirectional 25% wires."],
     }
 
 
 # ---- Test 10: Adopt blocked when force_adopt_disabled -------------------- #
+
 
 def test_dialog_blocks_adopt_when_disabled(qapp):
     p = _make_proposal()
@@ -95,6 +116,7 @@ def test_dialog_adopt_click_emits_proposal(qapp):
 
 
 # ---- Test 12: dismiss suppresses for 24 h ------------------------------- #
+
 
 def test_dismiss_suppresses_proposal(qapp):
     w = MarketInspectorTopologies()
@@ -165,11 +187,14 @@ def _bind_adopt_helpers(fake):
 
     import src.gui.main_window as mw
 
-    for name in ("_wire_manager", "_wire_is_registered",
-                 "_topology_wire_collisions", "_snapshot_wires_for_adopt",
-                 "_report_adopt_orphans"):
-        setattr(fake, name,
-                MethodType(mw.MainWindow.__dict__[name], fake))
+    for name in (
+        "_wire_manager",
+        "_wire_is_registered",
+        "_topology_wire_collisions",
+        "_snapshot_wires_for_adopt",
+        "_report_adopt_orphans",
+    ):
+        setattr(fake, name, MethodType(mw.MainWindow.__dict__[name], fake))
 
 
 def test_adopt_button_enabled_by_default_v3_23_69(qapp):
@@ -181,8 +206,7 @@ def test_adopt_button_enabled_by_default_v3_23_69(qapp):
     dlg.deleteLater()
 
 
-def test_orchestrator_emits_wire_created_per_wire(
-        qapp, monkeypatch):
+def test_orchestrator_emits_wire_created_per_wire(qapp, monkeypatch):
     """v3.23.69 pin test 11 — on adopt confirm, the orchestrator
     emits ``wire.created`` on the bus once per proposal wire, with
     the resolved source/target bot_ids and the proposal pct.
@@ -196,14 +220,13 @@ def test_orchestrator_emits_wire_created_per_wire(
 
     # Load the real orchestrator function from the module.
     import src.gui.main_window as mw
-    orchestrator = mw.MainWindow.__dict__[
-        "_adopt_topology_proposal"]
+
+    orchestrator = mw.MainWindow.__dict__["_adopt_topology_proposal"]
 
     # Fake QMessageBox.question so the confirm prompt returns "Ok".
     from PySide6.QtWidgets import QMessageBox
-    monkeypatch.setattr(
-        QMessageBox, "question",
-        lambda *a, **kw: QMessageBox.Ok)
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **kw: QMessageBox.Ok)
 
     emissions = []
 
@@ -214,12 +237,18 @@ def test_orchestrator_emits_wire_created_per_wire(
     class FakeBotMgr:
         def list_bots(self):
             return [
-                {"bot_id": "bot-A", "symbol": "AAA/USD",
-                 "target_balance": 25.0,
-                 "stats": {"position_value": 0.0}},
-                {"bot_id": "bot-B", "symbol": "BBB/USD",
-                 "target_balance": 25.0,
-                 "stats": {"position_value": 0.0}},
+                {
+                    "bot_id": "bot-A",
+                    "symbol": "AAA/USD",
+                    "target_balance": 25.0,
+                    "stats": {"position_value": 0.0},
+                },
+                {
+                    "bot_id": "bot-B",
+                    "symbol": "BBB/USD",
+                    "target_balance": 25.0,
+                    "stats": {"position_value": 0.0},
+                },
             ]
 
     fake = SimpleNamespace()
@@ -227,8 +256,7 @@ def test_orchestrator_emits_wire_created_per_wire(
     fake._bus = FakeBus()
     fake._status_log = SimpleNamespace(log=lambda *a, **kw: None)
     fake._spool = SimpleNamespace(notify=lambda *a, **kw: None)
-    fake._create_bot = MethodType(
-        lambda self, **kw: None, fake)
+    fake._create_bot = MethodType(lambda self, **kw: None, fake)
     _bind_adopt_helpers(fake)
 
     proposal = {
@@ -239,18 +267,36 @@ def test_orchestrator_emits_wire_created_per_wire(
         "score": 90.0,
         "assets": ["AAA", "BBB"],
         "bots": [
-            {"asset": "AAA", "quote": "USD", "symbol": "AAA/USD",
-             "existing_bot_id": "bot-A", "role": "peer_a",
-             "suggested_target_usd": 25.0},
-            {"asset": "BBB", "quote": "USD", "symbol": "BBB/USD",
-             "existing_bot_id": "bot-B", "role": "peer_b",
-             "suggested_target_usd": 25.0},
+            {
+                "asset": "AAA",
+                "quote": "USD",
+                "symbol": "AAA/USD",
+                "existing_bot_id": "bot-A",
+                "role": "peer_a",
+                "suggested_target_usd": 25.0,
+            },
+            {
+                "asset": "BBB",
+                "quote": "USD",
+                "symbol": "BBB/USD",
+                "existing_bot_id": "bot-B",
+                "role": "peer_b",
+                "suggested_target_usd": 25.0,
+            },
         ],
         "wires": [
-            {"source_asset": "AAA", "target_asset": "BBB",
-             "pct": 25.0, "rationale": "x"},
-            {"source_asset": "BBB", "target_asset": "AAA",
-             "pct": 25.0, "rationale": "y"},
+            {
+                "source_asset": "AAA",
+                "target_asset": "BBB",
+                "pct": 25.0,
+                "rationale": "x",
+            },
+            {
+                "source_asset": "BBB",
+                "target_asset": "AAA",
+                "pct": 25.0,
+                "rationale": "y",
+            },
         ],
         "adopt_notes": [],
     }
@@ -269,13 +315,12 @@ def test_orchestrator_aborts_on_confirm_cancel(qapp, monkeypatch):
     _create_bot called."""
     from types import MethodType, SimpleNamespace
     import src.gui.main_window as mw
-    orchestrator = mw.MainWindow.__dict__[
-        "_adopt_topology_proposal"]
+
+    orchestrator = mw.MainWindow.__dict__["_adopt_topology_proposal"]
 
     from PySide6.QtWidgets import QMessageBox
-    monkeypatch.setattr(
-        QMessageBox, "question",
-        lambda *a, **kw: QMessageBox.Cancel)
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **kw: QMessageBox.Cancel)
 
     emissions = []
     create_calls = []
@@ -308,9 +353,14 @@ def test_orchestrator_aborts_on_confirm_cancel(qapp, monkeypatch):
         "score": 90.0,
         "assets": ["AAA"],
         "bots": [
-            {"asset": "AAA", "quote": "USD", "symbol": "AAA/USD",
-             "existing_bot_id": "", "role": "peer_a",
-             "suggested_target_usd": 25.0},
+            {
+                "asset": "AAA",
+                "quote": "USD",
+                "symbol": "AAA/USD",
+                "existing_bot_id": "",
+                "role": "peer_a",
+                "suggested_target_usd": 25.0,
+            },
         ],
         "wires": [],
         "adopt_notes": [],
@@ -325,6 +375,7 @@ def test_adopt_signal_reaches_pane_handler(qapp):
     adoptRequested signal (so the pane can forward to the orchestrator
     wired via main_window.set_adopt_handler)."""
     from src.gui.market_inspector import MarketInspectorTab
+
     tab = MarketInspectorTab()
     captured = []
     tab.set_adopt_handler(lambda payload: captured.append(payload))
@@ -334,8 +385,7 @@ def test_adopt_signal_reaches_pane_handler(qapp):
     # Mirror the wiring done in MarketInspectorTopologies._on_preview:
     # the preview signal on the dialog is forwarded to the pane's
     # adoptRequested signal on Adopt click.
-    dlg.adoptClicked.connect(
-        tab._topologies_pane.adoptRequested.emit)
+    dlg.adoptClicked.connect(tab._topologies_pane.adoptRequested.emit)
     dlg._on_adopt()
     assert len(captured) == 1
     assert captured[0]["id"] == "test:ADOPT"

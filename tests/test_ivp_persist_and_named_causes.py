@@ -34,6 +34,7 @@ wrong one. The operator read "~60s", waited, and switched bots for minutes.
 
 WHAT A FAILURE OF EACH TEST MEANS is stated in that test's own docstring.
 """
+
 from __future__ import annotations
 
 import json
@@ -65,16 +66,16 @@ try:
     )
     from src.gui.main_window import MainWindow
     from src.trading.scrumming_bot import ScrummingBot
-except ImportError as _import_exc:                    # pragma: no cover
-    pytest.skip(f"PySide6 stack unavailable: {_import_exc}",
-                allow_module_level=True)
+except ImportError as _import_exc:  # pragma: no cover
+    pytest.skip(f"PySide6 stack unavailable: {_import_exc}", allow_module_level=True)
 
 # The exact sentence main_window.py printed for every running bot before
 # Unit 2. It is the negative fixture: the detectors below must call it a
 # conflation, or their verdicts on the new sentences mean nothing.
 OLD_CONFLATED_SENTENCE = (
     "running — no TA read yet (first read can take ~60s; a bot parked "
-    "at target evaluates no TA)")
+    "at target evaluates no TA)"
+)
 
 # Phrases that betray which cause a sentence is talking about. A sentence
 # may carry markers from its OWN cause and from no other.
@@ -90,13 +91,11 @@ CAUSE_MARKERS: dict[str, tuple] = {
 DISJUNCTION_TOKENS = (" or ", "either", ";")
 
 FIVE_CAUSES: tuple = (
-    ("parked_at_target", {"position": 250.27, "target": 250.17,
-                          "delta": 0.10}),
+    ("parked_at_target", {"position": 250.27, "target": 250.17, "delta": 0.10}),
     ("cold_start", {}),
     ("not_running", {"state": "idle"}),
     ("no_selection", {}),
-    ("too_few_candles", {"candles": 12, "symbol": "BTC/USD",
-                         "timeframe": "1h"}),
+    ("too_few_candles", {"candles": 12, "symbol": "BTC/USD", "timeframe": "1h"}),
 )
 
 
@@ -174,14 +173,25 @@ def real_reading() -> dict:
     """
     return {
         "1h": {
-            "bullish": 2, "bearish": 5, "neutral": 5,
-            "net_score": -1.35, "confidence": 0.13,
+            "bullish": 2,
+            "bearish": 5,
+            "neutral": 5,
+            "net_score": -1.35,
+            "confidence": 0.13,
             "direction": "BEARISH",
             "signals": [
-                {"indicator": "bollinger", "direction": "BEARISH",
-                 "confidence": 0.53, "details": {"bb_pos": 0.53}},
-                {"indicator": "macd", "direction": "NEUTRAL",
-                 "confidence": 0.0, "details": {}},
+                {
+                    "indicator": "bollinger",
+                    "direction": "BEARISH",
+                    "confidence": 0.53,
+                    "details": {"bb_pos": 0.53},
+                },
+                {
+                    "indicator": "macd",
+                    "direction": "NEUTRAL",
+                    "confidence": 0.0,
+                    "details": {},
+                },
             ],
             "locks": [],
         }
@@ -195,6 +205,7 @@ def widget_is_in_a_layout(root, target) -> bool:
     built and never added to a layout. This walks the constructed
     object instead.
     """
+
     def walk(layout) -> bool:
         if layout is None:
             return False
@@ -215,8 +226,7 @@ def widget_is_in_a_layout(root, target) -> bool:
 class _Config:
     """The handful of BotConfig fields the empty-state decision reads."""
 
-    def __init__(self, symbol="BTC/USD", exchange_id="coinbase",
-                 ta_timeframe="1h"):
+    def __init__(self, symbol="BTC/USD", exchange_id="coinbase", ta_timeframe="1h"):
         self.symbol = symbol
         self.exchange_id = exchange_id
         self.ta_timeframe = ta_timeframe
@@ -243,8 +253,15 @@ class _Bot:
 
     position_value_usd = ScrummingBot.position_value_usd
 
-    def __init__(self, state="running", holdings=0.0, price=0.0,
-                 target=0.0, parked_ticks=0, last_error=""):
+    def __init__(
+        self,
+        state="running",
+        holdings=0.0,
+        price=0.0,
+        target=0.0,
+        parked_ticks=0,
+        last_error="",
+    ):
         self.config = _Config()
         self.state = _State(state)
         self.stats = _Stats(current_price=price, last_error=last_error)
@@ -276,8 +293,9 @@ class TestTheInstrumentWorks:
         every Unit 1 test that follows would pass against a panel that
         simply never shows a reading -- proving nothing."""
         payload = real_reading()
-        written = save_ta_snapshot("bot-round-trip", "BTC/USD", payload,
-                                   state_dir=state_dir, taken_at=1000.0)
+        written = save_ta_snapshot(
+            "bot-round-trip", "BTC/USD", payload, state_dir=state_dir, taken_at=1000.0
+        )
         assert written is not None and written.is_file()
         loaded = load_ta_snapshot("bot-round-trip", state_dir=state_dir)
         assert loaded is not None
@@ -298,7 +316,8 @@ class TestTheInstrumentWorks:
         The sentence the panel actually shipped names TWO causes and
         joins them with a semicolon; both detectors must say so."""
         assert foreign_markers("cold_start", OLD_CONFLATED_SENTENCE) == [
-            "parked at target"]
+            "parked at target"
+        ]
         assert disjunctions_in(OLD_CONFLATED_SENTENCE) == [";"]
 
     def test_format_age_is_not_a_constant(self):
@@ -313,16 +332,24 @@ class TestUnit1Persists:
     """A reading already paid for is not thrown away."""
 
     def test_a_stored_reading_is_rendered_when_there_is_no_live_one(
-            self, panel, state_dir):
+        self, panel, state_dir
+    ):
         """FAILURE MEANS: a parked bot still shows a blank panel even
         though its last vote is on disk -- the operator's 2026-08-13
         complaint would be unfixed."""
-        save_ta_snapshot("bot-parked", "BTC/USD", real_reading(),
-                         state_dir=state_dir, taken_at=time.time() - 250)
+        save_ta_snapshot(
+            "bot-parked",
+            "BTC/USD",
+            real_reading(),
+            state_dir=state_dir,
+            taken_at=time.time() - 250,
+        )
         panel.show_no_data(
-            bot_id="bot-parked", symbol="BTC/USD",
+            bot_id="bot-parked",
+            symbol="BTC/USD",
             cause="parked_at_target",
-            detail={"position": 250.27, "target": 250.17, "delta": 0.10})
+            detail={"position": 250.27, "target": 250.17, "delta": 0.10},
+        )
         assert panel._table_a.rowCount() == 1
         assert sorted(panel._data) == ["1h"]
         assert panel._showing_stored is True
@@ -330,10 +357,14 @@ class TestUnit1Persists:
     def test_the_rendered_reading_carries_its_age(self, panel, state_dir):
         """FAILURE MEANS: an old vote is presented as the current one,
         which the operator has said is worse than a blank panel."""
-        save_ta_snapshot("bot-aged", "BTC/USD", real_reading(),
-                         state_dir=state_dir, taken_at=time.time() - 250)
-        panel.show_no_data(bot_id="bot-aged", symbol="BTC/USD",
-                           cause="cold_start")
+        save_ta_snapshot(
+            "bot-aged",
+            "BTC/USD",
+            real_reading(),
+            state_dir=state_dir,
+            taken_at=time.time() - 250,
+        )
+        panel.show_no_data(bot_id="bot-aged", symbol="BTC/USD", cause="cold_start")
         banner = panel._staleness_label.text()
         assert panel._staleness_label.isVisible() or not panel.isVisible()
         assert panel._staleness_label.isHidden() is False
@@ -348,20 +379,17 @@ class TestUnit1Persists:
         source scan cannot tell the two apart. This walks the tree."""
         assert widget_is_in_a_layout(panel, panel._staleness_label)
 
-    def test_a_bot_that_never_computed_one_renders_an_empty_state(
-            self, panel):
+    def test_a_bot_that_never_computed_one_renders_an_empty_state(self, panel):
         """FAILURE MEANS: the panel fabricates, or shows another bot's
         reading, for a bot that has produced nothing."""
-        panel.show_no_data(bot_id="bot-virgin", symbol="KAT/USD",
-                           cause="cold_start")
+        panel.show_no_data(bot_id="bot-virgin", symbol="KAT/USD", cause="cold_start")
         assert panel._data == {}
         assert panel._table_a.rowCount() == 0
         assert panel._showing_stored is False
         assert panel._staleness_label.isHidden() is True
         assert panel._summary_label.text().startswith("No TA data")
 
-    def test_a_restart_does_not_blank_a_bot_that_had_a_reading(
-            self, qapp, state_dir):
+    def test_a_restart_does_not_blank_a_bot_that_had_a_reading(self, qapp, state_dir):
         """THE HEADLINE PROPERTY.
 
         FAILURE MEANS: a restart still discards every vote in the fleet,
@@ -377,8 +405,9 @@ class TestUnit1Persists:
         after_restart = IndicatorVotingPanel()
         after_restart.set_ta_state_dir(state_dir)
         assert after_restart._data == {}, "fresh panel started with data"
-        after_restart.show_no_data(bot_id="bot-survivor", symbol="BTC/USD",
-                                   cause="cold_start")
+        after_restart.show_no_data(
+            bot_id="bot-survivor", symbol="BTC/USD", cause="cold_start"
+        )
         assert sorted(after_restart._data) == ["1h"]
         assert after_restart._showing_stored is True
         assert "NOT CURRENT" in after_restart._staleness_label.text()
@@ -388,10 +417,14 @@ class TestUnit1Persists:
         """FAILURE MEANS: the 'not current' banner survives over a table
         that has since been refilled with live data -- the panel would
         then be lying in the opposite direction."""
-        save_ta_snapshot("bot-refed", "BTC/USD", real_reading(),
-                         state_dir=state_dir, taken_at=time.time() - 600)
-        panel.show_no_data(bot_id="bot-refed", symbol="BTC/USD",
-                           cause="cold_start")
+        save_ta_snapshot(
+            "bot-refed",
+            "BTC/USD",
+            real_reading(),
+            state_dir=state_dir,
+            taken_at=time.time() - 600,
+        )
+        panel.show_no_data(bot_id="bot-refed", symbol="BTC/USD", cause="cold_start")
         assert panel._staleness_label.isHidden() is False
         panel.update_data(real_reading(), "BTC/USD")
         assert panel._staleness_label.isHidden() is True
@@ -404,9 +437,9 @@ class TestUnit1Persists:
         thread every coroutine in this application already shares."""
         payload = real_reading()
         panel.remember_ta("bot-dedupe", "BTC/USD", payload)
-        target = (ta_snapshot_dir(state_dir)
-                  / next(iter(p.name for p in
-                              ta_snapshot_dir(state_dir).glob("*.json"))))
+        target = ta_snapshot_dir(state_dir) / next(
+            iter(p.name for p in ta_snapshot_dir(state_dir).glob("*.json"))
+        )
         first_write = target.stat().st_mtime_ns
         for _ in range(20):
             panel.remember_ta("bot-dedupe", "BTC/USD", payload)
@@ -426,17 +459,14 @@ class TestUnit1Persists:
         assert stored is not None
         assert stored["timeframes"]["1h"]["net_score"] == pytest.approx(2.5)
 
-    def test_a_corrupt_snapshot_is_treated_as_absent(self, panel,
-                                                     state_dir):
+    def test_a_corrupt_snapshot_is_treated_as_absent(self, panel, state_dir):
         """FAILURE MEANS: a truncated file crashes the dashboard tick, or
         worse, renders as a reading with no establishable age."""
-        save_ta_snapshot("bot-corrupt", "BTC/USD", real_reading(),
-                         state_dir=state_dir)
+        save_ta_snapshot("bot-corrupt", "BTC/USD", real_reading(), state_dir=state_dir)
         written = next(iter(ta_snapshot_dir(state_dir).glob("*.json")))
         written.write_text("{not json", encoding="utf-8")
         panel._ta_snapshot_cache.clear()
-        panel.show_no_data(bot_id="bot-corrupt", symbol="BTC/USD",
-                           cause="cold_start")
+        panel.show_no_data(bot_id="bot-corrupt", symbol="BTC/USD", cause="cold_start")
         assert panel._data == {}
         assert panel._summary_label.text().startswith("No TA data")
 
@@ -446,8 +476,7 @@ class TestUnit1Persists:
         is back to presenting an old vote as current."""
         directory = ta_snapshot_dir(state_dir)
         directory.mkdir(parents=True, exist_ok=True)
-        save_ta_snapshot("bot-undated", "BTC/USD", real_reading(),
-                         state_dir=state_dir)
+        save_ta_snapshot("bot-undated", "BTC/USD", real_reading(), state_dir=state_dir)
         path = next(iter(directory.glob("*.json")))
         payload = json.loads(path.read_text(encoding="utf-8"))
         payload["taken_at"] = 0
@@ -457,12 +486,12 @@ class TestUnit1Persists:
     def test_a_bot_id_cannot_escape_the_snapshot_directory(self, state_dir):
         """FAILURE MEANS: a bot_id carrying path separators writes
         outside the snapshot directory."""
-        written = save_ta_snapshot("../../evil", "BTC/USD", real_reading(),
-                                   state_dir=state_dir)
+        written = save_ta_snapshot(
+            "../../evil", "BTC/USD", real_reading(), state_dir=state_dir
+        )
         assert written is not None
         assert written.parent == ta_snapshot_dir(state_dir)
-        assert load_ta_snapshot("../../evil",
-                                state_dir=state_dir) is not None
+        assert load_ta_snapshot("../../evil", state_dir=state_dir) is not None
 
     def test_the_snapshot_directory_is_bounded(self, state_dir):
         """FAILURE MEANS: a directory that grows without limit.
@@ -476,13 +505,19 @@ class TestUnit1Persists:
 
         payload = real_reading()
         for index in range(_TA_SNAPSHOT_KEEP + 25):
-            save_ta_snapshot(f"bot-bulk-{index:05d}", "BTC/USD", payload,
-                             state_dir=state_dir, taken_at=1000.0 + index)
+            save_ta_snapshot(
+                f"bot-bulk-{index:05d}",
+                "BTC/USD",
+                payload,
+                state_dir=state_dir,
+                taken_at=1000.0 + index,
+            )
         remaining = list(ta_snapshot_dir(state_dir).glob("*.json"))
         assert len(remaining) <= _TA_SNAPSHOT_KEEP, len(remaining)
         assert len(remaining) >= _TA_SNAPSHOT_KEEP - 1, (
             "pruning removed far more than the bound; a live bot's "
-            "reading would be thrown away")
+            "reading would be thrown away"
+        )
 
     def test_pruning_keeps_the_newest(self, state_dir):
         """PAIRED CONTROL for the bound above.
@@ -494,8 +529,13 @@ class TestUnit1Persists:
 
         payload = real_reading()
         for index in range(_TA_SNAPSHOT_KEEP + 10):
-            save_ta_snapshot(f"bot-order-{index:05d}", "BTC/USD", payload,
-                             state_dir=state_dir, taken_at=1000.0 + index)
+            save_ta_snapshot(
+                f"bot-order-{index:05d}",
+                "BTC/USD",
+                payload,
+                state_dir=state_dir,
+                taken_at=1000.0 + index,
+            )
         newest = f"bot-order-{_TA_SNAPSHOT_KEEP + 9:05d}"
         assert load_ta_snapshot(newest, state_dir=state_dir) is not None
 
@@ -507,11 +547,14 @@ class TestUnit1Persists:
         blocked = tmp_path / "blocked"
         blocked.write_text("not a directory", encoding="utf-8")
         panel.set_ta_state_dir(blocked)
-        assert save_ta_snapshot("bot-blocked", "BTC/USD", real_reading(),
-                                state_dir=blocked) is None
+        assert (
+            save_ta_snapshot(
+                "bot-blocked", "BTC/USD", real_reading(), state_dir=blocked
+            )
+            is None
+        )
         panel.remember_ta("bot-blocked", "BTC/USD", real_reading())
-        panel.show_no_data(bot_id="bot-blocked", symbol="BTC/USD",
-                           cause="cold_start")
+        panel.show_no_data(bot_id="bot-blocked", symbol="BTC/USD", cause="cold_start")
         assert panel._summary_label.text().startswith("No TA data")
 
 
@@ -524,8 +567,9 @@ class TestUnit2Names:
         switching bots for minutes."""
         messages = []
         for cause, detail in FIVE_CAUSES:
-            panel.show_no_data(bot_id="bot-probe", symbol="BTC/USD",
-                               cause=cause, detail=detail)
+            panel.show_no_data(
+                bot_id="bot-probe", symbol="BTC/USD", cause=cause, detail=detail
+            )
             messages.append(panel._no_data_message)
         assert len(set(messages)) == 5, messages
 
@@ -534,8 +578,9 @@ class TestUnit2Names:
 
         Read off the constructed widget, not off the source."""
         for cause, detail in FIVE_CAUSES:
-            panel.show_no_data(bot_id="bot-probe", symbol="BTC/USD",
-                               cause=cause, detail=detail)
+            panel.show_no_data(
+                bot_id="bot-probe", symbol="BTC/USD", cause=cause, detail=detail
+            )
             assert panel._no_data_message in panel._summary_label.text()
             assert widget_is_in_a_layout(panel, panel._summary_label)
 
@@ -544,18 +589,19 @@ class TestUnit2Names:
         list to work through. Proven non-blind by
         test_the_conflation_detector_flags_the_old_sentence."""
         for cause, detail in FIVE_CAUSES:
-            panel.show_no_data(bot_id="bot-probe", symbol="BTC/USD",
-                               cause=cause, detail=detail)
+            panel.show_no_data(
+                bot_id="bot-probe", symbol="BTC/USD", cause=cause, detail=detail
+            )
             intruders = foreign_markers(cause, panel._no_data_message)
-            assert intruders == [], (cause, intruders,
-                                    panel._no_data_message)
+            assert intruders == [], (cause, intruders, panel._no_data_message)
 
     def test_no_message_contains_a_disjunction(self, panel):
         """FAILURE MEANS: the sentence joins alternatives instead of
         stating one. Proven non-blind by the same control."""
         for cause, detail in FIVE_CAUSES:
-            panel.show_no_data(bot_id="bot-probe", symbol="BTC/USD",
-                               cause=cause, detail=detail)
+            panel.show_no_data(
+                bot_id="bot-probe", symbol="BTC/USD", cause=cause, detail=detail
+            )
             found = disjunctions_in(panel._no_data_message)
             assert found == [], (cause, found, panel._no_data_message)
 
@@ -563,20 +609,25 @@ class TestUnit2Names:
         """FAILURE MEANS: five distinct sentences that are distinct for
         some reason other than naming the right cause."""
         for cause, detail in FIVE_CAUSES:
-            panel.show_no_data(bot_id="bot-probe", symbol="BTC/USD",
-                               cause=cause, detail=detail)
+            panel.show_no_data(
+                bot_id="bot-probe", symbol="BTC/USD", cause=cause, detail=detail
+            )
             markers = CAUSE_MARKERS[cause]
             message = panel._no_data_message.lower()
             assert any(m.lower() in message for m in markers), (
-                cause, panel._no_data_message)
+                cause,
+                panel._no_data_message,
+            )
 
     def test_the_parked_message_carries_position_and_target(self, panel):
         """FAILURE MEANS: the operator is told the bot is parked without
         the two figures that let him check whether it should be."""
         panel.show_no_data(
-            bot_id="bot-parked", symbol="BTC/USD",
+            bot_id="bot-parked",
+            symbol="BTC/USD",
             cause="parked_at_target",
-            detail={"position": 250.27, "target": 250.17, "delta": 0.10})
+            detail={"position": 250.27, "target": 250.17, "delta": 0.10},
+        )
         message = panel._no_data_message
         assert "250.27" in message
         assert "250.17" in message
@@ -597,8 +648,9 @@ class TestMainWindowPicksTheCause:
         not reaching the surface, and the panel falls back to guessing.
         `_at_target_counter` is incremented on the parked return in
         ScrummingBot.tick and zeroed as soon as the tick gets past it."""
-        bot = _Bot(state="running", holdings=2.0, price=125.135,
-                   target=250.17, parked_ticks=7)
+        bot = _Bot(
+            state="running", holdings=2.0, price=125.135, target=250.17, parked_ticks=7
+        )
         cause, detail = _WindowShell()._ivp_empty_state_cause(bot, "bid-1")
         assert cause == "parked_at_target"
         assert detail["position"] == pytest.approx(250.27)
@@ -642,21 +694,21 @@ class TestMainWindowPicksTheCause:
         FAILURE MEANS: a bot blocked by the 30-candle gate at
         scrumming_bot.py:7262 and :7510 is reported as a cold start, and
         the operator waits for a read that cannot happen."""
-        from src.exchange.data_pool import (
-            CacheEntry, _candle_key, get_data_pool)
+        from src.exchange.data_pool import CacheEntry, _candle_key, get_data_pool
 
         pool = get_data_pool()
         key = _candle_key("coinbase", "BTC/USD", "1h")
         previous = pool._candles.get(key)
         pool._candles[key] = CacheEntry(
-            exchange_id="coinbase", symbol="BTC/USD", timeframe="1h",
+            exchange_id="coinbase",
+            symbol="BTC/USD",
+            timeframe="1h",
             candles=[[0, 1.0, 1.0, 1.0, 1.0, 1.0]] * 12,
-            fetch_time=time.time())
+            fetch_time=time.time(),
+        )
         try:
-            bot = _Bot(state="running", holdings=1.0, price=100.0,
-                       target=50.0)
-            cause, detail = _WindowShell()._ivp_empty_state_cause(
-                bot, "bid-6")
+            bot = _Bot(state="running", holdings=1.0, price=100.0, target=50.0)
+            cause, detail = _WindowShell()._ivp_empty_state_cause(bot, "bid-6")
         finally:
             if previous is None:
                 pool._candles.pop(key, None)
@@ -672,19 +724,20 @@ class TestMainWindowPicksTheCause:
 
         FAILURE MEANS: the candle check reports 'too few' regardless of
         what the cache holds, so its pass proves nothing."""
-        from src.exchange.data_pool import (
-            CacheEntry, _candle_key, get_data_pool)
+        from src.exchange.data_pool import CacheEntry, _candle_key, get_data_pool
 
         pool = get_data_pool()
         key = _candle_key("coinbase", "BTC/USD", "1h")
         previous = pool._candles.get(key)
         pool._candles[key] = CacheEntry(
-            exchange_id="coinbase", symbol="BTC/USD", timeframe="1h",
+            exchange_id="coinbase",
+            symbol="BTC/USD",
+            timeframe="1h",
             candles=[[0, 1.0, 1.0, 1.0, 1.0, 1.0]] * 100,
-            fetch_time=time.time())
+            fetch_time=time.time(),
+        )
         try:
-            bot = _Bot(state="running", holdings=1.0, price=100.0,
-                       target=50.0)
+            bot = _Bot(state="running", holdings=1.0, price=100.0, target=50.0)
             cause, _ = _WindowShell()._ivp_empty_state_cause(bot, "bid-7")
         finally:
             if previous is None:
@@ -696,8 +749,15 @@ class TestMainWindowPicksTheCause:
     def test_the_five_causes_the_window_can_pick_all_have_wording(self):
         """FAILURE MEANS: MainWindow emits a token the panel cannot
         render, and the operator gets 'unrecognised cause'."""
-        for token in ("bot_missing", "not_running", "bot_error",
-                      "parked_at_target", "too_few_candles",
-                      "cold_start", "no_selection", "new_bot"):
+        for token in (
+            "bot_missing",
+            "not_running",
+            "bot_error",
+            "parked_at_target",
+            "too_few_candles",
+            "cold_start",
+            "no_selection",
+            "new_bot",
+        ):
             text = describe_no_data_cause(token, {"state": "idle"})
             assert "unrecognised cause" not in text, token

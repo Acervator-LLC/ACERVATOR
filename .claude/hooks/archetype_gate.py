@@ -192,6 +192,7 @@ This gate is wrong if:
   (f) A trailing space, a MultiEdit, or a directory name makes a write
       skip measurement.
 """
+
 from __future__ import annotations
 
 import ast
@@ -310,12 +311,25 @@ def _is_forbidden(path: Path) -> bool:
 _PY_SUFFIXES = (".py", ".pyw", ".pyi")
 _MD_SUFFIXES = (".md", ".markdown")
 
-_QT_BASES = frozenset({
-    "QWidget", "QDialog", "QMainWindow", "QFrame",
-    "QPushButton", "QLineEdit", "QTextEdit", "QLabel",
-    "QCheckBox", "QRadioButton", "QComboBox", "QGroupBox",
-    "QScrollArea", "QDockWidget", "QTabWidget",
-})
+_QT_BASES = frozenset(
+    {
+        "QWidget",
+        "QDialog",
+        "QMainWindow",
+        "QFrame",
+        "QPushButton",
+        "QLineEdit",
+        "QTextEdit",
+        "QLabel",
+        "QCheckBox",
+        "QRadioButton",
+        "QComboBox",
+        "QGroupBox",
+        "QScrollArea",
+        "QDockWidget",
+        "QTabWidget",
+    }
+)
 
 
 def _read_text(path: Path) -> str:
@@ -352,9 +366,26 @@ def _src_has_qwidget_class(source: str, path: Path) -> bool:
 # Names that mark a file as carrying technical-analysis maths or a
 # chart. Used to add the TA archetype on top of the others.
 _TA_MARKERS = (
-    "indicator", "rsi", "macd", "bollinger", "adx", "vwap", "candle",
-    "ohlc", "vortex", "ichimoku", "stochastic", "supertrend", "zscore",
-    "atr", "ema", "sma", "wilder", "slingshot", "voting", "chart",
+    "indicator",
+    "rsi",
+    "macd",
+    "bollinger",
+    "adx",
+    "vwap",
+    "candle",
+    "ohlc",
+    "vortex",
+    "ichimoku",
+    "stochastic",
+    "supertrend",
+    "zscore",
+    "atr",
+    "ema",
+    "sma",
+    "wilder",
+    "slingshot",
+    "voting",
+    "chart",
 )
 
 
@@ -433,7 +464,8 @@ def _module_union(path: Path, pending: str) -> list:
 _SHADOW_MARKER = "_acv_shadow"
 _SHADOW_NONCE_CHARS = 12
 _SHADOW_RE = re.compile(
-    re.escape(_SHADOW_MARKER) + r"_[0-9a-f]{" + str(_SHADOW_NONCE_CHARS) + r"}")
+    re.escape(_SHADOW_MARKER) + r"_[0-9a-f]{" + str(_SHADOW_NONCE_CHARS) + r"}"
+)
 
 LEDGER_PATH = REPO / "_logs" / "archetype_gate_staging.json"
 
@@ -643,13 +675,17 @@ def _run_archetype(
     except subprocess.TimeoutExpired:
         return {"_error": f"archetype {module} timed out after {TIMEOUT_S}s"}
     except (OSError, ValueError) as e:
-        return {"_error": (
-            f"archetype {module} failed to start: {type(e).__name__}: {e}")}
+        return {
+            "_error": (f"archetype {module} failed to start: {type(e).__name__}: {e}")
+        }
     text = proc.stdout
     if not text.strip():
-        return {"_error": (
-            f"archetype {module} produced no output; "
-            f"stderr: {proc.stderr[:200]}")}
+        return {
+            "_error": (
+                f"archetype {module} produced no output; "
+                f"stderr: {proc.stderr[:200]}"
+            )
+        }
     if rewrite_to is not None:
         text = _swap_paths(text, target, rewrite_to)
     try:
@@ -736,7 +772,8 @@ def _evaluate_content(
     try:
         for module in modules:
             reports[module] = _run_archetype(
-                module, staged, rewrite_to=real, deadline=deadline)
+                module, staged, rewrite_to=real, deadline=deadline
+            )
     finally:
         _cleanup_staging(staged, created, record)
     return reports
@@ -782,7 +819,8 @@ def _high_fingerprints(reports: dict) -> list:
     out: list = []
     for report in reports.values():
         out.extend(
-            _fingerprint(f) for f in report.get("findings", [])
+            _fingerprint(f)
+            for f in report.get("findings", [])
             if isinstance(f, dict) and f.get("severity") in _SEVERE
         )
     return sorted(out)
@@ -837,8 +875,8 @@ def _summarize(report: dict, module: str, target: Path) -> str:
     verdict_line = "[archetype-gate] " + (
         f"OK - {module} on {target.name}: passed=True "
         f"({total} findings, no high/critical)"
-        if passed else
-        f"FAIL - {module} on {target.name}: passed=False ({total} findings)"
+        if passed
+        else f"FAIL - {module} on {target.name}: passed=False ({total} findings)"
     )
     lines = [verdict_line]
     if by_sev:
@@ -853,10 +891,10 @@ def _summarize(report: dict, module: str, target: Path) -> str:
         lines.append(f"  tools errored: {', '.join(errored)}")
     if not passed:
         lines.append(
-            "  fix or explicitly acknowledge before self-reporting the task done.")
+            "  fix or explicitly acknowledge before self-reporting the task done."
+        )
         findings = report.get("findings", [])
-        highs = [f for f in findings
-                 if f.get("severity") in _SEVERE][:_DENY_LIST_CAP]
+        highs = [f for f in findings if f.get("severity") in _SEVERE][:_DENY_LIST_CAP]
         if highs:
             lines.append("  top findings:")
             lines.extend(
@@ -877,15 +915,21 @@ def _rel(path: Path) -> str:
 
 
 def _deny_reason(
-    path: Path, new: list, counts: tuple, module: str, missing: list,
+    path: Path,
+    new: list,
+    counts: tuple,
+    module: str,
+    missing: list,
 ) -> str:
     """Build the deny text. `counts` is (before_high, after_high)."""
     rel = _rel(path)
     before_n, after_n = counts
-    lines = [(
-        f"Archetype-gate DENY: this write introduces {len(new)} "
-        f"high/critical finding(s) that {rel} does not carry now."
-    )]
+    lines = [
+        (
+            f"Archetype-gate DENY: this write introduces {len(new)} "
+            f"high/critical finding(s) that {rel} does not carry now."
+        )
+    ]
     for fp in new[:_DENY_LIST_CAP]:
         tool, _, rest = fp.partition("|")
         rule, _, msg = rest.partition("|")
@@ -895,7 +939,8 @@ def _deny_reason(
     lines.append(f"on disk: {before_n} high/critical. pending: {after_n}.")
     lines.append(
         "The gate blocks a RISE, not a level. Pre-existing findings do not "
-        "block; fix only what this write adds, then write again.")
+        "block; fix only what this write adds, then write again."
+    )
     lines.append(f"Full report: python -m {module} {rel}")
     if missing:
         lines.append(f"Reduced coverage this run: {', '.join(missing)}.")
@@ -1011,7 +1056,9 @@ def _reject(mode: str, reason: str) -> int:
 
 
 def _baseline_reports(
-    path: Path, modules: list, deadline: float | None,
+    path: Path,
+    modules: list,
+    deadline: float | None,
 ) -> dict | None:
     """Verdict for the bytes currently on disk. None when unreadable."""
     if not path.exists():
@@ -1030,19 +1077,22 @@ def _run_pre(data: dict) -> int:
         return _emit_deny(
             "Archetype-gate DENY: this tool call names no usable file_path, "
             "so the gate cannot tell which file it would change and cannot "
-            "grade it. Reissue the write with an explicit file path.")
+            "grade it. Reissue the write with an explicit file path."
+        )
     if _is_forbidden(path):
         return _emit_deny(
             f"Archetype-gate DENY: {path.name} sits in the runtime or "
             "credential area. The gate never opens those paths, so it cannot "
-            "grade this write. Write into the repository instead.")
+            "grade this write. Write into the repository instead."
+        )
     content = _pending_content(data, path)
     if content is None:
         return _emit_deny(
             f"Archetype-gate DENY: the gate cannot reconstruct what "
             f"{_rel(path)} would hold after this call, so it cannot grade it. "
             "For an Edit this usually means old_string is not in the file, "
-            "which would fail the edit anyway. Re-read the file and retry.")
+            "which would fail the edit anyway. Re-read the file and retry."
+        )
     modules = _module_union(path, content)
     if not modules:
         _debug_log(f"pre: allow {path.name} - no archetype for this suffix")
@@ -1057,7 +1107,8 @@ def _run_pre(data: dict) -> int:
             f"{_rel(path)}. {err}\n"
             "Work the harness did not evaluate is INVALID, so the write is "
             "held. Fix the harness, then write again:\n"
-            f"  python -m {modules[0]} {_rel(path)}")
+            f"  python -m {modules[0]} {_rel(path)}"
+        )
 
     after_fps = _high_fingerprints(after)
     if not after_fps:
@@ -1071,18 +1122,26 @@ def _run_pre(data: dict) -> int:
             f"{len(after_fps)} high/critical finding(s) and the on-disk "
             "baseline could not be measured, so a rise cannot be ruled out.\n"
             f"  {_first_error(before or {}) or 'baseline unreadable'}\n"
-            f"Run: python -m {modules[0]} {_rel(path)}")
+            f"Run: python -m {modules[0]} {_rel(path)}"
+        )
 
     before_fps = _high_fingerprints(before)
     new = _introduced(after_fps, before_fps)
     if not new:
         _debug_log(
             f"pre: allow {path.name} "
-            f"(high {len(before_fps)} -> {len(after_fps)}, none new)")
+            f"(high {len(before_fps)} -> {len(after_fps)}, none new)"
+        )
         return 0
-    return _emit_deny(_deny_reason(
-        path, new, (len(before_fps), len(after_fps)),
-        modules[0], _missing_tools(after)))
+    return _emit_deny(
+        _deny_reason(
+            path,
+            new,
+            (len(before_fps), len(after_fps)),
+            modules[0],
+            _missing_tools(after),
+        )
+    )
 
 
 def _run_post(data: dict) -> int:
@@ -1104,8 +1163,8 @@ def _run_post(data: dict) -> int:
     for module in modules:
         _debug_log(f"post: running {module} on {path.name}")
         parts.append(
-            _summarize(_run_archetype(module, path, deadline=deadline),
-                       module, path))
+            _summarize(_run_archetype(module, path, deadline=deadline), module, path)
+        )
     if not parts:
         return 0
     summary = "\n".join(parts)
@@ -1116,18 +1175,26 @@ def _run_post(data: dict) -> int:
 def _classify(mode: str, name: object) -> int | None:
     """Handle a tool this gate does not grade. None means carry on."""
     if not isinstance(name, str) or not name:
-        return _reject(mode, (
-            "Archetype-gate DENY: this hook record carries no tool_name, so "
-            "the gate cannot tell what the call would do. Claude Code always "
-            "sends one, so this record did not come from a real tool call."))
+        return _reject(
+            mode,
+            (
+                "Archetype-gate DENY: this hook record carries no tool_name, so "
+                "the gate cannot tell what the call would do. Claude Code always "
+                "sends one, so this record did not come from a real tool call."
+            ),
+        )
     if name in _GRADED_TOOLS:
         return None
     if name in _REFUSED_TOOLS or _WIRING_RE.search(name):
-        return _reject(mode, (
-            f"Archetype-gate DENY: {name} reaches this gate through the "
-            "Write|Edit matcher, and the gate does not understand its payload "
-            "shape, so it cannot grade the result. Use Write, Edit or "
-            "MultiEdit, which the gate grades."))
+        return _reject(
+            mode,
+            (
+                f"Archetype-gate DENY: {name} reaches this gate through the "
+                "Write|Edit matcher, and the gate does not understand its payload "
+                "shape, so it cannot grade the result. Use Write, Edit or "
+                "MultiEdit, which the gate grades."
+            ),
+        )
     _debug_log(f"skipped: tool={name!r} (not an editing tool)")
     return 0
 
@@ -1142,18 +1209,26 @@ def main(argv: list | None = None) -> int:
     try:
         raw = sys.stdin.read()
     except (OSError, ValueError):
-        return _reject(mode, (
-            "Archetype-gate DENY: the gate could not read the hook record on "
-            "stdin, so it graded nothing. Work the harness did not evaluate "
-            "is INVALID. Bash is not wired to this hook, so repair "
-            ".claude/settings.json from Bash if this persists."))
+        return _reject(
+            mode,
+            (
+                "Archetype-gate DENY: the gate could not read the hook record on "
+                "stdin, so it graded nothing. Work the harness did not evaluate "
+                "is INVALID. Bash is not wired to this hook, so repair "
+                ".claude/settings.json from Bash if this persists."
+            ),
+        )
     data = _payload(raw)
     if data is None:
-        return _reject(mode, (
-            "Archetype-gate DENY: the hook record on stdin is not a JSON "
-            "object, so the gate cannot tell which file this call would "
-            "change. Claude Code always sends a JSON object, so this record "
-            "did not come from a real tool call."))
+        return _reject(
+            mode,
+            (
+                "Archetype-gate DENY: the hook record on stdin is not a JSON "
+                "object, so the gate cannot tell which file this call would "
+                "change. Claude Code always sends a JSON object, so this record "
+                "did not come from a real tool call."
+            ),
+        )
     handled = _classify(mode, data.get("tool_name"))
     if handled is not None:
         return handled

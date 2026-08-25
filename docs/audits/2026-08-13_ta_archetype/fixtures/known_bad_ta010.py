@@ -2,6 +2,7 @@
 
 A flat series is a real market state, and it divides by zero here.
 """
+
 from PySide6.QtGui import QPainter
 
 

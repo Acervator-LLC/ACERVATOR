@@ -27,6 +27,7 @@ INCLUDING the orphan. One failure became permanent.
 
 Nothing held 30 LINK under a live token. 30.02 was abandoned.
 """
+
 from __future__ import annotations
 
 import sys
@@ -57,7 +58,9 @@ def registry(tmp_path):
     touches the production state file."
     """
     return CapitalReservationRegistry(
-        state_path=tmp_path / "reservations.json", autosave=False)
+        state_path=tmp_path / "reservations.json", autosave=False
+    )
+
 
 MARGIN = 1.10
 
@@ -112,16 +115,25 @@ class TestTheRegistryAcceptsTheCappedClaim:
         nothing to fix."""
         reg = registry
         with pytest.raises(ValueError, match="over-commit"):
-            reg.reserve(bot_id="b1", asset="XRP", qty=_claim(73.08),
-                        reason="t", bot_kind="scrumming",
-                        total_holdings=74.0)
+            reg.reserve(
+                bot_id="b1",
+                asset="XRP",
+                qty=_claim(73.08),
+                reason="t",
+                bot_kind="scrumming",
+                total_holdings=74.0,
+            )
 
     def test_the_capped_claim_is_accepted(self, registry):
         reg = registry
-        tok = reg.reserve(bot_id="b1", asset="XRP",
-                          qty=_capped(_claim(73.08), 74.0),
-                          reason="t", bot_kind="scrumming",
-                          total_holdings=74.0)
+        tok = reg.reserve(
+            bot_id="b1",
+            asset="XRP",
+            qty=_capped(_claim(73.08), 74.0),
+            reason="t",
+            bot_kind="scrumming",
+            total_holdings=74.0,
+        )
         assert tok
 
 
@@ -130,28 +142,48 @@ class TestTheOrphanedToken:
         """The LINK signature: `existing` non-zero because a previous
         token was abandoned rather than released."""
         reg = registry
-        reg.reserve(bot_id="b1", asset="LINK", qty=30.02,
-                    reason="t", bot_kind="scrumming", total_holdings=40.0)
+        reg.reserve(
+            bot_id="b1",
+            asset="LINK",
+            qty=30.02,
+            reason="t",
+            bot_kind="scrumming",
+            total_holdings=40.0,
+        )
         # The bot forgot its token but the reservation stands.
         with pytest.raises(ValueError, match="over-commit"):
-            reg.reserve(bot_id="b1", asset="LINK", qty=9.98,
-                        reason="t", bot_kind="scrumming",
-                        total_holdings=35.0)
+            reg.reserve(
+                bot_id="b1",
+                asset="LINK",
+                qty=9.98,
+                reason="t",
+                bot_kind="scrumming",
+                total_holdings=35.0,
+            )
 
     def test_releasing_first_makes_the_retry_succeed(self, registry):
         reg = registry
-        tok = reg.reserve(bot_id="b1", asset="LINK", qty=30.02,
-                          reason="t", bot_kind="scrumming",
-                          total_holdings=40.0)
+        tok = reg.reserve(
+            bot_id="b1",
+            asset="LINK",
+            qty=30.02,
+            reason="t",
+            bot_kind="scrumming",
+            total_holdings=40.0,
+        )
         reg.release(tok, "b1")
-        assert reg.reserve(bot_id="b1", asset="LINK", qty=9.98,
-                           reason="t", bot_kind="scrumming",
-                           total_holdings=35.0)
+        assert reg.reserve(
+            bot_id="b1",
+            asset="LINK",
+            qty=9.98,
+            reason="t",
+            bot_kind="scrumming",
+            total_holdings=35.0,
+        )
 
     def test_the_handler_releases_before_forgetting(self):
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(
-            encoding="utf-8")
-        blk = src[src.index("RELEASE BEFORE FORGETTING"):][:4000]
+        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        blk = src[src.index("RELEASE BEFORE FORGETTING") :][:4000]
         i_rel = blk.index("_reg.release(_stale, self.bot_id)")
         i_none = blk.index("self._crr_token = None")
         assert i_rel < i_none, "release must precede forgetting the token"
@@ -159,9 +191,8 @@ class TestTheOrphanedToken:
     def test_a_failing_release_does_not_break_the_tick(self):
         """The registry is best-effort; a release that raises must not
         take the tick down with it."""
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(
-            encoding="utf-8")
-        blk = src[src.index("RELEASE BEFORE FORGETTING"):][:4000]
+        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        blk = src[src.index("RELEASE BEFORE FORGETTING") :][:4000]
         assert "could not release stale reservation" in blk
 
 
@@ -177,17 +208,13 @@ class TestItIsReported:
         that lets `SignalSink.stats`, which groups by name alone, tell
         the refusal row from the grant row.
         """
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(
-            encoding="utf-8")
-        assert src.count(
-            '"bot.01.001.postcondition.capital_reservation"') == 1
-        assert src.count(
-            '"bot.01.002.postcondition.capital_reservation"') == 1
+        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        assert src.count('"bot.01.001.postcondition.capital_reservation"') == 1
+        assert src.count('"bot.01.002.postcondition.capital_reservation"') == 1
 
     def test_the_failure_record_carries_the_error_and_holdings(self):
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(
-            encoding="utf-8")
-        blk = src[src.index('_cr_emit('):][:700]
+        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        blk = src[src.index("_cr_emit(") :][:700]
         assert '"error"' in blk
         assert '"holdings"' in blk
         assert '"released_stale"' in blk
@@ -195,15 +222,13 @@ class TestItIsReported:
     def test_the_success_record_says_whether_it_was_capped(self):
         """A green run should still show that the ceiling bound, or the
         cap would be invisible until it stopped working."""
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(
-            encoding="utf-8")
-        blk = src[src.index('_cr_ok('):][:700]
+        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        blk = src[src.index("_cr_ok(") :][:700]
         assert '"capped"' in blk
 
     def test_both_are_throttled(self):
         """This runs on every tick of every bot; unthrottled it is the
         spam the synchroniser exists to prevent."""
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(
-            encoding="utf-8")
-        blk = src[src.index("RELEASE BEFORE FORGETTING"):][:6000]
+        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        blk = src[src.index("RELEASE BEFORE FORGETTING") :][:6000]
         assert blk.count("every=") == 2

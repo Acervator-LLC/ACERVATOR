@@ -27,6 +27,7 @@ a known-bad file), or (c) any tool subprocess exits non-zero for
 reasons unrelated to findings (we catch and log rather than
 silently pass).
 """
+
 # ruff: noqa: S603
 # S607 WAS SUPPRESSED HERE AND IT WAS NOT A FALSE POSITIVE.
 #
@@ -86,18 +87,18 @@ __all__ = ["ArchetypeReport", "CodingArchetype", "Finding", "main"]
 # ranks them LOW. Any addition to this map is a curated escalation.
 # ---------------------------------------------------------------------------
 _BANDIT_SEVERITY_OVERRIDES: dict[str, str] = {
-    "B101": "high",   # assert used for security-critical check
-    "B105": "high",   # hardcoded password
-    "B106": "high",   # hardcoded password argument
-    "B107": "high",   # hardcoded password default
-    "B303": "high",   # weak hash (MD5, SHA1) used
-    "B324": "high",   # weak hash used in hashlib.new
-    "B501": "high",   # requests with verify=False
-    "B502": "high",   # SSL with insecure protocol version
-    "B506": "high",   # yaml.load without SafeLoader
-    "B602": "high",   # subprocess with shell=True (partial input)
-    "B605": "high",   # start_process_with_a_shell
-    "B609": "high",   # linux wildcard command
+    "B101": "high",  # assert used for security-critical check
+    "B105": "high",  # hardcoded password
+    "B106": "high",  # hardcoded password argument
+    "B107": "high",  # hardcoded password default
+    "B303": "high",  # weak hash (MD5, SHA1) used
+    "B324": "high",  # weak hash used in hashlib.new
+    "B501": "high",  # requests with verify=False
+    "B502": "high",  # SSL with insecure protocol version
+    "B506": "high",  # yaml.load without SafeLoader
+    "B602": "high",  # subprocess with shell=True (partial input)
+    "B605": "high",  # start_process_with_a_shell
+    "B609": "high",  # linux wildcard command
 }
 
 
@@ -138,7 +139,7 @@ _TYPECHECK_NOISE_DEMOTIONS: dict[str, str] = {
     "assignment": "low",
     "no-any-return": "low",
     "arg-type": "low",
-    "no-untyped-def": "low",     # stylistic; not a correctness issue
+    "no-untyped-def": "low",  # stylistic; not a correctness issue
     "return-value": "low",
     "call-arg": "low",
     "operator": "low",
@@ -340,27 +341,28 @@ _PU_BINDING_CACHE: dict[str, tuple[set[str], set[str]]] = {}
 # multi-letter families (SIM, SLF, RUF, ANN, PERF...) are not swallowed
 # by their single-letter neighbours (S = bandit security).
 _RUFF_SEV_MAP: dict[str, str] = {
-    "F": "medium",     # pyflakes (real bugs / unused code)
-    "E": "medium",     # pycodestyle errors
-    "W": "low",        # pycodestyle warnings
-    "S": "high",       # bandit-mirror (security)
-    "B": "medium",     # bugbear (likely bugs)
-    "N": "low",        # naming
-    "D": "low",        # docstrings
-    "I": "low",        # isort
-    "UP": "low",       # pyupgrade
-    "SIM": "low",      # simplify — style, must NOT block
-    "SLF": "low",      # private-member access — style, must NOT block
-    "BLE": "medium",   # blind except
-    "PL": "low",       # pylint
-    "PT": "low",       # pytest
-    "TD": "low",       # todos
-    "RUF": "medium",   # ruff-specific
-    "PERF": "low",     # perf
-    "ANN": "medium",   # missing type annotations
+    "F": "medium",  # pyflakes (real bugs / unused code)
+    "E": "medium",  # pycodestyle errors
+    "W": "low",  # pycodestyle warnings
+    "S": "high",  # bandit-mirror (security)
+    "B": "medium",  # bugbear (likely bugs)
+    "N": "low",  # naming
+    "D": "low",  # docstrings
+    "I": "low",  # isort
+    "UP": "low",  # pyupgrade
+    "SIM": "low",  # simplify — style, must NOT block
+    "SLF": "low",  # private-member access — style, must NOT block
+    "BLE": "medium",  # blind except
+    "PL": "low",  # pylint
+    "PT": "low",  # pytest
+    "TD": "low",  # todos
+    "RUF": "medium",  # ruff-specific
+    "PERF": "low",  # perf
+    "ANN": "medium",  # missing type annotations
 }
 _RUFF_FAMILIES_BY_LEN: tuple[str, ...] = tuple(
-    sorted(_RUFF_SEV_MAP, key=len, reverse=True))
+    sorted(_RUFF_SEV_MAP, key=len, reverse=True)
+)
 
 
 def _module_binding_kinds(path: str) -> tuple[set[str], set[str]]:
@@ -398,8 +400,7 @@ def _module_binding_kinds(path: str) -> tuple[set[str], set[str]]:
         elif isinstance(node, ast.withitem):
             if node.optional_vars is not None:
                 _names(node.optional_vars)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
-                               ast.ClassDef)):
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             assigned.add(node.name)
     return imported, assigned
 
@@ -440,6 +441,7 @@ class CodingArchetype:
     def load_calibration(self) -> str:
         """Return the human-editable calibration prompt for peer reviewers."""
         from tools.harness.calibrations import load
+
         return load(self.calibration_name)
 
     def review(self, target: Path) -> ArchetypeReport:
@@ -457,10 +459,10 @@ class CodingArchetype:
         report.scanned = True
 
         for tool_name, runner in [
-            ("ruff",    self._run_ruff),
-            ("mypy",    self._run_mypy),
+            ("ruff", self._run_ruff),
+            ("mypy", self._run_mypy),
             ("pyright", self._run_pyright),
-            ("bandit",  self._run_bandit),
+            ("bandit", self._run_bandit),
             ("vulture", self._run_vulture),
             ("semgrep", self._run_semgrep),
         ]:
@@ -488,7 +490,8 @@ class CodingArchetype:
         # itself, substitute "" when the read failed, scan the empty
         # string and still report every module `ok`.
         scan_rule_modules(
-            report, target,
+            report,
+            target,
             (
                 ("scaffolding", "tools.harness.rules.scaffolding"),
                 ("hallucination", "tools.harness.rules.hallucination"),
@@ -501,7 +504,8 @@ class CodingArchetype:
                 # widget or a document concern.
                 ("numeric_guard", "tools.harness.rules.numeric_guard"),
             ),
-            (".py",))
+            (".py",),
+        )
 
         report.falsification = self._build_falsification(report)
         return report
@@ -596,9 +600,9 @@ class CodingArchetype:
     # A gate that always fails is the same as a gate that never runs,
     # with the added cost of teaching its readers to ignore it.
     _TEST_FILE_EXEMPT = (
-        "S101",   # assert -- the mechanism pytest is built on
-        "S105",   # hardcoded password -- fixture credentials are fake
-        "S106",   # ditto, as a keyword argument
+        "S101",  # assert -- the mechanism pytest is built on
+        "S105",  # hardcoded password -- fixture credentials are fake
+        "S106",  # ditto, as a keyword argument
         "PLR2004",  # magic value in comparison -- expected values ARE literal
         "SLF001",  # private member access -- tests verify internals
     )
@@ -606,21 +610,34 @@ class CodingArchetype:
     @staticmethod
     def _is_test_file(target: Path) -> bool:
         name = target.name
-        return (name.startswith("test_") or name.endswith("_test.py")
-                or "tests" in target.parts)
+        return (
+            name.startswith("test_")
+            or name.endswith("_test.py")
+            or "tests" in target.parts
+        )
 
     def _run_ruff(self, target: Path) -> tuple[list[Finding], str]:
         # ruff produces JSON with --output-format=json
-        cmd = [sys.executable, "-m", "ruff", "check", "--output-format=json",
-               "--no-cache", "--select=ALL"]
+        cmd = [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--output-format=json",
+            "--no-cache",
+            "--select=ALL",
+        ]
         if self._is_test_file(target):
             cmd.append("--ignore=" + ",".join(self._TEST_FILE_EXEMPT))
         cmd.append(str(target))
         proc = subprocess.run(
             cmd,
             cwd=str(REPO_ROOT),
-            capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=120,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
         )
         if self._module_absent(proc, "ruff"):
             return [], "missing"
@@ -653,48 +670,62 @@ class CodingArchetype:
                     severity = _RUFF_SEV_MAP[_fam]
                     break
             loc = item.get("location", {})
-            findings.append(Finding(
-                tool="ruff", severity=severity,
-                file=item.get("filename", str(target)),
-                line=loc.get("row", 0),
-                rule_id=code,
-                message=item.get("message", ""),
-            ))
+            findings.append(
+                Finding(
+                    tool="ruff",
+                    severity=severity,
+                    file=item.get("filename", str(target)),
+                    line=loc.get("row", 0),
+                    rule_id=code,
+                    message=item.get("message", ""),
+                )
+            )
         return findings, "ok"
 
     def _run_mypy(self, target: Path) -> tuple[list[Finding], str]:
         # STRICT flags added in v2 per empirical gap in v1
         proc = subprocess.run(
-            [sys.executable, "-m", "mypy", str(target),
-             "--show-error-codes", "--no-color-output",
-             "--no-error-summary", "--follow-imports=silent",
-             "--disallow-untyped-defs",       # <-- v2 fix
-             "--disallow-incomplete-defs",    # <-- v2 fix
-             "--warn-return-any",             # <-- v2 fix
-             # 2026-08-13: without this a `type: ignore` that
-             # suppresses nothing is invisible to the gate for ever,
-             # so a directive could outlive the defect it was written
-             # for and nobody could tell. Measured on a two-file
-             # fixture pair: the dead ignore drew no output at all
-             # before the flag, and `unused-ignore` after it, while
-             # the live ignore stayed silent on both sides.
-             "--warn-unused-ignores",
-             # Pinned, not defaulted. mypy writes `./.mypy_cache`, so
-             # the cache -- and with it the incremental state a
-             # diagnostic can depend on -- used to be chosen by the
-             # caller's working directory. A cache per caller is a
-             # verdict per caller.
-             #
-             # NOT a fresh cache per run: measured on one file, a cold
-             # cache costs 8.8s against 0.6s warm, 15x, and the hook
-             # already runs on a 30s budget. The residual is stated in
-             # docs/audits/2026-08-13_harness_gap_closure.md - compare
-             # two TREES with a fresh cache, because mypy's incremental
-             # mode can answer differently on a warm one.
-             "--cache-dir", str(REPO_ROOT / ".mypy_cache")],
+            [
+                sys.executable,
+                "-m",
+                "mypy",
+                str(target),
+                "--show-error-codes",
+                "--no-color-output",
+                "--no-error-summary",
+                "--follow-imports=silent",
+                "--disallow-untyped-defs",  # <-- v2 fix
+                "--disallow-incomplete-defs",  # <-- v2 fix
+                "--warn-return-any",  # <-- v2 fix
+                # 2026-08-13: without this a `type: ignore` that
+                # suppresses nothing is invisible to the gate for ever,
+                # so a directive could outlive the defect it was written
+                # for and nobody could tell. Measured on a two-file
+                # fixture pair: the dead ignore drew no output at all
+                # before the flag, and `unused-ignore` after it, while
+                # the live ignore stayed silent on both sides.
+                "--warn-unused-ignores",
+                # Pinned, not defaulted. mypy writes `./.mypy_cache`, so
+                # the cache -- and with it the incremental state a
+                # diagnostic can depend on -- used to be chosen by the
+                # caller's working directory. A cache per caller is a
+                # verdict per caller.
+                #
+                # NOT a fresh cache per run: measured on one file, a cold
+                # cache costs 8.8s against 0.6s warm, 15x, and the hook
+                # already runs on a 30s budget. The residual is stated in
+                # docs/audits/2026-08-13_harness_gap_closure.md - compare
+                # two TREES with a fresh cache, because mypy's incremental
+                # mode can answer differently on a warm one.
+                "--cache-dir",
+                str(REPO_ROOT / ".mypy_cache"),
+            ],
             cwd=str(REPO_ROOT),
-            capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=120,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
         )
         if self._module_absent(proc, "mypy"):
             return [], "missing"
@@ -711,33 +742,38 @@ class CodingArchetype:
                 continue
             kind = m.group("kind")
             rule_id = m.group("code") or "no-code"
-            native_severity = {
-                "error": "high", "warning": "medium", "note": "info"}[kind]
+            native_severity = {"error": "high", "warning": "medium", "note": "info"}[
+                kind
+            ]
             # v3.23.44 — apply the shared type-checker noise demotions
             # (see _TYPECHECK_NOISE_DEMOTIONS docstring above).
             if rule_id == "unused-ignore":
                 severity = _unused_ignore_severity(m.group("msg"))
             elif rule_id == "import-untyped":
-                severity = _untyped_import_severity(
-                    m.group("msg"), native_severity)
+                severity = _untyped_import_severity(m.group("msg"), native_severity)
             else:
-                severity = _TYPECHECK_NOISE_DEMOTIONS.get(
-                    rule_id, native_severity)
-            findings.append(Finding(
-                tool="mypy", severity=severity,
-                file=m.group("file"), line=int(m.group("line")),
-                rule_id=rule_id,
-                message=m.group("msg"),
-            ))
+                severity = _TYPECHECK_NOISE_DEMOTIONS.get(rule_id, native_severity)
+            findings.append(
+                Finding(
+                    tool="mypy",
+                    severity=severity,
+                    file=m.group("file"),
+                    line=int(m.group("line")),
+                    rule_id=rule_id,
+                    message=m.group("msg"),
+                )
+            )
         return findings, "ok"
 
     def _run_pyright(self, target: Path) -> tuple[list[Finding], str]:
         proc = subprocess.run(
-            [self._resolve_executable("pyright"), "--outputjson",
-             str(target)],
+            [self._resolve_executable("pyright"), "--outputjson", str(target)],
             cwd=str(REPO_ROOT),
-            capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=180,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
         )
         findings: list[Finding] = []
         refuse_silent_failure(proc, "pyright")
@@ -758,20 +794,22 @@ class CodingArchetype:
                 # noise); assignment-bound is promoted to high because
                 # it is a genuine UnboundLocalError waiting to fire.
                 severity = _possibly_unbound_severity(
-                    diag.get("message", ""),
-                    diag.get("file", str(target)))
+                    diag.get("message", ""), diag.get("file", str(target))
+                )
             else:
                 severity = _TYPECHECK_NOISE_DEMOTIONS.get(
-                    rule_id,
-                    sev_map.get(diag.get("severity", ""), "medium"))
-            findings.append(Finding(
-                tool="pyright",
-                severity=severity,
-                file=diag.get("file", str(target)),
-                line=line_num,
-                rule_id=rule_id,
-                message=diag.get("message", ""),
-            ))
+                    rule_id, sev_map.get(diag.get("severity", ""), "medium")
+                )
+            findings.append(
+                Finding(
+                    tool="pyright",
+                    severity=severity,
+                    file=diag.get("file", str(target)),
+                    line=line_num,
+                    rule_id=rule_id,
+                    message=diag.get("message", ""),
+                )
+            )
         return findings, "ok"
 
     def _run_bandit(self, target: Path) -> tuple[list[Finding], str]:
@@ -783,11 +821,13 @@ class CodingArchetype:
             # harness's own known_bad.py: the FILE target drew B101,
             # B105 and B404, two of them HIGH, and the DIRECTORY target
             # drew none. `-r` over a single file is the same scan.
-            [sys.executable, "-m", "bandit", "-f", "json",
-             "-q", "-r", str(target)],
+            [sys.executable, "-m", "bandit", "-f", "json", "-q", "-r", str(target)],
             cwd=str(REPO_ROOT),
-            capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=120,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
         )
         if self._module_absent(proc, "bandit"):
             return [], "missing"
@@ -816,23 +856,28 @@ class CodingArchetype:
             severity = _BANDIT_SEVERITY_OVERRIDES.get(
                 rule_id, sev_map.get(issue.get("issue_severity", ""), "medium")
             )
-            findings.append(Finding(
-                tool="bandit", severity=severity,
-                file=issue.get("filename", str(target)),
-                line=issue.get("line_number", 0),
-                rule_id=rule_id,
-                message=issue.get("issue_text", ""),
-            ))
+            findings.append(
+                Finding(
+                    tool="bandit",
+                    severity=severity,
+                    file=issue.get("filename", str(target)),
+                    line=issue.get("line_number", 0),
+                    rule_id=rule_id,
+                    message=issue.get("issue_text", ""),
+                )
+            )
         return findings, "ok"
 
     def _run_vulture(self, target: Path) -> tuple[list[Finding], str]:
         # v2 fix: lower --min-confidence to 60 to catch unused locals
         proc = subprocess.run(
-            [sys.executable, "-m", "vulture", "--min-confidence", "60",
-             str(target)],
+            [sys.executable, "-m", "vulture", "--min-confidence", "60", str(target)],
             cwd=str(REPO_ROOT),
-            capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=120,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
         )
         if self._module_absent(proc, "vulture"):
             return [], "missing"
@@ -848,22 +893,37 @@ class CodingArchetype:
                 continue
             conf = int(m.group("conf"))
             severity = "high" if conf >= 90 else ("medium" if conf >= 70 else "low")
-            findings.append(Finding(
-                tool="vulture", severity=severity,
-                file=m.group("file"), line=int(m.group("line")),
-                rule_id="dead-code", message=m.group("msg"),
-            ))
+            findings.append(
+                Finding(
+                    tool="vulture",
+                    severity=severity,
+                    file=m.group("file"),
+                    line=int(m.group("line")),
+                    rule_id="dead-code",
+                    message=m.group("msg"),
+                )
+            )
         return findings, "ok"
 
     def _run_semgrep(self, target: Path) -> tuple[list[Finding], str]:
         # Use semgrep's default Python security ruleset
         proc = subprocess.run(
-            [self._resolve_executable("semgrep"), "scan",
-             "--config=p/python", "--config=p/security-audit",
-             "--json", "--quiet", "--no-git-ignore", str(target)],
+            [
+                self._resolve_executable("semgrep"),
+                "scan",
+                "--config=p/python",
+                "--config=p/security-audit",
+                "--json",
+                "--quiet",
+                "--no-git-ignore",
+                str(target),
+            ],
             cwd=str(REPO_ROOT),
-            capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=180,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
         )
         findings: list[Finding] = []
         refuse_silent_failure(proc, "semgrep")
@@ -878,14 +938,16 @@ class CodingArchetype:
         sev_map = {"ERROR": "high", "WARNING": "medium", "INFO": "low"}
         for item in data.get("results", []):
             extra = item.get("extra", {})
-            findings.append(Finding(
-                tool="semgrep",
-                severity=sev_map.get(extra.get("severity", ""), "medium"),
-                file=item.get("path", str(target)),
-                line=item.get("start", {}).get("line", 0),
-                rule_id=item.get("check_id", "no-code"),
-                message=extra.get("message", ""),
-            ))
+            findings.append(
+                Finding(
+                    tool="semgrep",
+                    severity=sev_map.get(extra.get("severity", ""), "medium"),
+                    file=item.get("path", str(target)),
+                    line=item.get("start", {}).get("line", 0),
+                    rule_id=item.get("check_id", "no-code"),
+                    message=extra.get("message", ""),
+                )
+            )
         return findings, "ok"
 
 
@@ -898,7 +960,9 @@ def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if not argv or argv[0] in ("-h", "--help"):
         print("usage: python -m tools.harness.coding_archetype <path>")
-        print("       reviews path with ruff + mypy + pyright + bandit + vulture + semgrep;")
+        print(
+            "       reviews path with ruff + mypy + pyright + bandit + vulture + semgrep;"
+        )
         print("       prints JSON report; exit 0 if passed, 1 if failed")
         return 2
     target = Path(argv[0])

@@ -11,6 +11,7 @@ one of these will fail. If a module has runtime deps we can't
 satisfy in a headless test env (e.g., PySide6 QApplication), the
 test explicitly xfails with the reason so the gap is visible.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -19,7 +20,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -38,19 +38,24 @@ class TestSrcImports:
 
     def test_src_version_matches_pyproject_or_at_least_looks_sane(self):
         import src
+
         # Must be a non-empty semver-looking string
         parts = src.__version__.split(".")
-        assert all(p.isdigit() for p in parts), \
-            f"non-numeric version parts: {src.__version__}"
+        assert all(
+            p.isdigit() for p in parts
+        ), f"non-numeric version parts: {src.__version__}"
 
-    @pytest.mark.parametrize("subpkg", [
-        "src.core",
-        "src.trading",
-        "src.exchange",
-        "src.competition",
-        "src.stocks",
-        "src.utils",
-    ])
+    @pytest.mark.parametrize(
+        "subpkg",
+        [
+            "src.core",
+            "src.trading",
+            "src.exchange",
+            "src.competition",
+            "src.stocks",
+            "src.utils",
+        ],
+    )
     def test_subpackage_imports(self, subpkg):
         """Every non-Qt subpackage must import cleanly."""
         importlib.import_module(subpkg)
@@ -82,6 +87,7 @@ class TestMainEntry:
     def test_main_py_parses(self):
         """main.py is the PyInstaller entry. Must parse as valid Python."""
         import ast
+
         text = (REPO / "main.py").read_text(encoding="utf-8", errors="replace")
         ast.parse(text)  # will raise SyntaxError on breakage
 
@@ -99,26 +105,29 @@ class TestBuildSpecHiddenImportsResolve:
     def spec_hidden_imports(self):
         """Extract ccxt.async_support.* names from the win spec."""
         import re
+
         spec = (REPO / "Acervator_win.spec").read_text(encoding="utf-8")
         # Extract quoted strings inside hiddenimports=[...]
         m = re.search(
             r"hiddenimports=\(.*?collect_submodules\('src'\)\s*\+\s*\[(.*?)\]",
-            spec, re.DOTALL,
+            spec,
+            re.DOTALL,
         )
         assert m, "could not find hiddenimports block"
         return set(re.findall(r"['\"]([A-Za-z0-9_.]+)['\"]", m.group(1)))
 
     def test_hiddenimports_extraction_works(self, spec_hidden_imports):
-        assert len(spec_hidden_imports) > 10, (
-            f"unexpectedly few hidden imports: {spec_hidden_imports}"
-        )
+        assert (
+            len(spec_hidden_imports) > 10
+        ), f"unexpectedly few hidden imports: {spec_hidden_imports}"
 
     def test_ccxt_exchange_hidden_imports_resolve(self, spec_hidden_imports):
         """ccxt.async_support.<exchange> imports declared in the spec
         must actually exist. If ccxt updates and drops an exchange, this
         catches it before PyInstaller does."""
-        ccxt_names = [n for n in spec_hidden_imports
-                      if n.startswith("ccxt.async_support.")]
+        ccxt_names = [
+            n for n in spec_hidden_imports if n.startswith("ccxt.async_support.")
+        ]
         missing = []
         for name in ccxt_names:
             try:
@@ -157,6 +166,7 @@ class TestTradingSurface:
         pkg = importlib.import_module("src.trading")
         # Search the package for a BotConfig-shaped class
         import pkgutil
+
         found: list[str] = []
         for info in pkgutil.iter_modules(pkg.__path__, prefix="src.trading."):
             try:

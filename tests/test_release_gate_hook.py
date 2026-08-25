@@ -28,6 +28,7 @@ tmp_path. The archived pin mutated the real sidecar and restored it
 best-effort in a fixture; an interrupted run left the operator's tree
 holding whatever the last test wrote.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -43,7 +44,8 @@ HOOK_PATH = REPO_ROOT / ".claude" / "hooks" / "verify_release_gate.py"
 
 def _load_hook():
     spec = importlib.util.spec_from_file_location(
-        "verify_release_gate_under_test", HOOK_PATH)
+        "verify_release_gate_under_test", HOOK_PATH
+    )
     assert spec and spec.loader, f"cannot load hook at {HOOK_PATH}"
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -56,14 +58,17 @@ hook = _load_hook()
 def _sidecar(tests=1105, version="3.24.32", checks=None, age_minutes=0):
     """Build a sidecar payload in the shape the real gate writes."""
     from datetime import datetime, timedelta, timezone
+
     when = datetime.now(timezone.utc) - timedelta(minutes=age_minutes)
     return {
         "version": version,
         "tests": tests,
-        "checks_run": {"pytest": "ran", "archetypes": "ran",
-                       "claims": "ran"} if checks is None else checks,
-        "timestamp": when.replace(microsecond=0).isoformat().replace(
-            "+00:00", "Z"),
+        "checks_run": (
+            {"pytest": "ran", "archetypes": "ran", "claims": "ran"}
+            if checks is None
+            else checks
+        ),
+        "timestamp": when.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "generator": "tools/harness/check_release_readiness.py",
     }
 
@@ -97,10 +102,14 @@ def run_hook(tmp_path, monkeypatch, capsys):
 
 
 def _edit(path: str):
-    return {"tool_name": "Edit",
-            "tool_input": {"file_path": path,
-                           "old_string": '__version__ = "3.24.32"',
-                           "new_string": '__version__ = "3.24.33"'}}
+    return {
+        "tool_name": "Edit",
+        "tool_input": {
+            "file_path": path,
+            "old_string": '__version__ = "3.24.32"',
+            "new_string": '__version__ = "3.24.33"',
+        },
+    }
 
 
 BANNER = str(REPO_ROOT / "src" / "__init__.py")
@@ -115,21 +124,23 @@ class TestHookIsInstalled:
         settings = REPO_ROOT / ".claude" / "settings.json"
         assert settings.is_file()
         body = json.loads(settings.read_text(encoding="utf-8"))
-        cmds = [c.get("command", "")
-                for entry in body.get("hooks", {}).get("PreToolUse", [])
-                for c in entry.get("hooks", [])]
+        cmds = [
+            c.get("command", "")
+            for entry in body.get("hooks", {}).get("PreToolUse", [])
+            for c in entry.get("hooks", [])
+        ]
         assert any("verify_release_gate.py" in c for c in cmds), cmds
 
 
 class TestPassThrough:
     def test_non_banner_path_is_allowed(self, run_hook):
-        decision, _ = run_hook(
-            _edit(str(REPO_ROOT / "docs" / "notes.md")), _sidecar())
+        decision, _ = run_hook(_edit(str(REPO_ROOT / "docs" / "notes.md")), _sidecar())
         assert decision == "allow"
 
     def test_non_write_tool_is_allowed(self, run_hook):
         decision, _ = run_hook(
-            {"tool_name": "Read", "tool_input": {"file_path": BANNER}}, None)
+            {"tool_name": "Read", "tool_input": {"file_path": BANNER}}, None
+        )
         assert decision == "allow"
 
 
@@ -166,9 +177,12 @@ class TestSidecarMustProveWhatItRan:
         assert "checks_run" in reason
 
     def test_sidecar_recording_a_skipped_check_denies(self, run_hook):
-        decision, reason = run_hook(_edit(BANNER), _sidecar(
-            checks={"pytest": "skipped", "archetypes": "ran",
-                    "claims": "ran"}))
+        decision, reason = run_hook(
+            _edit(BANNER),
+            _sidecar(
+                checks={"pytest": "skipped", "archetypes": "ran", "claims": "ran"}
+            ),
+        )
         assert decision == "deny"
         assert "pytest" in reason
 
@@ -185,16 +199,17 @@ class TestPayloadContract:
     instead of every other test silently passing."""
 
     def test_hook_reads_tool_name_not_tool(self, run_hook):
-        legacy_shape = {"tool": "Edit",
-                        "tool_input": {"file_path": BANNER}}
+        legacy_shape = {"tool": "Edit", "tool_input": {"file_path": BANNER}}
         decision, _ = run_hook(legacy_shape, None)
         current_shape = _edit(BANNER)
         decision_current, _ = run_hook(current_shape, None)
-        assert decision_current == "deny", (
-            "hook no longer denies a correctly-shaped payload")
+        assert (
+            decision_current == "deny"
+        ), "hook no longer denies a correctly-shaped payload"
         assert decision == "allow", (
             "hook now reacts to the legacy 'tool' key; if the payload "
-            "contract changed, update _edit() and this pin together")
+            "contract changed, update _edit() and this pin together"
+        )
 
     def test_unparseable_stdin_is_pass_through(self, monkeypatch, capsys):
         """Documented fail-open: a broken payload must not block edits."""

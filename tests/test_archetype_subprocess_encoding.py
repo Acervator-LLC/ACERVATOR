@@ -29,6 +29,7 @@ happens to emit a non-cp1252 byte.
 propagated to the archetypes, which is precisely how a fixed bug
 reappears somewhere else.
 """
+
 from __future__ import annotations
 
 import ast
@@ -89,7 +90,8 @@ class TestNoLocaleDependentDecoding:
         assert not offenders, (
             f"{mod}: subprocess.run at line(s) {offenders} decode with the "
             f"locale codec. On Windows that is cp1252, and any non-cp1252 "
-            f"byte in tool output silently blanks that layer.")
+            f"byte in tool output silently blanks that layer."
+        )
 
     @pytest.mark.parametrize("mod", ARCHETYPES)
     def test_decoding_never_raises_on_undecodable_bytes(self, mod):
@@ -99,13 +101,13 @@ class TestNoLocaleDependentDecoding:
         offenders = []
         for call in _subprocess_run_calls(path):
             kw = {k.arg: k for k in call.keywords if k.arg}
-            if ("text" in kw or "universal_newlines" in kw) \
-                    and "errors" not in kw:
+            if ("text" in kw or "universal_newlines" in kw) and "errors" not in kw:
                 offenders.append(call.lineno)
         assert not offenders, (
             f"{mod}: subprocess.run at line(s) {offenders} would raise "
             f"UnicodeDecodeError on undecodable output instead of "
-            f"degrading. stdout then comes back None.")
+            f"degrading. stdout then comes back None."
+        )
 
 
 class TestTheRealisticPayloadDecodes:
@@ -123,11 +125,17 @@ class TestTheRealisticPayloadDecodes:
         This is the assertion that would have caught the original."""
         from tools.harness.docs_archetype import DocsArchetype
 
-        fixture = (REPO_ROOT / "docs" / "audits"
-                   / "2026-07-24_gui_docs_archetypes" / "docs_fixtures"
-                   / "known_bad.md")
+        fixture = (
+            REPO_ROOT
+            / "docs"
+            / "audits"
+            / "2026-07-24_gui_docs_archetypes"
+            / "docs_fixtures"
+            / "known_bad.md"
+        )
         findings, status = DocsArchetype()._run_proselint([fixture])
         assert status == "ok"
         assert len(findings) >= 5, (
             f"prose layer returned {len(findings)} findings on a fixture "
-            f"authored to be full of defects")
+            f"authored to be full of defects"
+        )

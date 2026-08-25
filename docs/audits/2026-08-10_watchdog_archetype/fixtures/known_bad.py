@@ -18,6 +18,7 @@ downstream can tell these pins from pins nobody wrote.
       `src/core/signal_contract.py` is never imported.
   D2  a helper named `_probe_emit` that appends to a list instead.
 """
+
 from __future__ import annotations
 
 _LOCAL: list[tuple] = []

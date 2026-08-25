@@ -34,6 +34,7 @@ read as a silent deletion, so it ships with an operator-facing banner
 naming the bot, the exception, and the fact that the saved state is
 intact.
 """
+
 from __future__ import annotations
 
 import ast
@@ -53,8 +54,10 @@ SM_SRC = Path(sm.__file__).read_text(encoding="utf-8")
 
 def _restore_fn() -> ast.AST:
     for n in ast.walk(ast.parse(BC_SRC)):
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) \
-                and n.name == "restore_bots_from_state":
+        if (
+            isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "restore_bots_from_state"
+        ):
             return n
     raise AssertionError("restore_bots_from_state not found")
 
@@ -88,10 +91,10 @@ class TestTheBotIsNotRegistered:
     def test_the_handler_skips_registration(self):
         """THE fix. Without this the bot reaches register() with
         partially-applied state and the next save overwrites disk."""
-        assert any(isinstance(n, ast.Continue)
-                   for n in ast.walk(_handler())), (
+        assert any(isinstance(n, ast.Continue) for n in ast.walk(_handler())), (
             "the failure handler falls through to register(); the next "
-            "save will overwrite the good record with defaults")
+            "save will overwrite the good record with defaults"
+        )
 
     def test_registration_still_happens_on_the_success_path(self):
         """NEGATIVE CONTROL: skipping on failure must not skip always."""
@@ -105,8 +108,9 @@ class TestTheCarryForwardIsTheProtection:
         removed, skipping registration would DELETE the bot instead of
         protecting it -- so this pin fails loudly rather than letting
         that happen silently."""
-        assert 'carried = [bid for bid in on_disk if bid not in state["bots"]]' \
-            in SM_SRC, "the absence-keyed carry-forward is gone"
+        assert (
+            'carried = [bid for bid in on_disk if bid not in state["bots"]]' in SM_SRC
+        ), "the absence-keyed carry-forward is gone"
 
     def test_it_copies_the_on_disk_record_back(self):
         assert 'state["bots"][bid] = on_disk[bid]' in SM_SRC

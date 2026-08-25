@@ -25,6 +25,7 @@ and removes nothing:
 
 Both are pinned below, because both would pass a naive test.
 """
+
 from __future__ import annotations
 
 import sys
@@ -78,8 +79,9 @@ class TestUnsubscribe:
         identity-based implementation removes nothing and the leak
         survives behind a green test."""
         h = _Handler()
-        assert h.on_event is not h.on_event, (
-            "premise changed: bound methods now compare identical")
+        assert (
+            h.on_event is not h.on_event
+        ), "premise changed: bound methods now compare identical"
         assert h.on_event == h.on_event
 
         bus = EventBus()
@@ -156,7 +158,9 @@ class TestSubscriptionFingerprint:
         bus.subscribe("wire.created", h.on_event)
         bus.subscribe("profit.cross_bot", h.on_event)
         assert bus.subscription_fingerprint() == {
-            "wire.created": 2, "profit.cross_bot": 1}
+            "wire.created": 2,
+            "profit.cross_bot": 1,
+        }
 
     def test_an_empty_bus_fingerprints_empty(self):
         assert EventBus().subscription_fingerprint() == {}

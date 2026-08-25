@@ -28,6 +28,7 @@ says so at the call site.
 NOTE ON NUMBERS. Every fixture here is synthetic and small. The operator's
 real fleet is 35 bots / 40 persisted wires; nothing below touches it.
 """
+
 from __future__ import annotations
 
 import ast
@@ -52,8 +53,7 @@ class TestTheHookShapesMatchTheRealApi:
 
     @staticmethod
     def _sig(name):
-        src = (REPO_ROOT / "src/gui/bot_visualizer.py").read_text(
-            encoding="utf-8")
+        src = (REPO_ROOT / "src/gui/bot_visualizer.py").read_text(encoding="utf-8")
         for n in ast.walk(ast.parse(src)):
             if isinstance(n, ast.FunctionDef) and n.name == name:
                 args = [a.arg for a in n.args.args if a.arg != "self"]
@@ -74,7 +74,8 @@ class TestTheHookShapesMatchTheRealApi:
         ctl.set_swarm_hooks(
             register=lambda *a, **kw: seen.append(("register", a, kw)),
             update=lambda *a, **kw: None,
-            stop=lambda *a, **kw: None)
+            stop=lambda *a, **kw: None,
+        )
         ctl._swarm_register("nuclear-c0-w0", "label", {"asset": "x"})
         assert seen and len(seen[0][1]) == 3
 
@@ -83,11 +84,12 @@ class TestTheHookShapesMatchTheRealApi:
         what `_run_cycle` ACTUALLY passes — read as AST, because counting
         source text has produced a false reading three times on this project.
         """
-        src = (REPO_ROOT
-               / "src/gui/simulator_tab/nuclear_fleet_controller.py"
-               ).read_text(encoding="utf-8")
+        src = (
+            REPO_ROOT / "src/gui/simulator_tab/nuclear_fleet_controller.py"
+        ).read_text(encoding="utf-8")
         calls = [
-            n for n in ast.walk(ast.parse(src))
+            n
+            for n in ast.walk(ast.parse(src))
             if isinstance(n, ast.Call)
             and getattr(n.func, "attr", "") == "_swarm_register"
         ]
@@ -97,7 +99,8 @@ class TestTheHookShapesMatchTheRealApi:
                 f"line {c.lineno} passes {len(c.args)} positional args; "
                 "register_sim_run(sim_id, label, cfg) needs 3 — a 2-arg call "
                 "is a TypeError swallowed to debug, which is why swarm rows "
-                "never appeared")
+                "never appeared"
+            )
 
     def test_update_and_stop_already_fit(self):
         u_args, u_req = self._sig("update_sim_run")
@@ -111,19 +114,19 @@ class TestPnlIsNotATradeCount:
     def test_no_call_site_passes_trades_fired_as_pnl(self):
         """Nuclear does not measure P&L. A trade count rendered as
         "PnL +37.00" is an invented number in a currency field."""
-        src = (REPO_ROOT
-               / "src/gui/simulator_tab/nuclear_fleet_controller.py"
-               ).read_text(encoding="utf-8")
+        src = (
+            REPO_ROOT / "src/gui/simulator_tab/nuclear_fleet_controller.py"
+        ).read_text(encoding="utf-8")
         for n in ast.walk(ast.parse(src)):
             if not isinstance(n, ast.Call):
                 continue
-            if getattr(n.func, "attr", "") not in (
-                    "_swarm_update", "_swarm_stop"):
+            if getattr(n.func, "attr", "") not in ("_swarm_update", "_swarm_stop"):
                 continue
             pnl = n.args[1] if len(n.args) > 1 else None
             rendered = ast.dump(pnl) if pnl is not None else ""
-            assert "trades_fired" not in rendered, (
-                f"line {n.lineno} passes trades_fired as the PnL argument")
+            assert (
+                "trades_fired" not in rendered
+            ), f"line {n.lineno} passes trades_fired as the PnL argument"
 
 
 class TestTheSeamIsActuallyWired:
@@ -131,24 +134,28 @@ class TestTheSeamIsActuallyWired:
 
     def test_simulator_tab_can_receive_a_swarm_reference(self):
         from src.gui.simulator_tab.simulator_tab import SimulatorTab
-        assert hasattr(SimulatorTab, "set_swarm_getter"), (
-            "nothing can hand the Simulator Swarm to the Nuclear panel")
+
+        assert hasattr(
+            SimulatorTab, "set_swarm_getter"
+        ), "nothing can hand the Simulator Swarm to the Nuclear panel"
 
     def test_main_window_wires_it(self):
         """AST pin on the production caller. Without this the method exists
         and is never called — the exact class of defect C58 is being queued
         to catch."""
-        src = (REPO_ROOT / "src/gui/main_window.py").read_text(
-            encoding="utf-8")
+        src = (REPO_ROOT / "src/gui/main_window.py").read_text(encoding="utf-8")
         names = {
             getattr(n.func, "attr", None)
-            for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Call)
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.Call)
         }
-        assert "set_swarm_getter" in names, (
-            "MainWindow never hands the swarm to SimulatorTab")
+        assert (
+            "set_swarm_getter" in names
+        ), "MainWindow never hands the swarm to SimulatorTab"
 
     def test_the_panel_forwards_hooks_to_the_controller(self):
         from src.gui.simulator_tab.simulator_tab import SimulatorTab
+
         sig = inspect.signature(SimulatorTab.set_swarm_getter)
         assert "getter" in sig.parameters
 

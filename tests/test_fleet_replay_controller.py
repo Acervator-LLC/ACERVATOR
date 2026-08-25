@@ -17,6 +17,7 @@ Tests exercise the async orchestrator's contract in isolation:
 These tests use synthetic configs + candle series so the real
 ScrummingBot / event-bus / balance-check machinery isn't required.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -30,17 +31,20 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from src.gui.simulator_tab.fleet.fleet_replay_controller import (  # noqa: E402
-    FleetReplayController, ReplayProgress, _instantiate_bot,
+    FleetReplayController,
+    ReplayProgress,
+    _instantiate_bot,
 )
 from src.gui.simulator_tab.fleet.sim_exchange import (  # noqa: E402
-    FleetSimExchange, make_symbol_series_map,
+    FleetSimExchange,
+    make_symbol_series_map,
 )
 from src.gui.simulator_tab.fleet.fleet_replay_panel import (  # noqa: E402
     _synthesize_candles_for_symbol,
 )
 
-
 # ---- ReplayProgress ---------------------------------------------------- #
+
 
 def test_replay_progress_defaults():
     p = ReplayProgress()
@@ -53,9 +57,11 @@ def test_replay_progress_defaults():
 
 # ---- _instantiate_bot --------------------------------------------------- #
 
+
 def test_instantiate_bot_rejects_non_scrumming():
     series = make_symbol_series_map(
-        {"BTC/USD": _synthesize_candles_for_symbol("BTC/USD", 10)})
+        {"BTC/USD": _synthesize_candles_for_symbol("BTC/USD", 10)}
+    )
     ex = FleetSimExchange(series, starting_balances={"USD": 1000.0})
     cfg = {"mode": "extractor", "symbol": "BTC/USD"}
     bot = _instantiate_bot(cfg, ex)
@@ -66,7 +72,8 @@ def test_instantiate_bot_rejects_missing_symbol_config():
     """Bad config (missing required fields) must fail-soft, returning
     None rather than raising, so the orchestrator can just skip it."""
     series = make_symbol_series_map(
-        {"BTC/USD": _synthesize_candles_for_symbol("BTC/USD", 10)})
+        {"BTC/USD": _synthesize_candles_for_symbol("BTC/USD", 10)}
+    )
     ex = FleetSimExchange(series, starting_balances={"USD": 1000.0})
     cfg = {"mode": "scrumming"}  # missing symbol / target_balance
     # Note: make_bot_config might succeed with defaults, but this is
@@ -78,6 +85,7 @@ def test_instantiate_bot_rejects_missing_symbol_config():
 
 
 # ---- Controller lifecycle --------------------------------------------- #
+
 
 def test_controller_stop_when_no_bots():
     """No configs → controller starts, immediately drops out, sets
@@ -99,27 +107,40 @@ def test_controller_request_stop_flags_progress():
 
 # ---- End-to-end tick ------------------------------------------------- #
 
+
 def test_controller_runs_synthetic_candles_end_to_end():
     """Full loop: 2 bot configs, 30 candles each. After start()
     completes, candles_played should reach the series length OR
     max_candles cap."""
     cfgs = [
-        {"mode": "scrumming", "symbol": "BTC/USD",
-         "exchange_id": "sim", "base_currency": "USD",
-         "target_asset": "BTC", "target_balance": 250.0,
-         "scrumming_interval_pct": 1.0, "ta_timeframe": "1h"},
-        {"mode": "scrumming", "symbol": "ETH/USD",
-         "exchange_id": "sim", "base_currency": "USD",
-         "target_asset": "ETH", "target_balance": 250.0,
-         "scrumming_interval_pct": 1.0, "ta_timeframe": "1h"},
+        {
+            "mode": "scrumming",
+            "symbol": "BTC/USD",
+            "exchange_id": "sim",
+            "base_currency": "USD",
+            "target_asset": "BTC",
+            "target_balance": 250.0,
+            "scrumming_interval_pct": 1.0,
+            "ta_timeframe": "1h",
+        },
+        {
+            "mode": "scrumming",
+            "symbol": "ETH/USD",
+            "exchange_id": "sim",
+            "base_currency": "USD",
+            "target_asset": "ETH",
+            "target_balance": 250.0,
+            "scrumming_interval_pct": 1.0,
+            "ta_timeframe": "1h",
+        },
     ]
     candles = {
         "BTC/USD": _synthesize_candles_for_symbol("BTC/USD", 30),
         "ETH/USD": _synthesize_candles_for_symbol("ETH/USD", 30),
     }
     ctrl = FleetReplayController(
-        configs=cfgs, candles_by_symbol=candles,
-        tick_delay_s=0.0, max_candles=30)
+        configs=cfgs, candles_by_symbol=candles, tick_delay_s=0.0, max_candles=30
+    )
 
     async def run():
         await ctrl.start()
@@ -133,12 +154,11 @@ def test_controller_runs_synthetic_candles_end_to_end():
 def test_controller_double_start_is_noop():
     """Calling start() twice must not spawn two tick tasks."""
     ctrl = FleetReplayController(
-        configs=[{"mode": "scrumming", "symbol": "BTC/USD",
-                  "target_balance": 100.0}],
-        candles_by_symbol={"BTC/USD":
-                            _synthesize_candles_for_symbol(
-                                "BTC/USD", 5)},
-        tick_delay_s=0.0, max_candles=5)
+        configs=[{"mode": "scrumming", "symbol": "BTC/USD", "target_balance": 100.0}],
+        candles_by_symbol={"BTC/USD": _synthesize_candles_for_symbol("BTC/USD", 5)},
+        tick_delay_s=0.0,
+        max_candles=5,
+    )
 
     async def run():
         await ctrl.start()
@@ -158,18 +178,18 @@ def test_controller_double_start_is_noop():
 # the sim replay." Prior code hardcoded $100,000 USD, which is why
 # sim stat-strip figures bore no relation to bot_state reality.
 
+
 def test_wallet_seed_equals_sum_of_target_balance():
     ctrl = FleetReplayController(
         configs=[
-            {"mode": "scrumming", "symbol": "BTC/USD",
-             "target_balance": 200.0},
-            {"mode": "scrumming", "symbol": "ETH/USD",
-             "target_balance": 150.0},
+            {"mode": "scrumming", "symbol": "BTC/USD", "target_balance": 200.0},
+            {"mode": "scrumming", "symbol": "ETH/USD", "target_balance": 150.0},
         ],
         candles_by_symbol={
             "BTC/USD": _synthesize_candles_for_symbol("BTC/USD", 5),
             "ETH/USD": _synthesize_candles_for_symbol("ETH/USD", 5),
-        })
+        },
+    )
     ctrl._build_sim()
     assert ctrl._tape.balances()["USD"] == pytest.approx(350.0)
 
@@ -179,14 +199,17 @@ def test_wallet_seed_excludes_configs_without_tablets():
     sized for bots that never spawn."""
     ctrl = FleetReplayController(
         configs=[
-            {"mode": "scrumming", "symbol": "BTC/USD",
-             "target_balance": 200.0},
-            {"mode": "scrumming", "symbol": "NOTAPE/USD",
-             "target_balance": 999.0},   # no candle series
+            {"mode": "scrumming", "symbol": "BTC/USD", "target_balance": 200.0},
+            {
+                "mode": "scrumming",
+                "symbol": "NOTAPE/USD",
+                "target_balance": 999.0,
+            },  # no candle series
         ],
         candles_by_symbol={
             "BTC/USD": _synthesize_candles_for_symbol("BTC/USD", 5),
-        })
+        },
+    )
     ctrl._build_sim()
     assert ctrl._tape.balances()["USD"] == pytest.approx(200.0)
 
@@ -196,12 +219,12 @@ def test_wallet_seed_falls_back_when_no_targets():
     falls back to a nominal float AND says so."""
     acts: list[str] = []
     ctrl = FleetReplayController(
-        configs=[{"mode": "scrumming", "symbol": "BTC/USD",
-                  "target_balance": 0.0}],
+        configs=[{"mode": "scrumming", "symbol": "BTC/USD", "target_balance": 0.0}],
         candles_by_symbol={
             "BTC/USD": _synthesize_candles_for_symbol("BTC/USD", 5),
         },
-        activity_log_cb=acts.append)
+        activity_log_cb=acts.append,
+    )
     ctrl._build_sim()
     assert ctrl._tape.balances()["USD"] > 0
     assert any("falling back" in a for a in acts)
@@ -210,12 +233,12 @@ def test_wallet_seed_falls_back_when_no_targets():
 def test_wallet_seed_is_announced_in_activity_log():
     acts: list[str] = []
     ctrl = FleetReplayController(
-        configs=[{"mode": "scrumming", "symbol": "BTC/USD",
-                  "target_balance": 250.0}],
+        configs=[{"mode": "scrumming", "symbol": "BTC/USD", "target_balance": 250.0}],
         candles_by_symbol={
             "BTC/USD": _synthesize_candles_for_symbol("BTC/USD", 5),
         },
-        activity_log_cb=acts.append)
+        activity_log_cb=acts.append,
+    )
     ctrl._build_sim()
     assert any("Wallet seed: $250.00" in a for a in acts)
 
@@ -235,42 +258,37 @@ def _ts_at(idx: int) -> float:
 
 
 def test_anchor_includes_trade_candle_and_warmup():
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-        build_anchor_indices)
-    a = build_anchor_indices([_ts_at(500)], _ANCHOR_BASE, 1000,
-                             warmup=100)
+    from src.gui.simulator_tab.fleet.fleet_replay_controller import build_anchor_indices
+
+    a = build_anchor_indices([_ts_at(500)], _ANCHOR_BASE, 1000, warmup=100)
     # 100 warm-up candles PLUS the trade's own candle
     assert (min(a), max(a), len(a)) == (400, 500, 101)
 
 
 def test_anchor_overlapping_clusters_collapse():
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-        build_anchor_indices)
-    a = build_anchor_indices([_ts_at(500), _ts_at(510)],
-                             _ANCHOR_BASE, 1000, warmup=100)
+    from src.gui.simulator_tab.fleet.fleet_replay_controller import build_anchor_indices
+
+    a = build_anchor_indices([_ts_at(500), _ts_at(510)], _ANCHOR_BASE, 1000, warmup=100)
     assert len(a) == 111, "clustered trades must not cost 2x warm-up"
 
 
 def test_anchor_drops_trades_outside_window():
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-        build_anchor_indices)
-    assert not build_anchor_indices(
-        [_ts_at(-50)], _ANCHOR_BASE, 1000, warmup=100)
-    assert not build_anchor_indices(
-        [_ts_at(5000)], _ANCHOR_BASE, 1000, warmup=100)
+    from src.gui.simulator_tab.fleet.fleet_replay_controller import build_anchor_indices
+
+    assert not build_anchor_indices([_ts_at(-50)], _ANCHOR_BASE, 1000, warmup=100)
+    assert not build_anchor_indices([_ts_at(5000)], _ANCHOR_BASE, 1000, warmup=100)
 
 
 def test_anchor_warmup_clamps_at_zero():
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-        build_anchor_indices)
-    a = build_anchor_indices([_ts_at(10)], _ANCHOR_BASE, 1000,
-                             warmup=100)
+    from src.gui.simulator_tab.fleet.fleet_replay_controller import build_anchor_indices
+
+    a = build_anchor_indices([_ts_at(10)], _ANCHOR_BASE, 1000, warmup=100)
     assert min(a) == 0
 
 
 def test_anchor_empty_when_no_trades():
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-        build_anchor_indices)
+    from src.gui.simulator_tab.fleet.fleet_replay_controller import build_anchor_indices
+
     assert build_anchor_indices([], _ANCHOR_BASE, 1000) == set()
 
 
@@ -279,10 +297,10 @@ def test_anchored_run_skips_unanchored_candles():
     and bots_ticked must be far below candles x bots."""
     rows = _synthesize_candles_for_symbol("BTC/USD", 60)
     ctrl = FleetReplayController(
-        configs=[{"mode": "scrumming", "symbol": "BTC/USD",
-                  "target_balance": 100.0}],
+        configs=[{"mode": "scrumming", "symbol": "BTC/USD", "target_balance": 100.0}],
         candles_by_symbol={"BTC/USD": rows},
-        tick_delay_s=0.0)
+        tick_delay_s=0.0,
+    )
     ctrl._build_sim()
     # only candles 50..55 are anchors
     ctrl._anchor_indices = set(range(50, 56))
@@ -299,15 +317,14 @@ def test_anchored_run_skips_unanchored_candles():
 def test_unanchored_run_evaluates_every_candle():
     rows = _synthesize_candles_for_symbol("BTC/USD", 20)
     ctrl = FleetReplayController(
-        configs=[{"mode": "scrumming", "symbol": "BTC/USD",
-                  "target_balance": 100.0}],
+        configs=[{"mode": "scrumming", "symbol": "BTC/USD", "target_balance": 100.0}],
         candles_by_symbol={"BTC/USD": rows},
-        tick_delay_s=0.0)
+        tick_delay_s=0.0,
+    )
 
     async def run():
         await ctrl.start()
         await ctrl.stopped_event.wait()
 
     asyncio.run(run())
-    assert ctrl.progress.candles_skipped == 0, (
-        "default must evaluate everything")
+    assert ctrl.progress.candles_skipped == 0, "default must evaluate everything"

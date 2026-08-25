@@ -4,6 +4,7 @@ Ground truth: CodingArchetype.review() should produce ZERO
 critical/high findings on this file. Any high finding here is a
 false positive that must be investigated.
 """
+
 from __future__ import annotations
 
 

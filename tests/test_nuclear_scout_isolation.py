@@ -32,6 +32,7 @@ Operator, same session:
 
 These are that guarantee, expressed as tests.
 """
+
 from __future__ import annotations
 
 import sys
@@ -76,8 +77,9 @@ def test_scout_is_in_sim_mode(scout):
 
 def test_scout_does_not_resolve_the_live_registry(scout):
     """The 16,523-orphan leak. This is the one that reaches disk."""
-    assert scout._crr() is not get_registry(), \
-        "Nuclear scout resolved the process-wide capital registry"
+    assert (
+        scout._crr() is not get_registry()
+    ), "Nuclear scout resolved the process-wide capital registry"
 
 
 def test_scout_registry_does_not_autosave(scout):
@@ -89,8 +91,9 @@ def test_scout_registry_state_path_is_outside_the_runtime_tree(scout):
     resolved = scout._crr()._state_path.resolve()
     assert resolved != _LIVE_STATE.resolve()
     runtime = (Path.home() / ".acervator").resolve()
-    assert runtime not in resolved.parents, \
-        f"scout registry writes inside the runtime tree: {resolved}"
+    assert (
+        runtime not in resolved.parents
+    ), f"scout registry writes inside the runtime tree: {resolved}"
 
 
 def test_scout_is_not_on_the_global_bus(scout):
@@ -119,11 +122,10 @@ def test_construct_scout_passes_the_isolation_arguments():
     # OLD `enable_phantoms=False` construction, and that history is
     # worth keeping. Matching raw text would flag the explanation as
     # if it were the defect.
-    code = "\n".join(
-        ln for ln in src.split("\n")
-        if not ln.strip().startswith("#"))
+    code = "\n".join(ln for ln in src.split("\n") if not ln.strip().startswith("#"))
     assert "sim_mode=True" in code
     assert "capital_registry=" in code
     assert "enable_phantoms=True" in code
-    assert "enable_phantoms=False" not in code, \
-        "scout reconstructed with phantoms disabled"
+    assert (
+        "enable_phantoms=False" not in code
+    ), "scout reconstructed with phantoms disabled"

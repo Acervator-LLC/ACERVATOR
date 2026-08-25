@@ -26,6 +26,7 @@ This window reuses:
 
 No new engine code. No paper-exchange mode. No feature flags. One window.
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,15 +37,30 @@ from typing import Optional
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QGridLayout, QLabel, QLineEdit, QComboBox, QPushButton,
-    QPlainTextEdit, QGroupBox, QDoubleSpinBox, QMessageBox,
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QLabel,
+    QLineEdit,
+    QComboBox,
+    QPushButton,
+    QPlainTextEdit,
+    QGroupBox,
+    QDoubleSpinBox,
+    QMessageBox,
 )
 
 # Reuse existing infrastructure — no re-invention
 from ..core.event_bus import get_event_bus
 from ..exchange.ccxt_connector import CCXTConnector, SUPPORTED_EXCHANGES
-from ..trading.bot_container import BotConfig, BotMode, make_bot_config  # noqa: F401  (BotConfig retained for type hints only; construction goes through make_bot_config per v3.20.35 fitness rule)
+from ..trading.bot_container import (
+    BotConfig,
+    BotMode,
+    make_bot_config,
+)  # noqa: F401  (BotConfig retained for type hints only; construction goes through make_bot_config per v3.20.35 fitness rule)
 from ..trading.scrumming_bot import ScrummingBot
 
 logger = logging.getLogger("acervator.gui.live_bot")
@@ -54,10 +70,10 @@ logger = logging.getLogger("acervator.gui.live_bot")
 # Structure: {base_currency: [target_assets...]}
 # The UI renders Symbol as "TARGET/BASE" following CCXT convention.
 DEFAULT_PAIRS = {
-    "USD":  ["BTC", "ETH", "SOL", "ADA", "AVAX", "DOT", "BONK", "PEPE", "WIF"],
+    "USD": ["BTC", "ETH", "SOL", "ADA", "AVAX", "DOT", "BONK", "PEPE", "WIF"],
     "USDT": ["BTC", "ETH", "SOL", "ADA", "AVAX", "DOT", "MATIC", "LINK"],
     "USDC": ["BTC", "ETH", "SOL"],
-    "EUR":  ["BTC", "ETH"],
+    "EUR": ["BTC", "ETH"],
 }
 
 
@@ -170,7 +186,8 @@ class LiteLiveBotWindow(QMainWindow):
             edit.setLineWrapMode(QPlainTextEdit.NoWrap)
             edit.setStyleSheet(
                 "QPlainTextEdit { font-family: 'Menlo','Consolas',monospace; "
-                "font-size: 11pt; background: #0e1420; color: #c8d4e3; }")
+                "font-size: 11pt; background: #0e1420; color: #c8d4e3; }"
+            )
             edit.setMaximumBlockCount(5000)  # cap buffer
             v.addWidget(edit)
             return g, edit
@@ -189,12 +206,9 @@ class LiteLiveBotWindow(QMainWindow):
 
     def _wire_signals(self) -> None:
         # Main-thread signals → pane append
-        self._sig_console.connect(
-            lambda s: self.txt_console.appendPlainText(s))
-        self._sig_api.connect(
-            lambda s: self.txt_api.appendPlainText(s))
-        self._sig_activity.connect(
-            lambda s: self.txt_activity.appendPlainText(s))
+        self._sig_console.connect(lambda s: self.txt_console.appendPlainText(s))
+        self._sig_api.connect(lambda s: self.txt_api.appendPlainText(s))
+        self._sig_activity.connect(lambda s: self.txt_activity.appendPlainText(s))
 
     def _on_base_changed(self, base: str) -> None:
         self.cb_target.clear()
@@ -207,9 +221,19 @@ class LiteLiveBotWindow(QMainWindow):
         self._sig_console.emit(msg)
         # Separate trade events to Activity pane too
         lower = msg.lower()
-        if any(kw in lower for kw in
-               ("buy ", "sell ", "fold ", "scrum ", "initial entry",
-                "fire-window", "fold rebuy", "executed")):
+        if any(
+            kw in lower
+            for kw in (
+                "buy ",
+                "sell ",
+                "fold ",
+                "scrum ",
+                "initial entry",
+                "fire-window",
+                "fold rebuy",
+                "executed",
+            )
+        ):
             self._sig_activity.emit(msg)
 
     def _on_trade_filled(self, event) -> None:
@@ -219,7 +243,8 @@ class LiteLiveBotWindow(QMainWindow):
         amount = d.get("amount", 0.0)
         price = d.get("price", 0.0)
         self._sig_activity.emit(
-            f"FILL: {side.upper()} {amount:.6f} {symbol} @ ${price:.8f}")
+            f"FILL: {side.upper()} {amount:.6f} {symbol} @ ${price:.8f}"
+        )
 
     def _on_api_event(self, event) -> None:
         topic = event.topic
@@ -236,8 +261,9 @@ class LiteLiveBotWindow(QMainWindow):
         base = self.cb_base.currentText()
         target_asset = self.cb_target.currentText()
         if not target_asset:
-            QMessageBox.warning(self, "Select pair",
-                                "Pick a target asset before starting.")
+            QMessageBox.warning(
+                self, "Select pair", "Pick a target asset before starting."
+            )
             return
         symbol = f"{target_asset}/{base}"
         target_dollars = float(self.sp_target.value())
@@ -245,9 +271,11 @@ class LiteLiveBotWindow(QMainWindow):
         api_secret = self.ed_api_secret.text().strip()
 
         if not api_key or not api_secret:
-            QMessageBox.warning(self, "API credentials required",
-                                "Both API key and secret are required for "
-                                "live trading.")
+            QMessageBox.warning(
+                self,
+                "API credentials required",
+                "Both API key and secret are required for " "live trading.",
+            )
             return
 
         # Subscribe to streams BEFORE starting bot so nothing is missed
@@ -259,13 +287,21 @@ class LiteLiveBotWindow(QMainWindow):
         ]
 
         self._sig_console.emit(
-            f"Starting: {exchange_id} {symbol} target=${target_dollars:.2f}")
+            f"Starting: {exchange_id} {symbol} target=${target_dollars:.2f}"
+        )
 
         # Run bot in a dedicated thread with its own asyncio loop
         self._bot_thread = threading.Thread(
             target=self._run_bot,
-            args=(exchange_id, base, target_asset, symbol,
-                  target_dollars, api_key, api_secret),
+            args=(
+                exchange_id,
+                base,
+                target_asset,
+                symbol,
+                target_dollars,
+                api_key,
+                api_secret,
+            ),
             name="live-bot-window",
             daemon=True,
         )
@@ -275,9 +311,16 @@ class LiteLiveBotWindow(QMainWindow):
         self.btn_stop.setEnabled(True)
         self.lbl_status.setText(f"Status: running {symbol}")
 
-    def _run_bot(self, exchange_id: str, base: str, target_asset: str,
-                 symbol: str, target_dollars: float,
-                 api_key: str, api_secret: str) -> None:
+    def _run_bot(
+        self,
+        exchange_id: str,
+        base: str,
+        target_asset: str,
+        symbol: str,
+        target_dollars: float,
+        api_key: str,
+        api_secret: str,
+    ) -> None:
         """Bot worker — runs on its own thread with its own event loop."""
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -322,7 +365,8 @@ class LiteLiveBotWindow(QMainWindow):
                         await self._exchange.disconnect()
                     except Exception as _sf_exc:  # noqa: BLE001
                         logger.warning(
-                            "Lite Live Bot status refresh failed: %s", _sf_exc)
+                            "Lite Live Bot status refresh failed: %s", _sf_exc
+                        )
 
         try:
             loop.run_until_complete(_main())
@@ -336,8 +380,7 @@ class LiteLiveBotWindow(QMainWindow):
 
         # Schedule stop on the bot's loop
         if self._loop is not None and self._loop.is_running():
-            fut = asyncio.run_coroutine_threadsafe(
-                self._bot.stop(), self._loop)
+            fut = asyncio.run_coroutine_threadsafe(self._bot.stop(), self._loop)
             try:
                 fut.result(timeout=10)
             except Exception as e:
@@ -345,8 +388,10 @@ class LiteLiveBotWindow(QMainWindow):
 
         # Tear down subscriptions
         for unsub in self._unsubs:
-            try: unsub()
-            except Exception: pass   # sadp: R61 ACCEPT — best-effort unsubscribe on teardown (bus may already be gone or subscription already released)
+            try:
+                unsub()
+            except Exception:
+                pass  # sadp: R61 ACCEPT — best-effort unsubscribe on teardown (bus may already be gone or subscription already released)
         self._unsubs = []
 
         self._bot = None
@@ -366,6 +411,7 @@ class LiteLiveBotWindow(QMainWindow):
 def main() -> int:
     """Entry point — launch the lite window as a standalone app."""
     import sys
+
     app = QApplication(sys.argv)
     w = LiteLiveBotWindow()
     w.show()
@@ -374,4 +420,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

@@ -21,6 +21,7 @@ With the argument ABSENT the message is byte-identical to what the
 module emitted before U1. ``LIVE_FALLBACK_MESSAGE`` below is that
 message, captured by driving the pre-U1 module.
 """
+
 from __future__ import annotations
 
 import ast
@@ -116,8 +117,9 @@ async def _fallback_message(exchange: Any, label: Any = _ABSENT) -> str:
     else:
         _, _, is_real = await bot._settled_fill(*args, label=label)
     assert is_real is False, "the fallback never fired; nothing was measured"
-    assert len(bot._bus.messages) == 1, (
-        f"expected exactly one emit, got {len(bot._bus.messages)}")
+    assert (
+        len(bot._bus.messages) == 1
+    ), f"expected exactly one emit, got {len(bot._bus.messages)}"
     return bot._bus.messages[0]
 
 
@@ -137,7 +139,8 @@ ACCEPTED = (
 @pytest.mark.asyncio
 @pytest.mark.parametrize("exchange_cls", EXCHANGES)
 async def test_the_absent_label_is_byte_identical_to_the_pre_u1_message(
-        exchange_cls: Any) -> None:
+    exchange_cls: Any,
+) -> None:
     """The zero-behaviour-change claim, stated in bytes."""
     message = await _fallback_message(exchange_cls())
     assert message.encode("utf-8") == LIVE_FALLBACK_MESSAGE.encode("utf-8")
@@ -147,7 +150,8 @@ async def test_the_absent_label_is_byte_identical_to_the_pre_u1_message(
 @pytest.mark.parametrize("exchange_cls", EXCHANGES)
 @pytest.mark.parametrize(("label", "prefix"), ACCEPTED)
 async def test_an_accepted_label_names_its_path_and_changes_nothing_else(
-        label: Any, prefix: str, exchange_cls: Any) -> None:
+    label: Any, prefix: str, exchange_cls: Any
+) -> None:
     message = await _fallback_message(exchange_cls(), label)
     assert message.startswith(prefix + ": ")
     # Only the prefix may differ from the message live has always sent.
@@ -158,10 +162,10 @@ async def test_an_accepted_label_names_its_path_and_changes_nothing_else(
 
 REJECTED: tuple[Any, ...] = (
     "BANANA",
-    "scrum",            # wrong case
-    " SCRUM ",          # padded
-    "MANUAL  FIRE",     # doubled space
-    "SCRUM: forged",    # tries to carry its own colon into the line
+    "scrum",  # wrong case
+    " SCRUM ",  # padded
+    "MANUAL  FIRE",  # doubled space
+    "SCRUM: forged",  # tries to carry its own colon into the line
     0,
     True,
     1.5,
@@ -173,8 +177,7 @@ REJECTED: tuple[Any, ...] = (
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("label", REJECTED)
-async def test_a_token_outside_the_set_never_reaches_the_operator(
-        label: Any) -> None:
+async def test_a_token_outside_the_set_never_reaches_the_operator(label: Any) -> None:
     """An unrecognised token would only be a new way to mislabel the
     same line, so it degrades to the manual default instead."""
     message = await _fallback_message(_SilentExchange(), label)
@@ -193,7 +196,8 @@ async def test_a_bad_label_never_raises_after_the_order_is_placed() -> None:
 def test_the_set_holds_exactly_these_four_labels() -> None:
     """Widening the set silently would put a new token in bot.log."""
     assert ScrummingBot._SETTLED_FILL_LABELS == frozenset(
-        {"MANUAL FIRE", "SCRUM", "DIST", "STACK"})
+        {"MANUAL FIRE", "SCRUM", "DIST", "STACK"}
+    )
     assert ScrummingBot._SETTLED_FILL_DEFAULT_LABEL == "MANUAL FIRE"
 
 
@@ -212,6 +216,7 @@ async def test_POSITIVE_CONTROL_the_prefix_check_can_go_red() -> None:
 
 # ── the manual call sites still pass nothing ────────────────────────
 
+
 def _manual_rebalance_settled_fill_calls() -> list[ast.Call]:
     """Every ``self._settled_fill(...)`` call inside the manual
     rebalance, counted over the AST rather than over substrings: an
@@ -219,11 +224,17 @@ def _manual_rebalance_settled_fill_calls() -> list[ast.Call]:
     real calls, because the third was the word inside a comment."""
     source = Path(inspect.getfile(ScrummingBot)).read_text(encoding="utf-8")
     method: Any = next(
-        node for node in ast.walk(ast.parse(source))
+        node
+        for node in ast.walk(ast.parse(source))
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name == "_execute_manual_rebalance")
-    return [node for node in ast.walk(method) if isinstance(node, ast.Call)
-            and getattr(node.func, "attr", "") == "_settled_fill"]
+        and node.name == "_execute_manual_rebalance"
+    )
+    return [
+        node
+        for node in ast.walk(method)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "attr", "") == "_settled_fill"
+    ]
 
 
 def test_POSITIVE_CONTROL_the_call_site_scanner_finds_the_calls() -> None:

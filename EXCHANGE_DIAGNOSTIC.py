@@ -4,35 +4,48 @@ EXCHANGE_DIAGNOSTIC.py - Test ALL supported exchange connections
 Double-click to run. Tests public endpoints for all 15 exchanges,
 then optionally tests authenticated connection for one exchange.
 """
+
 import sys, time, json, ssl, socket, urllib.request, urllib.error
 
 EXCHANGES = {
-    "binance":   ("https://api.binance.com/api/v3/ping", "Standard HMAC"),
-    "coinbase":  ("https://api.coinbase.com/api/v3/brokerage/market/products?limit=1", "CDP (ECDSA) or Legacy HMAC"),
-    "kraken":    ("https://api.kraken.com/0/public/SystemStatus", "Standard HMAC"),
-    "kucoin":    ("https://api.kucoin.com/api/v1/timestamp", "HMAC + Passphrase"),
-    "bybit":     ("https://api.bybit.com/v5/market/time", "Standard HMAC"),
-    "okx":       ("https://www.okx.com/api/v5/public/time", "HMAC + Passphrase"),
-    "gateio":    ("https://api.gateio.ws/api/v4/spot/currencies", "Standard HMAC"),
-    "bitget":    ("https://api.bitget.com/api/v2/public/time", "HMAC + Passphrase"),
-    "huobi":     ("https://api.huobi.pro/v1/common/timestamp", "Standard HMAC (HTX rebrand)"),
-    "mexc":      ("https://api.mexc.com/api/v3/ping", "Standard HMAC"),
-    "bitfinex":  ("https://api-pub.bitfinex.com/v2/platform/status", "Standard HMAC"),
-    "gemini":    ("https://api.gemini.com/v1/symbols", "Standard HMAC"),
-    "poloniex":  ("https://api.poloniex.com/markets", "Standard HMAC (Non-US only)"),
-    "bitstamp":  ("https://www.bitstamp.net/api/v2/ticker/btcusd/", "Standard HMAC"),
-    "cryptocom": ("https://api.crypto.com/exchange/v1/public/get-instruments", "Standard HMAC"),
+    "binance": ("https://api.binance.com/api/v3/ping", "Standard HMAC"),
+    "coinbase": (
+        "https://api.coinbase.com/api/v3/brokerage/market/products?limit=1",
+        "CDP (ECDSA) or Legacy HMAC",
+    ),
+    "kraken": ("https://api.kraken.com/0/public/SystemStatus", "Standard HMAC"),
+    "kucoin": ("https://api.kucoin.com/api/v1/timestamp", "HMAC + Passphrase"),
+    "bybit": ("https://api.bybit.com/v5/market/time", "Standard HMAC"),
+    "okx": ("https://www.okx.com/api/v5/public/time", "HMAC + Passphrase"),
+    "gateio": ("https://api.gateio.ws/api/v4/spot/currencies", "Standard HMAC"),
+    "bitget": ("https://api.bitget.com/api/v2/public/time", "HMAC + Passphrase"),
+    "huobi": (
+        "https://api.huobi.pro/v1/common/timestamp",
+        "Standard HMAC (HTX rebrand)",
+    ),
+    "mexc": ("https://api.mexc.com/api/v3/ping", "Standard HMAC"),
+    "bitfinex": ("https://api-pub.bitfinex.com/v2/platform/status", "Standard HMAC"),
+    "gemini": ("https://api.gemini.com/v1/symbols", "Standard HMAC"),
+    "poloniex": ("https://api.poloniex.com/markets", "Standard HMAC (Non-US only)"),
+    "bitstamp": ("https://www.bitstamp.net/api/v2/ticker/btcusd/", "Standard HMAC"),
+    "cryptocom": (
+        "https://api.crypto.com/exchange/v1/public/get-instruments",
+        "Standard HMAC",
+    ),
 }
 
 print("=" * 70)
 print("  EXCHANGE CONNECTIVITY DIAGNOSTIC")
-print(f"  Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} | {sys.platform}")
+print(
+    f"  Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} | {sys.platform}"
+)
 print("=" * 70)
 
 # SSL context
 ctx = ssl.create_default_context()
 try:
     import certifi
+
     ctx = ssl.create_default_context(cafile=certifi.where())
     print(f"  SSL: certifi {certifi.__version__}")
 except ImportError:
@@ -58,7 +71,7 @@ for eid, (url, auth_type) in EXCHANGES.items():
         print(f"{label} HTTP {e.code}  {elapsed:6.0f}ms  {e.reason} [{auth_type}]")
         results[eid] = ("HTTP_ERR", e.code, elapsed)
     except Exception as e:
-        elapsed = (time.monotonic() - start) * 1000 if 'start' in dir() else 0
+        elapsed = (time.monotonic() - start) * 1000 if "start" in dir() else 0
         print(f"{label} FAIL   {type(e).__name__}: {e}")
         results[eid] = ("FAIL", 0, 0)
 
@@ -72,6 +85,7 @@ print("  CCXT CLASS VERIFICATION")
 print("-" * 70)
 try:
     import ccxt
+
     print(f"  ccxt version: {ccxt.__version__}")
     for eid in EXCHANGES:
         cls = getattr(ccxt, eid, None)
@@ -88,7 +102,11 @@ except ImportError:
 print("\n" + "-" * 70)
 print("  AUTHENTICATED CONNECTION TEST (optional)")
 print("-" * 70)
-choice = input("  Enter exchange ID to test with auth (or press Enter to skip): ").strip().lower()
+choice = (
+    input("  Enter exchange ID to test with auth (or press Enter to skip): ")
+    .strip()
+    .lower()
+)
 if choice and choice in EXCHANGES:
     key = input("  API Key: ").strip()
     secret = input("  API Secret: ").strip()
@@ -99,10 +117,13 @@ if choice and choice in EXCHANGES:
     print(f"\n  Testing {choice} with credentials...")
     try:
         import ccxt
+
         cls = getattr(ccxt, choice)
         config = {
-            "apiKey": key, "secret": secret,
-            "enableRateLimit": True, "timeout": 30000,
+            "apiKey": key,
+            "secret": secret,
+            "enableRateLimit": True,
+            "timeout": 30000,
             "options": {"defaultType": "spot"},
         }
         if pp:
@@ -110,13 +131,15 @@ if choice and choice in EXCHANGES:
         if choice == "coinbase":
             if "\\n" in secret:
                 config["secret"] = secret.replace("\\n", "\n")
-            config["options"].update({
-                "advanced": True,
-                "fetchMarkets": "fetchMarketsV3",
-                "fetchTicker": "fetchTickerV3",
-                "fetchAccounts": "fetchAccountsV3",
-                "fetchBalance": "v3PrivateGetBrokerageAccounts",
-            })
+            config["options"].update(
+                {
+                    "advanced": True,
+                    "fetchMarkets": "fetchMarketsV3",
+                    "fetchTicker": "fetchTickerV3",
+                    "fetchAccounts": "fetchAccountsV3",
+                    "fetchBalance": "v3PrivateGetBrokerageAccounts",
+                }
+            )
 
         exchange = cls(config)
         if choice == "coinbase":
@@ -140,6 +163,7 @@ if choice and choice in EXCHANGES:
         print(f"\n  {choice.upper()} AUTH: FAIL")
         print(f"  {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
 
 print("\n" + "=" * 70)

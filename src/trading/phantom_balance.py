@@ -69,13 +69,31 @@ logger = logging.getLogger("acervator.phantom")
 # Timeframe hierarchy
 # ---------------------------------------------------------------------------
 TIMEFRAME_ORDER: list[str] = [
-    "1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w",
+    "1m",
+    "5m",
+    "15m",
+    "30m",
+    "1h",
+    "2h",
+    "4h",
+    "6h",
+    "12h",
+    "1d",
+    "1w",
 ]
 
 TIMEFRAME_SECONDS: dict[str, int] = {
-    "1m": 60, "5m": 300, "15m": 900, "30m": 1800,
-    "1h": 3600, "2h": 7200, "4h": 14400, "6h": 21600,
-    "12h": 43200, "1d": 86400, "1w": 604800,
+    "1m": 60,
+    "5m": 300,
+    "15m": 900,
+    "30m": 1800,
+    "1h": 3600,
+    "2h": 7200,
+    "4h": 14400,
+    "6h": 21600,
+    "12h": 43200,
+    "1d": 86400,
+    "1w": 604800,
 }
 
 
@@ -101,12 +119,13 @@ class TradeLock:
     A temporary lock placed by a higher-timeframe phantom to prevent
     contradicting trades on lower timeframes.
     """
+
     source_timeframe: str
     source_bot_id: str
-    direction: SignalDirection     # The direction that is LOCKED OUT
-    candles_remaining: int         # How many candles this lock persists
+    direction: SignalDirection  # The direction that is LOCKED OUT
+    candles_remaining: int  # How many candles this lock persists
     created_at: float = field(default_factory=time.time)
-    lock_all_lower: bool = True    # Lock all TFs below source, not just one
+    lock_all_lower: bool = True  # Lock all TFs below source, not just one
 
     @property
     def is_expired(self) -> bool:
@@ -291,7 +310,9 @@ class PhantomBalanceBot:
         """
         # Fetch candles for this timeframe
         raw = await self.exchange.get_ohlcv(
-            self.symbol, timeframe=self.timeframe, limit=100,
+            self.symbol,
+            timeframe=self.timeframe,
+            limit=100,
         )
         candles = candles_from_raw(raw)
         if len(candles) < 30:
@@ -336,7 +357,9 @@ class PhantomBalanceBot:
                 "bullish": self.last_summary.bullish_count if self.last_summary else 0,
                 "bearish": self.last_summary.bearish_count if self.last_summary else 0,
                 "net_score": self.last_summary.net_score if self.last_summary else 0,
-                "confidence": self.last_summary.consensus_confidence if self.last_summary else 0,
+                "confidence": (
+                    self.last_summary.consensus_confidence if self.last_summary else 0
+                ),
             },
         }
 
@@ -380,13 +403,12 @@ class TimeframeCoordinator:
         self._phantoms.pop(phantom_id, None)
 
     def get_phantoms_for_parent(self, parent_bot_id: str) -> list[PhantomBalanceBot]:
-        return [
-            p for p in self._phantoms.values()
-            if p.parent_bot_id == parent_bot_id
-        ]
+        return [p for p in self._phantoms.values() if p.parent_bot_id == parent_bot_id]
 
     def get_phantom_by_timeframe(
-        self, parent_bot_id: str, timeframe: str,
+        self,
+        parent_bot_id: str,
+        timeframe: str,
     ) -> Optional[PhantomBalanceBot]:
         for p in self._phantoms.values():
             if p.parent_bot_id == parent_bot_id and p.timeframe == timeframe:
@@ -423,7 +445,10 @@ class TimeframeCoordinator:
         )
         logger.info(
             "Trade lock: %s locked %s direction for %d candles (from %s)",
-            source_timeframe, locked_direction.name, count, source_bot_id,
+            source_timeframe,
+            locked_direction.name,
+            count,
+            source_bot_id,
         )
         return lock
 
@@ -509,7 +534,8 @@ class TimeframeCoordinator:
         """
         base_rank = tf_rank(base_timeframe)
         higher = [
-            p for p in self.get_phantoms_for_parent(parent_bot_id)
+            p
+            for p in self.get_phantoms_for_parent(parent_bot_id)
             if p.rank > base_rank and p.last_summary is not None
         ]
         if not higher:
@@ -521,11 +547,14 @@ class TimeframeCoordinator:
         for p in higher:
             s = p.last_summary
             if s.consensus_confidence < min_confidence:
-                contrib.append({
-                    "tf": p.timeframe, "skipped": True,
-                    "conf": s.consensus_confidence,
-                    "direction": s.consensus_direction.name,
-                })
+                contrib.append(
+                    {
+                        "tf": p.timeframe,
+                        "skipped": True,
+                        "conf": s.consensus_confidence,
+                        "direction": s.consensus_direction.name,
+                    }
+                )
                 continue
             # Linear weight: 4h-rank=6 contributes 6, 1d-rank=9 contributes 9
             weight = max(1, p.rank) * float(s.consensus_confidence)
@@ -534,15 +563,19 @@ class TimeframeCoordinator:
             elif s.consensus_direction == SignalDirection.BEARISH:
                 bear_weight += weight
             # NEUTRAL contributes to neither side.
-            contrib.append({
-                "tf": p.timeframe, "weight": round(weight, 3),
-                "direction": s.consensus_direction.name,
-                "conf": round(s.consensus_confidence, 3),
-            })
+            contrib.append(
+                {
+                    "tf": p.timeframe,
+                    "weight": round(weight, 3),
+                    "direction": s.consensus_direction.name,
+                    "conf": round(s.consensus_confidence, 3),
+                }
+            )
 
         if bull_weight == 0 and bear_weight == 0:
             return SignalDirection.NEUTRAL, {
-                "bull_weight": 0.0, "bear_weight": 0.0,
+                "bull_weight": 0.0,
+                "bear_weight": 0.0,
                 "contributors": contrib,
                 "reason": "all higher-TF phantoms below confidence floor or NEUTRAL",
             }
@@ -586,7 +619,8 @@ class TimeframeCoordinator:
                         for s in p.last_summary.signals
                     ],
                     "locks": [
-                        lk for lk in self.get_active_locks()
+                        lk
+                        for lk in self.get_active_locks()
                         if lk["source_tf"] == p.timeframe
                     ],
                 }

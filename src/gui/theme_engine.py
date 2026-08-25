@@ -40,6 +40,7 @@ from typing import Optional
 @dataclass
 class ThemeTokens:
     """Color and style tokens that define a complete visual theme."""
+
     name: str
     display_name: str
 
@@ -55,20 +56,24 @@ class ThemeTokens:
     # Text
     text_primary: str = "#e0e0f0"
     text_secondary: str = "#8888aa"
-    text_muted: str = "#8a8ab0"   # was "#555577" — WCAG C2: 2.62:1 → 5.19:1 (SC 1.4.3)
+    text_muted: str = "#8a8ab0"  # was "#555577" — WCAG C2: 2.62:1 → 5.19:1 (SC 1.4.3)
     text_accent: str = "#00ffcc"
 
     # Accents
     accent_primary: str = "#00ffcc"
     accent_secondary: str = "#ff00aa"
     accent_success: str = "#00ff88"
-    accent_danger: str = "#ff5577"   # was "#ff3366" — WCAG C2: tightened contrast margin (SC 1.4.3)
+    accent_danger: str = (
+        "#ff5577"  # was "#ff3366" — WCAG C2: tightened contrast margin (SC 1.4.3)
+    )
     accent_warning: str = "#ffaa00"
-    accent_info: str = "#4fc3ff"     # was "#00aaff" — WCAG C2: widened contrast margin (SC 1.4.3)
+    accent_info: str = (
+        "#4fc3ff"  # was "#00aaff" — WCAG C2: widened contrast margin (SC 1.4.3)
+    )
 
     # Borders (SC 1.4.11 — UI components require ≥3:1 contrast against adjacent colors)
-    border_primary: str = "#7a7a9c"      # was "#2a2a44" — WCAG C2: 1.42:1 → 4.79:1
-    border_secondary: str = "#5e5e80"    # was "#1e1e33" — WCAG C2: 1.21:1 → 3.19:1
+    border_primary: str = "#7a7a9c"  # was "#2a2a44" — WCAG C2: 1.42:1 → 4.79:1
+    border_secondary: str = "#5e5e80"  # was "#1e1e33" — WCAG C2: 1.21:1 → 3.19:1
     border_accent: str = "#00ffcc44"
 
     # Special
@@ -612,8 +617,7 @@ class ThemeManager:
     def list_themes(self) -> list[dict[str, str]]:
         """Return available themes as [{name, display_name}, ...]."""
         return [
-            {"name": t.name, "display_name": t.display_name}
-            for t in THEMES.values()
+            {"name": t.name, "display_name": t.display_name} for t in THEMES.values()
         ]
 
     def get_theme(self, name: str) -> ThemeTokens:

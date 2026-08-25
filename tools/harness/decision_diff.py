@@ -56,6 +56,7 @@ USAGE
 
 Exit code from --compare is 0 when every decision matches, 1 otherwise.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -74,6 +75,7 @@ if str(REPO) not in sys.path:
 # Stone Tablet feed — the determinism
 # ─────────────────────────────────────────────────────────────────────
 
+
 class TabletFeed:
     """Serves one fixed candle window as if it were an exchange.
 
@@ -85,13 +87,13 @@ class TabletFeed:
     def __init__(self, candles: list) -> None:
         self._candles = candles
 
-    async def get_ohlcv(self, symbol: str, timeframe: str = "1h",
-                        limit: int = 100) -> list:
-        return self._candles[-int(limit):]
+    async def get_ohlcv(
+        self, symbol: str, timeframe: str = "1h", limit: int = 100
+    ) -> list:
+        return self._candles[-int(limit) :]
 
 
-def _load_windows(assets: list[str], per_asset: int,
-                  window: int) -> list[dict]:
+def _load_windows(assets: list[str], per_asset: int, window: int) -> list[dict]:
     """Cut deterministic windows out of the tablet archive.
 
     Windows are taken at fixed fractions through each asset's series
@@ -100,7 +102,10 @@ def _load_windows(assets: list[str], per_asset: int,
     because the archive grows.
     """
     from src.trading.stone_tablets.storage import (
-        read_manifest, read_tablet, tablet_path)
+        read_manifest,
+        read_tablet,
+        tablet_path,
+    )
 
     out: list[dict] = []
     entries = read_manifest()
@@ -110,9 +115,11 @@ def _load_windows(assets: list[str], per_asset: int,
         entry = by_asset.get(asset)
         if entry is None:
             continue
-        tab = read_tablet(tablet_path(
-            entry.asset, entry.timeframe, entry.year,
-            exchange_id=entry.exchange_id))
+        tab = read_tablet(
+            tablet_path(
+                entry.asset, entry.timeframe, entry.year, exchange_id=entry.exchange_id
+            )
+        )
         rows = tab.candles
         if len(rows) < window * 2:
             continue
@@ -120,13 +127,15 @@ def _load_windows(assets: list[str], per_asset: int,
         for i in range(per_asset):
             frac = (i + 1) / (per_asset + 1)
             start = int(usable * frac)
-            out.append({
-                "asset": asset,
-                "timeframe": entry.timeframe,
-                "start": start,
-                "window": window,
-                "candles": [list(r) for r in rows[start:start + window]],
-            })
+            out.append(
+                {
+                    "asset": asset,
+                    "timeframe": entry.timeframe,
+                    "start": start,
+                    "window": window,
+                    "candles": [list(r) for r in rows[start : start + window]],
+                }
+            )
     return out
 
 
@@ -138,53 +147,81 @@ SCENARIOS: dict[str, dict] = {
     # A position above target with the operator toggles ON: the state in
     # which a SCRUM is plausible, so the SCRUM chain is actually exercised.
     "scrum_plausible": {
-        "delta": 250.0, "delta_pct": 5.0, "below_interval": False,
-        "flag_require_ta_bullish": True, "flag_hold_in_uptrend": True,
+        "delta": 250.0,
+        "delta_pct": 5.0,
+        "below_interval": False,
+        "flag_require_ta_bullish": True,
+        "flag_hold_in_uptrend": True,
         "flag_defer_to_htf": False,
-        "flag_fold_require_ta_bearish": True, "flag_fold_defer_to_htf": False,
-        "has_fold_tranches": True, "n_fold_tranches": 3,
-        "target_fires": True, "scrum_ok": True, "fold_ok_midline": True,
+        "flag_fold_require_ta_bearish": True,
+        "flag_fold_defer_to_htf": False,
+        "has_fold_tranches": True,
+        "n_fold_tranches": 3,
+        "target_fires": True,
+        "scrum_ok": True,
+        "fold_ok_midline": True,
     },
     # Below target with tranches queued: the FOLD side.
     "fold_plausible": {
-        "delta": -180.0, "delta_pct": 4.0, "below_interval": False,
-        "flag_require_ta_bullish": True, "flag_hold_in_uptrend": True,
+        "delta": -180.0,
+        "delta_pct": 4.0,
+        "below_interval": False,
+        "flag_require_ta_bullish": True,
+        "flag_hold_in_uptrend": True,
         "flag_defer_to_htf": False,
-        "flag_fold_require_ta_bearish": True, "flag_fold_defer_to_htf": False,
-        "has_fold_tranches": True, "n_fold_tranches": 5,
-        "target_fires": True, "scrum_ok": True, "fold_ok_midline": True,
+        "flag_fold_require_ta_bearish": True,
+        "flag_fold_defer_to_htf": False,
+        "has_fold_tranches": True,
+        "n_fold_tranches": 5,
+        "target_fires": True,
+        "scrum_ok": True,
+        "fold_ok_midline": True,
     },
     # Every operator toggle OFF. TA-dependent gates stop gating, so this
     # isolates whether a TA change reaches decisions through some OTHER
     # path than the toggles.
     "toggles_off": {
-        "delta": 250.0, "delta_pct": 5.0, "below_interval": False,
-        "flag_require_ta_bullish": False, "flag_hold_in_uptrend": False,
+        "delta": 250.0,
+        "delta_pct": 5.0,
+        "below_interval": False,
+        "flag_require_ta_bullish": False,
+        "flag_hold_in_uptrend": False,
         "flag_defer_to_htf": False,
-        "flag_fold_require_ta_bearish": False, "flag_fold_defer_to_htf": False,
-        "has_fold_tranches": True, "n_fold_tranches": 3,
-        "target_fires": True, "scrum_ok": True, "fold_ok_midline": True,
+        "flag_fold_require_ta_bearish": False,
+        "flag_fold_defer_to_htf": False,
+        "has_fold_tranches": True,
+        "n_fold_tranches": 3,
+        "target_fires": True,
+        "scrum_ok": True,
+        "fold_ok_midline": True,
     },
 }
 
 # Bot-state fields identical across every scenario. Pinned so a decision
 # difference can only come from TA or from the scenario's own overrides.
 FIXED: dict[str, Any] = {
-    "eff_htf_blocks_scrum": False, "eff_htf_blocks_fold": False,
-    "cb_blocks_scrum": False, "cb_blocks_fold": False,
-    "hyst_ok_scrum_side": True, "hyst_ok_fold_side": True,
-    "hyst_armed_scrum_side": False, "hyst_armed_fold_side": False,
-    "hyst_ref_scrum_side": 0.0, "hyst_ref_fold_side": 0.0,
-    "mem253_at_ceiling": False, "mem253_smart_ceiling_usd": 0.0,
+    "eff_htf_blocks_scrum": False,
+    "eff_htf_blocks_fold": False,
+    "cb_blocks_scrum": False,
+    "cb_blocks_fold": False,
+    "hyst_ok_scrum_side": True,
+    "hyst_ok_fold_side": True,
+    "hyst_armed_scrum_side": False,
+    "hyst_armed_fold_side": False,
+    "hyst_ref_scrum_side": 0.0,
+    "hyst_ref_fold_side": 0.0,
+    "mem253_at_ceiling": False,
+    "mem253_smart_ceiling_usd": 0.0,
     "mem253_current_pos": 0.0,
-    "htf_bias_name": None, "htf_blocks_scrum": False,
+    "htf_bias_name": None,
+    "htf_blocks_scrum": False,
     "htf_blocks_fold": False,
-    "scrumming_interval_pct": 2.0, "trading_fee_pct": 1.6,
+    "scrumming_interval_pct": 2.0,
+    "trading_fee_pct": 1.6,
 }
 
 
-def build_context(snapshot: Any, scenario: dict, symbol: str,
-                  last_close: float) -> Any:
+def build_context(snapshot: Any, scenario: dict, symbol: str, last_close: float) -> Any:
     """Compose a GateContext: TA from the snapshot, the rest pinned."""
     from src.trading.gate_chain import GateContext
 
@@ -210,11 +247,10 @@ def build_context(snapshot: Any, scenario: dict, symbol: str,
         trend_hold=hold,
         trend_strength=float(snapshot.trend_strength),
         eff_direction_name=str(
-            getattr(snapshot.consensus_direction, "name",
-                    snapshot.consensus_direction)),
+            getattr(snapshot.consensus_direction, "name", snapshot.consensus_direction)
+        ),
         eff_is_bullish=is_bull if eff["flag_require_ta_bullish"] else True,
-        eff_is_bearish=(
-            is_bear if eff["flag_fold_require_ta_bearish"] else True),
+        eff_is_bearish=(is_bear if eff["flag_fold_require_ta_bearish"] else True),
         eff_trend_hold=hold if eff["flag_hold_in_uptrend"] else False,
         bb_above_upper_dt=bb_pos >= 1.0,
         bb_below_lower_dt=bb_pos <= 0.0,
@@ -232,18 +268,22 @@ DEFAULT_ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "LINK"]
 async def _decide_one(win: dict, scen_name: str, scenario: dict) -> dict:
     from src.trading.ta_signal_provider import TASignalProvider
     from src.trading.gate_chain import (
-        build_scrumming_scrum_chain, build_scrumming_fold_chain)
+        build_scrumming_scrum_chain,
+        build_scrumming_fold_chain,
+    )
 
     symbol = f"{win['asset']}/USD"
-    provider = TASignalProvider(
-        TabletFeed(win["candles"]), timeframe=win["timeframe"])
+    provider = TASignalProvider(TabletFeed(win["candles"]), timeframe=win["timeframe"])
     snap = await provider.evaluate(symbol)
     if snap is None:
-        return {"asset": win["asset"], "start": win["start"],
-                "scenario": scen_name, "snapshot": None}
+        return {
+            "asset": win["asset"],
+            "start": win["start"],
+            "scenario": scen_name,
+            "snapshot": None,
+        }
 
-    ctx = build_context(snap, scenario, symbol,
-                        float(win["candles"][-1][4]))
+    ctx = build_context(snap, scenario, symbol, float(win["candles"][-1][4]))
     scrum = build_scrumming_scrum_chain().evaluate(ctx)
     fold = build_scrumming_fold_chain().evaluate(ctx)
     return {
@@ -301,25 +341,32 @@ def compare(a: dict, b: dict) -> tuple[int, list[str]]:
             if ra.get(field) != rb.get(field):
                 diffs += 1
                 lines.append(
-                    f"  DECISION {k} {field}: "
-                    f"{ra.get(field)} -> {rb.get(field)}")
-        for field in ("net_score", "consensus", "bb_position",
-                      "is_bullish", "is_bearish", "trend_hold"):
+                    f"  DECISION {k} {field}: " f"{ra.get(field)} -> {rb.get(field)}"
+                )
+        for field in (
+            "net_score",
+            "consensus",
+            "bb_position",
+            "is_bullish",
+            "is_bearish",
+            "trend_hold",
+        ):
             if ra.get(field) != rb.get(field):
                 lines.append(
-                    f"  indicator {k} {field}: "
-                    f"{ra.get(field)} -> {rb.get(field)}")
+                    f"  indicator {k} {field}: " f"{ra.get(field)} -> {rb.get(field)}"
+                )
     return diffs, lines
 
 
 def main(argv: Optional[list[str]] = None) -> int:
     p = argparse.ArgumentParser(
         prog="decision_diff",
-        description="Replay live gate chains over Stone Tablet windows.")
-    p.add_argument("--emit", metavar="FILE",
-                   help="write a decision record")
-    p.add_argument("--compare", nargs=2, metavar=("BASE", "CAND"),
-                   help="diff two decision records")
+        description="Replay live gate chains over Stone Tablet windows.",
+    )
+    p.add_argument("--emit", metavar="FILE", help="write a decision record")
+    p.add_argument(
+        "--compare", nargs=2, metavar=("BASE", "CAND"), help="diff two decision records"
+    )
     p.add_argument("--assets", default=",".join(DEFAULT_ASSETS))
     p.add_argument("--per-asset", type=int, default=4)
     p.add_argument("--window", type=int, default=300)
@@ -332,22 +379,28 @@ def main(argv: Optional[list[str]] = None) -> int:
         for ln in lines:
             print(ln)
         if diffs:
-            print(f"\n[DIFF] {diffs} gate DECISION difference(s) across "
-                  f"{len(a['records'])} decisions")
+            print(
+                f"\n[DIFF] {diffs} gate DECISION difference(s) across "
+                f"{len(a['records'])} decisions"
+            )
             return 1
-        print(f"[OK] 0 gate decision differences across "
-              f"{len(a['records'])} decisions"
-              + (f" ({len(lines)} indicator value change(s))"
-                 if lines else ""))
+        print(
+            f"[OK] 0 gate decision differences across "
+            f"{len(a['records'])} decisions"
+            + (f" ({len(lines)} indicator value change(s))" if lines else "")
+        )
         return 0
 
     assets = [a.strip() for a in args.assets.split(",") if a.strip()]
     result = asyncio.run(run(assets, args.per_asset, args.window))
     if args.emit:
         Path(args.emit).write_text(
-            json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
-        print(f"wrote {args.emit}: {result['n_decisions']} decisions "
-              f"across {result['n_windows']} windows")
+            json.dumps(result, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        print(
+            f"wrote {args.emit}: {result['n_decisions']} decisions "
+            f"across {result['n_windows']} windows"
+        )
     else:
         print(json.dumps(result, indent=2, sort_keys=True))
     return 0

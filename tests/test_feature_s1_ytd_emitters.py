@@ -14,6 +14,7 @@ These tests drive the emitters directly rather than through Qt. The panel needs
 a bot_manager, an async loop and a live exchange to fetch; the EMITTER contract
 is what is under test here, not the network call.
 """
+
 from __future__ import annotations
 
 import sys
@@ -41,11 +42,18 @@ def sink():
 def _fetch(sink, by_symbol, since_ts=1.0):
     """Reproduce the emit block at fleet_replay_panel.py's _do_fetch."""
     total = sum(by_symbol.values())
-    emit("ytd.10.001.gauge.trades_fetched", actual=total,
-         context={"since_ts": since_ts, "symbols": len(by_symbol)})
+    emit(
+        "ytd.10.001.gauge.trades_fetched",
+        actual=total,
+        context={"since_ts": since_ts, "symbols": len(by_symbol)},
+    )
     covered = sorted(set(by_symbol) & FLEET)
-    emit("ytd.10.002.postcondition.fleet_symbol_coverage", actual=covered, expected=sorted(FLEET),
-         context={"uncovered": sorted(FLEET - set(by_symbol))})
+    emit(
+        "ytd.10.002.postcondition.fleet_symbol_coverage",
+        actual=covered,
+        expected=sorted(FLEET),
+        context={"uncovered": sorted(FLEET - set(by_symbol))},
+    )
     emit("ytd.10.003.gauge.per_symbol_counts", actual=dict(sorted(by_symbol.items())))
 
 
@@ -57,8 +65,11 @@ class TestTheEmittersFire:
 
     def test_all_three_signals_fire_once(self, sink):
         _fetch(sink, {"BTC/USD": 10, "ETH/USD": 5})
-        for n in ("ytd.10.001.gauge.trades_fetched", "ytd.10.002.postcondition.fleet_symbol_coverage",
-                  "ytd.10.003.gauge.per_symbol_counts"):
+        for n in (
+            "ytd.10.001.gauge.trades_fetched",
+            "ytd.10.002.postcondition.fleet_symbol_coverage",
+            "ytd.10.003.gauge.per_symbol_counts",
+        ):
             assert sink.count(n) == 1
 
 
@@ -79,8 +90,10 @@ class TestTradeCountIsRecorded:
     def test_the_window_is_recorded(self, sink):
         """Which window was fetched is part of what the reference IS."""
         _fetch(sink, {"BTC/USD": 1}, since_ts=1735689600.0)
-        assert sink.records(
-            "ytd.10.001.gauge.trades_fetched")[0].context["since_ts"] == 1735689600.0
+        assert (
+            sink.records("ytd.10.001.gauge.trades_fetched")[0].context["since_ts"]
+            == 1735689600.0
+        )
 
 
 class TestCoverageIsJudgedAgainstTheFleet:
@@ -91,7 +104,7 @@ class TestCoverageIsJudgedAgainstTheFleet:
         _fetch(sink, {s: 3 for s in FLEET})
         r = sink.records("ytd.10.002.postcondition.fleet_symbol_coverage")[0]
         assert r.ok is True
-        assert r.context["uncovered"] == ()   # frozen empty
+        assert r.context["uncovered"] == ()  # frozen empty
 
     def test_partial_coverage_fails_and_names_the_gap(self, sink):
         _fetch(sink, {"BTC/USD": 3})
@@ -103,16 +116,17 @@ class TestCoverageIsJudgedAgainstTheFleet:
         """Trades on a symbol outside the fleet are not evidence for it."""
         _fetch(sink, {"DOGE/USD": 99})
         r = sink.records("ytd.10.002.postcondition.fleet_symbol_coverage")[0]
-        assert r.actual == ()                 # frozen empty
+        assert r.actual == ()  # frozen empty
         assert r.ok is False
 
 
 class TestThePerSymbolBreakdownSurvives:
     def test_counts_are_retrievable_per_symbol(self, sink):
         _fetch(sink, {"BTC/USD": 10, "ETH/USD": 5})
-        assert sink.records(
-            "ytd.10.003.gauge.per_symbol_counts")[0].actual == {"BTC/USD": 10,
-                                                   "ETH/USD": 5}
+        assert sink.records("ytd.10.003.gauge.per_symbol_counts")[0].actual == {
+            "BTC/USD": 10,
+            "ETH/USD": 5,
+        }
 
     def test_it_is_unjudged(self, sink):
         """A breakdown asserts nothing — recording it is not a pass."""
@@ -131,5 +145,7 @@ class TestRetrievedDataIsNotMutable:
         counts = {"BTC/USD": 10}
         _fetch(sink, counts)
         counts["BTC/USD"] = 999
-        assert sink.records(
-            "ytd.10.003.gauge.per_symbol_counts")[0].actual["BTC/USD"] == 10
+        assert (
+            sink.records("ytd.10.003.gauge.per_symbol_counts")[0].actual["BTC/USD"]
+            == 10
+        )

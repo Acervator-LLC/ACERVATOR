@@ -27,6 +27,7 @@ asserted "_mask_or is called" would pass against a typo'd field id that
 silently does nothing. These drive the real registry and assert the
 rendered output changes.
 """
+
 from __future__ import annotations
 
 import ast
@@ -47,7 +48,8 @@ pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from src.core.privacy_mask_registry import (  # noqa: E402
-    ALL_FIELD_IDS, get_privacy_mask_registry,
+    ALL_FIELD_IDS,
+    get_privacy_mask_registry,
 )
 from src.gui.bot_visualizer import BotVisualizationTab  # noqa: E402
 
@@ -85,9 +87,14 @@ def _painted_tooltip(w, app) -> str:
 
 
 def _status(bid, symbol="BTC/USD", exchange="coinbase", **extra):
-    d = {"bot_id": bid, "symbol": symbol, "exchange": exchange,
-         "mode": "live", "current_holdings": 0.0,
-         "stats": {"ytd_folded_usd": 0.0, "ytd_scrummed_usd": 0.0}}
+    d = {
+        "bot_id": bid,
+        "symbol": symbol,
+        "exchange": exchange,
+        "mode": "live",
+        "current_holdings": 0.0,
+        "stats": {"ytd_folded_usd": 0.0, "ytd_scrummed_usd": 0.0},
+    }
     d["stats"].update(extra.pop("stats", {}))
     d.update(extra)
     return d
@@ -107,8 +114,9 @@ class TestTheMaskingInstrumentWorks:
 class TestExchangeIdComesFromStatus:
     def test_it_reads_the_status_exchange(self, qapp):
         tab = BotVisualizationTab()
-        tab.update_bots([_status("a", exchange="coinbase"),
-                         _status("b", exchange="kraken")])
+        tab.update_bots(
+            [_status("a", exchange="coinbase"), _status("b", exchange="kraken")]
+        )
         assert tab._bot_exchange_id("a") == "coinbase"
         assert tab._bot_exchange_id("b") == "kraken"
         tab.deleteLater()
@@ -129,9 +137,11 @@ class TestExchangeIdComesFromStatus:
 
         tree = ast.parse(Path(bv.__file__).read_text(encoding="utf-8"))
         imported = [
-            a.name for n in ast.walk(tree)
+            a.name
+            for n in ast.walk(tree)
             if isinstance(n, (ast.Import, ast.ImportFrom))
-            for a in n.names]
+            for a in n.names
+        ]
         assert "get_bot_container" not in imported
 
     def test_no_state_file_read_per_lookup(self):
@@ -141,11 +151,16 @@ class TestExchangeIdComesFromStatus:
         import src.gui.bot_visualizer as bv
 
         tree = ast.parse(Path(bv.__file__).read_text(encoding="utf-8"))
-        fn = next(n for n in ast.walk(tree)
-                  if isinstance(n, ast.FunctionDef)
-                  and n.name == "_bot_exchange_id")
-        calls = [getattr(c.func, "id", "") or getattr(c.func, "attr", "")
-                 for c in ast.walk(fn) if isinstance(c, ast.Call)]
+        fn = next(
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "_bot_exchange_id"
+        )
+        calls = [
+            getattr(c.func, "id", "") or getattr(c.func, "attr", "")
+            for c in ast.walk(fn)
+            if isinstance(c, ast.Call)
+        ]
         assert "StateManager" not in calls
         assert "load_state" not in calls
 
@@ -153,10 +168,10 @@ class TestExchangeIdComesFromStatus:
         """Negative control on the fix: reading the id correctly is
         only useful if the filter still uses it."""
         tab = BotVisualizationTab()
-        tab.update_bots([_status("a", exchange="coinbase"),
-                         _status("b", exchange="kraken")])
-        ids = {b for b in tab._bot_widgets
-               if tab._bot_exchange_id(b) == "kraken"}
+        tab.update_bots(
+            [_status("a", exchange="coinbase"), _status("b", exchange="kraken")]
+        )
+        ids = {b for b in tab._bot_widgets if tab._bot_exchange_id(b) == "kraken"}
         assert ids == {"b"}
         tab.deleteLater()
 
@@ -166,8 +181,9 @@ class TestPrivacyCoversTheTooltip:
         tab = BotVisualizationTab()
         tab.update_bots([_status("botrealid001", symbol="BTC/USD")])
         tip = _painted_tooltip(tab._bot_widgets["botrealid001"], qapp)
-        assert "BTC/USD" not in tip, (
-            f"privacy is ON and the tooltip still leaks the symbol: {tip!r}")
+        assert (
+            "BTC/USD" not in tip
+        ), f"privacy is ON and the tooltip still leaks the symbol: {tip!r}"
         tab.deleteLater()
 
     def test_the_tooltip_hides_the_bot_id(self, qapp, masked):
@@ -176,11 +192,11 @@ class TestPrivacyCoversTheTooltip:
         tip = _painted_tooltip(tab._bot_widgets["botrealid001"], qapp)
         assert "botrealid" not in tip, (
             f"privacy is ON and the tooltip still leaks the bot_id "
-            f"(it showed 12 chars, more than the label's 8): {tip!r}")
+            f"(it showed 12 chars, more than the label's 8): {tip!r}"
+        )
         tab.deleteLater()
 
-    def test_the_tooltip_still_shows_non_identifying_data(self, qapp,
-                                                         masked):
+    def test_the_tooltip_still_shows_non_identifying_data(self, qapp, masked):
         """NEGATIVE CONTROL. Masking must hide identifiers, not blank
         the tooltip -- a fix that returned an empty string would pass
         both tests above."""
@@ -214,11 +230,15 @@ class TestPrivacyCoversTheListView:
         tab.update_bots([_status("a", symbol="BTC/USD")])
         tab._refresh_bot_list_rows()
         from src.gui.bot_swarm_list import COL_TICKER
-        texts = [tab._bot_list.item(r, COL_TICKER).text()
-                 for r in range(tab._bot_list.rowCount())]
+
+        texts = [
+            tab._bot_list.item(r, COL_TICKER).text()
+            for r in range(tab._bot_list.rowCount())
+        ]
         assert texts and "BTC/USD" not in texts, (
             f"privacy is ON and the list view still renders the real "
-            f"symbol: {texts!r}")
+            f"symbol: {texts!r}"
+        )
         tab.deleteLater()
 
     def test_the_consumer_still_does_no_masking_of_its_own(self):
@@ -236,17 +256,20 @@ class TestInflowOutflowReachTheRows:
         with different values must render differently -- the clause
         that fails if C54 ever regresses to a fleet aggregate."""
         tab = BotVisualizationTab()
-        tab.update_bots([
-            _status("a", stats={"ytd_folded_usd": 10.0,
-                                "ytd_scrummed_usd": 1.0}),
-            _status("b", stats={"ytd_folded_usd": 25.0,
-                                "ytd_scrummed_usd": 2.0}),
-        ])
+        tab.update_bots(
+            [
+                _status("a", stats={"ytd_folded_usd": 10.0, "ytd_scrummed_usd": 1.0}),
+                _status("b", stats={"ytd_folded_usd": 25.0, "ytd_scrummed_usd": 2.0}),
+            ]
+        )
         tab._refresh_bot_list_rows()
         from src.gui.bot_swarm_list import COL_INFLOW
+
         lst = tab._bot_list
-        cells = {lst._bot_ids[r]: lst.item(r, COL_INFLOW).text()
-                 for r in range(lst.rowCount())}
+        cells = {
+            lst._bot_ids[r]: lst.item(r, COL_INFLOW).text()
+            for r in range(lst.rowCount())
+        }
         assert cells["a"] == "$10.00", cells
         assert cells["b"] == "$25.00", cells
         assert cells["a"] != cells["b"]

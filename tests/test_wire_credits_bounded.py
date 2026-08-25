@@ -31,6 +31,7 @@ total USD and USD-per-source exactly.
 **The conservation tests are the ones that matter.** A cap that loses
 dollars would be worse than the bloat it fixes.
 """
+
 from __future__ import annotations
 
 import sys
@@ -51,11 +52,11 @@ def _entry(i: int, usd: float = 1.0, source: str = "smart_wire"):
 
 
 def _tranche(n: int, usd: float = 1.0, source: str = "smart_wire"):
-    return {"usd": 100.0,
-            "wire_credits": [_entry(i, usd, source) for i in range(n)]}
+    return {"usd": 100.0, "wire_credits": [_entry(i, usd, source) for i in range(n)]}
 
 
 # ── conservation ─────────────────────────────────────────────────
+
 
 def test_no_dollars_are_lost_when_rolling():
     """The invariant that matters: detail + aggregate must still sum to
@@ -91,14 +92,14 @@ def test_per_source_totals_are_preserved():
     _roll_wire_credit_overflow(t)
 
     rolled = t["wire_credits_rolled"]["by_source"]
-    kept_alpha = sum(e["usd"] for e in t["wire_credits"]
-                     if e["source"] == "alpha")
-    kept_beta = sum(e["usd"] for e in t["wire_credits"]
-                    if e["source"] == "beta")
-    assert round(rolled.get("alpha", 0.0) + kept_alpha, 6) == \
-        round(1.0 * _WIRE_CREDIT_CAP * 2, 6)
-    assert round(rolled.get("beta", 0.0) + kept_beta, 6) == \
-        round(3.0 * _WIRE_CREDIT_CAP * 2, 6)
+    kept_alpha = sum(e["usd"] for e in t["wire_credits"] if e["source"] == "alpha")
+    kept_beta = sum(e["usd"] for e in t["wire_credits"] if e["source"] == "beta")
+    assert round(rolled.get("alpha", 0.0) + kept_alpha, 6) == round(
+        1.0 * _WIRE_CREDIT_CAP * 2, 6
+    )
+    assert round(rolled.get("beta", 0.0) + kept_beta, 6) == round(
+        3.0 * _WIRE_CREDIT_CAP * 2, 6
+    )
 
 
 def test_repeated_rolls_are_stable():
@@ -124,14 +125,17 @@ def test_incremental_rolls_match_one_big_roll():
     _roll_wire_credit_overflow(bulk)
 
     def total(t):
-        return round(sum(e["usd"] for e in t["wire_credits"])
-                     + t.get("wire_credits_rolled", {}).get(
-                         "total_usd", 0.0), 6)
+        return round(
+            sum(e["usd"] for e in t["wire_credits"])
+            + t.get("wire_credits_rolled", {}).get("total_usd", 0.0),
+            6,
+        )
 
     assert total(incremental) == total(bulk)
 
 
 # ── the bound ────────────────────────────────────────────────────
+
 
 def test_detail_is_capped():
     t = _tranche(_WIRE_CREDIT_CAP * 10)
@@ -169,6 +173,7 @@ def test_returns_number_rolled():
 
 # ── timestamps + robustness ──────────────────────────────────────
 
+
 def test_timestamp_span_is_recorded():
     t = _tranche(_WIRE_CREDIT_CAP * 2)
     _roll_wire_credit_overflow(t)
@@ -179,10 +184,14 @@ def test_timestamp_span_is_recorded():
 
 def test_missing_or_malformed_entries_do_not_raise():
     """State restored from an older build may hold anything."""
-    t = {"usd": 100.0, "wire_credits": (
-        [None, "junk", {"usd": "not-a-number"}, {}]
-        + [_entry(i) for i in range(_WIRE_CREDIT_CAP * 2)])}
-    _roll_wire_credit_overflow(t)          # must not raise
+    t = {
+        "usd": 100.0,
+        "wire_credits": (
+            [None, "junk", {"usd": "not-a-number"}, {}]
+            + [_entry(i) for i in range(_WIRE_CREDIT_CAP * 2)]
+        ),
+    }
+    _roll_wire_credit_overflow(t)  # must not raise
     assert len(t["wire_credits"]) == _WIRE_CREDIT_CAP
 
 
@@ -191,19 +200,21 @@ def test_absent_wire_credits_key_is_safe():
 
 
 def test_non_list_wire_credits_is_safe():
-    assert _roll_wire_credit_overflow(
-        {"usd": 1.0, "wire_credits": "corrupt"}) == 0
+    assert _roll_wire_credit_overflow({"usd": 1.0, "wire_credits": "corrupt"}) == 0
 
 
 def test_unknown_source_is_bucketed_not_dropped():
-    t = {"usd": 100.0, "wire_credits": [
-        {"usd": 2.0, "ts": 1} for _ in range(_WIRE_CREDIT_CAP * 2)]}
+    t = {
+        "usd": 100.0,
+        "wire_credits": [{"usd": 2.0, "ts": 1} for _ in range(_WIRE_CREDIT_CAP * 2)],
+    }
     _roll_wire_credit_overflow(t)
     by_src = t["wire_credits_rolled"]["by_source"]
     assert by_src.get("unknown", 0.0) > 0.0
 
 
 # ── the real-world magnitude ─────────────────────────────────────
+
 
 def test_worst_case_live_tranche_compacts_hard():
     """Bot 7c4c4ff3 carried 3,325 entries across 27 tranches — 96% of

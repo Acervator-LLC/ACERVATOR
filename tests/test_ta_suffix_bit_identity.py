@@ -29,6 +29,7 @@ float operations and therefore the result.
 
 These tests exist to make that property impossible to regress silently.
 """
+
 from __future__ import annotations
 
 import math
@@ -41,7 +42,10 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from src.trading.ta_engine import (  # noqa: E402
-    _sma, _sma_tail, _stdev, _stdev_tail,
+    _sma,
+    _sma_tail,
+    _stdev,
+    _stdev_tail,
 )
 
 
@@ -57,6 +61,7 @@ def _series(n: int, seed: int = 7) -> list[float]:
 
 # ── bit-identity: the whole point ────────────────────────────────
 
+
 def test_sma_tail_is_bit_identical_to_full():
     for period in (3, 14, 20, 34, 50):
         for n in (60, 100, 250):
@@ -65,8 +70,8 @@ def test_sma_tail_is_bit_identical_to_full():
             tail = _sma_tail(vals, period, tail=35)
             for i in range(max(0, n - 35), n):
                 assert full[i] == tail[i], (
-                    f"period={period} n={n} i={i}: "
-                    f"{full[i]!r} != {tail[i]!r}")
+                    f"period={period} n={n} i={i}: " f"{full[i]!r} != {tail[i]!r}"
+                )
 
 
 def test_stdev_tail_is_bit_identical_to_full():
@@ -77,8 +82,8 @@ def test_stdev_tail_is_bit_identical_to_full():
             tail = _stdev_tail(vals, period, tail=35)
             for i in range(max(0, n - 35), n):
                 assert full[i] == tail[i], (
-                    f"period={period} n={n} i={i}: "
-                    f"{full[i]!r} != {tail[i]!r}")
+                    f"period={period} n={n} i={i}: " f"{full[i]!r} != {tail[i]!r}"
+                )
 
 
 def test_identity_holds_at_every_tail_depth():
@@ -125,13 +130,16 @@ def test_a_rolling_accumulator_would_NOT_be_bit_identical():
     exact = _stdev(vals, period)
     worst = max(
         abs(a - b) / abs(b) if b else 0.0
-        for a, b in zip(rolling[period:], exact[period:]))
+        for a, b in zip(rolling[period:], exact[period:])
+    )
     assert worst > 0.0, (
         "rolling accumulator now matches exactly — re-examine the "
-        "prohibition in _sma_tail's docstring")
+        "prohibition in _sma_tail's docstring"
+    )
 
 
 # ── the suffix contract ──────────────────────────────────────────
+
 
 def test_entries_before_the_tail_are_none():
     """None, not 0.0. Reading one must fail loudly at the point of
@@ -178,6 +186,7 @@ def test_warmup_branch_is_preserved():
 
 # ── the consumers still agree ────────────────────────────────────
 
+
 def test_stoch_rsi_needs_k_plus_d_trailing_values():
     """v3.24.25 — the StochasticRSI stoch window is bounded to
     ``k_smooth + d_smooth`` trailing values.
@@ -192,9 +201,11 @@ def test_stoch_rsi_needs_k_plus_d_trailing_values():
     cannot quietly shrink it.
     """
     from src.trading import ta_engine as TA
+
     ind = TA.StochasticRSI()
-    assert ind.k_smooth + ind.d_smooth >= 4, (
-        "bound must cover k_line[-4:], which d_line[-2] reads")
+    assert (
+        ind.k_smooth + ind.d_smooth >= 4
+    ), "bound must cover k_line[-4:], which d_line[-2] reads"
 
 
 def test_stoch_rsi_reads_match_full_range():
@@ -209,9 +220,16 @@ def test_stoch_rsi_reads_match_full_range():
     from src.trading import ta_engine as TA
 
     candles = [
-        TA.Candle(timestamp=float(i), open=v, high=v * 1.02,
-                  low=v * 0.98, close=v, volume=10.0)
-        for i, v in enumerate(_series(200, seed=17))]
+        TA.Candle(
+            timestamp=float(i),
+            open=v,
+            high=v * 1.02,
+            low=v * 0.98,
+            close=v,
+            volume=10.0,
+        )
+        for i, v in enumerate(_series(200, seed=17))
+    ]
 
     ind = TA.StochasticRSI()
     bounded = ind.compute(candles, "1h")
@@ -221,8 +239,8 @@ def test_stoch_rsi_reads_match_full_range():
     gains = [max(0, d) for d in deltas]
     losses = [max(0, -d) for d in deltas]
     rsi_values = []
-    ag = sum(gains[:ind.rsi_period]) / ind.rsi_period
-    al = sum(losses[:ind.rsi_period]) / ind.rsi_period
+    ag = sum(gains[: ind.rsi_period]) / ind.rsi_period
+    al = sum(losses[: ind.rsi_period]) / ind.rsi_period
     for i in range(ind.rsi_period, len(deltas)):
         ag = (ag * (ind.rsi_period - 1) + gains[i]) / ind.rsi_period
         al = (al * (ind.rsi_period - 1) + losses[i]) / ind.rsi_period
@@ -230,7 +248,7 @@ def test_stoch_rsi_reads_match_full_range():
 
     full_stoch = []
     for i in range(ind.stoch_period - 1, len(rsi_values)):
-        w = rsi_values[i - ind.stoch_period + 1:i + 1]
+        w = rsi_values[i - ind.stoch_period + 1 : i + 1]
         lo, hi = min(w), max(w)
         full_stoch.append((rsi_values[i] - lo) / (hi - lo + 1e-9) * 100)
 
@@ -241,7 +259,7 @@ def test_stoch_rsi_reads_match_full_range():
     frm = max(ind.stoch_period - 1, len(rsi_values) - need)
     bounded_stoch = []
     for i in range(frm, len(rsi_values)):
-        w = rsi_values[i - ind.stoch_period + 1:i + 1]
+        w = rsi_values[i - ind.stoch_period + 1 : i + 1]
         lo, hi = min(w), max(w)
         bounded_stoch.append((rsi_values[i] - lo) / (hi - lo + 1e-9) * 100)
 
@@ -262,22 +280,30 @@ def test_bollinger_output_unchanged_against_full_history(monkeypatch):
     from src.trading import ta_engine as TA
 
     candles = [
-        TA.Candle(timestamp=float(i), open=v, high=v * 1.01,
-                  low=v * 0.99, close=v, volume=10.0)
-        for i, v in enumerate(_series(120, seed=3))]
+        TA.Candle(
+            timestamp=float(i),
+            open=v,
+            high=v * 1.01,
+            low=v * 0.99,
+            close=v,
+            volume=10.0,
+        )
+        for i, v in enumerate(_series(120, seed=3))
+    ]
 
     bb = TA.BollingerBands()
     after = bb.compute(candles, "1h")
 
     real_sma, real_std = TA._sma_tail, TA._stdev_tail
     monkeypatch.setattr(
-        TA, "_sma_tail",
-        lambda v, p, tail=None: real_sma(v, p, tail=None))
+        TA, "_sma_tail", lambda v, p, tail=None: real_sma(v, p, tail=None)
+    )
     monkeypatch.setattr(
-        TA, "_stdev_tail",
-        lambda v, p, tail=None: real_std(v, p, tail=None))
+        TA, "_stdev_tail", lambda v, p, tail=None: real_std(v, p, tail=None)
+    )
     before = bb.compute(candles, "1h")
 
     assert before.direction == after.direction
-    assert before.confidence == after.confidence, (
-        f"{before.confidence!r} != {after.confidence!r}")
+    assert (
+        before.confidence == after.confidence
+    ), f"{before.confidence!r} != {after.confidence!r}"

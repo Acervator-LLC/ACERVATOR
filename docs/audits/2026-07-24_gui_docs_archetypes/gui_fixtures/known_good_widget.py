@@ -8,6 +8,7 @@ findings. This widget follows the SKILL's PySide6 conventions:
   - Child widgets constructed with a parent argument.
   - Every interactive widget's primary signal is wired to a slot.
 """
+
 from __future__ import annotations
 
 from PySide6.QtCore import Signal

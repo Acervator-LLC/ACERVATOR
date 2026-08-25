@@ -26,16 +26,19 @@ from typing import Any, Optional
 # If unavailable we fall back to JSON persistence.
 try:
     import tomllib  # Python 3.11+
+
     _CAN_READ_TOML = True
 except ImportError:
     try:
         import tomli as tomllib  # type: ignore[no-redef]
+
         _CAN_READ_TOML = True
     except ImportError:
         _CAN_READ_TOML = False
 
 try:
     import tomli_w
+
     _CAN_WRITE_TOML = True
 except ImportError:
     _CAN_WRITE_TOML = False
@@ -67,8 +70,8 @@ class DistributeTarget(str, Enum):
 
 
 class BotVisibility(str, Enum):
-    ORDERBOOK = "orderbook"       # Standard order-book listing
-    INTERNAL = "internal"         # Tracked internally per container
+    ORDERBOOK = "orderbook"  # Standard order-book listing
+    INTERNAL = "internal"  # Tracked internally per container
 
 
 class LogPeriodicity(str, Enum):
@@ -95,17 +98,19 @@ class VisualTheme(str, Enum):
 @dataclass
 class ProfitFoldingSettings:
     """Configuration for the Profit Folding / Upward Distribution engine."""
+
     active: bool = True
     mode: FoldDistributeMode = FoldDistributeMode.EQUAL
     fold_target: FoldTarget = FoldTarget.ALL_BUY
-    fold_target_count: int = 5          # Used when fold_target == X_BUY
+    fold_target_count: int = 5  # Used when fold_target == X_BUY
     distribute_target: DistributeTarget = DistributeTarget.ALL_SELL
-    distribute_target_count: int = 5    # Used when distribute_target == X_SELL
+    distribute_target_count: int = 5  # Used when distribute_target == X_SELL
 
 
 @dataclass
 class DataLoggingSettings:
     """Configuration for data and trade logging."""
+
     ta_signal_logging: bool = True
     highlight_trade_proximity: bool = True
     active_periodicities: list[str] = field(
@@ -128,6 +133,7 @@ class AIMonitorSettings:
     discarded every time. Defaults mirror the dialog's own widget
     defaults so an unsaved install and a saved one agree.
     """
+
     api_key: str = ""
     interval_hours: float = 4.0
     connect_phrase: str = ""
@@ -140,15 +146,16 @@ class AIMonitorSettings:
 @dataclass
 class ExchangeConfig:
     """Per-exchange configuration (API key stored as encrypted token)."""
+
     exchange_id: str = ""
     display_name: str = ""
-    api_key_enc: str = ""        # Encrypted
-    api_secret_enc: str = ""     # Encrypted
-    passphrase_enc: str = ""     # Encrypted (only for Coinbase, KuCoin, OKX, Bitget)
+    api_key_enc: str = ""  # Encrypted
+    api_secret_enc: str = ""  # Encrypted
+    passphrase_enc: str = ""  # Encrypted (only for Coinbase, KuCoin, OKX, Bitget)
     enabled: bool = True
     # Hardware USB key authentication (R25: added via usb_auth.py)
-    hardware_mode: bool = False     # True = credentials only accessible via USB key
-    hw_volume_serial: str = ""      # USB volume serial that holds the auth file
+    hardware_mode: bool = False  # True = credentials only accessible via USB key
+    hw_volume_serial: str = ""  # USB volume serial that holds the auth file
 
 
 # ---------------------------------------------------------------------------
@@ -179,11 +186,13 @@ class AppSettings:
     # -- Trading defaults -----------------------------------------------
     default_position_count: int = 10
     default_target_balance: float = 200.0
-    position_distance_pct: float = 2.0          # Percentage between grid levels
+    position_distance_pct: float = 2.0  # Percentage between grid levels
     increment_style: str = IncrementStyle.LINEAR.value
 
     # -- Profit folding / upward distribution ---------------------------
-    profit_folding: dict = field(default_factory=lambda: asdict(ProfitFoldingSettings()))
+    profit_folding: dict = field(
+        default_factory=lambda: asdict(ProfitFoldingSettings())
+    )
 
     # -- Bot visibility -------------------------------------------------
     bot_visibility: str = BotVisibility.ORDERBOOK.value
@@ -191,7 +200,7 @@ class AppSettings:
 
     # -- Visual ---------------------------------------------------------
     theme: str = VisualTheme.CYBERPUNK_DARK.value
-    accent_color: str = "#00ffcc"                # Neon teal default
+    accent_color: str = "#00ffcc"  # Neon teal default
 
     # -- Typography (v3.24.36, C12) -------------------------------------
     # The Settings dialog has had these four controls since the Fonts
@@ -240,7 +249,7 @@ class SettingsManager:
         self._dir = config_dir or _DEFAULT_DIR
         self._dir.mkdir(parents=True, exist_ok=True)
         self._path_toml = self._dir / "settings.toml"
-        self._path_json = self._dir / "settings.json"   # fallback
+        self._path_json = self._dir / "settings.json"  # fallback
         self._settings = AppSettings()
         self._load()
 
@@ -313,7 +322,8 @@ class SettingsManager:
     def remove_exchange(self, exchange_id: str) -> None:
         with self._lock:
             self._settings.exchanges = [
-                e for e in self._settings.exchanges
+                e
+                for e in self._settings.exchanges
                 if e.get("exchange_id") != exchange_id
             ]
             self._save()
@@ -357,10 +367,14 @@ class SettingsManager:
                 # Newer schema on disk than the running build. Refuse
                 # silent load — write a sidecar warning so operator sees it.
                 import logging as _logging
+
                 _logging.getLogger(__name__).warning(
                     "Settings on disk have schema_version=%d, current=%d. "
                     "Running with defaults. Disk file preserved at %s.",
-                    disk_ver, current, source_path)
+                    disk_ver,
+                    current,
+                    source_path,
+                )
                 return
             if disk_ver < current:
                 loaded = self._migrate(loaded, disk_ver, current)

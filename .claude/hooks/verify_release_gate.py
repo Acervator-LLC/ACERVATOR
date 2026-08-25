@@ -22,6 +22,7 @@ grepping for `__version__` / `current_version`), (b) the sidecar can be
 forged by a process bypassing `check_release_readiness.py`, (c) the
 MAX_AGE_SECONDS threshold is wrong for the operator's workflow.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,15 +31,16 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parent.parent.parent
 SIDECAR_PATH = REPO / ".release_ready.json"
 
 # Paths whose Write/Edit MUST have a fresh green sidecar.
-BANNER_PATHS = frozenset({
-    "src/__init__.py",
-    "main.py",
-})
+BANNER_PATHS = frozenset(
+    {
+        "src/__init__.py",
+        "main.py",
+    }
+)
 
 # Sidecar is considered stale after 1 hour. That's long enough for a
 # cascade session, short enough that a stale gate can't hide a broken
@@ -90,11 +92,11 @@ def _sidecar_state() -> tuple[str, str]:
     if not isinstance(checks, dict):
         return "incomplete", (
             "sidecar has no checks_run record (written by a pre-v3.24.34 "
-            "gate); re-run the gate to produce a trustworthy sidecar")
+            "gate); re-run the gate to produce a trustworthy sidecar"
+        )
     skipped = sorted(k for k, v in checks.items() if v != "ran")
     if skipped:
-        return "incomplete", (
-            "sidecar records skipped check(s): " + ", ".join(skipped))
+        return "incomplete", ("sidecar records skipped check(s): " + ", ".join(skipped))
 
     try:
         n_tests = int(data.get("tests", 0))
@@ -103,10 +105,7 @@ def _sidecar_state() -> tuple[str, str]:
     if n_tests <= 0:
         return "incomplete", f"sidecar reports {n_tests} tests"
 
-    return "fresh", (
-        f"sidecar fresh; v{data.get('version','?')}, "
-        f"{n_tests} tests"
-    )
+    return "fresh", (f"sidecar fresh; v{data.get('version','?')}, " f"{n_tests} tests")
 
 
 def _payload_target(payload: dict) -> str | None:

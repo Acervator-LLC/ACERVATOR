@@ -52,7 +52,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-
 logger = logging.getLogger("acervator.nuclear_sim")
 
 
@@ -103,15 +102,16 @@ class _Tape:
     """One playback tape. Plays forward then reverses then forwards
     indefinitely, so the candle stream is infinite from the bot's POV.
     """
-    tape_id: str                # "A", "B", "C", ...
-    label: str                  # operator-facing: "Tape A — BTC 2023"
-    source_file: str            # filename for diagnostics
-    symbol_source: str          # e.g. "BTC" or "EQ_GLD"
-    period_source: str          # e.g. "2023"
-    candles: list = field(default_factory=list)   # [(ts, o, h, l, c, v), ...]
+
+    tape_id: str  # "A", "B", "C", ...
+    label: str  # operator-facing: "Tape A — BTC 2023"
+    source_file: str  # filename for diagnostics
+    symbol_source: str  # e.g. "BTC" or "EQ_GLD"
+    period_source: str  # e.g. "2023"
+    candles: list = field(default_factory=list)  # [(ts, o, h, l, c, v), ...]
     cursor: int = 0
     direction: str = "forward"  # "forward" | "reverse"
-    wrap_count: int = 0          # incremented each direction-flip
+    wrap_count: int = 0  # incremented each direction-flip
     # v3.24.20 — per-pass noise injection (operator directive 2026-08-04:
     # "plays tapes forward and then backwards with a 10~25% random noise
     # injection to vary the market structure conditions").
@@ -119,8 +119,8 @@ class _Tape:
     """Candle count from MANIFEST. Known before the body is read, so the
     GUI can show tape size without paying for a load."""
     noise_enabled: bool = True
-    noise_pct: float = 0.0       # re-rolled in [MIN,MAX] on each flip
-    noise_seed: int = 0          # re-rolled on each flip
+    noise_pct: float = 0.0  # re-rolled in [MIN,MAX] on each flip
+    noise_seed: int = 0  # re-rolled on each flip
 
     def __len__(self) -> int:
         return len(self.candles)
@@ -158,11 +158,11 @@ class _Tape:
 
         def jitter(salt: int) -> float:
             # xorshift-style mix over (seed, idx, salt) -> [-1.0, 1.0].
-            x = (self.noise_seed ^ (idx * 0x9E3779B1) ^ (salt * 0x85EBCA6B))
+            x = self.noise_seed ^ (idx * 0x9E3779B1) ^ (salt * 0x85EBCA6B)
             x &= 0xFFFFFFFF
-            x ^= (x >> 15)
+            x ^= x >> 15
             x = (x * 0x2545F491) & 0xFFFFFFFF
-            x ^= (x >> 13)
+            x ^= x >> 13
             return ((x & 0xFFFF) / 32767.5) - 1.0
 
         # One shared drift moves the whole candle (preserving its shape),
@@ -226,7 +226,8 @@ class _Tape:
 
 
 def noised_series(
-    rows: list, seed: int,
+    rows: list,
+    seed: int,
 ) -> tuple[list, float]:
     """Return ``(noised_copy_of_rows, noise_pct)`` for one pass.
 
@@ -256,9 +257,14 @@ def noised_series(
     perturbation, so a noised candle is still a well-formed candle.
     """
     tape = _Tape(
-        tape_id="N", label="noised", source_file="", symbol_source="",
-        period_source="", candles=[tuple(r) for r in rows],
-        noise_enabled=True)
+        tape_id="N",
+        label="noised",
+        source_file="",
+        symbol_source="",
+        period_source="",
+        candles=[tuple(r) for r in rows],
+        noise_enabled=True,
+    )
     tape.reroll_noise(random.Random(seed))  # noqa: S311 - not crypto
     out = [list(tape._at(i)) for i in range(len(tape.candles))]
     return out, float(tape.noise_pct)
@@ -279,14 +285,19 @@ class NuclearCandleSource:
         stats() -> dict                           # for diagnostics
     """
 
-    def __init__(self, cache_dir: Optional[Path] = None,
-                 max_tapes: Optional[int] = _DEFAULT_MAX_TAPES,
-                 noise_enabled: bool = True,
-                 noise_rng_seed: Optional[int] = None) -> None:
-        self._cache_dir: Path = (Path(cache_dir) if cache_dir is not None
-                                   else _default_cache_dir())
+    def __init__(
+        self,
+        cache_dir: Optional[Path] = None,
+        max_tapes: Optional[int] = _DEFAULT_MAX_TAPES,
+        noise_enabled: bool = True,
+        noise_rng_seed: Optional[int] = None,
+    ) -> None:
+        self._cache_dir: Path = (
+            Path(cache_dir) if cache_dir is not None else _default_cache_dir()
+        )
         self._max_tapes: Optional[int] = (
-            None if max_tapes is None else max(1, int(max_tapes)))
+            None if max_tapes is None else max(1, int(max_tapes))
+        )
         self._noise_enabled: bool = bool(noise_enabled)
         # Seedable so a stress run can be replayed exactly. Left unseeded
         # in normal use, which is the point — successive Nuclear runs
@@ -344,7 +355,9 @@ class NuclearCandleSource:
             if self._tapes:
                 logger.info(
                     "NuclearCandleSource: %d tape(s) from legacy cache %s",
-                    len(self._tapes), self._cache_dir)
+                    len(self._tapes),
+                    self._cache_dir,
+                )
                 return
         self._discover_tapes_from_tablets()
 
@@ -361,36 +374,44 @@ class NuclearCandleSource:
         """
         try:
             from src.trading.stone_tablets.storage import (
-                read_manifest, read_tablet, tablet_path,
+                read_manifest,
+                read_tablet,
+                tablet_path,
             )
         except ImportError as exc:
             logger.warning(
                 "NuclearCandleSource: Stone Tablet storage unavailable "
-                "(%s); no tapes.", exc)
+                "(%s); no tapes.",
+                exc,
+            )
             return
 
         try:
             entries = read_manifest()
         except OSError as exc:
             logger.warning(
-                "NuclearCandleSource: could not read tablet manifest: %s",
-                exc)
+                "NuclearCandleSource: could not read tablet manifest: %s", exc
+            )
             return
         if not entries:
             logger.info(
                 "NuclearCandleSource: tablet manifest is empty; no tapes. "
-                "Build the archive before using Nuclear Mode.")
+                "Build the archive before using Nuclear Mode."
+            )
             return
 
-        usable = [e for e in entries
-                  if getattr(e, "candle_count", 0) >= _MIN_TAPE_CANDLES]
+        usable = [
+            e for e in entries if getattr(e, "candle_count", 0) >= _MIN_TAPE_CANDLES
+        ]
         usable.sort(key=lambda e: (-int(e.candle_count), str(e.asset)))
-        chosen = (usable if self._max_tapes is None
-                  else usable[:self._max_tapes])
+        chosen = usable if self._max_tapes is None else usable[: self._max_tapes]
         if not chosen:
             logger.info(
                 "NuclearCandleSource: %d tablet(s) present but none has "
-                ">= %d candles; no tapes.", len(entries), _MIN_TAPE_CANDLES)
+                ">= %d candles; no tapes.",
+                len(entries),
+                _MIN_TAPE_CANDLES,
+            )
             return
 
         # v3.24.28 — INDEX ONLY, no bodies. Operator 2026-08-04: "Active
@@ -409,10 +430,9 @@ class NuclearCandleSource:
             self._entries[tape_id] = entry
             self._tapes[tape_id] = _Tape(
                 tape_id=tape_id,
-                label=self._make_label(
-                    tape_id, entry.asset, str(entry.year)),
+                label=self._make_label(tape_id, entry.asset, str(entry.year)),
                 source_file=f"{entry.asset}_{entry.exchange_id}_"
-                            f"{entry.timeframe}_{entry.year}.json",
+                f"{entry.timeframe}_{entry.year}.json",
                 symbol_source=entry.asset,
                 period_source=str(entry.year),
                 candles=[],
@@ -422,7 +442,9 @@ class NuclearCandleSource:
         logger.info(
             "NuclearCandleSource: %d tape(s) indexed from Stone Tablets "
             "(%d in archive); bodies load on wire()",
-            len(self._tapes), len(entries))
+            len(self._tapes),
+            len(entries),
+        )
 
     def _load_body(self, tape_id: str) -> bool:
         """Read one tape's candles from disk. Idempotent.
@@ -439,31 +461,47 @@ class NuclearCandleSource:
             return True
         try:
             from src.trading.stone_tablets.storage import (
-                read_tablet, tablet_path,
+                read_tablet,
+                tablet_path,
             )
+
             # Keyword args deliberately: the positional signature is
             # (asset, timeframe, year, root, exchange_id) and calling it
             # positionally put exchange_id in the timeframe slot, which
             # surfaced as int('5m').
-            tab = read_tablet(tablet_path(
-                entry.asset, entry.timeframe, entry.year,
-                exchange_id=entry.exchange_id))
+            tab = read_tablet(
+                tablet_path(
+                    entry.asset,
+                    entry.timeframe,
+                    entry.year,
+                    exchange_id=entry.exchange_id,
+                )
+            )
         except (OSError, ValueError, ImportError) as exc:
             logger.warning(
                 "NuclearCandleSource: tape %s (%s) load failed: %s",
-                tape_id, entry.asset, exc)
+                tape_id,
+                entry.asset,
+                exc,
+            )
             return False
         if tab is None:
             logger.warning(
                 "NuclearCandleSource: tape %s (%s) tablet unreadable",
-                tape_id, entry.asset)
+                tape_id,
+                entry.asset,
+            )
             return False
         clean = self._sanitize_candles(tab.candles)
         if len(clean) < _MIN_TAPE_CANDLES:
             logger.warning(
                 "NuclearCandleSource: tape %s (%s) has %d valid candles "
                 "after sanitization — below the %d needed for TA warm-up",
-                tape_id, entry.asset, len(clean), _MIN_TAPE_CANDLES)
+                tape_id,
+                entry.asset,
+                len(clean),
+                _MIN_TAPE_CANDLES,
+            )
             return False
         tape.candles = clean
         if self._noise_enabled:
@@ -474,7 +512,10 @@ class NuclearCandleSource:
             tape.reroll_noise(self._rng)
         logger.info(
             "NuclearCandleSource: tape %s (%s) loaded — %d candles",
-            tape_id, entry.asset, len(clean))
+            tape_id,
+            entry.asset,
+            len(clean),
+        )
         return True
 
     @staticmethod
@@ -487,8 +528,16 @@ class NuclearCandleSource:
             if not isinstance(c, (list, tuple)) or len(c) < 6:
                 continue
             try:
-                clean.append((int(c[0]), float(c[1]), float(c[2]),
-                              float(c[3]), float(c[4]), float(c[5])))
+                clean.append(
+                    (
+                        int(c[0]),
+                        float(c[1]),
+                        float(c[2]),
+                        float(c[3]),
+                        float(c[4]),
+                        float(c[5]),
+                    )
+                )
             except (TypeError, ValueError):
                 continue
         return clean
@@ -501,8 +550,8 @@ class NuclearCandleSource:
             data = json.loads(path.read_text(encoding="utf-8"))
         except Exception as exc:
             logger.warning(
-                "NuclearCandleSource: skipping %s — read failed: %s",
-                path.name, exc)
+                "NuclearCandleSource: skipping %s — read failed: %s", path.name, exc
+            )
             return None
         candles = data.get("candles")
         symbol = str(data.get("symbol", path.stem))
@@ -511,7 +560,9 @@ class NuclearCandleSource:
             logger.warning(
                 "NuclearCandleSource: skipping %s — only %d candles "
                 "(need >= 20 for TA warmup)",
-                path.name, len(candles) if isinstance(candles, list) else 0)
+                path.name,
+                len(candles) if isinstance(candles, list) else 0,
+            )
             return None
         # Each candle: [ts, o, h, l, c, v]. Coerce to tuple of floats
         # so consumers don't have to handle two shapes.
@@ -520,14 +571,25 @@ class NuclearCandleSource:
             if not isinstance(c, (list, tuple)) or len(c) < 6:
                 continue
             try:
-                clean.append((int(c[0]), float(c[1]), float(c[2]),
-                              float(c[3]), float(c[4]), float(c[5])))
+                clean.append(
+                    (
+                        int(c[0]),
+                        float(c[1]),
+                        float(c[2]),
+                        float(c[3]),
+                        float(c[4]),
+                        float(c[5]),
+                    )
+                )
             except (TypeError, ValueError):
                 continue
         if len(clean) < 20:
             logger.warning(
                 "NuclearCandleSource: skipping %s — after sanitization, "
-                "only %d valid candles", path.name, len(clean))
+                "only %d valid candles",
+                path.name,
+                len(clean),
+            )
             return None
         label = self._make_label(tape_id, symbol, period)
         return _Tape(
@@ -595,8 +657,7 @@ class NuclearCandleSource:
             "source_file": tape.source_file,
             "symbol_source": tape.symbol_source,
             "period_source": tape.period_source,
-            "n_candles": (len(tape.candles) if tape.candles
-                          else tape.declared_candles),
+            "n_candles": (len(tape.candles) if tape.candles else tape.declared_candles),
             "loaded": bool(tape.candles),
             "cursor": tape.cursor,
             "direction": tape.direction,
@@ -625,14 +686,16 @@ class NuclearCandleSource:
         if tape_id not in self._tapes:
             raise KeyError(
                 f"NuclearCandleSource.wire: unknown tape_id "
-                f"{tape_id!r}. Available: {self.list_tapes()}")
+                f"{tape_id!r}. Available: {self.list_tapes()}"
+            )
         # v3.24.28 — this is where a tape's candles are actually read.
         # Discovery is metadata-only so all usable tablets can be listed
         # without paying the whole archive's load cost up front.
         if not self._load_body(tape_id):
             raise ValueError(
                 f"NuclearCandleSource.wire: tape {tape_id!r} has no "
-                f"usable candle data — see log for the cause.")
+                f"usable candle data — see log for the cause."
+            )
         self._wired.add(tape_id)
 
     def active_tapes(self) -> list[str]:
@@ -647,8 +710,8 @@ class NuclearCandleSource:
         tape = self._tapes.get(tape_id)
         if tape is None:
             raise KeyError(
-                f"NuclearCandleSource.advance: unknown tape_id "
-                f"{tape_id!r}")
+                f"NuclearCandleSource.advance: unknown tape_id " f"{tape_id!r}"
+            )
         if not tape.candles:
             return
         if tape.direction == "forward":
@@ -658,7 +721,7 @@ class NuclearCandleSource:
                 tape.direction = "reverse"
                 tape.wrap_count += 1
                 tape.reroll_noise(self._rng)
-        else:   # reverse
+        else:  # reverse
             tape.cursor -= 1
             if tape.cursor <= 0:
                 tape.cursor = 0

@@ -1,4 +1,5 @@
 """The TA011 body, corrected: no fixed-precision price round."""
+
 from PySide6.QtGui import QPainter
 
 

@@ -84,6 +84,7 @@ number other than `len(findings)`; or a target that WAS scanned with
 every analyzer `ok` and no high finding answers anything but True.
 `tests/test_archetype_report_contract.py` holds one case per sentence.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -135,8 +136,11 @@ class Finding:
     def to_dict(self) -> dict:
         """Return the JSON view of this finding."""
         return {
-            "tool": self.tool, "severity": self.severity, "file": self.file,
-            "line": self.line, "rule_id": self.rule_id,
+            "tool": self.tool,
+            "severity": self.severity,
+            "file": self.file,
+            "line": self.line,
+            "rule_id": self.rule_id,
             "message": self.message,
         }
 
@@ -166,7 +170,8 @@ class ArchetypeReport:
         acted on.
         """
         return sorted(
-            name for name, status in self.tool_availability.items()
+            name
+            for name, status in self.tool_availability.items()
             if status != STATUS_OK and name not in OPTIONAL_ANALYZERS
         )
 
@@ -209,20 +214,22 @@ class ArchetypeReport:
         if not self.scanned:
             reasons.append(
                 f"target was never scanned: {self.target} - an empty "
-                f"report is not a clean one")
+                f"report is not a clean one"
+            )
         absent = self.unavailable_required()
         if absent:
             reasons.append(
                 f"required analyzer(s) did not run: {', '.join(absent)} - "
-                f"coverage is incomplete, so this run is not evidence")
+                f"coverage is incomplete, so this run is not evidence"
+            )
         if self.errors:
             reasons.append(
                 f"{len(self.errors)} error(s) recorded during the run: "
-                f"{'; '.join(self.errors)[:400]}")
+                f"{'; '.join(self.errors)[:400]}"
+            )
         blocking = self.blocking()
         if blocking:
-            reasons.append(
-                f"{len(blocking)} critical/high finding(s)")
+            reasons.append(f"{len(blocking)} critical/high finding(s)")
         return reasons
 
     def by_tool(self) -> dict[str, int]:
@@ -262,7 +269,8 @@ class ArchetypeReport:
 
 
 def refuse_silent_failure(
-    proc: subprocess.CompletedProcess, tool: str,
+    proc: subprocess.CompletedProcess,
+    tool: str,
 ) -> None:
     """Raise when `tool` exited non-zero and printed nothing.
 
@@ -287,8 +295,8 @@ def refuse_silent_failure(
     if proc.returncode != 0 and not (proc.stdout or "").strip():
         detail = (proc.stderr or "").strip().replace("\n", " ")
         raise RuntimeError(
-            f"{tool} exited {proc.returncode} without output: "
-            f"{detail[:240]}")
+            f"{tool} exited {proc.returncode} without output: " f"{detail[:240]}"
+        )
 
 
 def rule_source_files(target: Path, suffixes: tuple[str, ...]) -> list[Path]:
@@ -300,9 +308,11 @@ def rule_source_files(target: Path, suffixes: tuple[str, ...]) -> list[Path]:
     the archetype is actually judging.
     """
     if target.is_dir():
-        return [p for p in sorted(target.rglob("*"))
-                if p.suffix in suffixes and p.is_file()
-                and "__pycache__" not in p.parts]
+        return [
+            p
+            for p in sorted(target.rglob("*"))
+            if p.suffix in suffixes and p.is_file() and "__pycache__" not in p.parts
+        ]
     return [target]
 
 
@@ -320,8 +330,7 @@ def read_rule_sources(
     failures: list[str] = []
     for path in paths:
         try:
-            sources.append(
-                (path, path.read_text(encoding="utf-8", errors="replace")))
+            sources.append((path, path.read_text(encoding="utf-8", errors="replace")))
         except (OSError, ValueError, UnicodeError) as exc:
             failures.append(f"{path}: {type(exc).__name__}: {exc}")
     return sources, failures
@@ -345,8 +354,7 @@ def scan_rule_modules(
     scanned nothing must not report the same word as one that scanned
     the file and found it clean.
     """
-    paths = files if files is not None else rule_source_files(
-        target, suffixes)
+    paths = files if files is not None else rule_source_files(target, suffixes)
     sources, failures = read_rule_sources(paths)
     for detail in failures:
         report.errors.append(f"rules: source read failed: {detail}")
@@ -358,15 +366,20 @@ def scan_rule_modules(
             mod = __import__(module_path, fromlist=["scan"])
             for path, src in sources:
                 for rf in mod.scan(path, src):
-                    report.findings.append(Finding(
-                        tool=rf.tool, severity=rf.severity, file=rf.file,
-                        line=rf.line, rule_id=rf.rule_id,
-                        message=rf.message))
+                    report.findings.append(
+                        Finding(
+                            tool=rf.tool,
+                            severity=rf.severity,
+                            file=rf.file,
+                            line=rf.line,
+                            rule_id=rf.rule_id,
+                            message=rf.message,
+                        )
+                    )
             report.tool_availability[rule_name] = status
         except Exception as exc:
             report.tool_availability[rule_name] = "error"
-            report.errors.append(
-                f"{rule_name}: {type(exc).__name__}: {exc}")
+            report.errors.append(f"{rule_name}: {type(exc).__name__}: {exc}")
 
 
 def cli_exit(report: ArchetypeReport) -> int:

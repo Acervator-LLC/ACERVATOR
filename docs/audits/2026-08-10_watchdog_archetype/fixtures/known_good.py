@@ -25,6 +25,7 @@ shipping.
       of by import. It is wired, so reporting it would accuse working
       code, and a rule that accuses working code gets switched off.
 """
+
 from __future__ import annotations
 
 from src.core.signal_contract import emit
@@ -81,18 +82,23 @@ class Ledger:
 
     def judge(self) -> None:
         """A pin that carries the expectation it was judged against."""
-        emit("ta.voting", actual=self._current_holdings,
-             expected=self._target_balance,
-             ok=self._current_holdings >= self._target_balance)
+        emit(
+            "ta.voting",
+            actual=self._current_holdings,
+            expected=self._target_balance,
+            ok=self._current_holdings >= self._target_balance,
+        )
 
     def contain(self, qty: float) -> None:
         """B4: an alias bound inside the function. Still wired."""
         from src.core.signal_contract import emit as _et_emit
+
         _et_emit("extractor.tranche_contained", actual=qty, expected=qty)
 
     def settle(self, qty: float) -> None:
         """B4 again, with a short alias of the kind used in the tree."""
         from src.core.signal_contract import emit as _tk
+
         self._current_holdings = self._current_holdings + qty
         _tk("tick.settled", actual=self._current_holdings)
 

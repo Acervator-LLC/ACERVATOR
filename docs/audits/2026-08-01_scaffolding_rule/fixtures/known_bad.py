@@ -12,6 +12,7 @@ Ground truth:
 Each rule should fire on the labeled line (± a few for the AST
 walker's node.lineno accounting).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -28,7 +29,8 @@ class BadPanel:  # noqa: RUF100 - fixture class name
         # D1 (S001) — fallback string before verification
         if self._status is not None:
             self._status.setText(
-                "Fetch YTD returned no trades. Check console log for details.")
+                "Fetch YTD returned no trades. Check console log for details."
+            )
 
         # D2 (S002) — wall-clock completion timer paired with async
         loop: Any = asyncio.new_event_loop()

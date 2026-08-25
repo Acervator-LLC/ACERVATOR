@@ -23,6 +23,7 @@ line -- which is itself a write, in the fixture meant to prevent writes.
 That leaves a rename free to silently un-redirect the guard, so this
 test locks the literal to the constant.
 """
+
 from __future__ import annotations
 
 import ast
@@ -56,19 +57,22 @@ class TestTheOverrideExists:
     def test_the_path_resolver_consults_it(self):
         """Asserted over the AST of the function itself, so a mention in
         a comment cannot satisfy it."""
-        fn = next(n for n in ast.walk(ast.parse(MAIN_SRC))
-                  if isinstance(n, ast.FunctionDef)
-                  and n.name == "_get_crash_log_path")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(MAIN_SRC))
+            if isinstance(n, ast.FunctionDef) and n.name == "_get_crash_log_path"
+        )
         names = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
-        assert "CRASH_LOG_ROOT_ENV" in names, \
-            "_get_crash_log_path ignores the override"
+        assert "CRASH_LOG_ROOT_ENV" in names, "_get_crash_log_path ignores the override"
 
     def test_it_still_defaults_to_the_runtime_tree(self):
         """NEGATIVE CONTROL. With no override set, a real crash on the
         operator's machine must still land where they look for it."""
-        fn = next(n for n in ast.walk(ast.parse(MAIN_SRC))
-                  if isinstance(n, ast.FunctionDef)
-                  and n.name == "_get_crash_log_path")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(MAIN_SRC))
+            if isinstance(n, ast.FunctionDef) and n.name == "_get_crash_log_path"
+        )
         seg = ast.get_source_segment(MAIN_SRC, fn) or ""
         assert ".acervator_logs" in seg
 
@@ -80,22 +84,24 @@ class TestConftestActuallyRedirectsIt:
         declared = _module_constant(MAIN_SRC, "CRASH_LOG_ROOT_ENV")
         assert declared in CONFTEST_SRC, (
             f"conftest does not set {declared!r}; the crash logger is "
-            f"no longer redirected during tests")
+            f"no longer redirected during tests"
+        )
 
     def test_the_variable_is_set_during_this_run(self):
         """Runtime proof, not just source inspection: the fixture is
         session-scoped and autouse, so it is active right now."""
         declared = _module_constant(MAIN_SRC, "CRASH_LOG_ROOT_ENV")
-        assert os.environ.get(declared), \
-            f"{declared} is unset while the suite is running"
+        assert os.environ.get(
+            declared
+        ), f"{declared} is unset while the suite is running"
 
     def test_the_redirect_points_outside_the_home_tree(self):
         declared = _module_constant(MAIN_SRC, "CRASH_LOG_ROOT_ENV")
         target = Path(os.environ[declared]).resolve()
-        for forbidden in (Path.home() / ".acervator",
-                          Path.home() / ".acervator_logs"):
-            assert forbidden not in target.parents and target != forbidden, \
-                f"crash log redirect resolves into the live tree: {target}"
+        for forbidden in (Path.home() / ".acervator", Path.home() / ".acervator_logs"):
+            assert (
+                forbidden not in target.parents and target != forbidden
+            ), f"crash log redirect resolves into the live tree: {target}"
 
     def test_conftest_does_not_import_main(self):
         """Importing main installs the excepthooks and emits a BOOT

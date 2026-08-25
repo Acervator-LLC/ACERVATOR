@@ -16,6 +16,7 @@ Usage:
         --source "C:\\path\\to\\session71\\...\\sadp\\historical_data"
     python -m tools.migrate_stone_tablets --dry-run    (no writes)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,10 +33,13 @@ logger = logging.getLogger("acervator.migrate_stone_tablets")
 # desktop where the June 2026 build landed. Overridable via --source.
 _DEFAULT_SRC = Path(
     os.environ.get("ACERVATOR_TABLET_SOURCE")
-    or (Path(__file__).resolve().parent.parent.parent
+    or (
+        Path(__file__).resolve().parent.parent.parent
         / "acervator_session71_CLOSE_hop5_v3_22_73"
         / "acervator_session71_CLOSE_hop5_v3_22_73"
-        / "sadp" / "historical_data")
+        / "sadp"
+        / "historical_data"
+    )
 )
 
 
@@ -62,9 +66,16 @@ def _convert_candles_sec_to_ms(rows: list) -> list[list[float]]:
             ts = float(r[0])
             if ts < 1e12:
                 ts *= 1000.0
-            out.append([
-                int(ts), float(r[1]), float(r[2]),
-                float(r[3]), float(r[4]), float(r[5])])
+            out.append(
+                [
+                    int(ts),
+                    float(r[1]),
+                    float(r[2]),
+                    float(r[3]),
+                    float(r[4]),
+                    float(r[5]),
+                ]
+            )
         except (TypeError, ValueError):
             continue
     return out
@@ -74,25 +85,30 @@ def _bucket_by_year(rows: list[list[float]]) -> dict[int, list[list[float]]]:
     by_year: dict[int, list[list[float]]] = {}
     for r in rows:
         ts_ms = int(r[0])
-        year = datetime.fromtimestamp(
-            ts_ms / 1000.0, tz=timezone.utc).year
+        year = datetime.fromtimestamp(ts_ms / 1000.0, tz=timezone.utc).year
         by_year.setdefault(year, []).append(r)
     return by_year
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, default=_DEFAULT_SRC,
-                        help=f"Source dir (default: {_DEFAULT_SRC})")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Report what would migrate; no writes.")
-    parser.add_argument("--verbose", action="store_true",
-                        help="Log per-tablet details.")
+    parser.add_argument(
+        "--source",
+        type=Path,
+        default=_DEFAULT_SRC,
+        help=f"Source dir (default: {_DEFAULT_SRC})",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Report what would migrate; no writes."
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="Log per-tablet details."
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s")
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
     if args.verbose:
         logging.getLogger("acervator").setLevel(logging.DEBUG)
 
@@ -107,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     # even if the registry has an import-time failure.
     if not args.dry_run:
         from src.trading.stone_tablets import get_registry
+
         reg = get_registry()
     else:
         reg = None
@@ -133,16 +150,24 @@ def main(argv: list[str] | None = None) -> int:
         candles = _convert_candles_sec_to_ms(raw_candles)
         if not symbol or not candles:
             logger.warning(
-                "skip %s: empty symbol or candles (symbol=%r, "
-                "candles=%d)", tab_path.name, symbol, len(candles))
+                "skip %s: empty symbol or candles (symbol=%r, " "candles=%d)",
+                tab_path.name,
+                symbol,
+                len(candles),
+            )
             continue
 
         by_year = _bucket_by_year(candles)
         year_summary = ", ".join(
-            f"{y}={len(rows)}" for y, rows in sorted(by_year.items()))
+            f"{y}={len(rows)}" for y, rows in sorted(by_year.items())
+        )
         logger.info(
             "%-10s exchange=%-8s candles=%6d years=[%s]",
-            symbol, exchange_id, len(candles), year_summary)
+            symbol,
+            exchange_id,
+            len(candles),
+            year_summary,
+        )
 
         if args.dry_run:
             per_asset_report.append((symbol, len(candles), 0))
@@ -150,14 +175,15 @@ def main(argv: list[str] | None = None) -> int:
 
         if reg is None:  # unreachable — guarded by dry-run check above
             raise RuntimeError(
-                "registry is None despite dry-run guard — "
-                "control-flow bug")
+                "registry is None despite dry-run guard — " "control-flow bug"
+            )
         appended = reg.ingest_candles(
             asset=symbol,
             exchange_id=exchange_id,
             timeframe="5m",
             rows=candles,
-            source=source or "migrated_v3_22_73")
+            source=source or "migrated_v3_22_73",
+        )
         per_asset_report.append((symbol, len(candles), appended))
         total_new += appended
 
@@ -168,8 +194,9 @@ def main(argv: list[str] | None = None) -> int:
     for asset, in_file, appended in per_asset_report:
         logger.info("%-10s %10d %10d", asset, in_file, appended)
     logger.info("-" * 60)
-    logger.info("%-10s %10d %10d", "TOTAL",
-                sum(r[1] for r in per_asset_report), total_new)
+    logger.info(
+        "%-10s %10d %10d", "TOTAL", sum(r[1] for r in per_asset_report), total_new
+    )
     if args.dry_run:
         logger.info("(dry-run — no tablets written)")
     return 0

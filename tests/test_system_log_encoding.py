@@ -29,6 +29,7 @@ Same class as the archetype subprocess defect fixed in 3.24.51: that one
 decoded tool output with the locale codec, this one encodes log output
 with it. Reading and writing ends of one mistake.
 """
+
 from __future__ import annotations
 
 import ast
@@ -46,8 +47,8 @@ SRC = REPO_ROOT / "src"
 
 # The exact character from the operator's log, plus the other glyphs
 # this codebase emits routinely.
-ARROW = "→"          # → , as in "trade.filled → trade.log"
-GLYPHS = "→ — × ≥"   # → — × ≥
+ARROW = "→"  # → , as in "trade.filled → trade.log"
+GLYPHS = "→ — × ≥"  # → — × ≥
 
 
 def _handler_calls(path: Path):
@@ -72,25 +73,24 @@ class TestTheDefectIsReal:
         handler = logging.FileHandler(target)
         if (handler.stream.encoding or "").lower().replace("-", "") == "utf8":
             handler.close()
-            pytest.skip("locale codec is already utf-8 on this machine; "
-                        "the defect is Windows/cp1252-specific")
+            pytest.skip(
+                "locale codec is already utf-8 on this machine; "
+                "the defect is Windows/cp1252-specific"
+            )
         log = logging.getLogger("acervator.test.bare")
         log.propagate = False
         log.addHandler(handler)
         try:
-            log.error("LogManager attached to bus: trade.filled %s trade.log",
-                      ARROW)
+            log.error("LogManager attached to bus: trade.filled %s trade.log", ARROW)
         finally:
             log.removeHandler(handler)
             handler.close()
         # The record is LOST -- not raised, not written. Silently gone.
-        assert ARROW not in target.read_text(encoding="utf-8",
-                                             errors="replace")
+        assert ARROW not in target.read_text(encoding="utf-8", errors="replace")
 
     def test_a_utf8_handler_writes_it(self, tmp_path):
         target = tmp_path / "utf8.log"
-        handler = logging.FileHandler(target, encoding="utf-8",
-                                      errors="replace")
+        handler = logging.FileHandler(target, encoding="utf-8", errors="replace")
         log = logging.getLogger("acervator.test.utf8")
         log.propagate = False
         log.addHandler(handler)
@@ -121,7 +121,8 @@ class TestEveryHandlerInSrcPinsUtf8:
         assert not offenders, (
             "FileHandler without encoding= opens with the locale codec; on "
             "Windows that is cp1252 and any arrow/em-dash in a log message "
-            f"silently DROPS the record: {offenders}")
+            f"silently DROPS the record: {offenders}"
+        )
 
     def test_no_file_handler_can_raise_on_a_bad_byte(self):
         """utf-8 alone is not enough -- errors= must degrade rather than
@@ -132,8 +133,9 @@ class TestEveryHandlerInSrcPinsUtf8:
                 kw = {k.arg for k in call.keywords if k.arg}
                 if "encoding" in kw and "errors" not in kw:
                     offenders.append(f"{p.relative_to(REPO_ROOT)}:{call.lineno}")
-        assert not offenders, (
-            f"FileHandler without errors= can still lose a record: {offenders}")
+        assert (
+            not offenders
+        ), f"FileHandler without errors= can still lose a record: {offenders}"
 
 
 class TestTheRealHandler:

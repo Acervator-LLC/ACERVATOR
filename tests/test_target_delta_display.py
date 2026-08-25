@@ -28,6 +28,7 @@ Root cause is fixed upstream: opening-position adoption (v3.24.85) and
 the cell's behaviour so a regression in holdings attribution shows up as
 a failure with a name rather than as an operator deleting a bot.
 """
+
 from __future__ import annotations
 
 import sys
@@ -43,11 +44,12 @@ if str(REPO_ROOT) not in sys.path:
 PX = 0.0706380489
 UNITS = 347.96
 TARGET = 50.0
-POS = UNITS * PX          # ~$24.58
+POS = UNITS * PX  # ~$24.58
 
 
 def _ammo(stats_pv, holdings, price, target=TARGET, qrate=1.0):
     from src.gui.main_window import _compose_ammo_cell
+
     return _compose_ammo_cell(stats_pv, holdings, price, qrate, target)
 
 

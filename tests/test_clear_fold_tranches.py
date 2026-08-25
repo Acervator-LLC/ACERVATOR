@@ -32,6 +32,7 @@ it, and `clear_fold_tranches` deliberately does NOT touch that pool: it
 is real routed income, not a tranche, and discarding it is a different
 decision.
 """
+
 from __future__ import annotations
 
 import sys
@@ -71,8 +72,7 @@ class _Bot:
         self.bot_id = "bot-test-0001"
         self.config = type("C", (), {"symbol": "RAVE/USD"})()
         self._fold_tranches = list(tranches)
-        self._fold_queue_usd = sum(float(t.get("usd", 0) or 0)
-                                   for t in tranches)
+        self._fold_queue_usd = sum(float(t.get("usd", 0) or 0) for t in tranches)
         self._pending_wire_credits = float(pending)
         # Self-consistent by construction: created - closed == standing
         # BEFORE any clear. An inconsistent fixture cannot test an
@@ -182,9 +182,11 @@ class TestTheCounterSplit:
     def test_created_minus_closed_minus_discarded_is_standing(self, bot):
         bot.clear_fold_tranches()
         standing = len(bot._fold_tranches)
-        assert (bot._tranches_created_lifetime
-                - bot._tranches_closed_lifetime
-                - bot._tranches_discarded_lifetime) == standing
+        assert (
+            bot._tranches_created_lifetime
+            - bot._tranches_closed_lifetime
+            - bot._tranches_discarded_lifetime
+        ) == standing
 
     def test_the_counter_accumulates(self, bot):
         bot.clear_fold_tranches()
@@ -295,8 +297,9 @@ class TestTheTwoClearsCloseTheTrap:
         clear."""
         b = _Bot([_tr(1.0, 3.0)], pending=342.26)
         b.clear_fold_tranches()
-        assert b._pending_wire_credits == pytest.approx(342.26), (
-            "tranche clear must not silently take the credits too")
+        assert b._pending_wire_credits == pytest.approx(
+            342.26
+        ), "tranche clear must not silently take the credits too"
         b.clear_pending_wire_credits()
         assert b._fold_tranches == []
         assert b._pending_wire_credits == 0.0
@@ -310,7 +313,8 @@ class TestItSurvivesRestart:
         src = Path(sbm.__file__).read_text(encoding="utf-8")
         assert '"tranches_discarded_lifetime"' in src, (
             "the counter is not written to state; a clear would vanish "
-            "on restart and the reconciliation would break again")
+            "on restart and the reconciliation would break again"
+        )
         # written AND read back
         assert src.count('"tranches_discarded_lifetime"') >= 2
         ast.parse(src)

@@ -2,6 +2,7 @@
 discipline for the two coalesced call sites (chart fetch, scout
 refresh). Confirms the pending-task-destruction warnings from prior
 crash logs stay silenced."""
+
 from __future__ import annotations
 
 import sys
@@ -22,10 +23,13 @@ class TestCancelIfPendingHelper:
     def _get_helper(self):
         pytest.importorskip("PySide6.QtWidgets")
         import os
+
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
+
         _app = QApplication.instance() or QApplication([])
         from src.gui.main_window import MainWindow
+
         return MainWindow._cancel_if_pending
 
     def test_none_is_safe(self):
@@ -37,7 +41,9 @@ class TestCancelIfPendingHelper:
         fut = SimpleNamespace(
             done=lambda: True,
             cancel=lambda: (_ for _ in ()).throw(
-                AssertionError("cancel called on done future")))
+                AssertionError("cancel called on done future")
+            ),
+        )
         h(fut)  # must not call cancel
 
     def test_pending_future_is_cancelled(self):
@@ -56,7 +62,8 @@ class TestCancelIfPendingHelper:
         h = self._get_helper()
         fut = SimpleNamespace(
             done=lambda: False,
-            cancel=lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+            cancel=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
         h(fut)  # must swallow
 
 
@@ -75,16 +82,19 @@ class TestCoalesceSourceDiscipline:
         assert "_pending_chart_fetch" in src, (
             "Chart-fetch pump lost its coalescing slot — the "
             "'Task was destroyed but pending' warnings for "
-            "TradeChartsTab.fetch_chart_data will return.")
-        assert "_cancel_if_pending" in src, (
-            "Coalescing helper _cancel_if_pending removed.")
+            "TradeChartsTab.fetch_chart_data will return."
+        )
+        assert (
+            "_cancel_if_pending" in src
+        ), "Coalescing helper _cancel_if_pending removed."
 
     def test_scout_refresh_uses_pending_slot(self):
         src = self._src()
         assert "_pending_scout_refresh" in src, (
             "MarketPairsScout pump lost its coalescing slot — the "
             "'Task was destroyed but pending' warning for "
-            "MarketPairsScout.refresh_from_connectors will return.")
+            "MarketPairsScout.refresh_from_connectors will return."
+        )
 
 
 class TestShutdownDrain:
@@ -102,5 +112,6 @@ class TestShutdownDrain:
         # rfind — the ACTUAL loop.close() call is the last one, after
         # the drain block. The earlier mention is inside a comment.
         idx_close = src.rfind("loop.close()")
-        assert (0 < idx_all < idx_cancel_all < idx_gather < idx_close), (
-            "Shutdown-drain block missing or out of order.")
+        assert (
+            0 < idx_all < idx_cancel_all < idx_gather < idx_close
+        ), "Shutdown-drain block missing or out of order."

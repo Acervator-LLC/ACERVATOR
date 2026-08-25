@@ -31,6 +31,7 @@ THE TEST IS SCALE INVARIANCE. That is the definitional property: a
 squeeze is about the shape of a series, and multiplying every price by
 a positive constant does not change its shape.
 """
+
 from __future__ import annotations
 
 import math
@@ -52,11 +53,12 @@ def _series(scale, n=120, seed=7):
     out, px, rnd = [], 1.0, seed
     for i in range(n):
         rnd = (rnd * 1103515245 + 12345) % 2147483648
-        amp = 0.02 if 40 <= i < 80 else 0.12          # contract, expand
+        amp = 0.02 if 40 <= i < 80 else 0.12  # contract, expand
         px *= 1.0 + ((rnd / 2147483648) - 0.5) * amp
         c = px * scale
-        out.append(Candle(1_700_000_000_000 + i * 300_000,
-                          c, c * 1.002, c * 0.998, c, 100.0))
+        out.append(
+            Candle(1_700_000_000_000 + i * 300_000, c, c * 1.002, c * 0.998, c, 100.0)
+        )
     return out
 
 
@@ -67,13 +69,15 @@ def _squeeze_at(scale, n=120):
 class TestSqueezeDoesNotDependOnPrice:
     def test_same_series_every_scale_agrees(self):
         verdicts = {s: _squeeze_at(s) for s in SCALES}
-        assert len(set(verdicts.values())) == 1, (
-            f"squeeze changed with price scale: {verdicts}")
+        assert (
+            len(set(verdicts.values())) == 1
+        ), f"squeeze changed with price scale: {verdicts}"
 
     def test_band_width_is_scale_invariant_too(self):
         """The quantity the flag is built on."""
-        widths = [BollingerBands().compute(
-            _series(s)).details["band_width"] for s in SCALES]
+        widths = [
+            BollingerBands().compute(_series(s)).details["band_width"] for s in SCALES
+        ]
         assert max(widths) - min(widths) < 1e-6, widths
 
     def test_across_many_windows(self):
@@ -93,22 +97,26 @@ class TestTheOldFormWasNotScaleInvariant:
         closes = [c.close for c in _series(scale)]
         sma, std = [], []
         for i in range(period - 1, len(closes)):
-            w = closes[i - period + 1:i + 1]
+            w = closes[i - period + 1 : i + 1]
             m = sum(w) / period
             sma.append(m)
             std.append(math.sqrt(sum((x - m) ** 2 for x in w) / period))
         mid = sma[-1]
         band_width = (mid + k * std[-1] - (mid - k * std[-1])) / (mid + 1e-9)
         absolute = [2 * k * s for s in std[-period:]]
-        relative = [2 * k * s / (m + 1e-9)
-                    for s, m in zip(std[-period:], sma[-period:])]
-        return (band_width < sum(absolute) / period * 0.75,
-                band_width < sum(relative) / period * 0.75)
+        relative = [
+            2 * k * s / (m + 1e-9) for s, m in zip(std[-period:], sma[-period:])
+        ]
+        return (
+            band_width < sum(absolute) / period * 0.75,
+            band_width < sum(relative) / period * 0.75,
+        )
 
     def test_old_form_flips_with_scale(self):
         old = {s: self._both(s)[0] for s in SCALES}
-        assert len(set(old.values())) > 1, (
-            f"the units bug should flip with scale, got {old}")
+        assert (
+            len(set(old.values())) > 1
+        ), f"the units bug should flip with scale, got {old}"
 
     def test_new_form_holds_across_scale(self):
         new = {s: self._both(s)[1] for s in SCALES}

@@ -25,6 +25,7 @@ reachable and that the handler set is what refused it.
 No test here makes a real outbound network call. The http/https
 handlers are replaced with recorders.
 """
+
 from __future__ import annotations
 
 import ast
@@ -51,7 +52,6 @@ from src.core.safe_url import (  # noqa: E402
     _build_restricted_opener,
     safe_urlopen,
 )
-
 
 # Every safe_urlopen call site in the tree, by file:line and by the
 # exact keyword shape it passes. safe_urlopen no longer accepts
@@ -159,8 +159,7 @@ _CALL_SITES: tuple[tuple[str, dict], ...] = (
 _CALL_IDS = [site for site, _ in _CALL_SITES]
 _CALL_KWARGS = [kwargs for _, kwargs in _CALL_SITES]
 
-_MODULE_SOURCE = (REPO / "src" / "core" / "safe_url.py").read_text(
-    encoding="utf-8")
+_MODULE_SOURCE = (REPO / "src" / "core" / "safe_url.py").read_text(encoding="utf-8")
 
 
 def _canned(url: str, body: bytes = b"OK", code: int = 200):
@@ -172,8 +171,7 @@ def _canned(url: str, body: bytes = b"OK", code: int = 200):
     """
     headers = email.message.Message()
     headers["Content-Type"] = "text/plain"
-    response = urllib.response.addinfourl(
-        io.BytesIO(body), headers, url, code)
+    response = urllib.response.addinfourl(io.BytesIO(body), headers, url, code)
     response.msg = "OK"
     return response
 
@@ -204,8 +202,7 @@ def recorder(monkeypatch):
 
     monkeypatch.setattr(urllib.request.HTTPHandler, "http_open", http_open)
     monkeypatch.setattr(urllib.request.HTTPSHandler, "https_open", https_open)
-    monkeypatch.setattr(
-        urllib.request.HTTPSHandler, "__init__", recording_init)
+    monkeypatch.setattr(urllib.request.HTTPSHandler, "__init__", recording_init)
     return seen
 
 
@@ -284,8 +281,7 @@ class TestSchemeRefusals:
             safe_urlopen(req)
         assert "'file'" in str(exc.value)
 
-    def test_safe_request_mutated_after_construction_is_refused(
-            self, tmp_path):
+    def test_safe_request_mutated_after_construction_is_refused(self, tmp_path):
         """Same mutation against a SafeRequest.
 
         Construction-time validation cannot cover a later reassignment,
@@ -315,12 +311,10 @@ class TestSchemeRefusals:
 
 class TestSafeRequestConstruction:
     def test_http_accepted(self):
-        assert SafeRequest("http://example.com").full_url == (
-            "http://example.com")
+        assert SafeRequest("http://example.com").full_url == ("http://example.com")
 
     def test_https_accepted(self):
-        assert SafeRequest("https://example.com").full_url == (
-            "https://example.com")
+        assert SafeRequest("https://example.com").full_url == ("https://example.com")
 
     def test_file_refused_at_construction(self):
         with pytest.raises(ValueError) as exc:
@@ -332,8 +326,7 @@ class TestSafeRequestConstruction:
             SafeRequest("acervator-evil://payload")
 
     def test_is_a_request(self):
-        assert isinstance(SafeRequest("https://x.example"),
-                          urllib.request.Request)
+        assert isinstance(SafeRequest("https://x.example"), urllib.request.Request)
 
 
 class TestAllowedOpens:
@@ -369,7 +362,8 @@ class TestAllowedOpens:
     def test_request_body_and_method_survive(self, recorder):
         """sms_engine POSTs a urlencoded body; notifications POSTs JSON."""
         req = urllib.request.Request(
-            "https://api.twilio.com/x", data=b"Body=hi", method="POST")
+            "https://api.twilio.com/x", data=b"Body=hi", method="POST"
+        )
         safe_urlopen(req).read()
         sent = recorder["calls"][0][1]
         assert sent.data == b"Body=hi"
@@ -404,25 +398,26 @@ class TestTransportRestriction:
 
     def test_no_file_handler_installed(self):
         opener = _build_restricted_opener()
-        assert not any(isinstance(h, urllib.request.FileHandler)
-                       for h in opener.handlers)
+        assert not any(
+            isinstance(h, urllib.request.FileHandler) for h in opener.handlers
+        )
 
     def test_no_ftp_handler_installed(self):
         opener = _build_restricted_opener()
-        assert not any(isinstance(h, urllib.request.FTPHandler)
-                       for h in opener.handlers)
+        assert not any(
+            isinstance(h, urllib.request.FTPHandler) for h in opener.handlers
+        )
 
     def test_no_data_handler_installed(self):
         opener = _build_restricted_opener()
-        assert not any(isinstance(h, urllib.request.DataHandler)
-                       for h in opener.handlers)
+        assert not any(
+            isinstance(h, urllib.request.DataHandler) for h in opener.handlers
+        )
 
     def test_http_and_https_handlers_are_installed(self):
         opener = _build_restricted_opener()
-        assert any(isinstance(h, urllib.request.HTTPHandler)
-                   for h in opener.handlers)
-        assert any(isinstance(h, urllib.request.HTTPSHandler)
-                   for h in opener.handlers)
+        assert any(isinstance(h, urllib.request.HTTPHandler) for h in opener.handlers)
+        assert any(isinstance(h, urllib.request.HTTPSHandler) for h in opener.handlers)
 
     def test_stock_opener_DOES_read_the_file(self, tmp_path):
         """PAIRED CONTROL for the refusal test below.
@@ -444,8 +439,7 @@ class TestTransportRestriction:
             opener.open(secret.as_uri())
         assert "unknown url type" in str(exc.value)
 
-    def test_restricted_opener_raises_rather_than_returning_none(
-            self, tmp_path):
+    def test_restricted_opener_raises_rather_than_returning_none(self, tmp_path):
         """UnknownHandler must be present.
 
         Without it OpenerDirector.open returns None for an unroutable
@@ -482,8 +476,9 @@ class TestTransportRestriction:
         assert "urlopen" not in called
         assert "urlretrieve" not in called
         assert "build_opener" not in called
-        assert "OpenerDirector" in called, (
-            "the restricted director is how this module opens anything")
+        assert (
+            "OpenerDirector" in called
+        ), "the restricted director is how this module opens anything"
 
     def test_no_suppression_directives_in_module(self):
         """The finding was satisfied, not silenced.
@@ -498,8 +493,7 @@ class TestTransportRestriction:
         """
         comments = [
             token.string
-            for token in tokenize.generate_tokens(
-                io.StringIO(_MODULE_SOURCE).readline)
+            for token in tokenize.generate_tokens(io.StringIO(_MODULE_SOURCE).readline)
             if token.type == tokenize.COMMENT
         ]
         assert comments, "tokenizer found no comments at all — it is blind"
@@ -538,8 +532,9 @@ class TestExistingCallersStillBind:
         for site in _CALL_IDS:
             path, line = site.rsplit(":", 1)
             source = (REPO / path).read_text(encoding="utf-8").splitlines()
-            assert "safe_urlopen(" in source[int(line) - 1], (
-                f"{site} no longer calls safe_urlopen")
+            assert (
+                "safe_urlopen(" in source[int(line) - 1]
+            ), f"{site} no longer calls safe_urlopen"
 
 
 class TestRealCallerIntegration:
@@ -558,13 +553,11 @@ class TestRealCallerIntegration:
             recorder["calls"].append(("https", req))
             return _canned(req.full_url, payload)
 
-        monkeypatch.setattr(
-            urllib.request.HTTPSHandler, "https_open", https_open)
+        monkeypatch.setattr(urllib.request.HTTPSHandler, "https_open", https_open)
 
         result = market_data._fetch_batch(["bitcoin"], {"bitcoin": "BTC"})
 
         assert result, "caller returned {} — the open failed and was swallowed"
         assert result["BTC"]["current_price"] == 50000
         assert result["BTC"]["volume_24h"] == 1000
-        assert recorder["calls"][0][1].full_url.startswith(
-            "https://api.coingecko.com/")
+        assert recorder["calls"][0][1].full_url.startswith("https://api.coingecko.com/")

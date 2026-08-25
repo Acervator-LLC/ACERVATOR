@@ -3,6 +3,7 @@
 Verifies the calibration loader public API and that all three shipped
 calibrations are present + non-empty + non-trivial.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -59,20 +60,16 @@ class TestContent:
     def test_all_calibrations_include_severity_section(self):
         for name in calibrations.available():
             text = calibrations.load(name)
-            assert "severity" in text.lower(), (
-                f"{name}.md missing severity conventions"
-            )
+            assert "severity" in text.lower(), f"{name}.md missing severity conventions"
 
     def test_all_calibrations_include_output_shape(self):
         for name in calibrations.available():
             text = calibrations.load(name)
-            assert "json" in text.lower(), (
-                f"{name}.md missing output-shape section"
-            )
+            assert "json" in text.lower(), f"{name}.md missing output-shape section"
 
     def test_all_calibrations_note_500_word_cap(self):
         for name in calibrations.available():
             text = calibrations.load(name)
-            assert "500 words" in text.lower() or "500-word" in text.lower(), (
-                f"{name}.md missing 500-word cap for peer reviewers"
-            )
+            assert (
+                "500 words" in text.lower() or "500-word" in text.lower()
+            ), f"{name}.md missing 500-word cap for peer reviewers"

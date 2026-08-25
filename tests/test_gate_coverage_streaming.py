@@ -31,6 +31,7 @@ THREE DEFECTS
    "the bot was logging either side but nothing landed within
    tolerance" — the more alarming case, and it was invisible.
 """
+
 from __future__ import annotations
 
 import sys
@@ -54,23 +55,32 @@ _T0 = 1_780_000_000.0
 
 def _iso(ts: float) -> str:
     from datetime import datetime, timezone
+
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
 
 
 def _gate(ts: float, bot: str = "b1", **data):
-    payload = {"scrum_armed": False, "fold_armed": False,
-               "scrum_blockers": [], "fold_blockers": []}
+    payload = {
+        "scrum_armed": False,
+        "fold_armed": False,
+        "scrum_blockers": [],
+        "fold_blockers": [],
+    }
     payload.update(data)
-    return {"timestamp": _iso(ts), "category": "bot.gate_decision",
-            "bot_id": bot, "data": payload}
+    return {
+        "timestamp": _iso(ts),
+        "category": "bot.gate_decision",
+        "bot_id": bot,
+        "data": payload,
+    }
 
 
 def _trade(ts: float, bot: str = "b1", side: str = "SELL"):
-    return {"timestamp": ts, "bot_id": bot,
-            "symbol": "BTC/USD", "side": side}
+    return {"timestamp": ts, "bot_id": bot, "symbol": "BTC/USD", "side": side}
 
 
 # ── bisect exactness ─────────────────────────────────────────────
+
 
 def _cands(offsets):
     return sorted((_T0 + o, {"o": o}) for o in offsets)
@@ -96,8 +106,7 @@ def test_nearest_finds_the_true_minimum():
 def test_tie_break_keeps_the_earlier_entry():
     """The linear scan used strict `<`, so on two equidistant entries it
     kept the first. Bisect probes i-1 before i to preserve that."""
-    cands = [(_T0 - 10.0, {"which": "early"}),
-             (_T0 + 10.0, {"which": "late"})]
+    cands = [(_T0 - 10.0, {"which": "early"}), (_T0 + 10.0, {"which": "late"})]
     got, _ = _nearest(cands, _T0, DEFAULT_TOLERANCE_S)
     assert got["which"] == "early"
 
@@ -121,10 +130,8 @@ def test_empty_candidates_is_safe():
 
 
 def test_single_candidate_both_sides():
-    assert _nearest([(_T0 + 1.0, {"x": 1})], _T0,
-                    DEFAULT_TOLERANCE_S)[0] == {"x": 1}
-    assert _nearest([(_T0 - 1.0, {"x": 1})], _T0,
-                    DEFAULT_TOLERANCE_S)[0] == {"x": 1}
+    assert _nearest([(_T0 + 1.0, {"x": 1})], _T0, DEFAULT_TOLERANCE_S)[0] == {"x": 1}
+    assert _nearest([(_T0 - 1.0, {"x": 1})], _T0, DEFAULT_TOLERANCE_S)[0] == {"x": 1}
 
 
 def test_bisect_never_compares_dicts():
@@ -137,10 +144,19 @@ def test_bisect_never_compares_dicts():
 
 # ── retention projection ─────────────────────────────────────────
 
+
 def test_index_retains_the_fields_consumers_read():
-    idx, _, _ = build_gate_index([
-        _gate(_T0, scrum_armed=True, fold_armed=False,
-              scrum_blockers=["delta"], fold_blockers=["mid"])])
+    idx, _, _ = build_gate_index(
+        [
+            _gate(
+                _T0,
+                scrum_armed=True,
+                fold_armed=False,
+                scrum_blockers=["delta"],
+                fold_blockers=["mid"],
+            )
+        ]
+    )
     _ts, e = idx["b1"][0]
     d = e["data"]
     assert d["scrum_armed"] is True
@@ -163,7 +179,8 @@ def test_pairing_properties_survive_projection():
     """scrum_armed / fold_armed / blockers read through gate_entry."""
     cov = classify_trades(
         [_trade(_T0, side="SELL")],
-        [_gate(_T0, scrum_armed=True, scrum_blockers=["BB-below-upper"])])
+        [_gate(_T0, scrum_armed=True, scrum_blockers=["BB-below-upper"])],
+    )
     p = cov.pairings[0]
     assert p.has_gate
     assert p.scrum_armed is True
@@ -172,16 +189,18 @@ def test_pairing_properties_survive_projection():
 
 def test_buy_reads_fold_blockers():
     cov = classify_trades(
-        [_trade(_T0, side="BUY")],
-        [_gate(_T0, fold_armed=True, fold_blockers=["MID"])])
+        [_trade(_T0, side="BUY")], [_gate(_T0, fold_armed=True, fold_blockers=["MID"])]
+    )
     assert cov.pairings[0].blockers() == ["MID"]
 
 
 # ── streaming ────────────────────────────────────────────────────
 
+
 def test_accepts_a_generator():
     """live_gate_decisions has always been a generator; nothing used to
     pass it without list()-ing first."""
+
     def gen():
         yield _gate(_T0)
         yield _gate(_T0 + 600)
@@ -192,8 +211,7 @@ def test_accepts_a_generator():
 
 
 def test_classify_accepts_a_generator():
-    cov = classify_trades(
-        [_trade(_T0)], (g for g in [_gate(_T0)]))
+    cov = classify_trades([_trade(_T0)], (g for g in [_gate(_T0)]))
     assert cov.pairings[0].has_gate
 
 
@@ -204,6 +222,7 @@ def test_empty_generator_is_safe():
 
 
 # ── the mislabelled status ───────────────────────────────────────
+
 
 def test_no_gate_in_tolerance_is_distinct_from_log_gap():
     """Entries exist close on both sides but none within tolerance.
@@ -217,8 +236,7 @@ def test_no_gate_in_tolerance_is_distinct_from_log_gap():
 def test_real_log_gap_is_still_log_gap():
     """A genuine outage — entries far enough apart to exceed the gap
     threshold — must still classify as LOG_GAP."""
-    gates = [_gate(_T0 - LOG_GAP_THRESHOLD_S * 2),
-             _gate(_T0 + LOG_GAP_THRESHOLD_S * 2)]
+    gates = [_gate(_T0 - LOG_GAP_THRESHOLD_S * 2), _gate(_T0 + LOG_GAP_THRESHOLD_S * 2)]
     cov = classify_trades([_trade(_T0)], gates)
     assert cov.pairings[0].status == GateStatus.LOG_GAP
 
@@ -230,17 +248,17 @@ def test_before_logging_still_wins():
 
 
 def test_no_gate_for_bot_still_wins():
-    cov = classify_trades(
-        [_trade(_T0, bot="ghost")], [_gate(_T0, bot="other")])
+    cov = classify_trades([_trade(_T0, bot="ghost")], [_gate(_T0, bot="other")])
     assert cov.pairings[0].status == GateStatus.NO_GATE_FOR_BOT
 
 
 def test_new_status_has_a_human_label():
     """Without a label entry the report prints the raw status string."""
     from src.trading.gate_coverage import format_coverage_lines
-    cov = classify_trades(
-        [_trade(_T0)], [_gate(_T0 - 400), _gate(_T0 + 400)])
+
+    cov = classify_trades([_trade(_T0)], [_gate(_T0 - 400), _gate(_T0 + 400)])
     text = "\n".join(format_coverage_lines(cov))
-    assert GateStatus.NO_GATE_IN_TOLERANCE not in text, (
-        "raw status string leaked into operator-facing output")
+    assert (
+        GateStatus.NO_GATE_IN_TOLERANCE not in text
+    ), "raw status string leaked into operator-facing output"
     assert "within tolerance" in text

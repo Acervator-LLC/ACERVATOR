@@ -32,12 +32,21 @@ logger = logging.getLogger("acervator.market_inspector_gui")
 
 try:
     from PySide6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-        QCheckBox, QGroupBox, QTableWidget,
-        QTableWidgetItem, QHeaderView, QSplitter,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QPushButton,
+        QCheckBox,
+        QGroupBox,
+        QTableWidget,
+        QTableWidgetItem,
+        QHeaderView,
+        QSplitter,
     )
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -125,9 +134,9 @@ if _HAS_QT:
                 "Universe = top-volume */USD markets on those "
                 "exchanges (active bot targets are always included). "
                 "Runs on the app's async loop; typical time ~10-30 s "
-                "depending on exchange rate limits.")
-            self._refresh_btn.clicked.connect(
-                lambda: self._start_fetch(force=True))
+                "depending on exchange rate limits."
+            )
+            self._refresh_btn.clicked.connect(lambda: self._start_fetch(force=True))
             top_row.addWidget(self._refresh_btn)
 
             self._show_active_chk = QCheckBox("Include active markets")
@@ -135,15 +144,14 @@ if _HAS_QT:
             self._show_active_chk.setToolTip(
                 "By default the Market Inspector focuses on markets "
                 "you are NOT already trading. Check this to include "
-                "your active bot targets in the table.")
-            self._show_active_chk.toggled.connect(
-                self._on_toggle_show_active)
+                "your active bot targets in the table."
+            )
+            self._show_active_chk.toggled.connect(self._on_toggle_show_active)
             top_row.addWidget(self._show_active_chk)
 
             top_row.addStretch()
             self._status_lbl = QLabel("No data yet — press Refresh.")
-            self._status_lbl.setStyleSheet(
-                "color: #aaa; font-size: 11px;")
+            self._status_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
             top_row.addWidget(self._status_lbl)
             layout.addLayout(top_row)
 
@@ -152,11 +160,12 @@ if _HAS_QT:
             sg = QVBoxLayout(self._signals_group)
             self._signals_tbl = QTableWidget()
             self._signals_tbl.setColumnCount(6)
-            self._signals_tbl.setHorizontalHeaderLabels([
-                "Asset", "Signal", "Score",
-                "Daily", "Weekly", "Active"])
+            self._signals_tbl.setHorizontalHeaderLabels(
+                ["Asset", "Signal", "Score", "Daily", "Weekly", "Active"]
+            )
             self._signals_tbl.horizontalHeader().setSectionResizeMode(
-                QHeaderView.ResizeToContents)
+                QHeaderView.ResizeToContents
+            )
             self._signals_tbl.setEditTriggers(QTableWidget.NoEditTriggers)
             self._signals_tbl.setAlternatingRowColors(True)
             self._signals_tbl.setMaximumHeight(360)
@@ -168,11 +177,12 @@ if _HAS_QT:
             pg = QVBoxLayout(self._pairs_group)
             self._pairs_tbl = QTableWidget()
             self._pairs_tbl.setColumnCount(4)
-            self._pairs_tbl.setHorizontalHeaderLabels([
-                "Long side", "Short side", "Correlation",
-                "Score (Long+Short)"])
+            self._pairs_tbl.setHorizontalHeaderLabels(
+                ["Long side", "Short side", "Correlation", "Score (Long+Short)"]
+            )
             self._pairs_tbl.horizontalHeader().setSectionResizeMode(
-                QHeaderView.ResizeToContents)
+                QHeaderView.ResizeToContents
+            )
             self._pairs_tbl.setEditTriggers(QTableWidget.NoEditTriggers)
             self._pairs_tbl.setAlternatingRowColors(True)
             self._pairs_tbl.setMaximumHeight(180)
@@ -183,12 +193,11 @@ if _HAS_QT:
 
             # v3.23.68 — right pane hosts the topology-proposal cards.
             try:
-                from .market_inspector_topologies import (
-                    MarketInspectorTopologies)
+                from .market_inspector_topologies import MarketInspectorTopologies
+
                 self._topologies_pane = MarketInspectorTopologies()
             except Exception as _tp_exc:  # noqa: BLE001 - GUI import guard
-                logger.debug(
-                    "topologies pane unavailable: %s", _tp_exc)
+                logger.debug("topologies pane unavailable: %s", _tp_exc)
                 self._topologies_pane = QWidget()
 
             self._outer_splitter.addWidget(left_pane)
@@ -304,31 +313,32 @@ if _HAS_QT:
             if not (self._connectors_getter and self._scheduler):
                 self._status_lbl.setText(
                     "Exchange source not wired — restart the app "
-                    "after connecting an exchange.")
+                    "after connecting an exchange."
+                )
                 return
             connectors = self._connectors_getter() or {}
             if not connectors:
                 self._status_lbl.setText(
                     "No exchange connectors — connect an exchange "
-                    "on the Trading tab first.")
+                    "on the Trading tab first."
+                )
                 return
             self._pending_refresh = True
             self._refresh_btn.setEnabled(False)
             self._status_lbl.setText("Fetching…")
             try:
-                self._scheduler(
-                    self._fetch_and_analyze(connectors, force=force))
+                self._scheduler(self._fetch_and_analyze(connectors, force=force))
             except Exception as exc:  # noqa: BLE001 - scheduler failure
                 self._pending_refresh = False
                 self._refresh_btn.setEnabled(True)
-                self._status_lbl.setText(
-                    f"Scheduler error: {exc}")
+                self._status_lbl.setText(f"Scheduler error: {exc}")
 
-        async def _fetch_and_analyze(self, connectors: dict,
-                                     force: bool = False) -> None:
+        async def _fetch_and_analyze(
+            self, connectors: dict, force: bool = False
+        ) -> None:
             try:
-                from .market_inspector_fetcher import (
-                    fetch_htf_universe)
+                from .market_inspector_fetcher import fetch_htf_universe
+
                 res = await fetch_htf_universe(
                     connectors,
                     active_symbols=self._active_symbols,
@@ -336,29 +346,30 @@ if _HAS_QT:
                     force_network=force,
                 )
             except Exception as exc:  # noqa: BLE001 - fetcher surface
-                logger.exception(
-                    "market inspector fetch failed: %s", exc)
+                logger.exception("market inspector fetch failed: %s", exc)
                 self._last_meta = {
-                    "source": "error", "age_seconds": 0.0,
-                    "error": str(exc), "symbol_count": 0}
+                    "source": "error",
+                    "age_seconds": 0.0,
+                    "error": str(exc),
+                    "symbol_count": 0,
+                }
                 self._pending_refresh = False
                 self._refresh_btn.setEnabled(True)
                 self._render_signals()
                 return
             self._last_meta = dict(res.meta or {})
             try:
-                from ..trading.market_inspector import (
-                    get_shared_inspector)
+                from ..trading.market_inspector import get_shared_inspector
+
                 inspector = get_shared_inspector()
                 inspector.scan_universe(
                     res.candles_by_symbol_by_tf,
                     self._active_symbols,
-                    res.closes_by_symbol)
+                    res.closes_by_symbol,
+                )
             except Exception as exc:  # noqa: BLE001 - analyzer surface
-                logger.exception(
-                    "market inspector scan failed: %s", exc)
-                self._status_lbl.setText(
-                    f"Analyzer error: {exc}")
+                logger.exception("market inspector scan failed: %s", exc)
+                self._status_lbl.setText(f"Analyzer error: {exc}")
             self._pending_refresh = False
             self._refresh_btn.setEnabled(True)
             self._render_signals()
@@ -380,9 +391,9 @@ if _HAS_QT:
             if src == "coingecko":
                 return f"Live CoinGecko  ·  {n} markets  ·  just now"
             if src == "cache":
-                return (
-                    f"Snapshot {_fmt_age(age)} old  ·  {n} markets"
-                    + (f"  ·  fallback: {err}" if err else ""))
+                return f"Snapshot {_fmt_age(age)} old  ·  {n} markets" + (
+                    f"  ·  fallback: {err}" if err else ""
+                )
             if src == "error":
                 return f"Fetch failed: {err or 'unknown'}"
             if src == "network-partial":
@@ -391,8 +402,8 @@ if _HAS_QT:
 
         def _render_signals(self) -> None:
             try:
-                from ..trading.market_inspector import (
-                    get_shared_inspector)
+                from ..trading.market_inspector import get_shared_inspector
+
                 inspector = get_shared_inspector()
             except Exception:  # noqa: BLE001 - analyzer import guard
                 self._status_lbl.setText("Analyzer unavailable.")
@@ -408,21 +419,18 @@ if _HAS_QT:
             signals = [s for s in signals if s.score > 0.0]
             self._signals_tbl.setRowCount(len(signals))
             for row, s in enumerate(signals):
-                self._signals_tbl.setItem(
-                    row, 0, QTableWidgetItem(s.symbol))
+                self._signals_tbl.setItem(row, 0, QTableWidgetItem(s.symbol))
                 sig_item = QTableWidgetItem(s.signal)
                 sig_item.setForeground(QColor(_signal_color(s.signal)))
                 self._signals_tbl.setItem(row, 1, sig_item)
+                self._signals_tbl.setItem(row, 2, QTableWidgetItem(f"{s.score:.2f}"))
                 self._signals_tbl.setItem(
-                    row, 2, QTableWidgetItem(f"{s.score:.2f}"))
+                    row, 3, QTableWidgetItem(_fmt_tf_state(s.per_tf.get("1d")))
+                )
                 self._signals_tbl.setItem(
-                    row, 3,
-                    QTableWidgetItem(_fmt_tf_state(s.per_tf.get("1d"))))
-                self._signals_tbl.setItem(
-                    row, 4,
-                    QTableWidgetItem(_fmt_tf_state(s.per_tf.get("1w"))))
-                active_item = QTableWidgetItem(
-                    "yes" if s.is_active else "—")
+                    row, 4, QTableWidgetItem(_fmt_tf_state(s.per_tf.get("1w")))
+                )
+                active_item = QTableWidgetItem("yes" if s.is_active else "—")
                 if s.is_active:
                     active_item.setForeground(QColor("#00ccff"))
                 self._signals_tbl.setItem(row, 5, active_item)
@@ -432,21 +440,23 @@ if _HAS_QT:
             self._pairs_tbl.setRowCount(len(pairs))
             for row, p in enumerate(pairs):
                 self._pairs_tbl.setItem(
-                    row, 0,
-                    QTableWidgetItem(
-                        f"{p.long_side.symbol} ({p.long_side.signal})"))
+                    row,
+                    0,
+                    QTableWidgetItem(f"{p.long_side.symbol} ({p.long_side.signal})"),
+                )
                 self._pairs_tbl.setItem(
-                    row, 1,
-                    QTableWidgetItem(
-                        f"{p.short_side.symbol} ({p.short_side.signal})"))
-                corr_item = QTableWidgetItem(
-                    f"{p.correlation_30d:+.3f}")
+                    row,
+                    1,
+                    QTableWidgetItem(f"{p.short_side.symbol} ({p.short_side.signal})"),
+                )
+                corr_item = QTableWidgetItem(f"{p.correlation_30d:+.3f}")
                 corr_item.setForeground(QColor("#ffcc66"))
                 self._pairs_tbl.setItem(row, 2, corr_item)
                 self._pairs_tbl.setItem(
-                    row, 3,
-                    QTableWidgetItem(
-                        f"{p.long_side.score + p.short_side.score:.2f}"))
+                    row,
+                    3,
+                    QTableWidgetItem(f"{p.long_side.score + p.short_side.score:.2f}"),
+                )
 
     def build_per_bot_view(bot) -> QWidget:
         """Build the Bot Details per-bot Market Inspector tab widget.
@@ -462,12 +472,11 @@ if _HAS_QT:
 
         # Get shared analyzer
         try:
-            from ..trading.market_inspector import (
-                get_shared_inspector)
+            from ..trading.market_inspector import get_shared_inspector
+
             inspector = get_shared_inspector()
         except Exception:  # noqa: BLE001 - analyzer import guard
-            layout.addWidget(QLabel(
-                "Market Inspector analyzer unavailable."))
+            layout.addWidget(QLabel("Market Inspector analyzer unavailable."))
             layout.addStretch()
             return w
 
@@ -487,7 +496,8 @@ if _HAS_QT:
                 "Refresh to populate. The scan runs across the top-50 "
                 "CoinGecko markets on daily and weekly candles; results "
                 "are shared between the top-level tab and this per-bot "
-                "view.")
+                "view."
+            )
             msg.setStyleSheet("color: #aaa; padding: 12px;")
             msg.setWordWrap(True)
             layout.addWidget(msg)
@@ -499,30 +509,33 @@ if _HAS_QT:
         card = QGroupBox(f"This Bot's Asset — {asset or '?'}")
         cv = QVBoxLayout(card)
         if own_signal is None:
-            cv.addWidget(QLabel(
-                f"No signal for {asset or 'this asset'} in the current "
-                f"scan. The universe covers CoinGecko top-50; markets "
-                f"outside that set are not tracked."))
+            cv.addWidget(
+                QLabel(
+                    f"No signal for {asset or 'this asset'} in the current "
+                    f"scan. The universe covers CoinGecko top-50; markets "
+                    f"outside that set are not tracked."
+                )
+            )
         else:
             sig_lbl = QLabel(
                 f"Signal: <b>{own_signal.signal}</b>  |  "
                 f"Score: {own_signal.score:.2f}  |  "
-                f"Direction: {own_signal.direction or '—'}")
+                f"Direction: {own_signal.direction or '—'}"
+            )
             sig_lbl.setStyleSheet(
-                f"color: {_signal_color(own_signal.signal)}; "
-                "font-size: 13px;")
+                f"color: {_signal_color(own_signal.signal)}; " "font-size: 13px;"
+            )
             cv.addWidget(sig_lbl)
             for tf_key in ("1d", "1w"):
                 a = own_signal.per_tf.get(tf_key)
-                cv.addWidget(QLabel(
-                    f"{tf_key}: {_fmt_tf_state(a)}"))
+                cv.addWidget(QLabel(f"{tf_key}: {_fmt_tf_state(a)}"))
         layout.addWidget(card)
 
         # Higher-scoring markets
         higher = [
-            s for s in signals
-            if s.score > (own_signal.score if own_signal else 0.0)
-            and s.symbol != asset
+            s
+            for s in signals
+            if s.score > (own_signal.score if own_signal else 0.0) and s.symbol != asset
         ][:5]
         if higher:
             hg = QGroupBox("Higher-Scoring Markets (top-5)")
@@ -530,27 +543,32 @@ if _HAS_QT:
             for s in higher:
                 row = QLabel(
                     f"{s.symbol}  ·  {s.signal}  ·  score {s.score:.2f}"
-                    + ("  ·  ACTIVE" if s.is_active else ""))
+                    + ("  ·  ACTIVE" if s.is_active else "")
+                )
                 row.setStyleSheet(
-                    f"color: {_signal_color(s.signal)}; "
-                    "font-family: monospace;")
+                    f"color: {_signal_color(s.signal)}; " "font-family: monospace;"
+                )
                 hv.addWidget(row)
             layout.addWidget(hg)
 
         # Opposing pairs featuring this asset
         pairs = inspector.last_pairs
         rel_pairs = [
-            p for p in pairs
+            p
+            for p in pairs
             if p.long_side.symbol == asset or p.short_side.symbol == asset
         ]
         if rel_pairs:
             pg = QGroupBox("Opposing Pairs Featuring This Asset")
             pv = QVBoxLayout(pg)
             for p in rel_pairs:
-                pv.addWidget(QLabel(
-                    f"{p.long_side.symbol} (long) ⇄ "
-                    f"{p.short_side.symbol} (short)  ·  "
-                    f"corr {p.correlation_30d:+.3f}"))
+                pv.addWidget(
+                    QLabel(
+                        f"{p.long_side.symbol} (long) ⇄ "
+                        f"{p.short_side.symbol} (short)  ·  "
+                        f"corr {p.correlation_30d:+.3f}"
+                    )
+                )
             layout.addWidget(pg)
 
         layout.addStretch()

@@ -20,6 +20,7 @@ replaced. These tests fail the moment it is not.
 Every positive assertion here has a PAIRED CONTROL that fails when the
 mechanism goes blind. A test with no control is not evidence.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -55,15 +56,32 @@ from src.trading.ta_engine import (
 )
 
 INDICATORS = [
-    ADXIndicator, SupertrendIndicator, ZScoreIndicator, KaufmanERIndicator,
-    BollingerBands, VortexIndicator, MACD, StochasticRSI, IchimokuCloud,
-    VolumeAnalysis, RSIIndicator, SlingshotIndicator,
+    ADXIndicator,
+    SupertrendIndicator,
+    ZScoreIndicator,
+    KaufmanERIndicator,
+    BollingerBands,
+    VortexIndicator,
+    MACD,
+    StochasticRSI,
+    IchimokuCloud,
+    VolumeAnalysis,
+    RSIIndicator,
+    SlingshotIndicator,
 ]
 
 # Market shapes a synthetic ramp hides: a flat tape with zero range, a
 # sub-cent price, a crash, a chop, and a squeeze that pops.
-REGIMES = ["baseline", "chop", "lowvol", "deadflat", "subcent", "crash",
-           "melt_up", "squeeze_then_pop"]
+REGIMES = [
+    "baseline",
+    "chop",
+    "lowvol",
+    "deadflat",
+    "subcent",
+    "crash",
+    "melt_up",
+    "squeeze_then_pop",
+]
 
 
 def _stream(seed: str):
@@ -79,12 +97,14 @@ def _stream(seed: str):
         vals = []
         for _ in range(2):
             digest = hashlib.sha256(
-                seed.encode() + struct.pack("<Q", state["n"])).digest()
+                seed.encode() + struct.pack("<Q", state["n"])
+            ).digest()
             state["n"] += 1
-            vals.append(struct.unpack("<Q", digest[:8])[0] / 2.0 ** 64)
+            vals.append(struct.unpack("<Q", digest[:8])[0] / 2.0**64)
         u1 = max(vals[0], 1e-300)
         return mu + sigma * math.sqrt(-2.0 * math.log(u1)) * math.cos(
-            2.0 * math.pi * vals[1])
+            2.0 * math.pi * vals[1]
+        )
 
     return draw
 
@@ -113,8 +133,9 @@ def _series(kind: str, n: int = 260) -> list[list[float]]:
         high = max(op, price) * (1.0 + abs(draw(0.0, max(vol, 1e-9) / 4.0)))
         low = min(op, price) * (1.0 - abs(draw(0.0, max(vol, 1e-9) / 4.0)))
         vol_print = 0.0 if i == 200 else abs(draw(1000.0, 300.0)) + 50.0
-        rows.append([float(1_700_000_000_000 + i * 3_600_000),
-                     op, high, low, price, vol_print])
+        rows.append(
+            [float(1_700_000_000_000 + i * 3_600_000), op, high, low, price, vol_print]
+        )
     if kind == "deadflat":
         flat = rows[0][4]
         for row in rows:
@@ -124,8 +145,7 @@ def _series(kind: str, n: int = 260) -> list[list[float]]:
 
 def _out_of_bounds(values: list[tuple[str, float]]) -> list[tuple[str, float]]:
     """The checker under test. Returns every reading outside [0, 1]."""
-    return [(name, value) for name, value in values
-            if not 0.0 <= value <= 1.0]
+    return [(name, value) for name, value in values if not 0.0 <= value <= 1.0]
 
 
 @pytest.mark.parametrize("kind", REGIMES)
@@ -152,8 +172,9 @@ def test_the_bounds_checker_reports_a_one_sided_clamp() -> None:
     """
     floor_open = min(1.0, -0.2722)
     ceiling_open = max(0.0, 1.5)
-    caught = _out_of_bounds([("floor_open", floor_open),
-                             ("ceiling_open", ceiling_open)])
+    caught = _out_of_bounds(
+        [("floor_open", floor_open), ("ceiling_open", ceiling_open)]
+    )
     assert len(caught) == 2, "the bounds checker is blind"
 
 
@@ -168,6 +189,7 @@ def test_weighted_score_discards_the_sign_so_the_bound_is_load_bearing() -> None
 # The numbers the repair restated. Bit-exact or it is a behaviour change.
 # ---------------------------------------------------------------------------
 
+
 def test_percent_to_ratio_division_is_bit_exact() -> None:
     """`x / PERCENT_PER_RATIO_UNIT` must equal the literal it replaced.
 
@@ -178,8 +200,7 @@ def test_percent_to_ratio_division_is_bit_exact() -> None:
     """
     assert float.hex(PERCENT_PER_RATIO_UNIT) == float.hex(100.0)
     for numerator, literal in ((130.0, 1.30), (70.0, 0.70), (200.0, 2.0)):
-        assert float.hex(numerator / PERCENT_PER_RATIO_UNIT) == \
-            float.hex(literal)
+        assert float.hex(numerator / PERCENT_PER_RATIO_UNIT) == float.hex(literal)
 
 
 def test_the_bit_exact_check_would_notice_a_moved_value() -> None:
@@ -197,8 +218,8 @@ def test_volume_spike_threshold_is_still_two_times_average() -> None:
     """The constructor now takes a percent; the stored ratio is unmoved."""
     assert float.hex(VolumeAnalysis().spike_threshold) == float.hex(2.0)
     assert float.hex(
-        VolumeAnalysis(spike_threshold_pct=350.0).spike_threshold) == \
-        float.hex(3.5)
+        VolumeAnalysis(spike_threshold_pct=350.0).spike_threshold
+    ) == float.hex(3.5)
 
 
 def test_unit_references_are_exactly_one() -> None:
@@ -217,13 +238,14 @@ def test_vortex_signal_is_scale_invariant() -> None:
     how the squeeze flag reduced to `mid > 1.33`.
     """
     rows = _series("baseline")
-    scaled = [[r[0], r[1] * 1000.0, r[2] * 1000.0, r[3] * 1000.0,
-               r[4] * 1000.0, r[5]] for r in rows]
+    scaled = [
+        [r[0], r[1] * 1000.0, r[2] * 1000.0, r[3] * 1000.0, r[4] * 1000.0, r[5]]
+        for r in rows
+    ]
     plain = VortexIndicator().compute(candles_from_raw(rows), "1h")
     big = VortexIndicator().compute(candles_from_raw(scaled), "1h")
     assert plain.direction == big.direction
-    assert plain.details["vi_plus"] == pytest.approx(
-        big.details["vi_plus"], rel=1e-9)
+    assert plain.details["vi_plus"] == pytest.approx(big.details["vi_plus"], rel=1e-9)
     assert plain.details["vip_at_ceiling"] == big.details["vip_at_ceiling"]
     assert plain.details["vim_at_ceiling"] == big.details["vim_at_ceiling"]
 
@@ -231,8 +253,10 @@ def test_vortex_signal_is_scale_invariant() -> None:
 def test_scale_invariance_check_would_notice_a_price_dependent_flag() -> None:
     """PAIRED CONTROL: the comparison above can distinguish the scales."""
     rows = _series("baseline")
-    scaled = [[r[0], r[1] * 1000.0, r[2] * 1000.0, r[3] * 1000.0,
-               r[4] * 1000.0, r[5]] for r in rows]
+    scaled = [
+        [r[0], r[1] * 1000.0, r[2] * 1000.0, r[3] * 1000.0, r[4] * 1000.0, r[5]]
+        for r in rows
+    ]
     plain = BollingerBands().compute(candles_from_raw(rows), "1h")
     big = BollingerBands().compute(candles_from_raw(scaled), "1h")
     # `middle` is a PRICE and must scale; if it does not, the two tapes
@@ -251,12 +275,10 @@ def test_spring_survives_a_summary_with_no_bollinger_position() -> None:
     short = candles_from_raw(_series("baseline")[:5])
     summary = VotingEngine().compute_all(short, "1h")
     assert isinstance(summary, VotingSummary)
-    bollinger = [s for s in summary.signals
-                 if s.indicator == "bollinger_bands"]
+    bollinger = [s for s in summary.signals if s.indicator == "bollinger_bands"]
     assert bollinger, "no bollinger signal in the summary"
     assert bollinger[0].details.get("bb_position") is None
-    result = detect_volume_confirmed_spring(
-        summary, detect_bb_proximity(short))
+    result = detect_volume_confirmed_spring(summary, detect_bb_proximity(short))
     assert result["bb_position"] == -1.0
     assert result["triggered"] is False
     assert result["components_met"] == 0

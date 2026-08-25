@@ -14,8 +14,8 @@ Vulture's D2 detection is confidence-dependent; if it drops below
 threshold, that is a known limitation to document, not a bug in
 the archetype.
 """
-import subprocess  # D1 unused_import — Vulture should flag
 
+import subprocess  # D1 unused_import — Vulture should flag
 
 DB_PASSWORD = "hunter2"  # D4 hardcoded_password — Bandit B105 should flag
 

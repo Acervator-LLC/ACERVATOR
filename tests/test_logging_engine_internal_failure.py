@@ -24,6 +24,7 @@ WHAT A FAILURE OF THIS MODULE WOULD MEAN
   * a counter that fills on a CLEAN run -- the instrument is stuck on and
     every other assertion here is meaningless.
 """
+
 from __future__ import annotations
 
 import logging
@@ -105,13 +106,24 @@ TEARDOWN_TOPICS = [
 ]
 
 HANDLERS = [
-    ("_on_gate_decision_bus",
-     {"bot_id": "b1", "symbol": "BTC-USD", "scrum_armed": True}),
-    ("_on_voting_panel_snapshot_bus",
-     {"bot_id": "b1", "symbol": "BTC-USD", "panel": {"v": 1}}),
-    ("_on_trade_filled_bus",
-     {"bot_id": "b1", "symbol": "BTC-USD", "side": "BUY",
-      "amount": 1.0, "price": 2.0}),
+    (
+        "_on_gate_decision_bus",
+        {"bot_id": "b1", "symbol": "BTC-USD", "scrum_armed": True},
+    ),
+    (
+        "_on_voting_panel_snapshot_bus",
+        {"bot_id": "b1", "symbol": "BTC-USD", "panel": {"v": 1}},
+    ),
+    (
+        "_on_trade_filled_bus",
+        {
+            "bot_id": "b1",
+            "symbol": "BTC-USD",
+            "side": "BUY",
+            "amount": 1.0,
+            "price": 2.0,
+        },
+    ),
 ]
 
 
@@ -127,8 +139,7 @@ def _break_writers(mgr: LogManager) -> None:
 # Sites 1-5 -- the five bus teardowns
 # --------------------------------------------------------------------
 @pytest.mark.parametrize("topic", TEARDOWN_TOPICS)
-def test_refused_unsubscribe_is_recorded_and_does_not_raise(
-        tmp_path, topic):
+def test_refused_unsubscribe_is_recorded_and_does_not_raise(tmp_path, topic):
     """A bus that refuses to detach one topic is counted, not swallowed.
 
     A refused unsubscribe is not cosmetic: the previous handler stays on
@@ -178,9 +189,11 @@ def test_refused_unsubscribe_reaches_the_system_logger(tmp_path):
     finally:
         logger.removeHandler(probe)
 
-    logged = [r.getMessage() for r in records
-              if "internal failure at attach_to_bus/unsubscribe" in
-              r.getMessage()]
+    logged = [
+        r.getMessage()
+        for r in records
+        if "internal failure at attach_to_bus/unsubscribe" in r.getMessage()
+    ]
     assert len(logged) == len(TEARDOWN_TOPICS)
     for topic in TEARDOWN_TOPICS:
         assert any(topic in m for m in logged), topic
@@ -191,7 +204,8 @@ def test_refused_unsubscribe_reaches_the_system_logger(tmp_path):
 # --------------------------------------------------------------------
 @pytest.mark.parametrize(("method", "payload"), HANDLERS)
 def test_handler_survives_writer_and_logger_both_failing(
-        tmp_path, capsys, method, payload):
+    tmp_path, capsys, method, payload
+):
     """Writer dead AND system logger dead: still no raise, still recorded.
 
     This is the branch the removed nested ``except Exception: pass``
@@ -207,7 +221,7 @@ def test_handler_survives_writer_and_logger_both_failing(
     dead = DeadLogger()
     mgr._sys_logger = dead
 
-    getattr(mgr, method)(Evt(payload))       # must not raise
+    getattr(mgr, method)(Evt(payload))  # must not raise
 
     counts = mgr.internal_failure_counts()
     assert counts.get(method) == 1
@@ -225,7 +239,8 @@ def test_handler_survives_writer_and_logger_both_failing(
 
 @pytest.mark.parametrize(("method", "payload"), HANDLERS)
 def test_handler_with_live_logger_does_not_touch_stderr(
-        tmp_path, capsys, method, payload):
+    tmp_path, capsys, method, payload
+):
     """Writer dead but logger alive: the normal channel carries it.
 
     stderr is the emergency channel only. If it fills up here, every
@@ -235,7 +250,7 @@ def test_handler_with_live_logger_does_not_touch_stderr(
     mgr = LogManager(log_dir=tmp_path)
     _break_writers(mgr)
 
-    getattr(mgr, method)(Evt(payload))       # must not raise
+    getattr(mgr, method)(Evt(payload))  # must not raise
 
     counts = mgr.internal_failure_counts()
     assert counts.get(method) == 1
@@ -257,9 +272,17 @@ def test_clean_run_records_nothing(tmp_path):
     bus = WorkingBus()
     mgr.attach_to_bus(bus)
     mgr.attach_to_bus(bus)
-    mgr._on_trade_filled_bus(Evt(
-        {"bot_id": "b1", "symbol": "BTC-USD", "side": "BUY",
-         "amount": 1.0, "price": 2.0}))
+    mgr._on_trade_filled_bus(
+        Evt(
+            {
+                "bot_id": "b1",
+                "symbol": "BTC-USD",
+                "side": "BUY",
+                "amount": 1.0,
+                "price": 2.0,
+            }
+        )
+    )
 
     assert mgr.internal_failure_counts() == {}
     assert "trade.filled" in bus.topics
@@ -283,8 +306,7 @@ def test_internal_failure_counts_returns_a_copy(tmp_path):
     assert "injected" not in mgr.internal_failure_counts()
 
 
-def test_emergency_stderr_reports_false_when_stderr_is_absent(
-        monkeypatch):
+def test_emergency_stderr_reports_false_when_stderr_is_absent(monkeypatch):
     """``sys.stderr`` is None under a windowed launch; say so, do not raise.
 
     The operator runs this platform frozen. If this raises, the last-resort
@@ -301,12 +323,12 @@ def test_emergency_stderr_reports_false_when_the_write_fails(monkeypatch):
     The bool is what lets the caller count a dead emergency channel
     instead of losing the fault entirely.
     """
+
     class BadStream:
         def write(self, _text: str) -> int:
             raise OSError("stderr is gone")
 
-    monkeypatch.setattr(
-        "src.core.logging_engine.sys.stderr", BadStream())
+    monkeypatch.setattr("src.core.logging_engine.sys.stderr", BadStream())
     assert _emergency_stderr("anything") is False
 
 

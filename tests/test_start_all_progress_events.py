@@ -21,6 +21,7 @@ the only evidence. That is the pattern these tests defend against: the
 assertion is that events actually reach the signal, not merely that
 nothing raised.
 """
+
 from __future__ import annotations
 
 import sys
@@ -63,6 +64,7 @@ def _handle(event):
 
 # ── the contract ─────────────────────────────────────────────────
 
+
 def test_event_exposes_data_not_payload():
     """Pins the contract the handler got wrong."""
     e = Event(topic=TOPIC, data={"phase": "begin"})
@@ -82,31 +84,45 @@ def test_emit_puts_kwargs_into_data():
 
 # ── the handler actually forwards ────────────────────────────────
 
+
 def test_begin_event_reaches_the_signal():
     """The regression. Before the fix this emitted nothing at all."""
-    out = _handle(Event(topic=TOPIC, data={
-        "phase": "begin", "total": 5, "started": 0, "bot_id": ""}))
+    out = _handle(
+        Event(
+            topic=TOPIC, data={"phase": "begin", "total": 5, "started": 0, "bot_id": ""}
+        )
+    )
     assert out == [("begin", 5, 0, "")]
 
 
 def test_bot_started_event_reaches_the_signal():
-    out = _handle(Event(topic=TOPIC, data={
-        "phase": "bot_started", "total": 5, "started": 2,
-        "bot_id": "abc123"}))
+    out = _handle(
+        Event(
+            topic=TOPIC,
+            data={"phase": "bot_started", "total": 5, "started": 2, "bot_id": "abc123"},
+        )
+    )
     assert out == [("bot_started", 5, 2, "abc123")]
 
 
 def test_done_event_reaches_the_signal():
     """Auto-dismiss depends on this arriving; without it the dialog
     stays open forever."""
-    out = _handle(Event(topic=TOPIC, data={
-        "phase": "done", "total": 5, "started": 5, "bot_id": ""}))
+    out = _handle(
+        Event(
+            topic=TOPIC, data={"phase": "done", "total": 5, "started": 5, "bot_id": ""}
+        )
+    )
     assert out == [("done", 5, 5, "")]
 
 
 def test_cancelled_event_reaches_the_signal():
-    out = _handle(Event(topic=TOPIC, data={
-        "phase": "cancelled", "total": 5, "started": 1, "bot_id": ""}))
+    out = _handle(
+        Event(
+            topic=TOPIC,
+            data={"phase": "cancelled", "total": 5, "started": 1, "bot_id": ""},
+        )
+    )
     assert out == [("cancelled", 5, 1, "")]
 
 
@@ -117,16 +133,16 @@ def test_end_to_end_through_a_real_bus():
     rec = _Recorder()
     panel = type("P", (), {"_progress_signal": rec})()
     bus.subscribe(
-        TOPIC, lambda ev: StartAllProgressDialog._on_progress_event(
-            panel, ev))
+        TOPIC, lambda ev: StartAllProgressDialog._on_progress_event(panel, ev)
+    )
     bus.emit(TOPIC, phase="begin", total=2, started=0, bot_id="")
     bus.emit(TOPIC, phase="bot_started", total=2, started=1, bot_id="x")
     bus.emit(TOPIC, phase="done", total=2, started=2, bot_id="")
-    assert [a[0] for a in rec.emitted] == [
-        "begin", "bot_started", "done"]
+    assert [a[0] for a in rec.emitted] == ["begin", "bot_started", "done"]
 
 
 # ── tolerance without silence ────────────────────────────────────
+
 
 def test_missing_fields_fall_back_to_defaults():
     out = _handle(Event(topic=TOPIC, data={"phase": "begin"}))
@@ -141,6 +157,7 @@ def test_malformed_event_is_logged_not_swallowed(capture_log):
     ``acervator.propagate = False``, so caplog sees nothing from these
     loggers once that engine has been constructed by any earlier test.
     """
+
     class _Bad:
         @property
         def data(self):
@@ -154,7 +171,8 @@ def test_malformed_event_is_logged_not_swallowed(capture_log):
 
 def test_non_numeric_total_is_reported(capture_log):
     with capture_log("acervator.gui.start_all") as records:
-        out = _handle(Event(topic=TOPIC, data={
-            "phase": "begin", "total": "not-a-number"}))
+        out = _handle(
+            Event(topic=TOPIC, data={"phase": "begin", "total": "not-a-number"})
+        )
     assert out == []
     assert records

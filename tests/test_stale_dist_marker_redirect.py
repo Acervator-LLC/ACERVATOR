@@ -47,6 +47,7 @@ Every other test replaces ``Path.home`` with a temp directory first and
 refuses to run unless the replacement took, so a failure stays inside
 ``tmp_path``.
 """
+
 from __future__ import annotations
 
 import ast
@@ -74,25 +75,33 @@ Driver = Callable[..., Path]
 
 def _function(name: str) -> ast.FunctionDef:
     """Return the named top-level function's AST node from main.py."""
-    return next(n for n in ast.walk(MAIN_TREE)
-                if isinstance(n, ast.FunctionDef) and n.name == name)
+    return next(
+        n
+        for n in ast.walk(MAIN_TREE)
+        if isinstance(n, ast.FunctionDef) and n.name == name
+    )
 
 
 def _assign_line(name: str) -> int:
     """Return the line of the module-level assignment to `name`."""
-    return min(n.lineno for n in MAIN_TREE.body
-               if isinstance(n, ast.Assign)
-               and any(isinstance(t, ast.Name) and t.id == name
-                       for t in n.targets))
+    return min(
+        n.lineno
+        for n in MAIN_TREE.body
+        if isinstance(n, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == name for t in n.targets)
+    )
 
 
 def _call_line(func_name: str) -> int:
     """Return the line of the module-level bare call to `func_name`."""
-    return min(n.lineno for n in MAIN_TREE.body
-               if isinstance(n, ast.Expr)
-               and isinstance(n.value, ast.Call)
-               and isinstance(n.value.func, ast.Name)
-               and n.value.func.id == func_name)
+    return min(
+        n.lineno
+        for n in MAIN_TREE.body
+        if isinstance(n, ast.Expr)
+        and isinstance(n.value, ast.Call)
+        and isinstance(n.value.func, ast.Name)
+        and n.value.func.id == func_name
+    )
 
 
 def _build_tree(root: Path, live_ver: str | None, dist_ver: str | None) -> None:
@@ -105,16 +114,19 @@ def _build_tree(root: Path, live_ver: str | None, dist_ver: str | None) -> None:
     if live_ver is not None:
         (root / "src").mkdir(parents=True, exist_ok=True)
         (root / "src" / "__init__.py").write_text(
-            f'__version__ = "{live_ver}"\n', encoding="utf-8", newline="\n")
+            f'__version__ = "{live_ver}"\n', encoding="utf-8", newline="\n"
+        )
     if dist_ver is not None:
         dist = root / "dist" / "Acervator" / "_internal" / "src"
         dist.mkdir(parents=True, exist_ok=True)
         (dist / "__init__.py").write_text(
-            f'__version__ = "{dist_ver}"\n', encoding="utf-8", newline="\n")
+            f'__version__ = "{dist_ver}"\n', encoding="utf-8", newline="\n"
+        )
 
 
-def _child_import(tree: Path, home: Path,
-                  override: Path | None) -> subprocess.CompletedProcess[str]:
+def _child_import(
+    tree: Path, home: Path, override: Path | None
+) -> subprocess.CompletedProcess[str]:
     """Import ``main`` in a child with ``Path.home`` bound to `home`.
 
     The home patch is installed BEFORE the import, because the import is
@@ -137,15 +149,23 @@ def _child_import(tree: Path, home: Path,
     else:
         env[_OVERRIDE] = str(override)
     return subprocess.run(
-        [sys.executable, "-c",
-         "import os, pathlib\n"
-         "fake = pathlib.Path(os.environ['ACERVATOR_TEST_FAKE_HOME'])\n"
-         "pathlib.Path.home = classmethod(lambda cls: fake)\n"
-         "assert pathlib.Path.home() == fake, 'home patch did not take'\n"
-         "import main\n"
-         "print('IMPORTED', main.CRASH_LOG_ROOT_ENV)\n"],
-        cwd=str(tree), env=env, capture_output=True, text=True,
-        timeout=120, check=False)
+        [
+            sys.executable,
+            "-c",
+            "import os, pathlib\n"
+            "fake = pathlib.Path(os.environ['ACERVATOR_TEST_FAKE_HOME'])\n"
+            "pathlib.Path.home = classmethod(lambda cls: fake)\n"
+            "assert pathlib.Path.home() == fake, 'home patch did not take'\n"
+            "import main\n"
+            "print('IMPORTED', main.CRASH_LOG_ROOT_ENV)\n",
+        ],
+        cwd=str(tree),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
 
 
 @pytest.fixture
@@ -158,9 +178,13 @@ def drive_guard(monkeypatch: pytest.MonkeyPatch) -> Driver:
     are never read and never need to disagree.
     """
 
-    def _drive(tree: Path, fake_home: Path, override: Path | None,
-               live_ver: str | None = "9.9.9",
-               dist_ver: str | None = "1.1.1") -> Path:
+    def _drive(
+        tree: Path,
+        fake_home: Path,
+        override: Path | None,
+        live_ver: str | None = "9.9.9",
+        dist_ver: str | None = "1.1.1",
+    ) -> Path:
         tree.mkdir(parents=True, exist_ok=True)
         fake_home.mkdir(parents=True, exist_ok=True)
         _build_tree(tree, live_ver, dist_ver)
@@ -170,7 +194,8 @@ def drive_guard(monkeypatch: pytest.MonkeyPatch) -> Driver:
         # nothing past this line runs unless home is already fake.
         assert Path.home() == fake_home, (
             "Path.home() was not redirected, so driving the real guard "
-            "here could write into the operator's tree. Refusing.")
+            "here could write into the operator's tree. Refusing."
+        )
         if override is None:
             monkeypatch.delenv(_OVERRIDE, raising=False)
         else:
@@ -194,7 +219,8 @@ class TestTheDefaultStillReachesTheOperator:
     """
 
     def test_the_write_is_aimed_at_the_real_home_log_root(
-            self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Drive the real guard against the real home, creating nothing.
 
         ``Path.mkdir`` is replaced with a recorder that raises, and the
@@ -205,8 +231,13 @@ class TestTheDefaultStillReachesTheOperator:
         aimed: list[tuple[Path, int, bool, bool]] = []
         refusal = "intercepted: no directory may be created by this test"
 
-        def fake_mkdir(self: Path, mode: int = 0o777, *,
-                       parents: bool = False, exist_ok: bool = False) -> None:
+        def fake_mkdir(
+            self: Path,
+            mode: int = 0o777,
+            *,
+            parents: bool = False,
+            exist_ok: bool = False,
+        ) -> None:
             aimed.append((Path(self), mode, parents, exist_ok))
             raise PermissionError(refusal)
 
@@ -225,10 +256,12 @@ class TestTheDefaultStillReachesTheOperator:
         decoy = tmp_path / "decoy"
         with pytest.raises(PermissionError):
             decoy.mkdir(parents=True, exist_ok=True)
-        assert not decoy.exists(), \
-            "Path.mkdir was not intercepted; the guard could create a directory"
-        assert aimed == [(decoy, 0o777, True, True)], \
-            "the interception did not record the decoy it just blocked"
+        assert (
+            not decoy.exists()
+        ), "Path.mkdir was not intercepted; the guard could create a directory"
+        assert aimed == [
+            (decoy, 0o777, True, True)
+        ], "the interception did not record the decoy it just blocked"
         aimed.clear()
 
         main._check_stale_dist_binary()
@@ -236,15 +269,20 @@ class TestTheDefaultStillReachesTheOperator:
         expected = Path.home() / ".acervator_logs"
         assert [row[0] for row in aimed] == [expected], (
             f"with no override the marker aimed at {aimed}, not at the "
-            f"operator's own log root {expected}")
+            f"operator's own log root {expected}"
+        )
 
     def test_the_default_branch_is_in_the_function_not_a_comment(self) -> None:
         """Read the default over the guard's AST, so prose cannot pass."""
-        segment = ast.get_source_segment(
-            MAIN_SRC, _function("_check_stale_dist_binary")) or ""
-        literals = [n.value for n in ast.walk(ast.parse(segment))
-                    if isinstance(n, ast.Constant)
-                    and n.value == ".acervator_logs"]
+        segment = (
+            ast.get_source_segment(MAIN_SRC, _function("_check_stale_dist_binary"))
+            or ""
+        )
+        literals = [
+            n.value
+            for n in ast.walk(ast.parse(segment))
+            if isinstance(n, ast.Constant) and n.value == ".acervator_logs"
+        ]
         assert literals, "the guard no longer names the operator's log root"
 
 
@@ -256,7 +294,8 @@ class TestUnderTestItLandsInTheOverride:
     """
 
     def test_the_marker_lands_in_the_override_directory(
-            self, tmp_path: Path, drive_guard: Driver) -> None:
+        self, tmp_path: Path, drive_guard: Driver
+    ) -> None:
         """The override directory holds the marker after a real call."""
         override = tmp_path / "override"
         landed = drive_guard(tmp_path / "tree", tmp_path / "home", override)
@@ -266,7 +305,8 @@ class TestUnderTestItLandsInTheOverride:
         assert marker.parent == override.resolve()
 
     def test_the_home_tree_is_left_alone_when_overridden(
-            self, tmp_path: Path, drive_guard: Driver) -> None:
+        self, tmp_path: Path, drive_guard: Driver
+    ) -> None:
         """The home log directory must not even be CREATED.
 
         That absence is what the operator's tree is entitled to look
@@ -275,14 +315,16 @@ class TestUnderTestItLandsInTheOverride:
         home = tmp_path / "home"
         drive_guard(tmp_path / "tree", home, tmp_path / "override")
 
-        assert not (home / ".acervator_logs").exists(), \
-            "the guard created the home log directory despite the override"
+        assert not (
+            home / ".acervator_logs"
+        ).exists(), "the guard created the home log directory despite the override"
 
     def test_the_suite_is_redirected_right_now(self) -> None:
         """Assert the state of this very process, not the source."""
         assert os.environ.get(_OVERRIDE), (
             f"{_OVERRIDE} is unset while the suite runs, so the next "
-            f"import of main writes into the operator's tree")
+            f"import of main writes into the operator's tree"
+        )
 
 
 class TestTheTriggerStillTriggers:
@@ -293,48 +335,66 @@ class TestTheTriggerStillTriggers:
     """
 
     def test_mismatched_versions_write_the_marker_with_both_numbers(
-            self, tmp_path: Path, drive_guard: Driver) -> None:
+        self, tmp_path: Path, drive_guard: Driver
+    ) -> None:
         """A stale dist still produces the full banner, both versions."""
-        landed = drive_guard(tmp_path / "tree", tmp_path / "home",
-                             tmp_path / "override",
-                             live_ver="3.25.7", dist_ver="3.25.6")
+        landed = drive_guard(
+            tmp_path / "tree",
+            tmp_path / "home",
+            tmp_path / "override",
+            live_ver="3.25.7",
+            dist_ver="3.25.6",
+        )
         body = (landed / _MARKER_FILE).read_text(encoding="utf-8")
 
-        for expected in ("ACERVATOR STALE BINARY WARNING",
-                         "Live source version : 3.25.7",
-                         "dist/.exe version   : 3.25.6",
-                         "rebuild the .exe via BUILD.py"):
+        for expected in (
+            "ACERVATOR STALE BINARY WARNING",
+            "Live source version : 3.25.7",
+            "dist/.exe version   : 3.25.6",
+            "rebuild the .exe via BUILD.py",
+        ):
             assert expected in body, f"the marker never says {expected!r}"
 
     def test_matching_versions_write_nothing(
-            self, tmp_path: Path, drive_guard: Driver) -> None:
+        self, tmp_path: Path, drive_guard: Driver
+    ) -> None:
         """THE NEGATIVE SIDE.
 
         A guard that fired on a matched pair would cry wolf on every
         launch and get switched off.
         """
-        landed = drive_guard(tmp_path / "tree", tmp_path / "home",
-                             tmp_path / "override",
-                             live_ver="3.25.6", dist_ver="3.25.6")
+        landed = drive_guard(
+            tmp_path / "tree",
+            tmp_path / "home",
+            tmp_path / "override",
+            live_ver="3.25.6",
+            dist_ver="3.25.6",
+        )
 
-        assert not (landed / _MARKER_FILE).exists(), \
-            "the guard warned about a dist that matches its source"
+        assert not (
+            landed / _MARKER_FILE
+        ).exists(), "the guard warned about a dist that matches its source"
 
     def test_the_marker_matches_what_went_to_stderr(
-            self, tmp_path: Path, drive_guard: Driver,
-            capsys: pytest.CaptureFixture[str]) -> None:
+        self, tmp_path: Path, drive_guard: Driver, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """The file is a copy of the stderr banner, not a summary.
 
         The banner is what the operator sees when a terminal is
         attached; the file is what they get when the GUI has swallowed
         stderr. They must not drift apart.
         """
-        landed = drive_guard(tmp_path / "tree", tmp_path / "home",
-                             tmp_path / "override",
-                             live_ver="4.0.0", dist_ver="3.0.0")
+        landed = drive_guard(
+            tmp_path / "tree",
+            tmp_path / "home",
+            tmp_path / "override",
+            live_ver="4.0.0",
+            dist_ver="3.0.0",
+        )
 
-        assert (landed / _MARKER_FILE).read_text(encoding="utf-8") \
-            == capsys.readouterr().err
+        assert (landed / _MARKER_FILE).read_text(
+            encoding="utf-8"
+        ) == capsys.readouterr().err
 
 
 class TestNoDistNoWrite:
@@ -346,22 +406,34 @@ class TestNoDistNoWrite:
 
     @pytest.mark.parametrize(
         ("live_ver", "dist_ver", "case"),
-        [("9.9.9", None, "no dist"),
-         (None, "1.1.1", "no source"),
-         (None, None, "neither")])
+        [
+            ("9.9.9", None, "no dist"),
+            (None, "1.1.1", "no source"),
+            (None, None, "neither"),
+        ],
+    )
     def test_a_missing_file_is_silent(
-            self, tmp_path: Path, drive_guard: Driver,
-            live_ver: str | None, dist_ver: str | None, case: str) -> None:
+        self,
+        tmp_path: Path,
+        drive_guard: Driver,
+        live_ver: str | None,
+        dist_ver: str | None,
+        case: str,
+    ) -> None:
         """No marker appears when either version file is absent."""
-        landed = drive_guard(tmp_path / "tree", tmp_path / "home",
-                             tmp_path / "override",
-                             live_ver=live_ver, dist_ver=dist_ver)
+        landed = drive_guard(
+            tmp_path / "tree",
+            tmp_path / "home",
+            tmp_path / "override",
+            live_ver=live_ver,
+            dist_ver=dist_ver,
+        )
 
-        assert not (landed / _MARKER_FILE).exists(), \
-            f"the guard warned with {case}"
+        assert not (landed / _MARKER_FILE).exists(), f"the guard warned with {case}"
 
     def test_no_dist_is_silent_against_the_real_home_too(
-            self, tmp_path: Path, drive_guard: Driver) -> None:
+        self, tmp_path: Path, drive_guard: Driver
+    ) -> None:
         """The default branch has to be silent as well.
 
         The no-dist case is the common one and it is the one that would
@@ -369,8 +441,9 @@ class TestNoDistNoWrite:
         not only on the override branch.
         """
         home = tmp_path / "home"
-        landed = drive_guard(tmp_path / "tree", home, None,
-                             live_ver="9.9.9", dist_ver=None)
+        landed = drive_guard(
+            tmp_path / "tree", home, None, live_ver="9.9.9", dist_ver=None
+        )
 
         assert not (landed / _MARKER_FILE).exists()
         assert not (home / ".acervator_logs").exists()
@@ -394,7 +467,8 @@ class TestTheImportOrderHolds:
         assert declared < called, (
             f"CRASH_LOG_ROOT_ENV is declared at line {declared} but "
             f"_check_stale_dist_binary() is called at line {called}, so the "
-            f"override lookup raises NameError into a swallowing except")
+            f"override lookup raises NameError into a swallowing except"
+        )
 
     def test_it_is_declared_above_every_reader(self) -> None:
         """Pin the constant above ALL readers, not above one.
@@ -404,16 +478,22 @@ class TestTheImportOrderHolds:
         rather than over the two that exist today.
         """
         declared = _assign_line("CRASH_LOG_ROOT_ENV")
-        readers = [n.lineno for n in ast.walk(MAIN_TREE)
-                   if isinstance(n, ast.Name) and n.id == "CRASH_LOG_ROOT_ENV"
-                   and n.lineno != declared]
+        readers = [
+            n.lineno
+            for n in ast.walk(MAIN_TREE)
+            if isinstance(n, ast.Name)
+            and n.id == "CRASH_LOG_ROOT_ENV"
+            and n.lineno != declared
+        ]
         assert readers, "nothing reads CRASH_LOG_ROOT_ENV; the redirect is dead"
         assert declared < min(readers), (
             f"CRASH_LOG_ROOT_ENV declared at {declared}, first read at "
-            f"{min(readers)}")
+            f"{min(readers)}"
+        )
 
     def test_a_bare_import_arms_the_marker_in_the_override(
-            self, tmp_path: Path) -> None:
+        self, tmp_path: Path
+    ) -> None:
         """The runtime half of the ordering claim, in a child process.
 
         A bare ``import main`` with the trigger armed must produce the
@@ -435,12 +515,15 @@ class TestTheImportOrderHolds:
         assert "NameError" not in result.stderr, result.stderr
         assert (override / _MARKER_FILE).is_file(), (
             f"a bare import wrote no marker into {override}; the override "
-            f"lookup is failing silently. stderr:\n{result.stderr}")
-        assert not (home / ".acervator_logs" / _MARKER_FILE).exists(), \
-            "the marker leaked into the home tree despite the override"
+            f"lookup is failing silently. stderr:\n{result.stderr}"
+        )
+        assert not (
+            home / ".acervator_logs" / _MARKER_FILE
+        ).exists(), "the marker leaked into the home tree despite the override"
 
     def test_a_bare_import_without_the_override_does_not_raise(
-            self, tmp_path: Path) -> None:
+        self, tmp_path: Path
+    ) -> None:
         """The operator's own launch path, driven rather than argued.
 
         No override, trigger armed, home contained. The marker must land
@@ -458,4 +541,5 @@ class TestTheImportOrderHolds:
         assert "NameError" not in result.stderr, result.stderr
         assert (home / ".acervator_logs" / _MARKER_FILE).is_file(), (
             "the operator's default path produced no marker. stderr:\n"
-            f"{result.stderr}")
+            f"{result.stderr}"
+        )

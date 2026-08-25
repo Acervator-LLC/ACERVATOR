@@ -11,6 +11,7 @@ Panels:
   • Token supply dashboard (holders, tier distribution)
   • Oracle price controls (set mock prices for testing)
 """
+
 from __future__ import annotations
 
 import time
@@ -18,13 +19,27 @@ from typing import Optional
 
 try:
     from PySide6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-        QTableWidget, QTableWidgetItem, QHeaderView, QGroupBox,
-        QSplitter, QTextEdit, QFrame, QScrollArea, QSpinBox,
-        QDoubleSpinBox, QComboBox, QSizePolicy,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QPushButton,
+        QTableWidget,
+        QTableWidgetItem,
+        QHeaderView,
+        QGroupBox,
+        QSplitter,
+        QTextEdit,
+        QFrame,
+        QScrollArea,
+        QSpinBox,
+        QDoubleSpinBox,
+        QComboBox,
+        QSizePolicy,
     )
     from PySide6.QtCore import Qt, QTimer
-    from PySide6.QtGui  import QColor, QFont, QBrush
+    from PySide6.QtGui import QColor, QFont, QBrush
+
     _QT = True
 except ImportError:
     _QT = False
@@ -33,21 +48,22 @@ if _QT:
     from ..competition.local_testnet import LocalTestnet
 
 # ── Style ─────────────────────────────────────────────────────────────────────
-CYAN    = "#00FFEE"
-GREEN   = "#00FF88"
-AMBER   = "#FFAA00"
-RED     = "#FF3355"
+CYAN = "#00FFEE"
+GREEN = "#00FF88"
+AMBER = "#FFAA00"
+RED = "#FF3355"
 MAGENTA = "#FF00AA"
-MUTED   = "#8899BB"
-PANEL   = "#080818"
+MUTED = "#8899BB"
+PANEL = "#080818"
 
 TIER_COLORS = {
-    "Harvest":          GREEN,
-    "Gold Fold":        AMBER,
-    "Bear Slayer":      RED,
+    "Harvest": GREEN,
+    "Gold Fold": AMBER,
+    "Bear Slayer": RED,
     "Grand Accumulator": CYAN,
-    "Ekthelius":        MAGENTA,
+    "Ekthelius": MAGENTA,
 }
+
 
 def _section(title: str) -> QGroupBox:
     g = QGroupBox(title.upper())
@@ -63,11 +79,15 @@ def _section(title: str) -> QGroupBox:
     """)
     return g
 
+
 def _lbl(text: str, color: str = MUTED, size: int = 10, bold: bool = False) -> QLabel:
     l = QLabel(text)
     w = "bold" if bold else "normal"
-    l.setStyleSheet(f"color:{color}; font-family:Consolas; font-size:{size}px; font-weight:{w};")
+    l.setStyleSheet(
+        f"color:{color}; font-family:Consolas; font-size:{size}px; font-weight:{w};"
+    )
     return l
+
 
 def _table(cols: list[str], max_h: int = 180) -> QTableWidget:
     t = QTableWidget(0, len(cols))
@@ -90,8 +110,10 @@ def _table(cols: list[str], max_h: int = 180) -> QTableWidget:
     """)
     return t
 
+
 def _add_row(tbl: QTableWidget, values: list, colors: list[str] = None):
-    r = tbl.rowCount(); tbl.insertRow(r)
+    r = tbl.rowCount()
+    tbl.insertRow(r)
     for c, v in enumerate(values):
         item = QTableWidgetItem(str(v))
         item.setTextAlignment(Qt.AlignCenter)
@@ -102,11 +124,11 @@ def _add_row(tbl: QTableWidget, values: list, colors: list[str] = None):
 
 
 if _QT:
+
     class TestnetTab(QWidget):
         """Local testnet block explorer and competition runner."""
 
-        def __init__(self, parent=None, shared_testnet=None,
-                      bridge=None):
+        def __init__(self, parent=None, shared_testnet=None, bridge=None):
             """Construct the Local Testnet tab.
 
             If `shared_testnet` + `bridge` are provided (v3.12.0+
@@ -119,8 +141,9 @@ if _QT:
             super().__init__(parent)
             self.setAccessibleName("Testnet Tab")
             from ..competition.local_testnet import LocalTestnet
+
             self._testnet = shared_testnet or LocalTestnet()
-            self._bridge  = bridge
+            self._bridge = bridge
             self._comp_count = 0
             self._setup_ui()
 
@@ -135,9 +158,10 @@ if _QT:
                 try:
                     self._bridge.chain_updated.connect(self._refresh_all)
                     self._bridge.chain_reset.connect(
-                        lambda reason: self._msg(
-                            f"⚠ Chain reset: {reason}", "#ffaa00"))
-                except Exception: pass   # sadp: R61 ACCEPT — bridge may
+                        lambda reason: self._msg(f"⚠ Chain reset: {reason}", "#ffaa00")
+                    )
+                except Exception:
+                    pass  # sadp: R61 ACCEPT — bridge may
                 # already have these signals connected from a prior
                 # construction. Qt raises on duplicate connect; we don't
                 # need Qt.UniqueConnection here because the tab itself
@@ -152,11 +176,14 @@ if _QT:
             method to stderr + acervator.testnet logger.  sadp: R28 FL
             """
             import sys, logging
+
             log = logging.getLogger("acervator.testnet")
-            for name, fn in [("stats",   self._refresh_stats),
-                             ("blocks",  self._refresh_blocks),
-                             ("events",  self._refresh_events),
-                             ("holders", self._refresh_holders)]:
+            for name, fn in [
+                ("stats", self._refresh_stats),
+                ("blocks", self._refresh_blocks),
+                ("events", self._refresh_events),
+                ("holders", self._refresh_holders),
+            ]:
                 try:
                     fn()
                 except Exception as exc:
@@ -166,14 +193,21 @@ if _QT:
                         setattr(self, k, n + 1)
                         sys.stderr.write(
                             f"TestnetTab._refresh_{name}: "
-                            f"{type(exc).__name__}: {exc}\n")
+                            f"{type(exc).__name__}: {exc}\n"
+                        )
                         if n == 0:
                             import traceback
+
                             traceback.print_exc(file=sys.stderr)
                         try:
-                            log.error("_refresh_%s failed (%s): %s",
-                                      name, type(exc).__name__, exc)
-                        except Exception: pass   # sadp: R61 ACCEPT —
+                            log.error(
+                                "_refresh_%s failed (%s): %s",
+                                name,
+                                type(exc).__name__,
+                                exc,
+                            )
+                        except Exception:
+                            pass  # sadp: R61 ACCEPT —
                         # logging module itself broken; stderr write
                         # above already surfaced, looping would risk
                         # recursive logger-failure spam.
@@ -186,14 +220,19 @@ if _QT:
             # ── Header ────────────────────────────────────────────────────────
             hdr = QHBoxLayout()
             ttl = QLabel("Local Testnet")
-            ttl.setStyleSheet(f"color:{CYAN}; font-family:Orbitron; font-size:14px; font-weight:900;")
+            ttl.setStyleSheet(
+                f"color:{CYAN}; font-family:Orbitron; font-size:14px; font-weight:900;"
+            )
             hdr.addWidget(ttl)
             hdr.addStretch()
-            self._net_lbl = _lbl("● ACERVATOR LOCAL TESTNET  ·  Chain ID 84532", GREEN, 10)
+            self._net_lbl = _lbl(
+                "● ACERVATOR LOCAL TESTNET  ·  Chain ID 84532", GREEN, 10
+            )
             hdr.addWidget(self._net_lbl)
             root.addLayout(hdr)
 
-            sep = QFrame(); sep.setFrameShape(QFrame.HLine)
+            sep = QFrame()
+            sep.setFrameShape(QFrame.HLine)
             sep.setStyleSheet("color:rgba(0,255,238,0.15);")
             root.addWidget(sep)
 
@@ -202,14 +241,21 @@ if _QT:
             stat_lay = stat.layout() or QVBoxLayout(stat)
             self._stat_row = QHBoxLayout()
             self._stat_vals: dict = {}
-            for key in ["Block", "Transactions", "Events", "Competitions",
-                        "ACRV Minted", "Remaining"]:
+            for key in [
+                "Block",
+                "Transactions",
+                "Events",
+                "Competitions",
+                "ACRV Minted",
+                "Remaining",
+            ]:
                 col = QVBoxLayout()
-                lk  = _lbl(key.upper(), MUTED, 9)
+                lk = _lbl(key.upper(), MUTED, 9)
                 lk.setAlignment(Qt.AlignCenter)
-                vk  = _lbl("—", CYAN, 14, bold=True)
+                vk = _lbl("—", CYAN, 14, bold=True)
                 vk.setAlignment(Qt.AlignCenter)
-                col.addWidget(lk); col.addWidget(vk)
+                col.addWidget(lk)
+                col.addWidget(vk)
                 self._stat_row.addLayout(col)
                 self._stat_vals[key] = vk
             stat_lay.addLayout(self._stat_row)
@@ -221,21 +267,32 @@ if _QT:
             ctrl_row = QHBoxLayout()
 
             ctrl_row.addWidget(_lbl("Bots:", MUTED, 10))
-            self._n_bots = QSpinBox(); self._n_bots.setRange(2, 8)
-            self._n_bots.setValue(3); self._n_bots.setFixedWidth(55)
-            self._n_bots.setStyleSheet(f"background:#0A0A20; color:{CYAN}; border:1px solid rgba(0,255,238,0.2); padding:3px;")
+            self._n_bots = QSpinBox()
+            self._n_bots.setRange(2, 8)
+            self._n_bots.setValue(3)
+            self._n_bots.setFixedWidth(55)
+            self._n_bots.setStyleSheet(
+                f"background:#0A0A20; color:{CYAN}; border:1px solid rgba(0,255,238,0.2); padding:3px;"
+            )
             ctrl_row.addWidget(self._n_bots)
 
             ctrl_row.addWidget(_lbl("Symbol:", MUTED, 10))
-            self._sym = QComboBox(); self._sym.addItems(["BTC/USDT","ETH/USDT","SOL/USDT"])
+            self._sym = QComboBox()
+            self._sym.addItems(["BTC/USDT", "ETH/USDT", "SOL/USDT"])
             self._sym.setFixedWidth(100)
-            self._sym.setStyleSheet(f"background:#0A0A20; color:{CYAN}; border:1px solid rgba(0,255,238,0.2);")
+            self._sym.setStyleSheet(
+                f"background:#0A0A20; color:{CYAN}; border:1px solid rgba(0,255,238,0.2);"
+            )
             ctrl_row.addWidget(self._sym)
 
             ctrl_row.addWidget(_lbl("Season:", MUTED, 10))
-            self._season = QSpinBox(); self._season.setRange(1, 20)
-            self._season.setValue(1); self._season.setFixedWidth(55)
-            self._season.setStyleSheet(f"background:#0A0A20; color:{CYAN}; border:1px solid rgba(0,255,238,0.2); padding:3px;")
+            self._season = QSpinBox()
+            self._season.setRange(1, 20)
+            self._season.setValue(1)
+            self._season.setFixedWidth(55)
+            self._season.setStyleSheet(
+                f"background:#0A0A20; color:{CYAN}; border:1px solid rgba(0,255,238,0.2); padding:3px;"
+            )
             ctrl_row.addWidget(self._season)
 
             ctrl_row.addStretch()
@@ -244,7 +301,8 @@ if _QT:
             self._run_btn.setStyleSheet(
                 f"background:rgba(0,255,238,0.08); color:{CYAN}; "
                 f"border:1px solid {CYAN}; font-family:Orbitron; "
-                f"font-size:10px; padding:8px 20px; border-radius:4px;")
+                f"font-size:10px; padding:8px 20px; border-radius:4px;"
+            )
             self._run_btn.clicked.connect(self._run_competition)
             ctrl_row.addWidget(self._run_btn)
 
@@ -252,7 +310,8 @@ if _QT:
             self._stress_btn.setStyleSheet(
                 f"background:rgba(255,170,0,0.08); color:{AMBER}; "
                 f"border:1px solid {AMBER}; font-family:Orbitron; "
-                f"font-size:10px; padding:8px 20px; border-radius:4px;")
+                f"font-size:10px; padding:8px 20px; border-radius:4px;"
+            )
             self._stress_btn.clicked.connect(self._stress_test)
             ctrl_row.addWidget(self._stress_btn)
 
@@ -261,7 +320,8 @@ if _QT:
             self._reset_btn.setStyleSheet(
                 f"background:rgba(255,60,100,0.08); color:{RED}; "
                 f"border:1px solid {RED}; font-family:Orbitron; "
-                f"font-size:10px; padding:8px 16px; border-radius:4px;")
+                f"font-size:10px; padding:8px 16px; border-radius:4px;"
+            )
             self._reset_btn.clicked.connect(self._reset_chain)
             ctrl_row.addWidget(self._reset_btn)
 
@@ -271,11 +331,16 @@ if _QT:
             oracle_row = QHBoxLayout()
             oracle_row.addWidget(_lbl("Oracle BTC/USD:", MUTED, 10))
             self._btc_price = QDoubleSpinBox()
-            self._btc_price.setRange(1000, 200000); self._btc_price.setValue(62000)
-            self._btc_price.setDecimals(0); self._btc_price.setFixedWidth(90)
-            self._btc_price.setStyleSheet(f"background:#0A0A20; color:{AMBER}; border:1px solid rgba(255,170,0,0.2); padding:3px;")
+            self._btc_price.setRange(1000, 200000)
+            self._btc_price.setValue(62000)
+            self._btc_price.setDecimals(0)
+            self._btc_price.setFixedWidth(90)
+            self._btc_price.setStyleSheet(
+                f"background:#0A0A20; color:{AMBER}; border:1px solid rgba(255,170,0,0.2); padding:3px;"
+            )
             self._btc_price.valueChanged.connect(
-                lambda v: self._testnet.set_mock_price("BTC/USDT", v))
+                lambda v: self._testnet.set_mock_price("BTC/USDT", v)
+            )
             oracle_row.addWidget(self._btc_price)
             oracle_row.addStretch()
             run_lay.addLayout(oracle_row)
@@ -305,16 +370,14 @@ if _QT:
             # ── Event log ─────────────────────────────────────────────────────
             evt_box = _section("Contract Events")
             evt_lay = evt_box.layout() or QVBoxLayout(evt_box)
-            self._evt_tbl = _table(
-                ["Block", "Event", "Details"], max_h=150)
+            self._evt_tbl = _table(["Block", "Event", "Details"], max_h=150)
             evt_lay.addWidget(self._evt_tbl)
             root.addWidget(evt_box)
 
             # ── Token holders ──────────────────────────────────────────────────
             tok_box = _section("Token Holders")
             tok_lay = tok_box.layout() or QVBoxLayout(tok_box)
-            self._tok_tbl = _table(
-                ["Wallet", "Balance (ACRV)", "Tier"], max_h=130)
+            self._tok_tbl = _table(["Wallet", "Balance (ACRV)", "Tier"], max_h=130)
             tok_lay.addWidget(self._tok_tbl)
             root.addWidget(tok_box)
 
@@ -326,27 +389,30 @@ if _QT:
             self._log.setMaximumHeight(120)
             self._log.setStyleSheet(
                 f"background:#050510; color:#8899BB; "
-                f"font-family:Consolas; font-size:10px; border:none;")
+                f"font-family:Consolas; font-size:10px; border:none;"
+            )
             log_lay.addWidget(self._log)
             root.addWidget(log_box)
 
             self._refresh_stats()
 
         def _msg(self, text: str, color: str = MUTED):
-            ts  = time.strftime("%H:%M:%S")
-            fmt = (f'<span style="color:#445566">[{ts}]</span> '
-                   f'<span style="color:{color}">{text}</span>')
+            ts = time.strftime("%H:%M:%S")
+            fmt = (
+                f'<span style="color:#445566">[{ts}]</span> '
+                f'<span style="color:{color}">{text}</span>'
+            )
             self._log.append(fmt)
 
         def _refresh_stats(self):
             s = self._testnet.get_competition_stats()
             mapping = {
-                "Block":       str(s["block_number"]),
+                "Block": str(s["block_number"]),
                 "Transactions": str(s["total_transactions"]),
-                "Events":      str(s["total_events"]),
+                "Events": str(s["total_events"]),
                 "Competitions": str(s["total_competitions"]),
                 "ACRV Minted": f"{s['acrv_total_supply']:,.0f}",
-                "Remaining":   f"{s['acrv_remaining']:,.0f}",
+                "Remaining": f"{s['acrv_remaining']:,.0f}",
             }
             for k, v in mapping.items():
                 if k in self._stat_vals:
@@ -356,14 +422,18 @@ if _QT:
             """Wipe in-memory chain + delete persistence file.
             Confirmation required because it's destructive."""
             from PySide6.QtWidgets import QMessageBox
+
             resp = QMessageBox.question(
-                self, "Reset Chain?",
+                self,
+                "Reset Chain?",
                 "This will permanently delete all block history, "
                 "transactions, token balances, and competition records "
                 "on the local testnet.\n\n"
                 "The persisted chain file will also be deleted.\n\n"
                 "This cannot be undone. Continue?",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
             if resp != QMessageBox.Yes:
                 return
             if self._bridge is not None:
@@ -372,6 +442,7 @@ if _QT:
             else:
                 # Standalone fallback — no bridge, no persistence
                 from ..competition.local_testnet import LocalTestnet
+
                 self._testnet.__dict__.update(LocalTestnet().__dict__)
                 self._msg("Chain reset (in-memory only).", AMBER)
             self._refresh_all()
@@ -384,41 +455,48 @@ if _QT:
             # Otherwise legacy inline path (standalone use).
             if self._bridge is not None:
                 from .shared_testnet import CompetitionRequest
+
                 req = CompetitionRequest(
                     symbol=self._sym.currentText(),
                     season=self._season.value(),
-                    n_bots=self._n_bots.value())
+                    n_bots=self._n_bots.value(),
+                )
                 try:
                     # v3.12.3 — Qt.UniqueConnection is 0x80, NOT 3.
                     # Value 3 = BlockingQueuedConnection (can deadlock).
                     from PySide6.QtCore import Qt
+
                     self._bridge.competition_completed.connect(
-                        self._on_bridge_competition,
-                        type=Qt.UniqueConnection)
-                except Exception: pass  # sadp: R61 ACCEPT — already
+                        self._on_bridge_competition, type=Qt.UniqueConnection
+                    )
+                except Exception:
+                    pass  # sadp: R61 ACCEPT — already
                 # connected. Qt.UniqueConnection raises TypeError if
                 # the signal is already connected to this slot, which
                 # is the EXPECTED path on every subsequent button press.
                 self._bridge.request_competition(req)
-                return   # button re-enabled in _on_bridge_competition
+                return  # button re-enabled in _on_bridge_competition
             try:
                 result = self._testnet.run_demo_competition(
-                    n_bots  = self._n_bots.value(),
-                    season  = self._season.value(),
-                    symbol  = self._sym.currentText(),
+                    n_bots=self._n_bots.value(),
+                    season=self._season.value(),
+                    symbol=self._sym.currentText(),
                 )
                 self._comp_count += 1
                 self._msg(f"Competition {result['competition_id']} complete!", GREEN)
                 self._msg(
                     f"  Winner: {result['winner_wallet'][:14]}...  "
                     f"Tier: {result['winner_tier']}  "
-                    f"Awarded: {result['tokens_awarded']:,} ACRV", GREEN)
-                self._msg(
-                    f"  Adj tx: {result['adj_tx_hash'][:20]}...", MUTED)
+                    f"Awarded: {result['tokens_awarded']:,} ACRV",
+                    GREEN,
+                )
+                self._msg(f"  Adj tx: {result['adj_tx_hash'][:20]}...", MUTED)
                 self._refresh_all()
             except Exception as e:
                 self._msg(f"Error: {e}", RED)
-                import traceback; traceback.print_exc()
+                import traceback
+
+                traceback.print_exc()
             finally:
                 self._run_btn.setEnabled(True)
 
@@ -439,12 +517,14 @@ if _QT:
                 return
             self._comp_count += 1
             self._msg(
-                f"Competition {result.get('competition_id','?')} complete!",
-                GREEN)
+                f"Competition {result.get('competition_id','?')} complete!", GREEN
+            )
             self._msg(
                 f"  Winner: {str(result.get('winner_wallet',''))[:14]}…  "
                 f"Tier: {result.get('winner_tier','?')}  "
-                f"Awarded: {result.get('tokens_awarded',0):,} ACRV", GREEN)
+                f"Awarded: {result.get('tokens_awarded',0):,} ACRV",
+                GREEN,
+            )
             # Explicit refresh — R28 FL  (the prior reliance on 3s
             # timer + chain_updated signal was not observably firing
             # for the user in v3.13.0)
@@ -455,35 +535,46 @@ if _QT:
             self._msg("Running 10 competitions...", AMBER)
             if self._bridge is not None:
                 from .shared_testnet import CompetitionRequest
+
                 try:
                     from PySide6.QtCore import Qt
+
                     self._bridge.competition_completed.connect(
-                        self._on_bridge_competition,
-                        type=Qt.UniqueConnection)
-                except Exception: pass   # sadp: R61 ACCEPT — already
+                        self._on_bridge_competition, type=Qt.UniqueConnection
+                    )
+                except Exception:
+                    pass  # sadp: R61 ACCEPT — already
                 # connected. Same rationale as the single-run path above.
                 for _ in range(10):
-                    self._bridge.request_competition(CompetitionRequest(
-                        symbol=self._sym.currentText(),
-                        season=self._season.value(),
-                        n_bots=3))
-                return   # workers run sequentially via drain loop
+                    self._bridge.request_competition(
+                        CompetitionRequest(
+                            symbol=self._sym.currentText(),
+                            season=self._season.value(),
+                            n_bots=3,
+                        )
+                    )
+                return  # workers run sequentially via drain loop
             try:
                 for i in range(10):
                     self._testnet.run_demo_competition(
-                        n_bots  = 3,
-                        season  = self._season.value(),
-                        symbol  = self._sym.currentText(),
+                        n_bots=3,
+                        season=self._season.value(),
+                        symbol=self._sym.currentText(),
                     )
                 s = self._testnet.get_competition_stats()
                 self._msg(
                     f"10 competitions done. "
                     f"Total minted: {s['acrv_total_supply']:,.0f} ACRV / "
-                    f"{s['acrv_remaining']:,.0f} remaining.", GREEN)
+                    f"{s['acrv_remaining']:,.0f} remaining.",
+                    GREEN,
+                )
                 tiers = s.get("tier_counts", {})
                 if tiers:
-                    self._msg("  Tier distribution: " + ", ".join(
-                        f"{k}: {v}" for k, v in tiers.items()), AMBER)
+                    self._msg(
+                        "  Tier distribution: "
+                        + ", ".join(f"{k}: {v}" for k, v in tiers.items()),
+                        AMBER,
+                    )
                 self._refresh_all()
             except Exception as e:
                 self._msg(f"Stress test error: {e}", RED)
@@ -495,50 +586,66 @@ if _QT:
             self._tx_tbl.setRowCount(0)
             for blk in self._testnet.chain.latest_blocks[:15]:
                 age = int(time.time() - blk.timestamp)
-                _add_row(self._block_tbl,
-                         [str(blk.number), str(len(blk.transactions)),
-                          blk.hash[:18] + "...", f"{age}s ago"],
-                         [CYAN, AMBER, MUTED, MUTED])
+                _add_row(
+                    self._block_tbl,
+                    [
+                        str(blk.number),
+                        str(len(blk.transactions)),
+                        blk.hash[:18] + "...",
+                        f"{age}s ago",
+                    ],
+                    [CYAN, AMBER, MUTED, MUTED],
+                )
             for tx in list(reversed(list(self._testnet.chain._txs.values())))[:15]:
-                _add_row(self._tx_tbl,
-                         [tx.tx_hash[:14] + "...", tx.function_name,
-                          tx.from_addr[:10] + "...", f"{tx.gas_used:,}"],
-                         [CYAN, GREEN, MUTED, MUTED])
+                _add_row(
+                    self._tx_tbl,
+                    [
+                        tx.tx_hash[:14] + "...",
+                        tx.function_name,
+                        tx.from_addr[:10] + "...",
+                        f"{tx.gas_used:,}",
+                    ],
+                    [CYAN, GREEN, MUTED, MUTED],
+                )
 
         def _refresh_events(self):
             self._evt_tbl.setRowCount(0)
             for evt in self._testnet.chain.latest_events[:20]:
                 color = {
-                    "Adjudicated":     GREEN,
-                    "TokensMinted":    AMBER,
+                    "Adjudicated": GREEN,
+                    "TokensMinted": AMBER,
                     "ResultSubmitted": CYAN,
                     "CompetitionOpened": MAGENTA,
-                    "BotRegistered":   MUTED,
+                    "BotRegistered": MUTED,
                 }.get(evt.event_name, MUTED)
                 # Compact args display
-                args_str = "  ".join(
-                    f"{k}={v}" for k, v in list(evt.args.items())[:3])
-                _add_row(self._evt_tbl,
-                         [str(evt.block_number), evt.event_name, args_str],
-                         [MUTED, color, MUTED])
+                args_str = "  ".join(f"{k}={v}" for k, v in list(evt.args.items())[:3])
+                _add_row(
+                    self._evt_tbl,
+                    [str(evt.block_number), evt.event_name, args_str],
+                    [MUTED, color, MUTED],
+                )
 
         def _refresh_holders(self):
             self._tok_tbl.setRowCount(0)
             balances = self._testnet.acrv._balances
-            sorted_bal = sorted(balances.items(),
-                                key=lambda x: x[1], reverse=True)
+            sorted_bal = sorted(balances.items(), key=lambda x: x[1], reverse=True)
             # Find tier for each holder from mint log
             holder_tiers: dict = {}
             for m in self._testnet.acrv._mint_log:
                 holder_tiers[m["recipient"]] = m["tier"]
             for addr, wei in sorted_bal[:15]:
                 tokens = wei / (10**18)
-                tier   = holder_tiers.get(addr, "—")
-                col    = TIER_COLORS.get(tier, MUTED)
-                _add_row(self._tok_tbl,
-                         [addr[:14] + "...", f"{tokens:,.1f}", tier],
-                         [MUTED, GREEN, col])
+                tier = holder_tiers.get(addr, "—")
+                col = TIER_COLORS.get(tier, MUTED)
+                _add_row(
+                    self._tok_tbl,
+                    [addr[:14] + "...", f"{tokens:,.1f}", tier],
+                    [MUTED, GREEN, col],
+                )
 
 else:
+
     class TestnetTab:
-        def __init__(self, *a, **kw): pass
+        def __init__(self, *a, **kw):
+            pass

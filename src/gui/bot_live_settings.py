@@ -14,15 +14,31 @@ logger = logging.getLogger("acervator.gui")
 
 try:
     from PySide6.QtWidgets import (
-        QDialog, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
-        QFormLayout, QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox,
-        QPushButton, QTabWidget, QWidget,
-        QTableWidget, QTableWidgetItem, QHeaderView, QFrame,
-        QScrollArea, QLineEdit,
-        QStyledItemDelegate, QStyleOptionViewItem,
+        QDialog,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QGroupBox,
+        QFormLayout,
+        QComboBox,
+        QSpinBox,
+        QDoubleSpinBox,
+        QCheckBox,
+        QPushButton,
+        QTabWidget,
+        QWidget,
+        QTableWidget,
+        QTableWidgetItem,
+        QHeaderView,
+        QFrame,
+        QScrollArea,
+        QLineEdit,
+        QStyledItemDelegate,
+        QStyleOptionViewItem,
     )
     from PySide6.QtCore import Qt, Signal, QModelIndex, QPersistentModelIndex
     from PySide6.QtGui import QColor, QBrush, QPainter, QPen
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -175,6 +191,7 @@ def _arbiter_label(value: object) -> str:
     import time.
     """
     from ..trading.extractor_bot import arbiter_label
+
     return arbiter_label(value)
 
 
@@ -210,7 +227,8 @@ def _compose_arbiter_tooltip(value: object) -> str:
         f"ready for the unit that builds it.\n"
         f"\n"
         f"Per tranche, not per bot. Every Extractor Tranche carries its "
-        f"own Arbiter.")
+        f"own Arbiter."
+    )
 
 
 def _format_tranche_age(seconds: float) -> str:
@@ -232,8 +250,7 @@ def _format_tranche_age(seconds: float) -> str:
     return f"{minutes}m"
 
 
-def _compose_extractor_tranche_cells(
-        row: dict, now_ts: float) -> list[str]:
+def _compose_extractor_tranche_cells(row: dict, now_ts: float) -> list[str]:
     """Return the ten cell strings for one Extractor Tranche row.
 
     Pure, so the row's content is testable without Qt. The columns are
@@ -266,7 +283,7 @@ def _compose_extractor_tranche_cells(
     from ..trading.bot_container import as_finite_float
 
     opened = float(row.get("opened_at", 0.0) or 0.0)
-    age = (_format_tranche_age(now_ts - opened) if opened > 0 else "—")
+    age = _format_tranche_age(now_ts - opened) if opened > 0 else "—"
 
     units = float(row.get("base_deployed", 0.0) or 0.0)
 
@@ -281,22 +298,22 @@ def _compose_extractor_tranche_cells(
     # OverflowError out of the row builder. Every refused shape now
     # takes the em-dash path this column already had.
     mark_usd = as_finite_float(row.get("mark_value_usd"))
-    usd_text = (f"${mark_usd:,.4f}" if mark_usd is not None else "—")
+    usd_text = f"${mark_usd:,.4f}" if mark_usd is not None else "—"
 
     state = str(row.get("state", "") or "—")
     pair = str(row.get("pair", "") or "?")
 
     return [
-        "EXT",          # 0  "#" — not a fold index; never a fire target
-        age,            # 1  Age
+        "EXT",  # 0  "#" — not a fold index; never a fire target
+        age,  # 1  Age
         f"{units:.6f}",  # 2  Units (parent's base currency on lease)
-        usd_text,       # 3  USD parked -> marked value, or em dash
-        "—",            # 4  Sell ref $   (parent-asset price; N/A)
-        "—",            # 5  Original cost $ (parent-asset price; N/A)
-        "—",            # 6  Min rebuy $ (parent-asset price; N/A)
-        state,          # 7  Status -> the child's position state
+        usd_text,  # 3  USD parked -> marked value, or em dash
+        "—",  # 4  Sell ref $   (parent-asset price; N/A)
+        "—",  # 5  Original cost $ (parent-asset price; N/A)
+        "—",  # 6  Min rebuy $ (parent-asset price; N/A)
+        state,  # 7  Status -> the child's position state
         f"extractor {pair}",  # 8  Source
-        "—",            # 9  Fire -> the parent cannot fire a child
+        "—",  # 9  Fire -> the parent cannot fire a child
     ]
 
 
@@ -317,32 +334,40 @@ def _compose_extractor_tranche_tooltip(row: dict) -> str:
     lines = [
         "EXTRACTOR TRANCHE — not this bot's inventory.",
         "",
-        (f"Child bot: {row.get('child_bot_name', '?')} "
-         f"({row.get('child_bot_id', '?')})"),
+        (
+            f"Child bot: {row.get('child_bot_name', '?')} "
+            f"({row.get('child_bot_id', '?')})"
+        ),
         f"Pair: {row.get('pair', '?')}",
         f"State: {row.get('state', '?')}",
         "",
-        (f"{float(row.get('base_deployed', 0.0) or 0.0):.8f} "
-         f"{base_asset} of this bot's asset is leased to that "
-         f"Extractor."),
+        (
+            f"{float(row.get('base_deployed', 0.0) or 0.0):.8f} "
+            f"{base_asset} of this bot's asset is leased to that "
+            f"Extractor."
+        ),
         f"Alt units held: {float(row.get('alt_units', 0.0) or 0.0):.8f}",
     ]
     mark_price = as_finite_float(row.get("mark_price_base_per_alt"))
     if mark_price is not None:
         lines.append(
             f"Last mark: {mark_price:.8f} {base_asset} per alt "
-            f"unit, recorded by the Extractor's own tick.")
+            f"unit, recorded by the Extractor's own tick."
+        )
     else:
         lines.append(
             "No mark available — this position has not been priced "
             "since it was loaded. The USD column shows an em dash "
-            "rather than substituting cost basis.")
+            "rather than substituting cost basis."
+        )
     lines += [
         "",
-        ("This row is a RECORD, not inventory. It is not in this bot's "
-         "fold queue and not in its lots, so no gate, no SCRUM sizing "
-         "and no fold-back can act on it. There is no Fire button "
-         "because the parent does not close a child's position."),
+        (
+            "This row is a RECORD, not inventory. It is not in this bot's "
+            "fold queue and not in its lots, so no gate, no SCRUM sizing "
+            "and no fold-back can act on it. There is no Fire button "
+            "because the parent does not close a child's position."
+        ),
     ]
     return "\n".join(lines)
 
@@ -352,9 +377,11 @@ def _compose_extractor_tranche_tooltip(row: dict) -> str:
 # tested without a QApplication. The Qt-side widget helper on
 # BotLiveSettingsDialog delegates here.
 def _compose_denom_row_text(
-        quote_currency: str,
-        target_usd: float, quote_usd: float,
-        pair_pct_24h: float, usd_pair_pct_24h: float,
+    quote_currency: str,
+    target_usd: float,
+    quote_usd: float,
+    pair_pct_24h: float,
+    usd_pair_pct_24h: float,
 ) -> tuple[str, str]:
     """Return ``(text, color_hex)`` for one denomination row.
 
@@ -383,9 +410,7 @@ def _compose_denom_row_text(
         _units_txt = f"{_units:.5f}"
     else:
         _units_txt = f"{_units:.6f}"
-    _txt = (
-        f"{_units_txt} {quote_currency}  "
-        f"(Δ24h vs USD: {_sign}{_delta:.2f} %)")
+    _txt = f"{_units_txt} {quote_currency}  " f"(Δ24h vs USD: {_sign}{_delta:.2f} %)"
     return (_txt, _color)
 
 
@@ -429,8 +454,12 @@ if _HAS_QT:
         edge rather than ten little boxes.
         """
 
-        def paint(self, painter: QPainter, option: QStyleOptionViewItem,
-                  index: QModelIndex | QPersistentModelIndex) -> None:
+        def paint(
+            self,
+            painter: QPainter,
+            option: QStyleOptionViewItem,
+            index: QModelIndex | QPersistentModelIndex,
+        ) -> None:
             """Paint the cell normally, then stroke its row edges.
 
             The border colour comes from the cell's own background
@@ -521,14 +550,21 @@ if _HAS_QT:
             hdr_row.addWidget(hdr)
 
             state = bot.state.value
-            state_colors = {"running": "#00ff88", "idle": "#888", "paused": "#ffaa00",
-                            "error": "#ff3366", "stopped": "#666", "cooldown": "#ffaa00"}
+            state_colors = {
+                "running": "#00ff88",
+                "idle": "#888",
+                "paused": "#ffaa00",
+                "error": "#ff3366",
+                "stopped": "#666",
+                "cooldown": "#ffaa00",
+            }
             state_lbl = QLabel(f"  {state.upper()}")
             state_lbl.setStyleSheet(
                 f"font-size: 14px; font-weight: bold; "
                 f"color: {state_colors.get(state, '#ccc')}; "
                 f"background: {state_colors.get(state, '#ccc')}22; "
-                f"padding: 2px 8px; border-radius: 4px;")
+                f"padding: 2px 8px; border-radius: 4px;"
+            )
             hdr_row.addWidget(state_lbl)
             hdr_row.addStretch()
 
@@ -551,18 +587,18 @@ if _HAS_QT:
             self._prev_btn.setStyleSheet(nav_btn_qss)
             self._prev_btn.setToolTip(
                 "Switch to the previous bot in the swarm without "
-                "closing this dialog (Ctrl+Left)")
-            self._prev_btn.clicked.connect(
-                lambda: self._navigate_to_sibling(-1))
+                "closing this dialog (Ctrl+Left)"
+            )
+            self._prev_btn.clicked.connect(lambda: self._navigate_to_sibling(-1))
             hdr_row.addWidget(self._prev_btn)
 
             self._next_btn = QPushButton("Next ▶")
             self._next_btn.setStyleSheet(nav_btn_qss)
             self._next_btn.setToolTip(
                 "Switch to the next bot in the swarm without "
-                "closing this dialog (Ctrl+Right)")
-            self._next_btn.clicked.connect(
-                lambda: self._navigate_to_sibling(1))
+                "closing this dialog (Ctrl+Right)"
+            )
+            self._next_btn.clicked.connect(lambda: self._navigate_to_sibling(1))
             hdr_row.addWidget(self._next_btn)
 
             # Hide both if we can't navigate (single-bot or no manager)
@@ -576,17 +612,15 @@ if _HAS_QT:
             # Tabs
             tabs = QTabWidget()
             self._tabs = tabs  # v3.16.18 — used by navigation to
-                               # report the active tab back to the
-                               # parent so the next bot's dialog
-                               # opens on the same tab.
+            # report the active tab back to the
+            # parent so the next bot's dialog
+            # opens on the same tab.
 
             # --- Tab 1: Status ---
-            tabs.addTab(self._wrap_scrollable(
-                self._create_status_tab()), "Status")
+            tabs.addTab(self._wrap_scrollable(self._create_status_tab()), "Status")
 
             # --- Tab 2: Settings ---
-            tabs.addTab(self._wrap_scrollable(
-                self._create_settings_tab()), "Settings")
+            tabs.addTab(self._wrap_scrollable(self._create_settings_tab()), "Settings")
 
             # --- Tab 3: Fold Tranches (Scrumming only — v3.16.39 P2-VIS) ---
             # Operator directive 2026-05-08 (post live-trading evaluation):
@@ -596,8 +630,10 @@ if _HAS_QT:
             # see Leg-1/Leg-2 health at a glance instead of needing
             # post-hoc CSV analysis. MEM-171 / ADR-004 mechanics.
             if cfg.mode.value == "scrumming":
-                tabs.addTab(self._wrap_scrollable(
-                    self._create_fold_tranches_tab()), "Fold Tranches")
+                tabs.addTab(
+                    self._wrap_scrollable(self._create_fold_tranches_tab()),
+                    "Fold Tranches",
+                )
 
             # --- Tab 3.5: Stack Tranches (Scrumming only) ---
             # v3.23.28 — mirror of Fold Tranches for the Stack Mode
@@ -611,8 +647,10 @@ if _HAS_QT:
             # 2026-07-25: the sub-gate hid the tab even while inspecting
             # the feature, defeating the reason for adding it.
             if cfg.mode.value == "scrumming":
-                tabs.addTab(self._wrap_scrollable(
-                    self._create_stack_tranches_tab()), "Stack Tranches")
+                tabs.addTab(
+                    self._wrap_scrollable(self._create_stack_tranches_tab()),
+                    "Stack Tranches",
+                )
 
             # --- Tab 4: Bot Swarm (Scrumming only — v3.16.44 P2-VIS) ---
             # Operator directive 2026-05-08: pre-emptively surface Smart
@@ -621,8 +659,9 @@ if _HAS_QT:
             # in this code path can be caught BEFORE they accumulate (same
             # pattern that Fold Tranches tab caught the compound bug).
             if cfg.mode.value == "scrumming":
-                tabs.addTab(self._wrap_scrollable(
-                    self._create_bot_swarm_tab()), "Bot Swarm")
+                tabs.addTab(
+                    self._wrap_scrollable(self._create_bot_swarm_tab()), "Bot Swarm"
+                )
 
             # --- Tab 5: Market Inspector (Scrumming only — v3.23.37) ---
             # Per-bot view of the shared Market Inspector's most recent
@@ -635,9 +674,10 @@ if _HAS_QT:
             # phantom for crypto bots (no caller wired
             # ScrummingBot._mr_inspector).
             if cfg.mode.value == "scrumming":
-                tabs.addTab(self._wrap_scrollable(
-                    self._create_market_inspector_tab()),
-                    "Market Inspector")
+                tabs.addTab(
+                    self._wrap_scrollable(self._create_market_inspector_tab()),
+                    "Market Inspector",
+                )
 
             # --- Tab 6: Phantom Bots (Scrumming only — merged v3.23.39) ---
             # Single tab combining the retired "Phantom State" (runtime
@@ -647,8 +687,10 @@ if _HAS_QT:
             # config (enable + TFs + lock) → coordinator status →
             # per-phantom table → active locks.
             if cfg.mode.value == "scrumming":
-                tabs.addTab(self._wrap_scrollable(
-                    self._create_phantom_bots_tab()), "Phantom Bots")
+                tabs.addTab(
+                    self._wrap_scrollable(self._create_phantom_bots_tab()),
+                    "Phantom Bots",
+                )
 
             # v3.20.4 — Adjust Stack tab removed (grid_bot deleted
             # v3.16.0; cfg.mode.value can never be "grid" since
@@ -660,8 +702,10 @@ if _HAS_QT:
             # No global fire — each open position has its own button
             # that closes that specific position at market.
             if cfg.mode.value == "extractor":
-                tabs.addTab(self._wrap_scrollable(
-                    self._create_positions_held_tab()), "Positions Held")
+                tabs.addTab(
+                    self._wrap_scrollable(self._create_positions_held_tab()),
+                    "Positions Held",
+                )
 
             layout.addWidget(tabs)
 
@@ -675,7 +719,8 @@ if _HAS_QT:
                 "border: none; border-radius: 6px; padding: 8px 20px; "
                 "font-weight: bold; font-size: 12px; }"
                 "QPushButton:hover { background: #00ddaa; }"
-                "QPushButton:disabled { background: #333; color: #666; }")
+                "QPushButton:disabled { background: #333; color: #666; }"
+            )
             self._apply_btn.setEnabled(False)
             self._apply_btn.clicked.connect(self._apply_changes)
             btn_row.addWidget(self._apply_btn)
@@ -685,7 +730,8 @@ if _HAS_QT:
                 "QPushButton { background: #2a2a3f; color: #aaa; "
                 "border: 1px solid #3a3a5f; border-radius: 6px; "
                 "padding: 8px 20px; }"
-                "QPushButton:hover { background: #3a3a5f; }")
+                "QPushButton:hover { background: #3a3a5f; }"
+            )
             close_btn.clicked.connect(self.accept)
             btn_row.addWidget(close_btn)
             layout.addLayout(btn_row)
@@ -700,15 +746,24 @@ if _HAS_QT:
             # have siblings to navigate between.
             try:
                 from PySide6.QtGui import QShortcut, QKeySequence
+
                 if _can_nav:
-                    QShortcut(QKeySequence("Ctrl+Left"), self,
-                              activated=lambda: self._navigate_to_sibling(-1))
-                    QShortcut(QKeySequence("Ctrl+Right"), self,
-                              activated=lambda: self._navigate_to_sibling(1))
-            except Exception as _shortcut_exc:  # noqa: BLE001 - keyboard shortcut wiring is optional
+                    QShortcut(
+                        QKeySequence("Ctrl+Left"),
+                        self,
+                        activated=lambda: self._navigate_to_sibling(-1),
+                    )
+                    QShortcut(
+                        QKeySequence("Ctrl+Right"),
+                        self,
+                        activated=lambda: self._navigate_to_sibling(1),
+                    )
+            except (
+                Exception
+            ) as _shortcut_exc:  # noqa: BLE001 - keyboard shortcut wiring is optional
                 logger.debug(
-                    "sibling navigation shortcuts unavailable: %s",
-                    _shortcut_exc)
+                    "sibling navigation shortcuts unavailable: %s", _shortcut_exc
+                )
 
         # ── v3.16.18 — sibling navigation ──────────────────────────
         def _sibling_bot_ids(self) -> list:
@@ -720,7 +775,9 @@ if _HAS_QT:
                 return []
             try:
                 return list(self._bm._bots.keys())
-            except Exception:  # R28-OK: bot-manager probe; treat as no siblings on access failure
+            except (
+                Exception
+            ):  # R28-OK: bot-manager probe; treat as no siblings on access failure
                 return []
 
         def _navigate_to_sibling(self, direction: int) -> None:
@@ -758,7 +815,9 @@ if _HAS_QT:
             bot's dialog should open on Settings, not Status)."""
             try:
                 return int(self._tabs.currentIndex())
-            except Exception:  # R28-OK: tab-index probe; default to Status (0) on access failure
+            except (
+                Exception
+            ):  # R28-OK: tab-index probe; default to Status (0) on access failure
                 return 0
 
         def _wrap_scrollable(self, content: QWidget) -> QScrollArea:
@@ -800,8 +859,7 @@ if _HAS_QT:
             - Generous spacing so rows don't visually collide even
               when the theme-provided row baseline is small.
             """
-            form.setFieldGrowthPolicy(
-                QFormLayout.AllNonFixedFieldsGrow)
+            form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
             form.setRowWrapPolicy(QFormLayout.DontWrapRows)
             form.setHorizontalSpacing(12)
             form.setVerticalSpacing(8)
@@ -815,10 +873,8 @@ if _HAS_QT:
             try:
                 _btc_lbl = getattr(self, "_target_btc_lbl", None)
                 _eth_lbl = getattr(self, "_target_eth_lbl", None)
-                _btc_row = getattr(
-                    self, "_target_btc_row_label", None)
-                _eth_row = getattr(
-                    self, "_target_eth_row_label", None)
+                _btc_row = getattr(self, "_target_btc_row_label", None)
+                _eth_row = getattr(self, "_target_eth_row_label", None)
                 if _btc_lbl is None or _eth_lbl is None:
                     return
                 _bot = getattr(self, "_bot", None)
@@ -827,25 +883,21 @@ if _HAS_QT:
                 _cfg = getattr(_bot, "config", None)
                 if _cfg is None:
                     return
-                _asset = str(getattr(
-                    _cfg, "target_asset", "") or "").upper()
-                _eid = str(getattr(
-                    _cfg, "exchange_id", "") or "")
-                _target_usd = float(getattr(
-                    _cfg, "target_balance", 0.0) or 0.0)
+                _asset = str(getattr(_cfg, "target_asset", "") or "").upper()
+                _eid = str(getattr(_cfg, "exchange_id", "") or "")
+                _target_usd = float(getattr(_cfg, "target_balance", 0.0) or 0.0)
                 # Import here to keep top-level GUI imports cheap.
-                from ..exchange.currency_rate_monitor import (
-                    get_currency_monitor)
+                from ..exchange.currency_rate_monitor import get_currency_monitor
                 from ..exchange.market_pairs_scout import get_scout
+
                 _rates = get_currency_monitor().snapshot()
                 _scout = get_scout()
-                _usd_pair = _scout.get_pair(
-                    _asset, "USD", exchange_id=(_eid or None))
+                _usd_pair = _scout.get_pair(_asset, "USD", exchange_id=(_eid or None))
                 if _usd_pair is None:
                     _usd_pair = _scout.get_pair(
-                        _asset, "USDC", exchange_id=(_eid or None))
-                _usd_pct = (
-                    float(_usd_pair.pct_24h) if _usd_pair else 0.0)
+                        _asset, "USDC", exchange_id=(_eid or None)
+                    )
+                _usd_pct = float(_usd_pair.pct_24h) if _usd_pair else 0.0
                 # BTC row
                 if _asset == "BTC":
                     _btc_row.setVisible(False)
@@ -854,14 +906,19 @@ if _HAS_QT:
                     _btc_row.setVisible(True)
                     _btc_lbl.setVisible(True)
                     _btc_pair = _scout.get_pair(
-                        _asset, "BTC", exchange_id=(_eid or None))
+                        _asset, "BTC", exchange_id=(_eid or None)
+                    )
                     if _btc_pair is None:
                         _btc_lbl.setText("(not listed on exchange)")
                         _btc_lbl.setStyleSheet("color: #888;")
                     else:
                         _txt, _color = _compose_denom_row_text(
-                            "BTC", _target_usd, _rates.btc_usd,
-                            _btc_pair.pct_24h, _usd_pct)
+                            "BTC",
+                            _target_usd,
+                            _rates.btc_usd,
+                            _btc_pair.pct_24h,
+                            _usd_pct,
+                        )
                         _btc_lbl.setText(_txt)
                         _btc_lbl.setStyleSheet(f"color: {_color};")
                 # ETH row
@@ -872,19 +929,23 @@ if _HAS_QT:
                     _eth_row.setVisible(True)
                     _eth_lbl.setVisible(True)
                     _eth_pair = _scout.get_pair(
-                        _asset, "ETH", exchange_id=(_eid or None))
+                        _asset, "ETH", exchange_id=(_eid or None)
+                    )
                     if _eth_pair is None:
                         _eth_lbl.setText("(not listed on exchange)")
                         _eth_lbl.setStyleSheet("color: #888;")
                     else:
                         _txt, _color = _compose_denom_row_text(
-                            "ETH", _target_usd, _rates.eth_usd,
-                            _eth_pair.pct_24h, _usd_pct)
+                            "ETH",
+                            _target_usd,
+                            _rates.eth_usd,
+                            _eth_pair.pct_24h,
+                            _usd_pct,
+                        )
                         _eth_lbl.setText(_txt)
                         _eth_lbl.setStyleSheet(f"color: {_color};")
             except Exception as _denom_exc:  # noqa: BLE001 - refresh best-effort
-                logger.debug(
-                    "target denom row refresh raised: %s", _denom_exc)
+                logger.debug("target denom row refresh raised: %s", _denom_exc)
 
         def _mark_changed(self, field: str, value):
             """Track a changed field and enable Apply button."""
@@ -927,25 +988,32 @@ if _HAS_QT:
             # runtime attributes on ScrummingBot. Route them through
             # update_phantom_config() which handles mid-session safely.
             _PHANTOM_FIELDS = {
-                "enable_phantoms", "phantom_timeframes", "lock_candle_count"}
-            phantom_changes = {f: v for f, v in self._changes.items()
-                               if f in _PHANTOM_FIELDS}
-            other_changes = {f: v for f, v in self._changes.items()
-                             if f not in _PHANTOM_FIELDS}
+                "enable_phantoms",
+                "phantom_timeframes",
+                "lock_candle_count",
+            }
+            phantom_changes = {
+                f: v for f, v in self._changes.items() if f in _PHANTOM_FIELDS
+            }
+            other_changes = {
+                f: v for f, v in self._changes.items() if f not in _PHANTOM_FIELDS
+            }
 
-            if phantom_changes and hasattr(
-                    self._bot, "update_phantom_config"):
+            if phantom_changes and hasattr(self._bot, "update_phantom_config"):
                 try:
                     result = self._bot.update_phantom_config(**phantom_changes)
                     for k, v in result.get("applied", {}).items():
                         applied.append(f"{k}={v}")
                     for caveat in result.get("caveats", []):
-                        logger.info("Bot %s phantom caveat: %s",
-                                    self._bot.bot_id[:8], caveat)
+                        logger.info(
+                            "Bot %s phantom caveat: %s", self._bot.bot_id[:8], caveat
+                        )
                 except Exception as exc:  # sadp: R61 CBF — surface in log
                     logger.warning(
                         "Bot %s: phantom config update failed: %s",
-                        self._bot.bot_id[:8], exc)
+                        self._bot.bot_id[:8],
+                        exc,
+                    )
 
             # Session 26 (2026-04-24) operator-reported bug: setattr on
             # config alone leaves the bot's RUNTIME attributes stale.
@@ -961,10 +1029,10 @@ if _HAS_QT:
             # setattr on config leaves the runtime stale. Full list in
             # docs/operator_logs/AUDIT_2026-04-24_settings_to_functions.md.
             _RUNTIME_ROUTED = {
-                "target_balance":     "set_target_balance_live",
-                "visibility":         "set_visibility_live",
+                "target_balance": "set_target_balance_live",
+                "visibility": "set_visibility_live",
                 "aggressive_trading": "set_aggressive_live",
-                "hedge_balance":      "set_hedge_balance_live",
+                "hedge_balance": "set_hedge_balance_live",
                 # v3.20.5 — Pool Size live-update (Extractor only).
                 # Operator-reported 2026-05-23 that editing this field
                 # didn't refresh the dashboard's Pool/Liquid numerics —
@@ -987,27 +1055,39 @@ if _HAS_QT:
                             reason = result.get("reason", "unknown")
                             logger.warning(
                                 "Bot %s: %s live-update refused: %s",
-                                self._bot.bot_id[:8], field, reason)
+                                self._bot.bot_id[:8],
+                                field,
+                                reason,
+                            )
                             applied.append(f"{field}={value} (REFUSED: {reason})")
                     except Exception as exc:
                         logger.warning(
                             "Bot %s: %s live-update raised: %s",
-                            self._bot.bot_id[:8], field, exc)
+                            self._bot.bot_id[:8],
+                            field,
+                            exc,
+                        )
                         applied.append(f"{field}={value} (ERROR: {exc})")
                 elif hasattr(cfg, field):
                     setattr(cfg, field, value)
                     applied.append(f"{field}={value}")
 
-            logger.info("Bot %s: live settings changed: %s",
-                        self._bot.bot_id[:8], ", ".join(applied))
+            logger.info(
+                "Bot %s: live settings changed: %s",
+                self._bot.bot_id[:8],
+                ", ".join(applied),
+            )
             self._changes.clear()
             self._apply_btn.setEnabled(False)
             self._change_lbl.setText(
-                f"Applied {len(applied)} change(s) — active immediately")
+                f"Applied {len(applied)} change(s) — active immediately"
+            )
             self._change_lbl.setStyleSheet("color: #00ff88; font-size: 11px;")
 
-            self.settings_changed.emit(self._bot.bot_id,
-                                       {f: getattr(cfg, f, None) for f in [a.split("=")[0] for a in applied]})
+            self.settings_changed.emit(
+                self._bot.bot_id,
+                {f: getattr(cfg, f, None) for f in [a.split("=")[0] for a in applied]},
+            )
 
         # ---------------------------------------------------------------
         # v3.15.62 — Self-destruct handler with type-to-confirm
@@ -1024,38 +1104,47 @@ if _HAS_QT:
             """
             try:
                 from PySide6.QtWidgets import (
-                    QInputDialog, QMessageBox, QLineEdit,
+                    QInputDialog,
+                    QMessageBox,
+                    QLineEdit,
                 )
             except Exception:
                 return
             if not hasattr(self._bot, "self_destruct"):
                 QMessageBox.warning(
-                    self, "Self-Destruct Unavailable",
-                    "This bot type does not support self-destruct.")
+                    self,
+                    "Self-Destruct Unavailable",
+                    "This bot type does not support self-destruct.",
+                )
                 return
             sym = getattr(self._bot.config, "symbol", "?")
-            bid = (self._bot.bot_id[:8]
-                   if getattr(self._bot, "bot_id", None) else "?")
+            bid = self._bot.bot_id[:8] if getattr(self._bot, "bot_id", None) else "?"
             text, ok = QInputDialog.getText(
-                self, "Confirm SELF-DESTRUCT",
+                self,
+                "Confirm SELF-DESTRUCT",
                 f"This will MARKET-SELL the entire {sym} position "
                 f"on bot {bid} and PAUSE the bot.\n\n"
                 f"State (lots, tranches, fold queue) will be CLEARED.\n"
                 f"All auto gates (BB threshold, hysteresis, circuit\n"
                 f"breakers, higher-TF bias) BYPASSED.\n\n"
                 f"To confirm, type SELF-DESTRUCT (case-sensitive):",
-                QLineEdit.Normal, "")
+                QLineEdit.Normal,
+                "",
+            )
             if not ok:
                 return
             if (text or "").strip() != "SELF-DESTRUCT":
                 QMessageBox.information(
-                    self, "Self-Destruct Cancelled",
-                    "Confirmation token did not match. No action taken.")
+                    self,
+                    "Self-Destruct Cancelled",
+                    "Confirmation token did not match. No action taken.",
+                )
                 return
             # Run the async self_destruct method. We use asyncio.run on
             # a fresh thread so we don't block the GUI nor require an
             # event loop in the dialog thread.
             import threading, asyncio as _aio
+
             def _run():
                 # SELF_DESTRUCT_TOKEN is an operator confirmation phrase,
                 # not a credential — extracted into a local so Bandit's
@@ -1064,24 +1153,23 @@ if _HAS_QT:
                 _sd_phrase = "SELF-DESTRUCT"  # nosec B105
                 try:
                     result = _aio.run(
-                        self._bot.self_destruct(
-                            confirmation_token=_sd_phrase))
-                    logger.info(
-                        "Bot %s self_destruct result: %s",
-                        bid, result)
+                        self._bot.self_destruct(confirmation_token=_sd_phrase)
+                    )
+                    logger.info("Bot %s self_destruct result: %s", bid, result)
                 except Exception as exc:
-                    logger.warning(
-                        "Bot %s self_destruct dispatch raised: %s",
-                        bid, exc)
+                    logger.warning("Bot %s self_destruct dispatch raised: %s", bid, exc)
+
             threading.Thread(
-                target=_run, daemon=True,
-                name=f"self-destruct-{bid}").start()
+                target=_run, daemon=True, name=f"self-destruct-{bid}"
+            ).start()
             QMessageBox.information(
-                self, "Self-Destruct Dispatched",
+                self,
+                "Self-Destruct Dispatched",
                 f"Self-destruct dispatched for bot {bid} — "
                 f"check the Activity Log for SELF-DESTRUCT FIRING "
                 f"or SELF-DESTRUCT FAILED to confirm outcome.\n"
-                f"Bot will be PAUSED on completion.")
+                f"Bot will be PAUSED on completion.",
+            )
 
         # ---------------------------------------------------------------
         # Tab 1: Status (read-only)
@@ -1116,7 +1204,9 @@ if _HAS_QT:
             if _bot_stats is not None:
                 _re = float(getattr(_bot_stats, "realized_pnl_exchange", 0.0) or 0.0)
                 _ae = float(getattr(_bot_stats, "avg_entry_exchange", 0.0) or 0.0)
-                _cb = float(getattr(_bot_stats, "cost_basis_total_exchange", 0.0) or 0.0)
+                _cb = float(
+                    getattr(_bot_stats, "cost_basis_total_exchange", 0.0) or 0.0
+                )
                 _ue = float(getattr(_bot_stats, "unrealised_pnl", 0.0) or 0.0)
                 _fee = float(getattr(_bot_stats, "fees_paid_exchange", 0.0) or 0.0)
                 _tc = int(getattr(_bot_stats, "exchange_trade_count", 0) or 0)
@@ -1124,18 +1214,22 @@ if _HAS_QT:
 
                 if _fts > 0:
                     import time as _t
+
                     _age_sec = _t.time() - _fts
-                    _age_str = (f"{_age_sec:.0f}s" if _age_sec < 60
-                                else f"{_age_sec/60:.1f}m")
+                    _age_str = (
+                        f"{_age_sec:.0f}s" if _age_sec < 60 else f"{_age_sec/60:.1f}m"
+                    )
 
                     rep_lbl = QLabel(f"${_re:+,.4f}")
                     rep_lbl.setStyleSheet(
                         f"font-weight: bold; font-size: 13px; "
-                        f"color: {'#00ff88' if _re >= 0 else '#ff3366'};")
+                        f"color: {'#00ff88' if _re >= 0 else '#ff3366'};"
+                    )
                     rep_lbl.setToolTip(
                         f"Realized P/L pulled from the exchange "
                         f"(FIFO-matched buy/sell pairs from {_tc} trades). "
-                        f"Refreshed {_age_str} ago.")
+                        f"Refreshed {_age_str} ago."
+                    )
                     # v3.23.7 Anomaly B: label dropped the "(exchange)"
                     # qualifier — this is now the only P/L row.
                     sf.addRow("Realised P/L:", rep_lbl)
@@ -1143,24 +1237,23 @@ if _HAS_QT:
                     if _ue != 0:
                         ue_lbl = QLabel(f"${_ue:+,.4f}")
                         ue_lbl.setStyleSheet(
-                            f"color: {'#00ff88' if _ue >= 0 else '#ff3366'};")
+                            f"color: {'#00ff88' if _ue >= 0 else '#ff3366'};"
+                        )
                         sf.addRow("Unrealised P/L:", ue_lbl)
 
                     if _ae > 0:
-                        sf.addRow("Avg Entry (exchange):",
-                                  QLabel(f"${_ae:.8f}"))
-                        sf.addRow("Cost Basis Total:",
-                                  QLabel(f"${_cb:,.4f}"))
+                        sf.addRow("Avg Entry (exchange):", QLabel(f"${_ae:.8f}"))
+                        sf.addRow("Cost Basis Total:", QLabel(f"${_cb:,.4f}"))
                     if _fee > 0:
-                        sf.addRow("Fees Paid:",
-                                  QLabel(f"${_fee:,.4f}"))
+                        sf.addRow("Fees Paid:", QLabel(f"${_fee:,.4f}"))
                 else:
                     pending_lbl = QLabel("— (refresh pending)")
                     pending_lbl.setStyleSheet("color: #888;")
                     pending_lbl.setToolTip(
                         "Exchange position health refresh has not yet "
                         "completed. First refresh fires on bot bootstrap; "
-                        "subsequent every 5 minutes.")
+                        "subsequent every 5 minutes."
+                    )
                     # v3.23.7 Anomaly B: label dropped "(exchange)" qualifier.
                     sf.addRow("Realised P/L:", pending_lbl)
 
@@ -1169,6 +1262,7 @@ if _HAS_QT:
             sf.addRow("Active Sells:", QLabel(str(stats.get("active_sells", 0))))
 
             from ..core.fmt import fmt_price as _fp
+
             price = stats.get("current_price", 0)
             sf.addRow("Current Price:", QLabel(_fp(price) if price > 0 else "—"))
             sf.addRow("Uptime:", QLabel(f"{stats.get('uptime', 0):.0f}s"))
@@ -1224,11 +1318,18 @@ if _HAS_QT:
             sadp: R28 R55  # manual override per-position + non-blocking dispatch
             """
             from PySide6.QtWidgets import (
-                QGroupBox, QFormLayout, QLabel, QPushButton,
-                QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
+                QGroupBox,
+                QFormLayout,
+                QLabel,
+                QPushButton,
+                QTableWidget,
+                QTableWidgetItem,
+                QHeaderView,
+                QMessageBox,
             )
             from PySide6.QtCore import Qt
             import asyncio as _asyncio
+
             w = QWidget()
             layout = QVBoxLayout(w)
             layout.setSpacing(8)
@@ -1237,30 +1338,34 @@ if _HAS_QT:
             summary = QGroupBox("Extractor Pool Status")
             sf = QFormLayout(summary)
             self._configure_form(sf)
-            chunk_size_usd = float(getattr(
-                self._bot, "_chunk_size_usd", 0.0) or 0.0)
-            chunk_free_base = float(getattr(
-                self._bot, "_chunk_free_base", 0.0) or 0.0)
-            chunk_size_base = float(getattr(
-                self._bot, "_chunk_size_base", 0.0) or 0.0)
-            extracted_total = float(getattr(
-                self._bot, "_chunk_extracted_total", 0.0) or 0.0)
+            chunk_size_usd = float(getattr(self._bot, "_chunk_size_usd", 0.0) or 0.0)
+            chunk_free_base = float(getattr(self._bot, "_chunk_free_base", 0.0) or 0.0)
+            chunk_size_base = float(getattr(self._bot, "_chunk_size_base", 0.0) or 0.0)
+            extracted_total = float(
+                getattr(self._bot, "_chunk_extracted_total", 0.0) or 0.0
+            )
             base_currency = self._bot.config.base_currency
             try:
                 pool_color = self._bot.pool_color()
             except Exception:  # R28-OK: snapshot read; UI doesn't crash on bot lookup
                 pool_color = "green"
-            color_hex = {"green": "#00ff88", "yellow": "#ffaa00",
-                         "red": "#ff3366"}.get(pool_color, "#a8a8c5")
+            color_hex = {"green": "#00ff88", "yellow": "#ffaa00", "red": "#ff3366"}.get(
+                pool_color, "#a8a8c5"
+            )
             pool_lbl = QLabel(f"<b>{pool_color.upper()}</b>")
             pool_lbl.setStyleSheet(f"color: {color_hex}; font-size: 14px;")
             sf.addRow("Pool color:", pool_lbl)
-            sf.addRow(f"Chunk size ({base_currency} / USD):",
-                      QLabel(f"{chunk_size_base:.8f} / ${chunk_size_usd:,.2f}"))
-            sf.addRow(f"Chunk free ({base_currency}):",
-                      QLabel(f"{chunk_free_base:.8f}"))
-            sf.addRow(f"Lifetime extracted ({base_currency}):",
-                      QLabel(f"{extracted_total:+.8f}"))
+            sf.addRow(
+                f"Chunk size ({base_currency} / USD):",
+                QLabel(f"{chunk_size_base:.8f} / ${chunk_size_usd:,.2f}"),
+            )
+            sf.addRow(
+                f"Chunk free ({base_currency}):", QLabel(f"{chunk_free_base:.8f}")
+            )
+            sf.addRow(
+                f"Lifetime extracted ({base_currency}):",
+                QLabel(f"{extracted_total:+.8f}"),
+            )
             layout.addWidget(summary)
 
             # --- Positions table ---
@@ -1273,7 +1378,8 @@ if _HAS_QT:
                 empty_lbl = QLabel(
                     "<i>No open positions. Bot is watching its top-N "
                     "watch list for bearish signals. Pool color is "
-                    "<b>GREEN</b> (fully in base currency).</i>")
+                    "<b>GREEN</b> (fully in base currency).</i>"
+                )
                 empty_lbl.setWordWrap(True)
                 empty_lbl.setStyleSheet("color: #8a8aab; padding: 16px;")
                 layout.addWidget(empty_lbl)
@@ -1282,15 +1388,20 @@ if _HAS_QT:
 
             table = QTableWidget()
             columns = [
-                "Pair", "State", "Tier", "Alt units",
-                "Entry (USD)", "Current (USD)", "Δ% (USD)",
-                "Corrections", "Manual Fire",
+                "Pair",
+                "State",
+                "Tier",
+                "Alt units",
+                "Entry (USD)",
+                "Current (USD)",
+                "Δ% (USD)",
+                "Corrections",
+                "Manual Fire",
             ]
             table.setColumnCount(len(columns))
             table.setHorizontalHeaderLabels(columns)
             table.setRowCount(len(positions))
-            table.horizontalHeader().setSectionResizeMode(
-                QHeaderView.ResizeToContents)
+            table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
             table.verticalHeader().setVisible(False)
             table.setEditTriggers(QTableWidget.NoEditTriggers)
             table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -1307,7 +1418,9 @@ if _HAS_QT:
                 corrections = int(p.get("corrections_fired", 0))
 
                 cells = [
-                    pair, state.upper(), str(tier),
+                    pair,
+                    state.upper(),
+                    str(tier),
                     f"{alt_units:.6f}",
                     f"${entry_usd:,.4f}",
                     f"${current_usd:,.4f}",
@@ -1341,14 +1454,16 @@ if _HAS_QT:
                     "QPushButton { background: #ff6600; color: white; "
                     "border: none; border-radius: 4px; padding: 4px 12px; "
                     "font-weight: bold; }"
-                    "QPushButton:hover { background: #ff8833; }")
+                    "QPushButton:hover { background: #ff8833; }"
+                )
 
                 def _make_fire_handler(pair_to_fire: str):
                     def _on_fire():
                         # Confirmation dialog — operator-initiated
                         # release is irreversible at the exchange.
                         confirm = QMessageBox.question(
-                            self, "Manual Fire — confirm position close",
+                            self,
+                            "Manual Fire — confirm position close",
                             f"Close position on <b>{pair_to_fire}</b> "
                             f"at current market price?<br><br>"
                             f"This will fire a 100% market SELL on the "
@@ -1358,18 +1473,22 @@ if _HAS_QT:
                             f"operator-sovereignty (v3.18.15 invariant).<br>"
                             f"<br>MEM-257 fail-closed still applies.",
                             QMessageBox.Yes | QMessageBox.No,
-                            QMessageBox.No)
+                            QMessageBox.No,
+                        )
                         if confirm != QMessageBox.Yes:
                             return
 
                         # Schedule the close on the bot manager's loop
-                        loop = (getattr(self._bm, "_async_loop", None)
-                                if self._bm else None)
+                        loop = (
+                            getattr(self._bm, "_async_loop", None) if self._bm else None
+                        )
                         if loop is None:
                             QMessageBox.warning(
-                                self, "Async loop unavailable",
+                                self,
+                                "Async loop unavailable",
                                 "Bot manager async loop not running. "
-                                "Try again after platform launch completes.")
+                                "Try again after platform launch completes.",
+                            )
                             return
 
                         coro = self._bot.manual_fire_position(pair_to_fire)
@@ -1377,9 +1496,11 @@ if _HAS_QT:
                             _asyncio.run_coroutine_threadsafe(coro, loop)
                         except Exception as exc:
                             QMessageBox.warning(
-                                self, "Schedule failed",
+                                self,
+                                "Schedule failed",
                                 f"Could not schedule the close:\n\n"
-                                f"{type(exc).__name__}: {exc}")
+                                f"{type(exc).__name__}: {exc}",
+                            )
                             return
 
                         # Non-blocking dispatch — same pattern as
@@ -1388,11 +1509,14 @@ if _HAS_QT:
                         # the outcome via "EXTRACTOR MANUAL FIRE COMPLETE"
                         # / refusal log lines.
                         QMessageBox.information(
-                            self, "Manual Fire dispatched",
+                            self,
+                            "Manual Fire dispatched",
                             f"Close dispatched for <b>{pair_to_fire}</b>. "
                             f"Watch the Activity Log for the completion "
                             f"line. Re-open this dialog after the order "
-                            f"settles to see updated state.")
+                            f"settles to see updated state.",
+                        )
+
                     return _on_fire
 
                 fire_btn.clicked.connect(_make_fire_handler(pair))
@@ -1408,10 +1532,10 @@ if _HAS_QT:
                 "gate per operator-sovereignty invariant (v3.18.15). "
                 "MEM-257 FAIL-CLOSED still applies to any new buys the "
                 "bot subsequently initiates (artillery, correction) on "
-                "behalf of the pool.")
+                "behalf of the pool."
+            )
             footer.setWordWrap(True)
-            footer.setStyleSheet("color: #8a8aab; padding: 8px; "
-                                  "font-size: 11px;")
+            footer.setStyleSheet("color: #8a8aab; padding: 8px; " "font-size: 11px;")
             layout.addWidget(footer)
             return w
 
@@ -1436,13 +1560,15 @@ if _HAS_QT:
             tranches = list(getattr(bot, "_fold_tranches", []) or [])
             if not tranches:
                 QMessageBox.information(
-                    self, "Clear fold tranches",
-                    "This bot has no queued fold tranches.")
+                    self, "Clear fold tranches", "This bot has no queued fold tranches."
+                )
                 return
             if not hasattr(bot, "clear_fold_tranches"):
                 QMessageBox.warning(
-                    self, "Clear fold tranches",
-                    "This bot type does not support clearing tranches.")
+                    self,
+                    "Clear fold tranches",
+                    "This bot type does not support clearing tranches.",
+                )
                 return
 
             n = len(tranches)
@@ -1488,8 +1614,10 @@ if _HAS_QT:
             except Exception as exc:  # noqa: BLE001 - operator surface
                 logger.exception("clear_fold_tranches failed: %s", exc)
                 QMessageBox.critical(
-                    self, "Clear fold tranches",
-                    f"Nothing was cleared — the call failed:\n\n{exc}")
+                    self,
+                    "Clear fold tranches",
+                    f"Nothing was cleared — the call failed:\n\n{exc}",
+                )
                 return
 
             # This dialog builds its tabs once in __init__ and has no
@@ -1499,11 +1627,13 @@ if _HAS_QT:
             # the same class of untruth this whole pass has been
             # removing.
             QMessageBox.information(
-                self, "Clear fold tranches",
+                self,
+                "Clear fold tranches",
                 f"Discarded {report.get('count', 0)} tranche(s) holding "
                 f"${float(report.get('usd', 0)):,.4f}.\n\n"
                 f"No order was placed. This panel still shows the "
-                f"pre-clear figures — reopen it to see the new state.")
+                f"pre-clear figures — reopen it to see the new state.",
+            )
 
         def _on_clear_wire_credits(self) -> None:
             """Discard this bot's parked Smart Wire credits, after
@@ -1523,54 +1653,62 @@ if _HAS_QT:
             entries = len(getattr(bot, "_pending_wire_ledger", []) or [])
             if parked <= 1e-9 and not entries:
                 QMessageBox.information(
-                    self, "Clear wire credits",
-                    "This bot has no parked wire credits.")
+                    self, "Clear wire credits", "This bot has no parked wire credits."
+                )
                 return
             if not hasattr(bot, "clear_pending_wire_credits"):
                 QMessageBox.warning(
-                    self, "Clear wire credits",
-                    "This bot type does not support clearing wire credits.")
+                    self,
+                    "Clear wire credits",
+                    "This bot type does not support clearing wire credits.",
+                )
                 return
 
             box = QMessageBox(self)
             box.setIcon(QMessageBox.Warning)
             box.setWindowTitle("Clear wire credits")
-            box.setText("\n".join([
-                f"Discard ${parked:,.4f} of parked Smart Wire credit for "
-                f"{getattr(bot.config, 'symbol', '')}?",
-                "",
-                f"    ledger entries   {entries}",
-                "",
-                "This releases an EARMARK, it does not move money. No "
-                "order is placed. All bots share one exchange wallet, so "
-                "the cash simply returns to ordinary spendable balance "
-                "instead of being reserved for a future fold tranche.",
-                "",
-                "This cannot be undone.",
-            ]))
+            box.setText(
+                "\n".join(
+                    [
+                        f"Discard ${parked:,.4f} of parked Smart Wire credit for "
+                        f"{getattr(bot.config, 'symbol', '')}?",
+                        "",
+                        f"    ledger entries   {entries}",
+                        "",
+                        "This releases an EARMARK, it does not move money. No "
+                        "order is placed. All bots share one exchange wallet, so "
+                        "the cash simply returns to ordinary spendable balance "
+                        "instead of being reserved for a future fold tranche.",
+                        "",
+                        "This cannot be undone.",
+                    ]
+                )
+            )
             box.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
             box.setDefaultButton(QMessageBox.Cancel)
             if box.exec() != QMessageBox.Yes:
                 return
 
             try:
-                report = bot.clear_pending_wire_credits(
-                    reason="operator (GUI)")
+                report = bot.clear_pending_wire_credits(reason="operator (GUI)")
             except Exception as exc:  # noqa: BLE001 - operator surface
                 logger.exception("clear_pending_wire_credits failed: %s", exc)
                 QMessageBox.critical(
-                    self, "Clear wire credits",
-                    f"Nothing was cleared — the call failed:\n\n{exc}")
+                    self,
+                    "Clear wire credits",
+                    f"Nothing was cleared — the call failed:\n\n{exc}",
+                )
                 return
 
             QMessageBox.information(
-                self, "Clear wire credits",
+                self,
+                "Clear wire credits",
                 f"Discarded ${float(report.get('usd', 0)):,.4f} of parked "
                 f"credit.\n\nNo funds moved. This panel still shows the "
-                f"pre-clear figures — reopen it to see the new state.")
+                f"pre-clear figures — reopen it to see the new state.",
+            )
 
-        def _paint_fold_tranche_row(
-                self, table: QTableWidget, row: int) -> None:
+        def _paint_fold_tranche_row(self, table: QTableWidget, row: int) -> None:
             """Paint one fold tranche row blue, after its cells exist.
 
             Operator spec 2026-08-11: the existing tranches are the
@@ -1616,8 +1754,12 @@ if _HAS_QT:
                     cell.setForeground(fg)
 
         def _paint_extractor_tranche_rows(
-                self, table: QTableWidget, ext_rows: list[dict],
-                start_row: int, now_ts: float) -> None:
+            self,
+            table: QTableWidget,
+            ext_rows: list[dict],
+            start_row: int,
+            now_ts: float,
+        ) -> None:
             """Fill and paint the Extractor Tranche rows of the table.
 
             Operator spec 2026-08-11: "It will be denoted in with a red
@@ -1700,7 +1842,8 @@ if _HAS_QT:
                     f"margin: {_arb_inset}px 0px; }} "
                     f"QPushButton:hover {{ background: "
                     f"{EXTRACTOR_TRANCHE_FG_HEX}; color: "
-                    f"{EXTRACTOR_TRANCHE_BG_HEX}; }}")
+                    f"{EXTRACTOR_TRANCHE_BG_HEX}; }}"
+                )
 
                 # CAPTURE IDENTITY, NEVER THE ROW INDEX — the Fire
                 # button's own rule, and it matters more here. This
@@ -1718,12 +1861,11 @@ if _HAS_QT:
                 _arb_child = str(row_data.get("child_bot_id", "") or "")
                 _arb_item = arb_cell
                 arb_btn.clicked.connect(
-                    lambda _checked=False, tid=_arb_id, cid=_arb_child,
-                    btn=arb_btn, item=_arb_item:
-                        self._on_arbiter_toggle_clicked(
-                            tid, cid, btn, item))
-                table.setCellWidget(
-                    target_row, ARBITER_COLUMN_INDEX, arb_btn)
+                    lambda _checked=False, tid=_arb_id, cid=_arb_child, btn=arb_btn, item=_arb_item: self._on_arbiter_toggle_clicked(
+                        tid, cid, btn, item
+                    )
+                )
+                table.setCellWidget(target_row, ARBITER_COLUMN_INDEX, arb_btn)
 
                 # NO FIRE BUTTON, DELIBERATELY. `manual_fire_tranche`
                 # indexes `_fold_tranches`; a button here would dispatch
@@ -1744,6 +1886,7 @@ if _HAS_QT:
             from ..trading.bot_container import (
                 as_finite_float as _as_finite_float,
             )
+
             w = QWidget()
             layout = QVBoxLayout(w)
             layout.setSpacing(8)
@@ -1759,25 +1902,27 @@ if _HAS_QT:
             # same table and nowhere else.
             ext_rows: list[dict] = []
             try:
-                _reader = getattr(
-                    self._bot, "open_extractor_tranches", None)
+                _reader = getattr(self._bot, "open_extractor_tranches", None)
                 if callable(_reader):
                     _raw = _reader()
                     if isinstance(_raw, list):
-                        ext_rows = [
-                            r for r in _raw if isinstance(r, dict)]
+                        ext_rows = [r for r in _raw if isinstance(r, dict)]
             except Exception as _ext_exc:  # R28-OK: display-only listing
                 logger.warning(
                     "Extractor Tranche listing failed for bot %s: %s: "
                     "%s — fold tranches still shown.",
                     getattr(self._bot, "bot_id", "?"),
-                    type(_ext_exc).__name__, _ext_exc)
+                    type(_ext_exc).__name__,
+                    _ext_exc,
+                )
                 ext_rows = []
             now_ts = _time.time()
-            created_lifetime = int(getattr(
-                self._bot, "_tranches_created_lifetime", 0) or 0)
-            closed_lifetime = int(getattr(
-                self._bot, "_tranches_closed_lifetime", 0) or 0)
+            created_lifetime = int(
+                getattr(self._bot, "_tranches_created_lifetime", 0) or 0
+            )
+            closed_lifetime = int(
+                getattr(self._bot, "_tranches_closed_lifetime", 0) or 0
+            )
 
             # --- Summary section ---
             summary = QGroupBox("Fold-Tranche Cycle Health")
@@ -1862,15 +2007,18 @@ if _HAS_QT:
             if parked_unreadable:
                 parked_str += f"  (+{parked_unreadable} unreadable)"
             parked_lbl = QLabel(parked_str)
-            parked_lbl.setStyleSheet("font-weight: bold; font-size: 13px; "
-                                     "color: #ff9900;")
+            parked_lbl.setStyleSheet(
+                "font-weight: bold; font-size: 13px; " "color: #ff9900;"
+            )
             sf.addRow("Parked USD (in fold queue):", parked_lbl)
 
             sf.addRow("Oldest tranche age:", QLabel(oldest_str))
 
             sf.addRow("Lifetime tranches opened:", QLabel(str(created_lifetime)))
-            sf.addRow("Lifetime tranches closed (fold-back fired):",
-                      QLabel(str(closed_lifetime)))
+            sf.addRow(
+                "Lifetime tranches closed (fold-back fired):",
+                QLabel(str(closed_lifetime)),
+            )
 
             ratio_lbl = QLabel(ratio_str)
             # Healthy = closed/created near 1.0 over time. Stagnation
@@ -1889,11 +2037,14 @@ if _HAS_QT:
             # closed ones, because a discard did NOT fold. Shown only
             # once non-zero so the panel stays quiet on bots that have
             # never been cleared.
-            discarded_lifetime = int(getattr(
-                self._bot, "_tranches_discarded_lifetime", 0) or 0)
+            discarded_lifetime = int(
+                getattr(self._bot, "_tranches_discarded_lifetime", 0) or 0
+            )
             if discarded_lifetime:
-                sf.addRow("Lifetime tranches discarded (cleared, not folded):",
-                          QLabel(str(discarded_lifetime)))
+                sf.addRow(
+                    "Lifetime tranches discarded (cleared, not folded):",
+                    QLabel(str(discarded_lifetime)),
+                )
 
             layout.addWidget(summary)
 
@@ -1903,19 +2054,23 @@ if _HAS_QT:
             # safety rate math, have languished for weeks in some cases,
             # and just need to be produced fresh."
             clear_btn = QPushButton(
-                f"Clear {open_count} Fold Tranche(s)" if open_count
-                else "Clear Fold Tranches")
+                f"Clear {open_count} Fold Tranche(s)"
+                if open_count
+                else "Clear Fold Tranches"
+            )
             clear_btn.setEnabled(bool(open_count))
             clear_btn.setToolTip(
                 "Discard every queued fold tranche for this bot.\n\n"
                 "Places NO order. Holdings, cost basis and target balance "
                 "are untouched — only the queued intent to buy back is "
-                "discarded. New tranches are created by the next SCRUM.")
+                "discarded. New tranches are created by the next SCRUM."
+            )
             clear_btn.setStyleSheet(
                 "QPushButton { background: #3a2020; color: #ff9900; "
                 "border: 1px solid #ff3366; padding: 6px 12px; } "
                 "QPushButton:disabled { color: #666666; "
-                "border-color: #444444; }")
+                "border-color: #444444; }"
+            )
             clear_btn.clicked.connect(self._on_clear_fold_tranches)
 
             # v3.24.45 — operator directive 2026-08-06: "Languishing wire
@@ -1927,22 +2082,25 @@ if _HAS_QT:
             # Deliberately a SEPARATE button, not folded into the tranche
             # clear: they are independent decisions, and a bot can want
             # one without the other.
-            parked = float(getattr(self._bot, "_pending_wire_credits", 0.0)
-                           or 0.0)
+            parked = float(getattr(self._bot, "_pending_wire_credits", 0.0) or 0.0)
             wire_btn = QPushButton(
-                f"Clear ${parked:,.2f} Wire Credits" if parked > 1e-9
-                else "Clear Wire Credits")
+                f"Clear ${parked:,.2f} Wire Credits"
+                if parked > 1e-9
+                else "Clear Wire Credits"
+            )
             wire_btn.setEnabled(parked > 1e-9)
             wire_btn.setToolTip(
                 "Discard this bot's parked Smart Wire credits.\n\n"
                 "Releases an EARMARK only. No order is placed and no "
                 "funds move — all bots share one exchange wallet, so the "
-                "cash simply returns to ordinary spendable balance.")
+                "cash simply returns to ordinary spendable balance."
+            )
             wire_btn.setStyleSheet(
                 "QPushButton { background: #3a2020; color: #ff9900; "
                 "border: 1px solid #ff3366; padding: 6px 12px; } "
                 "QPushButton:disabled { color: #666666; "
-                "border-color: #444444; }")
+                "border-color: #444444; }"
+            )
             wire_btn.clicked.connect(self._on_clear_wire_credits)
 
             btn_row = QHBoxLayout()
@@ -1969,7 +2127,8 @@ if _HAS_QT:
                 if ext_rows:
                     _detail_title = (
                         f"Open Tranches ({open_count} fold, "
-                        f"{len(ext_rows)} extractor)")
+                        f"{len(ext_rows)} extractor)"
+                    )
                 else:
                     _detail_title = f"Open Tranches ({open_count})"
                 detail_group = QGroupBox(_detail_title)
@@ -1984,8 +2143,9 @@ if _HAS_QT:
                 # IS the binding per-tranche price gate.
                 _otd_pct = 0.0
                 try:
-                    _otd_pct = float(getattr(
-                        self._bot.config, 'scrumming_interval_pct', 0) or 0)
+                    _otd_pct = float(
+                        getattr(self._bot.config, "scrumming_interval_pct", 0) or 0
+                    )
                 except Exception:  # R28-OK: best-effort config read
                     _otd_pct = 0.0
 
@@ -1997,12 +2157,24 @@ if _HAS_QT:
                 # 10, after Fire. See ARBITER_COLUMN_INDEX for why the
                 # position is load-bearing rather than cosmetic.
                 table.setColumnCount(ARBITER_COLUMN_INDEX + 1)
-                table.setHorizontalHeaderLabels([
-                    "#", "Age", "Units", "USD parked",
-                    "Sell ref $", "Original cost $", "Min rebuy $",
-                    "Status", "Source", "Fire", ARBITER_COLUMN_HEADER])
+                table.setHorizontalHeaderLabels(
+                    [
+                        "#",
+                        "Age",
+                        "Units",
+                        "USD parked",
+                        "Sell ref $",
+                        "Original cost $",
+                        "Min rebuy $",
+                        "Status",
+                        "Source",
+                        "Fire",
+                        ARBITER_COLUMN_HEADER,
+                    ]
+                )
                 table.horizontalHeader().setSectionResizeMode(
-                    QHeaderView.ResizeToContents)
+                    QHeaderView.ResizeToContents
+                )
                 # Extractor Tranche rows are appended AFTER every fold
                 # tranche, never interleaved. This is load-bearing: the
                 # Fire button resolves its target with
@@ -2027,8 +2199,7 @@ if _HAS_QT:
                 # frame would be garbage-collected when the tab
                 # finished building, and Qt would paint through a
                 # dangling pointer.
-                self._tranche_row_delegate = _TrancheRowBorderDelegate(
-                    table)
+                self._tranche_row_delegate = _TrancheRowBorderDelegate(table)
                 table.setItemDelegate(self._tranche_row_delegate)
 
                 # `setAlternatingRowColors` above stays ON deliberately.
@@ -2040,8 +2211,7 @@ if _HAS_QT:
 
                 # Vertical mass — a fill only reads as a container when
                 # the band has height.
-                table.verticalHeader().setDefaultSectionSize(
-                    TRANCHE_ROW_HEIGHT_PX)
+                table.verticalHeader().setDefaultSectionSize(TRANCHE_ROW_HEIGHT_PX)
 
                 # Qt's default grid draws BOTH axes at the same weight,
                 # so a row boundary looked exactly like a column
@@ -2108,14 +2278,20 @@ if _HAS_QT:
                     # Extractor row already prints in these same
                     # price columns.
                     units = _as_finite_float(t.get("units", 0))
-                    table.setItem(row, 2, QTableWidgetItem(
-                        f"{units:.6f}" if units is not None
-                        else "—"))
+                    table.setItem(
+                        row,
+                        2,
+                        QTableWidgetItem(f"{units:.6f}" if units is not None else "—"),
+                    )
 
                     usd_v = _as_finite_float(t.get("usd", 0))
-                    table.setItem(row, 3, QTableWidgetItem(
-                        f"${usd_v:,.4f}" if usd_v is not None
-                        else "—"))
+                    table.setItem(
+                        row,
+                        3,
+                        QTableWidgetItem(
+                            f"${usd_v:,.4f}" if usd_v is not None else "—"
+                        ),
+                    )
 
                     # `ref_v` is read by three cells, not one: the
                     # Min-rebuy column and the Status column below
@@ -2125,15 +2301,20 @@ if _HAS_QT:
                     # which is why every `ref_v > 0` test below
                     # now asks `is not None` first.
                     ref_v = _as_finite_float(t.get("ref", 0))
-                    table.setItem(row, 4, QTableWidgetItem(
-                        f"${ref_v:.8f}" if ref_v is not None
-                        else "—"))
+                    table.setItem(
+                        row,
+                        4,
+                        QTableWidgetItem(f"${ref_v:.8f}" if ref_v is not None else "—"),
+                    )
 
-                    ceiling_v = _as_finite_float(
-                        t.get("initial_buy_price", 0))
-                    table.setItem(row, 5, QTableWidgetItem(
-                        f"${ceiling_v:.8f}" if ceiling_v is not None
-                        else "—"))
+                    ceiling_v = _as_finite_float(t.get("initial_buy_price", 0))
+                    table.setItem(
+                        row,
+                        5,
+                        QTableWidgetItem(
+                            f"${ceiling_v:.8f}" if ceiling_v is not None else "—"
+                        ),
+                    )
 
                     # v3.16.42 — Min rebuy estimate (operator directive):
                     # ref × (1 - OTD/100). OTD-derived guide ONLY — actual
@@ -2141,15 +2322,15 @@ if _HAS_QT:
                     # GEP (Gating Evaluation Protocol). This column does
                     # NOT bypass TA; it shows where OTD's hysteresis gate
                     # would clear for this tranche IF TA confirms.
-                    if (ref_v is not None and ref_v > 0
-                            and _otd_pct > 0):
+                    if ref_v is not None and ref_v > 0 and _otd_pct > 0:
                         min_rebuy_v = ref_v * (1.0 - _otd_pct / 100.0)
                         mr_item = QTableWidgetItem(f"≤${min_rebuy_v:.8f}")
                         mr_item.setToolTip(
                             f"OTD-derived guide only (ref × (1 − "
                             f"{_otd_pct:.2f}%)). Fold-back requires TA "
                             f"validation in the GEP regardless. This is "
-                            f"NOT a trigger price.")
+                            f"NOT a trigger price."
+                        )
                         table.setItem(row, 6, mr_item)
                     elif ref_v is not None and ref_v > 0:
                         table.setItem(row, 6, QTableWidgetItem(f"<${ref_v:.8f}"))
@@ -2163,15 +2344,25 @@ if _HAS_QT:
                     # not gate fold-back. Compound saturation is governed
                     # by position-level smart ceiling (visible in Bot
                     # Settings, not per-tranche).
-                    if (cur_price > 0 and ref_v is not None
-                            and ref_v > 0 and _otd_pct > 0):
+                    if (
+                        cur_price > 0
+                        and ref_v is not None
+                        and ref_v > 0
+                        and _otd_pct > 0
+                    ):
                         otd_thresh = ref_v * (1.0 - _otd_pct / 100.0)
-                        otd_factor_diff_pct = (cur_price - otd_thresh) / otd_thresh * 100.0
+                        otd_factor_diff_pct = (
+                            (cur_price - otd_thresh) / otd_thresh * 100.0
+                        )
                         if cur_price <= otd_thresh:
-                            status_str = f"Price-OK ({otd_factor_diff_pct:+.2f}% vs OTD)"
+                            status_str = (
+                                f"Price-OK ({otd_factor_diff_pct:+.2f}% vs OTD)"
+                            )
                             status_color = "#00ff88"
                         else:
-                            status_str = f"Need price ≤ OTD ({otd_factor_diff_pct:+.2f}%)"
+                            status_str = (
+                                f"Need price ≤ OTD ({otd_factor_diff_pct:+.2f}%)"
+                            )
                             status_color = "#ff9900"
                         si_status = QTableWidgetItem(status_str)
                         si_status.setForeground(QColor(status_color))
@@ -2183,26 +2374,30 @@ if _HAS_QT:
                             "must be below its smart ceiling. "
                             "'Price-OK' means the per-tranche OTD gate "
                             "would pass IF TA confirms this tick AND the "
-                            "position has not saturated.")
+                            "position has not saturated."
+                        )
                         table.setItem(row, 7, si_status)
-                    elif (cur_price > 0 and ref_v is not None
-                          and ref_v > 0):
+                    elif cur_price > 0 and ref_v is not None and ref_v > 0:
                         # OTD == 0 → no per-tranche price gate; rely on
                         # TA + position ceiling only. Show ref-relative.
                         ref_diff_pct = (cur_price - ref_v) / ref_v * 100.0
                         below_ref = cur_price < ref_v
-                        status_str = (f"Below ref ({ref_diff_pct:+.2f}%)"
-                                      if below_ref
-                                      else f"Above ref ({ref_diff_pct:+.2f}%)")
+                        status_str = (
+                            f"Below ref ({ref_diff_pct:+.2f}%)"
+                            if below_ref
+                            else f"Above ref ({ref_diff_pct:+.2f}%)"
+                        )
                         si_status = QTableWidgetItem(status_str)
-                        si_status.setForeground(QColor(
-                            "#00ff88" if below_ref else "#ff9900"))
+                        si_status.setForeground(
+                            QColor("#00ff88" if below_ref else "#ff9900")
+                        )
                         table.setItem(row, 7, si_status)
                     else:
                         table.setItem(row, 7, QTableWidgetItem("—"))
 
-                    src_str = ("manual fire" if t.get("operator_initiated")
-                               else "auto scrum")
+                    src_str = (
+                        "manual fire" if t.get("operator_initiated") else "auto scrum"
+                    )
                     si = QTableWidgetItem(src_str)
                     if t.get("operator_initiated"):
                         si.setForeground(QColor("#00ccff"))
@@ -2217,7 +2412,8 @@ if _HAS_QT:
                         "Operator-initiated fold-back of THIS tranche. "
                         "Bypasses TA / OTD / Target-Delta gates. Smart "
                         "Ceiling + MEM-257 fail-closed still apply. "
-                        "Bot must be RUNNING.")
+                        "Bot must be RUNNING."
+                    )
                     # The inset is a stylesheet MARGIN, and it works by
                     # a different mechanism than it looks. The margin
                     # does NOT resize the widget: the button still
@@ -2252,13 +2448,16 @@ if _HAS_QT:
                         f"QPushButton:hover {{ background: #00ccff; "
                         f"color: #001122; }} "
                         f"QPushButton:disabled {{ background: #1a1a1a; "
-                        f"color: #555; border-color: #555; }}")
+                        f"color: #555; border-color: #555; }}"
+                    )
                     # Capture tranche IDENTITY (not row index) so we
                     # can resolve the current index at click time.
                     _captured = t
                     fire_btn.clicked.connect(
-                        lambda _checked=False, tr=_captured:
-                            self._on_fire_tranche_clicked(tr))
+                        lambda _checked=False, tr=_captured: self._on_fire_tranche_clicked(
+                            tr
+                        )
+                    )
                     table.setCellWidget(row, 9, fire_btn)
 
                     # Item 5 — a fold tranche has NO Arbiter, and the
@@ -2283,7 +2482,8 @@ if _HAS_QT:
                         "Arbiter applies to Extractor Tranches only. "
                         "This is one of this bot's own fold tranches — "
                         "no child holds it, and its Fire button is how "
-                        "you close it.")
+                        "you close it."
+                    )
                     table.setItem(row, ARBITER_COLUMN_INDEX, arb_na)
 
                     # LAST in the row, so every semantic foreground set
@@ -2291,7 +2491,8 @@ if _HAS_QT:
                     self._paint_fold_tranche_row(table, row)
 
                 self._paint_extractor_tranche_rows(
-                    table, ext_rows, len(tranches), now_ts)
+                    table, ext_rows, len(tranches), now_ts
+                )
 
                 dl.addWidget(table)
                 layout.addWidget(detail_group)
@@ -2299,9 +2500,11 @@ if _HAS_QT:
                 empty = QLabel(
                     "No open tranches. The fold queue is empty — either "
                     "the bot has not yet executed a SCRUM, or every "
-                    "previous SCRUM has been closed by a FOLD-BACK.")
-                empty.setStyleSheet("color: #888; font-style: italic; "
-                                    "padding: 10px;")
+                    "previous SCRUM has been closed by a FOLD-BACK."
+                )
+                empty.setStyleSheet(
+                    "color: #888; font-style: italic; " "padding: 10px;"
+                )
                 empty.setWordWrap(True)
                 layout.addWidget(empty)
 
@@ -2309,8 +2512,12 @@ if _HAS_QT:
             return w
 
         def _on_arbiter_toggle_clicked(
-                self, tranche_id: str, child_bot_id: str,
-                button: QPushButton, item: QTableWidgetItem) -> None:
+            self,
+            tranche_id: str,
+            child_bot_id: str,
+            button: QPushButton,
+            item: QTableWidgetItem,
+        ) -> None:
             """Flip ONE Extractor Tranche's Arbiter. Moves no money.
 
             WHAT THIS DOES: resolves the child Extractor that owns the
@@ -2358,11 +2565,13 @@ if _HAS_QT:
             getter = getattr(manager, "get_bot", None)
             if not callable(getter):
                 QMessageBox.warning(
-                    self, "Arbiter not changed",
+                    self,
+                    "Arbiter not changed",
                     "Nothing was written. This panel has no bot "
                     "registry attached, so the Extractor holding this "
                     "tranche could not be looked up. Reopen the panel "
-                    "once the platform has finished starting.")
+                    "once the platform has finished starting.",
+                )
                 return
             child = getter(child_bot_id)
             toggler = getattr(child, "toggle_tranche_arbiter", None)
@@ -2372,13 +2581,15 @@ if _HAS_QT:
                 # guess. `type(None).__name__` prints "NoneType", which
                 # is itself the fact that the id matched no bot.
                 QMessageBox.warning(
-                    self, "Arbiter not changed",
+                    self,
+                    "Arbiter not changed",
                     f"Nothing was written. The Arbiter is set by the "
                     f"Extractor that holds the tranche; asking the "
                     f"registry for bot id '{child_bot_id or '?'}' "
                     f"produced a {type(child).__name__}, which cannot "
                     f"set one. Reopen the panel to rebuild the list "
-                    f"from the running fleet.")
+                    f"from the running fleet.",
+                )
                 return
 
             try:
@@ -2386,11 +2597,15 @@ if _HAS_QT:
             except Exception as exc:  # R28-OK: operator surface
                 logger.exception(
                     "Arbiter toggle failed for tranche %s on child %s",
-                    tranche_id, child_bot_id)
+                    tranche_id,
+                    child_bot_id,
+                )
                 QMessageBox.critical(
-                    self, "Arbiter not changed",
+                    self,
+                    "Arbiter not changed",
                     f"Nothing was changed — the call failed:\n\n"
-                    f"{type(exc).__name__}: {exc}")
+                    f"{type(exc).__name__}: {exc}",
+                )
                 return
 
             if new_value is None:
@@ -2399,12 +2614,14 @@ if _HAS_QT:
                 # That answer is what gets reported, rather than a
                 # guess at why.
                 QMessageBox.warning(
-                    self, "Arbiter not changed",
+                    self,
+                    "Arbiter not changed",
                     "Nothing was written. The Extractor reports no "
                     "open position with this tranche's identity — it "
                     "has most likely exited the position since this "
                     "panel was opened. Reopen the panel to see the "
-                    "tranches it holds now.")
+                    "tranches it holds now.",
+                )
                 return
 
             label = _arbiter_label(new_value)
@@ -2448,11 +2665,13 @@ if _HAS_QT:
                     idx = tranches.index(tranche)
                 except ValueError:
                     QMessageBox.warning(
-                        self, "Tranche unavailable",
+                        self,
+                        "Tranche unavailable",
                         "This tranche is no longer in the fold queue "
                         "(it may have just been consumed by an "
                         "auto-fold or another manual action). Refresh "
-                        "the tab.")
+                        "the tab.",
+                    )
                     return
 
                 # Confirm
@@ -2509,9 +2728,11 @@ if _HAS_QT:
                 _reads = (
                     ("USD parked", "usd", tranche.get("usd", 0)),
                     ("Sell ref", "ref", tranche.get("ref", 0)),
-                    ("Original cost", "initial_buy_price",
-                     tranche.get("initial_buy_price",
-                                 tranche.get("ref", 0))),
+                    (
+                        "Original cost",
+                        "initial_buy_price",
+                        tranche.get("initial_buy_price", tranche.get("ref", 0)),
+                    ),
                 )
                 _clean: dict = {}
                 _unreadable: list = []
@@ -2527,7 +2748,8 @@ if _HAS_QT:
                             _shown = _shown[:40] + "..."
                         _unreadable.append(
                             f"  {_field} (key {_key!r}): stored "
-                            f"{type(_raw).__name__} {_shown}")
+                            f"{type(_raw).__name__} {_shown}"
+                        )
                         continue
                     _clean[_field] = _val or 0.0
                 if _unreadable:
@@ -2536,9 +2758,12 @@ if _HAS_QT:
                         "Bot %s manual fire REFUSED on tranche #%d: "
                         "unreadable stored value(s): %s",
                         getattr(self._bot, "bot_id", "?")[:8],
-                        idx + 1, "; ".join(_unreadable))
+                        idx + 1,
+                        "; ".join(_unreadable),
+                    )
                     QMessageBox.critical(
-                        self, "Manual Fire refused — unreadable value",
+                        self,
+                        "Manual Fire refused — unreadable value",
                         f"Tranche #{idx + 1} was NOT fired. NO ORDER "
                         f"WAS PLACED.\n\n"
                         f"This tranche stores a value that is not a "
@@ -2550,7 +2775,8 @@ if _HAS_QT:
                         f"show you honestly.\n\n"
                         f"Nothing has changed. The tranche is still "
                         f"in the fold queue. Check this bot's saved "
-                        f"state before firing it.")
+                        f"state before firing it.",
+                    )
                     return
                 _usd = _clean["USD parked"]
                 _ref = _clean["Sell ref"]
@@ -2562,12 +2788,15 @@ if _HAS_QT:
                     f"  Original cost: ${_ibp:.8f}\n\n"
                     f"This will execute a MARKET buy at the current "
                     f"price, bypassing TA / OTD / Target-Delta gates. "
-                    f"Smart Ceiling and MEM-257 fail-closed still apply.")
+                    f"Smart Ceiling and MEM-257 fail-closed still apply."
+                )
                 btn = QMessageBox.question(
-                    self, "Manual Tranche Fire — confirm",
+                    self,
+                    "Manual Tranche Fire — confirm",
                     _confirm_msg,
                     QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No)
+                    QMessageBox.No,
+                )
                 if btn != QMessageBox.Yes:
                     return
 
@@ -2575,10 +2804,12 @@ if _HAS_QT:
                 _loop = getattr(self._bm, "_async_loop", None) if self._bm else None
                 if _loop is None:
                     QMessageBox.warning(
-                        self, "Async loop unavailable",
+                        self,
+                        "Async loop unavailable",
                         "Bot manager async loop not running. Is the "
                         "trading platform fully started? Try again "
-                        "after launch completes.")
+                        "after launch completes.",
+                    )
                     return
 
                 _coro = self._bot.manual_fire_tranche(idx)
@@ -2586,9 +2817,11 @@ if _HAS_QT:
                     _future = _asyncio.run_coroutine_threadsafe(_coro, _loop)
                 except Exception as _sched_exc:
                     QMessageBox.warning(
-                        self, "Schedule failed",
+                        self,
+                        "Schedule failed",
                         f"Could not schedule the fold-back:\n\n"
-                        f"{type(_sched_exc).__name__}: {_sched_exc}")
+                        f"{type(_sched_exc).__name__}: {_sched_exc}",
+                    )
                     return
 
                 # v3.16.55 — TRUE non-blocking dispatch. The v3.16.54
@@ -2606,18 +2839,21 @@ if _HAS_QT:
                 # surfaces the result dialog when it lands, without ever
                 # blocking the event loop.
                 QMessageBox.information(
-                    self, "Manual Fire dispatched",
+                    self,
+                    "Manual Fire dispatched",
                     f"Fold-back dispatched on tranche #{idx + 1}.\n\n"
                     f"Watch the Activity Log for the outcome. The "
                     f"result dialog will appear here when the buy "
                     f"completes (no time limit — Coinbase market "
                     f"orders may take several seconds during busy "
-                    f"windows; this is normal).")
+                    f"windows; this is normal).",
+                )
 
                 # Spawn a non-blocking poller via QTimer. Fires every
                 # 500ms; gives up after 120 seconds (the Activity Log
                 # is still authoritative regardless).
                 from PySide6.QtCore import QTimer as _QTimer
+
                 _start_ts = __import__("time").monotonic()
                 _poll_timer = _QTimer(self)
                 _poll_timer.setInterval(500)
@@ -2631,20 +2867,21 @@ if _HAS_QT:
                             except Exception as _rx:
                                 # Future errored (e.g. coroutine raised).
                                 QMessageBox.warning(
-                                    self, "Manual Fire raised",
+                                    self,
+                                    "Manual Fire raised",
                                     f"Tranche #{idx + 1} fold-back "
                                     f"raised:\n\n"
                                     f"{type(_rx).__name__}: {_rx}\n\n"
-                                    f"See Activity Log for full trace.")
+                                    f"See Activity Log for full trace.",
+                                )
                                 return
-                            if isinstance(result, dict) and result.get(
-                                    "applied"):
+                            if isinstance(result, dict) and result.get("applied"):
                                 _fill = result.get("fill_price", 0.0)
                                 _units = result.get("units_returned", 0.0)
-                                _remaining = result.get(
-                                    "remaining_tranches", 0)
+                                _remaining = result.get("remaining_tranches", 0)
                                 QMessageBox.information(
-                                    self, "Manual Fire complete",
+                                    self,
+                                    "Manual Fire complete",
                                     f"Tranche #{idx + 1} fold-back "
                                     f"filled.\n\n"
                                     f"  Fill price:   ${_fill:.8f}\n"
@@ -2652,17 +2889,21 @@ if _HAS_QT:
                                     f"  Remaining:    {_remaining} "
                                     f"tranche(s)\n\n"
                                     f"Tab will refresh on next "
-                                    f"dialog open.")
+                                    f"dialog open.",
+                                )
                             else:
                                 _reason = (
                                     result.get("reason", "unknown")
                                     if isinstance(result, dict)
-                                    else "unknown")
+                                    else "unknown"
+                                )
                                 QMessageBox.warning(
-                                    self, "Manual Fire refused",
+                                    self,
+                                    "Manual Fire refused",
                                     f"Tranche #{idx + 1} fold-back "
                                     f"NOT applied.\n\n"
-                                    f"Reason: {_reason}")
+                                    f"Reason: {_reason}",
+                                )
                             return
                         # Not done yet — give up after 120s. The bus log
                         # will still show the eventual outcome; we just
@@ -2677,16 +2918,19 @@ if _HAS_QT:
             except Exception as exc:
                 logger.exception(
                     "Bot %s _on_fire_tranche_clicked raised: %s",
-                    getattr(self._bot, "bot_id", "?")[:8], exc)
+                    getattr(self._bot, "bot_id", "?")[:8],
+                    exc,
+                )
                 try:
                     QMessageBox.critical(
-                        self, "Manual Fire error",
-                        f"Unexpected error:\n\n"
-                        f"{type(exc).__name__}: {exc}")
+                        self,
+                        "Manual Fire error",
+                        f"Unexpected error:\n\n" f"{type(exc).__name__}: {exc}",
+                    )
                 except Exception as _dlg_exc:  # noqa: BLE001 - error-dialog best-effort
                     logger.debug(
-                        "critical error dialog failed to display: %s",
-                        _dlg_exc)
+                        "critical error dialog failed to display: %s", _dlg_exc
+                    )
 
         @staticmethod
         def _format_age(seconds: float) -> str:
@@ -2719,14 +2963,14 @@ if _HAS_QT:
             from ..trading.bot_container import (
                 as_finite_float as _as_finite_float,
             )
+
             w = QWidget()
             layout = QVBoxLayout(w)
             layout.setSpacing(8)
 
             tranches = list(getattr(self._bot, "_stack_tranches", []) or [])
             now_ts = _time.time()
-            created_lifetime = int(getattr(
-                self._bot, "_stack_created", 0) or 0)
+            created_lifetime = int(getattr(self._bot, "_stack_created", 0) or 0)
 
             # --- Summary ---
             summary = QGroupBox("Stack-Tranche Cycle Health")
@@ -2768,7 +3012,8 @@ if _HAS_QT:
             filled_ratio_str = (
                 f"{len(filled) / created_lifetime:.1%}  "
                 f"({len(filled)}/{created_lifetime})"
-                if created_lifetime > 0 else "—  (no stacks opened yet)"
+                if created_lifetime > 0
+                else "—  (no stacks opened yet)"
             )
 
             sf.addRow("Pending tranches:", QLabel(str(len(pending))))
@@ -2777,11 +3022,11 @@ if _HAS_QT:
 
             pending_size_str = f"{pending_size_total:,.6f} base units"
             if pending_size_unreadable:
-                pending_size_str += (
-                    f"  (+{pending_size_unreadable} unreadable)")
+                pending_size_str += f"  (+{pending_size_unreadable} unreadable)"
             pending_lbl = QLabel(pending_size_str)
             pending_lbl.setStyleSheet(
-                "font-weight: bold; font-size: 13px; color: #ff9900;")
+                "font-weight: bold; font-size: 13px; color: #ff9900;"
+            )
             sf.addRow("Pending size (unfilled):", pending_lbl)
 
             # Oldest pending age
@@ -2810,8 +3055,7 @@ if _HAS_QT:
                 oldest_str = "no pending tranches"
             sf.addRow("Oldest pending age:", QLabel(oldest_str))
 
-            sf.addRow("Lifetime tranches opened:",
-                      QLabel(str(created_lifetime)))
+            sf.addRow("Lifetime tranches opened:", QLabel(str(created_lifetime)))
 
             ratio_lbl = QLabel(filled_ratio_str)
             if created_lifetime >= 3 and len(pending) > 0:
@@ -2842,11 +3086,13 @@ if _HAS_QT:
             # line is unchanged — putting both on one rule is a separate
             # unit.
             discarded_lifetime = int(
-                _as_finite_float(getattr(self._bot, "_stack_discarded", 0))
-                or 0.0)
+                _as_finite_float(getattr(self._bot, "_stack_discarded", 0)) or 0.0
+            )
             if discarded_lifetime:
-                sf.addRow("Lifetime tranches discarded (delisted, not filled):",
-                          QLabel(str(discarded_lifetime)))
+                sf.addRow(
+                    "Lifetime tranches discarded (delisted, not filled):",
+                    QLabel(str(discarded_lifetime)),
+                )
 
             layout.addWidget(summary)
 
@@ -2868,10 +3114,12 @@ if _HAS_QT:
             # Header row
             header = QLabel(
                 "  #  |  Target Price  |    Size      |  Mode     |  "
-                "Status     |  Fill Price   |  Age")
+                "Status     |  Fill Price   |  Age"
+            )
             header.setStyleSheet(
                 "font-family: monospace; font-weight: bold; "
-                "color: #66ccff; padding: 2px;")
+                "color: #66ccff; padding: 2px;"
+            )
             dg.addWidget(header)
 
             # Item 10 (2026-08-14) — every numeric key on
@@ -2908,14 +3156,13 @@ if _HAS_QT:
             no_value = "—"
             for t in tranches:
                 _idx = _as_finite_float(t.get("index", 0))
-                idx_str = (f"{int(_idx):>2}" if _idx is not None
-                           else f"{no_value:>2}")
+                idx_str = f"{int(_idx):>2}" if _idx is not None else f"{no_value:>2}"
                 _price = _as_finite_float(t.get("price", 0))
-                price_str = (f"${_price:>10.8f}" if _price is not None
-                             else f"{no_value:>11}")
+                price_str = (
+                    f"${_price:>10.8f}" if _price is not None else f"{no_value:>11}"
+                )
                 _size = _as_finite_float(t.get("size", 0))
-                size_str = (f"{_size:>10.6f}" if _size is not None
-                            else f"{no_value:>10}")
+                size_str = f"{_size:>10.6f}" if _size is not None else f"{no_value:>10}"
                 status = str(t.get("status", "unknown"))
                 mode = "VISIBLE" if t.get("visible") else "INVISIBLE"
                 # The truthiness gate is KEPT. A stored 0.0 fill
@@ -2925,8 +3172,7 @@ if _HAS_QT:
                 # do.
                 fill = t.get("fill_price")
                 _fill = _as_finite_float(fill) if fill else None
-                fill_str = (f"${_fill:.8f}" if _fill is not None
-                            else no_value)
+                fill_str = f"${_fill:.8f}" if _fill is not None else no_value
                 # The same rule as the summary row above, which
                 # this column must agree with: both render the age
                 # of the same tranche from the same key. The bare
@@ -2937,17 +3183,22 @@ if _HAS_QT:
                 # printing an age directly beneath a summary
                 # reporting no timestamp for that same tranche.
                 ots = _as_finite_float(t.get("opened_ts"))
-                age_str = (self._format_age(now_ts - ots)
-                           if ots is not None and ots > 0 else "—")
+                age_str = (
+                    self._format_age(now_ts - ots)
+                    if ots is not None and ots > 0
+                    else "—"
+                )
                 row = QLabel(
                     f"  {idx_str} |  {price_str}  |  {size_str}  |  "
                     f"{mode:<9}|  {status:<10} |  {fill_str:<12} |  {age_str}"
                 )
                 row.setStyleSheet(
                     "font-family: monospace; padding: 1px;"
-                    + (" color: #00ff88;" if status == "filled"
-                       else " color: #ff3366;" if status == "cancelled"
-                       else "")
+                    + (
+                        " color: #00ff88;"
+                        if status == "filled"
+                        else " color: #ff3366;" if status == "cancelled" else ""
+                    )
                 )
                 dg.addWidget(row)
 
@@ -2978,6 +3229,7 @@ if _HAS_QT:
             from ..trading.bot_container import (
                 as_finite_float as _as_finite_float,
             )
+
             w = QWidget()
             layout = QVBoxLayout(w)
             layout.setSpacing(8)
@@ -3000,7 +3252,8 @@ if _HAS_QT:
                     "integration, ensure the bot is registered with "
                     "the platform's Smart Wire manager (typically "
                     "automatic for scrumming bots created via the "
-                    "Bot Wizard with Smart Wire enabled).")
+                    "Bot Wizard with Smart Wire enabled)."
+                )
                 msg.setStyleSheet("color: #aaa; padding: 12px;")
                 msg.setWordWrap(True)
                 layout.addWidget(msg)
@@ -3023,8 +3276,7 @@ if _HAS_QT:
                     # percentage is unreadable. Dropping the
                     # entry would delete a real connection from
                     # the count above and from the table below.
-                    inbound[src_id] = _as_finite_float(
-                        targets[bot_id])
+                    inbound[src_id] = _as_finite_float(targets[bot_id])
 
             ledger = ledgers.get(bot_id)
 
@@ -3033,28 +3285,28 @@ if _HAS_QT:
             sf = QFormLayout(summary)
             self._configure_form(sf)
 
-            sf.addRow("Outbound wires:",
-                      QLabel(f"{len(outbound)} target(s)"))
-            sf.addRow("Inbound wires:",
-                      QLabel(f"{len(inbound)} source(s)"))
+            sf.addRow("Outbound wires:", QLabel(f"{len(outbound)} target(s)"))
+            sf.addRow("Inbound wires:", QLabel(f"{len(inbound)} source(s)"))
 
             # Lifetime $ in/out from this bot's ledger
-            wired_in = _as_finite_float(
-                getattr(ledger, "wired_in", 0)) if ledger else 0.0
-            wired_out = _as_finite_float(
-                getattr(ledger, "wired_out", 0)) if ledger else 0.0
-            in_lbl = QLabel("—" if wired_in is None
-                            else f"${wired_in:,.4f}")
-            in_lbl.setStyleSheet("font-weight: bold; color: "
-                                  + ("#00ff88" if wired_in is not None
-                                     and wired_in > 0 else "#aaa"))
+            wired_in = (
+                _as_finite_float(getattr(ledger, "wired_in", 0)) if ledger else 0.0
+            )
+            wired_out = (
+                _as_finite_float(getattr(ledger, "wired_out", 0)) if ledger else 0.0
+            )
+            in_lbl = QLabel("—" if wired_in is None else f"${wired_in:,.4f}")
+            in_lbl.setStyleSheet(
+                "font-weight: bold; color: "
+                + ("#00ff88" if wired_in is not None and wired_in > 0 else "#aaa")
+            )
             sf.addRow("Lifetime wired-in (received):", in_lbl)
 
-            out_lbl = QLabel("—" if wired_out is None
-                             else f"${wired_out:,.4f}")
-            out_lbl.setStyleSheet("font-weight: bold; color: "
-                                   + ("#ff9900" if wired_out is not None
-                                      and wired_out > 0 else "#aaa"))
+            out_lbl = QLabel("—" if wired_out is None else f"${wired_out:,.4f}")
+            out_lbl.setStyleSheet(
+                "font-weight: bold; color: "
+                + ("#ff9900" if wired_out is not None and wired_out > 0 else "#aaa")
+            )
             sf.addRow("Lifetime wired-out (sent):", out_lbl)
 
             # A DERIVED MONEY FIGURE INHERITS THE REFUSAL. If
@@ -3070,35 +3322,34 @@ if _HAS_QT:
                 net_lbl = QLabel(f"${net_flow:+,.4f}")
                 net_lbl.setStyleSheet(
                     "font-weight: bold; color: "
-                    + ("#00ff88" if net_flow >= 0 else "#ff3366"))
+                    + ("#00ff88" if net_flow >= 0 else "#ff3366")
+                )
             sf.addRow("Net flow (in − out):", net_lbl)
 
             # Pending wire credits — currently parked, waiting for next
             # tranche to absorb. v3.15.69 stacking semantics may also
             # apply if at-entry conditions are met.
-            pending_usd = _as_finite_float(getattr(
-                self._bot, "_pending_wire_credits", 0))
-            pending_lbl = QLabel("—" if pending_usd is None
-                                 else f"${pending_usd:,.4f}")
+            pending_usd = _as_finite_float(
+                getattr(self._bot, "_pending_wire_credits", 0)
+            )
+            pending_lbl = QLabel("—" if pending_usd is None else f"${pending_usd:,.4f}")
             if pending_usd is not None and pending_usd > 0:
-                pending_lbl.setStyleSheet(
-                    "font-weight: bold; color: #00ccff;")
+                pending_lbl.setStyleSheet("font-weight: bold; color: #00ccff;")
             sf.addRow("Pending wire credits:", pending_lbl)
 
             layout.addWidget(summary)
 
             # --- Provenance / Spawn section (if ledger has data) ---
             if ledger is not None:
-                prov_group = QGroupBox(
-                    "Provenance & Mature-Profit Spawn State")
+                prov_group = QGroupBox("Provenance & Mature-Profit Spawn State")
                 pf = QFormLayout(prov_group)
                 self._configure_form(pf)
 
-                starting = _as_finite_float(
-                    getattr(ledger, "starting_balance", 0))
-                pf.addRow("Starting balance (seed):",
-                          QLabel("—" if starting is None
-                                 else f"${starting:,.4f}"))
+                starting = _as_finite_float(getattr(ledger, "starting_balance", 0))
+                pf.addRow(
+                    "Starting balance (seed):",
+                    QLabel("—" if starting is None else f"${starting:,.4f}"),
+                )
 
                 # Predominant funder (non-SEED bot that funded this most)
                 pred_src = None
@@ -3107,18 +3358,19 @@ if _HAS_QT:
                 except Exception:  # R28-OK: defensive accessor probe
                     pred_src = None
                 if pred_src:
-                    pf.addRow("Predominant funder (PPS):",
-                              QLabel(str(pred_src)))
+                    pf.addRow("Predominant funder (PPS):", QLabel(str(pred_src)))
                 else:
-                    pf.addRow("Predominant funder (PPS):",
-                              QLabel("— (SEED-funded only)"))
+                    pf.addRow(
+                        "Predominant funder (PPS):", QLabel("— (SEED-funded only)")
+                    )
 
                 # Mature profit math (used for spawn gate)
                 try:
                     mature_total = float(ledger.mature_profit_total)
                     mature_avail = float(ledger.mature_profit_available)
-                    mature_alloc = float(getattr(
-                        ledger, "mature_profit_allocated", 0) or 0)
+                    mature_alloc = float(
+                        getattr(ledger, "mature_profit_allocated", 0) or 0
+                    )
                 except Exception:  # R28-OK: defensive math probe
                     mature_total = mature_avail = mature_alloc = 0.0
 
@@ -3128,32 +3380,35 @@ if _HAS_QT:
                 _mature_ratio_pct = 70
                 try:
                     from ..trading.smart_wire import BotLedger
-                    _mature_ratio_pct = int(round(
-                        BotLedger.MATURE_RATIO * 100))
-                except Exception as _mr_exc:  # noqa: BLE001 - label defaults to 70 if import fails
-                    logger.debug(
-                        "MATURE_RATIO lookup failed, using 70%%: %s",
-                        _mr_exc)
+
+                    _mature_ratio_pct = int(round(BotLedger.MATURE_RATIO * 100))
+                except (
+                    Exception
+                ) as _mr_exc:  # noqa: BLE001 - label defaults to 70 if import fails
+                    logger.debug("MATURE_RATIO lookup failed, using 70%%: %s", _mr_exc)
                 pf.addRow(
                     f"Mature profit total ({_mature_ratio_pct}% of P&L):",
-                    QLabel(f"${mature_total:,.4f}"))
-                pf.addRow("Mature profit allocated to spawns:",
-                          QLabel(f"${mature_alloc:,.4f}"))
+                    QLabel(f"${mature_total:,.4f}"),
+                )
+                pf.addRow(
+                    "Mature profit allocated to spawns:",
+                    QLabel(f"${mature_alloc:,.4f}"),
+                )
 
                 avail_lbl = QLabel(f"${mature_avail:,.4f}")
                 if mature_avail > 0:
                     avail_lbl.setStyleSheet("color: #00ff88;")
                 else:
                     avail_lbl.setStyleSheet("color: #aaa;")
-                pf.addRow("Mature profit available (spawn-eligible):",
-                          avail_lbl)
+                pf.addRow("Mature profit available (spawn-eligible):", avail_lbl)
 
                 # Provenance breakdown — which bots funded this one
                 prov_dict = dict(getattr(ledger, "provenance", {}) or {})
                 if prov_dict:
                     prov_str = ", ".join(
-                        f"{k}: ${v:,.2f}" for k, v in
-                        sorted(prov_dict.items(), key=lambda kv: -kv[1]))
+                        f"{k}: ${v:,.2f}"
+                        for k, v in sorted(prov_dict.items(), key=lambda kv: -kv[1])
+                    )
                     prov_label = QLabel(prov_str)
                     prov_label.setWordWrap(True)
                     prov_label.setStyleSheet("color: #ccc; font-size: 11px;")
@@ -3163,16 +3418,17 @@ if _HAS_QT:
 
             # --- Outbound wires table ---
             if outbound:
-                out_group = QGroupBox(
-                    f"Outbound Wires ({len(outbound)})")
+                out_group = QGroupBox(f"Outbound Wires ({len(outbound)})")
                 ol = QVBoxLayout(out_group)
 
                 out_tbl = QTableWidget()
                 out_tbl.setColumnCount(3)
-                out_tbl.setHorizontalHeaderLabels([
-                    "Target Bot", "Wire %", "Lifetime $ to target"])
+                out_tbl.setHorizontalHeaderLabels(
+                    ["Target Bot", "Wire %", "Lifetime $ to target"]
+                )
                 out_tbl.horizontalHeader().setSectionResizeMode(
-                    QHeaderView.ResizeToContents)
+                    QHeaderView.ResizeToContents
+                )
                 out_tbl.setRowCount(len(outbound))
                 out_tbl.setMaximumHeight(180)
                 out_tbl.setAlternatingRowColors(True)
@@ -3186,10 +3442,11 @@ if _HAS_QT:
                 out_lifetime: dict = {tgt: 0.0 for tgt in outbound}
                 out_unreadable: set = set()
                 for tx in transactions:
-                    if (getattr(tx, "source_bot", None) == bot_id
-                            and getattr(tx, "target_bot", None) in out_lifetime):
-                        _amt = _as_finite_float(
-                            getattr(tx, "amount", None))
+                    if (
+                        getattr(tx, "source_bot", None) == bot_id
+                        and getattr(tx, "target_bot", None) in out_lifetime
+                    ):
+                        _amt = _as_finite_float(getattr(tx, "amount", None))
                         if _amt is None:
                             out_unreadable.add(tx.target_bot)
                         else:
@@ -3203,28 +3460,32 @@ if _HAS_QT:
                         tgt_asset = getattr(tgt_ledger, "asset", "") or ""
                     label = f"{tgt_id}" + (f" ({tgt_asset})" if tgt_asset else "")
                     out_tbl.setItem(row, 0, QTableWidgetItem(label))
-                    out_tbl.setItem(row, 1,
-                                     QTableWidgetItem(f"{pct:.2f}%"))
+                    out_tbl.setItem(row, 1, QTableWidgetItem(f"{pct:.2f}%"))
                     lifetime = out_lifetime.get(tgt_id, 0.0)
-                    out_tbl.setItem(row, 2, QTableWidgetItem("—"
-                        if tgt_id in out_unreadable
-                        else f"${lifetime:,.4f}"))
+                    out_tbl.setItem(
+                        row,
+                        2,
+                        QTableWidgetItem(
+                            "—" if tgt_id in out_unreadable else f"${lifetime:,.4f}"
+                        ),
+                    )
 
                 ol.addWidget(out_tbl)
                 layout.addWidget(out_group)
 
             # --- Inbound wires table ---
             if inbound:
-                in_group = QGroupBox(
-                    f"Inbound Wires ({len(inbound)})")
+                in_group = QGroupBox(f"Inbound Wires ({len(inbound)})")
                 il = QVBoxLayout(in_group)
 
                 in_tbl = QTableWidget()
                 in_tbl.setColumnCount(3)
-                in_tbl.setHorizontalHeaderLabels([
-                    "Source Bot", "Wire %", "Lifetime $ from source"])
+                in_tbl.setHorizontalHeaderLabels(
+                    ["Source Bot", "Wire %", "Lifetime $ from source"]
+                )
                 in_tbl.horizontalHeader().setSectionResizeMode(
-                    QHeaderView.ResizeToContents)
+                    QHeaderView.ResizeToContents
+                )
                 in_tbl.setRowCount(len(inbound))
                 in_tbl.setMaximumHeight(180)
                 in_tbl.setAlternatingRowColors(True)
@@ -3235,10 +3496,11 @@ if _HAS_QT:
                 in_lifetime: dict = {src: 0.0 for src in inbound}
                 in_unreadable: set = set()
                 for tx in transactions:
-                    if (getattr(tx, "target_bot", None) == bot_id
-                            and getattr(tx, "source_bot", None) in in_lifetime):
-                        _amt = _as_finite_float(
-                            getattr(tx, "amount", None))
+                    if (
+                        getattr(tx, "target_bot", None) == bot_id
+                        and getattr(tx, "source_bot", None) in in_lifetime
+                    ):
+                        _amt = _as_finite_float(getattr(tx, "amount", None))
                         if _amt is None:
                             in_unreadable.add(tx.source_bot)
                         else:
@@ -3251,30 +3513,33 @@ if _HAS_QT:
                         src_asset = getattr(src_ledger, "asset", "") or ""
                     label = f"{src_id}" + (f" ({src_asset})" if src_asset else "")
                     in_tbl.setItem(row, 0, QTableWidgetItem(label))
-                    in_tbl.setItem(row, 1, QTableWidgetItem("—"
-                        if pct is None else f"{pct:.2f}%"))
+                    in_tbl.setItem(
+                        row, 1, QTableWidgetItem("—" if pct is None else f"{pct:.2f}%")
+                    )
                     lifetime = in_lifetime.get(src_id, 0.0)
-                    in_tbl.setItem(row, 2, QTableWidgetItem("—"
-                        if src_id in in_unreadable
-                        else f"${lifetime:,.4f}"))
+                    in_tbl.setItem(
+                        row,
+                        2,
+                        QTableWidgetItem(
+                            "—" if src_id in in_unreadable else f"${lifetime:,.4f}"
+                        ),
+                    )
 
                 il.addWidget(in_tbl)
                 layout.addWidget(in_group)
 
             # --- Pending wire credits ledger ---
-            pending_ledger = list(getattr(
-                self._bot, "_pending_wire_ledger", []) or [])
+            pending_ledger = list(getattr(self._bot, "_pending_wire_ledger", []) or [])
             if pending_ledger:
-                pl_group = QGroupBox(
-                    f"Pending Wire Credits ({len(pending_ledger)})")
+                pl_group = QGroupBox(f"Pending Wire Credits ({len(pending_ledger)})")
                 pll = QVBoxLayout(pl_group)
 
                 pl_tbl = QTableWidget()
                 pl_tbl.setColumnCount(4)
-                pl_tbl.setHorizontalHeaderLabels([
-                    "Age", "Source", "USD", "Ref"])
+                pl_tbl.setHorizontalHeaderLabels(["Age", "Source", "USD", "Ref"])
                 pl_tbl.horizontalHeader().setSectionResizeMode(
-                    QHeaderView.ResizeToContents)
+                    QHeaderView.ResizeToContents
+                )
                 pl_tbl.setRowCount(len(pending_ledger))
                 pl_tbl.setMaximumHeight(180)
                 pl_tbl.setAlternatingRowColors(True)
@@ -3315,18 +3580,20 @@ if _HAS_QT:
                     else:
                         age_str = "—"
                     pl_tbl.setItem(row, 0, QTableWidgetItem(age_str))
-                    pl_tbl.setItem(row, 1, QTableWidgetItem(
-                        str(credit.get("source", "?"))))
+                    pl_tbl.setItem(
+                        row, 1, QTableWidgetItem(str(credit.get("source", "?")))
+                    )
                     # THE SAME ADMISSION THE AGE CELL ABOVE USES,
                     # on the same dict from the same restore. A
                     # row whose age is trustworthy and whose money
                     # is not must say so in the money column.
                     cusd = _as_finite_float(credit.get("usd"))
-                    pl_tbl.setItem(row, 2, QTableWidgetItem(
-                        "—" if cusd is None
-                        else f"${cusd:,.4f}"))
-                    pl_tbl.setItem(row, 3, QTableWidgetItem(
-                        str(credit.get("ref", ""))))
+                    pl_tbl.setItem(
+                        row,
+                        2,
+                        QTableWidgetItem("—" if cusd is None else f"${cusd:,.4f}"),
+                    )
+                    pl_tbl.setItem(row, 3, QTableWidgetItem(str(credit.get("ref", ""))))
 
                 pll.addWidget(pl_tbl)
 
@@ -3342,21 +3609,27 @@ if _HAS_QT:
 
             # --- Recent wire transactions (last 20 involving this bot) ---
             recent_tx = [
-                tx for tx in reversed(transactions)
-                if (getattr(tx, "source_bot", None) == bot_id
-                    or getattr(tx, "target_bot", None) == bot_id)
+                tx
+                for tx in reversed(transactions)
+                if (
+                    getattr(tx, "source_bot", None) == bot_id
+                    or getattr(tx, "target_bot", None) == bot_id
+                )
             ][:20]
             if recent_tx:
                 tx_group = QGroupBox(
-                    f"Recent Wire Transactions (last {len(recent_tx)})")
+                    f"Recent Wire Transactions (last {len(recent_tx)})"
+                )
                 tl = QVBoxLayout(tx_group)
 
                 tx_tbl = QTableWidget()
                 tx_tbl.setColumnCount(5)
-                tx_tbl.setHorizontalHeaderLabels([
-                    "Age", "Direction", "Other Bot", "USD", "Type"])
+                tx_tbl.setHorizontalHeaderLabels(
+                    ["Age", "Direction", "Other Bot", "USD", "Type"]
+                )
                 tx_tbl.horizontalHeader().setSectionResizeMode(
-                    QHeaderView.ResizeToContents)
+                    QHeaderView.ResizeToContents
+                )
                 tx_tbl.setRowCount(len(recent_tx))
                 tx_tbl.setMaximumHeight(280)
                 tx_tbl.setAlternatingRowColors(True)
@@ -3419,21 +3692,30 @@ if _HAS_QT:
                     # appended to. Guarded so the two money
                     # columns fed by this feed cannot disagree
                     # about what an unreadable amount means.
-                    tamt = _as_finite_float(
-                        getattr(tx, "amount", None))
-                    tx_tbl.setItem(row, 3, QTableWidgetItem(
-                        "—" if tamt is None
-                        else f"${tamt:,.4f}"))
-                    tx_tbl.setItem(row, 4, QTableWidgetItem(
-                        str(getattr(tx, "wire_type", "") or "")))
+                    tamt = _as_finite_float(getattr(tx, "amount", None))
+                    tx_tbl.setItem(
+                        row,
+                        3,
+                        QTableWidgetItem("—" if tamt is None else f"${tamt:,.4f}"),
+                    )
+                    tx_tbl.setItem(
+                        row,
+                        4,
+                        QTableWidgetItem(str(getattr(tx, "wire_type", "") or "")),
+                    )
 
                 tl.addWidget(tx_tbl)
                 layout.addWidget(tx_group)
 
             # If bot has zero wires, zero pending, zero ledger activity:
             # show explanation so the empty tab isn't confusing.
-            if (not outbound and not inbound and not pending_ledger
-                    and not recent_tx and ledger is None):
+            if (
+                not outbound
+                and not inbound
+                and not pending_ledger
+                and not recent_tx
+                and ledger is None
+            ):
                 empty = QLabel(
                     "Bot Swarm manager is attached but this bot has "
                     "no wire activity yet. Outbound wires are configured "
@@ -3441,9 +3723,11 @@ if _HAS_QT:
                     "bot tiles). Inbound wires fire when other bots "
                     "realize fold profit and route a configured % to "
                     "this bot. Until then, this tab will populate as "
-                    "swarm activity occurs.")
-                empty.setStyleSheet("color: #888; font-style: italic; "
-                                     "padding: 10px;")
+                    "swarm activity occurs."
+                )
+                empty.setStyleSheet(
+                    "color: #888; font-style: italic; " "padding: 10px;"
+                )
                 empty.setWordWrap(True)
                 layout.addWidget(empty)
 
@@ -3462,16 +3746,16 @@ if _HAS_QT:
         def _create_market_inspector_tab(self) -> QWidget:
             try:
                 from .market_inspector import build_per_bot_view
+
                 return build_per_bot_view(self._bot)
             except Exception as exc:  # noqa: BLE001 - GUI import guard
-                logger.warning(
-                    "Market Inspector per-bot view unavailable: %s",
-                    exc)
+                logger.warning("Market Inspector per-bot view unavailable: %s", exc)
                 w = QWidget()
                 lay = QVBoxLayout(w)
                 msg = QLabel(
                     "<b>Market Inspector unavailable.</b><br><br>"
-                    f"{type(exc).__name__}: {exc}")
+                    f"{type(exc).__name__}: {exc}"
+                )
                 msg.setStyleSheet("color: #ff9900; padding: 12px;")
                 msg.setWordWrap(True)
                 lay.addWidget(msg)
@@ -3491,8 +3775,10 @@ if _HAS_QT:
             # BotMode.GRID dropped from the enum).
             is_scrumming = cfg.mode.value == "scrumming"
 
-            info = QLabel("Changes take effect immediately when Apply is clicked. "
-                          "The bot does not need to be restarted.")
+            info = QLabel(
+                "Changes take effect immediately when Apply is clicked. "
+                "The bot does not need to be restarted."
+            )
             info.setStyleSheet("color: #888; font-size: 11px; margin-bottom: 4px;")
             info.setWordWrap(True)
             layout.addWidget(info)
@@ -3510,7 +3796,8 @@ if _HAS_QT:
             if idx >= 0:
                 self._vis.setCurrentIndex(idx)
             self._vis.currentIndexChanged.connect(
-                lambda: self._mark_changed("visibility", self._vis.currentData()))
+                lambda: self._mark_changed("visibility", self._vis.currentData())
+            )
             mf.addRow("Order Visibility:", self._vis)
 
             # v3.23.25 — Check Interval widget removed (audit 2026-07-25).
@@ -3534,9 +3821,11 @@ if _HAS_QT:
                 "an Immediate-Or-Cancel limit order priced through the "
                 "spread — i.e., pays the taker fee for immediate fill. "
                 "When OFF, the bot may use passive maker orders where "
-                "appropriate. Manual fire is unaffected by this flag.")
+                "appropriate. Manual fire is unaffected by this flag."
+            )
             self._aggressive.toggled.connect(
-                lambda v: self._mark_changed("aggressive_trading", v))
+                lambda v: self._mark_changed("aggressive_trading", v)
+            )
             mf.addRow(self._aggressive)
 
             # v3.23.25 — Stack Mode (renamed from Bulk Trading).
@@ -3544,7 +3833,9 @@ if _HAS_QT:
             # the Minimum Opposing Trade Distance (== scrumming_interval_pct
             # above the trigger price) per stack_spacing_mode at
             # split_distance intervals.
-            self._stack_mode = QCheckBox("Stack Mode (split SCRUM across upward tranches)")
+            self._stack_mode = QCheckBox(
+                "Stack Mode (split SCRUM across upward tranches)"
+            )
             self._stack_mode.setChecked(getattr(cfg, "stack_mode", False))
             self._stack_mode.setToolTip(
                 "When ON, a SCRUM fires as N Stack Tranches at ascending "
@@ -3554,9 +3845,11 @@ if _HAS_QT:
                 "the Spacing model. See the Stack Tranches tab for live "
                 "tranche state (added Sub-phase 2E). Visibility gates "
                 "book placement: orderbook = resting limits; internal = "
-                "tracked off-books, market-fire on threshold cross.")
+                "tracked off-books, market-fire on threshold cross."
+            )
             self._stack_mode.toggled.connect(
-                lambda v: self._mark_changed("stack_mode", v))
+                lambda v: self._mark_changed("stack_mode", v)
+            )
             mf.addRow(self._stack_mode)
 
             # v3.23.25 — Split Distance (percent between tranches).
@@ -3569,9 +3862,11 @@ if _HAS_QT:
                 "Percent spacing between successive Stack tranches. "
                 "Applied per stack_spacing_mode: Linear = constant "
                 "delta, Logarithmic = arithmetically-growing delta, "
-                "Exponential = geometrically-growing delta.")
+                "Exponential = geometrically-growing delta."
+            )
             self._split_distance.valueChanged.connect(
-                lambda v: self._mark_changed("split_distance", v))
+                lambda v: self._mark_changed("split_distance", v)
+            )
             mf.addRow("Split Distance:", self._split_distance)
 
             # v3.23.25 — Target tranche count. Actual count at runtime
@@ -3580,15 +3875,18 @@ if _HAS_QT:
             self._stack_count = QSpinBox()
             self._stack_count.setRange(2, 20)
             self._stack_count.setValue(
-                int(getattr(cfg, "stack_tranche_count_target", 3)))
+                int(getattr(cfg, "stack_tranche_count_target", 3))
+            )
             self._stack_count.setToolTip(
                 "Target number of Stack tranches to create from a SCRUM. "
                 "Actual runtime count may be lower if (a) per-tranche "
                 "size falls below the exchange minimum order size, or "
                 "(b) two computed tranche prices land within 0.1% of "
-                "each other (then merged upwards).")
+                "each other (then merged upwards)."
+            )
             self._stack_count.valueChanged.connect(
-                lambda v: self._mark_changed("stack_tranche_count_target", v))
+                lambda v: self._mark_changed("stack_tranche_count_target", v)
+            )
             mf.addRow("Tranche Count:", self._stack_count)
 
             # v3.23.26 — Spacing mode. Middle option renamed from
@@ -3607,10 +3905,13 @@ if _HAS_QT:
             self._stack_spacing.setToolTip(
                 "Spacing model for successive Stack tranches. The "
                 "sequences show Δp in units of Split Distance between "
-                "consecutive tranches.")
+                "consecutive tranches."
+            )
             self._stack_spacing.currentIndexChanged.connect(
                 lambda: self._mark_changed(
-                    "stack_spacing_mode", self._stack_spacing.currentData()))
+                    "stack_spacing_mode", self._stack_spacing.currentData()
+                )
+            )
             mf.addRow("Spacing:", self._stack_spacing)
 
             # v3.23.42 — F65 personal_hold_qty. Live-editable — the
@@ -3619,16 +3920,18 @@ if _HAS_QT:
             self._personal_hold_qty = QDoubleSpinBox()
             self._personal_hold_qty.setRange(0.0, 1_000_000_000.0)
             self._personal_hold_qty.setDecimals(10)
-            self._personal_hold_qty.setValue(float(getattr(
-                cfg, "personal_hold_qty", 0.0)))
+            self._personal_hold_qty.setValue(
+                float(getattr(cfg, "personal_hold_qty", 0.0))
+            )
             self._personal_hold_qty.setToolTip(
                 "Target-asset units to hold OUT of the bot's view "
                 "(personal reserve). The bot won't buy or sell these "
                 "units; they're also reserved from any sibling bot on "
-                "the same asset via the CapitalReservationRegistry.")
+                "the same asset via the CapitalReservationRegistry."
+            )
             self._personal_hold_qty.valueChanged.connect(
-                lambda v: self._mark_changed(
-                    "personal_hold_qty", float(v)))
+                lambda v: self._mark_changed("personal_hold_qty", float(v))
+            )
             mf.addRow("Personal Hold (units):", self._personal_hold_qty)
 
             layout.addWidget(mode_group)
@@ -3654,8 +3957,10 @@ if _HAS_QT:
             # the one thing that must not lie on the non-scrumming path,
             # since those shared rows are not scrumming settings.
             scrum_group = QGroupBox(
-                "Scrumming Settings" if is_scrumming
-                else "Trading Parameters (continued)")
+                "Scrumming Settings"
+                if is_scrumming
+                else "Trading Parameters (continued)"
+            )
             sf = QFormLayout(scrum_group)
             self._configure_form(sf)
 
@@ -3666,7 +3971,8 @@ if _HAS_QT:
                 self._scrum_interval.setSuffix(" %")
                 self._scrum_interval.setValue(cfg.scrumming_interval_pct)
                 self._scrum_interval.valueChanged.connect(
-                    lambda v: self._mark_changed("scrumming_interval_pct", v))
+                    lambda v: self._mark_changed("scrumming_interval_pct", v)
+                )
                 # v3.15.53 — operator directive 2026-04-25: rename
                 # "Scrumming Interval" → "Opposing Trade Interval" in
                 # the GUI. Underlying config field name unchanged
@@ -3679,14 +3985,16 @@ if _HAS_QT:
                 self._bb_tol.setSuffix(" %")
                 self._bb_tol.setValue(cfg.bb_tolerance_pct)
                 self._bb_tol.valueChanged.connect(
-                    lambda v: self._mark_changed("bb_tolerance_pct", v))
+                    lambda v: self._mark_changed("bb_tolerance_pct", v)
+                )
                 sf.addRow("BB Tolerance:", self._bb_tol)
 
                 self._landing = QSpinBox()
                 self._landing.setRange(2, 10)
                 self._landing.setValue(cfg.bb_landing_strip_candles)
                 self._landing.valueChanged.connect(
-                    lambda v: self._mark_changed("bb_landing_strip_candles", v))
+                    lambda v: self._mark_changed("bb_landing_strip_candles", v)
+                )
                 sf.addRow("Landing Strip Candles:", self._landing)
 
                 # v3.15.61 — filter TF list to what the bot's exchange
@@ -3694,11 +4002,22 @@ if _HAS_QT:
                 self._ta_tf = QComboBox()
                 try:
                     from ..exchange.timeframes import available_timeframes
+
                     _ex_id = getattr(cfg, "exchange_id", None)
                     _allowed_tfs = available_timeframes(_ex_id)
                 except Exception:
-                    _allowed_tfs = ("1m", "5m", "15m", "30m", "1h",
-                                    "2h", "4h", "6h", "12h", "1d")
+                    _allowed_tfs = (
+                        "1m",
+                        "5m",
+                        "15m",
+                        "30m",
+                        "1h",
+                        "2h",
+                        "4h",
+                        "6h",
+                        "12h",
+                        "1d",
+                    )
                 for tf in _allowed_tfs:
                     self._ta_tf.addItem(tf)
                 idx = self._ta_tf.findText(cfg.ta_timeframe)
@@ -3713,9 +4032,11 @@ if _HAS_QT:
                     self._ta_tf.setCurrentIndex(fallback_idx)
                 self._ta_tf.setToolTip(
                     "TA Timeframe — filtered to granularities supported "
-                    "by this bot's exchange. v3.15.61.")
+                    "by this bot's exchange. v3.15.61."
+                )
                 self._ta_tf.currentTextChanged.connect(
-                    lambda v: self._mark_changed("ta_timeframe", v))
+                    lambda v: self._mark_changed("ta_timeframe", v)
+                )
                 sf.addRow("TA Timeframe:", self._ta_tf)
 
                 self._target_bal = QDoubleSpinBox()
@@ -3726,9 +4047,11 @@ if _HAS_QT:
                 self._target_bal.setToolTip(
                     "The balance this bot trades relative to. HARD-CAPPED: "
                     "position can never exceed Target × (1 + Max Target Growth %/100). "
-                    "MEM-246/249/251.")
+                    "MEM-246/249/251."
+                )
                 self._target_bal.valueChanged.connect(
-                    lambda v: self._mark_changed("target_balance", v))
+                    lambda v: self._mark_changed("target_balance", v)
+                )
                 sf.addRow("Target Balance:", self._target_bal)
 
             # v3.24.50 (Phase 1 Step 3) — the compounding surface.
@@ -3743,18 +4066,19 @@ if _HAS_QT:
             # is the operator's INPUT; the grown value goes in the
             # read-only rows below.
             _live_tb = float(getattr(self._bot, "_target_balance", 0.0) or 0.0)
-            _anchor_tb = float(getattr(
-                self._bot, "_anchor_target_balance", 0.0) or 0.0)
+            _anchor_tb = float(getattr(self._bot, "_anchor_target_balance", 0.0) or 0.0)
             _accrued = _live_tb - _anchor_tb
             _live_lbl = QLabel(
                 f"${_live_tb:,.4f}   (anchor ${_anchor_tb:,.2f}, "
-                f"accrued {_accrued:+,.4f})")
+                f"accrued {_accrued:+,.4f})"
+            )
             if abs(_accrued) < 1e-9:
                 # Zero accrual is the condition the whole tranche repair
                 # exists to change. Say so rather than showing a bare 0.
                 _live_lbl.setText(
                     f"${_live_tb:,.4f}   (anchor ${_anchor_tb:,.2f} — "
-                    f"never compounded)")
+                    f"never compounded)"
+                )
                 _live_lbl.setStyleSheet("color: #ff9900;")
             else:
                 _live_lbl.setStyleSheet("color: #00ff88;")
@@ -3762,11 +4086,11 @@ if _HAS_QT:
                 "The target the bot actually trades against.\n\n"
                 "The spinbox above is your input value and does not "
                 "move when compounding grows the target. This row is "
-                "the runtime figure.")
+                "the runtime figure."
+            )
             sf.addRow("Live target (traded against):", _live_lbl)
 
-            _surplus = float(getattr(
-                self._bot, "_standing_surplus_usd", 0.0) or 0.0)
+            _surplus = float(getattr(self._bot, "_standing_surplus_usd", 0.0) or 0.0)
             _surplus_lbl = QLabel(f"${_surplus:,.4f}")
             if _surplus > 1e-9:
                 _surplus_lbl.setStyleSheet("color: #ff9900;")
@@ -3774,34 +4098,45 @@ if _HAS_QT:
                     "Surplus parked above the per-cycle growth cap.\n\n"
                     "There is currently NO drain from this pool — it "
                     "accrues and stays. Implementing the drain is "
-                    "Phase 2 of the tranche repair.")
+                    "Phase 2 of the tranche repair."
+                )
             sf.addRow("Standing surplus:", _surplus_lbl)
 
-            _budget = round(_anchor_tb * float(getattr(
-                cfg, "max_target_growth_pct", 0.0) or 0.0) / 100.0, 8)
-            _consumed = float(getattr(
-                self._bot, "_fold_cycle_cap_consumed", 0.0) or 0.0)
+            _budget = round(
+                _anchor_tb
+                * float(getattr(cfg, "max_target_growth_pct", 0.0) or 0.0)
+                / 100.0,
+                8,
+            )
+            _consumed = float(
+                getattr(self._bot, "_fold_cycle_cap_consumed", 0.0) or 0.0
+            )
             sf.addRow(
                 "Cycle growth budget:",
-                QLabel(f"${_budget:,.4f} — consumed ${_consumed:,.4f}"))
+                QLabel(f"${_budget:,.4f} — consumed ${_consumed:,.4f}"),
+            )
 
             # Tranches larger than the whole budget can never be admitted:
             # the filter takes a tranche only if it fits ENTIRELY.
             _tranches = list(getattr(self._bot, "_fold_tranches", []) or [])
-            _over = [float(t.get("usd", 0) or 0) for t in _tranches
-                     if isinstance(t, dict)
-                     and _budget > 0
-                     and float(t.get("usd", 0) or 0) > _budget]
+            _over = [
+                float(t.get("usd", 0) or 0)
+                for t in _tranches
+                if isinstance(t, dict)
+                and _budget > 0
+                and float(t.get("usd", 0) or 0) > _budget
+            ]
             if _over:
                 _over_lbl = QLabel(
-                    f"{len(_over)} of {len(_tranches)} "
-                    f"(${sum(_over):,.4f})")
+                    f"{len(_over)} of {len(_tranches)} " f"(${sum(_over):,.4f})"
+                )
                 _over_lbl.setStyleSheet("color: #ff3366;")
                 _over_lbl.setToolTip(
                     "Tranches larger than the entire per-cycle budget.\n\n"
                     "The fold filter admits a tranche only if it fits "
                     "whole and refuses to deploy part of one, so these "
-                    "are skipped on every cycle regardless of price.")
+                    "are skipped on every cycle regardless of price."
+                )
                 sf.addRow("Over-cap tranches:", _over_lbl)
             # v3.24.86 - DE-INDENTED OUT OF `if _over:`.
             #
@@ -3838,7 +4173,8 @@ if _HAS_QT:
                 "Target USD ÷ (BTC/USD spot). Δ24h vs USD = "
                 "pct_24h(<target>/BTC) − pct_24h(<target>/USD). "
                 "Positive Δ means BTC-quoted pair is cheaper in "
-                "USD terms than the USD-quoted pair right now.")
+                "USD terms than the USD-quoted pair right now."
+            )
             self._target_btc_row_label = QLabel("Target BTC:")
             sf.addRow(self._target_btc_row_label, self._target_btc_lbl)
             self._target_eth_lbl = QLabel("—")
@@ -3846,21 +4182,22 @@ if _HAS_QT:
                 "Target USD ÷ (ETH/USD spot). Δ24h vs USD = "
                 "pct_24h(<target>/ETH) − pct_24h(<target>/USD). "
                 "Positive Δ means ETH-quoted pair is cheaper in "
-                "USD terms than the USD-quoted pair right now.")
+                "USD terms than the USD-quoted pair right now."
+            )
             self._target_eth_row_label = QLabel("Target ETH:")
             sf.addRow(self._target_eth_row_label, self._target_eth_lbl)
             self._refresh_target_denom_rows()
             try:
                 from PySide6.QtCore import QTimer as _QTimer
+
                 self._denom_refresh_timer = _QTimer(self)
                 self._denom_refresh_timer.setInterval(5_000)
                 self._denom_refresh_timer.timeout.connect(
-                    self._refresh_target_denom_rows)
+                    self._refresh_target_denom_rows
+                )
                 self._denom_refresh_timer.start()
             except Exception as _tmr_exc:  # noqa: BLE001 - timer setup best-effort
-                logger.debug(
-                    "denom-row refresh timer failed to start: %s",
-                    _tmr_exc)
+                logger.debug("denom-row refresh timer failed to start: %s", _tmr_exc)
 
             # v3.15.51 — Operator-set entry-price bounds.
             # Operator directive 2026-04-25: "Bot max / min entry
@@ -3872,15 +4209,17 @@ if _HAS_QT:
             self._max_entry_px.setDecimals(8)
             self._max_entry_px.setPrefix("$ ")
             _max_ep_cfg = getattr(cfg, "max_entry_price", None)
-            self._max_entry_px.setValue(
-                float(_max_ep_cfg) if _max_ep_cfg else 0.0)
+            self._max_entry_px.setValue(float(_max_ep_cfg) if _max_ep_cfg else 0.0)
             self._max_entry_px.setToolTip(
                 "Bot REFUSES any auto-buy when current price is ABOVE "
                 "this. Use to cap entry exposure at known overvaluation. "
-                "0 = no ceiling (default). Manual Fire bypasses this gate.")
+                "0 = no ceiling (default). Manual Fire bypasses this gate."
+            )
             self._max_entry_px.valueChanged.connect(
                 lambda v: self._mark_changed(
-                    "max_entry_price", float(v) if v > 0 else None))
+                    "max_entry_price", float(v) if v > 0 else None
+                )
+            )
             sf.addRow("Max Entry Price:", self._max_entry_px)
 
             self._min_entry_px = QDoubleSpinBox()
@@ -3888,15 +4227,17 @@ if _HAS_QT:
             self._min_entry_px.setDecimals(8)
             self._min_entry_px.setPrefix("$ ")
             _min_ep_cfg = getattr(cfg, "min_entry_price", None)
-            self._min_entry_px.setValue(
-                float(_min_ep_cfg) if _min_ep_cfg else 0.0)
+            self._min_entry_px.setValue(float(_min_ep_cfg) if _min_ep_cfg else 0.0)
             self._min_entry_px.setToolTip(
                 "Bot REFUSES any auto-buy when current price is BELOW "
                 "this. Use to avoid catching a falling knife. 0 = no "
-                "floor (default). Manual Fire bypasses this gate.")
+                "floor (default). Manual Fire bypasses this gate."
+            )
             self._min_entry_px.valueChanged.connect(
                 lambda v: self._mark_changed(
-                    "min_entry_price", float(v) if v > 0 else None))
+                    "min_entry_price", float(v) if v > 0 else None
+                )
+            )
             sf.addRow("Min Entry Price:", self._min_entry_px)
 
             # v3.15.52 — Trading fee tier (Coinbase). Operator
@@ -3911,16 +4252,19 @@ if _HAS_QT:
             self._trading_fee.setDecimals(2)
             self._trading_fee.setSingleStep(0.05)
             self._trading_fee.setValue(
-                float(getattr(cfg, "trading_fee_pct", 0.6) or 0.6))
+                float(getattr(cfg, "trading_fee_pct", 0.6) or 0.6)
+            )
             self._trading_fee.setToolTip(
                 "Coinbase trading fee tier (per side). The opposite-"
                 "direction hysteresis safety adds this to the scrum "
                 "interval — bot will not flip BUY↔SELL until price "
                 "moves ≥ (interval + fee)% in the opposing direction. "
                 "0.6% = Coinbase Advanced Trade max-tier default. "
-                "Lower this if you're on a discounted tier.")
+                "Lower this if you're on a discounted tier."
+            )
             self._trading_fee.valueChanged.connect(
-                lambda v: self._mark_changed("trading_fee_pct", float(v)))
+                lambda v: self._mark_changed("trading_fee_pct", float(v))
+            )
             sf.addRow("Trading Fee %:", self._trading_fee)
 
             # MEM-252 — Max Target Growth % feature-parity with wizard.
@@ -3932,7 +4276,8 @@ if _HAS_QT:
             self._max_target_growth.setDecimals(2)
             self._max_target_growth.setSingleStep(0.25)
             self._max_target_growth.setValue(
-                float(getattr(cfg, "max_target_growth_pct", 1.0)))
+                float(getattr(cfg, "max_target_growth_pct", 1.0))
+            )
             self._max_target_growth.setToolTip(
                 "Per-event cap on how much a fold surplus may grow Target Balance.\n"
                 "Absolute ceiling = Target × (1 + this%/100). Default 1%.\n"
@@ -3940,26 +4285,28 @@ if _HAS_QT:
                 "Set to 0% to freeze Target Balance entirely (no growth at all)."
             )
             self._max_target_growth.valueChanged.connect(
-                lambda v: self._mark_changed("max_target_growth_pct", v))
+                lambda v: self._mark_changed("max_target_growth_pct", v)
+            )
             sf.addRow("Max Target Growth %:", self._max_target_growth)
 
             # v3.23.34 — wizard-parity add: profit_folding_active.
             # The ONLY consumer that grows the effective target via
             # fold surplus (routes through _apply_fold_target_growth,
             # v3.23.30 Option B). Off = target frozen at anchor.
-            self._profit_folding_active = QCheckBox(
-                "Profit Folding Active")
-            self._profit_folding_active.setChecked(bool(getattr(
-                cfg, "profit_folding_active", True)))
+            self._profit_folding_active = QCheckBox("Profit Folding Active")
+            self._profit_folding_active.setChecked(
+                bool(getattr(cfg, "profit_folding_active", True))
+            )
             self._profit_folding_active.setToolTip(
                 "When ON, fold surplus grows the effective target "
                 "balance via the compounding drain (subject to Max "
                 "Target Growth % cap). OFF freezes target at anchor "
                 "regardless of fold profit. Wizard parity: matches "
-                "the dedicated Profit Folding page at bot creation.")
+                "the dedicated Profit Folding page at bot creation."
+            )
             self._profit_folding_active.toggled.connect(
-                lambda v: self._mark_changed(
-                    "profit_folding_active", v))
+                lambda v: self._mark_changed("profit_folding_active", v)
+            )
             sf.addRow(self._profit_folding_active)
 
             layout.addWidget(scrum_group)
@@ -3983,9 +4330,11 @@ if _HAS_QT:
                 "occur below the Upper BB Detection Threshold; FOLD "
                 "cannot occur above the Lower BB Detection Threshold. "
                 "75% → upper gate at bb_pos≥0.875, lower gate at "
-                "bb_pos≤0.125. Live-editable.")
+                "bb_pos≤0.125. Live-editable."
+            )
             self._detect_pct.valueChanged.connect(
-                lambda v: self._mark_changed("scrum_detect_pct", v))
+                lambda v: self._mark_changed("scrum_detect_pct", v)
+            )
             af.addRow("Detect Threshold:", self._detect_pct)
 
             self._fire_pct = QDoubleSpinBox()
@@ -3994,18 +4343,22 @@ if _HAS_QT:
             self._fire_pct.setSuffix(" %")
             self._fire_pct.setValue(float(cfg.scrum_fire_pct))
             self._fire_pct.setToolTip(
-                "FIRE threshold: % distance from BB band to trigger trade.")
+                "FIRE threshold: % distance from BB band to trigger trade."
+            )
             self._fire_pct.valueChanged.connect(
-                lambda v: self._mark_changed("scrum_fire_pct", v))
+                lambda v: self._mark_changed("scrum_fire_pct", v)
+            )
             af.addRow("Fire Threshold:", self._fire_pct)
 
             self._midline_gate = QCheckBox("BB Midline Gate")
             self._midline_gate.setChecked(bool(cfg.bb_midline_gate))
             self._midline_gate.setToolTip(
                 "When enabled: scrums ONLY fire above BB midline,\n"
-                "folds ONLY fire below midline (sell-high/buy-low).")
+                "folds ONLY fire below midline (sell-high/buy-low)."
+            )
             self._midline_gate.toggled.connect(
-                lambda v: self._mark_changed("bb_midline_gate", v))
+                lambda v: self._mark_changed("bb_midline_gate", v)
+            )
             af.addRow(self._midline_gate)
 
             self._read_rate = QSpinBox()
@@ -4013,9 +4366,11 @@ if _HAS_QT:
             self._read_rate.setSuffix(" min")
             self._read_rate.setValue(int(cfg.scrum_read_rate_min))
             self._read_rate.setToolTip(
-                "SEARCH-mode read rate in minutes. TRACK mode reads 10x faster.")
+                "SEARCH-mode read rate in minutes. TRACK mode reads 10x faster."
+            )
             self._read_rate.valueChanged.connect(
-                lambda v: self._mark_changed("scrum_read_rate_min", v))
+                lambda v: self._mark_changed("scrum_read_rate_min", v)
+            )
             af.addRow("Read Rate:", self._read_rate)
 
             self._band_travel = QSpinBox()
@@ -4024,9 +4379,11 @@ if _HAS_QT:
             self._band_travel.setValue(int(cfg.band_travel_pct))
             self._band_travel.setToolTip(
                 "Secondary harvest trigger: % of BB band width price must "
-                "travel since last fold. 0 disables.")
+                "travel since last fold. 0 disables."
+            )
             self._band_travel.valueChanged.connect(
-                lambda v: self._mark_changed("band_travel_pct", v))
+                lambda v: self._mark_changed("band_travel_pct", v)
+            )
             af.addRow("Band Travel:", self._band_travel)
 
             self._bullseye = QCheckBox("BB Bullseye Check")
@@ -4035,24 +4392,27 @@ if _HAS_QT:
                 "Rapid Fire override when price touches BB band within 0.5% "
                 "(or the candle wick reaches within 0.2%).\n"
                 "When triggered, bypasses the fire threshold — bullseye "
-                "alone can arm a fire, subject to midline gate.")
+                "alone can arm a fire, subject to midline gate."
+            )
             self._bullseye.toggled.connect(
-                lambda v: self._mark_changed("bb_bullseye_check", v))
+                lambda v: self._mark_changed("bb_bullseye_check", v)
+            )
             af.addRow(self._bullseye)
 
             # MEM-234 — Scrum Fold Ratio (wizard parity).
             self._scrum_fold_pct = QSpinBox()
             self._scrum_fold_pct.setRange(1, 100)
             self._scrum_fold_pct.setSuffix(" %")
-            self._scrum_fold_pct.setValue(int(
-                getattr(cfg, "scrum_fold_pct", 100)))
+            self._scrum_fold_pct.setValue(int(getattr(cfg, "scrum_fold_pct", 100)))
             self._scrum_fold_pct.setToolTip(
                 "% of scrum sale proceeds queued for fold (rebuy).\n"
                 "100% = full reentry (max accumulation, max risk).\n"
                 "Lower values preserve cash buffer — safer when\n"
-                "price keeps falling after the scrum.")
+                "price keeps falling after the scrum."
+            )
             self._scrum_fold_pct.valueChanged.connect(
-                lambda v: self._mark_changed("scrum_fold_pct", v))
+                lambda v: self._mark_changed("scrum_fold_pct", v)
+            )
             af.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
 
             # Item 9 (2026-08-13) — Tranche Despawn Timer. Delists aged
@@ -4073,12 +4433,12 @@ if _HAS_QT:
             # setValue BEFORE valueChanged is connected, so seeding the
             # control does not register as an operator edit.
             from ..trading.bot_container import despawn_threshold_days
+
             self._tranche_despawn_days = QSpinBox()
             self._tranche_despawn_days.setRange(0, 365)
             self._tranche_despawn_days.setSuffix(" days")
             self._tranche_despawn_days.setSpecialValueText("Off")
-            self._tranche_despawn_days.setValue(
-                despawn_threshold_days(cfg))
+            self._tranche_despawn_days.setValue(despawn_threshold_days(cfg))
             self._tranche_despawn_days.setToolTip(
                 "Delist any tranche this old from the tracker — both\n"
                 "fold tranches and stack tranches, from this one\n"
@@ -4095,27 +4455,30 @@ if _HAS_QT:
                 "A tranche is delisted at exactly this age or older. A\n"
                 "tranche with no timestamp is NEVER delisted, and a\n"
                 "stack tranche holding a resting exchange order is kept\n"
-                "until that order settles.")
+                "until that order settles."
+            )
             self._tranche_despawn_days.valueChanged.connect(
-                lambda v: self._mark_changed("tranche_despawn_days", v))
-            af.addRow("Tranche Despawn Timer:",
-                      self._tranche_despawn_days)
+                lambda v: self._mark_changed("tranche_despawn_days", v)
+            )
+            af.addRow("Tranche Despawn Timer:", self._tranche_despawn_days)
 
             # v3.23.34 — wizard-parity add: wire_inflow_stack_pct.
             self._wire_inflow_stack_pct = QDoubleSpinBox()
             self._wire_inflow_stack_pct.setRange(0.0, 100.0)
             self._wire_inflow_stack_pct.setDecimals(2)
             self._wire_inflow_stack_pct.setSuffix(" %")
-            self._wire_inflow_stack_pct.setValue(float(getattr(
-                cfg, "wire_inflow_stack_pct", 1.0)))
+            self._wire_inflow_stack_pct.setValue(
+                float(getattr(cfg, "wire_inflow_stack_pct", 1.0))
+            )
             self._wire_inflow_stack_pct.setToolTip(
                 "Wire inflow stacking percentage. Controls how "
                 "aggressively the bot stacks new buy-side positions "
                 "when fresh wire-inflow signals arrive. Default 1.0%; "
-                "rarely adjusted in practice.")
+                "rarely adjusted in practice."
+            )
             self._wire_inflow_stack_pct.valueChanged.connect(
-                lambda v: self._mark_changed(
-                    "wire_inflow_stack_pct", float(v)))
+                lambda v: self._mark_changed("wire_inflow_stack_pct", float(v))
+            )
             af.addRow("Wire Inflow Stack:", self._wire_inflow_stack_pct)
 
             layout.addWidget(adv_group)
@@ -4129,9 +4492,11 @@ if _HAS_QT:
             self._hedge_active.setChecked(bool(cfg.hedge_rebalance_active))
             self._hedge_active.setToolTip(
                 "Separate USD reserve for buying on sharp drawdowns.\n"
-                "NOT taken from Target Balance.")
+                "NOT taken from Target Balance."
+            )
             self._hedge_active.toggled.connect(
-                lambda v: self._mark_changed("hedge_rebalance_active", v))
+                lambda v: self._mark_changed("hedge_rebalance_active", v)
+            )
             hf.addRow(self._hedge_active)
 
             self._hedge_balance = QDoubleSpinBox()
@@ -4141,9 +4506,11 @@ if _HAS_QT:
             self._hedge_balance.setValue(float(cfg.hedge_balance))
             self._hedge_balance.setToolTip(
                 "USD reserve amount for hedge rebalancing (separate from "
-                "Target Balance).")
+                "Target Balance)."
+            )
             self._hedge_balance.valueChanged.connect(
-                lambda v: self._mark_changed("hedge_balance", v))
+                lambda v: self._mark_changed("hedge_balance", v)
+            )
             hf.addRow("Hedge Balance:", self._hedge_balance)
 
             layout.addWidget(hedge_group)
@@ -4157,44 +4524,50 @@ if _HAS_QT:
             self._cb_soft_pct.setRange(0.0, 100.0)
             self._cb_soft_pct.setDecimals(1)
             self._cb_soft_pct.setSuffix(" %")
-            self._cb_soft_pct.setValue(float(getattr(
-                cfg, "circuit_breaker_soft_pct", 25.0)))
+            self._cb_soft_pct.setValue(
+                float(getattr(cfg, "circuit_breaker_soft_pct", 25.0))
+            )
             self._cb_soft_pct.setToolTip(
                 "SOFT Circuit Breaker threshold. Single-candle move ≥ "
                 "this % interrupts the side of the market that just "
                 "moved (UP→SCRUM, DOWN→FOLD). Re-opens after cooldown "
-                "candles. Default 25%. Set 0 to disable.")
+                "candles. Default 25%. Set 0 to disable."
+            )
             self._cb_soft_pct.valueChanged.connect(
-                lambda v: self._mark_changed(
-                    "circuit_breaker_soft_pct", float(v)))
+                lambda v: self._mark_changed("circuit_breaker_soft_pct", float(v))
+            )
             cf.addRow("Soft CB Threshold:", self._cb_soft_pct)
 
             self._cb_hard_pct = QDoubleSpinBox()
             self._cb_hard_pct.setRange(0.0, 100.0)
             self._cb_hard_pct.setDecimals(1)
             self._cb_hard_pct.setSuffix(" %")
-            self._cb_hard_pct.setValue(float(getattr(
-                cfg, "circuit_breaker_hard_pct", 35.0)))
+            self._cb_hard_pct.setValue(
+                float(getattr(cfg, "circuit_breaker_hard_pct", 35.0))
+            )
             self._cb_hard_pct.setToolTip(
                 "HARD Circuit Breaker threshold. Single-candle move ≥ "
                 "this % PAUSES the bot. Operator reset required to "
                 "resume. Persists across restart. Default 35%. Set 0 "
-                "to disable.")
+                "to disable."
+            )
             self._cb_hard_pct.valueChanged.connect(
-                lambda v: self._mark_changed(
-                    "circuit_breaker_hard_pct", float(v)))
+                lambda v: self._mark_changed("circuit_breaker_hard_pct", float(v))
+            )
             cf.addRow("Hard CB Threshold:", self._cb_hard_pct)
 
             self._cb_cooldown = QSpinBox()
             self._cb_cooldown.setRange(1, 100)
-            self._cb_cooldown.setValue(int(getattr(
-                cfg, "circuit_breaker_cooldown_candles", 3)))
+            self._cb_cooldown.setValue(
+                int(getattr(cfg, "circuit_breaker_cooldown_candles", 3))
+            )
             self._cb_cooldown.setToolTip(
                 "Number of candles the soft breaker stays active "
-                "before re-opening. Default 3.")
+                "before re-opening. Default 3."
+            )
             self._cb_cooldown.valueChanged.connect(
-                lambda v: self._mark_changed(
-                    "circuit_breaker_cooldown_candles", int(v)))
+                lambda v: self._mark_changed("circuit_breaker_cooldown_candles", int(v))
+            )
             cf.addRow("Soft CB Cooldown:", self._cb_cooldown)
 
             # v3.15.63 — Maximum Cartridge Size
@@ -4202,51 +4575,58 @@ if _HAS_QT:
             self._max_cartridge_pct.setRange(0.0, 200.0)
             self._max_cartridge_pct.setDecimals(1)
             self._max_cartridge_pct.setSuffix(" %")
-            self._max_cartridge_pct.setValue(float(getattr(
-                cfg, "max_cartridge_size_pct", 10.0)))
+            self._max_cartridge_pct.setValue(
+                float(getattr(cfg, "max_cartridge_size_pct", 10.0))
+            )
             self._max_cartridge_pct.setToolTip(
                 "Maximum |Target Delta| as % of Target Balance. "
                 "When the position drifts beyond this %, the bot "
                 "fires an immediate aggressive rebalance "
                 "(bypasses BB Detection / hysteresis / soft CB / "
                 "higher-TF bias). Default 10%. Set 0 to disable. "
-                "v3.15.63.")
+                "v3.15.63."
+            )
             self._max_cartridge_pct.valueChanged.connect(
-                lambda v: self._mark_changed(
-                    "max_cartridge_size_pct", float(v)))
+                lambda v: self._mark_changed("max_cartridge_size_pct", float(v))
+            )
             cf.addRow("Max Cartridge Size:", self._max_cartridge_pct)
 
             # v3.15.92 — Smart Cartridge calibration
-            self._cartridge_smart_chk = QCheckBox(
-                "Calibrate to BB range")
-            self._cartridge_smart_chk.setChecked(bool(getattr(
-                cfg, "max_cartridge_smart", False)))
+            self._cartridge_smart_chk = QCheckBox("Calibrate to BB range")
+            self._cartridge_smart_chk.setChecked(
+                bool(getattr(cfg, "max_cartridge_smart", False))
+            )
             self._cartridge_smart_chk.setToolTip(
                 "When ON, Cartridge size is derived from current BB "
                 "range rather than the static % above. Hard floor at "
                 "the Opposing Trade Interval (cartridge cannot fire "
                 "below the interval). Soft ceiling configured below. "
-                "Default OFF preserves static behavior. v3.15.92.")
+                "Default OFF preserves static behavior. v3.15.92."
+            )
             self._cartridge_smart_chk.toggled.connect(
-                lambda checked: self._mark_changed(
-                    "max_cartridge_smart", bool(checked)))
+                lambda checked: self._mark_changed("max_cartridge_smart", bool(checked))
+            )
             cf.addRow("Smart Cartridge:", self._cartridge_smart_chk)
 
             self._cartridge_smart_ceiling = QDoubleSpinBox()
             self._cartridge_smart_ceiling.setRange(1.0, 100.0)
             self._cartridge_smart_ceiling.setDecimals(1)
             self._cartridge_smart_ceiling.setSuffix(" %")
-            self._cartridge_smart_ceiling.setValue(float(getattr(
-                cfg, "max_cartridge_smart_ceiling_pct", 30.0)))
+            self._cartridge_smart_ceiling.setValue(
+                float(getattr(cfg, "max_cartridge_smart_ceiling_pct", 30.0))
+            )
             self._cartridge_smart_ceiling.setToolTip(
                 "Maximum effective cartridge threshold under Smart "
                 "calibration. Prevents cartridge from being "
                 "effectively disabled during volatility expansion. "
                 "Only applies when Smart Cartridge is ON. "
-                "Default 30%. v3.15.92.")
+                "Default 30%. v3.15.92."
+            )
             self._cartridge_smart_ceiling.valueChanged.connect(
                 lambda v: self._mark_changed(
-                    "max_cartridge_smart_ceiling_pct", float(v)))
+                    "max_cartridge_smart_ceiling_pct", float(v)
+                )
+            )
             cf.addRow("Smart Ceiling:", self._cartridge_smart_ceiling)
 
             # Operator-initiated reset button.
@@ -4260,25 +4640,30 @@ if _HAS_QT:
             self._cb_reset_all_btn.setToolTip(
                 "Operator override: clears any active soft and hard "
                 "circuit breakers. Hard reset also resumes the bot if "
-                "it is PAUSED.")
+                "it is PAUSED."
+            )
+
             def _on_cb_reset_all():
                 orig = self._cb_reset_all_btn.text()
                 status = "Reset failed"
                 if hasattr(self._bot, "reset_circuit_breaker"):
                     try:
                         result = self._bot.reset_circuit_breaker("all")
-                        applied = (result.get("applied", [])
-                                   if isinstance(result, dict) else [])
-                        status = ("Reset applied"
-                                  if applied else "Nothing to reset")
-                    except Exception as _reset_exc:  # noqa: BLE001 - status-flash best-effort
-                        logger.debug(
-                            "reset_circuit_breaker raised: %s",
-                            _reset_exc)
+                        applied = (
+                            result.get("applied", [])
+                            if isinstance(result, dict)
+                            else []
+                        )
+                        status = "Reset applied" if applied else "Nothing to reset"
+                    except (
+                        Exception
+                    ) as _reset_exc:  # noqa: BLE001 - status-flash best-effort
+                        logger.debug("reset_circuit_breaker raised: %s", _reset_exc)
                 self._cb_reset_all_btn.setText(status)
                 from PySide6.QtCore import QTimer as _QTimer
-                _QTimer.singleShot(
-                    2000, lambda: self._cb_reset_all_btn.setText(orig))
+
+                _QTimer.singleShot(2000, lambda: self._cb_reset_all_btn.setText(orig))
+
             self._cb_reset_all_btn.clicked.connect(_on_cb_reset_all)
             reset_row.addWidget(self._cb_reset_all_btn)
             cf.addRow(reset_row)
@@ -4305,12 +4690,12 @@ if _HAS_QT:
                 "entire holdings of this bot's target asset and "
                 "PAUSES the bot. State (lots, fold tranches) is "
                 "cleared. Auto gates bypassed (operator override).\n\n"
-                "Confirmation required.")
+                "Confirmation required."
+            )
             sd_hint.setWordWrap(True)
             sd_hint.setStyleSheet("color:#aaa;font-size:10px;")
             sdv.addWidget(sd_hint)
-            self._self_destruct_btn = QPushButton(
-                "💥  SELF-DESTRUCT  💥")
+            self._self_destruct_btn = QPushButton("💥  SELF-DESTRUCT  💥")
             self._self_destruct_btn.setStyleSheet(
                 "QPushButton{background:#440011;color:#ff3366;"
                 "border:2px solid #ff3366;border-radius:4px;"
@@ -4318,10 +4703,9 @@ if _HAS_QT:
                 "QPushButton:hover{background:#660022;color:#ffffff;}"
             )
             self._self_destruct_btn.setToolTip(
-                "Aggressively exit the entire position. "
-                "Confirmation required.")
-            self._self_destruct_btn.clicked.connect(
-                self._on_self_destruct_clicked)
+                "Aggressively exit the entire position. " "Confirmation required."
+            )
+            self._self_destruct_btn.clicked.connect(self._on_self_destruct_clicked)
             sdv.addWidget(self._self_destruct_btn)
             layout.addWidget(sd_group)
 
@@ -4334,20 +4718,21 @@ if _HAS_QT:
             rf = QFormLayout(risk_group)
             self._configure_form(rf)
 
-            self._ceiling_enabled = QCheckBox(
-                "Enable Position Ceiling")
+            self._ceiling_enabled = QCheckBox("Enable Position Ceiling")
             self._ceiling_enabled.setChecked(
-                bool(getattr(cfg, "position_ceiling_enabled", False)))
+                bool(getattr(cfg, "position_ceiling_enabled", False))
+            )
             self._ceiling_enabled.setToolTip(
                 "Cap accumulation at Nx of the bot's INITIAL "
                 "target_balance (stable anchor set at creation).\n"
                 "Fold rate tapers 100% → 10% as value approaches "
                 "ceiling (ratio 0.5 → 1.0), hard-stops at ceiling.\n"
                 "Scrum always allowed. Protects against runaway "
-                "accumulation on conviction plays.")
+                "accumulation on conviction plays."
+            )
             self._ceiling_enabled.toggled.connect(
-                lambda v: self._mark_changed(
-                    "position_ceiling_enabled", v))
+                lambda v: self._mark_changed("position_ceiling_enabled", v)
+            )
             rf.addRow(self._ceiling_enabled)
 
             self._ceiling_mult = QDoubleSpinBox()
@@ -4355,20 +4740,24 @@ if _HAS_QT:
             self._ceiling_mult.setDecimals(1)
             self._ceiling_mult.setSingleStep(0.5)
             self._ceiling_mult.setSuffix("x anchor")
-            self._ceiling_mult.setValue(float(
-                getattr(cfg, "position_ceiling_multiple", 5.0)))
+            self._ceiling_mult.setValue(
+                float(getattr(cfg, "position_ceiling_multiple", 5.0))
+            )
             self._ceiling_mult.setToolTip(
                 "Ceiling multiplier. 1x = no accumulation beyond "
-                "anchor. 10x = 10x runway. Default 5x.")
+                "anchor. 10x = 10x runway. Default 5x."
+            )
             self._ceiling_mult.valueChanged.connect(
-                lambda v: self._mark_changed(
-                    "position_ceiling_multiple", v))
+                lambda v: self._mark_changed("position_ceiling_multiple", v)
+            )
             rf.addRow("Ceiling Multiple:", self._ceiling_mult)
 
             self._deto_enabled = QCheckBox(
-                "Enable Detonation (auto-harvest on bullish TF)")
+                "Enable Detonation (auto-harvest on bullish TF)"
+            )
             self._deto_enabled.setChecked(
-                bool(getattr(cfg, "detonation_enabled", False)))
+                bool(getattr(cfg, "detonation_enabled", False))
+            )
             self._deto_enabled.setToolTip(
                 "Monitor a higher TF for BULLISH + high-confidence "
                 "signal. Edge-triggered: fires ONCE per transition "
@@ -4379,9 +4768,11 @@ if _HAS_QT:
                 "Rate-limited to 1 check/hour.\n"
                 "Additional gate: fires only when current value is "
                 "above the anchor — no harvest if the bot is below "
-                "its initial anchor.")
+                "its initial anchor."
+            )
             self._deto_enabled.toggled.connect(
-                lambda v: self._mark_changed("detonation_enabled", v))
+                lambda v: self._mark_changed("detonation_enabled", v)
+            )
             rf.addRow(self._deto_enabled)
 
             self._deto_tf = QComboBox()
@@ -4393,23 +4784,27 @@ if _HAS_QT:
             self._deto_tf.setToolTip(
                 "Timeframe to monitor for bullish detonation signal. "
                 "1D = daily, 1W = weekly. Higher = stronger conviction, "
-                "fewer triggers.")
+                "fewer triggers."
+            )
             self._deto_tf.currentTextChanged.connect(
-                lambda v: self._mark_changed("detonation_timeframe", v))
+                lambda v: self._mark_changed("detonation_timeframe", v)
+            )
             rf.addRow("Detonation TF:", self._deto_tf)
 
             self._deto_conf = QDoubleSpinBox()
             self._deto_conf.setRange(0.50, 1.00)
             self._deto_conf.setDecimals(2)
             self._deto_conf.setSingleStep(0.05)
-            self._deto_conf.setValue(float(
-                getattr(cfg, "detonation_confidence_min", 0.75)))
+            self._deto_conf.setValue(
+                float(getattr(cfg, "detonation_confidence_min", 0.75))
+            )
             self._deto_conf.setToolTip(
                 "Minimum TA consensus confidence for detonation. "
-                "Default 0.75 (high conviction only, per MEM-244).")
+                "Default 0.75 (high conviction only, per MEM-244)."
+            )
             self._deto_conf.valueChanged.connect(
-                lambda v: self._mark_changed(
-                    "detonation_confidence_min", v))
+                lambda v: self._mark_changed("detonation_confidence_min", v)
+            )
             rf.addRow("Min Confidence:", self._deto_conf)
 
             layout.addWidget(risk_group)
@@ -4423,72 +4818,77 @@ if _HAS_QT:
             gf = QFormLayout(gates_group)
             self._configure_form(gf)
 
-            self._gate_scrum_ta = QCheckBox(
-                "SCRUM requires bullish TA")
-            self._gate_scrum_ta.setChecked(bool(getattr(
-                cfg, "scrum_require_ta_bullish", True)))
+            self._gate_scrum_ta = QCheckBox("SCRUM requires bullish TA")
+            self._gate_scrum_ta.setChecked(
+                bool(getattr(cfg, "scrum_require_ta_bullish", True))
+            )
             self._gate_scrum_ta.setToolTip(
                 "ON (Conservative): scrum auto-fire requires TA "
                 "consensus BULLISH. Protects against scrumming "
                 "false tops. OFF (Lean): scrum fires at BB-upper + "
-                "delta regardless of TA.")
+                "delta regardless of TA."
+            )
             self._gate_scrum_ta.toggled.connect(
-                lambda v: self._mark_changed(
-                    "scrum_require_ta_bullish", v))
+                lambda v: self._mark_changed("scrum_require_ta_bullish", v)
+            )
             gf.addRow(self._gate_scrum_ta)
 
-            self._gate_scrum_uptrend = QCheckBox(
-                "SCRUM holds in sustained uptrend")
-            self._gate_scrum_uptrend.setChecked(bool(getattr(
-                cfg, "scrum_hold_in_uptrend", True)))
+            self._gate_scrum_uptrend = QCheckBox("SCRUM holds in sustained uptrend")
+            self._gate_scrum_uptrend.setChecked(
+                bool(getattr(cfg, "scrum_hold_in_uptrend", True))
+            )
             self._gate_scrum_uptrend.setToolTip(
                 "ON (Conservative): if 65 %+ of last 20 candles "
                 "were bullish, bot holds rather than scrumming "
                 "each band touch. OFF (Lean): scrum every "
-                "BB-upper touch regardless of trend strength.")
+                "BB-upper touch regardless of trend strength."
+            )
             self._gate_scrum_uptrend.toggled.connect(
-                lambda v: self._mark_changed(
-                    "scrum_hold_in_uptrend", v))
+                lambda v: self._mark_changed("scrum_hold_in_uptrend", v)
+            )
             gf.addRow(self._gate_scrum_uptrend)
 
-            self._gate_scrum_htf = QCheckBox(
-                "SCRUM defers to higher-TF bullish")
-            self._gate_scrum_htf.setChecked(bool(getattr(
-                cfg, "scrum_defer_to_htf", True)))
+            self._gate_scrum_htf = QCheckBox("SCRUM defers to higher-TF bullish")
+            self._gate_scrum_htf.setChecked(
+                bool(getattr(cfg, "scrum_defer_to_htf", True))
+            )
             self._gate_scrum_htf.setToolTip(
                 "ON (Conservative): refuse scrum when a higher-TF "
                 "phantom signals BULLISH. OFF (Lean): cartridge "
                 "captures HTF swings organically; this gate is "
-                "redundant if Smart Cartridge is ON.")
+                "redundant if Smart Cartridge is ON."
+            )
             self._gate_scrum_htf.toggled.connect(
-                lambda v: self._mark_changed(
-                    "scrum_defer_to_htf", v))
+                lambda v: self._mark_changed("scrum_defer_to_htf", v)
+            )
             gf.addRow(self._gate_scrum_htf)
 
-            self._gate_fold_ta = QCheckBox(
-                "FOLD requires bearish TA")
-            self._gate_fold_ta.setChecked(bool(getattr(
-                cfg, "fold_require_ta_bearish", True)))
+            self._gate_fold_ta = QCheckBox("FOLD requires bearish TA")
+            self._gate_fold_ta.setChecked(
+                bool(getattr(cfg, "fold_require_ta_bearish", True))
+            )
             self._gate_fold_ta.setToolTip(
                 "ON (Conservative): mirror of SCRUM TA gate on "
                 "the fold side. OFF (Lean): fold fires at "
-                "BB-lower + tranche-eligible regardless of TA.")
+                "BB-lower + tranche-eligible regardless of TA."
+            )
             self._gate_fold_ta.toggled.connect(
-                lambda v: self._mark_changed(
-                    "fold_require_ta_bearish", v))
+                lambda v: self._mark_changed("fold_require_ta_bearish", v)
+            )
             gf.addRow(self._gate_fold_ta)
 
-            self._gate_fold_htf = QCheckBox(
-                "FOLD defers to higher-TF bearish")
-            self._gate_fold_htf.setChecked(bool(getattr(
-                cfg, "fold_defer_to_htf", True)))
+            self._gate_fold_htf = QCheckBox("FOLD defers to higher-TF bearish")
+            self._gate_fold_htf.setChecked(
+                bool(getattr(cfg, "fold_defer_to_htf", True))
+            )
             self._gate_fold_htf.setToolTip(
                 "ON (Conservative): mirror of SCRUM HTF gate on "
                 "the fold side. OFF (Lean): fold fires regardless "
-                "of higher-TF bearish bias.")
+                "of higher-TF bearish bias."
+            )
             self._gate_fold_htf.toggled.connect(
-                lambda v: self._mark_changed(
-                    "fold_defer_to_htf", v))
+                lambda v: self._mark_changed("fold_defer_to_htf", v)
+            )
             gf.addRow(self._gate_fold_htf)
 
             layout.addWidget(gates_group)
@@ -4502,14 +4902,10 @@ if _HAS_QT:
             self._configure_form(pr)
 
             self._profit_route = QComboBox()
-            self._profit_route.addItem(
-                "Fold back to target balance", "fold_to_target")
-            self._profit_route.addItem(
-                "Send to spendable", "spendable")
-            self._profit_route.addItem(
-                "Split fold/spendable per %", "split")
-            self._profit_route.addItem(
-                "Route to another bot (cross-bot)", "cross_bot")
+            self._profit_route.addItem("Fold back to target balance", "fold_to_target")
+            self._profit_route.addItem("Send to spendable", "spendable")
+            self._profit_route.addItem("Split fold/spendable per %", "split")
+            self._profit_route.addItem("Route to another bot (cross-bot)", "cross_bot")
             _cur_route = getattr(cfg, "profit_route", "fold_to_target")
             _r_idx = self._profit_route.findData(_cur_route)
             if _r_idx >= 0:
@@ -4519,10 +4915,13 @@ if _HAS_QT:
                 "fold_to_target = increase target balance "
                 "(compound); spendable = mark for withdrawal; "
                 "split = use fold % below; cross_bot = route to "
-                "the target bot ID.")
+                "the target bot ID."
+            )
             self._profit_route.currentIndexChanged.connect(
                 lambda: self._mark_changed(
-                    "profit_route", self._profit_route.currentData()))
+                    "profit_route", self._profit_route.currentData()
+                )
+            )
             pr.addRow("Route:", self._profit_route)
 
             # profit_fold_pct intentionally omitted — schema field
@@ -4532,18 +4931,22 @@ if _HAS_QT:
             # growth_pct upstream.
 
             self._profit_route_bot_id = QLineEdit()
-            self._profit_route_bot_id.setText(str(getattr(
-                cfg, "profit_route_bot_id", "") or ""))
+            self._profit_route_bot_id.setText(
+                str(getattr(cfg, "profit_route_bot_id", "") or "")
+            )
             self._profit_route_bot_id.setPlaceholderText(
-                "leave blank unless route = cross_bot")
+                "leave blank unless route = cross_bot"
+            )
             self._profit_route_bot_id.setToolTip(
                 "Target bot ID for cross-bot profit routing. Only "
                 "consulted when route = cross_bot. Leave blank "
-                "otherwise.")
+                "otherwise."
+            )
             self._profit_route_bot_id.editingFinished.connect(
                 lambda: self._mark_changed(
-                    "profit_route_bot_id",
-                    self._profit_route_bot_id.text().strip()))
+                    "profit_route_bot_id", self._profit_route_bot_id.text().strip()
+                )
+            )
             pr.addRow("Target bot ID:", self._profit_route_bot_id)
 
             layout.addWidget(routing_group)
@@ -4569,14 +4972,17 @@ if _HAS_QT:
                 self._ext_chunk_size.setDecimals(2)
                 self._ext_chunk_size.setPrefix("$")
                 self._ext_chunk_size.setValue(
-                    float(getattr(cfg, "extractor_chunk_size_usd", 100.0)))
+                    float(getattr(cfg, "extractor_chunk_size_usd", 100.0))
+                )
                 self._ext_chunk_size.setToolTip(
                     "USD-equivalent of base currency this bot owns. "
                     "Sized at construction; changing live re-anchors "
                     "the pool's reference USD value (not the held base "
-                    "units — those are exchange-tracked).")
+                    "units — those are exchange-tracked)."
+                )
                 self._ext_chunk_size.valueChanged.connect(
-                    lambda v: self._mark_changed("extractor_chunk_size_usd", v))
+                    lambda v: self._mark_changed("extractor_chunk_size_usd", v)
+                )
                 # v3.20.5 — operator-renamed "Chunk size" → "Pool size".
                 # The internal config field name (`extractor_chunk_size_usd`)
                 # stays — this is a label-only change for the operator's
@@ -4588,38 +4994,45 @@ if _HAS_QT:
                 self._ext_artillery_size.setDecimals(2)
                 self._ext_artillery_size.setPrefix("$")
                 self._ext_artillery_size.setValue(
-                    float(getattr(cfg, "extractor_artillery_size_usd", 5.0)))
+                    float(getattr(cfg, "extractor_artillery_size_usd", 5.0))
+                )
                 self._ext_artillery_size.setToolTip(
                     "USD-equivalent per artillery round. Smaller = more "
-                    "opportunities; larger = bigger per-round impact.")
+                    "opportunities; larger = bigger per-round impact."
+                )
                 self._ext_artillery_size.valueChanged.connect(
-                    lambda v: self._mark_changed(
-                        "extractor_artillery_size_usd", v))
+                    lambda v: self._mark_changed("extractor_artillery_size_usd", v)
+                )
                 ef.addRow("Artillery size (USD):", self._ext_artillery_size)
 
                 self._ext_scan_top_n = QSpinBox()
                 self._ext_scan_top_n.setRange(5, 10)
                 self._ext_scan_top_n.setValue(
-                    int(getattr(cfg, "extractor_scan_top_n", 8)))
+                    int(getattr(cfg, "extractor_scan_top_n", 8))
+                )
                 self._ext_scan_top_n.setToolTip(
                     "Top-N */<base> pairs by 24h volume to keep on the "
                     "auto-scan watch list. Range [5, 10] per design "
-                    "doc §6. Ignored when manual alt-targets are set.")
+                    "doc §6. Ignored when manual alt-targets are set."
+                )
                 self._ext_scan_top_n.valueChanged.connect(
-                    lambda v: self._mark_changed("extractor_scan_top_n", v))
+                    lambda v: self._mark_changed("extractor_scan_top_n", v)
+                )
                 ef.addRow("Auto-scan top-N:", self._ext_scan_top_n)
 
                 self._ext_scan_refresh = QSpinBox()
                 self._ext_scan_refresh.setRange(10, 600)
                 self._ext_scan_refresh.setSuffix(" ticks")
                 self._ext_scan_refresh.setValue(
-                    int(getattr(cfg, "extractor_scan_refresh_candles", 60)))
+                    int(getattr(cfg, "extractor_scan_refresh_candles", 60))
+                )
                 self._ext_scan_refresh.setToolTip(
                     "Ticks between watch-list refreshes. Lower = more "
-                    "responsive; higher = less thrashing.")
+                    "responsive; higher = less thrashing."
+                )
                 self._ext_scan_refresh.valueChanged.connect(
-                    lambda v: self._mark_changed(
-                        "extractor_scan_refresh_candles", v))
+                    lambda v: self._mark_changed("extractor_scan_refresh_candles", v)
+                )
                 ef.addRow("Scan refresh:", self._ext_scan_refresh)
 
                 self._ext_pool_reserve = QDoubleSpinBox()
@@ -4627,13 +5040,15 @@ if _HAS_QT:
                 self._ext_pool_reserve.setDecimals(1)
                 self._ext_pool_reserve.setSuffix(" %")
                 self._ext_pool_reserve.setValue(
-                    float(getattr(cfg, "extractor_pool_reserve_pct", 50.0)))
+                    float(getattr(cfg, "extractor_pool_reserve_pct", 50.0))
+                )
                 self._ext_pool_reserve.setToolTip(
                     "% of chunk reserved as untouchable. New artillery "
-                    "fires only if (chunk_free - artillery_size) >= reserve.")
+                    "fires only if (chunk_free - artillery_size) >= reserve."
+                )
                 self._ext_pool_reserve.valueChanged.connect(
-                    lambda v: self._mark_changed(
-                        "extractor_pool_reserve_pct", v))
+                    lambda v: self._mark_changed("extractor_pool_reserve_pct", v)
+                )
                 ef.addRow("Pool reserve:", self._ext_pool_reserve)
 
                 self._ext_exit_pct = QDoubleSpinBox()
@@ -4641,28 +5056,33 @@ if _HAS_QT:
                 self._ext_exit_pct.setDecimals(1)
                 self._ext_exit_pct.setSuffix(" %")
                 self._ext_exit_pct.setValue(
-                    float(getattr(cfg, "extractor_exit_pct", 100.0)))
+                    float(getattr(cfg, "extractor_exit_pct", 100.0))
+                )
                 self._ext_exit_pct.setToolTip(
                     "% of alt position sold on bullish trigger. "
-                    "100 = full exit; <100 leaves a rider tail.")
+                    "100 = full exit; <100 leaves a rider tail."
+                )
                 self._ext_exit_pct.valueChanged.connect(
-                    lambda v: self._mark_changed("extractor_exit_pct", v))
+                    lambda v: self._mark_changed("extractor_exit_pct", v)
+                )
                 ef.addRow("Exit %:", self._ext_exit_pct)
 
                 self._ext_max_tier = QSpinBox()
                 self._ext_max_tier.setRange(1, 10)
                 self._ext_max_tier.setValue(
-                    int(getattr(cfg, "extractor_max_compounding_tier", 3)))
+                    int(getattr(cfg, "extractor_max_compounding_tier", 3))
+                )
                 self._ext_max_tier.setToolTip(
                     "Compounding tier counter (currently informational — "
                     "logs ROLL_TO_NEXT_TIER vs LOCK_TO_POOL). At this "
                     "version, realized base gain always deposits directly "
                     "to the pool regardless of tier. The gain-as-next-"
                     "artillery-size rolling mechanism is a planned "
-                    "enhancement (see extractor_bot.py:1264-1266).")
+                    "enhancement (see extractor_bot.py:1264-1266)."
+                )
                 self._ext_max_tier.valueChanged.connect(
-                    lambda v: self._mark_changed(
-                        "extractor_max_compounding_tier", v))
+                    lambda v: self._mark_changed("extractor_max_compounding_tier", v)
+                )
                 ef.addRow("Max compounding tier:", self._ext_max_tier)
 
                 self._ext_max_cost_basis = QDoubleSpinBox()
@@ -4670,16 +5090,17 @@ if _HAS_QT:
                 self._ext_max_cost_basis.setDecimals(2)
                 self._ext_max_cost_basis.setSuffix("x")
                 self._ext_max_cost_basis.setValue(
-                    float(getattr(cfg, "extractor_max_cost_basis_multiple", 2.0)))
+                    float(getattr(cfg, "extractor_max_cost_basis_multiple", 2.0))
+                )
                 self._ext_max_cost_basis.setToolTip(
                     "Safety cap: cost basis of any position cannot "
                     "exceed multiplier x original artillery_size. "
-                    "Hard floor against runaway averaging-down.")
+                    "Hard floor against runaway averaging-down."
+                )
                 self._ext_max_cost_basis.valueChanged.connect(
-                    lambda v: self._mark_changed(
-                        "extractor_max_cost_basis_multiple", v))
-                ef.addRow("Max cost-basis multiple:",
-                          self._ext_max_cost_basis)
+                    lambda v: self._mark_changed("extractor_max_cost_basis_multiple", v)
+                )
+                ef.addRow("Max cost-basis multiple:", self._ext_max_cost_basis)
 
                 layout.addWidget(ext_group)
 
@@ -4691,22 +5112,23 @@ if _HAS_QT:
                 af = QVBoxLayout(alts_group)
                 alts = list(getattr(cfg, "extractor_alt_targets", []) or [])
                 if alts:
-                    info_lbl = QLabel(
-                        f"Manual override active — {len(alts)} pair(s):")
+                    info_lbl = QLabel(f"Manual override active — {len(alts)} pair(s):")
                     info_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
                     af.addWidget(info_lbl)
                     alts_lbl = QLabel(", ".join(alts))
                     alts_lbl.setWordWrap(True)
                     alts_lbl.setStyleSheet(
-                        "color: #00ffcc; font-family: monospace; "
-                        "font-size: 11px;")
+                        "color: #00ffcc; font-family: monospace; " "font-size: 11px;"
+                    )
                     af.addWidget(alts_lbl)
                 else:
                     info_lbl = QLabel(
                         "Auto-scan active (empty manual list). Bot "
-                        "rotates top-N by 24h volume each refresh.")
+                        "rotates top-N by 24h volume each refresh."
+                    )
                     info_lbl.setStyleSheet(
-                        "color: #aaa; font-size: 11px; font-style: italic;")
+                        "color: #aaa; font-size: 11px; font-style: italic;"
+                    )
                     af.addWidget(info_lbl)
                 layout.addWidget(alts_group)
 
@@ -4731,6 +5153,7 @@ if _HAS_QT:
             Everything is scrumming-only.
             """
             import time as _time
+
             w = QWidget()
             layout = QVBoxLayout(w)
             layout.setSpacing(8)
@@ -4741,7 +5164,8 @@ if _HAS_QT:
                 "Multi-timeframe shadow bots. Higher TFs override lower TFs.\n"
                 "Enable/disable and TF-set changes apply immediately to "
                 "NEW phantoms. Already-started phantoms keep their "
-                "original configuration until the next bot restart.")
+                "original configuration until the next bot restart."
+            )
             info.setStyleSheet("color: #888; font-size: 11px;")
             info.setWordWrap(True)
             layout.addWidget(info)
@@ -4751,9 +5175,11 @@ if _HAS_QT:
             ef = QVBoxLayout(enable_group)
             self._phantom_enable = QCheckBox("Enable Phantom Balance Bots")
             self._phantom_enable.setChecked(
-                bool(getattr(bot, "_phantoms_enabled", False)))
+                bool(getattr(bot, "_phantoms_enabled", False))
+            )
             self._phantom_enable.toggled.connect(
-                lambda v: self._mark_changed("enable_phantoms", bool(v)))
+                lambda v: self._mark_changed("enable_phantoms", bool(v))
+            )
             ef.addWidget(self._phantom_enable)
             layout.addWidget(enable_group)
 
@@ -4763,7 +5189,8 @@ if _HAS_QT:
             tf_hint = QLabel(
                 "v3.15.61 — TFs not supported by this bot's exchange "
                 "are disabled (greyed). Coinbase: 1m/5m/15m/30m/1h/2h/6h/1d. "
-                "Binance: full set. Others vary.")
+                "Binance: full set. Others vary."
+            )
             tf_hint.setStyleSheet("color: #888; font-size: 10px;")
             tf_hint.setWordWrap(True)
             tf_layout.addWidget(tf_hint)
@@ -4772,22 +5199,49 @@ if _HAS_QT:
             current_tfs = set(getattr(bot, "_phantom_timeframes", []) or [])
             try:
                 from ..exchange.timeframes import available_timeframes
+
                 _ex_id = getattr(bot.config, "exchange_id", None)
                 _ph_allowed = set(available_timeframes(_ex_id))
             except Exception:
-                _ph_allowed = {"1m", "5m", "15m", "30m", "1h", "2h",
-                               "4h", "6h", "12h", "1d", "1w"}
+                _ph_allowed = {
+                    "1m",
+                    "5m",
+                    "15m",
+                    "30m",
+                    "1h",
+                    "2h",
+                    "4h",
+                    "6h",
+                    "12h",
+                    "1d",
+                    "1w",
+                }
             tf_row = QHBoxLayout()
-            for tf in ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"]:
+            for tf in [
+                "1m",
+                "5m",
+                "15m",
+                "30m",
+                "1h",
+                "2h",
+                "4h",
+                "6h",
+                "12h",
+                "1d",
+                "1w",
+            ]:
                 cb = QCheckBox(tf)
                 supported = tf in _ph_allowed
                 cb.setChecked(tf in current_tfs and supported)
                 cb.setEnabled(supported)
                 cb.setToolTip(
-                    f"{tf}: " +
-                    ("supported" if supported
-                     else f"NOT supported by exchange "
-                          f"({getattr(bot.config, 'exchange_id', '?')})")
+                    f"{tf}: "
+                    + (
+                        "supported"
+                        if supported
+                        else f"NOT supported by exchange "
+                        f"({getattr(bot.config, 'exchange_id', '?')})"
+                    )
                 )
                 cb.toggled.connect(self._phantom_tfs_changed)
                 self._phantom_tf_checks[tf] = cb
@@ -4802,28 +5256,24 @@ if _HAS_QT:
             self._phantom_lock = QSpinBox()
             self._phantom_lock.setRange(1, 10)
             coord = getattr(bot, "_coordinator", None)
-            current_lock = int(getattr(coord, "lock_candle_count", 2)
-                               if coord else 2)
+            current_lock = int(getattr(coord, "lock_candle_count", 2) if coord else 2)
             self._phantom_lock.setValue(current_lock)
             self._phantom_lock.setToolTip(
                 "When a higher-TF phantom locks a lower-TF phantom, "
-                "how many candles does the lock persist?")
+                "how many candles does the lock persist?"
+            )
             self._phantom_lock.valueChanged.connect(
-                lambda v: self._mark_changed("lock_candle_count", int(v)))
+                lambda v: self._mark_changed("lock_candle_count", int(v))
+            )
             lf.addRow("Candles to lock:", self._phantom_lock)
             layout.addWidget(lock_group)
 
             # ── Runtime: Coordinator Status ───────────────────────────
-            phantoms_enabled = bool(getattr(
-                bot, "_phantoms_enabled", False))
-            phantoms_started = bool(getattr(
-                bot, "_phantoms_started", False))
-            phantom_tfs = list(getattr(
-                bot, "_phantom_timeframes", []) or [])
-            phantom_locked = bool(getattr(
-                bot, "_phantom_locked", False))
-            phantom_lock_tf = str(getattr(
-                bot, "_phantom_lock_timeframe", "") or "")
+            phantoms_enabled = bool(getattr(bot, "_phantoms_enabled", False))
+            phantoms_started = bool(getattr(bot, "_phantoms_started", False))
+            phantom_tfs = list(getattr(bot, "_phantom_timeframes", []) or [])
+            phantom_locked = bool(getattr(bot, "_phantom_locked", False))
+            phantom_lock_tf = str(getattr(bot, "_phantom_lock_timeframe", "") or "")
 
             summary = QGroupBox("Coordinator Status")
             sf = QFormLayout(summary)
@@ -4831,26 +5281,32 @@ if _HAS_QT:
 
             en_lbl = QLabel("YES" if phantoms_enabled else "NO")
             en_lbl.setStyleSheet(
-                "color: " + ("#00ff88" if phantoms_enabled else "#aaa"))
+                "color: " + ("#00ff88" if phantoms_enabled else "#aaa")
+            )
             sf.addRow("Phantoms enabled:", en_lbl)
 
             started_lbl = QLabel("YES" if phantoms_started else "NO")
             started_lbl.setStyleSheet(
-                "color: " + ("#00ff88" if phantoms_started
-                              else "#ff9900" if phantoms_enabled
-                              else "#aaa"))
+                "color: "
+                + (
+                    "#00ff88"
+                    if phantoms_started
+                    else "#ff9900" if phantoms_enabled else "#aaa"
+                )
+            )
             sf.addRow("Phantoms started:", started_lbl)
 
-            sf.addRow("Configured timeframes:",
-                      QLabel(", ".join(phantom_tfs) if phantom_tfs
-                             else "— (none)"))
+            sf.addRow(
+                "Configured timeframes:",
+                QLabel(", ".join(phantom_tfs) if phantom_tfs else "— (none)"),
+            )
 
             if phantom_locked:
                 lock_lbl = QLabel(
                     f"LOCKED — SCRUM suppressed by {phantom_lock_tf} TF "
-                    f"phantom (downside protection active)")
-                lock_lbl.setStyleSheet(
-                    "color: #ff9900; font-weight: bold;")
+                    f"phantom (downside protection active)"
+                )
+                lock_lbl.setStyleSheet("color: #ff9900; font-weight: bold;")
             else:
                 lock_lbl = QLabel("UNLOCKED — SCRUM allowed")
                 lock_lbl.setStyleSheet("color: #00ff88;")
@@ -4863,23 +5319,30 @@ if _HAS_QT:
             phantoms: list = []
             if phantom_mgr is not None:
                 try:
-                    phantoms = list(
-                        phantom_mgr.get_phantoms(bot_id) or [])
+                    phantoms = list(phantom_mgr.get_phantoms(bot_id) or [])
                 except Exception:  # noqa: BLE001 - defensive probe
                     phantoms = []
 
             if phantoms:
-                ph_group = QGroupBox(
-                    f"Per-Phantom State ({len(phantoms)})")
+                ph_group = QGroupBox(f"Per-Phantom State ({len(phantoms)})")
                 pl = QVBoxLayout(ph_group)
 
                 tbl = QTableWidget()
                 tbl.setColumnCount(7)
-                tbl.setHorizontalHeaderLabels([
-                    "TF", "State", "Target", "Trades", "P&L",
-                    "Bullish/Bearish", "Confidence"])
+                tbl.setHorizontalHeaderLabels(
+                    [
+                        "TF",
+                        "State",
+                        "Target",
+                        "Trades",
+                        "P&L",
+                        "Bullish/Bearish",
+                        "Confidence",
+                    ]
+                )
                 tbl.horizontalHeader().setSectionResizeMode(
-                    QHeaderView.ResizeToContents)
+                    QHeaderView.ResizeToContents
+                )
                 tbl.setRowCount(len(phantoms))
                 tbl.setMaximumHeight(280)
                 tbl.setAlternatingRowColors(True)
@@ -4891,27 +5354,32 @@ if _HAS_QT:
                     except Exception:  # noqa: BLE001 - defensive probe
                         st = {}
 
-                    tbl.setItem(row, 0, QTableWidgetItem(
-                        str(st.get("timeframe", "?"))))
-                    tbl.setItem(row, 1, QTableWidgetItem(
-                        str(st.get("state", "?"))))
-                    tbl.setItem(row, 2, QTableWidgetItem(
-                        f"${float(st.get('target_balance', 0) or 0):,.2f}"))
-                    tbl.setItem(row, 3, QTableWidgetItem(
-                        str(st.get("total_trades", 0))))
+                    tbl.setItem(row, 0, QTableWidgetItem(str(st.get("timeframe", "?"))))
+                    tbl.setItem(row, 1, QTableWidgetItem(str(st.get("state", "?"))))
+                    tbl.setItem(
+                        row,
+                        2,
+                        QTableWidgetItem(
+                            f"${float(st.get('target_balance', 0) or 0):,.2f}"
+                        ),
+                    )
+                    tbl.setItem(
+                        row, 3, QTableWidgetItem(str(st.get("total_trades", 0)))
+                    )
 
                     pnl = float(st.get("realized_pnl_exchange", 0) or 0)
                     pi = QTableWidgetItem(f"${pnl:+,.4f}")
-                    pi.setForeground(QColor(
-                        "#00ff88" if pnl > 0
-                        else "#ff3366" if pnl < 0 else "#aaa"))
+                    pi.setForeground(
+                        QColor(
+                            "#00ff88" if pnl > 0 else "#ff3366" if pnl < 0 else "#aaa"
+                        )
+                    )
                     tbl.setItem(row, 4, pi)
 
                     summary_d = st.get("last_summary", {}) or {}
                     bullish = summary_d.get("bullish", 0)
                     bearish = summary_d.get("bearish", 0)
-                    tbl.setItem(row, 5, QTableWidgetItem(
-                        f"{bullish}/{bearish}"))
+                    tbl.setItem(row, 5, QTableWidgetItem(f"{bullish}/{bearish}"))
 
                     conf = float(summary_d.get("confidence", 0) or 0)
                     ci = QTableWidgetItem(f"{conf:.2%}")
@@ -4929,31 +5397,31 @@ if _HAS_QT:
             active_locks: list = []
             if coordinator is not None:
                 try:
-                    active_locks = list(
-                        coordinator.get_active_locks() or [])
+                    active_locks = list(coordinator.get_active_locks() or [])
                 except Exception:  # noqa: BLE001 - defensive probe
                     active_locks = []
 
             if active_locks:
-                locks_group = QGroupBox(
-                    f"Active Locks ({len(active_locks)})")
+                locks_group = QGroupBox(f"Active Locks ({len(active_locks)})")
                 ll = QVBoxLayout(locks_group)
 
                 lock_tbl = QTableWidget()
                 lock_tbl.setColumnCount(4)
-                lock_tbl.setHorizontalHeaderLabels([
-                    "Source TF", "Source Bot", "Direction",
-                    "Candles left"])
+                lock_tbl.setHorizontalHeaderLabels(
+                    ["Source TF", "Source Bot", "Direction", "Candles left"]
+                )
                 lock_tbl.horizontalHeader().setSectionResizeMode(
-                    QHeaderView.ResizeToContents)
+                    QHeaderView.ResizeToContents
+                )
                 lock_tbl.setRowCount(len(active_locks))
                 lock_tbl.setMaximumHeight(220)
                 lock_tbl.setAlternatingRowColors(True)
                 lock_tbl.setEditTriggers(QTableWidget.NoEditTriggers)
 
                 for row, lk in enumerate(active_locks):
-                    lock_tbl.setItem(row, 0, QTableWidgetItem(
-                        str(lk.get("source_tf", "?"))))
+                    lock_tbl.setItem(
+                        row, 0, QTableWidgetItem(str(lk.get("source_tf", "?")))
+                    )
                     src_bot = str(lk.get("source_bot", "?"))
                     src_item = QTableWidgetItem(src_bot)
                     if src_bot == bot_id:
@@ -4981,21 +5449,23 @@ if _HAS_QT:
                     msg = QLabel(
                         "Phantom Bots are DISABLED on this bot. "
                         "Toggle 'Enable Phantom Balance Bots' above "
-                        "to activate the multi-TF coordinator.")
+                        "to activate the multi-TF coordinator."
+                    )
                 elif not phantoms_started:
                     msg = QLabel(
                         "Phantoms enabled but not yet started. They "
                         "spin up automatically on the first tick after "
                         "bot is running. If this persists, check the "
-                        "Activity Log for phantom-startup errors.")
+                        "Activity Log for phantom-startup errors."
+                    )
                 else:
                     msg = QLabel(
                         "Phantoms active but no per-phantom state "
                         "available yet, and no locks currently held. "
                         "State populates after each phantom completes "
-                        "its first signal cycle.")
-                msg.setStyleSheet("color: #888; font-style: italic; "
-                                  "padding: 10px;")
+                        "its first signal cycle."
+                    )
+                msg.setStyleSheet("color: #888; font-style: italic; " "padding: 10px;")
                 msg.setWordWrap(True)
                 layout.addWidget(msg)
 
@@ -5005,8 +5475,9 @@ if _HAS_QT:
         def _phantom_tfs_changed(self):
             """Called when any phantom TF checkbox toggles. Collect the
             full selected set and mark it as a single config change."""
-            selected = [tf for tf, cb in self._phantom_tf_checks.items()
-                        if cb.isChecked()]
+            selected = [
+                tf for tf, cb in self._phantom_tf_checks.items() if cb.isChecked()
+            ]
             self._mark_changed("phantom_timeframes", selected)
 
         # v3.20.4 — Tab 4 (Adjust Stack) + _create_adjust_stack_tab +

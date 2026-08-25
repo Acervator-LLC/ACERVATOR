@@ -46,6 +46,7 @@ disk stay valid NDJSON because each line is written whole.
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import json
@@ -92,8 +93,8 @@ is itself reported rather than silently truncating."""
 
 def _utc_iso(ts: Optional[float] = None) -> str:
     return datetime.fromtimestamp(
-        ts if ts is not None else time.time(),
-        tz=timezone.utc).isoformat()
+        ts if ts is not None else time.time(), tz=timezone.utc
+    ).isoformat()
 
 
 @dataclass
@@ -104,6 +105,7 @@ class SimRunLog:
     a single asyncio task. If that ever changes, wrap the append
     paths in a lock rather than relying on GIL atomicity.
     """
+
     run_id: str = ""
     root: Path = field(default_factory=_default_sim_log_root)
     flush_every: int = DEFAULT_FLUSH_EVERY
@@ -130,10 +132,12 @@ class SimRunLog:
         self._started_at = time.time()
         if not self.run_id:
             self.run_id = (
-                datetime.fromtimestamp(
-                    self._started_at, tz=timezone.utc
-                ).strftime("%Y%m%dT%H%M%S")
-                + "_" + uuid.uuid4().hex[:6])
+                datetime.fromtimestamp(self._started_at, tz=timezone.utc).strftime(
+                    "%Y%m%dT%H%M%S"
+                )
+                + "_"
+                + uuid.uuid4().hex[:6]
+            )
         self._meta = {
             "schema_version": SCHEMA_VERSION,
             "run_id": self.run_id,
@@ -153,8 +157,8 @@ class SimRunLog:
             self._dir = None
             self._open = False
             logger.warning(
-                "sim run log unavailable (%s) — run will not be "
-                "persisted", exc)
+                "sim run log unavailable (%s) — run will not be " "persisted", exc
+            )
         return self.run_id
 
     def finish_run(self, summary: Optional[dict] = None) -> None:
@@ -164,26 +168,38 @@ class SimRunLog:
         self.flush()
         self._meta["finished_at"] = _utc_iso()
         self._meta["summary"] = dict(summary or {})
-        self._meta["summary"].update({
-            "trades_logged": self._trade_count,
-            "gates_logged": self._gate_count,
-            "row_cap_reached": self._capped,
-            "duration_s": round(time.time() - self._started_at, 3),
-        })
+        self._meta["summary"].update(
+            {
+                "trades_logged": self._trade_count,
+                "gates_logged": self._gate_count,
+                "row_cap_reached": self._capped,
+                "duration_s": round(time.time() - self._started_at, 3),
+            }
+        )
         self._write_meta()
         self._append_index()
         self._open = False
         logger.info(
             "sim run log closed: %s (%d trades, %d gates)",
-            self.run_id, self._trade_count, self._gate_count)
+            self.run_id,
+            self._trade_count,
+            self._gate_count,
+        )
 
     # ── recording ────────────────────────────────────────────────
 
     def record_trade(
-        self, symbol: str, side: str, amount: float, price: float,
-        bot_id: str = "", action: str = "", usd: float = 0.0,
+        self,
+        symbol: str,
+        side: str,
+        amount: float,
+        price: float,
+        bot_id: str = "",
+        action: str = "",
+        usd: float = 0.0,
         sim_ts_ms: Optional[int] = None,
-        candle_address: str = "", extra: Optional[dict] = None,
+        candle_address: str = "",
+        extra: Optional[dict] = None,
     ) -> None:
         """Append one sim fill.
 
@@ -218,7 +234,10 @@ class SimRunLog:
         self._push(self._trade_buf, row, is_trade=True)
 
     def record_gate(
-        self, bot_id: str, symbol: str, gate_state: dict,
+        self,
+        bot_id: str,
+        symbol: str,
+        gate_state: dict,
         sim_ts_ms: Optional[int] = None,
         candle_address: str = "",
     ) -> None:
@@ -238,8 +257,7 @@ class SimRunLog:
                 "symbol": symbol,
                 "scrum_armed": bool(gs.get("scrum_armed", False)),
                 "fold_armed": bool(gs.get("fold_armed", False)),
-                "scrum_blockers": list(
-                    gs.get("scrum_blockers") or []),
+                "scrum_blockers": list(gs.get("scrum_blockers") or []),
                 "fold_blockers": list(gs.get("fold_blockers") or []),
                 "scrum_fixture": gs.get("scrum_fixture"),
                 "fold_fixture": gs.get("fold_fixture"),
@@ -263,14 +281,13 @@ class SimRunLog:
             # writing live decisions into the sim log.
             logger.warning(
                 "sim_run_log: refusing to attach to non-sim bot %s",
-                getattr(bot, "bot_id", "?"))
+                getattr(bot, "bot_id", "?"),
+            )
             return False
         try:
-            bus.subscribe(
-                "bot.gate_decision", self._on_bus_gate)
+            bus.subscribe("bot.gate_decision", self._on_bus_gate)
         except Exception as exc:  # noqa: BLE001 - bus surface
-            logger.debug(
-                "sim_run_log: gate subscribe failed: %s", exc)
+            logger.debug("sim_run_log: gate subscribe failed: %s", exc)
             return False
         return True
 
@@ -279,7 +296,8 @@ class SimRunLog:
         self.record_gate(
             bot_id=str(data.get("bot_id", "") or ""),
             symbol=str(data.get("symbol", "") or ""),
-            gate_state=data)
+            gate_state=data,
+        )
 
     # ── internals ────────────────────────────────────────────────
 
@@ -291,11 +309,12 @@ class SimRunLog:
                 logger.warning(
                     "sim run log hit the %d-row cap; further rows "
                     "are dropped for run %s",
-                    MAX_ROWS_PER_FILE, self.run_id)
+                    MAX_ROWS_PER_FILE,
+                    self.run_id,
+                )
             return
         try:
-            buf.append(json.dumps(row, separators=(",", ":"),
-                                  default=str))
+            buf.append(json.dumps(row, separators=(",", ":"), default=str))
         except (TypeError, ValueError) as exc:
             logger.debug("sim_run_log: unserialisable row: %s", exc)
             return
@@ -312,27 +331,27 @@ class SimRunLog:
             self._trade_buf.clear()
             self._gate_buf.clear()
             return
-        for buf, name in ((self._trade_buf, "trades.log"),
-                          (self._gate_buf, "gates.log")):
+        for buf, name in (
+            (self._trade_buf, "trades.log"),
+            (self._gate_buf, "gates.log"),
+        ):
             if not buf:
                 continue
             try:
-                with (self._dir / name).open(
-                        "a", encoding="utf-8") as f:
+                with (self._dir / name).open("a", encoding="utf-8") as f:
                     f.write("\n".join(buf) + "\n")
                 buf.clear()
             except OSError as exc:
-                logger.warning(
-                    "sim_run_log: flush to %s failed: %s", name, exc)
-                buf.clear()   # drop rather than grow unbounded
+                logger.warning("sim_run_log: flush to %s failed: %s", name, exc)
+                buf.clear()  # drop rather than grow unbounded
 
     def _write_meta(self) -> None:
         if self._dir is None:
             return
         try:
             (self._dir / "meta.json").write_text(
-                json.dumps(self._meta, indent=2, default=str),
-                encoding="utf-8")
+                json.dumps(self._meta, indent=2, default=str), encoding="utf-8"
+            )
         except OSError as exc:
             logger.debug("sim_run_log: meta write failed: %s", exc)
 
@@ -342,29 +361,30 @@ class SimRunLog:
         entries: list = []
         try:
             if idx_path.exists():
-                loaded = json.loads(
-                    idx_path.read_text(encoding="utf-8"))
+                loaded = json.loads(idx_path.read_text(encoding="utf-8"))
                 if isinstance(loaded, list):
                     entries = loaded
         except (OSError, json.JSONDecodeError) as exc:
-            logger.debug(
-                "sim_run_log: index unreadable, recreating: %s", exc)
+            logger.debug("sim_run_log: index unreadable, recreating: %s", exc)
             entries = []
-        entries = [e for e in entries
-                   if isinstance(e, dict)
-                   and e.get("run_id") != self.run_id]
-        entries.insert(0, {
-            "run_id": self.run_id,
-            "started_at": self._meta.get("started_at"),
-            "finished_at": self._meta.get("finished_at"),
-            "trades": self._trade_count,
-            "gates": self._gate_count,
-        })
+        entries = [
+            e for e in entries if isinstance(e, dict) and e.get("run_id") != self.run_id
+        ]
+        entries.insert(
+            0,
+            {
+                "run_id": self.run_id,
+                "started_at": self._meta.get("started_at"),
+                "finished_at": self._meta.get("finished_at"),
+                "trades": self._trade_count,
+                "gates": self._gate_count,
+            },
+        )
         try:
             self.root.mkdir(parents=True, exist_ok=True)
             idx_path.write_text(
-                json.dumps(entries[:500], indent=2, default=str),
-                encoding="utf-8")
+                json.dumps(entries[:500], indent=2, default=str), encoding="utf-8"
+            )
         except OSError as exc:
             logger.debug("sim_run_log: index write failed: %s", exc)
 
@@ -398,18 +418,22 @@ def list_runs(root: Optional[Path] = None) -> list[dict]:
 
 
 def load_run_trades(
-    run_id: str, root: Optional[Path] = None,
+    run_id: str,
+    root: Optional[Path] = None,
 ) -> list[dict]:
     """Read back one run's sim trades as dicts."""
     return _read_ndjson(
-        (root or _default_sim_log_root()) / "runs" / run_id / "trades.log")
+        (root or _default_sim_log_root()) / "runs" / run_id / "trades.log"
+    )
 
 
 def load_run_gates(
-    run_id: str, root: Optional[Path] = None,
+    run_id: str,
+    root: Optional[Path] = None,
 ) -> list[dict]:
     return _read_ndjson(
-        (root or _default_sim_log_root()) / "runs" / run_id / "gates.log")
+        (root or _default_sim_log_root()) / "runs" / run_id / "gates.log"
+    )
 
 
 def _read_ndjson(path: Path) -> list[dict]:

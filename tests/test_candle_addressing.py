@@ -11,6 +11,7 @@ The load-bearing behaviours:
     * addresses sort lexically in chronological order
     * the same index on two tickers is NOT the same moment
 """
+
 from __future__ import annotations
 
 import sys
@@ -38,11 +39,11 @@ _T0 = 1_774_915_200_000  # 2026-04-01T00:00:00Z
 
 
 def _rows(n: int, start: int = _T0) -> list[list[float]]:
-    return [[start + i * _STEP, 100.0, 101.0, 99.0, 100.5, 5.0]
-            for i in range(n)]
+    return [[start + i * _STEP, 100.0, 101.0, 99.0, 100.5, 5.0] for i in range(n)]
 
 
 # ── format / parse ───────────────────────────────────────────────
+
 
 def test_format_zero_pads_to_six():
     assert format_address("BTC", 0) == "000000_BTC"
@@ -78,11 +79,16 @@ def test_parse_rejects_garbage():
 def test_addresses_sort_chronologically():
     addrs = [format_address("BTC", i) for i in (5, 100, 2, 61199, 0)]
     assert sorted(addrs) == [
-        "000000_BTC", "000002_BTC", "000005_BTC",
-        "000100_BTC", "061199_BTC"]
+        "000000_BTC",
+        "000002_BTC",
+        "000005_BTC",
+        "000100_BTC",
+        "061199_BTC",
+    ]
 
 
 # ── ticker extraction ────────────────────────────────────────────
+
 
 def test_ticker_from_pair_and_bare():
     assert ticker_from_symbol("BTC/USD") == "BTC"
@@ -92,6 +98,7 @@ def test_ticker_from_pair_and_bare():
 
 
 # ── index resolution ─────────────────────────────────────────────
+
 
 def test_index_at_exact_open():
     rows = _rows(10)
@@ -132,6 +139,7 @@ def test_empty_rows_is_none():
 
 # ── address_for_ts / ts_for_index ────────────────────────────────
 
+
 def test_address_for_ts_accepts_pair_symbol():
     rows = _rows(10)
     assert address_for_ts("BTC/USD", rows, _T0 + 2 * _STEP) == "000002_BTC"
@@ -153,6 +161,7 @@ def test_ts_for_index_out_of_range():
 
 # ── cross-ticker semantics (documented caveat) ───────────────────
 
+
 def test_same_index_different_tickers_is_different_time():
     """Tablets start at different listing dates, so index equality
     across tickers does NOT imply time equality."""
@@ -162,6 +171,7 @@ def test_same_index_different_tickers_is_different_time():
 
 
 # ── stability ────────────────────────────────────────────────────
+
 
 def test_stability_holds_on_append():
     rows = _rows(10)

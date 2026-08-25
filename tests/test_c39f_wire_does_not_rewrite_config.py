@@ -29,6 +29,7 @@ disable wiring.
 The handler is exercised directly with a stub `self`; constructing a
 whole MainWindow would test Qt, not this decision.
 """
+
 from __future__ import annotations
 
 import sys
@@ -54,13 +55,13 @@ class _Log:
 
 def _call(folding: bool):
     """Drive _on_wire_created against a bot with the given flag."""
-    bot = SimpleNamespace(config=SimpleNamespace(
-        profit_folding_active=folding))
+    bot = SimpleNamespace(config=SimpleNamespace(profit_folding_active=folding))
     mgr = SimpleNamespace(get_bot=lambda _bid: bot)
     log = _Log()
     me = SimpleNamespace(_bot_manager=mgr, _status_log=log)
-    event = SimpleNamespace(data={
-        "source_id": "abcdef1234", "target_id": "target99", "pct": 50})
+    event = SimpleNamespace(
+        data={"source_id": "abcdef1234", "target_id": "target99", "pct": 50}
+    )
     MainWindow._on_wire_created(me, event)
     return bot, log
 
@@ -69,8 +70,9 @@ class TestItDoesNotRewriteConfig:
     def test_folding_OFF_stays_off(self):
         """The whole cascade in one assertion."""
         bot, _log = _call(folding=False)
-        assert bot.config.profit_folding_active is False, \
-            "drawing a wire re-enabled Profit Folding without consent"
+        assert (
+            bot.config.profit_folding_active is False
+        ), "drawing a wire re-enabled Profit Folding without consent"
 
     def test_folding_ON_stays_on(self):
         """Negative control: it must not flip the other way either.
@@ -81,8 +83,7 @@ class TestItDoesNotRewriteConfig:
     def test_the_boot_reemit_path_cannot_flip_it(self):
         """bot_container.py:2404 re-emits wire.created for every stored
         wire on every boot. Ten replays must leave the flag alone."""
-        bot = SimpleNamespace(config=SimpleNamespace(
-            profit_folding_active=False))
+        bot = SimpleNamespace(config=SimpleNamespace(profit_folding_active=False))
         mgr = SimpleNamespace(get_bot=lambda _bid: bot)
         me = SimpleNamespace(_bot_manager=mgr, _status_log=_Log())
         event = SimpleNamespace(data={"source_id": "abc", "pct": 50})
@@ -101,9 +102,10 @@ class TestItStillReportsUsefully:
         level, msg = log.lines[0]
         assert level == "warning"
         assert "OFF" in msg
-        assert "scrum" in msg.lower(), \
-            "must say scrum-time routing is unaffected, or the operator " \
+        assert "scrum" in msg.lower(), (
+            "must say scrum-time routing is unaffected, or the operator "
             "will think the wire is dead"
+        )
 
     def test_folding_on_reports_success(self):
         _bot, log = _call(folding=True)
@@ -118,20 +120,23 @@ class TestTheAssignmentIsGone:
         a restored assignment guarded by some other condition could slip
         past them."""
         import ast
-        src = (REPO_ROOT / "src" / "gui" / "main_window.py").read_text(
-            encoding="utf-8")
+
+        src = (REPO_ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
         tree = ast.parse(src)
-        fn = next(n for n in ast.walk(tree)
-                  if isinstance(n, ast.FunctionDef)
-                  and n.name == "_on_wire_created")
+        fn = next(
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "_on_wire_created"
+        )
         assigns = [
-            n for n in ast.walk(fn)
+            n
+            for n in ast.walk(fn)
             if isinstance(n, ast.Assign)
             for t in n.targets
-            if isinstance(t, ast.Attribute)
-            and t.attr == "profit_folding_active"
+            if isinstance(t, ast.Attribute) and t.attr == "profit_folding_active"
         ]
         assert not assigns, (
             f"_on_wire_created assigns profit_folding_active at line(s) "
             f"{[a.lineno for a in assigns]} — a GUI handler must not "
-            f"rewrite persisted trading config")
+            f"rewrite persisted trading config"
+        )

@@ -50,6 +50,7 @@ class OrderStatus(str, Enum):
 @dataclass
 class Ticker:
     """Current price snapshot for a symbol."""
+
     symbol: str
     bid: float
     ask: float
@@ -61,8 +62,9 @@ class Ticker:
 @dataclass
 class OrderBook:
     """Top-of-book orderbook snapshot."""
+
     symbol: str
-    bids: list[tuple[float, float]]   # [(price, amount), ...]
+    bids: list[tuple[float, float]]  # [(price, amount), ...]
     asks: list[tuple[float, float]]
     timestamp: float
 
@@ -70,6 +72,7 @@ class OrderBook:
 @dataclass
 class Order:
     """Represents a placed or historical order."""
+
     id: str
     symbol: str
     side: OrderSide
@@ -102,12 +105,13 @@ class Trade:
     locally produces avg_entry and realized P/L that match the
     Coinbase Avg Entry / Returns numbers the operator sees.
     """
+
     id: str
-    symbol: str           # e.g., "CHIP/USD"
-    side: OrderSide       # BUY or SELL
-    amount: float         # base asset units
-    price: float          # quote per base
-    fee: float = 0.0      # in fee_currency
+    symbol: str  # e.g., "CHIP/USD"
+    side: OrderSide  # BUY or SELL
+    amount: float  # base asset units
+    price: float  # quote per base
+    fee: float = 0.0  # in fee_currency
     fee_currency: str = ""
     timestamp: float = 0.0  # unix seconds
     raw: dict = field(default_factory=dict)
@@ -124,6 +128,7 @@ class Balance:
     connector-response gaps from the handshake layer. Defense-in-depth
     alongside the MEM-259 VolumeGuard-disable fix for phantom-rebuy.
     """
+
     currency: str
     free: float
     used: float
@@ -134,13 +139,14 @@ class Balance:
 @dataclass
 class AssetInfo:
     """Metadata for a tradeable asset."""
-    symbol: str             # e.g. "BTC/USDT"
-    base: str               # e.g. "BTC"
-    quote: str              # e.g. "USDT"
-    min_amount: float       # Minimum order size
-    min_cost: float         # Minimum order cost (in quote)
-    price_precision: int    # Decimal places for price
-    amount_precision: int   # Decimal places for amount
+
+    symbol: str  # e.g. "BTC/USDT"
+    base: str  # e.g. "BTC"
+    quote: str  # e.g. "USDT"
+    min_amount: float  # Minimum order size
+    min_cost: float  # Minimum order cost (in quote)
+    price_precision: int  # Decimal places for price
+    amount_precision: int  # Decimal places for amount
     maker_fee: float
     taker_fee: float
     active: bool = True
@@ -167,7 +173,9 @@ class ExchangeInterface(ABC):
         """Human-readable name, e.g. ``'Binance'``."""
 
     @abstractmethod
-    async def connect(self, api_key: str, api_secret: str, passphrase: str = "") -> None:
+    async def connect(
+        self, api_key: str, api_secret: str, passphrase: str = ""
+    ) -> None:
         """Authenticate and establish a connection."""
 
     @abstractmethod
@@ -243,9 +251,9 @@ class ExchangeInterface(ABC):
     # v3.16.46 — Trade history fetch for exchange-truth migration.
     # Used by cost-basis derivation (replacing ticker.last seeding) and
     # realized P/L computation (replacing internal accumulators).
-    async def get_my_trades(self, symbol: str,
-                             since: Optional[float] = None,
-                             limit: Optional[int] = None) -> list:
+    async def get_my_trades(
+        self, symbol: str, since: Optional[float] = None, limit: Optional[int] = None
+    ) -> list:
         """Fetch historical trade fills for ``symbol``.
 
         Returns a list of ``Trade`` records ordered chronologically.
@@ -261,7 +269,8 @@ class ExchangeInterface(ABC):
                 None = exchange default (typically 100-500).
         """
         raise NotImplementedError(
-            f"{type(self).__name__} does not implement get_my_trades")
+            f"{type(self).__name__} does not implement get_my_trades"
+        )
 
     # -- Asset discovery ------------------------------------------------
     @abstractmethod

@@ -47,6 +47,7 @@ in the bot's gate chain vs the tablet content.
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import logging
@@ -73,7 +74,7 @@ class ParityMatch:
 class ParityReport:
     matched: list[ParityMatch] = field(default_factory=list)
     live_only: list[dict] = field(default_factory=list)  # unmatched live trades
-    sim_only: list[Any] = field(default_factory=list)    # unmatched sim trades
+    sim_only: list[Any] = field(default_factory=list)  # unmatched sim trades
     tolerance_s: float = DEFAULT_TOLERANCE_S
     window_since_ts: float = 0.0
     window_until_ts: float = 0.0
@@ -96,18 +97,15 @@ class ParityReport:
     def per_symbol_counts(self) -> dict[str, dict]:
         out: dict[str, dict] = {}
         for m in self.matched:
-            d = out.setdefault(
-                m.symbol, {"matched": 0, "live_only": 0, "sim_only": 0})
+            d = out.setdefault(m.symbol, {"matched": 0, "live_only": 0, "sim_only": 0})
             d["matched"] += 1
         for lt in self.live_only:
             sym = str(lt.get("symbol", ""))
-            d = out.setdefault(
-                sym, {"matched": 0, "live_only": 0, "sim_only": 0})
+            d = out.setdefault(sym, {"matched": 0, "live_only": 0, "sim_only": 0})
             d["live_only"] += 1
         for st in self.sim_only:
             sym = str(getattr(st, "symbol", ""))
-            d = out.setdefault(
-                sym, {"matched": 0, "live_only": 0, "sim_only": 0})
+            d = out.setdefault(sym, {"matched": 0, "live_only": 0, "sim_only": 0})
             d["sim_only"] += 1
         return out
 
@@ -144,21 +142,30 @@ def compare_trades(
     report = ParityReport(
         tolerance_s=float(tolerance_s),
         window_since_ts=float(window_since_ts),
-        window_until_ts=float(window_until_ts))
+        window_until_ts=float(window_until_ts),
+    )
     # Filter to window if provided (both bounds > 0)
     if window_since_ts > 0 or window_until_ts > 0:
         live_trades = [
-            t for t in live_trades
-            if (window_since_ts <= 0
-                or float(t.get("timestamp", 0)) >= window_since_ts)
-            and (window_until_ts <= 0
-                 or float(t.get("timestamp", 0)) <= window_until_ts)]
+            t
+            for t in live_trades
+            if (window_since_ts <= 0 or float(t.get("timestamp", 0)) >= window_since_ts)
+            and (
+                window_until_ts <= 0 or float(t.get("timestamp", 0)) <= window_until_ts
+            )
+        ]
         sim_trades = [
-            t for t in sim_trades
-            if (window_since_ts <= 0
-                or float(getattr(t, "timestamp", 0)) >= window_since_ts)
-            and (window_until_ts <= 0
-                 or float(getattr(t, "timestamp", 0)) <= window_until_ts)]
+            t
+            for t in sim_trades
+            if (
+                window_since_ts <= 0
+                or float(getattr(t, "timestamp", 0)) >= window_since_ts
+            )
+            and (
+                window_until_ts <= 0
+                or float(getattr(t, "timestamp", 0)) <= window_until_ts
+            )
+        ]
 
     # Index sim trades by (symbol, side) for cheap lookup + track
     # which sim trades have been consumed.
@@ -191,12 +198,17 @@ def compare_trades(
         if best_i >= 0:
             sim_ts, st = candidates[best_i]
             consumed.add(id(st))
-            report.matched.append(ParityMatch(
-                live_ts=live_ts, sim_ts=sim_ts,
-                symbol=sym, side=side,
-                live_amount=float(lt.get("amount", 0)),
-                sim_amount=float(getattr(st, "amount", 0)),
-                drift_s=sim_ts - live_ts))
+            report.matched.append(
+                ParityMatch(
+                    live_ts=live_ts,
+                    sim_ts=sim_ts,
+                    symbol=sym,
+                    side=side,
+                    live_amount=float(lt.get("amount", 0)),
+                    sim_amount=float(getattr(st, "amount", 0)),
+                    drift_s=sim_ts - live_ts,
+                )
+            )
         else:
             report.live_only.append(lt)
 
@@ -217,36 +229,41 @@ def format_report_lines(report: ParityReport, max_examples: int = 5) -> list[str
     lines.append(
         f"Parity: {len(report.matched):,} matched | "
         f"{len(report.live_only):,} live-only (sim under-triggered) | "
-        f"{len(report.sim_only):,} sim-only (sim over-triggered)")
+        f"{len(report.sim_only):,} sim-only (sim over-triggered)"
+    )
     lines.append(
         f"Match rate: {report.match_rate:.1f}% of live trades "
-        f"(tolerance ±{report.tolerance_s:.0f}s)")
+        f"(tolerance ±{report.tolerance_s:.0f}s)"
+    )
     if report.total_live == 0 and report.total_sim == 0:
         lines.append("(no trades in either set — nothing to compare)")
         return lines
     per_sym = report.per_symbol_counts()
     lines.append(f"Per-symbol matrix ({len(per_sym)} symbols):")
     _sorted = sorted(
-        per_sym.items(),
-        key=lambda kv: -(kv[1]["matched"] + kv[1]["live_only"]))
+        per_sym.items(), key=lambda kv: -(kv[1]["matched"] + kv[1]["live_only"])
+    )
     for sym, counts in _sorted[:15]:
         lines.append(
             f"  {sym:<12} matched={counts['matched']:>4}  "
             f"live_only={counts['live_only']:>4}  "
-            f"sim_only={counts['sim_only']:>4}")
+            f"sim_only={counts['sim_only']:>4}"
+        )
     if len(_sorted) > 15:
         lines.append(f"  ... and {len(_sorted) - 15} more")
     if report.live_only:
         lines.append(
-            f"Live-only examples (first {min(max_examples, len(report.live_only))}):")
+            f"Live-only examples (first {min(max_examples, len(report.live_only))}):"
+        )
         for lt in report.live_only[:max_examples]:
             import time as _t
+
             ts = float(lt.get("timestamp", 0))
-            dt = (_t.strftime("%Y-%m-%d %H:%M", _t.gmtime(ts))
-                  if ts else "-")
+            dt = _t.strftime("%Y-%m-%d %H:%M", _t.gmtime(ts)) if ts else "-"
             lines.append(
                 f"  {dt}  {lt.get('symbol', ''):<10} "
-                f"{_live_side_str(lt):<4} amt={float(lt.get('amount', 0)):.6f}")
+                f"{_live_side_str(lt):<4} amt={float(lt.get('amount', 0)):.6f}"
+            )
     return lines
 
 

@@ -18,6 +18,7 @@ findings and a Yes/No gate. This is DIAGNOSTIC + ADVISORY, not
 authoritative — the actual order-placement guard is CCXT's
 amount_to_precision / price_to_precision at order time.
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,14 +32,15 @@ logger = logging.getLogger("acervator.preflight")
 @dataclass
 class PreflightResult:
     """Summary of the pre-flight check."""
+
     success: bool
     exchange_id: str
     symbol: str
     message: str
     # Market details (populated on success)
     market_active: bool = False
-    min_order_amount: float = 0.0        # in base units
-    min_order_cost: float = 0.0          # in quote units (USD for USD-quoted pairs)
+    min_order_amount: float = 0.0  # in base units
+    min_order_cost: float = 0.0  # in quote units (USD for USD-quoted pairs)
     price_precision: int = 0
     amount_precision: int = 0
     last_price: float = 0.0
@@ -73,7 +75,9 @@ def check_symbol(
         import ccxt  # sync CCXT
     except ImportError:
         return PreflightResult(
-            success=False, exchange_id=exchange_id, symbol=symbol,
+            success=False,
+            exchange_id=exchange_id,
+            symbol=symbol,
             message="CCXT library not available. Install with: pip install ccxt",
             elapsed_ms=(time.monotonic() - start) * 1000,
         )
@@ -82,9 +86,13 @@ def check_symbol(
         ExchCls = getattr(ccxt, exchange_id, None)
         if ExchCls is None:
             return PreflightResult(
-                success=False, exchange_id=exchange_id, symbol=symbol,
-                message=(f"Exchange '{exchange_id}' not recognized by CCXT. "
-                         f"Check spelling (e.g. 'coinbase', 'binance')."),
+                success=False,
+                exchange_id=exchange_id,
+                symbol=symbol,
+                message=(
+                    f"Exchange '{exchange_id}' not recognized by CCXT. "
+                    f"Check spelling (e.g. 'coinbase', 'binance')."
+                ),
                 elapsed_ms=(time.monotonic() - start) * 1000,
             )
 
@@ -105,23 +113,32 @@ def check_symbol(
         if symbol not in markets:
             # Attempt casing / separator variations
             alternatives = [
-                symbol.upper(), symbol.lower(),
+                symbol.upper(),
+                symbol.lower(),
                 symbol.replace("/", "-"),
                 symbol.replace("-", "/"),
             ]
             hit = next((a for a in alternatives if a in markets), None)
             if hit is not None:
                 return PreflightResult(
-                    success=False, exchange_id=exchange_id, symbol=symbol,
-                    message=(f"Symbol '{symbol}' not found but '{hit}' exists. "
-                             f"Use the exact casing/format listed by the exchange."),
+                    success=False,
+                    exchange_id=exchange_id,
+                    symbol=symbol,
+                    message=(
+                        f"Symbol '{symbol}' not found but '{hit}' exists. "
+                        f"Use the exact casing/format listed by the exchange."
+                    ),
                     elapsed_ms=(time.monotonic() - start) * 1000,
                 )
             return PreflightResult(
-                success=False, exchange_id=exchange_id, symbol=symbol,
-                message=(f"Symbol '{symbol}' is not listed on "
-                         f"{exchange_id.capitalize()}. Check the asset is "
-                         f"actively traded on this exchange."),
+                success=False,
+                exchange_id=exchange_id,
+                symbol=symbol,
+                message=(
+                    f"Symbol '{symbol}' is not listed on "
+                    f"{exchange_id.capitalize()}. Check the asset is "
+                    f"actively traded on this exchange."
+                ),
                 elapsed_ms=(time.monotonic() - start) * 1000,
             )
 
@@ -148,11 +165,13 @@ def check_symbol(
         warnings = []
         if not active:
             warnings.append(
-                f"Market reported as inactive by {exchange_id.capitalize()}")
+                f"Market reported as inactive by {exchange_id.capitalize()}"
+            )
         if min_cost > 0 and target_balance < min_cost * 3:
             warnings.append(
                 f"Target balance ${target_balance:.2f} is less than 3x min-order-cost "
-                f"(${min_cost:.2f}). Bot may only place a handful of trades.")
+                f"(${min_cost:.2f}). Bot may only place a handful of trades."
+            )
         # MEM-250 (Session 26 operator directive): no "full unit" warning.
         # Acervator is a USD-denominated accumulation strategy. Crypto is
         # divisible. A $50 target on BTC buys 0.0005 BTC — that's entirely
@@ -167,7 +186,8 @@ def check_symbol(
 
         return PreflightResult(
             success=True,
-            exchange_id=exchange_id, symbol=symbol,
+            exchange_id=exchange_id,
+            symbol=symbol,
             message=f"Symbol verified on {exchange_id.capitalize()}.",
             market_active=active,
             min_order_amount=min_amt,
@@ -183,7 +203,9 @@ def check_symbol(
         elapsed = (time.monotonic() - start) * 1000
         logger.error("Preflight check failed: %s", exc)
         return PreflightResult(
-            success=False, exchange_id=exchange_id, symbol=symbol,
+            success=False,
+            exchange_id=exchange_id,
+            symbol=symbol,
             message=f"Pre-flight check failed: {type(exc).__name__}: {exc}",
             elapsed_ms=elapsed,
         )
@@ -192,9 +214,11 @@ def check_symbol(
 def format_result_for_user(result: PreflightResult) -> str:
     """Human-readable rendering of a PreflightResult for modal display."""
     if not result.success:
-        return (f"⚠ Pre-flight check FAILED\n\n"
-                f"{result.message}\n\n"
-                f"Elapsed: {result.elapsed_ms:.0f} ms")
+        return (
+            f"⚠ Pre-flight check FAILED\n\n"
+            f"{result.message}\n\n"
+            f"Elapsed: {result.elapsed_ms:.0f} ms"
+        )
 
     lines = [
         f"✓ Pre-flight check passed",
@@ -206,8 +230,10 @@ def format_result_for_user(result: PreflightResult) -> str:
     if result.last_price > 0:
         lines.append(f"Current price: ${result.last_price:.8f}")
     if result.min_order_amount > 0:
-        lines.append(f"Min order amount: {result.min_order_amount} "
-                     f"({result.amount_precision} decimals)")
+        lines.append(
+            f"Min order amount: {result.min_order_amount} "
+            f"({result.amount_precision} decimals)"
+        )
     if result.min_order_cost > 0:
         lines.append(f"Min order cost: ${result.min_order_cost:.4f}")
     if result.price_precision > 0:

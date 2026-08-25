@@ -32,8 +32,13 @@ CLAUDE_PROJECTS = pathlib.Path.home() / ".claude" / "projects"
 
 # tools/ files that are NOT reachable by `island promote` and so never travel
 # on their own. Add to this list rather than remembering them.
-LOOSE_TOOLS = ("queue_state.py", "island.py", "touchset.py",
-               "emitter_registry_check.py", "migrate_harness.py")
+LOOSE_TOOLS = (
+    "queue_state.py",
+    "island.py",
+    "touchset.py",
+    "emitter_registry_check.py",
+    "migrate_harness.py",
+)
 
 # (file, exact text to find, replacement, why)
 PATCHES = (
@@ -74,9 +79,19 @@ def sha(path: pathlib.Path) -> str:
 # Under .claude/ only `skills`, `hooks` and the root settings files are the
 # harness. `worktrees` measured 10,909 files and 562 MB of build junk on
 # 2026-08-16 and a naive rglob would have copied all of it.
-SKIP_PARTS = {"worktrees", "__pycache__", ".pytest_cache", ".mypy_cache",
-              ".ruff_cache", "node_modules", "history", "shell-snapshots",
-              "todos", "statsig", "logs"}
+SKIP_PARTS = {
+    "worktrees",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "node_modules",
+    "history",
+    "shell-snapshots",
+    "todos",
+    "statsig",
+    "logs",
+}
 
 
 def copy_tree(src: pathlib.Path, dst: pathlib.Path, apply: bool) -> tuple[int, int]:
@@ -119,8 +134,9 @@ def report_absolute_paths(repo: pathlib.Path) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--to", required=True, help="the new repository root")
-    parser.add_argument("--apply", action="store_true",
-                        help="actually copy; without it, report only")
+    parser.add_argument(
+        "--apply", action="store_true", help="actually copy; without it, report only"
+    )
     args = parser.parse_args()
 
     target = pathlib.Path(args.to).expanduser()

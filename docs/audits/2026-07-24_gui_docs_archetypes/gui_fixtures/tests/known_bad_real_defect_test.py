@@ -17,6 +17,7 @@ avoid:
 
 The asserts themselves are idiomatic pytest and must NOT be counted.
 """
+
 from __future__ import annotations
 
 import random

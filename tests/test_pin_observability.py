@@ -24,6 +24,7 @@ that serves history the master clock has not reached, a tape that
 raises mid-tick, a tape that has a symbol but cannot produce its bar.
 The controller's own code runs untouched in every case.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -66,6 +67,7 @@ def sink():
     than a getter: the records live on it either way.
     """
     from src.core.signal_contract import SignalSink, set_sink
+
     s = SignalSink(flush_every=10_000)
     set_sink(s)
     yield s
@@ -123,29 +125,42 @@ def _rows(n: int = 400, px0: float = 1.0) -> list[list[float]]:
     return out
 
 
-def _controller(rows: int = 400, max_candles: int | None = 50,
-                syms: tuple[str, ...] = SYMS):
+def _controller(
+    rows: int = 400, max_candles: int | None = 50, syms: tuple[str, ...] = SYMS
+):
     """A built fleet, exactly as tests/test_price_chart_feed.py builds it."""
     _qapp()
     from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-        FleetReplayController)
-    cfgs = [{"mode": "scrumming", "symbol": s,
-             "target_balance": 100.0, "target_asset": s.split("/")[0],
-             "base_currency": "USD", "_src_bot_id": f"bot{i:04d}"}
-            for i, s in enumerate(syms)]
+        FleetReplayController,
+    )
+
+    cfgs = [
+        {
+            "mode": "scrumming",
+            "symbol": s,
+            "target_balance": 100.0,
+            "target_asset": s.split("/")[0],
+            "base_currency": "USD",
+            "_src_bot_id": f"bot{i:04d}",
+        }
+        for i, s in enumerate(syms)
+    ]
     ctl = FleetReplayController(
         configs=cfgs,
         candles_by_symbol={s: _rows(rows) for s in syms},
-        smart_wires=[], tick_delay_s=0.0, max_candles=max_candles,
+        smart_wires=[],
+        tick_delay_s=0.0,
+        max_candles=max_candles,
         activity_log_cb=lambda *_: None,
-        performance_log_cb=lambda *_: None)
+        performance_log_cb=lambda *_: None,
+    )
     ctl._build_sim()
     return ctl
 
 
-def _controller_with_a_late_tablet(rows: int = 400,
-                                   max_candles: int | None = 120,
-                                   late_by: int = 60):
+def _controller_with_a_late_tablet(
+    rows: int = 400, max_candles: int | None = 120, late_by: int = 60
+):
     """A fleet whose SECOND symbol's tablet begins `late_by` candles in.
 
     Not a tape skin - the DATA starts later, which is the shape the
@@ -156,26 +171,37 @@ def _controller_with_a_late_tablet(rows: int = 400,
     """
     _qapp()
     from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-        FleetReplayController)
-    cfgs = [{"mode": "scrumming", "symbol": s,
-             "target_balance": 100.0, "target_asset": s.split("/")[0],
-             "base_currency": "USD", "_src_bot_id": f"bot{i:04d}"}
-            for i, s in enumerate(SYMS)]
+        FleetReplayController,
+    )
+
+    cfgs = [
+        {
+            "mode": "scrumming",
+            "symbol": s,
+            "target_balance": 100.0,
+            "target_asset": s.split("/")[0],
+            "base_currency": "USD",
+            "_src_bot_id": f"bot{i:04d}",
+        }
+        for i, s in enumerate(SYMS)
+    ]
     late = [list(r) for r in _rows(rows)]
     for row in late:
         row[0] = int(row[0]) + late_by * STEP
     ctl = FleetReplayController(
         configs=cfgs,
         candles_by_symbol={SYMS[0]: _rows(rows), SYMS[1]: late},
-        smart_wires=[], tick_delay_s=0.0, max_candles=max_candles,
+        smart_wires=[],
+        tick_delay_s=0.0,
+        max_candles=max_candles,
         activity_log_cb=lambda *_: None,
-        performance_log_cb=lambda *_: None)
+        performance_log_cb=lambda *_: None,
+    )
     ctl._build_sim()
     return ctl
 
 
-def _play(ctl, total_candles: int | None = None,
-          stop_after: int | None = None) -> None:
+def _play(ctl, total_candles: int | None = None, stop_after: int | None = None) -> None:
     """Play the replay the way `start()` does, minus the durable log.
 
     `start()` opens a `SimRunLog` under the operator's home directory
@@ -191,13 +217,16 @@ def _play(ctl, total_candles: int | None = None,
     own `step` reproduces a stop arriving mid-run without touching the
     controller.
     """
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-        ReplayProgress)
+    from src.gui.simulator_tab.fleet.fleet_replay_controller import ReplayProgress
+
     ctl.progress = ReplayProgress(
-        total_candles=(ctl._total_candle_count() if total_candles is None
-                       else total_candles),
-        per_bot_trade_count={str(getattr(b, "bot_id", i)): 0
-                             for i, b in enumerate(ctl._bots)})
+        total_candles=(
+            ctl._total_candle_count() if total_candles is None else total_candles
+        ),
+        per_bot_trade_count={
+            str(getattr(b, "bot_id", i)): 0 for i, b in enumerate(ctl._bots)
+        },
+    )
     ctl.stopped_event.clear()
     ctl.progress.started_at_wall = time.time()
     if stop_after is not None:
@@ -209,6 +238,7 @@ def _play(ctl, total_candles: int | None = None,
             if _steps["n"] >= stop_after:
                 ctl.progress.stop_requested = True
             return _original_step()
+
         ctl._tape.step = _step
     # RE-INSTALL THE SINK AFTERWARDS, or a second run in one test
     # records nothing. `_run`'s teardown restores `self._prior_sink`,
@@ -217,6 +247,7 @@ def _play(ctl, total_candles: int | None = None,
     # emitter in the next one fires into a no-op. Measured: a two-run
     # test read one record and raised IndexError on the second.
     from src.core.signal_contract import get_sink, set_sink
+
     _held = get_sink()
     try:
         asyncio.run(ctl._run())
@@ -382,17 +413,27 @@ class _NoBarFor(_TapeSkin):
 # the file the loader reads, so it agreed with a predicate that reported
 # ok=False on all 37 live bots and could never have caught it. A fixture
 # shaped like the check under test cannot falsify the check.
-REAL_SECTIONS = ("config", "phantom_config", "phantoms_enabled",
-                 "saved_at", "scrumming_state", "state_when_saved",
-                 "stats")
+REAL_SECTIONS = (
+    "config",
+    "phantom_config",
+    "phantoms_enabled",
+    "saved_at",
+    "scrumming_state",
+    "state_when_saved",
+    "stats",
+)
 
 
 def _real_entry(bot_id: str) -> dict:
     """One bot_state entry with the shape the operator's file has."""
     return {
         "bot_id": bot_id,
-        "config": {"mode": "scrumming", "symbol": "BTC/USD",
-                   "target_balance": 100.0, "base_currency": "USD"},
+        "config": {
+            "mode": "scrumming",
+            "symbol": "BTC/USD",
+            "target_balance": 100.0,
+            "base_currency": "USD",
+        },
         "phantom_config": {},
         "phantoms_enabled": False,
         "saved_at": 1776778500.0,
@@ -402,15 +443,13 @@ def _real_entry(bot_id: str) -> dict:
     }
 
 
-def _state(tmp_path: Path, bots: int = 37,
-           mutate=None) -> Path:
+def _state(tmp_path: Path, bots: int = 37, mutate=None) -> Path:
     """A bot_state.json of `bots` real-shaped scrumming entries.
 
     `mutate` receives the whole `{bot_id: entry}` map and may bend one
     entry, which is how the failing side of each check is driven.
     """
-    entries = {f"bot{i:04d}": _real_entry(f"bot{i:04d}")
-               for i in range(bots)}
+    entries = {f"bot{i:04d}": _real_entry(f"bot{i:04d}") for i in range(bots)}
     if mutate is not None:
         mutate(entries)
     path = tmp_path / "bot_state.json"
@@ -451,18 +490,20 @@ class TestSectionsImportedReportsWhatWasSeen:
         "Load live bots" paints red for ever and the record is noise.
         """
         from src.gui.simulator_tab.fleet.bot_state_loader import (
-            load_bot_configs_from_state)
+            load_bot_configs_from_state,
+        )
+
         load_bot_configs_from_state(path=_state(tmp_path, bots=37))
         rec = sink.records(SECTIONS)[0]
-        assert rec.ok is True, (
-            f"the operator's own section set must pass; ctx={rec.context}")
+        assert (
+            rec.ok is True
+        ), f"the operator's own section set must pass; ctx={rec.context}"
         assert rec.actual == 37 * 4
         assert rec.expected == 37 * 4
         assert rec.context["bots"] == 37
         assert rec.context["missing_total"] == 0
 
-    def test_a_section_that_does_not_land_fails_and_is_named(
-            self, sink, tmp_path):
+    def test_a_section_that_does_not_land_fails_and_is_named(self, sink, tmp_path):
         """THE FAILING SIDE, and it must not be silent about WHICH.
 
         A `scrumming_state` that is present but not a dict is skipped by
@@ -470,31 +511,30 @@ class TestSectionsImportedReportsWhatWasSeen:
         drop is what this pin exists to expose.
         """
         from src.gui.simulator_tab.fleet.bot_state_loader import (
-            load_bot_configs_from_state)
+            load_bot_configs_from_state,
+        )
 
         def _corrupt(entries):
             entries["bot0011"]["scrumming_state"] = []
 
-        load_bot_configs_from_state(
-            path=_state(tmp_path, bots=37, mutate=_corrupt))
+        load_bot_configs_from_state(path=_state(tmp_path, bots=37, mutate=_corrupt))
         rec = sink.records(SECTIONS)[0]
         assert rec.ok is False, "a section that vanished must not read as a pass"
         assert rec.expected - rec.actual == 1
         assert tuple(rec.context["missing"]) == ("bot0011.scrumming_state",)
 
-    def test_a_stale_source_id_shadows_the_join_and_fails(
-            self, sink, tmp_path):
+    def test_a_stale_source_id_shadows_the_join_and_fails(self, sink, tmp_path):
         """`_src_bot_id` is stamped with `setdefault`, so a config that
         already carries one keeps the stale value and every downstream
         join addresses the wrong bot."""
         from src.gui.simulator_tab.fleet.bot_state_loader import (
-            load_bot_configs_from_state)
+            load_bot_configs_from_state,
+        )
 
         def _shadow(entries):
             entries["bot0007"]["config"]["_src_bot_id"] = "WRONG"
 
-        load_bot_configs_from_state(
-            path=_state(tmp_path, bots=37, mutate=_shadow))
+        load_bot_configs_from_state(path=_state(tmp_path, bots=37, mutate=_shadow))
         rec = sink.records(SECTIONS)[0]
         assert rec.ok is False
         assert "bot0007.bot_id" in rec.context["missing"]
@@ -508,36 +548,43 @@ class TestSectionsImportedReportsWhatWasSeen:
         anybody reads during a failure.
         """
         from src.gui.simulator_tab.fleet.bot_state_loader import (
-            load_bot_configs_from_state)
+            load_bot_configs_from_state,
+        )
 
         def _corrupt(entries):
             entries["bot0011"]["stats"] = "not-a-dict"
 
-        load_bot_configs_from_state(
-            path=_state(tmp_path, bots=37, mutate=_corrupt))
+        load_bot_configs_from_state(path=_state(tmp_path, bots=37, mutate=_corrupt))
         rec = sink.records(SECTIONS)[0]
         assert rec.actual < rec.expected, (
             "the observation belongs in `actual` and it is the smaller "
-            f"of the two here; got actual={rec.actual} expected={rec.expected}")
+            f"of the two here; got actual={rec.actual} expected={rec.expected}"
+        )
         line = rec.message()
         assert f"expected={rec.expected}" in line
         assert f"actual={rec.actual}" in line
         assert line.index("expected=") < line.index("actual=")
 
-    def test_the_dropped_sections_are_the_ones_genuinely_dropped(
-            self, sink, tmp_path):
+    def test_the_dropped_sections_are_the_ones_genuinely_dropped(self, sink, tmp_path):
         """F3. The old context named `scrumming_state` and `stats` as
         dropped. Both are carried, at `bot_state_loader.py`'s
         `_src_scrumming_state` and `_src_stats`, and have been since
         v3.24.81 - so a reader chased an import bug that was not there.
         """
         from src.gui.simulator_tab.fleet.bot_state_loader import (
-            CARRIED_SECTIONS, load_bot_configs_from_state)
+            CARRIED_SECTIONS,
+            load_bot_configs_from_state,
+        )
+
         out = load_bot_configs_from_state(path=_state(tmp_path, bots=3))
         rec = sink.records(SECTIONS)[0]
         dropped = set(rec.context["dropped"])
-        assert dropped == {"phantom_config", "phantoms_enabled",
-                           "saved_at", "state_when_saved"}
+        assert dropped == {
+            "phantom_config",
+            "phantoms_enabled",
+            "saved_at",
+            "state_when_saved",
+        }
         assert not dropped & {"scrumming_state", "stats", "config", "bot_id"}
         assert set(rec.context["carries"]) == set(CARRIED_SECTIONS)
         # and the claim is checked against the PRODUCT, not just the
@@ -549,6 +596,7 @@ class TestSectionsImportedReportsWhatWasSeen:
         """The old guard was `if out and _eligible`, which silenced the
         pin exactly when nothing loaded at all."""
         from src.gui.simulator_tab.fleet import bot_state_loader as _loader
+
         original = _loader._sections_carried
 
         def _nothing_landed(entry, _loaded, bot_id):
@@ -589,7 +637,8 @@ class TestCandlesSteppedExpectsWhatWasAsked:
         assert rec.expected == 50
         assert rec.ok is True, (
             "a run that played every candle it was asked for must pass; "
-            f"context={rec.context}")
+            f"context={rec.context}"
+        )
 
     def test_the_whole_tape_is_still_recorded(self, sink):
         """The number that used to be `expected` is not lost."""
@@ -623,8 +672,9 @@ class TestCandlesSteppedExpectsWhatWasAsked:
         ctl = _controller(rows=400, max_candles=200)
         _play(ctl, stop_after=40)
         rec = sink.records(CANDLES)[0]
-        assert rec.ok is True, (
-            f"a deliberate stop is not a shortfall; ctx={rec.context}")
+        assert (
+            rec.ok is True
+        ), f"a deliberate stop is not a shortfall; ctx={rec.context}"
         assert rec.context["outcome"] == "stopped_by_operator"
         assert rec.context["stop_requested"] is True
         assert rec.actual == 40
@@ -729,7 +779,8 @@ class TestCoverageIsBounded:
         for rec in recs:
             assert rec.ok is True, (
                 f"{rec.context['bot_id']} observed {rec.actual} of "
-                f"{rec.expected} eligible")
+                f"{rec.expected} eligible"
+            )
 
     def test_the_coverage_number_is_still_reported(self, sink):
         ctl = _controller(rows=400, max_candles=120)
@@ -737,7 +788,8 @@ class TestCoverageIsBounded:
         rec = sink.records(COVERAGE)[0]
         assert rec.actual < rec.expected, (
             "warm-up means observed is below eligible; if these are "
-            "equal the test is no longer measuring the interesting case")
+            "equal the test is no longer measuring the interesting case"
+        )
         assert 0.0 < rec.context["pct"] < 100.0
 
     def test_an_observation_with_no_eligibility_fails(self, sink):
@@ -749,11 +801,9 @@ class TestCoverageIsBounded:
         _play(ctl)
         recs = sink.records(COVERAGE)
         assert recs, "the eligibility map was empty, so nothing was judged"
-        assert any(r.ok is False for r in recs), [
-            (r.actual, r.expected) for r in recs]
+        assert any(r.ok is False for r in recs), [(r.actual, r.expected) for r in recs]
 
-    def test_a_cursor_blind_for_110_asks_still_breaks_the_bound(
-            self, sink):
+    def test_a_cursor_blind_for_110_asks_still_breaks_the_bound(self, sink):
         """THE BOUND ITSELF, still forceable after the union repair.
 
         A bot that stays in BOTH maps and observes far more candles
@@ -766,14 +816,16 @@ class TestCoverageIsBounded:
         ctl._tape = _CursorBlindForFirstAsks(ctl._tape, SYMS[0], 110)
         _play(ctl)
         bad = [r for r in sink.records(COVERAGE) if r.ok is False]
-        assert bad, [(r.context["bot_id"], r.actual, r.expected)
-                     for r in sink.records(COVERAGE)]
+        assert bad, [
+            (r.context["bot_id"], r.actual, r.expected) for r in sink.records(COVERAGE)
+        ]
         rec = bad[0]
         assert rec.actual > rec.expected, (rec.actual, rec.expected)
         assert rec.expected > 0, (
             "this input must break the bound WITH eligibility present; "
             "a zero here means it collapsed into the union case and is "
-            "no longer an independent control")
+            "no longer an independent control"
+        )
         assert rec.context["state"] == "eligible_and_observed"
 
 
@@ -813,13 +865,16 @@ class TestCoverageWalksTheUnion:
         blind = ctl._bots[0].bot_id
         assert blind not in ctl._ta_eligible, (
             "the skin did not reach the state under test: this bot must "
-            "have NO eligibility at all")
+            "have NO eligibility at all"
+        )
         assert ctl._ta_observed.get(blind, 0) > 0, (
             "the observer never ran, so there is no violation to report; "
-            "check the tape is above the 51-row guard")
+            "check the tape is above the 51-row guard"
+        )
         assert blind in recs, (
             f"{blind} observed {ctl._ta_observed.get(blind)} candles "
-            f"against eligibility 0 and emitted NOTHING")
+            f"against eligibility 0 and emitted NOTHING"
+        )
         rec = recs[blind]
         assert rec.expected == 0
         assert rec.actual > 0
@@ -835,8 +890,7 @@ class TestCoverageWalksTheUnion:
         ctl = _controller(rows=400, max_candles=120)
         ctl._tape = _CursorBlindForever(ctl._tape, SYMS[0])
         _play(ctl)
-        rec = [r for r in sink.records(COVERAGE)
-               if r.expected == 0][0]
+        rec = [r for r in sink.records(COVERAGE) if r.expected == 0][0]
         assert rec.context["pct"] is None, rec.context["pct"]
 
     def test_the_record_count_reconciles_on_a_healthy_run(self, sink):
@@ -850,7 +904,9 @@ class TestCoverageWalksTheUnion:
         recs = sink.records(COVERAGE)
         union = set(ctl._ta_eligible) | set(ctl._ta_observed)
         assert len(recs) == len(union), (
-            sorted(union), [r.context["bot_id"] for r in recs])
+            sorted(union),
+            [r.context["bot_id"] for r in recs],
+        )
         assert {r.context["bot_id"] for r in recs} == union
         for rec in recs:
             assert rec.context["bots_in_union"] == len(union)
@@ -867,11 +923,12 @@ class TestCoverageWalksTheUnion:
         union = set(ctl._ta_eligible) | set(ctl._ta_observed)
         assert len(union) == 2, sorted(union)
         assert len(recs) == len(union), (
-            sorted(union), [r.context["bot_id"] for r in recs])
+            sorted(union),
+            [r.context["bot_id"] for r in recs],
+        )
         assert {r.context["bot_id"] for r in recs} == union
 
-    def test_a_bot_in_neither_map_gets_no_verdict_but_is_counted(
-            self, sink):
+    def test_a_bot_in_neither_map_gets_no_verdict_but_is_counted(self, sink):
         """STATE 4, and the union must NOT manufacture a row for it.
 
         A bot that never ticked with tape has nothing to bound, so
@@ -891,9 +948,9 @@ class TestCoverageWalksTheUnion:
         assert absent not in {r.context["bot_id"] for r in recs}
         assert len(recs) == 1, [r.context["bot_id"] for r in recs]
         assert recs[0].context["fleet_bots_with_no_record"] == 1
-        assert (recs[0].context["bots_in_union"]
-                + recs[0].context["fleet_bots_with_no_record"]
-                == len(ctl._bots))
+        assert recs[0].context["bots_in_union"] + recs[0].context[
+            "fleet_bots_with_no_record"
+        ] == len(ctl._bots)
 
     def test_the_warm_up_is_green_and_says_which_state_it_is(self, sink):
         """STATE 2. Eligible from cursor 1, observable only from 50.
@@ -905,8 +962,9 @@ class TestCoverageWalksTheUnion:
         ctl = _controller(rows=400, max_candles=50)
         _play(ctl)
         recs = sink.records(COVERAGE)
-        assert ctl._ta_observed == {}, (
-            "the observer ran, so this is no longer the warm-up state")
+        assert (
+            ctl._ta_observed == {}
+        ), "the observer ran, so this is no longer the warm-up state"
         assert len(recs) == len(ctl._ta_eligible) == 2
         for rec in recs:
             assert rec.actual == 0
@@ -915,29 +973,25 @@ class TestCoverageWalksTheUnion:
             assert rec.context["state"] == "eligible_not_yet_observed"
             assert rec.context["pct"] == 0.0
 
-    def test_a_tablet_that_starts_mid_window_is_not_a_violation(
-            self, sink):
+    def test_a_tablet_that_starts_mid_window_is_not_a_violation(self, sink):
         """A LATE JOIN, from the DATA and not from a tape skin.
 
         If this fails, a symbol whose tablet begins after the master
         clock reads as a causality break, and the operator's real fleet
         - whose tablets start months apart - would be red every run.
         """
-        ctl = _controller_with_a_late_tablet(rows=400, max_candles=120,
-                                             late_by=60)
+        ctl = _controller_with_a_late_tablet(rows=400, max_candles=120, late_by=60)
         _play(ctl)
-        recs = sorted(sink.records(COVERAGE),
-                      key=lambda r: r.context["bot_id"])
+        recs = sorted(sink.records(COVERAGE), key=lambda r: r.context["bot_id"])
         assert len(recs) == 2, [r.context["bot_id"] for r in recs]
         early, late = recs
-        assert late.expected < early.expected, (
-            early.expected, late.expected)
+        assert late.expected < early.expected, (early.expected, late.expected)
         assert late.expected < 119, (
             "the second tablet did not start late; this test is not "
-            "measuring a late join")
+            "measuring a late join"
+        )
         for rec in recs:
-            assert rec.ok is True, (rec.context["bot_id"], rec.actual,
-                                    rec.expected)
+            assert rec.ok is True, (rec.context["bot_id"], rec.actual, rec.expected)
             assert rec.context["state"] == "eligible_and_observed"
 
 
@@ -949,8 +1003,8 @@ class TestCoverageWalksTheUnion:
 def _panel_with_run(rows: int = 400):
     """A panel wired to a controller mid-replay, as the GUI has it."""
     _qapp()
-    from src.gui.simulator_tab.fleet.fleet_replay_panel import (
-        FleetReplayPanel)
+    from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
+
     ctl = _controller(rows=rows, max_candles=50)
     for _ in range(120):
         ctl._tape.step()
@@ -1024,7 +1078,8 @@ class TestTheChartFeedExpectsWhatTheTapeCanGive:
         rec = sink.records(FED)[0]
         assert rec.expected == 1, (
             "`expected` must be what the TAPE can feed; the bot count "
-            "is 2 here and was what the old code reported")
+            "is 2 here and was what the old code reported"
+        )
         assert rec.actual == 1
         assert rec.ok is True
         assert rec.context["symbols"] == 2, "both bots are still counted"
@@ -1055,7 +1110,8 @@ class TestTheChartFeedOnALegacyHost:
         panel, ctl = _panel_with_run()
         row = [T0, 1.0, 1.1, 0.9, 1.0, 5.0]
         panel._controller = _LegacyHost(
-            ctl._bots, {s: _LegacySeries(row) for s in served})
+            ctl._bots, {s: _LegacySeries(row) for s in served}
+        )
         return panel
 
     def test_a_fully_served_legacy_host_passes(self, sink):
@@ -1087,6 +1143,7 @@ class TestTheChartFeedOnALegacyHost:
 def _tab():
     _qapp()
     from src.gui.simulator_tab.simulator_tab import SimulatorTab
+
     return SimulatorTab()
 
 
@@ -1125,6 +1182,7 @@ class TestModeSelectedReadsTheStackBack:
         swallows its own exception, so a refused transition was
         invisible twice over."""
         from PySide6.QtWidgets import QStackedWidget, QWidget
+
         tab = _tab()
         one_page = QStackedWidget()
         one_page.addWidget(QWidget())
@@ -1163,7 +1221,10 @@ class TestTheLogLineIsASample:
         tab.log_performance("p1")
         tab.log_activity("a2")
         assert [r.actual for r in sink.records(LOGLINE)] == [
-            "activity", "performance", "activity"]
+            "activity",
+            "performance",
+            "activity",
+        ]
 
     def test_a_paused_pane_is_still_recorded(self, sink):
         tab = _tab()
@@ -1171,8 +1232,7 @@ class TestTheLogLineIsASample:
         tab.log_activity("suppressed")
         rec = sink.records(LOGLINE)[0]
         assert rec.context["delivered"] is False
-        assert rec.ok is None, (
-            "a paused pane is an operator action, not a failure")
+        assert rec.ok is None, "a paused pane is an operator action, not a failure"
 
 
 # ===================================================================== #
@@ -1183,6 +1243,7 @@ class TestTheLogLineIsASample:
 def _voting_panel(width: int, height: int):
     _qapp()
     from src.gui.indicator_panel import IndicatorVotingPanel
+
     panel = IndicatorVotingPanel()
     panel.resize(width, height)
     panel.show()
@@ -1212,16 +1273,22 @@ def _fit_record(sink, where: str, panel, timeout: float = 5.0):
         cols = sum(v["columns"] for v in report.values())
         bad = sum(len(v["truncated"]) for v in report.values())
         for rec in reversed(sink.records(FIT)):
-            if ((rec.context or {}).get("where") == where
-                    and rec.expected == cols
-                    and rec.actual == cols - bad):
+            if (
+                (rec.context or {}).get("where") == where
+                and rec.expected == cols
+                and rec.actual == cols - bad
+            ):
                 return rec
         if time.monotonic() >= end:
-            seen = [((r.context or {}).get("where"), r.actual, r.expected)
-                    for r in sink.records(FIT)]
-            msg = (f"no {where!r} fit record for the current geometry "
-                   f"(cols={cols}, fitting={cols - bad}, "
-                   f"width={panel.width()}); saw {seen}")
+            seen = [
+                ((r.context or {}).get("where"), r.actual, r.expected)
+                for r in sink.records(FIT)
+            ]
+            msg = (
+                f"no {where!r} fit record for the current geometry "
+                f"(cols={cols}, fitting={cols - bad}, "
+                f"width={panel.width()}); saw {seen}"
+            )
             raise AssertionError(msg)
         app.processEvents()
         time.sleep(0.005)
@@ -1239,7 +1306,8 @@ class TestTheVotingPanelFitPinFires:
         recs = sink.records(FIT)
         assert recs, "the fit pin still has no caller"
         assert any(r.context["where"] == "show" for r in recs), [
-            r.context["where"] for r in recs]
+            r.context["where"] for r in recs
+        ]
 
     def test_a_panel_with_room_passes(self, sink):
         panel = _voting_panel(900, 460)
@@ -1260,6 +1328,7 @@ class TestTheVotingPanelFitPinFires:
         wide cannot fit at any width the panel can take.
         """
         from PySide6.QtWidgets import QTableWidget
+
         panel = _voting_panel(900, 460)
         table = panel.findChildren(QTableWidget)[0]
         table.horizontalHeaderItem(0).setText("W" * 60)
@@ -1269,7 +1338,8 @@ class TestTheVotingPanelFitPinFires:
         assert rec.context["where"] == "resize"
         assert rec.actual < rec.expected, (
             f"the squeeze truncated nothing at width {panel.width()}, so "
-            f"this is not measuring the failing side")
+            f"this is not measuring the failing side"
+        )
         assert rec.ok is False
         assert any(v for v in rec.context["detail"].values()), rec.context
 
@@ -1304,8 +1374,9 @@ class TestTheYtdPinsAreReachableInTheSimulator:
 
     def test_the_injection_the_main_window_performs_reaches_the_panel(self):
         tab = _tab()
-        assert hasattr(tab, "set_bot_manager"), (
-            "main_window.py calls set_bot_manager on the Simulator tab")
+        assert hasattr(
+            tab, "set_bot_manager"
+        ), "main_window.py calls set_bot_manager on the Simulator tab"
         tab.set_bot_manager(_StubBotManager())
         assert tab.fleet_replay._bot_manager is not None
         assert tab.fleet_replay._fetch_ytd_btn.isEnabled()

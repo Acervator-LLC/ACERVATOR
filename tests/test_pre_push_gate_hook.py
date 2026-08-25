@@ -69,7 +69,9 @@ def _sh() -> str:
 def repo(tmp_path: Path) -> Path:
     """A throwaway git repo with the real hook copied in."""
     subprocess.run([_git_exe(), "init", "-q"], cwd=tmp_path, check=True)
-    subprocess.run([_git_exe(), "config", "user.email", "t@t"], cwd=tmp_path, check=True)
+    subprocess.run(
+        [_git_exe(), "config", "user.email", "t@t"], cwd=tmp_path, check=True
+    )
     subprocess.run([_git_exe(), "config", "user.name", "t"], cwd=tmp_path, check=True)
     (tmp_path / "seed.txt").write_text("seed\n", encoding="utf-8", newline="\n")
     subprocess.run([_git_exe(), "add", "-A"], cwd=tmp_path, check=True)
@@ -83,7 +85,11 @@ def repo(tmp_path: Path) -> Path:
 
 def _head(repo: Path) -> str:
     out = subprocess.run(
-        [_git_exe(), "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+        [_git_exe(), "rev-parse", "HEAD"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return out.stdout.strip()
 

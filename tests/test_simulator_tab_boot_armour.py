@@ -21,6 +21,7 @@ guard that failed on every boot with nothing ever saying so. A swallowed panel
 that leaves no trace is a worse failure than a crash, because a crash gets
 investigated. The except routes to the activity log.
 """
+
 from __future__ import annotations
 
 import sys
@@ -36,6 +37,7 @@ if str(REPO_ROOT) not in sys.path:
 @pytest.fixture(scope="module")
 def qapp():
     from PySide6.QtWidgets import QApplication
+
     return QApplication.instance() or QApplication([])
 
 
@@ -50,6 +52,7 @@ def exploding_nuclear(monkeypatch):
 
     monkeypatch.setattr(npanel, "NuclearModePanel", _Boom)
     import src.gui.simulator_tab.simulator_tab as stab
+
     monkeypatch.setattr(stab, "NuclearModePanel", _Boom, raising=False)
     return _Boom
 
@@ -66,6 +69,7 @@ class TestTheFixtureItself:
         """NEGATIVE CONTROL — the tab must be buildable at all, or the
         survival test proves nothing about the guard."""
         from src.gui.simulator_tab.simulator_tab import SimulatorTab
+
         tab = SimulatorTab()
         assert tab is not None
         assert getattr(tab, "nuclear_mode", None) is not None
@@ -74,14 +78,17 @@ class TestTheFixtureItself:
 class TestTheTabSurvivesAFailingNuclearPanel:
     def test_simulator_tab_still_constructs(self, qapp, exploding_nuclear):
         from src.gui.simulator_tab.simulator_tab import SimulatorTab
+
         tab = SimulatorTab()
         assert tab is not None, (
             "a failing Nuclear panel took down the Simulator tab, and nothing "
-            "upstream catches it — this is an application-startup failure")
+            "upstream catches it — this is an application-startup failure"
+        )
 
     def test_fleet_replay_is_unaffected(self, qapp, exploding_nuclear):
         """The primary parity harness must not be collateral damage."""
         from src.gui.simulator_tab.simulator_tab import SimulatorTab
+
         tab = SimulatorTab()
         assert getattr(tab, "fleet_replay", None) is not None
 
@@ -89,12 +96,13 @@ class TestTheTabSurvivesAFailingNuclearPanel:
         """The mode bar adds two tabs unconditionally. If the stack loses a
         page, selecting Nuclear Mode indexes past the end."""
         from src.gui.simulator_tab.simulator_tab import SimulatorTab
+
         tab = SimulatorTab()
         assert tab._stack.count() == 2
 
-    def test_selecting_nuclear_mode_does_not_raise(self, qapp,
-                                                   exploding_nuclear):
+    def test_selecting_nuclear_mode_does_not_raise(self, qapp, exploding_nuclear):
         from src.gui.simulator_tab.simulator_tab import SimulatorTab
+
         tab = SimulatorTab()
         tab._stack.setCurrentIndex(1)
         assert tab._stack.currentIndex() == 1
@@ -104,8 +112,7 @@ class TestTheFailureIsAudible:
     """NF-162 was a silent guard that failed on every boot with nothing
     saying so. A swallowed panel must leave a trace."""
 
-    def test_the_failure_reaches_a_log(self, qapp, exploding_nuclear,
-                                       monkeypatch):
+    def test_the_failure_reaches_a_log(self, qapp, exploding_nuclear, monkeypatch):
         """Observes the module logger DIRECTLY rather than through caplog.
 
         An earlier version used `caplog`, which passed alone and failed in
@@ -130,14 +137,15 @@ class TestTheFailureIsAudible:
 
         monkeypatch.setattr(stab, "logger", _Rec())
         stab.SimulatorTab()
-        assert any("nuclear" in m.lower() for m in seen), (
-            f"the guard swallowed the failure silently; captured={seen}")
+        assert any(
+            "nuclear" in m.lower() for m in seen
+        ), f"the guard swallowed the failure silently; captured={seen}"
 
-    def test_the_placeholder_says_what_happened(self, qapp,
-                                                exploding_nuclear):
+    def test_the_placeholder_says_what_happened(self, qapp, exploding_nuclear):
         """The operator clicking Nuclear Mode must see WHY it is empty, not a
         blank pane — mirroring FleetReplayPanel's own fallback label."""
         from src.gui.simulator_tab.simulator_tab import SimulatorTab
+
         tab = SimulatorTab()
         page = tab._stack.widget(1)
         text = getattr(page, "text", lambda: "")()

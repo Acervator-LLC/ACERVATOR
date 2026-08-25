@@ -19,6 +19,7 @@ directive 2026-07-31).
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import logging
@@ -27,8 +28,16 @@ import uuid
 from typing import Optional
 
 from ....exchange.base import (
-    AssetInfo, Balance, ExchangeInterface,
-    Order, OrderBook, OrderSide, OrderStatus, OrderType, Ticker, Trade,
+    AssetInfo,
+    Balance,
+    ExchangeInterface,
+    Order,
+    OrderBook,
+    OrderSide,
+    OrderStatus,
+    OrderType,
+    Ticker,
+    Trade,
 )
 from .candle_series import CandleSeries
 
@@ -42,9 +51,11 @@ def make_symbol_series_map(
     ``{symbol: rows}`` (matches the shape History-Refresh + OHLCV
     fetchers already produce)."""
     from .candle_series import build_candle_series_from_rows
+
     return {
         symbol: build_candle_series_from_rows(symbol, rows)
-        for symbol, rows in (symbol_rows or {}).items()}
+        for symbol, rows in (symbol_rows or {}).items()
+    }
 
 
 # v3.24.83 — mirrors `ccxt_connector.EFFECTIVE_OHLCV_PAGE_SIZE`.
@@ -54,6 +65,7 @@ def make_symbol_series_map(
 # constants are equal, so the duplication cannot drift silently — the
 # test is the bridge, not the code.
 LIVE_EFFECTIVE_PAGE_SIZE = 300
+
 
 class FleetSimExchange(ExchangeInterface):
     """Real-symbol candle-driven fake exchange for Fleet Replay.
@@ -91,7 +103,8 @@ class FleetSimExchange(ExchangeInterface):
         if not isinstance(series_map, dict):
             raise TypeError(
                 "FleetSimExchange: series_map must be a dict of symbol → "
-                f"CandleSeries, got {type(series_map).__name__}")
+                f"CandleSeries, got {type(series_map).__name__}"
+            )
         self._series: dict[str, CandleSeries] = dict(series_map)
         # v3.24.64 (C18 / SN-1) — optional per-(symbol, timeframe)
         # series. The native map above stays authoritative for the
@@ -114,7 +127,8 @@ class FleetSimExchange(ExchangeInterface):
         # `_eff_pct / 100.0` at scrumming_bot.py:10021. The caller
         # converts; passing a percent straight in would charge 160%.
         self._fee_pct_by_symbol: dict[str, float] = {
-            str(k): float(v) for k, v in (fee_pct_by_symbol or {}).items()}
+            str(k): float(v) for k, v in (fee_pct_by_symbol or {}).items()
+        }
         self._exchange_id = exchange_id
         self._connected = False
         # Balance ledger: currency → free amount. Missing = zero.
@@ -125,8 +139,7 @@ class FleetSimExchange(ExchangeInterface):
         # which is the only question an accumulation backtest asks.
         # Captured before the base/quote seeding below so it reflects
         # the caller's intent, not the seeded scaffolding.
-        self._opening_balances: dict[str, float] = dict(
-            starting_balances or {})
+        self._opening_balances: dict[str, float] = dict(starting_balances or {})
         # Seed every base + quote encountered so MEM-254's
         # absent-side handshake passes.
         for sym in self._series:
@@ -166,8 +179,8 @@ class FleetSimExchange(ExchangeInterface):
         # series (verified: ALLO/USDC drifts 3900s from BTC/USD when
         # both stepped 100 indices).
         from .master_clock import MasterClock
-        self._master_clock = MasterClock.from_series(
-            self._series.values())
+
+        self._master_clock = MasterClock.from_series(self._series.values())
 
     def fee_for(self, symbol: str) -> float:
         """Fee FRACTION for one symbol, falling back to the default.
@@ -192,8 +205,9 @@ class FleetSimExchange(ExchangeInterface):
         return self._connected
 
     # ─── Connect / disconnect (no-op) ────────────────────────────
-    async def connect(self, api_key: str, api_secret: str,
-                      passphrase: str = "") -> None:
+    async def connect(
+        self, api_key: str, api_secret: str, passphrase: str = ""
+    ) -> None:
         del api_key, api_secret, passphrase
         self._connected = True
 
@@ -293,13 +307,12 @@ class FleetSimExchange(ExchangeInterface):
     async def get_ticker(self, symbol: str) -> Ticker:
         series = self._series.get(symbol)
         if series is None:
-            raise ValueError(
-                f"FleetSimExchange.get_ticker: unknown symbol {symbol!r}")
+            raise ValueError(f"FleetSimExchange.get_ticker: unknown symbol {symbol!r}")
         cur = series.get_current()
         if cur is None:
             raise RuntimeError(
-                f"FleetSimExchange.get_ticker: no candle data for "
-                f"{symbol!r}")
+                f"FleetSimExchange.get_ticker: no candle data for " f"{symbol!r}"
+            )
         ts_ms, _o, _h, _l, close, vol = cur
         spread = 0.0005
         return Ticker(
@@ -315,20 +328,24 @@ class FleetSimExchange(ExchangeInterface):
         series = self._series.get(symbol)
         if series is None:
             raise ValueError(
-                f"FleetSimExchange.get_orderbook: unknown symbol {symbol!r}")
+                f"FleetSimExchange.get_orderbook: unknown symbol {symbol!r}"
+            )
         cur = series.get_current()
         if cur is None:
             raise RuntimeError(
-                f"FleetSimExchange.get_orderbook: no data for {symbol!r}")
+                f"FleetSimExchange.get_orderbook: no data for {symbol!r}"
+            )
         close = float(cur[4])
         step = max(1e-9, close * 0.001)
         bids = [(close - step * (i + 1), 100.0) for i in range(limit)]
         asks = [(close + step * (i + 1), 100.0) for i in range(limit)]
-        return OrderBook(
-            symbol=symbol, bids=bids, asks=asks, timestamp=time.time())
+        return OrderBook(symbol=symbol, bids=bids, asks=asks, timestamp=time.time())
 
     async def get_ohlcv(
-        self, symbol: str, timeframe: str = "1h", limit: int = 100,
+        self,
+        symbol: str,
+        timeframe: str = "1h",
+        limit: int = 100,
     ) -> list[list[float]]:
         # v3.24.64 (C18 / SN-1) — the timeframe is HONOURED.
         #
@@ -359,10 +376,12 @@ class FleetSimExchange(ExchangeInterface):
                         "FleetSimExchange: no %s series for %s; serving "
                         "the native %s series. Higher-timeframe TA for "
                         "this symbol is NOT independent.",
-                        _tf, symbol, self.NATIVE_TIMEFRAME)
+                        _tf,
+                        symbol,
+                        self.NATIVE_TIMEFRAME,
+                    )
         if series is None:
-            raise ValueError(
-                f"FleetSimExchange.get_ohlcv: unknown symbol {symbol!r}")
+            raise ValueError(f"FleetSimExchange.get_ohlcv: unknown symbol {symbol!r}")
         # v3.24.20 — the per-row copy that used to wrap this call is
         # gone. ``get_history`` already builds fresh lists
         # (``[list(r) for r in self.rows[start:end]]``), so mapping
@@ -408,21 +427,28 @@ class FleetSimExchange(ExchangeInterface):
     # ─── Account ─────────────────────────────────────────────────
     async def get_balances(self) -> dict[str, Balance]:
         return {
-            cur: Balance(currency=cur, free=float(free),
-                         used=0.0, total=float(free), absent=False)
-            for cur, free in self._balances.items()}
+            cur: Balance(
+                currency=cur,
+                free=float(free),
+                used=0.0,
+                total=float(free),
+                absent=False,
+            )
+            for cur, free in self._balances.items()
+        }
 
     async def get_balance(self, currency: str) -> Balance:
         free = float(self._balances.get(currency, 0.0))
         absent = currency not in self._balances
         return Balance(
-            currency=currency, free=free, used=0.0,
-            total=free, absent=absent)
+            currency=currency, free=free, used=0.0, total=free, absent=absent
+        )
 
     # ─── Orders ──────────────────────────────────────────────────
     def _adjust_balance(self, currency: str, delta: float) -> None:
-        self._balances[currency] = float(
-            self._balances.get(currency, 0.0)) + float(delta)
+        self._balances[currency] = float(self._balances.get(currency, 0.0)) + float(
+            delta
+        )
 
     async def place_order(
         self,
@@ -437,16 +463,16 @@ class FleetSimExchange(ExchangeInterface):
         if amount is None or amount <= 0:
             raise ValueError(
                 f"FleetSimExchange.place_order: amount must be positive, "
-                f"got {amount!r}")
+                f"got {amount!r}"
+            )
         series = self._series.get(symbol)
         if series is None:
-            raise ValueError(
-                f"FleetSimExchange.place_order: unknown symbol {symbol!r}")
+            raise ValueError(f"FleetSimExchange.place_order: unknown symbol {symbol!r}")
         cur = series.get_current()
         if cur is None:
             raise RuntimeError(
-                f"FleetSimExchange.place_order: no candle data for "
-                f"{symbol!r}")
+                f"FleetSimExchange.place_order: no candle data for " f"{symbol!r}"
+            )
         base, quote = symbol.split("/", 1)
         base = base.upper()
         quote = quote.upper()
@@ -468,15 +494,14 @@ class FleetSimExchange(ExchangeInterface):
             self._settle_fill(order, fill_price, base, quote)
         elif order_type == OrderType.LIMIT:
             if price is None:
-                raise ValueError(
-                    "FleetSimExchange.place_order: LIMIT requires price")
+                raise ValueError("FleetSimExchange.place_order: LIMIT requires price")
             fill_price = float(price)
             # If the current candle already sweeps this price, fill now.
             candle_low = float(cur[3])
             candle_high = float(cur[2])
-            crosses = (
-                (side == OrderSide.BUY and candle_low <= fill_price)
-                or (side == OrderSide.SELL and candle_high >= fill_price))
+            crosses = (side == OrderSide.BUY and candle_low <= fill_price) or (
+                side == OrderSide.SELL and candle_high >= fill_price
+            )
             if crosses:
                 self._settle_fill(order, fill_price, base, quote)
             # else: order stays OPEN until _sweep_open_limit_orders
@@ -497,21 +522,24 @@ class FleetSimExchange(ExchangeInterface):
             # maker fill.
             if price is None:
                 raise ValueError(
-                    "FleetSimExchange.place_order: IOC_LIMIT requires "
-                    "price")
+                    "FleetSimExchange.place_order: IOC_LIMIT requires " "price"
+                )
             _limit = float(price)
             _low = float(cur[3])
             _high = float(cur[2])
             _close = float(cur[4])
-            _crosses = (
-                (side == OrderSide.BUY and _low <= _limit)
-                or (side == OrderSide.SELL and _high >= _limit))
+            _crosses = (side == OrderSide.BUY and _low <= _limit) or (
+                side == OrderSide.SELL and _high >= _limit
+            )
             if _crosses:
                 # min/max, matching NuclearSimExchange: the limit is a
                 # ceiling for a BUY and a floor for a SELL, but a fill
                 # must not be WORSE than the market actually was.
-                _fp = (min(_limit, _close) if side == OrderSide.BUY
-                       else max(_limit, _close))
+                _fp = (
+                    min(_limit, _close)
+                    if side == OrderSide.BUY
+                    else max(_limit, _close)
+                )
                 self._settle_fill(order, _fp, base, quote)
             else:
                 order.status = OrderStatus.CANCELLED
@@ -519,8 +547,8 @@ class FleetSimExchange(ExchangeInterface):
                 order.remaining = float(amount)
         else:
             raise ValueError(
-                f"FleetSimExchange.place_order: unsupported type "
-                f"{order_type!r}")
+                f"FleetSimExchange.place_order: unsupported type " f"{order_type!r}"
+            )
 
         self._orders[order.id] = order
         if order.status == OrderStatus.OPEN:
@@ -564,17 +592,21 @@ class FleetSimExchange(ExchangeInterface):
             return ""
         try:
             from src.trading.stone_tablets.addressing import (
-                format_address, ticker_from_symbol)
+                format_address,
+                ticker_from_symbol,
+            )
+
             return format_address(ticker_from_symbol(symbol), idx)
         except Exception as exc:  # noqa: BLE001 - addressing is advisory
-            logger.debug(
-                "candle address unavailable for %s@%s: %s",
-                symbol, idx, exc)
+            logger.debug("candle address unavailable for %s@%s: %s", symbol, idx, exc)
             return ""
 
     def _settle_fill(
-        self, order: Order, fill_price: float,
-        base: str, quote: str,
+        self,
+        order: Order,
+        fill_price: float,
+        base: str,
+        quote: str,
     ) -> None:
         amount = float(order.amount)
         notional = amount * fill_price
@@ -602,13 +634,15 @@ class FleetSimExchange(ExchangeInterface):
         _need_ccy, _need_qty, _have = (
             (quote, notional + fee, self._balances.get(quote, 0.0))
             if order.side == OrderSide.BUY
-            else (base, amount, self._balances.get(base, 0.0)))
+            else (base, amount, self._balances.get(base, 0.0))
+        )
         if float(_have) + 1e-12 < float(_need_qty):
             raise ValueError(
                 f"FleetSimExchange._settle_fill: insufficient "
                 f"{_need_ccy} for {order.symbol} — need "
                 f"{_need_qty:.10g}, have {float(_have):.10g}. Refusing "
-                f"rather than settling a trade the ledger cannot fund.")
+                f"rather than settling a trade the ledger cannot fund."
+            )
         if order.side == OrderSide.BUY:
             self._adjust_balance(quote, -(notional + fee))
             self._adjust_balance(base, +amount)
@@ -628,8 +662,9 @@ class FleetSimExchange(ExchangeInterface):
         # units as live trade.timestamp), converted to seconds
         # here to match the Trade dataclass convention.
         _sim_ts_ms = self._master_clock.current_ts_ms()
-        _sim_ts_s = (float(_sim_ts_ms) / 1000.0
-                     if _sim_ts_ms is not None else time.time())
+        _sim_ts_s = (
+            float(_sim_ts_ms) / 1000.0 if _sim_ts_ms is not None else time.time()
+        )
         # v3.24.17 — stamp the Stone Tablet candle address on every
         # fill. Operator directive 2026-08-03: fills should be tied to
         # the "expected Stone Tablet Candle Address" so a sim trade is
@@ -649,10 +684,12 @@ class FleetSimExchange(ExchangeInterface):
             fee=fee,
             fee_currency=quote,
             timestamp=_sim_ts_s,
-            raw={"order_id": order.id,
-                 "sim_master_ts_ms": _sim_ts_ms,
-                 "candle_address": _addr,
-                 "candle_index": self._cursor_index(order.symbol)},
+            raw={
+                "order_id": order.id,
+                "sim_master_ts_ms": _sim_ts_ms,
+                "candle_address": _addr,
+                "candle_index": self._cursor_index(order.symbol),
+            },
         )
         # v3.24.83 — THE ORDER CARRIES THE SAME FILL FACTS AS LIVE.
         #
@@ -668,22 +705,24 @@ class FleetSimExchange(ExchangeInterface):
         # not been noticed yet.
         order.fee = fee
         order.fee_currency = quote
-        order.raw = {"order_id": order.id,
-                     "sim_master_ts_ms": _sim_ts_ms,
-                     "candle_address": _addr,
-                     "candle_index": self._cursor_index(order.symbol),
-                     "fill_price": fill_price,
-                     "notional": notional}
+        order.raw = {
+            "order_id": order.id,
+            "sim_master_ts_ms": _sim_ts_ms,
+            "candle_address": _addr,
+            "candle_index": self._cursor_index(order.symbol),
+            "fill_price": fill_price,
+            "notional": notional,
+        }
         self._trades.append(trade)
         if self._on_trade is not None:
             try:
                 self._on_trade(trade)
             except Exception as _cb_exc:  # noqa: BLE001 - callback surface
-                logger.debug(
-                    "FleetSimExchange on_trade cb raised: %s", _cb_exc)
+                logger.debug("FleetSimExchange on_trade cb raised: %s", _cb_exc)
 
     def _sweep_open_limit_orders(
-        self, only_symbol: Optional[str] = None,
+        self,
+        only_symbol: Optional[str] = None,
     ) -> int:
         """Fill any open LIMIT orders that the current candle sweeps.
         Returns count filled."""
@@ -692,8 +731,7 @@ class FleetSimExchange(ExchangeInterface):
         # placed. Symbols are resolved first so a fill mutating
         # _open_by_symbol mid-iteration cannot invalidate the loop.
         if only_symbol is not None:
-            symbols = ([only_symbol]
-                       if only_symbol in self._open_by_symbol else [])
+            symbols = [only_symbol] if only_symbol in self._open_by_symbol else []
         else:
             symbols = list(self._open_by_symbol)
         candidates: list[Order] = []
@@ -713,15 +751,13 @@ class FleetSimExchange(ExchangeInterface):
                 continue
             candle_low = float(cur[3])
             candle_high = float(cur[2])
-            crosses = (
-                (order.side == OrderSide.BUY and candle_low <= order.price)
-                or (order.side == OrderSide.SELL
-                    and candle_high >= order.price))
+            crosses = (order.side == OrderSide.BUY and candle_low <= order.price) or (
+                order.side == OrderSide.SELL and candle_high >= order.price
+            )
             if not crosses:
                 continue
             base, quote = order.symbol.split("/", 1)
-            self._settle_fill(order, float(order.price), base.upper(),
-                              quote.upper())
+            self._settle_fill(order, float(order.price), base.upper(), quote.upper())
             filled += 1
         return filled
 
@@ -730,7 +766,8 @@ class FleetSimExchange(ExchangeInterface):
         order = self._orders.get(order_id)
         if order is None:
             raise ValueError(
-                f"FleetSimExchange.cancel_order: unknown order {order_id!r}")
+                f"FleetSimExchange.cancel_order: unknown order {order_id!r}"
+            )
         if order.status == OrderStatus.OPEN:
             order.status = OrderStatus.CANCELLED
             self._unmark_open(order)
@@ -740,20 +777,22 @@ class FleetSimExchange(ExchangeInterface):
         del symbol
         order = self._orders.get(order_id)
         if order is None:
-            raise ValueError(
-                f"FleetSimExchange.get_order: unknown order {order_id!r}")
+            raise ValueError(f"FleetSimExchange.get_order: unknown order {order_id!r}")
         return order
 
     async def get_open_orders(
-        self, symbol: Optional[str] = None,
+        self,
+        symbol: Optional[str] = None,
     ) -> list[Order]:
         return [
-            o for o in self._orders.values()
-            if o.status == OrderStatus.OPEN
-            and (symbol is None or o.symbol == symbol)]
+            o
+            for o in self._orders.values()
+            if o.status == OrderStatus.OPEN and (symbol is None or o.symbol == symbol)
+        ]
 
     async def get_my_trades(
-        self, symbol: str,
+        self,
+        symbol: str,
         since: Optional[float] = None,
         limit: Optional[int] = None,
         params: Optional[dict] = None,
@@ -771,7 +810,7 @@ class FleetSimExchange(ExchangeInterface):
         if since is not None:
             out = [t for t in out if t.timestamp >= float(since)]
         if limit is not None:
-            out = out[-int(limit):]
+            out = out[-int(limit) :]
         return out
 
     # ─── Discovery ───────────────────────────────────────────────
@@ -781,18 +820,27 @@ class FleetSimExchange(ExchangeInterface):
             if "/" not in sym:
                 continue
             base, quote = sym.split("/", 1)
-            out.append(AssetInfo(
-                symbol=sym, base=base.upper(), quote=quote.upper(),
-                # v3.24.68 (C19 / SN-20) — PLACEHOLDER, not real venue
-                # limits. Real per-symbol limits are not available
-                # offline; nothing persists a captured copy, so serving
-                # them needs a capture step that does not exist.
-                # NuclearSimExchange carries the same values so the two
-                # harnesses cannot report different trade counts for the
-                # same strategy. Keep them in step.
-                min_amount=1e-8, min_cost=1.0,
-                amount_precision=8, price_precision=8,
-                maker_fee=0.0, taker_fee=0.0, active=True))
+            out.append(
+                AssetInfo(
+                    symbol=sym,
+                    base=base.upper(),
+                    quote=quote.upper(),
+                    # v3.24.68 (C19 / SN-20) — PLACEHOLDER, not real venue
+                    # limits. Real per-symbol limits are not available
+                    # offline; nothing persists a captured copy, so serving
+                    # them needs a capture step that does not exist.
+                    # NuclearSimExchange carries the same values so the two
+                    # harnesses cannot report different trade counts for the
+                    # same strategy. Keep them in step.
+                    min_amount=1e-8,
+                    min_cost=1.0,
+                    amount_precision=8,
+                    price_precision=8,
+                    maker_fee=0.0,
+                    taker_fee=0.0,
+                    active=True,
+                )
+            )
         return out
 
     async def get_asset_logo_url(self, currency: str) -> str:

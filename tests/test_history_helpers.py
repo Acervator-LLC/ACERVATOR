@@ -7,6 +7,7 @@ Covers the five operator objectives on the History tab:
   H4 — history_refreshed signal exists on the widget class
   H5 — chunked-window walk avoids the 500-cap that dropped RAVE trades
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -22,15 +23,15 @@ if str(REPO) not in sys.path:
 
 from src.gui import history_helpers as h  # noqa: E402
 
-
 # ---- H1 default start date --------------------------------------------- #
 
+
 def test_default_start_date_is_2026_04_01():
-    assert h.DEFAULT_START_DATE == datetime(
-        2026, 4, 1, 0, 0, 0, tzinfo=timezone.utc)
+    assert h.DEFAULT_START_DATE == datetime(2026, 4, 1, 0, 0, 0, tzinfo=timezone.utc)
 
 
 # ---- Trade normalization -------------------------------------------- #
+
 
 def test_normalize_trade_dataclass_shape():
     class T:
@@ -51,11 +52,17 @@ def test_normalize_trade_dataclass_shape():
 
 
 def test_normalize_trade_dict_ms_timestamp():
-    r = h.normalize_trade({
-        "id": "d1", "symbol": "ETH/USD", "side": "sell",
-        "amount": 1.0, "price": 200.0,
-        "timestamp": 1_700_000_000_000,
-    }, "coinbase")
+    r = h.normalize_trade(
+        {
+            "id": "d1",
+            "symbol": "ETH/USD",
+            "side": "sell",
+            "amount": 1.0,
+            "price": 200.0,
+            "timestamp": 1_700_000_000_000,
+        },
+        "coinbase",
+    )
     assert r["side"] == "SELL"
     # Millisecond → second conversion
     assert 1_600_000_000 < r["timestamp"] < 1_800_000_000
@@ -68,6 +75,7 @@ def test_normalize_trade_rejects_malformed():
 
 
 # ---- H5 chunked-window walk ------------------------------------------ #
+
 
 class _Trade:
     def __init__(self, id, symbol, side, ts, price=100.0, amount=1.0):
@@ -95,12 +103,14 @@ class _FakeExchange:
         self.calls: list[dict] = []
 
     async def get_my_trades(self, symbol, since=None, limit=500, params=None):
-        self.calls.append({"symbol": symbol, "since": since,
-                           "limit": limit, "params": params or {}})
+        self.calls.append(
+            {"symbol": symbol, "since": since, "limit": limit, "params": params or {}}
+        )
         window = [
-            t for t in self._all
-            if t.symbol == symbol
-            and (since is None or t.timestamp >= since)]
+            t
+            for t in self._all
+            if t.symbol == symbol and (since is None or t.timestamp >= since)
+        ]
         window.sort(key=lambda t: t.timestamp, reverse=True)
         # If caller requested pagination, return everything (ccxt
         # walks the exchange's cursor internally). Otherwise honor
@@ -135,9 +145,14 @@ def _make_ytd_trades(symbol, count):
     span = now - start
     step = max(1.0, span / count)
     return [
-        _Trade(id=f"t{i}", symbol=symbol, side="BUY" if i % 2 else "SELL",
-               ts=start + i * step)
-        for i in range(count)]
+        _Trade(
+            id=f"t{i}",
+            symbol=symbol,
+            side="BUY" if i % 2 else "SELL",
+            ts=start + i * step,
+        )
+        for i in range(count)
+    ]
 
 
 def test_paginated_fetch_recovers_full_history():
@@ -150,8 +165,9 @@ def test_paginated_fetch_recovers_full_history():
     bot = _FakeBot("RAVE/USD", exch)
     mgr = _FakeBotMgr([bot])
 
-    out = asyncio.run(h.fetch_all_history_chunked(
-        mgr, since_ts=h.DEFAULT_START_DATE.timestamp()))
+    out = asyncio.run(
+        h.fetch_all_history_chunked(mgr, since_ts=h.DEFAULT_START_DATE.timestamp())
+    )
     assert len(out) == 881
     ids = {r["id"] for r in out}
     assert ids == {f"t{i}" for i in range(881)}
@@ -169,7 +185,8 @@ def test_paginated_fetch_uses_single_call_per_symbol():
     asyncio.run(h.fetch_all_history_chunked(mgr, since_ts=0))
     assert len(exch.calls) == 1, (
         f"expected exactly 1 call per symbol (v3.23.73 pagination), "
-        f"got {len(exch.calls)}")
+        f"got {len(exch.calls)}"
+    )
     # And the single call must pass paginate=True (the correctness
     # primitive — without it Coinbase's 500-cap re-appears).
     assert exch.calls[0].get("params", {}).get("paginate") is True
@@ -179,8 +196,7 @@ def test_paginated_fetch_dedupes_by_id():
     """A trade returned twice by the paginated call (e.g. cursor
     overlap in ccxt's internal walk) must still appear once in the
     output."""
-    t = _Trade("dup1", "BTC/USD", "BUY",
-               h.DEFAULT_START_DATE.timestamp() + 3600)
+    t = _Trade("dup1", "BTC/USD", "BUY", h.DEFAULT_START_DATE.timestamp() + 3600)
     exch = _FakeExchange([t, t, t], cap_per_call=500)
     bot = _FakeBot("BTC/USD", exch)
     mgr = _FakeBotMgr([bot])
@@ -200,9 +216,12 @@ def test_paginated_fetch_falls_back_when_connector_rejects_params():
 
         async def get_my_trades(self, symbol, since=None, limit=500):
             self.calls += 1
-            return [_Trade(f"o{i}", symbol, "BUY",
-                           h.DEFAULT_START_DATE.timestamp() + i * 60)
-                    for i in range(3)]
+            return [
+                _Trade(
+                    f"o{i}", symbol, "BUY", h.DEFAULT_START_DATE.timestamp() + i * 60
+                )
+                for i in range(3)
+            ]
 
     old_exch = _OldStyleExchange()
     bot = _FakeBot("BTC/USD", old_exch)
@@ -213,6 +232,7 @@ def test_paginated_fetch_falls_back_when_connector_rejects_params():
 
 
 # ---- H2 gate tooltip surfaces blocker list --------------------------- #
+
 
 def test_gate_tooltip_lists_scrum_and_fold_blockers():
     entry = {
@@ -235,8 +255,8 @@ def test_gate_tooltip_lists_scrum_and_fold_blockers():
     # their states are distinguishable, and EVERY blocker is named.
     up = tt.upper()
     assert "SCRUM" in up and "FOLD" in up
-    assert "ARMED" in up          # the scrum side, which is armed
-    assert "HELD" in up or "BLOCK" in up   # the fold side, which is not
+    assert "ARMED" in up  # the scrum side, which is armed
+    assert "HELD" in up or "BLOCK" in up  # the fold side, which is not
     assert "dust_floor" in tt
     assert "voting_bearish" in tt
     assert "TRACK" in tt
@@ -258,21 +278,40 @@ def test_gate_cell_text_compact():
 
 # ---- H3 voting tooltip enumerates per-indicator states --------------- #
 
+
 def test_voting_tooltip_lists_indicators():
     entry = {
         "timestamp": "2026-07-31T12:34:56Z",
         "data": {
             "panel": {
                 "timeframe": "1h",
-                "bullish_count": 3, "bearish_count": 1, "neutral_count": 1,
-                "net_score": 0.42, "consensus_confidence": 0.71,
+                "bullish_count": 3,
+                "bearish_count": 1,
+                "neutral_count": 1,
+                "net_score": 0.42,
+                "consensus_confidence": 0.71,
                 "signals": [
-                    {"indicator": "RSI", "direction": 1,
-                     "confidence": 0.8, "weight": 1.0, "timeframe": "1h"},
-                    {"indicator": "MACD", "direction": -1,
-                     "confidence": 0.6, "weight": 1.0, "timeframe": "1h"},
-                    {"indicator": "EMA_TREND", "direction": 1,
-                     "confidence": 0.9, "weight": 1.5, "timeframe": "4h"},
+                    {
+                        "indicator": "RSI",
+                        "direction": 1,
+                        "confidence": 0.8,
+                        "weight": 1.0,
+                        "timeframe": "1h",
+                    },
+                    {
+                        "indicator": "MACD",
+                        "direction": -1,
+                        "confidence": 0.6,
+                        "weight": 1.0,
+                        "timeframe": "1h",
+                    },
+                    {
+                        "indicator": "EMA_TREND",
+                        "direction": 1,
+                        "confidence": 0.9,
+                        "weight": 1.5,
+                        "timeframe": "4h",
+                    },
                 ],
             }
         },
@@ -282,27 +321,33 @@ def test_voting_tooltip_lists_indicators():
     assert "MACD" in tt
     assert "EMA_TREND" in tt
     assert "1h" in tt and "4h" in tt
-    assert "0.71" in tt   # consensus confidence
+    assert "0.71" in tt  # consensus confidence
 
 
 def test_voting_cell_text_compact():
-    entry = {"data": {"panel": {
-        "direction": "BUY", "net_score": 0.4}}}
+    entry = {"data": {"panel": {"direction": "BUY", "net_score": 0.4}}}
     assert "BUY" in h.voting_cell_text(entry)
 
 
 # ---- Grade tooltip --------------------------------------------------- #
 
+
 def test_grade_tooltip_covers_letter_meanings():
     for letter, expected in [
-            ("A", "Excellent"), ("B", "Good"),
-            ("C", "Average"), ("D", "Poor"), ("F", "Failed")]:
+        ("A", "Excellent"),
+        ("B", "Good"),
+        ("C", "Average"),
+        ("D", "Poor"),
+        ("F", "Failed"),
+    ]:
         assert expected in h.grade_tooltip(letter)
 
 
 # ---- H4 signal presence (widget-level; import-guarded) --------------- #
 
+
 def test_history_tab_has_history_refreshed_signal():
     pytest.importorskip("PySide6")
     from src.gui.history_tab import HistoryTab
+
     assert HistoryTab.history_refreshed is not None

@@ -36,9 +36,14 @@ try:
     from PySide6.QtCore import Qt, QPointF, QRectF
     from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QLinearGradient
     from PySide6.QtWidgets import (
-        QTableWidget, QTableWidgetItem, QHeaderView, QWidget,
-        QAbstractItemView, QSizePolicy,
+        QTableWidget,
+        QTableWidgetItem,
+        QHeaderView,
+        QWidget,
+        QAbstractItemView,
+        QSizePolicy,
     )
+
     _HAS_QT = True
 except ImportError:  # noqa: BLE001 - graceful fallback for headless tests
     _HAS_QT = False
@@ -47,29 +52,30 @@ logger = logging.getLogger("acervator.gui.bot_swarm_list")
 
 # --- Row / column geometry ----------------------------------------
 
-LANE_COUNT = 8                        # per operator: 8 connector nodes/row
-LANE_COL_WIDTH = 20                   # px per lane column
-LANE_DOT_RADIUS = 4                   # px, painted in the cell
-ROW_HEIGHT = 30                       # px, fixed
+LANE_COUNT = 8  # per operator: 8 connector nodes/row
+LANE_COL_WIDTH = 20  # px per lane column
+LANE_DOT_RADIUS = 4  # px, painted in the cell
+ROW_HEIGHT = 30  # px, fixed
 TICKER_COL_WIDTH = 90
 FLOW_COL_WIDTH = 90
 
 COL_TICKER = 0
 COL_INFLOW = 1
 COL_OUTFLOW = 2
-COL_OUTFLOW_PCT = 3     # v3.23.62: % of profit exported via smart wires
+COL_OUTFLOW_PCT = 3  # v3.23.62: % of profit exported via smart wires
 COL_LANE_0 = 4
 COL_LANE_LAST = COL_LANE_0 + LANE_COUNT - 1
 TOTAL_COLS = COL_LANE_LAST + 1
 
 OUTFLOW_PCT_COL_WIDTH = 60
 
-COLUMN_HEADERS = (
-    ["Ticker", "Inflow", "Outflow", "% Out"]
-    + [f"L{i + 1}" for i in range(LANE_COUNT)])
+COLUMN_HEADERS = ["Ticker", "Inflow", "Outflow", "% Out"] + [
+    f"L{i + 1}" for i in range(LANE_COUNT)
+]
 
 
 # --- Pure lane allocator ------------------------------------------
+
 
 class BotSwarmLaneAllocator:
     """Assign each wire to a lane index in ``0..LANE_COUNT-1``.
@@ -87,22 +93,19 @@ class BotSwarmLaneAllocator:
     def __init__(self, lane_count: int = LANE_COUNT):
         self._lane_count = lane_count
 
-    def assign(self, wires: list[tuple[str, int, int]]
-               ) -> dict[str, Optional[int]]:
+    def assign(self, wires: list[tuple[str, int, int]]) -> dict[str, Optional[int]]:
         """``wires`` is ``[(wire_id, row_a, row_b), ...]``. Returns
         ``{wire_id: lane_idx | None}``."""
         # Track occupied row-ranges per lane. Each lane has a list of
         # (lo, hi) intervals; a new span fits if it doesn't overlap
         # any existing interval on that lane.
-        lanes: list[list[tuple[int, int]]] = [
-            [] for _ in range(self._lane_count)]
+        lanes: list[list[tuple[int, int]]] = [[] for _ in range(self._lane_count)]
         result: dict[str, Optional[int]] = {}
         for wire_id, ra, rb in wires:
             lo, hi = (ra, rb) if ra <= rb else (rb, ra)
             placed = False
             for lane_idx in range(self._lane_count):
-                if all(hi < ilo or lo > ihi
-                       for ilo, ihi in lanes[lane_idx]):
+                if all(hi < ilo or lo > ihi for ilo, ihi in lanes[lane_idx]):
                     lanes[lane_idx].append((lo, hi))
                     result[wire_id] = lane_idx
                     placed = True
@@ -149,8 +152,7 @@ if _HAS_QT:
                 hdr.setSectionResizeMode(col, QHeaderView.Fixed)
                 self.setColumnWidth(col, LANE_COL_WIDTH)
             self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            self.setSizePolicy(
-                QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             self._bot_ids: list[str] = []
 
         def set_bots(self, rows: list[dict]) -> None:
@@ -198,8 +200,7 @@ if _HAS_QT:
                 self.setItem(i, COL_OUTFLOW_PCT, pct_item)
                 # Lane columns hold no text; wire overlay paints dots.
                 for j in range(LANE_COUNT):
-                    self.setItem(i, COL_LANE_0 + j,
-                                 QTableWidgetItem(""))
+                    self.setItem(i, COL_LANE_0 + j, QTableWidgetItem(""))
 
         def bot_ids(self) -> list[str]:
             return list(self._bot_ids)
@@ -235,9 +236,7 @@ if _HAS_QT:
             list's viewport coord space)."""
             if row < 0 or row >= self.rowCount():
                 return 0
-            return int(
-                self.rowViewportPosition(row) + self.rowHeight(row) / 2)
-
+            return int(self.rowViewportPosition(row) + self.rowHeight(row) / 2)
 
     class LaneWireCanvas(QWidget):
         """Transparent overlay on top of BotListView. Paints wires as
@@ -306,9 +305,10 @@ if _HAS_QT:
             self._unlisted_at_assign = set()
             triples: list[tuple[str, int, int]] = []
             for w in self._wires:
-                _wid = str(w.get("id") or
-                           f"{w.get('source_id', '')}->"
-                           f"{w.get('target_id', '')}")
+                _wid = str(
+                    w.get("id")
+                    or f"{w.get('source_id', '')}->" f"{w.get('target_id', '')}"
+                )
                 ra = _row_of.get(str(w.get("source_id", "")), -1)
                 rb = _row_of.get(str(w.get("target_id", "")), -1)
                 if ra < 0 or rb < 0:
@@ -336,9 +336,10 @@ if _HAS_QT:
             # for 8 wires over 30 rows before this change.
             _row_of = self._list.row_index_map()
             for w in self._wires:
-                _wid = str(w.get("id") or
-                           f"{w.get('source_id', '')}->"
-                           f"{w.get('target_id', '')}")
+                _wid = str(
+                    w.get("id")
+                    or f"{w.get('source_id', '')}->" f"{w.get('target_id', '')}"
+                )
                 _src = str(w.get("source_id", ""))
                 _tgt = str(w.get("target_id", ""))
                 lane = self._lane_assignments.get(_wid)
@@ -348,10 +349,11 @@ if _HAS_QT:
                     # here with no lane, and calling that "no-lane"
                     # would point the operator at lane capacity when
                     # the row set is what is stale.
-                    _why = ("unlisted-bot"
-                            if _wid in getattr(self, "_unlisted_at_assign",
-                                               ())
-                            else "no-lane")
+                    _why = (
+                        "unlisted-bot"
+                        if _wid in getattr(self, "_unlisted_at_assign", ())
+                        else "no-lane"
+                    )
                     self._undrawable_wires.append((_wid, _why))
                     continue
                 ra = _row_of.get(_src, -1)
@@ -368,7 +370,7 @@ if _HAS_QT:
                 # travelling source→target along the vertical segment
                 # while leaving a soft base gradient underneath.
                 _phase = float(w.get("phase", 0.0) or 0.0)
-                _t = _phase % 1.0                # fraction 0..1
+                _t = _phase % 1.0  # fraction 0..1
                 grad = QLinearGradient(x, y0, x, y1)
                 # Soft base gradient (cyan → green).
                 grad.setColorAt(0.0, QColor(0, 255, 238, 70))
@@ -377,25 +379,19 @@ if _HAS_QT:
                 _pulse_lo = max(0.0, _t - 0.12)
                 _pulse_hi = min(1.0, _t + 0.12)
                 if _pulse_lo > 0.0:
-                    grad.setColorAt(
-                        _pulse_lo, QColor(0, 255, 238, 70))
+                    grad.setColorAt(_pulse_lo, QColor(0, 255, 238, 70))
                 grad.setColorAt(_t, QColor(255, 255, 255, 230))
                 if _pulse_hi < 1.0:
-                    grad.setColorAt(
-                        _pulse_hi, QColor(0, 255, 136, 70))
+                    grad.setColorAt(_pulse_hi, QColor(0, 255, 136, 70))
                 p.setPen(QPen(QBrush(grad), 3))
                 p.drawLine(x, y0, x, y1)
                 # Endpoint dots — source dim, target bright, matching
                 # the wire's inflow → outflow directional visual.
                 p.setPen(Qt.NoPen)
                 p.setBrush(QBrush(QColor(0, 255, 238, 180)))
-                p.drawEllipse(
-                    QPointF(x, y0),
-                    LANE_DOT_RADIUS, LANE_DOT_RADIUS)
+                p.drawEllipse(QPointF(x, y0), LANE_DOT_RADIUS, LANE_DOT_RADIUS)
                 p.setBrush(QBrush(QColor(0, 255, 136, 230)))
-                p.drawEllipse(
-                    QPointF(x, y1),
-                    LANE_DOT_RADIUS, LANE_DOT_RADIUS)
+                p.drawEllipse(QPointF(x, y1), LANE_DOT_RADIUS, LANE_DOT_RADIUS)
             p.end()
             # v3.24.52 (C09) — surface the drop. Reported on CHANGE, not
             # per frame: this canvas repaints at ~2.5/sec and a per-paint
@@ -408,8 +404,11 @@ if _HAS_QT:
                     logger.warning(
                         "Bot Swarm lane canvas: %d wire(s) configured but "
                         "not drawn — %s. The canvas is showing fewer wires "
-                        "than exist.", len(_now), _detail)
+                        "than exist.",
+                        len(_now),
+                        _detail,
+                    )
                 else:
                     logger.info(
-                        "Bot Swarm lane canvas: all configured wires are "
-                        "now drawn.")
+                        "Bot Swarm lane canvas: all configured wires are " "now drawn."
+                    )

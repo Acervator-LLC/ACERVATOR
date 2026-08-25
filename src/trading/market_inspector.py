@@ -34,6 +34,7 @@ logger = logging.getLogger("acervator.market_inspector")
 
 try:
     from .ta_engine import Candle, detect_landing_strip_v2
+
     _HAS_TA = True
 except ImportError:
     Candle = None  # type: ignore
@@ -56,6 +57,7 @@ SIGNAL_NONE = "NONE"
 @dataclass
 class TimeframeAnalysis:
     """Per-timeframe BB + z-score + tightening state for one market."""
+
     tf: str
     bb_position: float = 0.5
     z_score: float = 0.0
@@ -72,18 +74,20 @@ class TimeframeAnalysis:
 @dataclass
 class MarketSignal:
     """Aggregated HTF signal for one market."""
+
     symbol: str
     signal: str = SIGNAL_NONE
     score: float = 0.0
-    direction: str = ""            # "long" | "short" | ""
+    direction: str = ""  # "long" | "short" | ""
     per_tf: dict = field(default_factory=dict)
-    is_active: bool = False        # Currently traded by a bot?
+    is_active: bool = False  # Currently traded by a bot?
 
 
 @dataclass
 class OpposingPair:
     """A long-signal market paired with a short-signal market that
     moves negatively-correlated with it over a rolling window."""
+
     long_side: MarketSignal
     short_side: MarketSignal
     correlation_30d: float
@@ -126,9 +130,7 @@ class MarketInspector:
     def last_scan_ts(self) -> float:
         return self._last_scan_ts
 
-    def _analyze_tf(
-        self, tf: str, candles: list
-    ) -> Optional[TimeframeAnalysis]:
+    def _analyze_tf(self, tf: str, candles: list) -> Optional[TimeframeAnalysis]:
         """BB + z + tightening on one asset's candles for one TF.
         Returns None on insufficient data."""
         if not _HAS_TA or not candles or len(candles) < 20:
@@ -151,29 +153,31 @@ class MarketInspector:
         tight_ratio = 0.0
         try:
             tr = detect_landing_strip_v2(
-                candles, min_consecutive=3,
-                shrink_threshold=0.90, bb_tolerance_pct=3.0)
+                candles, min_consecutive=3, shrink_threshold=0.90, bb_tolerance_pct=3.0
+            )
             if tr and getattr(tr, "detected", False):
                 tight_flag = True
                 tight_len = int(getattr(tr, "length", 0) or 0)
-                tight_ratio = float(
-                    getattr(tr, "tightening_ratio", 0.0) or 0.0)
+                tight_ratio = float(getattr(tr, "tightening_ratio", 0.0) or 0.0)
         except Exception as _tight_exc:  # noqa: BLE001 - tightening probe best-effort
-            logger.debug(
-                "tightening probe failed on %s: %s", tf, _tight_exc)
+            logger.debug("tightening probe failed on %s: %s", tf, _tight_exc)
         at_upper = z > self._z_threshold and bb_pos > self._bb_upper
         at_lower = z < -self._z_threshold and bb_pos < self._bb_lower
         return TimeframeAnalysis(
-            tf=tf, bb_position=bb_pos, z_score=z,
-            sma=sma, upper_bb=upper, lower_bb=lower,
-            tightening=tight_flag, tight_length=tight_len,
+            tf=tf,
+            bb_position=bb_pos,
+            z_score=z,
+            sma=sma,
+            upper_bb=upper,
+            lower_bb=lower,
+            tightening=tight_flag,
+            tight_length=tight_len,
             tight_ratio=tight_ratio,
             at_upper_extreme=at_upper,
-            at_lower_extreme=at_lower)
+            at_lower_extreme=at_lower,
+        )
 
-    def _score_market(
-        self, symbol: str, per_tf: dict, is_active: bool
-    ) -> MarketSignal:
+    def _score_market(self, symbol: str, per_tf: dict, is_active: bool) -> MarketSignal:
         """Combine D/W/M analyses into a single signal.
 
         Signal ladder (require all 3 TFs to be evaluated for HIGH/MEDIUM):
@@ -184,14 +188,10 @@ class MarketInspector:
           any TF has tightening but no extreme → WATCHLIST (score 0.15)
           otherwise                            → NONE
         """
-        long_tfs = [
-            tf for tf, a in per_tf.items() if a and a.at_lower_extreme]
-        short_tfs = [
-            tf for tf, a in per_tf.items() if a and a.at_upper_extreme]
-        long_tight = sum(
-            1 for tf in long_tfs if per_tf[tf].tightening)
-        short_tight = sum(
-            1 for tf in short_tfs if per_tf[tf].tightening)
+        long_tfs = [tf for tf, a in per_tf.items() if a and a.at_lower_extreme]
+        short_tfs = [tf for tf, a in per_tf.items() if a and a.at_upper_extreme]
+        long_tight = sum(1 for tf in long_tfs if per_tf[tf].tightening)
+        short_tight = sum(1 for tf in short_tfs if per_tf[tf].tightening)
         n_long = len(long_tfs)
         n_short = len(short_tfs)
         n_tfs = len(per_tf)
@@ -229,8 +229,7 @@ class MarketInspector:
                 sig = SIGNAL_ENTRY_SHORT_LOW
                 score = 0.35
         else:
-            any_tight = any(
-                a.tightening for a in per_tf.values() if a is not None)
+            any_tight = any(a.tightening for a in per_tf.values() if a is not None)
             if any_tight:
                 sig = SIGNAL_WATCHLIST
                 score = 0.15
@@ -241,8 +240,13 @@ class MarketInspector:
                     direction = "short"
 
         return MarketSignal(
-            symbol=symbol, signal=sig, score=score,
-            direction=direction, per_tf=per_tf, is_active=is_active)
+            symbol=symbol,
+            signal=sig,
+            score=score,
+            direction=direction,
+            per_tf=per_tf,
+            is_active=is_active,
+        )
 
     @staticmethod
     def _pearson(xs: list, ys: list) -> float:
@@ -269,15 +273,11 @@ class MarketInspector:
                 out.append((closes[i] - prev) / prev)
         return out
 
-    def _find_opposing_pairs(
-        self, signals: list, closes_by_symbol: dict
-    ) -> list:
+    def _find_opposing_pairs(self, signals: list, closes_by_symbol: dict) -> list:
         """Enumerate long × short candidates; keep pairs whose 30-day
         return correlation sits in the configured negative window."""
-        longs = [
-            s for s in signals if s.direction == "long" and s.score >= 0.3]
-        shorts = [
-            s for s in signals if s.direction == "short" and s.score >= 0.3]
+        longs = [s for s in signals if s.direction == "long" and s.score >= 0.3]
+        shorts = [s for s in signals if s.direction == "short" and s.score >= 0.3]
         pairs = []
         for lo in longs:
             for sh in shorts:
@@ -295,14 +295,16 @@ class MarketInspector:
                     continue
                 corr = self._pearson(r_l[-m:], r_s[-m:])
                 if self._corr_min <= corr <= self._corr_max:
-                    pairs.append(OpposingPair(
-                        long_side=lo, short_side=sh,
-                        correlation_30d=corr))
+                    pairs.append(
+                        OpposingPair(long_side=lo, short_side=sh, correlation_30d=corr)
+                    )
         # Rank: more negative correlation first, then higher combined score.
-        pairs.sort(key=lambda p: (
-            p.correlation_30d,
-            -(p.long_side.score + p.short_side.score),
-        ))
+        pairs.sort(
+            key=lambda p: (
+                p.correlation_30d,
+                -(p.long_side.score + p.short_side.score),
+            )
+        )
         return pairs[:5]
 
     def scan_universe(
@@ -331,13 +333,12 @@ class MarketInspector:
                     per_tf[tf] = a
             if per_tf:
                 sig = self._score_market(
-                    symbol, per_tf,
-                    is_active=(symbol in active_symbols))
+                    symbol, per_tf, is_active=(symbol in active_symbols)
+                )
                 signals.append(sig)
         signals.sort(key=lambda s: -s.score)
         self._last_signals = signals
-        self._last_pairs = self._find_opposing_pairs(
-            signals, closes_by_symbol)
+        self._last_pairs = self._find_opposing_pairs(signals, closes_by_symbol)
         self._last_scan_ts = _time.time()
 
     def get_signal(self, symbol: str) -> Optional[MarketSignal]:

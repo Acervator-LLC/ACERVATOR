@@ -3,18 +3,30 @@
 Scrumming Bot v3 Simulation Test Suite
 Tests targeting state machine + TA confidence across market scenarios.
 """
+
 import math, random, time
 from dataclasses import dataclass
 
 # Import TA engine
 from src.trading.ta_engine import (
-    Candle, VortexIndicator, MACD, BollingerBands,
-    compute_heikin_ashi, detect_bb_proximity
+    Candle,
+    VortexIndicator,
+    MACD,
+    BollingerBands,
+    compute_heikin_ashi,
+    detect_bb_proximity,
 )
+
 
 @dataclass
 class SimCandle:
-    time: int; open: float; high: float; low: float; close: float; volume: float
+    time: int
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
 
 # ── Price generators ──────────────────────────────────────────
 def gen_range_bound(n=500, center=100, amplitude=10, seed=42):
@@ -30,6 +42,7 @@ def gen_range_bound(n=500, center=100, amplitude=10, seed=42):
         l = min(o, price) - abs(rng.gauss(0, amplitude * 0.005))
         candles.append(SimCandle(i * 3600, o, h, l, price, 10000 + abs(move) * 1e5))
     return candles
+
 
 def gen_bull_run(n=500, start=42000, end=73000, seed=42):
     """Strong bull trend (BTC Jan-Mar 2024 style)."""
@@ -49,6 +62,7 @@ def gen_bull_run(n=500, start=42000, end=73000, seed=42):
         candles.append(SimCandle(i * 3600, o, h, l, price, 10000 + abs(step) * 100))
     return candles
 
+
 def gen_bear_drop(n=500, start=73000, end=55000, seed=42):
     """Bear market drop."""
     rng = random.Random(seed)
@@ -66,6 +80,7 @@ def gen_bear_drop(n=500, start=73000, end=55000, seed=42):
         candles.append(SimCandle(i * 3600, o, h, l, price, 10000))
     return candles
 
+
 def gen_volatile_chop(n=500, center=65000, seed=42):
     """High volatility choppy market."""
     rng = random.Random(seed)
@@ -80,12 +95,20 @@ def gen_volatile_chop(n=500, center=65000, seed=42):
         candles.append(SimCandle(i * 3600, o, h, l, price, 10000 + abs(move) * 100))
     return candles
 
+
 # ── Scrumming Bot Simulator ──────────────────────────────────
 class ScrumSim:
     """Lightweight scrumming bot simulator with TA + targeting."""
 
-    def __init__(self, candles, investment=200, scrum_interval=2.0,
-                 bb_tolerance=1.0, detect_pct=50, fire_pct=1.0):
+    def __init__(
+        self,
+        candles,
+        investment=200,
+        scrum_interval=2.0,
+        bb_tolerance=1.0,
+        detect_pct=50,
+        fire_pct=1.0,
+    ):
         self.candles = candles
         self.investment = investment
         self.scrum_interval = scrum_interval
@@ -119,26 +142,34 @@ class ScrumSim:
     def _compute_ta(self, idx):
         if idx - self.ta_cache_idx < 5 and self.ta_cache:
             return self.ta_cache
-        window = self.candles[max(0, idx - 100):idx + 1]
+        window = self.candles[max(0, idx - 100) : idx + 1]
         if len(window) < 26:
             return None
-        ta_candles = [Candle(c.time, c.open, c.high, c.low, c.close, c.volume)
-                      for c in window]
+        ta_candles = [
+            Candle(c.time, c.open, c.high, c.low, c.close, c.volume) for c in window
+        ]
         try:
             bb = detect_bb_proximity(ta_candles, tolerance_pct=self.bb_tolerance)
             vx = VortexIndicator(14).compute(ta_candles, "1h")
             macd = MACD().compute(ta_candles, "1h")
             ha = compute_heikin_ashi(ta_candles)
             snapshot = {
-                "bb": bb, "bb_position": bb.bb_position,
-                "bb_near_upper": bb.near_upper, "bb_near_lower": bb.near_lower,
-                "landing_strip": bb.landing_strip, "landing_side": bb.landing_strip_side,
+                "bb": bb,
+                "bb_position": bb.bb_position,
+                "bb_near_upper": bb.near_upper,
+                "bb_near_lower": bb.near_lower,
+                "landing_strip": bb.landing_strip,
+                "landing_side": bb.landing_strip_side,
                 "ha_bullish": ha[-1].close > ha[-1].open if ha else False,
                 "ha_bearish": ha[-1].close < ha[-1].open if ha else False,
                 "vx_bull": vx.direction.value > 0,
                 "vx_converging": abs(vx.details.get("separation", 0)) < 0.08,
-                "macd_contracting": (macd.details.get("histogram", 0) > 0 and macd.confidence < 0.4),
-                "macd_expanding_bull": (macd.details.get("histogram", 0) > 0 and macd.confidence >= 0.4),
+                "macd_contracting": (
+                    macd.details.get("histogram", 0) > 0 and macd.confidence < 0.4
+                ),
+                "macd_expanding_bull": (
+                    macd.details.get("histogram", 0) > 0 and macd.confidence >= 0.4
+                ),
             }
             self.ta_cache = snapshot
             self.ta_cache_idx = idx
@@ -196,21 +227,35 @@ class ScrumSim:
             scrum_conf = 0.50 if bullish else 0.0
             fold_conf = 0.50 if bearish else 0.0
             if ta:
-                if ta["ha_bullish"] and bullish: scrum_conf += 0.10
-                if bb_pos > 0.6: scrum_conf += 0.10 * min(1.0, (bb_pos - 0.5) * 4)
-                if ta["bb_near_upper"]: scrum_conf += 0.10
-                if ta["landing_strip"] and ta["landing_side"] == "upper": scrum_conf += 0.15
-                if ta["vx_converging"]: scrum_conf += 0.05
-                elif ta["vx_bull"]: scrum_conf -= 0.05
-                if ta["macd_contracting"]: scrum_conf += 0.10
-                elif ta["macd_expanding_bull"]: scrum_conf -= 0.05
+                if ta["ha_bullish"] and bullish:
+                    scrum_conf += 0.10
+                if bb_pos > 0.6:
+                    scrum_conf += 0.10 * min(1.0, (bb_pos - 0.5) * 4)
+                if ta["bb_near_upper"]:
+                    scrum_conf += 0.10
+                if ta["landing_strip"] and ta["landing_side"] == "upper":
+                    scrum_conf += 0.15
+                if ta["vx_converging"]:
+                    scrum_conf += 0.05
+                elif ta["vx_bull"]:
+                    scrum_conf -= 0.05
+                if ta["macd_contracting"]:
+                    scrum_conf += 0.10
+                elif ta["macd_expanding_bull"]:
+                    scrum_conf -= 0.05
 
-                if ta["ha_bearish"] and bearish: fold_conf += 0.10
-                if bb_pos < 0.4: fold_conf += 0.10 * min(1.0, (0.5 - bb_pos) * 4)
-                if ta["bb_near_lower"]: fold_conf += 0.10
-                if ta["landing_strip"] and ta["landing_side"] == "lower": fold_conf += 0.15
-                if ta["macd_expanding_bull"]: fold_conf += 0.10
-                if not ta["vx_bull"] and ta["vx_converging"]: fold_conf += 0.05
+                if ta["ha_bearish"] and bearish:
+                    fold_conf += 0.10
+                if bb_pos < 0.4:
+                    fold_conf += 0.10 * min(1.0, (0.5 - bb_pos) * 4)
+                if ta["bb_near_lower"]:
+                    fold_conf += 0.10
+                if ta["landing_strip"] and ta["landing_side"] == "lower":
+                    fold_conf += 0.15
+                if ta["macd_expanding_bull"]:
+                    fold_conf += 0.10
+                if not ta["vx_bull"] and ta["vx_converging"]:
+                    fold_conf += 0.05
 
             scrum_conf = max(0.0, min(1.0, scrum_conf))
             fold_conf = max(0.0, min(1.0, fold_conf))
@@ -219,13 +264,18 @@ class ScrumSim:
             f_thresh = 0.15 if self.mode == "fire" else 0.30
 
             # SCRUM
-            if delta > 0 and delta_pct >= self.scrum_interval and scrum_conf >= s_thresh:
+            if (
+                delta > 0
+                and delta_pct >= self.scrum_interval
+                and scrum_conf >= s_thresh
+            ):
                 scrum_asset = delta / price
                 if self.holdings >= scrum_asset and scrum_asset > 0:
                     self.holdings -= scrum_asset
                     scrum_usd = scrum_asset * price
                     self.usd += scrum_usd
-                    self.trades += 1; self.scrums += 1
+                    self.trades += 1
+                    self.scrums += 1
                     self.volume += scrum_usd
                     self.fold_queue_usd += scrum_usd
                     self.fold_ref_price = price
@@ -241,7 +291,8 @@ class ScrumSim:
                     self.usd -= usd_avail
                     self.holdings += buy
                     self.pnl += extra * price
-                    self.trades += 1; self.folds += 1
+                    self.trades += 1
+                    self.folds += 1
                     self.volume += usd_avail
                     self.fold_queue_usd = 0.0
                     self.mode = "search"
@@ -276,14 +327,19 @@ def run_scenario(name, candles, **kwargs):
 
     print(f"\n{'═' * 60}")
     print(f"  {name}")
-    print(f"  Price: ${r['start_price']:,.2f} → ${r['end_price']:,.2f} ({r['price_change']:+.1f}%)")
+    print(
+        f"  Price: ${r['start_price']:,.2f} → ${r['end_price']:,.2f} ({r['price_change']:+.1f}%)"
+    )
     print(f"{'─' * 60}")
     print(f"  Trades: {r['trades']} ({r['scrums']} scrums, {r['folds']} folds)")
     print(f"  Volume: ${r['volume']:,.2f}")
-    print(f"  Portfolio: ${r['portfolio']:,.2f}  "
-          f"({pnl_color}P/L: ${r['pnl']:+,.2f}{reset})")
-    print(f"  Passive:   ${r['passive_hold']:,.2f}  "
-          f"(P/L: ${r['passive_pnl']:+,.2f})")
+    print(
+        f"  Portfolio: ${r['portfolio']:,.2f}  "
+        f"({pnl_color}P/L: ${r['pnl']:+,.2f}{reset})"
+    )
+    print(
+        f"  Passive:   ${r['passive_hold']:,.2f}  " f"(P/L: ${r['passive_pnl']:+,.2f})"
+    )
     print(f"  {adv_color}Advantage: ${r['advantage']:+,.2f}{reset}")
     print(f"{'═' * 60}")
     return r
@@ -300,38 +356,44 @@ if __name__ == "__main__":
     # Test 1: Range-bound (ideal scenario)
     results["range_bound"] = run_scenario(
         "RANGE-BOUND ($90–$110, 500 candles)",
-        gen_range_bound(500, center=100, amplitude=10))
+        gen_range_bound(500, center=100, amplitude=10),
+    )
 
     # Test 2: Strong bull run (BTC 2024 problem scenario)
     results["bull_run"] = run_scenario(
         "BULL RUN ($42K→$73K, 500 candles — BTC Jan-Mar 2024)",
-        gen_bull_run(500, start=42000, end=73000))
+        gen_bull_run(500, start=42000, end=73000),
+    )
 
     # Test 3: Bear drop
     results["bear_drop"] = run_scenario(
-        "BEAR DROP ($73K→$55K, 500 candles)",
-        gen_bear_drop(500, start=73000, end=55000))
+        "BEAR DROP ($73K→$55K, 500 candles)", gen_bear_drop(500, start=73000, end=55000)
+    )
 
     # Test 4: Volatile chop
     results["volatile"] = run_scenario(
         "VOLATILE CHOP (±20% around $65K, 500 candles)",
-        gen_volatile_chop(500, center=65000))
+        gen_volatile_chop(500, center=65000),
+    )
 
     # Test 5: Bull then bear (full cycle)
     bull = gen_bull_run(250, start=42000, end=73000, seed=42)
     bear = gen_bear_drop(250, start=73000, end=58000, seed=43)
     # Adjust timestamps for bear portion
     for i, c in enumerate(bear):
-        bear[i] = SimCandle(c.time + 250 * 3600, c.open, c.high, c.low, c.close, c.volume)
+        bear[i] = SimCandle(
+            c.time + 250 * 3600, c.open, c.high, c.low, c.close, c.volume
+        )
     cycle = bull + bear
     results["full_cycle"] = run_scenario(
-        "FULL CYCLE: Bull $42K→$73K then Bear $73K→$58K (500 candles)",
-        cycle)
+        "FULL CYCLE: Bull $42K→$73K then Bear $73K→$58K (500 candles)", cycle
+    )
 
     # Test 6: Tight range (low volatility)
     results["tight"] = run_scenario(
         "TIGHT RANGE ($99–$101, 500 candles, low vol)",
-        gen_range_bound(500, center=100, amplitude=2))
+        gen_range_bound(500, center=100, amplitude=2),
+    )
 
     # Summary
     print("\n" + "=" * 60)
@@ -343,8 +405,10 @@ if __name__ == "__main__":
     for name, r in results.items():
         adv = r["advantage"]
         sym = "✓" if adv >= 0 else "✗"
-        print(f"    {sym} {name:20s}: advantage ${adv:+,.2f} "
-              f"({r['trades']} trades, price {r['price_change']:+.1f}%)")
+        print(
+            f"    {sym} {name:20s}: advantage ${adv:+,.2f} "
+            f"({r['trades']} trades, price {r['price_change']:+.1f}%)"
+        )
 
     total_adv = sum(r["advantage"] for r in results.values())
     print(f"\n  Total advantage across all scenarios: ${total_adv:+,.2f}")

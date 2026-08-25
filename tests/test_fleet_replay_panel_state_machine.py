@@ -33,6 +33,7 @@ the GUI thread and "move the work off the Qt thread" cannot be done by
 scheduling onto it. Operator decision 2026-08-07: ship the other four
 steps, measure the real block separately.
 """
+
 from __future__ import annotations
 
 import ast
@@ -45,15 +46,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-PANEL = (REPO_ROOT / "src" / "gui" / "simulator_tab" / "fleet"
-         / "fleet_replay_panel.py")
+PANEL = REPO_ROOT / "src" / "gui" / "simulator_tab" / "fleet" / "fleet_replay_panel.py"
 
 
 def _panel_fn(name: str):
     src = PANEL.read_text(encoding="utf-8")
-    fn = next((n for n in ast.walk(ast.parse(src))
-               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-               and n.name == name), None)
+    fn = next(
+        (
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
+        ),
+        None,
+    )
     return fn, src
 
 
@@ -117,14 +122,12 @@ class _Controller:
     state, and that is the state that broke Start.
     """
 
-    def __init__(self, boom=False, finished=False, started=True,
-                 task_done=None):
+    def __init__(self, boom=False, finished=False, started=True, task_done=None):
         self.stop_requested = False
         self._boom = boom
         self.progress = type(
-            "P", (),
-            {"finished": finished,
-             "started_at_wall": 1.0 if started else 0.0})()
+            "P", (), {"finished": finished, "started_at_wall": 1.0 if started else 0.0}
+        )()
         # A finished run has a completed task. Defaulting `task_done`
         # to False regardless of `finished` would build a controller
         # that cannot exist: done replaying, task still running.
@@ -141,8 +144,7 @@ class _Controller:
 def _panel(controller=None, confirm=True):
     """Built without Qt. The state machine is the subject, not the
     widget construction."""
-    from src.gui.simulator_tab.fleet.fleet_replay_panel import (
-        FleetReplayPanel)
+    from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
 
     p = FleetReplayPanel.__new__(FleetReplayPanel)
     p._controller = controller
@@ -209,19 +211,24 @@ class TestResetIsCorrectAndCannotHang:
         `self._controller = None`.
         """
         fn, src = _panel_fn("_on_reset_clicked")
-        stops = [n.lineno for n in ast.walk(fn)
-                 if isinstance(n, ast.Call)
-                 and getattr(n.func, "attr", "") == "stop"]
-        nulls = [n.lineno for n in ast.walk(fn)
-                 if isinstance(n, ast.Assign)
-                 and any(getattr(t, "attr", "") == "_controller"
-                         for t in n.targets)]
+        stops = [
+            n.lineno
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "stop"
+        ]
+        nulls = [
+            n.lineno
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Assign)
+            and any(getattr(t, "attr", "") == "_controller" for t in n.targets)
+        ]
         assert stops, "reset stops no timers"
         assert nulls, "reset never nulls the controller"
         assert max(stops) < min(nulls), (
             "the controller is nulled before the timers are stopped; "
             "_refresh_progress will return early and they will run "
-            "forever")
+            "forever"
+        )
 
     def test_a_wedged_controller_does_not_silently_swallow(self):
         """Reset used `except Exception: pass`, so a controller that
@@ -243,8 +250,7 @@ class TestResetConfirmsWhenARunIsInFlight:
     def test_it_asks_before_discarding_a_running_replay(self):
         p = _panel(controller=_Controller(finished=False), confirm=False)
         p._on_reset_clicked()
-        assert p._controller is not None, (
-            "a declined confirmation still reset the run")
+        assert p._controller is not None, "a declined confirmation still reset the run"
         assert p._configs != []
 
     def test_declining_leaves_the_timers_alone(self):
@@ -268,8 +274,7 @@ class TestResetConfirmsWhenARunIsInFlight:
         This is the state that refused Start: `finished` is False on a
         fleet that never ticked.
         """
-        p = _panel(controller=_Controller(finished=False, started=False),
-                   confirm=False)
+        p = _panel(controller=_Controller(finished=False, started=False), confirm=False)
         assert p._run_in_flight() is False
 
     def test_it_does_not_ask_when_the_run_already_finished(self):
@@ -310,8 +315,10 @@ class TestStartIsNotReentrant:
         p = _panel(controller=_Controller(finished=False))
         p._on_start_clicked()
         assert p._status_lbl.text.strip() != ""
-        assert "already" in p._status_lbl.text.lower() or \
-            "running" in p._status_lbl.text.lower()
+        assert (
+            "already" in p._status_lbl.text.lower()
+            or "running" in p._status_lbl.text.lower()
+        )
 
     def test_the_guard_precedes_controller_construction(self):
         """Structural: the re-entrancy check must come before anything
@@ -322,8 +329,8 @@ class TestStartIsNotReentrant:
         assert ctor > 0, "controller construction not found"
         guard = seg.find("_controller is not None")
         assert 0 < guard < ctor, (
-            "the re-entrancy guard does not precede controller "
-            "construction")
+            "the re-entrancy guard does not precede controller " "construction"
+        )
 
 
 class TestParitySkipIsReported:
@@ -333,8 +340,9 @@ class TestParitySkipIsReported:
         parity run."""
         fn, src = _panel_fn("_on_start_clicked")
         seg = ast.get_source_segment(src, fn) or ""
-        assert "parity" in seg.lower(), (
-            "_on_start_clicked never mentions parity being skipped")
+        assert (
+            "parity" in seg.lower()
+        ), "_on_start_clicked never mentions parity being skipped"
 
     def test_the_status_names_it_when_ytd_is_empty(self):
         p = _panel()

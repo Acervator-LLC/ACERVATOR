@@ -91,7 +91,7 @@ class APIInteractionLog:
 
         self._entries.append(entry)
         if len(self._entries) > self._max:
-            self._entries = self._entries[-self._max:]
+            self._entries = self._entries[-self._max :]
 
         # Log to Python logger
         log_line = (
@@ -107,6 +107,7 @@ class APIInteractionLog:
         # thread delivery. Used for diagnostic traces only; listeners
         # are responsible for their own thread-safety logic.
         import threading as _threading
+
         entry["_thread_name"] = _threading.current_thread().name
 
         # Notify listeners. MEM-216 — log listener exceptions at DEBUG
@@ -117,9 +118,13 @@ class APIInteractionLog:
             try:
                 cb(entry)
             except Exception as exc:
-                logger.debug("api_logger listener %r raised: %s: %s",
-                             getattr(cb, "__qualname__", repr(cb)),
-                             type(exc).__name__, exc, exc_info=True)
+                logger.debug(
+                    "api_logger listener %r raised: %s: %s",
+                    getattr(cb, "__qualname__", repr(cb)),
+                    type(exc).__name__,
+                    exc,
+                    exc_info=True,
+                )
 
         return entry
 
@@ -191,11 +196,14 @@ def log_api_call(action: str, reason: str = "", data_usage: str = ""):
         async def get_ticker(self, symbol):
             ...
     """
+
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(self, *args, **kwargs):
             api_log = get_api_log()
-            exchange = getattr(self, '_exchange_id', getattr(self, 'exchange_id', 'unknown'))
+            exchange = getattr(
+                self, "_exchange_id", getattr(self, "exchange_id", "unknown")
+            )
             endpoint = func.__name__
             params = {}
             if args:
@@ -215,7 +223,7 @@ def log_api_call(action: str, reason: str = "", data_usage: str = ""):
                     result_summary = f"Dict with {len(result)} keys"
                 elif isinstance(result, list):
                     result_summary = f"List with {len(result)} items"
-                elif hasattr(result, '__dataclass_fields__'):
+                elif hasattr(result, "__dataclass_fields__"):
                     result_summary = str(result)[:100]
                 else:
                     result_summary = str(result)[:100]
@@ -249,4 +257,5 @@ def log_api_call(action: str, reason: str = "", data_usage: str = ""):
                 raise
 
         return wrapper
+
     return decorator

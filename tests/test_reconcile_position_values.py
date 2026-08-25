@@ -30,6 +30,7 @@ which is not persisted at all -- got 0.000000 for every bot, and printed
 The harness now fails loudly when every recomputed value is zero, and
 these tests pin that behaviour.
 """
+
 from __future__ import annotations
 
 import sys
@@ -50,8 +51,11 @@ def _bot(symbol, units, price, cached, qrate=1.0, lots=None):
         "stats": {"current_price": price, "position_value": cached},
         "scrumming_state": {
             "quote_to_usd": qrate,
-            "main_lots": lots if lots is not None
-            else [{"units": units, "initial_buy_price": price}],
+            "main_lots": (
+                lots
+                if lots is not None
+                else [{"units": units, "initial_buy_price": price}]
+            ),
         },
     }
 
@@ -71,21 +75,32 @@ class TestTheArithmetic:
 
     def test_the_quote_rate_is_applied(self):
         """Crypto-quoted pairs evaluate in USD (v3.15.55)."""
-        rows = reconcile({"bots": {"a": _bot("X/BTC", 2.0, 50.0, 300.0,
-                                             qrate=3.0)}})
+        rows = reconcile({"bots": {"a": _bot("X/BTC", 2.0, 50.0, 300.0, qrate=3.0)}})
         assert rows[0]["recomputed_position_value"] == pytest.approx(300.0)
 
     def test_units_sum_across_all_lots(self):
-        rows = reconcile({"bots": {"a": _bot(
-            "CHIP/USD", 0, 2.0, 20.0,
-            lots=[{"units": 4.0}, {"units": 6.0}])}})
+        rows = reconcile(
+            {
+                "bots": {
+                    "a": _bot(
+                        "CHIP/USD", 0, 2.0, 20.0, lots=[{"units": 4.0}, {"units": 6.0}]
+                    )
+                }
+            }
+        )
         assert rows[0]["units"] == pytest.approx(10.0)
         assert rows[0]["recomputed_position_value"] == pytest.approx(20.0)
 
     def test_junk_lot_entries_are_skipped_not_crashed_on(self):
-        rows = reconcile({"bots": {"a": _bot(
-            "X/USD", 0, 2.0, 8.0,
-            lots=[{"units": 4.0}, "not-a-dict", None])}})
+        rows = reconcile(
+            {
+                "bots": {
+                    "a": _bot(
+                        "X/USD", 0, 2.0, 8.0, lots=[{"units": 4.0}, "not-a-dict", None]
+                    )
+                }
+            }
+        )
         assert rows[0]["recomputed_position_value"] == pytest.approx(8.0)
 
     def test_a_zero_cached_value_does_not_divide_by_zero(self):
@@ -102,10 +117,17 @@ class TestTheInstrumentFailsLoudly:
         import json
 
         p = tmp_path / "state.json"
-        p.write_text(json.dumps({"bots": {
-            "a": _bot("X/USD", 0.0, 0.0, 100.0, lots=[]),
-            "b": _bot("Y/USD", 0.0, 0.0, 50.0, lots=[]),
-        }}), encoding="utf-8")
+        p.write_text(
+            json.dumps(
+                {
+                    "bots": {
+                        "a": _bot("X/USD", 0.0, 0.0, 100.0, lots=[]),
+                        "b": _bot("Y/USD", 0.0, 0.0, 50.0, lots=[]),
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
         rc = main(["--state", str(p)])
         assert rc == 3, "an all-zero recompute must not exit 0 or 1"
         assert "INSTRUMENT FAILURE" in capsys.readouterr().err
@@ -116,8 +138,10 @@ class TestTheInstrumentFailsLoudly:
         import json
 
         p = tmp_path / "state.json"
-        p.write_text(json.dumps({"bots": {
-            "a": _bot("BTC/USD", 2.0, 50.0, 100.0)}}), encoding="utf-8")
+        p.write_text(
+            json.dumps({"bots": {"a": _bot("BTC/USD", 2.0, 50.0, 100.0)}}),
+            encoding="utf-8",
+        )
         rc = main(["--state", str(p)])
         assert rc == 0
         assert "positive control: 1/1" in capsys.readouterr().out
@@ -130,8 +154,10 @@ class TestTheInstrumentFailsLoudly:
         import json
 
         p = tmp_path / "state.json"
-        p.write_text(json.dumps({"bots": {
-            "a": _bot("ORCA/USD", 2.0, 50.0, 90.0)}}), encoding="utf-8")
+        p.write_text(
+            json.dumps({"bots": {"a": _bot("ORCA/USD", 2.0, 50.0, 90.0)}}),
+            encoding="utf-8",
+        )
         assert main(["--state", str(p), "--threshold", "1.0"]) == 1
 
 
@@ -144,10 +170,21 @@ class TestItNeverWrites:
         import tools.harness.reconcile_position_values as m
 
         src = Path(m.__file__).read_text(encoding="utf-8")
-        banned = {"write_text", "write_bytes", "mkdir", "unlink", "rename",
-                  "replace", "rmtree", "remove"}
-        called = {getattr(c.func, "attr", "") for c in ast.walk(ast.parse(src))
-                  if isinstance(c, ast.Call)}
+        banned = {
+            "write_text",
+            "write_bytes",
+            "mkdir",
+            "unlink",
+            "rename",
+            "replace",
+            "rmtree",
+            "remove",
+        }
+        called = {
+            getattr(c.func, "attr", "")
+            for c in ast.walk(ast.parse(src))
+            if isinstance(c, ast.Call)
+        }
         assert not (called & banned), f"harness can write: {called & banned}"
 
     def test_it_constructs_no_project_classes(self):

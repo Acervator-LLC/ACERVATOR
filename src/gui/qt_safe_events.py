@@ -30,6 +30,7 @@ Sites that genuinely WANT recursive processEvents (rare; only
 modal-dialog-during-progress) can pass `force=True`, but should
 include a `# REENTRANCY-OK: <reason>` comment for the audit.
 """
+
 from __future__ import annotations
 
 import logging
@@ -69,8 +70,7 @@ def safe_process_events(reason: str = "", force: bool = False) -> bool:
 
     if _is_in_call() and not force:
         if reason:
-            logger.debug(
-                "safe_process_events skipped (reentrancy guard): %s", reason)
+            logger.debug("safe_process_events skipped (reentrancy guard): %s", reason)
         return False
 
     _local.in_call = True

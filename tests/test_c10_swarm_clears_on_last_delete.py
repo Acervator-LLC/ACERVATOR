@@ -17,6 +17,7 @@ Two tests, because either alone is insufficient:
     list, which is the part that was broken. A behavioural test alone
     passes on the unfixed source.
 """
+
 from __future__ import annotations
 
 import ast
@@ -46,12 +47,18 @@ def qapp():
 
 def _main_window_source() -> str:
     import src.gui.main_window as mw
+
     return Path(mw.__file__).read_text(encoding="utf-8")
 
 
 def _status(bid):
-    return {"bot_id": bid, "symbol": "BTC/USD", "mode": "live",
-            "current_holdings": 0.0, "stats": {}}
+    return {
+        "bot_id": bid,
+        "symbol": "BTC/USD",
+        "mode": "live",
+        "current_holdings": 0.0,
+        "stats": {},
+    }
 
 
 class TestUpdateBotsClearsOnEmpty:
@@ -98,22 +105,27 @@ class TestTheTickCanActuallyReachIt:
             if "all_statuses" not in test or test.startswith("not "):
                 continue
             for inner in ast.walk(node):
-                if (isinstance(inner, ast.Call)
-                        and getattr(inner.func, "attr", "") == "update_bots"
-                        and "_bot_viz" in ast.unparse(inner.func)):
+                if (
+                    isinstance(inner, ast.Call)
+                    and getattr(inner.func, "attr", "") == "update_bots"
+                    and "_bot_viz" in ast.unparse(inner.func)
+                ):
                     gated.append((test, inner.lineno))
 
         assert not gated, (
             f"_bot_viz.update_bots is still gated on a non-empty fleet "
             f"at {gated}; deleting the last bot will leave the Swarm "
-            f"rendering bots that no longer exist")
+            f"rendering bots that no longer exist"
+        )
 
     def test_the_call_still_exists_at_all(self):
         """Positive control for the scanner above: deleting the call
         entirely would also satisfy it."""
         found = [
-            n.lineno for n in ast.walk(ast.parse(_main_window_source()))
+            n.lineno
+            for n in ast.walk(ast.parse(_main_window_source()))
             if isinstance(n, ast.Call)
             and getattr(n.func, "attr", "") == "update_bots"
-            and "_bot_viz" in ast.unparse(n.func)]
+            and "_bot_viz" in ast.unparse(n.func)
+        ]
         assert found, "the Swarm is never updated at all"
