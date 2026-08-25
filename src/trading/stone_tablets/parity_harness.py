@@ -24,9 +24,20 @@ Contract:
                      {timestamp (unix sec), symbol, side, amount,
                       price, exchange, ...}
 
-    sim_trades   = list[Trade] from FleetSimExchange._trades
-                   with .symbol, .side (OrderSide enum),
-                   .amount, .timestamp (unix sec from master clock)
+    sim_trades   = the replay's own fills, in EITHER of the two
+                   shapes the Simulator has produced:
+
+                     * ``TabletBackend.fetch_my_trades()`` -- ccxt
+                       DICTS with keys {timestamp (unix MILLIsec from
+                       the master clock), symbol, side (lowercase
+                       str), amount, price, cost, fee}. This is what
+                       the Simulator produces today.
+                     * ``FleetSimExchange``'s ``Trade`` OBJECTS with
+                       ``.symbol``, ``.side`` (OrderSide enum),
+                       ``.amount``, ``.timestamp`` (unix SECONDS).
+                       Still exported, so still read correctly.
+
+                   See THE MILLISECOND SEAM below.
 
     tolerance_s  = time window a sim trade can drift from live
                    and still count as matched. Default 300s (one
@@ -56,6 +67,36 @@ from typing import Any
 logger = logging.getLogger("acervator.stone_tablets.parity_harness")
 
 DEFAULT_TOLERANCE_S: float = 300.0  # one 5m candle
+
+# THE MILLISECOND SEAM
+# ====================
+# The two sim producers stamp a fill in DIFFERENT UNITS, and a
+# timestamp read in the wrong unit produces a plausible number rather
+# than an error -- so this seam has to be stated, not inferred.
+#
+# `TabletBackend` appends ccxt-shaped DICTS whose `timestamp` IS the
+# master clock in MILLISECONDS (`current_ts_ms`, tablet_backend.py).
+# `FleetSimExchange`, which it replaced in v3.24.84, passed `Trade`
+# OBJECTS carrying SECONDS on `.timestamp`. The same seam is already
+# resolved the same way one layer up, in
+# `fleet_replay_controller._read_fill`.
+#
+# The comparison is done in SECONDS, because the live side
+# (`fetch_all_history_chunked`) is unix seconds and `tolerance_s` is
+# seconds. So the DICT path divides and the OBJECT path does not.
+#
+# WHAT GETTING IT WRONG COSTS. A 2026 fill stamped 1_776_778_500_000 ms
+# read as seconds sits ~54,000 years from its live partner. Every drift
+# then exceeds any tolerance, nothing matches, and the report reads
+# "0.0% reproduction" over a full set of sim trades. That is a NUMBER,
+# not an error, and it is indistinguishable from a strategy that
+# genuinely reproduces nothing.
+MS_PER_S: float = 1000.0
+
+# The unit each sim shape carries, stated so a reader does not have to
+# re-derive it from the branch below.
+SIM_DICT_TIMESTAMP_UNIT: str = "ms"
+SIM_OBJECT_TIMESTAMP_UNIT: str = "s"
 
 
 @dataclass
@@ -105,24 +146,58 @@ class ParityReport:
                 sym, {"matched": 0, "live_only": 0, "sim_only": 0})
             d["live_only"] += 1
         for st in self.sim_only:
-            sym = str(getattr(st, "symbol", ""))
+            sym = _sim_fields(st)[0]
             d = out.setdefault(
                 sym, {"matched": 0, "live_only": 0, "sim_only": 0})
             d["sim_only"] += 1
         return out
 
 
-def _live_side_str(trade: dict) -> str:
-    s = str(trade.get("side", "")).upper()
-    return "BUY" if "BUY" in s else "SELL" if "SELL" in s else s
+def _side_of(side_obj: Any) -> str:
+    """``OrderSide`` enum or raw string → ``'BUY'`` / ``'SELL'``.
 
-
-def _sim_side_str(trade: Any) -> str:
-    """OrderSide enum → 'BUY'/'SELL' — tolerates raw strings too."""
-    side = getattr(trade, "side", None)
-    val = getattr(side, "value", side)
+    `.value` unwraps the enum the object path carries and passes the
+    lowercase string the dict path carries straight through.
+    """
+    val = getattr(side_obj, "value", side_obj)
     s = str(val).upper()
     return "BUY" if "BUY" in s else "SELL" if "SELL" in s else s
+
+
+def _live_side_str(trade: dict) -> str:
+    return _side_of(trade.get("side", ""))
+
+
+def _sim_fields(trade: Any) -> tuple[str, str, float, float]:
+    """``(symbol, side, timestamp in SECONDS, amount)`` from either shape.
+
+    ISSUE: THE SHAPE CHANGED AND THIS READER DID NOT. Every field here
+    used to be read with ``getattr(trade, ...)`` — the
+    ``FleetSimExchange`` object shape. ``getattr`` on a DICT does not
+    read a key and, with a default, never raises. So a `TabletBackend`
+    fill read through the old path returned ``symbol=""``, ``side=""``,
+    ``amount=0.0`` and ``timestamp=0.0`` (1 Jan 1970): a full report
+    over trades whose every field was a default.
+
+    The dict is therefore routed through the dict branch UP FRONT,
+    which is the same resolution ``fleet_replay_controller._read_fill``
+    applies to this exact ambiguity. An exception fallback cannot work
+    here, because the failure is silent by construction.
+
+    The DICT branch divides by ``MS_PER_S`` and the OBJECT branch does
+    not — see THE MILLISECOND SEAM at the top of this module.
+    """
+    if isinstance(trade, dict):
+        return (
+            str(trade.get("symbol", "") or ""),
+            _side_of(trade.get("side", "")),
+            float(trade.get("timestamp", 0) or 0) / MS_PER_S,
+            float(trade.get("amount", 0) or 0))
+    return (
+        str(getattr(trade, "symbol", "") or ""),
+        _side_of(getattr(trade, "side", None)),
+        float(getattr(trade, "timestamp", 0) or 0),
+        float(getattr(trade, "amount", 0) or 0))
 
 
 def compare_trades(
@@ -156,17 +231,15 @@ def compare_trades(
         sim_trades = [
             t for t in sim_trades
             if (window_since_ts <= 0
-                or float(getattr(t, "timestamp", 0)) >= window_since_ts)
+                or _sim_fields(t)[2] >= window_since_ts)
             and (window_until_ts <= 0
-                 or float(getattr(t, "timestamp", 0)) <= window_until_ts)]
+                 or _sim_fields(t)[2] <= window_until_ts)]
 
     # Index sim trades by (symbol, side) for cheap lookup + track
     # which sim trades have been consumed.
     sim_by_key: dict[tuple[str, str], list[tuple[float, Any]]] = {}
     for st in sim_trades:
-        sym = str(getattr(st, "symbol", ""))
-        side = _sim_side_str(st)
-        ts = float(getattr(st, "timestamp", 0))
+        sym, side, ts, _amt = _sim_fields(st)
         sim_by_key.setdefault((sym, side), []).append((ts, st))
     for lst in sim_by_key.values():
         lst.sort(key=lambda p: p[0])
@@ -195,7 +268,7 @@ def compare_trades(
                 live_ts=live_ts, sim_ts=sim_ts,
                 symbol=sym, side=side,
                 live_amount=float(lt.get("amount", 0)),
-                sim_amount=float(getattr(st, "amount", 0)),
+                sim_amount=_sim_fields(st)[3],
                 drift_s=sim_ts - live_ts))
         else:
             report.live_only.append(lt)
@@ -252,6 +325,9 @@ def format_report_lines(report: ParityReport, max_examples: int = 5) -> list[str
 
 __all__ = [
     "DEFAULT_TOLERANCE_S",
+    "MS_PER_S",
+    "SIM_DICT_TIMESTAMP_UNIT",
+    "SIM_OBJECT_TIMESTAMP_UNIT",
     "ParityMatch",
     "ParityReport",
     "compare_trades",

@@ -2291,13 +2291,34 @@ if _HAS_QT:
             Sim trades carry master-clock timestamps (v3.24.5 fix),
             so the ±tolerance match against live trade timestamps is
             meaningful. Before that fix every sim trade was stamped
-            with wall-clock 'now' and parity was unmeasurable."""
+            with wall-clock 'now' and parity was unmeasurable.
+
+            THE TAPE, NOT THE CONNECTOR. This read
+            ``self._controller._exchange._trades``. ``_trades``
+            belonged to ``FleetSimExchange``; since v3.24.84
+            ``_exchange`` is a ``CCXTConnector`` and has no such
+            attribute, so the ``getattr`` default made ``sim_trades``
+            ``[]`` on EVERY run and this method always took the
+            "sim produced 0 trades — 0% reproduction" branch below.
+            The measurement the whole harness exists for has never run
+            on a real tape.
+
+            ``TabletBackend.fetch_my_trades()`` is the ledger's own
+            public ccxt accessor and returns copies. Its rows are
+            DICTS stamped in MILLISECONDS; ``compare_trades`` reads
+            that shape and that unit explicitly — see THE MILLISECOND
+            SEAM in ``parity_harness``. Pointing this line at the real
+            tape WITHOUT that reader in place would have been worse
+            than the empty list: the honest "0 trades" message would
+            have become a "0.0% match over N trades" report built from
+            empty symbols and 1970 timestamps."""
             perf = self._performance_log_cb
             if self._controller is None:
                 _tel_skip("sim.parity.compare_trades", "no controller")
                 return
-            exchange = getattr(self._controller, "_exchange", None)
-            sim_trades = list(getattr(exchange, "_trades", []) or [])
+            tape = getattr(self._controller, "tape", None)
+            sim_trades = (
+                list(tape.fetch_my_trades()) if tape is not None else [])
             live_trades = list(self._ytd_trades or [])
             if not live_trades:
                 _tel_skip("sim.parity.compare_trades",

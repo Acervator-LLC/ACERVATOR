@@ -33,10 +33,12 @@ sold its entire position as a triumph.
 
 HOW IT RUNS
 ===========
-Trials drive the real ``FleetReplayController`` against a real
-``FleetSimExchange``, ticking real ``ScrummingBot`` instances on a
-private ``EventBus``. Nothing here re-implements trading logic: a stress
-result that came from a simplified model would measure the model.
+Trials drive the real ``FleetReplayController``, ticking real
+``ScrummingBot`` instances on a private ``EventBus`` against a real
+``CCXTConnector`` served by ``TabletBackend`` — the same connector live
+runs, on tablet bytes instead of network bytes. Nothing here
+re-implements trading logic: a stress result that came from a
+simplified model would measure the model.
 
 Noise comes from ``nuclear_candle_source.noised_series`` — the single
 canonical perturbation, shared with Nuclear Mode v1 and v2 — rather than
@@ -321,15 +323,43 @@ def _run_one_trial(
     trial.trades_fired = int(ctl.progress.trades_fired)
     trial.exceptions = int(ctl.progress.exceptions)
 
-    exchange = getattr(ctl, "_exchange", None)
-    balances = dict(getattr(exchange, "_balances", {}) or {})
+    # THE SHAPE CHANGED AND THIS READER DID NOT.
+    #
+    # This read `_balances` and `_opening_balances` off
+    # `ctl._exchange`. Both belonged to `FleetSimExchange`; since
+    # v3.24.84 `_exchange` is a `CCXTConnector` and has NEITHER. So
+    # both `getattr` calls returned their `{}` default on every trial
+    # and EVERY `AssetOutcome` recorded
+    # `base_start == base_end == quote_start == quote_end == 0.0`.
+    #
+    # Nothing raised and nothing warned. `base_gained` is
+    # `base_end - base_start`, so every trial reported EXACTLY zero
+    # accumulation, `sign_flipped` was False over a set of zeros, and
+    # the verdict was computed from a wallet that was never read. The
+    # module's own headline finding — dispersion between trials — was
+    # the dispersion of nothing.
+    #
+    # The tape is the object that OWNS the ledger, and it answers on
+    # its public surface: `balances()` and `snapshot()` each return a
+    # copy, so this reads the run without being able to change it.
+    tape = ctl.tape
+    if tape is None:
+        # LOUD, not zero. `run_topology_stress` records a trial error
+        # and carries on, so a broken read costs one trial and says so.
+        # Returning zeros here is what hid the defect for the life of
+        # the module.
+        raise ValueError(
+            "the replay finished with no tape, so its wallet cannot be "
+            "read; an AssetOutcome built here would report 0.0 gained "
+            "for every asset and the verdict would be computed from it")
+    balances = dict(tape.balances())
     per_symbol = dict(
         getattr(ctl.progress, "per_symbol_trade_count", {}) or {})
     # The sim wallet opens holding quote only (the controller seeds
     # {"USD": sum of target_balance}), so base_start is normally 0 —
     # but read the recorded opening rather than assuming it, or a
     # future change to seeding would silently inflate every gain.
-    opening = dict(getattr(exchange, "_opening_balances", {}) or {})
+    opening = dict(tape.snapshot().get("opening_balances", {}) or {})
 
     for cfg in configs:
         asset, quote, symbol = (
