@@ -446,6 +446,7 @@ def test_the_outcome_wallet_matches_the_tape_ledger(traded_trial) -> None:
     trial = report.completed[0]
     assert len(trial.assets) == len(STRESS_ASSETS)
     base_delta, quote_delta, _counts = _ledger(ctl.tape)
+    opening = dict(ctl.tape.snapshot().get("opening_balances", {}) or {})
 
     for outcome in trial.assets:
         assert outcome.quote_start == SEEDED_USD, (
@@ -453,15 +454,35 @@ def test_the_outcome_wallet_matches_the_tape_ledger(traded_trial) -> None:
             f"quote; the proposal asked for {len(STRESS_ASSETS)} bots "
             f"at ${TARGET_USD:,.2f} and the controller seeds the wallet "
             "with the sum of the fleet's targets")
-        assert outcome.base_start == 0.0, (
+        # ISSUE #111 VIOLATION B. This used to require
+        # `base_start == 0.0`, on the reasoning that no config here
+        # carries a bot_state id so no lots could be restored. The
+        # operator ruled that a bot with NO bot_state opens with a
+        # LOCKED SIDE instead: `target_balance` of base at the tape's
+        # first close, so locked and spendable start equal. A fleet that
+        # opened flat had to buy its whole target first, and the shared
+        # wallet holds exactly `sum(target_balance)`, so the LAST bot
+        # was always short by the fees the earlier ones paid.
+        #
+        # The opening is now read off the tape rather than asserted to
+        # be a constant, which is what `_read_wallet` itself does
+        # (topology_stress.py:362) and the only form that survives a
+        # change to seeding.
+        assert outcome.base_start == pytest.approx(
+            opening.get(outcome.asset, 0.0)), (
             f"the trial opened holding {outcome.base_start} "
-            f"{outcome.asset}; no config carries a bot_state id, so no "
-            "lots were restored and nothing could have been credited")
-        expected_base = base_delta.get(outcome.symbol, 0.0)
+            f"{outcome.asset} against a tape that opened on "
+            f"{opening.get(outcome.asset)!r}")
+        assert outcome.base_start > 0.0, (
+            f"{outcome.asset} opened FLAT. A bot with no bot_state must "
+            "open with a locked side, or it has to buy its whole target "
+            "out of a wallet that cannot fund every bot's acquisition.")
+        expected_base = (outcome.base_start
+                         + base_delta.get(outcome.symbol, 0.0))
         assert abs(outcome.base_end - expected_base) < 1e-9, (
             f"the outcome ends on {outcome.base_end} {outcome.asset}; "
-            f"the tape's fills on {outcome.symbol} move it to "
-            f"{expected_base}")
+            f"it opened on {outcome.base_start} and the tape's fills on "
+            f"{outcome.symbol} move it to {expected_base}")
         assert abs(
             outcome.quote_end - (SEEDED_USD + quote_delta)) < 1e-9, (
             f"the outcome ends on {outcome.quote_end} quote; the tape's "
@@ -491,9 +512,23 @@ def test_the_trial_reports_the_accumulation_it_performed(
                    - base_delta.get(outcome.symbol, 0.0)) < 1e-9
     assert abs(trial.total_base_gained
                - sum(base_delta.values())) < 1e-9
-    assert quote_delta < 0.0, "the fleet spent no quote at all"
-    assert trial.assets[0].quote_spent > 0.0, (
-        "the trial reports no quote spent against fills that cost it")
+    # ISSUE #111 VIOLATION B. This used to require `quote_delta < 0.0`
+    # on the reasoning that the fleet's first act is always an opening
+    # acquisition. A bot that opens with a locked side is already AT
+    # target and buys nothing structural, so the sign of the quote leg
+    # is now whatever the trading did, and requiring one sign would pin
+    # a direction rather than a behaviour.
+    #
+    # What must NOT be true is the defect's reading, in which every
+    # wallet field came back 0.0 and both derived numbers were exactly
+    # zero. So the requirement is that the quote leg MOVED, and that it
+    # moved by what the fills say.
+    assert quote_delta != 0.0, (
+        "the fleet's quote leg did not move at all, which is the "
+        "defect's zero rather than a trading outcome")
+    assert trial.assets[0].quote_spent == pytest.approx(-quote_delta), (
+        f"the trial reports {trial.assets[0].quote_spent} of quote "
+        f"spent against a ledger that moved the leg by {quote_delta}")
 
 
 def test_the_per_asset_trade_count_agrees_with_the_ledger(

@@ -108,7 +108,32 @@ class _ListeningReplay(FleetReplayController):
         self.bot_log.append(str((event.data or {}).get("message", "")))
 
 
-def _play(symbols: list[str]) -> _ListeningReplay:
+def _sawtooth(n: int = TAPE_CANDLES) -> list[list[float]]:
+    """Return a tape a bot at target still has something to do on.
+
+    ISSUE #111 VIOLATION B. `_rows` oscillates inside a 1.2% band and
+    never arms a scrum: the only fill it ever produced was the
+    STRUCTURAL opening acquisition, which the operator's ruling removed
+    by giving a bot with no bot_state a locked side at open. The two
+    checks that need a run to DO something take this tape instead --
+    fifty candles up at 0.2% each, then fifty down, a swing of about
+    10%, two orders of magnitude outside the MEM-258 dust band (0.1% of
+    target, scrumming_bot.py:7144).
+
+    `_rows` is deliberately left as it was. It is what the agreement
+    checks run on, and swapping it under them would change what they
+    measure in a change that is not about them.
+    """
+    out: list[list[float]] = []
+    px = 1.0
+    for i in range(n):
+        px *= 1.002 if (i // 50) % 2 == 0 else 0.998
+        out.append([T0 + i * STEP, px, px * 1.001, px * 0.999, px, 90.0])
+    return out
+
+
+def _play(symbols: list[str], *,
+          tradeable: bool = False) -> _ListeningReplay:
     """Play a replay to completion and return the controller that ran.
 
     `start()` is the production entry point the Start Replay button
@@ -116,16 +141,25 @@ def _play(symbols: list[str]) -> _ListeningReplay:
     all the ones that ship. The session-scoped `_redirect_sim_log_root`
     fixture in conftest keeps the run log out of the operator's tree.
     """
+    # `ta_timeframe` on a tradeable run is the tape's own `5m`.
+    # `BotConfig` defaults it to `1h` (bot_container.py:203) and
+    # `TabletBackend.fetch_ohlcv` refuses a timeframe it holds no series
+    # for (tablet_backend.py:392) rather than serving `5m` in its place,
+    # so a `1h` bot can never clear the TA gate on a `5m`-only tape. It
+    # could still make the structural opening acquisition, which is how
+    # that went unnoticed until issue #111 violation B removed it.
     configs = [{"mode": "scrumming", "symbol": s,
                 "target_balance": TARGET_BALANCE,
                 "investment_amount": TARGET_BALANCE,
                 "target_asset": s.split("/")[0],
                 "base_currency": "USD",
-                "_src_bot_id": f"bot{i:04d}"}
+                "_src_bot_id": f"bot{i:04d}",
+                **({"ta_timeframe": "5m"} if tradeable else {})}
                for i, s in enumerate(symbols)]
+    _tape_rows = _sawtooth if tradeable else _rows
     ctl = _ListeningReplay(
         configs=configs,
-        candles_by_symbol={s: _rows() for s in symbols},
+        candles_by_symbol={s: _tape_rows() for s in symbols},
         smart_wires=[], tick_delay_s=0.0, max_candles=None,
         activity_log_cb=lambda *_: None,
         performance_log_cb=lambda *_: None)
@@ -283,11 +317,17 @@ class TestTheBotAndTheTapeAgree:
 
         A fleet that traded NOTHING agrees with its venue trivially —
         which is exactly the state the pre-fix one-asset run reached
-        after its phantom lot, and exactly why zero fills hid this. A
-        two-bot fleet's wallet funds one whole opening acquisition, so
-        this run must move the tape's base leg.
+        after its phantom lot, and exactly why zero fills hid this.
+
+        ISSUE #111 VIOLATION B. This used to say "a two-bot fleet's
+        wallet funds one whole opening acquisition, so this run must
+        move the tape's base leg". The operator ruled that a bot with no
+        bot_state opens with a LOCKED SIDE, at target, so there is no
+        opening acquisition left to rest a control on. The control now
+        runs on a tape the bots can act on, so the movement it requires
+        is a settled scrum rather than an arrival artefact.
         """
-        ctl = _play(["CHIP/USD", "SPK/USD"])
+        ctl = _play(["CHIP/USD", "SPK/USD"], tradeable=True)
         tape = ctl.tape
         assert tape is not None, "the replay finished with no tape"
 
@@ -312,7 +352,20 @@ class TestTheOneAssetFleetSaysWhatItDid:
     """
 
     def test_one_asset_either_fires_or_states_its_refusal(self) -> None:
-        """A run that traded nothing must say what stopped it."""
+        """A run that traded nothing must say what stopped it.
+
+        ISSUE #111 VIOLATION B ADDED A THIRD LAWFUL OUTCOME. Before the
+        ruling a lone bot opened FLAT, so it either bought its target or
+        was refused for want of funds, and those were the only two
+        endings. A bot with no bot_state now opens with a LOCKED SIDE,
+        at target, so on this narrow tape it simply holds: MEASURED,
+        `READ: $0.98957660 | Δ=$-0.4450 (0.4% < 1.0%) | TA=N/A (—) |
+        holding`. Holding inside the scrumming interval is a correct
+        state and the bot STATES it, with both numbers and the threshold
+        they are compared against. That is what this file requires:
+        fire, or say why not. SILENCE STILL FAILS, and so does a verdict
+        with no arithmetic behind it.
+        """
         ctl = _play(["CHIP/USD"])
         assert len(ctl._bots) == 1, (
             f"expected a one-bot fleet, built {len(ctl._bots)}")
@@ -321,15 +374,34 @@ class TestTheOneAssetFleetSaysWhatItDid:
             return
 
         refusals = [m for m in ctl.bot_log if "InsufficientFunds" in m]
-        assert refusals, (
+        if refusals:
+            # The refusal must carry the arithmetic, not just a verdict.
+            first = refusals[0]
+            for token in ("needs", "fee", "wallet holds"):
+                assert token in first, (
+                    f"the refusal does not state {token!r}: {first!r}")
+            return
+
+        # Either shape of "I looked and did nothing" is acceptable: the
+        # MEM-258 dust-band park, or a read that holds because the delta
+        # is inside the scrumming interval.
+        held = [m for m in ctl.bot_log
+                if "AT TARGET (MEM-258)" in m
+                or (m.startswith("READ:") and "holding" in m)]
+        assert held, (
             "the one-asset fleet fired nothing and said nothing about "
-            f"why. The bot log carried {len(ctl.bot_log)} message(s) and "
-            "none of them names the refusal.")
-        # The refusal must carry the arithmetic, not just a verdict.
-        first = refusals[0]
-        for token in ("needs", "fee", "wallet holds"):
-            assert token in first, (
-                f"the refusal does not state {token!r}: {first!r}")
+            f"why. The bot log carried {len(ctl.bot_log)} message(s) "
+            "and none of them names a refusal or a held position.")
+        # Holding is only a reason if it states the numbers it compared.
+        # "Holding" on its own is a verdict, not a reason.
+        first_held = held[0]
+        wanted = (("position=$", "target=$", "dust band")
+                  if "AT TARGET (MEM-258)" in first_held
+                  else ("Δ=$", "<", "holding"))
+        for token in wanted:
+            assert token in first_held, (
+                f"the held message does not state {token!r}: "
+                f"{first_held!r}")
 
     def test_the_lone_bot_books_nothing_it_did_not_buy(self) -> None:
         """The pre-fix state, asserted directly.

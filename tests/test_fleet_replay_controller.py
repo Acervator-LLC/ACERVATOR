@@ -250,7 +250,24 @@ def test_the_wallet_lists_the_asset_each_bot_trades():
     assert "BTC" in bals, (
         "the tape omits the base asset, so the init handshake refuses "
         f"on every tick for ever; it listed {sorted(bals)}")
-    assert bals["BTC"]["total"] == 0.0, "seeding must not invent units"
+    # ISSUE #111 VIOLATION B. This used to read
+    # `bals["BTC"]["total"] == 0.0, "seeding must not invent units"`.
+    # The operator ruled that a bot carrying NO bot_state opens with a
+    # LOCKED SIDE, so this config -- which has no `_src_scrumming_state`
+    # -- now opens holding `target_balance` of base and locked and
+    # spendable start equal. The rule the old line protected is
+    # unchanged and is still enforced, one line down: seeding may not
+    # INVENT units, so what the venue holds must be exactly what the
+    # bot's own lot book claims. Nothing here is a written constant.
+    booked = sum(float(lot.get("units", 0.0) or 0.0)
+                 for lot in (getattr(ctrl._bots[0], "_main_lots", None)
+                             or []))
+    assert booked > 0.0, (
+        "the bot opened FLAT, so it must buy its whole target before it "
+        "can trade")
+    assert bals["BTC"]["total"] == pytest.approx(booked), (
+        f"the venue holds {bals['BTC']['total']!r} BTC against a book "
+        f"claiming {booked!r}; seeding must not invent units")
 
 
 def test_a_bot_initialises_instead_of_looping_the_handshake():

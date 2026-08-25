@@ -355,10 +355,16 @@ def _run_one_trial(
     balances = dict(tape.balances())
     per_symbol = dict(
         getattr(ctl.progress, "per_symbol_trade_count", {}) or {})
-    # The sim wallet opens holding quote only (the controller seeds
-    # {"USD": sum of target_balance}), so base_start is normally 0 —
-    # but read the recorded opening rather than assuming it, or a
-    # future change to seeding would silently inflate every gain.
+    # READ THE RECORDED OPENING; NEVER ASSUME IT.
+    #
+    # This comment used to say the sim wallet "opens holding quote
+    # only... so base_start is normally 0". That stopped being true in
+    # issue #111 violation B: a bot with no bot_state now opens with a
+    # LOCKED SIDE, `target_balance` of base at the tape's first close
+    # (fleet_replay_controller._open_locked_sides), so every proposal
+    # bot opens holding base. Reading the recorded opening is what kept
+    # this arithmetic correct across that change, and it is why
+    # `base_gained` still measures the trading rather than the seeding.
     opening = dict(tape.snapshot().get("opening_balances", {}) or {})
 
     for cfg in configs:

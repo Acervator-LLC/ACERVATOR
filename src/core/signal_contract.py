@@ -684,6 +684,7 @@ _TOGGLE_PINS: tuple[str, ...] = (
     "fleet.03.005.invariant.state_parity",
     "fleet.03.006.postcondition.state_imported",
     "fleet.03.007.postcondition.positions_seeded_from_lots",
+    "fleet.03.008.postcondition.lotless_opened_locked",
     "gui.04.001.postcondition.voting_panel.fit",
     "gui.04.002.postcondition.clear_settled",
     "gui.04.003.postcondition.despawn_rows_match_ledger",
