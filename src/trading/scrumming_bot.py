@@ -779,7 +779,7 @@ class ScrummingBot(BotContainer):
         # Leg-2 cycle health at a glance instead of needing a CSV pull.
         # Created counter increments at every _fold_tranches.append site;
         # closed counter increments by `_removed` on every fold-back
-        # dequeue at scrumming_bot.py:5479 region. Both persist via
+        # dequeue at scrumming_bot.py:5485 region. Both persist via
         # export/import_scrumming_state with default 0 backward-compat.
         #
         # THE RATIO THE PANEL PRINTS, stated here because this is where
@@ -813,6 +813,12 @@ class ScrummingBot(BotContainer):
         # drop left the standing count one below what the counters
         # predicted. See `_drop_malformed_fold_tranches`.
         self._tranches_malformed_dropped: int = 0
+        # issue #133 unit 3 -- the epoch second an operator cleared the
+        # four counters above, 0.0 when they never have been. The four
+        # carry no history once they read zero, so the init handshake
+        # asks this field instead of reading a zeroed `created` as
+        # "this bot has never scrummed".
+        self._tranches_counters_reset_ts: float = 0.0
 
         # v3.13.8 MEM-186 / Chunk 2 — Detect/Fire Threshold state machine state.
         # Mirrors the canonical SEARCH → TRACK → FIRE lifecycle from
@@ -2252,7 +2258,7 @@ class ScrummingBot(BotContainer):
         # ORDER IS THE WHOLE POINT.
         #
         # THE RULE IS ONE RULE, AND IT IS NOT NEW HERE. The autonomous
-        # rebuy-distance gate states it at :13004: a value sets an
+        # rebuy-distance gate states it at :13036: a value sets an
         # ordering or a threshold ONLY IF IT IS A FINITE NUMBER, and the
         # finiteness test runs BEFORE any comparison, never as part of
         # one. That gate tests the threshold it is about to compare
@@ -2271,8 +2277,8 @@ class ScrummingBot(BotContainer):
         #
         # AND THIS METHOD SIZES AN ORDER, which is what makes it worse
         # than the gate's. The return flows through
-        # `buy_usd_target = -delta_usd + _growth_preview` (:13177) into
-        # `guarded_place_order` (:13275). Measured end to end on the
+        # `buy_usd_target = -delta_usd + _growth_preview` (:13209) into
+        # `guarded_place_order` (:13307). Measured end to end on the
         # operator's own config (interval 5.0, fee 1.6, growth cap 1.0),
         # ladders differing only in row order placed TWO DIFFERENT
         # AMOUNTS for the same ladder at the same price.
@@ -2304,7 +2310,7 @@ class ScrummingBot(BotContainer):
         # The key is the ref itself, already proven finite above, so the
         # sort is a total order by construction rather than by hope.
         _readable.sort(key=lambda pair: pair[0], reverse=True)
-        # Read by the one caller (:13137) to say out loud that the
+        # Read by the one caller (:13169) to say out loud that the
         # sizing answer came from fewer tranches than are queued.
         self._fold_preview_unreadable_refs = _unreadable_refs
         _remaining = float(units)
@@ -3145,8 +3151,8 @@ class ScrummingBot(BotContainer):
 
         THE TYPE GROUND IS SHARED TOO, v3.25.7, and for a reason this
         contract does not merely inherit. The tick multiplies
-        `_current_holdings` by a price (:8072) and subtracts
-        `_target_balance` (:9056); a string in either raises TypeError
+        `_current_holdings` by a price (:8104) and subtracts
+        `_target_balance` (:9088); a string in either raises TypeError
         in the DECIDER. State that only `float()` can read is already
         broken state, so coercing it here would launder a corruption
         into a durable float write. Refuse it and say which name it was.
@@ -3197,7 +3203,7 @@ class ScrummingBot(BotContainer):
         exception, because `__float__` on the stored value is the one
         place caller-shaped data still gets to run code. The units
         value is deliberately NOT type-refused the way the two money
-        parameters are: `_main_lots_invariant_ok` (:18054) coerces the
+        parameters are: `_main_lots_invariant_ok` (:18204) coerces the
         same field with a bare `sum`, and refusing here what that
         accepts would put the ledger's two readers on different rules.
 
@@ -3240,8 +3246,8 @@ class ScrummingBot(BotContainer):
 
         THE TWO HALVES ARE THE TWO TERMS OF ONE SUBTRACTION. The tick
         computes `current_value = _current_holdings * ticker.last *
-        _quote_to_usd` (:8072) and then `delta = current_value -
-        _target_balance` (:9056). An arrival moves BOTH terms. Split the
+        _quote_to_usd` (:8104) and then `delta = current_value -
+        _target_balance` (:9088). An arrival moves BOTH terms. Split the
         halves and delta moves, in whichever direction the missing half
         was:
 
@@ -3266,7 +3272,7 @@ class ScrummingBot(BotContainer):
         through an expression that reads the rate at TWO DIFFERENT
         TIMES, and so quietly assumed the rate cannot move between the
         arrival and the tick that reads it. Write both out. With P the
-        live quote-side price, `q_tick` the rate the tick reads (:8072)
+        live quote-side price, `q_tick` the rate the tick reads (:8104)
         and `q_arr` the rate this method read when it priced the
         arrival:
 
@@ -3298,10 +3304,10 @@ class ScrummingBot(BotContainer):
 
         KNOWN LIMITATION -- CONTAINMENT DOES NOT SURVIVE A DRIFT-DOWN
         RECONCILE, AND BOTH LIFTED BALANCES ARE LEFT BEHIND.
-        `_reconcile_holdings` (:13669) writes `_main_lots` and
+        `_reconcile_holdings` (:13701) writes `_main_lots` and
         `_current_holdings` and writes NEITHER `_target_balance` NOR
         `_anchor_target_balance` anywhere (AST-verified over the whole
-        function, both names). Its drift-DOWN branch (:13962-13982)
+        function, both names). Its drift-DOWN branch (:13994-14014)
         rescales every lot by `exchange_units / internal_units` and
         resets holdings to the exchange figure. Run it after an arrival
         and the units go while both lifts stay: a $20 arrival on a
@@ -3315,11 +3321,11 @@ class ScrummingBot(BotContainer):
         as long as it stands.
 
         THE ANCHOR carries `position_ceiling_usd`, which returns
-        `self._anchor_target_balance * mult` (:5675). A $20 stranded
+        `self._anchor_target_balance * mult` (:5681). A $20 stranded
         lift on a $200 anchor raises the Smart Ceiling by $20 x mult.
 
         THE TARGET carries the per-cycle Growth Rate Cap. Issue #106
-        moved that base: `cycle_growth_cap_usd` (:1921) takes
+        moved that base: `cycle_growth_cap_usd` (:1927) takes
         `max_target_growth_pct` of the target as it stood when the cycle
         opened, not of the anchor. So the same $20 stranded lift on a
         $200 target widens the growth cap by 10%. Before #106 that
@@ -3331,7 +3337,7 @@ class ScrummingBot(BotContainer):
         across every lot and the ledger records no provenance, so
         nothing in `_main_lots` says which units arrived from a child
         and which were bought. `_target_balance` is built from operator
-        config, fold growth (:2001), wire income (:2914) and arrivals
+        config, fold growth (:2007), wire income (:2920) and arrivals
         together, so there is no evidence available at reconcile time to
         size a matching un-lift. Un-lifting proportionally would guess.
         The drift-DOWN branch is also the "legitimate loss" branch: a
@@ -3345,18 +3351,18 @@ class ScrummingBot(BotContainer):
 
         THE HOLDINGS HALF IS A LOT, NOT A NUMBER. Since v3.23.43 this
         bot owns exactly what is in `_main_lots` and derives
-        `_current_holdings` from that source alone (:8066). The
+        `_current_holdings` from that source alone (:8098). The
         invariant `sum(lot["units"]) == _current_holdings` (:736) is
-        checked by `_main_lots_invariant_ok` (:18054). Two consequences,
+        checked by `_main_lots_invariant_ok` (:18204). Two consequences,
         both load-bearing:
 
           * Incrementing `_current_holdings` without appending a lot
             breaks the invariant, and the next drift-down reconcile
-            rescales `_main_lots` and resets holdings (:13962-13982),
+            rescales `_main_lots` and resets holdings (:13994-14014),
             silently undoing the credit.
           * Booking nothing at all is not neutral either. Units that
             land on the exchange but are never attributed are refused
-            by the drift-UP policy (:13984-14017) -- "those units
+            by the drift-UP policy (:14016-14049) -- "those units
             belong to another bot, prior state, or operator" -- so the
             child's gain would sit unclaimed forever.
 
@@ -3366,16 +3372,16 @@ class ScrummingBot(BotContainer):
         scalar" and the file does not do that. There are two shapes:
 
           SPLIT ACROSS AN AWAIT, and it is the common one. `_execute_buy`
-            (:17362) moves the scalar -- `self._current_holdings +=
-            amount` (:17903) -- and appends NO lot. Its callers append
-            the lot after the await returns: `tick` at :8976 -> :9007,
-            :11918 -> :11983, :12557 -> :12599, and `manual_fire_tranche`
-            at :4133 -> :4189. Between the scalar write and the lot
+            (:17512) moves the scalar -- `self._current_holdings +=
+            amount` (:18053) -- and appends NO lot. Its callers append
+            the lot after the await returns: `tick` at :9008 -> :9039,
+            :11950 -> :12015, :12589 -> :12631, and `manual_fire_tranche`
+            at :4139 -> :4195. Between the scalar write and the lot
             append the coroutine has already yielded, so the :736
             invariant is briefly false and a tick can see it.
 
-          SYNCHRONOUS, and rarer. `_execute_manual_rebalance` (:14284)
-            appends (:15375 / :15416) and moves the scalar (:15449)
+          SYNCHRONOUS, and rarer. `_execute_manual_rebalance` (:14316)
+            appends (:15407 / :15448) and moves the scalar (:15481)
             with nothing suspending in between.
 
         This method is deliberately the second shape. The first shape is
@@ -3392,7 +3398,7 @@ class ScrummingBot(BotContainer):
         put back into the shape `_main_lots` stores -- a quote-side
         price -- and not a fabricated entry price.
 
-        WHY THIS IS NOT `_apply_fold_target_growth` (:2001). That helper
+        WHY THIS IS NOT `_apply_fold_target_growth` (:2007). That helper
         applies the per-cycle Growth Rate Cap (`max_target_growth_pct`,
         default 1.0% of the cycle-open target -- issue #106 moved that
         base off the anchor). A cap is WRONG here: a return larger
@@ -3492,7 +3498,7 @@ class ScrummingBot(BotContainer):
 
         try:
             # `or 1.0` is not a convenience here. The tick prices the
-            # position with EXACTLY this expression (:8072), so the
+            # position with EXACTLY this expression (:8104), so the
             # arrival must be priced with it too. A stricter reading
             # here -- refusing a 0.0 rate the tick silently reads as
             # 1.0 -- would put the containment arithmetic and the
@@ -3551,7 +3557,7 @@ class ScrummingBot(BotContainer):
                 ),
             }
 
-        # USD = units x quote_price x quote_to_usd (:5577). Inverted,
+        # USD = units x quote_price x quote_to_usd (:5583). Inverted,
         # this is the quote-side price `_main_lots` stores alongside
         # every other lot. Both observed quantities, no model.
         #
@@ -3684,7 +3690,7 @@ class ScrummingBot(BotContainer):
         # caller-supplied callable between the first write and the last,
         # so no tick can read a half-applied state. Target and anchor
         # move together, following the co-movement precedent at
-        # :2914-2917.
+        # :2920-2923.
         lots.append(_arrival_lot)
         self._current_holdings = _h_after
         self._target_balance = _t_after
@@ -3781,7 +3787,7 @@ class ScrummingBot(BotContainer):
         # made `_delta_shift_usd` (the tick's own d(delta)) a statement
         # about `_main_lots` rather than about `_current_holdings`, and
         # `_current_holdings` is the quantity the tick actually prices
-        # (:8072). The two agree on a healthy arrival and diverge on
+        # (:8104). The two agree on a healthy arrival and diverge on
         # exactly the runs the check exists for.
         _holdings_usd_added = (_h_seen - _h_before) * arrival_price * qrate
         _target_usd_added = _t_seen - _t_before
@@ -4001,7 +4007,7 @@ class ScrummingBot(BotContainer):
         # or is never constructed, so `self._bus.emit` below cannot
         # reach main_window's handler. Isolation comes from WHICH bus
         # the bot holds, not from refusing to emit — the same principle
-        # the capital registry follows at :1309.
+        # the capital registry follows at :1315.
         #
         # WHAT IT COST: the SENT / PLACED / FILLED / CANCELLED trace,
         # including the CANCELLED reason string, is the only place a sim
@@ -5911,6 +5917,14 @@ class ScrummingBot(BotContainer):
             "tranches_malformed_dropped": int(
                 getattr(self, "_tranches_malformed_dropped", 0) or 0
             ),
+            # tranches_counters_reset_ts: the second an operator cleared
+            # the four counters above. Once they read zero the numbers
+            # carry no history, and this is the only field left that can
+            # say the bot has traded -- the init handshake reads it to
+            # decide whether to adopt the exchange balance.
+            "tranches_counters_reset_ts": float(
+                getattr(self, "_tranches_counters_reset_ts", 0.0) or 0.0
+            ),
             # stack_*: latent today (stack_mode is off on all 35 bots),
             # persisted for the same reason pending_stack_buy_usd already
             # is — a restart must not lose a queued acquisition, and the
@@ -6235,6 +6249,16 @@ class ScrummingBot(BotContainer):
         self._fold_accumulator = float(data.get("fold_accumulator", 0.0) or 0.0)
         self._tranches_malformed_dropped = int(
             data.get("tranches_malformed_dropped", 0) or 0
+        )
+        # issue #133 unit 3 -- the second an operator cleared the four
+        # counters, 0.0 when they never were. Read through
+        # `as_finite_float` because it comes straight off JSON, where
+        # `NaN` and `Infinity` are both representable and a bare
+        # `float()` would carry either into the predicate that decides
+        # whether this bot adopts the exchange balance as its opening
+        # position.
+        self._tranches_counters_reset_ts = float(
+            as_finite_float(data.get("tranches_counters_reset_ts", 0.0)) or 0.0
         )
         # issue #98 defect 4 - the restore filter above removed records.
         # They did not fold, so they are DISCARDED; they were unreadable,
@@ -7697,8 +7721,16 @@ class ScrummingBot(BotContainer):
             # target ceiling governs what may be BOUGHT. Capping here
             # would leave real units unattributed and rebuild the same
             # blind spot one layer down.
+            # issue #133 unit 3 -- AN OPERATOR RESET ZEROES THE COUNTER
+            # WITHOUT UNDOING THE HISTORY. `clear_lifetime_tranche_counters`
+            # stamps the second it did so, and a stamped bot has scrummed
+            # whatever the counter now reads. Without this conjunct the
+            # reset re-arms the adoption below at the next launch and
+            # replaces `_main_lots` with one derived lot.
             _never_scrummed = (
                 int(getattr(self, "_tranches_created_lifetime", 0) or 0) == 0
+                and float(getattr(self, "_tranches_counters_reset_ts", 0.0) or 0.0)
+                <= 0.0
             )
             if _never_scrummed and _h2 > 0:
                 _sib_units = 0.0
@@ -13390,8 +13422,8 @@ class ScrummingBot(BotContainer):
 
         Returns (number, None) when usable, (None, reason) when
         refused, the same shape as `_positive_observed_quantity`
-        (:3065), `_finite_state_number` (:3130) and `_sum_lot_units`
-        (:3176). Returning the refusal instead of raising is what lets
+        (:3071), `_finite_state_number` (:3136) and `_sum_lot_units`
+        (:3182). Returning the refusal instead of raising is what lets
         `_reconcile_holdings` decline the whole audit before it writes
         anything.
 
@@ -13414,7 +13446,7 @@ class ScrummingBot(BotContainer):
         passing.
 
         The restore paths coerce the same field more loosely, with
-        `float(lot.get("units", 0) or 0)` (:6801, :7868). That
+        `float(lot.get("units", 0) or 0)` (:6825, :7900). That
         divergence is deliberate and it runs one way only: this reader
         refuses a strict superset of what they refuse, so a book they
         loaded can be declined here, and a book declined here is never
@@ -13456,10 +13488,10 @@ class ScrummingBot(BotContainer):
         Deriving them a second time down there would let two passes
         disagree about one book.
 
-        NOT `_sum_lot_units` (:3176), and the difference is deliberate
+        NOT `_sum_lot_units` (:3182), and the difference is deliberate
         in both directions. That helper refuses a lot with no "units"
         key; here such a lot counts as ZERO, which is what the restore
-        paths' `.get` already does (:6801, :7868). Refusing it instead
+        paths' `.get` already does (:6825, :7900). Refusing it instead
         would leave a bot permanently unreconcilable over a lot that
         holds nothing. It also returns a total only, and a total cannot
         be multiplied back into a book. Its contract is pinned by the
@@ -13474,7 +13506,7 @@ class ScrummingBot(BotContainer):
         because those two do not agree — CPython's `sum` applies
         Neumaier compensation to floats. On ORCA's real 48-lot book
         `sum` gives 54.053407815409216 and an accumulator loop gives
-        54.05340781540922, one ULP apart. `sum` is what :6801 and :7868
+        54.05340781540922, one ULP apart. `sum` is what :6825 and :7900
         use to derive the scalar, so the audited total comes out
         bit-identical to theirs.
         """
@@ -13674,7 +13706,7 @@ class ScrummingBot(BotContainer):
         v3.25.8 (U2) — WHAT THE BOT CLAIMS IS TWO COUNTERS, NOT ONE.
         The comparison used to read `_current_holdings` alone. That
         scalar is the one `bootstrap_exchange_state` clamps against the
-        wallet with `min` (:6805), so on a bot whose lot book sits
+        wallet with `min` (:6829), so on a bot whose lot book sits
         above it the audit compared the wallet against the wallet and
         reported alignment while the excess stranded in `_main_lots`.
         The audited figure is now `max(scalar, sum of the lot book)` —
@@ -13682,7 +13714,7 @@ class ScrummingBot(BotContainer):
 
         v3.25.8 (U2) — THE VENUE NUMBER IS `total`, NOT `free`. The
         read was `balance.free`, which excludes any coin committed to a
-        resting order. The startup handshake reads `total` (:7545,
+        resting order. The startup handshake reads `total` (:7569,
         MEM-255). One wallet, two readers, two different fields — see
         the block at the fetch for why that only becomes load-bearing
         once this audit starts firing.
@@ -13727,7 +13759,7 @@ class ScrummingBot(BotContainer):
             # coin owned. `free` is only the coins not tied up in a
             # resting order: free = total - used. This read was
             # `balance.free`. The startup handshake reads `total`
-            # (:7545), and MEM-255 records why: `total` is the number
+            # (:7569), and MEM-255 records why: `total` is the number
             # the operator sees on the exchange screen.
             #
             # Two readers of one wallet must not read two fields. The
@@ -13785,7 +13817,7 @@ class ScrummingBot(BotContainer):
         # No information is not a reading. Refuse, say which asset and
         # why, and let the next scheduled interval try again. The
         # startup handshake already refuses on this exact sentinel
-        # (:7597); this closes the same hole on the periodic path.
+        # (:7621); this closes the same hole on the periodic path.
         if _venue_absent:
             self._bus.emit(
                 "bot.log",
@@ -13810,7 +13842,7 @@ class ScrummingBot(BotContainer):
 
         # --- U2 (2026-08-13) — AUDIT THE BOOK, NOT ONLY THE SCALAR ---
         # `bootstrap_exchange_state` sets the scalar with
-        #     min(max(0.0, _units), _tracked_units_bootstrap)   (:6805)
+        #     min(max(0.0, _units), _tracked_units_bootstrap)   (:6829)
         # so `min` can pull the SCALAR down to the wallet, can never
         # pull the LOT LIST down with it, and can never leave the
         # scalar above the lot sum. Auditing the scalar alone therefore
@@ -14891,7 +14923,7 @@ class ScrummingBot(BotContainer):
                 _best_rebuy = 0.0
                 _distance_ok = False
                 # Bound before the `try` for the reason `_excluded`
-                # (:10209) and `_fold_plan` (:10216) are: both are read
+                # (:10241) and `_fold_plan` (:10248) are: both are read
                 # by messages below, and an unbound name there would
                 # raise while REPORTING a decision rather than making
                 # one.
@@ -14928,7 +14960,7 @@ class ScrummingBot(BotContainer):
                     # on the one path where every other gate already is.
                     #
                     # The rule is this file's own, recorded above
-                    # `_reconcilable_units` (:11694): "A finiteness test
+                    # `_reconcilable_units` (:11726): "A finiteness test
                     # has to run BEFORE any comparison, never as part of
                     # one."
                     #
@@ -15681,7 +15713,7 @@ class ScrummingBot(BotContainer):
         COUNTER SEMANTICS. Discarded tranches are counted in
         `_tranches_discarded_lifetime`, NOT in `_tranches_closed_lifetime`.
         A closed tranche is one that FOLDED. The self-destruct path at
-        :3228 conflates the two, which is why "created minus closed" has
+        :3234 conflates the two, which is why "created minus closed" has
         never reconciled against the standing count. Keeping them
         separate preserves created - closed - discarded = standing.
 
@@ -15759,7 +15791,7 @@ class ScrummingBot(BotContainer):
 
         WHAT THIS NUMBER IS, and why discarding it destroys nothing.
         `_pending_wire_credits` is BOOKKEEPING, not custody. Verified by
-        reading every writer: the park site at :2378 is `+= u` and a
+        reading every writer: the park site at :2384 is `+= u` and a
         ledger append, and no code path anywhere places an order,
         withdraws, or transfers exchange funds on the strength of it.
         All bots share one exchange wallet, so a Smart Wire route is an
@@ -15828,6 +15860,124 @@ class ScrummingBot(BotContainer):
             amount,
             len(ledger),
             reason,
+        )
+        return report
+
+    def clear_lifetime_tranche_counters(self, reason: str = "operator") -> dict:
+        """Reset the four fold-tranche lifetime counters to zero.
+
+        issue #133 unit 3, operator directive 2026-08-25: "Lifetime
+        tranche counts can be cleared since we are resetting to the new
+        standard." The live CHIP bot carried opened 4925, closed 4813
+        and discarded 91, all accumulated under rules that no longer
+        apply.
+
+        FOUR COUNTERS, FIVE FIGURES ON THE PANEL. Opened, closed,
+        discarded and malformed-dropped are stored and are cleared here.
+        The cycle close ratio is `closed / (created - discarded)`,
+        computed on the panel from three of them, so it follows the
+        reset without being a counter of its own.
+
+        MALFORMED IS A SUB-COUNT OF DISCARDED, so clearing discarded and
+        leaving it would publish a sub-count larger than the total it
+        belongs to.
+
+        THE `stats` MIRROR GOES TOO. `stats.tranches_discarded_lifetime`
+        is a second copy of one of the four and is serialised into its
+        own section of the state file, so a clear that skipped it would
+        write 0 under `scrumming_state` and 91 under `stats`.
+
+        WHAT THIS DOES NOT TOUCH: the standing `_fold_tranches` and the
+        `_fold_queue_usd` they park, `_pending_wire_credits` and its
+        ledger, `_wire_credits_discarded_lifetime`, the stack-side
+        `_stack_created` and `_stack_discarded`, and every holding, lot,
+        cost basis and target. This clears counters, not inventory.
+
+        THE RESET STAMP IS NOT A DECORATION. The init handshake reads
+        `_tranches_created_lifetime == 0` as "no scrum has ever fired"
+        and adopts the exchange balance as the bot's opening position,
+        REPLACING `_main_lots` with one lot at a single derived basis.
+        Zeroing the counter alone would re-arm that at the next launch
+        on a bot with thousands of scrums behind it. The stamp records
+        that the zero was written by an operator, and the predicate
+        reads it.
+
+        A BOT WHOSE FOUR COUNTERS ARE ALREADY ZERO IS LEFT ALONE, stamp
+        included. On that bot the zero is its real history, and stamping
+        it would take the opening-position adoption away from the one
+        bot that needs it.
+
+        Returns a report of the four values destroyed. Never raises.
+        """
+        _before = {
+            "created": int(
+                as_finite_float(getattr(self, "_tranches_created_lifetime", 0)) or 0.0
+            ),
+            "closed": int(
+                as_finite_float(getattr(self, "_tranches_closed_lifetime", 0)) or 0.0
+            ),
+            "discarded": int(
+                as_finite_float(getattr(self, "_tranches_discarded_lifetime", 0)) or 0.0
+            ),
+            "malformed": int(
+                as_finite_float(getattr(self, "_tranches_malformed_dropped", 0)) or 0.0
+            ),
+        }
+        report = {
+            "bot_id": self.bot_id,
+            "symbol": getattr(self.config, "symbol", ""),
+            "before": dict(_before),
+            "cleared": sum(_before.values()),
+            "open_tranches": len([t for t in (self._fold_tranches or [])]),
+            "reset_ts": float(getattr(self, "_tranches_counters_reset_ts", 0.0) or 0.0),
+            "reason": str(reason),
+        }
+        if report["cleared"] <= 0:
+            return report
+
+        self._tranches_created_lifetime = 0
+        self._tranches_closed_lifetime = 0
+        self._tranches_discarded_lifetime = 0
+        self._tranches_malformed_dropped = 0
+        self._tranches_counters_reset_ts = float(time.time())
+        report["reset_ts"] = self._tranches_counters_reset_ts
+
+        try:
+            self.stats.tranches_discarded_lifetime = 0
+        except Exception as exc:  # noqa: BLE001 - telemetry mirror only
+            logger.debug(
+                "clear_lifetime_tranche_counters: stats mirror failed: %s", exc
+            )
+
+        try:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"LIFETIME TRANCHE COUNTERS CLEARED ({reason}): "
+                    f"opened {_before['created']}, closed "
+                    f"{_before['closed']}, discarded "
+                    f"{_before['discarded']}, malformed-dropped "
+                    f"{_before['malformed']} are now zero. No tranche, "
+                    f"no parked credit and no holding was touched; "
+                    f"{report['open_tranches']} tranche(s) remain in "
+                    f"the queue."
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - diagnostic best-effort
+            logger.debug("clear_lifetime_tranche_counters: log emit failed: %s", exc)
+
+        logger.info(
+            "Bot %s: cleared lifetime tranche counters "
+            "(opened=%d closed=%d discarded=%d malformed=%d) reason=%s "
+            "open_tranches=%d",
+            self.bot_id,
+            _before["created"],
+            _before["closed"],
+            _before["discarded"],
+            _before["malformed"],
+            reason,
+            report["open_tranches"],
         )
         return report
 
@@ -18071,18 +18221,18 @@ class ScrummingBot(BotContainer):
 
         v3.25.7 -- THE MEM-171 CITATION WAS WRONG TWICE IN ONE SENTENCE.
         It read: the fold-floor rule `price <= tranche
-        ["initial_buy_price"]` "is enforced at :11103, not here". First,
-        :11103 is a COMMENT that describes the rule; it evaluates
+        ["initial_buy_price"]` "is enforced at :11135, not here". First,
+        :11135 is a COMMENT that describes the rule; it evaluates
         nothing. Second, and worse, the rule is not enforced on the fold
         path AT ALL. The executor's eligibility filter is
-        `ticker.last <= float(t.get("ref", 0)) * _otd_factor` (:11664),
+        `ticker.last <= float(t.get("ref", 0)) * _otd_factor` (:11696),
         which carries no `initial_buy_price` term, and the comment
-        beside it says so in as many words (:11651). The
+        beside it says so in as many words (:11683). The
         `initial_buy_price` reading survives only as a SECONDARY
-        diagnostic counter, `_patent_only_eligible` (:11387), labelled
+        diagnostic counter, `_patent_only_eligible` (:11419), labelled
         there as "not a gate". MEM-171 is held at the strategy level by
         the position ceiling -- `self._anchor_target_balance * mult`
-        (:5675) -- not per tranche. Cite the predicate, not the prose
+        (:5681) -- not per tranche. Cite the predicate, not the prose
         about it.
         """
         lots_sum = sum(l["units"] for l in self._main_lots)

@@ -507,6 +507,7 @@ FOLD_CLOSE_RATIO_TOOLTIP = (
     "Share of opened tranches that folded back, discards excluded."
 )
 FOLD_DISCARDED_TOOLTIP = "Fold tranches removed without folding back, lifetime total."
+FOLD_COUNTERS_RESET_TOOLTIP = "When an operator last set these four counters to zero."
 
 
 def install_health_row(
@@ -2643,6 +2644,122 @@ if _HAS_QT:
                 ),
             )
 
+        def _on_clear_lifetime_counters(self) -> None:
+            """Zero this bot's four lifetime tranche counters, after
+            confirming.
+
+            issue #133 unit 3, operator directive 2026-08-25: "Lifetime
+            tranche counts can be cleared since we are resetting to the
+            new standard."
+
+            THE DIALOG STATES THE RECONCILIATION IT BREAKS. The panel
+            keeps `opened - closed - discarded == open tranches`, and
+            zeroing the three terms while the queue still holds N
+            tranches makes that read `0 - 0 - 0 = 0` against N until the
+            next scrum opens one. It is a display consequence, not a
+            lost tranche, and the operator sees the number before
+            deciding.
+            """
+            from PySide6.QtWidgets import QMessageBox
+
+            bot = self._bot
+            _counts = {
+                "opened": int(getattr(bot, "_tranches_created_lifetime", 0) or 0),
+                "closed": int(getattr(bot, "_tranches_closed_lifetime", 0) or 0),
+                "discarded": int(getattr(bot, "_tranches_discarded_lifetime", 0) or 0),
+                "malformed": int(getattr(bot, "_tranches_malformed_dropped", 0) or 0),
+            }
+            if not sum(_counts.values()):
+                QMessageBox.information(
+                    self,
+                    "Clear lifetime counters",
+                    "This bot's lifetime tranche counters already read zero.",
+                )
+                return
+            if not hasattr(bot, "clear_lifetime_tranche_counters"):
+                QMessageBox.warning(
+                    self,
+                    "Clear lifetime counters",
+                    "This bot type does not support clearing lifetime counters.",
+                )
+                return
+
+            open_now = len(getattr(bot, "_fold_tranches", []) or [])
+            body = [
+                f"Set the four lifetime tranche counters for "
+                f"{getattr(bot.config, 'symbol', '')} to zero?",
+                "",
+                f"    opened               {_counts['opened']}",
+                f"    closed               {_counts['closed']}",
+                f"    discarded            {_counts['discarded']}",
+                f"    dropped as malformed {_counts['malformed']}",
+                "",
+                "This places NO order and removes NO tranche. Open "
+                "tranches, parked wire credits, holdings, cost basis and "
+                "target balance are all unchanged - this clears the "
+                "record of what happened, not what the bot holds.",
+                "",
+                "This cannot be undone.",
+            ]
+            if open_now:
+                body += [
+                    "",
+                    f"NOTE - this bot still holds {open_now} open fold "
+                    f"tranche(s). The panel reconciles opened minus "
+                    f"closed minus discarded against that count, so it "
+                    f"will read 0 against {open_now} until the next "
+                    f"SCRUM opens one. No tranche is lost.",
+                ]
+
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle("Clear lifetime counters")
+            box.setText("\n".join(body))
+            box.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
+            box.setDefaultButton(QMessageBox.Cancel)
+            if box.exec() != QMessageBox.Yes:
+                return
+
+            try:
+                report = bot.clear_lifetime_tranche_counters(reason="operator (GUI)")
+            except Exception as exc:  # noqa: BLE001 - operator surface
+                logger.exception("clear_lifetime_tranche_counters failed: %s", exc)
+                QMessageBox.critical(
+                    self,
+                    "Clear lifetime counters",
+                    f"Nothing was cleared - the call failed:\n\n{exc}",
+                )
+                return
+
+            # The result leads, then what the panel shows, then whether
+            # it reached disk, then what did NOT happen. Same order and
+            # the same three steps as the two clears above; see
+            # `_on_clear_fold_tranches` for why.
+            _settled = self._settle_after_clear("Clear lifetime counters")
+            _before = report.get("before", {}) or {}
+            QMessageBox.information(
+                self,
+                "Clear lifetime counters",
+                "\n\n".join(
+                    [
+                        f"Cleared {int(report.get('cleared', 0))} counted "
+                        f"tranche event(s): opened "
+                        f"{int(_before.get('created', 0))}, closed "
+                        f"{int(_before.get('closed', 0))}, discarded "
+                        f"{int(_before.get('discarded', 0))} and "
+                        f"{int(_before.get('malformed', 0))} dropped as "
+                        f"malformed.",
+                        "All four now read 0 for this bot.",
+                        "\n".join(_settled),
+                        "No order was placed and no tranche was removed. "
+                        f"This bot still holds "
+                        f"{len(getattr(bot, '_fold_tranches', []) or [])} "
+                        f"open fold tranche(s), its parked wire credits "
+                        f"and every holding it had.",
+                    ]
+                ),
+            )
+
         def _paint_fold_tranche_row(self, table: QTableWidget, row: int) -> None:
             """Paint one fold tranche row blue, after its cells exist.
 
@@ -2952,6 +3069,22 @@ if _HAS_QT:
             units = getattr(self, "_fold_units_marked_lbl", None)
             sort_box = getattr(self, "_fold_sort_combo", None)
             filter_box = getattr(self, "_fold_filter_edit", None)
+            # issue #133 unit 3 - the five counter figures and the button
+            # that clears them. `discarded` and `reset` are None when the
+            # panel renders no such row, which is a DIFFERENT answer from
+            # "0": the discarded row is hidden at zero, and the reset row
+            # is hidden until an operator has cleared.
+            opened = getattr(self, "_fold_opened_lbl", None)
+            closed = getattr(self, "_fold_closed_lbl", None)
+            # NAMED `ratio_row`, NOT `ratio`. The TA archetype reads a
+            # local called `ratio` as a dimensionless quantity and
+            # flagged the `is not None` beside it as a units mismatch.
+            # This binding is a QLabel.
+            ratio_row = getattr(self, "_fold_ratio_lbl", None)
+            discarded = getattr(self, "_fold_discarded_lbl", None)
+            malformed = getattr(self, "_fold_malformed_lbl", None)
+            reset = getattr(self, "_fold_counters_reset_lbl", None)
+            counters = getattr(self, "_fold_counters_btn", None)
             rows = None
             if table is not None:
                 rows = max(
@@ -2981,6 +3114,22 @@ if _HAS_QT:
                 "units_marked_text": (units.text() if units is not None else None),
                 "row_order": (sort_box.currentText() if sort_box is not None else None),
                 "row_filter": (filter_box.text() if filter_box is not None else None),
+                "lifetime_opened_text": (opened.text() if opened is not None else None),
+                "lifetime_closed_text": (closed.text() if closed is not None else None),
+                "cycle_ratio_text": (
+                    ratio_row.text() if ratio_row is not None else None
+                ),
+                "lifetime_discarded_text": (
+                    discarded.text() if discarded is not None else None
+                ),
+                "malformed_text": (malformed.text() if malformed is not None else None),
+                "counters_reset_text": (reset.text() if reset is not None else None),
+                "counters_button_text": (
+                    counters.text() if counters is not None else None
+                ),
+                "counters_button_enabled": (
+                    bool(counters.isEnabled()) if counters is not None else None
+                ),
             }
 
         def _bot_manager_for_save(self) -> object | None:
@@ -3165,6 +3314,18 @@ if _HAS_QT:
             self._fold_sort_combo: QComboBox | None = None
             self._fold_filter_edit: QLineEdit | None = None
             self._fold_row_texts: list[list[str]] = []
+            # issue #133 unit 3 - the five counter surfaces and the
+            # button that clears them, cleared first for the reason the
+            # handles above are: two of these rows are CONDITIONAL, so a
+            # rebuild that stops rendering one would otherwise leave the
+            # previous build's label answering for the new panel.
+            self._fold_opened_lbl: QLabel | None = None
+            self._fold_closed_lbl: QLabel | None = None
+            self._fold_ratio_lbl: QLabel | None = None
+            self._fold_discarded_lbl: QLabel | None = None
+            self._fold_malformed_lbl: QLabel | None = None
+            self._fold_counters_reset_lbl: QLabel | None = None
+            self._fold_counters_btn: QPushButton | None = None
 
             tranches = list(getattr(self._bot, "_fold_tranches", []) or [])
             # Item 4 (2026-08-11) — Extractor Tranches leased against
@@ -3337,20 +3498,28 @@ if _HAS_QT:
             # model has exactly three verbs.
             install_despawn_rows(self, sf, tranches, now_ts)
 
+            # issue #133 unit 3 - HELD, not built inline. The Clear
+            # Lifetime Counters button rebuilds this tab in its own
+            # click, and `_fold_panel_shows` has to read the rebuilt
+            # LABEL rather than re-read the bot; two reads of one
+            # expression would agree whatever the panel displayed.
+            self._fold_opened_lbl = QLabel(str(created_lifetime))
             install_health_row(
                 sf,
                 "Lifetime tranches opened:",
-                QLabel(str(created_lifetime)),
+                self._fold_opened_lbl,
                 FOLD_OPENED_TOOLTIP,
             )
+            self._fold_closed_lbl = QLabel(str(closed_lifetime))
             install_health_row(
                 sf,
                 "Lifetime tranches closed (fold-back fired):",
-                QLabel(str(closed_lifetime)),
+                self._fold_closed_lbl,
                 FOLD_CLOSED_TOOLTIP,
             )
 
             ratio_lbl = QLabel(ratio_str)
+            self._fold_ratio_lbl = ratio_lbl
             # THE COLOUR IS NOT DECIDED HERE ANY MORE. It used to be a
             # second arithmetic beside the text's, over `created` rather
             # than the denominator the text printed, so the words and
@@ -3376,10 +3545,11 @@ if _HAS_QT:
             # unreadable-record drop write this same counter, so naming
             # one of the four made the other three read as missing.
             if discarded_lifetime:
+                self._fold_discarded_lbl = QLabel(str(discarded_lifetime))
                 install_health_row(
                     sf,
                     "Lifetime tranches discarded (not folded back):",
-                    QLabel(str(discarded_lifetime)),
+                    self._fold_discarded_lbl,
                     FOLD_DISCARDED_TOOLTIP,
                 )
 
@@ -3432,12 +3602,33 @@ if _HAS_QT:
                 # dropped tranche is a record the bot could not read,
                 # which is a data fault rather than a trading outcome.
                 _malformed_lbl.setStyleSheet(f"color: {FOLD_OVER_ALLOTMENT_FG_HEX};")
+            self._fold_malformed_lbl = _malformed_lbl
             install_health_row(
                 sf,
                 "Tranches dropped as malformed:",
                 _malformed_lbl,
                 FOLD_MALFORMED_TOOLTIP,
             )
+
+            # issue #133 unit 3 - THE RESET IS ON THE PANEL, not only in
+            # the log. Four counters reading zero look identical whether
+            # the bot has never traded or an operator cleared 4,925
+            # opens, and the row that tells them apart is this one. Shown
+            # once non-zero, the convention the discarded row above and
+            # the wire-discarded row already keep.
+            _reset_ts = _as_finite_float(
+                getattr(self._bot, "_tranches_counters_reset_ts", 0.0)
+            )
+            if _reset_ts is not None and _reset_ts > 0:
+                self._fold_counters_reset_lbl = QLabel(
+                    _time.strftime("%Y-%m-%d %H:%M", _time.localtime(_reset_ts))
+                )
+                install_health_row(
+                    sf,
+                    "Lifetime counters last cleared:",
+                    self._fold_counters_reset_lbl,
+                    FOLD_COUNTERS_RESET_TOOLTIP,
+                )
 
             _cap_budget = _as_finite_float(
                 getattr(self._bot, "cycle_growth_cap_usd", 0.0)
@@ -3513,9 +3704,52 @@ if _HAS_QT:
             wire_btn.clicked.connect(self._on_clear_wire_credits)
             self._fold_wire_btn = wire_btn
 
+            # issue #133 unit 3 - operator directive 2026-08-25:
+            # "Lifetime tranche counts can be cleared since we are
+            # resetting to the new standard." The live CHIP bot carried
+            # 4925 opened / 4813 closed / 91 discarded, all accumulated
+            # under rules that no longer apply.
+            #
+            # A THIRD BUTTON, not a third job for either of the two
+            # above. Those discard INVENTORY - queued tranches, parked
+            # credit - and this discards a RECORD OF THE PAST. A bot can
+            # want its history reset with its queue intact, and folding
+            # the two together would make one click do both.
+            #
+            # THE LABEL CARRIES THE OPENED TOTAL, the way the tranche
+            # button carries its count and the wire button its dollars.
+            # It is the largest of the four and the one the operator
+            # quoted.
+            _counter_total = (
+                created_lifetime + closed_lifetime + discarded_lifetime + _malformed
+            )
+            counters_btn = QPushButton(
+                f"Clear Lifetime Counters ({created_lifetime} opened)"
+                if _counter_total
+                else "Clear Lifetime Counters"
+            )
+            counters_btn.setEnabled(bool(_counter_total))
+            counters_btn.setToolTip(
+                "Set this bot's four fold-tranche lifetime counters to "
+                "zero.\n\n"
+                "Places NO order and removes NO tranche. Open tranches, "
+                "parked wire credits, holdings, cost basis and target "
+                "balance are all untouched - this clears the record of "
+                "what happened, not what the bot holds."
+            )
+            counters_btn.setStyleSheet(
+                "QPushButton { background: #3a2020; color: #ff9900; "
+                "border: 1px solid #ff3366; padding: 6px 12px; } "
+                "QPushButton:disabled { color: #666666; "
+                "border-color: #444444; }"
+            )
+            counters_btn.clicked.connect(self._on_clear_lifetime_counters)
+            self._fold_counters_btn = counters_btn
+
             btn_row = QHBoxLayout()
             btn_row.addWidget(clear_btn)
             btn_row.addWidget(wire_btn)
+            btn_row.addWidget(counters_btn)
             btn_row.addStretch()
             layout.addLayout(btn_row)
 
