@@ -126,6 +126,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 from dev_harness.harness.watchdog_archetype import _iter_python, _scan_module, is_exempt
+from src.core.signal_contract import (
+    CADENCE_ALWAYS_ON,
+    CADENCE_BY_NAME,
+    CADENCE_CATEGORIES,
+    CADENCE_TOGGLE,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REGISTRY_PATH = Path("docs/EMITTER_IDENTIFICATION.md")
@@ -150,10 +156,12 @@ MAIN_HEADER = ("ID", "subsystem", "signal type", "duration",
                "current name", "previous name", "source", "observes")
 PLANNED_HEADER = ("ID", "planned name")
 SUBSYS_HEADER = ("subsystem", "number", "pins")
+CADENCE_HEADER = ("ID", "cadence")
 
 _MAIN_COLS = len(MAIN_HEADER)
 _PLANNED_COLS = len(PLANNED_HEADER)
 _SUBSYS_COLS = len(SUBSYS_HEADER)
+_CADENCE_COLS = len(CADENCE_HEADER)
 _PLANNED_FIELDS = 5
 
 
@@ -304,12 +312,18 @@ class Row:
 
 @dataclass
 class Registry:
-    """The parsed registry: three tables and any parse trouble."""
+    """The parsed registry: four tables and any parse trouble."""
 
     rows: list[Row]
     planned: dict[str, str]
     subsystem_numbers: dict[str, str]
     parse_errors: list[str]
+    # #14 -- the DECLARED cadence category, verbatim from the cell, by
+    # ID. Defaulted so a Registry built before this table existed still
+    # constructs; the default is NOT a pass, because E13 refuses a
+    # missing entry and that is how a row which skipped the table is
+    # caught rather than read as "no cadence".
+    cadence: dict[str, str] = dataclasses.field(default_factory=dict)
 
 
 def _cells(line: str) -> list[str]:
@@ -395,7 +409,9 @@ def parse_registry(text: str) -> Registry:
         planned=_parse_pairs(lines, PLANNED_HEADER, _PLANNED_COLS, errors),
         subsystem_numbers=_parse_pairs(
             lines, SUBSYS_HEADER, _SUBSYS_COLS, errors),
-        parse_errors=errors)
+        parse_errors=errors,
+        cadence=_parse_pairs(
+            lines, CADENCE_HEADER, _CADENCE_COLS, errors))
 
 
 # --------------------------------------------------------------------- #
@@ -758,14 +774,123 @@ def _check_vacuous(pins: list[Pin]) -> list[str]:
     ]
 
 
-def check(pins: list[Pin], reg: Registry) -> list[str]:
-    """Return every problem found. An empty list is a clean run."""
+def _cadence_cell(reg: Registry, row: Row) -> tuple[str, str, str]:
+    """Split one cadence cell into (cell, term, reason).
+
+    The term comes from before the FIRST colon, so a reason may hold
+    one. An absent or empty cell returns three empty strings, which E13
+    then reports.
+    """
+    cell = (reg.cadence.get(row.emitter_id) or "").strip()
+    if not cell:
+        return ("", "", "")
+    term, _, reason = cell.partition(":")
+    return (cell, term.strip(), reason.strip())
+
+
+def _check_cadence(reg: Registry,
+                   roster: dict[str, str] | None = None) -> list[str]:
+    """E13, E14, E15 -- every pin declares a cadence category, once.
+
+    #14. The operator's ruling, 2026-08-19: an emitter is "always on"
+    or "toggle", and only the former needs a timer. The category
+    decides whether `SignalSink.cadence_report` will ever call this pin
+    late, so a pin with no category is a pin nothing watches -- and an
+    UNFILLED cell must therefore be a finding rather than a default.
+
+    THE DECLARATION LIVES IN TWO PLACES ON PURPOSE, AND THIS RULE HOLDS
+    THEM EQUAL. The register carries the term AND the reason a human
+    reads. `signal_contract.CADENCE_BY_NAME` carries the term the sink
+    ACTS on, because the sink cannot parse markdown at run time. Two
+    declarations that must agree is not duplication for its own sake:
+    it is the only thing standing between the reasoning on this page
+    and the code that reads it, and without the rule a roster edit
+    would silently exempt a pin the register still claims is watched.
+
+    Three findings, deliberately separate.
+
+      E13  the register's own cell is missing, outside the vocabulary,
+           carries no reason, or names an ID with no row.
+      E14  a row has no roster entry, or the two disagree.
+      E15  the roster carries a pin the register does not.
+
+    E14 and E15 together force a bijection over the 77 names, so a name
+    listed in both roster tuples -- which the dict merge would silently
+    collapse to one entry -- comes back as E14 on the row that lost.
+
+    WHAT THIS RULE CANNOT DO, STATED PLAINLY. It checks that a category
+    is DECLARED and that the two declarations AGREE. It cannot check
+    that the category is TRUE: whether a live loop reaches a call site
+    is not decidable from the register, and the one AST-derivable proxy
+    -- `every=` -- was measured on this tree to encode something else
+    entirely (`sim.06.010` is throttled and is a toggle; `tick.08.001`
+    is unthrottled and is always-on). Falsifying a category needs the
+    observed rate, so it happens at run time, in
+    `SignalSink.cadence_report`, and its blind spot is written down in
+    the register's Cadence section.
+    """
+    known = CADENCE_BY_NAME if roster is None else roster
+    problems: list[str] = []
+    for row in reg.rows:
+        cell, term, reason = _cadence_cell(reg, row)
+        if term not in CADENCE_CATEGORIES:
+            problems.append(
+                f"E13 {row.emitter_id}: cadence cell {cell!r} does not "
+                f"start with one of {', '.join(CADENCE_CATEGORIES)}. "
+                f"Every pin must say whether a loop reaches it; an "
+                f"unfilled cell is not 'toggle', it is no statement, "
+                f"and a pin nothing watches is what this table exists "
+                f"to prevent.")
+            continue
+        if not reason:
+            problems.append(
+                f"E13 {row.emitter_id}: cadence {term!r} carries no "
+                f"reason. Write it as '{term}: <reason>', and take the "
+                f"reason from the CALL SITE -- what drives this pin -- "
+                f"never from how often it happens to fire today.")
+            continue
+        declared = known.get(row.name)
+        if declared is None:
+            problems.append(
+                f"E14 {row.emitter_id}: {row.name} has no entry in "
+                f"signal_contract.CADENCE_BY_NAME, so the register "
+                f"declares a category the sink will never read. "
+                f"`cadence_report` would call this pin undeclared.")
+        elif declared != term:
+            problems.append(
+                f"E14 {row.emitter_id}: the register says {term!r} and "
+                f"the roster in signal_contract says {declared!r} for "
+                f"{row.name}. A reader cannot tell which is watched "
+                f"while they disagree.")
+    named = {row.name for row in reg.rows}
+    problems.extend(
+        f"E15 the roster in signal_contract carries {pin!r}, which has "
+        f"no row in the register. The sink would hold a pin to a "
+        f"category nothing on this page records."
+        for pin in sorted(set(known) - named))
+    ids = {row.emitter_id for row in reg.rows}
+    problems.extend(
+        f"E13 cadence recorded for {orphan}, which has no row in the "
+        f"main table"
+        for orphan in sorted(set(reg.cadence) - ids))
+    return problems
+
+
+def check(pins: list[Pin], reg: Registry,
+          roster: dict[str, str] | None = None) -> list[str]:
+    """Return every problem found. An empty list is a clean run.
+
+    `roster` overrides `signal_contract.CADENCE_BY_NAME` and exists for
+    the controls: the roster is a frozen mapping, so a control that
+    needs to plant a defect in it has to be handed one.
+    """
     problems = [f"E0 registry parse: {err}" for err in reg.parse_errors]
     problems.extend(_check_membership(pins, reg))
     problems.extend(_check_rows(reg))
     problems.extend(_check_duration_shape(pins))
     problems.extend(_check_duration_declared(pins, reg))
     problems.extend(_check_vacuous(pins))
+    problems.extend(_check_cadence(reg, roster))
     return problems
 
 
@@ -913,14 +1038,16 @@ def _planted_pins() -> tuple[list[Pin], str]:
 
 def _variant(reg: Registry, rows: list[Row] | None = None,
              planned: dict[str, str] | None = None,
-             numbers: dict[str, str] | None = None) -> Registry:
+             numbers: dict[str, str] | None = None,
+             cadence: dict[str, str] | None = None) -> Registry:
     """Copy the registry with one part replaced."""
     return Registry(
         rows=list(reg.rows) if rows is None else rows,
         planned=dict(reg.planned) if planned is None else planned,
         subsystem_numbers=(dict(reg.subsystem_numbers)
                            if numbers is None else numbers),
-        parse_errors=[])
+        parse_errors=[],
+        cadence=dict(reg.cadence) if cadence is None else cadence)
 
 
 def _duration_controls(
@@ -1031,6 +1158,131 @@ def _duration_controls(
             not quiet12, "; ".join(quiet12) or "silent"))
 
     return results
+
+
+def _cadence_controls(
+        pins: list[Pin], reg: Registry, first: Row,
+        fired: Callable[..., tuple[bool, str]]) -> list[Control]:
+    """Plant E13, E14 and E15 against real rows and read them back.
+
+    #14. Split out of `_controls` for the reason `_duration_controls`
+    was: adding ten more controls inline pushes that function past the
+    archetype's statement and length ceilings, and the answer to a
+    function that outgrew its limit is to split it, never to quiet the
+    rule that said so.
+
+    Every fire half names the ID or the pin it planted, so a stranger's
+    finding of the same class cannot satisfy this control.
+
+    THE LAST CONTROL HERE IS A NEGATIVE ONE AND IT IS THE POINT OF THE
+    WHOLE SET. It flips a category in the register AND in the roster
+    together, so the two still agree and every rule above stays silent.
+    It PASSES by staying silent, and what it records is the limit: this
+    checker proves a category is declared and consistent, never that it
+    is true. The falsifier for truth is the observed rate, and it lives
+    in `SignalSink.cadence_report`.
+    """
+    results: list[Control] = []
+    roster = dict(CADENCE_BY_NAME)
+
+    def _swap(row: Row, cadence: str) -> Registry:
+        """Copy the registry with one row's cadence cell replaced."""
+        return _variant(reg, cadence={**reg.cadence,
+                                      row.emitter_id: cadence})
+
+    _always = next(
+        (r for r in reg.rows
+         if _cadence_cell(reg, r)[1] == CADENCE_ALWAYS_ON), None)
+    _toggle = next(
+        (r for r in reg.rows
+         if _cadence_cell(reg, r)[1] == CADENCE_TOGGLE), None)
+    results.append(Control(
+        "the register holds an always_on row and a toggle row to plant",
+        _always is not None and _toggle is not None,
+        f"always_on={_always.emitter_id if _always else 'none'}, "
+        f"toggle={_toggle.emitter_id if _toggle else 'none'}"))
+    if _always is None or _toggle is None:
+        return results
+
+    blank = check(pins, _swap(first, ""))
+    ok, detail = fired(blank, "E13", first.emitter_id, "does not start")
+    results.append(Control(
+        "E13 fires when a cadence cell is empty", ok, detail))
+
+    coined = check(pins, _swap(first, "sometimes: when it feels right"))
+    ok, detail = fired(coined, "E13", first.emitter_id, "does not start")
+    results.append(Control(
+        "E13 fires on a category outside the vocabulary", ok, detail))
+
+    bare = check(pins, _swap(first, CADENCE_TOGGLE))
+    ok, detail = fired(bare, "E13", first.emitter_id, "carries no")
+    results.append(Control(
+        "E13 fires when a category carries no reason", ok, detail))
+
+    term = _cadence_cell(reg, first)[1]
+    kept = check(pins, _swap(first, f"{term}: a re-worded but true reason"))
+    noise = [q for q in kept
+             if q.startswith(("E13", "E14", "E15"))
+             and first.emitter_id in q]
+    results.append(Control(
+        "E13/E14/E15 stay silent on a re-worded but correct cell",
+        not noise, "; ".join(noise) or "silent"))
+
+    orphan = check(pins, _variant(
+        reg, cadence={**reg.cadence, "99-009": "toggle: a phantom"}))
+    ok, detail = fired(orphan, "E13", "99-009", "no row in the main table")
+    results.append(Control(
+        "E13 fires on a cadence entry whose ID has no row", ok, detail))
+
+    # E14 -- the register against the roster, both ways round.
+    flipped = _flip(term)
+    disagree = check(pins, _swap(first, f"{flipped}: a category the "
+                                        f"roster does not carry"))
+    ok, detail = fired(disagree, "E14", first.emitter_id, "the roster")
+    results.append(Control(
+        "E14 fires when the register and the roster disagree", ok, detail))
+
+    dropped = {k: v for k, v in roster.items() if k != first.name}
+    missing = check(pins, reg, dropped)
+    ok, detail = fired(missing, "E14", first.emitter_id,
+                       "no entry in signal_contract")
+    results.append(Control(
+        "E14 fires when the roster has no entry for a row", ok, detail))
+
+    agreed = [q for q in check(pins, reg, roster)
+              if q.startswith("E14") and first.emitter_id in q]
+    results.append(Control(
+        "E14 is silent when the register and the roster agree",
+        not agreed, "; ".join(agreed) or "silent"))
+
+    # E15 -- a roster entry the register never heard of.
+    extra = check(pins, reg, {**roster, "ghost.99.009.gauge.not_a_pin":
+                              CADENCE_ALWAYS_ON})
+    ok, detail = fired(extra, "E15", "ghost.99.009.gauge.not_a_pin")
+    results.append(Control(
+        "E15 fires on a roster pin with no row in the register",
+        ok, detail))
+
+    # THE LIMIT, MEASURED RATHER THAN ASSERTED. Both sides flipped, so
+    # the two declarations agree and are both wrong.
+    consistent = check(
+        pins, _swap(first, f"{flipped}: both sides flipped together"),
+        {**roster, first.name: flipped})
+    blind = [q for q in consistent
+             if q.startswith(("E13", "E14", "E15"))
+             and first.emitter_id in q]
+    results.append(Control(
+        label=("a category that is WRONG but consistent passes every "
+               "static rule -- the falsifier is the observed rate, in "
+               "SignalSink.cadence_report"),
+        ok=not blind, detail="; ".join(blind) or "silent"))
+    return results
+
+
+def _flip(term: str) -> str:
+    """Return the other category. Two terms, so the other one is it."""
+    return (CADENCE_TOGGLE if term == CADENCE_ALWAYS_ON
+            else CADENCE_ALWAYS_ON)
 
 
 def _controls(pins: list[Pin],
@@ -1204,6 +1456,9 @@ def _controls(pins: list[Pin],
     # and length ceilings, and the answer to a function that outgrew
     # its limit is to split it, never to quiet the rule that said so.
     results.extend(_duration_controls(pins, reg, first, fired))
+    # #14 -- the cadence column's own controls, extracted for the same
+    # reason `_duration_controls` was.
+    results.extend(_cadence_controls(pins, reg, first, fired))
 
     replanned = check(pins, _variant(
         reg, planned={**reg.planned, first.emitter_id: "made.up.name"}))

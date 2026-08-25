@@ -242,11 +242,20 @@ wanted; the number is a constructor argument for exactly that reason.
 #   the complete record. Trading its completeness for the digest's reach
 #   would lose the thing the digest is not trying to replace.
 #
-# FINDING, NOT FIXED HERE (the emitter sites are not this unit's to
-# change): the fifteen ``ta.07.*`` and ``tick.08.*`` pins each emit at
-# 3.6-4.0 records per second, sustained, on a live loop, and none of
-# them passes ``every=``. That is measured, and it is what a throttle is
-# for. It belongs to #14, which categorises always-on against toggle.
+# FINDING, STILL NOT FIXED (the emitter sites are not this unit's to
+# change either): the fifteen ``ta.07.*`` and ``tick.08.*`` pins each
+# emit at 3.6-4.0 records per second, sustained, on a live loop, and
+# none of them passes ``every=``. That is measured, and it is what a
+# throttle is for.
+#
+# #14 has now categorised them and did NOT quieten them. ALL FIFTEEN
+# are ``always_on``: thirteen are the `ta.07.004.postcondition.raw.*`
+# family off one call site, and the other two are `tick.08.001` and
+# `tick.08.002`, the two arms of the tick loop. So they are exactly the
+# pins whose silence a cadence check must be able to read, and a
+# throttle is a decision about what is OBSERVED rather than about what
+# is expected. Categorising is not throttling, and putting an
+# ``every=`` on any of them is the operator's call, not this unit's.
 
 DIGEST_MIN_INTERVAL = 10.0
 """Seconds an emitter identity must wait for its next DIGEST line.
@@ -342,13 +351,30 @@ The widest gap a HEALTHY pin produced was 605.696 s. 660.0 is the next
 whole minute above it, so nothing the operator's machine has ever
 emitted would be called stale by this default.
 
-THIS DEFAULT IS A PLACEHOLDER, AND THE TABLE ABOVE IS WHY. The p99
-spread runs 1.965 s to 309.655 s, a factor of 158. One global threshold
-loose enough not to slander the slowest pin cannot notice the fastest
-pin going quiet for five minutes. An "on time" verdict needs a per-pin
-expected cadence. This module does NOT supply one. It supplies the
-measurement a cadence check will read, and it takes the threshold as an
-argument so a caller that knows better can say so.
+THIS DEFAULT IS THE WHOLE-NETWORK NUMBER, AND THE TABLE ABOVE IS WHY.
+The p99 spread runs 1.965 s to 309.655 s, a factor of 158. One global
+threshold loose enough not to slander the slowest pin cannot notice the
+fastest pin going quiet for five minutes.
+
+THE NOTE THAT USED TO SIT HERE CALLED FOR "A PER-PIN EXPECTED CADENCE",
+which implied one measured threshold per emitter. Superseded by the
+operator's ruling of 2026-08-19, recorded on issue #14:
+
+    "emitters need to be categorized as 'always on' or 'toggle' with
+    only the former needing timers probably because they are
+    monitoring live loops or data streams"
+
+That is cheaper and sharper: ONE BINARY CATEGORY PER EMITTER, then one
+budget for the always-on class. Categorisation, not calibration. The
+emitter that forced 660 s -- `tick.exit_dust_band`, 605.696 s at its
+worst -- is itself a toggle, and taking the toggles out of the
+population drops the always-on budget to `ALWAYS_ON_STALE_AFTER`, which
+is 10 s. See that constant and `cadence_verdict`.
+
+`STALE_AFTER` KEEPS ITS VALUE AND ITS MEANING. It is the age axis, and
+it answers "when did this identity last emit" for ANY identity,
+including one nobody has categorised. It is not the cadence verdict and
+never was; `SignalSink.cadence_report` is.
 """
 
 MAX_IDENTITIES = 10_000
@@ -431,6 +457,452 @@ Four, not three. `PIN_NEVER` is not a degree of staleness; it is the
 absence of any measurement at all, and it carries `age=None` and `n=0`
 where the other three always carry a float and a positive integer.
 """
+
+
+# ---------------------------------------------------------------------------
+# The CADENCE CATEGORY -- issue #14
+# ---------------------------------------------------------------------------
+#
+# THE CRITERION, STATED BEFORE IT IS APPLIED
+# ------------------------------------------
+# An emitter is `always_on` when a self-driven loop, timer or stream
+# reaches it -- or reaches one of the mutually exclusive arms it belongs
+# to -- on every pass, so it fires with no operator and no external
+# event. Every other emitter is a `toggle`: firing needs a discrete
+# trigger the subsystem does not produce on its own, which is an
+# operator action, a lifecycle one-shot, or a branch taken only when the
+# condition it watches occurs.
+#
+# THE CATEGORY IS READ AT THE CALL SITE, NEVER FROM TODAY'S RATE.
+# Inference from observed rates classifies a quiet day as a toggle, and
+# it classifies a defect as a loop: measured 2026-08-24,
+# `bot.01.001.postcondition.capital_reservation` wrote 53,558 records in
+# a 2.13-hour window, every one `ok=False`. That pin sits on an `except`
+# arm. It is a toggle whose trigger has become the normal case, and a
+# rate-derived category would have called it a live loop and hidden the
+# very fact worth reporting.
+#
+# WHAT THE CATEGORY IS FOR
+# ------------------------
+# Only an `always_on` emitter can be late. A toggle that has not fired
+# is not stale, it is untriggered, and there is no interval at which a
+# healthy toggle must be seen. Measured 2026-08-24 across the whole
+# retained ladder: 28 distinct emitters appeared and 49 of the 77 pins
+# did not appear at all. Under one global threshold those 49 are
+# indistinguishable from 49 stopped emitters, so the alarm carries no
+# information and gets switched off.
+
+CADENCE_ALWAYS_ON = "always_on"
+"""A self-driven loop, timer or stream reaches this pin on every pass."""
+
+CADENCE_TOGGLE = "toggle"
+"""This pin needs a discrete trigger. Silence from it says nothing."""
+
+CADENCE_CATEGORIES = (CADENCE_ALWAYS_ON, CADENCE_TOGGLE)
+"""The closed vocabulary. Two terms, declared per pin, never inferred."""
+
+ALWAYS_ON_WORST_HEALTHY_GAP = 4.736
+"""The widest gap any measured ALWAYS-ON identity produced, in seconds.
+
+From the 2026-08-15 read-only measurement recorded under `STALE_AFTER`:
+598,500 records, one process run, gap between consecutive emissions of
+the same identity.
+
+    identity                       n       p50       p99       max
+    bot.capital_reservation   75,001     0.051     1.965     2.824
+    ta.raw.* (one site)       34,459     0.091     2.814     4.715
+    tick.throttled            38,026     0.146     2.303     3.359
+    tick.worked               36,974     0.096     2.709     4.736
+
+`tick.worked` owns the maximum. The one TOGGLE in that measurement,
+`tick.exit_dust_band`, produced 605.696 s -- 128 times wider -- and it
+is the sole reason `STALE_AFTER` sits at 660.
+"""
+
+ALWAYS_ON_STALE_AFTER = 10.0
+"""Age above which an UNTHROTTLED always-on pin is late, in seconds.
+
+DERIVED FROM `ALWAYS_ON_WORST_HEALTHY_GAP`, not chosen: it is the next
+whole ten seconds above 4.736, which is 2.11 times the widest gap a
+healthy always-on identity has ever produced on the operator's disk.
+Excluding the one toggle from the population takes the threshold from
+660 s to 10 s, 66 times tighter. A live loop that goes quiet for
+fifteen seconds is now visible; under 660 it stayed invisible for
+eleven minutes.
+
+THE IDLE HAZARD IS NOT CLOSED BY THIS NUMBER, and it is named here so
+it is not discovered late. An always-on pin also goes quiet when the
+thing it watches is legitimately stopped -- no bots running, no replay
+started, the app idle overnight. That is IDLE, not HUNG, and under any
+threshold it reads late. The always-on class needs a "is this subsystem
+supposed to be running right now" declaration, which is item 17's
+design and is deliberately not invented here.
+"""
+
+ALWAYS_ON_SLACK = ALWAYS_ON_STALE_AFTER / ALWAYS_ON_WORST_HEALTHY_GAP
+"""The headroom above a pin's own floor, as a ratio. 2.111.
+
+A THROTTLED PIN CANNOT BE HELD TO THE UNTHROTTLED NUMBER, and this is
+the correction that stops the tighter threshold slandering half the
+always-on class. `emit(every=N)` admits at most one record per N
+seconds per identity, so N is that pin's floor by construction: six of
+the sixteen always-on pins declare `every=30.0` and one declares
+`every=60.0`, and a flat 10 s budget would call every one of them late
+on every look.
+
+So the budget is the same MARGIN applied to whatever floor the pin
+has, rather than a second invented number. See `always_on_stale_after`.
+"""
+
+MISCATEGORY_MEAN_INTERVAL = 2.814
+"""Mean interval at or below which an identity is emitting like a loop.
+
+THIS IS THE FALSIFIER FOR THE CATEGORY ITSELF. A staleness check that
+looks only at always-on pins goes green the moment something is
+mis-declared a toggle, so the declaration has to be refutable by the
+data or the whole change is a way to quieten a real alarm.
+
+2.814 s is the widest p99 gap any measured ALWAYS-ON identity produced
+(`ta.raw.*`, table above). The one measured TOGGLE has a p50 of
+5.346 s -- already 1.9 times wider than this line -- and its mean is
+strictly wider than its p50 given a p99 of 309.655 s. So the measured
+toggle sits on the correct side of the separator with margin, and
+nothing measured as always-on sits on the wrong side.
+
+THE INTERVALS ARE PER IDENTITY AS THE SINK SEES THEM, aggregated over
+however many live objects share the call site. That is the same basis
+the table above was measured on, so the comparison is like for like.
+Multiplicity only makes an identity look FASTER, so it can only make
+this detector fire more readily -- never less.
+"""
+
+MISCATEGORY_MIN_SAMPLES = 100
+"""Emissions required before a mean interval is read as a rate.
+
+A toggle may legitimately arrive in a burst, and a handful of records
+close together is a burst rather than a loop. 100 is two orders of
+magnitude above the burst sizes in the register's own toggles and two
+orders BELOW the 34,459-75,001 records the measured always-on
+identities produced, so it separates the two without sitting near
+either.
+"""
+
+CADENCE_ON_TIME = "on_time"
+"""An always-on pin emitted inside its own budget."""
+
+CADENCE_STALE = "stale"
+"""An always-on pin has not emitted inside its own budget.
+
+The string is deliberately the same as `PIN_STALE`: it is one fact,
+and a second word for it would make one condition read as two. The two
+live on different axes and never appear together -- a cadence row
+carries no `state` key, so this word is never printed beside a toggle.
+"""
+
+CADENCE_NEVER_FIRED = "never_fired"
+"""An always-on pin the sink has no record of at all.
+
+DISTINCT FROM `CADENCE_STALE` for the reason `PIN_NEVER` is distinct
+from `PIN_STALE`: never started and stopped after starting have
+different causes and different fixes.
+"""
+
+CADENCE_NOT_APPLICABLE = "not_applicable"
+"""This pin is a toggle, so no cadence is expected of it.
+
+The issue's requirement, verbatim: a toggle "must not appear in a
+health verdict as anything but 'not applicable'".
+"""
+
+CADENCE_TOGGLE_AT_LOOP_RATE = "toggle_at_loop_rate"
+"""A pin declared `toggle` is emitting at always-on rate.
+
+NAMED FOR THE OBSERVATION, NOT FOR A CAUSE, because two different
+causes produce it and a single message covering both would be the
+disjunction defect this module exists to remove:
+
+  * the declaration is wrong, and this is a live loop; or
+  * the declaration is right, and the exceptional branch it watches
+    has become the normal path.
+
+`bot.01.001.postcondition.capital_reservation` is the second today --
+53,558 records, all `ok=False`. Both are worth reporting and neither is
+"stale".
+"""
+
+CADENCE_UNDECLARED = "undeclared"
+"""No category is on record for this identity.
+
+A pin the register does not know. `tools.emitter_registry_check` fails
+the tree for this, so at runtime it means an identity emitted under a
+name no row carries.
+"""
+
+CADENCE_VERDICTS = (
+    CADENCE_ON_TIME, CADENCE_STALE, CADENCE_NEVER_FIRED,
+    CADENCE_NOT_APPLICABLE, CADENCE_TOGGLE_AT_LOOP_RATE,
+    CADENCE_UNDECLARED,
+)
+"""Every verdict a cadence row can carry."""
+
+_ALWAYS_ON_PINS: tuple[str, ...] = (
+    "bot.01.002.postcondition.capital_reservation",
+    "sim.06.011.postcondition.price_chart.fed",
+    "sim.06.012.postcondition.gate_status.rendered",
+    "ta.07.003.postcondition.computed",
+    "ta.07.004.postcondition.raw.{}",
+    "tick.08.001.event.throttled",
+    "tick.08.002.event.worked",
+    "charts.13.001.invariant.panels_mounted",
+    "charts.13.002.postcondition.panel_symbols_current",
+    "charts.13.004.postcondition.panel_refreshed",
+    "charts.13.005.invariant.panels_fresh",
+    "console.14.001.invariant.records_rendered",
+    "console.14.002.invariant.view_holds_rendered",
+    "console.14.003.invariant.drain_alive",
+    "exchange.15.002.invariant.every_bot_reaches_a_table",
+    "exchange.15.003.invariant.selection_survives_refresh",
+)
+"""The sixteen pins a loop or a timer reaches without being asked.
+
+Every one of them, and the reason for each, is recorded in the cadence
+table of `docs/EMITTER_IDENTIFICATION.md`. That table and this tuple
+are held equal by `tools.emitter_registry_check` (E14, E15), so the
+register a human reads and the roster this module acts on cannot drift
+apart.
+"""
+
+_TOGGLE_PINS: tuple[str, ...] = (
+    "bot.01.001.postcondition.capital_reservation",
+    "bot.01.003.postcondition.adoption_capped",
+    "extractor.02.001.postcondition.tranche_contained",
+    "extractor.02.002.invariant.arrival_atomic",
+    "fleet.03.001.postcondition.bots_loaded",
+    "fleet.03.002.invariant.bot_ids_mirror_live",
+    "fleet.03.003.invariant.sections_imported",
+    "fleet.03.004.postcondition.wires_loaded",
+    "fleet.03.005.invariant.state_parity",
+    "fleet.03.006.postcondition.state_imported",
+    "fleet.03.007.postcondition.positions_seeded_from_lots",
+    "gui.04.001.postcondition.voting_panel.fit",
+    "gui.04.002.postcondition.clear_settled",
+    "gui.04.003.postcondition.despawn_rows_match_ledger",
+    "history.05.001.postcondition.scan_complete",
+    "history.05.002.postcondition.trades_stored",
+    "history.05.003.postcondition.filter_options_built",
+    "history.05.004.postcondition.filters_applied",
+    "history.05.005.postcondition.page_rendered",
+    "history.05.006.postcondition.joiner_indexes_built",
+    "history.05.007.postcondition.csv_exported",
+    "sim.06.001.postcondition.candles_stepped",
+    "sim.06.002.postcondition.bot_ticks_did_work",
+    "sim.06.003.counter.ticks_before_tape",
+    "sim.06.004.counter.trades_fired",
+    "sim.06.005.invariant.exceptions",
+    "sim.06.006.event.window_played",
+    "sim.06.007.postcondition.fleet_spawned",
+    "sim.06.008.invariant.state_persisted",
+    "sim.06.009.invariant.spawn_drift",
+    "sim.06.010.postcondition.bot_table.rendered",
+    "sim.06.013.state_transition.mode_selected",
+    "sim.06.014.event.log.line",
+    "ta.07.001.postcondition.coverage_per_bot",
+    "ta.07.002.invariant.invariants",
+    "tick.08.003.event.exit_dust_band",
+    "topology.09.001.state_transition.bot_attached",
+    "topology.09.002.postcondition.wires_received",
+    "ytd.10.001.gauge.trades_fetched",
+    "ytd.10.002.postcondition.fleet_symbol_coverage",
+    "ytd.10.003.gauge.per_symbol_counts",
+    "swarm.11.001.postcondition.sim_run_registered",
+    "swarm.11.002.postcondition.paper_run_registered",
+    "trading.12.001.postcondition.tab_assembled",
+    "trading.12.002.postcondition.exchange_tab_routed",
+    "trading.12.003.postcondition.exchange_tabs_synced",
+    "trading.12.004.postcondition.active_layer_alias",
+    "trading.12.005.postcondition.activity_log_paused",
+    "trading.12.006.postcondition.notification_relayed",
+    "charts.13.003.postcondition.timeframe_rearmed",
+    "console.14.004.postcondition.pause_quiets_both_panes",
+    "console.14.005.postcondition.pause_buffer_delivered",
+    "exchange.15.001.postcondition.command_routed_to_chosen_table",
+    "exchange.15.004.postcondition.privacy_applied_to_every_field",
+    "exchange.15.005.postcondition.privacy_button_matches_registry",
+    "apitest.16.001.postcondition.label_matches_session",
+    "apitest.16.002.postcondition.session_released",
+    "apitest.16.003.postcondition.reported_ok_ran_a_test",
+    "apitest.16.004.postcondition.green_probe_read_a_body",
+    "apitest.16.005.postcondition.indicator_is_mappable",
+    "instance.17.001.postcondition.auto_start_permitted",
+)
+"""The sixty-one pins that need a trigger. Silence from one is normal."""
+
+CADENCE_BY_NAME = MappingProxyType({
+    **{pin: CADENCE_ALWAYS_ON for pin in _ALWAYS_ON_PINS},
+    **{pin: CADENCE_TOGGLE for pin in _TOGGLE_PINS},
+})
+"""Every pin's declared category, by current name. 77 entries."""
+
+_NAME_TEMPLATE = "{}"
+"""How a register row spells a leaf built at run time.
+
+`ta.07.004.postcondition.raw.{}` is one call site whose last field is
+the indicator. The register files it under the template because the
+subsystem is decidable from the source and the leaf is not, so the
+roster has to match the same way or every indicator would read as an
+undeclared pin.
+"""
+
+
+def _template_matches(pattern: str, name: str) -> bool:
+    """Say whether `name` is one instance of a templated pin name.
+
+    Only a pattern with exactly one `{}` is matched, and the leaf it
+    stands for must be non-empty: a template is a family of real
+    identities, never a wildcard that swallows the prefix itself.
+    """
+    if pattern.count(_NAME_TEMPLATE) != 1:
+        return False
+    head, _, tail = pattern.partition(_NAME_TEMPLATE)
+    return (name.startswith(head) and name.endswith(tail)
+            and len(name) > len(head) + len(tail))
+
+
+def cadence_of(name: str) -> Optional[str]:
+    """Return this pin's declared category, or None if none is on record.
+
+    Exact match first, then the templated names. None is a real answer
+    and is reported as `CADENCE_UNDECLARED` rather than assumed to be a
+    toggle -- assuming toggle would make every unregistered emitter
+    exempt from the cadence check, which is the failure this whole
+    categorisation is guarding against.
+    """
+    got = CADENCE_BY_NAME.get(name)
+    if got is not None:
+        return got
+    for pattern, category in CADENCE_BY_NAME.items():
+        if _template_matches(pattern, name):
+            return category
+    return None
+
+
+def always_on_stale_after(throttle: float = 0.0) -> float:
+    """The budget one always-on pin gets, in seconds.
+
+    `throttle` is the `every=` window the call site declares, which is
+    that pin's floor: it cannot emit more often than once per window.
+    Zero means no throttle. See `ALWAYS_ON_SLACK` for why the margin is
+    a ratio rather than a second number.
+    """
+    if throttle and throttle > 0.0:
+        return max(ALWAYS_ON_STALE_AFTER, ALWAYS_ON_SLACK * float(throttle))
+    return ALWAYS_ON_STALE_AFTER
+
+
+def cadence_verdict(declared: Optional[str], age: Optional[float],
+                    n: int, mean_interval: Optional[float],
+                    stale_after: float) -> str:
+    """One identity's cadence verdict. A pure function of its arguments.
+
+    Pure so it can be driven with numbers rather than with a clock: a
+    control that has to wait eleven minutes to prove a threshold is a
+    control nobody runs.
+
+    STALENESS IS EVALUATED FOR `always_on` ONLY. A toggle returns
+    `CADENCE_NOT_APPLICABLE` whatever its age, which is the issue's
+    requirement and is what makes the tighter always-on threshold
+    affordable. The one thing that CAN be said about a toggle is said:
+    if it is emitting at loop rate, that is reported -- see
+    `CADENCE_TOGGLE_AT_LOOP_RATE`.
+    """
+    if declared is None:
+        return CADENCE_UNDECLARED
+    if declared == CADENCE_TOGGLE:
+        if (n >= MISCATEGORY_MIN_SAMPLES and mean_interval is not None
+                and mean_interval <= MISCATEGORY_MEAN_INTERVAL):
+            return CADENCE_TOGGLE_AT_LOOP_RATE
+        return CADENCE_NOT_APPLICABLE
+    if n <= 0 or age is None:
+        return CADENCE_NEVER_FIRED
+    return CADENCE_STALE if age > stale_after else CADENCE_ON_TIME
+
+
+def _mean_interval(first_mono: Optional[float], last_mono: float,
+                   count: int) -> Optional[float]:
+    """Mean seconds between emissions of one identity, or None.
+
+    None when fewer than two emissions have happened: one record
+    measures no interval, and returning 0.0 would claim a rate nobody
+    observed. Computed from the first and last MONOTONIC stamps, so it
+    costs one subtraction per identity rather than a scan of the
+    records.
+    """
+    if first_mono is None or count < 2:
+        return None
+    return (last_mono - first_mono) / (count - 1)
+
+
+def _cadence_row(name: str, site: str, snapshot: tuple,
+                 aux: tuple, now: float,
+                 stale_after: Optional[float]) -> dict:
+    """Build one cadence row: the declaration, the prediction, the value.
+
+    THE PREDICTION RIDES BESIDE THE OBSERVATION, which is the operator's
+    standing rule for a pin. `predicted` is what the declared category
+    promises -- a maximum interval for an always-on pin, a minimum mean
+    for a toggle -- and `observed` is what the sink measured. A reader
+    can recompute the verdict from the two without trusting it.
+    """
+    last_mono, count, last_ts, last_dt = snapshot
+    first_mono, throttle = aux
+    declared = cadence_of(name)
+    budget = (always_on_stale_after(throttle) if stale_after is None
+              else float(stale_after))
+    mean = _mean_interval(first_mono, last_mono, count)
+    age = now - last_mono
+    return {
+        "name": name, "site": site, "declared": declared,
+        "predicted": {
+            "max_interval": budget if declared == CADENCE_ALWAYS_ON else None,
+            "min_mean_interval": (MISCATEGORY_MEAN_INTERVAL
+                                  if declared == CADENCE_TOGGLE else None),
+        },
+        "observed": {"age": age, "n": count, "mean_interval": mean,
+                     "throttle": throttle, "last_ts": last_ts,
+                     "last_dt": last_dt},
+        "verdict": cadence_verdict(declared, age, count, mean, budget),
+    }
+
+
+def _never_fired_rows(seen_names: set) -> dict:
+    """A row for every always-on pin the sink has no record of.
+
+    `timing()` cannot report this and says so: an identity that never
+    emitted is not in the map, so nothing there knows it should exist.
+    The roster does know, which is the whole reason it is in this
+    module and not only in the markdown.
+
+    A TEMPLATED NAME IS SKIPPED. `ta.07.004.postcondition.raw.{}` is a
+    family, and which leaves should exist is a property of the
+    indicator configuration rather than of this roster. Claiming a
+    specific missing indicator here would be invention.
+    """
+    rows: dict = {}
+    for pin, category in CADENCE_BY_NAME.items():
+        if category != CADENCE_ALWAYS_ON or pin in seen_names:
+            continue
+        if _NAME_TEMPLATE in pin:
+            continue
+        rows[(pin, "")] = {
+            "name": pin, "site": "", "declared": category,
+            "predicted": {"max_interval": ALWAYS_ON_STALE_AFTER,
+                          "min_mean_interval": None},
+            "observed": {"age": None, "n": 0, "mean_interval": None,
+                         "throttle": 0.0, "last_ts": None,
+                         "last_dt": None},
+            "verdict": CADENCE_NEVER_FIRED,
+        }
+    return rows
 
 
 def _utc_iso(ts: Optional[float] = None) -> str:
@@ -1040,6 +1512,25 @@ class SignalSink:
         # careless. Guarded by `_lock`, the same lock the buffer uses,
         # so no second lock and no new deadlock ordering.
         self._seen: dict = {}
+        # #14 -- THE TWO FACTS A CADENCE VERDICT NEEDS AND `_seen` DOES
+        # NOT HOLD: the monotonic stamp of the FIRST emission, and the
+        # `every=` window the call site declares.
+        #
+        # `[first_mono, throttle]` per identity, written at exactly the
+        # points `_seen` is written and bounded by the same admission
+        # test, so the two maps cannot hold different identity sets.
+        #
+        # A SEPARATE MAP RATHER THAN TWO MORE SLOTS ON `_seen`. `_seen`
+        # is mutated in place on every single emit and its four slots
+        # are read by `_classify` by position; widening it would put a
+        # cadence concern on the hot path's own row and change an
+        # unpack that has one meaning today.
+        #
+        # The mean interval is `(last - first) / (n - 1)`, which is one
+        # subtraction per identity at query time rather than a scan of
+        # the retained records. A scan is what this module may not do:
+        # every coroutine here runs on the Qt GUI thread.
+        self._cadence: dict = {}
         self._max_identities = max(1, int(max_identities))
         self._identity_overflow = 0
         self._seq = 0
@@ -1086,7 +1577,8 @@ class SignalSink:
              site: Optional[str] = None,
              module: Optional[str] = None,
              count: int = 1,
-             duration: Optional[float] = None) -> Optional[Signal]:
+             duration: Optional[float] = None,
+             every: float = 0.0) -> Optional[Signal]:
         """Record one observation. NEVER raises, NEVER blocks on I/O.
 
         Fires on BOTH the satisfied and violated paths — see the module
@@ -1151,6 +1643,8 @@ class SignalSink:
                     _nth = 1
                     if len(self._seen) < self._max_identities:
                         self._seen[(_name, _site)] = [_now, 1, _ts, None]
+                        self._cadence[(_name, _site)] = [
+                            _now, float(every or 0.0)]
                     else:
                         # The ceiling. Recording continues; only the
                         # TIMING of this new identity is refused, and
@@ -1189,6 +1683,19 @@ class SignalSink:
                     _prev[1] = _nth
                     _prev[2] = _ts
                     _prev[3] = _dt
+                    # THE WIDEST WINDOW WINS, and the reason is that
+                    # the window is the pin's FLOOR. Two call sites
+                    # sharing a name with different `every=` values
+                    # would otherwise give this identity whichever
+                    # window emitted last, and a budget derived from
+                    # the narrower one would call the identity late
+                    # while the wider site is still inside its own
+                    # throttle. `_cadence` may be absent only for an
+                    # identity refused by the ceiling, which carries
+                    # `nth=0` and is never timed.
+                    _aux = self._cadence.get((_name, _site))
+                    if _aux is not None and float(every or 0.0) > _aux[1]:
+                        _aux[1] = float(every or 0.0)
                 sig = Signal(
                     name=_name,
                     site=_site,
@@ -1695,6 +2202,55 @@ class SignalSink:
                                fresh_within, stale_after)
                 for key, value in snap.items()}
 
+    def cadence_report(self, stale_after: Optional[float] = None,
+                       *, include_never: bool = True) -> dict:
+        """`{(name, site): row}` -- is each pin keeping the cadence it
+        declared? Issue #14.
+
+        THIS IS THE QUERY THE CATEGORY EXISTS FOR, and the whole point
+        of it is what it does NOT ask. Staleness is evaluated for
+        `always_on` identities only. A `toggle` returns
+        `CADENCE_NOT_APPLICABLE` at any age, because "has not fired" is
+        its normal state and an alarm that fires on normal is an alarm
+        the operator learns to ignore.
+
+        EVERY ROW CARRIES ITS PREDICTION BESIDE ITS OBSERVATION.
+        `declared` is the category, `predicted` is the interval band
+        that category promises, and `observed` is what this sink
+        measured. A reader can recompute `verdict` from the two, so the
+        verdict is checkable rather than trusted.
+
+        `stale_after` OVERRIDES THE PER-PIN BUDGET, and it is here for
+        the controls. Left None, each always-on pin is held to
+        `always_on_stale_after(its own throttle window)`. Passed a
+        number, every always-on pin is held to that -- which is how a
+        control shows the check firing without waiting out a real
+        threshold, and how it shows a toggle staying not-applicable
+        even at zero.
+
+        `include_never` adds a row for every always-on pin in
+        `CADENCE_BY_NAME` this sink has no record of, keyed
+        `(name, "")`. `timing()` structurally cannot report those; the
+        roster is what knows they should exist.
+        """
+        # ONE CLOCK READING, INSIDE THE LOCK, FOR THE WHOLE REPORT --
+        # for the reason written out at length in `pin_state`. A
+        # reading taken before a contended lock goes stale against
+        # stamps `emit` writes while this call waits, and an age
+        # computed from it can come out negative and classify as the
+        # healthiest state it has.
+        with self._lock:
+            snap = {key: (tuple(value),
+                          tuple(self._cadence.get(key, (None, 0.0))))
+                    for key, value in self._seen.items()}
+            now = time.monotonic()
+        rows = {key: _cadence_row(key[0], key[1], value, aux, now,
+                                  stale_after)
+                for key, (value, aux) in snap.items()}
+        if include_never:
+            rows.update(_never_fired_rows({name for name, _ in snap}))
+        return rows
+
     def health(self) -> dict:
         """Sink integrity — reported so a partial record set announces
         itself instead of reading as a complete one.
@@ -1895,10 +2451,11 @@ def emit(name: str, actual: Any, expected: Any = None,
                 return None
             return sink.emit(name, actual, expected=expected, ok=ok,
                              context=context, site=_site, module=_mod,
-                             count=_n, duration=duration)
+                             count=_n, duration=duration,
+                             every=float(every))
     return sink.emit(name, actual, expected=expected, ok=ok,
                      context=context, site=_site, module=_mod,
-                     duration=duration)
+                     duration=duration, every=float(every or 0.0))
 
 
 def install_process_sink(
