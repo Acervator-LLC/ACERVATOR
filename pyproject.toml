@@ -134,6 +134,10 @@ dev = [
     "acervator[test]",
     # The CI lint job runs black+flake8; the full lane shells out to the rest.
     "acervator[lint]",
+    # coding_archetype.py shells out to SIX analyzers - ruff, mypy, pyright,
+    # bandit, vulture, semgrep. pyright is a bare-executable runner, so it
+    # must be on PATH or every archetype test fails closed with
+    # "pyright: not installed".
     "semgrep>=1.0",
     "opencv-python-headless>=4.8",
     "ruff>=0.16.0",

@@ -91,4 +91,6 @@ tools/.island_ledger.jsonl
 # hooks fire on every Write|Edit and make interactive development unusable for
 # a human developer, and settings.json carries bypassPermissions, which no one
 # should inherit by cloning. Backup: acervator_claude_harness_backup_2026-08-25
-.claude/
+.claude/*
+# Shared guidance is not a hook and carries no permissions, so it is tracked.
+!.claude/rules/
