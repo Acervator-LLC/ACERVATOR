@@ -6522,6 +6522,22 @@ if _HAS_QT:
 
             self.setStatusBar(status)
 
+        # Fault records for the two pumps below, at ERROR then one
+        # summary per window. Class attributes: process lifetime, the
+        # same as the singletons they speak for.
+        from ..exchange.lazy_singleton import ThrottledFault
+        _currency_pump_fault = ThrottledFault(
+            "the currency rate pump",
+            "The BTC/USD and ETH/USD rates on the dashboard, and the "
+            "satoshi and wei prices derived from them, will stop "
+            "updating.",
+        )
+        _scout_pump_fault = ThrottledFault(
+            "the market pairs scout pump",
+            "Cross-pair readings on the dashboard and in the Bot "
+            "Details Status tab will stop updating.",
+        )
+
         def _pump_currency_rates(self) -> None:
             """v3.23.41 — schedule a lazy CurrencyRateMonitor refresh
             and push the current snapshot into the Indicator Voting
@@ -6533,6 +6549,8 @@ if _HAS_QT:
                 from ..exchange.currency_rate_monitor import (
                     get_currency_monitor)
                 mon = get_currency_monitor()
+                if mon is None:
+                    return  # down; the monitor reported itself
                 connectors = getattr(
                     self, "_exchange_connectors", {}) or {}
                 if connectors:
@@ -6543,8 +6561,9 @@ if _HAS_QT:
                 if hasattr(self, "_indicator_panel"):
                     self._indicator_panel.update_currency_rates(
                         mon.snapshot())
+                self._currency_pump_fault.note_success()
             except Exception as exc:  # noqa: BLE001 - pump best-effort
-                logger.debug("currency rate pump raised: %s", exc)
+                self._currency_pump_fault.note_failure(exc)
 
         def _pump_market_pairs_scout(self) -> None:
             """v3.23.47 — schedule a lazy MarketPairsScout refresh so
@@ -6557,6 +6576,8 @@ if _HAS_QT:
             try:
                 from ..exchange.market_pairs_scout import get_scout
                 scout = get_scout()
+                if scout is None:
+                    return  # down; the scout reported itself
                 connectors = getattr(
                     self, "_exchange_connectors", {}) or {}
                 if connectors:
@@ -6569,9 +6590,9 @@ if _HAS_QT:
                     self._pending_scout_refresh = (
                         self._schedule_async(
                             scout.refresh_from_connectors(connectors)))
+                self._scout_pump_fault.note_success()
             except Exception as exc:  # noqa: BLE001 - pump best-effort
-                logger.debug(
-                    "market pairs scout pump raised: %s", exc)
+                self._scout_pump_fault.note_failure(exc)
 
         def _refresh_api_load_pill(self) -> None:
             """Update the status-bar API-load pill from api_load_monitor.
