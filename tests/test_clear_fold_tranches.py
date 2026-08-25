@@ -308,9 +308,11 @@ class TestTheTwoClearsCloseTheTrap:
 class TestItSurvivesRestart:
     def test_the_counter_is_persisted(self):
         import ast
-        import src.trading.scrumming_bot as sbm
+        import inspect
 
-        src = Path(sbm.__file__).read_text(encoding="utf-8")
+        _sf = inspect.getsourcefile(ScrummingBot.export_scrumming_state)
+        assert _sf is not None
+        src = Path(_sf).read_text(encoding="utf-8")
         assert '"tranches_discarded_lifetime"' in src, (
             "the counter is not written to state; a clear would vanish "
             "on restart and the reconciliation would break again"
