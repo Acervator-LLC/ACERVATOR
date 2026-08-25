@@ -11,6 +11,90 @@ from the work actually performed.
 
 ---
 
+## 3.27.0
+
+**Why this version exists.** Two lines of work joined in this release. One is a
+real test and lint pipeline from the CTO, which touched every file. The other is
+a Simulator that stopped producing nothing.
+
+The two histories had no common ancestor after `main` was force-pushed. They are
+joined here. 12,540 functions and classes were checked across both sides; none
+was lost.
+
+### The Simulator ran for nine months and produced nothing
+
+**No sim bot initialised after v3.24.84.** `TabletBackend` replaced
+`FleetSimExchange` and did not carry across its balance seeding. `fetch_balance`
+never listed a base asset, `get_balance` marked it absent, and `tick` correctly
+refused to initialise on an absent read. Every bot re-ran the handshake on every
+tick, for ever. That handshake holds a 0.25 s sleep, which is why one test file
+took 917 seconds. Same file now: 23 seconds. A 400-candle replay went from 212
+seconds and 0 trades to 2.24 seconds and 1 trade.
+
+**Nothing asserted that a replay fires a trade.** `trades_fired` was only ever
+asserted `== 0`. A dead Simulator and a healthy one were indistinguishable.
+
+**Every fill recorded as zero.** `_on_sim_trade` read a dict with `getattr`,
+which returns the default for every field. A replay that filled a trade reported
+an empty per-symbol count, drew no chart marker, and wrote a run-log entry with
+an empty symbol and zero price. A deliberate sweep of that hand-over found five
+more consumers with the same fault, including the stat strip, which reported
+`Spendable $0.00` and `Trades 0` on every run that traded.
+
+**The sim venue accepted an order the wallet could not fund.** It returned a
+`rejected` order object; the live venue raises. The bot booked the estimate and
+carried a position it never bought. The sim venue now raises the same exception
+live raises. No bot code changed.
+
+**A bot's ability to trade depended on how many other bots existed.** The wallet
+was seeded at the sum of the fleet's targets with no fee headroom, so the last
+bot was always short by the accumulated fees. At a fleet of one, that was the
+only bot. Lot-less bots now open with a locked side equal to their spendable
+side, and fleet size no longer decides whether a bot trades.
+
+### The rest
+
+**The news ticker could abort the process with no traceback.** A thread was
+parented to a widget, so destroying the widget destroyed a running thread. The
+50 ms wait could never have worked: the fetch had no bound at all, because a
+timeout raised by the iterator escaped its own `try` and the pool's exit blocked
+until every feed finished. Three reproduction modes went from exit 127 to exit 0.
+
+**The growth cap never compounded.** Eight sites computed it from the anchor,
+which no Fold moves, so the cap held one dollar value for the life of a bot. Two
+of those sites were the number the panel displays. The fleet's per-cycle cap
+moves from $35.02 to $35.93 and releases parked surplus.
+
+**49 of 77 emitters were evicted before anyone could read them.** Five emitters
+filled 45% of every file and the retained window was 2.1 hours. A second, thinner
+ladder keeps every identity at 100% for the quiet ones and folds the loud ones,
+taking the window to 25.7 hours for 4.8% more disk. Nothing is dropped; every
+folded observation is counted.
+
+**A chart kept fetching the old pair after a bot's symbol changed.** The label
+followed the bot. The fetch did not.
+
+**A failed singleton retried every tick, for ever, at DEBUG.** Three unrelated
+features flooded the log every two seconds for hours and said nothing an operator
+could act on. A failure now backs off, reports once at ERROR naming what stopped
+working, and recovers on its own.
+
+**Emitters are categorised.** 16 always-on, 62 toggle. A silent toggle is off; a
+silent always-on is broken. Before this, silence meant nothing.
+
+**`sim/` had no retention policy** and reached 674 MB. It demotes before it
+evicts, so old runs keep their metadata and lose only bulk.
+
+### Known and not fixed
+
+The venue seam carries 45 measured spec violations between Simulator and Live,
+enumerated in `docs/audits/2026-08-25_the_venue_seam.md` and tracked as #117.
+The largest: Live's indicators see 100 candles and the Simulator's see 300, from
+the same tape on the same call.
+
+165 of 651 files do not pass their archetype, 907 of 913 findings predating the
+recorded history. See `docs/audits/2026-08-24_archetype_census.md`.
+
 ## 3.26.0
 
 **Why this version exists.** Forty-three merges landed after `3.25.8`, and the
