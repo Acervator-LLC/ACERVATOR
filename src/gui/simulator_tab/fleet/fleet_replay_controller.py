@@ -2177,6 +2177,18 @@ class FleetReplayController:
                         f"Sim run persisted: {self._run_log.trade_count}"
                         f" trades, {self._run_log.gate_count} gates -> "
                         f"{_d if _d else '(not written)'}")
+                    # v3.25.x - report the retention pass beside the
+                    # run it just bounded.
+                    #
+                    # UNCONDITIONALLY, including the pass that removed
+                    # nothing. A policy that speaks only when it acts
+                    # is indistinguishable from a policy that is dead,
+                    # and `sim/runs/` reached 674 MB in 102 directories
+                    # with nothing watching it. One line per run end is
+                    # the price of that being observable.
+                    _ret = getattr(self._run_log, "retention", None)
+                    if _ret is not None:
+                        self._perf(_ret.summary())
                 except Exception as _rl_exc:  # noqa: BLE001 - advisory
                     logger.warning(
                         "sim run log close failed: %s", _rl_exc)
