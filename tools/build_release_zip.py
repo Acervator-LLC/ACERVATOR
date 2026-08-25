@@ -403,7 +403,7 @@ def build(
 
     primary, additional, junk = _walk_and_partition(latest_name)
 
-    print(f"\nPartition:")
+    print("\nPartition:")
     print(f"  PRIMARY:    {len(primary):>5,} files")
     print(f"  ADDITIONAL: {len(additional):>5,} files")
     print(f"  JUNK:       {len(junk):>5,} files (excluded from both)")
@@ -413,12 +413,12 @@ def build(
         print("\n  PRIMARY sample (first 5):")
         for rel in primary[:5]:
             print(f"    {rel}")
-        print(f"\n  ADDITIONAL sample (first 10):")
+        print("\n  ADDITIONAL sample (first 10):")
         for rel in sorted(additional)[:10]:
             print(f"    {rel}")
         if len(additional) > 10:
             print(f"    ... and {len(additional) - 10} more")
-        print(f"\n(dry-run) Would write:")
+        print("\n(dry-run) Would write:")
         if not additional_only:
             print(f"  {primary_path}")
         if not primary_only:

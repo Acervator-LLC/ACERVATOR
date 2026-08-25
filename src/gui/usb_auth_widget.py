@@ -80,7 +80,7 @@ class _USBWorker(QObject):
             from ..core.usb_auth import list_usb_volumes
 
             vols = list_usb_volumes()
-        except Exception as e:
+        except Exception:
             vols = []
         self.scan_complete.emit(vols)
 
@@ -399,9 +399,7 @@ class USBAuthWidget(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setMaximumHeight(200)
-        scroll.setStyleSheet(
-            f"QScrollArea {{ border: none; background: transparent; }}"
-        )
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         self._rows_container = QWidget()
         self._rows_layout = QVBoxLayout(self._rows_container)
         self._rows_layout.setContentsMargins(0, 0, 0, 0)

@@ -208,7 +208,7 @@ if _HAS_QT:
                 return
             entry = self._current_entries[row]
             lines = [
-                f'<span style="color:#00ffcc; font-weight:bold">Trade Detail</span>',
+                '<span style="color:#00ffcc; font-weight:bold">Trade Detail</span>',
                 f'<span style="color:#888">Time:</span> {time.ctime(entry.get("timestamp", 0))}',
                 f'<span style="color:#888">Bot:</span> {entry.get("bot_id", "")[:12]}',
                 f'<span style="color:#888">Symbol:</span> {entry.get("symbol", "")}',
@@ -221,7 +221,7 @@ if _HAS_QT:
                 f'<span style="color:{"#00ff88" if entry.get("pnl", 0) >= 0 else "#ff3366"}">'
                 f'${entry.get("pnl", 0):+.4f}</span>',
                 "",
-                f'<span style="color:#00aaff; font-weight:bold">TA Context</span>',
+                '<span style="color:#00aaff; font-weight:bold">TA Context</span>',
                 f'<span style="color:#888">Direction:</span> {entry.get("ta_direction", "N/A")}',
                 f'<span style="color:#888">Confidence:</span> {entry.get("ta_confidence", 0):.0%}',
                 f'<span style="color:#888">Timeframe:</span> {entry.get("ta_timeframe", "N/A")}',

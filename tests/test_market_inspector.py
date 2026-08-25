@@ -60,7 +60,6 @@ def _make_lower_extreme_series(n: int = 25):
 from src.trading.market_inspector import (  # noqa: E402
     MarketInspector,
     MarketSignal,
-    OpposingPair,
     TimeframeAnalysis,
     SIGNAL_ENTRY_LONG_HIGH,
     SIGNAL_ENTRY_LONG_MEDIUM,

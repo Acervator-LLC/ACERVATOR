@@ -382,7 +382,6 @@ class ScreenRecorder:
             self._gif_frames = []
 
     def _stop_png_rolling(self, elapsed: float):
-        remaining = self._frame_n - self._chunk_frame_start
         if self._frame_dir and self._frame_dir.exists():
             count = len(list(self._frame_dir.glob("*.png")))
             log.info(f"PNG rolling: {count} frames kept in {self._frame_dir}")

@@ -315,7 +315,6 @@ import asyncio
 import faulthandler
 import logging
 import os
-import sys
 import threading
 import traceback
 from datetime import datetime
@@ -823,7 +822,7 @@ def main() -> int:
 
     settings = SettingsManager()
     log_manager = LogManager()
-    keyring = KeyringManager()
+    KeyringManager()  # constructed for its keyring-backend probe side effect
     bus = get_event_bus()
     bot_manager = BotManager()
 
@@ -954,7 +953,6 @@ def main() -> int:
     stored_version = settings.get("app_version", "")
     current_version = _acervator_version
 
-    show_wizard = False
     if not username:
         # First run — set default username, skip wizard
         settings.set("username", "User")
@@ -1025,9 +1023,12 @@ def main() -> int:
     bot_manager.set_data_pool(data_pool)
 
     # Shared subsystems
-    shared_risk = RiskManager(bot_manager)
-    shared_analytics = AnalyticsEngine()
-    shared_notif = get_notification_manager()
+    # NOTE: constructed for their side effects; the returned handles are not
+    # wired into MainWindow here (they were unused bindings — flagged for
+    # review in case this is incomplete wiring rather than dead setup).
+    RiskManager(bot_manager)
+    AnalyticsEngine()
+    get_notification_manager()
 
     # --- Create main window directly (no launcher) ----------------------
     crypto_window = MainWindow(

@@ -73,6 +73,7 @@ the operator log -- because that is what the money and the operator see.
 
 from __future__ import annotations
 
+import ast
 import copy
 import importlib.util
 import sys
@@ -123,7 +124,16 @@ def run_shipped_fold_block(self, scrum_usd, scrum_asset,
 
 
 def _fold_block_source() -> str:
-    """Return the scrum fold-ratio block, verbatim and dedented."""
+    """Return the scrum fold-ratio block, verbatim and dedented.
+
+    The end anchor marks the block's last *logical* line -- the fold-ratio
+    operator log. That log statement is wrapped across several physical lines
+    in the shipping source (``self._bus.emit(..., message=(...))``), so the
+    anchor line itself can fall inside the still-open call. Extend the slice
+    forward from the anchor until the dedented block is a complete parse --
+    i.e. every bracket the log statement opened has closed -- so churn in how
+    the message is wrapped can never truncate the block mid-statement.
+    """
     lines = SCRUMMING_BOT_SRC.splitlines()
     starts = [i for i, line in enumerate(lines) if _BLOCK_START in line]
     ends = [i for i, line in enumerate(lines) if _BLOCK_END in line]
@@ -136,7 +146,19 @@ def _fold_block_source() -> str:
         len(ends) == 1
     ), f"expected exactly one fold-ratio block end; found {len(ends)}"
     assert ends[0] > starts[0], "fold-ratio block end precedes its start"
-    block = textwrap.dedent("\n".join(lines[starts[0] : ends[0] + 1]))
+    end = ends[0]
+    while True:
+        block = textwrap.dedent("\n".join(lines[starts[0] : end + 1]))
+        try:
+            ast.parse(block)
+            break
+        except SyntaxError:
+            end += 1
+            assert end < len(lines), (
+                "fold-ratio block never closes after its end anchor; the log "
+                "statement's brackets stay unbalanced to end of file -- fix "
+                "the anchors, do not delete the test."
+            )
     assert block.startswith("_fold_pct"), (
         "dedent did not land the block at column 0; the source indentation " "changed"
     )

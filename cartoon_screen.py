@@ -256,7 +256,7 @@ class CartoonScreen(QWidget):
                 self._gcache[key] = self._make_glow_px(
                     text, W, H, rect, f, C[ck], blur_r
                 )
-            except:
+            except Exception:
                 self._gcache[key] = None
         gp = self._gcache.get(key)
         if gp:
@@ -402,7 +402,6 @@ class CartoonScreen(QWidget):
         p.setPen(Qt.NoPen)
         p.setBrush(QColor(20, 20, 40, self._a(alpha * 0.6)))
         p.drawRoundedRect(bx + 180, y + 8, bw, 10, 5, 5)
-        prog = ease(self._t, self._t - 0.001, 0.001)  # instant — controlled by parent
         filled = int(bw * float(pct_str.rstrip("%")) / 100.0)
         if filled > 0:
             c2 = QColor(C[ck])

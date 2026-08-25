@@ -180,13 +180,11 @@ def replay_asset(
         r.total_buys += 1
         remaining_buy_qty = trade.qty
         event_surplus_total = 0.0
-        matched_any = False
         matched_at_lower_price = False
 
         while remaining_buy_qty > 1e-12 and sell_queue:
             sell_qty, sell_price, sell_ts = sell_queue[0]
             match_qty = min(remaining_buy_qty, sell_qty)
-            matched_any = True
             if trade.price < sell_price:
                 # This slice is a fold-back candidate
                 per_unit_surplus = sell_price - trade.price
@@ -341,7 +339,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Terminal summary
     t = summary["totals"]
-    print(f"YTD compounding replay — v3.23.7 surplus formula")
+    print("YTD compounding replay — v3.23.7 surplus formula")
     print(f"  CSV:            {summary['csv_path']}")
     print(
         f"  Window:         {summary['csv_window']['start']} → {summary['csv_window']['end']}"
@@ -354,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Target growth applied:       ${t['growth_applied_usd']:,.4f}")
     print(f"  Cycle-cap hits:              {t['cap_hits']:,}")
     print()
-    print(f"  Top-5 assets by growth applied:")
+    print("  Top-5 assets by growth applied:")
     top = sorted(summary["per_asset"], key=lambda x: -x["growth_applied_usd"])[:5]
     for r in top:
         print(

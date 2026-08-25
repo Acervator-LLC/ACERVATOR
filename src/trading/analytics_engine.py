@@ -128,7 +128,7 @@ class AnalyticsEngine:
         """Take an equity snapshot from current portfolio state."""
         agg = bot_manager.get_aggregate_stats()
         total_pnl = agg.get("total_realised_pnl", 0)
-        running = agg.get("running", 0)
+        agg.get("running", 0)
 
         # Estimate total equity as sum of target balances + P/L
         statuses = bot_manager.list_bots()
@@ -197,7 +197,6 @@ class AnalyticsEngine:
         results = {}
         for tf, trades in by_tf.items():
             wins = [t for t in trades if t.pnl > 0]
-            losses = [t for t in trades if t.pnl < 0]
             total_pnl = sum(t.pnl for t in trades)
             results[tf] = {
                 "total_trades": len(trades),

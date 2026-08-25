@@ -371,7 +371,6 @@ class TriadSpawner:
                     )
 
         # Park old triads that didn't make the cut
-        old_ids = {(t.arm_a, t.arm_b, t.arm_c) for t in self._active_triads}
         new_ids = {(t.arm_a, t.arm_b, t.arm_c) for t in new_active}
         for td in self._active_triads:
             if (td.arm_a, td.arm_b, td.arm_c) not in new_ids:
@@ -477,7 +476,6 @@ def generate_surrounding_prices(
 
     # Build BASE/QUOTE pair price series
     for q, q_prices in quote_prices.items():
-        pair_id = f"{base_closes[0]:.0f}/{q}"  # placeholder — caller will rename
         # BASE/QUOTE price = base_USD_price / quote_USD_price
         pair_prices = [base_closes[i] / max(q_prices[i], 1e-9) for i in range(n)]
         result[q] = pair_prices
@@ -622,7 +620,6 @@ def run_surrounding_swarm(
                 avail = arm.quote_held
                 fee = avail * fee_pct
                 qty = (avail - fee) / arm_price
-                old_base = arm.base_target
                 # Profit fold
                 at_ref = arm.quote_held / fold_ref if fold_ref > 0 else 0
                 extra = qty - at_ref
@@ -644,7 +641,7 @@ def run_surrounding_swarm(
             arm.usd_equiv = arm.base_held * base_price + arm.quote_held
 
         # ── Smart Wire: route surplus base to heap ──────────────
-        total_base_now = sum(a.base_held for a in arms.values())
+        sum(a.base_held for a in arms.values())
         for pair_id, arm in arms.items():
             surplus = arm.base_farmed * 0.25  # wire 25% of farmed surplus
             if surplus > 0.0001:
@@ -725,9 +722,9 @@ def run_surrounding_swarm(
         )
 
     # Final portfolio value
-    final_base = sum(a.base_held for a in arms.values()) + base_heap
+    sum(a.base_held for a in arms.values()) + base_heap
     final_usd = sum(a.usd_equiv for a in arms.values())
-    starting_usd = (target + hedge) * len(arms)
+    (target + hedge) * len(arms)
     passive_usd = (target / candles[0]) * candles[-1] * len(arms) + hedge * len(arms)
 
     total_base_farmed = sum(a.base_farmed for a in arms.values())

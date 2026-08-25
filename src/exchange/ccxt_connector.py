@@ -1391,7 +1391,7 @@ class CCXTConnector(ExchangeInterface):
             raise CircuitBreakerOpenError(_breaker_key, _breaker.cooldown_remaining())
         _log = get_api_log()
 
-        market = self._ex.market(symbol)
+        self._ex.market(symbol)
         amount = self._ex.amount_to_precision(symbol, amount)
 
         # Coinbase (and some other exchanges) require a price for market BUY
@@ -1603,7 +1603,6 @@ class CCXTConnector(ExchangeInterface):
                 continue
             limits = info.get("limits", {})
             precision = info.get("precision", {})
-            fees = info.get("fees", info.get("maker", {}))
 
             markets.append(
                 AssetInfo(

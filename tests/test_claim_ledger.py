@@ -96,7 +96,7 @@ class TestListOpen:
 
     def test_list_open_filters_by_session(self):
         c1 = claim_ledger.log_claim("A", "e1", session="s1")
-        c2 = claim_ledger.log_claim("B", "e2", session="s2")
+        claim_ledger.log_claim("B", "e2", session="s2")
         s1_open = {c.id for c in claim_ledger.list_open("s1")}
         assert s1_open == {c1.id}
 

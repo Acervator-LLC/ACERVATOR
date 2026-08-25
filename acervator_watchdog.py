@@ -546,7 +546,7 @@ def write_postmortem(runner: ChildRunner, exit_code: int | None, cause: str) -> 
         return bundle
 
     summary_lines: list[str] = []
-    summary_lines.append(f"=== Acervator post-mortem ===")
+    summary_lines.append("=== Acervator post-mortem ===")
     summary_lines.append(f"Generated:       {_isoformat_now()}")
     summary_lines.append(f"Cause:           {cause}")
     summary_lines.append(f"Child exit code: {exit_code}")
@@ -618,7 +618,7 @@ def write_postmortem(runner: ChildRunner, exit_code: int | None, cause: str) -> 
                 pass
         else:
             summary_lines.append("")
-            summary_lines.append(f"--- py-spy thread dump: not captured ---")
+            summary_lines.append("--- py-spy thread dump: not captured ---")
             summary_lines.append(
                 "Install py-spy via `pip install py-spy` for thread dumps "
                 "on hung processes (STRONGLY recommended — it shows "

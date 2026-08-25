@@ -158,7 +158,7 @@ def check_symbol(
         try:
             ticker = exch.fetch_ticker(symbol)
             last_price = float(ticker.get("last", 0) or 0)
-        except Exception as _e:
+        except Exception:
             last_price = 0.0
 
         warnings = []
@@ -220,8 +220,8 @@ def format_result_for_user(result: PreflightResult) -> str:
         )
 
     lines = [
-        f"✓ Pre-flight check passed",
-        f"",
+        "✓ Pre-flight check passed",
+        "",
         f"Exchange: {result.exchange_id.capitalize()}",
         f"Symbol: {result.symbol}",
         f"Market active: {'Yes' if result.market_active else 'No'}",
@@ -238,7 +238,7 @@ def format_result_for_user(result: PreflightResult) -> str:
     if result.price_precision > 0:
         lines.append(f"Price precision: {result.price_precision} decimals")
 
-    lines.append(f"")
+    lines.append("")
     lines.append(f"Check elapsed: {result.elapsed_ms:.0f} ms")
 
     if result.warnings:

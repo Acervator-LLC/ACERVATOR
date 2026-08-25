@@ -603,11 +603,11 @@ class TestNoNanSurvivesAnywhere:
     def test_neither_writer_stores_a_nan_and_neither_raises(self, value):
         register = SmartWireManager()
         register.register_wire("A", "B", value)
-        assert not _has_nan(register), f"register_wire stored nan"
+        assert not _has_nan(register), "register_wire stored nan"
 
         importer = SmartWireManager()
         importer.import_wires([{"source_id": "A", "target_id": "B", "pct": value}])
-        assert not _has_nan(importer), f"import_wires stored nan"
+        assert not _has_nan(importer), "import_wires stored nan"
 
     @pytest.mark.parametrize("value", DOMAIN, ids=[repr(v)[:24] for v in DOMAIN])
     def test_the_two_writers_agree_on_every_value(self, value):

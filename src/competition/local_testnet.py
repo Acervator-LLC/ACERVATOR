@@ -412,7 +412,7 @@ class LocalRegistry:
         trade_count: int,
     ) -> TxRecord:
         # sadp: R28 R29 R33  # R29 idempotent: _subs[comp_id] guards duplicate submissions
-        c = self._require_comp(comp_id, "SUBMISSION")
+        self._require_comp(comp_id, "SUBMISSION")
         if wallet not in self._entries[comp_id]:
             raise ValueError(f"Bot {wallet[:10]} not registered")
         if wallet in self._subs[comp_id]:

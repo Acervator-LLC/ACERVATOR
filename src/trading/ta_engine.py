@@ -486,7 +486,7 @@ class ADXIndicator:
         dm_minus = []
         tr_list = []
         for i in range(1, n):
-            h, l, c = candles[i].high, candles[i].low, candles[i].close
+            h, l, _ = candles[i].high, candles[i].low, candles[i].close
             ph, pl, pc = candles[i - 1].high, candles[i - 1].low, candles[i - 1].close
 
             up = h - ph
@@ -514,7 +514,7 @@ class ADXIndicator:
             p_dim = di_minus
 
         di_sum = di_plus + di_minus
-        dx = 100.0 * abs(di_plus - di_minus) / di_sum if di_sum > 1e-9 else 0.0
+        100.0 * abs(di_plus - di_minus) / di_sum if di_sum > 1e-9 else 0.0
 
         # ADX = Wilder smooth of DX history
         # Compute full DX series for smoothing
@@ -1899,7 +1899,6 @@ class IchimokuCloud:
         # ── PRICE POSITION ───────────────────────────────────────────────
         above_cloud = price > cloud_top
         below_cloud = price < cloud_bottom
-        inside_cloud = not above_cloud and not below_cloud
 
         # Cloud breakout (price exiting cloud this candle)
         prev_p = candles[-2].close if n >= 2 else price
@@ -2255,12 +2254,11 @@ class VolumeAnalysis:
         mfi_ob = mfi > 80
         mfi_os = mfi < 20
         # MFI direction (compare to 3 candles ago for stability)
-        mfi_prev = (
+        (
             self._mfi(candles[:-3], self.mfi_period)
             if len(candles) > self.mfi_period + 3
             else mfi
         )
-        mfi_rising = mfi > mfi_prev
 
         # Simple MFI divergence: price new low vs MFI higher
         mfi_closes = closes[-self.div_lookback :]

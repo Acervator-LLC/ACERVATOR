@@ -37,7 +37,7 @@ try:
         QMessageBox,
     )
     from PySide6.QtCore import Qt, QTimer, Slot, Signal, QObject
-    from PySide6.QtGui import QColor, QFont, QIcon  # v3.19.12 removed unused QAction
+    from PySide6.QtGui import QColor, QFont  # v3.19.12 removed unused QAction, QIcon
 
     _HAS_QT = True
 except ImportError:

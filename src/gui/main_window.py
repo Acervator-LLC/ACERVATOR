@@ -277,9 +277,7 @@ try:
         QTextEdit,
         QPlainTextEdit,
         QMessageBox,
-        QDialog,
         QScrollArea,
-        QGraphicsOpacityEffect,
         QComboBox,
         QLineEdit,
         QCheckBox,
@@ -2288,8 +2286,6 @@ if _HAS_QT:
                     target_val,
                     price_age_s=_price_age,
                 )
-                delta = _ammo["delta"]
-                position_val = _ammo["position_val"]
                 ammo_color = QColor(_ammo["color"])
                 ammo_tip = _ammo["tip"]
                 ammo_text = _ammo["text"]
@@ -9745,7 +9741,7 @@ if _HAS_QT:
 
             from ..exchange.api_logger import get_api_log
 
-            _log = get_api_log()
+            get_api_log()
             from ..core.sound_engine import get_sound_engine
 
             sound = get_sound_engine()

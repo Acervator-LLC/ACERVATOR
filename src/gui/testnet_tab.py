@@ -385,8 +385,8 @@ if _QT:
             self._log.setReadOnly(True)
             self._log.setMaximumHeight(120)
             self._log.setStyleSheet(
-                f"background:#050510; color:#8899BB; "
-                f"font-family:Consolas; font-size:10px; border:none;"
+                "background:#050510; color:#8899BB; "
+                "font-family:Consolas; font-size:10px; border:none;"
             )
             log_lay.addWidget(self._log)
             root.addWidget(log_box)

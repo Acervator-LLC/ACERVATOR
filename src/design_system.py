@@ -690,7 +690,7 @@ if __name__ == "__main__":
     for name, hex_, ratio, ok in contrast_self_test():
         print(f"  {ok} {name:12s} {hex_}  ratio={ratio:5.2f}:1")
     print()
-    print(f"Type ramp:")
+    print("Type ramp:")
     for k, v in TYPE.items():
         print(f"  {k:6s} {v['size']:2d}pt {v['weight']:<8s} {v['family']}")
     print()

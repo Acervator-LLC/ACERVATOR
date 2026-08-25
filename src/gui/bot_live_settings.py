@@ -1181,7 +1181,6 @@ if _HAS_QT:
 
             status = self._bot.get_status()
             stats = status.get("stats", {})
-            cfg = self._bot.config
 
             # Stats
             stats_group = QGroupBox("Statistics")
@@ -3264,7 +3263,7 @@ if _HAS_QT:
             wires_dict = getattr(mgr, "_wires", {}) or {}
             ledgers = getattr(mgr, "_ledgers", {}) or {}
             transactions = getattr(mgr, "_transactions", []) or []
-            bot_refs = getattr(mgr, "_bot_refs", {}) or {}
+            getattr(mgr, "_bot_refs", {}) or {}
 
             outbound = dict(wires_dict.get(bot_id, {}))  # {target_id: pct}
             # Inbound: scan all sources for entries targeting this bot.

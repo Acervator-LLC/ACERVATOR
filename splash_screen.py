@@ -185,7 +185,7 @@ class SplashScreen(QWidget):
                 self._gcache[key] = self._make_glow_px(
                     text, W, H, rect, font, gc, blur_r
                 )
-            except:
+            except Exception:
                 self._gcache[key] = None
         gp = self._gcache.get(key)
         if gp:

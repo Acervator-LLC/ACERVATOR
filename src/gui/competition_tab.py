@@ -322,18 +322,18 @@ if _QT:
             self._relay_url = QLineEdit("wss://relay.acervator.io")
             self._relay_url.setEnabled(False)
             self._relay_url.setStyleSheet(
-                f"background:#0A0A18; color:#445566;"
-                f" border:1px solid rgba(0,255,238,0.1);"
-                f" font-family:Consolas; font-size:10px; padding:4px 8px;"
+                "background:#0A0A18; color:#445566;"
+                " border:1px solid rgba(0,255,238,0.1);"
+                " font-family:Consolas; font-size:10px; padding:4px 8px;"
             )
             url_row.addWidget(self._relay_url)
             connect_btn = QPushButton("Connect  (v3.9.0)")
             connect_btn.setEnabled(False)
             connect_btn.setStyleSheet(
-                f"background:rgba(0,255,238,0.04); color:#334455;"
-                f" border:1px solid rgba(0,255,238,0.1);"
-                f" font-family:Orbitron; font-size:9px;"
-                f" padding:6px 14px; border-radius:4px;"
+                "background:rgba(0,255,238,0.04); color:#334455;"
+                " border:1px solid rgba(0,255,238,0.1);"
+                " font-family:Orbitron; font-size:9px;"
+                " padding:6px 14px; border-radius:4px;"
             )
             url_row.addWidget(connect_btn)
             net_lay.addLayout(url_row)

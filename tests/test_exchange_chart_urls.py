@@ -122,7 +122,7 @@ class TestClickHandler:
         from PySide6.QtWidgets import QApplication, QTableWidgetItem
         from PySide6.QtCore import Qt
 
-        _app = QApplication.instance() or QApplication([])
+        QApplication.instance() or QApplication([])
         from src.gui.main_window import BotStatusTable
 
         opened = {"url": None}
@@ -153,7 +153,7 @@ class TestClickHandler:
         from PySide6.QtWidgets import QApplication, QTableWidgetItem
         from PySide6.QtCore import Qt
 
-        _app = QApplication.instance() or QApplication([])
+        QApplication.instance() or QApplication([])
         from src.gui.main_window import BotStatusTable
 
         called = {"n": 0}
@@ -181,7 +181,7 @@ class TestClickHandler:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication, QTableWidgetItem
 
-        _app = QApplication.instance() or QApplication([])
+        QApplication.instance() or QApplication([])
         from src.gui.main_window import BotStatusTable
 
         called = {"n": 0}

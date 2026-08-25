@@ -256,7 +256,7 @@ class InvestorScreen(QWidget):
                 self._gcache[key] = self._make_glow_px(
                     text, W, H, rect, f, C[ck], blur_r
                 )
-            except:
+            except Exception:
                 self._gcache[key] = None
         gp = self._gcache.get(key)
         if gp:
@@ -707,8 +707,6 @@ class InvestorScreen(QWidget):
             ("or", "$20K", 2427, 1.24, "0.08%"),
             ("gn", "$100K", 3369, 1.72, "0.05%"),
         ]
-        bw = int(W * 0.52)
-        bx = int(cx - bw * 0.5 - 60)
         for i, (col, cap, pct, _mult, fee) in enumerate(tiers):
             ta = alpha * ease(t, ss + 0.4 + i * 0.25, 0.5)
             ty_ = int(cy - 44 + i * 46)

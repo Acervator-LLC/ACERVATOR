@@ -608,19 +608,19 @@ class BotConfig:
         elif self.mode == BotMode.SCRUMMING:
             if self.target_asset == "*":
                 violations.append(
-                    f"Scrumming config has target_asset='*' (the "
-                    f"Extractor pool sigil); Scrumming is "
-                    f"single-pair and needs a real ticker."
+                    "Scrumming config has target_asset='*' (the "
+                    "Extractor pool sigil); Scrumming is "
+                    "single-pair and needs a real ticker."
                 )
             if not self.target_asset:
                 violations.append(
-                    f"Scrumming config has empty target_asset; "
-                    f"needs a real ticker (e.g. 'BTC')."
+                    "Scrumming config has empty target_asset; "
+                    "needs a real ticker (e.g. 'BTC')."
                 )
             if not self.base_currency:
                 violations.append(
-                    f"Scrumming config has empty base_currency; "
-                    f"needs a real quote currency (e.g. 'USDC')."
+                    "Scrumming config has empty base_currency; "
+                    "needs a real quote currency (e.g. 'USDC')."
                 )
         return violations
 

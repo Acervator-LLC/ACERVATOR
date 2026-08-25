@@ -335,7 +335,7 @@ def run_cross_pool_sim(
         # Step pool spread model to this candle's level
         # Nudge model midpoint toward base candle price then step
         spread_model._midpoint = base_price
-        pool_prices = spread_model.step()
+        spread_model.step()
         quotes = spread_model.get_quotes()
 
         close_buf.append(base_price)
@@ -349,12 +349,10 @@ def run_cross_pool_sim(
             std = math.sqrt(sum((x - sma) ** 2 for x in close_buf) / bb_window)
             bb_lower = sma - 2 * std
             bb_upper = sma + 2 * std
-            bb_mid = sma
             bb_width = bb_upper - bb_lower + 1e-12
             bb_pos = (base_price - bb_lower) / bb_width
         else:
             bb_pos = 0.5
-            bb_mid = base_price
 
         value = holdings * base_price
         delta = value - sim_tgt
@@ -626,7 +624,7 @@ def analyze_pool_configuration(
         avg3 = sum(total_improvement_3pool) / len(total_improvement_3pool)
         avg5 = sum(total_improvement_5pool) / len(total_improvement_5pool)
         avg10 = sum(total_improvement_10pool) / len(total_improvement_10pool)
-        print(f"  Average improvement vs single pool:")
+        print("  Average improvement vs single pool:")
         print(f"    3  pools: {avg3:+.2f}%")
         print(f"    5  pools: {avg5:+.2f}%")
         print(f"    10 pools: {avg10:+.2f}%")

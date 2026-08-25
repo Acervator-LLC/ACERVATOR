@@ -324,11 +324,12 @@ class NotificationManager:
 
     def _send_in_app(self, title: str, message: str, priority: AlertPriority):
         """In-app notification (logged, picked up by GUI)."""
-        level = "info"
-        if priority == AlertPriority.HIGH:
-            level = "warning"
-        elif priority == AlertPriority.CRITICAL:
-            level = "error"
+        # NOTE: this handler logs every priority at logger.info. A prior
+        # `level` ladder (warning for HIGH, error for CRITICAL) was computed
+        # here but never used — removed as dead code. Flagged for review: if
+        # in-app alerts should log at their priority's severity, wire the
+        # level into a logger.log(...) call rather than reinstating the dead
+        # variable.
         logger.info("NOTIFICATION [%s]: %s — %s", priority.value, title, message)
 
     def _send_telegram(self, title: str, message: str, priority: AlertPriority):

@@ -403,7 +403,6 @@ class VersionSweep:
         """Flag known insecure coding patterns.
         GUI animation files may legitimately use random — skip visual-only files.
         """
-        _skip_random = {"splash_screen.py", "render_trailer.py", "generate_essay.py"}
         # _skip_random applied in the pattern loop below
         for path in self._py_files():
             text = self._read_or_skip(path)
@@ -1283,7 +1282,7 @@ class VersionSweep:
         )
 
         if result.passed:
-            print(f"\n  \033[92m✓ SWEEP PASSED — release gate cleared\033[0m")
+            print("\n  \033[92m✓ SWEEP PASSED — release gate cleared\033[0m")
         else:
             print(
                 f"\n  \033[91m✗ SWEEP FAILED — {len(result.critical)} critical, "

@@ -146,7 +146,7 @@ class TestWidgetBehaviour:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        _app = QApplication.instance() or QApplication([])
+        QApplication.instance() or QApplication([])
         from src.gui.crypto_news_ticker import CryptoNewsTicker
 
         # Feed 3 headlines directly (bypass network fetch)
@@ -175,7 +175,7 @@ class TestWidgetBehaviour:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        _app = QApplication.instance() or QApplication([])
+        QApplication.instance() or QApplication([])
         from src.gui.crypto_news_ticker import CryptoNewsTicker
 
         h1 = NewsHeadline("A", "https://ex/1", NEWS_SOURCES[0], 100.0)
@@ -194,7 +194,7 @@ class TestWidgetBehaviour:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        _app = QApplication.instance() or QApplication([])
+        QApplication.instance() or QApplication([])
         from src.gui.crypto_news_ticker import CryptoNewsTicker
 
         t = CryptoNewsTicker()

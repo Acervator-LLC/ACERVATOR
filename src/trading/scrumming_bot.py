@@ -5216,9 +5216,9 @@ class ScrummingBot(BotContainer):
                         "bot.log",
                         bot_id=self.bot_id,
                         message=(
-                            f"FOLD-side hysteresis DISARMED: target "
-                            f"delta returned non-negative. Gate cleared "
-                            f"until delta drifts negative again."
+                            "FOLD-side hysteresis DISARMED: target "
+                            "delta returned non-negative. Gate cleared "
+                            "until delta drifts negative again."
                         ),
                     )
             # SCRUM-side is irrelevant when last trade was SCRUM.
@@ -5254,9 +5254,9 @@ class ScrummingBot(BotContainer):
                         "bot.log",
                         bot_id=self.bot_id,
                         message=(
-                            f"SCRUM-side hysteresis DISARMED: target "
-                            f"delta returned non-positive. Gate cleared "
-                            f"until delta drifts positive again."
+                            "SCRUM-side hysteresis DISARMED: target "
+                            "delta returned non-positive. Gate cleared "
+                            "until delta drifts positive again."
                         ),
                     )
             # FOLD-side is irrelevant when last trade was FOLD.
@@ -8846,8 +8846,6 @@ class ScrummingBot(BotContainer):
             # Nothing pending — just log and return
             ta_dir = summary.consensus_direction.name if summary else "N/A"
             ta_conf = f"{summary.consensus_confidence:.0%}" if summary else "—"
-            fold_status = ""
-            dist_status = ""
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
@@ -8952,7 +8950,6 @@ class ScrummingBot(BotContainer):
 
         bb_pos = bb_result.bb_position if bb_result else 0
         at_upper_bb = bb_pos > 0.75
-        at_lower_bb = bb_pos < 0.25
         in_bb_middle = 0.35 <= bb_pos <= 0.65
 
         # v3.23.7 D2-b asymmetric cycle-reset (operator pin 2026-06-13).
@@ -9765,7 +9762,7 @@ class ScrummingBot(BotContainer):
                         f"phantom={self._phantom_locked})"
                     )
                 if not target_fires:
-                    _blocked.append(f"target_fires_false(detect/fire)")
+                    _blocked.append("target_fires_false(detect/fire)")
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
@@ -9811,9 +9808,9 @@ class ScrummingBot(BotContainer):
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
-                    message=f"MEM-196 RIPE-HARVEST OVERRIDE target_fires: "
-                    f"raw target_fires=False (detect/fire SM) — "
-                    f"RipeHarvestScrumOverride will force-pass.",
+                    message="MEM-196 RIPE-HARVEST OVERRIDE target_fires: "
+                    "raw target_fires=False (detect/fire SM) — "
+                    "RipeHarvestScrumOverride will force-pass.",
                 )
             if trend_hold:
                 self._bus.emit(
@@ -10692,9 +10689,8 @@ class ScrummingBot(BotContainer):
         # the entire platform because every bot with prior accumulation
         # already had position above target. Smart Ceiling (Layer 2)
         # remains the only legitimate position-level cap here.
-        _cap_pct = float(getattr(self.config, "max_target_growth_pct", 1.0))
+        float(getattr(self.config, "max_target_growth_pct", 1.0))
         _anchor = float(getattr(self, "_anchor_target_balance", self._target_balance))
-        _mem253_per_cycle_budget = _anchor * (_cap_pct / 100.0)
         _mem253_current_pos = float(self._current_holdings) * float(ticker.last)
 
         # Layer 2 — Smart Ceiling (when enabled) — the ONLY pre-decision
@@ -10719,7 +10715,6 @@ class ScrummingBot(BotContainer):
         # Alias for the legacy variable name still used by downstream
         # gate chain (_fold_blockers append, fold conditions, hedge gate).
         _mem253_at_ceiling = _mem253_at_smart_ceiling
-        _mem253_at_any_ceiling = _mem253_at_smart_ceiling
         if _mem253_at_smart_ceiling and self._fold_tranches:
             # Throttled log so a long ceiling-hold doesn't spam the console.
             self._fold_ceiling_hold_count = (
@@ -11400,7 +11395,7 @@ class ScrummingBot(BotContainer):
 
             if _eligible:
                 _fusd = sum(t["usd"] for t in _eligible)
-                _funits = sum(t["units"] for t in _eligible)
+                sum(t["units"] for t in _eligible)
                 # Apply taper to the buy cost (preserves per-tranche
                 # bookkeeping; the taper just reduces how much we
                 # actually buy this tick).
@@ -11432,9 +11427,7 @@ class ScrummingBot(BotContainer):
                         self.config.symbol
                     )
                     # v3.16.59 — check BOTH min_cost AND min_amount.
-                    _fold_buy_units = (
-                        buy_cost / float(ticker.last) if ticker.last > 0 else 0.0
-                    )
+                    buy_cost / float(ticker.last) if ticker.last > 0 else 0.0
                     _below_min_cost_fc = (
                         _min_cost_fc > 0 and _fold_notional_usd < _min_cost_fc
                     )
@@ -11485,7 +11478,6 @@ class ScrummingBot(BotContainer):
 
                 # Pre-compute with INTENDED price so we have baseline for
                 # slippage comparison after the fill returns.
-                _intended_buy_asset = buy_cost / ticker.last
                 _intended_min_ref = min(t["ref"] for t in _eligible)
 
                 # v3.16.58 — Skip _execute_buy if min_cost pre-check flagged
@@ -13721,7 +13713,7 @@ class ScrummingBot(BotContainer):
             def __repr__(self) -> str:
                 return "<ManualSummary operator_initiated=True>"
 
-        summary = _ManualSummary()
+        _ManualSummary()
 
         if delta_usd > 0:
             # -- SCRUM side: sell delta-worth of asset at MARKET --
@@ -15448,7 +15440,7 @@ class ScrummingBot(BotContainer):
         # surplus forward would inject it into a post-detonation target —
         # growth earned against a position that no longer exists. Matters
         # from Phase 2 Step 7 onward, when this pool acquires a drain.
-        _detonated_surplus = float(getattr(self, "_standing_surplus_usd", 0.0) or 0.0)
+        float(getattr(self, "_standing_surplus_usd", 0.0) or 0.0)
         self._standing_surplus_usd = 0.0
         try:
             self.stats.standing_surplus_usd = 0.0

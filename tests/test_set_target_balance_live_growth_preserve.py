@@ -164,7 +164,7 @@ class TestBehavioralSemantic:
         target) → both := 205 (no-op-ish; target unchanged since it was
         already 205)."""
         stub = self._make_stub(target=205.0, anchor=200.0)
-        r = self._call(stub, 205.0)
+        self._call(stub, 205.0)
         # nt == old_t, so else branch fires: both = nt = 205
         # (Accrued growth is COLLAPSED — operator is explicitly
         # confirming 205 as their target so anchor moves to 205.)

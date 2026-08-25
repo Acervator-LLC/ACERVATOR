@@ -842,8 +842,6 @@ if _HAS_QT:
                 return ML + i * cw
 
             max_vol = max((c.volume for c in visible_candles), default=1) or 1
-            chart_h = price_h  # alias preserved for legacy paint blocks below
-            MT_legacy = price_top  # legacy MT = top of price pane area
 
             # --- Nice-number horizontal price grid (TradingView-style) ---
             # Instead of equal-interval divisions, snap grid lines to
@@ -1569,7 +1567,7 @@ if _HAS_QT:
                                 vmin=v_lo,
                                 vmax=v_hi,
                             )
-                            last_sig = _paint_oscillator(
+                            _paint_oscillator(
                                 sp_top,
                                 sp_bot,
                                 macd_visible,
@@ -1597,7 +1595,7 @@ if _HAS_QT:
                             vmin=0.3,
                             vmax=1.7,
                         )
-                        last_minus = _paint_oscillator(
+                        _paint_oscillator(
                             sp_top,
                             sp_bot,
                             vortex_visible,

@@ -578,7 +578,7 @@ if _HAS_QT:
                     ly.gen_play(**fx)
                     a += 1
                     if ly._wav and os.path.exists(ly._wav):
-                        sz = os.path.getsize(ly._wav) // 1024
+                        os.path.getsize(ly._wav) // 1024
                     else:
                         errors.append(f"L{ly._index+1}: no WAV")
             if errors:
@@ -631,8 +631,7 @@ if _HAS_QT:
             self._at.timeout.connect(lambda: self._wf.animate(0.033))
             self._at.start(33)
 
-
-if not _HAS_QT:
+else:  # not _HAS_QT — headless fallback stub for the one tab used elsewhere
 
     class AudioSuiteTab:
         def __init__(self, *a, **kw):

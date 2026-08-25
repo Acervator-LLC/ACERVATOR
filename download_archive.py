@@ -61,7 +61,7 @@ def check_dependencies():
             else:
                 print("FAILED")
                 print(f"    Manual install: pip install {pip_name}")
-                print(f"    Continuing with curated coins only.\n")
+                print("    Continuing with curated coins only.\n")
                 return False
         print()
         return True
@@ -351,8 +351,6 @@ def fetch_ccxt_ohlcv(sym: str, vs: str = "usd") -> list:
     """Source 2: CCXT OHLCV — pre-checks pair availability on US exchanges."""
     import ccxt
 
-    global _ccxt_market_cache
-
     EXCHANGES = [
         ("kraken", ["USD", "USDT"]),
         ("coinbase", ["USD", "USDT"]),
@@ -596,7 +594,7 @@ def main():
         cg_registry = fetch_coingecko_coin_list()
     except Exception as exc:
         print(f"  CoinGecko registry fetch failed: {exc}")
-        print(f"  Falling back to curated list")
+        print("  Falling back to curated list")
         curated_only = True
     print()
 
@@ -709,7 +707,7 @@ def main():
     )
 
     print()
-    print(f"  ══════════════════════════════════════════════════════════")
+    print("  ══════════════════════════════════════════════════════════")
     print(f"  Archive: {ok}/{total} coins  |  {pts:,d} data points  |  {mb:.1f} MB")
     print(
         f"  History: up to ~{ymax:.0f} years  |  {cached} cached, "
@@ -718,7 +716,7 @@ def main():
     print(f"  Location: {DATA_DIR.resolve()}")
     if fail:
         print(f"  ⚠ {fail} failed — run again to retry")
-    print(f"  ══════════════════════════════════════════════════════════")
+    print("  ══════════════════════════════════════════════════════════")
     print()
 
 

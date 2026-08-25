@@ -11,7 +11,26 @@ max-line-length = 88
 #   pycodestyle disagrees with. Ignoring them is the standard black+flake8 pin.
 # E501: line length is black's job; black leaves only lines it cannot wrap
 #   (long strings, URLs), and flagging those adds noise without a safe fix.
-extend-ignore = E203, W503, W504, E704, E501
+# E231 / E225: whitespace — black's jurisdiction. The only survivors sit inside
+#   f-string expressions (e.g. `f"{d.get('k',0)}"`) and default-arg lists that
+#   black deliberately does not reformat; flagging them second-guesses black.
+# E402: import-not-at-top. The entry points import `sys`/stdlib after an early
+#   stale-binary guard and other deliberate bootstrap ordering (see main.py);
+#   these are intentional, and the spots that must move already carry `# noqa`.
+# E401: `import a, b` on one line — a formatting preference, not a defect;
+#   black does not split it and it changes no behaviour.
+# E741: ambiguous single-letter names (`l`) — a readability nit, not a defect,
+#   and pervasive in legacy loop bodies; not worth churning trading code over.
+# E731 / E262: lambda-assignment and block-comment style — cosmetic.
+# Rationale, in one line: flake8 here catches real defects (the F-codes and
+#   bare-except E722), and leaves layout/style to black. See header philosophy.
+extend-ignore =
+    E203, W503, W504, E704, E501,
+    E231, E225,
+    E402,
+    E401,
+    E741,
+    E731, E262
 
 exclude =
     .git,

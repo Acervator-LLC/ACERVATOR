@@ -20,7 +20,6 @@ if str(REPO) not in sys.path:
 
 from src.exchange.currency_rate_monitor import (  # noqa: E402
     CurrencyRateMonitor,
-    CurrencyRates,
     SATOSHI_PER_BTC,
     WEI_PER_ETH,
     get_currency_monitor,

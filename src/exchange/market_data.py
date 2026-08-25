@@ -24,7 +24,6 @@ _CACHE_TTL = 300  # 5 minutes
 
 def _load_coingecko_ids() -> None:
     """Load CoinGecko IDs from crypto_assets module."""
-    global _COINGECKO_IDS
     if _COINGECKO_IDS:
         return
     try:

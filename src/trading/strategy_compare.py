@@ -211,7 +211,6 @@ def run_dca(
     fees_paid = 0.0
     trades = 0
     eq = []
-    profits = []  # track (buy_price, sell_price) for win rate — DCA never sells
 
     for i, price in enumerate(closes):
         if i % interval_candles == 0 and cash >= amount_per:

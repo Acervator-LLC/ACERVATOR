@@ -676,7 +676,7 @@ if _HAS_QT:
             # operator directive: "cybernetic locusts". Kept lightweight
             # so the insect silhouette still reads (Saltsman Pillar 2).
             # -------------------------------------------------------
-            accent2_col = QColor(t["accent2"])
+            QColor(t["accent2"])
             # Corner brackets — 4 small L-shapes at widget corners.
             # Subtle; read as HUD frame. WCAG: accent2 on bg ≥ 3:1 in
             # shipped themes.
@@ -3729,7 +3729,7 @@ if _HAS_QT:
             header.setEnabled(False)
             menu.addSeparator()
 
-            disconnect_action = menu.addAction(f"Disconnect Wire")
+            disconnect_action = menu.addAction("Disconnect Wire")
             disconnect_action.setIcon(
                 self.style().standardIcon(
                     self.style().StandardPixmap.SP_DialogCloseButton
@@ -3811,7 +3811,7 @@ if _HAS_QT:
                 widgets_in_order = list(self._bot_widgets.values())
                 # Clear all items from the grid
                 while self._grid_layout.count():
-                    item = self._grid_layout.takeAt(0)
+                    self._grid_layout.takeAt(0)
                     # don't deleteLater — we own the widgets in _bot_widgets
                 for idx, w in enumerate(widgets_in_order):
                     row = idx // self._grid_cols

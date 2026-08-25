@@ -27,7 +27,7 @@ class TestCancelIfPendingHelper:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        _app = QApplication.instance() or QApplication([])
+        QApplication.instance() or QApplication([])
         from src.gui.main_window import MainWindow
 
         return MainWindow._cancel_if_pending

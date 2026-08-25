@@ -86,7 +86,7 @@ if _HAS_QT:
             # Features list
             for feat in features:
                 feat_lbl = QLabel(f"  {feat}")
-                feat_lbl.setStyleSheet(f"font-size: 11px; color: #aaa;")
+                feat_lbl.setStyleSheet("font-size: 11px; color: #aaa;")
                 layout.addWidget(feat_lbl)
 
             layout.addStretch()

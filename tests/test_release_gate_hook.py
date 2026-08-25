@@ -90,7 +90,7 @@ def run_hook(tmp_path, monkeypatch, capsys):
         else:
             fake.write_text(json.dumps(sidecar), encoding="utf-8")
         monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
-        rc = hook.main()
+        hook.main()
         out = capsys.readouterr().out.strip()
         if not out:
             return "allow", ""

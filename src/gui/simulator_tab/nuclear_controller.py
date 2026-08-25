@@ -33,7 +33,6 @@ from typing import Callable, Optional
 
 from ...core.event_bus import EventBus
 from ...trading.bot_container import (
-    BotConfig,
     BotManager,
     BotMode,
     make_bot_config,

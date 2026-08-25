@@ -131,7 +131,7 @@ class TestLiveRender:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        _app = QApplication.instance() or QApplication([])
+        QApplication.instance() or QApplication([])
         from src.gui.indicator_panel import IndicatorVotingPanel, ConfidenceBarsWidget
 
         panel = IndicatorVotingPanel()
@@ -151,7 +151,7 @@ class TestLiveRender:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        _app = QApplication.instance() or QApplication([])
+        QApplication.instance() or QApplication([])
         from src.gui.indicator_panel import IndicatorVotingPanel
 
         panel = IndicatorVotingPanel()
@@ -179,7 +179,7 @@ class TestLiveRender:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        _app = QApplication.instance() or QApplication([])
+        QApplication.instance() or QApplication([])
         from src.gui.indicator_panel import IndicatorVotingPanel
 
         panel = IndicatorVotingPanel()
@@ -285,7 +285,7 @@ class TestLiveRender:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        _app = QApplication.instance() or QApplication([])
+        QApplication.instance() or QApplication([])
         from src.gui.indicator_panel import IndicatorVotingPanel
 
         panel = IndicatorVotingPanel()

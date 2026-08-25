@@ -1392,7 +1392,6 @@ class ExtractorBot(BotContainer):
 
         # Snapshot pre-close state for the return dict
         units_before = pos.alt_units
-        cost_basis_before = pos.cost_basis_base
 
         # Force a 100% exit regardless of the configured
         # ``extractor_exit_pct`` — manual fire is an immediate full

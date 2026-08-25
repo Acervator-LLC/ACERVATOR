@@ -26,7 +26,6 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from src.gui.simulator_tab.fleet.candle_series import (  # noqa: E402
-    CandleSeries,
     build_candle_series_from_rows,
 )
 from src.gui.simulator_tab.fleet.sim_exchange import (  # noqa: E402

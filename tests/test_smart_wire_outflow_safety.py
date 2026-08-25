@@ -215,7 +215,7 @@ class TestSWOSFormula:
         # safe_pct=45.55 which is > 1 % so it does NOT snap. Confirm:
         assert pct > 40.0
         # Direct floor test: construct an input that yields ~0.5 %.
-        pct_dust = _call(
+        _call(
             scrum_profit_usd=100.0,
             next_fold_ammo_usd=99.5,  # shortfall=99.5
             current_cash_usd=0.0,

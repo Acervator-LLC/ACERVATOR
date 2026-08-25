@@ -274,20 +274,20 @@ def generate_preview_html(output_path: str = "trophy_preview.html"):
         svg = generate_trophy(tier, td)
         c = colors[tier]
         cards += (
-            f"""<div style="background:#060610;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:20px;text-align:center;min-width:240px;flex:1 1 240px;max-width:310px;"><div style="font-family:Georgia,serif;font-size:9px;letter-spacing:4px;color:#444455;margin-bottom:10px;">"""
+            """<div style="background:#060610;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:20px;text-align:center;min-width:240px;flex:1 1 240px;max-width:310px;"><div style="font-family:Georgia,serif;font-size:9px;letter-spacing:4px;color:#444455;margin-bottom:10px;">"""
             + stages[tier]
-            + f"""</div>"""
+            + """</div>"""
             + svg
-            + f"""<div style="font-family:Georgia,serif;font-size:11px;color:"""
+            + """<div style="font-family:Georgia,serif;font-size:11px;color:"""
             + c
-            + f"""margin-top:12px;letter-spacing:3px;">"""
+            + """margin-top:12px;letter-spacing:3px;">"""
             + latin[tier]
-            + f"""</div><div style="font-family:monospace;font-size:10px;color:#333344;margin-top:4px;">Supply: """
+            + """</div><div style="font-family:monospace;font-size:10px;color:#333344;margin-top:4px;">Supply: """
             + supply[tier]
             + """</div></div>"""
         )
     Path(output_path).write_text(
-        f"""<!DOCTYPE html><html><head><meta charset="UTF-8"><title>ACRV Trophies</title><style>body{{background:#000;margin:0;padding:40px 20px;}}h1{{color:#AA8866;text-align:center;font-family:Georgia,serif;font-size:28px;font-style:italic;}}.sub{{text-align:center;color:#444;font-family:monospace;font-size:11px;letter-spacing:4px;margin-bottom:36px;}}.grid{{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;}}</style></head><body><h1>Acervator Trophy NFTs — Hermetic Edition</h1><div class="sub">CORPUS HERMETICUM · BASE (COINBASE L2) · 5 RARITY TIERS</div><div class="grid">"""
+        """<!DOCTYPE html><html><head><meta charset="UTF-8"><title>ACRV Trophies</title><style>body{background:#000;margin:0;padding:40px 20px;}h1{color:#AA8866;text-align:center;font-family:Georgia,serif;font-size:28px;font-style:italic;}.sub{text-align:center;color:#444;font-family:monospace;font-size:11px;letter-spacing:4px;margin-bottom:36px;}.grid{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;}</style></head><body><h1>Acervator Trophy NFTs — Hermetic Edition</h1><div class="sub">CORPUS HERMETICUM · BASE (COINBASE L2) · 5 RARITY TIERS</div><div class="grid">"""
         + cards
         + """</div></body></html>""",
         encoding="utf-8",
