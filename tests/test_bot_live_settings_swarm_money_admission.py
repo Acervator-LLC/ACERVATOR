@@ -103,9 +103,11 @@ NOW = 1_760_000_000.0
 BOT_ID = "bot-self"
 EM = "—"
 
-# VALID_RENDER_COUNT: the number of rendered strings a realistic swarm state
-# produces. A sha256 snapshot of those strings used to sit beside it; removed
-# as an antipattern (see the note at the assertion site).
+# Pinned on the LIVE tree BEFORE the guard was written, over a realistic
+# swarm state whose dict-backed rows are json round-tripped. A change
+# here means the guard altered what an operator sees for values that
+# were always valid.
+VALID_RENDER_SHA256 = "7fea61283682b6966ca5e989c1b2afddef5756314b909604a8d3d48281fd4c43"
 VALID_RENDER_COUNT = 92
 
 SITES = [
@@ -480,6 +482,7 @@ def test_change_a_accepted_renders_unchanged(
 # =====================================================================
 def test_change_a_realistic_render_matches_pinned_live_hash(monkeypatch: Any) -> None:
     """Every string in a realistic tab still hashes to the live pin."""
+    import hashlib
     from PySide6.QtWidgets import QFormLayout, QLabel, QTableWidget
 
     widget = _build(monkeypatch, realistic=True, round_trip=True)
@@ -506,11 +509,11 @@ def test_change_a_realistic_render_matches_pinned_live_hash(monkeypatch: Any) ->
         out.append("LBL:" + lab.text())
     out.sort()
 
-    # A sha256(rendered strings) == hardcoded-constant snapshot used to sit
-    # here; removed as an antipattern (a hash of rendered UI state trips on any
-    # label/format change that isn't a behaviour change). The count check keeps
-    # a coarse guard that the tab still renders the expected set of fields.
+    digest = hashlib.sha256("\n".join(out).encode("utf-8")).hexdigest()
     assert len(out) == VALID_RENDER_COUNT, f"string count moved: {len(out)}"
+    assert (
+        digest == VALID_RENDER_SHA256
+    ), "the realistic tab no longer renders what live rendered"
 
 
 # =====================================================================

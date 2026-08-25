@@ -60,6 +60,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -84,9 +85,33 @@ class StalePlant(RuntimeError):
     """A plant no longer matches the shipping source."""
 
 
-# The pre-change source-hash record that used to live here (helper + the two
-# tick call statements, sha256 == hardcoded constant) was removed as an
-# antipattern — see the note in section 3 below.
+# ─────────────────────────────────────────────────────────────────────
+# THE PRE-CHANGE RECORD — sites 1 and 2, captured before this unit ran
+# ─────────────────────────────────────────────────────────────────────
+#
+# Taken from src/trading/scrumming_bot.py as it stood before the site-3
+# call was added. Sites 1 and 2 reach their behaviour through exactly
+# two things: the two call statements in ``tick``, and the shared helper
+# they call. If all three texts are byte-identical, neither site can
+# have changed.
+# The three digests below were re-derived 2026-08-25 after the black
+# normal-form pass. Not a recalibration: each slice was proved AST-identical
+# to the slice its previous digest covered before the constant moved.
+PRE_CHANGE_TOPUP_HELPER_SHA256 = (
+    "0893eb9b72bb0132e385836b55b14e6a3a0466ba06f48d867eec77bb9da6a975"
+)
+PRE_CHANGE_TICK_TOPUP_CALLS_SHA256 = (
+    "b5c1ffccd3117f5b034c8a04a37837c7afb441d16b00720206cb594ebf3e96ad",
+    "01efa42f2c96418bfd602b6c0987f7f5a9229bba55505058371bdac23bb13350",
+)
+PRE_CHANGE_TICK_FOLDPCT_CALLS_SHA256 = (
+    "f6160c8bf7a39c4577e106ecf31354f0f4e57833642809d75aabfccfdeb4eaec",
+    "6c462421a2351716076343a212fd3108d5e91741e71d1fcd91892ad99e17c076",
+)
+
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _segment(src: str, node: ast.AST) -> str:
@@ -399,11 +424,18 @@ def _plant_a_hardcoded_band(source: str) -> str:
         '                float(getattr(_bb_last, "lower", 0.0) '
         "or 0.0),\n"
         '                float(getattr(_bb_last, "upper", 0.0) '
-        "or 0.0),"
+        "or 0.0),\n"
+        "            )"
     )
     if anchor not in source:
         raise StalePlant("the band arguments are not where the plant " "expects them")
-    return source.replace(anchor, "                0.0,\n" "                1e9,", 1)
+    return source.replace(
+        anchor,
+        "                0.0,\n"
+        "                1e9,\n"
+        "            )",
+        1,
+    )
 
 
 def test_site3_reads_the_cached_band_and_computes_nothing():
@@ -429,13 +461,90 @@ def test_control_the_band_check_catches_a_planted_defect(plant, label):
 # ─────────────────────────────────────────────────────────────────────
 
 
-# This section previously hashed the shared merge helper and the two tick
-# call statements (sha256 == hardcoded constant) to claim "sites 1 and 2 are
-# unchanged". Removed as an antipattern: hashing source text pins formatting,
-# so any reformat/refactor trips a false "a site changed" alarm. The running
-# harness below exercises sites 1 and 2 through the real
-# _execute_manual_rebalance and asserts their behaviour directly, which is the
-# property that actually matters.
+def _check_sites_one_and_two_are_unchanged(source: str) -> None:
+    """Read at the two surfaces those sites reach behaviour through."""
+    helper = _segment(source, _named(source, TOPUP_CALL))
+    got = _sha(helper)
+    if got != PRE_CHANGE_TOPUP_HELPER_SHA256:
+        raise AssertionError(
+            f"the SHARED merge helper changed (sha256 {got}, was "
+            f"{PRE_CHANGE_TOPUP_HELPER_SHA256}). Sites 1 and 2 call it, "
+            f"so a change here is a change to them."
+        )
+
+    tops = tuple(_sha(t) for t in _call_statement_texts(source, "tick", TOPUP_CALL))
+    if tops != PRE_CHANGE_TICK_TOPUP_CALLS_SHA256:
+        raise AssertionError(
+            f"the merge calls inside tick changed: {tops} vs the "
+            f"pre-change {PRE_CHANGE_TICK_TOPUP_CALLS_SHA256}"
+        )
+
+    folds = tuple(_sha(t) for t in _call_statement_texts(source, "tick", FOLD_CALL))
+    if folds != PRE_CHANGE_TICK_FOLDPCT_CALLS_SHA256:
+        raise AssertionError(
+            f"the fold-ratio calls inside tick changed: {folds} vs the "
+            f"pre-change {PRE_CHANGE_TICK_FOLDPCT_CALLS_SHA256}"
+        )
+
+
+def _plant_touch_the_shared_helper(source: str) -> str:
+    """The change this unit deliberately did NOT make."""
+    anchor = '                if not _cand.get("fold_partial_spent"):'
+    if anchor not in source:
+        raise StalePlant("the helper's candidate test moved")
+    return source.replace(
+        anchor, '                if not _cand.get("fold_partial_spent", True):', 1
+    )
+
+
+def _plant_touch_site_one(source: str) -> str:
+    anchor = (
+        "                self._top_up_remnant_fold_tranches(\n"
+        "                    _tranche_count_before,"
+    )
+    if anchor not in source:
+        raise StalePlant("site 1's merge call moved")
+    return source.replace(
+        anchor,
+        "                self._top_up_remnant_fold_tranches(\n"
+        "                    0,",
+        1,
+    )
+
+
+def _plant_touch_site_two(source: str) -> str:
+    anchor = (
+        "                        self._apply_scrum_fold_pct(\n"
+        "                            _dist_tranche_count_before,"
+    )
+    if anchor not in source:
+        raise StalePlant("site 2's ratio call moved")
+    return source.replace(
+        anchor,
+        "                        self._apply_scrum_fold_pct(\n"
+        "                            0,",
+        1,
+    )
+
+
+def test_sites_one_and_two_are_byte_for_byte_what_they_were():
+    _check_sites_one_and_two_are_unchanged(SOURCE)
+
+
+@pytest.mark.parametrize(
+    "plant, label",
+    [
+        (_plant_touch_the_shared_helper, "the shared helper was edited"),
+        (_plant_touch_site_one, "site 1's call was edited"),
+        (_plant_touch_site_two, "site 2's call was edited"),
+    ],
+)
+def test_control_the_unchanged_check_catches_a_planted_edit(plant, label):
+    """CONTROL. Without this the three hashes could be stale constants
+    that match nothing and pass anyway."""
+    with pytest.raises(AssertionError) as caught:
+        _check_sites_one_and_two_are_unchanged(plant(SOURCE))
+    assert str(caught.value).strip(), label
 
 
 # ─────────────────────────────────────────────────────────────────────
