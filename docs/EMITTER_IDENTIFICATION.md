@@ -1650,6 +1650,195 @@ One row per pin call site. 77 rows.
 | `16-005` | `apitest` | `postcondition` | measured: the status fetch and the parse | `apitest.16.005.postcondition.indicator_is_mappable` | `apitest.indicator_is_mappable` | `src/gui/main_window.py:4392` | the status word the venue's document carried is one the tab can map, read back out of the parsed body and capped at 32 characters, so a missing or renamed field -- which the tab paints as an outage the venue never declared -- is reported instead of trusted |
 | `17-001` | `instance` | `postcondition` | measured: the machine-identity read, the claim read and the lock acquisition | `instance.17.001.postcondition.auto_start_permitted` | `instance.auto_start_permitted` | `src/core/instance_guard.py:815` | the flag the launch will ACT on agrees with the evidence rebuilt from the same record, which is the exclusive handle plus the claim compared field by field against this machine; a silent fleet start on a machine that does not own the fleet is therefore reported rather than trusted |
 
+## Cadence
+
+Issue #14. Every pin carries one of two categories, declared here and
+never inferred. `tools.emitter_registry_check` holds this table against
+`src/core/signal_contract.py`, so the register a human reads and the
+roster the sink acts on cannot drift apart.
+
+### The criterion, stated before it is applied
+
+An emitter is **`always_on`** when a self-driven loop, timer or stream
+reaches it - or reaches one of the mutually exclusive arms it belongs to
+- on every pass, so it fires with no operator and no external event.
+Every other emitter is a **`toggle`**: firing needs a discrete trigger
+the subsystem does not produce on its own, which is an operator action,
+a lifecycle one-shot, or a branch taken only when the condition it
+watches occurs.
+
+Sixteen pins are `always_on`. Sixty-one are `toggle`.
+
+### The category is read at the call site, never from today's rate
+
+Two measurements say why, and they point in opposite directions.
+
+A rate-derived category calls a quiet day a toggle. Measured read-only
+2026-08-24 across all six generations of `signals/session.jsonl`:
+488,000 records, 267.4 MB, a 2.13-hour window, **28 distinct emitters
+present against 77 pins in the tree**. Forty-nine pins are absent
+entirely. Under a rate rule those 49 would all be filed as toggles and
+exempted from every check, which is the alarm turning itself off.
+
+A rate-derived category also calls a defect a loop.
+`bot.01.001.postcondition.capital_reservation` wrote **53,558 records in
+that same window, every one `ok=False`**. Read at the call site, that
+pin sits on the `except` arm of `_ensure_capital_reservation`: it is a
+toggle whose trigger has become the normal case. Filing it as a live
+loop would hide the one fact worth reporting.
+
+### Only an `always_on` pin can be late
+
+`SignalSink.cadence_report` evaluates staleness for the `always_on`
+class alone. A toggle returns `not_applicable` at any age, because "has
+not fired" is its normal state. It never reports `stale`.
+
+The always-on budget is derived from the recorded evidence rather than
+picked. From the 2026-08-15 measurement of 598,500 records, the widest
+gap any healthy **always-on** identity produced was **4.736 s**
+(`tick.worked`). The widest gap the one measured **toggle** produced was
+**605.696 s** (`tick.exit_dust_band`), and that single number is the
+whole reason `STALE_AFTER` sits at 660. Taking the toggles out of the
+population puts the budget at `ALWAYS_ON_STALE_AFTER` = **10.0 s**, the
+next whole ten seconds above 4.736 and 2.11 times it. That is **66 times
+tighter** than 660.
+
+A throttled pin gets the same margin applied to its own floor rather
+than a second invented number. `emit(every=N)` admits at most one record
+per N seconds, so N is that pin's floor: six always-on pins declare
+`every=30.0` and one declares `every=60.0`, and a flat 10 s budget would
+call every one of them late on every look. See `ALWAYS_ON_SLACK`.
+
+### `every=` is a throttle and is NOT the category
+
+The two are independent, and the register holds a case of every
+combination. `sim.06.010` declares `every=2.0` and is a **toggle** - the
+throttle is there to fold a load-time burst, and no timer calls it.
+`tick.08.001` and `tick.08.002` declare nothing and are **always_on** -
+they are the two arms of the tick loop. A category inferred from `every=`
+would get both of those backwards.
+
+### What can falsify a category, and what cannot
+
+A staleness check that examines only always-on pins goes green the
+moment something is wrongly filed as a toggle. The declaration has to
+be refutable, or this whole change is a way to quieten a real alarm.
+
+**It is refutable at run time, in one direction.** A `toggle`
+declaration predicts that the pin does not emit at loop rate.
+`cadence_report` measures each identity's mean interval and reports
+`toggle_at_loop_rate` for any toggle at or below
+`MISCATEGORY_MEAN_INTERVAL` = 2.814 s over at least 100 emissions. 2.814
+is the widest p99 gap any measured always-on identity produced; the one
+measured toggle has a p50 of 5.346 s, already 1.9 times wider. An
+always-on emitter filed as a toggle therefore announces itself as soon
+as its loop runs.
+
+**The verdict is named for the observation, not for a cause**, because
+two causes produce it: the declaration is wrong, or the exceptional
+branch has become the normal path. `bot.01.001` is the second today.
+
+**It is NOT refutable while the subsystem is idle.** An always-on pin
+wrongly filed as a toggle, in a session where its loop never ran,
+produces zero records - which is exactly what an untriggered toggle
+produces. No instrument can separate those two, because there is no
+observation to separate them with. That blind spot is stated rather than
+covered over.
+
+### The hazard this does not close
+
+An always-on pin also goes quiet when the thing it watches is
+legitimately stopped: no bots running, no replay started, the app idle
+overnight. That is IDLE, not HUNG, and under any threshold it reads
+late. The always-on class needs a "is this subsystem supposed to be
+running right now" declaration. That is item 17's design and is
+deliberately not invented here.
+
+### The table
+
+One row per pin. 77 rows. The term is `always_on` or `toggle`; the text
+after the colon is the reason, read at the call site.
+
+| ID | cadence |
+|---|---|
+| `01-001` | toggle: the `except` arm only; the reservation ensure has to raise |
+| `01-002` | always_on: the no-raise arm of a call every tick of every bot makes |
+| `01-003` | toggle: only when the operator's holdings exceed the adoption cap |
+| `02-001` | toggle: only when an extractor tranche arrives at the parent bot |
+| `02-002` | toggle: the same arrival; nothing arrives on the loop's own account |
+| `03-001` | toggle: one bot_state load, started by the operator's Load press |
+| `03-002` | toggle: the same one-shot load |
+| `03-003` | toggle: the same one-shot load |
+| `03-004` | toggle: one smart-wire load, inside the same Load press |
+| `03-005` | toggle: one `_build_sim` pass per replay the operator builds |
+| `03-006` | toggle: the same one-shot build |
+| `03-007` | toggle: the same one-shot build |
+| `04-001` | toggle: a show or a resize event on the voting panel |
+| `04-002` | toggle: the operator accepts a Clear in the dialog |
+| `04-003` | toggle: the operator opens or rebuilds the Fold Tranches tab |
+| `05-001` | toggle: the history scan thread, started once per venue connect |
+| `05-002` | toggle: the operator presses Refresh |
+| `05-003` | toggle: the operator loads or refreshes the tab |
+| `05-004` | toggle: the operator presses Apply or Reset |
+| `05-005` | toggle: the operator turns a page |
+| `05-006` | toggle: the operator turns a page |
+| `05-007` | toggle: the operator presses Export CSV |
+| `06-001` | toggle: the teardown of one replay run the operator started |
+| `06-002` | toggle: the same teardown |
+| `06-003` | toggle: the same teardown |
+| `06-004` | toggle: the same teardown |
+| `06-005` | toggle: the same teardown |
+| `06-006` | toggle: the same teardown, once per window played |
+| `06-007` | toggle: one fleet spawn per Load press |
+| `06-008` | toggle: the same one-shot spawn |
+| `06-009` | toggle: the same one-shot spawn |
+| `06-010` | toggle: a fleet load or a fleetLoaded signal repaints the table; no timer calls it, and its `every=2.0` throttles a burst rather than declaring a cadence |
+| `06-011` | always_on: the panel's own 250 ms visual drain timer, which runs for the life of a replay |
+| `06-012` | always_on: the same 250 ms drain timer |
+| `06-013` | toggle: the operator changes the sim mode |
+| `06-014` | toggle: a log line arrives from a stream the operator started |
+| `07-001` | toggle: the replay teardown, once per run |
+| `07-002` | toggle: the same teardown |
+| `07-003` | always_on: the indicator compute every worked tick of every bot runs |
+| `07-004` | always_on: the reporting loop of that same per-tick compute |
+| `08-001` | always_on: the throttle arm of the tick loop; the loop's own pacing takes it, not any event |
+| `08-002` | always_on: the work arm of the same tick loop |
+| `08-003` | toggle: only when the position sits inside the dust band |
+| `09-001` | toggle: a bot joins the wire topology |
+| `09-002` | toggle: one wire import |
+| `10-001` | toggle: the operator presses Fetch YTD |
+| `10-002` | toggle: the same press |
+| `10-003` | toggle: the same press |
+| `11-001` | toggle: a sim run registers with the swarm view |
+| `11-002` | toggle: a paper run registers with the swarm view |
+| `12-001` | toggle: the window assembles its UI once per process |
+| `12-002` | toggle: an exchange tab is added |
+| `12-003` | toggle: the settings dialog closes |
+| `12-004` | toggle: the operator switches the trading wing |
+| `12-005` | toggle: the operator presses the Activity Log pause button |
+| `12-006` | toggle: the legacy notify stub relays a message |
+| `13-001` | always_on: the 2000 ms dashboard timer calls `update_charts` while any bot exists |
+| `13-002` | always_on: the same timer, the same call |
+| `13-003` | toggle: the operator moves a panel's timeframe combo |
+| `13-004` | always_on: the same 2000 ms timer schedules `fetch_chart_data` |
+| `13-005` | always_on: the same scheduled pass |
+| `14-001` | always_on: the Console's 5000 ms health timer, which runs for the life of the window |
+| `14-002` | always_on: the same health timer |
+| `14-003` | always_on: the same health timer |
+| `14-004` | toggle: the operator presses Pause |
+| `14-005` | toggle: the operator presses Resume |
+| `15-001` | toggle: the operator presses a bot command button |
+| `15-002` | always_on: the 2000 ms dashboard timer calls `update_bots` once per exchange tab |
+| `15-003` | always_on: the same timer, the same call |
+| `15-004` | toggle: the operator presses the global privacy button |
+| `15-005` | toggle: the same press |
+| `16-001` | toggle: one `clicked` connection; the tab owns no timer |
+| `16-002` | toggle: one `clicked` connection; the tab owns no timer |
+| `16-003` | toggle: one `clicked` connection; the tab owns no timer |
+| `16-004` | toggle: one `clicked` connection; the tab owns no timer |
+| `16-005` | toggle: one `clicked` connection; the tab owns no timer |
+| `17-001` | toggle: one launch decision per process start |
+
 ## Planned names
 
 Not a plan any more. 10.2 landed every one of these, and the table
