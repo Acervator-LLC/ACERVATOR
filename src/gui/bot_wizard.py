@@ -29,6 +29,27 @@ try:
 except ImportError:
     _HAS_QT = False
 from src.gui.qt_safe_events import safe_process_events  # v3.15.99 P4.1
+from src.exchange.lazy_singleton import LazySingleton, ThrottledFault
+
+
+def _build_asset_manager():
+    """Construct the AssetManager. Import deferred to keep GUI imports cheap."""
+    from src.exchange.crypto_assets import AssetManager
+    return AssetManager()
+
+
+_ASSET_MANAGER = LazySingleton(
+    _build_asset_manager,
+    "coin icons",
+    "Every asset row will show a lettered circle instead of its logo.",
+)
+
+# Separate record: one symbol's logo failing is not the manager failing,
+# and must not delay the manager's retry.
+_ICON_LOAD_FAULT = ThrottledFault(
+    "coin icon loading",
+    "Assets whose logo cannot be read will show a lettered circle.",
+)
 
 
 def _get_coin_icon(symbol: str, size: int = 20,
@@ -46,18 +67,19 @@ def _get_coin_icon(symbol: str, size: int = 20,
     """
     if not _HAS_QT:
         return None
-    try:
-        from src.exchange.crypto_assets import AssetManager
-        mgr = AssetManager()
-        path = mgr.get_logo_path(symbol)
-        if not path and download:
-            path = mgr.download_logo(symbol)
-        if path and path.exists():
-            px = QPixmap(str(path))
-            if not px.isNull():
-                return QIcon(px.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-    except Exception as _icon_exc:  # noqa: BLE001 - GUI fallback path
-        logger.debug("coin icon load failed for %s: %s", symbol, _icon_exc)
+    mgr = _ASSET_MANAGER.get()
+    if mgr is not None:
+        try:
+            path = mgr.get_logo_path(symbol)
+            if not path and download:
+                path = mgr.download_logo(symbol)
+            if path and path.exists():
+                px = QPixmap(str(path))
+                if not px.isNull():
+                    _ICON_LOAD_FAULT.note_success()
+                    return QIcon(px.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        except Exception as _icon_exc:  # noqa: BLE001 - GUI fallback path
+            _ICON_LOAD_FAULT.note_failure(_icon_exc)
     # Fallback: colored circle with first letter
     px = QPixmap(size, size)
     px.fill(QColor(0, 0, 0, 0))
