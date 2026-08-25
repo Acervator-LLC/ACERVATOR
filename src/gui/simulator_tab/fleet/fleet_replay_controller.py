@@ -654,6 +654,30 @@ class FleetReplayController:
         self._task = asyncio.create_task(self._run())
         return True
 
+    @property
+    def tape(self) -> Optional[TabletBackend]:
+        """The run's `TabletBackend` — the replay's ledger and clock.
+
+        A PUBLIC handle, because consumers outside this class have to
+        read the run's balances and fills and there was no public way
+        to reach them. They reached instead for `self._exchange` and
+        pulled `_balances`, `_opening_balances` and `_trades` off it.
+        Since v3.24.84 `_exchange` is a `CCXTConnector` and carries
+        none of the three, so `getattr(..., default)` returned the
+        default and the reader reported an empty wallet and an empty
+        tape (issues #109, #110 and this one).
+
+        `TabletBackend` answers those questions on its own public
+        surface — `balances()`, `snapshot()` and `fetch_my_trades()`,
+        each returning a copy — so a consumer that comes through here
+        cannot mutate the run it is reporting, and a rename below can
+        no longer be absorbed as a default.
+
+        `None` before `_build_sim` has run: there is no tape yet, and
+        an empty one would claim a run that never happened.
+        """
+        return self._tape
+
     def set_load_feed(self, cb) -> None:
         """Install a callable returning candles-to-feed for the next tick.
 

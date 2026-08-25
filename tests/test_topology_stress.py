@@ -27,6 +27,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
@@ -267,3 +269,276 @@ def test_no_data_report_shows_why():
     text = "\n".join(format_stress_report(_report(failed=2)))
     assert "NO_DATA" in text
     assert "boom" in text
+
+
+# ── the wallet the trial actually traded ─────────────────────────
+#
+# EVERY TEST ABOVE THIS LINE PASSES ON THE DEFECT. They build an
+# `AssetOutcome` by hand and check the arithmetic over it. Not one of
+# them runs a trial and reads a balance, so for the life of the module
+# `_run_one_trial` recorded
+# `base_start == base_end == quote_start == quote_end == 0.0` for every
+# asset and the suite stayed green.
+#
+# The reads it used, `exchange._balances` and
+# `exchange._opening_balances`, belonged to `FleetSimExchange`.
+# `TabletBackend` replaced it in v3.24.84 and `ctl._exchange` became a
+# `CCXTConnector`, which carries neither, so both `getattr` defaults
+# fired on every trial. Nothing raised and nothing warned.
+#
+# ZERO IS A LEGAL VALUE, which is why nothing below asserts that an
+# outcome EXISTS, or that a number is merely non-zero. Each balance is
+# asserted against a SECOND WITNESS — the tape's own trade ledger, read
+# on a different code path from the balance ledger the fix reads.
+
+TARGET_USD = 100.0
+TRIAL_CANDLES = 400
+
+# TWO ASSETS, because one does not trade. MEASURED on this tape: a
+# single-bot fleet seeded with its own $100 target fires nothing across
+# 399 candles, so a one-asset trial cannot tell a working balance read
+# from the broken one. Two bots sharing a $200 wallet fired 3 times.
+# The second asset's own outcome stays at zero base, and that zero is
+# checked against the ledger like every other number here.
+STRESS_ASSETS = ("CHIP", "SPK")
+SEEDED_USD = TARGET_USD * len(STRESS_ASSETS)
+
+_PROPOSAL = {
+    "id": "stress-wallet", "title": "two assets, one trial",
+    "archetype": "a", "assets": list(STRESS_ASSETS), "score": 50.0,
+    "bots": [{"asset": a, "quote": "USD", "symbol": f"{a}/USD",
+              "suggested_target_usd": TARGET_USD}
+             for a in STRESS_ASSETS],
+}
+
+
+def _replay_rows(n: int = TRIAL_CANDLES, px0: float = 1.0):
+    """The tape shape a replay is known to trade on.
+
+    Same generator as `tests/test_a_simulator_replay_fires_a_trade.py`,
+    which measured the first acquisition between candle 61 and 80 —
+    about a 5x margin over the run length below.
+    """
+    out = []
+    px = px0
+    for i in range(n):
+        px *= 1.0 + ((i % 7) - 3) * 0.002
+        out.append([T0_STRESS + i * STEP_STRESS,
+                    px, px * 1.006, px * 0.994, px, 90.0])
+    return out
+
+
+T0_STRESS = 1_776_778_500_000
+STEP_STRESS = 300_000
+
+
+def _stress_with_captured_controllers(
+        controller_cls=None, candles: int = TRIAL_CANDLES):
+    """Run one real trial and hand back the controllers it built.
+
+    `_run_one_trial` imports `FleetReplayController` inside the
+    function body, so swapping the module attribute is enough to catch
+    the instance. The subclass adds nothing but a reference — the run
+    is the shipped one, driving real `ScrummingBot`s against a real
+    `CCXTConnector` served by a real `TabletBackend`.
+    """
+    from src.gui.simulator_tab.fleet import fleet_replay_controller as frc
+
+    real = frc.FleetReplayController
+    built: list = []
+
+    class _Capturing(controller_cls or real):  # type: ignore[misc]
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            built.append(self)
+
+    frc.FleetReplayController = _Capturing
+    try:
+        report = run_topology_stress(
+            _PROPOSAL,
+            {a: _replay_rows(candles) for a in STRESS_ASSETS},
+            trials=1, candles=candles)
+    finally:
+        frc.FleetReplayController = real
+    return report, built
+
+
+def _ledger(tape):
+    """Base delta per symbol, total quote delta, fill count per symbol.
+
+    THE SECOND WITNESS. `TabletBackend.fetch_my_trades()` replays the
+    settlements themselves; the fix reads `balances()` and
+    `snapshot()`, which are the running totals those settlements moved.
+    The two agree only if the balances the trial recorded came from the
+    run that produced these fills. Cost and fee are read off each fill,
+    so nothing here restates a fee rate.
+
+    The quote leg is a SINGLE total, not per symbol: every bot in this
+    fleet quotes in USD and shares one wallet leg, which is why both
+    outcomes report the same `quote_start` and `quote_end`.
+    """
+    base: dict = {}
+    counts: dict = {}
+    quote = 0.0
+    for fill in tape.fetch_my_trades():
+        sym = str(fill["symbol"])
+        amount = float(fill["amount"])
+        cost = float(fill["cost"])
+        fee = float(fill["fee"]["cost"])
+        counts[sym] = counts.get(sym, 0) + 1
+        if str(fill["side"]).lower() == "buy":
+            base[sym] = base.get(sym, 0.0) + amount
+            quote -= cost + fee
+        else:
+            base[sym] = base.get(sym, 0.0) - amount
+            quote += cost - fee
+    return base, quote, counts
+
+
+@pytest.fixture(scope="module")
+def traded_trial():
+    """One real trial, shared by the readings taken from it.
+
+    Module-scoped because a 400-candle two-bot replay is the expensive
+    thing in this file, and the checks below are several readings of
+    ONE run rather than several runs.
+    """
+    report, built = _stress_with_captured_controllers()
+    assert len(built) == 1, f"the run built {len(built)} controller(s)"
+    return report, built[0]
+
+
+def test_the_trial_completed_and_traded(traded_trial) -> None:
+    """THE INSTRUMENT'S POSITIVE CONTROL.
+
+    Every number read below is produced BY this trial. A trial that
+    errored, or that played candles and filled nothing, would leave
+    those numbers at their dataclass defaults — and a zero from an
+    instrument that never ran is a claim about the instrument, not
+    about the topology.
+    """
+    report, ctl = traded_trial
+    assert report.failed == [], (
+        f"the trial errored: {[t.error for t in report.failed]}")
+    assert len(report.completed) == 1
+    trial = report.completed[0]
+    assert trial.candles_played > 0
+    assert trial.trades_fired >= 1, (
+        f"the trial played {trial.candles_played} candle(s) and filled "
+        "nothing, so the wallet it reports cannot tell a working "
+        "balance read from the broken one")
+    assert ctl.tape is not None, "the replay finished with no tape"
+    _base, _quote, counts = _ledger(ctl.tape)
+    assert sum(counts.values()) == trial.trades_fired, (
+        f"the tape settled {sum(counts.values())} fill(s) and the "
+        f"controller counted {trial.trades_fired}; one of the two is "
+        "not observing the run")
+
+
+def test_the_outcome_wallet_matches_the_tape_ledger(traded_trial) -> None:
+    """THE ASSERTION THIS ADDITION EXISTS FOR.
+
+    All four balance fields of every `AssetOutcome`, each against the
+    tape. On the broken read all four were 0.0 and every comparison
+    here is false.
+    """
+    report, ctl = traded_trial
+    trial = report.completed[0]
+    assert len(trial.assets) == len(STRESS_ASSETS)
+    base_delta, quote_delta, _counts = _ledger(ctl.tape)
+
+    for outcome in trial.assets:
+        assert outcome.quote_start == SEEDED_USD, (
+            f"{outcome.asset} opened against {outcome.quote_start} of "
+            f"quote; the proposal asked for {len(STRESS_ASSETS)} bots "
+            f"at ${TARGET_USD:,.2f} and the controller seeds the wallet "
+            "with the sum of the fleet's targets")
+        assert outcome.base_start == 0.0, (
+            f"the trial opened holding {outcome.base_start} "
+            f"{outcome.asset}; no config carries a bot_state id, so no "
+            "lots were restored and nothing could have been credited")
+        expected_base = base_delta.get(outcome.symbol, 0.0)
+        assert abs(outcome.base_end - expected_base) < 1e-9, (
+            f"the outcome ends on {outcome.base_end} {outcome.asset}; "
+            f"the tape's fills on {outcome.symbol} move it to "
+            f"{expected_base}")
+        assert abs(
+            outcome.quote_end - (SEEDED_USD + quote_delta)) < 1e-9, (
+            f"the outcome ends on {outcome.quote_end} quote; the tape's "
+            f"fills move the shared USD leg to "
+            f"{SEEDED_USD + quote_delta}")
+
+
+def test_the_trial_reports_the_accumulation_it_performed(
+        traded_trial) -> None:
+    """The two derived numbers the verdict is computed from.
+
+    `base_gained` and `quote_spent` are what `sign_flipped`, the
+    dispersion and the verdict all rest on. The broken read made both
+    EXACTLY zero on every trial, so the module's headline finding —
+    dispersion BETWEEN trials — was the dispersion of nothing.
+    """
+    report, ctl = traded_trial
+    trial = report.completed[0]
+    base_delta, quote_delta, _counts = _ledger(ctl.tape)
+
+    accumulated = [a for a in trial.assets if a.base_gained > 0.0]
+    assert accumulated, (
+        "no asset accumulated anything, so these checks cannot tell "
+        f"accumulation from the defect's zero; ledger={base_delta}")
+    for outcome in trial.assets:
+        assert abs(outcome.base_gained
+                   - base_delta.get(outcome.symbol, 0.0)) < 1e-9
+    assert abs(trial.total_base_gained
+               - sum(base_delta.values())) < 1e-9
+    assert quote_delta < 0.0, "the fleet spent no quote at all"
+    assert trial.assets[0].quote_spent > 0.0, (
+        "the trial reports no quote spent against fills that cost it")
+
+
+def test_the_per_asset_trade_count_agrees_with_the_ledger(
+        traded_trial) -> None:
+    """The count beside the wallet, checked the same way.
+
+    `outcome.trades` comes from `progress.per_symbol_trade_count`, an
+    observer counter. The ledger is the settlement itself.
+    """
+    report, ctl = traded_trial
+    _base, _quote, counts = _ledger(ctl.tape)
+    for outcome in report.completed[0].assets:
+        assert outcome.trades == counts.get(outcome.symbol, 0), (
+            f"the outcome reports {outcome.trades} trade(s) on "
+            f"{outcome.symbol}; the tape settled "
+            f"{counts.get(outcome.symbol, 0)}")
+
+
+def test_a_run_with_no_tape_fails_the_trial_instead_of_reporting_zeros(
+) -> None:
+    """THE FAILURE DIRECTION.
+
+    A wallet that cannot be read must cost the trial and SAY SO. The
+    defect's behaviour was the opposite: it returned a complete
+    `AssetOutcome` whose every balance was 0.0, and the verdict was
+    computed from it.
+
+    `tape` is overridden to `None` rather than the read being broken by
+    hand, because `None` is the one value the property is allowed to
+    return — before `_build_sim` has run.
+    """
+    from src.gui.simulator_tab.fleet import fleet_replay_controller as frc
+
+    class _NoTape(frc.FleetReplayController):
+        @property
+        def tape(self):
+            return None
+
+    report, _built = _stress_with_captured_controllers(
+        controller_cls=_NoTape, candles=150)
+
+    assert report.completed == [], (
+        "a trial that could not read its wallet was reported as a "
+        "completed measurement")
+    assert len(report.failed) == 1
+    error = report.failed[0].error
+    assert "wallet" in error, error
+    assert report.verdict == "NO_DATA"
