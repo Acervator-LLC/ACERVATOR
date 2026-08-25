@@ -529,7 +529,7 @@ class TestAnAgeIsNeverNegative:
             seen.append(call(sink))
 
         lock = getattr(sink, "_lock")
-        seen_map = getattr(sink, "_seen")
+        getattr(sink, "_seen")
         with lock:
             worker = threading.Thread(target=reader, daemon=True)
             worker.start()

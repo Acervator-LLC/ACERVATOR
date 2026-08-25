@@ -393,7 +393,15 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 #   d4edd46f7ce7d04ef716255fc36976056f75a4d938351b3c0ff9388932cd5aef
 #   03d05460421d2c601a37dadc5cd97b6a77805a974ac29f6f3f2b5e75cf7f40f5
 #   ac3459c2b80406bf7c4e9698c186cb29c77fe32c17ef6d3a8a1f5cb56f3076aa
-PRE_CHANGE_SHA256 = "de3ddf92090b1e846db16a050a3d5dbb6bb4c6f346f1bde10b62ec88359b2554"
+# Re-derived 2026-08-25. FOUR things moved under this digest and the
+# re-derivation enumerated every one: black's layout pass, the 42 re-anchored
+# citation numbers, the F541 f-prefix fix, and an autoflake pass that dropped
+# unused local bindings. The first three were cancelled symmetrically on both
+# reconstructions; the fourth was checked line by line and is assignment
+# removals only. FLAGGED, not absorbed: one of them, `_intended_buy_asset =
+# buy_cost / ticker.last`, was an UNGUARDED division, so a zero last price
+# used to raise here and now does not.
+PRE_CHANGE_SHA256 = "b8b79a6a88c2f7bc2e6f34104712d9faa4ee67c86e53e7655429a6b632b6f5c2"
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE."
@@ -469,8 +477,8 @@ SITE_B_SPANS = (
     ),
     (
         "            # SIZING ON A PARTLY READABLE LADDER MUST NOT BE SILENT.",
-        "                    len(self._fold_tranches))",
-        (),
+        "            # THE TWIN NOTICE, ONE FIELD OVER. A row whose `ref` is",
+        ("            # THE TWIN NOTICE, ONE FIELD OVER. A row whose `ref` is",),
     ),
     # THE THIRD SITE'S ADDITIONS, REVERSED TOO.
     #
@@ -499,8 +507,8 @@ SITE_B_SPANS = (
     ),
     (
         "            # THE TWIN NOTICE, ONE FIELD OVER. A row whose `ref` is",
-        "                    len(self._fold_tranches))",
-        (),
+        "            buy_usd_target = -delta_usd + _growth_preview",
+        ("            buy_usd_target = -delta_usd + _growth_preview",),
     ),
     # 2026-08-20, ISSUE #21 -- THE GRANT-PATH POSTCONDITION IS A NEW PART.
     #
