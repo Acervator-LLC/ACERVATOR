@@ -347,7 +347,7 @@ def _stress_with_captured_controllers(
     real = frc.FleetReplayController
     built: list = []
 
-    class _Capturing(controller_cls or real):  # type: ignore[misc,valid-type]
+    class _Capturing(controller_cls or real):  # type: ignore[misc]
         def __init__(self, *args, **kwargs) -> None:
             super().__init__(*args, **kwargs)
             built.append(self)
@@ -527,7 +527,7 @@ def test_a_run_with_no_tape_fails_the_trial_instead_of_reporting_zeros(
     """
     from src.gui.simulator_tab.fleet import fleet_replay_controller as frc
 
-    class _NoTape(frc.FleetReplayController):  # type: ignore[misc]
+    class _NoTape(frc.FleetReplayController):
         @property
         def tape(self):
             return None
