@@ -173,7 +173,7 @@ class TestMarketCheckIntervalRetired:
         import re
 
         m = re.search(
-            r"_BOT_CONFIG_SCRUMMING_ONLY_FIELDS.*?frozenset\(\{(.*?)\}\)",
+            r"_BOT_CONFIG_SCRUMMING_ONLY_FIELDS.*?frozenset\(\s*\{(.*?)\}\s*\)",
             container_source,
             re.DOTALL,
         )

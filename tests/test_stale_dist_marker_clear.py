@@ -635,7 +635,11 @@ class TestTheGuardStillNeverRaises:
                     f"nothing: {result.stderr!r}"
                 )
         finally:
-            marker.chmod(stat.S_IWRITE)
+            # The child clears the marker on success (the behaviour under
+            # test), so it may no longer exist; only restore write permission
+            # for tmp cleanup if it survived.
+            if marker.exists():
+                marker.chmod(stat.S_IWRITE)
 
 
 class TestTheBannerIsUnchanged:

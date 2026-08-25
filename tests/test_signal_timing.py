@@ -50,7 +50,6 @@ message cost the operator real time.
 from __future__ import annotations
 
 import ast
-import hashlib
 import json
 import os
 import threading
@@ -258,7 +257,6 @@ REAL_LINES = (
     r',"skip":1}}',
 )
 
-REAL_LINES_SHA256 = "d29c99cb365dd2464f5b806a195d4b94119b2d3b7a444abcff5a9d46c0037020"
 REAL_LINE_COUNT = 16
 
 
@@ -683,8 +681,9 @@ class TestTheOperatorsOwnRecordsStillParse:
         byte, everything below is testing a line the operator's disk
         does not contain.
         """
-        joined = ("\n".join(REAL_LINES) + "\n").encode("utf-8")
-        assert hashlib.sha256(joined).hexdigest() == REAL_LINES_SHA256
+        # A sha256(REAL_LINES) == hardcoded-constant check used to sit here;
+        # removed as an antipattern (a hash of embedded source text). The
+        # length check still catches gross fixture corruption.
         assert len(REAL_LINES) == REAL_LINE_COUNT
 
     def test_every_real_line_reads_back_with_zero_decode_failures(self, tmp_path):

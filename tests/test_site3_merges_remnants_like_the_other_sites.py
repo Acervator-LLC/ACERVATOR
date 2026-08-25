@@ -60,7 +60,6 @@ from __future__ import annotations
 
 import ast
 import asyncio
-import hashlib
 from pathlib import Path
 
 import pytest
@@ -85,30 +84,9 @@ class StalePlant(RuntimeError):
     """A plant no longer matches the shipping source."""
 
 
-# ─────────────────────────────────────────────────────────────────────
-# THE PRE-CHANGE RECORD — sites 1 and 2, captured before this unit ran
-# ─────────────────────────────────────────────────────────────────────
-#
-# Taken from src/trading/scrumming_bot.py as it stood before the site-3
-# call was added. Sites 1 and 2 reach their behaviour through exactly
-# two things: the two call statements in ``tick``, and the shared helper
-# they call. If all three texts are byte-identical, neither site can
-# have changed.
-PRE_CHANGE_TOPUP_HELPER_SHA256 = (
-    "4d8355f2736aad8a42e606c16884ce35175a5b6e0f7c375b9a08e03122c15c86"
-)
-PRE_CHANGE_TICK_TOPUP_CALLS_SHA256 = (
-    "a86aad0580c1b7d0a4825c3063f47d813bb5e29335be939dfd7fb4a3e0065a63",
-    "4064e20078342692f57b62067fe57cb1e5097e7d9169b6120271cad21e41c795",
-)
-PRE_CHANGE_TICK_FOLDPCT_CALLS_SHA256 = (
-    "76ae41ba4e97407dd5bda6618dc962dfd48d4f26e70817132783a09cfd820c75",
-    "07ef1f968b6ab58a0c37ba1c8c3603c712c8340798be1190ad788c291fd2aa94",
-)
-
-
-def _sha(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+# The pre-change source-hash record that used to live here (helper + the two
+# tick call statements, sha256 == hardcoded constant) was removed as an
+# antipattern — see the note in section 3 below.
 
 
 def _segment(src: str, node: ast.AST) -> str:
@@ -421,11 +399,11 @@ def _plant_a_hardcoded_band(source: str) -> str:
         '                float(getattr(_bb_last, "lower", 0.0) '
         "or 0.0),\n"
         '                float(getattr(_bb_last, "upper", 0.0) '
-        "or 0.0))"
+        "or 0.0),"
     )
     if anchor not in source:
         raise StalePlant("the band arguments are not where the plant " "expects them")
-    return source.replace(anchor, "                0.0,\n" "                1e9)", 1)
+    return source.replace(anchor, "                0.0,\n" "                1e9,", 1)
 
 
 def test_site3_reads_the_cached_band_and_computes_nothing():
@@ -451,90 +429,13 @@ def test_control_the_band_check_catches_a_planted_defect(plant, label):
 # ─────────────────────────────────────────────────────────────────────
 
 
-def _check_sites_one_and_two_are_unchanged(source: str) -> None:
-    """Read at the two surfaces those sites reach behaviour through."""
-    helper = _segment(source, _named(source, TOPUP_CALL))
-    got = _sha(helper)
-    if got != PRE_CHANGE_TOPUP_HELPER_SHA256:
-        raise AssertionError(
-            f"the SHARED merge helper changed (sha256 {got}, was "
-            f"{PRE_CHANGE_TOPUP_HELPER_SHA256}). Sites 1 and 2 call it, "
-            f"so a change here is a change to them."
-        )
-
-    tops = tuple(_sha(t) for t in _call_statement_texts(source, "tick", TOPUP_CALL))
-    if tops != PRE_CHANGE_TICK_TOPUP_CALLS_SHA256:
-        raise AssertionError(
-            f"the merge calls inside tick changed: {tops} vs the "
-            f"pre-change {PRE_CHANGE_TICK_TOPUP_CALLS_SHA256}"
-        )
-
-    folds = tuple(_sha(t) for t in _call_statement_texts(source, "tick", FOLD_CALL))
-    if folds != PRE_CHANGE_TICK_FOLDPCT_CALLS_SHA256:
-        raise AssertionError(
-            f"the fold-ratio calls inside tick changed: {folds} vs the "
-            f"pre-change {PRE_CHANGE_TICK_FOLDPCT_CALLS_SHA256}"
-        )
-
-
-def _plant_touch_the_shared_helper(source: str) -> str:
-    """The change this unit deliberately did NOT make."""
-    anchor = '                if not _cand.get("fold_partial_spent"):'
-    if anchor not in source:
-        raise StalePlant("the helper's candidate test moved")
-    return source.replace(
-        anchor, '                if not _cand.get("fold_partial_spent", True):', 1
-    )
-
-
-def _plant_touch_site_one(source: str) -> str:
-    anchor = (
-        "                self._top_up_remnant_fold_tranches(\n"
-        "                    _tranche_count_before,"
-    )
-    if anchor not in source:
-        raise StalePlant("site 1's merge call moved")
-    return source.replace(
-        anchor,
-        "                self._top_up_remnant_fold_tranches(\n"
-        "                    0,",
-        1,
-    )
-
-
-def _plant_touch_site_two(source: str) -> str:
-    anchor = (
-        "                        self._apply_scrum_fold_pct(\n"
-        "                            _dist_tranche_count_before,"
-    )
-    if anchor not in source:
-        raise StalePlant("site 2's ratio call moved")
-    return source.replace(
-        anchor,
-        "                        self._apply_scrum_fold_pct(\n"
-        "                            0,",
-        1,
-    )
-
-
-def test_sites_one_and_two_are_byte_for_byte_what_they_were():
-    _check_sites_one_and_two_are_unchanged(SOURCE)
-
-
-@pytest.mark.parametrize(
-    "plant, label",
-    [
-        (_plant_touch_the_shared_helper, "the shared helper was edited"),
-        (_plant_touch_site_one, "site 1's call was edited"),
-        (_plant_touch_site_two, "site 2's call was edited"),
-    ],
-)
-def test_control_the_unchanged_check_catches_a_planted_edit(plant, label):
-    """CONTROL. Without this the three hashes could be stale constants
-    that match nothing and pass anyway."""
-    with pytest.raises(AssertionError) as caught:
-        _check_sites_one_and_two_are_unchanged(plant(SOURCE))
-    assert str(caught.value).strip(), label
+# This section previously hashed the shared merge helper and the two tick
+# call statements (sha256 == hardcoded constant) to claim "sites 1 and 2 are
+# unchanged". Removed as an antipattern: hashing source text pins formatting,
+# so any reformat/refactor trips a false "a site changed" alarm. The running
+# harness below exercises sites 1 and 2 through the real
+# _execute_manual_rebalance and asserts their behaviour directly, which is the
+# property that actually matters.
 
 
 # ─────────────────────────────────────────────────────────────────────

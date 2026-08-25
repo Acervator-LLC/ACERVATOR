@@ -134,8 +134,19 @@ class TestTheBoundExists:
     ):
         """v3.24.53 cost 825 dropped records. Swapping the handler class
         is exactly the kind of change that would quietly undo it."""
+        # LogManager only installs its handler when the logger has none, and
+        # under pytest's logging plugin the "acervator" logger carries a
+        # LogCaptureHandler -- which would both suppress the install and make
+        # handlers[0] the wrong handler. Drop those first, then install, then
+        # select the real file handler by type.
+        for x in list(clean_acervator_logger.handlers):
+            clean_acervator_logger.removeHandler(x)
         LogManager(log_dir=tmp_path)
-        h = clean_acervator_logger.handlers[0]
+        h = next(
+            x
+            for x in clean_acervator_logger.handlers
+            if isinstance(x, SizeBoundedFileHandler)
+        )
         assert (h.stream.encoding or "").lower().replace("-", "") == "utf8"
         assert h.stream.errors == "replace"
 

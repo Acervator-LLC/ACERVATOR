@@ -42,7 +42,6 @@ way, not a key redesign.
 from __future__ import annotations
 
 import ast
-import json
 import sys
 from pathlib import Path
 
@@ -120,25 +119,12 @@ class TestSimNeverReachesTheLivePool:
 # SN-57 — honour the persisted flag, with a toggle
 # --------------------------------------------------------------------
 class TestPhantomEnablementHonoursPersistedState:
-    def test_the_persisted_flag_is_entry_level_and_false(self):
-        """POSITIVE CONTROL for the whole SN-57 group, read from the
-        operator's real state. If this ever becomes True somewhere, the
-        default below changes meaning."""
-        state = json.loads(
-            (Path.home() / ".acervator" / "bot_state.json").read_text(encoding="utf-8")
-        )
-        bots = state.get("bots", {})
-        assert bots, "no bots in live state; cannot ground this test"
-        entry = {r.get("phantoms_enabled") for r in bots.values()}
-        assert entry == {False}, f"entry-level values: {entry}"
-        in_cfg = {
-            (r.get("config") or {}).get("phantoms_enabled", "MISSING")
-            for r in bots.values()
-        }
-        assert in_cfg == {"MISSING"}, (
-            f"the flag appeared inside config: {in_cfg}; a fix reading "
-            f"config['phantoms_enabled'] would now find something"
-        )
+    # A "positive control" that read the operator's live
+    # ~/.acervator/bot_state.json was removed: it grounded the group against
+    # external live state, not the codebase, so it could only pass on the
+    # operator's own machine and failed everywhere else (incl. CI). The tests
+    # below verify the CODE's default/toggle behaviour functionally, which is
+    # the property CI exists to check.
 
     def test_the_controller_no_longer_hardcodes_phantoms_on(self):
         """SN-57 inverted: the sim forced phantoms ON for all 35, which

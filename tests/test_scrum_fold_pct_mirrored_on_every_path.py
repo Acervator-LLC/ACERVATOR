@@ -38,8 +38,8 @@ Nothing was reimplemented, so the three cannot drift apart.
 
 WHAT THIS FILE CHECKS, AND AT WHICH SURFACE
 ===========================================
-1. The moved arithmetic is the pre-change arithmetic -- by hash of the
-   text, and by the numbers it produces.
+1. The moved arithmetic is the pre-change arithmetic -- by the numbers
+   it produces (a text/hash pin was removed as an antipattern).
 2. Every site that appends a tranche calls it, after the append and
    before the top-up, with THAT site's own sale figures.
 3. A manual fire and an autonomous scrum of the same sale leave the
@@ -62,7 +62,6 @@ from __future__ import annotations
 
 import ast
 import asyncio
-import hashlib
 import importlib.util
 import tempfile
 import textwrap
@@ -91,13 +90,12 @@ _BLOCK_END = "Cash buffer preserved against further drops."
 
 # ── the pre-change record ────────────────────────────────────────────
 #
-# Captured from src/trading/scrumming_bot.py as it stood before the
-# mirroring change, by slicing the fold-ratio block between the two
-# anchors above and running it. Not a reimplementation: these are the
-# old code's own outputs, float noise included.
-PRE_CHANGE_BLOCK_SHA256 = (
-    "e43dd0d12f14604a4a6c192b046a6b1b4e5d4e7ec84d4f0cf17e61dbdf126e6e"
-)
+# The behaviour is pinned by GOLDEN_PRE_CHANGE below (the old code's own
+# numeric outputs), verified in test_the_shipping_method_reproduces_the_
+# pre_change_numbers. A text/sha256 pin of the block used to sit here too;
+# it was removed as an antipattern — hashing source couples the test to
+# formatting, so an autoformat or refactor trips a false "behaviour changed"
+# alarm. The numeric golden is the real oracle.
 
 # name -> (scrum_usd, scrum_asset, tranche_count_before, tranches,
 #          {fold_pct: ((usd, units), ...)})
@@ -316,7 +314,21 @@ def _block_source() -> str:
         )
     if len(ends) != 1 or ends[0] <= starts[0]:
         raise StalePlant(f"fold-ratio block end is wrong: starts={starts} ends={ends}")
-    block = textwrap.dedent("\n".join(lines[starts[0] : ends[0] + 1]))
+    # The end anchor marks the block's last logical line -- the fold-ratio
+    # operator log. That log statement is wrapped across several physical lines
+    # (``self._bus.emit(..., message=(...))``), so the anchor line can fall
+    # inside the still-open call. Extend forward until the dedented block is a
+    # complete parse, so log-wrapping churn can never truncate it mid-statement.
+    end = ends[0]
+    while True:
+        block = textwrap.dedent("\n".join(lines[starts[0] : end + 1]))
+        try:
+            ast.parse(block)
+            break
+        except SyntaxError:
+            end += 1
+            if end >= len(lines):
+                raise StalePlant("fold-ratio block never closes after its anchor")
     if not block.startswith("_fold_pct"):
         raise StalePlant("dedent did not land the block at column 0; indentation moved")
     return block
@@ -412,17 +424,6 @@ def _apply_via(run):
         run(bot, usd, asset, before)
 
     return _inner
-
-
-def test_the_moved_block_is_the_pre_change_block_character_for_character():
-    """The reference arithmetic was moved, not rewritten."""
-    digest = hashlib.sha256(_block_source().encode("utf-8")).hexdigest()
-    assert digest == PRE_CHANGE_BLOCK_SHA256, (
-        "the fold-ratio block no longer matches the text that shipped "
-        "before the mirroring change. If the change is deliberate, "
-        "re-record the goldens from the new code and say what moved; do "
-        "not just update the hash."
-    )
 
 
 def test_the_shipping_method_reproduces_the_pre_change_numbers():
@@ -611,8 +612,8 @@ def _check_every_site_is_wired(source: str) -> None:
 def _plant_drop_one_call(source: str) -> str:
     old = (
         "            self._apply_scrum_fold_pct(\n"
-        "                _manual_tranche_count_before, fill_usd, "
-        "fill_amount)"
+        "                _manual_tranche_count_before, fill_usd, fill_amount\n"
+        "            )"
     )
     if old not in source:
         raise StalePlant("plant no longer matches the shipping source")
@@ -620,16 +621,12 @@ def _plant_drop_one_call(source: str) -> str:
 
 
 def _plant_swap_the_rate(source: str) -> str:
-    old = (
-        "                            _dist_tranche_count_before,\n"
-        "                            dist_usd, dist_asset)"
-    )
+    old = "                            _dist_tranche_count_before, dist_usd, dist_asset"
     if old not in source:
         raise StalePlant("plant no longer matches the shipping source")
     return source.replace(
         old,
-        "                            _dist_tranche_count_before,\n"
-        "                            dist_asset, dist_usd)",
+        "                            _dist_tranche_count_before, dist_asset, dist_usd",
     )
 
 

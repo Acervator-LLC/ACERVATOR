@@ -145,9 +145,12 @@ class TestItIsWiredIntoAdoption:
     def test_the_cap_is_applied_before_the_lot_is_built(self):
         """Order matters: capping after `_main_lots` was written would
         record the uncapped position and then contradict it."""
+        import re
+
         src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
         i_cap = src.index("_cap_usd = float(getattr(")
-        i_lot = src.index("self._main_lots = [{")
+        # black may wrap `[{` across lines; match the dict-literal build, not `[]`.
+        i_lot = re.search(r"self\._main_lots = \[\s*\{", src).start()
         assert i_cap < i_lot, "cap must precede lot construction"
 
     def test_the_emitter_reports_what_was_withheld(self):

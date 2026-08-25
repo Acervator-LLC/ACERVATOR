@@ -46,7 +46,7 @@ def _count_increment_sites(field: str) -> int:
     than the exact block, so a future refactor that keeps the write
     but rearranges lines still passes."""
     pat = re.compile(
-        rf"self\.stats\.{re.escape(field)}\s*=\s*float\(getattr\(\s*"
+        rf"self\.stats\.{re.escape(field)}\s*=\s*\(?\s*float\(getattr\(\s*"
         rf"self\.stats,\s*['\"]" + re.escape(field) + r"['\"]",
         re.MULTILINE,
     )

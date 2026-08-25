@@ -176,6 +176,11 @@ class TestEndToEnd:
         import asyncio
 
         res = asyncio.run(dd.run(["BTC"], per_asset=1, window=300))
+        if res["n_windows"] == 0:
+            pytest.skip(
+                "no local stone-tablet candle archive for BTC; this end-to-end "
+                "decision test needs real candle data on disk"
+            )
         assert res["n_decisions"] == len(dd.SCENARIOS)
         rec = res["records"][0]
         if rec.get("snapshot", "present") is None:

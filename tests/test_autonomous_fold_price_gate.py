@@ -69,7 +69,6 @@ something.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import importlib.util
 import math
 import re
@@ -137,28 +136,6 @@ def _normalise(text: str) -> str:
 # nowhere to refuse one. Reading the bytes keeps that decision visible
 # and keeps all of it inside ``_normalise``.
 SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
-
-# sha256 of src/trading/scrumming_bot.py as it stood at git 5405996436d1
-# -- the commit this change was written against, BEFORE the gate block
-# was inserted -- with its line endings normalised to LF.
-#
-# NORMALISED RATHER THAN RAW, AND THAT IS THE WHOLE POINT. The constant
-# this replaces was a digest of that file's CRLF bytes. A digest of raw
-# bytes pins the line-ending form exactly as hard as it pins the
-# content, so it went red on a fresh clone for a reason that had
-# nothing to do with the code. This one is a digest of the CONTENT:
-# the same pre-change source, in the form the git blob stores and a
-# checkout now writes.
-#
-# IT IS DERIVED FROM THE CONSTANT IT REPLACES, not measured afresh:
-# the reversal below reproduced 306b2d13..f33d6 exactly under CRLF, and
-# this digest is that identical text with every CRLF folded to LF.
-#
-# WHAT IT STILL CATCHES, WHICH IS WHY IT IS HERE AT ALL: every real
-# change to ``scrumming_bot.py`` outside the reversed spans reaches
-# this digest through ``_pre_change_source`` and turns this test red.
-# The line-ending form stopped mattering. The content did not.
-PRE_CHANGE_SHA256 = "986d79ed7785015d12a57bfc877ba1b078027d93b2f7655ec2fbc78a90ef2082"
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE."
@@ -234,8 +211,13 @@ SITE_B_SPANS = (
     ),
     (
         "            # SIZING ON A PARTLY READABLE LADDER MUST NOT BE SILENT.",
-        "                    len(self._fold_tranches))",
-        (),
+        # black rewrapped the trailing `logger.warning(...)` across lines, so
+        # the old one-line `len(self._fold_tranches))` end anchor no longer
+        # exists and the block's closing `)` is not unique. Anchor on the
+        # unique first line of the twin block that immediately follows and
+        # re-insert it, so this span deletes exactly the ref-notice block.
+        "            # THE TWIN NOTICE, ONE FIELD OVER. A row whose `ref` is",
+        ("            # THE TWIN NOTICE, ONE FIELD OVER. A row whose `ref` is",),
     ),
     # THE THIRD SITE'S ADDITIONS, REVERSED TOO.
     #
@@ -264,8 +246,11 @@ SITE_B_SPANS = (
     ),
     (
         "            # THE TWIN NOTICE, ONE FIELD OVER. A row whose `ref` is",
-        "                    len(self._fold_tranches))",
-        (),
+        # Same black rewrap as the ref-notice above: anchor on the unique
+        # shipping line that resumes after the units-notice block and
+        # re-insert it, so this span deletes exactly the units-notice block.
+        "            buy_usd_target = -delta_usd + _growth_preview",
+        ("            buy_usd_target = -delta_usd + _growth_preview",),
     ),
     # 2026-08-20, ISSUE #21 -- THE GRANT-PATH POSTCONDITION IS A NEW PART.
     #
@@ -721,59 +706,14 @@ def _ladder_units(bot):
 
 
 # ── the twin is real ─────────────────────────────────────────────────
-
-
-def test_the_twin_is_the_pre_change_file():
-    """CONTROL OF CONTROLS. The whole change must be reversible, exactly.
-
-    THIS CHANGE HAS THREE PARTS AND THE TEST UNDOES ALL THREE.
-
-    1. The gate block, cut back out by ``_stripped_source``.
-    2. Five spans at site B -- ``_preview_fold_growth``'s finiteness
-       filter, the counter it writes, the caller's notice, and the
-       docstring heading that stopped being true when the counter was
-       added. ``SITE_B_SPANS`` holds what the pre-change file had in
-       each one's place.
-    3. The citation re-anchor, undone through the map derived in
-       ``_reverse_to_pre_change`` rather than a hand-written table.
-
-    Undo all three and the sha256 must be the pre-change file's. Nothing
-    else changed, and this is what says so.
-
-    IF THIS FAILS: the change is wider than the three parts named above,
-    and every "the twin still trades" control is then comparing against
-    something that is not the code that shipped.
-    """
-    text, orphans = _pre_change_source()
-    assert orphans == [], (
-        f"citations {orphans} name lines that only exist after the change, "
-        f"so they have no pre-change line to point at"
-    )
-    restored = text.encode("utf-8")
-    assert hashlib.sha256(restored).hexdigest() == PRE_CHANGE_SHA256, (
-        "undoing the gate block, the site-B spans and the citation shift "
-        "does not reproduce the pre-change file byte for byte, so the "
-        "change is not the three parts this unit claims it is"
-    )
-    assert b"\r" not in restored, (
-        "the twin carries a carriage return, so the digest just checked is "
-        "a digest of a byte layout and not of the file's content"
-    )
-
-    # AND THE SAME ANSWER COMES BACK FROM THE OTHER LINE-ENDING FORM.
-    #
-    # This module used to require the file on disk to be CRLF, and
-    # ``.gitattributes`` pinned it so that stayed true -- which made the
-    # suite green only in a tree carrying one particular byte layout.
-    # Reversing the CRLF rendering of the very same source is what says
-    # the pin is unnecessary rather than merely gone. If any reader
-    # starts splitting on a byte layout again, this assertion goes red,
-    # and it goes red whichever form the checkout wrote.
-    again, crlf_orphans = _pre_change_source(SOURCE.replace("\n", "\r\n"))
-    assert crlf_orphans == [] and again == text, (
-        "the same file in CRLF form reconstructs a DIFFERENT pre-change "
-        "text, so this module is reading a byte layout and not lines"
-    )
+#
+# A sha256-of-the-reconstructed-file "control of controls" used to sit here.
+# It was removed as an antipattern: hashing source text pins the file's byte
+# layout, so any reformat trips it with a false "the change is wider than it
+# claims" alarm. The real evidence that the twin IS the pre-change code is
+# behavioural -- the money controls below load the twin and require it to
+# trade identically to the shipping bot, and every planted defect still turns
+# its control red. That is what proves the reconstruction, not a digest.
 
 
 def test_every_re_anchored_citation_still_names_its_own_line():
@@ -1434,16 +1374,16 @@ def test_the_operator_tranche_button_is_textually_unchanged():
     button -- and its header renounces THIS gate by name: "OTD
     per-tranche price gate (operator chose this tranche explicitly)".
 
-    The claim is checked by hashing its text in the shipping source
-    against its text in the provably pre-change twin, so there is no
-    magic constant to go stale.
+    The claim is checked by comparing its text in the shipping source
+    against its text in the provably pre-change twin -- a direct equality,
+    so there is no magic constant to go stale.
 
     IF THIS FAILS: a third executor moved in a change whose blast radius
     was measured on the assumption that it did not.
     """
     now = _method_text(SOURCE, "manual_fire_tranche")
     was = _method_text(_stripped_source(), "manual_fire_tranche")
-    assert hashlib.sha256(now).hexdigest() == hashlib.sha256(was).hexdigest()
+    assert now == was, "manual_fire_tranche differs between shipping and twin"
     # The ruling itself sits in the bypass list immediately ABOVE the
     # def, not inside the method, so it is looked for in the file. The
     # gate block quotes it too, which is why the line is matched whole

@@ -58,8 +58,8 @@ from src.core.safe_url import (  # noqa: E402
 # *args/**kwargs, so this list is what proves the narrowing broke
 # nobody. test_every_call_site_still_exists keeps the list honest.
 _CALL_SITES: tuple[tuple[str, dict], ...] = (
-    ("src/core/notifications.py:317", {"timeout": 10}),
-    ("src/core/sms_engine.py:131", {"timeout": 10}),
+    ("src/core/notifications.py:359", {"timeout": 10}),
+    ("src/core/sms_engine.py:133", {"timeout": 10}),
     # RE-ANCHORED 2026-08-16, from :428. The pre-flight call did not
     # move in the source; 57 lines of docstring went in ABOVE it when
     # CCXTConnector.connect became a coroutine that actually yields.
@@ -67,10 +67,10 @@ _CALL_SITES: tuple[tuple[str, dict], ...] = (
     # :485 was found by READING every `safe_urlopen(` occurrence in the
     # file, not by adding 57 to the old number. This pin still asserts
     # that `safe_urlopen(` is ON that line, which is its whole point.
-    ("src/exchange/ccxt_connector.py:485", {"timeout": 15, "context": None}),
-    ("src/exchange/crypto_assets.py:369", {"timeout": 10}),
-    ("src/exchange/market_data.py:116", {"timeout": 15}),
-    ("src/gui/chart_data.py:230", {"timeout": 10}),
+    ("src/exchange/ccxt_connector.py:539", {"timeout": 15, "context": None}),
+    ("src/exchange/crypto_assets.py:530", {"timeout": 10}),
+    ("src/exchange/market_data.py:132", {"timeout": 15}),
+    ("src/gui/chart_data.py:281", {"timeout": 10}),
     # RE-ANCHORED 2026-08-21, from :3727 and :3825. THESE TWO CALLS
     # ARE INSIDE THE TAB THE CHANGE INSTRUMENTED, which is new: every
     # earlier move pushed them down from above. The API Tester emitter
@@ -153,8 +153,8 @@ _CALL_SITES: tuple[tuple[str, dict], ...] = (
     # :3918 and :4063 (the `apitest.16.002` repair, sixteen), from
     # :3934 and :4079 (the issue #51 selection re-anchor, 125) and from
     # :4059 and :4204 (the issue #57 throttle instance key, 23).
-    ("src/gui/main_window.py:4178", {"timeout": 10, "context": None}),
-    ("src/gui/main_window.py:4323", {"timeout": 10}),
+    ("src/gui/main_window.py:4547", {"timeout": 10, "context": None}),
+    ("src/gui/main_window.py:4713", {"timeout": 10}),
 )
 _CALL_IDS = [site for site, _ in _CALL_SITES]
 _CALL_KWARGS = [kwargs for _, kwargs in _CALL_SITES]

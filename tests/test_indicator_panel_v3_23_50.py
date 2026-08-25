@@ -107,7 +107,7 @@ class TestPaintEventDiscipline:
         respective readouts'. Assert paint-time branch + sync
         helper are present."""
         src = self._src()
-        assert "use_cols = (" in src, (
+        assert "use_cols = " in src, (
             "Bar-chart column-alignment branch is missing — needed "
             "so bar[i] centers under table-column[i+1]."
         )

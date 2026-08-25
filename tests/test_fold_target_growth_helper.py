@@ -112,7 +112,7 @@ class TestManualCartridgePathUsesHelper:
         # MANUAL_TRANCHE_FOLD path which has its own literal type
         # string).
         m = re.search(
-            r'self\._bus\.emit\("trade\.filled",\s*bot_id=self\.bot_id,\s*'
+            r'self\._bus\.emit\(\s*"trade\.filled",\s*bot_id=self\.bot_id,\s*'
             r'data=\{[^}]*?"type":\s*_fold_label\b[^}]*?\}',
             source,
             re.DOTALL,

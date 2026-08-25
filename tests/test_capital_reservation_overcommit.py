@@ -230,5 +230,5 @@ class TestItIsReported:
         """This runs on every tick of every bot; unthrottled it is the
         spam the synchroniser exists to prevent."""
         src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
-        blk = src[src.index("RELEASE BEFORE FORGETTING") :][:6000]
+        blk = src[src.index("RELEASE BEFORE FORGETTING") :][:9000]
         assert blk.count("every=") == 2

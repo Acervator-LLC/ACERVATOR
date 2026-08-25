@@ -34,6 +34,18 @@ dev = [
     "pytest-qt>=4.4",
     "black>=24.0",
     "flake8>=7.0",
+    # Analyzers the archetype-review harness (tools/harness/*_archetype.py)
+    # shells out to. Without them ArchetypeReport.passed fails closed
+    # ("<tool>: not installed"), so the archetype test suite needs them on
+    # PATH. `vale` (docs prose) is an optional Go binary, not pip-installable,
+    # and the docs archetype treats it as available-if-present.
+    "ruff>=0.1",
+    "bandit>=1.7",
+    "mypy>=1.0",
+    "vulture>=2.0",
+    "semgrep>=1.0",
+    "proselint>=0.13",
+    "opencv-python-headless>=4.8",
 ]
 
 [project.scripts]
