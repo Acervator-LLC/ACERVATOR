@@ -907,9 +907,11 @@ class TestEveryColumnIsDocumented:
 
     def test_every_tooltip_this_unit_wrote_meets_the_standard(self):
         from src.gui.bot_live_settings import (
+            FOLD_CLOSE_RATIO_TOOLTIP, FOLD_CLOSED_TOOLTIP,
             FOLD_COLUMN_TOOLTIPS, FOLD_CYCLE_CAP_TOOLTIP,
-            FOLD_FILTER_TOOLTIP, FOLD_MALFORMED_TOOLTIP,
-            FOLD_OLDEST_AGE_TOOLTIP, FOLD_OPEN_COUNT_TOOLTIP,
+            FOLD_DISCARDED_TOOLTIP, FOLD_FILTER_TOOLTIP,
+            FOLD_MALFORMED_TOOLTIP, FOLD_OLDEST_AGE_TOOLTIP,
+            FOLD_OPEN_COUNT_TOOLTIP, FOLD_OPENED_TOOLTIP,
             FOLD_PARKED_USD_TOOLTIP, FOLD_SORT_TOOLTIP,
             FOLD_UNITS_MARKED_TOOLTIP, FOLD_WIRE_DISCARDED_TOOLTIP)
 
@@ -919,6 +921,12 @@ class TestEveryColumnIsDocumented:
             FOLD_WIRE_DISCARDED_TOOLTIP, FOLD_MALFORMED_TOOLTIP,
             FOLD_CYCLE_CAP_TOOLTIP, FOLD_SORT_TOOLTIP,
             FOLD_FILTER_TOOLTIP,
+            # issue #98 defect 4 - the four counter rows. The same
+            # standard, checked by the same assertions, so a tooltip
+            # written by a later unit cannot quietly be longer or
+            # carry an identifier.
+            FOLD_OPENED_TOOLTIP, FOLD_CLOSED_TOOLTIP,
+            FOLD_CLOSE_RATIO_TOOLTIP, FOLD_DISCARDED_TOOLTIP,
         ]
         for tip in written:
             assert "\n" not in tip, tip
@@ -945,15 +953,18 @@ class TestTheSummaryRowsAreDocumented:
         "Fold budget this cycle:",
     )
 
-    #: Issue #98 defect 4 owns these four. They are asserted BARE on
-    #: purpose: the counters do not reconcile with the standing list on
-    #: 13 of 38 bots, and a ten-word description of a number under
-    #: repair would document the wrong meaning. If this test starts
-    #: failing, defect 4 has landed and these rows want their tooltips.
-    NOT_OURS = (
+    #: THE HANDOFF, TAKEN. These three were asserted BARE by defect 6
+    #: because defect 4 owned the counters and they did not reconcile
+    #: with the standing list on 13 of 38 bots. Defect 4 has landed:
+    #: every site that removes a fold tranche now moves exactly one of
+    #: opened, closed or discarded, so the three rows describe
+    #: quantities that hold, and they carry the same tooltip standard
+    #: as every row above. The ratio row is named with the arithmetic
+    #: it performs, which is the other half of that defect.
+    COUNTERS = (
         "Lifetime tranches opened:",
         "Lifetime tranches closed (fold-back fired):",
-        "Cycle close ratio (closed/opened):",
+        "Cycle close ratio (folded / opened minus discarded):",
     )
 
     def test_both_halves_of_every_owned_row_carry_the_tooltip(
@@ -965,12 +976,56 @@ class TestTheSummaryRowsAreDocumented:
             assert label_tip.strip(), label
             assert label_tip == value_tip, label
 
-    def test_the_counter_rows_are_left_to_their_own_unit(self, panel):
-        for label in self.NOT_OURS:
+    def test_the_counter_rows_took_the_handoff(self, panel) -> None:
+        """Was `test_the_counter_rows_are_left_to_their_own_unit`.
+
+        It asserted these three BARE, and it was written to go red the
+        day defect 4 landed. It has, so the assertion is inverted
+        rather than deleted: both halves of each counter row now carry
+        the tooltip, exactly as the six rows above do.
+        """
+        for label in self.COUNTERS:
             row = panel.row_labelled(label)
             assert row is not None, label
-            assert row[2] == "", label
-            assert row[3] == "", label
+            _, _, label_tip, value_tip = row
+            assert label_tip.strip(), label
+            assert label_tip == value_tip, label
+
+    #: The fourth counter row. It is CONDITIONAL -- shown only once the
+    #: bot has discarded something -- so it cannot be asserted off the
+    #: shared fixture, whose bot has discarded none.
+    DISCARDED_ROW = "Lifetime tranches discarded (not folded back):"
+
+    def test_the_discard_row_carries_the_tooltip_too(
+            self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Issue #98 defect 4 owns this row with the other three.
+
+        Its label lost the word "cleared": a clear is one of four ways
+        a tranche is discarded, and the despawn sweep, a detonation and
+        the unreadable-record drop write the same counter.
+        """
+        built = _make_panel(
+            [_tranche(0, age_days=1.0)], monkeypatch,
+            _current_holdings=1.0, _tranches_discarded_lifetime=7)
+        try:
+            row = built.row_labelled(self.DISCARDED_ROW)
+            assert row is not None
+            assert row[1] == "7"
+            assert row[2].strip()
+            assert row[2] == row[3]
+        finally:
+            _destroy(built)
+
+    def test_a_bot_that_has_discarded_nothing_stays_quiet(
+            self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The row's own convention, unchanged by this unit."""
+        built = _make_panel(
+            [_tranche(0, age_days=1.0)], monkeypatch,
+            _current_holdings=1.0, _tranches_discarded_lifetime=0)
+        try:
+            assert built.row_labelled(self.DISCARDED_ROW) is None
+        finally:
+            _destroy(built)
 
     def test_the_despawn_rows_gained_their_label_half(self, panel):
         """Issue #103 tooltipped the value and not the words beside it.
