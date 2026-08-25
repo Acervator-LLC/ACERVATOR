@@ -33,7 +33,7 @@ was taken on the pair. The tell was that every file returned the same number.
 ```python
 import sys, pathlib, collections
 sys.path.insert(0, ".")
-from tools.harness.watchdog_archetype import _iter_python, _scan_module
+from dev_harness.harness.watchdog_archetype import _iter_python, _scan_module
 
 per = collections.Counter()
 for path in _iter_python(pathlib.Path("src")):

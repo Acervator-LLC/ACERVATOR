@@ -40,7 +40,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from tools.harness.coding_archetype import (  # noqa: E402
+from dev_harness.harness.coding_archetype import (  # noqa: E402
     _RUFF_FAMILIES_BY_LEN,
     _RUFF_SEV_MAP,
     _module_binding_kinds,

@@ -18,9 +18,13 @@ would record it as SLOWER than the large one and fail for a reason unrelated to
 the timer -- or, if the order were reversed, pass for the wrong reason.
 
 THE CLOCK STOPS BEFORE THE REPORT. `n` and `offered` are final once the loop
-ends; the lost-row tally and the operator warning that follow are REPORTING.
-Timing those would bill the report to the import, and making the log cheaper
-would read as a faster import.
+ends; the accepted-count line, the lost-row tally and the operator warning that
+follow are REPORTING. Timing those would bill the report to the import, and
+making the log cheaper would read as a faster import.
+
+2026-08-22 -- THE ACCEPTED-COUNT LINE USED TO BE INSIDE THE CLOCK, and that is
+what made this control fail inside the release gate while it passed alone. See
+`LARGE_ROWS` for the measurement and `src/trading/smart_wire.py` for the repair.
 """
 
 from __future__ import annotations
@@ -34,7 +38,73 @@ from src.trading.smart_wire import SmartWireManager
 EMITTER = "topology.09.002.postcondition.wires_received"
 
 SMALL_ROWS = 1_000
-LARGE_ROWS = 10_000
+
+# THE LARGE WORKLOAD, and the measured failure that sets its size.
+#
+# WHAT WENT WRONG, 2026-08-22. This file passed alone and failed inside
+# the release gate. The cause was not a scheduling pause. `import_wires`
+# used to dispatch its "imported N wire(s)" log line INSIDE the timed
+# bracket. A log dispatch is a CONSTANT: it fires once whatever the row
+# count, and its price is set by how many handlers the root logger
+# carries. Alone, the root logger carries none and the line is free.
+# Inside the suite the GUI tests leave console handlers attached and the
+# root logger sits at DEBUG; measured 2026-08-22 with 16 attached, ONE
+# dispatch cost 0.001585 s, the minimum of twenty.
+#
+# A CONSTANT DESTROYS A RATIO. It lands on both readings, so it does not
+# move their difference at all -- it moves their QUOTIENT. Measured in
+# one process, same code, same machine:
+#
+#     handlers   small        large        ratio
+#     none       0.000290 s   0.003031 s   10.4
+#     16         0.001965 s   0.004853 s    2.4
+#
+# and 1 of 15 in-suite trials then recorded 1.898, below the 2.0 the
+# predicate asks for. THE MINIMUM DEFENDS NOTHING HERE. It discards a
+# pause that lands on one sample; this cost lands on every sample, so it
+# moves the FLOOR. The failing trial's five small readings were
+# 0.002281, 0.002426, 0.002252, 0.002292 and 0.002290 -- no outlier to
+# discard, the whole distribution had shifted.
+#
+# THE REPAIR IS IN THE SITE, not here: the log line now sits below the
+# stop clock, where the site's own comment always said the report
+# belongs. Re-measured in the same 16-handler process afterwards, small
+# returned to 0.000302 s and the ratio to 10.1.
+#
+# WHY THIS NUMBER ALSO CHANGED, and the arithmetic that sizes it. Write
+# S for the small reading and L for the large one. There are two ways to
+# invert the pair, and they take different amounts:
+#
+#   a constant C on BOTH readings breaks it at   C >= L - 2S
+#   a gain on the SMALL reading alone breaks it  at  L/2 - S
+#
+# and the second must land on all five samples, while the first lands on
+# every sample by definition.
+#
+# AT 10_000 ROWS THOSE NUMBERS WERE 2.45 ms AND 1.23 ms, with L =
+# 0.003031 s and S = 0.000290 s. The log dispatch measured 1.585 ms
+# idle. Under 48 busy processes the SAME dispatch measured 2.982 ms,
+# which is above 2.45 ms -- so the pair inverts, and the observed ratio
+# was 1.898. The failure was not bad luck. It was arithmetic, and the
+# margin was thin enough to make it certain under load.
+#
+# AT 200_000 ROWS THEY ARE 87.6 ms AND 43.8 ms, with L = 0.088229 s and
+# S = 0.000305 s. That is 29x the largest constant measured. The cost is
+# 0.80 s of suite time and about 100 MB of transient heap, and the large
+# workload is built AFTER the small readings are taken, so its
+# allocation cannot reach back and inflate them.
+#
+# WHAT THIS DOES NOT DO. It does not make the control immune to a
+# constant, and it does not make it immune to load. It moves the
+# breaking constant from 2.45 ms to 87.6 ms. A stall still breaks it if
+# it lands on all five small samples and is worth 43.8 ms each; the
+# largest single small sample seen in a full suite run was 0.000905 s,
+# and under 48 busy processes 0.118890 s -- one sample, not five. The
+# real immunity came from moving the report out of the bracket in
+# `src/trading/smart_wire.py`; this number is the guard band around that
+# repair, so that the next constant to appear inside the bracket is
+# caught by a red test rather than by a red gate.
+LARGE_ROWS = 200_000
 
 # HOW MANY TIMES EACH WORKLOAD IS MEASURED, and why the figure compared
 # is the MINIMUM of the samples rather than a single reading.
@@ -59,6 +129,14 @@ LARGE_ROWS = 10_000
 # of the import loop, which is where a real pause would land: small
 # 0.0018421, large 0.0035651, FAILED. One pause across five samples is
 # noise on one of them, and the minimum discards it.
+#
+# WHAT THE MINIMUM DOES NOT COVER, and this is the correction the
+# 2026-08-22 red gate forced. The paragraph above is about a PAUSE --
+# something that lands on one sample. A cost that lands on EVERY sample
+# moves the floor, and the minimum of a shifted distribution is shifted
+# too. That is the failure this file actually suffered; `LARGE_ROWS`
+# carries the measurement and the repair. Keep both defences: they
+# answer different attacks and neither replaces the other.
 SAMPLES = 5
 
 # THE FLOOR, and the measurement that says it is not optional.

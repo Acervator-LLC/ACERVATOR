@@ -358,26 +358,43 @@ def test_panel_symbols_current_is_reported(qapp: QApplication) -> None:
     assert rec.duration is None
 
 
-def test_a_panel_still_fetching_the_old_pair_is_reported(qapp: QApplication) -> None:
-    """THE FALSIFIER for `13-002`, and it is a live defect.
+def test_a_panel_holding_a_pair_the_pass_does_not_name_is_reported(
+    qapp: QApplication,
+) -> None:
+    """THE FALSIFIER for `13-002`, rewritten by issue #46.
 
-    `update_charts` writes `info["symbol"]` in the CREATE branch only.
-    On every later pass it relabels `panel.chart._symbol` from the fresh
-    status and leaves the stored symbol alone -- and the stored symbol is
-    the one `fetch_chart_data` hands the exchange. A bot whose pair
-    changed therefore shows the new pair in its title over candles fetched
-    for the old one, indefinitely and silently.
+    IT USED TO PIN THE DEFECT. `update_charts` wrote `info["symbol"]` in
+    the CREATE branch only, so two passes with two pairs left the stored
+    symbol on the first one and this test asserted `actual == 1`. That
+    made it a valid falsifier for the pin and an obstacle to the repair,
+    which is why the issue said the two had to move together. The repair
+    landed on `fix-46-chart-follows-the-symbol`; the sequence it used is
+    now asserted CLEAN in
+    `tests/test_asset_chart_symbol_change.py::
+    test_the_drift_pin_is_clean_across_a_symbol_change`, together with
+    the pair the fetch really asks for afterwards.
+
+    THE CONDITION IS STAGED DIRECTLY INSTEAD. One bot named TWICE in one
+    pass with two different pairs -- what a fleet snapshot looks like
+    when it is assembled either side of a symbol change -- leaves a
+    panel that can be current for at most one of the two, and the pin
+    counts the one it is not current for. The falsifier's job is to
+    prove the instrument still fires; the repair's proof is the fetch
+    target, which is read at the consumer in the file named above.
     """
     with _collect() as sink, _tab(qapp) as tab:
-        tab.update_charts([_status("alpha", "BTC/USD")])
-        tab.update_charts([_status("alpha", "ETH/USD")])
+        tab.update_charts([_status("alpha", "BTC/USD"), _status("alpha", "ETH/USD")])
         rec = _records(sink, SYMBOLS)[-1]
-        # The defect itself, read straight out of the dict the fetch uses.
-        assert tab._chart_panels["alpha"]["symbol"] == "BTC/USD"
+        # One bot, one panel, two pairs claimed for it in one pass. The
+        # panel holds the last pair the pass named, which is the one
+        # `fetch_chart_data` will ask for.
+        assert len(tab._chart_panels) == 1
+        assert tab._chart_panels["alpha"]["symbol"] == "ETH/USD"
     assert rec.ok is False
     assert rec.actual == 1
     assert rec.expected == 0
     assert rec.context["panels"] == 1
+    assert rec.context["statuses"] == 2
 
 
 # ── 13-003  a timeframe change re-arms the fetch ───────────────────────

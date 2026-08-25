@@ -231,3 +231,67 @@ class TestTheSurfaceCannotDriftFromTheConnector:
         assert be.market("BTC/USD")["quote"] == "USD"
         assert float(be.amount_to_precision("BTC/USD", 1.23456789012)) > 0
         assert float(be.price_to_precision("BTC/USD", 1.23456789012)) > 0
+
+
+class TestEveryTradedCurrencyIsReported:
+    """The backend must LIST both sides of every pair it serves.
+
+    `FleetSimExchange`, replaced by `TabletBackend` in v3.24.84, seeded
+    both sides of every pair "so MEM-254's absent-side handshake
+    passes" (sim_exchange.py:130-136). The seeding was not carried
+    across. `_build_sim` passes only the QUOTE currencies
+    (fleet_replay_controller.py:862-867, `balances=dict(seed_by_quote)`),
+    so `fetch_balance` never listed a base asset.
+
+    WHAT THAT COST, MEASURED. `CCXTConnector.get_balance` marks an
+    omitted currency `absent=True`, and `ScrummingBot.tick` refuses to
+    set `_initialised` on an absent read. The refusal is right; the
+    read was not. So every sim bot re-ran the init handshake on every
+    tick, and the handshake holds `await asyncio.sleep(0.25)` between
+    its two reads. On a 50-candle 2-bot replay: 100 refusals, 25.73 s
+    of the run's 26.03 s inside that sleep, and no bot initialised.
+    After the seeding: 2 handshakes, 0.52 s, both bots initialised, and
+    the same replay takes 0.54 s.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_base_side_of_a_pair_is_not_reported_absent(self) -> None:
+        """THE READ PATH. `absent` is the field the handshake reads."""
+        be = TabletBackend({"BTC/USD": _rows(300)}, balances={"USD": 500.0})
+        conn = CCXTConnector("coinbase")
+        conn.attach_backend(be)
+        bal = await conn.get_balance("BTC")
+        assert bal.absent is False, (
+            "the backend omitted the base asset, so the init handshake "
+            "refuses on every tick for ever"
+        )
+        assert bal.total == 0.0
+
+    @pytest.mark.asyncio
+    async def test_a_currency_the_backend_never_trades_is_still_absent(self) -> None:
+        """THE FAILING SIDE, and the sentinel's own control.
+
+        Seeding the pairs must not blind `absent` to a currency the
+        exchange genuinely does not report.
+        """
+        be = TabletBackend({"BTC/USD": _rows(300)}, balances={"USD": 500.0})
+        conn = CCXTConnector("coinbase")
+        conn.attach_backend(be)
+        assert (await conn.get_balance("DOGE")).absent is True
+
+    def test_a_stated_balance_is_not_overwritten_by_the_seed(self) -> None:
+        """`setdefault`, not assignment.
+
+        A caller that opens the wallet holding units keeps them.
+        """
+        be = TabletBackend({"BTC/USD": _rows(300)}, balances={"USD": 500.0, "BTC": 2.5})
+        assert be.fetch_balance()["BTC"]["total"] == 2.5
+
+    def test_the_seed_is_not_counted_as_an_opening_balance(self) -> None:
+        """The seed is scaffolding, not an opening balance.
+
+        `_opening_balances` answers "what did this run change?", so it
+        must stay the caller's intent.
+        """
+        be = TabletBackend({"BTC/USD": _rows(300)}, balances={"USD": 500.0})
+        assert set(be._opening_balances) == {"USD"}

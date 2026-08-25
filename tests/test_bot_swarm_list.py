@@ -347,11 +347,22 @@ class TestHeadlessRender:
             canvas.undrawable_wire_count() == 1
         ), "only the undrawable wire counts; the drawable one must not"
 
-    def test_undrawable_wires_are_logged_once_not_every_frame(self, caplog):
+    def test_undrawable_wires_are_logged_once_not_every_frame(self, capture_log):
         """C09 says "increment a visible skipped counter AND surface
         it". A counter nobody reads is not surfaced -- but this canvas
         repaints at ~2.5/sec, so a per-frame line would bury the log
-        while saying nothing new. Report on CHANGE."""
+        while saying nothing new. Report on CHANGE.
+
+        `capture_log`, NOT `caplog`. `logging_engine` sets
+        `acervator.propagate = False`, so a record from this logger
+        stops at the `acervator` node and never reaches the root
+        handler `caplog` installs. MEASURED 2026-08-24: with
+        propagation off this test read an empty list and failed
+        `0 == 1`. It was a latent order-dependent flake, armed the
+        moment any earlier test built the engine. `capture_log`
+        attaches to the named logger directly and does not depend on
+        propagation at all.
+        """
         import logging
 
         self._new_app()
@@ -362,11 +373,11 @@ class TestHeadlessRender:
         canvas = LaneWireCanvas(lst)
         canvas.set_wires([{"id": "w1", "source_id": "a", "target_id": "z"}])
 
-        with caplog.at_level(logging.WARNING, logger="acervator.gui.bot_swarm_list"):
+        with capture_log("acervator.gui.bot_swarm_list") as records:
             for _ in range(4):
                 canvas.render(QPixmap(canvas.size()))
 
-        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        warnings = [r for r in records if r.levelno >= logging.WARNING]
         assert (
             len(warnings) == 1
         ), f"expected one report across four paints, got {len(warnings)}"

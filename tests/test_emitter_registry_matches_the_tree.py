@@ -9,7 +9,7 @@ check compares a value with itself.
 
 Measured on this branch before this file existed::
 
-    $ grep -rn "emitter_registry" tools/harness/ tests/
+    $ grep -rn "emitter_registry" dev_harness/harness/ tests/
     tests/test_emitter_checker_selftest.py:<docstring mention>
 
 One mention, in prose. No invocation. Nothing on the way to green ran
@@ -84,7 +84,7 @@ from typing import Any
 
 import pytest
 
-from tools.emitter_registry_check import REGISTRY_PATH
+from tools.emitter_registry_check import MAIN_HEADER, REGISTRY_PATH
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REGISTRY = REPO_ROOT / REGISTRY_PATH
@@ -98,7 +98,19 @@ SOURCE_CELL_RE = re.compile(r"`([^`]+\.py):(\d+)`")
 # Far enough past the end of any file in the tree that the moved row
 # cannot land on another pin by accident and report a false clean.
 LINE_DRIFT = 100_000
-_MAIN_COLS = 7
+
+# 10.3 -- DERIVED FROM THE CHECKER'S OWN HEADER, NEVER RETYPED.
+#
+# It was the literal 7. Item 10.3 added a `duration` column, the main
+# table became 8 cells wide, and this file's row filter matched nothing:
+# `_drift_one_row` walked the whole register, found no row it recognised
+# and raised its own "re-anchor me" error. The plant went silent for a
+# reason that had nothing to do with the rule it plants against.
+#
+# A width written down in two places is one edit away from disagreeing.
+# `MAIN_HEADER` is the definition the parser itself uses, so this cannot
+# drift again without the parser drifting with it.
+_MAIN_COLS = len(MAIN_HEADER)
 
 
 def _kwargs(cwd: Path) -> dict[str, Any]:

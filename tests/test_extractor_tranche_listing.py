@@ -960,6 +960,67 @@ def _tab():
     yield tables[0]
 
 
+# ═════════════════════════════════════════════════════════════════════
+# THE RENDER. A colour read off a live Qt object reports what the
+# widget was TOLD to paint, not what it painted. Measured 2026-08-11 on
+# this very table: a `QTableWidget::item { background: ... }` rule
+# overrides the item brush while `item.background().color().name()`
+# keeps returning the old value, so a model-only assertion passes over
+# a screen showing another colour. Every colour claim below is asserted
+# on BOTH, in one function, over one widget.
+# ═════════════════════════════════════════════════════════════════════
+def _fit_on_screen(table) -> None:
+    """Give the table a complete, settled surface before any sample.
+
+    DETACHED from the tab's layout, which otherwise re-imposes its own
+    geometry and allots the table about 115px. SHOWN, because an
+    unshown widget has never been polished and reports
+    self-inconsistent geometry, and a render of one leaves regions
+    unpainted so a sampler reads a default colour at a point that is
+    nominally in range. SIZED TO ITS CONTENT, so every column and row
+    is on the surface. The shipped 280px cap is lifted for the render
+    only and is asserted elsewhere.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    table.setParent(None)
+    width = table.verticalHeader().width() + 40
+    for col in range(table.columnCount()):
+        width += table.columnWidth(col)
+    rows = sum(table.rowHeight(r) for r in range(table.rowCount()))
+    table.setMaximumHeight(16_777_215)
+    table.resize(width, rows + table.horizontalHeader().sizeHint().height() + 40)
+    table.show()
+    QApplication.processEvents()
+
+
+def _cell_colours(table, image, row: int, col: int) -> dict:
+    """Count every RENDERED colour inside one cell.
+
+    Logical coordinates are scaled by the image's device pixel ratio.
+    `grab()` returns a pixmap at the display's ratio while `visualRect`
+    returns logical points, so on a 1.25x display every coordinate
+    would land a fifth of the way up the table and sample a
+    neighbouring row.
+    """
+    import collections
+
+    from PySide6.QtGui import QColor
+
+    rect = table.visualRect(table.model().index(row, col))
+    ratio = image.devicePixelRatio() or 1.0
+    counts: collections.Counter = collections.Counter()
+    for x in range(rect.left(), rect.right()):
+        for y in range(rect.top(), rect.bottom()):
+            ix, iy = int(x * ratio), int(y * ratio)
+            assert 0 <= ix < image.width() and 0 <= iy < image.height(), (
+                f"logical ({x},{y}) -> device ({ix},{iy}) is outside the "
+                f"{image.width()}x{image.height()} render"
+            )
+            counts[QColor(image.pixel(ix, iy)).name()] += 1
+    return dict(counts)
+
+
 def test_the_table_holds_one_fold_row_and_one_extractor_row(_tab):
     assert _tab.rowCount() == 2
 
@@ -975,6 +1036,7 @@ def test_the_extractor_row_is_red_with_white_text_in_every_column(_tab):
     from src.gui.bot_live_settings import (
         EXTRACTOR_TRANCHE_BG_HEX,
         EXTRACTOR_TRANCHE_FG_HEX,
+        FOLD_TRANCHE_BG_HEX,
     )
 
     for col in range(_tab.columnCount()):
@@ -988,6 +1050,20 @@ def test_the_extractor_row_is_red_with_white_text_in_every_column(_tab):
         ), f"column {col} is not white"
     assert EXTRACTOR_TRANCHE_BG_HEX == "#b3261e"
     assert EXTRACTOR_TRANCHE_FG_HEX == "#ffffff"
+
+    # THE SAME CLAIM, ON THE RENDER. Every column is sampled, because
+    # a missed one leaves the row half red and the model would not
+    # show it.
+    _fit_on_screen(_tab)
+    image = _tab.viewport().grab().toImage()
+    for col in range(_tab.columnCount()):
+        painted = _cell_colours(_tab, image, 1, col)
+        assert (
+            painted.get(EXTRACTOR_TRANCHE_BG_HEX, 0) > 0
+        ), f"column {col} rendered no red: {painted}"
+        assert (
+            FOLD_TRANCHE_BG_HEX not in painted
+        ), f"column {col} rendered the fold blue: {painted}"
 
 
 def test_the_ordinary_tranche_row_is_not_repainted(_tab):
@@ -1013,8 +1089,15 @@ def test_the_ordinary_tranche_row_is_not_repainted(_tab):
         FOLD_TRANCHE_BG_HEX,
     )
 
+    # issue #98 defect 5 - the cell used to read "manual fire", which
+    # is a BUY and the action that REMOVES a tranche. The flag means a
+    # manual SCRUM. The COLOUR and the rows carrying it are unchanged,
+    # which is what this test is here to protect.
+    from src.gui.bot_live_settings import FOLD_SOURCE_MANUAL_SCRUM
+
     source_cell = _tab.item(0, 8)
-    assert source_cell.text() == "manual fire"
+    assert source_cell.text() == FOLD_SOURCE_MANUAL_SCRUM
+    assert source_cell.text() == "manual scrum"
     assert source_cell.foreground().color().name() == "#00ccff"
 
     fire_btn = _tab.cellWidget(0, 9)
@@ -1026,6 +1109,20 @@ def test_the_ordinary_tranche_row_is_not_repainted(_tab):
         assert cell is not None, f"column {col} has no item to paint"
         assert cell.background().color().name() != EXTRACTOR_TRANCHE_BG_HEX
         assert cell.background().color().name() == FOLD_TRANCHE_BG_HEX
+
+    # THE SAME CLAIM, ON THE RENDER: blue everywhere, red nowhere, and
+    # the Source cell's cyan really reaches the screen.
+    _fit_on_screen(_tab)
+    image = _tab.viewport().grab().toImage()
+    for col in range(_tab.columnCount()):
+        painted = _cell_colours(_tab, image, 0, col)
+        assert (
+            painted.get(FOLD_TRANCHE_BG_HEX, 0) > 0
+        ), f"column {col} rendered no blue: {painted}"
+        assert (
+            EXTRACTOR_TRANCHE_BG_HEX not in painted
+        ), f"column {col} rendered the Extractor red: {painted}"
+    assert _cell_colours(_tab, image, 0, 8).get("#00ccff", 0) > 0
 
 
 def test_the_extractor_row_has_no_fire_button(_tab):

@@ -42,7 +42,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.harness.reconcile_position_values import main, reconcile  # noqa: E402
+from dev_harness.harness.reconcile_position_values import main, reconcile  # noqa: E402
 
 
 def _bot(symbol, units, price, cached, qrate=1.0, lots=None):
@@ -167,7 +167,7 @@ class TestItNeverWrites:
         edit away from writing to it."""
         import ast
 
-        import tools.harness.reconcile_position_values as m
+        import dev_harness.harness.reconcile_position_values as m
 
         src = Path(m.__file__).read_text(encoding="utf-8")
         banned = {
@@ -189,7 +189,7 @@ class TestItNeverWrites:
 
     def test_it_constructs_no_project_classes(self):
         """Project defaults resolve into ~/.acervator."""
-        import tools.harness.reconcile_position_values as m
+        import dev_harness.harness.reconcile_position_values as m
 
         src = Path(m.__file__).read_text(encoding="utf-8")
         assert "from src." not in src

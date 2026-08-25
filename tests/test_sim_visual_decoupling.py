@@ -37,6 +37,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from src.exchange.tablet_backend import TabletBackend  # noqa: E402
 from src.gui.simulator_tab.fleet import fleet_replay_panel as frp  # noqa: E402
 
 pytestmark = pytest.mark.skipif(
@@ -93,9 +94,15 @@ class _Progress:
 
 
 class _Controller:
-    def __init__(self, bots=(), exchange=None):
+    def __init__(self, bots=(), exchange=None, tape=None):
         self._bots = list(bots)
         self._exchange = exchange
+        # Issue #110 -- the LEDGER the stat strip reads is the tape,
+        # a different object from the connector the bots trade
+        # through. A stand-in that carries only `_exchange` is what
+        # let the strip read `_balances` off a `CCXTConnector` and
+        # report $0.00 on every run that traded.
+        self._tape = tape
         self.progress = _Progress()
 
 
@@ -129,8 +136,8 @@ class _Panel:
     def _collect_visual_snapshot(self):
         return frp.FleetReplayPanel._collect_visual_snapshot(self)
 
-    def _collect_stat_fields(self, bots, exchange):
-        return frp.FleetReplayPanel._collect_stat_fields(self, bots, exchange)
+    def _collect_stat_fields(self, bots, ledger):
+        return frp.FleetReplayPanel._collect_stat_fields(self, bots, ledger)
 
     def _apply_stat_fields(self, fields):
         return frp.FleetReplayPanel._apply_stat_fields(self, fields)
@@ -283,6 +290,36 @@ def test_producer_is_inert_without_a_controller():
 # ── stat strip: split halves ─────────────────────────────────────
 
 
+def _traded_tape(fills: int = 3) -> TabletBackend:
+    """Return a REAL `TabletBackend` that has filled *fills* orders.
+
+    ISSUE #110. The stand-in this replaced carried `_balances` and
+    `_trades` — `FleetSimExchange`'s private attributes. The Simulator
+    stopped building that class in v3.24.84, so the double kept the
+    test green while the shipped strip read two `getattr` defaults off
+    a `CCXTConnector` and printed Spendable $0.00 / Trades 0 on every
+    run that traded. A double cannot drift from a shape it does not
+    invent, so this is the real ledger.
+
+    Arithmetic, so the expected values are DERIVED and not read back
+    out of the object under test: a flat 10.0 tape at a 0% fee, opened
+    with $1,200 USD + $300 USDC. Each buy of 10 units costs exactly
+    $100, so after three fills USD is $900 and Spendable is $1,200.
+    """
+    rows = [
+        [1_776_778_500_000 + i * 300_000, 10.0, 10.0, 10.0, 10.0, 5.0] for i in range(3)
+    ]
+    tape = TabletBackend(
+        {"BTC/USD": rows},
+        balances={"USD": 1200.0, "USDC": 300.0},
+        fee_rate_by_symbol={"BTC/USD": 0.0},
+    )
+    for _ in range(fills):
+        order = tape.create_order("BTC/USD", "market", "buy", 10.0)
+        assert order["status"] == "closed", order["status"]
+    return tape
+
+
 def test_stat_fields_aggregate_across_bots():
     bots = [
         _Bot(
@@ -304,14 +341,13 @@ def test_stat_fields_aggregate_across_bots():
             total_folded_usd=400.0,
         ),
     ]
-    ex = _Exchange(
-        balances={"USD": 1200.0, "USDC": 300.0}, trades=[object(), object(), object()]
-    )
-    panel = _Panel(_Controller(bots, ex))
+    tape = _traded_tape(fills=3)
+    panel = _Panel(_Controller(bots, tape=tape))
 
-    f = _call("_collect_stat_fields", panel, bots, ex)
+    f = _call("_collect_stat_fields", panel, bots, tape)
 
-    assert f["Spendable"] == "$1,500.00"  # USD + USDC
+    # $1,200 + $300 opening, less three $100 buys at a 0% fee.
+    assert f["Spendable"] == "$1,200.00"
     assert f["Realised"] == "$150.00"
     assert f["Locked"] == "$36,000.00"  # .5*60000 + 2*3000
     assert f["Mature"] == "$1.00"
@@ -323,10 +359,67 @@ def test_stat_fields_aggregate_across_bots():
     assert f["Exch"] == "1"
 
 
+def test_the_strip_reports_the_cash_and_the_fills_a_traded_tape_holds() -> None:
+    """ISSUE #110 — the strip must show what the ledger actually holds.
+
+    The two fields this pins are the two the sweep found reading
+    `FleetSimExchange`'s private attributes off a `CCXTConnector`.
+    Both defaulted, so a Simulator that spent $300 and filled three
+    orders reported `Spendable $0.00` and `Trades 0` — numbers a
+    healthy fresh strip also shows, which is why nine months of runs
+    looked normal.
+
+    Asserted as VALUES against hand-computed arithmetic, never as
+    "non-zero": zero IS the defect, and a `!= 0` check passes on any
+    wrong number.
+    """
+    tape = _traded_tape(fills=3)
+    panel = _Panel(_Controller([], tape=tape))
+
+    f = _call("_collect_stat_fields", panel, [], tape)
+
+    assert f["Spendable"] == "$1,200.00", (
+        f"the strip reported Spendable {f['Spendable']} against a tape "
+        f"ledger holding {tape.balances()}"
+    )
+    assert f["Trades"] == "3", (
+        f"the strip reported {f['Trades']} trade(s) against a tape "
+        "ledger holding 3 fills"
+    )
+
+
+def test_the_snapshot_strip_reads_the_tape_and_not_the_exchange() -> None:
+    """ISSUE #110 — WHICH object the frame took its numbers from.
+
+    The controller holds two: `_exchange`, the `CCXTConnector` the bots
+    trade through, and `_tape`, the `TabletBackend` that owns the
+    ledger. The strip was pointed at the first and read two `getattr`
+    defaults off it.
+
+    Both stand-ins here carry numbers, and they DISAGREE, so this
+    separates "read the ledger" from "read something". A test whose two
+    sources agree cannot tell which one answered.
+    """
+    tape = _traded_tape(fills=3)
+    connector = _Exchange(balances={"USD": 7.0}, trades=[object()])
+    panel = _Panel(_Controller([_Bot("BTC/USD")], connector, tape=tape))
+
+    f = _call("_collect_visual_snapshot", panel)["stat_fields"]
+
+    assert f["Spendable"] == "$1,200.00", (
+        f"the frame reported Spendable {f['Spendable']}; the tape holds "
+        f"$1,200.00 and the connector stand-in holds $7.00"
+    )
+    assert f["Trades"] == "3", (
+        f"the frame reported {f['Trades']} trade(s); the tape holds 3 "
+        "and the connector stand-in holds 1"
+    )
+
+
 def test_stat_fields_are_all_strings():
     """The consumer passes these straight to a Qt label setter."""
     panel = _Panel(_Controller())
-    f = _call("_collect_stat_fields", panel, [], _Exchange())
+    f = _call("_collect_stat_fields", panel, [], _traded_tape(fills=0))
     assert f and all(isinstance(v, str) for v in f.values())
 
 
@@ -334,7 +427,7 @@ def test_stat_fields_cover_every_strip_slot():
     """A field the producer forgets renders as a dash forever — the
     exact defect v3.24.9 was opened against."""
     panel = _Panel(_Controller())
-    f = _call("_collect_stat_fields", panel, [], _Exchange())
+    f = _call("_collect_stat_fields", panel, [], _traded_tape(fills=0))
     assert set(f) == {
         "Spendable",
         "Realised",
@@ -361,7 +454,8 @@ def test_apply_without_a_strip_is_a_noop():
     _call("_apply_stat_fields", panel, {"Bots": "7"})  # must not raise
 
 
-def test_collect_tolerates_a_missing_exchange():
+def test_collect_tolerates_a_missing_ledger() -> None:
+    """No tape yet is the ONLY state in which zeros are honest."""
     panel = _Panel(_Controller())
     f = _call("_collect_stat_fields", panel, [], None)
     assert f["Spendable"] == "$0.00"

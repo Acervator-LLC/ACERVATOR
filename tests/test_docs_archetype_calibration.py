@@ -37,7 +37,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from tools.harness.docs_archetype import (  # noqa: E402
+from dev_harness.harness.docs_archetype import (  # noqa: E402
     _normalize_proselint_severity,
     _strip_markdown_code,
 )
@@ -150,7 +150,7 @@ def test_code_heavy_audit_doc_passes_the_gate(tmp_path):
     """An audit report whose body is quoted source code is the normal
     deliverable in this repo. It must not be blocked for containing
     straight quotes inside its code samples."""
-    from tools.harness.docs_archetype import DocsArchetype
+    from dev_harness.harness.docs_archetype import DocsArchetype
 
     doc = tmp_path / "audit.md"
     doc.write_text(

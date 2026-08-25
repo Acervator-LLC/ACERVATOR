@@ -5,7 +5,12 @@ Deploys ACRV.sol and CompetitionRegistry.sol to Base Sepolia (testnet)
 or Base Mainnet.
 
 Prerequisites:
-    pip install web3 eth-account py-solc-x
+    pip install -e ".[contracts]"
+
+web3, eth-account and py-solc-x are an OPT-IN extra. Issue #94 made
+`pyproject.toml` the one place a package name lives, and issue #92 put
+these three in it. This file names no package, so the set it needs and
+the set that installs cannot drift apart.
 
 Usage:
     # Testnet (Base Sepolia — do this first)
@@ -23,6 +28,7 @@ After deployment, update base_config.py with the returned contract addresses.
 Get test ETH: https://www.coinbase.com/faucets/base-ethereum-goerli-faucet
               https://faucet.quicknode.com/base/sepolia
 """
+
 import argparse
 import json
 import os
@@ -35,23 +41,45 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.competition.base_config import BASE_MAINNET, BASE_SEPOLIA
 
+# Issue #92. What stood here was `install_deps()`. It held the package
+# names ["web3", "eth-account", "py-solc-x"] as a literal list and ran
+# `pip install --break-system-packages` on each one that would not
+# import, into whatever interpreter happened to be running. That is two
+# defects in six lines: a ninth hand-copied dependency list of the kind
+# issue #94 removed from eight files, and a script that mutates the
+# operator's live environment without being asked. The live Acervator
+# runs from that environment.
+#
+# The three imports below are now GUARDED. Each sits inside `try:` with
+# an `except ImportError` that names the extra and stops. The script
+# states what to install; it does not install it.
+MISSING_EXTRA = """
+  {}
 
-def install_deps():
-    """Install web3, eth-account, and solcx if not present."""
-    import subprocess
-    for pkg in ["web3", "eth-account", "py-solc-x"]:
-        try:
-            __import__(pkg.replace("-", "_"))
-        except ImportError:
-            print(f"  Installing {pkg}...")
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", pkg,
-                "--break-system-packages", "-q"])
+  The Base-chain deployment tools are an OPT-IN extra and are not
+  part of an Acervator install. Add them, and nothing else, with:
+
+      pip install -e ".[contracts]"
+
+  The package names come from pyproject.toml, which is the one
+  dependency source. Do not install them by hand.
+"""
 
 
 def compile_contracts(contracts_dir: str) -> dict:
     """Compile ACRV.sol and CompetitionRegistry.sol using solcx."""
-    from solcx import compile_files, install_solc, get_installed_solc_versions
+    # `type: ignore` is warranted here and is not hiding a finding. The
+    # distribution is `py-solc-x`, it is an opt-in extra, and it is
+    # absent from every environment this project checks by design. The
+    # `except` below is the behaviour that tolerates the absence.
+    try:
+        from solcx import (  # type: ignore[import-not-found]
+            compile_files,
+            get_installed_solc_versions,
+            install_solc,
+        )
+    except ImportError as exc:
+        raise SystemExit(MISSING_EXTRA.format(exc)) from exc
     SOLC = "0.8.20"
     installed = get_installed_solc_versions()
     if not any(str(v) == SOLC for v in installed):
@@ -65,10 +93,10 @@ def compile_contracts(contracts_dir: str) -> dict:
             str(contracts_path / "ACRV.sol"),
             str(contracts_path / "CompetitionRegistry.sol"),
         ],
-        output_values       = ["abi", "bin"],
-        solc_version        = SOLC,
-        allow_paths         = str(contracts_path),
-        import_remappings   = [
+        output_values=["abi", "bin"],
+        solc_version=SOLC,
+        allow_paths=str(contracts_path),
+        import_remappings=[
             "@openzeppelin=node_modules/@openzeppelin",
             "@chainlink=node_modules/@chainlink",
         ],
@@ -78,9 +106,12 @@ def compile_contracts(contracts_dir: str) -> dict:
 
 def deploy(network: str, private_key: str, contracts_dir: str):
     """Full deployment flow: compile → deploy ACRV → deploy Registry → verify."""
-    install_deps()
-    from web3 import Web3
-    from eth_account import Account
+    # Guarded for the reason written above compile_contracts().
+    try:
+        from eth_account import Account  # type: ignore[import-not-found]
+        from web3 import Web3  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise SystemExit(MISSING_EXTRA.format(exc)) from exc
 
     cfg = BASE_SEPOLIA if network == "sepolia" else BASE_MAINNET
     print(f"\n  ══════════════════════════════════════")
@@ -118,12 +149,14 @@ def deploy(network: str, private_key: str, contracts_dir: str):
         print(f"\n  Deploying {name}...")
         contract = w3.eth.contract(abi=abi, bytecode=bytecode)
         nonce = w3.eth.get_transaction_count(account.address)
-        tx = contract.constructor(*args).build_transaction({
-            "from":    account.address,
-            "nonce":   nonce,
-            "chainId": cfg.chain_id,
-        })
-        signed  = account.sign_transaction(tx)
+        tx = contract.constructor(*args).build_transaction(
+            {
+                "from": account.address,
+                "nonce": nonce,
+                "chainId": cfg.chain_id,
+            }
+        )
+        signed = account.sign_transaction(tx)
         tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
         print(f"  Tx: {cfg.explorer_url}/tx/{tx_hash.hex()}")
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
@@ -134,12 +167,12 @@ def deploy(network: str, private_key: str, contracts_dir: str):
         return addr
 
     # Deploy ACRV first (registry address not yet known — use dummy)
-    acrv_key     = [k for k in compiled if "ACRV" in k and "Registry" not in k][0]
-    reg_key      = [k for k in compiled if "CompetitionRegistry" in k][0]
-    acrv_abi     = compiled[acrv_key]["abi"]
-    acrv_bin     = compiled[acrv_key]["bin"]
-    reg_abi      = compiled[reg_key]["abi"]
-    reg_bin      = compiled[reg_key]["bin"]
+    acrv_key = [k for k in compiled if "ACRV" in k and "Registry" not in k][0]
+    reg_key = [k for k in compiled if "CompetitionRegistry" in k][0]
+    acrv_abi = compiled[acrv_key]["abi"]
+    acrv_bin = compiled[acrv_key]["bin"]
+    reg_abi = compiled[reg_key]["abi"]
+    reg_bin = compiled[reg_key]["bin"]
 
     # STEP 1: Deploy a temporary ACRV with a placeholder registry
     # We'll deploy the real registry next and update the config
@@ -157,8 +190,9 @@ def deploy(network: str, private_key: str, contracts_dir: str):
     # Deploy CompetitionRegistry pointing to the ACRV contract
     btc_feed = cfg.chainlink_btc_usd or "0x" + "0" * 40
     eth_feed = cfg.chainlink_eth_usd or "0x" + "0" * 40
-    reg_addr = deploy_contract("CompetitionRegistry", reg_abi, reg_bin,
-                               acrv_addr, btc_feed, eth_feed)
+    reg_addr = deploy_contract(
+        "CompetitionRegistry", reg_abi, reg_bin, acrv_addr, btc_feed, eth_feed
+    )
 
     # Summary
     print(f"\n  ══════════════════════════════════════")
@@ -170,22 +204,22 @@ def deploy(network: str, private_key: str, contracts_dir: str):
     print(f"  ══════════════════════════════════════")
     print(f"\n  Update src/competition/base_config.py:")
     if network == "sepolia":
-        print(f"  BASE_SEPOLIA.acrv_address     = \"{acrv_addr}\"")
-        print(f"  BASE_SEPOLIA.registry_address = \"{reg_addr}\"")
+        print(f'  BASE_SEPOLIA.acrv_address     = "{acrv_addr}"')
+        print(f'  BASE_SEPOLIA.registry_address = "{reg_addr}"')
     else:
-        print(f"  BASE_MAINNET.acrv_address     = \"{acrv_addr}\"")
-        print(f"  BASE_MAINNET.registry_address = \"{reg_addr}\"")
+        print(f'  BASE_MAINNET.acrv_address     = "{acrv_addr}"')
+        print(f'  BASE_MAINNET.registry_address = "{reg_addr}"')
 
     # Write deployment record
     record = {
-        "network":        cfg.name,
-        "chain_id":       cfg.chain_id,
-        "deployer":       account.address,
-        "deployed_at":    time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "acrv_address":   acrv_addr,
+        "network": cfg.name,
+        "chain_id": cfg.chain_id,
+        "deployer": account.address,
+        "deployed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "acrv_address": acrv_addr,
         "registry_address": reg_addr,
-        "btc_feed":       btc_feed,
-        "eth_feed":       eth_feed,
+        "btc_feed": btc_feed,
+        "eth_feed": eth_feed,
     }
     record_path = Path("deployment_record.json")
     record_path.write_text(json.dumps(record, indent=2))
@@ -193,15 +227,19 @@ def deploy(network: str, private_key: str, contracts_dir: str):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Deploy ACRV contracts to Base")
-    parser.add_argument("--network", choices=["sepolia", "mainnet"],
-                        default="sepolia",
-                        help="Target network (default: sepolia)")
-    parser.add_argument("--key", default=None,
-                        help="Private key (or set ACERVATOR_PRIVATE_KEY env var)")
-    parser.add_argument("--contracts-dir", default="contracts",
-                        help="Path to contracts directory")
+    parser = argparse.ArgumentParser(description="Deploy ACRV contracts to Base")
+    parser.add_argument(
+        "--network",
+        choices=["sepolia", "mainnet"],
+        default="sepolia",
+        help="Target network (default: sepolia)",
+    )
+    parser.add_argument(
+        "--key", default=None, help="Private key (or set ACERVATOR_PRIVATE_KEY env var)"
+    )
+    parser.add_argument(
+        "--contracts-dir", default="contracts", help="Path to contracts directory"
+    )
     args = parser.parse_args()
 
     key = args.key or os.environ.get("ACERVATOR_PRIVATE_KEY")
@@ -213,7 +251,8 @@ if __name__ == "__main__":
     if args.network == "mainnet":
         confirm = input(
             "\n  WARNING: Deploying to BASE MAINNET. This costs real ETH.\n"
-            "  Type 'DEPLOY MAINNET' to confirm: ")
+            "  Type 'DEPLOY MAINNET' to confirm: "
+        )
         if confirm.strip() != "DEPLOY MAINNET":
             print("  Deployment cancelled.")
             sys.exit(0)

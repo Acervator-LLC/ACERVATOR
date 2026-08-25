@@ -11,6 +11,263 @@ from the work actually performed.
 
 ---
 
+## 3.26.0
+
+**Why this version exists.** Forty-three merges landed after `3.25.8`, and the
+version string did not move. The rule is: gate first, then bump. The gate ran.
+The bump did not follow. A rebuild would have reported the old version.
+
+This is a minor bump, not a patch. The application reports 74 signals where it
+reported 40. Six tabs that reported nothing now report. The package changed its
+name. The version now lives in one file and nowhere else.
+
+### Faults you could see, now repaired
+
+**A bot showed a BUY on a position that was already above its target.**
+Target Delta is the current balance from the exchange minus the target balance
+in the application. The first number did not come from the exchange. The bot
+kept its own count of what it held, and it refused every upward correction. A
+bot whose count fell behind the wallet traded on the stale number for as long
+as it ran. Bot `95340bda` counted 14,131 units against a wallet of 15,778. The
+bot had bought those 1,647 units itself and had failed to record them. The Ammo
+cell then showed `buy $16.27` on a position $17 ABOVE target. The signal was
+inverted. The bot now adopts the exchange figure when its own count is low. It
+still refuses a surplus it cannot attribute, and it now states the reason. The
+line `Resetting internal state to exchange reality` printed before the bot made
+the decision. It printed 735 times on BILL while the bot preserved instead. That
+line is gone.
+
+**The same wrong number came back at every launch.** Three more paths reached
+that first number and were left open. Start-up re-seeded holdings with the
+lower of the wallet and the book, which can only pull the number DOWN. Every
+launch re-seeded 14,131 against the 15,778 wallet. A downward correction is
+unchanged, and an empty book still starts at zero. The correction also measured
+its top-up from the wrong counter, so the bot's two counts of the same holding
+could stand 869 units apart. The correction lot could also take a cost basis of
+0.00 on a bot that had not yet completed a priced tick. A cost of zero claims
+unlimited profit against every price and can arm a sell. One writer now creates
+that lot, and it refuses a cost that is not a finite positive number.
+
+**A small rise in Target Balance destroyed accrued growth.** The Target Balance
+box shows the anchor, which is the number you typed. The traded target grows
+above the anchor as the bot accumulates. The top-up compared your new number
+against the GROWN target instead of the anchor, so the two were never in the
+same frame. Live bot IMU on 2026-08-21 held an anchor of $50.00 and a target of
+$63.5297. Raising the displayed $50 to $60 compared 60 against 63.5297, took the
+collapse branch, and set BOTH to 60. That destroyed $13.5297 of accrued growth
+and lowered the traded target below where it already stood. The position then
+sat above target, the Delta turned positive, and the bot folded the excess. 35
+of the 38 live bots carried growth, and six carried more than $5. The comparison
+now uses the anchor. The top-up policy itself is unchanged, and only inputs
+inside the defect window behave differently.
+
+**Starting a bot froze the window for about two minutes.** The connection to the
+exchange ran on the same thread that draws the window, so the application
+stopped repainting until the connection finished. Measured at about 111 seconds.
+The connection now runs off that thread.
+
+**A bot safety check reported green on every tick and could never fail.** The
+capital reservation check compared the requested amount with itself. Two
+identical numbers are always equal, so the check passed on every bot, on every
+tick, for its whole life. It now compares what the bot needs against what the
+reservation registry holds, and it reports a fault when the held amount leaves
+the 1% band the update path is supposed to keep it inside.
+
+**A command could reach the wrong bot after the tables refreshed.** The bot
+tables rewrite every row every two seconds. The highlight tracked a row number,
+not a bot. Deleting one bot moves every row below it, so the highlight then sat
+over a different bot, and Stop or Start went to that bot. Driven before the
+repair, a Stop aimed at `bot-AAA` reached `bot-BBB`. The highlight now follows
+the bot. If the selected bot leaves the fleet, the selection clears and the
+application asks you to choose a bot. The repair sits on the table itself, so
+the Simulator's copy of the table gets it too.
+
+**A command could reach the wrong bot when you pressed a Detail button.** The
+Detail button sits inside a table cell, and pressing a cell widget changes no
+row selection. The window then fell back to the other table's selection and sent
+the command there. Driven before the repair: select `scrum-1`, press Detail on
+the Extractor table's row, press Stop, and Stop reached `scrum-1`. The Detail
+button now selects its own row first, on both tables. The same repair also
+corrected a misroute inside one table, where Detail on row 1 with row 0 selected
+commanded row 0.
+
+**Console Pause stopped only one pane.** Pause stopped the log pane and left the
+signals pane scrolling, although its own description promised that one control
+quiets both. Driven on real widgets, the signals pane grew from 10 to 51 blocks
+over four passes while the log pane held at 10. One control now quiets both.
+
+**The signals pane discarded records and said nothing.** Each pass drew only the
+newest 200 records and stepped over everything older. Measured: 250 records
+showed 200 and dropped 50; 5,000 records showed 200 and dropped 4,800. Nothing
+on the screen said the other records existed. The system never lost them. It
+writes every record to disk as it arrives. The pane now stays current and draws
+a marked gap line that counts what it skipped and names the file that holds it.
+
+**The Market Inspector had no refresh limit.** Its own description promised a
+gap of 15 minutes between network fetches and named the Refresh button as the
+way to override it. Both halves were false. The limit was declared and never
+read, so every refresh went to the venue, and the button passed an override into
+a function that ignored it. The limit now works, the button overrides it, and
+the panel reports the age of the data and whether it came from the network or
+from cache. An empty result is not cached, because that would serve nothing for
+15 minutes and look like a working feed.
+
+**One stopped exchange tab could hide behind a healthy one.** Two tabs of the
+same kind run the same line, so their rate-limited reports collapsed into one
+counter. Driven on two real tabs, a healthy pair and a pair with one tab's
+reporting dead produced the identical record. Each tab now declares which
+exchange it belongs to, and each one reports separately.
+
+**The History tab used a display check that never worked without a screen.** Its
+fallback bound four Qt names to nothing and then called them at thirteen sites,
+so the tab imported and then failed at the first call. It now uses the same check as the
+rest of the interface modules.
+
+### The Simulator can no longer overwrite your saved fleet
+
+On 2026-08-22 a full test run replaced `~/.acervator/simulator_bot_state.json`,
+which held the operator's saved Simulator fleet, with one synthetic test bot.
+That state cannot be rebuilt. The Simulator built its save path when the module
+loaded and accepted no override, so any code that drove the Simulator wrote into
+the live runtime folder. The writer was found by experiment: a test that clicks
+Load on a real replay panel. The Simulator now builds the path at the moment of
+the save, and it honours a directory override that the test suite sets before it
+collects any test. The shipping application is unchanged, because the override defaults to
+the same folder. The live fleet file is refused outright, so a redirect cannot
+become a way back onto the operator's bots.
+
+### The application now reports on itself
+
+The application reported 40 signals. It reports 74. Six tabs that reported
+nothing now report: Trading, Exchange, Console, Asset Charts, API Tester and the
+Bot Swarm. The History tab went from one signal to seven. Each signal states
+what it checked, what it expected, what it found, and whether that passed.
+
+Every signal now also declares whether it can carry a timing, in one of four
+fixed terms. A number on all 74 is not possible. 26 of them do not follow a
+completed operation, and a timing on one of those would be invented. 21 signals
+measure a real elapsed time, and every other signal states which of three
+reasons applies to it. Three new gate rules hold each declaration to the code it
+describes, in both directions, so the column cannot rot.
+
+One real Simulator run then proved the network through the operator's own path:
+38 real bots and 33 Smart Wires loaded, 38 simulated bots spawned from the real
+Stone Tablets, 15,211 of 15,212 candles played, 414 simulated trades, 234,139
+bot ticks, 0 exceptions, and 3,799,113 records observed. 36 of the 74 signals
+fired. Every one of the 36 carried the name, the type and the site the register
+declares. Every timing agreed with its declaration in both directions. Nothing
+fired that the register does not list. The live tree was sandboxed and checked
+after the run: the same 478 files under `~/.acervator/`, no new files under
+`~/.acervator_logs/`, and the credentials never read.
+
+### The release gate now enforces what it claimed
+
+The gate ran when asked, and nothing made it run before code merged. It now
+stamps the exact commit it proved, and a push is refused for any commit the gate
+has not stamped. A green gate on a dirty tree is not stamped, because it
+measured content that is in no commit.
+
+The gate also checks the signal network. Every signal in the code must have a
+register row, and every row must have a signal in the code, so a signal cannot
+be deleted or invented in silence. Two further rules reject broken checks at the
+gate. The first rejects a check whose two sides are the same expression, which
+is exactly the fault the capital reservation check carried. The second restricts
+timings to the one kind of check that can honestly carry one.
+
+The gate's own self-tests were not sound. Each rule had a pair of controls, and
+the half that proves a rule FIRES matched a violation anywhere in the tree, so
+it could pass on somebody else's defect. Both halves are now scoped to the
+planted case, and the suite runs them.
+
+The repository now stores and checks out every text file with LF line endings. A
+fresh clone on Windows used to write broken shell scripts, including the script
+that runs the gate before a push.
+
+### One version, one name
+
+`src/__init__.py` is the only place the version is written. The entry point, the
+packaging file, both screens and the manual generator all read it. Nothing else
+declares a version. Before this, five other places stated a version, and every
+one had gone stale: the packaging file said `1.0.0`, the README said `3.15.94`,
+the splash screen said `3.9.0`, the investor screen said `3.7.0`, and the manual
+generator said `3.1.98`. Nothing compared any of them with the package, so they
+rotted unseen. A file named `ver.txt` at the repository root held a sixth
+number. A search of
+every file type found no reader for it anywhere in the tree, so this release
+deletes it.
+
+New tests hold the rule: a file either imports the version or states a value
+equal to it, and there is no third option. One value is exempt, because it
+records which English manual the Japanese text was translated from, which is a
+true statement about the past. That exemption is earned by a naming convention,
+and its own test keeps the convention from becoming a hiding place.
+
+The project is named `acervator`. The old name was `quantum-auto-trader`, which
+is not the product. The installed command is `acervator`.
+
+The developer note at the top of `src/__init__.py` told the reader to bump a
+second copy in `main.py` and keep the two in step. The entry point stopped
+holding its own version some time ago, so that instruction was false and would have restored
+the drift at the next release. Both notes now state what the code does.
+
+### The development harness moved out of the product path
+
+The harness moved from `tools/harness/` to `dev_harness/`. Nothing was deleted,
+disabled or made optional. The harness stays fully in use. The move touched 47 caller
+files and 160 references. Five callers built the old path from parts, so no text
+search could find them. One of those five was the migration tool itself, which
+would have skipped a moved file in silence, and it would have reported nothing. A new test reads the caller
+files and requires every harness module they name to import, so a caller left
+behind by a future move fails at the gate.
+
+### Four files cleared, with no suppressions
+
+The splash screen, the investor screen, the Japanese manual generator and the
+version sweep carried 44 high findings between them. All four are now clear, and
+no finding was silenced. The splash screen seeded the shared random number
+generator with a fixed value, which changed the numbers every other module drew
+from it. That call is gone, and both screens now draw from the operating system
+entropy source. Ten unused imports were deleted. Both screens render across
+their whole timeline with frame counts that match the baseline exactly, and the
+Japanese manual builds a document that is byte-identical to the baseline once
+the creation date and the document identifier are normalised.
+
+### Reported, and NOT fixed
+
+Everything in this section is a KNOWN fault. This release RECORDS it. This
+release does NOT repair it.
+
+**The investor screen's Proof chapter has never drawn its chart.** The chart
+method in `investor_screen.py` calls two methods on itself that exist nowhere in
+the tree. Every attempt raises, so 39 of the 401 frames in that presentation
+fail. This is not new damage. The chart has never rendered.
+
+**One of the 74 signals cannot fire anywhere.** The signal that records a Paper
+run in the Bot Swarm has no call, no attribute reference and no mention of any
+kind anywhere in the source. Its sibling, which records a Simulator run, fired
+in the proving run. Until that signal is wired, silence from it means nothing.
+
+**Coverage measurement is blind to the whole interface.** `pyproject.toml` omits
+`src/gui/*` from coverage. Every window, tab and panel sits outside the coverage
+number, and a coverage figure quoted for this application does not
+describe the interface at all.
+
+**An Asset Charts panel keeps fetching the old pair after a bot changes pair.**
+The panel relabels its title from the new pair but keeps the pair it stored at
+creation, and that stored pair drives the request to the exchange. The
+chart shows the new pair's name above the old pair's candles, and it never
+corrects itself. This release DETECTS and REPORTS the fault. Treat a chart whose
+bot changed pair as showing wrong data.
+
+**Two counts of one holding can disagree inside the 0.5% band and be called
+aligned.** The audit reads the higher of the two internal counts against the
+wallet. With a scalar of 15,778, a book of 14,131 and a wallet of 15,778, it
+reports agreement and leaves the two internal counts 1,647 apart. This is a
+different path from the correction repaired above, and it needs its own decision
+about what a disagreement inside a band should do.
+
+---
+
 ## 3.25.8
 
 **Why this version exists.** A package was cut at `3.25.7`, and four

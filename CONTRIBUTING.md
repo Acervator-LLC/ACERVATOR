@@ -6,11 +6,13 @@ This is v1 — built by one person. The battery is 39/39 but one person's perspe
 
 1. **Honesty over flattery.** If something doesn't work, say so. Failed experiments are as valuable as successes.
 
-2. **Tests first.** Any change to the trading engine or exchange logic ships with tests. Add or update tests under `tests/`, and make the full suite green (`pytest`) before you open a PR. CI runs the same suite; a red suite blocks the merge.
+2. **Gate first, then tests.** Any change to the trading engine or exchange logic ships with tests, and must leave the release gate green. Run `python -m dev_harness.harness.check_release_readiness` before your change, save the `[OK] Release-ready (vX.Y.Z, N tests)` line, make your change, run it again. Put both lines in your PR. A test count that drops without an explanation is a failed run. CI runs the same suite; a red suite blocks the merge.
 
 3. **Don't break the GUI without fixing it.** GUI changes must not alter widget dimensions outside the changed widget. Check adjacent layout elements before and after.
 
 4. **Nothing is written to the repo by a test.** Tests verify behaviour in memory and route any file output to a temp dir (`tmp_path`/`tempfile`). Never write into the working tree, `~/.acervator`, or `~/.acervator_logs` from a test — `tests/conftest.py` guards this.
+
+5. **The changelog is the record.** Significant changes — new mechanisms, new battery results, new strategy comparisons — go in `CHANGELOG.md`, with the supporting measurement written up under `docs/audits/`.
 
 ## What We're Looking For
 
@@ -60,9 +62,34 @@ not formatted, or that trips a lint rule, will fail there.
 
 1. Fork the repo, create a branch: `git checkout -b feature/your-feature-name`
 2. Make your changes, with tests
-3. Run `black`, `flake8`, and `pytest` locally — all green
-4. Submit the PR with a clear description of what changed and why
-5. CI (lint + tests) must pass before the PR can merge
+3. Run `black`, `flake8` and `pytest` locally — all three green. CI runs the same three and blocks the merge on any of them.
+4. Run every archetype that matches a file you touched, one file per invocation: `python -m dev_harness.harness.coding_archetype PATH` for Python, `python -m dev_harness.harness.docs_archetype PATH` for Markdown. Each must report `passed=true` with no high or critical finding.
+5. Put the gate line and the archetype verdicts in your PR description
+6. Submit the PR with a clear description of what changed and why
+7. CI (lint + tests) must pass before the PR can merge
+
+## Running the Tests
+
+```bash
+# The whole suite, the way the gate runs it
+python -m dev_harness.harness.check_release_readiness
+
+# What CI runs: formatting, lint, then the fast lane
+black --check src tests tools *.py
+flake8 src tests tools *.py
+pytest -n auto -m "not slow and not archetype" -q
+
+# One test file while you work
+python -m pytest tests/test_your_file.py -q
+
+# One file through its archetype (one file per invocation)
+python -m dev_harness.harness.coding_archetype src/your_file.py
+
+# Every runtime pin still has a registry row
+python -m tools.emitter_registry_check
+```
+
+Do not run pytest with a friendlier invocation than the gate uses. A pass the gate cannot reproduce is not a pass.
 
 ## Questions
 

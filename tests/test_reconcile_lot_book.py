@@ -404,19 +404,54 @@ def test_a_scalar_above_the_book_still_reconciles_as_it_always_did():
     assert bot._current_holdings == pytest.approx(40.0)
 
 
-def test_drift_up_above_both_counters_is_still_not_claimed():
-    """v3.23.43 ADOPTS policy, untouched by this unit."""
+def test_drift_up_above_both_counters_is_adopted_from_the_exchange():
+    """The venue holds 60; the book is the authority on cost basis only.
+
+    This test asserted the opposite until 2026-08-22 -- that the bot
+    kept 48.73 and left the book untouched. That refusal is what let
+    bot 95340bda trade against 14131 units while 15778 sat in the
+    wallet, and it inverted the Target Delta. Operator: "ANYTHING that
+    induces disagreement with exchange values is broken."
+
+    The surplus is still measured against the BOOK, not the scalar --
+    that part of this unit is unchanged.
+    """
     lots = [{"units": 54.05340782, "initial_buy_price": 1.10}]
     bot = _bot(lots=lots, scalar=48.73, venue=60.0)
-    before = copy.deepcopy(bot._main_lots)
+    # v3.25.10 — the adopt refuses to book a lot with no price, so the
+    # fixture now carries the one a running bot always has. Without
+    # this the test measured the deferral path while claiming to
+    # measure the adopt.
+    bot.stats = type("S", (), {"current_price": 1.10, "position_value": 0.0})()
     assert _run(bot) is True
     messages = _messages(bot)
     assert any("DRIFT UP" in m for m in messages)
     assert "5.94659218" in " ".join(
         messages
     ), "the surplus is measured against the BOOK now, not the scalar"
-    assert bot._main_lots == before
+    assert bot._current_holdings == pytest.approx(60.0)
+    assert sum(float(l["units"]) for l in bot._main_lots) == pytest.approx(60.0)
+
+
+def test_drift_up_without_a_price_defers_instead_of_booking_a_zero_basis():
+    """A lot at ``initial_buy_price: 0.0`` is not a cheap entry.
+
+    It reads as unlimited profit against every price this bot will ever
+    see, and the scrum arms on profit. ``stats.current_price`` is 0.0
+    on a bot that has not completed a priced tick, and a post-failure
+    reconcile reaches the adopt in exactly that state.
+
+    WHAT A FAILURE HERE WOULD MEAN. The adopt is writing a cost basis
+    it never observed, and the position it fabricates is one the scrum
+    can sell.
+    """
+    lots = [{"units": 54.05340782, "initial_buy_price": 1.10}]
+    bot = _bot(lots=lots, scalar=48.73, venue=60.0)
+    before = copy.deepcopy(bot._main_lots)
+    assert _run(bot) is True
+    assert bot._main_lots == before, "no lot may be written without a price"
     assert bot._current_holdings == 48.73
+    assert any("ADOPTION DEFERRED" in m for m in _messages(bot))
 
 
 # ── THE CLOSED INPUT TABLE ──────────────────────────────────────────

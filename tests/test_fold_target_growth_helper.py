@@ -17,6 +17,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from src.trading.scrumming_bot import ScrummingBot
+
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
@@ -150,7 +152,14 @@ def _make_stub(
         def emit(self, *_a, **_kw):
             pass
 
-    stub = SimpleNamespace()
+    # Issue #106 - the helper reads `cycle_growth_cap_usd`, and a
+    # property cannot live on a bare SimpleNamespace INSTANCE. A
+    # subclass carries it on the class, where `property` is a data
+    # descriptor and therefore wins over the instance dict.
+    class _Stub(SimpleNamespace):
+        cycle_growth_cap_usd = ScrummingBot.cycle_growth_cap_usd
+
+    stub = _Stub()
     stub._target_balance = target
     stub._anchor_target_balance = anchor
     stub._fold_cycle_cap_consumed = fold_cycle_cap_consumed

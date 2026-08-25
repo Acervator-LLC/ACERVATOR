@@ -42,8 +42,21 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 # Install dependencies
+#
+# Issue #94 - this line used to hand-copy 14 package names. It named
+# `requests`, which no file in the repository imports, and it did NOT
+# name `defusedxml`, which src/gui/crypto_news_ticker.py imports at
+# module level. The names now come from pyproject.toml, which is the one
+# source. `tools/deps.py build` answers the core set plus the `build` and
+# `report` extras, which is what a PyInstaller HOST needs.
 echo "[1/4] Installing dependencies..."
-pip3 install pyinstaller PySide6 ccxt cryptography keyring pandas numpy ta tomli_w aiohttp certifi requests reportlab pillow --quiet
+DEPS="$(python3 -m tools.deps requirements build)" || {
+    echo "ERROR: could not read the dependency set from pyproject.toml"
+    exit 1
+}
+[ -n "$DEPS" ] || { echo "ERROR: empty dependency set; refusing to build"; exit 1; }
+# shellcheck disable=SC2086
+pip3 install $DEPS --quiet
 
 # Build the .app
 echo "[2/4] Building ${APP_NAME}.app..."

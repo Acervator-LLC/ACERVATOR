@@ -38,6 +38,8 @@ from __future__ import annotations
 
 import ast
 import sys
+
+import pytest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -45,6 +47,18 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 PANEL = REPO_ROOT / "src" / "gui" / "simulator_tab" / "fleet" / "fleet_replay_panel.py"
+
+# `FleetReplayPanel` is declared only when PySide6 imports. The checks
+# at the bottom of this file drive one of its methods, so they state
+# what they need rather than failing on an absent GUI toolkit.
+try:
+    from src.gui.simulator_tab.fleet.fleet_replay_panel import (  # noqa: F401
+        FleetReplayPanel as _FleetReplayPanel,
+    )
+
+    _HAS_QT_PANEL = True
+except ImportError:  # pragma: no cover - PySide6 absent
+    _HAS_QT_PANEL = False
 
 
 def _panel_fn(name: str):
@@ -365,3 +379,126 @@ class TestSN34IsExplicitlyOutOfScope:
         main_src = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
         assert "def pump_async" in main_src
         assert "QTimer" in main_src
+
+
+# ── the parity report the panel prints ───────────────────────────
+#
+# `_run_parity_comparison` pulled its sim trades off
+# `self._controller._exchange._trades`. `_trades` belonged to
+# `FleetSimExchange`; since v3.24.84 `_exchange` is a `CCXTConnector`
+# and has no such attribute, so the `getattr` default made the list
+# EMPTY on every run and this method always took its "sim produced 0
+# trades — 0% reproduction" branch. The measurement the parity harness
+# exists for had never run on a real tape.
+#
+# The check below drives the method itself rather than reading the
+# source, because the defect was a value, not a shape: the old code
+# read fine and returned [].
+
+_T0_MS = 1_776_778_500_000
+_STEP_MS = 300_000
+
+
+def _traded_tape():
+    """A real `TabletBackend` that has settled fills, and its observer.
+
+    The observer list is the SECOND WITNESS: the live history handed to
+    the panel below is built from it, so the expected report is derived
+    from what the tape did rather than from a written-down number.
+    """
+    from src.exchange.tablet_backend import TabletBackend
+
+    rows = []
+    px = 100.0
+    for i in range(12):
+        px *= 1.0 + ((i % 5) - 2) * 0.003
+        rows.append([float(_T0_MS + i * _STEP_MS), px, px * 1.01, px * 0.99, px, 50.0])
+    tape = TabletBackend({"CHIP/USD": rows}, balances={"USD": 10_000.0})
+    seen: list = []
+    tape.on_trade(seen.append)
+    for i in range(6):
+        assert tape.step() is True
+        tape.create_order("CHIP/USD", "market", "buy" if i % 2 == 0 else "sell", 1.5)
+    return tape, seen
+
+
+def _panel_parity_lines(tape, live_trades) -> list[str]:
+    """Run the shipped `_run_parity_comparison` over a stub panel.
+
+    Called unbound on a `SimpleNamespace`, so no `QApplication` and no
+    widget tree are needed: the method reads three attributes and
+    writes to one callback.
+    """
+    from types import SimpleNamespace
+
+    from src.gui.simulator_tab.fleet.fleet_replay_panel import (
+        FleetReplayPanel,
+    )
+
+    lines: list[str] = []
+    stub = SimpleNamespace(
+        _controller=SimpleNamespace(tape=tape),
+        _ytd_trades=list(live_trades),
+        _performance_log_cb=lines.append,
+    )
+    FleetReplayPanel._run_parity_comparison(stub)
+    return lines
+
+
+@pytest.mark.skipif(
+    not _HAS_QT_PANEL, reason="PySide6 not importable in this environment"
+)
+def test_the_panel_measures_parity_against_the_tape_s_own_fills() -> None:
+    """THE MEASUREMENT, END TO END, on the shape the Simulator produces.
+
+    Live history built from the tape's own fills must reproduce at
+    100%: the two sides describe the same events. Anything less is the
+    reader.
+
+    This check is the reason the panel fix and the `compare_trades` fix
+    are ONE change. With the panel still reading `_exchange._trades`
+    the report says "sim produced 0 trades" — honest, and wrong about
+    the run. With the panel fixed and the harness still reading the
+    object shape, it says "0.0%" over six fills it never read — a
+    measurement-shaped lie. Only both together produce the line below.
+    """
+    tape, observed = _traded_tape()
+    assert len(observed) >= 2, len(observed)
+    live = [
+        {
+            "timestamp": float(t["timestamp"]) / 1000.0,
+            "symbol": t["symbol"],
+            "side": t["side"],
+            "amount": float(t["amount"]),
+            "price": float(t["price"]),
+        }
+        for t in observed
+    ]
+
+    lines = _panel_parity_lines(tape, live)
+    text = "\n".join(lines)
+
+    assert "sim produced 0 trades" not in text, (
+        "the panel still reports an empty sim tape against a tape that "
+        f"settled {len(observed)} fill(s):\n{text}"
+    )
+    assert "Match rate: 100.0%" in text, (
+        "the panel did not reproduce the tape's own fills:\n" + text
+    )
+    assert f"{len(observed):,} matched" in text, text
+    assert "0 live-only" in text and "0 sim-only" in text, text
+
+
+@pytest.mark.skipif(
+    not _HAS_QT_PANEL, reason="PySide6 not importable in this environment"
+)
+def test_the_panel_still_says_so_when_no_live_history_is_loaded() -> None:
+    """The honest skip is kept, not replaced.
+
+    Parity needs both sides. With no YTD fetched the panel must say
+    that, rather than reporting 0% against an empty live set.
+    """
+    tape, _observed = _traded_tape()
+    text = "\n".join(_panel_parity_lines(tape, []))
+    assert "no live trades loaded" in text, text
+    assert "Match rate" not in text, text

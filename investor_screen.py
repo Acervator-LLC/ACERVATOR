@@ -19,38 +19,43 @@ Copyright (c) 2026 Anthony L. Brown. All rights reserved.
 """
 
 import math
-from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QPainter, QFont, QColor, QPen
-from PySide6.QtCore import Qt, QRectF, QPointF, QTimer
+from PySide6.QtCore import Qt, QRectF, QPointF
+
+# Issue #70 — the version is imported, never restated. The old code kept a
+# literal fallback inside paintEvent ("3.7.0"), which silently outlived
+# 18 minor releases because nothing ever compared it to the package.
+from src import __version__
+
+# Issue #74 - the animation core is shared, not restated. screen_fx.py
+# sits at the repository root for the reason its docstring gives: src/
+# and resources/ are copied wholesale into every build, and nothing in
+# the application imports these screens.
+import screen_fx
+from screen_fx import AnimatedScreenBase, ease, scene_alpha, tag_font
 
 TOTAL_DURATION = 100.0
 
-# ── Palette ───────────────────────────────────────────────────────────────────
-C = {
-    "bg": QColor(3, 3, 13),
-    "cy": QColor(0, 255, 238),
-    "gn": QColor(0, 255, 136),
-    "mg": QColor(255, 0, 170),
-    "or": QColor(255, 170, 0),
-    "bl": QColor(0, 170, 255),
-    "rd": QColor(255, 51, 85),
-    "wh": QColor(216, 232, 255),
-    "mu": QColor(136, 153, 187),
-    "di": QColor(80, 85, 110),
-    "pn": QColor(8, 8, 24),
-}
+# -- Palette -----------------------------------------------------------------
+# Eight accents come from the shared table. Three are investor's own and
+# are NOT shared, because cartoon_screen's values for the same three
+# roles differ: background (4,4,14), dim (72,80,105), panel (8,8,22).
+C = screen_fx.palette()
+C.update(
+    {
+        "bg": QColor(3, 3, 13),
+        "di": QColor(80, 85, 110),
+        "pn": QColor(8, 8, 24),
+    }
+)
 
+# ease() and scene_a() used to live here. They were the same smoothstep
+# and the same envelope that splash_screen and cartoon_screen also
+# carried. screen_fx.ease and screen_fx.scene_alpha are those two, once.
+# Every call site already passed the fade times explicitly, so the
+# defaults the three copies disagreed about decided nothing.
 
-def ease(t, start, dur, delay=0.0):
-    x = max(0.0, min(1.0, (t - start - delay) / max(dur, 0.001)))
-    return x * x * (3 - 2 * x)
-
-
-def scene_a(t, ss, se, fi=0.6, fo=0.5):
-    return max(0.0, ease(t, ss, fi) - ease(t, se - fo, fo))
-
-
-# ── Typewriter lines for the preface ─────────────────────────────────────────
+# -- Typewriter lines for the preface ----------------------------------------
 PREFACE = [
     # (start_time, text, style)  style: 'dim' | 'mid' | 'bright' | 'cy'
     (1.0, "What if you were told...", "dim"),
@@ -79,11 +84,20 @@ SCENES = [
 
 
 # Module-level cache — computed once, shared across all frames
-import math as _math, random as _rnd
+import math as _math
+import secrets as _secrets
 
 
-def _cached_prices(mode="bull", n=80):
-    r = _rnd.Random(42 if mode == "bull" else 7)
+def _cached_prices(n=80):
+    # secrets.SystemRandom() reads the operating-system entropy source,
+    # which ruff S311 accepts. The previous code used random.Random with
+    # a seed picked by a `mode` argument. `mode` had one call site and
+    # that call site passed nothing, so the second seed was never
+    # reached, and the two seeds changed only a +/-1.25% cosmetic
+    # jitter on an otherwise identical curve. `mode` is therefore gone.
+    # The series is still built ONCE at import time, so every frame of
+    # one run draws the same curve.
+    r = _secrets.SystemRandom()
     pts = []
     for i in range(n):
         t = i / (n - 1)
@@ -134,161 +148,73 @@ _PROOF_BH = [_PROOF_BH_QTY * p for p in _PROOF_PRICES]
 _PROOF_HF = _cached_hf(_PROOF_PRICES)
 
 
-class InvestorScreen(QWidget):
+class InvestorScreen(AnimatedScreenBase):
+    """The 100-second Acervator investor presentation."""
+
+    ACCESSIBLE_NAME = "Acervator investor presentation"
+    ACCESSIBLE_DESCRIPTION = (
+        "A 100-second animated presentation. Click anywhere to skip to " "the end."
+    )
+
+    TOTAL_DURATION = TOTAL_DURATION
+    PALETTE = C
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._t = 0.0
-        self._goff = 0.0
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._tick)
-        self._timer.start(16)
+        self._start_clock()
 
-    def _tick(self):
-        self._t += 0.016
-        self._goff = (self._goff + 0.4) % 60
-        self.repaint()
-
-    # ── Helpers ───────────────────────────────────────────────────────────────
-
-    def _a(self, v):
-        return max(0, min(255, int(v * 255)))
-
-    def _c(self, key, alpha=1.0):
-        col = QColor(C[key])
-        col.setAlpha(self._a(alpha))
-        return col
+    # -- Helpers --------------------------------------------------------------
+    #
+    # _tick, _a, _c, _txt, _hline, _make_glow_px and mousePressEvent are
+    # inherited from AnimatedScreenBase. Every one of those bodies was
+    # already byte-identical to cartoon_screen's, and _a and
+    # _make_glow_px were byte-identical to splash_screen's as well.
 
     def _grid(self, p, W, H, alpha=1.0):
+        """The scrolling grid at this screen's own alpha.
+
+        The loop is shared. The 50% scale below is investor's; the same
+        grid is drawn at 2.8% of the scene alpha in cartoon_screen and
+        at a flat alpha of 8 in splash_screen.
+        """
         if alpha < 0.02:
             return
         a = self._a(min(1.0, alpha) * 0.5)
-        p.setPen(QColor(0, 255, 238, a))
-        off = self._goff
-        x = -60 + off
-        while x < W + 60:
-            p.drawLine(QPointF(x, 0), QPointF(x, H))
-            x += 60
-        y = -60 + off
-        while y < H + 60:
-            p.drawLine(QPointF(0, y), QPointF(W, y))
-            y += 60
+        self._draw_grid(p, W, H, QColor(0, 255, 238, a))
 
     def _bg(self, p, W, H, alpha=1.0):
         a = self._a(alpha)
         p.fillRect(0, 0, W, H, QColor(3, 3, 13, a))
         self._grid(p, W, H, alpha * 0.4)
-        p.setPen(QColor(0, 0, 0, min(a, 14)))
-        for y in range(0, H, 4):
-            p.drawLine(0, y, W, y)
+        self._draw_scanlines(p, W, H, QColor(0, 0, 0, min(a, 14)))
 
-    def _txt(
-        self,
-        p,
-        text,
-        rect,
-        size,
-        color_key,
-        alpha,
-        bold=False,
-        align=Qt.AlignCenter,
-        mono=False,
-        letter_sp=0,
-    ):
-        a = self._a(alpha)
-        if a < 2:
-            return
-        col = QColor(C[color_key])
-        col.setAlpha(a)
-        p.setPen(col)
-        fam = "Consolas" if mono else "Orbitron" if bold else "Helvetica"
-        f = QFont(fam, size, QFont.Black if bold else QFont.Normal)
-        if letter_sp:
-            f.setLetterSpacing(QFont.AbsoluteSpacing, letter_sp)
-        p.setFont(f)
-        p.drawText(rect, align | Qt.TextWordWrap, text)
+    def _glow(self, p, text, rect, size, color_key, alpha, g_key=None):
+        """Blurred halo plus sharp text, with an optional separate halo hue.
 
-    def _make_glow_px(self, text, W, H, rect, font, glow_col, blur_r):
-        """Render text to pixmap, apply QGraphicsBlurEffect. Cached — called once per unique text."""
-        from PySide6.QtWidgets import (
-            QGraphicsScene,
-            QGraphicsPixmapItem,
-            QGraphicsBlurEffect,
-        )
-        from PySide6.QtGui import QPixmap
-
-        txt = QPixmap(W, H)
-        txt.fill(Qt.transparent)
-        tp = QPainter(txt)
-        tp.setFont(font)
-        gc = QColor(glow_col)
-        gc.setAlpha(180)
-        tp.setPen(gc)
-        tp.drawText(rect, Qt.AlignCenter | Qt.TextWordWrap, text)
-        tp.end()
-        eff = QGraphicsBlurEffect()
-        eff.setBlurRadius(blur_r)
-        item = QGraphicsPixmapItem(txt)
-        item.setGraphicsEffect(eff)
-        sc = QGraphicsScene()
-        sc.addItem(item)
-        sc.setSceneRect(0, 0, W, H)
-        out = QPixmap(W, H)
-        out.fill(Qt.transparent)
-        rp = QPainter(out)
-        sc.render(rp)
-        rp.end()
-        return out
-
-    def _glow(self, p, text, rect, size, color_key, alpha, g_key=None, bold=True):
-        """Proper CSS text-shadow: blurred halo pixmap + sharp text on top."""
-        if alpha < 0.01:
-            return
-        W, H = int(self.width()), int(self.height())
+        The FONT and the BLUR RADIUS are derived here because the three
+        screens derive them differently. splash_screen takes a font from
+        its own caller; this screen and cartoon_screen build Orbitron
+        Black from a point size and take the blur from that size.
+        """
+        W, H = self._wh()
         ck = g_key or color_key
         f = QFont("Orbitron", size, QFont.Black)
         blur_r = max(6, min(16, size // 3))
         key = (text, W, H, ck, size, blur_r)
-        if not hasattr(self, "_gcache"):
-            self._gcache = {}
-        if key not in self._gcache:
-            try:
-                self._gcache[key] = self._make_glow_px(
-                    text, W, H, rect, f, C[ck], blur_r
-                )
-            except Exception:
-                self._gcache[key] = None
-        gp = self._gcache.get(key)
-        if gp:
-            p.setOpacity(alpha * 0.5)
-            p.drawPixmap(0, 0, gp)
-            p.setOpacity(1.0)
-        c = QColor(C[color_key])
-        c.setAlpha(self._a(alpha))
-        p.setPen(c)
-        p.setFont(f)
-        p.drawText(rect, Qt.AlignCenter | Qt.TextWordWrap, text)
-
-    def _hline(self, p, cx, y, hw, color_key, alpha, thick=1.5):
-        a = self._a(alpha)
-        if a < 2:
-            return
-        col = QColor(C[color_key])
-        col.setAlpha(a)
-        p.setPen(QPen(col, thick))
-        p.drawLine(QPointF(cx - hw, y), QPointF(cx + hw, y))
+        self._draw_glow(p, text, rect, f, C[color_key], C[ck], blur_r, key, alpha)
 
     def _tag(self, p, text, W, y, alpha, color_key="mg"):
-        a = self._a(alpha)
-        if a < 2:
+        """Small uppercase tag label.
+
+        The 20 px band and the 9-point font are this screen's, and
+        cartoon_screen's. splash_screen uses a 22 px band and a 10-point
+        probed font. The 3-unit letter spacing and the draw are shared.
+        """
+        if self._a(alpha) < 2:
             return
-        col = QColor(C[color_key])
-        col.setAlpha(a)
-        p.setPen(col)
-        f = QFont("Orbitron", 9)
-        f.setLetterSpacing(QFont.AbsoluteSpacing, 3)
-        p.setFont(f)
-        p.drawText(QRectF(0, y, W, 20), Qt.AlignCenter, text.upper())
+        self._draw_tag(
+            p, text, QRectF(0, y, W, 20), self._c(color_key, alpha), tag_font(9)
+        )
 
     def _counter(self, t, start, val_final, duration=1.5):
         """Animate integer from 0 to val_final over duration starting at start."""
@@ -393,11 +319,7 @@ class InvestorScreen(QWidget):
 
     # ── paintEvent dispatch ───────────────────────────────────────────────────
 
-    def paintEvent(self, event):
-        try:
-            from src import __version__
-        except ImportError:
-            __version__ = "3.7.0"
+    def paintEvent(self, _event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         W, H = self.width(), self.height()
@@ -407,7 +329,7 @@ class InvestorScreen(QWidget):
         for ss, se, name in SCENES:
             if t < ss - 0.7 or t > se + 0.4:
                 continue
-            alpha = scene_a(t, ss, se, 0.5, 0.4)
+            alpha = scene_alpha(t, ss, se, 0.5, 0.4)
             if alpha < 0.01:
                 continue
             fn = getattr(self, f"_s_{name}", None)
@@ -1067,5 +989,6 @@ class InvestorScreen(QWidget):
             p, "Claude of Anthropic", QRectF(0, cy + 152, W, 32), 15, "bl", ca, "bl"
         )
 
-    def mousePressEvent(self, event):
-        self._t = TOTAL_DURATION - 0.5
+    # mousePressEvent is inherited. All three screens ran the clock on to
+    # TOTAL_DURATION - 0.5 on a click. AnimatedScreenBase reads its own
+    # TOTAL_DURATION class attribute, which this class sets above.

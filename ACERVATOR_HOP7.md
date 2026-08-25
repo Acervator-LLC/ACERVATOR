@@ -27,7 +27,7 @@ Without it the pre-push gate hook does not run and you can push ungated code.
 python -m tools.gate
 ```
 
-Runs the whole suite via `tools.harness.check_release_readiness` and, on
+Runs the whole suite via `dev_harness.harness.check_release_readiness` and, on
 success, stamps WHICH COMMIT it proved into `.gate_stamp.json`. **Run it
 detached and read the exit code from a file** — never through a pipe. If it
 does not print `[OK]`, read the failures before touching anything.
@@ -43,7 +43,7 @@ Each queue item's state **measured from code**. A written table goes stale in
 days; this does not.
 
 ```bash
-python -m tools.harness.claim_ledger check
+python -m dev_harness.harness.claim_ledger check
 ```
 
 ---
@@ -69,13 +69,13 @@ Answers to 5-8 live in `.claude/skills/harness-law` and the memory directory.
 **Then prove the harness is live:**
 
 ```bash
-python -m tools.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_bad.py
+python -m dev_harness.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_bad.py
 ```
 
 **Must exit 1.** Verified 2026-08-16 in this repo: it does.
 
 ```bash
-python -m tools.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_good.py
+python -m dev_harness.harness.coding_archetype docs/audits/2026-07-24_coding_archetype_multi_agent_test/fixtures/known_good.py
 ```
 
 **Must exit 0.** Verified: it does. Both halves required — a gate that always
@@ -129,8 +129,8 @@ write code**; you referee. Report each one's own `passed`, never a delta.
 positive.
 
 `coding_archetype`, `ta_archetype`, `gui_archetype`, `docs_archetype`,
-`watchdog_archetype`, plus `tools/touchset.py`,
-`tools/harness/check_release_readiness.py`, `claim_ledger`.
+`watchdog_archetype`, plus `dev_harness/touchset.py`,
+`dev_harness/harness/check_release_readiness.py`, `claim_ledger`.
 
 **The missing-target trap is FIXED.** It used to report `passed=True`, exit 0 on
 a path that did not exist. Measured 2026-08-16: `coding_archetype
@@ -143,9 +143,9 @@ nothing.
 2026-08-19, on moving to GitHub. Work on a branch cut for the unit, never
 directly on the branch he runs from, and let merge or rebase refuse a stale
 change — which is the refusal `island promote` was built to imitate in the first
-place. `tools/island.py` and the 32 tests in
-`tests/test_island_promotion_refuses_stale.py` remain on disk; retiring the tool
-is its own unit, and deleting it today would take the gate red.
+place. **The tool is now DELETED** — issue #67, 2026-08-22 — together with its
+ledger and its 31 test functions (102 collected tests).
+`tests/test_island_machinery_stays_retired.py` refuses its return.
 
 **THE WORKING TREE IS STILL WHAT HIS LAUNCH RUNS.** This is the one property an
 island gave for free and a branch does not: checking out a branch REPLACES the
@@ -155,7 +155,7 @@ while he is running. See STILL OUTSTANDING.
 
 **TWO PROTECTIONS THE SWITCH REMOVES. Name them, because prose does not bind.**
 
-- `promote` REFUSED `tools/harness/`, `.claude/`, config and version files by
+- `promote` REFUSED `dev_harness/harness/`, `.claude/`, config and version files by
   design. Git refuses nothing. "Hands off the harness" is now a rule with no
   mechanism behind it.
 - `promote` preserved each file's line endings. Git under `core.autocrlf=true`
@@ -330,15 +330,17 @@ old tree. **A prose checklist failed once; a script did not.**
 | gate discriminates | known_bad **exit 1**, known_good **exit 0** |
 | hardcoded old-machine ABSOLUTE paths in `tools/` | **zero** |
 
-**`ISLANDS_ROOT` derives** rather than pointing at the old machine —
-`%TEMP%/acervator_islands/<repo name>`, override `ACERVATOR_ISLANDS_ROOT`.
-**Historical as of 2026-08-19: islands are retired and nothing forks any more.**
-Recorded because the tool is still on disk and still passes its 32 tests.
+`tools/island.py` held the only path that could have pointed at the old
+machine. It DERIVED that root rather than hardcoding it, which is why the
+row above measures zero. The file is **deleted** as of issue #67,
+2026-08-22, so nothing forks any more.
 
-`migrate_stone_tablets.py` got the same treatment via `ACERVATOR_TABLET_SOURCE`,
-but note its DEFAULT is now a relative sibling lookup that **does not resolve on
-this machine** — `…/Documents/acervator_session71_CLOSE_hop5_v3_22_73/…/sadp/historical_data`,
-measured absent. Pass `--source` or set the variable; do not trust the default.
+`migrate_stone_tablets.py` is **deleted** (issue #83, 2026-08-22). It was a
+one-shot. Its migration ran on 2026-08-01 and the result is on disk:
+`~/.acervator/stone_tablets/` holds 407 tablets and a `MANIFEST.json`, with
+millisecond timestamps, an `exchange_id` field and a derived `year` -- the
+exact three transforms the script existed to apply. A migration that has
+run is history, not a tool.
 
 ### STILL OUTSTANDING
 
@@ -400,7 +402,7 @@ resolved.
 | the law, 11 skills | `.claude/skills/` |
 | audits and raw evidence | `docs/audits/` |
 | emitter register | `docs/EMITTER_IDENTIFICATION.md` + `tools/emitter_registry_check.py` |
-| promotion history, 56 entries | `tools/.island_ledger.jsonl` — **frozen 2026-08-19**, islands retired; git history is the record from here |
+| promotion history, 56 entries | **deleted** under issue #67. Recover it from git: `git show 905c9b0:tools/.island_ledger.jsonl`. Git history is the record from here |
 
 **Search the transcript rather than trusting a summary — including this one.**
 

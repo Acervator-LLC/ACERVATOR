@@ -99,15 +99,22 @@ class TestDetectPrune:
         monkeypatch.setattr(sm, "_read_bot_ids", boom)
         assert sm.detect_prune({"bot-a"}) == []
 
-    def test_logs_at_error_when_a_prune_is_detected(self, sm, caplog):
+    def test_logs_at_error_when_a_prune_is_detected(self, sm, capture_log):
+        """A detected prune must be visible at ERROR.
+
+        `capture_log`, NOT `caplog`. `state_manager` logs on
+        `acervator.state`, and `logging_engine` sets
+        `acervator.propagate = False`, so the record never reaches the
+        root handler `caplog` installs.
+        """
         import logging
 
         _write_state(sm._path, ["bot-a", "bot-doomed"])
-        with caplog.at_level(logging.ERROR):
+        with capture_log("acervator.state") as records:
             sm.detect_prune({"bot-a"})
+        errors = [r for r in records if r.levelno >= logging.ERROR]
         assert any(
-            "PRUNE RISK" in r.message or "PRUNE RISK" in r.getMessage()
-            for r in caplog.records
+            "PRUNE RISK" in r.getMessage() for r in errors
         ), "a detected prune must be visible at ERROR"
 
 
@@ -164,7 +171,9 @@ class TestSaveStateStillWorks:
         # real implementation catches everything internally, which
         # test_never_raises_even_when_everything_is_wrong proves.
 
-    def test_the_prune_this_cascade_exists_to_stop_no_longer_happens(self, sm, caplog):
+    def test_the_prune_this_cascade_exists_to_stop_no_longer_happens(
+        self, sm, capture_log
+    ):
         """End-to-end: a save that omits a previously-persisted bot.
 
         INVERTED BY THE FIX, DELIBERATELY. In PR-0 this test asserted
@@ -182,11 +191,22 @@ class TestSaveStateStillWorks:
         detect_prune() is kept as a tripwire and must now report
         NOTHING -- a non-empty report means an explicit delete or a
         regression.
+
+        `capture_log`, NOT `caplog`, and here the choice decides
+        whether the test means anything. The assertion is a NEGATIVE
+        one: "the tripwire stayed silent". `logging_engine` sets
+        `acervator.propagate = False`, so once the engine exists no
+        record from `acervator.state` reaches the root handler
+        `caplog` installs -- and a test that asserts NOTHING was
+        logged then passes on an empty list it could never have
+        filled. It would fail GREEN. `capture_log` attaches to
+        `acervator.state` directly, so silence here is now evidence
+        rather than an artifact of the handler wiring.
         """
         import logging
 
         _write_state(sm._path, ["bot-keeps", "bot-skipped-at-restore"])
-        with caplog.at_level(logging.ERROR):
+        with capture_log("acervator.state") as records:
             sm.save_state([{"bot_id": "bot-keeps"}])
         written = json.loads(sm._path.read_text(encoding="utf-8"))
         assert (
@@ -194,7 +214,9 @@ class TestSaveStateStillWorks:
         ), "a save must not remove a record it was simply not handed"
         assert written["bot_count"] == 2
         assert not any(
-            "PRUNE RISK" in r.getMessage() for r in caplog.records
+            "PRUNE RISK" in r.getMessage()
+            for r in records
+            if r.levelno >= logging.ERROR
         ), "nothing was pruned, so the tripwire must stay silent"
 
 

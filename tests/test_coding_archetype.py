@@ -1,4 +1,4 @@
-"""Pin tests for tools/harness/coding_archetype.py.
+"""Pin tests for dev_harness/harness/coding_archetype.py.
 
 Verifies:
   - Module imports cleanly
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.harness.coding_archetype import (
+from dev_harness.harness.coding_archetype import (
     ArchetypeReport,
     CodingArchetype,
     Finding,
