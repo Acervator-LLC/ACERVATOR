@@ -79,6 +79,18 @@ jobs:
         with:
           python-version-file: .python-version
           cache: pip
+      - name: Cache installed Python packages
+        # PySide6 alone is ~1.2 GB installed, so a cold `pip install` spends
+        # ~40s just unpacking it. Caching the whole interpreter tree
+        # (env.pythonLocation is where setup-python installs packages) means
+        # that cost is paid only when the dependency set actually changes —
+        # the key is keyed to pyproject.toml + the interpreter. On a hit the
+        # install step below is a no-op verification (~5s). The `-test` key
+        # namespace keeps this lane's lean env separate from test-full's [dev].
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.pythonLocation }}
+          key: py-test-${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml', '.python-version') }}
       - name: Install Qt runtime libraries
         # PySide6 needs these shared libs to import even under the offscreen
         # platform plugin; the GitHub Ubuntu image does not ship them.
@@ -90,6 +102,7 @@ jobs:
         # [test] only — pytest + asyncio/qt plugins + xdist. The heavy
         # analyzers (semgrep/mypy/vulture/opencv) and vale live in [dev] and
         # are needed only by the archetype tests, which this lane deselects.
+        # A no-op on a package-cache hit; a full install on a miss.
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[test]"
@@ -113,12 +126,22 @@ jobs:
         with:
           python-version-file: .python-version
           cache: pip
+      - name: Cache installed Python packages
+        # [dev] adds semgrep + opencv + mypy on top of PySide6 — several
+        # hundred MB more. Caching the interpreter tree makes the full-lane
+        # install a no-op except when dependencies change. Separate `-full`
+        # key namespace so this heavier env never restores into the fast lane.
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.pythonLocation }}
+          key: py-full-${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml', '.python-version') }}
       - name: Install Qt runtime libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libegl1 libgl1 libxkbcommon0 libdbus-1-3
       - name: Install project + dev dependencies
+        # A no-op on a package-cache hit; a full install on a miss.
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
