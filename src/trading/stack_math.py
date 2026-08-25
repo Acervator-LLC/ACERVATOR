@@ -68,13 +68,53 @@ either passes `bb_bounds=(lower, upper)` and the rule is enforced, or
 passes nothing and the rule is NOT enforced on that ladder. There is no
 third behaviour and no invented band.
 
+THE PLACEMENT FLOOR -- operator directive 2026-08-25
+"Tranche placement should be greater than or equal to Minimum Opposing
+Trade Distance + Trading Fee. It will be greater if the opposing
+bollinger band is further away but it cannot be less."
+
+`min_opposing_pct` IS that quantity. The one live caller,
+`ScrummingBot._open_stack_from_scrum`, computes it as
+`scrumming_interval_pct + trading_fee_pct`, and
+`otd_math.minimum_opposing_trade_distance_pct` states the same sum. The
+fee is already inside the number, so this module must not add it a
+second time. Live values are 6.6 on 24 of the 38 bots, 5.6 on 12 and
+1.6 on 2.
+
+So, whenever a caller states a positive `min_opposing_pct`:
+
+    distance(level 1 from the TRIGGER PRICE)
+        >= max(min_opposing_pct, distance to the opposing band)
+
+The opposing band is `upper` on the SCRUM side and `lower` on the FOLD
+side. It can only push placement FURTHER OUT. A band nearer than the
+floor cannot pull placement back inside itself and cannot refuse the
+ladder -- the floor is a minimum and the band raises it, never the
+reverse.
+
+WHY "FROM THE TRIGGER PRICE" IS THE WHOLE FIX. The anchor is offset
+from `base`, and for fibonacci `base` is the LAST CANDLE CLOSE, not the
+trigger price. Measured 2026-08-25 at a 6.6 floor, a 1% gap and a close
+5% under the trigger, level 1 landed 2.283% above the trigger; at a
+close 10% under it, level 1 landed 3.101% BELOW the trigger -- a sell
+rung priced under the price that fired the scrum. Every non-fibonacci
+mode already clears the floor structurally, because level 1 sits one
+gap beyond an anchor already offset by the floor.
+
+A ZERO `min_opposing_pct` STATES NO FLOOR, and none is enforced. That
+is the documented meaning of the 0.0 default here, and the fibonacci
+re-anchoring contract -- level 1 = close x (1 + gap/100), independent
+of the trigger price -- rests on it.
+
 FALSIFICATION: this module is wrong if (a) quadratic at gap g does not
 give exactly n^2 x g, (b) the two sides return different offsets for the
 same settings, (c) a fibonacci ladder is built with no candle close,
-(d) a level-1 rung outside a SUPPLIED band is returned rather than
-refused, (e) any returned fold price is <= 0, (f) tranche prices are not
-strictly monotonically increasing, (g) two returned tranches sit within
-0.1% of each other, or (h) the sum of tranche sizes exceeds `scrum_size`.
+(d) a level-1 rung outside a SUPPLIED band that sits at or beyond the
+floor is returned rather than refused, (e) any returned fold price is
+<= 0, (f) tranche prices are not strictly monotonically increasing,
+(g) two returned tranches sit within 0.1% of each other, (h) the sum of
+tranche sizes exceeds `scrum_size`, or (i) level 1 sits nearer the
+trigger price than a positive `min_opposing_pct` demands.
 """
 
 from __future__ import annotations
@@ -201,20 +241,18 @@ def ladder_offsets_pct(
     return [m * gap for m in level_multipliers(spacing_mode, levels, exponential_ratio)]
 
 
-def _enforce_level_one_inside_band(
-    level_one_price: float,
+def _validated_band(
     bb_bounds: Optional[Sequence[float]],
-) -> None:
-    """Operator rule: level 1 must sit INSIDE the local Bollinger range.
-    Levels 2+ may extend beyond it and are not checked here.
+) -> Optional[tuple[float, float]]:
+    """Coerce `bb_bounds` to `(lower, upper)`, or `None` when absent.
 
     `bb_bounds is None` means the caller has no band. This module does
     not compute bands and has no fallback range, so an absent band means
-    the rule is NOT enforced on that ladder -- never that a made-up
+    the BB rules are NOT enforced on that ladder -- never that a made-up
     range stood in for one.
     """
     if bb_bounds is None:
-        return
+        return None
     if not isinstance(bb_bounds, (tuple, list)) or len(bb_bounds) != 2:
         raise ValueError(
             f"bb_bounds must be a (lower, upper) pair or None; " f"got {bb_bounds!r}"
@@ -226,12 +264,70 @@ def _enforce_level_one_inside_band(
             f"bb_bounds must satisfy 0 < lower < upper; "
             f"got lower={lower}, upper={upper}"
         )
-    if not lower <= level_one_price <= upper:
+    return lower, upper
+
+
+def placement_floor_price(
+    direction: int,
+    trigger_price: float,
+    min_opposing_pct: float,
+    band: Optional[tuple[float, float]] = None,
+) -> Optional[float]:
+    """The NEAREST price level 1 may occupy, measured from the trigger.
+
+    Operator directive 2026-08-25: placement is at least the Minimum
+    Opposing Trade Distance -- which already carries the trading fee,
+    see THE PLACEMENT FLOOR above -- and further out when the opposing
+    band is further out. `direction` is +1 for the SCRUM side and -1
+    for the FOLD side.
+
+    Returns `None` when `min_opposing_pct <= 0`: the caller has stated
+    no floor, so this module enforces none.
+    """
+    if min_opposing_pct <= 0.0:
+        return None
+    floor_price = trigger_price * (1.0 + direction * min_opposing_pct / 100.0)
+    if floor_price <= 0:
         raise ValueError(
-            f"level 1 at {level_one_price} is outside the local BB range "
-            f"[{lower}, {upper}]. The initial position of a spaced stack "
-            f"cannot sit outside the local BB range; levels 2+ may."
+            f"min_opposing_pct {min_opposing_pct} puts the placement floor "
+            f"at {floor_price}; a floor must stay a real price"
         )
+    if band is not None:
+        opposing = band[1] if direction > 0 else band[0]
+        if direction * (opposing - floor_price) > 0:
+            return opposing
+    return floor_price
+
+
+def _enforce_level_one_inside_band(
+    level_one_price: float,
+    band: Optional[tuple[float, float]],
+    direction: int,
+    floor_price: Optional[float],
+) -> None:
+    """Operator rule: level 1 must sit INSIDE the local Bollinger range.
+    Levels 2+ may extend beyond it and are not checked here.
+
+    THE FLOOR OUTRANKS THE OPPOSING EDGE. An opposing band NEARER the
+    trigger than the Minimum Opposing Trade Distance does not refuse
+    the ladder: the floor is a minimum and the band may only raise it.
+    The near edge still refuses.
+    """
+    if band is None:
+        return
+    lower, upper = band
+    opposing = upper if direction > 0 else lower
+    near = lower if direction > 0 else upper
+    if direction * (level_one_price - opposing) > 0:
+        if floor_price is not None and direction * (opposing - floor_price) < 0:
+            return
+    elif direction * (level_one_price - near) >= 0:
+        return
+    raise ValueError(
+        f"level 1 at {level_one_price} is outside the local BB range "
+        f"[{lower}, {upper}]. The initial position of a spaced stack "
+        f"cannot sit outside the local BB range; levels 2+ may."
+    )
 
 
 def _ladder_prices(
@@ -254,6 +350,7 @@ def _ladder_prices(
     otd = _number("min_opposing_pct", min_opposing_pct)
     if otd < 0:
         raise ValueError(f"min_opposing_pct must be >= 0; got {otd}")
+    band = _validated_band(bb_bounds)
     offsets = ladder_offsets_pct(
         levels, initial_gap_pct, spacing_mode, exponential_ratio
     )
@@ -296,7 +393,18 @@ def _ladder_prices(
             )
         prices.append(anchor * (1.0 + direction * off / 100.0))
 
-    _enforce_level_one_inside_band(prices[0], bb_bounds)
+    # THE PLACEMENT FLOOR. Level 1's distance is measured from the
+    # TRIGGER price, not from `base` -- the two differ under fibonacci,
+    # which anchors on the last candle close. When level 1 falls short,
+    # the whole ladder is scaled by one positive ratio so level 1 lands
+    # exactly on the floor: every rung keeps its multiplier x gap
+    # spacing off the anchor, and the order of the prices cannot change.
+    floor_price = placement_floor_price(direction, px, otd, band)
+    if floor_price is not None and direction * (floor_price - prices[0]) > 0:
+        lift = floor_price / prices[0]
+        prices = [p * lift for p in prices]
+
+    _enforce_level_one_inside_band(prices[0], band, direction, floor_price)
     return prices
 
 
