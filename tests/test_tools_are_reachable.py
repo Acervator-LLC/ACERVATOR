@@ -76,6 +76,8 @@ from pathlib import Path
 
 import pytest
 
+from tools import claude_home
+
 REPO = Path(__file__).resolve().parents[1]
 TOOLS = REPO / "tools"
 
@@ -154,14 +156,35 @@ DELETED_ONE_SHOTS: tuple[str, ...] = (
 # Rule 3 is what stops this category becoming a hiding place. A tool whose
 # entry point broke cannot be moved here to silence the failure, because
 # the ABSENCE of `main` is what makes a library a library.
+#
+# `claude_home` entered this list on 2026-08-25, when the harness directory
+# moved to user level and five repository files were left resolving it
+# against the repository root. One of them imported a hook at module scope,
+# so the whole suite failed during COLLECTION. The module states the search
+# ONCE -- user level first, then the repository, the order the router hook
+# uses for a skill -- so that five callers cannot hold five opinions about
+# where the harness is. Nothing runs it, and it carries no `main`.
 LIBRARIES: tuple[tuple[str, str], ...] = (
     ("spec_common",
      "shared PyInstaller spec content, imported by Acervator_win.spec "
      "and Acervator_mac.spec"),
+    ("claude_home",
+     "where the Claude harness is installed, imported by the hook pin "
+     "tests and by tools/migrate_harness.py"),
 )
 
 # The importers rule 2 is read from.
 SPEC_FILES: tuple[str, ...] = ("Acervator_win.spec", "Acervator_mac.spec")
+
+# The importers rule 2 is read from for `claude_home`. Written out for the
+# same reason INVENTORY is: a globbed list shrinks in silence.
+CLAUDE_HOME_IMPORTERS: tuple[str, ...] = (
+    "tests/test_release_gate_hook.py",
+    "tests/test_hooks.py",
+    "tests/test_hooks_integration.py",
+    "tests/test_harness_is_reachable.py",
+    "tools/migrate_harness.py",
+)
 
 
 def probe_import(stem: str) -> tuple[bool, str]:
@@ -217,6 +240,23 @@ def names_imported_from(module: str, source: str) -> set[str]:
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.ImportFrom) and node.module == module:
             found.update(alias.name for alias in node.names)
+    return found
+
+
+def attributes_read_from(alias: str, source: str) -> set[str]:
+    """Every attribute a source file reads off the module bound to `alias`.
+
+    `from tools import claude_home` binds a module and every use is an
+    attribute access, which `names_imported_from` cannot see. Reading only
+    the `from ... import name` form would leave most of the surface
+    unmeasured, and an unmeasured surface is where a rename hides.
+    """
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if (isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == alias):
+            found.add(node.attr)
     return found
 
 
@@ -304,6 +344,42 @@ class TestEveryLibraryIsALibrary:
     def test_a_module_is_a_tool_or_a_library_and_never_both(self):
         both = sorted({stem for stem, _ in INVENTORY} & library_stems())
         assert not both, f"declared as both tool and library: {both}"
+
+
+class TestTheHarnessLocationLibraryServesItsImporters:
+    """Rule 2 for `claude_home`, read from the importers.
+
+    Both forms are read. The `from tools.claude_home import ...` names and
+    the attributes taken off the module object are one surface, and a
+    rename that broke either would leave four hook pin files and the
+    migration tool resolving nothing.
+    """
+
+    @pytest.mark.parametrize("rel", CLAUDE_HOME_IMPORTERS)
+    def test_every_name_an_importer_asks_for_is_defined(self, rel):
+        source = (REPO / rel).read_text(encoding="utf-8")
+        wanted = (names_imported_from("tools.claude_home", source)
+                  | attributes_read_from("claude_home", source))
+        assert wanted, (
+            f"{rel} asks tools.claude_home for nothing; this check has no "
+            f"input and can report nothing")
+        mod = importlib.import_module("tools.claude_home")
+        missing = sorted(name for name in wanted if not hasattr(mod, name))
+        assert not missing, (
+            f"{rel} asks tools.claude_home for names it does not define: "
+            f"{missing}")
+
+    def test_the_reader_rejects_a_name_the_library_does_not_define(self):
+        """Control. Without it a reader returning nothing would pass every
+        assertion above."""
+        source = ("from tools.claude_home import no_such_name\n"
+                  "from tools import claude_home\n"
+                  "claude_home.no_such_attribute\n")
+        wanted = (names_imported_from("tools.claude_home", source)
+                  | attributes_read_from("claude_home", source))
+        assert wanted == {"no_such_name", "no_such_attribute"}
+        mod = importlib.import_module("tools.claude_home")
+        assert not any(hasattr(mod, name) for name in wanted)
 
 
 class TestTheSharedSpecLibraryServesItsImporters:
@@ -442,20 +518,78 @@ class TestARefusalWhereSilenceUsedToBe:
                             ["migrate_harness", "--to", str(target)])
         assert mod.main() == 3
 
-    def test_migrate_harness_proceeds_when_every_loose_tool_is_there(
-            self, tmp_path, monkeypatch):
+    @staticmethod
+    def _plant_harness(home: Path, skills: int, hooks: int) -> Path:
+        """Build a harness directory under `home` and point the search at it.
+
+        The caller sets HOME and USERPROFILE. Planting rather than reading
+        the machine's own harness is what keeps these three cases
+        deterministic: the harness is in the ignore list and travels with
+        no clone, so a test that read the real one would answer
+        differently on the operator's machine and on a fresh checkout.
+        """
+        root = home / claude_home.CLAUDE_DIR_NAME
+        for index in range(skills):
+            skill = root / "skills" / f"planted-{index}"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("planted", encoding="utf-8")
+        if hooks:
+            hook_dir = root / "hooks"
+            hook_dir.mkdir(parents=True, exist_ok=True)
+            for index in range(hooks):
+                (hook_dir / f"planted_{index}.py").write_text(
+                    "x = 1\n", encoding="utf-8")
+        # Nothing at all is created when both counts are zero, so the
+        # search reports absence rather than an empty directory. The two
+        # states carry different exit codes and the tests separate them.
+        return root
+
+    def _drive_migrate(self, tmp_path, monkeypatch, skills, hooks):
+        """Run migrate_harness over a planted source and a planted harness."""
         mod = importlib.import_module("tools.migrate_harness")
         source, target = tmp_path / "src", tmp_path / "dst"
-        for path in (source, target):
+        home = tmp_path / "home"
+        for path in (source, target, home):
             path.mkdir()
         for rel in mod.LOOSE_TOOLS:
             planted = source / rel
             planted.parent.mkdir(parents=True, exist_ok=True)
             planted.write_text("x = 1\n", encoding="utf-8")
+        self._plant_harness(home, skills, hooks)
         monkeypatch.setattr(mod, "HERE", source)
+        monkeypatch.setattr(claude_home, "REPO", tmp_path / "no-such-repo")
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
         monkeypatch.setattr(sys, "argv",
                             ["migrate_harness", "--to", str(target)])
-        assert mod.main() == 0
+        return mod.main()
+
+    def test_migrate_harness_proceeds_when_every_loose_tool_is_there(
+            self, tmp_path, monkeypatch):
+        assert self._drive_migrate(tmp_path, monkeypatch,
+                                   skills=1, hooks=1) == 0
+
+    def test_migrate_harness_refuses_when_no_harness_can_be_found(
+            self, tmp_path, monkeypatch):
+        """2026-08-25. The harness left the tree, the source directory
+        stopped existing, `copy_tree` answered (0, 0) for a missing
+        source, and the tool printed a count over "0 skills, 0 hooks"
+        and returned 0. That is the silence this whole class exists to
+        replace, so it now refuses."""
+        assert self._drive_migrate(tmp_path, monkeypatch,
+                                   skills=0, hooks=0) == 4
+
+    def test_migrate_harness_refuses_a_harness_with_no_hook(
+            self, tmp_path, monkeypatch):
+        """Half a harness is not worth carrying, and a zero printed under
+        a success line reads as a pass."""
+        assert self._drive_migrate(tmp_path, monkeypatch,
+                                   skills=1, hooks=0) == 5
+
+    def test_migrate_harness_refuses_a_harness_with_no_skill(
+            self, tmp_path, monkeypatch):
+        assert self._drive_migrate(tmp_path, monkeypatch,
+                                   skills=0, hooks=1) == 5
 
     def test_migrate_harness_will_not_call_an_absent_tools_dir_clean(
             self, tmp_path):
