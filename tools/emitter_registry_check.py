@@ -814,7 +814,7 @@ def _check_cadence(reg: Registry,
       E14  a row has no roster entry, or the two disagree.
       E15  the roster carries a pin the register does not.
 
-    E14 and E15 together force a bijection over the 77 names, so a name
+    E14 and E15 together force a bijection over the 78 names, so a name
     listed in both roster tuples -- which the dict merge would silently
     collapse to one entry -- comes back as E14 on the row that lost.
 

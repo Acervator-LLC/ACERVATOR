@@ -1568,7 +1568,7 @@ here touches `~/.acervator` or `~/.acervator_logs`.
 
 ## The register
 
-One row per pin call site. 77 rows.
+One row per pin call site. 78 rows.
 
 | ID | subsystem | signal type | duration | current name | previous name | source | observes |
 |---|---|---|---|---|---|---|---|
@@ -1757,7 +1757,7 @@ deliberately not invented here.
 
 ### The table
 
-One row per pin. 77 rows. The term is `always_on` or `toggle`; the text
+One row per pin. 78 rows. The term is `always_on` or `toggle`; the text
 after the colon is the reason, read at the call site.
 
 | ID | cadence |
