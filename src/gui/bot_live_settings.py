@@ -286,9 +286,11 @@ FOLD_SOURCE_TOOLTIPS = {
 #: the 280px cap this replaces.
 TRANCHE_TABLE_VISIBLE_ROWS = 18
 
-#: The table's own frame, top plus bottom. `QTableWidget` draws a 1px
-#: sunken frame by default and the height cap must include it, or the
-#: last row is clipped by exactly that much.
+#: Fallback chrome, used only when there is no widget to measure. The
+#: builder passes the measured `fold_table_chrome_px(table)` instead.
+#: This literal is 32px short of the shipped theme: 26px of styled
+#: frame and a 10px horizontal scroll bar, enough to leave a one-row
+#: table showing its header and zero pixels of its only row.
 TRANCHE_TABLE_FRAME_PX = 4
 
 #: Fallback header height, used only when there is no header to
@@ -297,8 +299,32 @@ TRANCHE_TABLE_FRAME_PX = 4
 TRANCHE_TABLE_HEADER_PX = 24
 
 
+def fold_table_chrome_px(table: QTableWidget) -> int:
+    """Vertical pixels this table spends on what is not a row.
+
+    Frame top plus bottom, plus the horizontal scroll bar. The header
+    is measured by the caller and is not counted here.
+
+    `ensurePolished` IS THE WHOLE POINT OF THE CALL. An unpolished
+    table answers `frameWidth() == 1`; the same table answers `13`
+    once the theme's `QTableWidget` border is resolved, so measuring
+    before polish under-counts the frame by 24px and hides a row.
+
+    THE SCROLL BAR IS RESERVED WHETHER OR NOT IT APPEARS. Eleven
+    `ResizeToContents` columns measure 1,582px against a 521px
+    viewport, so it is always drawn here, and its presence is not
+    knowable until after the table has been laid out.
+    """
+    table.ensurePolished()
+    return 2 * int(table.frameWidth()) + int(
+        table.horizontalScrollBar().sizeHint().height()
+    )
+
+
 def fold_table_max_height_px(
-    row_count: int, header_px: int = TRANCHE_TABLE_HEADER_PX
+    row_count: int,
+    header_px: int = TRANCHE_TABLE_HEADER_PX,
+    chrome_px: int = TRANCHE_TABLE_FRAME_PX,
 ) -> int:
     """Height cap that shows up to `TRANCHE_TABLE_VISIBLE_ROWS` rows.
 
@@ -309,9 +335,15 @@ def fold_table_max_height_px(
     A SHORT QUEUE DOES NOT GET A TALL EMPTY BOX. The cap follows the
     row count until it reaches the ceiling, so a bot with three
     tranches shows three rows and the group closes around them.
+
+    `chrome_px` IS MEASURED BY THE CALLER, NOT ASSUMED HERE. A cap
+    that budgets less chrome than the widget spends is subtracted from
+    the rows, and a one-row table then draws its header and nothing
+    else - issue #133 unit 1, seen on CHIP/USD `c8e5c5db` with one
+    tranche the summary counted and the table did not show.
     """
     visible = max(1, min(int(row_count or 0), TRANCHE_TABLE_VISIBLE_ROWS))
-    return visible * TRANCHE_ROW_HEIGHT_PX + int(header_px) + TRANCHE_TABLE_FRAME_PX
+    return visible * TRANCHE_ROW_HEIGHT_PX + int(header_px) + int(chrome_px)
 
 
 # ── The row order the operator chooses (issue #98 defect 7) ──────────
@@ -3621,10 +3653,26 @@ if _HAS_QT:
                 # sizes it to its own labels, so a hard-coded header
                 # height would clip the last row on any theme with a
                 # different font.
-                table.setMaximumHeight(
+                #
+                # issue #133 unit 1 - A CEILING IS NOT A PROMISE THAT
+                # ANYTHING IS SHOWN. `setMaximumHeight` left the tab's
+                # trailing `addStretch()` free to hand this table its
+                # 86px `minimumSizeHint`, so under `cyberpunk_dark` in
+                # a 640x720 dialog the render carried 8 of a row's 30
+                # pixels at one tranche and 25 at fifty-eight - zero
+                # whole rows either way. `setFixedHeight` makes the
+                # number a floor too; `_wrap_scrollable` scrolls a
+                # table taller than its tab.
+                #
+                # `fold_table_chrome_px` polishes the table and reads
+                # what it spends: 36px, against the 4px fallback that
+                # `fold_table_max_height_px` assumes without one.
+                _chrome_px = fold_table_chrome_px(table)
+                table.setFixedHeight(
                     fold_table_max_height_px(
                         len(tranches) + len(ext_rows),
                         table.horizontalHeader().sizeHint().height(),
+                        _chrome_px,
                     )
                 )
                 table.setAlternatingRowColors(True)
