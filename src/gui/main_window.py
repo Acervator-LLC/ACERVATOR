@@ -1333,6 +1333,56 @@ if _HAS_QT:
                 state = status.get("state", "idle")
                 panel = info["panel"]
 
+                # Issue #46 -- THE PANEL FOLLOWS THE BOT'S SYMBOL.
+                # `info["symbol"]` used to be written in the CREATE
+                # branch alone. `fetch_chart_data` reads THAT field
+                # and hands it to the exchange, so a bot whose pair
+                # changed kept a chart titled with the new pair over
+                # candles fetched for the old one -- silently, and for
+                # as long as the panel lived.
+                #
+                # RE-POINTING THE FETCH IS NECESSARY AND NOT
+                # SUFFICIENT. Five things on this panel belong to the
+                # old pair, so all five move together:
+                #   - the stored symbol, which IS the fetch target;
+                #   - `last_fetch`, or the 30 s throttle holds the old
+                #     pair's candles on screen for a whole window
+                #     after the title already says the new pair. The
+                #     same re-arm `_on_tf_changed` does for a
+                #     timeframe change;
+                #   - the header text, which the relabel below rewrites
+                #     only when a price is known;
+                #   - the candles, which are the old market's prices.
+                #     CLEARING THEM IS WHAT KEEPS AN UNKNOWN NEW PAIR
+                #     HONEST: an empty answer calls `set_error` and
+                #     leaves the candles standing, which would revive
+                #     this exact defect on the next pair;
+                #   - the trade markers, which are anchored to the old
+                #     market's prices. The block below replaces them
+                #     only when the new pair HAS trades, so on a fresh
+                #     pair the old pair's markers stayed drawn.
+                # THE PANEL IS RESET, NOT REBUILT. Rebuilding it would
+                # throw away the timeframe and the indicator toggles
+                # the operator chose on this chart.
+                if info["symbol"] != symbol:
+                    logger.info(
+                        "Asset Charts: panel for bot %s follows %s -> %s",
+                        bot_id[:8],
+                        info["symbol"],
+                        symbol,
+                    )
+                    info["symbol"] = symbol
+                    info["last_fetch"] = 0
+                    # The public setter, which repaints. The relabel
+                    # below still reaches for `_symbol` directly; that
+                    # line is older than this branch and is not this
+                    # issue's to move.
+                    panel.chart.symbol = symbol
+                    panel.chart.set_candles([])
+                    panel.chart.set_trade_history_markers([])
+                    panel.set_source("")
+                    panel.chart.set_error(f"{symbol}: awaiting candles")
+
                 if price > 0:
                     panel.chart._symbol = (
                         f"{symbol}  \u2022  ${price:.8f}  \u2022  {state.upper()}"
@@ -1376,7 +1426,27 @@ if _HAS_QT:
                         #   anchor_price = anchor_usd / current_holdings
                         # When holdings are zero (no position yet), we
                         # skip the lines (price-axis projection is
-                        # undefined). Ceiling = anchor × (1 + cap_pct).
+                        # undefined).
+                        #
+                        # Issue #106 — THE DRAWN LINE AND THE ENFORCED
+                        # LINE WERE DIFFERENT LINES. The ceiling read
+                        # `anchor_px * (1 + cap_pct/100)`, so it was
+                        # drawn from the operator's input value; the bot
+                        # enforces against `_target_balance`, which fold
+                        # surplus grows. On IMU (anchor $50.00, target
+                        # $63.53) the chart drew $50.50 where the bot
+                        # enforced $64.17 — a chart and a bot telling
+                        # the operator different stories about the same
+                        # number. The ceiling is now what the bot can
+                        # actually reach on this cycle: the live target
+                        # plus this cycle's cap, taken from the SAME
+                        # `cycle_growth_cap_usd` property the four
+                        # enforcement sites read.
+                        #
+                        # The ANCHOR line is unchanged and still comes
+                        # from `_anchor_target_balance`. Its badge says
+                        # "TB-Anchor", so it is the one line here that
+                        # is supposed to show the frozen input.
                         try:
                             anchor_usd = float(
                                 getattr(
@@ -1386,14 +1456,18 @@ if _HAS_QT:
                                 )
                                 or 0
                             )
-                            cap_pct = float(
-                                getattr(bot.config, "max_target_growth_pct", 1.0) or 1.0
+                            target_usd = float(
+                                getattr(bot, "_target_balance", anchor_usd)
+                                or anchor_usd
+                            )
+                            cap_usd = float(
+                                getattr(bot, "cycle_growth_cap_usd", 0.0) or 0.0
                             )
                             holdings = float(getattr(bot, "_current_holdings", 0) or 0)
                             qrate = float(getattr(bot, "_quote_to_usd", 1.0) or 1.0)
                             if anchor_usd > 0 and holdings > 0 and qrate > 0:
                                 anchor_px = anchor_usd / holdings / qrate
-                                ceiling_px = anchor_px * (1.0 + cap_pct / 100.0)
+                                ceiling_px = (target_usd + cap_usd) / holdings / qrate
                                 panel.chart.set_target_balance_lines(
                                     anchor_px, ceiling_px
                                 )
@@ -7006,6 +7080,23 @@ if _HAS_QT:
 
             self.setStatusBar(status)
 
+        # Fault records for the two pumps below, at ERROR then one
+        # summary per window. Class attributes: process lifetime, the
+        # same as the singletons they speak for.
+        from ..exchange.lazy_singleton import ThrottledFault
+
+        _currency_pump_fault = ThrottledFault(
+            "the currency rate pump",
+            "The BTC/USD and ETH/USD rates on the dashboard, and the "
+            "satoshi and wei prices derived from them, will stop "
+            "updating.",
+        )
+        _scout_pump_fault = ThrottledFault(
+            "the market pairs scout pump",
+            "Cross-pair readings on the dashboard and in the Bot "
+            "Details Status tab will stop updating.",
+        )
+
         def _pump_currency_rates(self) -> None:
             """v3.23.41 — schedule a lazy CurrencyRateMonitor refresh
             and push the current snapshot into the Indicator Voting
@@ -7017,6 +7108,8 @@ if _HAS_QT:
                 from ..exchange.currency_rate_monitor import get_currency_monitor
 
                 mon = get_currency_monitor()
+                if mon is None:
+                    return  # down; the monitor reported itself
                 connectors = getattr(self, "_exchange_connectors", {}) or {}
                 if connectors:
                     self._schedule_async(mon.refresh_from_connectors(connectors))
@@ -7024,8 +7117,9 @@ if _HAS_QT:
                 # be empty on the very first tick).
                 if hasattr(self, "_indicator_panel"):
                     self._indicator_panel.update_currency_rates(mon.snapshot())
+                self._currency_pump_fault.note_success()
             except Exception as exc:  # noqa: BLE001 - pump best-effort
-                logger.debug("currency rate pump raised: %s", exc)
+                self._currency_pump_fault.note_failure(exc)
 
         def _pump_market_pairs_scout(self) -> None:
             """v3.23.47 — schedule a lazy MarketPairsScout refresh so
@@ -7039,6 +7133,8 @@ if _HAS_QT:
                 from ..exchange.market_pairs_scout import get_scout
 
                 scout = get_scout()
+                if scout is None:
+                    return  # down; the scout reported itself
                 connectors = getattr(self, "_exchange_connectors", {}) or {}
                 if connectors:
                     # v3.23.59 — coalesce (same reason as chart
@@ -7050,8 +7146,9 @@ if _HAS_QT:
                     self._pending_scout_refresh = self._schedule_async(
                         scout.refresh_from_connectors(connectors)
                     )
+                self._scout_pump_fault.note_success()
             except Exception as exc:  # noqa: BLE001 - pump best-effort
-                logger.debug("market pairs scout pump raised: %s", exc)
+                self._scout_pump_fault.note_failure(exc)
 
         def _refresh_api_load_pill(self) -> None:
             """Update the status-bar API-load pill from api_load_monitor.

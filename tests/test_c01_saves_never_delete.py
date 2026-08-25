@@ -149,16 +149,22 @@ class TestDeletedBotStaysDeleted:
         assert len(state["smart_wires"]) == 1
         assert state["smart_wires"][0]["target_id"] == "a2"
 
-    def test_delete_is_logged_at_error(self, sm, caplog):
+    def test_delete_is_logged_at_error(self, sm, capture_log):
         """Irreversible and unreproducible from the exchange. It must be
         findable in the logs a year from now — today it is recorded
-        NOWHERE, which is how the operator lost track of past deletes."""
+        NOWHERE, which is how the operator lost track of past deletes.
+
+        `capture_log`, NOT `caplog`. `state_manager` logs on
+        `acervator.state`, and `logging_engine` sets
+        `acervator.propagate = False`, so the record never reaches the
+        root handler `caplog` installs.
+        """
         import logging
 
         sm.save_state([_rec("doomed", lots=7, tranches=3)])
-        with caplog.at_level(logging.ERROR):
+        with capture_log("acervator.state") as records:
             sm.delete_bot("doomed")
-        msg = " ".join(r.getMessage() for r in caplog.records)
+        msg = " ".join(r.getMessage() for r in records if r.levelno >= logging.ERROR)
         assert "DELETED" in msg and "doomed" in msg
         assert "7 lot" in msg and "3 tranche" in msg
 

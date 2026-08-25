@@ -1,8 +1,16 @@
 # touchset — refuse a unit's bad file before the first edit
 
-`tools/touchset.py` measures the files a unit is about to touch. It
+`dev_harness/touchset.py` measures the files a unit is about to touch. It
 refuses a touch set that cannot succeed. It then re-measures the same
-files on the island and refuses a change that made them worse.
+files in the tree that holds the edits, and refuses a change that made
+them worse.
+
+**A note on one word.** This document and the tool both say "island" for
+the tree that holds the edits. Islands were retired on 2026-08-19 and the
+tool was deleted under issue #67. Read every "island" below as **the tree
+you changed** — your branch checkout, your `git worktree` or your clone.
+The tool keeps the word because operator law forbids editing anything
+under `dev_harness/`.
 
 It only measures and refuses. It fixes nothing. It edits no file it
 inspects. It writes one file, the pin.
@@ -18,7 +26,7 @@ the archetype's own `passed`, read through that archetype's published
 ### Baseline — run this BEFORE the first edit
 
 ```
-python -m tools.touchset baseline <path> [<path>...] [--pin FILE] [--root DIR]
+python -m dev_harness.touchset baseline <path> [<path>...] [--pin FILE] [--root DIR]
 ```
 
 For each path it measures:
@@ -32,10 +40,10 @@ For each path it measures:
 It writes a JSON pin. It exits non-zero, and writes no pin, if any path
 is unusable or any file is already red.
 
-### Check — run this BEFORE promotion
+### Check — run this BEFORE the commit lands
 
 ```
-python -m tools.touchset check --pin FILE --against DIR
+python -m dev_harness.touchset check --pin FILE --against DIR
 ```
 
 It re-measures every pinned path inside the island. It compares each one
@@ -160,10 +168,9 @@ About 93% of that time is inside `coding_archetype`, which runs six
 tools in series. This tool may not change that. Cost scales roughly
 linearly with touch-set size.
 
-Run `baseline` once when the unit opens. Run `check` once before
-promotion. Both modes are pre-edit or pre-promotion conditions, so that
-is enough. Running `check` on every island iteration is what gets it
-skipped.
+Run `baseline` once when the unit opens. Run `check` once before the
+commit lands. Both modes are pre-edit or pre-landing conditions, so that
+is enough. Running `check` on every edit is what gets it skipped.
 
 ---
 

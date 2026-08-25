@@ -5,8 +5,21 @@ Acervator_win.spec — PyInstaller spec for Windows
 Produces: dist/Acervator/Acervator.exe
 
 Build command (run on Windows):
-    pip install pyinstaller PySide6 ccxt cryptography keyring pandas numpy ta tomli_w aiohttp certifi requests reportlab pillow
+    pip install $(python -m tools.deps requirements build)
     pyinstaller Acervator_win.spec
+
+Issue #94 - that first command used to be a hand-copied list of 14
+package names written out in this docstring. It was one of eight such
+lists and it agreed with none of the others. pyproject.toml is the one
+source now, and tools/deps.py reads it. Do not write a package name
+back into this file.
+
+Issue #87 - everything this file used to share with Acervator_mac.spec
+now lives in tools/spec_common.py: the version reader, the datas
+builder, the hidden-import list and the excludes list. What is left
+below is per-platform and nothing else. Do not copy a shared value back
+into this file; change it in tools/spec_common.py and both platforms
+follow.
 
 The resulting .exe is a standalone Windows application.
 No NSIS, no separate installer — the dist/ folder IS the application.
@@ -15,129 +28,49 @@ Optionally zip dist/Acervator/ for distribution.
 
 import os
 import sys
-from pathlib import Path
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 # Project root is where this spec file lives
 PROJECT_ROOT = os.path.dirname(os.path.abspath(SPEC))
 
+# PyInstaller EXECS a spec file, it does not import it, so the project
+# root is not on sys.path by the time this line runs. Put it there
+# before importing the shared module. If the import below fails, the
+# build stops here with an ImportError — which is the safe failure. A
+# spec that quietly lost half its hidden imports would build clean and
+# then fail on the operator's machine at run time.
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from PyInstaller.utils.hooks import collect_submodules  # noqa: E402
+
+from tools.spec_common import (  # noqa: E402
+    EXCLUDES,
+    build_graceful_datas,
+    hiddenimports_for,
+    read_acervator_version,
+)
+
 block_cipher = None
 
-# ---------------------------------------------------------------------------
-# Dynamic version from src/__init__.py (single source of truth)
-# ---------------------------------------------------------------------------
-def _read_acervator_version(project_root):
-    fallback = '3.13.7'
-    try:
-        with open(os.path.join(project_root, 'src', '__init__.py'), encoding='utf-8') as f:
-            for line in f:
-                if line.strip().startswith('__version__'):
-                    return line.split('=', 1)[1].strip().strip('"').strip("'")
-    except Exception:
-        pass
-    return fallback
+ACERVATOR_VERSION = read_acervator_version(PROJECT_ROOT)
 
-ACERVATOR_VERSION = _read_acervator_version(PROJECT_ROOT)
+ICON_PATH = os.path.join(PROJECT_ROOT, 'resources', 'icon.ico')
 
 # ---------------------------------------------------------------------------
-# Graceful datas: skip missing optional paths; probe sadp/ then legacy location
-# ---------------------------------------------------------------------------
-def _build_graceful_datas(project_root):
-    candidates = [
-        (os.path.join(project_root, 'src'), 'src'),
-        (os.path.join(project_root, 'resources'), 'resources'),
-        # data/historical is populated by download_archive.py — optional at build time.
-        # If missing, the app falls back to runtime cache + embedded ASSET_PERIODS anchors.
-        (os.path.join(project_root, 'data', 'historical'), os.path.join('data', 'historical')),
-        # RAIntSimBat engine — Session 21+ location (sadp/) probed first, legacy root as fallback.
-        # sadp: R42 (battery engine is the source of truth — must ship whichever path exists)
-        (os.path.join(project_root, 'sadp', 'RAIntSimBat'), os.path.join('sadp', 'RAIntSimBat')),
-        (os.path.join(project_root, 'RAIntSimBat'), 'RAIntSimBat'),
-    ]
-    result = []
-    for src_path, dest_path in candidates:
-        if os.path.isdir(src_path):
-            result.append((src_path, dest_path))
-        else:
-            print(f"  [spec] Skipping missing optional datas path: {src_path}")
-    return result
-
-# ---------------------------------------------------------------------------
-# Collect all source modules
+# Collect all source modules.
+# collect_submodules('src') stays HERE and not in tools/spec_common.py so
+# that the shared module never has to import PyInstaller.
 # ---------------------------------------------------------------------------
 a = Analysis(
     [os.path.join(PROJECT_ROOT, 'main.py')],
     pathex=[PROJECT_ROOT],
     binaries=[],
-    datas=_build_graceful_datas(PROJECT_ROOT),
-    hiddenimports=(
-        # Automatically collect ALL src.* submodules — never needs manual updating
-        collect_submodules('src')
-        + [
-        # MEM-219 — self-supervising watchdog module at project root
-        'acervator_watchdog',
-        'ccxt',
-        'ccxt.async_support',
-        'ccxt.async_support.binance',
-        'ccxt.async_support.coinbase',
-        'ccxt.async_support.kraken',
-        'ccxt.async_support.kucoin',
-        'ccxt.async_support.bybit',
-        'ccxt.async_support.okx',
-        'ccxt.async_support.gate',       # renamed from gateio in ccxt 4.x
-        'ccxt.async_support.bitget',
-        'ccxt.async_support.htx',        # renamed from huobi in ccxt 4.x
-        'ccxt.async_support.mexc',
-        'ccxt.async_support.bitfinex',
-        'ccxt.async_support.gemini',
-        'ccxt.async_support.poloniex',
-        'ccxt.async_support.bitstamp',
-        'ccxt.async_support.cryptocom',
-        'cryptography',
-        'cryptography.hazmat.primitives.ciphers.aead',
-        'cryptography.hazmat.primitives.kdf.pbkdf2',
-        'PySide6',
-        'PySide6.QtWidgets',
-        'PySide6.QtCore',
-        'PySide6.QtGui',
-        'PySide6.QtWebEngineWidgets',
-        'keyring',
-        'keyring.backends',
-        'keyring.backends.Windows',
-        'pandas',
-        'numpy',
-        'ta',
-        'aiohttp',
-        'tomli',
-        'tomli_w',
-        'psutil',    # Nuclear v4 MR — system load sampling (v3.10.5)
-        # defusedxml — RSS parsing in src/gui/crypto_news_ticker.py.
-        # NOT REQUIRED for collection: measured on PyInstaller 6.22.0,
-        # automatic analysis reaches it from the
-        # src.gui.crypto_news_ticker graph root that collect_submodules
-        # supplies above, and puts all ten defusedxml modules in the
-        # PYZ with no entry here and no hook (neither PyInstaller nor
-        # pyinstaller-hooks-contrib 2026.6 ships a defusedxml hook).
-        # Named anyway, for the same reason PySide6 and pandas are
-        # named above though analysis finds them too: its absence is
-        # not a degraded ticker but an ImportError at module import.
-        # Measured on a control build with defusedxml excluded, the
-        # frozen binary raised ModuleNotFoundError from
-        # crypto_news_ticker.py at import time.
-        # It lives INSIDE the PYZ, not as an _internal/defusedxml
-        # folder. Do not read a missing folder as a missing package.
-        'defusedxml',
-        'defusedxml.ElementTree',
-        ]
-    ),
+    datas=build_graceful_datas(PROJECT_ROOT),
+    hiddenimports=collect_submodules('src') + hiddenimports_for('windows'),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        'tkinter', 'matplotlib', 'scipy', 'PIL',
-        'IPython', 'jupyter', 'notebook',
-        'pytest', 'sphinx', 'setuptools',
-    ],
+    excludes=list(EXCLUDES),
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -164,7 +97,13 @@ exe = EXE(
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
-    icon=os.path.join(PROJECT_ROOT, 'resources', 'icon.ico'),
+    icon=ICON_PATH,
+    # FileVersion and ProductVersion below are Windows resource fields
+    # and they are NOT the Acervator version. They have read '1.1.0'
+    # since the file was written. FileDescription carries the real
+    # version. Left as found: these fields are Windows installed-app
+    # identity, the same class of value as the macOS bundle_identifier,
+    # and changing them is the operator's call.
     version_info={
         'CompanyName': 'Quantum Trading Systems',
         'FileDescription': f'Acervator v{ACERVATOR_VERSION}',
@@ -173,7 +112,7 @@ exe = EXE(
         'OriginalFilename': 'Acervator.exe',
         'ProductName': 'Acervator',
         'ProductVersion': '1.1.0',
-    } if os.path.exists(os.path.join(PROJECT_ROOT, 'resources', 'icon.ico')) else None,
+    } if os.path.exists(ICON_PATH) else None,
 )
 
 coll = COLLECT(

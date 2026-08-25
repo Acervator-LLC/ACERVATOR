@@ -57,6 +57,19 @@ class StateManager:
         self._path = self._dir / "bot_state.json"
         self._backup_path = self._dir / "bot_state.backup.json"
 
+    @property
+    def config_dir(self) -> Path:
+        """The directory this manager reads and writes.
+
+        Issue #96 added a single-instance guard, and that guard must
+        claim the SAME directory the fleet was loaded from. Re-deriving
+        `Path.home() / ".acervator"` at the guard would guard a
+        different directory whenever a caller passed `config_dir=`,
+        which every test does. So the guard asks the manager instead of
+        repeating the default.
+        """
+        return self._dir
+
     def save_state(
         self,
         bots: list[dict],

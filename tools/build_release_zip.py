@@ -23,7 +23,7 @@ Partition invariant
 Every file in the repo is classified into exactly ONE of three
 buckets:
 
-  • PRIMARY    — live source, active docs, tests, sadp/, latest
+  • PRIMARY    — live source, active docs, tests, latest
                  product manual. Lean release package.
   • ADDITIONAL — historical artifacts, archived backups, old
                  product manuals, stale reports, orphaned scripts.
@@ -49,8 +49,14 @@ CLI
   python tools/build_release_zip.py --additional-only
                                              # build only the additional zip
   python tools/build_release_zip.py --print-latest-manual
+  python tools/build_release_zip.py --session 28
 
-sadp: R28 FL · R55 GOV · R62 FRG · R68 DPA · R76 DMW
+The session number is MEASURED, never assumed. It comes from --session,
+or from the highest-version release package beside the repository, and
+the build prints which package it was read off. With neither source
+the build REFUSES. A guessed session number already shipped two
+packages as `session79`, and a wrongly named archive looks exactly
+like a right one.
 """
 
 from __future__ import annotations
@@ -97,7 +103,7 @@ JUNK_BASENAMES = {".coverage"}
 
 # v3.23.6 — additional name-substring blacklist for rotated/derived log
 # artifacts that the suffix rule would miss:
-#   *.log.scrubbed   — output of tools/scrub_gate_log_nulls.py
+#   *.log.scrubbed   — output of a gate-log scrubber
 #   *.log.scrubbed.N — pre-replace scratch from the same tool
 #   *.log.bak / *.log.bak.N — pre-scrub backups
 #   *.log.[0-9]+   — rotated NDJSON files (gate.log.1, trade.log.2, etc.)
@@ -122,8 +128,8 @@ MANUAL_RE = re.compile(r"^acervator_product_manual_v(\d+)_(\d+)_(\d+)\.pdf$")
 
 # ADDITIONAL — route to the supplementary zip rather than the primary.
 # These are NOT junk (preserved for archival) but DO bloat the primary
-# release package if included. Operator audit 2026-05-31
-# (docs/audits/2026-05-31_unused_files_audit.md) classified each item.
+# release package if included. An operator audit on 2026-05-31
+# classified each item below.
 
 # Top-level directories that go in their entirety to ADDITIONAL.
 ADDITIONAL_DIRS = {
@@ -136,8 +142,7 @@ ADDITIONAL_DIRS = {
 ADDITIONAL_FILES_EXACT = {
     # Cat 1 — conversation backup (62.9 MB)
     "ACERVATOR_DEV_1_BACKUP_2026-05-20.jsonl",
-    # Cat 4 — old HOPs + dept review (superseded by HOP5 +
-    # sadp/DEPARTMENT_LEADS.md)
+    # Cat 4 — old HOPs + dept review (superseded by HOP7)
     "ACERVATOR_HOP2.md",
     "ACERVATOR_HOP3.md",
     "ACERVATOR_HOP4.md",
@@ -154,21 +159,23 @@ ADDITIONAL_FILES_EXACT = {
     "generate_essay_ja.py",
     "generate_essay_localized.py",
     "investor_screen.py",
-    "test_scrumming_v3.py",
+    # Issue #74 extracted the animation core these three screens shared.
+    # It travels with them: it has no other consumer, and splitting a
+    # helper from every file that imports it across two zips would give
+    # the PRIMARY zip a module nothing there calls.
+    "screen_fx.py",
+    # Issue #85 renamed `test_scrumming_v3.py` to
+    # `tools/scrumming_v3_sim.py`. This set matches a repo-relative
+    # string EXACTLY, so the old entry would have stopped matching in
+    # silence and the file would have joined the PRIMARY zip with no
+    # message. It joins the PRIMARY zip on purpose now: it is a tool in
+    # `tools/`, and every other tool in that directory ships there.
     # Cat 7 — low-coupling promo (trailer chain). KEEP
     # generate_essay.py in PRIMARY — it builds the live product
     # manual. The trailer chain (splash + render) is dormant.
     "splash_screen.py",
     "render_trailer.py",
 }
-
-# Regex patterns: route to ADDITIONAL if matched. Used for historical
-# product-manual PDFs — every version EXCEPT the latest.
-ADDITIONAL_REGEXES = (
-    # Older product-manual PDFs handled by the manual-version filter
-    # below — listed here for documentation but matched in
-    # `_is_older_manual()`.
-)
 
 
 def _parse_manual_version(name: str) -> Optional[tuple[int, int, int]]:
@@ -230,34 +237,6 @@ def _is_older_manual(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
     return rel_path.name != latest_manual_name
 
 
-# v3.23.20 — sadp/RAIntSimBat/reports/ defensive zip exclusion.
-# Operator-approved 2026-06-16: route the reports archive to ADDITIONAL
-# bucket so it doesn't bloat the primary release zip, EXCEPT historical-
-# proof files cited verbatim by CHANGELOG / Chronicle / HOP. Those stay
-# in PRIMARY for chain-of-evidence integrity.
-_RAINTSIMBAT_REPORTS_REL = ("sadp", "RAIntSimBat", "reports")
-RAINTSIMBAT_REPORTS_PRIMARY_KEEP = frozenset(
-    {
-        "RAIntSimBat_20260421_055850.json",  # HOP4/HOP5 cited
-        "RAIntSimBat_RESULTS_20260427_183334.json",  # CHANGELOG + Chronicle cited
-        "RAIntSimBat_RESULTS_20260428_095359.json",  # CHANGELOG cited
-    }
-)
-
-
-def _is_raintsimbat_reports_archive(rel_path: Path) -> bool:
-    """True if path is inside sadp/RAIntSimBat/reports/ AND not a cited
-    historical-proof file."""
-    parts = rel_path.parts
-    if len(parts) < 4:
-        return False
-    if parts[:3] != _RAINTSIMBAT_REPORTS_REL:
-        return False
-    if rel_path.name in RAINTSIMBAT_REPORTS_PRIMARY_KEEP:
-        return False
-    return True
-
-
 def _is_additional(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
     """True if the path routes to the ADDITIONAL_ITEMS zip rather
     than the primary release zip. Junk filtering is checked BEFORE
@@ -272,12 +251,7 @@ def _is_additional(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
     if rel_path.name in ADDITIONAL_FILES_EXACT:
         return True
     # Historical product manual
-    if _is_older_manual(rel_path, latest_manual_name):
-        return True
-    # v3.23.20 — RAIntSimBat reports archive (except cited historical-proof)
-    if _is_raintsimbat_reports_archive(rel_path):
-        return True
-    return False
+    return _is_older_manual(rel_path, latest_manual_name)
 
 
 def classify_path(rel_path: Path, latest_manual_name: Optional[str]) -> str:
@@ -289,25 +263,6 @@ def classify_path(rel_path: Path, latest_manual_name: Optional[str]) -> str:
     if _is_additional(rel_path, latest_manual_name):
         return "additional"
     return "primary"
-
-
-# ─────────────────────────────────────────────────────────────────────
-# Backward-compat shim: old `should_include` API still used by tests
-# from v3.20.35. Returns True for PRIMARY bucket only.
-# ─────────────────────────────────────────────────────────────────────
-
-
-def should_include(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
-    """Legacy API kept for v3.20.35-era test compatibility. Returns
-    True iff the path lands in the PRIMARY bucket."""
-    return classify_path(rel_path, latest_manual_name) == "primary"
-
-
-# Legacy aliases — old field names still referenced by
-# test_build_release_zip.py from v3.20.35.
-EXCLUDE_DIRS = JUNK_DIRS
-EXCLUDE_SUFFIXES = JUNK_SUFFIXES
-EXCLUDE_BASENAMES = JUNK_BASENAMES
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -326,22 +281,60 @@ def read_version() -> Optional[str]:
     return m.group(1) if m else None
 
 
-def read_session_number() -> int:
-    """Try to read the session number from the latest MEM entry. Falls
-    back to 27 (current session) if unparseable."""
-    try:
-        import json
+PACKAGE_RE = re.compile(r"^acervator_session(\d+)_CLOSE_hop5_v(\d+)_(\d+)_(\d+)\.zip$")
 
-        p = _REPO / "sadp" / "EPISODIC_MEMORY.json"
-        data = json.loads(p.read_text(encoding="utf-8"))
-        sessions = [
-            e.get("session")
-            for e in data
-            if isinstance(e, dict) and isinstance(e.get("session"), int)
-        ]
-        return max(sessions) if sessions else 27
-    except (OSError, json.JSONDecodeError, ValueError):
-        return 27
+
+def read_session_number(parent: Path) -> Optional[tuple[int, str]]:
+    """Session number read off the newest release package beside the repo.
+
+    Returns (session, evidence) where `evidence` names the package the
+    number came from, or None when no package is there.
+
+    The number comes from the package with the highest VERSION tuple, not
+    the highest session number and never the directory name. Measured
+    2026-08-16: session numbers on this disk do not rise with version, so
+    `max(session)` picks a package from a different era and names the new
+    drop after it.
+
+    This replaced a reader of an episodic-memory file under the retired
+    governance subsystem. That file is not in the tree, the read raised,
+    and the except branch returned a hardcoded 27 with no output. Every
+    build therefore produced a `session27` name whatever the truth was,
+    and reported success.
+    """
+    best: Optional[tuple[tuple[int, int, int], int, str]] = None
+    if not parent.is_dir():
+        return None
+    for entry in sorted(parent.iterdir()):
+        if not entry.is_file():
+            continue
+        m = PACKAGE_RE.match(entry.name)
+        if m is None:
+            continue
+        version = (int(m.group(2)), int(m.group(3)), int(m.group(4)))
+        if best is None or version > best[0]:
+            best = (version, int(m.group(1)), entry.name)
+    return (best[1], best[2]) if best else None
+
+
+def unmatched_rules(primary: list[Path], additional: list[Path]) -> list[str]:
+    """Every ADDITIONAL routing rule that matched no file in this tree.
+
+    A rule that matches nothing is invisible: the partition still prints a
+    count and the build still succeeds. Six of these rules named paths that
+    had been deleted, and no build said so. This makes each one visible on
+    every run without dropping a rule that may fire again.
+    """
+    seen = {rel.as_posix() for rel in primary + additional}
+    tops = {rel.parts[0] for rel in primary + additional if rel.parts}
+    names = {rel.name for rel in primary + additional}
+    stale = [f"dir  {d}" for d in sorted(ADDITIONAL_DIRS) if d not in tops]
+    stale += [
+        f"file {f}"
+        for f in sorted(ADDITIONAL_FILES_EXACT)
+        if f not in names and f not in seen
+    ]
+    return stale
 
 
 def _walk_and_partition(
@@ -381,14 +374,35 @@ def _write_zip(out_path: Path, arc_root: str, files: list[Path]) -> tuple[int, f
 
 
 def build(
-    dry_run: bool = False, primary_only: bool = False, additional_only: bool = False
+    *,
+    dry_run: bool = False,
+    primary_only: bool = False,
+    additional_only: bool = False,
+    session: Optional[int] = None,
 ) -> int:
     version = read_version()
     if version is None:
         print("ERROR: could not read version from src/__init__.py", file=sys.stderr)
         return 1
 
-    session = read_session_number()
+    if session is not None:
+        print(f"Session {session} (given with --session)")
+    else:
+        measured = read_session_number(_REPO.parent)
+        if measured is None:
+            print("REFUSED: no session number.", file=sys.stderr)
+            print(
+                f"No release package beside {_REPO.parent} to read it off,",
+                file=sys.stderr,
+            )
+            print(
+                "and the directory name is not evidence. Pass --session N.",
+                file=sys.stderr,
+            )
+            return 1
+        session, evidence = measured
+        print(f"Session {session} (read off {evidence})")
+
     version_us = version.replace(".", "_")
     base = f"acervator_session{session}_CLOSE_hop5_v{version_us}"
     primary_path = _REPO.parent / f"{base}.zip"
@@ -403,7 +417,16 @@ def build(
 
     primary, additional, junk = _walk_and_partition(latest_name)
 
-    print(f"\nPartition:")
+    stale = unmatched_rules(primary, additional)
+    if stale:
+        print(f"\nADDITIONAL rules that matched nothing ({len(stale)}):")
+        for rule in stale:
+            print(f"  {rule}")
+        print("  Each names a path that is not in this tree. Harmless to the")
+        print("  zip, but it is a rule nobody is maintaining. Delete it or")
+        print("  restore the file.")
+
+    print("\nPartition:")
     print(f"  PRIMARY:    {len(primary):>5,} files")
     print(f"  ADDITIONAL: {len(additional):>5,} files")
     print(f"  JUNK:       {len(junk):>5,} files (excluded from both)")
@@ -413,12 +436,12 @@ def build(
         print("\n  PRIMARY sample (first 5):")
         for rel in primary[:5]:
             print(f"    {rel}")
-        print(f"\n  ADDITIONAL sample (first 10):")
+        print("\n  ADDITIONAL sample (first 10):")
         for rel in sorted(additional)[:10]:
             print(f"    {rel}")
         if len(additional) > 10:
             print(f"    ... and {len(additional) - 10} more")
-        print(f"\n(dry-run) Would write:")
+        print("\n(dry-run) Would write:")
         if not additional_only:
             print(f"  {primary_path}")
         if not primary_only:
@@ -473,6 +496,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Build only the additional-items zip",
     )
     parser.add_argument(
+        "--session",
+        type=int,
+        default=None,
+        help="Session number for the package name. Without it the number "
+        "is read off the highest-version package beside the repo, and "
+        "the build refuses when there is none.",
+    )
+    parser.add_argument(
         "--print-latest-manual",
         action="store_true",
         help="Print the filename of the latest manual that would be "
@@ -489,6 +520,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         dry_run=args.dry_run,
         primary_only=args.primary_only,
         additional_only=args.additional_only,
+        session=args.session,
     )
 
 

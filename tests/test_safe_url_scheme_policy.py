@@ -153,8 +153,51 @@ _CALL_SITES: tuple[tuple[str, dict], ...] = (
     # :3918 and :4063 (the `apitest.16.002` repair, sixteen), from
     # :3934 and :4079 (the issue #51 selection re-anchor, 125) and from
     # :4059 and :4204 (the issue #57 throttle instance key, 23).
-    ("src/gui/main_window.py:4178", {"timeout": 10, "context": None}),
-    ("src/gui/main_window.py:4323", {"timeout": 10}),
+    #
+    # RE-ANCHORED 2026-08-24, from :4178 and :4323, by the issue #106
+    # growth-cap re-base. Both calls are BELOW everything that change
+    # touched in this file -- the chart's Target Balance ceiling line,
+    # which is three hunks between :1299 and :1339 inside
+    # `update_charts` -- so one shared offset of 24 lines happens to
+    # cover both. That is a fact about where the change landed and not
+    # a rule, and this pin block is the reason it must be said out
+    # loud: the 2026-08-21 API Tester note above records two calls in
+    # the SAME class moving by 191 and 238, because the inserts
+    # straddled the first one. A single offset is a coincidence of a
+    # change that landed entirely above both calls, never a method.
+    #
+    # Both numbers were read again from
+    # `grep -n "safe_urlopen(" src/gui/main_window.py`, which still
+    # returns exactly these two lines and nothing else, and each was
+    # matched to its pin by the method it sits in and the keywords it
+    # passes rather than by position alone: :4202 is
+    # `APITesterTab._raw_http_probe` and carries `context=ssl_ctx`,
+    # :4347 is `APITesterTab._check_exchange_status` and carries no
+    # context. Reading the grep alone is not enough --
+    # `ccxt_connector.py:337` is a DOCSTRING that names
+    # `safe_urlopen(..., timeout=15)` and would answer that grep while
+    # calling nothing. Neither call moved in the source and neither
+    # kwarg shape changed.
+    #
+    # BOTH PINS WERE PROVED TO STILL BIND AGAIN, INDEPENDENTLY, by
+    # shifting each call one line and watching only that row fail.
+    #
+    # THIS FILE WAS NOT IN THE ISSUE #106 BRIEF. That unit re-anchored
+    # `tests/test_autonomous_fold_price_gate.py` and
+    # `tests/test_extractor_tranche_containment.py` and was told those
+    # were the only two guarded files. This is the third, and it was
+    # found by a red release gate rather than by anything the unit
+    # could have run. The three shapes do not share a matcher: this
+    # table stores `"path:line"` strings, `CITATION_ANCHORS` stores
+    # `int -> line text`, and `PRE_CHANGE_SHA256` pins no line at all.
+    #
+    # RE-ANCHORED for issue #46 (4202 -> 4249, 4347 -> 4394). That unit
+    # inserted a symbol-change branch into `TradeChartsTab.update_charts`,
+    # which is above both calls. The new numbers were READ from
+    # `grep -n "safe_urlopen(" src/gui/main_window.py` after the
+    # insertion was final, not computed from an offset.
+    ("src/gui/main_window.py:4249", {"timeout": 10, "context": None}),
+    ("src/gui/main_window.py:4394", {"timeout": 10}),
 )
 _CALL_IDS = [site for site, _ in _CALL_SITES]
 _CALL_KWARGS = [kwargs for _, kwargs in _CALL_SITES]

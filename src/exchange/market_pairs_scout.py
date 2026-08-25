@@ -40,8 +40,10 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
-from typing import Iterable, Optional
+from dataclasses import dataclass
+from typing import Optional
+
+from .lazy_singleton import LazySingleton
 
 logger = logging.getLogger("acervator.market_pairs_scout")
 
@@ -305,17 +307,22 @@ class MarketPairsScout:
 # Process-wide shared scout
 # ---------------------------------------------------------------------
 
-_GLOBAL_SCOUT: Optional[MarketPairsScout] = None
+_SCOUT: LazySingleton[MarketPairsScout] = LazySingleton(
+    MarketPairsScout,
+    "the market pairs scout",
+    "The Target BTC and Target ETH rows, and every other cross-pair "
+    "reading, will hold their last value and stop updating.",
+)
 
 
-def get_scout() -> MarketPairsScout:
-    global _GLOBAL_SCOUT
-    if _GLOBAL_SCOUT is None:
-        _GLOBAL_SCOUT = MarketPairsScout()
-    return _GLOBAL_SCOUT
+def get_scout() -> Optional[MarketPairsScout]:
+    """Return the shared scout, or None while it is down.
+
+    Never raises. None means skip cross-pair readings this tick.
+    """
+    return _SCOUT.get()
 
 
 def reset_scout_for_tests() -> None:
-    """Clear the module singleton — test-only helper."""
-    global _GLOBAL_SCOUT
-    _GLOBAL_SCOUT = None
+    """Clear the singleton and its cooling-off — test-only helper."""
+    _SCOUT.reset()

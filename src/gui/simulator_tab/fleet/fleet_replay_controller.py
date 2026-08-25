@@ -1,7 +1,9 @@
 """fleet_replay_controller.py — async orchestrator for Fleet Replay.
 
-v3.23.79-A. Feeds YTD candle data through FleetSimExchange while
-ticking each ScrummingBot instance built from bot_state.json configs.
+v3.23.79-A. Feeds YTD candle data through the exchange the bots hold
+while ticking each ScrummingBot instance built from bot_state.json
+configs. Since v3.24.84 that exchange is a real ``CCXTConnector`` served
+by ``TabletBackend``; before it, ``FleetSimExchange``.
 Deferred from v3.23.72 per operator direction to ship the panel MVP
 first + add the tick loop after the API-optimization detour.
 
@@ -17,7 +19,7 @@ Contract:
     await ctrl.stopped_event.wait()   # optional: block until fully stopped
 
 Per-tick loop:
-    1. Advance FleetSimExchange cursor one candle across all symbols.
+    1. Advance the TabletBackend cursor one candle across all symbols.
     2. For each bot: call bot.tick() (real class code, unmodified).
     3. Update progress state (candles played, per-bot trades, etc.).
     4. Repeat until every series exhausts OR request_stop() fires.
@@ -33,9 +35,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from bisect import bisect_right
 from dataclasses import dataclass, field
+
+from src.trading.stone_tablets import addressing
 
 _YIELD_BUDGET_S = 0.020
 """Minimum wall-clock gap between event-loop yields in the replay loop.
@@ -46,11 +51,17 @@ time rather than by candle or bot count. At 20 ms the GUI still gets a
 slot ~50x/second — far more than a repaint needs — while the replay stops
 paying a pump period per bot.
 """
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from src.exchange.ccxt_connector import CCXTConnector
 from src.exchange.tablet_backend import TabletBackend
-from .sim_exchange import FleetSimExchange, make_symbol_series_map
+from .sim_exchange import make_symbol_series_map
+
+if TYPE_CHECKING:
+    # Annotation only -- see `_instantiate_bot`. Guarded so the module
+    # takes on no import it does not need at run time; the annotations
+    # are strings already, under `from __future__ import annotations`.
+    from src.exchange.base import ExchangeInterface, Trade
 
 logger = logging.getLogger("acervator.simulator.fleet.controller")
 
@@ -229,11 +240,26 @@ def resolve_phantoms_enabled(cfg: dict, force: bool = False) -> bool:
 
 def _instantiate_bot(
     cfg: dict,
-    exchange: FleetSimExchange,
+    exchange: ExchangeInterface,
     capital_registry: Optional[Any] = None,
 ) -> Optional[Any]:
     """Build a ScrummingBot from a bot_state.json config against the
-    sim exchange. Uses ``make_bot_config`` for mode-shape validation.
+    exchange it will trade on. Uses ``make_bot_config`` for mode-shape
+    validation.
+
+    ``exchange`` carried a ``FleetSimExchange`` annotation until issue
+    #109. It stopped being true in v3.24.84, when ``_build_sim`` began
+    passing a real ``CCXTConnector`` served by ``TabletBackend`` — the
+    same version that stopped the Simulator trading. Both mypy and
+    pyright reported the mismatch as soon as a test passed the real
+    argument, which is one reason no test did.
+
+    ``ExchangeInterface`` rather than ``CCXTConnector``: it is what this
+    function actually needs (``exchange_id``) and what the consumer
+    declares (``ScrummingBot.__init__``), and it accepts BOTH the
+    connector ``_build_sim`` passes today and the ``FleetSimExchange``
+    the older callers still pass. Naming one concrete class would only
+    move the lie to the other caller.
 
     Returns None (with a logged warning) on any construction error;
     the caller skips that bot and continues.
@@ -387,6 +413,82 @@ def _instantiate_bot(
             _cfg_exc,
         )
         return None
+
+
+# ccxt OHLCV column order is [ts, open, high, low, close, volume], so
+# the close a bot reads through `fetch_ticker` sits at index 4
+# (tablet_backend.py:403). Named rather than written as a literal
+# because `opening_lot_for_lotless` both indexes it and length-checks
+# the row against it, and two spellings of one column would drift.
+OHLCV_CLOSE = 4
+
+
+def _positive_finite(value: object) -> Optional[float]:
+    """Return *value* as a positive finite float, or None.
+
+    One gate for the two readings `opening_lot_for_lotless` takes off
+    caller-shaped data, so a target and a price are judged by the same
+    rule rather than by two hand-copies of it. A config value comes out
+    of JSON, so the accepted types are the ones JSON can hold; anything
+    else is refused rather than coerced, and a string that does not
+    parse is refused too.
+    """
+    if not isinstance(value, (int, float, str)):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number) or number <= 0.0:
+        return None
+    return number
+
+
+def opening_lot_for_lotless(target_balance: object, rows: list[list]) -> Optional[dict]:
+    """Return the one lot a bot with NO bot_state opens locked with.
+
+    Issue #111 violation B. Operator ruling: "locked and spendable start
+    equal". `_build_sim` seeds the quote leg at `target_balance`, so the
+    base leg opens at the units that same money buys at the tape's own
+    opening price -- `target_balance / price`. Valued at that price the
+    two sides are the SAME NUMBER, which is the ruling stated literally.
+
+    WHY A BOT NEEDS ONE. A bot that opens FLAT must buy its whole target
+    before it can do anything else, and that costs `target x (1 + fee)`.
+    The wallet seed is `sum(target_balance)` exactly, so N targets cannot
+    fund N such acquisitions: the last bot is always short by the fees
+    the earlier ones paid. Measured on a 400-candle synthetic tape,
+    closing USD 100.00 / 99.40 / 98.80 at fleet sizes 1 / 2 / 3 -- the
+    0.6% fee exactly. At size 1 the only bot IS the starved one, so it
+    fired nothing at all. Whether a bot could trade depended on how many
+    OTHER bots existed. Live has no such coupling, and Live, Paper and
+    Sim may differ only in where market data comes from.
+
+    THE PRICE IS THE TAPE'S FIRST CLOSE, not a separate opinion about
+    the opening price. `TabletBackend` starts every cursor at 0
+    (tablet_backend.py:115) and `fetch_ticker` serves `rows[-1][4]` of
+    the visible slice (:404), so at the opening tick the bot reads this
+    exact figure from the venue.
+
+    Returns None -- open flat, unchanged -- when there is no target, no
+    tape, or no usable price. A lot with a zero or non-finite basis
+    "claims infinite profit against every price and can arm a sell that
+    never should have armed" (`_book_reconciliation_lot`,
+    scrumming_bot.py:11948); refusing to write one is that same rule.
+
+    The lot shape is the documented one, `{units, initial_buy_price}`
+    (scrumming_bot.py:692), carrying the `operator_initiated` flag both
+    live lot writers set (scrumming_bot.py:3774 and :11983).
+    """
+    target = _positive_finite(target_balance)
+    first = rows[0] if rows else []
+    price = _positive_finite(first[OHLCV_CLOSE]) if len(first) > OHLCV_CLOSE else None
+    if target is None or price is None:
+        return None
+    units = _positive_finite(target / price)
+    if units is None:
+        return None
+    return {"units": units, "initial_buy_price": price, "operator_initiated": False}
 
 
 class FleetReplayController:
@@ -644,6 +746,30 @@ class FleetReplayController:
         )
         self._task = asyncio.create_task(self._run())
         return True
+
+    @property
+    def tape(self) -> Optional[TabletBackend]:
+        """The run's `TabletBackend` — the replay's ledger and clock.
+
+        A PUBLIC handle, because consumers outside this class have to
+        read the run's balances and fills and there was no public way
+        to reach them. They reached instead for `self._exchange` and
+        pulled `_balances`, `_opening_balances` and `_trades` off it.
+        Since v3.24.84 `_exchange` is a `CCXTConnector` and carries
+        none of the three, so `getattr(..., default)` returned the
+        default and the reader reported an empty wallet and an empty
+        tape (issues #109, #110 and this one).
+
+        `TabletBackend` answers those questions on its own public
+        surface — `balances()`, `snapshot()` and `fetch_my_trades()`,
+        each returning a copy — so a consumer that comes through here
+        cannot mutate the run it is reporting, and a rename below can
+        no longer be absorbed as a default.
+
+        `None` before `_build_sim` has run: there is no tape yet, and
+        an empty one would claim a run that never happened.
+        """
+        return self._tape
 
     def set_load_feed(self, cb) -> None:
         """Install a callable returning candles-to-feed for the next tick.
@@ -926,6 +1052,11 @@ class FleetReplayController:
         _imported_state = 0
         _import_failed = 0
         _import_missing = 0
+        # Bots with NO `_src_scrumming_state` — see the locked-side
+        # block below the loop. Collected HERE because this is where the
+        # key is read; re-deriving it later would be a second answer to
+        # the same question.
+        _no_bot_state: list[tuple[Any, dict]] = []
         for cfg in self._configs:
             sym = str(cfg.get("symbol", "") or "")
             if sym not in available_symbols:
@@ -1063,6 +1194,7 @@ class FleetReplayController:
                         _import_failed += 1
                 elif _scrum is None:
                     _import_missing += 1
+                    _no_bot_state.append((bot, cfg))
                 self._bots.append(bot)
                 # v3.24.80 — record the join for trade attribution.
                 if sym:
@@ -1084,6 +1216,12 @@ class FleetReplayController:
                         "the wallet seed."
                     )
         self._build_smart_wires(_joinable)
+        # A bot with NO bot_state opens with a locked side, so
+        # that the credit loop below has lots to seed it from.
+        # Issue #111 violation B; see the method for the ruling,
+        # the measurement and why this is not the second source
+        # of initiating state that block removed.
+        self._open_locked_sides(_no_bot_state)
         # ── SEED THE EXCHANGE FROM THE FLEET'S OWN LOTS ─────────────
         # bot_state is the ONLY source of initiating state.
         #
@@ -1151,6 +1289,86 @@ class FleetReplayController:
         )
 
         self._assert_capital_isolation()
+
+    def _open_locked_sides(self, lotless: list[tuple[Any, dict]]) -> None:
+        """Open every bot that carries no bot_state with a locked side.
+
+        Issue #111 violation B. Operator ruling: "locked and spendable
+        start equal." Called immediately before the credit loop in
+        `_build_sim`, because the lots this writes are what that loop
+        reads.
+
+        A proposal fleet carries no `_src_scrumming_state`
+        (`topology_stress._config_for`, topology_stress.py:216, builds
+        exactly such configs), so the import in `_build_sim` never ran,
+        no bot got lots, and every bot opened FLAT.
+        `opening_lot_for_lotless` carries the measurement of what that
+        cost.
+
+        WHY THIS IS NOT THE SECOND SOURCE OF INITIATING STATE THAT THE
+        CREDIT BLOCK REMOVED. That removal was about OVERRIDING
+        bot_state: the sim synthesised a position for bots that HAD a
+        persisted one, so an invented figure won over the real lots.
+        These bots have no bot_state at all. `_src_scrumming_state` is
+        set only from a real `scrumming_state` entry
+        (bot_state_loader.py:191-192), so its ABSENCE means there is
+        nothing to override and no parity claim to break. The
+        discriminator is the missing KEY, never an empty lot list: a bot
+        whose bot_state says FLAT is a bot whose real state IS flat, and
+        `_build_sim` does not put it in this list.
+
+        THE LOT IS WRITTEN THROUGH THE PAIR THE BOT_STATE PATH USES.
+        `export_scrumming_state` then `import_scrumming_state`
+        (scrumming_bot.py:3786), the same inverse pair `_build_sim`
+        calls on a restored fleet. Every field except `main_lots` is the
+        bot's own current value, so the round trip resets nothing.
+
+        THE TAPE IS NOT TOUCHED HERE. The single credit loop in
+        `_build_sim` reads `_main_lots` and credits the venue, exactly
+        as it does for a restored fleet. This method moves no balance
+        and adds no second credit path.
+        """
+        opened = 0
+        units = 0.0
+        for bot, cfg in lotless:
+            symbol = str(cfg.get("symbol", "") or "")
+            lot = opening_lot_for_lotless(
+                cfg.get("target_balance"), self._candles_by_symbol.get(symbol) or []
+            )
+            if lot is None:
+                continue
+            try:
+                state = bot.export_scrumming_state()
+                state["main_lots"] = [dict(lot)]
+                bot.import_scrumming_state(state)
+            except Exception as exc:  # noqa: BLE001 - never fail a build
+                self._activity(
+                    f"  WARNING {symbol or '?'}: could not open a locked "
+                    f"side ({type(exc).__name__}: {exc}) — this bot "
+                    "starts flat and must buy its whole target before "
+                    "it can trade."
+                )
+                continue
+            opened += 1
+            units += float(lot["units"])
+        if opened:
+            self._activity(
+                f"Locked side: {opened} of {len(lotless)} bot(s) carry "
+                "no bot_state and opened holding their target_balance "
+                "in base units at the tape's first close; locked and "
+                "spendable start equal."
+            )
+        try:
+            from src.core.signal_contract import emit as _ol
+
+            _ol(
+                "fleet.03.008.postcondition.lotless_opened_locked",
+                actual=opened,
+                expected=len(lotless),
+                context={"total_units": round(units, 8)},
+            )
+        except Exception as _olx:  # noqa: BLE001 - advisory
+            logger.debug("locked-side emit failed: %s", _olx)
 
     def _build_smart_wires(self, joinable: bool) -> None:
         """Attach the fleet's persisted Smart Wires to THIS replay.
@@ -1362,21 +1580,108 @@ class FleetReplayController:
         except Exception as _ox:  # noqa: BLE001 - observation is advisory
             logger.debug("TA observation skipped: %s", _ox)
 
+    def _candle_address_for(self, symbol: str) -> str:
+        """``NNNNNN_TICKER`` for the candle under the tape's cursor.
+
+        ``FleetSimExchange`` stamped this onto every fill's ``raw``
+        (sim_exchange.py:642). ``TabletBackend`` has no address
+        concept -- it serves rows, and an address is a Stone Tablet
+        idea -- so the Simulator resolves it here, from the same
+        cursor the fill was priced off and through the same
+        ``format_address``. Empty string when it cannot be resolved:
+        the fill still records, it just carries no address rather than
+        a wrong one.
+        """
+        tape = self._tape
+        if tape is None:
+            return ""
+        try:
+            return addressing.format_address(
+                addressing.ticker_from_symbol(symbol), tape.cursor_for(symbol)
+            )
+        except Exception as exc:  # noqa: BLE001 - addressing is advisory
+            logger.debug(
+                "candle address for %s raised %s: %s", symbol, type(exc).__name__, exc
+            )
+            return ""
+
+    def _read_fill(self, trade: dict | Trade) -> dict:
+        """Normalise one fill payload into the fields this class records.
+
+        ISSUE #110 -- THE SHAPE CHANGED AND THE READER DID NOT.
+        ``TabletBackend.on_trade`` hands out ``dict(_t)``, a ccxt-shaped
+        DICT (tablet_backend.py:527). Every reader below was written for
+        ``FleetSimExchange``'s ``Trade`` OBJECT, and ``getattr`` on a
+        dict does not read a key. So each field returned its default and
+        a replay that filled a REAL trade recorded
+        ``per_symbol_trade_count == {}``, queued no chart marker, and
+        wrote ``symbol="" side="" amount=0.0 price=0.0`` to the run log.
+
+        A dict is therefore routed through the dict branch UP FRONT --
+        the same resolution ``history_helpers.py:90`` already applies to
+        this exact ambiguity. Falling back by exception cannot work
+        here, because ``getattr`` with a default never raises.
+
+        THE OBJECT BRANCH IS A LIVE SURFACE, NOT SCAFFOLDING. Verified:
+        ``TabletBackend`` is the only producer wired to this observer
+        (:900) and ``FleetSimExchange`` is instantiated nowhere in
+        ``src/`` or ``tools/``. But ``FleetSimExchange.on_trade`` still
+        passes a ``Trade`` (sim_exchange.py:680) and the class is still
+        exported from ``fleet/__init__.py``, so a host that wires it is
+        read correctly instead of silently zeroed.
+
+        TIME UNITS DIFFER BETWEEN THE TWO PRODUCERS and the run log
+        wants MILLISECONDS. The dict's ``timestamp`` IS the master
+        clock in ms (``current_ts_ms()``, tablet_backend.py:522); the
+        object carries SECONDS on ``.timestamp`` and the ms value on
+        ``raw["sim_master_ts_ms"]``. Reading the object's seconds as ms
+        would date every sim row to 1970 and make parity unmeasurable.
+        """
+        if isinstance(trade, dict):
+            symbol = str(trade.get("symbol", "") or "")
+            side_obj = trade.get("side", "")
+            amount = float(trade.get("amount", 0) or 0)
+            price = float(trade.get("price", 0) or 0)
+            raw = trade.get("raw") or {}
+            ts_ms = trade.get("timestamp")
+        else:
+            raw = getattr(trade, "raw", None) or {}
+            symbol = str(getattr(trade, "symbol", "") or "")
+            side_obj = getattr(trade, "side", "")
+            amount = float(getattr(trade, "amount", 0) or 0)
+            price = float(getattr(trade, "price", 0) or 0)
+            ts_ms = raw.get("sim_master_ts_ms")
+        # `OrderSide` is an enum on the object path and a plain
+        # lowercase string on the dict path. `.value` unwraps the first
+        # and passes the second through.
+        side = str(getattr(side_obj, "value", side_obj) or "")
+        addr = str(raw.get("candle_address", "") or "")
+        if not addr and symbol:
+            addr = self._candle_address_for(symbol)
+        return {
+            "symbol": symbol,
+            "side": side,
+            "amount": amount,
+            "price": price,
+            "usd": amount * price,
+            "sim_ts_ms": int(ts_ms) if ts_ms else None,
+            "candle_address": addr,
+        }
+
     def _on_sim_trade(self, trade) -> None:
         self.progress.trades_fired += 1
-        # v3.24.13 — persist the fill. Before this, sim trades lived
-        # only in FleetSimExchange._trades and vanished when the
+        fill = self._read_fill(trade)
+        _sym = fill["symbol"]
+        # v3.24.13 - persist the fill. Before this, sim trades lived
+        # only in the sim exchange's own list and vanished when the
         # process ended, so a replay could not be compared against
         # anything afterwards. Writes to ~/.acervator_logs/sim/,
         # never the live tree.
         if self._run_log is not None:
             try:
-                raw = getattr(trade, "raw", None) or {}
-                side = getattr(trade, "side", "")
-                _sym = str(getattr(trade, "symbol", "") or "")
                 self._run_log.record_trade(
                     symbol=_sym,
-                    # v3.24.80 — ATTRIBUTE THE FILL TO A BOT.
+                    # v3.24.80 - ATTRIBUTE THE FILL TO A BOT.
                     #
                     # `bot_id` was never passed, so every trade row on
                     # disk carried "". 8,250 fills across a soak, none
@@ -1384,61 +1689,57 @@ class FleetReplayController:
                     # useless for exactly the question it exists to
                     # answer.
                     #
-                    # The trade arrives from FleetSimExchange, which
-                    # does not know which bot placed the order — so it
-                    # is resolved by symbol, the same single-writer
+                    # The trade arrives from the exchange, which does
+                    # not know which bot placed the order - so it is
+                    # resolved by symbol, the same single-writer
                     # attribution the per-bot trade counter below has
                     # used since v3.24.0. These are the LIVE bot ids
                     # (carried in from bot_state since v3.24.71), so a
                     # sim fill is traceable straight back to the
                     # operator's own bot.
                     bot_id=self._bot_id_for_symbol.get(_sym, ""),
-                    # v3.24.80 — the side, under the key the schema
+                    # v3.24.80 - the side, under the key the schema
                     # declares. `action` was empty on every row.
-                    action=str(getattr(side, "value", side) or ""),
-                    side=str(getattr(side, "value", side) or ""),
-                    amount=float(getattr(trade, "amount", 0) or 0),
-                    price=float(getattr(trade, "price", 0) or 0),
-                    usd=(
-                        float(getattr(trade, "amount", 0) or 0)
-                        * float(getattr(trade, "price", 0) or 0)
-                    ),
-                    sim_ts_ms=raw.get("sim_master_ts_ms"),
-                    # v3.24.32 — spendable at fill time. Operator
+                    action=fill["side"],
+                    side=fill["side"],
+                    amount=fill["amount"],
+                    price=fill["price"],
+                    usd=fill["usd"],
+                    sim_ts_ms=fill["sim_ts_ms"],
+                    # v3.24.32 - spendable at fill time. Operator
                     # directive 2026-08-05: "We can also add Spendable
                     # to the trade log for use as an additional
                     # validation point."
                     #
                     # Recorded per fill so a replay's wallet trajectory
                     # can be reconstructed from the log alone and
-                    # checked against the header — a drift between the
+                    # checked against the header - a drift between the
                     # two means the header is lying, which is how
                     # Spendable $0.00 / Locked $2,995.14 went unnoticed.
                     extra={"spendable_usd": round(self._spendable_now(), 8)},
-                    # v3.24.17 — tablet traceability
-                    candle_address=str(raw.get("candle_address", "") or ""),
+                    # v3.24.17 - tablet traceability
+                    candle_address=fill["candle_address"],
                 )
             except Exception as _rl_exc:  # noqa: BLE001 - logging is advisory
                 logger.debug("sim run log: trade record failed: %s", _rl_exc)
-        # v3.24.0 — attribute by symbol (single writer path,
+        # v3.24.0 - attribute by symbol (single writer path,
         # actually populated). Replaces v3.23.80's trade.raw
-        # bot_id lookup which was scaffolding — nothing ever
+        # bot_id lookup which was scaffolding - nothing ever
         # wrote raw["bot_id"], so per_bot_trade_count stayed at 0
         # for every bot despite trades_fired ticking up.
         try:
-            sym = str(getattr(trade, "symbol", "") or "")
-            if sym:
-                self.progress.per_symbol_trade_count[sym] = (
-                    self.progress.per_symbol_trade_count.get(sym, 0) + 1
+            if _sym:
+                self.progress.per_symbol_trade_count[_sym] = (
+                    self.progress.per_symbol_trade_count.get(_sym, 0) + 1
                 )
-                # v3.24.29 — queue a chart marker. GREEN when this fill
+                # v3.24.29 - queue a chart marker. GREEN when this fill
                 # landed on a candle that carries a historical trade
                 # (validated), RED when it did not (a sim-only fire).
                 # Queued rather than drawn: this runs on the replay
                 # worker, and the chart is a Qt widget.
                 _exp = self._expected_indices
                 _ok = bool(_exp) and self._candle_i in _exp
-                self._pending_markers.append((sym, _ok))
+                self._pending_markers.append((_sym, _ok))
         except Exception:  # noqa: BLE001,S110 - counter best-effort
             pass
 
@@ -1449,15 +1750,31 @@ class FleetReplayController:
         the fleet is multi-quote, and reading one leg would under-report
         by whatever sits in the others — the same single-currency
         assumption that left ten USDC bots unfunded.
+
+        ISSUE #110 SWEEP -- READS THE TAPE, NOT ``self._exchange``.
+        This read ``self._exchange._balances``. ``_balances`` belonged
+        to ``FleetSimExchange``; since v3.24.84 ``self._exchange`` is a
+        ``CCXTConnector``, which has no such attribute, so the
+        ``AttributeError`` below was caught on EVERY call and this
+        returned 0.0 for the whole life of the Simulator. Measured on a
+        replay whose tape ledger held $99.40 of USD: ``_spendable_now()
+        == 0.0``, and every trade row on disk carried
+        ``spendable_usd: 0.0`` -- the exact "Spendable $0.00" that the
+        caller records this field to catch.
+
+        ``TabletBackend.balances()`` is the ledger's own PUBLIC
+        accessor and returns a copy, so this reaches into no private
+        state and cannot mutate the wallet it reports.
         """
-        ex = self._exchange
-        if ex is None:
+        tape = self._tape
+        if tape is None:
             return 0.0
         quotes = {
             str(c.get("base_currency", "USD") or "USD").upper() for c in self._configs
         }
         try:
-            return float(sum(float(ex._balances.get(q, 0.0) or 0.0) for q in quotes))
+            wallet = tape.balances()
+            return float(sum(float(wallet.get(q, 0.0) or 0.0) for q in quotes))
         except (AttributeError, TypeError, ValueError):
             return 0.0
 
@@ -2038,16 +2355,25 @@ class FleetReplayController:
                 _s2("sim.06.005.invariant.exceptions", actual=_p.exceptions, expected=0)
                 # Which window was actually played — a run that cannot
                 # say what data it consumed cannot be re-checked.
+                #
+                # ISSUE #110 SWEEP -- ASKS THE TAPE. This read
+                # `getattr(self._exchange, "clock", None)`, and NO
+                # exchange this controller has ever held carries a
+                # `clock`. `FleetSimExchange` named it `master_clock`
+                # (sim_exchange.py:247) and `CCXTConnector`, which
+                # replaced it in v3.24.84, has no clock at all. So
+                # `getattr` returned None, `_ts` fell to `[]`, and this
+                # pin has reported `first_ts=None last_ts=None` on
+                # EVERY healthy run since it was written -- a run that
+                # cannot say what data it consumed, which is the one
+                # thing the comment above demands.
+                #
+                # Older than the hand-over, and the same failure class:
+                # a `getattr` default standing in for data it never had.
                 _first = _last = None
                 try:
-                    _ts = (
-                        getattr(
-                            getattr(self._exchange, "clock", None), "timestamps", None
-                        )
-                        or []
-                    )
-                    if _ts:
-                        _first, _last = int(_ts[0]), int(_ts[-1])
+                    if self._tape is not None:
+                        _first, _last = self._tape.clock_window()
                 except Exception as _wx:  # noqa: BLE001
                     logger.debug("window read failed: %s", _wx)
                 _s2(
@@ -2151,6 +2477,18 @@ class FleetReplayController:
                         f" trades, {self._run_log.gate_count} gates -> "
                         f"{_d if _d else '(not written)'}"
                     )
+                    # v3.25.x - report the retention pass beside the
+                    # run it just bounded.
+                    #
+                    # UNCONDITIONALLY, including the pass that removed
+                    # nothing. A policy that speaks only when it acts
+                    # is indistinguishable from a policy that is dead,
+                    # and `sim/runs/` reached 674 MB in 102 directories
+                    # with nothing watching it. One line per run end is
+                    # the price of that being observable.
+                    _ret = getattr(self._run_log, "retention", None)
+                    if _ret is not None:
+                        self._perf(_ret.summary())
                 except Exception as _rl_exc:  # noqa: BLE001 - advisory
                     logger.warning("sim run log close failed: %s", _rl_exc)
             # v3.24.8 — dump the feature-telemetry report. This is

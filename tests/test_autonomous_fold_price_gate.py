@@ -158,7 +158,242 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 # change to ``scrumming_bot.py`` outside the reversed spans reaches
 # this digest through ``_pre_change_source`` and turns this test red.
 # The line-ending form stopped mattering. The content did not.
-PRE_CHANGE_SHA256 = "986d79ed7785015d12a57bfc877ba1b078027d93b2f7655ec2fbc78a90ef2082"
+# RE-BASED 2026-08-22, and this is the tripwire doing its job rather
+# than a failure being papered over. Two reviewed repairs landed in
+# ``scrumming_bot.py`` after the digest above was taken, and both are
+# outside every span this file reverses, so both reached the digest:
+#
+#   1. `repair/target-topup-preserves-growth` -- `set_target_balance_live`
+#      compares the operator's input against the ANCHOR, not the grown
+#      target. A top-up smaller than accrued growth used to collapse the
+#      anchor and destroy the growth.
+#   2. `repair/holdings-follow-the-exchange` -- `_reconcile_holdings`
+#      adopts the exchange balance on upward drift instead of refusing
+#      every correction, so the Target Delta's first operand comes from
+#      the venue. This one ADDS a `self._main_lots.append({`, which is
+#      why the citation anchors moved and why the re-anchor had to skip
+#      that occurrence when counting ordinals.
+#
+# The reversal itself still reproduces cleanly: `_pre_change_source`
+# returns zero orphans, so every `:NNNN` in the file still names a line
+# that exists on both sides. What changed is the CONTENT this digest
+# describes -- "the shipping file with the U3 gate block and the site-B
+# spans removed" -- not the method that derives it.
+#
+# RE-BASED AGAIN 2026-08-22, same tripwire, same reason. One further
+# repair landed in ``scrumming_bot.py`` outside every reversed span:
+#
+#   3. the three paths the drift-UP adopt left open --
+#      ``bootstrap_exchange_state`` still clamped holdings to the book
+#      on every launch; the top-up was measured from
+#      ``max(scalar, book)`` so a scalar leading the book left
+#      ``sum(_main_lots) != _current_holdings``; and the reconciliation
+#      lot took ``stats.current_price`` untested, booking a basis of
+#      0.0 on a bot that had not completed a priced tick.
+#
+# This one ADDS a second `self._main_lots.append({`, in the shared
+# writer ``_book_reconciliation_lot``, and REMOVES the one that was
+# inline in the drift-UP branch. It also holds
+# `_adopt = min(exchange_units, _claimable)` twice, once in the new
+# bootstrap adopter ABOVE the reconcile. The monotonic guard refused
+# that citation rather than re-pointing it into the wrong method, and
+# it was re-pointed by hand at the branch the prose means.
+#
+# `_pre_change_source` still returns zero orphans.
+#
+# RE-BASED A THIRD TIME 2026-08-22, issue #69, same tripwire, same
+# reason. One line changed in the MODULE DOCSTRING of
+# ``scrumming_bot.py``. That line read "See ARCHITECTURE.md for full
+# invariants list."; no such document is in the tree, so the header
+# stated something false. The replacement line says so.
+#
+# WHAT THIS RE-BASE IS NOT. No executable line moved. The file held
+# 15595 lines before the edit and 15595 after, so every ``:NNNN``
+# citation still names the line it named. ``CITATION_ANCHORS`` in
+# ``tests/test_extractor_tranche_containment.py`` needed no ordinal
+# shift, and that file's 122 tests pass unchanged on both sides. The
+# edit adds no occurrence of any anchor string. It is outside the gate
+# block and outside every span in ``SITE_B_SPANS``, which is why it
+# reaches this digest at all.
+#
+# ``_pre_change_source`` returns zero orphans, and the CRLF rendering
+# reconstructs the identical text.
+#
+# RE-BASED A FOURTH TIME 2026-08-24, issue #102, same tripwire, same
+# reason. One repair landed in ``scrumming_bot.py`` outside every span
+# this file reverses, so it reaches the digest:
+#
+#   4. the BB-priority arm could not refuse. ``tick()`` added +0.30 to
+#      ``eff_confidence`` and then compared the sum against the 0.25
+#      ``_TA_CONFIDENCE_FLOOR``. On a quantity bounded [0, 1] that is
+#      ``conf >= -0.05``: no reading fails it, including exactly 0.0,
+#      so the confidence conjunct was the hard override the operator
+#      refused by name on 2026-04-26. The addition also travelled --
+#      nine sites in ``tick()`` printed the inflated number rather than
+#      the measured one. The repair leaves ``eff_confidence`` alone and
+#      relaxes the THRESHOLD on that arm instead, proportionally, to
+#      ``_BB_PRIORITY_CONFIDENCE_FLOOR`` = 0.25 / 1.30.
+#
+# WHAT THIS RE-BASE IS. Two module-scope constants beside
+# ``_TA_CONFIDENCE_FLOOR``, and the gate block in ``tick()`` rewritten
+# in place. +86 lines, in two bands: +68 from :574 through :7662 and
+# +86 from :9316 down. The unit adds no method and no
+# ``self._main_lots.append({``, so no anchor is new and no ordinal
+# count moved. ``CITATION_ANCHORS`` in
+# ``tests/test_extractor_tranche_containment.py`` was re-anchored in
+# the SAME change -- 42 anchors, all moved, all read back out of the
+# post-change file -- and that file's 121 tests pass.
+#
+# The 74 self-citation tokens inside ``scrumming_bot.py`` moved by the
+# same two bands. ``:488-494`` did not: pre-change 488-494 is the
+# phantom-timeframe filter, so that token names a spec document rather
+# than this file, and a cross-document reference is not shifted.
+#
+# ``_pre_change_source`` returns zero orphans.
+#
+# The prior digests, kept so the chain is auditable:
+#
+# RE-BASED A FIFTH TIME 2026-08-24, issue #104, same tripwire, same
+# reason. One repair landed in ``scrumming_bot.py`` outside every span
+# this file reverses, so it reaches the digest:
+#
+#   5. the two remaining confidence favours could not refuse either.
+#      ``tick()`` added ``position_boost`` and ``bb_confidence_boost``
+#      to ``eff_confidence`` and compared the sum against the floor.
+#      ``position_boost`` reaches +0.40 by enumeration of its own terms
+#      and was OBSERVED at +0.4000 over 406 stone tablets;
+#      ``bb_confidence_boost`` reaches +0.60 by derivation from its two
+#      component bounds. Either exceeds the 0.25 floor alone, and on 73
+#      of 2,436 readings the favour by itself cleared the floor that
+#      judged it -- so on those the comparison had no false case
+#      whatever the indicators measured. The repair leaves
+#      ``eff_confidence`` alone, and it is now exactly
+#      ``summary.consensus_confidence``. All THREE favours, the #102 arm
+#      included, are summed and divide the floor through the new
+#      module-scope ``_skewed_confidence_floor``.
+#
+# WHAT THIS RE-BASE IS. One module-scope function beside
+# ``_TA_CONFIDENCE_FLOOR``, the two ``+=`` lines in ``tick()`` replaced
+# by the prose that says why each favour is a favour, the floor
+# computation rewritten in place, and five log lines repaired. +141
+# lines, in two bands: +52 from :694 through :7782 and +141 from :9543
+# down. The unit adds no method and no ``self._main_lots.append({``, so
+# no anchor is new and no ordinal count moved. ``CITATION_ANCHORS`` in
+# ``tests/test_extractor_tranche_containment.py`` was re-anchored in the
+# SAME change -- 42 anchors, all moved, all read back out of the
+# post-change file -- and that file's 121 tests pass.
+#
+# The 74 self-citation tokens inside ``scrumming_bot.py`` moved by the
+# same two bands. ``:488-494`` did not, for the reason #102 recorded:
+# it names a spec document rather than this file. Nineteen further
+# tokens carry another module's filename, and one more -- ``[:180]`` at
+# the credential-refusal emit -- is a SLICE that the regex above matches
+# and that was never a citation. Those 21 were left alone, and the count
+# is written down so the gap does not read as an omission.
+#
+# ``_pre_change_source`` returns zero orphans.
+#
+# RE-BASED A SIXTH TIME 2026-08-24, issue #106, same tripwire, same
+# reason. One repair landed in ``scrumming_bot.py`` outside every span
+# this file reverses, so it reaches the digest:
+#
+#   6. the per-Fold growth cap never compounded. Four sites spelled it
+#      out as ``self._anchor_target_balance * (max_target_growth_pct /
+#      100)``, and ``_anchor_target_balance`` is the operator's input
+#      value that no Fold ever moves. The cap therefore held ONE dollar
+#      value for the life of the bot and the curve was
+#      ``anchor x (1 + 0.01N)`` rather than ``anchor x 1.01^N``.
+#      Measured on the live fleet the same day: 35 of 38 bots carried
+#      accrued growth, IMU had grown 27.1% and still capped each Fold at
+#      $0.50, and $13.37 sat parked in ``standing_surplus_usd`` behind
+#      the frozen number. The repair adds ONE property,
+#      ``cycle_growth_cap_usd``, whose base is the target as it stood
+#      when the cycle opened, and the four sites read it.
+#
+# WHAT THIS RE-BASE IS. One property beside ``_apply_fold_target_growth``
+# and four call sites rewritten in place, plus the prose that stated the
+# old base. +131 lines, in SEVEN bands: +0 at and below :694, +82 from
+# :1784, +94 from :2534, +101 from :3609, +114 from :10291, +122 from
+# :10800 and +131 from :13258 down. The unit adds no
+# ``self._main_lots.append({``, so no ordinal count moved.
+# ``CITATION_ANCHORS`` in ``tests/test_extractor_tranche_containment.py``
+# was re-anchored in the SAME change -- 40 anchors moved, 1 did not, ONE
+# is new (:1785, the property) and ONE WAS RETIRED (:1858, whose line
+# this change deletes) -- and that file's 121 tests pass.
+#
+# TWO CROSS-FILE TOKENS WERE WRITTEN OUT IN FULL, and this is the part
+# a later reader needs. ``# Ported from RAIntSimBat.py:2144-2159``
+# appears twice. Those digits name lines in ANOTHER module, but
+# ``_CITATION_RE`` cannot tell a cross-file citation from a self one, so
+# ``_one`` looked 2144 and 2159 up in ``back`` like any other. Before
+# this change both resolved by luck. This change moved ``SITE_B_SPANS``
+# span 2 down onto shipping lines 2062-2188, which SWALLOWED both
+# numbers -- a reversed span contributes no entry to ``back`` -- and
+# ``_pre_change_source`` returned four orphans.
+#
+# THE GUARD WAS NOT EDITED TO CLEAR THIS. The 2026-08-13 note in
+# ``CITATION_ANCHORS`` records the established repair for exactly this
+# shape: a ``:NNNN`` in ``scrumming_bot.py`` that means another file is
+# "written out in full". Both now read ``RAIntSimBat.py lines
+# 2144-2159``, on the same lines, so no line count moved and no anchor
+# shifted a second time. The remaining 17 cross-file tokens still
+# resolve by luck and are NOT repaired here; they are named in the
+# unit's report as a latent hazard of the same shape.
+#
+# ``_pre_change_source`` returns zero orphans.
+#
+# RE-BASED A SEVENTH TIME 2026-08-24, issue #98 defect 4, same
+# tripwire, same reason. One repair landed in ``scrumming_bot.py``
+# outside every span this file reverses, so it reaches the digest:
+#
+#   7. the fold-tranche counters did not reconcile with the standing
+#      list. The stated identity is
+#      ``created - closed - discarded == len(_fold_tranches)``, and it
+#      failed on 13 of the operator's 38 bots, in BOTH directions.
+#      Negative drift is exactly "a record left the queue and no term
+#      of the identity moved". Two of the eleven removal sites in this
+#      file did that: the TD-017 fold guard, which bumped
+#      ``_tranches_malformed_dropped`` -- not a term -- and the restore
+#      filter in ``import_scrumming_state``, which bumped nothing. Both
+#      now bump ``_tranches_discarded_lifetime``, and the malformed
+#      counter became a SUB-COUNT of it rather than a fourth term.
+#
+# WHAT THIS RE-BASE IS. The counter-declaration prose in ``__init__``
+# rewritten in place; two inserts in ``import_scrumming_state``; the
+# guard block in ``tick()`` replaced by a call, which makes it ELEVEN
+# LINES SHORTER; one new method, ``_drop_malformed_fold_tranches``,
+# above ``_settle_fold_plan``; and the ladder comment in
+# ``_execute_manual_rebalance`` restated. +125 lines, 8 hunks, NINE
+# cumulative bands, and one STEP DOWN -- +51 above the tick guard, +40
+# below it. See the 2026-08-24 note in ``CITATION_ANCHORS`` for the
+# per-band table. The unit adds no ``self._main_lots.append({``, so no
+# ordinal count moved, and no anchor is new or retired.
+# ``CITATION_ANCHORS`` in ``tests/test_extractor_tranche_containment.py``
+# was re-anchored in the SAME change -- 42 anchors, 42 resolved, cross
+# checked against the git hunk map with 0 disagreements -- and that
+# file's 121 tests pass.
+#
+# The self-citation tokens inside ``scrumming_bot.py`` moved by the
+# same bands and were verified BY READ-BACK against a full pre-to-post
+# line map: 77 tokens, 0 mismatches, 0 naming a line this change
+# created. ``:488-494``, the 19 cross-file tokens and the ``[:180]``
+# slice were left alone for the reasons #104 and #106 wrote down. ONE
+# citation was RETIRED rather than shifted: the ladder comment cited
+# the tick guard by line, and that guard now has a name, so the prose
+# names it.
+#
+# ``_pre_change_source`` returns zero orphans, and the CRLF rendering
+# reconstructs the identical text.
+#
+# The prior digests, kept so the chain is auditable:
+#   986d79ed7785015d12a57bfc877ba1b078027d93b2f7655ec2fbc78a90ef2082
+#   29276909ff46dce02bc650de45802c779539adb7093b010cd875ef376201e9a0
+#   4b5c51bde7c54836dcd935c85c76ee06757e1fe8b79edd2ce1febb0831ad3c75
+#   ffe8cebd69cbc2eac674d0a8696efdca3542112fe1606bc0dcd3546297c1288f
+#   d4edd46f7ce7d04ef716255fc36976056f75a4d938351b3c0ff9388932cd5aef
+#   03d05460421d2c601a37dadc5cd97b6a77805a974ac29f6f3f2b5e75cf7f40f5
+#   ac3459c2b80406bf7c4e9698c186cb29c77fe32c17ef6d3a8a1f5cb56f3076aa
+PRE_CHANGE_SHA256 = "de3ddf92090b1e846db16a050a3d5dbb6bb4c6f346f1bde10b62ec88359b2554"
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE."

@@ -7,17 +7,18 @@ main.py — Acervator entry point
 # │                                                             │
 # │ This is the application entry point. Run: python main.py    │
 # │                                                             │
-# │ IMPORTANT: current_version string here must match           │
-# │ src/__init__.py __version__. Both must be bumped together.  │
+# │ IMPORTANT: this file DECLARES no version. It imports        │
+# │ __version__ from src/__init__.py, the one place that        │
+# │ states it. Bump it there. Do not add a copy here.           │
 # │                                                             │
 # │ The app has TWO modes:                                      │
 # │   - Crypto mode: main_window.py (CCXT exchanges)           │
 # │   - Stock mode: stock_main_window.py (Alpaca broker)        │
 # │                                                             │
 # │ BUILD: Use BUILD.py with PyInstaller, NOT this file.        │
-# │ TEST:  Use RAIntSimBat.py for the simulation battery.       │
-# │ DOCS:  Use generate_essay.py for the product manual PDF.    │
-# │ GUIDE: See AI_DEVELOPER_GUIDE.md for full architecture.     │
+# │ TEST:  python -m dev_harness.harness.check_release_readiness│
+# │ DOCS:  README.md and CONTRIBUTING.md are the front door.    │
+# │        Issue #69 cut three pointers to absent files.        │
 # └─────────────────────────────────────────────────────────────┘
 
 Orchestrates application startup:
@@ -1099,6 +1100,41 @@ def main() -> int:
                 f"after splash screen completes..."
             )
 
+    # --- Issue #96 — SINGLE-INSTANCE GUARD --------------------------------
+    #
+    # A second copy of Acervator on one Coinbase account is the hazard
+    # this evaluation exists to stop. Both copies read the same wallet,
+    # both act on it, and each reads the other's fills as unexplained
+    # drift — the Target Delta condition of #65, made continuous.
+    #
+    # PLACEMENT. Here, and not earlier, because the verdict has to carry
+    # the bot count into the dialog: "start 37 bots" is the sentence the
+    # operator judges, and the count is only known after the restore
+    # above. Here, and not later, because `_trigger_auto_restart` must
+    # already hold the answer when the splash hands over.
+    #
+    # THIS CALL WRITES NOTHING except on the permitted path. A refusal
+    # leaves the previous owner's record exactly as it was, so a second
+    # look reaches the same verdict and nothing is lost by refusing.
+    #
+    # THE DIRECTORY COMES FROM THE STATE MANAGER, never from a second
+    # `Path.home()` derivation. The guard must claim the directory the
+    # fleet was actually loaded from.
+    from src.core.instance_guard import InstanceGuard
+
+    instance_guard = InstanceGuard(state_mgr.config_dir, app_version=current_version)
+    instance_decision = instance_guard.evaluate(_autostart_bot_count)
+    if instance_decision.permits_auto_start:
+        # The ordinary path: this machine resuming its own fleet after a
+        # crash, a reboot or a clean exit. Refresh the record and say
+        # nothing — a prompt here would be the regression that matters.
+        instance_guard.take_ownership()
+    else:
+        log_manager.warning(
+            f"Instance guard: auto-start WITHHELD ({instance_decision.verdict}). "
+            f"{instance_decision.detail}"
+        )
+
     # --- Animated splash screen (frameless top-level window) ----------------
     from PySide6.QtWidgets import QWidget as _QW
     from PySide6.QtGui import QFont, QColor, QPainter, QLinearGradient
@@ -1450,6 +1486,49 @@ def main() -> int:
     # `_on_bot_command` is GUI-thread synchronous code.
     def _trigger_auto_restart():
         try:
+            # Issue #96 — the consent gate sits at the TOP of the
+            # existing trigger, and that placement is the design.
+            #
+            # This function is what the splash hands control to. Every
+            # auto-start in the product goes through it, so one check
+            # here covers the whole silent path and no second mechanism
+            # is needed. It is also the only moment at which a modal
+            # dialog is safe: the splash carries WindowStaysOnTopHint
+            # and covers anything opened before it fades.
+            #
+            # An operator who says no leaves every bot IDLE. He can
+            # still start any bot by hand, which is an explicit act and
+            # therefore already the consent this issue asks for.
+            from src.core.instance_guard import (
+                AUTHORISED_ALREADY_OWNER,
+                authorise_auto_start,
+            )
+            from src.gui.instance_consent_dialog import ask_for_consent
+
+            _authorised, _why = authorise_auto_start(
+                instance_guard,
+                instance_decision,
+                lambda d: ask_for_consent(d, parent=crypto_window),
+            )
+            if not _authorised:
+                log_manager.warning(
+                    f"Auto-start WITHHELD ({_why}, verdict "
+                    f"{instance_decision.verdict}). "
+                    f"{_autostart_bot_count} bot(s) stay IDLE."
+                )
+                crypto_window._status_log.log(
+                    f"Auto-start withheld: {instance_decision.headline} "
+                    f"Bots remain idle; start them from the Start All "
+                    f"button when this machine should own the fleet.",
+                    "warning",
+                )
+                return
+            if _why != AUTHORISED_ALREADY_OWNER:
+                log_manager.warning(
+                    f"Instance guard: ownership granted to this machine "
+                    f"({instance_decision.identity.label}) by {_why}. "
+                    f"Auto-start proceeds."
+                )
             eligible = [
                 b
                 for b in bot_manager._bots.values()
@@ -1604,6 +1683,14 @@ def main() -> int:
     # --- Cleanup: save state and stop all bots -------------------------
     log_manager.info("Saving state before shutdown...")
     bot_manager.save_all_state()
+    # Issue #96 — drop the exclusive handle so the next launch on this
+    # machine finds it free. A crash skips this line, and that is
+    # correct: the operating system drops every handle a dead process
+    # held, so a crashed fleet still resumes with no prompt.
+    try:
+        instance_guard.release()
+    except Exception as _lock_exc:  # noqa: BLE001 - shutdown must not fail here
+        log_manager.warning(f"Instance handle release raised: {_lock_exc}")
     # v3.18.2 — Paper trader shutdown removed (tab itself deleted per
     # operator directive 2026-05-19).
     loop.run_until_complete(bot_manager.stop_all())

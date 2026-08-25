@@ -1089,7 +1089,27 @@ if _HAS_QT:
             bot_mgr = self._bot_manager
 
             async def _do_fetch():
+                # 10.3 -- THE BRACKET SPANS THE AWAITED FETCH ALONE.
+                #
+                # It opens one line above `fetch_all_history_chunked`
+                # and closes one line below it, so it holds the venue
+                # walk and neither the per-symbol tally below it nor the
+                # emitters' own bookkeeping. Measured on the operator's
+                # machine a 4040-trade walk takes longer than 15 s, so
+                # this is the slowest single operation the Fleet Replay
+                # panel performs and the one item 17 wants a number for.
+                #
+                # ONLY `10-002` CARRIES IT, AND THE RULE PICKS THE
+                # OWNER RATHER THAN A PREFERENCE. Three pins fire in
+                # this function. `10-001` and `10-003` are gauges, and a
+                # gauge samples a value at an instant -- rule E8 refuses
+                # a duration on one. `10-002` is the only postcondition
+                # here, so it is the sole eligible owner of the fetch
+                # and the double-count the classification warned about
+                # cannot arise.
+                _fetch_t0 = time.monotonic()
                 trades = await fetch_all_history_chunked(bot_mgr, since_ts)
+                _fetch_s = time.monotonic() - _fetch_t0
                 self._ytd_trades = list(trades or [])
                 by_symbol: dict[str, int] = {}
                 for t in self._ytd_trades:
@@ -1143,6 +1163,7 @@ if _HAS_QT:
                         actual=_covered,
                         expected=sorted(_fleet_syms),
                         context={"uncovered": sorted(_fleet_syms - set(by_symbol))},
+                        duration=_fetch_s,
                     )
                     _emit(
                         "ytd.10.003.gauge.per_symbol_counts",
@@ -1810,11 +1831,29 @@ if _HAS_QT:
                 self._drain_timer.timeout.connect(self._drain_visual_snapshot)
             self._drain_timer.start()
 
-        def _collect_stat_fields(self, bots: list, exchange) -> dict:
+        def _collect_stat_fields(self, bots: list, ledger) -> dict:
             """v3.24.19 — worker-thread half of the stat strip feed:
-            pure arithmetic over bot + exchange state, returning
+            pure arithmetic over bot + ledger state, returning
             formatted strings. Touches no Qt. ``_apply_stat_fields``
             pushes the result on the Qt main thread.
+
+            ISSUE #110 SWEEP -- ``ledger`` IS THE TAPE, NOT
+            ``ctl._exchange``. This was handed the controller's
+            exchange and read ``exchange._balances`` and
+            ``exchange._trades`` off it. Both belonged to
+            ``FleetSimExchange``; since v3.24.84 that object is a
+            ``CCXTConnector``, which carries neither, so both
+            ``getattr`` defaults fired on every refresh and the strip
+            reported **Spendable $0.00 and Trades 0 on every run that
+            traded**. Measured on a replay holding $99.40 and one
+            filled trade.
+
+            ``TabletBackend.snapshot()`` is the ledger's own public
+            report and answers both questions in one call, so this
+            reads no private attribute and cannot silently default
+            again: a tape that cannot answer raises, and the handler
+            below records the failure through telemetry rather than
+            printing a zero.
 
             Telemetry (v3.24.8) proved ``SimStatStrip.set()`` had
             ZERO call sites anywhere in the source tree, which is
@@ -1835,11 +1874,11 @@ if _HAS_QT:
                 Errors    — tick exceptions recorded by the controller
             """
             try:
+                snap = ledger.snapshot() if ledger is not None else {}
                 spendable = 0.0
-                if exchange is not None:
-                    bal = getattr(exchange, "_balances", {}) or {}
-                    for cur in ("USD", "USDC"):
-                        spendable += float(bal.get(cur, 0.0) or 0.0)
+                bal = snap.get("balances") or {}
+                for cur in ("USD", "USDC"):
+                    spendable += float(bal.get(cur, 0.0) or 0.0)
                 realised = 0.0
                 locked = 0.0
                 mature = 0.0
@@ -1855,9 +1894,7 @@ if _HAS_QT:
                     holdings = float(getattr(b, "_current_holdings", 0.0) or 0.0)
                     price = float(getattr(b, "_last_price", 0.0) or 0.0)
                     locked += holdings * price
-                trades = 0
-                if exchange is not None:
-                    trades = len(getattr(exchange, "_trades", []) or [])
+                trades = int(snap.get("trades", 0) or 0)
                 errors = int(
                     getattr(
                         getattr(self._controller, "progress", None), "exceptions", 0
@@ -1956,6 +1993,11 @@ if _HAS_QT:
             """
             ctl = self._controller
             exchange = getattr(ctl, "_exchange", None)
+            # ISSUE #110 SWEEP -- the LEDGER is the tape, and it is a
+            # different object from the connector the bots trade
+            # through. `exchange` stays for the legacy `_series` branch
+            # below, which is the only reader that still wants it.
+            ledger = getattr(ctl, "_tape", None)
             bots = list(getattr(ctl, "_bots", []) or [])
             per_symbol: dict = {}
             for bot in bots:
@@ -2066,7 +2108,7 @@ if _HAS_QT:
             return {
                 "per_symbol": per_symbol,
                 "trade_markers": _marks,
-                "stat_fields": self._collect_stat_fields(bots, exchange),
+                "stat_fields": self._collect_stat_fields(bots, ledger),
             }
 
         def _drain_visual_snapshot(self) -> None:
@@ -2388,13 +2430,33 @@ if _HAS_QT:
             Sim trades carry master-clock timestamps (v3.24.5 fix),
             so the ±tolerance match against live trade timestamps is
             meaningful. Before that fix every sim trade was stamped
-            with wall-clock 'now' and parity was unmeasurable."""
+            with wall-clock 'now' and parity was unmeasurable.
+
+            THE TAPE, NOT THE CONNECTOR. This read
+            ``self._controller._exchange._trades``. ``_trades``
+            belonged to ``FleetSimExchange``; since v3.24.84
+            ``_exchange`` is a ``CCXTConnector`` and has no such
+            attribute, so the ``getattr`` default made ``sim_trades``
+            ``[]`` on EVERY run and this method always took the
+            "sim produced 0 trades — 0% reproduction" branch below.
+            The measurement the whole harness exists for has never run
+            on a real tape.
+
+            ``TabletBackend.fetch_my_trades()`` is the ledger's own
+            public ccxt accessor and returns copies. Its rows are
+            DICTS stamped in MILLISECONDS; ``compare_trades`` reads
+            that shape and that unit explicitly — see THE MILLISECOND
+            SEAM in ``parity_harness``. Pointing this line at the real
+            tape WITHOUT that reader in place would have been worse
+            than the empty list: the honest "0 trades" message would
+            have become a "0.0% match over N trades" report built from
+            empty symbols and 1970 timestamps."""
             perf = self._performance_log_cb
             if self._controller is None:
                 _tel_skip("sim.parity.compare_trades", "no controller")
                 return
-            exchange = getattr(self._controller, "_exchange", None)
-            sim_trades = list(getattr(exchange, "_trades", []) or [])
+            tape = getattr(self._controller, "tape", None)
+            sim_trades = list(tape.fetch_my_trades()) if tape is not None else []
             live_trades = list(self._ytd_trades or [])
             if not live_trades:
                 _tel_skip(

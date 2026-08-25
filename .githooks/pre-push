@@ -38,7 +38,7 @@ fail() {
     echo "  Run the gate, then push:" >&2
     echo "      python -m tools.gate" >&2
     echo "" >&2
-    echo "  It runs tools.harness.check_release_readiness and stamps the" >&2
+    echo "  It runs dev_harness.harness.check_release_readiness and stamps the" >&2
     echo "  commit only when the gate is green AND the tree is clean." >&2
     echo "" >&2
     exit 1

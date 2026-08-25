@@ -1,6 +1,6 @@
 """One report contract, and every sentence of it shown failing.
 
-`tools/harness/report.py` states nine properties. Each gets a test that
+`dev_harness/harness/report.py` states nine properties. Each gets a test that
 holds, and a PAIRED CONTROL that would pass if the property were dropped
 -- because a test with no control is not evidence.
 
@@ -34,7 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.harness.report import (
+from dev_harness.harness.report import (
     OPTIONAL_ANALYZERS,
     REPO_ROOT as HARNESS_REPO_ROOT,
     ArchetypeReport,
@@ -44,7 +44,7 @@ from tools.harness.report import (
     scan_rule_modules,
 )
 
-SCAFFOLDING = (("scaffolding", "tools.harness.rules.scaffolding"),)
+SCAFFOLDING = (("scaffolding", "dev_harness.harness.rules.scaffolding"),)
 
 # Built at run time. Written as a literal, this file would trip the very
 # rule it uses as bait, which is how ta_archetype came to fail itself
@@ -52,11 +52,11 @@ SCAFFOLDING = (("scaffolding", "tools.harness.rules.scaffolding"),)
 PLACEHOLDER_BAIT = '"""Doc."""\n\n# ' + "FIX" + "ME: not done\n"
 
 ARCHETYPE_MODULES = (
-    "tools.harness.coding_archetype",
-    "tools.harness.ta_archetype",
-    "tools.harness.gui_archetype",
-    "tools.harness.docs_archetype",
-    "tools.harness.watchdog_archetype",
+    "dev_harness.harness.coding_archetype",
+    "dev_harness.harness.ta_archetype",
+    "dev_harness.harness.gui_archetype",
+    "dev_harness.harness.docs_archetype",
+    "dev_harness.harness.watchdog_archetype",
 )
 
 CODING_FIX = (
@@ -145,7 +145,7 @@ class TestToolAvailabilityGatesGreen:
 
     def test_an_optional_analyzer_would_not_void_the_report(self, monkeypatch):
         """The mechanism works, even though the set is empty today."""
-        import tools.harness.report as rp
+        import dev_harness.harness.report as rp
 
         monkeypatch.setattr(rp, "OPTIONAL_ANALYZERS", frozenset({"vale"}))
         rep = ArchetypeReport(
@@ -395,7 +395,7 @@ class TestUnusedIgnoreSeverityIsReadOffTheMessage:
 
     @staticmethod
     def _sev(message: str) -> str:
-        from tools.harness.coding_archetype import _unused_ignore_severity
+        from dev_harness.harness.coding_archetype import _unused_ignore_severity
 
         return _unused_ignore_severity(message)
 
@@ -424,14 +424,14 @@ class TestTheVerdictDoesNotDependOnTheCallersDirectory:
     MEASURED on one unchanged absolute path before the cwd was pinned:
     75 findings from the repo root against 78 from another directory,
     and the same `type: ignore` reported medium from one and high from
-    the other. `tools/harness/claim_ledger.py` drew ruff UP017 twice
+    the other. `dev_harness/harness/claim_ledger.py` drew ruff UP017 twice
     from the root and not at all from elsewhere.
     """
 
     def test_mypy_writes_its_cache_where_the_harness_says(self):
         """mypy defaults to ./.mypy_cache -- a cache per caller."""
         import inspect
-        from tools.harness.coding_archetype import CodingArchetype
+        from dev_harness.harness.coding_archetype import CodingArchetype
 
         src = inspect.getsource(CodingArchetype._run_mypy)
         assert "--cache-dir" in src
@@ -439,9 +439,9 @@ class TestTheVerdictDoesNotDependOnTheCallersDirectory:
 
     def test_ruff_answers_the_same_from_another_directory(self, tmp_path, monkeypatch):
         """The real runner, twice, from two directories."""
-        from tools.harness.coding_archetype import CodingArchetype
+        from dev_harness.harness.coding_archetype import CodingArchetype
 
-        target = HARNESS_REPO_ROOT / "tools" / "harness" / "claim_ledger.py"
+        target = HARNESS_REPO_ROOT / "dev_harness" / "harness" / "claim_ledger.py"
         assert target.is_file(), "control invalid: the target is missing"
         arch = CodingArchetype()
         monkeypatch.chdir(HARNESS_REPO_ROOT)
@@ -462,7 +462,7 @@ class TestKnownGoodAndKnownBadStillDiscriminate:
         assert (CODING_FIX / "known_bad.py").is_file()
 
     def test_known_good_returns_zero_and_known_bad_returns_one(self, capsys):
-        from tools.harness.coding_archetype import main as coding_main
+        from dev_harness.harness.coding_archetype import main as coding_main
 
         results = {}
         for name in ("known_good.py", "known_bad.py"):

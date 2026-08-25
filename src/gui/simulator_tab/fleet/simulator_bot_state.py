@@ -14,8 +14,10 @@ would corrupt the operator's fleet; discarding it means every replay
 starts from scratch and nothing about a sim bot can be inspected between
 runs.
 
-So: `~/.acervator/simulator_bot_state.json`, alongside bot_state and
-never overlapping it. Same shape, so the same readers work on both.
+So: `simulator_bot_state.json`, alongside bot_state and never
+overlapping it. Same shape, so the same readers work on both. The
+directory is `~/.acervator` unless `SIM_STATE_ROOT_ENV` names another
+one; see that constant for why the override exists.
 
 PARITY IS THE POINT, NOT THE PERSISTENCE. Every sim bot records the
 `source_bot_id` it was cloned from and a field-by-field comparison
@@ -44,19 +46,102 @@ logger = logging.getLogger("acervator.simulator_bot_state")
 __all__ = [
     "diff_spawns",
     "SIM_STATE_PATH",
+    "SIM_STATE_ROOT_ENV",
+    "bot_state_path",
     "build_sim_state",
     "compare_to_bot_state",
     "load_sim_state",
     "save_sim_state",
+    "sim_state_path",
 ]
 
-# Beside bot_state.json, never inside it.
-SIM_STATE_PATH = (
-    Path(os.path.expanduser("~")) / ".acervator" / "simulator_bot_state.json"
-)
+SIM_STATE_ROOT_ENV = "ACERVATOR_SIM_STATE_ROOT"
+"""Override the directory that holds the Simulator's state file.
 
-# The live file, opened READ-ONLY and never written by this module.
-BOT_STATE_PATH = Path(os.path.expanduser("~")) / ".acervator" / "bot_state.json"
+Set by ``tests/conftest.py`` so the suite never writes into the
+operator's runtime tree. This is not a convenience.
+
+On 2026-08-22 a full suite run replaced the operator's saved Simulator
+fleet with one synthetic fixture bot: 2037 bytes, a single entry
+``simulated_b1`` with ``source_bot_id: b1`` and symbol BTC/USD. That
+state cannot be reconstructed.
+
+THE WRITER, IDENTIFIED BY EXPERIMENT, NOT BY ASSUMPTION.
+``tests/test_fleet_sim_infrastructure.py::test_fleet_replay_panel_mounts``
+builds a real ``FleetReplayPanel``, points the fleet LOADER at a fixture
+holding one bot ``b1`` on BTC/USD, and calls ``_on_load_clicked``. That
+handler calls ``_spawn_sim_fleet``, which ends in ``save_sim_state``
+with no path argument. The test redirected the file it READ and nothing
+redirected the file it WROTE.
+
+Measured: run that test alone with this override pointed at an empty
+directory and it produces a 2037-byte document holding exactly
+``simulated_b1`` / ``b1`` / BTC/USD, identical to the destroyed live
+file once the two timestamps are ignored.
+
+The suite guard ``_assert_no_live_tree_writes`` DETECTED the write at
+teardown, but a guard reports after the fact; only a redirect prevents
+it.
+
+The default keeps the shipping application on ``~/.acervator``, so the
+operator's Simulator behaves exactly as it did before.
+"""
+
+
+def _sim_state_root() -> Path:
+    """Resolve the state directory, honouring the override."""
+    override = os.environ.get(SIM_STATE_ROOT_ENV)
+    if override:
+        return Path(override)
+    return Path.home() / ".acervator"
+
+
+def sim_state_path() -> Path:
+    """Resolve the Simulator state file AT CALL TIME.
+
+    The path used to be a module constant, bound while this module was
+    imported. An import-time constant cannot be redirected: by the time
+    a fixture sets the environment variable, the value is already fixed,
+    so the override would be correct and unreachable. That exact shape
+    already defeated one repair in this project -- see
+    ``feature_telemetry.telemetry_path``, which this follows.
+
+    Resolving here means the override is honoured on every save and
+    every load.
+    """
+    return _sim_state_root() / "simulator_bot_state.json"
+
+
+def bot_state_path() -> Path:
+    """Resolve the live fleet file AT CALL TIME.
+
+    This module never opens this file. It is a REFUSAL TARGET only: the
+    one path ``save_sim_state`` must never write. It resolves under the
+    same root as the sim state so a redirected root protects the fleet
+    file inside it too.
+    """
+    return _sim_state_root() / "bot_state.json"
+
+
+def _refused_write_targets() -> tuple[Path, ...]:
+    """Paths ``save_sim_state`` must never write, resolved at call time.
+
+    Two entries, not one. ``bot_state_path()`` follows the override.
+    The live ``~/.acervator/bot_state.json`` is listed unconditionally,
+    because the override exists to move the Simulator OFF the live tree
+    and must never become a way back onto it. A redirect that disarmed
+    this guard would open a new hole while closing another.
+    """
+    return (bot_state_path(), Path.home() / ".acervator" / "bot_state.json")
+
+
+# Backwards-compatible module constants. Both hold the IMPORT-time
+# value. Nothing in this module reads them any more -- the functions
+# above are the live resolution -- and no new code may read them.
+# They stay because they are exported, and callers use them for the
+# file NAME.
+SIM_STATE_PATH: Path = sim_state_path()
+BOT_STATE_PATH: Path = bot_state_path()
 
 SCHEMA_VERSION = 1
 
@@ -214,8 +299,9 @@ def save_sim_state(state: dict, path: Optional[Path] = None) -> Path:
     Written to a temp file and replaced, so an interrupted write cannot
     leave a half-file that the next load silently reads as truth.
     """
-    p = Path(path or SIM_STATE_PATH)
-    if p.resolve() == BOT_STATE_PATH.resolve():
+    p = Path(path or sim_state_path())
+    resolved = p.resolve()
+    if any(resolved == t.resolve() for t in _refused_write_targets()):
         raise ValueError("refusing to write simulator state over bot_state.json")
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".json.tmp")
@@ -263,7 +349,7 @@ def diff_spawns(prev: dict, cur: dict) -> dict:
 
 def load_sim_state(path: Optional[Path] = None) -> dict:
     """Read the sim state, or an empty document if absent."""
-    p = Path(path or SIM_STATE_PATH)
+    p = Path(path or sim_state_path())
     try:
         return json.loads(p.read_text(encoding="utf-8"))
     except FileNotFoundError:

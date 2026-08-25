@@ -25,7 +25,23 @@ Write-Host "  Stripping download security flags..." -ForegroundColor Gray
 Get-ChildItem -Path . -Recurse -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
 
 # --- Step 2: Install dependencies ---
-pip install pyinstaller PySide6 ccxt cryptography keyring pandas numpy ta tomli_w aiohttp certifi requests reportlab pillow --quiet --upgrade
+#
+# Issue #94 - this line used to hand-copy 14 package names. It named
+# `requests`, which no file in the repository imports, and it did NOT
+# name `defusedxml`, which src\gui\crypto_news_ticker.py imports at
+# module level. The names now come from pyproject.toml, which is the one
+# source. `tools/deps.py build` answers the core set plus the `build` and
+# `report` extras, which is what a PyInstaller HOST needs.
+$deps = & python -m tools.deps requirements build
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  ERROR: could not read the dependency set from pyproject.toml" -ForegroundColor Red
+    exit 1
+}
+if (-not $deps) {
+    Write-Host "  ERROR: empty dependency set; refusing to build" -ForegroundColor Red
+    exit 1
+}
+pip install @deps --quiet --upgrade
 
 # --- Step 3: Clean caches ---
 Get-ChildItem -Path . -Directory -Recurse -Filter "__pycache__" -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue

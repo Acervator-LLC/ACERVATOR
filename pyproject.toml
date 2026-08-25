@@ -3,12 +3,28 @@ requires = ["setuptools>=69.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "quantum-auto-trader"
-version = "1.0.0"
+name = "acervator"
+# Issue #70 — the version is NOT restated here. setuptools>=69 reads it
+# straight out of src/__init__.py via [tool.setuptools.dynamic] below, so
+# src.__version__ is the one source and this file cannot drift from it.
+dynamic = ["version"]
 description = "Multi-exchange crypto auto-trading platform with Grid and Speculative Scrumming modes"
 readme = "README.md"
 license = {text = "Proprietary"}
 requires-python = ">=3.11"
+# Issue #94 - THIS IS THE ONE DEPENDENCY SOURCE.
+#
+# Before this issue the pip install list was hand-copied into eight
+# places and no two of them agreed. `tools/deps.py` now READS this
+# block, and `build_windows.ps1`, `build_mac.sh`, `BUILD.py`,
+# `os/install.sh` and `os/update.sh` call that tool instead of holding
+# a list. `tests/test_one_dependency_source.py` fails if a new
+# hand-copied list appears anywhere in the tree.
+#
+# A requirement belongs in `dependencies` when the code imports it and
+# the code cannot run without it. A requirement whose absence the code
+# TOLERATES belongs in an extra below, and the guard that tolerates it
+# is named there.
 dependencies = [
     "PySide6>=6.6.0",
     "ccxt>=4.2.0",
@@ -21,10 +37,115 @@ dependencies = [
     "aiohttp>=3.9.0",
     "psutil>=5.9.0",
     "defusedxml>=0.7.1",
+    # Issue #94 - certifi was installed by seven of the eight
+    # hand-copied lists and was declared here by none of them. Three
+    # shipped files import it to build the TLS trust store for exchange
+    # calls: src/exchange/ccxt_connector.py:477,
+    # src/gui/main_window.py:4101 and :4147. A fourth,
+    # EXCHANGE_DIAGNOSTIC.py:35, imports it at the repo root. It is
+    # declared now, so the set the build installs is the set this file
+    # states.
+    "certifi>=2024.2.2",
+]
+
+# Issue #94 - EXTRAS. Each one names its consumer and the guard that
+# proves the code survives its absence. Nothing goes here on taste.
+#
+#   report   src/core/version_sweep.py:1046-1051 imports reportlab
+#            inside `try:` and `except ImportError: return None`. The
+#            sweep runs and answers None instead of a PDF path.
+#   video    src/gui/screen_recorder.py:74-79 `_has_pillow()` and
+#            :57-62 `_has_cv2()` are capability probes that return
+#            False on ImportError; `_best_engine()` then picks another
+#            recorder. opencv-python is never installed by any script.
+#   charts   src/design_system.py:48-51 imports matplotlib at module
+#            level with NO guard. It is an extra and not a core
+#            dependency for a different reason: no module in `src/`,
+#            `tools/`, `main.py` or `tests/` imports
+#            `src.design_system`, and both .spec files list
+#            'matplotlib' in `excludes`, so the frozen application
+#            never reaches that import.
+#   monitor  src/trading/live_monitor.py:181 imports httpx inside
+#            `_call` with no guard. No install list in the tree ever
+#            installed it. This extra declares that dependency; it does
+#            not make it optional.
+#   contracts  issue #92. `contracts/deploy.py` is a standalone CLI
+#            that deploys ACRV.sol and CompetitionRegistry.sol to Base
+#            Sepolia or Base Mainnet. It imports web3, eth_account and
+#            solcx. It is an extra, and not a core dependency, for the
+#            same reason `charts` is: no code in the product reaches
+#            it. No file in the tree imports `contracts.deploy`,
+#            neither .spec file collects `contracts/`, and
+#            `acrv_address` and `registry_address` in
+#            src/competition/base_config.py:56, :57, :70 and :71 are
+#            all the empty string, so the deployment has never
+#            completed on any machine. The three imports now sit
+#            inside `try:` with an `except ImportError` that names
+#            this extra, so the script states what to install instead
+#            of pip-installing behind the operator.
+#            NO LOWER BOUND IS STATED, and that is deliberate. A bound
+#            would be a guess: none of the three has been resolved,
+#            installed or run anywhere this project has measured.
+#            `python -m tools.deps lock contracts` pins them the first
+#            time one is.
+#            `src/competition/` needs NONE of these. Issue #92 says it
+#            does. An AST walk over all ten of its modules finds one
+#            third-party import, `cryptography` at
+#            src/competition/bot_identity.py:34 and :36, and that is
+#            already a core dependency above.
+#   display  src/core/mini_display.py imports luma (:239, :301),
+#            ST7789 (:362), RPLCD (:442) and smbus2 (:577), each inside
+#            `try:` with an `except` that returns False, so a machine
+#            with no panel reports "not connected". Raspberry Pi only.
+#            ST7789 and waveshare_epd stay out: `os/install.sh` says
+#            they are hardware-specific and installs neither.
+#   build    PyInstaller host only. The TARGET never needs it.
+#   dev      the tools `dev_harness/harness/coding_archetype.py` and
+#            `docs_archetype.py` spawn, plus the type stubs two files
+#            need to stay green. Lower bounds are the versions that
+#            measured green on 2026-08-23, not guesses.
+[project.optional-dependencies]
+report = ["reportlab>=4.0.0"]
+video = ["opencv-python>=4.9.0", "pillow>=10.0.0"]
+charts = ["matplotlib>=3.8.0"]
+monitor = ["httpx>=0.27.0"]
+contracts = ["web3", "eth-account", "py-solc-x"]
+display = [
+    "luma.oled>=3.13.0",
+    "RPLCD>=1.3.1",
+    "smbus2>=0.4.3",
+    "pillow>=10.0.0",
+]
+build = ["pyinstaller>=6.0.0", "pillow>=10.0.0"]
+dev = [
+    "ruff>=0.16.0",
+    "mypy>=2.1.0",
+    "bandit>=1.9.4",
+    "vulture>=2.16",
+    "pyright>=1.1.411",
+    "proselint>=0.16.0",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "pytest-xdist>=3.8.0",
+    # Issue #94 - types-reportlab was installed by hand to clear a mypy
+    # `import-untyped` finding on two files, and was declared nowhere.
+    # The green on those files was not reproducible on another machine.
+    # It is a stub-only distribution, so it belongs with the type
+    # checker and never in `dependencies`.
+    "types-reportlab>=4.5.1.20260807",
+    # Issue #94 - the lockfile generator. `requirements/` holds what it
+    # produced; `python -m tools.deps lock` regenerates it.
+    "pip-tools>=7.6.1",
 ]
 
 [project.scripts]
-quantum-trader = "main:main"
+acervator = "main:main"
+
+[tool.setuptools.dynamic]
+# Read by setuptools' static AST reader — src/__init__.py assigns
+# __version__ as a plain string literal, so this resolves without
+# importing the package (no PySide6 needed at build time).
+version = {attr = "src.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -32,36 +153,47 @@ where = ["."]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-# TD-022: legacy / no-longer-applicable regression tests live here; do not collect.
-# TD-021: test_swarm_row_parity reads source under default codec; ignore until encoding fix ships.
-norecursedirs = ["obsolete", "__pycache__", ".git"]
-addopts = "--ignore=tests/obsolete --ignore=tests/test_swarm_row_parity.py"
+# Issue #69 - this block used to exclude `tests/obsolete` (TD-022) and
+# `tests/test_swarm_row_parity.py` (TD-021). Those two paths are not in
+# the tree and never have been. An `--ignore=` for a path that is not in
+# the tree is inert: pytest accepts it and collects the same 7382 tests
+# either way. Both entries are gone, so this block states only what it
+# does.
+norecursedirs = ["__pycache__", ".git"]
 
-# v3.19.7 — Coverage configuration. Coverage is NOT enabled by default
-# (would slow the 1533-test suite by ~3×). Operator runs coverage
-# explicitly via:
+# RULE: "A silent capture is a failed capture." — see the
+# `_silent_capture_guard` fixture in tests/conftest.py. The marker is
+# the guard's only opt-out and is registered here so an unknown-mark
+# warning can never be mistaken for the guard being inert.
+markers = [
+    "caplog_may_be_empty(reason): this test watches a NON-Acervator logger and an empty caplog is its pass condition",
+]
+
+# v3.19.7 - Coverage configuration. Coverage is NOT enabled by default
+# (it slows the suite by about 3x). Run it explicitly:
 #
-#     python -m pytest --cov=src --cov=sadp/RAIntSimBat \
-#                      --cov-report=term --cov-report=json
+#     python -m pytest --cov=src --cov-report=term --cov-report=json
 #
-# The coverage-floor regression test (tests/test_coverage_floor.py)
-# does a focused per-module coverage check in-process and compares
-# to qa_baselines/coverage_baseline.json. Tighter focus = faster.
+# Issue #69 - this comment used to name a coverage-floor regression test
+# (`tests/test_coverage_floor.py`) that compared per-module coverage to
+# `qa_baselines/coverage_baseline.json`. That test is not in the tree,
+# and neither is that baseline. No test in the suite reads a coverage
+# baseline, so no floor is enforced. The claim is gone, not restated.
+#
+# `[tool.coverage.json] output` below is a WRITE target, not a read:
+# coverage creates `qa_baselines/` on demand. It is not a dead
+# reference.
 [tool.coverage.run]
 branch = true
 # v3.19.7 — Source paths. acervator_watchdog.py lives at repo root
 # (not under src/) because PyInstaller's entry point treats it as a
 # top-level launcher. We add it as a file-level source so coverage
 # can track it.
-source = ["src", "sadp/RAIntSimBat", "acervator_watchdog.py"]
+source = ["src", "acervator_watchdog.py"]
 omit = [
     "*/tests/*",
     "*/__pycache__/*",
     "*/.session*_backups/*",
-    "sadp/RAIntSimBat/run_all.py",
-    "sadp/RAIntSimBat/package_run.py",
-    "sadp/RAIntSimBat/reports_pdf.py",
-    "sadp/RAIntSimBat/ab_report.py",
     "src/gui/*",
 ]
 
@@ -79,21 +211,25 @@ skip_covered = false
 output = "qa_baselines/coverage_current.json"
 show_contexts = false
 
-# v3.19.7 — Mutation testing configuration. mutmut runs against a
-# focused, money-critical target set (buy_safety.py first; expand as
-# the harness matures). Run on-demand:
+# Issue #69 - the [tool.mutmut] block is gone. It could not run, for two
+# independent reasons, both measured 2026-08-22.
 #
-#     python -m mutmut run
-#     python -m mutmut results
+# 1. mutmut 3.5.0 refuses this platform. `python -m mutmut run` prints
+#    "To run mutmut on Windows, please use the WSL" and exits 1 at
+#    import (mutmut/__main__.py, lines 8-10). It never reads this
+#    config.
+# 2. Its `runner` named `tests/test_verify_buy_safe_helper.py` and
+#    `tests/test_mem228_buy_confirmation_gate.py`. Those files are not
+#    in the tree, and `git log` over all 107 commits shows no commit
+#    ever added them. That command exits 4.
 #
-# Baseline + survivor list pinned in qa_baselines/mutation_baseline.json;
-# tests/test_mutation_baseline.py reads it and asserts the surviving-
-# mutation count for each target file has not grown.
-[tool.mutmut]
-paths_to_mutate = "src/trading/buy_safety.py"
-backup = false
-runner = "python -m pytest tests/test_verify_buy_safe_helper.py tests/test_mem228_buy_confirmation_gate.py -x -q"
-tests_dir = "tests/"
+# The pinned baseline (`qa_baselines/mutation_baseline.json`), its
+# reader (`tests/test_mutation_baseline.py`) and `tools/mutation_runner
+# .py` are not in the tree either, and were never added by any commit.
+# So no number in this repository rests on this block. Nothing exercises
+# `src/trading/buy_safety.py` directly, so there is no honest runner to
+# name. Writing one is a separate unit. Inventing one to satisfy this
+# config would be worse than deleting it.
 
 # v3.19.14 — Vulture configuration. The four remaining findings after
 # v3.19.12's cleanup are all function/callback parameter signatures
@@ -101,7 +237,7 @@ tests_dir = "tests/"
 # --ignore-names list excludes them so the baseline can land at 0.
 #
 # To re-run vulture with this config:
-#   python -m vulture src sadp/RAIntSimBat acervator_watchdog.py \
+#   python -m vulture src acervator_watchdog.py \
 #     --min-confidence 70 \
 #     --ignore-names "fold_hold_in_downtrend,value_at_bar_end,prev_col,prev_row"
 #
@@ -115,5 +251,5 @@ ignore_names = [
     "prev_col",                  # Qt QTableWidget.currentCellChanged slot
     "prev_row",                  # Qt QTableWidget.currentCellChanged slot
 ]
-paths = ["src", "sadp/RAIntSimBat", "acervator_watchdog.py"]
+paths = ["src", "acervator_watchdog.py"]
 min_confidence = 70

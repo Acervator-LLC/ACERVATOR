@@ -1,4 +1,4 @@
-"""Pin tests for tools/harness/claim_ledger.py.
+"""Pin tests for dev_harness/harness/claim_ledger.py.
 
 Verify the ledger:
   1. Logs claims in `open` state
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.harness import claim_ledger
+from dev_harness.harness import claim_ledger
 
 
 @pytest.fixture(autouse=True)

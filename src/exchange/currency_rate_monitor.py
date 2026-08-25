@@ -30,8 +30,10 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
+
+from .lazy_singleton import LazySingleton
 
 logger = logging.getLogger("acervator.currency_rate_monitor")
 
@@ -184,11 +186,22 @@ class CurrencyRateMonitor:
 # Process-wide shared monitor
 # ---------------------------------------------------------------------
 
-_GLOBAL_MONITOR: Optional[CurrencyRateMonitor] = None
+_MONITOR: LazySingleton[CurrencyRateMonitor] = LazySingleton(
+    CurrencyRateMonitor,
+    "the currency rate feed",
+    "BTC/USD and ETH/USD, and the satoshi and wei denominated prices "
+    "derived from them, will hold their last value and stop updating.",
+)
 
 
-def get_currency_monitor() -> CurrencyRateMonitor:
-    global _GLOBAL_MONITOR
-    if _GLOBAL_MONITOR is None:
-        _GLOBAL_MONITOR = CurrencyRateMonitor()
-    return _GLOBAL_MONITOR
+def get_currency_monitor() -> Optional[CurrencyRateMonitor]:
+    """Return the shared monitor, or None while the feed is down.
+
+    Never raises. None means skip the currency rates this tick.
+    """
+    return _MONITOR.get()
+
+
+def reset_currency_monitor_for_tests() -> None:
+    """Clear the singleton and its cooling-off — test-only helper."""
+    _MONITOR.reset()

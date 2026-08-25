@@ -28,6 +28,16 @@ enforced; naming it changes no behaviour, and no gate is moved. Whether
 that floor belongs where it is remains an open strategy question for the
 operator and is deliberately untouched.
 
+2026-08-24, ISSUE #102. Half of that question is now answered, and the
+answer was that the floor was not being enforced at all on one arm. The
+BB-priority arm added 0.30 to `eff_confidence` before comparing it
+against 0.25, so on that arm the conjunct read `conf >= -0.05` and
+refused nothing. The gate site therefore reads `_eff_conf_floor` now:
+`_TA_CONFIDENCE_FLOOR` normally, `_BB_PRIORITY_CONFIDENCE_FLOOR` on the
+arm. The three source-level pins in `TestTheFloorIsNamed` were RESTATED
+for the new name rather than deleted, and two were added -- one that
+both floors can refuse, one that no addition reaches the measurement.
+
 These tests exercise the message-construction logic against the real
 constant rather than driving `tick()`, which needs a live ticker, a
 populated TA engine and an exchange. What they pin is that no input
@@ -37,6 +47,7 @@ combination can produce a self-contradicting line.
 from __future__ import annotations
 
 import ast
+import math
 import sys
 from pathlib import Path
 
@@ -46,7 +57,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.trading.scrumming_bot import _TA_CONFIDENCE_FLOOR  # noqa: E402
+from src.trading.scrumming_bot import (  # noqa: E402
+    _BB_PRIORITY_CONFIDENCE_FLOOR,
+    _TA_CONFIDENCE_FLOOR,
+    _skewed_confidence_floor,
+)
 from src.trading.ta_engine import SignalDirection  # noqa: E402
 
 SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(encoding="utf-8")
@@ -96,16 +111,154 @@ class TestTheFloorIsNamed:
 
     def test_the_bare_literal_is_gone_from_the_gate(self):
         """The point of naming it is that it becomes greppable. A stray
-        inlined 0.25 would drift away from the constant silently."""
+        inlined 0.25 would drift away from the constant silently.
+
+        RESTATED 2026-08-24, issue #102. The gate used to read
+        ``eff_confidence >= _TA_CONFIDENCE_FLOOR`` at both sites. It now
+        reads ``eff_confidence >= _eff_conf_floor``. What this test pins
+        is unchanged -- no bare literal reaches the gate -- so it pins
+        the new name and, below, what the local is allowed to be.
+
+        RESTATED AGAIN 2026-08-24, issue #104. The local was a two-way
+        choice between two module constants while the BB-priority skew
+        was the only favour on the threshold. Two more favours joined it,
+        so the local is now DERIVED: `_skewed_confidence_floor` divides
+        the standing floor by one plus the sum of the three. Pinning the
+        old two-way expression would now pin the shape of a repair that
+        has been superseded, so this pins the derivation instead -- the
+        floor still comes from a named helper and never from a literal.
+        """
         seg = _gate_source()
         assert "eff_confidence >= 0.25" not in seg
-        assert "eff_confidence >= _TA_CONFIDENCE_FLOOR" in seg
+        assert "eff_confidence >= _eff_conf_floor" in seg
+        assert "_eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew)" in seg
+        assert "_ta_conf_skew = position_boost + bb_confidence_boost" in seg
+        assert "_ta_conf_skew += _BB_PRIORITY_SKEW" in seg
 
     def test_both_directions_use_it(self):
         """The floor gates SCRUM as well as FOLD. Fixing one side only
         would leave the other lying."""
         seg = _gate_source()
-        assert seg.count("eff_confidence >= _TA_CONFIDENCE_FLOOR") == 2
+        assert seg.count("eff_confidence >= _eff_conf_floor") == 2
+
+    def test_the_priority_floor_can_still_refuse(self):
+        """ISSUE #102, and the reason the local exists at all.
+
+        The BB-priority arm used to ADD 0.30 to the measurement and then
+        compare the sum against 0.25. On a quantity whose indicator
+        output is bounded [0, 1] that is ``conf >= -0.05``: the conjunct
+        had no false case. A floor that cannot refuse is not a floor.
+
+        Both floors must therefore be strictly positive, and the
+        priority floor must be the LOWER of the two -- it is a favour,
+        not a promotion.
+        """
+        assert _TA_CONFIDENCE_FLOOR > 0.0
+        assert _BB_PRIORITY_CONFIDENCE_FLOOR > 0.0
+        assert _BB_PRIORITY_CONFIDENCE_FLOOR < _TA_CONFIDENCE_FLOOR
+        # A reading of exactly 0.0 -- the case the issue names -- is
+        # refused on both arms.
+        assert not 0.0 >= _BB_PRIORITY_CONFIDENCE_FLOOR
+        assert not 0.0 >= _TA_CONFIDENCE_FLOOR
+
+    def test_the_measurement_is_not_edited_before_the_gate(self):
+        """The favour lands on the threshold, never on the reading.
+
+        POSITIVE CONTROL for the repair. If a later change reinstates an
+        addition onto ``eff_confidence`` inside the priority block, the
+        gate stops judging what the indicators measured and the nine
+        diagnostics below it start printing a confidence no indicator
+        produced. That is the half of the defect the floor value alone
+        does not cover.
+        """
+        seg = _gate_source()
+        assert "eff_confidence + _BB_PRIORITY_SKEW" not in seg
+        assert "eff_confidence = max(" not in seg
+        # ISSUE #104. The same rule over the whole method, not only the
+        # priority block: NOTHING adds to the measurement any more.
+        # Two more favours were spent here -- `position_boost` and
+        # `bb_confidence_boost` -- and the sweep measured what they cost:
+        # 123 trades fired on a confidence the indicators had not
+        # produced, and 316 readings carried a NEGATIVE confidence into
+        # nine diagnostics.
+        #
+        # READ AS CODE, NOT AS TEXT. A substring search for
+        # `eff_confidence +=` also matches the prose that RECORDS what
+        # those lines used to read, so it would go red on the repair's
+        # own explanation and green on a comment that quietly said
+        # `eff_confidence  +=`. The AST is the exact instrument.
+        augmented = [
+            n
+            for n in ast.walk(ast.parse(seg))
+            if isinstance(n, ast.AugAssign)
+            and isinstance(n.target, ast.Name)
+            and n.target.id == "eff_confidence"
+        ]
+        assert augmented == [], (
+            "something adds to `eff_confidence` again at line(s) "
+            f"{[n.lineno for n in augmented]} of the method; the favour "
+            "belongs on the threshold, not on the measurement"
+        )
+
+    def test_POSITIVE_CONTROL_the_augassign_scanner_sees_one(self):
+        """The scanner above must not report empty for every input."""
+        sample = "\n".join(("def f():", "    eff_confidence += position_boost", ""))
+        found = [
+            n
+            for n in ast.walk(ast.parse(sample))
+            if isinstance(n, ast.AugAssign)
+            and isinstance(n.target, ast.Name)
+            and n.target.id == "eff_confidence"
+        ]
+        assert len(found) == 1
+
+    def test_the_skewed_floor_can_refuse_at_every_reachable_skew(self):
+        """ISSUE #104. The property the whole repair exists for.
+
+        A favour must never make the comparison unfailable. The largest
+        favour this module can build is the three summed at their
+        ceilings -- +0.30 BB-priority, +0.40 position by enumeration of
+        its own terms, +0.60 BB-confidence by derivation from its two
+        component bounds. Even there the floor stays strictly positive,
+        so a reading of exactly 0.0 is refused. That is what dividing
+        buys and subtracting does not.
+        """
+        for skew in (0.0, 0.30, 0.40, 0.60, 1.30):
+            floor = _skewed_confidence_floor(skew)
+            assert floor > 0.0, skew
+            assert not 0.0 >= floor, skew
+        # And it is a RELAXATION, monotonically, never a promotion.
+        assert _skewed_confidence_floor(0.0) == _TA_CONFIDENCE_FLOOR
+        assert _skewed_confidence_floor(0.30) == _BB_PRIORITY_CONFIDENCE_FLOOR
+        rungs = [
+            _skewed_confidence_floor(s) for s in (-0.29, 0.0, 0.30, 0.40, 0.60, 1.30)
+        ]
+        assert rungs == sorted(rungs, reverse=True)
+
+    def test_a_negative_skew_tightens_rather_than_relaxes(self):
+        """`position_boost` reaches -0.29, and that has to mean something.
+
+        Under the addition a negative favour SUBTRACTED from the
+        measurement, so evidence against made the reading look weaker.
+        Under the division it RAISES the bar instead. The direction is
+        preserved; only the arithmetic changed. Eleven of the 134
+        decision flips the sweep measured are exactly this case, and
+        every one of them carries a negative `position_boost`.
+        """
+        assert _skewed_confidence_floor(-0.29) > _TA_CONFIDENCE_FLOOR
+        assert _skewed_confidence_floor(-0.05) > _TA_CONFIDENCE_FLOOR
+
+    def test_a_total_penalty_refuses_everything(self):
+        """NEGATIVE CONTROL for the guard branch nothing live reaches.
+
+        At a skew of -1 the division is undefined. The continuous limit
+        is a floor no reading can clear, and that is what is returned --
+        not a friendlier fallback that would REWARD total evidence
+        against.
+        """
+        assert _skewed_confidence_floor(-1.0) == math.inf
+        assert _skewed_confidence_floor(-2.0) == math.inf
+        assert not 1.0 >= _skewed_confidence_floor(-1.0)
 
 
 class TestTheHoldReasonIsNeverSelfContradicting:

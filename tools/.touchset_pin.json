@@ -6,7 +6,7 @@
   "entries": [
     {
       "archetypes": {
-        "tools.harness.coding_archetype": {
+        "dev_harness.harness.coding_archetype": {
           "by_severity": {
             "info": 3,
             "low": 566,
@@ -16,12 +16,12 @@
           "errors": [],
           "failure": "",
           "high": 0,
-          "module": "tools.harness.coding_archetype",
+          "module": "dev_harness.harness.coding_archetype",
           "passed": true,
           "provenance": ".claude/hooks/archetype_gate.py:_pick_archetypes",
           "ran": true
         },
-        "tools.harness.ta_archetype": {
+        "dev_harness.harness.ta_archetype": {
           "by_severity": {
             "low": 85
           },
@@ -29,18 +29,18 @@
           "errors": [],
           "failure": "",
           "high": 0,
-          "module": "tools.harness.ta_archetype",
+          "module": "dev_harness.harness.ta_archetype",
           "passed": true,
           "provenance": ".claude/hooks/archetype_gate.py:_pick_archetypes",
           "ran": true
         },
-        "tools.harness.watchdog_archetype": {
+        "dev_harness.harness.watchdog_archetype": {
           "by_severity": {},
           "degraded": [],
           "errors": [],
           "failure": "",
           "high": 0,
-          "module": "tools.harness.watchdog_archetype",
+          "module": "dev_harness.harness.watchdog_archetype",
           "passed": true,
           "provenance": "touchset: watchdog on every Python file (gate routes none)",
           "ran": true
@@ -64,16 +64,16 @@
       "is_code": true,
       "path": "src/trading/scrumming_bot.py",
       "routed": [
-        "tools.harness.coding_archetype",
-        "tools.harness.ta_archetype",
-        "tools.harness.watchdog_archetype"
+        "dev_harness.harness.coding_archetype",
+        "dev_harness.harness.ta_archetype",
+        "dev_harness.harness.watchdog_archetype"
       ],
       "sha256": "c9e70b12abb89e1a692a3d6b86aff672390a3f39dbe37c344db175744b0633ae",
       "size": 843592
     },
     {
       "archetypes": {
-        "tools.harness.coding_archetype": {
+        "dev_harness.harness.coding_archetype": {
           "by_severity": {
             "info": 11,
             "low": 191,
@@ -83,12 +83,12 @@
           "errors": [],
           "failure": "",
           "high": 0,
-          "module": "tools.harness.coding_archetype",
+          "module": "dev_harness.harness.coding_archetype",
           "passed": true,
           "provenance": ".claude/hooks/archetype_gate.py:_pick_archetypes",
           "ran": true
         },
-        "tools.harness.ta_archetype": {
+        "dev_harness.harness.ta_archetype": {
           "by_severity": {
             "low": 6
           },
@@ -96,18 +96,18 @@
           "errors": [],
           "failure": "",
           "high": 0,
-          "module": "tools.harness.ta_archetype",
+          "module": "dev_harness.harness.ta_archetype",
           "passed": true,
           "provenance": ".claude/hooks/archetype_gate.py:_pick_archetypes",
           "ran": true
         },
-        "tools.harness.watchdog_archetype": {
+        "dev_harness.harness.watchdog_archetype": {
           "by_severity": {},
           "degraded": [],
           "errors": [],
           "failure": "",
           "high": 0,
-          "module": "tools.harness.watchdog_archetype",
+          "module": "dev_harness.harness.watchdog_archetype",
           "passed": true,
           "provenance": "touchset: watchdog on every Python file (gate routes none)",
           "ran": true
@@ -128,9 +128,9 @@
       "is_code": true,
       "path": "tests/test_autonomous_fold_price_gate.py",
       "routed": [
-        "tools.harness.coding_archetype",
-        "tools.harness.ta_archetype",
-        "tools.harness.watchdog_archetype"
+        "dev_harness.harness.coding_archetype",
+        "dev_harness.harness.ta_archetype",
+        "dev_harness.harness.watchdog_archetype"
       ],
       "sha256": "be7d5721817adccbf08cbd42504583310346f364f85f7cbff6807b3dc4e922a8",
       "size": 59602
@@ -141,5 +141,5 @@
   "pin_version": 2,
   "root": "C:\\Users\\brown\\OneDrive\\Desktop\\ACERTAVOR PRODUCT DOCUMENTATION\\acervator_session25_CLOSE_hop5_v3_15_27",
   "routing_rule": ".claude/hooks/archetype_gate.py:_pick_archetypes",
-  "tool": "tools.touchset"
+  "tool": "dev_harness.touchset"
 }

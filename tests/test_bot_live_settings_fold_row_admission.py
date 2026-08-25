@@ -344,6 +344,51 @@ class TestTheDialogOpens:
 # CONTROL B - VALID INPUT RENDERS IDENTICALLY
 # ---------------------------------------------------------------------
 
+# TWO CELLS IN `LIVE_ROW` MOVED ONCE, AND THE REASON IS RECORDED HERE
+# RATHER THAN DELETED WITH THEM.
+#
+# Until v3.26.0 this table pinned:
+#
+#     Min rebuy $  "≤$29550.00000000"
+#     Status       "Need price ≤ OTD (+4.91%)"
+#
+# `_Cfg` below sets `scrumming_interval_pct = 1.5` and NO
+# `trading_fee_pct`. Those two strings are `ref × (1 - 1.5/100)` — the
+# scrumming interval alone. The executor's own per-tranche fold filter
+# uses the Minimum Opposing Trade Distance, `interval + trading fee`
+# (`src/trading/otd_math.py`), and reads a missing fee as 0.6. The panel
+# was therefore printing a rebuy price the executor refuses, on 24 of
+# the operator's 38 live bots, and showing six green "Price-OK" rows for
+# buys that could not fire (GitHub issue #97, measured 2026-08-23).
+#
+# The pin is RESTATED, not dropped: 2.1% instead of 1.5%, so
+# `30000 × 0.979 = 29370` and `31000` sits `+5.55%` above it. The
+# falsifier that keeps the panel asking `otd_math` instead of doing its
+# own arithmetic lives in
+# `tests/test_fold_panel_asks_the_executor.py`, together with the
+# `_without_the_fee_in_the_panel` control that reproduces the two
+# strings above on demand.
+#
+# A THIRD CELL MOVED, AND FOR THE SAME KIND OF REASON.
+#
+# Until issue #98 this table pinned:
+#
+#     Source       "auto scrum"
+#
+# `_valid_tranche` stores `operator_initiated: False`. That value is
+# written at ONE site, the SCRUM branch of `_execute_manual_rebalance`
+# (`src/trading/scrumming_bot.py:12398`), and `False` there means the
+# caller was `wire_stack` or `max_cartridge` - an AUTONOMOUS rebalance
+# fire. The ordinary scrum cycle and the DIST re-fold write no
+# `operator_initiated` key at all, and THAT absence is what "auto
+# scrum" names. So this row was reading one mechanism and printing the
+# name of another.
+#
+# The pin is RESTATED, not dropped: "auto rebalance" for a stored
+# `False`. `tests/test_fold_source_names_the_action.py` holds all three
+# provenances against their write sites, with the live fleet counts
+# that measured the defect.
+#
 #: Captured from LIVE, through the same builder, before the change.
 #: Not one character of these may move.
 LIVE_LABELS = [
@@ -353,12 +398,67 @@ LIVE_LABELS = [
     "$250.0000",
     "Oldest tranche age:",
     "1.0h",
+    # issue #98 defect 9, 2026-08-24 - THE ALLOTMENT TOTAL. The panel
+    # printed per-row Units and no total, so PUMP/USD marking 1.99x the
+    # units it holds looked exactly like a queue that had marked half.
+    # This fixture's stub bot carries no `_current_holdings` at all, so
+    # the row prints the marked total and says plainly that it cannot
+    # read the holdings - it does NOT print a ratio against a number it
+    # does not have.
+    "Units marked (queue vs held):",
+    "1.500000 marked / holdings unreadable",
+    # issue #103, 2026-08-24 - the two despawn rows. The capture grew
+    # by four entries because the panel gained two rows, and that is a
+    # DELIBERATE change to what a valid tranche makes this tab show.
+    # Recorded here rather than relaxed away: the assertion is still
+    # byte-for-byte, so the next unintended drift still fails.
+    #
+    # This fixture's tranche is one hour old and the timer reads Off,
+    # which is the live fleet's state on all 38 bots, so every window
+    # prints zero. The row proves the panel says WHAT IT WOULD REMOVE
+    # even when the answer is nothing.
+    "Tranche despawn timer:",
+    "Off  -  Settings tab > Advanced > Tranche Despawn Timer",
+    "Despawn would remove:",
+    (
+        "if armed at  7d: 0 ($0.0000)  -  14d: 0 ($0.0000)  -  "
+        "30d: 0 ($0.0000)  -  60d: 0 ($0.0000)"
+    ),
     "Lifetime tranches opened:",
     "10",
     "Lifetime tranches closed (fold-back fired):",
     "6",
-    "Cycle close ratio (closed/opened):",
+    # issue #98 defect 4, 2026-08-24 - THE HEADLINE HEALTH METRIC. The
+    # label now names the arithmetic it performs: discards leave the
+    # denominator, because a discarded tranche did not fail to fold
+    # back, it was removed before it could. This stub has discarded
+    # none, so the NUMBER is unchanged at 60.00% (6/10) and only the
+    # words moved - which is the shape a re-definition should have on a
+    # bot the re-definition does not apply to.
+    "Cycle close ratio (folded / opened minus discarded):",
     "60.00%  (6/10)",
+    # issue #98 defect 10, 2026-08-24 - two of the three persisted
+    # quantities the panel never showed. The third,
+    # `_wire_credits_discarded_lifetime`, follows the tranche-discard
+    # row's convention and appears only once it is non-zero; this stub
+    # has never cleared, so it is absent here BY DESIGN and its
+    # presence on a bot that HAS cleared is pinned in
+    # `tests/test_fold_panel_surface_remainder.py`.
+    #
+    # The malformed row is shown even at zero, and that is the point of
+    # it: 0 on all 38 bots is a positive statement that no stored
+    # tranche was ever unreadable, and a hidden row would make that
+    # reading indistinguishable from a panel that does not count drops.
+    "Tranches dropped as malformed:",
+    "0",
+    "Fold budget this cycle:",
+    "$0.0000 spent of $0.0000",
+    # issue #98 defect 7, 2026-08-24 - the label on the row-order
+    # combo. `_build` harvests every `QLabel` in the built tab, and the
+    # two reach controls sit above the table, so the order label lands
+    # in this capture with no value beside it. The filter box is a
+    # `QLineEdit` with a placeholder and no label, so it adds nothing.
+    "Order:",
 ]
 LIVE_ROW = [
     "1",
@@ -367,9 +467,9 @@ LIVE_ROW = [
     "$250.0000",
     "$30000.00000000",
     "$29000.00000000",
-    "≤$29550.00000000",
-    "Need price ≤ OTD (+4.91%)",
-    "auto scrum",
+    "≤$29370.00000000",
+    "Need price ≤ OTD (+5.55%)",
+    "auto rebalance",
     "",
     DASH,
 ]
@@ -555,8 +655,8 @@ class TestTheRefusalIsHonest:
         """POSITIVE CONTROL for the row above."""
         _, rows = _build([_valid_tranche()], monkeypatch)
         assert rows[0][COL_REF] == "$30000.00000000"
-        assert rows[0][COL_MIN_REBUY] == "≤$29550.00000000"
-        assert rows[0][COL_STATUS] == "Need price ≤ OTD (+4.91%)"
+        assert rows[0][COL_MIN_REBUY] == "≤$29370.00000000"
+        assert rows[0][COL_STATUS] == "Need price ≤ OTD (+5.55%)"
 
     @pytest.mark.parametrize("value", REFUSED)
     def test_summary_and_row_never_disagree_on_the_age(self, value, monkeypatch):

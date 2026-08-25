@@ -1,4 +1,4 @@
-"""Pin tests for tools/harness/gui_archetype.py.
+"""Pin tests for dev_harness/harness/gui_archetype.py.
 
 Verifies:
   - Module + public surface (GUIArchetype, GUI001-GUI005 rules)
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.harness.gui_archetype import (
+from dev_harness.harness.gui_archetype import (
     GUIArchetype,
     _GUIAnalyzer,
     _INTERACTIVE_QT_WIDGETS,

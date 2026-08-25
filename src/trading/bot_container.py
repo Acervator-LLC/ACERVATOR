@@ -877,6 +877,197 @@ def despawn_threshold_days(config) -> int:
     return min(DESPAWN_MAX_DAYS, max(0, int(days)))
 
 
+#: The candidate windows the Fold Tranches panel offers when the timer
+#: is OFF, so the operator reads a CONSEQUENCE instead of a blank.
+#:
+#: MEASURED, NOT PICKED. Against the operator's own state file of
+#: 2026-08-24 (read-only, 38 bots, 1,680 open fold tranches, every one
+#: carrying a usable `created_ts`) the age distribution is:
+#:
+#:     >=  7 d   343 tranches   20.4 %
+#:     >= 14 d   209 tranches   12.4 %
+#:     >= 30 d    80 tranches    4.8 %
+#:     >= 60 d    19 tranches    1.1 %
+#:     >= 90 d     0 tranches    0.0 %
+#:
+#: Four windows that each move the number, and the last one that is not
+#: yet zero. A fifth at 90 days would print 0 on every bot in the fleet
+#: and teach the operator nothing.
+DESPAWN_PREVIEW_WINDOWS: tuple[int, ...] = (7, 14, 30, 60)
+
+
+def _despawn_age_seconds(tranche: object, field: str, now: float) -> Optional[float]:
+    """Give the age of one tranche in seconds, or None when it has none.
+
+    THE SAME RULE THE SWEEP APPLIES, and the reasoning is
+    `ScrummingBot._tranche_age_seconds`'s: `as_finite_float` admits
+    exactly int or float and finite, so a stored `True` is not read as
+    one second past the epoch; a non-positive stamp is not a time and
+    means "unset"; and None is an answer, not an error — the record has
+    no measurable age and nothing may be concluded about it.
+
+    Args:
+      tranche: one fold or stack tranche record.
+      field: `created_ts` on the fold side, `opened_ts` on the stack
+        side. Each ledger ages on its own field.
+      now: the wall-clock second to measure against.
+
+    Returns:
+      Age in seconds, negative for a future-dated stamp, or None.
+    """
+    if not isinstance(tranche, dict):
+        return None
+    _ts = as_finite_float(tranche.get(field))
+    if _ts is None or _ts <= 0:
+        return None
+    return now - _ts
+
+
+def _despawn_preview_fold(fold: list, cutoff: float, now: float, report: dict) -> None:
+    """Count the fold ledger into `report`. Removes nothing.
+
+    Split out of `despawn_preview` so each ledger's rule is read on its
+    own. The fold side has ONE refusal — an ageless record — and no
+    live-order case, because a fold tranche owns no exchange order.
+    """
+    for _t in fold:
+        _age = _despawn_age_seconds(_t, "created_ts", now)
+        if _age is None:
+            report["ageless_kept"] += 1
+            continue
+        if _age < cutoff:
+            continue
+        report["fold_removed"] += 1
+        _usd = as_finite_float(_t.get("usd", 0))
+        if _usd is not None:
+            report["usd_removed"] += _usd
+        _units = as_finite_float(_t.get("units", 0))
+        if _units is not None:
+            report["units_removed"] += _units
+
+
+def _despawn_preview_stack(
+    stack: list, cutoff: float, now: float, report: dict
+) -> None:
+    """Count the stack ledger into `report`. Removes nothing.
+
+    THE ONE ASYMMETRY WITH THE FOLD SIDE, and it is a refusal rather
+    than a second policy. A Visible-mode stack tranche that is
+    `status == "pending"` with an `order_id` holds a resting LIMIT
+    order on the exchange. Removing that record would leave a live
+    order on the book with nothing tracking it, so it is KEPT and
+    counted apart. Invisible-mode tranches carry `order_id=None`, and
+    filled or cancelled orders are already terminal; those are removed
+    like any other record.
+    """
+    for _t in stack:
+        _age = _despawn_age_seconds(_t, "opened_ts", now)
+        if _age is None:
+            report["ageless_kept"] += 1
+        elif _age < cutoff:
+            continue
+        elif _t.get("status") == "pending" and _t.get("order_id"):
+            report["stack_kept_live_order"] += 1
+        else:
+            report["stack_removed"] += 1
+
+
+def despawn_preview(
+    fold_tranches: Optional[list],
+    stack_tranches: Optional[list],
+    days: object,
+    now: object,
+) -> dict:
+    """Report what a despawn sweep at `days` WOULD remove. Removes nothing.
+
+    WHY THIS EXISTS. Item 9 shipped the despawn timer on 2026-08-13 and
+    it works. It is 0 — Off — on all 38 bots, and it has never run
+    once. The setting sits on the Settings tab while the tranche count
+    the operator worries about sits on the Fold Tranches tab, and
+    nothing anywhere said what turning it on would cost. A control that
+    names no consequence is a control nobody moves. This function is
+    the consequence, computed on the panel where the problem is already
+    on screen.
+
+    IT REMOVES NOTHING AND WRITES NOTHING. It reads two lists and
+    returns numbers. The lists are not copied into the bot, sorted or
+    mutated, and no counter, aggregate or config field is touched.
+    Passing a bot's real ledgers to it is safe by construction.
+
+    THE PREDICATE IS THE SWEEP'S PREDICATE, TERM FOR TERM:
+
+      * fold tranches age on `created_ts`, stack tranches on
+        `opened_ts`;
+      * the boundary is INCLUSIVE — `age >= days` is old enough;
+      * a tranche with no measurable age is NEVER counted for removal,
+        it is counted as `ageless_kept`;
+      * a stack tranche holding a resting exchange order is KEPT and
+        counted as `stack_kept_live_order`;
+      * `days <= 0` is OFF and removes nothing.
+
+    THE TWO IMPLEMENTATIONS ARE BOUND BY A TEST, NOT BY A COMMENT.
+    `ScrummingBot._despawn_aged_tranches` cannot call this function
+    today: that method lives in a file another unit holds open, and
+    `bot_container` is imported BY `scrumming_bot`, so the dependency
+    runs one way only. Two implementations that agree today drift the
+    next time either moves — that is exactly how the Min-rebuy column
+    came to print a price the executor refuses.
+    `tests/test_despawn_window_is_usable.py` therefore drives the
+    SHIPPED sweep and this preview over the same fixture and asserts
+    they agree on every count, so a change to either one that breaks
+    the agreement fails. Re-pointing the sweep at this function is one
+    line and belongs to whoever next holds `scrumming_bot.py`.
+
+    `units_removed` HAS NO COUNTERPART IN THE SWEEP'S REPORT, and it is
+    the panel's reason for calling this at all: the operator's question
+    is what the removal costs, and the sweep reports only USD. It is
+    additional information about the same records, not a second opinion
+    about which records go.
+
+    Args:
+      fold_tranches: this bot's fold ledger, or None.
+      stack_tranches: this bot's stack ledger, or None.
+      days: whole days, as `despawn_threshold_days` returns them, or a
+        candidate window the operator has not committed to. Anything
+        that is not a finite number reads as OFF.
+      now: the wall-clock second to age against. Anything that is not a
+        finite number makes every age unmeasurable, so the preview
+        reports nothing removable — the same refusal the sweep makes.
+
+    Returns:
+      A dict of counts. `fold_removed` + `stack_removed` is what a
+      sweep at `days` would take; `usd_removed` and `units_removed`
+      are what those records held.
+    """
+    _fold = list(fold_tranches or [])
+    _stack = list(stack_tranches or [])
+    report = {
+        "threshold_days": 0,
+        "fold_open": len(_fold),
+        "stack_open": len(_stack),
+        "fold_removed": 0,
+        "stack_removed": 0,
+        "stack_kept_live_order": 0,
+        "ageless_kept": 0,
+        "usd_removed": 0.0,
+        "units_removed": 0.0,
+    }
+    _days = as_finite_float(days)
+    if _days is None:
+        return report
+    _days = min(DESPAWN_MAX_DAYS, max(0, int(_days)))
+    report["threshold_days"] = _days
+    if _days <= 0:
+        return report
+    _now = as_finite_float(now)
+    if _now is None:
+        return report
+    _cutoff = _days * 86400.0
+    _despawn_preview_fold(_fold, _cutoff, _now, report)
+    _despawn_preview_stack(_stack, _cutoff, _now, report)
+    return report
+
+
 def _sanitize_deprecated_kwargs(kwargs: dict) -> dict:
     """Drop any deprecated keys from a kwargs dict, returning the
     caller-safe subset. Callers must pass the *sanitized* dict to
@@ -1682,16 +1873,16 @@ class BotContainer:
         # explicitly refuses to deploy part of one, so any single tranche
         # larger than the whole budget is skipped on every cycle forever.
         # Computed defensively: a status call must never raise.
+        # Issue #106 - the budget below reads `cycle_growth_cap_usd`
+        # rather than respelling `anchor * pct/100`: the cap compounds
+        # off the grown target now and this readout must move with it.
+        # `getattr` like the MEM-244 probes - a grid bot has no cap.
         _over_cap_summary = {
             "tranches_over_cycle_cap": 0,
             "tranches_over_cycle_cap_usd": 0.0,
         }
         try:
-            _budget = (
-                float(getattr(self, "_anchor_target_balance", 0.0) or 0.0)
-                * float(getattr(self.config, "max_target_growth_pct", 0.0) or 0.0)
-                / 100.0
-            )
+            _budget = float(getattr(self, "cycle_growth_cap_usd", 0.0) or 0.0)
             if _budget > 0:
                 _over = [
                     float(_t.get("usd", 0) or 0)
@@ -1751,11 +1942,11 @@ class BotContainer:
             "fold_cycle_cap_consumed": float(
                 getattr(self, "_fold_cycle_cap_consumed", 0.0) or 0.0
             ),
+            # Issue #106 - this export and the enforcement drifted apart
+            # the moment the target first grew. Same property the bot
+            # enforces with, so row and bound are now one number.
             "cycle_growth_budget_usd": round(
-                float(getattr(self, "_anchor_target_balance", 0.0) or 0.0)
-                * float(getattr(self.config, "max_target_growth_pct", 0.0) or 0.0)
-                / 100.0,
-                8,
+                float(getattr(self, "cycle_growth_cap_usd", 0.0) or 0.0), 8
             ),
             # How much queued tranche capital the per-cycle filter can
             # never admit, because a tranche is only taken if it fits
@@ -4571,7 +4762,7 @@ class BotManager:
             # written at different moments in the tick, so the cached
             # product lags whenever price moved after the last write.
             # Measured 2026-08-06 by
-            # tools/harness/reconcile_position_values.py: 11 of 35 bots
+            # dev_harness/harness/reconcile_position_values.py: 11 of 35 bots
             # diverged more than 1% from holdings x price, worst
             # ORCA/USD at 11.53%, and the fleet total understated the
             # position by $35.46 against $3,317.16.

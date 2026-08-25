@@ -16,14 +16,19 @@ NOTE ON PATHS: every test writes to tmp_path. Nothing here touches
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 
 import pytest
 
 from src.gui.simulator_tab.fleet.simulator_bot_state import (
     SIM_STATE_PATH,
+    SIM_STATE_ROOT_ENV,
+    bot_state_path,
     diff_spawns,
     load_sim_state,
     save_sim_state,
+    sim_state_path,
 )
 
 
@@ -153,12 +158,17 @@ def test_save_refuses_the_live_bot_state_path(tmp_path, monkeypatch):
     real ~/.acervator/bot_state.json is never passed to `save_sim_state`
     -- if the guard regressed, a test that aimed at it would destroy the
     live fleet to prove a point.
+
+    The decoy is placed by redirecting the ROOT, not by patching a
+    module constant: the constant is no longer what `save_sim_state`
+    reads, so patching it would test nothing and still pass.
     """
     import src.gui.simulator_tab.fleet.simulator_bot_state as sbs
 
+    monkeypatch.setenv(sbs.SIM_STATE_ROOT_ENV, str(tmp_path))
     decoy = tmp_path / "bot_state.json"
     decoy.write_text(json.dumps({"bots": {"real": 1}}), encoding="utf-8")
-    monkeypatch.setattr(sbs, "BOT_STATE_PATH", decoy)
+    assert sbs.bot_state_path() == decoy
     before = decoy.read_text(encoding="utf-8")
     with pytest.raises(ValueError, match="refusing to write"):
         sbs.save_sim_state(_doc({}), decoy)
@@ -170,7 +180,7 @@ def test_save_allows_a_normal_path(tmp_path, monkeypatch):
     """POSITIVE CONTROL: the guard must not refuse everything."""
     import src.gui.simulator_tab.fleet.simulator_bot_state as sbs
 
-    monkeypatch.setattr(sbs, "BOT_STATE_PATH", tmp_path / "bot_state.json")
+    monkeypatch.setenv(sbs.SIM_STATE_ROOT_ENV, str(tmp_path))
     out = sbs.save_sim_state(
         _doc({"simulated_a": ("BTC/USD", {})}), tmp_path / "sim.json"
     )
@@ -181,3 +191,123 @@ def test_save_allows_a_normal_path(tmp_path, monkeypatch):
 def test_sim_state_path_is_not_bot_state():
     assert SIM_STATE_PATH.name == "simulator_bot_state.json"
     assert SIM_STATE_PATH.name != "bot_state.json"
+
+
+# ── the root override ────────────────────────────────────────────────
+#
+# WHY THESE EXIST. Until v3.25.x this module built its save path from
+# `Path.home() / ".acervator"` with no way to point it anywhere else. On
+# 2026-08-22 a full suite run overwrote the operator's saved Simulator
+# fleet with one synthetic fixture bot. It cannot be reconstructed. The
+# writer was test_fleet_sim_infrastructure.py, which clicks Load on a
+# real FleetReplayPanel; the spawn behind that button saves with no path.
+#
+# Each control below is paired against its own opposite: a redirect that
+# always redirected would pass a test that only checks the redirect, so
+# the default is checked too.
+
+
+def test_the_default_root_is_the_live_folder_when_the_variable_is_unset(monkeypatch):
+    """CONTROL: the shipping application is unchanged.
+
+    The operator runs Acervator with no such variable set. If this fails,
+    the repair moved his own Simulator state file and the fleet he saved
+    yesterday is invisible to the app today.
+
+    Read-only: this asserts a resolved path and writes nothing.
+    """
+    monkeypatch.delenv(SIM_STATE_ROOT_ENV, raising=False)
+    live = Path.home() / ".acervator"
+    assert sim_state_path() == live / "simulator_bot_state.json"
+    assert bot_state_path() == live / "bot_state.json"
+
+
+def test_the_variable_redirects_both_paths(tmp_path, monkeypatch):
+    """CONTROL: the override actually moves the destination."""
+    monkeypatch.setenv(SIM_STATE_ROOT_ENV, str(tmp_path))
+    assert sim_state_path() == tmp_path / "simulator_bot_state.json"
+    assert bot_state_path() == tmp_path / "bot_state.json"
+    assert Path.home() / ".acervator" not in sim_state_path().parents
+
+
+def test_the_root_is_read_at_call_time_not_at_import_time(tmp_path, monkeypatch):
+    """CONTROL: the binding moment, which is where the defect lived.
+
+    A constant computed while the module is imported cannot be
+    redirected by anything that runs afterwards -- and every fixture runs
+    afterwards. Two different values inside ONE test can only agree if
+    the environment is read on each call.
+    """
+    first = tmp_path / "one"
+    second = tmp_path / "two"
+    monkeypatch.setenv(SIM_STATE_ROOT_ENV, str(first))
+    assert sim_state_path().parent == first
+    monkeypatch.setenv(SIM_STATE_ROOT_ENV, str(second))
+    assert sim_state_path().parent == second
+
+
+def test_a_save_with_no_path_honours_the_override(tmp_path, monkeypatch):
+    """CONTROL: the READ PATH, not just the resolver.
+
+    `fleet_replay_panel` calls `save_sim_state(_state)` with no path.
+    That call is the one that destroyed the operator's file, so the
+    override has to reach THAT argument-free call, not merely a helper
+    beside it.
+    """
+    monkeypatch.setenv(SIM_STATE_ROOT_ENV, str(tmp_path))
+    out = save_sim_state(_doc({"simulated_a": ("BTC/USD", {})}))
+    assert out == tmp_path / "simulator_bot_state.json"
+    assert out.exists()
+    assert load_sim_state()["bots"]["simulated_a"]["symbol"] == "BTC/USD"
+
+
+def test_the_suite_wide_redirect_is_in_force():
+    """CONTROL: a NEW test that forgets still cannot reach the folder.
+
+    conftest sets the variable at import time for the whole session, so
+    this holds for any test written later by anyone. No fixture is
+    requested here on purpose -- this is what a forgetful test sees.
+    """
+    root = os.environ.get(SIM_STATE_ROOT_ENV)
+    assert root, "conftest must set the sim-state root for the session"
+    assert sim_state_path().parent == Path(root)
+    assert sim_state_path().parent != Path.home() / ".acervator"
+
+
+def test_conftest_uses_the_module_constant_by_name():
+    """The conftest SETTER is locked to `SIM_STATE_ROOT_ENV`.
+
+    conftest cannot import this module at collection time without
+    pulling in the GUI package, so it spells the variable out. A rename
+    must break a test here rather than silently un-redirect the suite --
+    the same lock `test_crash_log_redirect.py` puts on the crash root.
+
+    The `setdefault(` call is matched, not the bare name. A comment
+    naming the variable is not a redirect; measured -- with the setter
+    deleted and only the header comment left, a name-only check still
+    passed.
+    """
+    text = (Path(__file__).parent / "conftest.py").read_text(encoding="utf-8")
+    assert f'setdefault("{SIM_STATE_ROOT_ENV}"' in text
+
+
+def test_the_guard_still_refuses_the_live_fleet_file_under_a_redirect(
+    tmp_path, monkeypatch
+):
+    """FALSIFIER KEPT: an override must not disarm the write guard.
+
+    `test_save_refuses_the_live_bot_state_path` proves the guard refuses
+    the fleet file under the ACTIVE root. This proves the redirect did
+    not open a second door to the operator's real one.
+
+    The refusal LIST is inspected. `save_sim_state` is NOT called with
+    the live path: if the guard had regressed, a test that aimed a write
+    at ~/.acervator/bot_state.json would destroy the operator's fleet to
+    prove a point. Nothing here reads or writes that file.
+    """
+    import src.gui.simulator_tab.fleet.simulator_bot_state as sbs
+
+    monkeypatch.setenv(SIM_STATE_ROOT_ENV, str(tmp_path))
+    refused = sbs._refused_write_targets()
+    assert tmp_path / "bot_state.json" in refused
+    assert Path.home() / ".acervator" / "bot_state.json" in refused

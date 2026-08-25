@@ -42,6 +42,18 @@ it, and when the defect is eventually fixed upstream this backend
 follows automatically — which is the entire argument for putting the
 seam here.
 
+A REFUSAL IS AN EXCEPTION, NOT A RETURN VALUE
+=============================================
+`create_order` raises `ccxt.InsufficientFunds` when the wallet cannot
+cover a marketable order. That is what `ccxt` does on the venue, and it
+is the ONLY refusal shape the bot above has been written against: a
+returned order carrying `filled=0` reaches
+`ScrummingBot._settled_fill`, which books the requested size at the tick
+price as an estimate — a position that exists in the book and nowhere
+else. Issue #111 defect 2 is that state, and it is unreachable in live.
+A resting order that cannot be funded when the sweep crosses it is still
+marked `rejected`, because a sweep has no caller to raise at.
+
 WHAT THIS OWNS AND WHAT IT DOES NOT
 ===================================
 Owns: the replay clock, candle rows, balances, open orders, fills and
@@ -63,6 +75,8 @@ from __future__ import annotations
 import logging
 import uuid
 from typing import Optional
+
+from ccxt.base.errors import InsufficientFunds
 
 __all__ = ["TabletBackend", "TabletNotStarted"]
 
@@ -128,6 +142,42 @@ class TabletBackend:
         self._fee_by_symbol = dict(fee_rate_by_symbol or {})
         self._default_fee = float(default_fee_rate)
         self._opening_balances: dict[str, float] = dict(self._balances)
+        # THE EXCHANGE REPORTS EVERY CURRENCY IT TRADES, INCLUDING THE
+        # ONES THAT ARE ZERO.
+        #
+        # `FleetSimExchange`, which this class replaced in v3.24.84,
+        # seeded both sides of every pair for exactly this reason:
+        # "Seed every base + quote encountered so MEM-254's absent-side
+        # handshake passes" (sim_exchange.py:130-136). The seeding was
+        # not carried across, so `fetch_balance` reported only the quote
+        # currencies the caller passed.
+        #
+        # WHAT THAT COST. `CCXTConnector.get_balance` marks a currency
+        # the response OMITS as `absent=True` (ccxt_connector.py:1212),
+        # and `ScrummingBot.tick` refuses to set `_initialised` on an
+        # absent read (scrumming_bot.py:6664-6678). The refusal is
+        # correct - two deterministic lies from the same filter still
+        # agree - but here the read was not a lie, it was a currency the
+        # backend simply never listed. So EVERY sim bot re-ran the init
+        # handshake on EVERY tick, for ever, and no sim bot has been
+        # initialised since v3.24.84.
+        #
+        # The handshake is two balance reads with `await
+        # asyncio.sleep(0.25)` between them (scrumming_bot.py:6623).
+        # Measured on a 50-candle 2-bot replay: 100 refusals, 25.73 s of
+        # the run's 26.03 s spent in that sleep - 98.8%.
+        #
+        # `setdefault`, so a caller that states a currency keeps its
+        # value; only the currencies the caller did not mention are
+        # added, at zero. `_opening_balances` is captured ABOVE this
+        # block so it still reflects the caller's intent rather than the
+        # seeded scaffolding, which is what `FleetSimExchange` did too.
+        for _sym in self._rows:
+            _base, _sep, _quote = str(_sym).partition("/")
+            if not _sep:
+                continue
+            self._balances.setdefault(_base.upper(), 0.0)
+            self._balances.setdefault(_quote.upper(), 0.0)
         self._on_trade = None
         self._ticks = 0
 
@@ -232,6 +282,23 @@ class TabletBackend:
 
     def ticks_elapsed(self) -> int:
         return self._ticks
+
+    def clock_window(self) -> tuple[int | None, int | None]:
+        """First and last master timestamp in the tape, in ms.
+
+        The window a run CONSUMED, which is what makes the run
+        re-checkable against the same data later. `FleetSimExchange`
+        exposed this as `clock.timestamps`; a reader written against
+        that shape gets `None` from a `CCXTConnector` and reports a
+        run with no window at all (issue #110). Exposed as a method on
+        the tape so the reader asks the object that owns the clock.
+
+        `(None, None)` on an empty tape -- there is no window, and a
+        zero would claim the epoch.
+        """
+        if not self._clock:
+            return (None, None)
+        return (int(self._clock[0]), int(self._clock[-1]))
 
     def on_trade(self, callback) -> None:
         """Register a fill observer.
@@ -444,21 +511,92 @@ class TabletBackend:
             or (str(side).lower() == "sell" and float(price) <= px_now)
         )
         if marketable:
-            self._settle(
-                order, px_now if str(type).lower() == "market" else float(price)
-            )
+            # A VENUE REFUSES BY RAISING. THIS ONE MUST TOO.
+            #
+            # Issue #111 defect 2. `_settle` marked an unfundable order
+            # `rejected` and this method returned it like any other
+            # order. `CCXTConnector.place_order` (ccxt_connector.py:1333)
+            # only re-raises what `create_order` raises, so the bot
+            # received an ordinary `Order` carrying `filled=0`,
+            # `average=None`. `ScrummingBot._settled_fill`
+            # (scrumming_bot.py:12460) reads exactly those two fields,
+            # finds neither, and books the REQUESTED size at the TICK
+            # price as an estimate — a position the wallet never bought.
+            #
+            # MEASURED on a 400-candle 1-symbol tape before this line
+            # existed: the bot booked 101.05331875 CHIP into `_main_lots`
+            # while `TabletBackend` held 0.0 CHIP and its USD was
+            # untouched at 100.0. Every autonomous fire afterwards was
+            # refused by the MEM-257 position check
+            # (scrumming_bot.py:12723) — "internal 0.93737127 vs
+            # exchange 0.00000000" in the operator's own console — so the
+            # bot traded nothing for the rest of the run.
+            #
+            # LIVE CANNOT REACH THAT STATE. `ccxt` raises
+            # `InsufficientFunds` out of `coinbase.create_order`, so the
+            # bot never gets an order object to mis-book; the call site
+            # catches it and says so (scrumming_bot.py:7272 wire stack,
+            # :7543 max cartridge). `_settled_fill`'s docstring states
+            # that premise out loud — "the order DID execute and refusing
+            # to book it would be worse". It is true of a venue that
+            # raises and false of one that does not.
+            #
+            # So the divergence is closed HERE, in the backend, and not
+            # by teaching the bot about a second refusal shape. The bot
+            # is live's code and must stay live's code.
+            _px = px_now if str(type).lower() == "market" else float(price)
+            if not self._settle(order, _px):
+                # `_settle` moved no balance on the refusal, so the
+                # shortfall re-reads the same wallet and the message
+                # states the arithmetic that produced the refusal.
+                raise InsufficientFunds(self._shortfall(order, _px))
         else:
             self._open.append(oid)
         return dict(order)
 
-    def _settle(self, order: dict, fill_px: float) -> None:
-        """Fill an order and move the ledger.
+    def _shortfall(self, order: dict, fill_px: float) -> str:
+        """Return why this order cannot settle, or "" when it can.
+
+        The string is the message the refusal carries, so the caller
+        never has to re-derive the arithmetic that produced it.
+        """
+        sym = order["symbol"]
+        base, _, quote = sym.partition("/")
+        amount = float(order["amount"])
+        notional = amount * float(fill_px)
+        fee = notional * self._fee_rate(sym)
+        if order["side"] == "buy":
+            have = float(self._balances.get(quote, 0.0))
+            need = notional + fee
+            if have < need:
+                return (
+                    f"{sym} buy {amount:.8f} at {fill_px:.8f} needs "
+                    f"{need:.8f} {quote} (notional {notional:.8f} + fee "
+                    f"{fee:.8f}) but the wallet holds {have:.8f} {quote}"
+                )
+            return ""
+        have = float(self._balances.get(base, 0.0))
+        if have < amount:
+            return (
+                f"{sym} sell {amount:.8f} needs {amount:.8f} {base} but "
+                f"the wallet holds {have:.8f} {base}"
+            )
+        return ""
+
+    def _settle(self, order: dict, fill_px: float) -> bool:
+        """Fill an order and move the ledger. True when it filled.
 
         The FEE is written onto the order in ccxt's nested shape,
         because that is where the connector reads it from:
         `raw.get("fee", {}).get("cost")`. The Simulator computing a fee
         and stashing it somewhere else is how sim and live diverged on
         this field before.
+
+        RETURNS FALSE RATHER THAN RAISING, and marks the order
+        `rejected`. `create_order` turns that into the exception the
+        venue raises; `_sweep_open_orders` leaves the resting order
+        rejected, because a sweep is not a caller and has nothing to
+        raise at.
         """
         sym = order["symbol"]
         base, _, quote = sym.partition("/")
@@ -466,18 +604,14 @@ class TabletBackend:
         notional = amount * float(fill_px)
         fee = notional * self._fee_rate(sym)
 
+        if self._shortfall(order, fill_px):
+            order["status"] = "rejected"
+            order["remaining"] = amount
+            return False
         if order["side"] == "buy":
-            if self._balances.get(quote, 0.0) < notional + fee:
-                order["status"] = "rejected"
-                order["remaining"] = amount
-                return
             self._adjust(quote, -(notional + fee))
             self._adjust(base, +amount)
         else:
-            if self._balances.get(base, 0.0) < amount:
-                order["status"] = "rejected"
-                order["remaining"] = amount
-                return
             self._adjust(base, -amount)
             self._adjust(quote, +(notional - fee))
 
@@ -515,6 +649,7 @@ class TabletBackend:
                 logger.warning(
                     "on_trade observer raised for %s fill: %s", _t.get("symbol"), exc
                 )
+        return True
 
     def _sweep_open_orders(self) -> None:
         """Fill resting orders the new candle crosses."""

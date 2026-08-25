@@ -19,10 +19,10 @@ Every colour claim in the suite was a model claim.
 
 WHERE THIS LIVES AND WHY
 ========================
-``tests/qt_pixel.py``, not ``tools/harness/``. It is a test utility,
+``tests/qt_pixel.py``, not ``dev_harness/harness/``. It is a test utility,
 not an archetype rule: it needs a live QApplication, a real widget
 instance, and a render, so it can only run inside a test. The archetype
-is static and must stay that way. ``tools/harness/`` is also
+is static and must stay that way. ``dev_harness/harness/`` is also
 self-protecting and nothing new belongs in it.
 
 ``tests/`` has no ``__init__.py``, so under pytest's default prepend

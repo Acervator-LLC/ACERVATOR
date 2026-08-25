@@ -564,6 +564,18 @@ if _HAS_QT:
         # ── Filter handling ──────────────────────────────────────────────
         def _populate_filter_options(self) -> None:
             """Refresh the exchange/symbol comboboxes from the loaded data."""
+            # 10.3 -- THE BRACKET OPENS HERE AND CLOSES ON THE SECOND
+            # `blockSignals(False)`, so it spans THE REBUILD OF THE TWO
+            # COMBOS and nothing else. The read-back below is this pin's
+            # own bookkeeping; folding it in would time the check
+            # instead of the work.
+            #
+            # The rebuild is O(loaded trades): two set comprehensions
+            # over `_all_trades`, two sorts and two `addItem` loops, all
+            # on the GUI thread. That is the operation this
+            # postcondition asserts about, and it is the number item 17
+            # reads when the History tab goes heavy.
+            _build_t0 = time.monotonic()
             # Exchanges
             cur_exch = self._exch_combo.currentText()
             self._exch_combo.blockSignals(True)
@@ -589,6 +601,7 @@ if _HAS_QT:
             if idx >= 0:
                 self._sym_combo.setCurrentIndex(idx)
             self._sym_combo.blockSignals(False)
+            _build_s = time.monotonic() - _build_t0
 
             # 05.003 -- READ BOTH COMBOS BACK OUT, ENTRY BY ENTRY.
             #
@@ -636,6 +649,7 @@ if _HAS_QT:
                         "symbols_loaded": len(_want_sym),
                         "trades_loaded": len(self._all_trades),
                     },
+                    duration=_build_s,
                 )
 
         def _apply_filters(self) -> None:
@@ -673,6 +687,17 @@ if _HAS_QT:
             sym_f = self._sym_combo.currentText()
             side_f = self._side_combo.currentText()
 
+            # 10.3 -- THE BRACKET SPANS THE FILTER PASS ONLY.
+            #
+            # It opens above the loop and closes on the assignment to
+            # `self._filtered`, so it covers the single O(loaded trades)
+            # walk that IS the operation. It excludes the widget reads
+            # above it, which are five Qt property fetches, and it
+            # excludes the verification loop below it, which walks the
+            # RETAINED set to judge this one. Timing the check with the
+            # work would leave a reader unable to tell a slow filter
+            # from a slow verifier.
+            _filter_t0 = time.monotonic()
             out: list[dict] = []
             for r in self._all_trades:
                 ts = float(r.get("timestamp", 0) or 0)
@@ -688,6 +713,7 @@ if _HAS_QT:
                     continue
                 out.append(r)
             self._filtered = out
+            _filter_s = time.monotonic() - _filter_t0
             # 05.004 -- RE-READ THE RETAINED SET AGAINST THE WIDGETS.
             #
             # The predicates below are read back from the COMBOS, not
@@ -739,6 +765,7 @@ if _HAS_QT:
                         "from_ts": float(from_ts),
                         "to_ts": float(to_ts),
                     },
+                    duration=_filter_s,
                 )
             self._page = 0
             self._render_page()
@@ -1146,6 +1173,28 @@ if _HAS_QT:
             except Exception:
                 return
 
+            # 10.3 -- THE BRACKET SPANS BOTH READER LOOPS AND NOTHING
+            # ELSE.
+            #
+            # It opens below the lazy import and closes after the voting
+            # loop's fail-soft handler, so it covers the two log reads
+            # and the bucketing that IS the joiner build. This is the
+            # only disk I/O on the render path -- `live_gate_decisions`
+            # and `live_voting_panel_snapshots` walk gate.log and
+            # voting.log -- so it is the number that moves when the
+            # operator's log ladder grows.
+            #
+            # IT IS MEASURED ON THE FAIL-SOFT PATH TOO. Both handlers
+            # empty their index and fall through to here, so a reader
+            # that threw on line 90,000 still reports how long it ran
+            # before it threw. A duration taken only on the clean path
+            # would go silent in exactly the case this pin exists to
+            # make visible.
+            #
+            # THE TWO EARLY RETURNS ABOVE ARE OUTSIDE IT, and they emit
+            # nothing at all, so neither one can report a duration for a
+            # build that never started.
+            _join_t0 = time.monotonic()
             _gate_accepted = 0
             try:
                 for entry in live_gate_decisions(since=since, validate=False):
@@ -1177,6 +1226,7 @@ if _HAS_QT:
                     _voting_accepted += 1
             except Exception:
                 self._page_voting_index = {}
+            _join_s = time.monotonic() - _join_t0
 
             # 05.006 -- THE FAIL-SOFT COLLAPSE, MADE VISIBLE.
             #
@@ -1218,6 +1268,7 @@ if _HAS_QT:
                         "voting_buckets": len(self._page_voting_index),
                         "page_rows": len(page_rows),
                     },
+                    duration=_join_s,
                 )
 
         @staticmethod
@@ -1263,6 +1314,20 @@ if _HAS_QT:
             )
             if not path:
                 return
+            # 10.3 -- THE BRACKET OPENS BELOW THE FILE DIALOG.
+            #
+            # `QFileDialog.getSaveFileName` blocks until the operator
+            # picks a path. That wait is human time, it is unbounded,
+            # and it is not export cost. Including it would put a
+            # coffee break on the record as disk latency, and item 17
+            # reads this number as latency.
+            #
+            # What the bracket DOES span is the write and the read-back:
+            # both touch the same file, both are the export, and a slow
+            # or full disk shows in either. `readback` in the context
+            # already says whether the second half ran, so a reader can
+            # tell a whole reading from a half one.
+            _export_t0 = time.monotonic()
             try:
                 with open(path, "w", newline="", encoding="utf-8") as f:
                     w = csv.writer(f)
@@ -1334,6 +1399,7 @@ if _HAS_QT:
                         _written = sum(1 for _ in csv.reader(_rf)) - 1
                 except (OSError, csv.Error) as _rb_exc:
                     logger.debug("history csv read-back failed: %s", _rb_exc)
+                _export_s = time.monotonic() - _export_t0
                 with contextlib.suppress(Exception):
                     from src.core.signal_contract import emit as _hist_emit
 
@@ -1345,6 +1411,7 @@ if _HAS_QT:
                             "readback": _written >= 0,
                             "loaded": len(self._all_trades),
                         },
+                        duration=_export_s,
                     )
                 QMessageBox.information(
                     self,

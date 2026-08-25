@@ -5,7 +5,12 @@ Deploys ACRV.sol and CompetitionRegistry.sol to Base Sepolia (testnet)
 or Base Mainnet.
 
 Prerequisites:
-    pip install web3 eth-account py-solc-x
+    pip install -e ".[contracts]"
+
+web3, eth-account and py-solc-x are an OPT-IN extra. Issue #94 made
+`pyproject.toml` the one place a package name lives, and issue #92 put
+these three in it. This file names no package, so the set it needs and
+the set that installs cannot drift apart.
 
 Usage:
     # Testnet (Base Sepolia — do this first)
@@ -36,33 +41,45 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.competition.base_config import BASE_MAINNET, BASE_SEPOLIA
 
+# Issue #92. What stood here was `install_deps()`. It held the package
+# names ["web3", "eth-account", "py-solc-x"] as a literal list and ran
+# `pip install --break-system-packages` on each one that would not
+# import, into whatever interpreter happened to be running. That is two
+# defects in six lines: a ninth hand-copied dependency list of the kind
+# issue #94 removed from eight files, and a script that mutates the
+# operator's live environment without being asked. The live Acervator
+# runs from that environment.
+#
+# The three imports below are now GUARDED. Each sits inside `try:` with
+# an `except ImportError` that names the extra and stops. The script
+# states what to install; it does not install it.
+MISSING_EXTRA = """
+  {}
 
-def install_deps():
-    """Install web3, eth-account, and solcx if not present."""
-    import subprocess
+  The Base-chain deployment tools are an OPT-IN extra and are not
+  part of an Acervator install. Add them, and nothing else, with:
 
-    for pkg in ["web3", "eth-account", "py-solc-x"]:
-        try:
-            __import__(pkg.replace("-", "_"))
-        except ImportError:
-            print(f"  Installing {pkg}...")
-            subprocess.check_call(
-                [
-                    sys.executable,
-                    "-m",
-                    "pip",
-                    "install",
-                    pkg,
-                    "--break-system-packages",
-                    "-q",
-                ]
-            )
+      pip install -e ".[contracts]"
+
+  The package names come from pyproject.toml, which is the one
+  dependency source. Do not install them by hand.
+"""
 
 
 def compile_contracts(contracts_dir: str) -> dict:
     """Compile ACRV.sol and CompetitionRegistry.sol using solcx."""
-    from solcx import compile_files, install_solc, get_installed_solc_versions
-
+    # `type: ignore` is warranted here and is not hiding a finding. The
+    # distribution is `py-solc-x`, it is an opt-in extra, and it is
+    # absent from every environment this project checks by design. The
+    # `except` below is the behaviour that tolerates the absence.
+    try:
+        from solcx import (  # type: ignore[import-not-found]
+            compile_files,
+            get_installed_solc_versions,
+            install_solc,
+        )
+    except ImportError as exc:
+        raise SystemExit(MISSING_EXTRA.format(exc)) from exc
     SOLC = "0.8.20"
     installed = get_installed_solc_versions()
     if not any(str(v) == SOLC for v in installed):
@@ -89,9 +106,12 @@ def compile_contracts(contracts_dir: str) -> dict:
 
 def deploy(network: str, private_key: str, contracts_dir: str):
     """Full deployment flow: compile → deploy ACRV → deploy Registry → verify."""
-    install_deps()
-    from web3 import Web3
-    from eth_account import Account
+    # Guarded for the reason written above compile_contracts().
+    try:
+        from eth_account import Account  # type: ignore[import-not-found]
+        from web3 import Web3  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise SystemExit(MISSING_EXTRA.format(exc)) from exc
 
     cfg = BASE_SEPOLIA if network == "sepolia" else BASE_MAINNET
     print(f"\n  ══════════════════════════════════════")

@@ -178,6 +178,475 @@ ARBITER_COLUMN_HEADER = "Arbiter"
 # row prints under Fire.
 ARBITER_NOT_APPLICABLE = "—"
 
+# ── The Source column (issue #98 defect 5) ───────────────────────────
+# WHAT THE COLUMN USED TO SAY, AND WHY IT WAS WRONG.
+# The cell read `"manual fire" if t.get("operator_initiated") else
+# "auto scrum"`. `operator_initiated` is written at ONE site,
+# `scrumming_bot.py:12398`, inside the SCRUM (sell) branch of
+# `_execute_manual_rebalance`, and its value comes from that method's
+# intent map at `scrumming_bot.py:12153`:
+#
+#     "manual_button": ("MANUAL_SCRUM", "MANUAL_FOLD", True)
+#     "wire_stack":    ("WIRE_STACK_SCRUM", "WIRE_STACK_FOLD", False)
+#     "max_cartridge": ("CARTRIDGE_SCRUM", "CARTRIDGE_FOLD", False)
+#
+# So the flag means MANUAL SCRUM: an operator-pressed SELL that CREATED
+# this tranche. A manual FIRE is the opposite operation. It is a BUY,
+# and it REMOVES a tranche (`scrumming_bot.py:3548`). A tranche created
+# by a manual fire cannot exist, so the old label named an action that
+# could not have produced the row it sat on.
+#
+# THREE PROVENANCES, NOT TWO, AND THE THIRD IS THE KEY'S ABSENCE.
+# The two autonomous append sites -- the SCRUM cycle at
+# `scrumming_bot.py:9112` and the DIST re-fold at `:10721` -- write no
+# `operator_initiated` key at all. `_restore_state` copies each stored
+# tranche dict verbatim (`scrumming_bot.py:5211`) and stamps nothing,
+# so the absence survives a save and a reload and is readable here.
+# That splits the old false branch in two:
+#
+#   key True     an operator pressed Manual Fire on this bot; the SELL
+#                leg of that rebalance created this tranche
+#   key False    an AUTONOMOUS rebalance created it -- Wire Stack Fire
+#                or Max Cartridge Fire. Which of the two is NOT stored
+#                and this panel does not guess.
+#   key absent   the ordinary scrum cycle, or the DIST re-fold
+#
+# MEASURED ON THE LIVE FLEET, `~/.acervator/bot_state.json` read-only
+# at 2026-08-23 19:28:19, 1,687 open fold tranches on 38 bots:
+# 214 True, 1,189 False, 284 absent. So the old code mislabelled 214
+# rows with an impossible action and printed one word over 1,473 rows
+# that come from two different mechanisms.
+#
+# THE MERGE CAVEAT, CARRIED OVER RATHER THAN INVENTED HERE.
+# `_top_up_remnant_fold_tranches` keeps the OLDER record, so a manual
+# scrum merged into an autonomous remnant is displayed thereafter as
+# the remnant's provenance. `scrumming_bot.py:12453` states that; this
+# column is its only consumer and no gate, order or amount reads the
+# field.
+FOLD_SOURCE_MANUAL_SCRUM = "manual scrum"
+FOLD_SOURCE_AUTO_REBALANCE = "auto rebalance"
+FOLD_SOURCE_AUTO_SCRUM = "auto scrum"
+
+#: The cyan already carried by the operator-initiated cell. Kept on the
+#: manual-scrum row only: `_paint_fold_tranche_row` measured it at
+#: 6.12:1 against the fold fill, and this unit renames a label rather
+#: than re-tuning a colour.
+FOLD_SOURCE_MANUAL_FG_HEX = "#00ccff"
+
+FOLD_SOURCE_TOOLTIPS = {
+    FOLD_SOURCE_MANUAL_SCRUM: (
+        "An operator-pressed Manual Fire created this tranche. That "
+        "button runs a rebalance; its SELL leg is a manual SCRUM, and "
+        "a scrum is what queues a fold tranche.\n\n"
+        "Stored as operator_initiated = true."
+    ),
+    FOLD_SOURCE_AUTO_REBALANCE: (
+        "An AUTONOMOUS rebalance created this tranche: Wire Stack Fire "
+        "or Max Cartridge Fire. The bot fired it, not the operator.\n\n"
+        "Stored as operator_initiated = false. Which of the two fired "
+        "is NOT stored on the tranche, so this panel does not name "
+        "it; the trade log carries WIRE_STACK_SCRUM or "
+        "CARTRIDGE_SCRUM for the sale itself."
+    ),
+    FOLD_SOURCE_AUTO_SCRUM: (
+        "The ordinary scrum cycle created this tranche, or the DIST "
+        "re-fold that follows a distribution sell.\n\n"
+        "Those two paths store no operator_initiated key at all, and "
+        "that absence is what this label reads."
+    ),
+}
+
+
+# ── Reaching a tranche in a long queue (issue #98 defect 7) ──────────
+# WHAT WAS MEASURED. The table was capped at `setMaximumHeight(280)`
+# over 30px rows and a header, so about EIGHT rows were visible. The
+# longest live queue is BILL/USD at 230. `setSortingEnabled` appeared
+# zero times in this file and no filter or search existed, so on TAO
+# the summary named a 30.4-day oldest tranche while rows one to three
+# read 2.7d, 2.7d and 3.6d and the operator could not reach the row
+# the headline was about.
+#
+# WHY `setSortingEnabled` IS STILL NOT USED, AND THIS IS NOT A
+# PREFERENCE. `QTableWidget` sorting moves ITEMS. It does NOT move the
+# widgets placed with `setCellWidget`, and this table places two of
+# them on every row: the Fire button, which dispatches a real market
+# buy, and the Arbiter toggle. Turning Qt's own sort on would slide the
+# text of every row while leaving those controls where they were, so
+# the Fire button on the row the operator reads would belong to a
+# different tranche. That is defect 8's failure mode with money behind
+# it, manufactured on purpose. The order is decided HERE instead, on
+# the list, and the table is REBUILT - so every row is composed with
+# its own tranche and its own button, and identity capture is intact.
+#
+# THE `#` COLUMN KEEPS ITS MEANING. It prints the tranche's position in
+# `_fold_tranches`, never the visual row, so re-ordering the display
+# never renumbers a tranche.
+
+#: How many rows the table shows before it scrolls. Was about 8, from
+#: the 280px cap this replaces.
+TRANCHE_TABLE_VISIBLE_ROWS = 18
+
+#: The table's own frame, top plus bottom. `QTableWidget` draws a 1px
+#: sunken frame by default and the height cap must include it, or the
+#: last row is clipped by exactly that much.
+TRANCHE_TABLE_FRAME_PX = 4
+
+#: Fallback header height, used only when there is no header to
+#: measure. The builder passes the real
+#: `horizontalHeader().sizeHint().height()`.
+TRANCHE_TABLE_HEADER_PX = 24
+
+
+def fold_table_max_height_px(
+    row_count: int, header_px: int = TRANCHE_TABLE_HEADER_PX
+) -> int:
+    """Height cap that shows up to `TRANCHE_TABLE_VISIBLE_ROWS` rows.
+
+    Pure, so the arithmetic behind the operator's window is testable
+    without a QApplication - the same reason `_compose_denom_row_text`
+    lives at module scope.
+
+    A SHORT QUEUE DOES NOT GET A TALL EMPTY BOX. The cap follows the
+    row count until it reaches the ceiling, so a bot with three
+    tranches shows three rows and the group closes around them.
+    """
+    visible = max(1, min(int(row_count or 0), TRANCHE_TABLE_VISIBLE_ROWS))
+    return visible * TRANCHE_ROW_HEIGHT_PX + int(header_px) + TRANCHE_TABLE_FRAME_PX
+
+
+# ── The row order the operator chooses (issue #98 defect 7) ──────────
+# EVERY ORDER READS A FIELD THAT IS ALREADY STORED ON THE TRANCHE.
+# `created_ts` is written at all three creation sites
+# (`scrumming_bot.py:9110`, `:10726`, `:12397`) and was present on
+# 1,701 of 1,701 live tranches when the panel was evaluated; `usd` is
+# the parked cash the "USD parked" column already prints. No order
+# derives a quantity, and none invents one.
+FOLD_SORT_QUEUE_ORDER = "Queue order"
+FOLD_SORT_OLDEST_FIRST = "Oldest first"
+FOLD_SORT_NEWEST_FIRST = "Newest first"
+FOLD_SORT_LARGEST_FIRST = "Largest USD first"
+FOLD_SORT_SMALLEST_FIRST = "Smallest USD first"
+
+#: The offered orders, in the order the combo box lists them. Queue
+#: order is first and is the default, so a panel nobody has touched
+#: renders exactly as it always did.
+FOLD_SORT_ORDERS = (
+    FOLD_SORT_QUEUE_ORDER,
+    FOLD_SORT_OLDEST_FIRST,
+    FOLD_SORT_NEWEST_FIRST,
+    FOLD_SORT_LARGEST_FIRST,
+    FOLD_SORT_SMALLEST_FIRST,
+)
+
+#: order -> (stored key, descending). Queue order is absent on purpose:
+#: it sorts by nothing and returns the list as the bot holds it.
+FOLD_SORT_KEYS = {
+    FOLD_SORT_OLDEST_FIRST: ("created_ts", False),
+    FOLD_SORT_NEWEST_FIRST: ("created_ts", True),
+    FOLD_SORT_LARGEST_FIRST: ("usd", True),
+    FOLD_SORT_SMALLEST_FIRST: ("usd", False),
+}
+
+
+def fold_display_order(tranches: list, order: str) -> list[tuple[int, dict]]:
+    """Return `(queue_index, tranche)` pairs in the chosen order.
+
+    THE QUEUE INDEX TRAVELS WITH THE ROW. It is the tranche's position
+    in `_fold_tranches`, and it is what the `#` column prints and what
+    the Fire button quotes back in its confirmation. Returning it
+    beside the tranche is what lets the display be re-ordered without
+    the panel ever renumbering a tranche.
+
+    A ROW THIS PANEL CANNOT READ IS NEVER GIVEN A POSITION. A tranche
+    whose sort key is absent, the wrong type, `nan`, `inf` or a huge
+    int has no place on a scale, so it is not put on one: refused rows
+    keep queue order and go LAST, together, where they can be seen.
+    Coercing them to 0.0 would have sorted a corrupt record to the top
+    of "Smallest USD first" and told the operator it was the smallest
+    tranche they own.
+
+    `as_finite_float` is the module's one admission rule, imported the
+    way every other trading symbol enters this file.
+    """
+    from ..trading.bot_container import as_finite_float
+
+    pairs = list(enumerate(list(tranches or [])))
+    spec = FOLD_SORT_KEYS.get(order)
+    if spec is None:
+        return pairs
+    field, descending = spec
+    readable: list[tuple[int, dict, float]] = []
+    refused: list[tuple[int, dict]] = []
+    for index, tranche in pairs:
+        value = (
+            as_finite_float(tranche.get(field)) if isinstance(tranche, dict) else None
+        )
+        if value is None:
+            refused.append((index, tranche))
+        else:
+            readable.append((index, tranche, value))
+    # The queue index is the tie-break in BOTH directions, so two
+    # tranches created in the same second keep the order the bot holds
+    # them in rather than swapping between rebuilds. Negating the key
+    # for the descending case leaves that tie-break ascending;
+    # `reverse=True` would have flipped it as well.
+    if descending:
+        readable.sort(key=lambda row: (-row[2], row[0]))
+    else:
+        readable.sort(key=lambda row: (row[2], row[0]))
+    return [(index, tranche) for index, tranche, _ in readable] + refused
+
+
+def fold_row_matches_filter(cell_texts: list, needle: str) -> bool:
+    """Return True when a rendered cell of the row holds `needle`.
+
+    IT SEARCHES WHAT IS ON THE SCREEN, AND THAT IS THE POINT. Every
+    string it reads is a cell this panel already composed from a stored
+    field, so the filter can never surface a quantity the table does
+    not show, and it needs no second reading of the tranche dict that
+    could disagree with the first.
+
+    An empty or blank needle matches everything, so clearing the box
+    restores the whole queue.
+    """
+    text = str(needle or "").strip().casefold()
+    if not text:
+        return True
+    return any(text in str(cell or "").casefold() for cell in cell_texts)
+
+
+# ── The column documentation the panel said it had (defect 6) ────────
+# The prose explainer was removed on operator directive 2026-07-26 and
+# the comment that replaced it named "column headers + per-column
+# tooltips" as the authoritative per-tranche documentation. Measured on
+# the built table: ZERO of the eleven headers carried a tooltip, no
+# summary row carried one, and only three columns - Min rebuy, Status
+# and Arbiter - carried a cell tooltip. The authority the comment named
+# was empty.
+#
+# THE WRITING STANDARD IS THE OPERATOR'S, from issue #53: uniform,
+# Simplified Technical English, about ten words, no MEM numbers, no
+# version strings and no code identifiers. One line each, so every
+# tooltip this unit adds is the same shape.
+#
+# A HEADER TOOLTIP DOCUMENTS THE COLUMN. The longer per-row tooltips
+# already on Min rebuy, Status, Source and Arbiter document THAT ROW'S
+# value and its caveats; they are not replaced here.
+FOLD_COLUMN_TOOLTIPS = (
+    "Position of this tranche in the fold queue.",
+    "Time since the scrum created this tranche.",
+    "Asset units this tranche will buy back.",
+    "Cash parked for this tranche's buy-back.",
+    "Price per unit at which the scrum sold.",
+    "Price per unit first paid. Informational only.",
+    "Price the fold gate needs. Not a trigger.",
+    "Price gate only. Technical analysis must also agree.",
+    "The action that created this tranche.",
+    "Buy this tranche back now. Moves real money.",
+    "Who may close this Extractor Tranche.",
+)
+
+#: Same standard, for the two controls that reach a row.
+FOLD_SORT_TOOLTIP = "Choose the row order. Unreadable rows stay last."
+FOLD_FILTER_TOOLTIP = "Show only rows that contain this text."
+FOLD_FILTER_PLACEHOLDER = "Filter rows..."
+
+# ── Summary-row tooltips (defect 6) ──────────────────────────────────
+# The four counter rows - opened, closed, the close ratio and tranches
+# discarded - were left bare by defect 6 because defect 4 owned the
+# counters and they did not reconcile. Defect 4 has now landed: every
+# site that removes a fold tranche moves exactly one of opened, closed
+# or discarded, so the four rows describe quantities that hold
+# `opened - closed - discarded == open tranches`. They carry the same
+# ten-word tooltip standard as every other row on this form.
+FOLD_OPEN_COUNT_TOOLTIP = "Fold tranches this bot holds in its queue now."
+FOLD_PARKED_USD_TOOLTIP = "Total cash parked by every open fold tranche."
+FOLD_OLDEST_AGE_TOOLTIP = "Age of the oldest tranche in this queue."
+FOLD_UNITS_MARKED_TOOLTIP = "Asset units the queue claims, against units held."
+FOLD_WIRE_DISCARDED_TOOLTIP = "Parked wire credit cleared by this bot, lifetime total."
+FOLD_MALFORMED_TOOLTIP = "Stored tranches this bot could not read, lifetime total."
+FOLD_CYCLE_CAP_TOOLTIP = "Growth cash one fold cycle may spend, and spent."
+
+# ── The counter rows (defect 4) ──────────────────────────────────────
+# Same standard: one line, about ten words, no code identifiers.
+FOLD_OPENED_TOOLTIP = "Fold tranches this bot ever opened, less merged ones."
+FOLD_CLOSED_TOOLTIP = "Fold tranches that folded back and bought the asset."
+FOLD_CLOSE_RATIO_TOOLTIP = (
+    "Share of opened tranches that folded back, discards excluded."
+)
+FOLD_DISCARDED_TOOLTIP = "Fold tranches removed without folding back, lifetime total."
+
+
+def install_health_row(
+    form: QFormLayout, label_text: str, widget: QWidget, tooltip: str
+) -> QWidget:
+    """Add one summary row and tooltip BOTH halves of it.
+
+    `QFormLayout.addRow(str, widget)` builds the label itself, so a
+    tooltip set on the value alone leaves the words the operator
+    actually points at bare - which is what the panel did on every row
+    that had a tooltip at all. `labelForField` asks the layout which
+    label it made rather than keeping a second reference that could
+    drift.
+    """
+    form.addRow(label_text, widget)
+    widget.setToolTip(tooltip)
+    label = form.labelForField(widget)
+    if label is not None:
+        label.setToolTip(tooltip)
+    return widget
+
+
+# ── The allotment total (issue #98 defect 9) ─────────────────────────
+# WHAT WAS MEASURED, 2026-08-23, over the live state file: tranche
+# `units` summed against the units the bot holds gave PUMP/USD 1.99x
+# and CAP/USD 1.34x. The fold queue claimed twice the asset PUMP owns.
+# The panel printed per-row Units, no total, and no comparison, so the
+# condition was invisible on the one surface that owns the ledger.
+#
+# `_current_holdings` IS THE FIELD, NOT A DERIVED QUANTITY. The bot
+# keeps it as the units it holds (`bot_container.py:482`), exports it
+# as `current_holdings` (`bot_container.py:1869`) and maintains the
+# invariant `sum(lot["units"]) == _current_holdings`. The evaluation
+# used `position_value / current_price` only because it was reading a
+# state file; the panel has the bot and reads the field.
+#
+# THIS ROW ATTRIBUTES NOTHING. It reports two stored quantities and
+# their ratio. The cause of an excess sits outside this panel and is
+# not guessed at here.
+
+#: The red already used for a health verdict on this same form and for
+#: the over-cap tranche row on the Settings tab. One threshold, and it
+#: is not a taste: above 1.00x the queue claims more asset than the bot
+#: owns, which is a statement about the ledger rather than a level
+#: somebody picked.
+FOLD_OVER_ALLOTMENT_FG_HEX = "#ff3366"
+
+#: The three colours the cycle-close-ratio verdict has always used,
+#: lifted out of the widget so the pure composer below can return one
+#: and a test can name it. Red is the SAME red as the row above, by
+#: reference rather than by a second copy of the literal.
+FOLD_RATIO_RED_FG_HEX = FOLD_OVER_ALLOTMENT_FG_HEX
+FOLD_RATIO_AMBER_FG_HEX = "#ff9900"
+FOLD_RATIO_GREEN_FG_HEX = "#00ff88"
+
+
+def compose_units_marked_row(
+    tranches: list, holdings: object
+) -> tuple[str, str | None]:
+    """Return `(text, colour_hex_or_None)` for the allotment row.
+
+    Pure, so the number beside the operator's holdings is testable
+    without Qt.
+
+    AN UNREADABLE `units` IS COUNTED, NEVER ADDED AS ZERO. That is the
+    rule the parked-USD total on this same form already follows: a
+    refused contributor rides beside the number instead of quietly
+    lowering it.
+
+    NO RATIO WITHOUT HOLDINGS. When the bot holds nothing, or the
+    holdings value is not a usable number, the row says so and prints
+    no multiple. A ratio against zero is not a large number; it is not
+    a number.
+    """
+    from ..trading.bot_container import as_finite_float
+
+    marked = 0.0
+    unreadable = 0
+    for tranche in list(tranches or []):
+        value = (
+            as_finite_float(tranche.get("units", 0))
+            if isinstance(tranche, dict)
+            else None
+        )
+        if value is None:
+            unreadable += 1
+        else:
+            marked += value
+    text = f"{marked:,.6f} marked"
+    if unreadable:
+        text += f"  (+{unreadable} unreadable)"
+    held = as_finite_float(holdings)
+    if held is None:
+        return (f"{text} / holdings unreadable", None)
+    if held <= 0:
+        return (f"{text} / {held:,.6f} held", None)
+    ratio = marked / held
+    text += f" / {held:,.6f} held  ({ratio:,.2f}x)"
+    if ratio > 1.0:
+        return (text, FOLD_OVER_ALLOTMENT_FG_HEX)
+    return (text, None)
+
+
+def compose_cycle_close_ratio(
+    created: int, closed: int, discarded: int
+) -> tuple[str, str | None]:
+    """Return `(text, colour_hex_or_None)` for the cycle close ratio.
+
+    Pure, so the panel's only health verdict is testable without Qt.
+
+    THE DEFINITION, IN ONE SENTENCE: of every tranche this bot opened
+    and did not discard, the share that folded back.
+
+        ratio = closed / (created - discarded)
+
+    WHAT WAS WRONG WITH THE OLD ONE. It was `closed / created`, and a
+    discarded tranche stayed in the denominator. A discard is a record
+    the operator cleared, the despawn sweep delisted, a detonation
+    abandoned or the fold guard could not read. None of those is a
+    failure to fold back, and each of them lowered the ratio
+    permanently. Measured on the live fleet, 2026-08-23: BTC/USD had
+    opened 160, folded back 118 and discarded 42, so it folded back
+    every tranche it still had, and the panel printed 73.75%.
+
+    A TRANCHE STILL STANDING IS STILL IN THE DENOMINATOR, deliberately.
+    It was opened, it was not discarded, and it has not folded. That is
+    what makes a stagnating queue show up here at all, and it is why
+    this ratio is not simply `closed / (closed + discarded)` -- that
+    reading is 100% on a bot whose queue has never moved.
+
+    NOTHING LEFT TO FOLD IS NOT 100%. When `created - discarded` is
+    zero or below there is no denominator, and the row says so rather
+    than printing a number. A ratio whose healthy value and whose
+    broken value are both "100%" measures nothing.
+    """
+    denominator = int(created) - int(discarded)
+    if denominator <= 0:
+        return ("—  (nothing left to fold back)", None)
+    ratio = int(closed) / denominator
+    text = f"{ratio:.2%}  ({int(closed)}/{denominator})"
+    # The bands are the ones this row already used. Only the quantity
+    # they judge has changed.
+    if denominator < 5:
+        return (text, None)
+    if ratio < 0.5:
+        return (text, FOLD_RATIO_RED_FG_HEX)
+    if ratio < 0.8:
+        return (text, FOLD_RATIO_AMBER_FG_HEX)
+    return (text, FOLD_RATIO_GREEN_FG_HEX)
+
+
+def _fold_tranche_source_label(tranche: dict) -> str:
+    """Name the action that CREATED this fold tranche.
+
+    Three answers, because the stored record distinguishes three cases
+    and the old two-way test threw one of them away. See the block
+    above for the write sites and the live counts.
+
+    THE TRUTHINESS TEST IS DELIBERATE AND UNCHANGED. The shipped cell
+    asked `if t.get("operator_initiated")`, so a stored `0`, `""` or
+    `False` all took the autonomous branch. Keeping that test means a
+    row whose flag is a falsey non-bool renders exactly as it did
+    before, and this unit changes the WORDS on the cell rather than
+    which branch a row lands in. Only the key's presence is new
+    information, and `in` is the one test that can see it.
+    """
+    if tranche.get("operator_initiated"):
+        return FOLD_SOURCE_MANUAL_SCRUM
+    if "operator_initiated" in tranche:
+        return FOLD_SOURCE_AUTO_REBALANCE
+    return FOLD_SOURCE_AUTO_SCRUM
+
 
 def _arbiter_label(value: object) -> str:
     """Return the operator's word for a value: ``Parent``/``Sibling``.
@@ -503,6 +972,394 @@ if _HAS_QT:
             painter.drawLine(rect.left(), bottom, rect.right(), bottom)
             painter.restore()
 
+    #: What the despawn rows say a despawn DOES, in the operator's own
+    #: three verbs. MERGE collapses tranches into each other, DESPAWN
+    #: removes an aged one, CLEAR is the operator's manual removal.
+    #: Nothing else collapses or removes a tranche.
+    #:
+    #: WHERE THE VALUE GOES, and it is the question a removal has to
+    #: answer. A fold tranche is an EARMARK, not custody: the scrum
+    #: SELL already happened, the units already left `_main_lots`, and
+    #: the dollars are already sitting in the shared exchange wallet.
+    #: The record is the bot's queued intent to buy those units back at
+    #: or below `ref`. Removing it places no order, cancels no order
+    #: and moves no balance, so nothing the exchange reports changes.
+    #: What is lost is the INTENT and the `initial_buy_price`
+    #: provenance that came with it: those dollars stop being a queued
+    #: rebuy and go back to being ordinary spendable balance.
+    DESPAWN_ROW_TOOLTIP = (
+        "DESPAWN removes a tranche once it reaches this age.\n\n"
+        "The control is on the Settings tab, under Advanced -\n"
+        "Tranche Despawn Timer. 0 is Off and is the default.\n\n"
+        "IT IS NOT A TRADE. No order is placed or cancelled and no\n"
+        "balance moves. The scrum sale already happened, so the\n"
+        "dollars are already in the wallet; the record is only this\n"
+        "bot's queued intent to buy those units back. Removing it\n"
+        "returns that money to ordinary spendable balance and drops\n"
+        "the original-cost provenance the record carried.\n\n"
+        "A tranche with no timestamp is NEVER removed. A stack\n"
+        "tranche holding a resting exchange order is kept until that\n"
+        "order settles.\n\n"
+        "MERGE, DESPAWN and CLEAR are the only three things that\n"
+        "collapse or remove a tranche."
+    )
+
+    def despawn_timer_text(days: int) -> str:
+        """Name the armed threshold and where the control lives.
+
+        THE POINTER IS PART OF THE ANSWER. The spinbox sits on the
+        Settings tab under Advanced, well below the fold, which is the
+        measured reason the operator never found it. A row that
+        reported "Off" and stopped would restate the problem without
+        moving anybody toward the fix.
+        """
+        _where = "Settings tab > Advanced > Tranche Despawn Timer"
+        if days <= 0:
+            return f"Off  -  {_where}"
+        return f"{days} day(s)  -  {_where}"
+
+    def despawn_preview_text(days: int, armed: dict, windows: list) -> str:
+        """Say what a sweep takes, in records, dollars and units.
+
+        DOLLARS ALONE WOULD UNDERSTATE IT. The smallest live tranche
+        holds $0.00000022 and 87% of the fleet's tranches hold under a
+        dollar, so a USD-only line reads as "nothing" for a removal
+        that drops hundreds of records. The count leads; the money and
+        the units follow.
+
+        THE OFF FORM IS A MENU, not a verdict. Each candidate window
+        prints its own count and money, so the operator chooses a
+        threshold against this bot's real ages.
+        """
+        if days > 0:
+            parts = [
+                f"{armed['fold_removed']} of {armed['fold_open']} " f"fold tranche(s)",
+                f"${armed['usd_removed']:,.4f}",
+                f"{armed['units_removed']:,.8f} units",
+            ]
+            if armed["stack_open"]:
+                parts.append(
+                    f"{armed['stack_removed']} of "
+                    f"{armed['stack_open']} stack tranche(s)"
+                )
+            if armed["stack_kept_live_order"]:
+                parts.append(
+                    f"{armed['stack_kept_live_order']} stack kept " f"(live order)"
+                )
+            if armed["ageless_kept"]:
+                parts.append(f"{armed['ageless_kept']} kept (no timestamp)")
+            return "  -  ".join(parts)
+        if not windows:
+            return "nothing to remove"
+        return "if armed at  " + "  -  ".join(
+            f"{w}d: {p['fold_removed'] + p['stack_removed']} "
+            f"(${p['usd_removed']:,.4f})"
+            for w, p in windows
+        )
+
+    def pin_despawn_rows(
+        dialog: BotLiveSettingsDialog,
+        days: int,
+        fold_snapshot: list,
+        stack_snapshot: list,
+        now_ts: float,
+        elapsed: float,
+    ) -> None:
+        """Pin the two rendered rows against the bot's own ledgers.
+
+        `actual` IS A WIDGET READ AND `expected` IS A MODEL READ, so the
+        two cannot agree by construction. The two labels are asked what
+        text they now carry; the expectation is rendered from the bot's
+        live ledgers, read again here rather than from the snapshot the
+        builder held. A builder that rendered a stale list, wrote the
+        wrong label, or had its text overwritten further down the tab
+        shows up as a mismatch on the operator's own machine.
+
+        WHAT IT DOES NOT PROVE, said plainly: both sides go through
+        `despawn_preview`, so this pin cannot show that the shared
+        predicate matches the SWEEP. That is
+        `tests/test_despawn_window_is_usable.py`'s job, and it does it
+        by driving the shipped sweep and this preview over one fixture.
+
+        THE DURATION SPANS THE PREVIEW, not the row build. Five passes
+        over both ledgers run on the Qt GUI thread every time this tab
+        is built or rebuilt, and BILL/USD carries 230 fold tranches
+        today. That is the cost worth measuring on the operator's
+        machine rather than arguing about here.
+        """
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            from src.core.signal_contract import emit as _despawn_emit
+
+            from ..trading.bot_container import (
+                DESPAWN_PREVIEW_WINDOWS,
+                despawn_preview,
+            )
+
+            _bot = dialog._bot
+            _live_fold = list(getattr(_bot, "_fold_tranches", []) or [])
+            _live_stack = list(getattr(_bot, "_stack_tranches", []) or [])
+            _armed = despawn_preview(_live_fold, _live_stack, days, now_ts)
+            _windows = [
+                (w, despawn_preview(_live_fold, _live_stack, w, now_ts))
+                for w in DESPAWN_PREVIEW_WINDOWS
+            ]
+            _timer_lbl = getattr(dialog, "_fold_despawn_timer_lbl", None)
+            _preview_lbl = getattr(dialog, "_fold_despawn_preview_lbl", None)
+            _despawn_emit(
+                "gui.04.003.postcondition.despawn_rows_match_ledger",
+                actual={
+                    "timer_row": (
+                        _timer_lbl.text() if _timer_lbl is not None else None
+                    ),
+                    "preview_row": (
+                        _preview_lbl.text() if _preview_lbl is not None else None
+                    ),
+                },
+                expected={
+                    "timer_row": despawn_timer_text(days),
+                    "preview_row": despawn_preview_text(days, _armed, _windows),
+                },
+                duration=elapsed,
+                context={
+                    "bot_id": getattr(_bot, "bot_id", "?"),
+                    "threshold_days": days,
+                    "fold_open": len(_live_fold),
+                    "stack_open": len(_live_stack),
+                    "fold_removed": _armed["fold_removed"],
+                    "usd_removed": _armed["usd_removed"],
+                    "snapshot_fold_open": len(fold_snapshot),
+                    "snapshot_stack_open": len(stack_snapshot),
+                },
+            )
+
+    def install_despawn_rows(
+        dialog: BotLiveSettingsDialog, form: QFormLayout, tranches: list, now_ts: float
+    ) -> dict:
+        """Add the two despawn rows to the health form; return the preview.
+
+        THE DEFECT THIS REPAIRS IS NOT A BROKEN SWEEP. Item 9's despawn
+        timer shipped on 2026-08-13 and works. Measured against the
+        operator's state file on 2026-08-24: it reads 0 - Off - on all
+        38 bots, every one of the 1,680 open fold tranches carries a
+        usable `created_ts`, and the feature has never run once. The
+        count that worries the operator is on THIS tab; the control is
+        on the Settings tab; and nothing on either surface said what
+        turning it on would do. So the panel now names the setting
+        where the problem is already on screen, and prints the
+        consequence BEFORE it is committed rather than after.
+
+        NO BUTTON IS ADDED HERE, DELIBERATELY. Despawn is the
+        AGE-driven removal and Clear is the operator's manual one. A
+        "despawn now" button would be a second manual removal wearing
+        the age function's name, and the operator's model has exactly
+        three verbs - merge, despawn, clear. The setting stays the only
+        way to arm this, and these rows exist to make that setting an
+        informed choice.
+
+        WHEN THE TIMER IS OFF the row prints one window per candidate
+        in `DESPAWN_PREVIEW_WINDOWS`, so the operator picks a number
+        against real counts instead of guessing. WHEN IT IS ON the row
+        prints what the next sweep takes at the armed threshold.
+
+        THE COUNTS COME FROM THE SHARED RULE, never from arithmetic
+        written here. `despawn_preview` carries the sweep's own
+        predicate - inclusive boundary, ageless records kept, stack
+        records with live orders kept - and a second copy on this
+        surface is exactly the defect that made the Min-rebuy column
+        print a price the executor refuses.
+
+        A MODULE FUNCTION AND NOT A METHOD, and that is load-bearing
+        rather than style. `_create_fold_tranches_tab` is driven as an
+        UNBOUND function by several existing test files, against stub
+        dialogs that carry `_bot` and nothing else; a new `self.` call
+        made 332 of those tests raise `AttributeError` when it was one.
+        Resolved from the module, this reaches every caller the tab
+        already has, and the handles are set on whatever object is
+        passed.
+
+        Args:
+          dialog: the dialog building the tab. Only `_bot` is read;
+            the two label handles are set on it.
+          form: the Fold-Tranche Cycle Health `QFormLayout`.
+          tranches: this bot's fold tranches, as the builder read them.
+          now_ts: the wall clock the rest of the tab ages against, so
+            the preview and the Age column cannot disagree.
+
+        Returns:
+          The preview at the ARMED threshold, which is all zeroes when
+          the timer is off.
+
+        """
+        import time as _clock
+
+        from ..trading.bot_container import (
+            DESPAWN_PREVIEW_WINDOWS,
+            despawn_preview,
+            despawn_threshold_days,
+        )
+
+        _bot = dialog._bot
+        _stack = list(getattr(_bot, "_stack_tranches", []) or [])
+        _t0 = _clock.monotonic()
+        _days = despawn_threshold_days(_bot.config)
+        armed = despawn_preview(tranches, _stack, _days, now_ts)
+        windows = [
+            (w, despawn_preview(tranches, _stack, w, now_ts))
+            for w in DESPAWN_PREVIEW_WINDOWS
+        ]
+        _elapsed = _clock.monotonic() - _t0
+
+        timer_lbl = QLabel(despawn_timer_text(_days))
+        timer_lbl.setToolTip(DESPAWN_ROW_TOOLTIP)
+        # AMBER ONLY WHEN THE COLOUR IS TRUE. Off with nothing aged is
+        # a correct, quiet state, and colouring it would teach the
+        # operator to ignore the row. Off while the widest candidate
+        # window already holds records is the state this unit exists
+        # for, and it is the only one marked.
+        _widest = windows[-1][1] if windows else armed
+        if _days <= 0 and (_widest["fold_removed"] + _widest["stack_removed"]):
+            timer_lbl.setStyleSheet("color: #ff9900;")
+        dialog._fold_despawn_timer_lbl = timer_lbl
+        # issue #98 defect 6 - BOTH HALVES OF THE ROW. These two rows
+        # already carried `DESPAWN_ROW_TOOLTIP` on the value; the words
+        # the operator actually points at carried nothing. The text is
+        # issue #103's and is not rewritten here - only the label half
+        # is given the tooltip the value half already had.
+        install_health_row(
+            form, "Tranche despawn timer:", timer_lbl, DESPAWN_ROW_TOOLTIP
+        )
+
+        preview_lbl = QLabel(despawn_preview_text(_days, armed, windows))
+        dialog._fold_despawn_preview_lbl = preview_lbl
+        install_health_row(
+            form, "Despawn would remove:", preview_lbl, DESPAWN_ROW_TOOLTIP
+        )
+
+        pin_despawn_rows(dialog, _days, tranches, _stack, now_ts, _elapsed)
+        return armed
+
+    # ── The operator can REACH a tranche (issue #98 defect 7) ────────
+    #
+    # WHAT WAS WRONG. 280px over 30px rows put about EIGHT of up to 230
+    # rows on screen, `setSortingEnabled` appeared zero times in this
+    # file, and no filter or search existed. On TAO the summary named a
+    # 30.4-day oldest tranche while rows one to three read 2.7d, 2.7d
+    # and 3.6d. The row the headline was about could not be reached.
+    #
+    # THREE PARTS. The height cap follows the row count; the order is
+    # chosen from stored fields and applied by rebuilding; the filter
+    # HIDES rows without moving any. Qt's own `setSortingEnabled` is
+    # still not used, and the reason is at `FOLD_SORT_ORDERS`: it moves
+    # items and leaves `setCellWidget` widgets behind, which would
+    # detach every Fire button from the row it is drawn on.
+    #
+    # MODULE FUNCTIONS AND NOT METHODS, for the reason
+    # `install_despawn_rows` above records: `_create_fold_tranches_tab`
+    # is driven as an UNBOUND function by several existing test files
+    # against stub dialogs that carry `_bot` and little else, and a new
+    # `self.` call inside the builder makes every one of them raise
+    # `AttributeError`. Measured, not predicted: writing these as two
+    # methods and calling them from the builder failed 324 tests across
+    # five files. The dialog is passed in, and every attribute is read
+    # with `getattr` and a default, so a stub builds the tab exactly as
+    # the real dialog does.
+    def fold_sort_order(dialog: BotLiveSettingsDialog) -> str:
+        """Return the order the operator picked, or queue order.
+
+        READ THROUGH ONE FUNCTION so the builder never guesses a
+        default, and so a rebuild started by anything else - a clear, a
+        refresh - keeps the operator's choice instead of silently
+        snapping back to queue order. An order this panel does not
+        offer is refused rather than passed through to the sorter.
+        """
+        order = getattr(dialog, "_fold_sort_key", FOLD_SORT_QUEUE_ORDER)
+        if order not in FOLD_SORT_ORDERS:
+            return FOLD_SORT_QUEUE_ORDER
+        return order
+
+    def build_fold_row_controls(dialog: BotLiveSettingsDialog) -> QHBoxLayout:
+        """Build the order combo and the filter box, above the table."""
+        row = QHBoxLayout()
+
+        order_lbl = QLabel("Order:")
+        order_lbl.setToolTip(FOLD_SORT_TOOLTIP)
+        combo = QComboBox()
+        combo.addItems(list(FOLD_SORT_ORDERS))
+        combo.setCurrentText(fold_sort_order(dialog))
+        combo.setToolTip(FOLD_SORT_TOOLTIP)
+        # `activated` AND NOT `currentIndexChanged`. The rebuild below
+        # destroys this combo and builds a new one with the chosen
+        # order already selected; `currentIndexChanged` would fire
+        # again on that programmatic `setCurrentText` and start a
+        # second rebuild from inside the first.
+        combo.activated.connect(
+            lambda _index, dlg=dialog, box=combo: on_fold_sort_changed(
+                dlg, box.currentText()
+            )
+        )
+        dialog._fold_sort_combo = combo
+
+        edit = QLineEdit()
+        edit.setPlaceholderText(FOLD_FILTER_PLACEHOLDER)
+        edit.setToolTip(FOLD_FILTER_TOOLTIP)
+        edit.setClearButtonEnabled(True)
+        edit.textChanged.connect(
+            lambda text, dlg=dialog: on_fold_filter_changed(dlg, text)
+        )
+        dialog._fold_filter_edit = edit
+
+        row.addWidget(order_lbl)
+        row.addWidget(combo)
+        row.addWidget(edit, 1)
+        return row
+
+    def on_fold_sort_changed(dialog: BotLiveSettingsDialog, order: str) -> None:
+        """Remember the order and rebuild the tab to apply it.
+
+        THE REBUILD IS DEFERRED BY ONE EVENT-LOOP TURN, and that is
+        load-bearing rather than tidy. `_refresh_fold_tranches_tab`
+        deletes the page this combo lives on, and this function runs
+        inside that combo's own signal. Handing the rebuild to the
+        event loop means the signal has returned before the sender is
+        torn down.
+
+        NOTHING IS REBUILT FOR AN ORDER THIS PANEL DOES NOT OFFER, and
+        nothing is rebuilt when the order did not change.
+        """
+        if order not in FOLD_SORT_ORDERS:
+            logger.warning("Fold Tranches: ignoring unknown row order %r", order)
+            return
+        if order == fold_sort_order(dialog):
+            return
+        dialog._fold_sort_key = order
+        rebuild = getattr(dialog, "_refresh_fold_tranches_tab", None)
+        if not callable(rebuild):
+            return
+        from PySide6.QtCore import QTimer as _QTimer
+
+        _QTimer.singleShot(0, rebuild)
+
+    def on_fold_filter_changed(dialog: BotLiveSettingsDialog, needle: str) -> None:
+        """Hide every row that does not contain `needle`.
+
+        HIDING, NOT RE-ORDERING, AND NOT REBUILDING. `setRowHidden`
+        leaves every row where it is, so the Fire button drawn on a row
+        still belongs to that row's tranche. A rebuild would work too
+        and costs a whole widget tree on every keystroke.
+
+        The text it matches is `_fold_row_texts`, harvested from the
+        built table, so the filter reads exactly what is on screen.
+        """
+        table = getattr(dialog, "_fold_tranche_table", None)
+        if table is None:
+            return
+        texts = getattr(dialog, "_fold_row_texts", []) or []
+        for row in range(table.rowCount()):
+            cells = texts[row] if row < len(texts) else []
+            table.setRowHidden(row, not fold_row_matches_filter(cells, needle))
+
     class BotLiveSettingsDialog(QDialog):
         """
         Editable bot detail dialog for running bots.
@@ -514,6 +1371,19 @@ if _HAS_QT:
         """
 
         settings_changed = Signal(str, dict)  # bot_id, {field: new_value}
+
+        # issue #98 defect 7 - the row order the operator chose, held
+        # on the dialog so a rebuild started by anything at all - a
+        # clear, a refresh, a second order change - keeps their choice.
+        #
+        # A CLASS ATTRIBUTE, NOT AN `__init__` LINE, and the reason is
+        # the same one that made the reach controls module functions:
+        # several test files build this tab through a STUB dialog that
+        # never runs `__init__`. A class default is inherited by a real
+        # dialog and read through `getattr` by a stub, so one spelling
+        # serves both. `fold_sort_order` still refuses a value this
+        # panel does not offer, whichever way it arrived.
+        _fold_sort_key: str = FOLD_SORT_QUEUE_ORDER
 
         def __init__(self, bot, bot_manager=None, parent=None):
             super().__init__(parent)
@@ -630,10 +1500,11 @@ if _HAS_QT:
             # see Leg-1/Leg-2 health at a glance instead of needing
             # post-hoc CSV analysis. MEM-171 / ADR-004 mechanics.
             if cfg.mode.value == "scrumming":
-                tabs.addTab(
-                    self._wrap_scrollable(self._create_fold_tranches_tab()),
-                    "Fold Tranches",
-                )
+                # issue #98 defect 1 - installed through the one site
+                # that also records the page, so a clear can rebuild
+                # this tab in place instead of telling the operator to
+                # reopen the dialog.
+                self._install_fold_tranches_tab(tabs)
 
             # --- Tab 3.5: Stack Tranches (Scrumming only) ---
             # v3.23.28 — mirror of Fold Tranches for the Stack Mode
@@ -1620,19 +2491,39 @@ if _HAS_QT:
                 )
                 return
 
-            # This dialog builds its tabs once in __init__ and has no
-            # refresh path (the sibling Manual Fire handler does not
-            # refresh either). Rather than invent one here, say so: a
-            # panel that silently shows the pre-clear numbers would be
-            # the same class of untruth this whole pass has been
-            # removing.
+            # issue #98 defects 1, 2 and 3.
+            #
+            # THE RESULT LEADS. The message used to open with
+            # "Discarded N tranche(s)" and then say "No order was
+            # placed", which is REASSURANCE standing where a RESULT
+            # belongs - after a button that appeared to have done
+            # nothing, beside a table that had not changed. Read in
+            # that position it reads as a failure. The order is now
+            # what happened, what the panel shows, whether it reached
+            # disk, and only then what did NOT happen.
+            #
+            # EVERY LINE REPORTS THE STEP THAT ACTUALLY RAN. The panel
+            # line and the save line come back from `_settle_after_clear`
+            # carrying the real outcome of each, so a refresh that could
+            # not run or a save that raised is named here rather than
+            # papered over.
+            _settled = self._settle_after_clear("Clear fold tranches")
+            _now_open = len(getattr(bot, "_fold_tranches", []) or [])
             QMessageBox.information(
                 self,
                 "Clear fold tranches",
-                f"Discarded {report.get('count', 0)} tranche(s) holding "
-                f"${float(report.get('usd', 0)):,.4f}.\n\n"
-                f"No order was placed. This panel still shows the "
-                f"pre-clear figures — reopen it to see the new state.",
+                "\n\n".join(
+                    [
+                        f"Cleared {report.get('count', 0)} fold tranche(s) "
+                        f"holding "
+                        f"${float(report.get('usd', 0)):,.4f}.",
+                        f"This bot now holds {_now_open} open fold " f"tranche(s).",
+                        "\n".join(_settled),
+                        "No order was placed. Holdings, cost basis and "
+                        "target balance are unchanged — only the queued "
+                        "intent to buy back is gone.",
+                    ]
+                ),
             )
 
         def _on_clear_wire_credits(self) -> None:
@@ -1700,12 +2591,25 @@ if _HAS_QT:
                 )
                 return
 
+            # issue #98 defects 1, 2 and 3, on the sibling button.
+            # Same three steps and the same message order as the fold
+            # clear above; see the comment there for why the result
+            # leads and the reassurance follows.
+            _settled = self._settle_after_clear("Clear wire credits")
+            _now_parked = float(getattr(bot, "_pending_wire_credits", 0.0) or 0.0)
             QMessageBox.information(
                 self,
                 "Clear wire credits",
-                f"Discarded ${float(report.get('usd', 0)):,.4f} of parked "
-                f"credit.\n\nNo funds moved. This panel still shows the "
-                f"pre-clear figures — reopen it to see the new state.",
+                "\n\n".join(
+                    [
+                        f"Cleared ${float(report.get('usd', 0)):,.4f} of "
+                        f"parked Smart Wire credit.",
+                        f"This bot now has ${_now_parked:,.4f} parked.",
+                        "\n".join(_settled),
+                        "No funds moved. This released an EARMARK only, so "
+                        "the cash returns to ordinary spendable balance.",
+                    ]
+                ),
             )
 
         def _paint_fold_tranche_row(self, table: QTableWidget, row: int) -> None:
@@ -1723,7 +2627,10 @@ if _HAS_QT:
             SEMANTIC FOREGROUNDS ARE NEVER OVERWRITTEN. The Status
             cell carries green for "price gate open" and amber for
             "price gate shut"; the Source cell carries `#00ccff` on a
-            manually-fired tranche. Those colours are trading meaning,
+            manual-scrum tranche -- one an operator's own Manual Fire
+            SOLD into being (issue #98 defect 5 corrected the word on
+            that cell; the colour and the rows carrying it are the
+            same ones). Those colours are trading meaning,
             not decoration, and this is a visual change, so they are
             left exactly as they are. All three were measured against
             this fill and clear WCAG AA — 8.65:1, 5.42:1 and 6.12:1 —
@@ -1875,6 +2782,315 @@ if _HAS_QT:
                 # exit does, and item 1 books the return. Column 9 holds
                 # a painted em dash instead, set in the loop above.
 
+        # -- issue #98 defects 1 and 3 - the operator can SEE the clear --
+        #
+        # WHAT WAS WRONG. Both Clear buttons worked. The trade log
+        # proves it on BTC bot `7c39c7a2`: "WIRE CREDITS CLEARED ...
+        # $343.6824" and "FOLD TRANCHES CLEARED ... 42 tranche(s)".
+        # What the operator SAW was a panel that had not moved. Driven
+        # offscreen against a stub bot, with the confirmation accepted:
+        #
+        #     BEFORE  table rows 58   bot tranches 58   label "58"
+        #     AFTER   table rows 58   bot tranches  0   label "58"
+        #             clear button still "Clear 58 Fold Tranche(s)",
+        #             still enabled, 58 Fire buttons still live
+        #
+        # and neither clear reached disk. Both bot methods mutate memory
+        # and leave the write to the 60-second rolling save
+        # (`main.py:1343`), so a clear followed by a close inside that
+        # window restored every record the operator had just destroyed.
+        #
+        # NEITHER REPAIR TOUCHES `scrumming_bot.py`. The clear itself is
+        # correct and is not changed. The refresh is this dialog's own
+        # widget tree, and the save is a call the CALLER can make - the
+        # precedent is Reset-all-errors, which calls `save_all_state()`
+        # inside its click at `main_window.py:8259` and states the same
+        # reason.
+        FOLD_TRANCHES_TAB_LABEL = "Fold Tranches"
+
+        def _install_fold_tranches_tab(self, tabs: QTabWidget) -> QWidget:
+            """Build the Fold Tranches tab, add it, and remember it.
+
+            ONE INSTALL SITE, so the handle a later refresh swaps is
+            never a second bookkeeping step somebody can forget. The
+            tests drive this method rather than re-implementing the two
+            lines, which is what makes them a test of the shipped
+            wiring.
+            """
+            page = self._wrap_scrollable(self._create_fold_tranches_tab())
+            tabs.addTab(page, self.FOLD_TRANCHES_TAB_LABEL)
+            self._fold_tab_page = page
+            return page
+
+        def _refresh_fold_tranches_tab(self) -> str:
+            """Rebuild the Fold Tranches tab in place. Return a status.
+
+            Returns "refreshed", or a sentence naming why it did not.
+            THE STRING IS LOAD-BEARING: the message the operator reads
+            after a clear quotes it, so a rebuild that could not run
+            says so instead of the panel quietly lying twice.
+
+            THE TAB IS FOUND BY WIDGET IDENTITY, NOT BY A STORED INDEX.
+            `indexOf` asks the tab bar where the page actually is, so a
+            tab added, hidden or reordered anywhere else in this dialog
+            cannot make the refresh rebuild somebody else's tab. A
+            stored integer could.
+
+            `removeTab` + `insertTab` AT THE SAME INDEX, so no other tab
+            renumbers and the operator keeps their place in the dialog.
+            `removeTab` does not delete the page - it reparents it to
+            nothing - so the old page is deleted here explicitly.
+            Without that, every clear would leak a whole tab's widget
+            tree for the life of the dialog.
+
+            THE DELEGATE SURVIVES BECAUSE THE BUILDER REBINDS IT.
+            `setItemDelegate` does not take ownership, so the table's
+            delegate is held on `self`; the rebuild overwrites that
+            attribute with the new table's delegate, and the old one
+            goes with the old page.
+            """
+            tabs = getattr(self, "_tabs", None)
+            page = getattr(self, "_fold_tab_page", None)
+            if tabs is None or page is None:
+                return (
+                    "not refreshed: this dialog has no Fold " "Tranches tab installed"
+                )
+            try:
+                index = tabs.indexOf(page)
+            except Exception as exc:  # R28-OK: display-only rebuild
+                logger.warning(
+                    "Fold Tranches refresh could not locate its tab " "(%s: %s)",
+                    type(exc).__name__,
+                    exc,
+                )
+                return (
+                    f"not refreshed: the tab could not be located "
+                    f"({type(exc).__name__})"
+                )
+            if index < 0:
+                return (
+                    "not refreshed: the Fold Tranches tab is no "
+                    "longer in this dialog"
+                )
+            label = tabs.tabText(index)
+            was_current = tabs.currentIndex() == index
+            try:
+                fresh = self._wrap_scrollable(self._create_fold_tranches_tab())
+            except Exception as exc:  # R28-OK: display-only rebuild
+                logger.exception(
+                    "Fold Tranches refresh raised while rebuilding " "the tab"
+                )
+                return (
+                    f"not refreshed: rebuilding the tab raised "
+                    f"{type(exc).__name__}: {exc}"
+                )
+            tabs.removeTab(index)
+            tabs.insertTab(index, fresh, label)
+            self._fold_tab_page = fresh
+            if was_current:
+                tabs.setCurrentIndex(index)
+            page.setParent(None)
+            page.deleteLater()
+            return "refreshed"
+
+        def _fold_panel_shows(self) -> dict:
+            """Report what the Fold Tranches tab shows RIGHT NOW.
+
+            Read off the widgets, never off the bot. That is the whole
+            value of it: the pin below compares this dict against the
+            bot's own numbers, and two reads of one expression would
+            agree whatever the panel displayed.
+
+            `fold_rows` subtracts the Extractor rows. Those are appended
+            after every fold tranche and are a child's lease, not this
+            bot's inventory.
+            """
+            table = getattr(self, "_fold_tranche_table", None)
+            lbl = getattr(self, "_fold_open_count_lbl", None)
+            btn = getattr(self, "_fold_clear_btn", None)
+            wire = getattr(self, "_fold_wire_btn", None)
+            timer = getattr(self, "_fold_despawn_timer_lbl", None)
+            preview = getattr(self, "_fold_despawn_preview_lbl", None)
+            # issue #98 defects 7 and 9 - the three surfaces this unit
+            # added, reported the same way as the six above: read off
+            # the WIDGET, never off the bot or off a stored key. The
+            # order is asked of the combo box rather than of
+            # `fold_sort_order`, because a reporter that read the state
+            # both controls are supposed to reflect would agree with
+            # itself whatever the panel displayed.
+            units = getattr(self, "_fold_units_marked_lbl", None)
+            sort_box = getattr(self, "_fold_sort_combo", None)
+            filter_box = getattr(self, "_fold_filter_edit", None)
+            rows = None
+            if table is not None:
+                rows = max(
+                    0,
+                    table.rowCount()
+                    - int(getattr(self, "_fold_ext_row_count", 0) or 0),
+                )
+            elif lbl is not None:
+                # No table means the builder took its empty-queue
+                # branch, which renders the "fold queue is empty" note
+                # and no rows at all. That is zero rows, not "unknown".
+                rows = 0
+            return {
+                "fold_rows": rows,
+                "open_tranches_label": (lbl.text() if lbl is not None else None),
+                "clear_button_text": (btn.text() if btn is not None else None),
+                "clear_button_enabled": (
+                    bool(btn.isEnabled()) if btn is not None else None
+                ),
+                "wire_button_enabled": (
+                    bool(wire.isEnabled()) if wire is not None else None
+                ),
+                "despawn_timer_text": (timer.text() if timer is not None else None),
+                "despawn_preview_text": (
+                    preview.text() if preview is not None else None
+                ),
+                "units_marked_text": (units.text() if units is not None else None),
+                "row_order": (sort_box.currentText() if sort_box is not None else None),
+                "row_filter": (filter_box.text() if filter_box is not None else None),
+            }
+
+        def _bot_manager_for_save(self) -> object | None:
+            """Return the object that owns `save_all_state`, or None.
+
+            `self._bm` FIRST, THEN THE BOT'S OWN MANAGER. The Simulator
+            builds this dialog with no manager, and so do the listing
+            tests, so `self._bm` is None on those paths; the parent
+            bot's `_bot_manager` is the object that produced these rows
+            in the first place. The Arbiter handler resolves its manager
+            the same way and for the same reason.
+            """
+            for candidate in (
+                getattr(self, "_bm", None),
+                getattr(self._bot, "_bot_manager", None),
+            ):
+                if callable(getattr(candidate, "save_all_state", None)):
+                    return candidate
+            return None
+
+        def _save_fleet_state_now(self, what: str) -> tuple[bool, str]:
+            """Persist the fleet in this click. Return (saved, reason).
+
+            issue #98 defect 3. `clear_fold_tranches` and
+            `clear_pending_wire_credits` both write memory only
+            (`scrumming_bot.py:13273` and `:13350`) and rely on the
+            60-second rolling save. Clear, then close inside that
+            window, and everything the operator destroyed comes back.
+
+            WHY THIS SAVES WHERE THE ARBITER TOGGLE DELIBERATELY DOES
+            NOT. That toggle's comment is right about the cost: a fleet
+            serialise plus a backup copy on the GUI thread is the freeze
+            class. It is also right about the risk it weighed - a
+            TOGGLE lost to a crash is set again in one click. A CLEAR
+            lost to a crash RESTORES records the operator deliberately
+            destroyed, and no second click can un-restore them. The two
+            are not the same trade, so they do not get the same answer.
+            The cost is stated rather than hidden: this call blocks the
+            GUI thread for as long as the fleet takes to serialise, and
+            the pin beside it carries that duration, so the cost is
+            measured on the operator's own machine instead of argued
+            about here.
+
+            THE FAILURE IS REPORTED, NEVER SWALLOWED. A clear that ran
+            in memory and did not reach disk is exactly the gap the
+            operator relies on this button to close, so the reason comes
+            back as text and goes into the message they read.
+            """
+            manager = self._bot_manager_for_save()
+            saver = getattr(manager, "save_all_state", None)
+            if not callable(saver):
+                return (False, "no bot manager is attached to this panel")
+            try:
+                saver()
+            except Exception as exc:  # noqa: BLE001 - operator surface
+                logger.warning(
+                    "%s: cleared in memory but NOT saved (%s: %s); a "
+                    "restart before the next rolling save will restore "
+                    "it.",
+                    what,
+                    type(exc).__name__,
+                    exc,
+                )
+                return (False, f"{type(exc).__name__}: {exc}")
+            return (True, "")
+
+        def _settle_after_clear(self, what: str) -> list[str]:
+            """Save, rebuild the tab, pin the result, report the lines.
+
+            ONE PATH FOR BOTH CLEAR BUTTONS. They discard different
+            things and their confirmations differ, but what has to
+            happen AFTER an accepted clear is the same three steps, and
+            two copies of them would drift the first time either moved.
+
+            THE ORDER IS SAVE, THEN REFRESH. The durable write is the
+            one a crash can take away; the rebuild only reads memory
+            that is already correct. Saving first means a crash between
+            the two costs a stale panel, not a restored tranche.
+            """
+            import contextlib
+            import time as _clock
+
+            _t0 = _clock.monotonic()
+            saved, why = self._save_fleet_state_now(what)
+            refresh = self._refresh_fold_tranches_tab()
+            _elapsed = _clock.monotonic() - _t0
+
+            shows = self._fold_panel_shows()
+            _open = len(getattr(self._bot, "_fold_tranches", []) or [])
+            _parked = float(getattr(self._bot, "_pending_wire_credits", 0.0) or 0.0)
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _fold_emit
+
+                _fold_emit(
+                    "gui.04.002.postcondition.clear_settled",
+                    actual={
+                        "fold_rows": shows["fold_rows"],
+                        "open_tranches_label": shows["open_tranches_label"],
+                        "clear_button_enabled": shows["clear_button_enabled"],
+                        "wire_button_enabled": shows["wire_button_enabled"],
+                        "saved": saved,
+                    },
+                    expected={
+                        "fold_rows": _open,
+                        "open_tranches_label": str(_open),
+                        "clear_button_enabled": bool(_open),
+                        "wire_button_enabled": _parked > 1e-9,
+                        "saved": True,
+                    },
+                    duration=_elapsed,
+                    context={
+                        "bot_id": getattr(self._bot, "bot_id", "?"),
+                        "cleared": what,
+                        "refresh": refresh,
+                        "save_reason": why,
+                        "clear_button_text": shows["clear_button_text"],
+                    },
+                )
+
+            lines = []
+            if refresh == "refreshed":
+                lines.append(
+                    "The panel behind this message has been rebuilt "
+                    "and now shows the new state."
+                )
+            else:
+                lines.append(
+                    f"The panel was {refresh}. Close and reopen this "
+                    f"dialog to see the new state."
+                )
+            if saved:
+                lines.append("Saved to disk.")
+            else:
+                lines.append(
+                    f"NOT SAVED TO DISK - {why}. The change holds in "
+                    f"memory, and the platform's rolling save should "
+                    f"write it within 60 seconds; a restart before "
+                    f"that would bring it back."
+                )
+            return lines
+
         def _create_fold_tranches_tab(self) -> QWidget:
             import time as _time
 
@@ -1890,6 +3106,34 @@ if _HAS_QT:
             w = QWidget()
             layout = QVBoxLayout(w)
             layout.setSpacing(8)
+
+            # issue #98 defect 1 — THE READ-BACK HANDLES, CLEARED FIRST.
+            # `_refresh_fold_tranches_tab` rebuilds this whole widget
+            # and then asks the REBUILT surface what it shows, so the
+            # pin compares the panel against the bot rather than
+            # comparing a local variable to itself. Cleared here rather
+            # than only assigned below, because a rebuild that takes the
+            # empty-queue branch builds no table at all and a stale
+            # handle from the previous build would answer for it.
+            self._fold_tranche_table = None
+            self._fold_open_count_lbl = None
+            self._fold_clear_btn = None
+            self._fold_wire_btn = None
+            self._fold_ext_row_count = 0
+            # The two despawn rows, cleared here for the same reason as
+            # the four handles above: a rebuild that raised before the
+            # rows were built would otherwise leave the previous
+            # build's labels answering for the new panel.
+            self._fold_despawn_timer_lbl = None
+            self._fold_despawn_preview_lbl = None
+            # issue #98 defects 7 and 9 - same reason again. The
+            # allotment label, the two reach controls and the filter's
+            # source text are all rebuilt below, and a stale handle
+            # from the previous build would answer for the new panel.
+            self._fold_units_marked_lbl: QLabel | None = None
+            self._fold_sort_combo: QComboBox | None = None
+            self._fold_filter_edit: QLineEdit | None = None
+            self._fold_row_texts: list[list[str]] = []
 
             tranches = list(getattr(self._bot, "_fold_tranches", []) or [])
             # Item 4 (2026-08-11) — Extractor Tranches leased against
@@ -1993,15 +3237,27 @@ if _HAS_QT:
             else:
                 oldest_str = "no open tranches"
 
-            # Cycle close ratio — informative only, may exceed 1.0 if
-            # multiple lots fold-back faster than scrums create them.
-            if created_lifetime > 0:
-                ratio = closed_lifetime / created_lifetime
-                ratio_str = f"{ratio:.2%}  ({closed_lifetime}/{created_lifetime})"
-            else:
-                ratio_str = "—  (no scrums yet)"
+            # Cycle close ratio — issue #98 defect 4. The arithmetic,
+            # the "nothing left to fold back" case and the colour band
+            # all live in `compose_cycle_close_ratio`, which is pure and
+            # carries the definition it implements. Read there first.
+            discarded_lifetime = int(
+                getattr(self._bot, "_tranches_discarded_lifetime", 0) or 0
+            )
+            ratio_str, ratio_colour = compose_cycle_close_ratio(
+                created_lifetime, closed_lifetime, discarded_lifetime
+            )
 
-            sf.addRow("Open tranches:", QLabel(str(open_count)))
+            # issue #98 defect 6 - every row this unit owns now carries
+            # the operator's own tooltip standard, on BOTH the words and
+            # the number. `install_health_row` is the one call that puts
+            # it on both; a tooltip on the value alone leaves the label
+            # the operator points at bare.
+            open_count_lbl = QLabel(str(open_count))
+            self._fold_open_count_lbl = open_count_lbl
+            install_health_row(
+                sf, "Open tranches:", open_count_lbl, FOLD_OPEN_COUNT_TOOLTIP
+            )
 
             parked_str = f"${parked_usd:,.4f}"
             if parked_unreadable:
@@ -2010,41 +3266,162 @@ if _HAS_QT:
             parked_lbl.setStyleSheet(
                 "font-weight: bold; font-size: 13px; " "color: #ff9900;"
             )
-            sf.addRow("Parked USD (in fold queue):", parked_lbl)
+            install_health_row(
+                sf, "Parked USD (in fold queue):", parked_lbl, FOLD_PARKED_USD_TOOLTIP
+            )
 
-            sf.addRow("Oldest tranche age:", QLabel(oldest_str))
+            install_health_row(
+                sf, "Oldest tranche age:", QLabel(oldest_str), FOLD_OLDEST_AGE_TOOLTIP
+            )
 
-            sf.addRow("Lifetime tranches opened:", QLabel(str(created_lifetime)))
-            sf.addRow(
+            # issue #98 defect 9 - THE ALLOTMENT TOTAL. The panel
+            # printed per-row Units and nothing else, so a queue that
+            # had marked 1.99x the units the bot holds (PUMP/USD,
+            # 2026-08-23) looked exactly like one that had marked half.
+            # Both quantities are stored: the sum of tranche `units`,
+            # and `_current_holdings` on the bot. The row states them
+            # and their ratio, and attributes nothing.
+            _units_text, _units_colour = compose_units_marked_row(
+                tranches, getattr(self._bot, "_current_holdings", None)
+            )
+            _units_lbl = QLabel(_units_text)
+            if _units_colour:
+                # The same red the close-ratio verdict on this form and
+                # the over-cap row on the Settings tab already use.
+                _units_lbl.setStyleSheet(f"color: {_units_colour};")
+            self._fold_units_marked_lbl = _units_lbl
+            install_health_row(
+                sf,
+                "Units marked (queue vs held):",
+                _units_lbl,
+                FOLD_UNITS_MARKED_TOOLTIP,
+            )
+
+            # issue #103 - the despawn window is usable. The count is
+            # already on this tab; the control that acts on it was two
+            # tabs away with nothing naming it. These two rows name the
+            # setting and print what it would remove BEFORE it is
+            # armed. They add no button: despawn is the age-driven
+            # removal, clear is the manual one, and the operator's
+            # model has exactly three verbs.
+            install_despawn_rows(self, sf, tranches, now_ts)
+
+            install_health_row(
+                sf,
+                "Lifetime tranches opened:",
+                QLabel(str(created_lifetime)),
+                FOLD_OPENED_TOOLTIP,
+            )
+            install_health_row(
+                sf,
                 "Lifetime tranches closed (fold-back fired):",
                 QLabel(str(closed_lifetime)),
+                FOLD_CLOSED_TOOLTIP,
             )
 
             ratio_lbl = QLabel(ratio_str)
-            # Healthy = closed/created near 1.0 over time. Stagnation
-            # warning when ratio is low AND there are open tranches.
-            if created_lifetime >= 5 and open_count > 0:
-                ratio_val = closed_lifetime / created_lifetime
-                if ratio_val < 0.5:
-                    ratio_lbl.setStyleSheet("color: #ff3366;")
-                elif ratio_val < 0.8:
-                    ratio_lbl.setStyleSheet("color: #ff9900;")
-                else:
-                    ratio_lbl.setStyleSheet("color: #00ff88;")
-            sf.addRow("Cycle close ratio (closed/opened):", ratio_lbl)
+            # THE COLOUR IS NOT DECIDED HERE ANY MORE. It used to be a
+            # second arithmetic beside the text's, over `created` rather
+            # than the denominator the text printed, so the words and
+            # the colour could describe different quantities. One
+            # composer now answers both.
+            if ratio_colour:
+                ratio_lbl.setStyleSheet(f"color: {ratio_colour};")
+            install_health_row(
+                sf,
+                "Cycle close ratio (folded / opened minus discarded):",
+                ratio_lbl,
+                FOLD_CLOSE_RATIO_TOOLTIP,
+            )
 
             # v3.24.44 — discarded tranches are counted separately from
             # closed ones, because a discard did NOT fold. Shown only
             # once non-zero so the panel stays quiet on bots that have
             # never been cleared.
-            discarded_lifetime = int(
-                getattr(self._bot, "_tranches_discarded_lifetime", 0) or 0
-            )
+            #
+            # THE LABEL NO LONGER SAYS "cleared". Issue #98 defect 4: a
+            # clear is one of four ways a tranche is discarded. The
+            # despawn sweep, a detonation and the fold guard's
+            # unreadable-record drop write this same counter, so naming
+            # one of the four made the other three read as missing.
             if discarded_lifetime:
-                sf.addRow(
-                    "Lifetime tranches discarded (cleared, not folded):",
+                install_health_row(
+                    sf,
+                    "Lifetime tranches discarded (not folded back):",
                     QLabel(str(discarded_lifetime)),
+                    FOLD_DISCARDED_TOOLTIP,
                 )
+
+            # -- issue #98 defect 10 - three persisted quantities the
+            # panel never showed ------------------------------------
+            #
+            # All three are written to the state file and read back on
+            # restore, and none of them had a row on the surface that
+            # owns them.
+            #
+            # 1. `_wire_credits_discarded_lifetime`. The Clear Wire
+            #    Credits button on THIS tab writes it, and the tranche
+            #    clear's own lifetime row sits four lines above. The
+            #    two buttons were not symmetric in what they reported:
+            #    BTC carried $343.68 and ETH $213.90 with nothing on
+            #    screen saying so. It follows the tranche row's
+            #    convention exactly - shown once it is non-zero, so a
+            #    bot that has never cleared stays quiet.
+            #
+            # 2. `_tranches_malformed_dropped`. ALWAYS SHOWN, and that
+            #    departs from the convention above on purpose. A zero
+            #    here is a positive statement - no stored tranche was
+            #    ever unreadable - and hiding it makes "none were
+            #    dropped" indistinguishable from "this panel does not
+            #    count drops". It was 0 on all 38 bots when the panel
+            #    was evaluated, which is exactly the reading a hidden
+            #    row would have thrown away.
+            #
+            # 3. `_fold_cycle_cap_consumed`, beside the budget it is
+            #    spent from. It decides how much of this queue one
+            #    cycle may take, so consumed alone is half a number:
+            #    the Settings tab already prints the pair, and this row
+            #    reads those same two fields rather than a second
+            #    arithmetic of its own.
+            _wire_discarded = _as_finite_float(
+                getattr(self._bot, "_wire_credits_discarded_lifetime", 0.0)
+            )
+            if _wire_discarded is not None and _wire_discarded > 1e-9:
+                install_health_row(
+                    sf,
+                    "Lifetime wire credits discarded (cleared):",
+                    QLabel(f"${_wire_discarded:,.4f}"),
+                    FOLD_WIRE_DISCARDED_TOOLTIP,
+                )
+
+            _malformed = int(getattr(self._bot, "_tranches_malformed_dropped", 0) or 0)
+            _malformed_lbl = QLabel(str(_malformed))
+            if _malformed:
+                # Same red the close-ratio verdict uses on this form. A
+                # dropped tranche is a record the bot could not read,
+                # which is a data fault rather than a trading outcome.
+                _malformed_lbl.setStyleSheet(f"color: {FOLD_OVER_ALLOTMENT_FG_HEX};")
+            install_health_row(
+                sf,
+                "Tranches dropped as malformed:",
+                _malformed_lbl,
+                FOLD_MALFORMED_TOOLTIP,
+            )
+
+            _cap_budget = _as_finite_float(
+                getattr(self._bot, "cycle_growth_cap_usd", 0.0)
+            )
+            _cap_consumed = _as_finite_float(
+                getattr(self._bot, "_fold_cycle_cap_consumed", 0.0)
+            )
+            _cap_text = (
+                f"${_cap_consumed:,.4f} spent of ${_cap_budget:,.4f}"
+                if _cap_budget is not None and _cap_consumed is not None
+                else "- (unreadable)"
+            )
+            install_health_row(
+                sf, "Fold budget this cycle:", QLabel(_cap_text), FOLD_CYCLE_CAP_TOOLTIP
+            )
 
             layout.addWidget(summary)
 
@@ -2072,6 +3449,7 @@ if _HAS_QT:
                 "border-color: #444444; }"
             )
             clear_btn.clicked.connect(self._on_clear_fold_tranches)
+            self._fold_clear_btn = clear_btn
 
             # v3.24.45 — operator directive 2026-08-06: "Languishing wire
             # credits can also be cleared. These too were not calculated
@@ -2102,6 +3480,7 @@ if _HAS_QT:
                 "border-color: #444444; }"
             )
             wire_btn.clicked.connect(self._on_clear_wire_credits)
+            self._fold_wire_btn = wire_btn
 
             btn_row = QHBoxLayout()
             btn_row.addWidget(clear_btn)
@@ -2141,13 +3520,52 @@ if _HAS_QT:
                 # "Patent ceiling $" → "Original cost $" to reflect its
                 # now-informational role. The OTD threshold ("Min rebuy")
                 # IS the binding per-tranche price gate.
+                #
+                # v3.26.0 (issue #97) — THE PANEL ASKS THE CODE THAT
+                # DECIDES. This read was
+                #     float(getattr(cfg, 'scrumming_interval_pct', 0) or 0)
+                # — the scrumming interval ALONE. The executor's
+                # per-tranche fold filter (`scrumming_bot.py:9857`) uses
+                # the Minimum Opposing Trade Distance, which is
+                # interval + TRADING FEE, defined in `otd_math`.
+                #
+                # MEASURED ON THE LIVE FLEET, 2026-08-23, not argued: 24
+                # of 38 bots run a 1.6% fee, so the "Min rebuy $" column
+                # printed a price 1.71% ABOVE the gate the executor
+                # applies. Over the 1,707 open fold tranches at their
+                # stored price the panel showed Price-OK on 17 where the
+                # executor accepts 11. Six green rows for a buy the
+                # executor refuses, all on ALLO/USDC.
+                #
+                # ADDING A FEE TERM TO THE ARITHMETIC HERE WOULD BE THE
+                # SAME DEFECT AGAIN. Two implementations that agree
+                # today drift the next time either one moves, which is
+                # exactly how this one was born: the fee entered the
+                # executor in v3.25.8 and this surface never heard about
+                # it. The call below is the call `scrumming_bot` makes,
+                # the config read included, so nothing is left here to
+                # drift. `_otd_factor` is bound ONCE and both consumers
+                # below read it — the Min rebuy cell and the Status
+                # verdict must never be able to disagree.
+                #
+                # Imported locally, matching the executor's own pattern
+                # and keeping this GUI module importable without
+                # `src.trading`.
                 _otd_pct = 0.0
+                _otd_factor = 1.0
                 try:
-                    _otd_pct = float(
-                        getattr(self._bot.config, "scrumming_interval_pct", 0) or 0
+                    from ..trading.otd_math import (
+                        fold_rebuy_factor_from_pct,
+                        minimum_opposing_trade_distance_pct_from_config,
                     )
+
+                    _otd_pct = minimum_opposing_trade_distance_pct_from_config(
+                        self._bot.config
+                    )
+                    _otd_factor = fold_rebuy_factor_from_pct(_otd_pct)
                 except Exception:  # R28-OK: best-effort config read
                     _otd_pct = 0.0
+                    _otd_factor = 1.0
 
                 table = QTableWidget()
                 # v3.16.53 — added "Fire" column for per-tranche
@@ -2172,6 +3590,19 @@ if _HAS_QT:
                         ARBITER_COLUMN_HEADER,
                     ]
                 )
+
+                # issue #98 defect 6 - THE AUTHORITY THE COMMENT NAMED
+                # NOW EXISTS. Zero of the eleven headers carried a
+                # tooltip while the comment below this table said header
+                # tooltips were the authoritative per-column
+                # documentation. `setHorizontalHeaderLabels` creates one
+                # item per column, so each is asked for by index rather
+                # than built a second time here.
+                for _col, _tip in enumerate(FOLD_COLUMN_TOOLTIPS):
+                    _head = table.horizontalHeaderItem(_col)
+                    if _head is not None:
+                        _head.setToolTip(_tip)
+
                 table.horizontalHeader().setSectionResizeMode(
                     QHeaderView.ResizeToContents
                 )
@@ -2183,7 +3614,20 @@ if _HAS_QT:
                 # Extractor Tranche placed among them would shift that
                 # mapping and fire an unrelated tranche.
                 table.setRowCount(len(tranches) + len(ext_rows))
-                table.setMaximumHeight(280)
+                # issue #98 defect 7 - the cap was a flat 280px over
+                # 30px rows, so about EIGHT of up to 230 rows were on
+                # screen. The height now follows the row count up to
+                # `TRANCHE_TABLE_VISIBLE_ROWS`, and the header is
+                # MEASURED rather than assumed: `ResizeToContents` below
+                # sizes it to its own labels, so a hard-coded header
+                # height would clip the last row on any theme with a
+                # different font.
+                table.setMaximumHeight(
+                    fold_table_max_height_px(
+                        len(tranches) + len(ext_rows),
+                        table.horizontalHeader().sizeHint().height(),
+                    )
+                )
                 table.setAlternatingRowColors(True)
                 table.setEditTriggers(QTableWidget.NoEditTriggers)
 
@@ -2235,8 +3679,16 @@ if _HAS_QT:
                 except Exception:  # R28-OK: best-effort price fetch for display only
                     cur_price = 0.0
 
-                for row, t in enumerate(tranches):
-                    table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
+                # issue #98 defect 7 - the operator chooses the order,
+                # and the QUEUE INDEX travels with the row rather than
+                # being re-derived from the visual position. `row` is
+                # where the row is drawn; `queue_index` is where the
+                # tranche sits in `_fold_tranches`. Only the second one
+                # is printed, and only the second one is quoted back by
+                # the Fire confirmation.
+                _ordered = fold_display_order(tranches, fold_sort_order(self))
+                for row, (queue_index, t) in enumerate(_ordered):
+                    table.setItem(row, 0, QTableWidgetItem(str(queue_index + 1)))
 
                     # THE SAME ADMISSION AS THE SUMMARY ROW ABOVE,
                     # and it has to stay the same one. Both render
@@ -2316,18 +3768,28 @@ if _HAS_QT:
                         ),
                     )
 
-                    # v3.16.42 — Min rebuy estimate (operator directive):
-                    # ref × (1 - OTD/100). OTD-derived guide ONLY — actual
-                    # fold-back additionally requires TA validation in the
-                    # GEP (Gating Evaluation Protocol). This column does
-                    # NOT bypass TA; it shows where OTD's hysteresis gate
+                    # v3.16.42 — Min rebuy estimate (operator directive).
+                    # OTD-derived guide ONLY — actual fold-back
+                    # additionally requires TA validation in the GEP
+                    # (Gating Evaluation Protocol). This column does NOT
+                    # bypass TA; it shows where OTD's hysteresis gate
                     # would clear for this tranche IF TA confirms.
+                    #
+                    # v3.26.0 (issue #97) — `_otd_factor` comes from
+                    # `otd_math`, the module the executor calls. The
+                    # expression here was `ref_v * (1.0 - _otd_pct /
+                    # 100.0)` over an interval-only `_otd_pct`, which is
+                    # a second implementation of the executor's gate and
+                    # printed a price the executor refuses.
                     if ref_v is not None and ref_v > 0 and _otd_pct > 0:
-                        min_rebuy_v = ref_v * (1.0 - _otd_pct / 100.0)
+                        min_rebuy_v = ref_v * _otd_factor
                         mr_item = QTableWidgetItem(f"≤${min_rebuy_v:.8f}")
                         mr_item.setToolTip(
                             f"OTD-derived guide only (ref × (1 − "
-                            f"{_otd_pct:.2f}%)). Fold-back requires TA "
+                            f"{_otd_pct:.2f}%), the Minimum Opposing "
+                            f"Trade Distance = scrumming interval + "
+                            f"trading fee, read from the same otd_math "
+                            f"the executor uses). Fold-back requires TA "
                             f"validation in the GEP regardless. This is "
                             f"NOT a trigger price."
                         )
@@ -2344,13 +3806,21 @@ if _HAS_QT:
                     # not gate fold-back. Compound saturation is governed
                     # by position-level smart ceiling (visible in Bot
                     # Settings, not per-tranche).
+                    #
+                    # v3.26.0 (issue #97) — the threshold is
+                    # `ref_v * _otd_factor`, the SAME binding the Min
+                    # rebuy cell above reads, from the SAME `otd_math`
+                    # call the executor makes. It was a second copy of
+                    # `ref_v * (1.0 - _otd_pct / 100.0)` over an
+                    # interval-only percentage, so a row could show a
+                    # green "Price-OK" for a buy the executor refuses.
                     if (
                         cur_price > 0
                         and ref_v is not None
                         and ref_v > 0
                         and _otd_pct > 0
                     ):
-                        otd_thresh = ref_v * (1.0 - _otd_pct / 100.0)
+                        otd_thresh = ref_v * _otd_factor
                         otd_factor_diff_pct = (
                             (cur_price - otd_thresh) / otd_thresh * 100.0
                         )
@@ -2395,12 +3865,20 @@ if _HAS_QT:
                     else:
                         table.setItem(row, 7, QTableWidgetItem("—"))
 
-                    src_str = (
-                        "manual fire" if t.get("operator_initiated") else "auto scrum"
-                    )
+                    # issue #98 defect 5 — THE COLUMN NAMES THE ACTION
+                    # THAT CREATED THE ROW. It used to print "manual
+                    # fire", a BUY, which is the action that REMOVES a
+                    # tranche. The mapping and the live counts behind
+                    # the three labels are at the top of this module.
+                    src_str = _fold_tranche_source_label(t)
                     si = QTableWidgetItem(src_str)
-                    if t.get("operator_initiated"):
-                        si.setForeground(QColor("#00ccff"))
+                    si.setToolTip(FOLD_SOURCE_TOOLTIPS[src_str])
+                    if src_str == FOLD_SOURCE_MANUAL_SCRUM:
+                        # The one semantic foreground on this column,
+                        # unchanged. `_paint_fold_tranche_row` measured
+                        # it at 6.12:1 against the fold fill and leaves
+                        # any cell that already owns a foreground alone.
+                        si.setForeground(QColor(FOLD_SOURCE_MANUAL_FG_HEX))
                     table.setItem(row, 8, si)
 
                     # v3.16.53 — Fire button for per-tranche operator-
@@ -2452,10 +3930,25 @@ if _HAS_QT:
                     )
                     # Capture tranche IDENTITY (not row index) so we
                     # can resolve the current index at click time.
+                    #
+                    # issue #98 defect 8 - THE NUMBER ON THE ROW IS
+                    # CAPTURED TOO, and it is a different thing from the
+                    # identity. The confirmation used to print the index
+                    # it re-resolved at click time, so a fold landing
+                    # between the panel being built and the button being
+                    # pressed shifted every later index and the dialog
+                    # named a tranche the operator had not clicked. The
+                    # BUY was always correct - identity capture saw to
+                    # that - but the number authorising it was not. This
+                    # is the same capture-at-build-time mechanism the
+                    # Arbiter button already uses for `tranche_id`, and
+                    # it is one mechanism rather than a second: what is
+                    # captured is what the operator can see.
                     _captured = t
+                    _captured_number = queue_index + 1
                     fire_btn.clicked.connect(
-                        lambda _checked=False, tr=_captured: self._on_fire_tranche_clicked(
-                            tr
+                        lambda _checked=False, tr=_captured, shown=_captured_number: self._on_fire_tranche_clicked(
+                            tr, shown
                         )
                     )
                     table.setCellWidget(row, 9, fire_btn)
@@ -2494,6 +3987,37 @@ if _HAS_QT:
                     table, ext_rows, len(tranches), now_ts
                 )
 
+                # The two counts stay named apart here for the same
+                # reason the group title names them apart: an Extractor
+                # row is a child's lease, not this bot's fold
+                # inventory, and the refresh pin subtracts one from the
+                # other rather than reporting their sum.
+                self._fold_tranche_table = table
+                self._fold_ext_row_count = len(ext_rows)
+
+                # issue #98 defect 7 - WHAT THE FILTER SEARCHES, read
+                # off the built table and nowhere else. Every string
+                # here is a cell this panel composed from a stored
+                # field, so the filter can never match a quantity the
+                # operator cannot see, and there is no second reading of
+                # the tranche dict that could disagree with the first.
+                # Harvested AFTER the Extractor rows, so a lease row is
+                # filtered by the same rule as a fold row.
+                # `table.item` returns `QTableWidgetItem | None`, so
+                # the item is bound ONCE and narrowed before `.text()`
+                # is asked for. A comprehension that called `item`
+                # twice would read a different object on each call and
+                # both type checkers would be right to refuse it.
+                _harvested: list[list[str]] = []
+                for _r in range(table.rowCount()):
+                    _cells: list[str] = []
+                    for _c in range(table.columnCount()):
+                        _item = table.item(_r, _c)
+                        _cells.append("" if _item is None else _item.text())
+                    _harvested.append(_cells)
+                self._fold_row_texts = _harvested
+
+                dl.addLayout(build_fold_row_controls(self))
                 dl.addWidget(table)
                 layout.addWidget(detail_group)
             else:
@@ -2636,13 +4160,47 @@ if _HAS_QT:
             item.setText(label)
             item.setToolTip(tip)
 
-        def _on_fire_tranche_clicked(self, tranche: dict) -> None:
+        def _on_fire_tranche_clicked(
+            self, tranche: dict, clicked_number: int | None = None
+        ) -> None:
             """v3.16.53 — operator-initiated per-tranche fold-back.
 
             Resolves the tranche's current index (in case the list
             mutated since the table was built), confirms with the
             operator, then schedules bot.manual_fire_tranche on the
             bot manager's async loop.
+
+            issue #98 defect 8 - THE DIALOG NAMES THE ROW THAT WAS
+            CLICKED. `clicked_number` is the `#` printed on that row,
+            captured in the button's own closure when the row was
+            built, beside the identity capture that was already there.
+
+            WHAT WAS MEASURED. Every operator-facing string in this
+            method printed `idx + 1`, the index re-resolved HERE at
+            click time. The panel is a snapshot and the bot keeps
+            trading behind it, so a fold that consumes an earlier
+            tranche shifts every later index down by one: the operator
+            clicks the row printed 7 and the confirmation offers to
+            fire tranche 6. The BUY was never wrong - `tranches.index`
+            finds the captured dict wherever it moved to - but a
+            confirmation for a market buy named a tranche the operator
+            had not pointed at, at the one moment the action cannot be
+            undone.
+
+            TWO NUMBERS, AND THEY ARE NOT INTERCHANGEABLE. `idx` is
+            what the ORDER needs: `manual_fire_tranche(idx)` indexes
+            the live list, so it stays the resolved one and is not
+            touched. `_row_no` is what the OPERATOR needs: the number
+            they read. When the two disagree the confirmation says so
+            in a line of its own rather than picking one and hiding the
+            other, because a queue that moved under the panel is
+            something the operator should know before authorising a
+            buy.
+
+            `clicked_number` DEFAULTS TO None, and the fallback is the
+            resolved index. A caller with no row number - a test
+            driving this handler directly, or any future caller - gets
+            exactly the pre-repair strings rather than a blank.
             """
             from PySide6.QtWidgets import QMessageBox
             import asyncio as _asyncio
@@ -2664,15 +4222,30 @@ if _HAS_QT:
                 try:
                     idx = tranches.index(tranche)
                 except ValueError:
+                    # The clicked number is the ONLY number available
+                    # here: there is no index to resolve, because the
+                    # tranche is gone. Naming the row the operator
+                    # pressed is what tells them WHICH one vanished.
+                    _gone = (
+                        "This tranche"
+                        if clicked_number is None
+                        else f"Tranche #{clicked_number}"
+                    )
                     QMessageBox.warning(
                         self,
                         "Tranche unavailable",
-                        "This tranche is no longer in the fold queue "
-                        "(it may have just been consumed by an "
-                        "auto-fold or another manual action). Refresh "
-                        "the tab.",
+                        f"{_gone} is no longer in the fold queue "
+                        f"(it may have just been consumed by an "
+                        f"auto-fold or another manual action). Refresh "
+                        f"the tab.",
                     )
                     return
+
+                # issue #98 defect 8 - the number the operator READ.
+                # Everything they are shown from here down quotes
+                # `_row_no`. `idx` is kept for the order alone.
+                _row_no = idx + 1 if clicked_number is None else int(clicked_number)
+                _moved = _row_no != idx + 1
 
                 # Confirm
                 #
@@ -2755,16 +4328,18 @@ if _HAS_QT:
                 if _unreadable:
                     _bad = "\n".join(_unreadable)
                     logger.error(
-                        "Bot %s manual fire REFUSED on tranche #%d: "
-                        "unreadable stored value(s): %s",
+                        "Bot %s manual fire REFUSED on tranche #%d "
+                        "(queue index %d): unreadable stored "
+                        "value(s): %s",
                         getattr(self._bot, "bot_id", "?")[:8],
+                        _row_no,
                         idx + 1,
                         "; ".join(_unreadable),
                     )
                     QMessageBox.critical(
                         self,
                         "Manual Fire refused — unreadable value",
-                        f"Tranche #{idx + 1} was NOT fired. NO ORDER "
+                        f"Tranche #{_row_no} was NOT fired. NO ORDER "
                         f"WAS PLACED.\n\n"
                         f"This tranche stores a value that is not a "
                         f"usable number:\n\n{_bad}\n\n"
@@ -2781,11 +4356,30 @@ if _HAS_QT:
                 _usd = _clean["USD parked"]
                 _ref = _clean["Sell ref"]
                 _ibp = _clean["Original cost"]
+                # issue #98 defect 8 - the confirmation names the
+                # row that was clicked. When the queue has moved
+                # under the panel the shift gets a line of its own:
+                # the operator is told the record they pointed at
+                # has slid, rather than being shown one of the two
+                # numbers with no way to tell which.
+                # `manual_fire_tranche` still receives `idx`, so
+                # the buy is unchanged either way.
+                _moved_note = (
+                    f"THE QUEUE HAS MOVED. You clicked the row "
+                    f"printed #{_row_no}. That same tranche now "
+                    f"sits at #{idx + 1} in the fold queue, "
+                    f"because tranches before it were folded or "
+                    f"cleared after this panel was built. This "
+                    f"fires the tranche you clicked.\n\n"
+                    if _moved
+                    else ""
+                )
                 _confirm_msg = (
-                    f"Fire tranche #{idx + 1}?\n\n"
+                    f"Fire tranche #{_row_no}?\n\n"
                     f"  USD parked:    ${_usd:.4f}\n"
                     f"  Sell ref:      ${_ref:.8f}\n"
                     f"  Original cost: ${_ibp:.8f}\n\n"
+                    f"{_moved_note}"
                     f"This will execute a MARKET buy at the current "
                     f"price, bypassing TA / OTD / Target-Delta gates. "
                     f"Smart Ceiling and MEM-257 fail-closed still apply."
@@ -2841,7 +4435,7 @@ if _HAS_QT:
                 QMessageBox.information(
                     self,
                     "Manual Fire dispatched",
-                    f"Fold-back dispatched on tranche #{idx + 1}.\n\n"
+                    f"Fold-back dispatched on tranche #{_row_no}.\n\n"
                     f"Watch the Activity Log for the outcome. The "
                     f"result dialog will appear here when the buy "
                     f"completes (no time limit — Coinbase market "
@@ -2869,7 +4463,7 @@ if _HAS_QT:
                                 QMessageBox.warning(
                                     self,
                                     "Manual Fire raised",
-                                    f"Tranche #{idx + 1} fold-back "
+                                    f"Tranche #{_row_no} fold-back "
                                     f"raised:\n\n"
                                     f"{type(_rx).__name__}: {_rx}\n\n"
                                     f"See Activity Log for full trace.",
@@ -2879,17 +4473,34 @@ if _HAS_QT:
                                 _fill = result.get("fill_price", 0.0)
                                 _units = result.get("units_returned", 0.0)
                                 _remaining = result.get("remaining_tranches", 0)
+                                # issue #98 defect 1 - THE SIBLING
+                                # HOLE. A filled fold-back removes the
+                                # tranche it fired, so this panel is
+                                # stale for exactly the reason a clear
+                                # leaves it stale, and it used to say
+                                # so instead of fixing it. No save is
+                                # forced here: the fill itself is a
+                                # TRADE, and the trade path owns its
+                                # own persistence.
+                                _r = self._refresh_fold_tranches_tab()
                                 QMessageBox.information(
                                     self,
                                     "Manual Fire complete",
-                                    f"Tranche #{idx + 1} fold-back "
+                                    f"Tranche #{_row_no} fold-back "
                                     f"filled.\n\n"
                                     f"  Fill price:   ${_fill:.8f}\n"
                                     f"  Units back:   {_units:.6f}\n"
                                     f"  Remaining:    {_remaining} "
                                     f"tranche(s)\n\n"
-                                    f"Tab will refresh on next "
-                                    f"dialog open.",
+                                    + (
+                                        "The panel behind this message "
+                                        "has been rebuilt and now shows "
+                                        "the new state."
+                                        if _r == "refreshed"
+                                        else f"The panel was {_r}. Close and "
+                                        f"reopen this dialog to see the "
+                                        f"new state."
+                                    ),
                                 )
                             else:
                                 _reason = (
@@ -2900,7 +4511,7 @@ if _HAS_QT:
                                 QMessageBox.warning(
                                     self,
                                     "Manual Fire refused",
-                                    f"Tranche #{idx + 1} fold-back "
+                                    f"Tranche #{_row_no} fold-back "
                                     f"NOT applied.\n\n"
                                     f"Reason: {_reason}",
                                 )
@@ -4102,11 +5713,14 @@ if _HAS_QT:
                 )
             sf.addRow("Standing surplus:", _surplus_lbl)
 
+            # Issue #106 - was `_anchor_tb * pct / 100`, the frozen
+            # input value. The bot bounds each Fold with
+            # `cycle_growth_cap_usd`, whose base is the grown target, so
+            # this row and the "Over-cap tranches" row below it both
+            # used to describe a budget the bot had stopped using. Read
+            # the property rather than respelling it.
             _budget = round(
-                _anchor_tb
-                * float(getattr(cfg, "max_target_growth_pct", 0.0) or 0.0)
-                / 100.0,
-                8,
+                float(getattr(self._bot, "cycle_growth_cap_usd", 0.0) or 0.0), 8
             )
             _consumed = float(
                 getattr(self._bot, "_fold_cycle_cap_consumed", 0.0) or 0.0
@@ -4415,11 +6029,22 @@ if _HAS_QT:
             )
             af.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
 
-            # Item 9 (2026-08-13) — Tranche Despawn Timer. Delists aged
-            # tranches from the tracker, both ledgers, from this one
-            # control. Whole days, which is the unit the Fold Tranches
-            # panel already reports ages in. 0 shows as "Off" and is the
-            # default.
+            # Item 9 (2026-08-13) — Tranche Despawn Timer. DESPAWNS
+            # aged tranches from both ledgers, from this one control.
+            # Whole days, the unit the Fold Tranches panel already
+            # reports ages in. 0 shows as "Off" and is the default.
+            #
+            # issue #103 — THE DEFAULT STAYS 0, and that is a measured
+            # decision rather than an omission. All 38 live bots store
+            # `tranche_despawn_days` EXPLICITLY as 0, and the loader
+            # reads the stored value (`bot_container.py:3687`), so
+            # changing the dataclass default would not reach one bot on
+            # this fleet. It would only arm the timer on bots created
+            # afterwards, silently, on records their operator never
+            # opted in for. What was actually missing is a surface that
+            # says the setting exists and what it would cost; that is
+            # now on the Fold Tranches tab, where the tranche count the
+            # operator worries about already is.
             #
             # THE SEED IS READ THROUGH THE CONSUMER'S OWN RULE.
             # `despawn_threshold_days` is the function the sweep calls,
@@ -4440,22 +6065,30 @@ if _HAS_QT:
             self._tranche_despawn_days.setSpecialValueText("Off")
             self._tranche_despawn_days.setValue(despawn_threshold_days(cfg))
             self._tranche_despawn_days.setToolTip(
-                "Delist any tranche this old from the tracker — both\n"
-                "fold tranches and stack tranches, from this one\n"
-                "setting. 0 = Off (default).\n\n"
-                "DELISTING IS NOT A TRADE. No order is placed or\n"
-                "cancelled, no balance moves, holdings and cost basis\n"
-                "are untouched. Only the record goes.\n\n"
+                "DESPAWN any tranche this old - both fold tranches\n"
+                "and stack tranches, from this one setting. 0 = Off\n"
+                "(default).\n\n"
+                "MERGE, DESPAWN and CLEAR are the only three things\n"
+                "that collapse or remove a tranche. This is despawn:\n"
+                "the age-driven one.\n\n"
+                "IT IS NOT A TRADE. No order is placed or cancelled,\n"
+                "no balance moves, holdings and cost basis are\n"
+                "untouched. The record goes.\n\n"
                 "WHAT THE RECORD HELD: the tranche's ref price, its\n"
-                "parked fold USD, and its initial_buy_price (the\n"
-                "MEM-171 provenance figure). A delisted tranche can no\n"
-                "longer fold back, so that money re-enters the bot as\n"
-                "ordinary spendable balance rather than as a queued\n"
-                "rebuy.\n\n"
-                "A tranche is delisted at exactly this age or older. A\n"
-                "tranche with no timestamp is NEVER delisted, and a\n"
-                "stack tranche holding a resting exchange order is kept\n"
-                "until that order settles."
+                "parked fold USD, its units, and its initial_buy_price\n"
+                "(the MEM-171 provenance figure). The scrum sale that\n"
+                "made it already happened, so those dollars are\n"
+                "already in the wallet - the record was only the\n"
+                "queued intent to buy the units back. A despawned\n"
+                "tranche can no longer fold back, so that money goes\n"
+                "from queued rebuy to ordinary spendable balance.\n\n"
+                "A tranche is despawned at exactly this age or older.\n"
+                "A tranche with no timestamp is NEVER despawned, and\n"
+                "a stack tranche holding a resting exchange order is\n"
+                "kept until that order settles.\n\n"
+                "SEE THE COUNT FIRST: the Fold Tranches tab prints how\n"
+                "many of this bot's tranches each candidate window\n"
+                "would remove, and what they hold."
             )
             self._tranche_despawn_days.valueChanged.connect(
                 lambda v: self._mark_changed("tranche_despawn_days", v)
