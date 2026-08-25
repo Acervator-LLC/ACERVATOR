@@ -1254,6 +1254,53 @@ if _HAS_QT:
                 state = status.get("state", "idle")
                 panel = info["panel"]
 
+                # Issue #46 -- THE PANEL FOLLOWS THE BOT'S SYMBOL.
+                # `info["symbol"]` used to be written in the CREATE
+                # branch alone. `fetch_chart_data` reads THAT field
+                # and hands it to the exchange, so a bot whose pair
+                # changed kept a chart titled with the new pair over
+                # candles fetched for the old one -- silently, and for
+                # as long as the panel lived.
+                #
+                # RE-POINTING THE FETCH IS NECESSARY AND NOT
+                # SUFFICIENT. Five things on this panel belong to the
+                # old pair, so all five move together:
+                #   - the stored symbol, which IS the fetch target;
+                #   - `last_fetch`, or the 30 s throttle holds the old
+                #     pair's candles on screen for a whole window
+                #     after the title already says the new pair. The
+                #     same re-arm `_on_tf_changed` does for a
+                #     timeframe change;
+                #   - the header text, which the relabel below rewrites
+                #     only when a price is known;
+                #   - the candles, which are the old market's prices.
+                #     CLEARING THEM IS WHAT KEEPS AN UNKNOWN NEW PAIR
+                #     HONEST: an empty answer calls `set_error` and
+                #     leaves the candles standing, which would revive
+                #     this exact defect on the next pair;
+                #   - the trade markers, which are anchored to the old
+                #     market's prices. The block below replaces them
+                #     only when the new pair HAS trades, so on a fresh
+                #     pair the old pair's markers stayed drawn.
+                # THE PANEL IS RESET, NOT REBUILT. Rebuilding it would
+                # throw away the timeframe and the indicator toggles
+                # the operator chose on this chart.
+                if info["symbol"] != symbol:
+                    logger.info(
+                        "Asset Charts: panel for bot %s follows %s -> %s",
+                        bot_id[:8], info["symbol"], symbol)
+                    info["symbol"] = symbol
+                    info["last_fetch"] = 0
+                    # The public setter, which repaints. The relabel
+                    # below still reaches for `_symbol` directly; that
+                    # line is older than this branch and is not this
+                    # issue's to move.
+                    panel.chart.symbol = symbol
+                    panel.chart.set_candles([])
+                    panel.chart.set_trade_history_markers([])
+                    panel.set_source("")
+                    panel.chart.set_error(f"{symbol}: awaiting candles")
+
                 if price > 0:
                     panel.chart._symbol = f"{symbol}  \u2022  ${price:.8f}  \u2022  {state.upper()}"
 
