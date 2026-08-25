@@ -444,6 +444,7 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 #   03d05460421d2c601a37dadc5cd97b6a77805a974ac29f6f3f2b5e75cf7f40f5
 #   ac3459c2b80406bf7c4e9698c186cb29c77fe32c17ef6d3a8a1f5cb56f3076aa
 #   b8b79a6a88c2f7bc2e6f34104712d9faa4ee67c86e53e7655429a6b632b6f5c2
+#   a01b0b512fa63c2d117b4d3fc24cbb5a251c8db65a30d06a7864c26a41396610
 # Re-derived 2026-08-25. FOUR things moved under this digest and the
 # re-derivation enumerated every one: black's layout pass, the 42 re-anchored
 # citation numbers, the F541 f-prefix fix, and an autoflake pass that dropped
@@ -452,7 +453,32 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 # removals only. FLAGGED, not absorbed: one of them, `_intended_buy_asset =
 # buy_cost / ticker.last`, was an UNGUARDED division, so a zero last price
 # used to raise here and now does not.
-PRE_CHANGE_SHA256 = "a01b0b512fa63c2d117b4d3fc24cbb5a251c8db65a30d06a7864c26a41396610"
+#
+# RE-BASED AGAIN 2026-08-25, issue #133 unit 6, same tripwire, same
+# reason. One repair landed in ``scrumming_bot.py`` outside the gate
+# block and outside every span in ``SITE_B_SPANS``, so it reaches this
+# digest:
+#
+#   6. the HEDGE REBALANCE block sized itself on ``delta``, which
+#      ``tick`` computes once at :9088. The fold above the block spends
+#      tranche funds and moves BOTH of that subtraction's operands, so
+#      the reserve bought the deficit the tranche dollars had just
+#      closed a second time. Measured on a 400-candle replay, seed
+#      20260825: gap $5.0627, fold $1.0070, $4.1617 left, reserve
+#      $5.0955. The block now re-reads the gap from live state.
+#
+# WHAT THIS RE-BASE IS. +23 lines inserted after :12572 and two lines
+# rewritten in place, in ONE band. No method is added or removed and no
+# anchor string gains an occurrence. The 14 ``:NNNN`` citations after
+# that band -- 12 in ``apply_extractor_tranche_return``'s prose and the
+# two range second-halves it also carries -- were shifted +23 by
+# ordinal, cross-checked against the git hunk map
+# (``@@ -12572,0 +12573,23 @@``), and ``CITATION_ANCHORS`` in
+# ``tests/test_extractor_tranche_containment.py`` was shifted to match.
+# All 42 anchors resolve and that file's 121 tests pass.
+#
+# ``_pre_change_source`` returns zero orphans.
+PRE_CHANGE_SHA256 = "7dbcdf491175a80aa186bb06cc7345c7491a7353e2570acc5bb0c2eb98ca55e1"
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE."

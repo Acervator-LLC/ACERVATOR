@@ -3203,7 +3203,7 @@ class ScrummingBot(BotContainer):
         exception, because `__float__` on the stored value is the one
         place caller-shaped data still gets to run code. The units
         value is deliberately NOT type-refused the way the two money
-        parameters are: `_main_lots_invariant_ok` (:18204) coerces the
+        parameters are: `_main_lots_invariant_ok` (:18227) coerces the
         same field with a bare `sum`, and refusing here what that
         accepts would put the ledger's two readers on different rules.
 
@@ -3304,10 +3304,10 @@ class ScrummingBot(BotContainer):
 
         KNOWN LIMITATION -- CONTAINMENT DOES NOT SURVIVE A DRIFT-DOWN
         RECONCILE, AND BOTH LIFTED BALANCES ARE LEFT BEHIND.
-        `_reconcile_holdings` (:13701) writes `_main_lots` and
+        `_reconcile_holdings` (:13724) writes `_main_lots` and
         `_current_holdings` and writes NEITHER `_target_balance` NOR
         `_anchor_target_balance` anywhere (AST-verified over the whole
-        function, both names). Its drift-DOWN branch (:13994-14014)
+        function, both names). Its drift-DOWN branch (:14017-14037)
         rescales every lot by `exchange_units / internal_units` and
         resets holdings to the exchange figure. Run it after an arrival
         and the units go while both lifts stay: a $20 arrival on a
@@ -3353,16 +3353,16 @@ class ScrummingBot(BotContainer):
         bot owns exactly what is in `_main_lots` and derives
         `_current_holdings` from that source alone (:8098). The
         invariant `sum(lot["units"]) == _current_holdings` (:736) is
-        checked by `_main_lots_invariant_ok` (:18204). Two consequences,
+        checked by `_main_lots_invariant_ok` (:18227). Two consequences,
         both load-bearing:
 
           * Incrementing `_current_holdings` without appending a lot
             breaks the invariant, and the next drift-down reconcile
-            rescales `_main_lots` and resets holdings (:13994-14014),
+            rescales `_main_lots` and resets holdings (:14017-14037),
             silently undoing the credit.
           * Booking nothing at all is not neutral either. Units that
             land on the exchange but are never attributed are refused
-            by the drift-UP policy (:14016-14049) -- "those units
+            by the drift-UP policy (:14039-14072) -- "those units
             belong to another bot, prior state, or operator" -- so the
             child's gain would sit unclaimed forever.
 
@@ -3372,16 +3372,16 @@ class ScrummingBot(BotContainer):
         scalar" and the file does not do that. There are two shapes:
 
           SPLIT ACROSS AN AWAIT, and it is the common one. `_execute_buy`
-            (:17512) moves the scalar -- `self._current_holdings +=
-            amount` (:18053) -- and appends NO lot. Its callers append
+            (:17535) moves the scalar -- `self._current_holdings +=
+            amount` (:18076) -- and appends NO lot. Its callers append
             the lot after the await returns: `tick` at :9008 -> :9039,
-            :11950 -> :12015, :12589 -> :12631, and `manual_fire_tranche`
+            :11950 -> :12015, :12612 -> :12654, and `manual_fire_tranche`
             at :4139 -> :4195. Between the scalar write and the lot
             append the coroutine has already yielded, so the :736
             invariant is briefly false and a tick can see it.
 
-          SYNCHRONOUS, and rarer. `_execute_manual_rebalance` (:14316)
-            appends (:15407 / :15448) and moves the scalar (:15481)
+          SYNCHRONOUS, and rarer. `_execute_manual_rebalance` (:14339)
+            appends (:15430 / :15471) and moves the scalar (:15504)
             with nothing suspending in between.
 
         This method is deliberately the second shape. The first shape is
@@ -12570,14 +12570,37 @@ class ScrummingBot(BotContainer):
         #
         # Not gated by phantom lock or bb_midline_gate — hedge is downside
         # protection and must work in bearish regimes by design.
+        #
+        # THE GAP IS RE-READ HERE AND `delta` IS NOT USED. Issue #133
+        # unit 6, operator rule: "when a buy is triggered, tranched
+        # funds are considered first and are spent". They are — the fold
+        # above runs first — but `delta` was measured at :9088, BEFORE
+        # it, and the fold moves both of that subtraction's operands:
+        # `_execute_buy` credits `_current_holdings` and
+        # `_apply_fold_target_growth` raises `_target_balance`. Sizing
+        # the reserve on the stale figure buys the same deficit twice,
+        # so the tranche dollars bought the bot nothing and it paid two
+        # fees instead of one. MEASURED on a 400-candle replay, one
+        # tick, seed 20260825: gap $5.0627, the fold spent $1.0070 of
+        # tranche capital and grew the target $0.0990, leaving $4.1617 --
+        # and the reserve took $5.0955. See
+        # tests/test_hedge_reserve_reads_the_gap_the_fold_left.py.
+        #
+        # Spelled exactly as the tick's own `current_value` at :8103 --
+        # holdings x this tick's price x quote->USD. `position_value_usd`
+        # is NOT used: it reads `_last_trade_price`, which the fold above
+        # has just overwritten with its own fill.
+        _hedge_gap_usd = self._target_balance - (
+            self._current_holdings * ticker.last * float(self._quote_to_usd or 1.0)
+        )
         if (
             self.config.hedge_rebalance_active
             and self._hedge_bal > 0.01
-            and delta < 0
+            and _hedge_gap_usd > 0
             and not is_bullish
             and bb_pos < 0.40
         ):
-            _gap = abs(delta)
+            _gap = _hedge_gap_usd
             if _gap / max(self._target_balance, 1e-9) >= 0.01:
                 _use = min(self._hedge_bal * 0.5, _gap)
                 if _use > 0.01:
