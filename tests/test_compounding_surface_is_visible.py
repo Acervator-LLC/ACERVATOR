@@ -166,3 +166,81 @@ class TestTheStaleClaimWasCorrected:
     def test_it_is_now_actually_surfaced(self):
         """The sentence is made true by the code, not by the sentence."""
         assert "standing_surplus" in GUI_SRC
+
+
+# ── main's functional half, kept alongside the source-text half ─────
+#
+# The four tests below cover four of the subjects above by RUNNING
+# get_status instead of reading its source. Both halves are kept: the
+# functional one cannot be fooled by a comment, and the source-text one
+# still pins the eleven GUI-render facts a stubbed bot cannot reach.
+from src.trading.bot_container import BotStats  # noqa: E402
+from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
+
+# The compounding surface: runtime keys get_status must export so a GUI can
+# show whether compounding has moved anything.
+FUNCTIONAL_SURFACE_KEYS = (
+    "live_target_balance",
+    "standing_surplus_usd",
+    "fold_cycle_cap_consumed",
+    "cycle_growth_budget_usd",
+    "tranches_over_cycle_cap",
+    "tranches_over_cycle_cap_usd",
+)
+
+
+def _stub(**kw):
+    return type("_Stub", (), kw)()
+
+
+def _bot(target_balance: float = 1000.0, live_target_balance: float = 1234.5):
+    """A ScrummingBot with stubbed collaborators, ready for get_status().
+
+    Collaborators the method reads (config/state/stats and a few scalar
+    attributes) are stubbed; the method under test is the real one.
+    """
+    bot = object.__new__(ScrummingBot)
+    bot.config = _stub(
+        target_balance=target_balance,
+        target_asset="BTC",
+        base_currency="USD",
+        name="bot",
+        mode=_stub(value="scrumming"),
+        exchange_id="coinbase",
+        symbol="BTC/USD",
+    )
+    bot.bot_id = "bot"
+    bot.symbol = "BTC/USD"
+    bot.state = _stub(value="idle")
+    bot.stats = BotStats()
+    bot._start_time = 0.0
+    bot._live_target_balance = live_target_balance
+    return bot
+
+
+class TestTheStatusDictCarriesTheSurfaceFunctionally:
+    def test_every_surface_key_is_exported(self):
+        status = _bot().get_status()
+        missing = [k for k in FUNCTIONAL_SURFACE_KEYS if k not in status]
+        assert (
+            not missing
+        ), f"get_status does not export {missing}; no GUI can show them"
+
+    def test_the_config_target_is_still_exported(self):
+        # NEGATIVE CONTROL: the additions must not displace the field existing
+        # consumers (the spinbox change-detector) read.
+        assert "target_balance" in _bot().get_status()
+
+    def test_live_and_config_targets_are_distinct_keys(self):
+        # They are different quantities; collapsing them into one key is the
+        # defect, not the fix.
+        status = _bot(target_balance=1000.0, live_target_balance=1500.0).get_status()
+        assert "target_balance" in status and "live_target_balance" in status
+        assert status["target_balance"] == 1000.0
+
+    def test_the_over_cap_summary_does_not_raise(self):
+        # A status call that raises takes the dashboard down; getting a clean
+        # dict back IS the proof the over-cap arithmetic is guarded.
+        status = _bot().get_status()
+        assert "tranches_over_cycle_cap" in status
+        assert "tranches_over_cycle_cap_usd" in status
