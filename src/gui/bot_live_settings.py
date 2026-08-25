@@ -436,11 +436,12 @@ FOLD_FILTER_PLACEHOLDER = "Filter rows..."
 
 # ── Summary-row tooltips (defect 6) ──────────────────────────────────
 # The four counter rows - opened, closed, the close ratio and tranches
-# discarded - are NOT given tooltips here. Issue #98 defect 4 holds
-# that those counters do not reconcile with the standing list on 13 of
-# 38 bots, and a separate unit is repairing them. Writing a ten-word
-# description of a number that is under repair would document the wrong
-# meaning, and it would edit the exact lines that unit owns.
+# discarded - were left bare by defect 6 because defect 4 owned the
+# counters and they did not reconcile. Defect 4 has now landed: every
+# site that removes a fold tranche moves exactly one of opened, closed
+# or discarded, so the four rows describe quantities that hold
+# `opened - closed - discarded == open tranches`. They carry the same
+# ten-word tooltip standard as every other row on this form.
 FOLD_OPEN_COUNT_TOOLTIP = (
     "Fold tranches this bot holds in its queue now.")
 FOLD_PARKED_USD_TOOLTIP = (
@@ -455,6 +456,17 @@ FOLD_MALFORMED_TOOLTIP = (
     "Stored tranches this bot could not read, lifetime total.")
 FOLD_CYCLE_CAP_TOOLTIP = (
     "Growth cash one fold cycle may spend, and spent.")
+
+# ── The counter rows (defect 4) ──────────────────────────────────────
+# Same standard: one line, about ten words, no code identifiers.
+FOLD_OPENED_TOOLTIP = (
+    "Fold tranches this bot ever opened, less merged ones.")
+FOLD_CLOSED_TOOLTIP = (
+    "Fold tranches that folded back and bought the asset.")
+FOLD_CLOSE_RATIO_TOOLTIP = (
+    "Share of opened tranches that folded back, discards excluded.")
+FOLD_DISCARDED_TOOLTIP = (
+    "Fold tranches removed without folding back, lifetime total.")
 
 
 def install_health_row(form: QFormLayout, label_text: str,
@@ -501,6 +513,14 @@ def install_health_row(form: QFormLayout, label_text: str,
 #: somebody picked.
 FOLD_OVER_ALLOTMENT_FG_HEX = "#ff3366"
 
+#: The three colours the cycle-close-ratio verdict has always used,
+#: lifted out of the widget so the pure composer below can return one
+#: and a test can name it. Red is the SAME red as the row above, by
+#: reference rather than by a second copy of the literal.
+FOLD_RATIO_RED_FG_HEX = FOLD_OVER_ALLOTMENT_FG_HEX
+FOLD_RATIO_AMBER_FG_HEX = "#ff9900"
+FOLD_RATIO_GREEN_FG_HEX = "#00ff88"
+
 
 def compose_units_marked_row(
         tranches: list, holdings: object) -> tuple[str, str | None]:
@@ -543,6 +563,54 @@ def compose_units_marked_row(
     if ratio > 1.0:
         return (text, FOLD_OVER_ALLOTMENT_FG_HEX)
     return (text, None)
+
+
+def compose_cycle_close_ratio(
+        created: int, closed: int,
+        discarded: int) -> tuple[str, str | None]:
+    """Return `(text, colour_hex_or_None)` for the cycle close ratio.
+
+    Pure, so the panel's only health verdict is testable without Qt.
+
+    THE DEFINITION, IN ONE SENTENCE: of every tranche this bot opened
+    and did not discard, the share that folded back.
+
+        ratio = closed / (created - discarded)
+
+    WHAT WAS WRONG WITH THE OLD ONE. It was `closed / created`, and a
+    discarded tranche stayed in the denominator. A discard is a record
+    the operator cleared, the despawn sweep delisted, a detonation
+    abandoned or the fold guard could not read. None of those is a
+    failure to fold back, and each of them lowered the ratio
+    permanently. Measured on the live fleet, 2026-08-23: BTC/USD had
+    opened 160, folded back 118 and discarded 42, so it folded back
+    every tranche it still had, and the panel printed 73.75%.
+
+    A TRANCHE STILL STANDING IS STILL IN THE DENOMINATOR, deliberately.
+    It was opened, it was not discarded, and it has not folded. That is
+    what makes a stagnating queue show up here at all, and it is why
+    this ratio is not simply `closed / (closed + discarded)` -- that
+    reading is 100% on a bot whose queue has never moved.
+
+    NOTHING LEFT TO FOLD IS NOT 100%. When `created - discarded` is
+    zero or below there is no denominator, and the row says so rather
+    than printing a number. A ratio whose healthy value and whose
+    broken value are both "100%" measures nothing.
+    """
+    denominator = int(created) - int(discarded)
+    if denominator <= 0:
+        return ("—  (nothing left to fold back)", None)
+    ratio = int(closed) / denominator
+    text = f"{ratio:.2%}  ({int(closed)}/{denominator})"
+    # The bands are the ones this row already used. Only the quantity
+    # they judge has changed.
+    if denominator < 5:
+        return (text, None)
+    if ratio < 0.5:
+        return (text, FOLD_RATIO_RED_FG_HEX)
+    if ratio < 0.8:
+        return (text, FOLD_RATIO_AMBER_FG_HEX)
+    return (text, FOLD_RATIO_GREEN_FG_HEX)
 
 
 def _fold_tranche_source_label(tranche: dict) -> str:
@@ -3017,13 +3085,14 @@ if _HAS_QT:
             else:
                 oldest_str = "no open tranches"
 
-            # Cycle close ratio — informative only, may exceed 1.0 if
-            # multiple lots fold-back faster than scrums create them.
-            if created_lifetime > 0:
-                ratio = closed_lifetime / created_lifetime
-                ratio_str = f"{ratio:.2%}  ({closed_lifetime}/{created_lifetime})"
-            else:
-                ratio_str = "—  (no scrums yet)"
+            # Cycle close ratio — issue #98 defect 4. The arithmetic,
+            # the "nothing left to fold back" case and the colour band
+            # all live in `compose_cycle_close_ratio`, which is pure and
+            # carries the definition it implements. Read there first.
+            discarded_lifetime = int(getattr(
+                self._bot, "_tranches_discarded_lifetime", 0) or 0)
+            ratio_str, ratio_colour = compose_cycle_close_ratio(
+                created_lifetime, closed_lifetime, discarded_lifetime)
 
             # issue #98 defect 6 - every row this unit owns now carries
             # the operator's own tooltip standard, on BOTH the words and
@@ -3074,32 +3143,39 @@ if _HAS_QT:
             # model has exactly three verbs.
             install_despawn_rows(self, sf, tranches, now_ts)
 
-            sf.addRow("Lifetime tranches opened:", QLabel(str(created_lifetime)))
-            sf.addRow("Lifetime tranches closed (fold-back fired):",
-                      QLabel(str(closed_lifetime)))
+            install_health_row(sf, "Lifetime tranches opened:",
+                               QLabel(str(created_lifetime)),
+                               FOLD_OPENED_TOOLTIP)
+            install_health_row(sf, "Lifetime tranches closed (fold-back fired):",
+                               QLabel(str(closed_lifetime)),
+                               FOLD_CLOSED_TOOLTIP)
 
             ratio_lbl = QLabel(ratio_str)
-            # Healthy = closed/created near 1.0 over time. Stagnation
-            # warning when ratio is low AND there are open tranches.
-            if created_lifetime >= 5 and open_count > 0:
-                ratio_val = closed_lifetime / created_lifetime
-                if ratio_val < 0.5:
-                    ratio_lbl.setStyleSheet("color: #ff3366;")
-                elif ratio_val < 0.8:
-                    ratio_lbl.setStyleSheet("color: #ff9900;")
-                else:
-                    ratio_lbl.setStyleSheet("color: #00ff88;")
-            sf.addRow("Cycle close ratio (closed/opened):", ratio_lbl)
+            # THE COLOUR IS NOT DECIDED HERE ANY MORE. It used to be a
+            # second arithmetic beside the text's, over `created` rather
+            # than the denominator the text printed, so the words and
+            # the colour could describe different quantities. One
+            # composer now answers both.
+            if ratio_colour:
+                ratio_lbl.setStyleSheet(f"color: {ratio_colour};")
+            install_health_row(
+                sf, "Cycle close ratio (folded / opened minus discarded):",
+                ratio_lbl, FOLD_CLOSE_RATIO_TOOLTIP)
 
             # v3.24.44 — discarded tranches are counted separately from
             # closed ones, because a discard did NOT fold. Shown only
             # once non-zero so the panel stays quiet on bots that have
             # never been cleared.
-            discarded_lifetime = int(getattr(
-                self._bot, "_tranches_discarded_lifetime", 0) or 0)
+            #
+            # THE LABEL NO LONGER SAYS "cleared". Issue #98 defect 4: a
+            # clear is one of four ways a tranche is discarded. The
+            # despawn sweep, a detonation and the fold guard's
+            # unreadable-record drop write this same counter, so naming
+            # one of the four made the other three read as missing.
             if discarded_lifetime:
-                sf.addRow("Lifetime tranches discarded (cleared, not folded):",
-                          QLabel(str(discarded_lifetime)))
+                install_health_row(
+                    sf, "Lifetime tranches discarded (not folded back):",
+                    QLabel(str(discarded_lifetime)), FOLD_DISCARDED_TOOLTIP)
 
             # -- issue #98 defect 10 - three persisted quantities the
             # panel never showed ------------------------------------

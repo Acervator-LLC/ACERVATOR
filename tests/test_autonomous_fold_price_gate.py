@@ -341,6 +341,49 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 #
 # ``_pre_change_source`` returns zero orphans.
 #
+# RE-BASED A SEVENTH TIME 2026-08-24, issue #98 defect 4, same
+# tripwire, same reason. One repair landed in ``scrumming_bot.py``
+# outside every span this file reverses, so it reaches the digest:
+#
+#   7. the fold-tranche counters did not reconcile with the standing
+#      list. The stated identity is
+#      ``created - closed - discarded == len(_fold_tranches)``, and it
+#      failed on 13 of the operator's 38 bots, in BOTH directions.
+#      Negative drift is exactly "a record left the queue and no term
+#      of the identity moved". Two of the eleven removal sites in this
+#      file did that: the TD-017 fold guard, which bumped
+#      ``_tranches_malformed_dropped`` -- not a term -- and the restore
+#      filter in ``import_scrumming_state``, which bumped nothing. Both
+#      now bump ``_tranches_discarded_lifetime``, and the malformed
+#      counter became a SUB-COUNT of it rather than a fourth term.
+#
+# WHAT THIS RE-BASE IS. The counter-declaration prose in ``__init__``
+# rewritten in place; two inserts in ``import_scrumming_state``; the
+# guard block in ``tick()`` replaced by a call, which makes it ELEVEN
+# LINES SHORTER; one new method, ``_drop_malformed_fold_tranches``,
+# above ``_settle_fold_plan``; and the ladder comment in
+# ``_execute_manual_rebalance`` restated. +125 lines, 8 hunks, NINE
+# cumulative bands, and one STEP DOWN -- +51 above the tick guard, +40
+# below it. See the 2026-08-24 note in ``CITATION_ANCHORS`` for the
+# per-band table. The unit adds no ``self._main_lots.append({``, so no
+# ordinal count moved, and no anchor is new or retired.
+# ``CITATION_ANCHORS`` in ``tests/test_extractor_tranche_containment.py``
+# was re-anchored in the SAME change -- 42 anchors, 42 resolved, cross
+# checked against the git hunk map with 0 disagreements -- and that
+# file's 121 tests pass.
+#
+# The self-citation tokens inside ``scrumming_bot.py`` moved by the
+# same bands and were verified BY READ-BACK against a full pre-to-post
+# line map: 77 tokens, 0 mismatches, 0 naming a line this change
+# created. ``:488-494``, the 19 cross-file tokens and the ``[:180]``
+# slice were left alone for the reasons #104 and #106 wrote down. ONE
+# citation was RETIRED rather than shifted: the ladder comment cited
+# the tick guard by line, and that guard now has a name, so the prose
+# names it.
+#
+# ``_pre_change_source`` returns zero orphans, and the CRLF rendering
+# reconstructs the identical text.
+#
 # The prior digests, kept so the chain is auditable:
 #   986d79ed7785015d12a57bfc877ba1b078027d93b2f7655ec2fbc78a90ef2082
 #   29276909ff46dce02bc650de45802c779539adb7093b010cd875ef376201e9a0
@@ -348,8 +391,9 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 #   ffe8cebd69cbc2eac674d0a8696efdca3542112fe1606bc0dcd3546297c1288f
 #   d4edd46f7ce7d04ef716255fc36976056f75a4d938351b3c0ff9388932cd5aef
 #   03d05460421d2c601a37dadc5cd97b6a77805a974ac29f6f3f2b5e75cf7f40f5
+#   ac3459c2b80406bf7c4e9698c186cb29c77fe32c17ef6d3a8a1f5cb56f3076aa
 PRE_CHANGE_SHA256 = (
-    "ac3459c2b80406bf7c4e9698c186cb29c77fe32c17ef6d3a8a1f5cb56f3076aa")
+    "de3ddf92090b1e846db16a050a3d5dbb6bb4c6f346f1bde10b62ec88359b2554")
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE.")

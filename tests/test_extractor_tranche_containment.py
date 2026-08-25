@@ -1247,36 +1247,36 @@ def test_POSITIVE_CONTROL_the_append_scanner_finds_a_real_append():
 
 CITATION_ANCHORS: dict[int, str] = {
     694: '# Invariant: sum(l["units"] for l in _main_lots)',
-    1785: 'def cycle_growth_cap_usd(self) -> float:',
-    1866: 'def _apply_fold_target_growth(self, accum_profit: float,',
-    2628: 'self._target_balance = float(self._target_balance) + u',
-    2632: 'self.config.target_balance = self._target_balance',
-    2724: 'def _positive_observed_quantity(',
-    2786: 'def _finite_state_number(',
-    2831: 'def _sum_lot_units(lots: Any) -> tuple[float | None, str | None]:',
-    3710: 'fill_price = await self._execute_buy(',
-    3755: 'self._main_lots.append({',
-    4876: 'return float(self._current_holdings) * float(price)',
-    4971: 'return self._anchor_target_balance * mult',
-    5943: '_tracked_units_bootstrap = sum(',
-    5948: 'self._current_holdings = min(',
-    6622: 'float(getattr(_bal1, "total", 0)',
-    6664: 'getattr(_bal1, "absent", False) or',
-    6885: 'self._current_holdings = sum(',
-    7052: '# _main_lots and derives _current_holdings from that source',
-    7058: 'self._current_holdings * ticker.last',
-    7825: 'entry_fill = await self._execute_buy(',
-    7848: 'self._main_lots.append({',
-    7883: 'delta = current_value - self._target_balance',
-    9644: 'price <= tranche["initial_buy_price"]',
-    9912: '_patent_only_eligible = sum(',
-    10173: '# MEM-171 / ADR-004 patent invariant is NOT abandoned in',
-    10185: 'if ticker.last <= float(t.get("ref", 0)) * _otd_factor',
-    10405: 'buy_fill = await self._execute_buy(',
-    10462: 'self._main_lots.append({',
-    10922: 'hedge_fill = await self._execute_buy(',
-    10956: 'self._main_lots.append({',
-    11873: 'async def _reconcile_holdings(self, reason:',
+    1804: 'def cycle_growth_cap_usd(self) -> float:',
+    1885: 'def _apply_fold_target_growth(self, accum_profit: float,',
+    2647: 'self._target_balance = float(self._target_balance) + u',
+    2651: 'self.config.target_balance = self._target_balance',
+    2743: 'def _positive_observed_quantity(',
+    2805: 'def _finite_state_number(',
+    2850: 'def _sum_lot_units(lots: Any) -> tuple[float | None, str | None]:',
+    3729: 'fill_price = await self._execute_buy(',
+    3774: 'self._main_lots.append({',
+    4895: 'return float(self._current_holdings) * float(price)',
+    4990: 'return self._anchor_target_balance * mult',
+    5994: '_tracked_units_bootstrap = sum(',
+    5999: 'self._current_holdings = min(',
+    6673: 'float(getattr(_bal1, "total", 0)',
+    6715: 'getattr(_bal1, "absent", False) or',
+    6936: 'self._current_holdings = sum(',
+    7103: '# _main_lots and derives _current_holdings from that source',
+    7109: 'self._current_holdings * ticker.last',
+    7876: 'entry_fill = await self._execute_buy(',
+    7899: 'self._main_lots.append({',
+    7934: 'delta = current_value - self._target_balance',
+    9695: 'price <= tranche["initial_buy_price"]',
+    9963: '_patent_only_eligible = sum(',
+    10213: '# MEM-171 / ADR-004 patent invariant is NOT abandoned in',
+    10225: 'if ticker.last <= float(t.get("ref", 0)) * _otd_factor',
+    10445: 'buy_fill = await self._execute_buy(',
+    10502: 'self._main_lots.append({',
+    10962: 'hedge_fill = await self._execute_buy(',
+    10996: 'self._main_lots.append({',
+    11994: 'async def _reconcile_holdings(self, reason:',
     # 2026-08-13 re-anchor, U2. ONE insertion into scrumming_bot.py --
     # the two units parsers, the block that widens the audited figure
     # from the scalar to the lot book, and the coerced rescale write --
@@ -1334,11 +1334,11 @@ CITATION_ANCHORS: dict[int, str] = {
     # the three lines it replaced, because one added line above the
     # drift-down branch would have moved every anchor below it a
     # second time.
-    12142: 'if exchange_units < internal_units - 1e-9:',
-    12164: 'self._current_holdings = exchange_units',
-    12166: '# Drift UP. Operator directive 2026-08-22, verbatim:',
-    12198: '_adopt = min(exchange_units, _claimable)',
-    12419: 'async def _execute_manual_rebalance(',
+    12263: 'if exchange_units < internal_units - 1e-9:',
+    12285: 'self._current_holdings = exchange_units',
+    12287: '# Drift UP. Operator directive 2026-08-22, verbatim:',
+    12319: '_adopt = min(exchange_units, _claimable)',
+    12540: 'async def _execute_manual_rebalance(',
     # 2026-08-15 re-anchor, the nan-ladder unit. ONE insertion, +104
     # lines, entirely inside the U3 gate block in
     # `_execute_manual_rebalance`: the ref filter that replaced the bare
@@ -1367,12 +1367,12 @@ CITATION_ANCHORS: dict[int, str] = {
     # the source, once by `ast.literal_eval` of the dict itself -- and
     # both read 42. The stale number was the work order's, and it is
     # recorded here so the next reader does not trust it either.
-    13389: 'self._main_lots.append({',
-    13406: 'self._main_lots.append({',
-    13415: 'self._current_holdings += fill_amount',
-    15055: 'async def _execute_buy(',
-    15532: 'self._current_holdings += amount',
-    15657: 'def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:',
+    13514: 'self._main_lots.append({',
+    13531: 'self._main_lots.append({',
+    13540: 'self._current_holdings += fill_amount',
+    15180: 'async def _execute_buy(',
+    15657: 'self._current_holdings += amount',
+    15782: 'def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:',
     # 2026-08-20 re-anchor, ISSUE #21 -- the capital-reservation grant
     # postcondition. ONE insertion into `scrumming_bot.py`, +47 lines,
     # entirely inside the success branch of
@@ -1518,6 +1518,52 @@ CITATION_ANCHORS: dict[int, str] = {
     # down -- 19 carry another module's filename, `:488-494` names a
     # spec document, and `[:180]` is a slice the regex matches and that
     # was never a citation.
+    #
+    # 2026-08-24 re-anchor, ISSUE #98 DEFECT 4 -- the fold-tranche
+    # counters. FIVE edits to `scrumming_bot.py`, none of them adding an
+    # anchor text: the counter-declaration prose in `__init__`; the
+    # restore filter in `import_scrumming_state` and the discard bump
+    # beside the counter restores; the TD-017 fold guard in `tick()`,
+    # which SHRANK because its body moved out; the new method
+    # `_drop_malformed_fold_tranches` above `_settle_fold_plan`; and the
+    # ladder comment in `_execute_manual_rebalance`.
+    #
+    # +125 lines, 8 hunks, NINE cumulative bands, and ONE STEP DOWN --
+    # the first this table has carried. Cumulative shift by pre-change
+    # line: +0 below :746, +15 from :746, +19 from :754, +28 from :5432,
+    # +30 from :5435, +51 from :5476, +40 from :10135 (the tick block
+    # gave back eleven lines), +121 from :11383 and +125 from :13007
+    # down. A flat shift would have moved thirteen anchors to the wrong
+    # lines.
+    #
+    # Derived by ANCHOR ORDINAL PLUS SHIFT, never difflib: each anchor's
+    # occurrence count in the pre-change file located the SAME
+    # occurrence in the post-change file. 42 anchors, 42 resolved, NONE
+    # new and NONE retired. Order was required to be preserved and was:
+    # 0 violations.
+    #
+    # CROSS-CHECKED AGAINST THE GIT HUNK MAP. A second map was built
+    # from `git diff -U0` headers alone -- 8 hunks, a cumulative shift
+    # per pre-line, touching no anchor text. The two derivations agree
+    # on all 42 anchors: 0 disagreements.
+    #
+    # THE SELF-CITATION TOKENS inside `scrumming_bot.py` moved by the
+    # same bands, and every one was verified BY READ-BACK against a
+    # full pre-to-post line map built from the same diff. That map was
+    # itself checked first -- 15,863 surviving lines, byte-identical on
+    # both sides, 0 mismatches -- because a read-back through a broken
+    # map proves nothing. Then: 77 tokens, the line each names is
+    # byte-identical to the line it named before the change, 0
+    # mismatches and 0 naming a line this change created. The 21 tokens
+    # #104 and #106 set aside were left alone for their reasons.
+    #
+    # ONE CITATION WAS RETIRED RATHER THAN SHIFTED, and it is named
+    # here because a silent deletion reads as an omission. The ladder
+    # comment in `_execute_manual_rebalance` cited the tick guard by
+    # line. That guard is now a method with a name, so the prose names
+    # it. The number it held was ALREADY approximate before this change
+    # -- it pointed eleven lines above the guard on both sides -- which
+    # is the rot a name does not have.
 }
 
 # Every method whose prose is allowed to cite a line. v3.25.7 widened

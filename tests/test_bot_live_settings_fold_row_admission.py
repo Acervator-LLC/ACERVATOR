@@ -394,7 +394,15 @@ LIVE_LABELS = [
      "30d: 0 ($0.0000)  -  60d: 0 ($0.0000)"),
     "Lifetime tranches opened:", "10",
     "Lifetime tranches closed (fold-back fired):", "6",
-    "Cycle close ratio (closed/opened):", "60.00%  (6/10)",
+    # issue #98 defect 4, 2026-08-24 - THE HEADLINE HEALTH METRIC. The
+    # label now names the arithmetic it performs: discards leave the
+    # denominator, because a discarded tranche did not fail to fold
+    # back, it was removed before it could. This stub has discarded
+    # none, so the NUMBER is unchanged at 60.00% (6/10) and only the
+    # words moved - which is the shape a re-definition should have on a
+    # bot the re-definition does not apply to.
+    "Cycle close ratio (folded / opened minus discarded):",
+    "60.00%  (6/10)",
     # issue #98 defect 10, 2026-08-24 - two of the three persisted
     # quantities the panel never showed. The third,
     # `_wire_credits_discarded_lifetime`, follows the tranche-discard
