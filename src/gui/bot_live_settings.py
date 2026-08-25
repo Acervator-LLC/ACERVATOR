@@ -37,7 +37,7 @@ try:
         QStyleOptionViewItem,
     )
     from PySide6.QtCore import Qt, Signal, QModelIndex, QPersistentModelIndex
-    from PySide6.QtGui import QColor, QBrush, QPainter, QPen
+    from PySide6.QtGui import QColor, QBrush, QPainter, QPen, QGuiApplication
 
     _HAS_QT = True
 except ImportError:
@@ -344,6 +344,104 @@ def fold_table_max_height_px(
     """
     visible = max(1, min(int(row_count or 0), TRANCHE_TABLE_VISIBLE_ROWS))
     return visible * TRANCHE_ROW_HEIGHT_PX + int(header_px) + int(chrome_px)
+
+
+# ── The dialog opens at the size its tabs need (issue #133 unit 4) ───
+# WHAT THE OPERATOR SAW. `Bot Settings — CHIP/USD [c8e5c5db]` opens at
+# `setMinimumSize(640, 720)` and hands each tab a 616x584 viewport. Its
+# tabs want up to 1907x2652, so the Fold-Tranche Cycle Health rows and
+# every Settings group below "Scrumming Settings" are off the window
+# until he drags the corner.
+#
+# THE MECHANISM, AND IT IS ONE LINE OF QT. `QScrollArea::sizeHint` ends
+# in `boundedTo(QSize(36 * h, 24 * h))`, `h` being the font height — 13px
+# under `cyberpunk_dark`, so 468x312. Every tab is wrapped in one
+# (MEM-240), so the dialog's layout is told a 1036x2652 Settings tab
+# wants 432x288 and sizes itself to fit that. Reading the wrapper is
+# what makes the dialog small; reading its CHILD is the repair.
+
+#: Screen pixels left clear of the dialog on each axis. The window frame
+#: sits OUTSIDE this size: about 8px per border across, and a title bar
+#: down.
+DIALOG_SCREEN_MARGIN_W_PX = 32
+DIALOG_SCREEN_MARGIN_H_PX = 72
+
+
+def tab_content_demand_px(tabs: QTabWidget) -> tuple[int, int, int, int]:
+    """`(content_w, content_h, page_w, page_h)` across every tab.
+
+    `content_*` reads the widget INSIDE each `QScrollArea`; `page_*`
+    reads the scroll area itself. On the Fold Tranches tab the two
+    disagree by 1475px of width, and that gap is the whole defect.
+
+    `ensurePolished` BEFORE EVERY READ. An unpolished widget answers
+    `frameWidth() == 1` where the same widget polished answers 13, so a
+    hint taken before the theme resolves is measuring a different
+    widget.
+    """
+    content_w = content_h = page_w = page_h = 0
+    for index in range(tabs.count()):
+        page = tabs.widget(index)
+        if page is None:
+            continue
+        page.ensurePolished()
+        content = page.widget() if isinstance(page, QScrollArea) else None
+        if content is None:
+            content = page
+        content.ensurePolished()
+        chint = content.sizeHint()
+        phint = page.sizeHint()
+        content_w = max(content_w, chint.width())
+        content_h = max(content_h, chint.height())
+        page_w = max(page_w, phint.width())
+        page_h = max(page_h, phint.height())
+    return content_w, content_h, page_w, page_h
+
+
+def dialog_content_size_px(
+    dialog_hint_w: int,
+    dialog_hint_h: int,
+    page_w: int,
+    page_h: int,
+    content_w: int,
+    content_h: int,
+) -> tuple[int, int]:
+    """The dialog size that puts `content` inside the tab viewport.
+
+    `dialog_hint - page` is the chrome the dialog's layout draws around
+    its largest tab page — margins, tab bar, header row, button row —
+    measured at 70px across and 162px down. It over-charges by whatever
+    a non-tab row is wider than that page; erring large is correct for
+    a floor, and here that error is 44px.
+    """
+    return (
+        int(content_w) + int(dialog_hint_w) - int(page_w),
+        int(content_h) + int(dialog_hint_h) - int(page_h),
+    )
+
+
+def dialog_open_size_px(
+    needed_w: int,
+    needed_h: int,
+    available_w: int,
+    available_h: int,
+    minimum_w: int,
+    minimum_h: int,
+) -> tuple[int, int]:
+    """The size the dialog opens at: content, capped by the screen.
+
+    A window larger than the display is worse than one too small — the
+    operator cannot drag back the part that hangs off the edge. The cap
+    never falls below the dialog's own minimum, because Qt enforces
+    that minimum whatever this returns; on a display smaller than
+    640x720 the minimum is what wins, and it always did.
+    """
+    ceiling_w = max(int(minimum_w), int(available_w) - DIALOG_SCREEN_MARGIN_W_PX)
+    ceiling_h = max(int(minimum_h), int(available_h) - DIALOG_SCREEN_MARGIN_H_PX)
+    return (
+        min(max(int(needed_w), int(minimum_w)), ceiling_w),
+        min(max(int(needed_h), int(minimum_h)), ceiling_h),
+    )
 
 
 # ── The row order the operator chooses (issue #98 defect 7) ──────────
@@ -1668,6 +1766,55 @@ if _HAS_QT:
                 logger.debug(
                     "sibling navigation shortcuts unavailable: %s", _shortcut_exc
                 )
+
+            # issue #133 unit 4 - LAST, because it measures the tabs
+            # and the tabs must all exist. `main_window` calls
+            # `setGeometry` after this when the operator is navigating
+            # between bots, so their own size still wins.
+            self.open_at_content_size()
+
+        def open_at_content_size(
+            self, available: tuple[int, int] | None = None
+        ) -> tuple[int, int]:
+            """Resize so the largest tab fits, and report the size set.
+
+            `available` overrides the screen so a test can drive a small
+            display without owning one. Left None it reads
+            `availableGeometry`, which already excludes the taskbar.
+
+            NOT A MINIMUM. Raising `setMinimumSize` to the content size
+            would make a dialog the operator cannot shrink and, on a
+            display smaller than the content, one he cannot fully see
+            either. This sets the size it OPENS at; the 640x720 floor
+            MEM-240 put there is untouched.
+            """
+            tabs = getattr(self, "_tabs", None)
+            layout = self.layout()
+            if tabs is None or layout is None:
+                return self.width(), self.height()
+            content_w, content_h, page_w, page_h = tab_content_demand_px(tabs)
+            hint = layout.sizeHint()
+            needed_w, needed_h = dialog_content_size_px(
+                hint.width(), hint.height(), page_w, page_h, content_w, content_h
+            )
+            if available is None:
+                screen = self.screen() or QGuiApplication.primaryScreen()
+                if screen is None:
+                    # No screen to respect, so nothing to clamp against.
+                    available = (needed_w, needed_h)
+                else:
+                    size = screen.availableGeometry()
+                    available = (size.width(), size.height())
+            width, height = dialog_open_size_px(
+                needed_w,
+                needed_h,
+                available[0],
+                available[1],
+                self.minimumWidth(),
+                self.minimumHeight(),
+            )
+            self.resize(width, height)
+            return width, height
 
         # ── v3.16.18 — sibling navigation ──────────────────────────
         def _sibling_bot_ids(self) -> list:
