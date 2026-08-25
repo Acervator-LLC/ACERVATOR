@@ -1,4 +1,4 @@
-"""Pin tests for .claude/hooks/*.py.
+"""Pin tests for the harness hook scripts.
 
 Each hook is exercised by subprocess with a synthetic stdin payload.
 The tests verify:
@@ -10,24 +10,82 @@ The tests verify:
 
 None of the hooks may crash Claude Code — a hook that raises should still
 exit 0 (silent fail-open). These tests pin that behavior.
+
+WHERE THE HOOKS ARE — 2026-08-25
+================================
+The harness moved to user level at the CTO's request, and the harness
+directory name is in the ignore list, so no clone carries it. The
+location now comes from `tools.claude_home`, which searches user level
+first and then the repository — the order the router hook already uses,
+so that a project still carrying its own harness keeps working.
+
+WHAT HAPPENS WHEN THE HARNESS IS ABSENT
+=======================================
+* ABSENT — nothing installed anywhere. These tests SKIP. The
+  repository cannot install the harness for a stranger's clone, and a
+  gate that is red on every unconfigured machine reports as little as
+  one that is green on every machine. The reason names every path
+  searched, and the same text is raised as a warning at import so it
+  reaches the warnings summary of every run.
+* INCOMPLETE — the directory exists but a hook script is not in it.
+  That FAILS, in `test_the_install_is_not_partial`. A half-installed
+  enforcement layer is the silently-skipped check this repository keeps
+  meeting, and it must be loud.
+
+`TestTheHooksDirectorySearchCanFail` carries no skip mark and runs in
+both states, so the absent case still runs assertions that are able to
+fail.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
+import warnings
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
+from tools import claude_home
+from tools.claude_home import HOOK_NAMES, absent_reason, hooks_dir, missing_hooks
+
 
 REPO = Path(__file__).resolve().parent.parent
-HOOKS = REPO / ".claude" / "hooks"
+HOOKS = hooks_dir()
+_ABSENT = absent_reason("hooks")
+
+if HOOKS is None:
+    warnings.warn(_ABSENT, stacklevel=1)
+
+_needs_hooks = pytest.mark.skipif(HOOKS is None, reason=_ABSENT)
 
 
 def _run_hook(hook: str, stdin: str) -> subprocess.CompletedProcess:
-    """Run a hook script with the given stdin, return CompletedProcess."""
-    return subprocess.run(
+    """Run a hook script with the given stdin, return CompletedProcess.
+
+    The one spawn in this file, and the reason the line below carries a
+    directive. What is launched is THIS project's own hook script, under
+    `sys.executable` -- an absolute interpreter path, so S607 is answered
+    by construction and no program planted earlier on PATH can run in its
+    place. The only variable in the argv is the resolved TARGET path, and
+    that is what S603 reads.
+
+    No compliant form exists. Measured for this repository and written
+    down at dev_harness/harness/coding_archetype.py:47 with ruff 0.16
+    over six argv forms: an all-literal argv draws no S603, and every
+    argv carrying a variable draws one. A pin that drives a hook must
+    name the hook, so the variable cannot be removed.
+
+    The operator granted this directive on 2026-08-25, on that evidence
+    and on the fifteen files in the tree that already carry it. It is
+    LINE-level on purpose. A file-level `# ruff: noqa: S603` would cover
+    every spawn anyone adds here later, which is how a real finding gets
+    hidden, so a second spawn in this file must argue for itself.
+    """
+    assert HOOKS is not None, _ABSENT
+    return subprocess.run(  # noqa: S603
         [sys.executable, str(HOOKS / hook)],
         input=stdin,
         capture_output=True,
@@ -39,11 +97,95 @@ def _run_hook(hook: str, stdin: str) -> subprocess.CompletedProcess:
     )
 
 
+def _load_gate() -> ModuleType:
+    """Import the archetype gate from wherever it is installed.
+
+    Loaded from its file rather than by inserting the hooks directory on
+    `sys.path`. The path trick made the module name unresolvable to
+    every static analyser, so mypy and pyright each reported the import
+    as missing while the test itself passed.
+    """
+    assert HOOKS is not None, _ABSENT
+    spec = importlib.util.spec_from_file_location(
+        "archetype_gate_under_test", HOOKS / "archetype_gate.py")
+    assert spec and spec.loader, f"cannot load the gate at {HOOKS}"
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestTheHooksDirectorySearchCanFail:
+    """Positive control for the search. Runs whether or not the harness
+    is installed, so the absent case is never assertion-free."""
+
+    def test_an_empty_home_reports_absent_and_a_planted_one_resolves(
+            self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr(claude_home, "REPO", tmp_path / "no-such-repo")
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
+
+        assert claude_home.hooks_dir() is None, (
+            "the search claims a hooks directory under a home that has none")
+
+        planted = home / claude_home.CLAUDE_DIR_NAME / "hooks"
+        planted.mkdir(parents=True)
+        assert claude_home.hooks_dir() == planted
+
+    def test_the_repository_is_searched_after_the_user_directory(
+            self, tmp_path, monkeypatch):
+        """A project carrying its own harness must still resolve.
+
+        The user directory wins when both hold one, because that is the
+        order the router hook uses to find a skill.
+        """
+        home = tmp_path / "home"
+        repo = tmp_path / "repo"
+        home.mkdir()
+        monkeypatch.setattr(claude_home, "REPO", repo)
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
+
+        in_repo = repo / claude_home.CLAUDE_DIR_NAME / "hooks"
+        in_repo.mkdir(parents=True)
+        assert claude_home.hooks_dir() == in_repo
+
+        in_home = home / claude_home.CLAUDE_DIR_NAME / "hooks"
+        in_home.mkdir(parents=True)
+        assert claude_home.hooks_dir() == in_home, (
+            "the user directory must win; the router resolves it first")
+
+    def test_a_directory_short_of_a_hook_is_reported_as_partial(
+            self, tmp_path):
+        """The detector behind `test_the_install_is_not_partial`.
+
+        Without this the partial branch could never be shown to fire on
+        a machine whose install happens to be complete.
+        """
+        planted = tmp_path / "hooks"
+        planted.mkdir()
+        for name in HOOK_NAMES[1:]:
+            (planted / name).write_text("", encoding="utf-8")
+        assert claude_home.missing_hooks(planted) == [HOOK_NAMES[0]]
+        (planted / HOOK_NAMES[0]).write_text("", encoding="utf-8")
+        assert claude_home.missing_hooks(planted) == []
+
+
+@_needs_hooks
+def test_the_install_is_not_partial():
+    """A harness directory short of a hook FAILS. It never skips."""
+    assert HOOKS is not None
+    absent = missing_hooks(HOOKS)
+    assert not absent, f"{HOOKS} is missing hook script(s): {absent}"
+
+
 # ---------------------------------------------------------------------------
 # prompt_router.py
 # ---------------------------------------------------------------------------
 
 
+@_needs_hooks
 class TestPromptRouter:
     def test_neutral_prompt_still_carries_the_authorship_rule(self):
         """v3.25.6 - this asserted SILENCE on a neutral prompt.
@@ -120,6 +262,7 @@ class TestPromptRouter:
 # ---------------------------------------------------------------------------
 
 
+@_needs_hooks
 class TestArchetypeGate:
     def test_skip_docs_audits_path(self, tmp_path):
         # Any file under docs/audits/ is a known-noise path
@@ -144,9 +287,10 @@ class TestArchetypeGate:
 
         Hook files are now graded like any other Python file.
         """
+        assert HOOKS is not None
         stdin = json.dumps({
             "tool_name": "Edit",
-            "tool_input": {"file_path": ".claude/hooks/prompt_router.py"},
+            "tool_input": {"file_path": str(HOOKS / "prompt_router.py")},
         })
         r = _run_hook("archetype_gate.py", stdin)
         assert r.returncode == 0
@@ -182,12 +326,7 @@ class TestArchetypeGate:
         src/gui/. The assertion below is the one that let that stand, so
         it now checks the SET and requires coding on every .py file.
         """
-        sys.path.insert(0, str(HOOKS))
-        try:
-            import archetype_gate
-        finally:
-            sys.path.pop(0)
-        pick = archetype_gate._pick_archetypes
+        pick = _load_gate()._pick_archetypes
         CODING = "dev_harness.harness.coding_archetype"
         GUI = "dev_harness.harness.gui_archetype"
         DOCS = "dev_harness.harness.docs_archetype"
@@ -247,6 +386,7 @@ class TestArchetypeGate:
 # ---------------------------------------------------------------------------
 
 
+@_needs_hooks
 class TestVerifyReleaseGate:
     def test_non_banner_path_passes_through(self):
         stdin = json.dumps({
@@ -266,7 +406,7 @@ class TestVerifyReleaseGate:
         assert r.returncode == 0
         assert r.stdout.strip() == ""
 
-    def test_banner_path_no_sidecar_denies(self, tmp_path, monkeypatch):
+    def test_banner_path_no_sidecar_denies(self, tmp_path):
         """Move sidecar aside temporarily; a banner-bump edit must deny."""
         sidecar = REPO / ".release_ready.json"
         backup = None
@@ -340,6 +480,7 @@ class TestVerifyReleaseGate:
 # ---------------------------------------------------------------------------
 
 
+@_needs_hooks
 class TestSessionStopBackstop:
     def test_runs_without_crash(self):
         r = _run_hook("session_stop_backstop.py", json.dumps({}))

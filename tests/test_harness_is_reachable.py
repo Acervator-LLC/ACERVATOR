@@ -11,7 +11,7 @@ The operator's ruling on that move was explicit:
 A move cannot disable an archetype loudly. Every caller names its archetype
 by a STRING, and the two callers that matter route by string at run time:
 
-* `.claude/hooks/archetype_gate.py` builds a module list, then imports it.
+* the archetype-gate hook builds a module list, then imports it.
 * `dev_harness/touchset.py` maps module name to class name, then imports it.
 
 `importlib.import_module` on a stale string raises inside a caller that
@@ -40,6 +40,26 @@ Two-sided control
 `test_caller_scan_rejects_a_bogus_module_string` point the same helpers at a
 wrong path and require them to report FAILURE. Without those two, a helper
 that always returned "reachable" would satisfy every assertion above.
+
+Where the hook callers are — 2026-08-25
+---------------------------------------
+Three of the callers are hook scripts, and the harness moved to user level
+at the CTO's request. Their location now comes from `tools.claude_home`,
+which searches user level first and then the repository, the order the
+router hook itself uses.
+
+A hook caller that is not installed anywhere is SKIPPED, with a reason that
+names every path searched. The repository cannot install the harness into
+another developer's clone, so failing there would report an unconfigured
+machine as a defect. A hook caller that is missing from a harness directory
+that DOES exist is a partial install, and
+`tests/test_hooks.py::test_the_install_is_not_partial` fails on it.
+
+The skip cannot hide a regression here, for two reasons. The repository
+callers alone name all five archetypes, so check 4 keeps its force with no
+hook installed at all; and `TestTheCallerSearchCanFail` carries no skip mark,
+runs in both states, and requires the resolver to report absence when there
+is nothing to find.
 """
 
 # ruff: noqa: S603
@@ -60,9 +80,13 @@ import re
 import shutil
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 
 import pytest
+
+from tools import claude_home
+from tools.claude_home import absent_reason, find
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -88,15 +112,46 @@ ARCHETYPES: tuple[tuple[str, str], ...] = (
 
 # Files that name a harness module by string and import it later. A stale
 # string in any of these is a silently skipped check.
-CALLERS: tuple[str, ...] = (
-    ".claude/hooks/archetype_gate.py",
-    ".claude/hooks/prompt_router.py",
-    ".claude/hooks/verify_release_gate.py",
+#
+# The list is split by WHERE the file lives, not by what it does. The hook
+# scripts left the repository on 2026-08-25 and are resolved at run time;
+# the rest are tracked files and are read straight from the tree.
+HOOK_CALLERS: tuple[str, ...] = (
+    "archetype_gate.py",
+    "prompt_router.py",
+    "verify_release_gate.py",
+)
+
+REPO_CALLERS: tuple[str, ...] = (
     "tools/gate.py",
     "tools/emitter_registry_check.py",
     "dev_harness/touchset.py",
     "dev_harness/harness/check_release_readiness.py",
 )
+
+CALLERS: tuple[str, ...] = HOOK_CALLERS + REPO_CALLERS
+
+
+def caller_path(name: str) -> Path | None:
+    """Where `name` is on this machine, or None if it is not installed.
+
+    A repository caller is always answered, because it is tracked and a
+    clone carries it. A hook caller can be absent, and None says so.
+    """
+    if name in HOOK_CALLERS:
+        return find("hooks", name)
+    return REPO / name
+
+
+_UNINSTALLED = [name for name in HOOK_CALLERS if caller_path(name) is None]
+if _UNINSTALLED:
+    warnings.warn(absent_reason("hooks"), stacklevel=1)
+
+
+def _skip_if_uninstalled(name: str) -> None:
+    """Skip on an absent hook caller, naming every path searched."""
+    if caller_path(name) is None:
+        pytest.skip(absent_reason("hooks", name))
 
 # Matches a dotted harness module path wherever it appears in caller text:
 # an import statement, a list literal, a subprocess argv or a printed hint.
@@ -199,23 +254,92 @@ class TestArchetypesRunAsPrograms:
 class TestNoCallerIsStale:
     @pytest.mark.parametrize("rel", CALLERS)
     def test_caller_file_exists(self, rel):
-        assert (REPO / rel).is_file(), f"caller {rel} is missing"
+        """Existence only, and on its own it proves nothing.
+
+        This assertion would stay green against an empty file. The one
+        below reads the file and resolves every module it names, and that
+        is where the coverage is.
+        """
+        _skip_if_uninstalled(rel)
+        path = caller_path(rel)
+        assert path is not None
+        assert path.is_file(), f"caller {rel} is missing"
 
     @pytest.mark.parametrize("rel", CALLERS)
     def test_every_module_named_by_the_caller_resolves(self, rel):
-        named = caller_modules((REPO / rel).read_text(encoding="utf-8"))
+        _skip_if_uninstalled(rel)
+        path = caller_path(rel)
+        assert path is not None
+        named = caller_modules(path.read_text(encoding="utf-8"))
         assert named, f"{rel} names no harness module at all"
         broken = [(m, probe_module_only(m)[1]) for m in named
                   if not probe_module_only(m)[0]]
         assert not broken, f"{rel} names unreachable modules: {broken}"
 
     def test_all_five_archetypes_are_named_by_some_caller(self):
-        """Check 3 alone passes on a tree with no callers left. This does not."""
+        """Check 3 alone passes on a tree with no callers left. This does not.
+
+        Deliberately NOT skipped when the hooks are uninstalled. The four
+        repository callers name all five archetypes between them, so the
+        check keeps its full force on a machine with no harness, and a
+        deletion inside the tree still fails it.
+        """
         seen: set[str] = set()
         for rel in CALLERS:
-            seen.update(caller_modules((REPO / rel).read_text(encoding="utf-8")))
+            path = caller_path(rel)
+            if path is None:
+                continue
+            seen.update(caller_modules(path.read_text(encoding="utf-8")))
         missing = [m for m, _ in ARCHETYPES if m not in seen]
         assert not missing, f"no caller invokes: {missing}"
+
+    def test_the_repository_callers_alone_name_all_five(self):
+        """The reason the test above may skip nothing.
+
+        If this ever fails, an uninstalled machine would stop measuring
+        check 4, and the skip above would start hiding a real gap.
+        """
+        seen: set[str] = set()
+        for rel in REPO_CALLERS:
+            seen.update(caller_modules(
+                (REPO / rel).read_text(encoding="utf-8")))
+        missing = [m for m, _ in ARCHETYPES if m not in seen]
+        assert not missing, (
+            f"only a hook names {missing}; the skip for an uninstalled "
+            f"harness would now hide a deletion")
+
+
+class TestTheCallerSearchCanFail:
+    """Positive control for the hook-caller search. Runs in both states."""
+
+    def test_an_empty_home_reports_every_hook_caller_absent(
+            self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr(claude_home, "REPO", tmp_path / "no-such-repo")
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
+        for name in HOOK_CALLERS:
+            assert claude_home.find("hooks", name) is None, (
+                f"the search claims {name} under a home that holds none")
+
+    def test_a_planted_hook_caller_resolves(self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        planted = home / claude_home.CLAUDE_DIR_NAME / "hooks"
+        planted.mkdir(parents=True)
+        for name in HOOK_CALLERS:
+            (planted / name).write_text("", encoding="utf-8")
+        monkeypatch.setattr(claude_home, "REPO", tmp_path / "no-such-repo")
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
+        for name in HOOK_CALLERS:
+            assert claude_home.find("hooks", name) == planted / name
+
+    def test_a_repository_caller_is_never_reported_absent(self):
+        """A tracked file travels with the clone. None here means the
+        splitting of the two lists has gone wrong."""
+        for rel in REPO_CALLERS:
+            assert caller_path(rel) is not None
 
 
 class TestOldPathIsGone:

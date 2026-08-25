@@ -27,30 +27,137 @@ These tests import the hook as a module and redirect SIDECAR_PATH onto
 tmp_path. The archived pin mutated the real sidecar and restored it
 best-effort in a fixture; an interrupted run left the operator's tree
 holding whatever the last test wrote.
+
+WHERE THE HOOK IS — 2026-08-25
+==============================
+The harness moved to user level at the CTO's request. This file used to
+build the hook path from the repository root and import the hook AT
+MODULE SCOPE, so after the move the whole suite failed during
+COLLECTION with FileNotFoundError and nothing could be pushed. The path
+now comes from `tools.claude_home`, which searches user level first and
+then the repository, exactly as the router hook resolves a skill.
+
+WHAT HAPPENS WHEN THE HARNESS IS ABSENT
+=======================================
+Absent and INCOMPLETE are different states and are answered
+differently.
+
+* ABSENT — no harness directory anywhere. A fresh clone on another
+  developer's machine is in this state, and the repository cannot put
+  it right: the directory is in `.gitignore` and travels with no clone.
+  Failing here would paint the gate red for a state that is not a
+  defect, and a gate that is always red carries as little information
+  as one that is always green. So these tests SKIP, and the reason
+  names every path that was searched. The skip is also raised as a
+  warning at import, so it reaches the warnings summary of every run
+  rather than hiding behind a dot.
+* INCOMPLETE — a harness directory exists but this hook is not in it.
+  That is a real defect, in something this repository does pin, so
+  `test_the_install_is_not_partial` FAILS.
+
+`TestTheSearchCanFail` carries no skip mark and runs in BOTH states. It
+plants a hook under a temporary home and requires the search to find
+it, then empties that home and requires None. Without it, the absent
+state would leave this file asserting nothing at all, which is the
+never-fails shape the skip is otherwise accused of.
 """
 from __future__ import annotations
 
 import importlib.util
 import io
 import json
+import warnings
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
+from tools import claude_home
+from tools.claude_home import (
+    absent_reason,
+    find,
+    hooks_dir,
+    missing_hooks,
+    settings_file,
+)
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-HOOK_PATH = REPO_ROOT / ".claude" / "hooks" / "verify_release_gate.py"
+
+_HOOK_PARTS = ("hooks", "verify_release_gate.py")
+HOOK_PATH = find(*_HOOK_PARTS)
+_ABSENT = absent_reason(*_HOOK_PARTS)
+
+if HOOK_PATH is None:
+    warnings.warn(_ABSENT, stacklevel=1)
+
+_needs_hook = pytest.mark.skipif(HOOK_PATH is None, reason=_ABSENT)
 
 
-def _load_hook():
+def _load_hook(path: Path) -> ModuleType:
     spec = importlib.util.spec_from_file_location(
-        "verify_release_gate_under_test", HOOK_PATH)
-    assert spec and spec.loader, f"cannot load hook at {HOOK_PATH}"
+        "verify_release_gate_under_test", path)
+    assert spec and spec.loader, f"cannot load hook at {path}"
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
-hook = _load_hook()
+@pytest.fixture(scope="module")
+def hook() -> ModuleType:
+    """The hook module, imported from wherever it is installed.
+
+    A fixture, not a module-level import. The module-level form is what
+    turned a missing file into a COLLECTION error for the whole suite.
+    """
+    assert HOOK_PATH is not None
+    return _load_hook(HOOK_PATH)
+
+
+class TestTheSearchCanFail:
+    """Positive control for the path search. Runs in both states.
+
+    This class deliberately carries no skip mark. It is the reason a
+    machine with no harness still runs something here that is able to
+    fail.
+    """
+
+    def test_search_finds_a_planted_hook_and_reports_an_empty_home(
+            self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr(claude_home, "REPO", tmp_path / "no-such-repo")
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
+
+        assert claude_home.find(*_HOOK_PARTS) is None, (
+            "the search reported a hook under a home that holds none")
+
+        planted = home / claude_home.CLAUDE_DIR_NAME / "hooks"
+        planted.mkdir(parents=True)
+        (planted / "verify_release_gate.py").write_text("", encoding="utf-8")
+        assert claude_home.find(*_HOOK_PARTS) == (
+            planted / "verify_release_gate.py")
+
+    def test_the_absent_reason_names_every_path_it_searched(self):
+        reason = claude_home.absent_reason(*_HOOK_PARTS)
+        for candidate in claude_home.candidates(*_HOOK_PARTS):
+            assert str(candidate) in reason, (
+                f"the skip reason hides {candidate}; a reader cannot act "
+                f"on a message that does not say where it looked")
+
+
+@_needs_hook
+def test_the_install_is_not_partial():
+    """A harness directory that is short a hook FAILS, never skips.
+
+    Absence is an uninstalled machine. A directory missing one script is
+    a broken install, and a broken install that skips is the silently
+    disabled check this repository keeps meeting.
+    """
+    found = hooks_dir()
+    assert found is not None
+    absent = missing_hooks(found)
+    assert not absent, f"{found} is missing hook script(s): {absent}"
 
 
 def _sidecar(tests=1105, version="3.24.32", checks=None, age_minutes=0):
@@ -69,11 +176,17 @@ def _sidecar(tests=1105, version="3.24.32", checks=None, age_minutes=0):
 
 
 @pytest.fixture
-def run_hook(tmp_path, monkeypatch, capsys):
+def run_hook(hook, tmp_path, monkeypatch, capsys):
     """Drive hook.main() with a payload and an isolated sidecar.
 
     Returns (decision, reason): decision is "allow" when the hook emits
     nothing, else the decision from its stdout JSON.
+
+    The hook always returns 0; the decision travels as JSON on stdout.
+    That contract used to be recorded by hanging an unread attribute on
+    this closure, which nothing ever read and which pyright reported.
+    `test_unparseable_stdin_is_pass_through` asserts the return code
+    directly, so the contract is measured rather than annotated.
     """
     fake = tmp_path / ".release_ready.json"
     monkeypatch.setattr(hook, "SIDECAR_PATH", fake)
@@ -86,13 +199,13 @@ def run_hook(tmp_path, monkeypatch, capsys):
             fake.write_text(json.dumps(sidecar), encoding="utf-8")
         monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
         rc = hook.main()
+        assert rc == 0, f"the hook must always exit 0; got {rc}"
         out = capsys.readouterr().out.strip()
         if not out:
             return "allow", ""
         body = json.loads(out)
         return body.get("decision", "?"), body.get("reason", "")
 
-    _run.rc_is_always_zero = True
     return _run
 
 
@@ -107,13 +220,21 @@ BANNER = str(REPO_ROOT / "src" / "__init__.py")
 MAIN_PY = str(REPO_ROOT / "main.py")
 
 
+@_needs_hook
 class TestHookIsInstalled:
     def test_hook_file_exists(self):
+        """Existence only, and it is not the coverage.
+
+        On its own this assertion is a decoration: it would stay green
+        against an empty file. The classes below drive the hook's
+        decisions, and they are what make this file evidence.
+        """
+        assert HOOK_PATH is not None
         assert HOOK_PATH.is_file()
 
     def test_hook_is_registered_as_a_pretooluse_hook(self):
-        settings = REPO_ROOT / ".claude" / "settings.json"
-        assert settings.is_file()
+        settings = settings_file()
+        assert settings is not None, absent_reason("settings.json")
         body = json.loads(settings.read_text(encoding="utf-8"))
         cmds = [c.get("command", "")
                 for entry in body.get("hooks", {}).get("PreToolUse", [])
@@ -121,6 +242,7 @@ class TestHookIsInstalled:
         assert any("verify_release_gate.py" in c for c in cmds), cmds
 
 
+@_needs_hook
 class TestPassThrough:
     def test_non_banner_path_is_allowed(self, run_hook):
         decision, _ = run_hook(
@@ -133,6 +255,7 @@ class TestPassThrough:
         assert decision == "allow"
 
 
+@_needs_hook
 class TestBannerPathsAreGated:
     @pytest.mark.parametrize("target", [BANNER, MAIN_PY])
     def test_fresh_complete_sidecar_allows(self, run_hook, target):
@@ -151,6 +274,7 @@ class TestBannerPathsAreGated:
         assert "old" in reason.lower()
 
 
+@_needs_hook
 class TestSidecarMustProveWhatItRan:
     """Step 4 of C43. Freshness alone is not evidence.
 
@@ -179,6 +303,7 @@ class TestSidecarMustProveWhatItRan:
         assert "0 tests" in reason
 
 
+@_needs_hook
 class TestPayloadContract:
     """Regression guard against the vacuity that made the archived pin
     worthless. If the key the hook reads ever drifts again, this fails
@@ -196,7 +321,7 @@ class TestPayloadContract:
             "hook now reacts to the legacy 'tool' key; if the payload "
             "contract changed, update _edit() and this pin together")
 
-    def test_unparseable_stdin_is_pass_through(self, monkeypatch, capsys):
+    def test_unparseable_stdin_is_pass_through(self, hook, monkeypatch, capsys):
         """Documented fail-open: a broken payload must not block edits."""
         monkeypatch.setattr("sys.stdin", io.StringIO("not json"))
         assert hook.main() == 0
