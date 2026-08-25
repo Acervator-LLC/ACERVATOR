@@ -9,10 +9,17 @@
 # rule "require status checks to pass before merging" is what actually keeps
 # ungated code off the default branch.
 #
-# To finish the conversion, enable in the repo settings:
+# Python version: ONE version, pinned in `.python-version` at the repo root and
+# read from there by every job (`python-version-file`). Acervator targets a
+# single interpreter — the app is headed for a SaaS deployment where local
+# installs are for testing only, so there is exactly one supported runtime and
+# CI never fans out across versions. To move the whole project to a new Python,
+# edit `.python-version` (and `requires-python` in pyproject.toml); nothing here.
+#
+# To finish the pre-push→CI conversion, enable in the repo settings:
 #   Settings → Branches → Branch protection for `main`:
 #     - Require a pull request before merging
-#     - Require status checks to pass: select "lint" and "test (3.12)"
+#     - Require status checks to pass: select "lint" and "test"
 name: CI
 
 on:
@@ -33,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version-file: .python-version
           cache: pip
       - name: Install lint tooling
         run: |
@@ -45,12 +52,8 @@ jobs:
         run: flake8 src tests tools *.py
 
   test:
-    name: test (${{ matrix.python-version }})
+    name: test
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.12"]
     env:
       # PySide6 widgets are constructed in the suite; run them without a
       # display server. The conftest redirects all runtime-tree writes to
@@ -60,7 +63,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version-file: .python-version
           cache: pip
       - name: Install Qt runtime libraries
         # PySide6 needs these shared libs to import even under the offscreen

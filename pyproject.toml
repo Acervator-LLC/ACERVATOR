@@ -8,7 +8,9 @@ version = "1.0.0"
 description = "Multi-exchange crypto auto-trading platform with Grid and Speculative Scrumming modes"
 readme = "README.md"
 license = {text = "Proprietary"}
-requires-python = ">=3.11"
+# Single supported interpreter, pinned in .python-version at the repo root.
+# Acervator targets one Python; there is no multi-version support or testing.
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "PySide6>=6.6.0",
     "ccxt>=4.2.0",
@@ -42,7 +44,7 @@ quantum-trader = "main:main"
 # .flake8): line length 88, E203/W503 ignored because black owns them.
 [tool.black]
 line-length = 88
-target-version = ["py311", "py312", "py313"]
+target-version = ["py313"]
 extend-exclude = "tests/obsolete"
 
 [tool.setuptools.packages.find]
