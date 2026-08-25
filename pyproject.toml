@@ -53,9 +53,16 @@ dev = [
     # heavy (semgrep, opencv) — the fast lane deliberately does NOT install
     # them, and the archetype tests that need them are marked so the fast
     # lane deselects them (see the `archetype` marker below).
+    # coding_archetype.py shells out to SIX analyzers — ruff, mypy, pyright,
+    # bandit, vulture, semgrep. pyright was missing from this list, so every
+    # coding-archetype test failed closed in CI's test-full lane with
+    # "pyright: not installed" (ArchetypeReport.passed=False). pyright is a
+    # bare-executable runner (like semgrep), so it must be on PATH — the pip
+    # package installs the launcher; it fetches its Node runtime on first run.
     "ruff>=0.1",
     "bandit>=1.7",
     "mypy>=1.0",
+    "pyright>=1.1",
     "vulture>=2.0",
     "semgrep>=1.0",
     "proselint>=0.13",
