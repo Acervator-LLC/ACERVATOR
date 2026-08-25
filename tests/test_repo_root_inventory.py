@@ -76,6 +76,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 INVENTORY: dict[str, str] = {
     # -- repository and tool configuration ------------------------------
     ".gitattributes": "git reads it at the root only",
+    ".flake8": "flake8 does not read pyproject.toml; it reads this, at the root only",
+    ".python-version": "the ONE interpreter pin. actions/setup-python reads it through python-version-file, and pyproject.toml requires-python must agree",
+    ".git-blame-ignore-revs": "git blame --ignore-revs-file reads it at the root; it holds the whole-tree reformat commit so blame skips over it",
+    "CLAUDE.md": "repository guidance an agent reads on entry; tooling looks for it at the root and nowhere else",
     ".gitignore": "git reads it at the root only",
     ".vale.ini": "vale reads it from the directory it runs in",
     "pyproject.toml": "the one source for dependencies, pytest config, coverage and "
@@ -158,12 +162,6 @@ INVENTORY: dict[str, str] = {
     "but generate_essay_ja.py is pinned to the root by three tests, "
     "and splitting the two essay generators across two directories "
     "reads worse than leaving both here",
-    "EXCHANGE_DIAGNOSTIC.py": "standalone exchange connectivity diagnostic, run by hand. "
-    "pyproject.toml names it as one of the four consumers that make "
-    "certifi a declared dependency. KNOWN DEFECT, reported by issue "
-    "#85 and not repaired by it: the file has no "
-    '`if __name__ == "__main__"` guard, so importing it opens 15 '
-    "sockets and then blocks on input()",
 }
 
 # Root files that pytest's discovery patterns must NOT match. Issue #85

@@ -44,7 +44,7 @@ dependencies = [
     # shipped files import it to build the TLS trust store for exchange
     # calls: src/exchange/ccxt_connector.py:477,
     # src/gui/main_window.py:4101 and :4147. A fourth,
-    # EXCHANGE_DIAGNOSTIC.py:35, imports it at the repo root. It is
+    # tools/exchange_diagnostic.py:35 imports it. It is
     # declared now, so the set the build installs is the set this file
     # states.
     "certifi>=2024.2.2",
@@ -108,6 +108,9 @@ dependencies = [
 #            measured green on 2026-08-23, not guesses.
 [project.optional-dependencies]
 # CI fast lane installs THIS and nothing else: 4 packages, no analyzers.
+# CI lint job installs THIS. A package name lives in this file, never in
+# a workflow step (issue #94).
+lint = ["black>=24.0", "flake8>=7.0"]
 test = [
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
@@ -130,8 +133,7 @@ dev = [
     # PEP 621 self-reference: dev is a strict superset of test.
     "acervator[test]",
     # The CI lint job runs black+flake8; the full lane shells out to the rest.
-    "black>=24.0",
-    "flake8>=7.0",
+    "acervator[lint]",
     "semgrep>=1.0",
     "opencv-python-headless>=4.8",
     "ruff>=0.16.0",

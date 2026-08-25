@@ -1318,324 +1318,48 @@ def test_POSITIVE_CONTROL_the_append_scanner_finds_a_real_append():
 # ── D8 and D9: citations must point at what they claim ──────────────
 
 CITATION_ANCHORS: dict[int, str] = {
-    694: '# Invariant: sum(l["units"] for l in _main_lots)',
-    1804: "def cycle_growth_cap_usd(self) -> float:",
-    1885: "def _apply_fold_target_growth(self, accum_profit: float,",
-    2647: "self._target_balance = float(self._target_balance) + u",
-    2651: "self.config.target_balance = self._target_balance",
-    2743: "def _positive_observed_quantity(",
-    2805: "def _finite_state_number(",
-    2850: "def _sum_lot_units(lots: Any) -> tuple[float | None, str | None]:",
-    3729: "fill_price = await self._execute_buy(",
-    3774: "self._main_lots.append({",
-    4895: "return float(self._current_holdings) * float(price)",
-    4990: "return self._anchor_target_balance * mult",
-    5994: "_tracked_units_bootstrap = sum(",
-    5999: "self._current_holdings = min(",
-    6673: 'float(getattr(_bal1, "total", 0)',
-    6715: 'getattr(_bal1, "absent", False) or',
-    6936: "self._current_holdings = sum(",
-    7103: "# _main_lots and derives _current_holdings from that source",
-    7109: "self._current_holdings * ticker.last",
-    7876: "entry_fill = await self._execute_buy(",
-    7899: "self._main_lots.append({",
-    7934: "delta = current_value - self._target_balance",
-    9695: 'price <= tranche["initial_buy_price"]',
-    9963: "_patent_only_eligible = sum(",
-    10213: "# MEM-171 / ADR-004 patent invariant is NOT abandoned in",
-    10225: 'if ticker.last <= float(t.get("ref", 0)) * _otd_factor',
-    10445: "buy_fill = await self._execute_buy(",
-    10502: "self._main_lots.append({",
-    10962: "hedge_fill = await self._execute_buy(",
-    10996: "self._main_lots.append({",
-    11994: "async def _reconcile_holdings(self, reason:",
-    # 2026-08-13 re-anchor, U2. ONE insertion into scrumming_bot.py --
-    # the two units parsers, the block that widens the audited figure
-    # from the scalar to the lot book, and the coerced rescale write --
-    # placed between the fold-merge return above and the U1 label block
-    # below. FOUR shift bands, not one, because the insertion is in
-    # three pieces with anchors between them: +0 at and above :10992,
-    # +122 through the reconcile docstring, +191 at the drift-down
-    # branch, +202 below the rescale. A flat shift would have moved two
-    # anchors to the wrong lines. Derived the same way as the notes
-    # above, by anchor ordinal plus monotonic shift and no difflib:
-    # each anchor's occurrence count in the pre-change file located the
-    # same occurrence in the post-change file, the shifts were required
-    # to be non-negative and non-decreasing, and every relocated line
-    # was re-read and confirmed to still hold the text recorded beside
-    # it. 22 anchors did not move; 12 moved. SIX ANCHORS ARE NEW:
-    # :2289, :2351, :2396, :5486, :5491 and :6425, because the two new
-    # parsers cite their three neighbours and the clamp they exist to
-    # defend against, and DOCUMENTED_METHODS now reads them.
-    #
-    # TWELVE PROSE CITATIONS WERE SHIFTED TOO, at :2420, :2520, :2523,
-    # :2563, :2568, :2572, :2582, :2583, :2590 and :2591. They are not
-    # anchors; they are `:NNNN` tokens inside the documented methods
-    # that named lines below the insertion. Re-anchoring the table
-    # without them would have left the checker green over ten wrong
-    # numbers.
-    #
-    # 2026-08-13 re-anchor, U2 SECOND PASS -- the venue field and the
-    # absent marker. A SECOND insertion into the same method on top of
-    # the one described above: the venue read now takes the wallet
-    # TOTAL with the startup handshake's own fallback chain, an absent
-    # reading is refused before anything is written, and the units
-    # parser grew an exact int/float type ground. +97 lines.
-    #
-    # FOUR bands again, and they are NOT the bands above. These are
-    # measured against the PREVIOUS pass, not against live: +0 at and
-    # above the parser docstring, +19 through the reconcile docstring,
-    # +94 at the drift-down branch, +97 below the rescale. Measured
-    # against the pre-U2 file the same three anchors are +141, +285
-    # and +299. The note above states its own pass and is left as it
-    # was written, so the two records are additive and neither is
-    # retro-edited.
-    #
-    # Same method as every note above: anchor ordinal plus monotonic
-    # shift, never difflib; shifts required non-negative and
-    # non-decreasing; every relocated line re-read and confirmed to
-    # still hold the text recorded beside it. 28 anchors did not move,
-    # 12 moved, and NO anchor is new -- this pass added no method.
-    #
-    # THE SAME TWELVE PROSE CITATIONS MOVED AGAIN and were rewritten
-    # again, to the same numbers this table now records. A thirteenth
-    # was corrected on a different ground: the absent block cited
-    # `(:1117)`, and every other `:NNNN` token in that file reads as
-    # "this file" while that one meant ccxt_connector.py. It is
-    # written out in full now. That correction was made to fit inside
-    # the three lines it replaced, because one added line above the
-    # drift-down branch would have moved every anchor below it a
-    # second time.
-    12263: "if exchange_units < internal_units - 1e-9:",
-    12285: "self._current_holdings = exchange_units",
-    12287: "# Drift UP. Operator directive 2026-08-22, verbatim:",
-    12319: "_adopt = min(exchange_units, _claimable)",
-    12540: "async def _execute_manual_rebalance(",
-    # 2026-08-15 re-anchor, the nan-ladder unit. ONE insertion, +104
-    # lines, entirely inside the U3 gate block in
-    # `_execute_manual_rebalance`: the ref filter that replaced the bare
-    # `max()` genexp, and the FOLD REF UNREADABLE emit beside it.
-    #
-    # TWO BANDS, and they are clean: +0 at and above :11557, +104 from
-    # :12358 down. 36 anchors did not move, 6 moved, NO anchor is new --
-    # this unit added no method, and `_execute_manual_rebalance` is not
-    # in DOCUMENTED_METHODS, so the five `:NNNN` tokens the new comment
-    # cites (:1748, :9549, :9638, :9645, :11021) are not read by
-    # `_cited_line_numbers` and need no anchor. All five name lines
-    # ABOVE the insertion and therefore did not move.
-    #
-    # Derived the same way as every note above: anchor ordinal plus
-    # monotonic shift, never difflib. Each anchor's occurrence count in
-    # the pre-change file located the SAME occurrence in the post-change
-    # file -- which matters here, because ':12358' and ':12375' are the
-    # 6th and 7th occurrences of `self._main_lots.append({` and a
-    # first-match search would have collapsed them onto :3313. Shifts
-    # were required non-negative and non-decreasing, and every relocated
-    # line was re-read and confirmed to still hold the text beside it.
-    # Zero violations.
-    #
-    # THE COUNT IS 42, NOT 34. The work order for this unit said "all 34
-    # CITATION_ANCHORS". Counted twice -- once by a regex parser over
-    # the source, once by `ast.literal_eval` of the dict itself -- and
-    # both read 42. The stale number was the work order's, and it is
-    # recorded here so the next reader does not trust it either.
-    13514: "self._main_lots.append({",
-    13531: "self._main_lots.append({",
-    13540: "self._current_holdings += fill_amount",
-    15180: "async def _execute_buy(",
-    15657: "self._current_holdings += amount",
-    15782: "def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:",
-    # 2026-08-20 re-anchor, ISSUE #21 -- the capital-reservation grant
-    # postcondition. ONE insertion into `scrumming_bot.py`, +47 lines,
-    # entirely inside the success branch of
-    # `_ensure_capital_reservation`: the comment that states what the
-    # two halves of the check now read, the two locals the record is
-    # built from, and the explicit `ok`.
-    #
-    # TWO BANDS, and they are clean: +0 at :574, +47 from :1581 down.
-    # 41 anchors moved, 1 did not, and NO anchor is new -- the unit
-    # added no method and `_ensure_capital_reservation` is not in
-    # DOCUMENTED_METHODS.
-    #
-    # Derived the same way as every note above: anchor ordinal plus
-    # monotonic shift, never difflib. Each anchor's occurrence count in
-    # the pre-change file located the SAME occurrence in the post-change
-    # file -- which matters again here, because `self._main_lots.append({`
-    # occurs seven times and a first-match search collapses all seven
-    # onto one line. Shifts were required non-negative and
-    # non-decreasing, and every relocated line was re-read from disk and
-    # confirmed to still hold the text recorded beside it. Zero
-    # violations.
-    #
-    # THE PROSE CITATIONS INSIDE `scrumming_bot.py` MOVED TOO, and they
-    # were rewritten in the same unit: every `:NNNN` token in that file
-    # naming a line below the insertion is +47. That is 61 lines of
-    # prose, not only the ones `_cited_line_numbers` reads, because
-    # `tests/test_autonomous_fold_price_gate.py` rewrites EVERY token in
-    # the file through its reversal map and its pre-change digest goes
-    # red on any token that was left behind.
-    # 2026-08-24 re-anchor, ISSUE #102 -- the BB-priority arm stops
-    # editing the confidence and relaxes the floor instead. TWO
-    # insertions into `scrumming_bot.py`: `_BB_PRIORITY_SKEW` and the
-    # derived `_BB_PRIORITY_CONFIDENCE_FLOOR`, placed beside
-    # `_TA_CONFIDENCE_FLOOR` at module scope, and the rewritten gate
-    # block in `tick()`.
-    #
-    # TWO BANDS, and they are clean: +68 from :574 through :7662, +86
-    # from :9316 down. 42 anchors moved, 0 did not, and NO anchor is
-    # new -- the unit adds no method and no `_main_lots.append({`.
-    #
-    # Derived the same way as every note above: anchor ordinal plus
-    # monotonic shift, never difflib. Each anchor's occurrence count in
-    # the pre-change file located the SAME occurrence in the post-change
-    # file, which still matters because `self._main_lots.append({`
-    # occurs seven times. Shifts were required non-negative and
-    # non-decreasing in cited order, and every rewritten line was read
-    # back out of the post-change file to confirm it holds the text
-    # recorded beside it. Zero violations.
-    #
-    # THE PROSE CITATIONS INSIDE `scrumming_bot.py` MOVED TOO, in the
-    # same unit and by the same two bands: 74 of the 75 self-citation
-    # tokens. The 75th is `:488-494` at `:1759` ("the drain the spec at
-    # :488-494 has always described"). Pre-change 488-494 is the
-    # phantom-timeframe filter, so that token names a SPEC DOCUMENT and
-    # not this file; a cross-document reference is not shifted. It is
-    # named here rather than moved.
-    #
-    # `test_POSITIVE_CONTROL_the_citation_checker_catches_a_shifted_line`
-    # carries the SAME number in its body, so it moved from 574 to 642.
-    #
-    # 2026-08-24 re-anchor, ISSUE #104 -- the two remaining confidence
-    # favours stop editing the measurement and skew the floor instead.
-    # ONE module-scope function, `_skewed_confidence_floor`, placed
-    # beside `_TA_CONFIDENCE_FLOOR`; the two `eff_confidence +=` lines in
-    # `tick()` replaced by the prose that says why each favour is a
-    # favour; the floor computation rewritten to divide by one plus the
-    # sum of all THREE skews; and five log lines repaired, four of which
-    # printed the inflated number and one of which printed `+ BB 0.nn`
-    # as an addend to a confidence it is no longer added to.
-    #
-    # TWO BANDS, and they are clean: +52 at and above :7782, +141 from
-    # :9543 down. 42 anchors moved, 0 did not, and NO anchor is new --
-    # the unit adds no method and no `self._main_lots.append({`.
-    #
-    # Derived the same way as every note above: anchor ordinal plus
-    # monotonic shift, never difflib. Each anchor's occurrence count in
-    # the pre-change file located the SAME occurrence in the post-change
-    # file, which still matters because `self._main_lots.append({`
-    # occurs seven times. Shifts were required non-negative and
-    # non-decreasing in cited order, and every relocated line was read
-    # back out of the post-change file and confirmed to hold the text
-    # recorded beside it. Zero violations.
-    #
-    # AND IT WAS DERIVED A SECOND WAY, because a re-anchor that agrees
-    # with itself proves nothing. An exact line map was built from git's
-    # own hunk ranges and then VERIFIED, not sampled: every one of the
-    # 15,667 unchanged lines had to carry identical text on both sides.
-    # The two derivations agree on all 42 anchors.
-    #
-    # THE PROSE CITATIONS INSIDE `scrumming_bot.py` MOVED TOO, in the
-    # same unit and by the same two bands: 74 of the 75 self-citation
-    # tokens, the 75th being the `:488-494` spec reference #102 named.
-    # Nineteen further tokens carry another module's filename and are
-    # not self-citations; one more, `[:180]` at the credential-refusal
-    # emit, is a SLICE that the citation regex matches and that was
-    # never a citation. All 21 were left alone, and they are counted
-    # here so the next reader does not read the gap as an omission.
-    # 2026-08-24 re-anchor, ISSUE #106 -- the per-Fold growth cap
-    # compounds. The cap's base moved from `_anchor_target_balance`,
-    # which no Fold ever moves, to the target as it stood when the
-    # cycle opened. FOUR enforcement/readout sites in
-    # `scrumming_bot.py` were rewritten and ONE property was added, the
-    # single definition all four now read.
-    #
-    # SEVEN BANDS, and they are clean: +0 at and below :694, +82 from
-    # :1784, +94 from :2534, +101 from :3609, +114 from :10291, +122
-    # from :10800, +131 from :13258 down. 40 anchors moved, 1 did not
-    # (:694), and ONE ANCHOR IS NEW -- :1785, `cycle_growth_cap_usd`,
-    # because `apply_extractor_tranche_return` now cites the property
-    # where it used to cite the arithmetic.
-    #
-    # ONE ANCHOR WAS RETIRED RATHER THAN MOVED, and that is the part
-    # worth writing down. :1858 held
-    # `_cycle_cap_growth = self._anchor_target_balance * (_cap_pct`.
-    # This change DELETES that text, so the anchor has no destination:
-    # an ordinal search returns nothing rather than a wrong line, which
-    # is the search doing its job. The prose that cited it -- the
-    # stranded-anchor blast radius in
-    # `apply_extractor_tranche_return` -- was not merely re-pointed. It
-    # asserted that a stranded ANCHOR widens the growth cap, and after
-    # this change a stranded TARGET does instead. A citation that still
-    # resolved would have carried a false claim to a real line.
-    #
-    # Derived the same way as every note above: anchor ordinal plus
-    # monotonic shift, never difflib. Each anchor's occurrence count in
-    # the pre-change file located the SAME occurrence in the
-    # post-change file -- which still matters, because
-    # `self._main_lots.append({` occurs seven times and :13258/:13275
-    # are the 7th and 8th matches of their text. Shifts were required
-    # non-negative and non-decreasing: 0 violations.
-    #
-    # CROSS-CHECKED AGAINST AN INDEPENDENT DERIVATION. A second map was
-    # built from `git diff -U0` hunk headers alone -- 19 hunks, a
-    # cumulative +/- per pre-line, touching no anchor text. The two
-    # derivations agree on all 41 resolvable anchors: 0 disagreements.
-    #
-    # THE 74 SELF-CITATION TOKENS inside `scrumming_bot.py` moved by
-    # the same seven bands; 65 were rewritten and the rest already sat
-    # in the +0 band. Each was verified by READ-BACK: the pre-change
-    # line the token named and the post-change line it now names are
-    # byte-identical, 52 of 52 distinct values. The other 21 `:NNNN`
-    # tokens in that file were left alone for the reasons #104 wrote
-    # down -- 19 carry another module's filename, `:488-494` names a
-    # spec document, and `[:180]` is a slice the regex matches and that
-    # was never a citation.
-    #
-    # 2026-08-24 re-anchor, ISSUE #98 DEFECT 4 -- the fold-tranche
-    # counters. FIVE edits to `scrumming_bot.py`, none of them adding an
-    # anchor text: the counter-declaration prose in `__init__`; the
-    # restore filter in `import_scrumming_state` and the discard bump
-    # beside the counter restores; the TD-017 fold guard in `tick()`,
-    # which SHRANK because its body moved out; the new method
-    # `_drop_malformed_fold_tranches` above `_settle_fold_plan`; and the
-    # ladder comment in `_execute_manual_rebalance`.
-    #
-    # +125 lines, 8 hunks, NINE cumulative bands, and ONE STEP DOWN --
-    # the first this table has carried. Cumulative shift by pre-change
-    # line: +0 below :746, +15 from :746, +19 from :754, +28 from :5432,
-    # +30 from :5435, +51 from :5476, +40 from :10135 (the tick block
-    # gave back eleven lines), +121 from :11383 and +125 from :13007
-    # down. A flat shift would have moved thirteen anchors to the wrong
-    # lines.
-    #
-    # Derived by ANCHOR ORDINAL PLUS SHIFT, never difflib: each anchor's
-    # occurrence count in the pre-change file located the SAME
-    # occurrence in the post-change file. 42 anchors, 42 resolved, NONE
-    # new and NONE retired. Order was required to be preserved and was:
-    # 0 violations.
-    #
-    # CROSS-CHECKED AGAINST THE GIT HUNK MAP. A second map was built
-    # from `git diff -U0` headers alone -- 8 hunks, a cumulative shift
-    # per pre-line, touching no anchor text. The two derivations agree
-    # on all 42 anchors: 0 disagreements.
-    #
-    # THE SELF-CITATION TOKENS inside `scrumming_bot.py` moved by the
-    # same bands, and every one was verified BY READ-BACK against a
-    # full pre-to-post line map built from the same diff. That map was
-    # itself checked first -- 15,863 surviving lines, byte-identical on
-    # both sides, 0 mismatches -- because a read-back through a broken
-    # map proves nothing. Then: 77 tokens, the line each names is
-    # byte-identical to the line it named before the change, 0
-    # mismatches and 0 naming a line this change created. The 21 tokens
-    # #104 and #106 set aside were left alone for their reasons.
-    #
-    # ONE CITATION WAS RETIRED RATHER THAN SHIFTED, and it is named
-    # here because a silent deletion reads as an omission. The ladder
-    # comment in `_execute_manual_rebalance` cited the tick guard by
-    # line. That guard is now a method with a name, so the prose names
-    # it. The number it held was ALREADY approximate before this change
-    # -- it pointed eleven lines above the guard on both sides -- which
-    # is the rot a name does not have.
+    736: '# Invariant: sum(l["units"] for l in _main_lots)',
+    1921: "def cycle_growth_cap_usd(self) -> float:",
+    2001: "def _apply_fold_target_growth(self, accum_profit: float,",
+    2914: "self._target_balance = float(self._target_balance) + u",
+    2917: "self.config.target_balance = self._target_balance",
+    3065: "def _positive_observed_quantity(",
+    3130: "def _finite_state_number(",
+    3176: "def _sum_lot_units(lots: Any) -> tuple[float | None, str | None]:",
+    4133: "fill_price = await self._execute_buy(",
+    4189: "self._main_lots.append(",
+    5577: "float(self._current_holdings)",
+    5675: "return self._anchor_target_balance * mult",
+    6801: "_tracked_units_bootstrap = sum(",
+    6805: "self._current_holdings = (",
+    7545: 'float(getattr(_bal1, "total", 0)',
+    7597: 'getattr(_bal1, "absent", False) or',
+    7868: "self._current_holdings = sum(",
+    8066: "# _main_lots and derives _current_holdings from that source",
+    8072: "self._current_holdings * ticker.last",
+    8976: "entry_fill = await self._execute_buy(",
+    9007: "self._main_lots.append(",
+    9056: "delta = current_value - self._target_balance",
+    11103: 'price <= tranche["initial_buy_price"]',
+    11387: "_patent_only_eligible = sum(",
+    11651: "# MEM-171 / ADR-004 patent invariant is NOT abandoned in",
+    11664: 'if ticker.last <= float(t.get("ref", 0)) * _otd_factor',
+    11918: "buy_fill = await self._execute_buy(",
+    11983: "self._main_lots.append(",
+    12557: "hedge_fill = await self._execute_buy(",
+    12599: "self._main_lots.append(",
+    13669: "async def _reconcile_holdings(self, reason:",
+    13962: "if exchange_units < internal_units - 1e-9:",
+    13982: "self._current_holdings = exchange_units",
+    13984: "# Drift UP. Operator directive 2026-08-22, verbatim:",
+    14017: "_adopt = min(exchange_units, _claimable)",
+    14284: "async def _execute_manual_rebalance(",
+    15375: "self._main_lots.append(",
+    15416: "self._main_lots.append(",
+    15449: "self._current_holdings += fill_amount",
+    17362: "async def _execute_buy(",
+    17903: "self._current_holdings += amount",
+    18054: "def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:",
 }
 
 # Every method whose prose is allowed to cite a line. v3.25.7 widened
@@ -1707,10 +1431,12 @@ def test_every_cited_number_has_an_anchor():
 def test_POSITIVE_CONTROL_the_citation_checker_catches_a_shifted_line():
     """The checker must fail on a number that no longer holds its token."""
     lines = _source_lines()
-    lineno = 694
-    anchor_text = '# Invariant: sum(l["units"] for l in _main_lots)'
-    assert anchor_text in lines[lineno - 1]
-    assert anchor_text not in lines[lineno]
+    # The subject comes from the table, so this control cannot drift away from
+    # the rows it is proving. Its own number was a second copy that went stale.
+    wanted = '# Invariant: sum(l["units"] for l in _main_lots)'
+    lineno = next(n for n, a in CITATION_ANCHORS.items() if a == wanted)
+    assert wanted in lines[lineno - 1]
+    assert wanted not in lines[lineno]
 
 
 def test_the_invariant_helper_names_test_files_that_exist():

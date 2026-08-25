@@ -3145,8 +3145,8 @@ class ScrummingBot(BotContainer):
 
         THE TYPE GROUND IS SHARED TOO, v3.25.7, and for a reason this
         contract does not merely inherit. The tick multiplies
-        `_current_holdings` by a price (:7109) and subtracts
-        `_target_balance` (:7934); a string in either raises TypeError
+        `_current_holdings` by a price (:8072) and subtracts
+        `_target_balance` (:9056); a string in either raises TypeError
         in the DECIDER. State that only `float()` can read is already
         broken state, so coercing it here would launder a corruption
         into a durable float write. Refuse it and say which name it was.
@@ -3197,7 +3197,7 @@ class ScrummingBot(BotContainer):
         exception, because `__float__` on the stored value is the one
         place caller-shaped data still gets to run code. The units
         value is deliberately NOT type-refused the way the two money
-        parameters are: `_main_lots_invariant_ok` (:15782) coerces the
+        parameters are: `_main_lots_invariant_ok` (:18054) coerces the
         same field with a bare `sum`, and refusing here what that
         accepts would put the ledger's two readers on different rules.
 
@@ -3240,8 +3240,8 @@ class ScrummingBot(BotContainer):
 
         THE TWO HALVES ARE THE TWO TERMS OF ONE SUBTRACTION. The tick
         computes `current_value = _current_holdings * ticker.last *
-        _quote_to_usd` (:7109) and then `delta = current_value -
-        _target_balance` (:7934). An arrival moves BOTH terms. Split the
+        _quote_to_usd` (:8072) and then `delta = current_value -
+        _target_balance` (:9056). An arrival moves BOTH terms. Split the
         halves and delta moves, in whichever direction the missing half
         was:
 
@@ -3266,7 +3266,7 @@ class ScrummingBot(BotContainer):
         through an expression that reads the rate at TWO DIFFERENT
         TIMES, and so quietly assumed the rate cannot move between the
         arrival and the tick that reads it. Write both out. With P the
-        live quote-side price, `q_tick` the rate the tick reads (:7109)
+        live quote-side price, `q_tick` the rate the tick reads (:8072)
         and `q_arr` the rate this method read when it priced the
         arrival:
 
@@ -3298,10 +3298,10 @@ class ScrummingBot(BotContainer):
 
         KNOWN LIMITATION -- CONTAINMENT DOES NOT SURVIVE A DRIFT-DOWN
         RECONCILE, AND BOTH LIFTED BALANCES ARE LEFT BEHIND.
-        `_reconcile_holdings` (:11994) writes `_main_lots` and
+        `_reconcile_holdings` (:13669) writes `_main_lots` and
         `_current_holdings` and writes NEITHER `_target_balance` NOR
         `_anchor_target_balance` anywhere (AST-verified over the whole
-        function, both names). Its drift-DOWN branch (:12263-12285)
+        function, both names). Its drift-DOWN branch (:13962-13982)
         rescales every lot by `exchange_units / internal_units` and
         resets holdings to the exchange figure. Run it after an arrival
         and the units go while both lifts stay: a $20 arrival on a
@@ -3315,11 +3315,11 @@ class ScrummingBot(BotContainer):
         as long as it stands.
 
         THE ANCHOR carries `position_ceiling_usd`, which returns
-        `self._anchor_target_balance * mult` (:4990). A $20 stranded
+        `self._anchor_target_balance * mult` (:5675). A $20 stranded
         lift on a $200 anchor raises the Smart Ceiling by $20 x mult.
 
         THE TARGET carries the per-cycle Growth Rate Cap. Issue #106
-        moved that base: `cycle_growth_cap_usd` (:1804) takes
+        moved that base: `cycle_growth_cap_usd` (:1921) takes
         `max_target_growth_pct` of the target as it stood when the cycle
         opened, not of the anchor. So the same $20 stranded lift on a
         $200 target widens the growth cap by 10%. Before #106 that
@@ -3331,7 +3331,7 @@ class ScrummingBot(BotContainer):
         across every lot and the ledger records no provenance, so
         nothing in `_main_lots` says which units arrived from a child
         and which were bought. `_target_balance` is built from operator
-        config, fold growth (:1885), wire income (:2647) and arrivals
+        config, fold growth (:2001), wire income (:2914) and arrivals
         together, so there is no evidence available at reconcile time to
         size a matching un-lift. Un-lifting proportionally would guess.
         The drift-DOWN branch is also the "legitimate loss" branch: a
@@ -3345,18 +3345,18 @@ class ScrummingBot(BotContainer):
 
         THE HOLDINGS HALF IS A LOT, NOT A NUMBER. Since v3.23.43 this
         bot owns exactly what is in `_main_lots` and derives
-        `_current_holdings` from that source alone (:7103). The
-        invariant `sum(lot["units"]) == _current_holdings` (:694) is
-        checked by `_main_lots_invariant_ok` (:15782). Two consequences,
+        `_current_holdings` from that source alone (:8066). The
+        invariant `sum(lot["units"]) == _current_holdings` (:736) is
+        checked by `_main_lots_invariant_ok` (:18054). Two consequences,
         both load-bearing:
 
           * Incrementing `_current_holdings` without appending a lot
             breaks the invariant, and the next drift-down reconcile
-            rescales `_main_lots` and resets holdings (:12263-12285),
+            rescales `_main_lots` and resets holdings (:13962-13982),
             silently undoing the credit.
           * Booking nothing at all is not neutral either. Units that
             land on the exchange but are never attributed are refused
-            by the drift-UP policy (:12287-12319) -- "those units
+            by the drift-UP policy (:13984-14017) -- "those units
             belong to another bot, prior state, or operator" -- so the
             child's gain would sit unclaimed forever.
 
@@ -3366,16 +3366,16 @@ class ScrummingBot(BotContainer):
         scalar" and the file does not do that. There are two shapes:
 
           SPLIT ACROSS AN AWAIT, and it is the common one. `_execute_buy`
-            (:15180) moves the scalar -- `self._current_holdings +=
-            amount` (:15657) -- and appends NO lot. Its callers append
-            the lot after the await returns: `tick` at :7876 -> :7899,
-            :10445 -> :10502, :10962 -> :10996, and `manual_fire_tranche`
-            at :3729 -> :3774. Between the scalar write and the lot
-            append the coroutine has already yielded, so the :694
+            (:17362) moves the scalar -- `self._current_holdings +=
+            amount` (:17903) -- and appends NO lot. Its callers append
+            the lot after the await returns: `tick` at :8976 -> :9007,
+            :11918 -> :11983, :12557 -> :12599, and `manual_fire_tranche`
+            at :4133 -> :4189. Between the scalar write and the lot
+            append the coroutine has already yielded, so the :736
             invariant is briefly false and a tick can see it.
 
-          SYNCHRONOUS, and rarer. `_execute_manual_rebalance` (:12540)
-            appends (:13514 / :13531) and moves the scalar (:13540)
+          SYNCHRONOUS, and rarer. `_execute_manual_rebalance` (:14284)
+            appends (:15375 / :15416) and moves the scalar (:15449)
             with nothing suspending in between.
 
         This method is deliberately the second shape. The first shape is
@@ -3392,7 +3392,7 @@ class ScrummingBot(BotContainer):
         put back into the shape `_main_lots` stores -- a quote-side
         price -- and not a fabricated entry price.
 
-        WHY THIS IS NOT `_apply_fold_target_growth` (:1885). That helper
+        WHY THIS IS NOT `_apply_fold_target_growth` (:2001). That helper
         applies the per-cycle Growth Rate Cap (`max_target_growth_pct`,
         default 1.0% of the cycle-open target -- issue #106 moved that
         base off the anchor). A cap is WRONG here: a return larger
@@ -3492,7 +3492,7 @@ class ScrummingBot(BotContainer):
 
         try:
             # `or 1.0` is not a convenience here. The tick prices the
-            # position with EXACTLY this expression (:7109), so the
+            # position with EXACTLY this expression (:8072), so the
             # arrival must be priced with it too. A stricter reading
             # here -- refusing a 0.0 rate the tick silently reads as
             # 1.0 -- would put the containment arithmetic and the
@@ -3518,7 +3518,7 @@ class ScrummingBot(BotContainer):
             }
 
         # No ledger, no credit. Booking units the ledger cannot hold is
-        # what breaks the :694 invariant.
+        # what breaks the :736 invariant.
         #
         # EXACTLY A LIST, NOT MERELY SOMETHING THAT PASSES `isinstance`.
         # v3.25.7. `isinstance(lots, list)` stood here, and it admits a
@@ -3528,7 +3528,7 @@ class ScrummingBot(BotContainer):
         # Measured on the v3.25.6 file with a ledger whose `append`
         # stored the lot and then raised: `RuntimeError` escaped the
         # method, `_main_lots` went 1 -> 2, `_current_holdings` and
-        # `_target_balance` did not move at all, and the :694 invariant
+        # `_target_balance` did not move at all, and the :736 invariant
         # was left 0.1 units apart. The atomic block had been split by
         # the one call inside it.
         #
@@ -3551,7 +3551,7 @@ class ScrummingBot(BotContainer):
                 ),
             }
 
-        # USD = units x quote_price x quote_to_usd (:4895). Inverted,
+        # USD = units x quote_price x quote_to_usd (:5577). Inverted,
         # this is the quote-side price `_main_lots` stores alongside
         # every other lot. Both observed quantities, no model.
         #
@@ -3684,7 +3684,7 @@ class ScrummingBot(BotContainer):
         # caller-supplied callable between the first write and the last,
         # so no tick can read a half-applied state. Target and anchor
         # move together, following the co-movement precedent at
-        # :2647-2651.
+        # :2914-2917.
         lots.append(_arrival_lot)
         self._current_holdings = _h_after
         self._target_balance = _t_after
@@ -3715,7 +3715,7 @@ class ScrummingBot(BotContainer):
         # never read the lot at all. Measured: with a ledger whose
         # `append` silently drops the write, it reported
         # `delta_shift_usd = 1.8e-14` and `atomic = True` while
-        # `main_lots_added` was 0 and the :694 invariant was False. A
+        # `main_lots_added` was 0 and the :736 invariant was False. A
         # residual that is zero by algebra is decoration.
         #
         # THAT PARTICULAR LEDGER IS NOW REFUSED UP FRONT -- see the
@@ -3781,7 +3781,7 @@ class ScrummingBot(BotContainer):
         # made `_delta_shift_usd` (the tick's own d(delta)) a statement
         # about `_main_lots` rather than about `_current_holdings`, and
         # `_current_holdings` is the quantity the tick actually prices
-        # (:7109). The two agree on a healthy arrival and diverge on
+        # (:8072). The two agree on a healthy arrival and diverge on
         # exactly the runs the check exists for.
         _holdings_usd_added = (_h_seen - _h_before) * arrival_price * qrate
         _target_usd_added = _t_seen - _t_before
@@ -3808,7 +3808,7 @@ class ScrummingBot(BotContainer):
         # would add no falsifying power. They are kept because they are
         # the two quantities an operator reads: how far the arrival
         # moved delta, and how far the ledger and the scalar drifted
-        # apart over this one write. The :694 invariant is scoped to
+        # apart over this one write. The :736 invariant is scoped to
         # THIS arrival rather than measured absolutely, because a bot
         # may already carry a gap from an earlier path and this method
         # reports on its own write, not on somebody else's.
@@ -13390,8 +13390,8 @@ class ScrummingBot(BotContainer):
 
         Returns (number, None) when usable, (None, reason) when
         refused, the same shape as `_positive_observed_quantity`
-        (:2743), `_finite_state_number` (:2805) and `_sum_lot_units`
-        (:2850). Returning the refusal instead of raising is what lets
+        (:3065), `_finite_state_number` (:3130) and `_sum_lot_units`
+        (:3176). Returning the refusal instead of raising is what lets
         `_reconcile_holdings` decline the whole audit before it writes
         anything.
 
@@ -13414,7 +13414,7 @@ class ScrummingBot(BotContainer):
         passing.
 
         The restore paths coerce the same field more loosely, with
-        `float(lot.get("units", 0) or 0)` (:5994, :6936). That
+        `float(lot.get("units", 0) or 0)` (:6801, :7868). That
         divergence is deliberate and it runs one way only: this reader
         refuses a strict superset of what they refuse, so a book they
         loaded can be declined here, and a book declined here is never
@@ -13456,10 +13456,10 @@ class ScrummingBot(BotContainer):
         Deriving them a second time down there would let two passes
         disagree about one book.
 
-        NOT `_sum_lot_units` (:2850), and the difference is deliberate
+        NOT `_sum_lot_units` (:3176), and the difference is deliberate
         in both directions. That helper refuses a lot with no "units"
         key; here such a lot counts as ZERO, which is what the restore
-        paths' `.get` already does (:5994, :6936). Refusing it instead
+        paths' `.get` already does (:6801, :7868). Refusing it instead
         would leave a bot permanently unreconcilable over a lot that
         holds nothing. It also returns a total only, and a total cannot
         be multiplied back into a book. Its contract is pinned by the
@@ -13474,7 +13474,7 @@ class ScrummingBot(BotContainer):
         because those two do not agree — CPython's `sum` applies
         Neumaier compensation to floats. On ORCA's real 48-lot book
         `sum` gives 54.053407815409216 and an accumulator loop gives
-        54.05340781540922, one ULP apart. `sum` is what :5994 and :6936
+        54.05340781540922, one ULP apart. `sum` is what :6801 and :7868
         use to derive the scalar, so the audited total comes out
         bit-identical to theirs.
         """
@@ -13674,7 +13674,7 @@ class ScrummingBot(BotContainer):
         v3.25.8 (U2) — WHAT THE BOT CLAIMS IS TWO COUNTERS, NOT ONE.
         The comparison used to read `_current_holdings` alone. That
         scalar is the one `bootstrap_exchange_state` clamps against the
-        wallet with `min` (:5999), so on a bot whose lot book sits
+        wallet with `min` (:6805), so on a bot whose lot book sits
         above it the audit compared the wallet against the wallet and
         reported alignment while the excess stranded in `_main_lots`.
         The audited figure is now `max(scalar, sum of the lot book)` —
@@ -13682,7 +13682,7 @@ class ScrummingBot(BotContainer):
 
         v3.25.8 (U2) — THE VENUE NUMBER IS `total`, NOT `free`. The
         read was `balance.free`, which excludes any coin committed to a
-        resting order. The startup handshake reads `total` (:6673,
+        resting order. The startup handshake reads `total` (:7545,
         MEM-255). One wallet, two readers, two different fields — see
         the block at the fetch for why that only becomes load-bearing
         once this audit starts firing.
@@ -13727,7 +13727,7 @@ class ScrummingBot(BotContainer):
             # coin owned. `free` is only the coins not tied up in a
             # resting order: free = total - used. This read was
             # `balance.free`. The startup handshake reads `total`
-            # (:6673), and MEM-255 records why: `total` is the number
+            # (:7545), and MEM-255 records why: `total` is the number
             # the operator sees on the exchange screen.
             #
             # Two readers of one wallet must not read two fields. The
@@ -13785,7 +13785,7 @@ class ScrummingBot(BotContainer):
         # No information is not a reading. Refuse, say which asset and
         # why, and let the next scheduled interval try again. The
         # startup handshake already refuses on this exact sentinel
-        # (:6715); this closes the same hole on the periodic path.
+        # (:7597); this closes the same hole on the periodic path.
         if _venue_absent:
             self._bus.emit(
                 "bot.log",
@@ -13810,7 +13810,7 @@ class ScrummingBot(BotContainer):
 
         # --- U2 (2026-08-13) — AUDIT THE BOOK, NOT ONLY THE SCALAR ---
         # `bootstrap_exchange_state` sets the scalar with
-        #     min(max(0.0, _units), _tracked_units_bootstrap)   (:5999)
+        #     min(max(0.0, _units), _tracked_units_bootstrap)   (:6805)
         # so `min` can pull the SCALAR down to the wallet, can never
         # pull the LOT LIST down with it, and can never leave the
         # scalar above the lot sum. Auditing the scalar alone therefore
@@ -18071,18 +18071,18 @@ class ScrummingBot(BotContainer):
 
         v3.25.7 -- THE MEM-171 CITATION WAS WRONG TWICE IN ONE SENTENCE.
         It read: the fold-floor rule `price <= tranche
-        ["initial_buy_price"]` "is enforced at :9695, not here". First,
-        :9695 is a COMMENT that describes the rule; it evaluates
+        ["initial_buy_price"]` "is enforced at :11103, not here". First,
+        :11103 is a COMMENT that describes the rule; it evaluates
         nothing. Second, and worse, the rule is not enforced on the fold
         path AT ALL. The executor's eligibility filter is
-        `ticker.last <= float(t.get("ref", 0)) * _otd_factor` (:10225),
+        `ticker.last <= float(t.get("ref", 0)) * _otd_factor` (:11664),
         which carries no `initial_buy_price` term, and the comment
-        beside it says so in as many words (:10213). The
+        beside it says so in as many words (:11651). The
         `initial_buy_price` reading survives only as a SECONDARY
-        diagnostic counter, `_patent_only_eligible` (:9963), labelled
+        diagnostic counter, `_patent_only_eligible` (:11387), labelled
         there as "not a gate". MEM-171 is held at the strategy level by
         the position ceiling -- `self._anchor_target_balance * mult`
-        (:4990) -- not per tranche. Cite the predicate, not the prose
+        (:5675) -- not per tranche. Cite the predicate, not the prose
         about it.
         """
         lots_sum = sum(l["units"] for l in self._main_lots)

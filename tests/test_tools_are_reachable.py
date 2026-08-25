@@ -104,6 +104,10 @@ INVENTORY: tuple[tuple[str, bool], ...] = (
     ("build_release_zip", True),
     ("deps", True),
     ("emitter_registry_check", True),
+    # Moved in from the repository root as EXCHANGE_DIAGNOSTIC.py. The move
+    # also gave it the `main()` and `__main__` guard it never had: importing
+    # the root file opened 15 sockets and then blocked on input().
+    ("exchange_diagnostic", True),
     ("gate", False),
     ("migrate_harness", True),
     # Issue #105 added this. It captures the facts a GitHub

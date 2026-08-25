@@ -22,6 +22,7 @@ Run it from the repo root::
 from __future__ import annotations
 
 import ssl
+import argparse
 import sys
 import time
 import urllib.error
@@ -165,7 +166,15 @@ def _authenticated_test() -> None:
         traceback.print_exc()
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    # A parser, so `--help` answers without opening 15 exchange sockets.
+    argparse.ArgumentParser(
+        prog="python -m tools.exchange_diagnostic",
+        description=(
+            "Probe 15 exchange REST endpoints, the ccxt classes behind them "
+            "and the stored credentials. Makes live network calls."
+        ),
+    ).parse_args(argv)
     print("=" * 70)
     print("  EXCHANGE CONNECTIVITY DIAGNOSTIC")
     print(

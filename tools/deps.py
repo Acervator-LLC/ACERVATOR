@@ -80,8 +80,13 @@ CONSUMER_EXTRAS: dict[str, tuple[str, ...]] = {
     "display": ("display",),
     "dev": ("dev",),
     "contracts": ("contracts",),
+    # ci      the GitHub workflow. Its two lanes install `test` (fast) and
+    #         `lint`, so neither job spells a package name in YAML.
+    "ci": ("test", "lint"),
     "all": (
         "report",
+        "test",
+        "lint",
         "video",
         "charts",
         "monitor",

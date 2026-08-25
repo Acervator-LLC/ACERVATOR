@@ -431,9 +431,7 @@ def _plant_a_hardcoded_band(source: str) -> str:
         raise StalePlant("the band arguments are not where the plant " "expects them")
     return source.replace(
         anchor,
-        "                0.0,\n"
-        "                1e9,\n"
-        "            )",
+        "                0.0,\n" "                1e9,\n" "            )",
         1,
     )
 

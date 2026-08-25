@@ -23,7 +23,8 @@ software trades real money on real exchanges — correctness is not optional.**
 | `src/competition/` | Proof-of-Accumulation package |
 | `src/utils/`       | small shared helpers |
 | `tests/`           | ALL tests **and** their fixtures (`tests/fixtures/`) |
-| `tools/`           | dev / build / harness tooling (archetypes under `tools/harness/`) |
+| `tools/`           | dev / build tooling |
+| `dev_harness/`     | the review archetypes (issue #84 moved them off the product path) |
 | `docs/`            | human-written documentation ONLY — design, ADRs, audits, plans |
 | `os/`              | deployment units — systemd, install scripts (use `__USER__` placeholders) |
 | `.github/`         | CI/CD, linting, templates — see [`.github/CLAUDE.md`](.github/CLAUDE.md) |
