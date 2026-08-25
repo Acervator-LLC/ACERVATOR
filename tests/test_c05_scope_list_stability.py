@@ -116,13 +116,14 @@ class TestScrollOffsetSurvivesRebuild:
         before = bar.value()
         assert before > 0
         _rebuild_with_relayout(matrix, app)
-        # The operator's place must survive the rebuild. The defect this
-        # guards is a RESET toward the top (value -> ~0). Under the offscreen
-        # platform the pumped relayout can restore against a transient
-        # scrollbar maximum and land one row short, which is not that defect,
-        # so allow a one-row tolerance.
+        # The operator's place must survive the rebuild. EXACT on a real
+        # platform. Offscreen, the pumped relayout can restore against a
+        # transient scrollbar maximum and land one row short, which is not the
+        # RESET-to-top defect this guards, so one row of slack is allowed
+        # THERE and nowhere else.
+        slack = 1 if os.environ.get("QT_QPA_PLATFORM") == "offscreen" else 0
         assert (
-            bar.value() >= before - 1
+            bar.value() >= before - slack
         ), f"scroll offset went {before} -> {bar.value()} across rebuild_scope"
 
     def test_both_lists_are_preserved_independently(self, qr):
@@ -137,10 +138,10 @@ class TestScrollOffsetSurvivesRebuild:
         s_before, d_before = sbar.value(), dbar.value()
         assert s_before != d_before, "pick distinct offsets"
         _rebuild_with_relayout(matrix, app)
-        # Each list keeps its own place, within the one-row offscreen tolerance
-        # (see note above). The distinct-offsets assert above is what proves a
-        # single restored value is not being written to both.
-        assert sbar.value() >= s_before - 1 and dbar.value() >= d_before - 1
+        # Each list keeps its own place. Same slack rule as above: none on a
+        # real platform, one row offscreen.
+        slack = 1 if os.environ.get("QT_QPA_PLATFORM") == "offscreen" else 0
+        assert sbar.value() >= s_before - slack and dbar.value() >= d_before - slack
         assert sbar.value() != dbar.value(), "the two lists collapsed to one offset"
 
     def test_top_of_list_stays_at_top(self, qr):

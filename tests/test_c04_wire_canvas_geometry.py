@@ -109,12 +109,13 @@ class TestGridStillWorks:
             640,
             480,
         ), "canvas is showing the stale default rect"
-        # The defect was a STALE rect (the 640x480 default, asserted against
-        # above). The canvas must also carry a live, non-degenerate rect. An
-        # absolute `> 600` was environment-dependent: the offscreen platform
-        # lays this out narrower than a real window, so require only that the
-        # rect is real (the stale-default check above is the actual guard).
-        assert g.width() > 0 and g.height() > 0
+        # The rect must be live, not the 640x480 default asserted against
+        # above. The 600px floor is the real bound and it holds on a real
+        # platform; the offscreen plugin lays this out narrower, so there the
+        # floor drops to "non-degenerate". The bound is not relaxed for
+        # everyone to suit one platform.
+        floor = 0 if os.environ.get("QT_QPA_PLATFORM") == "offscreen" else 600
+        assert g.width() > floor and g.height() > floor
 
     def test_switching_back_hides_it_again(self, tab):
         t, app = tab

@@ -719,7 +719,7 @@ class TestBotTicksAreAccountedFor:
         are both zero and the old expectation coincides with the new
         one. `test_an_unclassifiable_bot_is_still_accounted_for` is the
         one that tells the two apart."""
-        ctl = _controller(rows=400, max_candles=30)
+        ctl = _controller(rows=400, max_candles=60)
         _play(ctl)
         rec = sink.records(TICKS)[0]
         ctx = rec.context
@@ -735,7 +735,7 @@ class TestBotTicksAreAccountedFor:
         failure, because `expected` was every entry. Under the repair
         the run passes and the unknown share stays visible in context.
         """
-        ctl = _controller(rows=400, max_candles=30)
+        ctl = _controller(rows=400, max_candles=60)
         ctl._bots[0] = _BotWithoutTickCounter(ctl._bots[0])
         _play(ctl)
         rec = sink.records(TICKS)[0]
@@ -745,7 +745,7 @@ class TestBotTicksAreAccountedFor:
         assert rec.actual + ctx["throttled"] + ctx["unknown"] == ctx["entered"]
 
     def test_the_throttle_share_is_still_reported(self, sink):
-        ctl = _controller(rows=400, max_candles=30)
+        ctl = _controller(rows=400, max_candles=60)
         _play(ctl)
         rec = sink.records(TICKS)[0]
         assert rec.context["entered"] > 0
@@ -772,7 +772,7 @@ class TestCoverageIsBounded:
     for the whole indicator warm-up: 132 of 132 records read FAIL."""
 
     def test_a_healthy_run_stays_inside_the_bound(self, sink):
-        ctl = _controller(rows=400, max_candles=60)
+        ctl = _controller(rows=400, max_candles=120)
         _play(ctl)
         recs = sink.records(COVERAGE)
         assert recs, "no per-bot coverage was recorded at all"
@@ -783,7 +783,7 @@ class TestCoverageIsBounded:
             )
 
     def test_the_coverage_number_is_still_reported(self, sink):
-        ctl = _controller(rows=400, max_candles=60)
+        ctl = _controller(rows=400, max_candles=120)
         _play(ctl)
         rec = sink.records(COVERAGE)[0]
         assert rec.actual < rec.expected, (
@@ -796,7 +796,7 @@ class TestCoverageIsBounded:
         """THE FAILING SIDE. The tape serves history the master clock
         has not reached, so TA runs on candles the bot was never
         eligible for."""
-        ctl = _controller(rows=400, max_candles=60)
+        ctl = _controller(rows=400, max_candles=120)
         ctl._tape = _CursorStuckAtZero(ctl._tape, allow_per_symbol=2)
         _play(ctl)
         recs = sink.records(COVERAGE)
@@ -858,7 +858,7 @@ class TestCoverageWalksTheUnion:
         for that bot and the pin said nothing about it - the run reads
         green while the tape is serving the future.
         """
-        ctl = _controller(rows=400, max_candles=60)
+        ctl = _controller(rows=400, max_candles=120)
         ctl._tape = _CursorBlindForever(ctl._tape, SYMS[0])
         _play(ctl)
         recs = {r.context["bot_id"]: r for r in sink.records(COVERAGE)}
@@ -887,7 +887,7 @@ class TestCoverageWalksTheUnion:
         If this fails, the single record that matters most reports zero
         coverage for a bot that observed every candle it could.
         """
-        ctl = _controller(rows=400, max_candles=60)
+        ctl = _controller(rows=400, max_candles=120)
         ctl._tape = _CursorBlindForever(ctl._tape, SYMS[0])
         _play(ctl)
         rec = [r for r in sink.records(COVERAGE) if r.expected == 0][0]
@@ -899,7 +899,7 @@ class TestCoverageWalksTheUnion:
         If this fails, a bot one of the two maps knows about carries no
         verdict, and the log cannot be reconciled against the run.
         """
-        ctl = _controller(rows=400, max_candles=60)
+        ctl = _controller(rows=400, max_candles=120)
         _play(ctl)
         recs = sink.records(COVERAGE)
         union = set(ctl._ta_eligible) | set(ctl._ta_observed)
@@ -916,7 +916,7 @@ class TestCoverageWalksTheUnion:
 
         This is the run that produced one record for two known bots.
         """
-        ctl = _controller(rows=400, max_candles=60)
+        ctl = _controller(rows=400, max_candles=120)
         ctl._tape = _CursorBlindForever(ctl._tape, SYMS[0])
         _play(ctl)
         recs = sink.records(COVERAGE)
@@ -938,7 +938,7 @@ class TestCoverageWalksTheUnion:
         If this fails, either a verdict was invented for a bot with no
         bound, or a bot vanished from the accounting entirely.
         """
-        ctl = _controller(rows=400, max_candles=60)
+        ctl = _controller(rows=400, max_candles=120)
         ctl._tape = _NoBarFor(ctl._tape, SYMS[0], has_data=False)
         _play(ctl)
         recs = sink.records(COVERAGE)
