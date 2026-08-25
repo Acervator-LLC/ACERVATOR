@@ -190,8 +190,14 @@ _CALL_SITES: tuple[tuple[str, dict], ...] = (
     # could have run. The three shapes do not share a matcher: this
     # table stores `"path:line"` strings, `CITATION_ANCHORS` stores
     # `int -> line text`, and `PRE_CHANGE_SHA256` pins no line at all.
-    ("src/gui/main_window.py:4202", {"timeout": 10, "context": None}),
-    ("src/gui/main_window.py:4347", {"timeout": 10}),
+    #
+    # RE-ANCHORED for issue #46 (4202 -> 4249, 4347 -> 4394). That unit
+    # inserted a symbol-change branch into `TradeChartsTab.update_charts`,
+    # which is above both calls. The new numbers were READ from
+    # `grep -n "safe_urlopen(" src/gui/main_window.py` after the
+    # insertion was final, not computed from an offset.
+    ("src/gui/main_window.py:4249", {"timeout": 10, "context": None}),
+    ("src/gui/main_window.py:4394", {"timeout": 10}),
 )
 _CALL_IDS = [site for site, _ in _CALL_SITES]
 _CALL_KWARGS = [kwargs for _, kwargs in _CALL_SITES]
