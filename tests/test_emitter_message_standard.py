@@ -43,6 +43,7 @@ them, and an object whose emitter had STOPPED was invisible. A pin with
 more than one live instance declares one -- `TestTheInstanceKey` below
 drives what that changes and, as importantly, what it does not.
 """
+
 from __future__ import annotations
 
 import json
@@ -78,8 +79,13 @@ def _throttle_entries() -> dict:
         return dict(sc._THROTTLE)
 
 
-def _tick(name: str, value: object, expected: object, every: float,
-          instance: str | None = None) -> Signal | None:
+def _tick(
+    name: str,
+    value: object,
+    expected: object,
+    every: float,
+    instance: str | None = None,
+) -> Signal | None:
     """Emit from ONE call site.
 
     The throttle keys on (name, site) and on the `instance` the call
@@ -91,8 +97,7 @@ def _tick(name: str, value: object, expected: object, every: float,
     test goes through here so the site is constant, as it is in the
     looping code this protects.
     """
-    return emit(name, actual=value, expected=expected, every=every,
-                instance=instance)
+    return emit(name, actual=value, expected=expected, every=every, instance=instance)
 
 
 @pytest.fixture
@@ -155,8 +160,12 @@ class TestTheMessageFormat:
     def test_context_trails_the_line(self, sink):
         """Context says WHICH bot and WHICH candle -- the first thing
         wanted when a line is being chased."""
-        emit("probe.ctx", actual=1, expected=1,
-             context={"bot": "b1", "candle_ts": 1776814200000})
+        emit(
+            "probe.ctx",
+            actual=1,
+            expected=1,
+            context={"bot": "b1", "candle_ts": 1776814200000},
+        )
         m = sink.since(0)[0].message()
         assert m.rstrip().endswith("]")
         assert "bot='b1'" in m
@@ -165,8 +174,7 @@ class TestTheMessageFormat:
     def test_no_mappingproxy_leaks_into_the_line(self, sink):
         """The exact defect in `render()`: the reader saw the freezing
         mechanism instead of the data."""
-        emit("probe.frozen", actual={"a": [1, 2]},
-             context={"k": {"n": 1}})
+        emit("probe.frozen", actual={"a": [1, 2]}, context={"k": {"n": 1}})
         m = sink.since(0)[0].message()
         assert "mappingproxy" not in m
 
@@ -273,7 +281,8 @@ class TestTheInstanceKey:
     """
 
     def test_two_instances_on_one_line_keep_their_own_windows(
-            self, sink: SignalSink) -> None:
+        self, sink: SignalSink
+    ) -> None:
         """THE REPAIR. Ten passes each, one window, one record each."""
         for _ in range(10):
             for eid in ("coinbase", "kraken"):
@@ -282,8 +291,7 @@ class TestTheInstanceKey:
         assert len(got) == 2
         assert [r.count for r in got] == [1, 1]
 
-    def test_a_silent_instance_is_a_silent_record(
-            self, sink: SignalSink) -> None:
+    def test_a_silent_instance_is_a_silent_record(self, sink: SignalSink) -> None:
         """THE FALSIFIER. One of the two stops; the record set says so.
 
         Before the instance existed both instances shared one window, so
@@ -305,14 +313,14 @@ class TestTheInstanceKey:
         assert len(sink2.since(0)) == 1
 
     def test_a_pin_that_declares_none_keys_exactly_as_before(
-            self, sink: SignalSink) -> None:
+        self, sink: SignalSink
+    ) -> None:
         """THE UNCHANGED HALF. 5000 passes, no instance, one record."""
         for i in range(5000):
             _tick("probe.plain", i, i, 3600.0)
         assert len(sink.since(0)) == 1
 
-    def test_the_count_belongs_to_the_instance(
-            self, sink: SignalSink) -> None:
+    def test_the_count_belongs_to_the_instance(self, sink: SignalSink) -> None:
         """WHAT `count` MEANS NOW, stated by a measurement.
 
         The window has to expire for a fold to be delivered. Each
@@ -332,7 +340,8 @@ class TestTheInstanceKey:
         assert counts == [1, 1, 4, 8], counts
 
     def test_a_failing_check_is_never_suppressed_with_an_instance(
-            self, sink: SignalSink) -> None:
+        self, sink: SignalSink
+    ) -> None:
         """THE GUARD IS ABOVE THE THROTTLE AND THE KEY DOES NOT REACH IT.
 
         `emit` tests `if _judged is not False` BEFORE it calls
@@ -343,8 +352,7 @@ class TestTheInstanceKey:
             _tick("probe.instred", i, -1, 3600.0, instance="coinbase")
         assert len(sink.since(0)) == 50
 
-    def test_without_every_the_instance_is_not_read(
-            self, sink: SignalSink) -> None:
+    def test_without_every_the_instance_is_not_read(self, sink: SignalSink) -> None:
         """`instance` means something only beside `every`.
 
         Nothing outside the rate-limited branch reads it, so a pin that
@@ -357,7 +365,8 @@ class TestTheInstanceKey:
         assert dict(_throttle_entries()) == {}
 
     def test_the_key_space_is_the_declared_ids_and_nothing_else(
-            self, sink: SignalSink) -> None:
+        self, sink: SignalSink
+    ) -> None:
         """THE BOUND. `_THROTTLE` is never pruned, so it must not grow.
 
         Three ids, 300 passes: three entries. The number of entries is
@@ -371,8 +380,7 @@ class TestTheInstanceKey:
                 _tick("probe.bound", 1, 1, 3600.0, instance=eid)
         entries = _throttle_entries()
         assert len(entries) == 3
-        assert sorted(key[2] for key in entries) == [
-            "binanceus", "coinbase", "kraken"]
+        assert sorted(key[2] for key in entries) == ["binanceus", "coinbase", "kraken"]
         assert len(sink.since(0)) == 3
 
 

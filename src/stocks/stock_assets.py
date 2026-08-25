@@ -13,6 +13,7 @@ from dataclasses import dataclass
 @dataclass
 class StockInfo:
     """Information about a stock."""
+
     symbol: str
     name: str
     sector: str
@@ -33,10 +34,14 @@ DOW_30 = [
     StockInfo("JNJ", "Johnson & Johnson", "Healthcare", "Pharma", "mega", "DOW30"),
     StockInfo("WMT", "Walmart", "Consumer Defensive", "Retail", "mega", "DOW30"),
     StockInfo("UNH", "UnitedHealth", "Healthcare", "Insurance", "mega", "DOW30"),
-    StockInfo("HD", "Home Depot", "Consumer Cyclical", "Home Improvement", "mega", "DOW30"),
+    StockInfo(
+        "HD", "Home Depot", "Consumer Cyclical", "Home Improvement", "mega", "DOW30"
+    ),
     StockInfo("DIS", "Walt Disney", "Communication", "Entertainment", "mega", "DOW30"),
     StockInfo("MCD", "McDonald's", "Consumer Cyclical", "Restaurants", "mega", "DOW30"),
-    StockInfo("GS", "Goldman Sachs", "Financial", "Investment Banking", "mega", "DOW30"),
+    StockInfo(
+        "GS", "Goldman Sachs", "Financial", "Investment Banking", "mega", "DOW30"
+    ),
     StockInfo("BA", "Boeing", "Industrials", "Aerospace", "large", "DOW30"),
 ]
 
@@ -123,5 +128,4 @@ def get_stocks_by_tier(tier: str) -> list[StockInfo]:
 def search_stocks(query: str) -> list[StockInfo]:
     """Search stocks by symbol or name."""
     q = query.upper()
-    return [s for s in STOCK_UNIVERSE
-            if q in s.symbol or q in s.name.upper()]
+    return [s for s in STOCK_UNIVERSE if q in s.symbol or q in s.name.upper()]

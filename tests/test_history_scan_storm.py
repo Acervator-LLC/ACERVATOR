@@ -38,6 +38,7 @@ a shared field (removes the race). A lock serialises concurrent scans.
 configured interval, since the guards that would normally do that are
 bypassed on this path.
 """
+
 from __future__ import annotations
 
 import sys
@@ -74,6 +75,7 @@ class _CountingExchange:
 class TestTheScannerItself:
     def test_one_fetch_per_symbol(self):
         from src.core.trade_historian import scan_on_connect
+
         ex = _CountingExchange()
         scan_on_connect(exchange=ex, symbols=list(SYMS))
         assert len(ex.calls) == len(SYMS)
@@ -84,6 +86,7 @@ class TestTheScannerItself:
         sleeps before the first fetch would add latency to the one case
         that is already cheap."""
         from src.core.trade_historian import scan_on_connect
+
         ex = _CountingExchange()
         t0 = time.monotonic()
         scan_on_connect(exchange=ex, symbols=["ONE/USD"], pace_s=0.5)
@@ -91,6 +94,7 @@ class TestTheScannerItself:
 
     def test_pacing_spaces_a_multi_symbol_scan(self):
         from src.core.trade_historian import scan_on_connect
+
         ex = _CountingExchange()
         t0 = time.monotonic()
         scan_on_connect(exchange=ex, symbols=SYMS[:4], pace_s=0.05)
@@ -99,6 +103,7 @@ class TestTheScannerItself:
     def test_no_pacing_by_default(self):
         """Existing callers must not silently get slower."""
         from src.core.trade_historian import scan_on_connect
+
         ex = _CountingExchange()
         t0 = time.monotonic()
         scan_on_connect(exchange=ex, symbols=SYMS[:5])
@@ -108,6 +113,7 @@ class TestTheScannerItself:
 class TestTheConnectorNoLongerRaces:
     def _connector(self):
         from src.exchange.ccxt_connector import CCXTConnector
+
         c = CCXTConnector("coinbase")
         c._ccxt_sync = _CountingExchange()
         c._min_request_interval = 0.0
@@ -134,8 +140,7 @@ class TestTheConnectorNoLongerRaces:
         per symbol; correct is exactly one."""
         c = self._connector()
         c._scan_symbols = set(SYMS)
-        threads = [threading.Thread(target=c.refresh_history, args=(s,))
-                   for s in SYMS]
+        threads = [threading.Thread(target=c.refresh_history, args=(s,)) for s in SYMS]
         for t in threads:
             t.start()
         for t in threads:
@@ -143,7 +148,8 @@ class TestTheConnectorNoLongerRaces:
         calls = c._ccxt_sync.calls
         assert len(calls) == len(SYMS), (
             f"{len(calls)} fetches for {len(SYMS)} symbols "
-            f"({len(calls) / len(SYMS):.1f}x amplification)")
+            f"({len(calls) / len(SYMS):.1f}x amplification)"
+        )
         assert sorted(calls) == sorted(SYMS)
 
     def test_the_race_mechanism_amplifies(self):
@@ -176,25 +182,29 @@ class TestTheConnectorNoLongerRaces:
         def thread_a():
             b_swapped.wait(timeout=10)
             shared.clear()
-            shared.update(full)       # restore its snapshot
+            shared.update(full)  # restore its snapshot
             a_restored.set()
 
         def thread_b():
             shared.clear()
-            shared.add("SYM07/USD")   # "only my symbol"
+            shared.add("SYM07/USD")  # "only my symbol"
             b_swapped.set()
             a_restored.wait(timeout=10)
             seen.append(len(shared))  # what its scan would iterate
 
         ta, tb = threading.Thread(target=thread_a), threading.Thread(target=thread_b)
-        ta.start(); tb.start()
-        ta.join(timeout=15); tb.join(timeout=15)
+        ta.start()
+        tb.start()
+        ta.join(timeout=15)
+        tb.join(timeout=15)
 
         assert seen and seen[0] > 1, (
             f"expected the swapped-out set to be observed as many "
-            f"symbols, saw {seen}")
-        assert seen[0] == len(SYMS), (
-            f"B should observe the whole registry, saw {seen[0]}")
+            f"symbols, saw {seen}"
+        )
+        assert seen[0] == len(
+            SYMS
+        ), f"B should observe the whole registry, saw {seen[0]}"
 
     def test_passing_by_argument_cannot_race(self):
         """The same N threads, but each scan is handed its own list.
@@ -208,8 +218,7 @@ class TestTheConnectorNoLongerRaces:
             barrier.wait()
             c.refresh_history(symbol)
 
-        threads = [threading.Thread(target=refresh, args=(s_,))
-                   for s_ in SYMS]
+        threads = [threading.Thread(target=refresh, args=(s_,)) for s_ in SYMS]
         for t in threads:
             t.start()
         for t in threads:
@@ -221,6 +230,7 @@ class TestTheConnectorNoLongerRaces:
 class TestFullScanStillWorks:
     def test_a_full_scan_covers_every_registered_symbol(self):
         from src.exchange.ccxt_connector import CCXTConnector
+
         c = CCXTConnector("coinbase")
         c._ccxt_sync = _CountingExchange()
         c._min_request_interval = 0.0
@@ -230,6 +240,7 @@ class TestFullScanStillWorks:
 
     def test_an_empty_registry_fetches_nothing(self):
         from src.exchange.ccxt_connector import CCXTConnector
+
         c = CCXTConnector("coinbase")
         c._ccxt_sync = _CountingExchange()
         c._scan_symbols = set()

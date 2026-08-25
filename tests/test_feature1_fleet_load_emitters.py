@@ -19,6 +19,7 @@ These tests RETRIEVE emitter data. They do not re-implement the check — they
 read what the emitter recorded, which is the point of the emitter existing.
 Retrieved records are frozen; nothing here can mutate them.
 """
+
 from __future__ import annotations
 
 import sys
@@ -39,20 +40,28 @@ from src.gui.simulator_tab.fleet.bot_state_loader import (  # noqa: E402
 # TEST FIXTURE state — synthetic, never the operator's file.
 FIXTURE = {
     "bots": {
-        "aaaa1111": {"bot_id": "aaaa1111",
-                     "config": {"mode": "scrumming", "symbol": "BTC/USD"},
-                     "stats": {"position_value": 1.0},
-                     "scrumming_state": {"target_balance": 252.1},
-                     "saved_at": 1.0, "state_when_saved": "running",
-                     "phantoms_enabled": False},
-        "bbbb2222": {"bot_id": "bbbb2222",
-                     "config": {"mode": "scrumming", "symbol": "ETH/USD"},
-                     "stats": {"position_value": 2.0},
-                     "scrumming_state": {"target_balance": 101.5},
-                     "saved_at": 1.0, "state_when_saved": "running",
-                     "phantoms_enabled": False},
-        "cccc3333": {"bot_id": "cccc3333",
-                     "config": {"mode": "extractor", "symbol": "SOL/USD"}},
+        "aaaa1111": {
+            "bot_id": "aaaa1111",
+            "config": {"mode": "scrumming", "symbol": "BTC/USD"},
+            "stats": {"position_value": 1.0},
+            "scrumming_state": {"target_balance": 252.1},
+            "saved_at": 1.0,
+            "state_when_saved": "running",
+            "phantoms_enabled": False,
+        },
+        "bbbb2222": {
+            "bot_id": "bbbb2222",
+            "config": {"mode": "scrumming", "symbol": "ETH/USD"},
+            "stats": {"position_value": 2.0},
+            "scrumming_state": {"target_balance": 101.5},
+            "saved_at": 1.0,
+            "state_when_saved": "running",
+            "phantoms_enabled": False,
+        },
+        "cccc3333": {
+            "bot_id": "cccc3333",
+            "config": {"mode": "extractor", "symbol": "SOL/USD"},
+        },
     },
     "smart_wires": [
         {"source_id": "aaaa1111", "target_id": "bbbb2222", "pct": 20.0},
@@ -73,6 +82,7 @@ def sink():
 @pytest.fixture
 def state_file(tmp_path):
     import json
+
     p = tmp_path / "bot_state.json"
     p.write_text(json.dumps(FIXTURE), encoding="utf-8")
     return p
@@ -89,8 +99,12 @@ class TestTheEmittersFireAtAll:
     def test_the_declared_signals_are_present(self, sink, state_file):
         load_bot_configs_from_state(path=state_file)
         load_smart_wires_from_state(path=state_file)
-        for name in ("fleet.03.001.postcondition.bots_loaded", "fleet.03.002.invariant.bot_ids_mirror_live",
-                     "fleet.03.003.invariant.sections_imported", "fleet.03.004.postcondition.wires_loaded"):
+        for name in (
+            "fleet.03.001.postcondition.bots_loaded",
+            "fleet.03.002.invariant.bot_ids_mirror_live",
+            "fleet.03.003.invariant.sections_imported",
+            "fleet.03.004.postcondition.wires_loaded",
+        ):
             assert sink.count(name) == 1, f"{name} did not fire exactly once"
 
 
@@ -100,7 +114,7 @@ class TestEachRecordCarriesTheContract:
     def test_bots_loaded_carries_expected_and_actual(self, sink, state_file):
         load_bot_configs_from_state(path=state_file)
         r = sink.records("fleet.03.001.postcondition.bots_loaded")[0]
-        assert r.expected == 2          # two scrumming bots in the fixture
+        assert r.expected == 2  # two scrumming bots in the fixture
         assert r.actual == 2
         assert r.ok is True
         assert r.site.startswith("bot_state_loader.py:")
@@ -108,16 +122,15 @@ class TestEachRecordCarriesTheContract:
     def test_wires_loaded_carries_expected_and_actual(self, sink, state_file):
         load_smart_wires_from_state(path=state_file)
         r = sink.records("fleet.03.004.postcondition.wires_loaded")[0]
-        assert r.expected == 3          # 3 rows persisted...
-        assert r.actual == 2            # ...2 well-formed
+        assert r.expected == 3  # 3 rows persisted...
+        assert r.actual == 2  # ...2 well-formed
         assert r.ok is False, "a dropped wire row must not read as success"
 
 
 class TestItRecordsTheAllPiecesGap:
     """The qualifier the old count could not evidence."""
 
-    def test_dropped_sections_are_the_ones_genuinely_dropped(
-            self, sink, state_file):
+    def test_dropped_sections_are_the_ones_genuinely_dropped(self, sink, state_file):
         """10.4 (F3) - THE `dropped` LIST WAS WRONG, AND IT MATTERED.
 
         It named `stats` and `scrumming_state`. Both are carried, thirty
@@ -132,11 +145,15 @@ class TestItRecordsTheAllPiecesGap:
         out = load_bot_configs_from_state(path=state_file)
         r = sink.records("fleet.03.003.invariant.sections_imported")[0]
         dropped = set(r.context["dropped"])
-        assert dropped == {"saved_at", "state_when_saved",
-                           "phantoms_enabled"}, (
-            f"the loader has no carry for exactly these; got {dropped}")
-        assert not dropped & {"stats", "scrumming_state"}, (
-            "both are carried and must not be reported as dropped")
+        assert dropped == {
+            "saved_at",
+            "state_when_saved",
+            "phantoms_enabled",
+        }, f"the loader has no carry for exactly these; got {dropped}"
+        assert not dropped & {
+            "stats",
+            "scrumming_state",
+        }, "both are carried and must not be reported as dropped"
         # checked against the PRODUCT, not only the context.
         assert "_src_scrumming_state" in out[0]
         assert "_src_stats" in out[0]
@@ -152,7 +169,7 @@ class TestItRecordsTheAllPiecesGap:
         load_bot_configs_from_state(path=state_file)
         r = sink.records("fleet.03.003.invariant.sections_imported")[0]
         assert r.ok is True, f"nothing was lost here; context={r.context}"
-        assert r.actual == 8            # 2 eligible bots x 4 carries
+        assert r.actual == 8  # 2 eligible bots x 4 carries
         assert r.expected == 8
         assert r.context["missing_total"] == 0
 
@@ -162,6 +179,7 @@ class TestItRecordsTheAllPiecesGap:
         the loader's own guard and vanishes without a word."""
         import copy
         import json as _json
+
         broken = copy.deepcopy(FIXTURE)
         broken["bots"]["bbbb2222"]["stats"] = "not-a-dict"
         path = tmp_path / "bot_state.json"
@@ -189,8 +207,12 @@ class TestBotIdTraceability:
         that cannot report a mismatch proves nothing when it reports a
         match."""
         import json
-        bad = {"bots": {"zzzz9999": {"bot_id": "DIFFERENT",
-                                     "config": {"mode": "scrumming"}}}}
+
+        bad = {
+            "bots": {
+                "zzzz9999": {"bot_id": "DIFFERENT", "config": {"mode": "scrumming"}}
+            }
+        }
         p = tmp_path / "s.json"
         p.write_text(json.dumps(bad), encoding="utf-8")
         load_bot_configs_from_state(path=p)

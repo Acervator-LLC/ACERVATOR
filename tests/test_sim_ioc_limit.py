@@ -34,6 +34,7 @@ CANCELLED rather than OPEN is the whole point. An IOC that rests is a
 LIMIT, and a simulator that quietly converts one into the other tells
 the operator their taker-forcing order got a maker fill.
 """
+
 from __future__ import annotations
 
 import sys
@@ -80,16 +81,17 @@ def _fleet(balances=None):
 
     return FleetSimExchange(
         series_map={SYM: CandleSeries(symbol=SYM, rows=[list(CANDLE)])},
-        starting_balances=dict(
-            balances or {"USD": 1_000_000.0, "BTC": 1_000.0}))
+        starting_balances=dict(balances or {"USD": 1_000_000.0, "BTC": 1_000.0}),
+    )
 
 
 VENUES = [("nuclear", _nuclear), ("fleet", _fleet)]
 
 
 async def _place(ex, side, otype, amount, price=None):
-    return await ex.place_order(symbol=SYM, side=side, order_type=otype,
-                                amount=amount, price=price)
+    return await ex.place_order(
+        symbol=SYM, side=side, order_type=otype, amount=amount, price=price
+    )
 
 
 @pytest.mark.parametrize("name,build", VENUES, ids=[v[0] for v in VENUES])
@@ -99,8 +101,7 @@ class TestTheInstrumentWorks:
         """POSITIVE CONTROL. IOC is defined by how it DIFFERS from LIMIT,
         so the LIMIT baseline has to work for the comparison to mean
         anything."""
-        o = await _place(build(), OrderSide.BUY, OrderType.LIMIT, 1.0,
-                         price=98.0)
+        o = await _place(build(), OrderSide.BUY, OrderType.LIMIT, 1.0, price=98.0)
         assert float(getattr(o, "filled", 0) or 0) > 0.0
 
 
@@ -110,13 +111,11 @@ class TestIOCIsSupported:
     async def test_it_does_not_raise(self, name, build):
         """Fleet aborted the whole run on an unsupported type, so a bot
         in Aggressive mode could not be replayed at all."""
-        await _place(build(), OrderSide.BUY, OrderType.IOC_LIMIT, 1.0,
-                     price=98.0)
+        await _place(build(), OrderSide.BUY, OrderType.IOC_LIMIT, 1.0, price=98.0)
 
     @pytest.mark.asyncio
     async def test_a_crossing_ioc_fills(self, name, build):
-        o = await _place(build(), OrderSide.BUY, OrderType.IOC_LIMIT, 1.0,
-                         price=98.0)
+        o = await _place(build(), OrderSide.BUY, OrderType.IOC_LIMIT, 1.0, price=98.0)
         assert float(getattr(o, "filled", 0) or 0) > 0.0
 
     @pytest.mark.asyncio
@@ -124,12 +123,11 @@ class TestIOCIsSupported:
         """Nuclear discarded the limit and filled at the close. A price
         cap the venue ignores is worse than no cap: the operator reads a
         fill that their real order would never have taken."""
-        o = await _place(build(), OrderSide.BUY, OrderType.IOC_LIMIT, 1.0,
-                         price=99.0)
+        o = await _place(build(), OrderSide.BUY, OrderType.IOC_LIMIT, 1.0, price=99.0)
         if float(getattr(o, "filled", 0) or 0) > 0.0:
             assert o.average <= 99.0 + 1e-9, (
-                f"{name} filled an IOC BUY at {o.average}, above its "
-                f"{99.0} limit")
+                f"{name} filled an IOC BUY at {o.average}, above its " f"{99.0} limit"
+            )
 
 
 @pytest.mark.parametrize("name,build", VENUES, ids=[v[0] for v in VENUES])
@@ -139,10 +137,10 @@ class TestIOCNeverRests:
         """THE defining difference. An IOC that rests IS a LIMIT, and a
         simulator that converts one into the other tells the operator
         their taker-forcing order got a maker fill."""
-        o = await _place(build(), OrderSide.BUY, OrderType.IOC_LIMIT, 1.0,
-                         price=1.0)
-        assert o.status == OrderStatus.CANCELLED, (
-            f"{name} left an uncrossed IOC in status {o.status}")
+        o = await _place(build(), OrderSide.BUY, OrderType.IOC_LIMIT, 1.0, price=1.0)
+        assert (
+            o.status == OrderStatus.CANCELLED
+        ), f"{name} left an uncrossed IOC in status {o.status}"
 
     @pytest.mark.asyncio
     async def test_an_uncrossed_ioc_moves_no_balance(self, name, build):
@@ -152,14 +150,12 @@ class TestIOCNeverRests:
         assert ex._balances == before
 
     @pytest.mark.asyncio
-    async def test_an_uncrossed_limit_still_rests_where_supported(
-            self, name, build):
+    async def test_an_uncrossed_limit_still_rests_where_supported(self, name, build):
         """NEGATIVE CONTROL: making IOC cancel must not make plain LIMIT
         cancel too. Fleet rests them; Nuclear is single-shot by design,
         so only Fleet is asserted here — flattening that difference is
         exactly what the no-shared-helper reasoning protects."""
-        o = await _place(build(), OrderSide.BUY, OrderType.LIMIT, 1.0,
-                         price=1.0)
+        o = await _place(build(), OrderSide.BUY, OrderType.LIMIT, 1.0, price=1.0)
         assert o.status != OrderStatus.CANCELLED
 
 
@@ -173,10 +169,12 @@ class TestBothVenuesAgree:
             outcomes = {}
             for name, build in VENUES:
                 try:
-                    o = await _place(build(), OrderSide.BUY,
-                                     OrderType.IOC_LIMIT, 1.0, price=price)
+                    o = await _place(
+                        build(), OrderSide.BUY, OrderType.IOC_LIMIT, 1.0, price=price
+                    )
                     outcomes[name] = str(o.status)
                 except Exception as exc:
                     outcomes[name] = f"raised:{type(exc).__name__}"
-            assert len(set(outcomes.values())) == 1, (
-                f"venues disagree on a {label} IOC: {outcomes}")
+            assert (
+                len(set(outcomes.values())) == 1
+            ), f"venues disagree on a {label} IOC: {outcomes}"

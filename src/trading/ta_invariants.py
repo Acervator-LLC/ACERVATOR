@@ -50,6 +50,7 @@ early-return path during warm-up, and a bound that fires on warm-up
 trains the reader to ignore the channel. Nothing here raises. A broken
 check must never break a trading tick.
 """
+
 from __future__ import annotations
 
 import logging
@@ -99,15 +100,15 @@ def _num(d: dict, *names: str) -> bool:
 def _pct(name: str) -> Invariant:
     """A field bounded to [0, 100] by its own definition."""
     return Invariant(
-        (name,), f"0 <= {name} <= 100",
-        lambda d, _n=name: 0.0 <= float(d[_n]) <= 100.0)
+        (name,), f"0 <= {name} <= 100", lambda d, _n=name: 0.0 <= float(d[_n]) <= 100.0
+    )
 
 
 def _unit(name: str) -> Invariant:
     """A field bounded to [0, 1] -- ratios and confidences."""
     return Invariant(
-        (name,), f"0 <= {name} <= 1",
-        lambda d, _n=name: 0.0 <= float(d[_n]) <= 1.0)
+        (name,), f"0 <= {name} <= 1", lambda d, _n=name: 0.0 <= float(d[_n]) <= 1.0
+    )
 
 
 def _flags(d: dict, *names: str) -> bool:
@@ -125,78 +126,77 @@ def _excl(*names: str) -> Invariant:
     bar, or a price being above and below the same cloud.
     """
     return Invariant(
-        names, "at most one of: " + ", ".join(names),
+        names,
+        "at most one of: " + ", ".join(names),
         lambda d, _n=names: sum(1 for x in _n if d.get(x) is True) <= 1,
-        numeric=False)
+        numeric=False,
+    )
 
 
 def _nonneg(name: str) -> Invariant:
-    return Invariant(
-        (name,), f"{name} >= 0",
-        lambda d, _n=name: float(d[_n]) >= 0.0)
+    return Invariant((name,), f"{name} >= 0", lambda d, _n=name: float(d[_n]) >= 0.0)
 
 
 INDICATORS: dict[str, tuple[Invariant, ...]] = {
     # RSI = 100 - 100/(1 + RS), RS = avg_gain/avg_loss >= 0.
     "rsi": (_pct("rsi"),),
-
     # Stochastic of RSI: (x - min) / (max - min) * 100, so both the raw
     # %K and its %D smoothing are bounded by construction.
     "stochastic_rsi": (_pct("k"), _pct("d")),
-
     # +DI and -DI are 100 * smoothed(DM) / smoothed(TR), and |DM| <= TR
     # for each bar. DX = 100 * |+DI - -DI| / (+DI + -DI) is bounded by
     # the triangle inequality, and ADX is a MEAN of DX values -- an
     # average cannot leave the range of what it averages. This is the
     # bound the sum-form smoother broke.
-    "adx": (_pct("adx"), _pct("di_plus"), _pct("di_minus"),
-            _excl("ranging", "developing", "strong_trend"),
-            _excl("bull_dominant", "bear_dominant"),
-            _excl("di_bull_cross", "di_bear_cross")),
-
+    "adx": (
+        _pct("adx"),
+        _pct("di_plus"),
+        _pct("di_minus"),
+        _excl("ranging", "developing", "strong_trend"),
+        _excl("bull_dominant", "bear_dominant"),
+        _excl("di_bull_cross", "di_bear_cross"),
+    ),
     # Bands are middle +/- k*sigma with k > 0 and sigma >= 0, so the
     # ordering holds with equality only when sigma == 0 (a flat window).
     "bollinger_bands": (
-        Invariant(("lower", "middle", "upper"),
-                  "lower <= middle <= upper",
-                  lambda d: (float(d["lower"]) <= float(d["middle"])
-                             <= float(d["upper"]))),
+        Invariant(
+            ("lower", "middle", "upper"),
+            "lower <= middle <= upper",
+            lambda d: (float(d["lower"]) <= float(d["middle"]) <= float(d["upper"])),
+        ),
         _nonneg("band_width"),
     ),
-
     # sigma is a square root of a mean of squares.
     "zscore": (_nonneg("std"),),
-
     # |sum of changes| <= sum of |changes|; the numerator of ER is the
     # former and the denominator the latter.
     "kaufman_er": (_unit("er"),),
-
     # VI+ and VI- are sums of absolute differences over summed true
     # range -- non-negative, though NOT bounded above by 1.
     "vortex": (_nonneg("vi_plus"), _nonneg("vi_minus")),
-
     # MFI is a 0-100 oscillator on the RSI pattern. CMF is a weighted
     # mean of the money-flow multiplier, itself bounded [-1, 1].
     "volume": (
         _pct("mfi"),
-        Invariant(("cmf",), "-1 <= cmf <= 1",
-                  lambda d: -1.0 <= float(d["cmf"]) <= 1.0),
+        Invariant(("cmf",), "-1 <= cmf <= 1", lambda d: -1.0 <= float(d["cmf"]) <= 1.0),
         _excl("mfi_overbought", "mfi_oversold"),
         _excl("cmf_bull", "cmf_bear"),
     ),
-
     # ATR is a mean of true ranges, each a max of non-negative spans.
     # dist_pct is reported as a magnitude.
-    "supertrend": (_nonneg("curr_atr"), _nonneg("dist_pct"),
-                   _excl("flip_bull", "flip_bear")),
-
+    "supertrend": (
+        _nonneg("curr_atr"),
+        _nonneg("dist_pct"),
+        _excl("flip_bull", "flip_bear"),
+    ),
     # The cloud is bounded by max/min of the two senkou spans, so the
     # ordering is definitional however the spans are computed.
     "ichimoku": (
-        Invariant(("cloud_top", "cloud_bottom"),
-                  "cloud_bottom <= cloud_top",
-                  lambda d: (float(d["cloud_bottom"])
-                             <= float(d["cloud_top"]))),
+        Invariant(
+            ("cloud_top", "cloud_bottom"),
+            "cloud_bottom <= cloud_top",
+            lambda d: (float(d["cloud_bottom"]) <= float(d["cloud_top"])),
+        ),
         _nonneg("cloud_thick_pct"),
         _excl("tk_above_cloud", "tk_inside_cloud", "tk_below_cloud"),
         _excl("tk_bull_cross", "tk_bear_cross"),
@@ -205,7 +205,6 @@ INDICATORS: dict[str, tuple[Invariant, ...]] = {
         _excl("breakout_up", "breakout_down"),
         _excl("san_ko_shu_bull", "san_ko_shu_bear"),
     ),
-
     # Confidences. squeeze_conf breached this at -0.2722 on 30 of 1173
     # records: it was `min(1.0, ...)` with no floor, and its
     # expansion_rate term is signed.
@@ -216,17 +215,20 @@ INDICATORS: dict[str, tuple[Invariant, ...]] = {
         _nonneg("avg_bw"),
         _excl("squeeze_bull", "squeeze_bear"),
     ),
-
     # An identity, not a bound -- histogram is DEFINED as the gap
     # between the two lines. Tolerance is the stored precision (6 dp on
     # these fields), doubled, since all three are rounded independently
     # before they reach us.
     "macd": (
-        Invariant(("macd_line", "signal_line", "histogram"),
-                  "histogram == macd_line - signal_line",
-                  lambda d: abs(float(d["histogram"])
-                                - (float(d["macd_line"])
-                                   - float(d["signal_line"]))) <= 2e-6),
+        Invariant(
+            ("macd_line", "signal_line", "histogram"),
+            "histogram == macd_line - signal_line",
+            lambda d: abs(
+                float(d["histogram"])
+                - (float(d["macd_line"]) - float(d["signal_line"]))
+            )
+            <= 2e-6,
+        ),
     ),
 }
 
@@ -235,8 +237,9 @@ def invariants_for(indicator: str) -> tuple[Invariant, ...]:
     return INDICATORS.get(indicator, ())
 
 
-def check(indicator: str, details: Optional[dict]) -> tuple[
-        Optional[bool], Optional[str]]:
+def check(
+    indicator: str, details: Optional[dict]
+) -> tuple[Optional[bool], Optional[str]]:
     """Evaluate the bounds for one indicator's details.
 
     Returns ``(ok, rule)``:
@@ -255,8 +258,11 @@ def check(indicator: str, details: Optional[dict]) -> tuple[
     applied = 0
     for inv in INDICATORS.get(indicator, ()):
         try:
-            applicable = (_num(details, *inv.fields) if inv.numeric
-                          else _flags(details, *inv.fields))
+            applicable = (
+                _num(details, *inv.fields)
+                if inv.numeric
+                else _flags(details, *inv.fields)
+            )
             if not applicable:
                 continue
             applied += 1
@@ -269,8 +275,9 @@ def check(indicator: str, details: Optional[dict]) -> tuple[
             # the failure this whole module exists to avoid. Silent
             # would be worse: a bound that never evaluates looks
             # identical to a bound that always passes.
-            logger.debug("ta invariant %r on %s not evaluable: %s",
-                         inv.rule, indicator, exc)
+            logger.debug(
+                "ta invariant %r on %s not evaluable: %s", inv.rule, indicator, exc
+            )
             continue
     if applied == 0:
         return (None, None)

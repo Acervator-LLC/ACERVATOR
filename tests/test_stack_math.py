@@ -18,6 +18,7 @@ has no 0% level. Each restated test asserts strictly MORE than the one
 it replaces: the anchor placement AND the level-1 gap AND agreement
 with `ladder_offsets_pct`, where the old test asserted a single number.
 """
+
 from __future__ import annotations
 
 import sys
@@ -30,10 +31,14 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from src.trading.stack_math import (
-    DEFAULT_INITIAL_GAP_PCT, MERGE_THRESHOLD, SPACING_MODES, Tranche,
-    ladder_offsets_pct, scrum_ladder_prices, split_scrum_into_tranches,
+    DEFAULT_INITIAL_GAP_PCT,
+    MERGE_THRESHOLD,
+    SPACING_MODES,
+    Tranche,
+    ladder_offsets_pct,
+    scrum_ladder_prices,
+    split_scrum_into_tranches,
 )
-
 
 # ---------------------------------------------------------------------------
 # First-tranche placement
@@ -54,13 +59,16 @@ class TestAnchorAndLevelOnePlacement:
     def test_anchor_at_min_opposing_and_level_one_one_gap_above(self):
         anchor = 100.0 * (1.0 + 1.0 / 100.0)
         result = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=10.0, n_target=3,
-            split_distance_pct=1.0, spacing_mode="linear",
+            scrum_price=100.0,
+            scrum_size=10.0,
+            n_target=3,
+            split_distance_pct=1.0,
+            spacing_mode="linear",
             min_opposing_pct=1.0,
         )
-        assert result[0].price == pytest.approx(anchor * 1.01, rel=1e-12), (
-            "level 1 must sit exactly one initial gap above the anchor"
-        )
+        assert result[0].price == pytest.approx(
+            anchor * 1.01, rel=1e-12
+        ), "level 1 must sit exactly one initial gap above the anchor"
         assert result[0].price != pytest.approx(anchor, rel=1e-12), (
             "retired contract: no rung sits AT the anchor; the operator's "
             "table has no 0% level"
@@ -69,8 +77,11 @@ class TestAnchorAndLevelOnePlacement:
     def test_anchor_at_min_opposing_larger(self):
         anchor = 1000.0 * (1.0 + 3.0 / 100.0)
         result = split_scrum_into_tranches(
-            scrum_price=1000.0, scrum_size=10.0, n_target=3,
-            split_distance_pct=1.0, spacing_mode="linear",
+            scrum_price=1000.0,
+            scrum_size=10.0,
+            n_target=3,
+            split_distance_pct=1.0,
+            spacing_mode="linear",
             min_opposing_pct=3.0,
         )
         assert anchor == pytest.approx(1030.0, rel=1e-12)
@@ -81,8 +92,11 @@ class TestAnchorAndLevelOnePlacement:
         level 1 lands at exactly the initial gap — the operator's
         `level 1 = 1%` row, read straight off the trigger price."""
         result = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=10.0, n_target=3,
-            split_distance_pct=1.0, spacing_mode="linear",
+            scrum_price=100.0,
+            scrum_size=10.0,
+            n_target=3,
+            split_distance_pct=1.0,
+            spacing_mode="linear",
             min_opposing_pct=0.0,
         )
         assert result[0].price == pytest.approx(101.0, rel=1e-12)
@@ -93,9 +107,9 @@ class TestAnchorAndLevelOnePlacement:
         three cases above sample."""
         for mode in SPACING_MODES:
             offsets = ladder_offsets_pct(4, DEFAULT_INITIAL_GAP_PCT, mode)
-            assert offsets[0] == pytest.approx(1.0, rel=1e-12), (
-                f"mode {mode!r}: level 1 must sit at exactly the initial gap"
-            )
+            assert offsets[0] == pytest.approx(
+                1.0, rel=1e-12
+            ), f"mode {mode!r}: level 1 must sit at exactly the initial gap"
 
 
 # ---------------------------------------------------------------------------
@@ -126,16 +140,22 @@ class TestSpacingModelSequences:
         # trigger price so every mode's distances are read off 100.0 and
         # the four sequences are directly comparable.
         r = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=100.0, n_target=len(expected),
-            split_distance_pct=gap, spacing_mode=mode,
-            min_opposing_pct=0.0, last_candle_close=100.0,
+            scrum_price=100.0,
+            scrum_size=100.0,
+            n_target=len(expected),
+            split_distance_pct=gap,
+            spacing_mode=mode,
+            min_opposing_pct=0.0,
+            last_candle_close=100.0,
         )
         deltas = self._deltas(r, 100.0)
         assert deltas == pytest.approx(expected, abs=1e-9)
         assert ladder_offsets_pct(len(expected), gap, mode) == pytest.approx(
-            expected, abs=1e-9), (
+            expected, abs=1e-9
+        ), (
             f"{mode}: the shipped ladder and the published offset law "
-            f"must not disagree")
+            f"must not disagree"
+        )
 
     def test_linear_distances(self):
         self._assert_matches_law("linear", 1.0, [1.0, 2.0, 3.0, 4.0])
@@ -155,14 +175,28 @@ class TestSpacingModelSequences:
         """Doubling the initial gap doubles EVERY distance, level 1
         included — the old version skipped index 0 because index 0 was
         pinned at zero and could not scale."""
-        d1 = self._deltas(split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=100.0, n_target=4,
-            split_distance_pct=1.0, spacing_mode="quadratic",
-            min_opposing_pct=0.0), 100.0)
-        d2 = self._deltas(split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=100.0, n_target=4,
-            split_distance_pct=2.0, spacing_mode="quadratic",
-            min_opposing_pct=0.0), 100.0)
+        d1 = self._deltas(
+            split_scrum_into_tranches(
+                scrum_price=100.0,
+                scrum_size=100.0,
+                n_target=4,
+                split_distance_pct=1.0,
+                spacing_mode="quadratic",
+                min_opposing_pct=0.0,
+            ),
+            100.0,
+        )
+        d2 = self._deltas(
+            split_scrum_into_tranches(
+                scrum_price=100.0,
+                scrum_size=100.0,
+                n_target=4,
+                split_distance_pct=2.0,
+                spacing_mode="quadratic",
+                min_opposing_pct=0.0,
+            ),
+            100.0,
+        )
         assert len(d1) == 4
         for a, b in zip(d1, d2):
             assert b == pytest.approx(a * 2.0, abs=1e-9)
@@ -176,8 +210,11 @@ class TestSpacingModelSequences:
 class TestInvariants:
     def test_prices_are_monotone_increasing(self):
         r = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=100.0, n_target=5,
-            split_distance_pct=1.5, spacing_mode="quadratic",
+            scrum_price=100.0,
+            scrum_size=100.0,
+            n_target=5,
+            split_distance_pct=1.5,
+            spacing_mode="quadratic",
             min_opposing_pct=1.0,
         )
         for i in range(1, len(r)):
@@ -185,8 +222,11 @@ class TestInvariants:
 
     def test_sum_of_sizes_equals_scrum_size(self):
         r = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=50.0, n_target=5,
-            split_distance_pct=1.0, spacing_mode="linear",
+            scrum_price=100.0,
+            scrum_size=50.0,
+            n_target=5,
+            split_distance_pct=1.0,
+            spacing_mode="linear",
             min_opposing_pct=1.0,
         )
         total = sum(t.size for t in r)
@@ -194,8 +234,11 @@ class TestInvariants:
 
     def test_indices_are_zero_based_and_contiguous(self):
         r = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=100.0, n_target=4,
-            split_distance_pct=1.0, spacing_mode="linear",
+            scrum_price=100.0,
+            scrum_size=100.0,
+            n_target=4,
+            split_distance_pct=1.0,
+            spacing_mode="linear",
             min_opposing_pct=1.0,
         )
         assert [t.index for t in r] == list(range(len(r)))
@@ -210,8 +253,11 @@ class TestMergeRule:
     def test_two_tranches_below_threshold_merge(self):
         """SD=0.05% (below 0.1% threshold) → adjacent tranches merge."""
         r = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=100.0, n_target=4,
-            split_distance_pct=0.05, spacing_mode="linear",
+            scrum_price=100.0,
+            scrum_size=100.0,
+            n_target=4,
+            split_distance_pct=0.05,
+            spacing_mode="linear",
             min_opposing_pct=0.0,
         )
         # With SD=0.05%, all Δp between adjacent tranches = 0.05% < 0.1%.
@@ -229,11 +275,13 @@ class TestMergeRule:
         rungs were 100.00 and 100.05; under the current one they are
         100.05 and 100.10. The invariant is unchanged either way.
         """
-        rungs = scrum_ladder_prices(
-            100.0, 2, 0.05, "linear", min_opposing_pct=0.0)
+        rungs = scrum_ladder_prices(100.0, 2, 0.05, "linear", min_opposing_pct=0.0)
         r = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=100.0, n_target=2,
-            split_distance_pct=0.05, spacing_mode="linear",
+            scrum_price=100.0,
+            scrum_size=100.0,
+            n_target=2,
+            split_distance_pct=0.05,
+            spacing_mode="linear",
             min_opposing_pct=0.0,
         )
         assert len(r) == 1, "0.05% apart is inside the 0.1% merge band"
@@ -242,16 +290,22 @@ class TestMergeRule:
 
     def test_merged_size_is_sum(self):
         r = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=20.0, n_target=2,
-            split_distance_pct=0.05, spacing_mode="linear",
+            scrum_price=100.0,
+            scrum_size=20.0,
+            n_target=2,
+            split_distance_pct=0.05,
+            spacing_mode="linear",
             min_opposing_pct=0.0,
         )
         assert r[0].size == pytest.approx(20.0, abs=1e-9)
 
     def test_above_threshold_no_merge(self):
         r = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=100.0, n_target=4,
-            split_distance_pct=0.2, spacing_mode="linear",
+            scrum_price=100.0,
+            scrum_size=100.0,
+            n_target=4,
+            split_distance_pct=0.2,
+            spacing_mode="linear",
             min_opposing_pct=0.0,
         )
         assert len(r) == 4
@@ -266,8 +320,11 @@ class TestMinOrderSize:
     def test_below_min_reduces_tranche_count(self):
         """scrum_size=1.0, N=4, min=0.5 → floor(1.0/0.5) = 2 tranches."""
         r = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=1.0, n_target=4,
-            split_distance_pct=1.0, spacing_mode="linear",
+            scrum_price=100.0,
+            scrum_size=1.0,
+            n_target=4,
+            split_distance_pct=1.0,
+            spacing_mode="linear",
             min_opposing_pct=0.0,
             min_order_size=0.5,
         )
@@ -278,8 +335,11 @@ class TestMinOrderSize:
 
     def test_min_of_zero_disables_restriction(self):
         r = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=1.0, n_target=10,
-            split_distance_pct=1.0, spacing_mode="linear",
+            scrum_price=100.0,
+            scrum_size=1.0,
+            n_target=10,
+            split_distance_pct=1.0,
+            spacing_mode="linear",
             min_opposing_pct=0.0,
             min_order_size=0.0,
         )
@@ -289,8 +349,11 @@ class TestMinOrderSize:
         """If scrum_size < min_order_size entirely, return single tranche
         holding total_size — caller decides whether to fire it."""
         r = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=0.3, n_target=4,
-            split_distance_pct=1.0, spacing_mode="linear",
+            scrum_price=100.0,
+            scrum_size=0.3,
+            n_target=4,
+            split_distance_pct=1.0,
+            spacing_mode="linear",
             min_opposing_pct=0.0,
             min_order_size=0.5,
         )
@@ -307,24 +370,33 @@ class TestInputValidation:
     def test_zero_scrum_price_raises(self):
         with pytest.raises(ValueError, match="scrum_price"):
             split_scrum_into_tranches(
-                scrum_price=0.0, scrum_size=10.0, n_target=3,
-                split_distance_pct=1.0, spacing_mode="linear",
+                scrum_price=0.0,
+                scrum_size=10.0,
+                n_target=3,
+                split_distance_pct=1.0,
+                spacing_mode="linear",
                 min_opposing_pct=0.0,
             )
 
     def test_zero_scrum_size_raises(self):
         with pytest.raises(ValueError, match="scrum_size"):
             split_scrum_into_tranches(
-                scrum_price=100.0, scrum_size=0.0, n_target=3,
-                split_distance_pct=1.0, spacing_mode="linear",
+                scrum_price=100.0,
+                scrum_size=0.0,
+                n_target=3,
+                split_distance_pct=1.0,
+                spacing_mode="linear",
                 min_opposing_pct=0.0,
             )
 
     def test_zero_n_target_raises(self):
         with pytest.raises(ValueError, match="n_target"):
             split_scrum_into_tranches(
-                scrum_price=100.0, scrum_size=10.0, n_target=0,
-                split_distance_pct=1.0, spacing_mode="linear",
+                scrum_price=100.0,
+                scrum_size=10.0,
+                n_target=0,
+                split_distance_pct=1.0,
+                spacing_mode="linear",
                 min_opposing_pct=0.0,
             )
 
@@ -337,29 +409,38 @@ class TestInputValidation:
         for bogus in ("logarithmic", "sinusoidal", "", "QUADRATIC", None):
             with pytest.raises(ValueError, match="spacing_mode"):
                 split_scrum_into_tranches(
-                    scrum_price=100.0, scrum_size=10.0, n_target=3,
-                    split_distance_pct=1.0, spacing_mode=bogus,
+                    scrum_price=100.0,
+                    scrum_size=10.0,
+                    n_target=3,
+                    split_distance_pct=1.0,
+                    spacing_mode=bogus,
                     min_opposing_pct=0.0,
                 )
 
     def test_every_supported_spacing_mode_is_accepted(self):
         """The positive half of the guard above: a mode list that
         rejects everything would pass the negative half alone."""
-        assert set(SPACING_MODES) == {
-            "quadratic", "fibonacci", "linear", "exponential"}
+        assert set(SPACING_MODES) == {"quadratic", "fibonacci", "linear", "exponential"}
         for mode in SPACING_MODES:
             r = split_scrum_into_tranches(
-                scrum_price=100.0, scrum_size=10.0, n_target=3,
-                split_distance_pct=1.0, spacing_mode=mode,
-                min_opposing_pct=0.0, last_candle_close=100.0,
+                scrum_price=100.0,
+                scrum_size=10.0,
+                n_target=3,
+                split_distance_pct=1.0,
+                spacing_mode=mode,
+                min_opposing_pct=0.0,
+                last_candle_close=100.0,
             )
             assert len(r) == 3, f"mode {mode!r} did not build a 3-rung ladder"
 
     def test_negative_split_distance_raises(self):
         with pytest.raises(ValueError, match="split_distance_pct"):
             split_scrum_into_tranches(
-                scrum_price=100.0, scrum_size=10.0, n_target=3,
-                split_distance_pct=-1.0, spacing_mode="linear",
+                scrum_price=100.0,
+                scrum_size=10.0,
+                n_target=3,
+                split_distance_pct=-1.0,
+                spacing_mode="linear",
                 min_opposing_pct=0.0,
             )
 
@@ -372,8 +453,11 @@ class TestInputValidation:
 class TestSerialization:
     def test_tranche_to_dict_has_expected_keys(self):
         r = split_scrum_into_tranches(
-            scrum_price=100.0, scrum_size=10.0, n_target=1,
-            split_distance_pct=1.0, spacing_mode="linear",
+            scrum_price=100.0,
+            scrum_size=10.0,
+            n_target=1,
+            split_distance_pct=1.0,
+            spacing_mode="linear",
             min_opposing_pct=1.0,
         )
         d = r[0].to_dict()

@@ -8,6 +8,7 @@ Verifies:
   - calibration loads
   - AST analyzer signal-wiring tracking correctness (GUI005 edge cases)
 """
+
 from __future__ import annotations
 
 import ast
@@ -23,7 +24,6 @@ from tools.harness.gui_archetype import (
     _ACCESSIBLE_SETTER_METHODS,
     _QT_WIDGET_BASES,
 )
-
 
 REPO = Path(__file__).resolve().parent.parent
 FIX = REPO / "docs" / "audits" / "2026-07-24_gui_docs_archetypes" / "gui_fixtures"
@@ -46,8 +46,14 @@ class TestSurface:
         assert "setAccessibleDescription" in _ACCESSIBLE_SETTER_METHODS
 
     def test_interactive_signals_populated(self):
-        for sig in ("clicked", "returnPressed", "textChanged",
-                    "valueChanged", "toggled", "triggered"):
+        for sig in (
+            "clicked",
+            "returnPressed",
+            "textChanged",
+            "valueChanged",
+            "toggled",
+            "triggered",
+        ):
             assert sig in _INTERACTIVE_SIGNALS, f"missing signal: {sig}"
 
     def test_qt_widget_bases_include_qwidget(self):
@@ -113,17 +119,19 @@ class TestGroundTruthRecall:
     def test_G6_signal_wiring(self, report):
         hits = [f for f in report.findings if f.rule_id == "GUI005"]
         # Bad fixture has TWO unwired interactive widgets (input + submit)
-        assert len(hits) == 2, (
-            f"G6 (signal wiring) expected 2 GUI005 findings, got {len(hits)}"
-        )
+        assert (
+            len(hits) == 2
+        ), f"G6 (signal wiring) expected 2 GUI005 findings, got {len(hits)}"
 
 
 class TestFalsification:
     def test_falsification_populated(self):
         report = GUIArchetype().review(FIX / "known_bad_widget.py")
         assert report.falsification
-        assert "gui-static" in report.falsification.lower() or \
-               "accessibility" in report.falsification.lower()
+        assert (
+            "gui-static" in report.falsification.lower()
+            or "accessibility" in report.falsification.lower()
+        )
 
 
 class TestCalibration:

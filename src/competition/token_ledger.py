@@ -11,6 +11,7 @@ The ledger is append-only (R33): every award event is logged with:
 Balances are computed by replaying the append-only log.
 There is no "edit balance" operation — only "award tokens".
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -20,36 +21,36 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .season_schedule import (
-    TOTAL_SUPPLY_CAP, season_reward, RarityTier, RARITY_TIERS)
+from .season_schedule import TOTAL_SUPPLY_CAP, season_reward, RarityTier
 
 
 @dataclass
 class AwardRecord:
     """An immutable award entry in the ledger."""
-    event_id:       str     # SHA-256(bot_id + competition_id + tier) — idempotency key
-    bot_id:         str
+
+    event_id: str  # SHA-256(bot_id + competition_id + tier) — idempotency key
+    bot_id: str
     competition_id: str
-    season:         int
-    tier_name:      str
-    tier_emoji:     str
-    amount:         int     # ACRV tokens awarded
-    timestamp:      float
-    competition_root: str   # Merkle root proving the competition result
-    rank_pct:       float   # percentile rank at award time
+    season: int
+    tier_name: str
+    tier_emoji: str
+    amount: int  # ACRV tokens awarded
+    timestamp: float
+    competition_root: str  # Merkle root proving the competition result
+    rank_pct: float  # percentile rank at award time
 
     def to_dict(self) -> dict:
         return {
-            "event_id":         self.event_id,
-            "bot_id":           self.bot_id,
-            "competition_id":   self.competition_id,
-            "season":           self.season,
-            "tier_name":        self.tier_name,
-            "tier_emoji":       self.tier_emoji,
-            "amount":           self.amount,
-            "timestamp":        self.timestamp,
+            "event_id": self.event_id,
+            "bot_id": self.bot_id,
+            "competition_id": self.competition_id,
+            "season": self.season,
+            "tier_name": self.tier_name,
+            "tier_emoji": self.tier_emoji,
+            "amount": self.amount,
+            "timestamp": self.timestamp,
             "competition_root": self.competition_root,
-            "rank_pct":         self.rank_pct,
+            "rank_pct": self.rank_pct,
         }
 
     @classmethod
@@ -70,15 +71,21 @@ class TokenLedger:
     LEDGER_FILE = "acrv_ledger.json"
 
     def __init__(self, ledger_path: Optional[str] = None):
-        self._path:    Path             = Path(ledger_path or self.LEDGER_FILE)
-        self._events:  List[AwardRecord] = []
-        self._seen:    set              = set()  # idempotency keys
+        self._path: Path = Path(ledger_path or self.LEDGER_FILE)
+        self._events: List[AwardRecord] = []
+        self._seen: set = set()  # idempotency keys
 
     # ── Award ─────────────────────────────────────────────────────────────────
 
-    def award(self, bot_id: str, competition_id: str, season: int,
-              tier: RarityTier, rank_pct: float,
-              competition_root: str) -> Optional[AwardRecord]:
+    def award(
+        self,
+        bot_id: str,
+        competition_id: str,
+        season: int,
+        tier: RarityTier,
+        rank_pct: float,
+        competition_root: str,
+    ) -> Optional[AwardRecord]:
 
         # sadp: R28 R29 R33  # fail-loudly(R28) idempotent-via-event_id(R29) append-only-log(R33)
         """
@@ -100,15 +107,17 @@ class TokenLedger:
         if self.total_minted() + tier.base_value > TOTAL_SUPPLY_CAP:
             raise OverflowError(
                 f"Supply cap {TOTAL_SUPPLY_CAP:,} ACRV would be exceeded. "
-                f"Only {self.remaining_ever()} tokens remain mintable.")
+                f"Only {self.remaining_ever()} tokens remain mintable."
+            )
 
         # Season budget check
-        season_budget  = season_reward(season)
-        season_minted  = self.season_minted(season)
+        season_budget = season_reward(season)
+        season_minted = self.season_minted(season)
         if season_minted + tier.base_value > season_budget:
             raise OverflowError(
                 f"Season {season} budget of {season_budget:,} ACRV would be "
-                f"exceeded. {season_budget - season_minted} tokens remain.")
+                f"exceeded. {season_budget - season_minted} tokens remain."
+            )
 
         # Tier supply check
         if tier.max_ever is not None:
@@ -116,19 +125,20 @@ class TokenLedger:
             if tier_minted >= tier.max_ever:
                 raise OverflowError(
                     f"Tier '{tier.name}' has reached its maximum supply "
-                    f"of {tier.max_ever}. This tier is permanently exhausted.")
+                    f"of {tier.max_ever}. This tier is permanently exhausted."
+                )
 
         record = AwardRecord(
-            event_id        = event_id,
-            bot_id          = bot_id,
-            competition_id  = competition_id,
-            season          = season,
-            tier_name       = tier.name,
-            tier_emoji      = tier.emoji,
-            amount          = tier.base_value,
-            timestamp       = time.time(),
-            competition_root= competition_root,
-            rank_pct        = round(rank_pct, 4),
+            event_id=event_id,
+            bot_id=bot_id,
+            competition_id=competition_id,
+            season=season,
+            tier_name=tier.name,
+            tier_emoji=tier.emoji,
+            amount=tier.base_value,
+            timestamp=time.time(),
+            competition_root=competition_root,
+            rank_pct=round(rank_pct, 4),
         )
         self._events.append(record)
         self._seen.add(event_id)
@@ -149,7 +159,9 @@ class TokenLedger:
         """All award records for a bot, newest first."""
         return sorted(
             [e for e in self._events if e.bot_id == bot_id],
-            key=lambda e: e.timestamp, reverse=True)
+            key=lambda e: e.timestamp,
+            reverse=True,
+        )
 
     def total_minted(self) -> int:
         return sum(e.amount for e in self._events)
@@ -167,8 +179,12 @@ class TokenLedger:
             balances[e.bot_id] = balances.get(e.bot_id, 0) + e.amount
         ranked = sorted(balances.items(), key=lambda x: x[1], reverse=True)
         return [
-            {"rank": i+1, "bot_id": bid[:12], "balance": bal,
-             "tiers": [e.tier_name for e in self.awards(bid)]}
+            {
+                "rank": i + 1,
+                "bot_id": bid[:12],
+                "balance": bal,
+                "tiers": [e.tier_name for e in self.awards(bid)],
+            }
             for i, (bid, bal) in enumerate(ranked[:top_n])
         ]
 
@@ -177,11 +193,11 @@ class TokenLedger:
         for e in self._events:
             tier_counts[e.tier_name] = tier_counts.get(e.tier_name, 0) + 1
         return {
-            "total_cap":    TOTAL_SUPPLY_CAP,
+            "total_cap": TOTAL_SUPPLY_CAP,
             "total_minted": self.total_minted(),
-            "remaining":    self.remaining_ever(),
-            "pct_minted":   self.total_minted() / TOTAL_SUPPLY_CAP * 100,
-            "tier_counts":  tier_counts,
+            "remaining": self.remaining_ever(),
+            "pct_minted": self.total_minted() / TOTAL_SUPPLY_CAP * 100,
+            "tier_counts": tier_counts,
             "total_holders": len({e.bot_id for e in self._events}),
         }
 
@@ -191,12 +207,17 @@ class TokenLedger:
 
         # sadp: R28 R33  # ledger save: fail-loudly(R28) append-only(R33)
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps({
-            "version":      1,
-            "total_cap":    TOTAL_SUPPLY_CAP,
-            "total_minted": self.total_minted(),
-            "events":       [e.to_dict() for e in self._events],
-        }, indent=2))
+        self._path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "total_cap": TOTAL_SUPPLY_CAP,
+                    "total_minted": self.total_minted(),
+                    "events": [e.to_dict() for e in self._events],
+                },
+                indent=2,
+            )
+        )
 
     def load(self) -> "TokenLedger":
         if not self._path.exists():

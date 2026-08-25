@@ -31,6 +31,7 @@ missing candle. An insufficient balance is the same class of caller
 error, and R28 says fail loud. A silent refusal would reproduce the
 defect in a new shape: the caller carries on believing it traded.
 """
+
 from __future__ import annotations
 
 import sys
@@ -76,8 +77,7 @@ def _fleet(balances):
     from src.gui.simulator_tab.fleet.candle_series import CandleSeries
 
     series = CandleSeries(symbol=SYM, rows=[list(CANDLE)])
-    ex = FleetSimExchange(series_map={SYM: series},
-                          starting_balances=dict(balances))
+    ex = FleetSimExchange(series_map={SYM: series}, starting_balances=dict(balances))
     return ex
 
 
@@ -86,10 +86,10 @@ def _fleet(balances):
 VENUES = [("nuclear", _nuclear), ("fleet", _fleet)]
 
 
-async def _place(ex, side, amount, price=None,
-                 otype=OrderType.MARKET):
-    return await ex.place_order(symbol=SYM, side=side, order_type=otype,
-                                amount=amount, price=price)
+async def _place(ex, side, amount, price=None, otype=OrderType.MARKET):
+    return await ex.place_order(
+        symbol=SYM, side=side, order_type=otype, amount=amount, price=price
+    )
 
 
 @pytest.mark.parametrize("name,build", VENUES, ids=[v[0] for v in VENUES])
@@ -138,8 +138,9 @@ class TestAnUnfundedOrderIsRefused:
             await _place(ex, OrderSide.BUY, 1.0)
         except ValueError:
             pass
-        assert all(v >= 0.0 for v in ex._balances.values()), (
-            f"{name} ledger went negative: {ex._balances}")
+        assert all(
+            v >= 0.0 for v in ex._balances.values()
+        ), f"{name} ledger went negative: {ex._balances}"
 
     @pytest.mark.asyncio
     async def test_a_refused_order_moves_nothing(self, name, build):
@@ -181,5 +182,6 @@ class TestBothVenuesAgree:
                 outcomes[name] = "settled"
             except ValueError:
                 outcomes[name] = "refused"
-        assert len(set(outcomes.values())) == 1, (
-            f"the two sim venues disagree: {outcomes}")
+        assert (
+            len(set(outcomes.values())) == 1
+        ), f"the two sim venues disagree: {outcomes}"

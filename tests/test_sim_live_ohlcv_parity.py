@@ -29,6 +29,7 @@ effectively does. When the underlying ccxt defect is fixed in its own
 cascade, both constants move together -- and the first test below is
 what forces that.
 """
+
 from __future__ import annotations
 
 import sys
@@ -69,7 +70,8 @@ def _ex(n=900, at=None):
     """
     ex = FleetSimExchange(
         make_symbol_series_map({"BTC/USD": _rows(n)}),
-        starting_balances={"USD": 10_000.0})
+        starting_balances={"USD": 10_000.0},
+    )
     for _ in range(n - 1 if at is None else at):
         ex.step()
     return ex
@@ -82,6 +84,7 @@ class TestTheTwoConstantsCannotDrift:
         duplication rotting. If live's effective page size is ever
         corrected, this fails until the sim follows."""
         from src.exchange.ccxt_connector import EFFECTIVE_OHLCV_PAGE_SIZE
+
         assert LIVE_EFFECTIVE_PAGE_SIZE == EFFECTIVE_OHLCV_PAGE_SIZE
 
 
@@ -123,8 +126,9 @@ class TestTheRowsAreShapedLIKELIVE:
         """Stone Tablets store int ms epoch. A float here means someone
         coerced a value that must stay exactly what the tablet holds."""
         rows = await _ex().get_ohlcv("BTC/USD", "5m", limit=100)
-        assert all(isinstance(r[0], int) for r in rows[:20]), (
-            f"got {type(rows[0][0]).__name__}")
+        assert all(
+            isinstance(r[0], int) for r in rows[:20]
+        ), f"got {type(rows[0][0]).__name__}"
 
     @pytest.mark.asyncio
     async def test_the_last_row_is_the_most_recent(self):
@@ -138,14 +142,16 @@ class TestWindowLengthActuallyChangesTA:
 
     def test_the_window_changes_the_vote(self):
         from src.trading.ta_engine import VotingEngine, candles_from_raw
+
         rows = _rows(900)
         diffs = 0
         for end in (400, 500, 600, 700, 800):
             a = VotingEngine().compute_all(
-                candles_from_raw(rows[end - 100:end]), "5m")
+                candles_from_raw(rows[end - 100 : end]), "5m"
+            )
             b = VotingEngine().compute_all(
-                candles_from_raw(rows[end - 300:end]), "5m")
+                candles_from_raw(rows[end - 300 : end]), "5m"
+            )
             if abs(a.net_score - b.net_score) > 1e-9:
                 diffs += 1
-        assert diffs > 0, (
-            "window length must change TA, else the parity fix is moot")
+        assert diffs > 0, "window length must change TA, else the parity fix is moot"

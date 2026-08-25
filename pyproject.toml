@@ -23,8 +23,27 @@ dependencies = [
     "defusedxml>=0.7.1",
 ]
 
+# Dev/CI tooling. Installed in CI with `pip install -e .[dev]`. Kept out of
+# the runtime dependency list so a packaged build never ships them.
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-qt>=4.4",
+    "black>=24.0",
+    "flake8>=7.0",
+]
+
 [project.scripts]
 quantum-trader = "main:main"
+
+# ── Formatting (black) ──────────────────────────────────────────────
+# Enforced in CI by `black --check`. flake8 is configured to match (see
+# .flake8): line length 88, E203/W503 ignored because black owns them.
+[tool.black]
+line-length = 88
+target-version = ["py311", "py312", "py313"]
+extend-exclude = "tests/obsolete"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -151,9 +151,7 @@ def main() -> int:
                 "commit": sha,
                 "version": version,
                 "tests": tests,
-                "gated_at": datetime.now(timezone.utc).isoformat(
-                    timespec="seconds"
-                ),
+                "gated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "generator": "tools/gate.py",
             },
             indent=2,

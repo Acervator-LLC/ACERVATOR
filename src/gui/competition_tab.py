@@ -9,55 +9,67 @@ Displays:
   - Challenge panel (issue and respond to challenges)
   - Supply dashboard (global ACRV stats)
 """
+
 from __future__ import annotations
 
-import os
 import time
 from pathlib import Path
 from typing import Optional
 
 try:
     from PySide6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-        QTableWidget, QTableWidgetItem, QHeaderView, QGroupBox,
-        QSplitter, QTextEdit, QFrame, QScrollArea, QSizePolicy,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QPushButton,
+        QTableWidget,
+        QTableWidgetItem,
+        QHeaderView,
+        QGroupBox,
+        QFrame,
+        QScrollArea,
     )
-    from PySide6.QtCore    import Qt, QTimer
-    from PySide6.QtGui     import QColor, QFont, QBrush
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QColor, QBrush
+
     _QT = True
 except ImportError:
     _QT = False
 
 if _QT:
     from ..competition import (
-        BotIdentity, CompetitionEngine, CompetitionStatus,
-        TokenLedger, RatingRegistry, create_challenge,
-        season_reward, TOTAL_SUPPLY_CAP, RARITY_TIERS,
+        BotIdentity,
+        TokenLedger,
+        RatingRegistry,
+        season_reward,
+        TOTAL_SUPPLY_CAP,
     )
 
 # ── Style constants ──────────────────────────────────────────────────────────
-CYAN    = "#00FFEE"
-GREEN   = "#00FF88"
-AMBER   = "#FFAA00"
-RED     = "#FF3355"
+CYAN = "#00FFEE"
+GREEN = "#00FF88"
+AMBER = "#FFAA00"
+RED = "#FF3355"
 MAGENTA = "#FF00AA"
-MUTED   = "#8899BB"
-PANEL   = "#0A0A1C"
+MUTED = "#8899BB"
+PANEL = "#0A0A1C"
 
 TIER_COLORS = {
-    "Harvest":          "#00FF88",
-    "Gold Fold":        "#FFAA00",
-    "Bear Slayer":      "#FF3355",
-    "Grand Accumulator":"#00FFEE",
-    "Ekthelius":        "#FF00AA",
+    "Harvest": "#00FF88",
+    "Gold Fold": "#FFAA00",
+    "Bear Slayer": "#FF3355",
+    "Grand Accumulator": "#00FFEE",
+    "Ekthelius": "#FF00AA",
 }
 
 _LABEL_STYLE = f"color:{CYAN}; font-family:Orbitron; font-size:9px; letter-spacing:3px;"
-_VAL_STYLE   = "color:#D8E8FF; font-family:Consolas; font-size:12px;"
-_MONO_STYLE  = "color:#8899BB; font-family:Consolas; font-size:10px;"
+_VAL_STYLE = "color:#D8E8FF; font-family:Consolas; font-size:12px;"
+_MONO_STYLE = "color:#8899BB; font-family:Consolas; font-size:10px;"
 
 
 if _QT:
+
     class _Section(QGroupBox):
         def __init__(self, title: str, parent=None):
             super().__init__(parent)
@@ -94,7 +106,7 @@ if _QT:
             if identity:
                 id_lbl = QLabel(f"ID: {identity.short_id}...")
                 id_lbl.setStyleSheet(_VAL_STYLE)
-                full   = QLabel(identity.bot_id[:24] + "...")
+                full = QLabel(identity.bot_id[:24] + "...")
                 full.setStyleSheet(_MONO_STYLE)
                 row.addWidget(id_lbl)
                 row.addWidget(full)
@@ -110,7 +122,9 @@ if _QT:
             awards = ledger.awards(bot_id) if bot_id else []
 
             bal_lbl = QLabel(f"{bal:,} ACRV")
-            bal_lbl.setStyleSheet(f"color:{GREEN}; font-family:Orbitron; font-size:18px; font-weight:900;")
+            bal_lbl.setStyleSheet(
+                f"color:{GREEN}; font-family:Orbitron; font-size:18px; font-weight:900;"
+            )
             self.inner().addWidget(bal_lbl)
 
             if awards:
@@ -136,7 +150,9 @@ if _QT:
                         tbl.setItem(r, c, item)
                 self.inner().addWidget(tbl)
             else:
-                self.inner().addWidget(QLabel("No awards yet — enter a competition to earn ACRV"))
+                self.inner().addWidget(
+                    QLabel("No awards yet — enter a competition to earn ACRV")
+                )
 
     # ── Supply dashboard ──────────────────────────────────────────────────────
     class _SupplyPanel(_Section):
@@ -145,17 +161,19 @@ if _QT:
             s = ledger.supply_summary()
             row = QHBoxLayout()
             for label, val in [
-                ("Total Cap",    f"{TOTAL_SUPPLY_CAP:,}"),
-                ("Minted",       f"{s['total_minted']:,}"),
-                ("Remaining",    f"{s['remaining']:,}"),
-                ("Season Budget",f"{season_reward(season):,}"),
-                ("Holders",      str(s['total_holders'])),
+                ("Total Cap", f"{TOTAL_SUPPLY_CAP:,}"),
+                ("Minted", f"{s['total_minted']:,}"),
+                ("Remaining", f"{s['remaining']:,}"),
+                ("Season Budget", f"{season_reward(season):,}"),
+                ("Holders", str(s["total_holders"])),
             ]:
                 col = QVBoxLayout()
                 lbl = QLabel(label.upper())
                 lbl.setStyleSheet(_LABEL_STYLE)
-                v   = QLabel(val)
-                v.setStyleSheet(f"color:{CYAN}; font-family:Orbitron; font-size:13px; font-weight:700;")
+                v = QLabel(val)
+                v.setStyleSheet(
+                    f"color:{CYAN}; font-family:Orbitron; font-size:13px; font-weight:700;"
+                )
                 v.setAlignment(Qt.AlignCenter)
                 lbl.setAlignment(Qt.AlignCenter)
                 col.addWidget(lbl)
@@ -177,11 +195,15 @@ if _QT:
             tbl.verticalHeader().setVisible(False)
             tbl.setEditTriggers(QTableWidget.NoEditTriggers)
             for r, row in enumerate(rows):
-                for c, txt in enumerate([
-                    str(row["rank"]), row["bot_id"],
-                    str(row["rating"]),
-                    f"{row['w']}/{row['l']}", row["win_rate"]
-                ]):
+                for c, txt in enumerate(
+                    [
+                        str(row["rank"]),
+                        row["bot_id"],
+                        str(row["rating"]),
+                        f"{row['w']}/{row['l']}",
+                        row["win_rate"],
+                    ]
+                ):
                     item = QTableWidgetItem(txt)
                     item.setTextAlignment(Qt.AlignCenter)
                     if c == 0 and r == 0:
@@ -203,11 +225,11 @@ if _QT:
             self._data_dir = Path(data_dir)
             self._data_dir.mkdir(parents=True, exist_ok=True)
             self._identity = self._load_identity()
-            self._ledger   = TokenLedger(str(self._data_dir / "acrv_ledger.json"))
+            self._ledger = TokenLedger(str(self._data_dir / "acrv_ledger.json"))
             self._ledger.load()
             self._registry = RatingRegistry(str(self._data_dir / "elo_registry.json"))
             self._registry.load()
-            self._season   = 1
+            self._season = 1
             self._setup_ui()
 
         def _load_identity(self):
@@ -223,7 +245,9 @@ if _QT:
 
             hdr = QHBoxLayout()
             ttl = QLabel("Proof of Accumulation")
-            ttl.setStyleSheet(f"color:{CYAN}; font-family:Orbitron; font-size:14px; font-weight:900;")
+            ttl.setStyleSheet(
+                f"color:{CYAN}; font-family:Orbitron; font-size:14px; font-weight:900;"
+            )
             hdr.addWidget(ttl)
             hdr.addStretch()
             sub = QLabel("PoA Network  \u00b7  ACRV Token  \u00b7  Season 1")
@@ -231,14 +255,17 @@ if _QT:
             hdr.addWidget(sub)
             root.addLayout(hdr)
 
-            sep = QFrame(); sep.setFrameShape(QFrame.HLine)
+            sep = QFrame()
+            sep.setFrameShape(QFrame.HLine)
             sep.setStyleSheet("color:rgba(0,255,238,0.15);")
             root.addWidget(sep)
 
-            scroll = QScrollArea(); scroll.setWidgetResizable(True)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
             scroll.setFrameShape(QFrame.NoFrame)
             container = QWidget()
-            inner = QVBoxLayout(container); inner.setSpacing(8)
+            inner = QVBoxLayout(container)
+            inner.setSpacing(8)
 
             # Identity, wallet, supply, leaderboard — all read-only, genuinely useful
             inner.addWidget(_IdentityPanel(self._identity))
@@ -258,8 +285,10 @@ if _QT:
             dot.setStyleSheet(f"color:{RED}; font-size:14px;")
             slbl = QLabel("NOT CONNECTED  \u2014  Relay server required")
             slbl.setStyleSheet(
-                f"color:{RED}; font-family:Orbitron; font-size:10px; letter-spacing:2px;")
-            status_row.addWidget(dot); status_row.addWidget(slbl)
+                f"color:{RED}; font-family:Orbitron; font-size:10px; letter-spacing:2px;"
+            )
+            status_row.addWidget(dot)
+            status_row.addWidget(slbl)
             status_row.addStretch()
             net_lay.addLayout(status_row)
 
@@ -279,21 +308,24 @@ if _QT:
             ]
             info = QLabel("\n".join(lines))
             info.setWordWrap(True)
-            info.setStyleSheet(
-                f"color:{MUTED}; font-family:Consolas; font-size:10px;")
+            info.setStyleSheet(f"color:{MUTED}; font-family:Consolas; font-size:10px;")
             net_lay.addWidget(info)
 
             url_row = QHBoxLayout()
             url_lbl = QLabel("Relay:")
-            url_lbl.setStyleSheet(f"color:{MUTED}; font-family:Consolas; font-size:10px;")
+            url_lbl.setStyleSheet(
+                f"color:{MUTED}; font-family:Consolas; font-size:10px;"
+            )
             url_row.addWidget(url_lbl)
             from PySide6.QtWidgets import QLineEdit
+
             self._relay_url = QLineEdit("wss://relay.acervator.io")
             self._relay_url.setEnabled(False)
             self._relay_url.setStyleSheet(
                 f"background:#0A0A18; color:#445566;"
                 f" border:1px solid rgba(0,255,238,0.1);"
-                f" font-family:Consolas; font-size:10px; padding:4px 8px;")
+                f" font-family:Consolas; font-size:10px; padding:4px 8px;"
+            )
             url_row.addWidget(self._relay_url)
             connect_btn = QPushButton("Connect  (v3.9.0)")
             connect_btn.setEnabled(False)
@@ -301,7 +333,8 @@ if _QT:
                 f"background:rgba(0,255,238,0.04); color:#334455;"
                 f" border:1px solid rgba(0,255,238,0.1);"
                 f" font-family:Orbitron; font-size:9px;"
-                f" padding:6px 14px; border-radius:4px;")
+                f" padding:6px 14px; border-radius:4px;"
+            )
             url_row.addWidget(connect_btn)
             net_lay.addLayout(url_row)
 
@@ -311,9 +344,9 @@ if _QT:
             root.addWidget(scroll)
 
         def get_wallet_balance(self) -> int:
-            if not self._identity: return 0
+            if not self._identity:
+                return 0
             return self._ledger.balance(self._identity.bot_id)
-
 
 else:
     # Headless stub

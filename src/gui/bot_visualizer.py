@@ -57,20 +57,41 @@ except Exception:  # R28-OK: defensive — bot_visualizer must import even
         del field_id, mask
         return str(value)
 
+
 try:
     from PySide6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QLabel,
-        QScrollArea, QFrame, QMenu,
-        QTabWidget, QGroupBox, QPushButton, QSpinBox,
-        QDoubleSpinBox, QSizePolicy, QGridLayout,
-        QMessageBox, QLineEdit,
-        QListWidget, QListWidgetItem,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QComboBox,
+        QLabel,
+        QScrollArea,
+        QFrame,
+        QMenu,
+        QTabWidget,
+        QGroupBox,
+        QPushButton,
+        QDoubleSpinBox,
+        QSizePolicy,
+        QGridLayout,
+        QMessageBox,
+        QLineEdit,
+        QListWidget,
+        QListWidgetItem,
     )
     from PySide6.QtCore import Qt, QTimer, QRectF, QPointF
     from PySide6.QtGui import (
-        QPainter, QPen, QBrush, QColor, QFont, QRadialGradient,
-        QLinearGradient, QPainterPath, QPolygonF,
+        QPainter,
+        QPen,
+        QBrush,
+        QColor,
+        QFont,
+        QRadialGradient,
+        QLinearGradient,
+        QPainterPath,
+        QPolygonF,
     )  # v3.19.12 removed unused QConicalGradient
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -105,42 +126,42 @@ if _HAS_QT:
             # DB32-family green (base) with cool-blue shadow, warm-yellow
             # highlight. The workaday locust — most bots live here.
             "name": "Harvest",
-            "base":      QColor(80, 180, 110),
-            "shadow":    QColor(40, 100, 140),    # hue-shifted toward blue/cool
-            "highlight": QColor(180, 220, 130),   # hue-shifted toward yellow/warm
-            "accent":    QColor(210, 240, 160),
-            "glow":      QColor(120, 220, 150),
+            "base": QColor(80, 180, 110),
+            "shadow": QColor(40, 100, 140),  # hue-shifted toward blue/cool
+            "highlight": QColor(180, 220, 130),  # hue-shifted toward yellow/warm
+            "accent": QColor(210, 240, 160),
+            "glow": QColor(120, 220, 150),
         },
         "great": {
             # Cyan-jade tier — cleaner, cooler, slightly richer than Harvest.
             # Hue-shift: shadow toward deep teal, highlight toward pale mint.
             "name": "Great",
-            "base":      QColor(60, 200, 180),
-            "shadow":    QColor(20, 100, 130),
+            "base": QColor(60, 200, 180),
+            "shadow": QColor(20, 100, 130),
             "highlight": QColor(150, 240, 210),
-            "accent":    QColor(200, 250, 230),
-            "glow":      QColor(90, 230, 200),
+            "accent": QColor(200, 250, 230),
+            "glow": QColor(90, 230, 200),
         },
         "bumper": {
             # Amber-rust tier — cool-to-warm shift per VISUAL_CRAFT Pillar 5.
             # Shadow toward violet (complementary of amber), highlight toward
             # pale gold.
             "name": "Bumper",
-            "base":      QColor(220, 150, 70),
-            "shadow":    QColor(110, 60, 120),
+            "base": QColor(220, 150, 70),
+            "shadow": QColor(110, 60, 120),
             "highlight": QColor(250, 220, 140),
-            "accent":    QColor(255, 235, 170),
-            "glow":      QColor(240, 180, 90),
+            "accent": QColor(255, 235, 170),
+            "glow": QColor(240, 180, 90),
         },
         "ekthelius": {
             # Gold + purple, custom per VISUAL_CRAFT Pillar 5 — rare
             # trophy tier. Shadow deep indigo, highlight pale gold.
             "name": "Ekthelius",
-            "base":      QColor(200, 170, 80),
-            "shadow":    QColor(70, 40, 130),
+            "base": QColor(200, 170, 80),
+            "shadow": QColor(70, 40, 130),
             "highlight": QColor(250, 230, 160),
-            "accent":    QColor(220, 180, 255),
-            "glow":      QColor(230, 200, 120),
+            "accent": QColor(220, 180, 255),
+            "glow": QColor(230, 200, 120),
         },
     }
 
@@ -301,11 +322,16 @@ if _HAS_QT:
                 self._trade_pulses.append(1.0)
                 cx, cy = self.width() / 2, self.height() / 2
                 for _ in range(5):
-                    self._particles.append(Particle(
-                        cx, cy,
-                        _RNG.uniform(-30, 30), _RNG.uniform(-30, 30),
-                        _RNG.uniform(0.5, 1.5), _RNG.uniform(1.5, 3.5),
-                    ))
+                    self._particles.append(
+                        Particle(
+                            cx,
+                            cy,
+                            _RNG.uniform(-30, 30),
+                            _RNG.uniform(-30, 30),
+                            _RNG.uniform(0.5, 1.5),
+                            _RNG.uniform(1.5, 3.5),
+                        )
+                    )
             # Antenna sway on any price change.
             old_price = self._bot_data.get("stats", {}).get("current_price", 0)
             new_price = data.get("stats", {}).get("current_price", 0)
@@ -315,8 +341,9 @@ if _HAS_QT:
 
         def animate(self, dt: float):
             self._phase += dt * 1.5
-            self._trade_pulses = [p - dt * 0.8 for p in self._trade_pulses
-                                  if p - dt * 0.8 > 0]
+            self._trade_pulses = [
+                p - dt * 0.8 for p in self._trade_pulses if p - dt * 0.8 > 0
+            ]
             for p in self._particles:
                 p.update(dt)
             self._particles = [p for p in self._particles if p.life > 0]
@@ -326,8 +353,9 @@ if _HAS_QT:
 
         # -- Locust anatomy helpers ----------------------------------
 
-        def _locust_body_path(self, cx: float, cy: float, scale: float,
-                              wing_open: float) -> dict:
+        def _locust_body_path(
+            self, cx: float, cy: float, scale: float, wing_open: float
+        ) -> dict:
             """Build the locust body geometry. Returns a dict of
             QPainterPath parts so the paint method can style each
             segment independently.
@@ -381,12 +409,16 @@ if _HAS_QT:
             wing_l = QPainterPath()
             wing_l.moveTo(cx - 4 * u, cy - 10 * u)
             wing_l.quadTo(
-                cx - wing_spread, cy - 6 * u - wing_lift,
-                cx - wing_spread * 0.85, cy + 4 * u - wing_lift,
+                cx - wing_spread,
+                cy - 6 * u - wing_lift,
+                cx - wing_spread * 0.85,
+                cy + 4 * u - wing_lift,
             )
             wing_l.quadTo(
-                cx - 4 * u, cy + 2 * u,
-                cx - 3 * u, cy - 10 * u,
+                cx - 4 * u,
+                cy + 2 * u,
+                cx - 3 * u,
+                cy - 10 * u,
             )
             wing_l.closeSubpath()
             parts["wing_l"] = wing_l
@@ -394,12 +426,16 @@ if _HAS_QT:
             wing_r = QPainterPath()
             wing_r.moveTo(cx + 4 * u, cy - 10 * u)
             wing_r.quadTo(
-                cx + wing_spread, cy - 6 * u - wing_lift,
-                cx + wing_spread * 0.85, cy + 4 * u - wing_lift,
+                cx + wing_spread,
+                cy - 6 * u - wing_lift,
+                cx + wing_spread * 0.85,
+                cy + 4 * u - wing_lift,
             )
             wing_r.quadTo(
-                cx + 4 * u, cy + 2 * u,
-                cx + 3 * u, cy - 10 * u,
+                cx + 4 * u,
+                cy + 2 * u,
+                cx + 3 * u,
+                cy - 10 * u,
             )
             wing_r.closeSubpath()
             parts["wing_r"] = wing_r
@@ -432,11 +468,11 @@ if _HAS_QT:
             volume = stats.get("trade_volume", 0)
 
             state_color = {
-                "running":  t["success"],
-                "idle":     QColor(100, 100, 100),
-                "paused":   t["warning"],
-                "error":    t["error"],
-                "stopped":  QColor(80, 80, 80),
+                "running": t["success"],
+                "idle": QColor(100, 100, 100),
+                "paused": t["warning"],
+                "error": t["error"],
+                "stopped": QColor(80, 80, 80),
                 "cooldown": t["warning"],
             }.get(state, t["text"])
             pnl_color = t["success"] if pnl >= 0 else t["error"]
@@ -513,8 +549,7 @@ if _HAS_QT:
             # with magnitude; negative = error. 4 segments = 4 ticks
             # of gradient (Bulkowski's empirical: discrete bins read
             # better than continuous gradients at small size).
-            abdomen_grad = QLinearGradient(cx, cy + 2 * scale,
-                                           cx, cy + 18 * scale)
+            abdomen_grad = QLinearGradient(cx, cy + 2 * scale, cx, cy + 18 * scale)
             base_ab = QColor(pnl_color)
             # Magnitude-to-saturation mapping: tiny P/L barely tints;
             # larger P/L saturates. Log-compressed so $10,000 is visible
@@ -539,8 +574,10 @@ if _HAS_QT:
                 y_seg = cy + (2 + i * 4) * scale
                 # Width of abdomen tapers as we go down.
                 taper = 5.5 - i * 0.8
-                p.drawLine(QPointF(cx - taper * scale, y_seg),
-                           QPointF(cx + taper * scale, y_seg))
+                p.drawLine(
+                    QPointF(cx - taper * scale, y_seg),
+                    QPointF(cx + taper * scale, y_seg),
+                )
 
             # THORAX — armored plate in state color.
             thorax_grad = QRadialGradient(cx, cy - 5 * scale, 10 * scale)
@@ -569,8 +606,7 @@ if _HAS_QT:
             eye_radius = 1.8 * scale + 0.6 * scale * math.sin(self._phase * 3)
             p.setPen(Qt.NoPen)
             p.setBrush(QBrush(state_color))
-            p.drawEllipse(QPointF(cx, cy - 16.5 * scale),
-                          eye_radius, eye_radius)
+            p.drawEllipse(QPointF(cx, cy - 16.5 * scale), eye_radius, eye_radius)
 
             # ANTENNAE — two thin curved lines. Sway driven by
             # antenna_drive (price tick) plus ambient phase.
@@ -579,14 +615,16 @@ if _HAS_QT:
             p.setPen(ant_pen)
             p.setBrush(Qt.NoBrush)
             for sign in (-1, 1):
-                sway = (0.4 * math.sin(self._phase * 2 + sign * 1.0)
-                        + 0.8 * self._antenna_drive * math.sin(
-                            self._phase * 6 + sign * 0.5))
+                sway = 0.4 * math.sin(
+                    self._phase * 2 + sign * 1.0
+                ) + 0.8 * self._antenna_drive * math.sin(self._phase * 6 + sign * 0.5)
                 ant = QPainterPath()
                 ant.moveTo(cx + sign * 2 * scale, cy - 19 * scale)
                 ant.quadTo(
-                    cx + sign * (4 + sway) * scale, cy - 24 * scale,
-                    cx + sign * (5 + sway) * scale, cy - 28 * scale,
+                    cx + sign * (4 + sway) * scale,
+                    cy - 24 * scale,
+                    cx + sign * (5 + sway) * scale,
+                    cy - 28 * scale,
                 )
                 p.drawPath(ant)
                 # Antenna tip dot.
@@ -595,8 +633,8 @@ if _HAS_QT:
                 tip_col.setAlpha(180)
                 p.setBrush(QBrush(tip_col))
                 p.drawEllipse(
-                    QPointF(cx + sign * (5 + sway) * scale, cy - 28 * scale),
-                    1.2, 1.2)
+                    QPointF(cx + sign * (5 + sway) * scale, cy - 28 * scale), 1.2, 1.2
+                )
                 p.setPen(ant_pen)
 
             # LEGS — 3 pairs, mounted at the thorax. Hind leg (pair 3)
@@ -648,11 +686,11 @@ if _HAS_QT:
             bpen.setWidth(1)
             p.setPen(bpen)
             blen = 6  # bracket leg length in px
-            for (bx, by, dx, dy) in (
-                (1, 1, 1, 1),          # top-left
-                (w - 2, 1, -1, 1),     # top-right
-                (1, h - 2, 1, -1),     # bottom-left
-                (w - 2, h - 2, -1, -1),# bottom-right
+            for bx, by, dx, dy in (
+                (1, 1, 1, 1),  # top-left
+                (w - 2, 1, -1, 1),  # top-right
+                (1, h - 2, 1, -1),  # bottom-left
+                (w - 2, h - 2, -1, -1),  # bottom-right
             ):
                 p.drawLine(QPointF(bx, by), QPointF(bx + dx * blen, by))
                 p.drawLine(QPointF(bx, by), QPointF(bx, by + dy * blen))
@@ -667,14 +705,14 @@ if _HAS_QT:
             p.setPen(cpen)
             for dy_u in (-6, -8):
                 y_line = cy + dy_u * scale
-                p.drawLine(QPointF(cx - 4 * scale, y_line),
-                           QPointF(cx + 4 * scale, y_line))
+                p.drawLine(
+                    QPointF(cx - 4 * scale, y_line), QPointF(cx + 4 * scale, y_line)
+                )
             # Two small circuit-tap dots
             p.setPen(Qt.NoPen)
             p.setBrush(QBrush(circ_col))
             for dx_u in (-4, 4):
-                p.drawEllipse(QPointF(cx + dx_u * scale, cy - 7 * scale),
-                              1.2, 1.2)
+                p.drawEllipse(QPointF(cx + dx_u * scale, cy - 7 * scale), 1.2, 1.2)
 
             # Compound-eye iris — inner ring in accent2 over the
             # state-color dot rendered above. Gives the eye depth.
@@ -684,8 +722,9 @@ if _HAS_QT:
             ipen.setWidth(1)
             p.setPen(ipen)
             p.setBrush(Qt.NoBrush)
-            p.drawEllipse(QPointF(cx, cy - 16.5 * scale),
-                          eye_radius * 1.5, eye_radius * 1.5)
+            p.drawEllipse(
+                QPointF(cx, cy - 16.5 * scale), eye_radius * 1.5, eye_radius * 1.5
+            )
 
             # -------------------------------------------------------
             # Text labels — minimal set for the 112x98 canvas.
@@ -705,16 +744,17 @@ if _HAS_QT:
             font = QFont("Consolas", 7, QFont.Bold)
             p.setFont(font)
             p.setPen(t["text"])
-            p.drawText(QRectF(0, 2, w, 11),
-                       Qt.AlignCenter,
-                       _mask_or(symbol, "bot_swarm.identifiers"))
+            p.drawText(
+                QRectF(0, 2, w, 11),
+                Qt.AlignCenter,
+                _mask_or(symbol, "bot_swarm.identifiers"),
+            )
 
             # P/L — below the abdomen, color-coded.
             font.setPointSize(7)
             p.setFont(font)
             p.setPen(pnl_color)
-            p.drawText(QRectF(0, h - 22, w, 11),
-                       Qt.AlignCenter, _fpnl(pnl))
+            p.drawText(QRectF(0, h - 22, w, 11), Qt.AlignCenter, _fpnl(pnl))
 
             # bot_id — bottom, muted.
             # v3.23.9 Q2 (c): same field id as symbol — single red-dot
@@ -724,16 +764,21 @@ if _HAS_QT:
             p.setFont(font)
             p.setPen(QColor(110, 110, 140))
             bot_id_short = data.get("bot_id", "")[:8]
-            p.drawText(QRectF(0, h - 10, w, 9),
-                       Qt.AlignCenter,
-                       _mask_or(bot_id_short, "bot_swarm.identifiers"))
+            p.drawText(
+                QRectF(0, h - 10, w, 9),
+                Qt.AlignCenter,
+                _mask_or(bot_id_short, "bot_swarm.identifiers"),
+            )
 
             # Set tooltip with the dropped stats so they're still
             # recoverable. Rebuilt each paint from the latest data.
             from ..core.fmt import fmt_price as _fp
-            vol_str = (f"${volume/1e6:.1f}M" if volume >= 1e6
-                       else f"${volume/1e3:.1f}K" if volume >= 1e3
-                       else f"${volume:.0f}")
+
+            vol_str = (
+                f"${volume/1e6:.1f}M"
+                if volume >= 1e6
+                else f"${volume/1e3:.1f}K" if volume >= 1e3 else f"${volume:.0f}"
+            )
             # v3.24.41 (C03 / SWARM-4.7) — the tooltip leaked what the
             # labels above were masking. Lines painting the symbol and
             # the bot_id both route through _mask_or, but this string
@@ -750,7 +795,8 @@ if _HAS_QT:
                 f"Price: {_fp(price) if price > 0 else '—'}\n"
                 f"Volume: {vol_str}\n"
                 f"P/L: {_fpnl(pnl)}\n"
-                f"Bot: {_mask_or(str(data.get('bot_id', ''))[:12], 'bot_swarm.identifiers', mask='********')}")
+                f"Bot: {_mask_or(str(data.get('bot_id', ''))[:12], 'bot_swarm.identifiers', mask='********')}"
+            )
 
             p.end()
 
@@ -813,39 +859,43 @@ if _HAS_QT:
             self._source_list = QListWidget()
             self._source_list.setSelectionMode(QListWidget.NoSelection)
             self._source_list.setSizePolicy(
-                QSizePolicy.Expanding, QSizePolicy.Expanding)
-            self._source_list.setVerticalScrollBarPolicy(
-                Qt.ScrollBarAsNeeded)
+                QSizePolicy.Expanding, QSizePolicy.Expanding
+            )
+            self._source_list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             self._source_list.setStyleSheet(_list_style)
             self._source_list.setToolTip(
                 "Source Bots — check one or more; Connect wires every "
-                "checked source → every checked destination at the Rate.")
+                "checked source → every checked destination at the Rate."
+            )
             col_row.addWidget(self._source_list, stretch=1)
 
             # ── Rate zone — single-rectangle QWidget with QLineEdit ───
             rate_zone = QFrame()
             rate_zone.setFrameShape(QFrame.Box)
-            rate_zone.setSizePolicy(
-                QSizePolicy.Expanding, QSizePolicy.Expanding)
+            rate_zone.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             rate_zone.setStyleSheet(
-                "QFrame{background:#0a0a18;border:1px solid #1a2a4a;}")
+                "QFrame{background:#0a0a18;border:1px solid #1a2a4a;}"
+            )
             rate_lay = QVBoxLayout(rate_zone)
             rate_lay.setContentsMargins(8, 8, 8, 8)
             self._rate_label = QLabel("Rate")
             self._rate_label.setAlignment(Qt.AlignCenter)
             self._rate_label.setStyleSheet(
                 "color:#aaccff;font-family:Consolas;font-size:11px;"
-                "font-weight:bold;border:none;")
+                "font-weight:bold;border:none;"
+            )
             rate_lay.addWidget(self._rate_label)
             self._rate_input = QLineEdit("25")
             self._rate_input.setAlignment(Qt.AlignCenter)
             self._rate_input.setStyleSheet(
                 "QLineEdit{background:#142244;color:#aaccff;"
                 "border:1px solid #2244aa;padding:3px 6px;"
-                "font-family:Consolas;font-size:11px;}")
+                "font-family:Consolas;font-size:11px;}"
+            )
             self._rate_input.setToolTip(
                 "Percent of each source's profit-per-trade routed to "
-                "each destination.")
+                "each destination."
+            )
             rate_lay.addWidget(self._rate_input)
             rate_lay.addStretch()
             col_row.addWidget(rate_zone, stretch=1)
@@ -853,14 +903,12 @@ if _HAS_QT:
             # ── Destination zone — single-rectangle QListWidget ───────
             self._dest_list = QListWidget()
             self._dest_list.setSelectionMode(QListWidget.NoSelection)
-            self._dest_list.setSizePolicy(
-                QSizePolicy.Expanding, QSizePolicy.Expanding)
-            self._dest_list.setVerticalScrollBarPolicy(
-                Qt.ScrollBarAsNeeded)
+            self._dest_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self._dest_list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             self._dest_list.setStyleSheet(_list_style)
             self._dest_list.setToolTip(
-                "Destination Bots — wires terminate at every checked "
-                "destination.")
+                "Destination Bots — wires terminate at every checked " "destination."
+            )
             col_row.addWidget(self._dest_list, stretch=1)
 
             outer.addLayout(col_row, stretch=1)
@@ -873,23 +921,25 @@ if _HAS_QT:
             self._connect_btn = QPushButton("Connect")
             self._connect_btn.setToolTip(
                 "Wire every checked Source → every checked Destination "
-                "at the current Rate %.")
+                "at the current Rate %."
+            )
             self._connect_btn.clicked.connect(self._on_connect_clicked)
             btn_row.addWidget(self._connect_btn)
 
             self._disconnect_btn = QPushButton("Disconnect")
             self._disconnect_btn.setToolTip(
                 "Remove wires for every checked (Source, Destination) "
-                "pair in the current selection.")
+                "pair in the current selection."
+            )
             self._disconnect_btn.clicked.connect(self._on_disconnect_clicked)
             btn_row.addWidget(self._disconnect_btn)
 
             self._disconnect_all_btn = QPushButton("Disconnect All")
             self._disconnect_all_btn.setToolTip(
                 "Clear ALL Smart Wires across the entire swarm "
-                "(asks for confirmation).")
-            self._disconnect_all_btn.clicked.connect(
-                self._on_disconnect_all_clicked)
+                "(asks for confirmation)."
+            )
+            self._disconnect_all_btn.clicked.connect(self._on_disconnect_all_clicked)
             btn_row.addWidget(self._disconnect_all_btn)
             btn_row.addStretch()
             outer.addLayout(btn_row)
@@ -931,15 +981,13 @@ if _HAS_QT:
                 si = QListWidgetItem(label)
                 si.setData(Qt.UserRole, bid)
                 si.setFlags(si.flags() | Qt.ItemIsUserCheckable)
-                si.setCheckState(
-                    Qt.Checked if bid in prior_src else Qt.Unchecked)
+                si.setCheckState(Qt.Checked if bid in prior_src else Qt.Unchecked)
                 self._source_list.addItem(si)
 
                 di = QListWidgetItem(label)
                 di.setData(Qt.UserRole, bid)
                 di.setFlags(di.flags() | Qt.ItemIsUserCheckable)
-                di.setCheckState(
-                    Qt.Checked if bid in prior_dst else Qt.Unchecked)
+                di.setCheckState(Qt.Checked if bid in prior_dst else Qt.Unchecked)
                 self._dest_list.addItem(di)
 
             # v3.24.36 (C05) � restore the offsets saved above. The
@@ -947,30 +995,34 @@ if _HAS_QT:
             # be clamped against a range that is still 0..0; the
             # deferred pass runs after the relayout that fixes it.
             # Both are needed � neither alone covers both orderings.
-            for lst, val in ((self._source_list, prior_src_scroll),
-                             (self._dest_list, prior_dst_scroll)):
+            for lst, val in (
+                (self._source_list, prior_src_scroll),
+                (self._dest_list, prior_dst_scroll),
+            ):
                 if not val:
                     continue
                 lst.verticalScrollBar().setValue(val)
                 QTimer.singleShot(
-                    0, lambda b=lst.verticalScrollBar(), v=val: b.setValue(v))
+                    0, lambda b=lst.verticalScrollBar(), v=val: b.setValue(v)
+                )
 
         def _symbol_for(self, bot_id: str) -> str:
             """Best-effort lookup of a bot's symbol for display."""
             try:
                 w = self._viz._bot_widgets.get(bot_id)
                 if w is not None:
-                    sym = w._bot_data.get("symbol", "") if hasattr(
-                        w, "_bot_data") else ""
+                    sym = (
+                        w._bot_data.get("symbol", "") if hasattr(w, "_bot_data") else ""
+                    )
                     if sym:
                         return str(sym)
             except Exception:  # noqa: S110
                 pass
             try:
                 from ..core.state_manager import StateManager
+
                 st = StateManager().load_state()
-                cfg = ((st.get("bots", {}) or {}).get(bot_id, {})
-                       .get("config", {}) or {})
+                cfg = (st.get("bots", {}) or {}).get(bot_id, {}).get("config", {}) or {}
                 return str(cfg.get("symbol", "") or "?")
             except Exception:
                 return "?"
@@ -1038,12 +1090,16 @@ if _HAS_QT:
             """
             try:
                 reply = QMessageBox.question(
-                    self, f"{verb} {n} Smart Wire" + ("s" if n != 1 else "") + "?",
-                    f"{verb} {n} wire" + ("s" if n != 1 else "")
+                    self,
+                    f"{verb} {n} Smart Wire" + ("s" if n != 1 else "") + "?",
+                    f"{verb} {n} wire"
+                    + ("s" if n != 1 else "")
                     + f" across the selected bots?\n\n{detail}\n\n"
-                    + ("Existing rates on these pairs will be OVERWRITTEN."
-                       if verb == "Create"
-                       else "This stops profit routing on every pair listed.")
+                    + (
+                        "Existing rates on these pairs will be OVERWRITTEN."
+                        if verb == "Create"
+                        else "This stops profit routing on every pair listed."
+                    )
                     + "\n\nThis cannot be undone.",
                     QMessageBox.Yes | QMessageBox.No,
                     QMessageBox.No,
@@ -1052,8 +1108,8 @@ if _HAS_QT:
             except Exception as exc:  # noqa: BLE001
                 # Unconfirmable destructive/bulk action must not proceed.
                 logger.error(
-                    "quick-routing confirmation unshowable (%s); refusing",
-                    exc)
+                    "quick-routing confirmation unshowable (%s); refusing", exc
+                )
                 return False
 
         def _on_connect_clicked(self) -> None:
@@ -1067,7 +1123,8 @@ if _HAS_QT:
             except (ValueError, AttributeError):
                 self._reject(
                     f"Rate {raw!r} is not a number. Enter a percentage "
-                    f"between 0 and 100.")
+                    f"between 0 and 100."
+                )
                 return
             if not (0.0 <= pct <= 100.0):
                 self._reject(f"Rate {pct} is outside 0–100%.")
@@ -1080,8 +1137,8 @@ if _HAS_QT:
                 return
             if pct <= 0:
                 self._reject(
-                    "Rate is 0% — that would create wires that route "
-                    "nothing.")
+                    "Rate is 0% — that would create wires that route " "nothing."
+                )
                 return
             wires_created: list[tuple[str, str, float]] = []
             for src in sources:
@@ -1092,16 +1149,18 @@ if _HAS_QT:
             if not wires_created:
                 self._reject(
                     "Every selected pair is the same bot — a bot cannot "
-                    "wire to itself.")
+                    "wire to itself."
+                )
                 return
             if not self._confirm_mass(
-                    "Create", len(wires_created),
-                    f"{len(sources)} source(s) x {len(dests)} destination(s) "
-                    f"at {pct}% each."):
+                "Create",
+                len(wires_created),
+                f"{len(sources)} source(s) x {len(dests)} destination(s) "
+                f"at {pct}% each.",
+            ):
                 return
             try:
-                self._viz._apply_routes_to_state(
-                    add=wires_created, remove=[])
+                self._viz._apply_routes_to_state(add=wires_created, remove=[])
             except Exception as exc:  # noqa: BLE001
                 # _apply_routes_to_state reloads a fresh dict from disk
                 # and its save is the ONLY durable effect, so a raise
@@ -1110,18 +1169,22 @@ if _HAS_QT:
                 # wires that exist in no state at all.
                 logger.error(
                     "quick-routing connect: persisting %d wire(s) FAILED "
-                    "(%s); no wire was created", len(wires_created), exc)
+                    "(%s); no wire was created",
+                    len(wires_created),
+                    exc,
+                )
                 self._reject(
                     f"Nothing was changed — saving the routing table "
-                    f"failed:\n\n{exc}")
+                    f"failed:\n\n{exc}"
+                )
                 return
             # Emit bus events so the canvas redraws
             try:
                 from ..core.event_bus import get_event_bus
+
                 bus = get_event_bus()
-                for (src, dst, p) in wires_created:
-                    bus.emit("wire.created",
-                             source_id=src, target_id=dst, pct=p)
+                for src, dst, p in wires_created:
+                    bus.emit("wire.created", source_id=src, target_id=dst, pct=p)
             except Exception as exc:  # noqa: BLE001
                 # v3.24.36 (C05) — was a silent pass. The wires are
                 # already persisted at this point, so swallowing this
@@ -1131,7 +1194,10 @@ if _HAS_QT:
                 logger.error(
                     "quick-routing connect: %d wire(s) were saved but "
                     "the redraw events FAILED (%s) — the canvas is stale, "
-                    "not empty", len(wires_created), exc)
+                    "not empty",
+                    len(wires_created),
+                    exc,
+                )
 
         def _on_disconnect_clicked(self) -> None:
             sources = self._selected_sources()
@@ -1150,20 +1216,20 @@ if _HAS_QT:
                     pairs.append((src, dst))
             if not pairs:
                 self._reject(
-                    "Every selected pair is the same bot — nothing to "
-                    "disconnect.")
+                    "Every selected pair is the same bot — nothing to " "disconnect."
+                )
                 return
             # v3.24.36 (C05) — the symmetric mass-destroy. Same
             # cardinality as Connect: on a 35-bot swarm with both columns
             # checked this is 1,190 removals from one click.
             if not self._confirm_mass(
-                    "Disconnect", len(pairs),
-                    f"{len(sources)} source(s) x {len(dests)} "
-                    f"destination(s)."):
+                "Disconnect",
+                len(pairs),
+                f"{len(sources)} source(s) x {len(dests)} " f"destination(s).",
+            ):
                 return
             try:
-                self._viz._apply_routes_to_state(
-                    add=[], remove=pairs)
+                self._viz._apply_routes_to_state(add=[], remove=pairs)
             except Exception as exc:  # noqa: BLE001
                 # _apply_routes_to_state reloads a fresh dict from disk
                 # and its save is the ONLY durable effect, so a raise
@@ -1172,17 +1238,21 @@ if _HAS_QT:
                 # canvas that are still live in the state file.
                 logger.error(
                     "quick-routing disconnect: persisting %d removal(s) "
-                    "FAILED (%s); no wire was removed", len(pairs), exc)
+                    "FAILED (%s); no wire was removed",
+                    len(pairs),
+                    exc,
+                )
                 self._reject(
                     f"Nothing was changed — saving the routing table "
-                    f"failed:\n\n{exc}")
+                    f"failed:\n\n{exc}"
+                )
                 return
             try:
                 from ..core.event_bus import get_event_bus
+
                 bus = get_event_bus()
-                for (src, dst) in pairs:
-                    bus.emit("wire.removed",
-                             source_id=src, target_id=dst)
+                for src, dst in pairs:
+                    bus.emit("wire.removed", source_id=src, target_id=dst)
             except Exception as exc:  # noqa: BLE001
                 # v3.24.36 (C05) — was a silent pass. The removals are
                 # already persisted, so swallowing this leaves a canvas
@@ -1190,7 +1260,10 @@ if _HAS_QT:
                 logger.error(
                     "quick-routing disconnect: %d removal(s) were saved "
                     "but the redraw events FAILED (%s) — the canvas is "
-                    "stale, not wrong", len(pairs), exc)
+                    "stale, not wrong",
+                    len(pairs),
+                    exc,
+                )
 
         def _on_disconnect_all_clicked(self) -> None:
             # Confirm
@@ -1210,13 +1283,12 @@ if _HAS_QT:
                 removed = []
             try:
                 from ..core.event_bus import get_event_bus
+
                 bus = get_event_bus()
-                for (src, dst) in removed:
-                    bus.emit("wire.removed",
-                             source_id=src, target_id=dst)
+                for src, dst in removed:
+                    bus.emit("wire.removed", source_id=src, target_id=dst)
             except Exception:  # noqa: S110
                 pass
-
 
     # -------------------------------------------------------------------
     # Bot Visualization Tab
@@ -1252,6 +1324,7 @@ if _HAS_QT:
             # wire.created so this subscription unifies both paths.
             try:
                 from ..core.event_bus import get_event_bus
+
                 _bus = get_event_bus()
                 _bus.subscribe("wire.created", self._on_external_wire_created)
                 _bus.subscribe("wire.removed", self._on_external_wire_removed)
@@ -1270,7 +1343,8 @@ if _HAS_QT:
                 "padding:4px 12px;font-size:9px;}"
                 "QTabBar::tab:selected{background:#0a0a20;color:#00FFEE;"
                 "border-bottom:2px solid #00FFEE;}"
-                "QTabBar::tab:hover{color:#aaa;}")
+                "QTabBar::tab:hover{color:#aaa;}"
+            )
 
             # ── TAB 1: Bot Swarm visualization ────────────────────
             viz_tab = QWidget()
@@ -1280,9 +1354,12 @@ if _HAS_QT:
 
             header = QHBoxLayout()
             header.addWidget(QLabel("Bot Swarm"))
-            header.addWidget(QLabel(
-                "   Drag between bots to connect  •  "
-                "Right-click wire to disconnect"))
+            header.addWidget(
+                QLabel(
+                    "   Drag between bots to connect  •  "
+                    "Right-click wire to disconnect"
+                )
+            )
 
             # v3.23.20 — Operator 2026-06-16 directive: match the Scrumming
             # Bots column-header dot style EXACTLY (main_window.py:1318):
@@ -1295,9 +1372,11 @@ if _HAS_QT:
             self._bot_swarm_privacy_dot.setCursor(Qt.PointingHandCursor)
             self._bot_swarm_privacy_dot.setToolTip(
                 "Bot Swarm identifier privacy — masks bot hash IDs + "
-                "symbol labels (● revealed / ○ masked).")
+                "symbol labels (● revealed / ○ masked)."
+            )
             self._bot_swarm_privacy_dot.mousePressEvent = (
-                lambda _e: self._toggle_bot_swarm_identifier_mask())
+                lambda _e: self._toggle_bot_swarm_identifier_mask()
+            )
             self._refresh_bot_swarm_privacy_dot()
             header.addWidget(self._bot_swarm_privacy_dot)
 
@@ -1313,9 +1392,9 @@ if _HAS_QT:
             self._privacy_mode_btn = QPushButton("Privacy Mode: OFF")
             self._privacy_mode_btn.setToolTip(
                 "Toggle ALL privacy masks across Trading + Bot Swarm "
-                "tabs (shared singleton).")
-            self._privacy_mode_btn.clicked.connect(
-                self._on_privacy_mode_btn_clicked)
+                "tabs (shared singleton)."
+            )
+            self._privacy_mode_btn.clicked.connect(self._on_privacy_mode_btn_clicked)
             self._refresh_privacy_mode_btn()
             header.addWidget(self._privacy_mode_btn)
 
@@ -1326,9 +1405,11 @@ if _HAS_QT:
             self._exchange_combo.addItem("All", "")
             self._exchange_combo.setToolTip(
                 "Filter Bot Swarm visualizer + Quick Routing scope by "
-                "exchange (Q4 (c)). Default: All.")
+                "exchange (Q4 (c)). Default: All."
+            )
             self._exchange_combo.currentIndexChanged.connect(
-                self._on_exchange_filter_changed)
+                self._on_exchange_filter_changed
+            )
             header.addWidget(self._exchange_combo)
 
             header.addWidget(QLabel("Theme:"))
@@ -1344,26 +1425,29 @@ if _HAS_QT:
             self._view_combo = QComboBox()
             self._view_combo.addItem("List", "list")
             self._view_combo.addItem("Grid", "grid")
-            self._view_combo.setCurrentIndex(0)   # default: List
+            self._view_combo.setCurrentIndex(0)  # default: List
             self._view_combo.setToolTip(
                 "List: dense row-per-bot table with vertical-lane "
                 "wires (default v3.23.61).\n"
-                "Grid: locust-avatar swarm view (legacy fallback).")
-            self._view_combo.currentIndexChanged.connect(
-                self._on_view_mode_changed)
+                "Grid: locust-avatar swarm view (legacy fallback)."
+            )
+            self._view_combo.currentIndexChanged.connect(self._on_view_mode_changed)
             header.addWidget(self._view_combo)
 
             header.addWidget(QLabel("Wires:"))
             from PySide6.QtWidgets import QSlider
+
             self._wire_opacity_slider = QSlider(Qt.Horizontal)
             self._wire_opacity_slider.setRange(0, 100)
             self._wire_opacity_slider.setValue(100)
             self._wire_opacity_slider.setFixedWidth(90)
             self._wire_opacity_slider.setToolTip(
                 "Wire opacity 0–100 %. Lower for more contrast on "
-                "underlying readouts; 100 = fully opaque.")
+                "underlying readouts; 100 = fully opaque."
+            )
             self._wire_opacity_slider.valueChanged.connect(
-                self._on_wire_opacity_changed)
+                self._on_wire_opacity_changed
+            )
             header.addWidget(self._wire_opacity_slider)
 
             viz_lay.addLayout(header)
@@ -1399,7 +1483,9 @@ if _HAS_QT:
             # inside the LEFT 60% of the viz tab. Grid wraps automatically
             # via index → (row, col) mapping in update_bots.
             self._grid_cols = 6
-            self._empty_label = QLabel("No active bots. Start bots to see visualizations.")
+            self._empty_label = QLabel(
+                "No active bots. Start bots to see visualizations."
+            )
             self._empty_label.setStyleSheet("color:#555;padding:40px;")
             self._empty_label.setAlignment(Qt.AlignCenter)
             self._grid_layout.addWidget(self._empty_label, 0, 0, 1, self._grid_cols)
@@ -1410,31 +1496,39 @@ if _HAS_QT:
             # (index 0) per operator directive 2026-07-31.
             from .bot_swarm_list import BotListView, LaneWireCanvas
             from PySide6.QtWidgets import QStackedWidget
+
             self._bot_list = BotListView()
             # LaneWireCanvas overlays the list viewport so wire paint
             # coords map cleanly to row-Y/lane-X positions.
             self._lane_canvas = LaneWireCanvas(
-                self._bot_list, parent=self._bot_list.viewport())
+                self._bot_list, parent=self._bot_list.viewport()
+            )
             self._lane_canvas.setGeometry(
-                0, 0,
+                0,
+                0,
                 self._bot_list.viewport().width(),
-                self._bot_list.viewport().height())
+                self._bot_list.viewport().height(),
+            )
             # Repaint the overlay whenever the list viewport resizes
             # OR scrolls (wire coords change with scroll position).
             _orig_resize = self._bot_list.viewport().resizeEvent
+
             def _list_viewport_resized(ev):
                 self._lane_canvas.setGeometry(
-                    0, 0, ev.size().width(), ev.size().height())
+                    0, 0, ev.size().width(), ev.size().height()
+                )
                 self._lane_canvas.raise_()
                 _orig_resize(ev)
+
             self._bot_list.viewport().resizeEvent = _list_viewport_resized
             self._bot_list.verticalScrollBar().valueChanged.connect(
-                lambda *_: self._lane_canvas.update())
+                lambda *_: self._lane_canvas.update()
+            )
 
             self._view_stack = QStackedWidget()
-            self._view_stack.addWidget(self._bot_list)     # idx 0 = List
+            self._view_stack.addWidget(self._bot_list)  # idx 0 = List
             self._view_stack.addWidget(self._grid_widget)  # idx 1 = Grid
-            self._view_stack.setCurrentIndex(0)             # default List
+            self._view_stack.setCurrentIndex(0)  # default List
 
             self._quick_routing_matrix = QuickRoutingMatrix(self)
 
@@ -1456,7 +1550,7 @@ if _HAS_QT:
             inner_hbox.addWidget(self._quick_routing_matrix, stretch=1)
             viz_lay.addLayout(inner_hbox, stretch=1)
 
-            self._viz_tab = viz_tab   # keep ref for wire canvas geometry
+            self._viz_tab = viz_tab  # keep ref for wire canvas geometry
             # v3.23.12: expose Bot Swarm sub-tab for runtime-click pins
             # so QScrollArea-count assertions scope to JUST this sub-tab
             # (sibling sim_swarm + paper_swarm have legitimate scrollareas).
@@ -1475,11 +1569,12 @@ if _HAS_QT:
             except Exception:
                 logger.exception(
                     "wire hydration failed; the wire overlay may show"
-                    " fewer wires than bot_state.json holds")
+                    " fewer wires than bot_state.json holds"
+                )
             else:
                 logger.info(
-                    "wire hydration: %d wire.created event(s) "
-                    "emitted", painted)
+                    "wire hydration: %d wire.created event(s) " "emitted", painted
+                )
 
             # ── TAB 2: Simulator Swarm ─────────────────────────────
             sim_tab = QWidget()
@@ -1490,7 +1585,8 @@ if _HAS_QT:
             sim_hdr = QHBoxLayout()
             sim_hdr_lbl = QLabel("SIMULATOR SWARM")
             sim_hdr_lbl.setStyleSheet(
-                "color:#00FFEE;font-weight:bold;font-size:10px;font-family:Consolas;")
+                "color:#00FFEE;font-weight:bold;font-size:10px;font-family:Consolas;"
+            )
             sim_hdr.addWidget(sim_hdr_lbl)
             sim_hdr.addStretch()
 
@@ -1498,27 +1594,31 @@ if _HAS_QT:
             sim_add_btn.setStyleSheet(
                 "QPushButton{background:#0c0c1a;color:#00ff88;border:1px solid #00ff88;"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#001a0a;}")
+                "QPushButton:hover{background:#001a0a;}"
+            )
             sim_hdr.addWidget(sim_add_btn)
 
             sim_run_all = QPushButton("▶ Run All")
             sim_run_all.setStyleSheet(
                 "QPushButton{background:#0c0c1a;color:#00ffee;border:1px solid #00ffee;"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#001a18;}")
+                "QPushButton:hover{background:#001a18;}"
+            )
             sim_hdr.addWidget(sim_run_all)
 
             sim_stop_all = QPushButton("■ Stop All")
             sim_stop_all.setStyleSheet(
                 "QPushButton{background:#0c0c1a;color:#ff3366;border:1px solid #ff3366;"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#1a0011;}")
+                "QPushButton:hover{background:#1a0011;}"
+            )
             sim_hdr.addWidget(sim_stop_all)
             sim_lay.addLayout(sim_hdr)
 
             sim_desc = QLabel(
                 "Run multiple simultaneous simulators. Each bot runs independently "
-                "on its own asset/timeframe. Results aggregate in the summary row.")
+                "on its own asset/timeframe. Results aggregate in the summary row."
+            )
             sim_desc.setStyleSheet("color:#445566;font-size:8px;")
             sim_desc.setWordWrap(True)
             sim_lay.addWidget(sim_desc)
@@ -1527,7 +1627,8 @@ if _HAS_QT:
             sim_scroll = QScrollArea()
             sim_scroll.setWidgetResizable(True)
             sim_scroll.setStyleSheet(
-                "QScrollArea{border:1px solid #1a1a3f;background:#070710;}")
+                "QScrollArea{border:1px solid #1a1a3f;background:#070710;}"
+            )
             self._sim_swarm_widget = QWidget()
             self._sim_swarm_widget.setStyleSheet("background:#070710;")
             self._sim_swarm_layout = QVBoxLayout(self._sim_swarm_widget)
@@ -1542,39 +1643,50 @@ if _HAS_QT:
             sim_summary.setStyleSheet(
                 "QGroupBox{border:1px solid #1a1a3f;color:#00FFEE;"
                 "font-size:8px;font-weight:bold;margin-top:6px;padding-top:6px;}"
-                "QGroupBox::title{subcontrol-origin:margin;left:8px;}")
+                "QGroupBox::title{subcontrol-origin:margin;left:8px;}"
+            )
             sim_sum_lay = QHBoxLayout(sim_summary)
             sim_sum_lay.setSpacing(12)
-            self._sim_swarm_wins   = QLabel("Wins: —")
-            self._sim_swarm_pnl    = QLabel("Total PnL: —")
+            self._sim_swarm_wins = QLabel("Wins: —")
+            self._sim_swarm_pnl = QLabel("Total PnL: —")
             self._sim_swarm_trades = QLabel("Trades: —")
-            for lbl in (self._sim_swarm_wins, self._sim_swarm_pnl, self._sim_swarm_trades):
+            for lbl in (
+                self._sim_swarm_wins,
+                self._sim_swarm_pnl,
+                self._sim_swarm_trades,
+            ):
                 lbl.setStyleSheet(
-                    "color:#C8D8F0;font-size:9px;font-family:Consolas;font-weight:bold;")
+                    "color:#C8D8F0;font-size:9px;font-family:Consolas;font-weight:bold;"
+                )
                 sim_sum_lay.addWidget(lbl)
             sim_sum_lay.addStretch()
             sim_lay.addWidget(sim_summary)
 
             self._sim_bots: list[dict] = []
-            self._live_sim_rows: dict = {}   # sim_id → handle
+            self._live_sim_rows: dict = {}  # sim_id → handle
             self._tabs.addTab(sim_tab, "🖥 Simulator Swarm")
 
             def _add_sim_bot():
                 self._create_sim_bot_row()
+
             sim_add_btn.clicked.connect(_add_sim_bot)
 
             def _run_all_sims():
                 for bot in self._sim_bots:
                     if not bot.get("running"):
                         btn = bot.get("run_btn")
-                        if btn: btn.click()
+                        if btn:
+                            btn.click()
+
             sim_run_all.clicked.connect(_run_all_sims)
 
             def _stop_all_sims():
                 for bot in self._sim_bots:
                     if bot.get("running"):
                         btn = bot.get("run_btn")
-                        if btn: btn.click()
+                        if btn:
+                            btn.click()
+
             sim_stop_all.clicked.connect(_stop_all_sims)
 
             # ── TAB 3: Paper Trader Swarm ──────────────────────────
@@ -1586,7 +1698,8 @@ if _HAS_QT:
             paper_hdr = QHBoxLayout()
             paper_hdr_lbl = QLabel("PAPER TRADER SWARM")
             paper_hdr_lbl.setStyleSheet(
-                "color:#FFD700;font-weight:bold;font-size:10px;font-family:Consolas;")
+                "color:#FFD700;font-weight:bold;font-size:10px;font-family:Consolas;"
+            )
             paper_hdr.addWidget(paper_hdr_lbl)
             paper_hdr.addStretch()
 
@@ -1594,28 +1707,32 @@ if _HAS_QT:
             paper_add_btn.setStyleSheet(
                 "QPushButton{background:#0c0c1a;color:#FFD700;border:1px solid #FFD700;"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#1a1400;}")
+                "QPushButton:hover{background:#1a1400;}"
+            )
             paper_hdr.addWidget(paper_add_btn)
 
             paper_start_all = QPushButton("▶ Start All")
             paper_start_all.setStyleSheet(
                 "QPushButton{background:#0c0c1a;color:#00ff88;border:1px solid #00ff88;"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#001a0a;}")
+                "QPushButton:hover{background:#001a0a;}"
+            )
             paper_hdr.addWidget(paper_start_all)
 
             paper_stop_all = QPushButton("■ Stop All")
             paper_stop_all.setStyleSheet(
                 "QPushButton{background:#0c0c1a;color:#ff3366;border:1px solid #ff3366;"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#1a0011;}")
+                "QPushButton:hover{background:#1a0011;}"
+            )
             paper_hdr.addWidget(paper_stop_all)
             paper_lay.addLayout(paper_hdr)
 
             paper_desc = QLabel(
                 "Run multiple live paper trading bots simultaneously. "
                 "Each bot trades a different asset with virtual capital against real market data. "
-                "Source: CoinGecko (crypto) or Yahoo Finance (equities). No geographic restrictions.")
+                "Source: CoinGecko (crypto) or Yahoo Finance (equities). No geographic restrictions."
+            )
             paper_desc.setStyleSheet("color:#445566;font-size:8px;")
             paper_desc.setWordWrap(True)
             paper_lay.addWidget(paper_desc)
@@ -1623,7 +1740,8 @@ if _HAS_QT:
             paper_scroll = QScrollArea()
             paper_scroll.setWidgetResizable(True)
             paper_scroll.setStyleSheet(
-                "QScrollArea{border:1px solid #1a1a3f;background:#070710;}")
+                "QScrollArea{border:1px solid #1a1a3f;background:#070710;}"
+            )
             self._paper_swarm_widget = QWidget()
             self._paper_swarm_widget.setStyleSheet("background:#070710;")
             self._paper_swarm_layout = QVBoxLayout(self._paper_swarm_widget)
@@ -1638,15 +1756,21 @@ if _HAS_QT:
             paper_summary.setStyleSheet(
                 "QGroupBox{border:1px solid #1a1a3f;color:#FFD700;"
                 "font-size:8px;font-weight:bold;margin-top:6px;padding-top:6px;}"
-                "QGroupBox::title{subcontrol-origin:margin;left:8px;}")
+                "QGroupBox::title{subcontrol-origin:margin;left:8px;}"
+            )
             paper_sum_lay = QHBoxLayout(paper_summary)
             paper_sum_lay.setSpacing(12)
-            self._paper_swarm_total   = QLabel("Total Capital: —")
-            self._paper_swarm_pnl     = QLabel("Net PnL: —")
-            self._paper_swarm_active  = QLabel("Active Bots: 0")
-            for lbl in (self._paper_swarm_total, self._paper_swarm_pnl, self._paper_swarm_active):
+            self._paper_swarm_total = QLabel("Total Capital: —")
+            self._paper_swarm_pnl = QLabel("Net PnL: —")
+            self._paper_swarm_active = QLabel("Active Bots: 0")
+            for lbl in (
+                self._paper_swarm_total,
+                self._paper_swarm_pnl,
+                self._paper_swarm_active,
+            ):
                 lbl.setStyleSheet(
-                    "color:#C8D8F0;font-size:9px;font-family:Consolas;font-weight:bold;")
+                    "color:#C8D8F0;font-size:9px;font-family:Consolas;font-weight:bold;"
+                )
                 paper_sum_lay.addWidget(lbl)
             paper_sum_lay.addStretch()
             paper_lay.addWidget(paper_summary)
@@ -1657,20 +1781,25 @@ if _HAS_QT:
 
             def _add_paper_bot():
                 self._create_paper_bot_row()
+
             paper_add_btn.clicked.connect(_add_paper_bot)
 
             def _start_all_paper():
                 for bot in self._paper_bots:
                     if not bot.get("running"):
                         btn = bot.get("start_btn")
-                        if btn: btn.click()
+                        if btn:
+                            btn.click()
+
             paper_start_all.clicked.connect(_start_all_paper)
 
             def _stop_all_paper():
                 for bot in self._paper_bots:
                     if bot.get("running"):
                         btn = bot.get("start_btn")
-                        if btn: btn.click()
+                        if btn:
+                            btn.click()
+
             paper_stop_all.clicked.connect(_stop_all_paper)
 
             layout.addWidget(self._tabs)
@@ -1680,7 +1809,7 @@ if _HAS_QT:
             self._wire_canvas = _WireCanvas(self)
             self._wire_canvas.setAttribute(Qt.WA_TransparentForMouseEvents, False)
             self._wire_canvas.setMouseTracking(True)
-            self._wire_canvas.hide()   # starts hidden; shown only on viz tab
+            self._wire_canvas.hide()  # starts hidden; shown only on viz tab
 
             def _on_tab_changed(idx):
                 # v3.24.36 (C04) — the overlay belongs to GRID mode only.
@@ -1709,12 +1838,13 @@ if _HAS_QT:
                 # _on_view_mode_changed already applies exactly this
                 # rule; construction simply never did.
                 _is_grid = str(getattr(self, "_view_mode", "list")) == "grid"
-                if idx == 0 and _is_grid:   # Bot Swarm viz tab, Grid view
+                if idx == 0 and _is_grid:  # Bot Swarm viz tab, Grid view
                     self._wire_canvas.show()
                     self._wire_canvas.raise_()
                     self._reposition_wire_canvas()
                 else:
                     self._wire_canvas.hide()
+
             self._tabs.currentChanged.connect(_on_tab_changed)
             # Qt does NOT fire currentChanged for the initial tab selection.
             # Without this call, the wire overlay stays hidden at startup
@@ -1732,7 +1862,8 @@ if _HAS_QT:
             row = QFrame()
             row.setStyleSheet(
                 "QFrame{background:#0c0c1a;border:1px solid #1a1a3f;"
-                "border-radius:4px;padding:2px;}")
+                "border-radius:4px;padding:2px;}"
+            )
             rl = QHBoxLayout(row)
             rl.setContentsMargins(8, 4, 8, 4)
             rl.setSpacing(6)
@@ -1741,25 +1872,41 @@ if _HAS_QT:
             id_lbl = QLabel(f"SIM-{idx:02d}")
             id_lbl.setFixedWidth(48)
             id_lbl.setStyleSheet(
-                "color:#00FFEE;font-size:9px;font-weight:bold;font-family:Consolas;")
+                "color:#00FFEE;font-size:9px;font-weight:bold;font-family:Consolas;"
+            )
             rl.addWidget(id_lbl)
 
             # Asset selector
             asset_combo = QComboBox()
             asset_combo.setEditable(True)
-            asset_combo.addItems([
-                "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT",
-                "BNB/USDT", "ADA/USDT", "DOGE/USDT"])
+            asset_combo.addItems(
+                [
+                    "BTC/USDT",
+                    "ETH/USDT",
+                    "SOL/USDT",
+                    "XRP/USDT",
+                    "BNB/USDT",
+                    "ADA/USDT",
+                    "DOGE/USDT",
+                ]
+            )
             asset_combo.setFixedWidth(110)
             asset_combo.setToolTip("Trading pair — type any symbol")
             rl.addWidget(asset_combo)
 
             # Preset
             preset_combo = QComboBox()
-            preset_combo.addItems([
-                "btc_bull", "btc_range", "eth_volatile",
-                "dust_coin_pump", "dust_coin_sideways",
-                "high_volatility", "crash_recovery"])
+            preset_combo.addItems(
+                [
+                    "btc_bull",
+                    "btc_range",
+                    "eth_volatile",
+                    "dust_coin_pump",
+                    "dust_coin_sideways",
+                    "high_volatility",
+                    "crash_recovery",
+                ]
+            )
             preset_combo.setFixedWidth(120)
             rl.addWidget(preset_combo)
 
@@ -1775,7 +1922,8 @@ if _HAS_QT:
             status_lbl = QLabel("IDLE")
             status_lbl.setFixedWidth(90)
             status_lbl.setStyleSheet(
-                "color:#445566;font-size:8px;font-family:Consolas;font-weight:bold;")
+                "color:#445566;font-size:8px;font-family:Consolas;font-weight:bold;"
+            )
             rl.addWidget(status_lbl)
 
             pnl_lbl = QLabel("PnL: —")
@@ -1791,7 +1939,8 @@ if _HAS_QT:
             run_btn.setStyleSheet(
                 "QPushButton{background:#001a0a;color:#00ff88;border:1px solid #00ff88;"
                 "border-radius:3px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#00290f;}")
+                "QPushButton:hover{background:#00290f;}"
+            )
             rl.addWidget(run_btn)
 
             # Remove button
@@ -1800,14 +1949,19 @@ if _HAS_QT:
             rem_btn.setStyleSheet(
                 "QPushButton{background:#1a0011;color:#ff3366;border:1px solid #ff3366;"
                 "border-radius:3px;font-size:9px;}"
-                "QPushButton:hover{background:#2a0018;}")
+                "QPushButton:hover{background:#2a0018;}"
+            )
             rl.addWidget(rem_btn)
 
             bot_data = {
-                "widget": row, "idx": idx,
-                "asset_combo": asset_combo, "preset_combo": preset_combo,
-                "cap_spin": cap_spin, "status_lbl": status_lbl,
-                "pnl_lbl": pnl_lbl, "run_btn": run_btn,
+                "widget": row,
+                "idx": idx,
+                "asset_combo": asset_combo,
+                "preset_combo": preset_combo,
+                "cap_spin": cap_spin,
+                "status_lbl": status_lbl,
+                "pnl_lbl": pnl_lbl,
+                "run_btn": run_btn,
                 "running": False,
             }
             self._sim_bots.append(bot_data)
@@ -1823,20 +1977,24 @@ if _HAS_QT:
                     run_btn.setStyleSheet(
                         "QPushButton{background:#001a0a;color:#00ff88;border:1px solid #00ff88;"
                         "border-radius:3px;font-size:9px;font-weight:bold;}"
-                        "QPushButton:hover{background:#00290f;}")
+                        "QPushButton:hover{background:#00290f;}"
+                    )
                     status_lbl.setText("STOPPED")
                     status_lbl.setStyleSheet(
-                        "color:#445566;font-size:8px;font-family:Consolas;font-weight:bold;")
+                        "color:#445566;font-size:8px;font-family:Consolas;font-weight:bold;"
+                    )
                 else:
                     bot_data["running"] = True
                     run_btn.setText("■ Stop")
                     run_btn.setStyleSheet(
                         "QPushButton{background:#1a0011;color:#ff3366;border:1px solid #ff3366;"
                         "border-radius:3px;font-size:9px;font-weight:bold;}"
-                        "QPushButton:hover{background:#2a0018;}")
+                        "QPushButton:hover{background:#2a0018;}"
+                    )
                     status_lbl.setText("RUNNING")
                     status_lbl.setStyleSheet(
-                        "color:#00ff88;font-size:8px;font-family:Consolas;font-weight:bold;")
+                        "color:#00ff88;font-size:8px;font-family:Consolas;font-weight:bold;"
+                    )
                 self._update_sim_summary()
 
             run_btn.clicked.connect(_toggle_run)
@@ -1846,6 +2004,7 @@ if _HAS_QT:
                 row.setParent(None)
                 row.deleteLater()
                 self._update_sim_summary()
+
             rem_btn.clicked.connect(_remove)
 
         def _create_paper_bot_row(self):
@@ -1854,7 +2013,8 @@ if _HAS_QT:
             row = QFrame()
             row.setStyleSheet(
                 "QFrame{background:#0c0c1a;border:1px solid #1a1a2f;"
-                "border-radius:4px;padding:2px;}")
+                "border-radius:4px;padding:2px;}"
+            )
             rl = QHBoxLayout(row)
             rl.setContentsMargins(8, 4, 8, 4)
             rl.setSpacing(6)
@@ -1863,19 +2023,30 @@ if _HAS_QT:
             id_lbl = QLabel(f"PAP-{idx:02d}")
             id_lbl.setFixedWidth(48)
             id_lbl.setStyleSheet(
-                "color:#FFD700;font-size:9px;font-weight:bold;font-family:Consolas;")
+                "color:#FFD700;font-size:9px;font-weight:bold;font-family:Consolas;"
+            )
             rl.addWidget(id_lbl)
 
             # Pair / ticker entry
             pair_edit = QComboBox()
             pair_edit.setEditable(True)
-            pair_edit.addItems([
-                "BTC/USDT", "ETH/USDT", "SOL/USDT",
-                "SPY", "QQQ", "GLD", "AAPL", "NVDA"])
+            pair_edit.addItems(
+                [
+                    "BTC/USDT",
+                    "ETH/USDT",
+                    "SOL/USDT",
+                    "SPY",
+                    "QQQ",
+                    "GLD",
+                    "AAPL",
+                    "NVDA",
+                ]
+            )
             pair_edit.setFixedWidth(110)
             pair_edit.setToolTip(
                 "Crypto: any CoinGecko pair (BTC/USDT, SHIB/USDT …)\n"
-                "Equity: any Yahoo Finance ticker (SPY, AAPL, TLT …)")
+                "Equity: any Yahoo Finance ticker (SPY, AAPL, TLT …)"
+            )
             rl.addWidget(pair_edit)
 
             # Source
@@ -1896,7 +2067,8 @@ if _HAS_QT:
             price_lbl = QLabel("—")
             price_lbl.setFixedWidth(72)
             price_lbl.setStyleSheet(
-                "color:#00FFEE;font-size:8px;font-family:Consolas;font-weight:bold;")
+                "color:#00FFEE;font-size:8px;font-family:Consolas;font-weight:bold;"
+            )
             rl.addWidget(price_lbl)
 
             pnl_lbl = QLabel("PnL: —")
@@ -1907,7 +2079,8 @@ if _HAS_QT:
             status_lbl = QLabel("IDLE")
             status_lbl.setFixedWidth(56)
             status_lbl.setStyleSheet(
-                "color:#445566;font-size:8px;font-family:Consolas;font-weight:bold;")
+                "color:#445566;font-size:8px;font-family:Consolas;font-weight:bold;"
+            )
             rl.addWidget(status_lbl)
 
             rl.addStretch()
@@ -1917,7 +2090,8 @@ if _HAS_QT:
             start_btn.setStyleSheet(
                 "QPushButton{background:#001a0a;color:#00ff88;border:1px solid #00ff88;"
                 "border-radius:3px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#00290f;}")
+                "QPushButton:hover{background:#00290f;}"
+            )
             rl.addWidget(start_btn)
 
             rem_btn = QPushButton("✕")
@@ -1925,16 +2099,22 @@ if _HAS_QT:
             rem_btn.setStyleSheet(
                 "QPushButton{background:#1a0011;color:#ff3366;border:1px solid #ff3366;"
                 "border-radius:3px;font-size:9px;}"
-                "QPushButton:hover{background:#2a0018;}")
+                "QPushButton:hover{background:#2a0018;}"
+            )
             rl.addWidget(rem_btn)
 
             bot_data = {
-                "widget": row, "idx": idx,
-                "pair_edit": pair_edit, "src_combo": src_combo,
-                "cap_spin": cap_spin, "price_lbl": price_lbl,
-                "pnl_lbl": pnl_lbl, "status_lbl": status_lbl,
+                "widget": row,
+                "idx": idx,
+                "pair_edit": pair_edit,
+                "src_combo": src_combo,
+                "cap_spin": cap_spin,
+                "price_lbl": price_lbl,
+                "pnl_lbl": pnl_lbl,
+                "status_lbl": status_lbl,
                 "start_btn": start_btn,
-                "running": False, "paper_exch": None,
+                "running": False,
+                "paper_exch": None,
             }
             self._paper_bots.append(bot_data)
 
@@ -1948,20 +2128,24 @@ if _HAS_QT:
                     start_btn.setStyleSheet(
                         "QPushButton{background:#001a0a;color:#00ff88;border:1px solid #00ff88;"
                         "border-radius:3px;font-size:9px;font-weight:bold;}"
-                        "QPushButton:hover{background:#00290f;}")
+                        "QPushButton:hover{background:#00290f;}"
+                    )
                     status_lbl.setText("STOPPED")
                     status_lbl.setStyleSheet(
-                        "color:#445566;font-size:8px;font-family:Consolas;font-weight:bold;")
+                        "color:#445566;font-size:8px;font-family:Consolas;font-weight:bold;"
+                    )
                 else:
                     bot_data["running"] = True
                     start_btn.setText("■ Stop")
                     start_btn.setStyleSheet(
                         "QPushButton{background:#1a0011;color:#ff3366;border:1px solid #ff3366;"
                         "border-radius:3px;font-size:9px;font-weight:bold;}"
-                        "QPushButton:hover{background:#2a0018;}")
+                        "QPushButton:hover{background:#2a0018;}"
+                    )
                     status_lbl.setText("LIVE")
                     status_lbl.setStyleSheet(
-                        "color:#FFD700;font-size:8px;font-family:Consolas;font-weight:bold;")
+                        "color:#FFD700;font-size:8px;font-family:Consolas;font-weight:bold;"
+                    )
                 self._update_paper_summary()
 
             start_btn.clicked.connect(_toggle)
@@ -1972,6 +2156,7 @@ if _HAS_QT:
                 row.setParent(None)
                 row.deleteLater()
                 self._update_paper_summary()
+
             rem_btn.clicked.connect(_remove)
 
         # ── Public live-link API ───────────────────────────────────────────────
@@ -2014,8 +2199,8 @@ if _HAS_QT:
 
         # Tab-type accent colors: (border, label, dot)
         _SWARM_ACCENTS = {
-            "live":  ("#00ff88", "#00ff88", "#00ff88"),
-            "sim":   ("#00ff88", "#00FFEE", "#00ff88"),
+            "live": ("#00ff88", "#00ff88", "#00ff88"),
+            "sim": ("#00ff88", "#00FFEE", "#00ff88"),
             "paper": ("#FFD700", "#FFD700", "#FFD700"),
         }
 
@@ -2030,19 +2215,21 @@ if _HAS_QT:
             code that updates one tab's row works on any tab's row.
             """
             border, label_color, dot_color = self._SWARM_ACCENTS.get(
-                kind, self._SWARM_ACCENTS["sim"])
+                kind, self._SWARM_ACCENTS["sim"]
+            )
 
             # Background tint matches accent family but dark
             bg_tint = {
-                "live":  "#091a0e",
-                "sim":   "#091a0e",
+                "live": "#091a0e",
+                "sim": "#091a0e",
                 "paper": "#0e0e09",
             }.get(kind, "#0c0c1a")
 
             row = QFrame()
             row.setStyleSheet(
                 f"QFrame{{background:{bg_tint};border:1px solid {border};"
-                f"border-radius:4px;}}")
+                f"border-radius:4px;}}"
+            )
             rl = QHBoxLayout(row)
             rl.setContentsMargins(8, 4, 8, 4)
             rl.setSpacing(6)
@@ -2052,7 +2239,8 @@ if _HAS_QT:
             dot.setFixedWidth(12)
             dot.setStyleSheet(
                 f"color:{dot_color};font-size:10px;font-weight:bold;"
-                f"background:transparent;")
+                f"background:transparent;"
+            )
             rl.addWidget(dot)
 
             # ── Field 2: identifier ──
@@ -2060,17 +2248,19 @@ if _HAS_QT:
             id_lbl.setFixedWidth(80)
             id_lbl.setStyleSheet(
                 f"color:{label_color};font-size:9px;font-weight:bold;"
-                f"font-family:Consolas;background:transparent;")
+                f"font-family:Consolas;background:transparent;"
+            )
             rl.addWidget(id_lbl)
 
             # ── Field 3: context (asset-period, pair, etc.) ──
-            context_lbl = QLabel(cfg.get("context",
-                                 cfg.get("pair",
-                                 cfg.get("asset", "—"))))
+            context_lbl = QLabel(
+                cfg.get("context", cfg.get("pair", cfg.get("asset", "—")))
+            )
             context_lbl.setFixedWidth(88)
             context_lbl.setStyleSheet(
                 "color:#00FFEE;font-size:9px;font-weight:bold;"
-                "font-family:Consolas;background:transparent;")
+                "font-family:Consolas;background:transparent;"
+            )
             rl.addWidget(context_lbl)
 
             # ── Field 4: engine mode ──
@@ -2078,17 +2268,19 @@ if _HAS_QT:
             mode_lbl.setFixedWidth(72)
             mode_lbl.setStyleSheet(
                 "color:#888;font-size:8px;font-family:Consolas;"
-                "background:transparent;")
+                "background:transparent;"
+            )
             rl.addWidget(mode_lbl)
 
             # ── Field 5: feed (timeframe for sim; source for paper/live) ──
-            feed_lbl = QLabel(cfg.get("feed",
-                              cfg.get("timeframe",
-                              cfg.get("source", "—"))))
+            feed_lbl = QLabel(
+                cfg.get("feed", cfg.get("timeframe", cfg.get("source", "—")))
+            )
             feed_lbl.setFixedWidth(60)
             feed_lbl.setStyleSheet(
                 "color:#556677;font-size:8px;font-family:Consolas;"
-                "background:transparent;")
+                "background:transparent;"
+            )
             rl.addWidget(feed_lbl)
 
             # ── Field 6: capital ──
@@ -2096,7 +2288,8 @@ if _HAS_QT:
             cap_lbl.setFixedWidth(58)
             cap_lbl.setStyleSheet(
                 "color:#556677;font-size:8px;font-family:Consolas;"
-                "background:transparent;")
+                "background:transparent;"
+            )
             rl.addWidget(cap_lbl)
 
             # ── Field 7: status ──
@@ -2105,7 +2298,8 @@ if _HAS_QT:
             status_lbl.setFixedWidth(60)
             status_lbl.setStyleSheet(
                 f"color:{label_color};font-size:8px;font-family:Consolas;"
-                f"font-weight:bold;background:transparent;")
+                f"font-weight:bold;background:transparent;"
+            )
             rl.addWidget(status_lbl)
 
             # ── Field 8: metric (progress% for sim; price for live/paper) ──
@@ -2113,7 +2307,8 @@ if _HAS_QT:
             metric_lbl.setFixedWidth(58)
             metric_lbl.setStyleSheet(
                 "color:#445566;font-size:8px;font-family:Consolas;"
-                "background:transparent;")
+                "background:transparent;"
+            )
             rl.addWidget(metric_lbl)
 
             # ── Field 9: PnL ──
@@ -2121,7 +2316,8 @@ if _HAS_QT:
             pnl_lbl.setFixedWidth(88)
             pnl_lbl.setStyleSheet(
                 "color:#445566;font-size:8px;font-family:Consolas;"
-                "background:transparent;")
+                "background:transparent;"
+            )
             rl.addWidget(pnl_lbl)
 
             # ── Field 10: trade count ──
@@ -2129,7 +2325,8 @@ if _HAS_QT:
             trades_lbl.setFixedWidth(68)
             trades_lbl.setStyleSheet(
                 "color:#445566;font-size:8px;font-family:Consolas;"
-                "background:transparent;")
+                "background:transparent;"
+            )
             rl.addWidget(trades_lbl)
 
             rl.addStretch()
@@ -2158,13 +2355,16 @@ if _HAS_QT:
             handle["running"] = False
             handle["dot"].setStyleSheet(
                 "color:#445566;font-size:10px;font-weight:bold;"
-                "background:transparent;")
+                "background:transparent;"
+            )
             handle["widget"].setStyleSheet(
                 "QFrame{background:#0c0c1a;border:1px solid #1a1a3f;"
-                "border-radius:4px;}")
+                "border-radius:4px;}"
+            )
             handle["status_lbl"].setStyleSheet(
                 "color:#445566;font-size:8px;font-family:Consolas;"
-                "font-weight:bold;background:transparent;")
+                "font-weight:bold;background:transparent;"
+            )
 
         def _apply_pnl_color(self, handle: dict, pnl: float):
             """PnL coloring is identical across all three kinds."""
@@ -2172,7 +2372,8 @@ if _HAS_QT:
             handle["pnl_lbl"].setText(f"PnL {pnl:+,.2f}")
             handle["pnl_lbl"].setStyleSheet(
                 f"color:{col};font-size:8px;font-family:Consolas;"
-                f"background:transparent;")
+                f"background:transparent;"
+            )
 
         def register_sim_run(self, sim_id: str, label: str, cfg: dict):
             """Spawn a live-linked row in Simulator Swarm for an active sim.
@@ -2189,11 +2390,11 @@ if _HAS_QT:
 
             # Translate sim-specific cfg into the unified schema
             unified_cfg = {
-                "context":    cfg.get("asset", cfg.get("label", label)),
-                "mode":       cfg.get("mode", "SIM"),
-                "feed":       cfg.get("timeframe", "—"),
-                "capital":    cfg.get("capital", 0),
-                "status":     "RUNNING",
+                "context": cfg.get("asset", cfg.get("label", label)),
+                "mode": cfg.get("mode", "SIM"),
+                "feed": cfg.get("timeframe", "—"),
+                "capital": cfg.get("capital", 0),
+                "status": "RUNNING",
                 "metric_init": "0%",
                 "candle_total": cfg.get("candle_total", 1),
             }
@@ -2221,22 +2422,26 @@ if _HAS_QT:
             # check can fail (S9).
             try:
                 from src.core.signal_contract import emit as _sw_emit
+
                 _sw_emit(
                     "swarm.11.001.postcondition.sim_run_registered",
-                    actual=(self._live_sim_rows.get(sim_id, {})
-                            or {}).get("kind"),
+                    actual=(self._live_sim_rows.get(sim_id, {}) or {}).get("kind"),
                     expected="sim",
                     duration=_dur_elapsed,
-                    context={"layer": "sim",
-                             "id": str(sim_id),
-                             "rows_in_layer": len(self._live_sim_rows)})
+                    context={
+                        "layer": "sim",
+                        "id": str(sim_id),
+                        "rows_in_layer": len(self._live_sim_rows),
+                    },
+                )
             except Exception:  # noqa: BLE001,S110 - advisory
                 pass
             self._update_sim_summary()
             return handle
 
-        def update_sim_run(self, sim_id: str, pnl: float, trades: int,
-                           candle_idx: int = 0):
+        def update_sim_run(
+            self, sim_id: str, pnl: float, trades: int, candle_idx: int = 0
+        ):
             """Update the live sim row. Uses shared PnL coloring."""
             h = self._live_sim_rows.get(sim_id)
             if h is None:
@@ -2281,11 +2486,11 @@ if _HAS_QT:
             self._remove_live_paper(paper_id)
 
             unified_cfg = {
-                "context":    cfg.get("pair", "—"),
-                "mode":       cfg.get("mode", "PAPER"),
-                "feed":       cfg.get("source", "—"),
-                "capital":    cfg.get("capital", 0),
-                "status":     "LIVE",
+                "context": cfg.get("pair", "—"),
+                "mode": cfg.get("mode", "PAPER"),
+                "feed": cfg.get("source", "—"),
+                "capital": cfg.get("capital", 0),
+                "status": "LIVE",
                 "metric_init": "—",
             }
             handle = self._create_swarm_row("paper", label, unified_cfg)
@@ -2312,22 +2517,26 @@ if _HAS_QT:
             # check can fail (S9).
             try:
                 from src.core.signal_contract import emit as _sw_emit
+
                 _sw_emit(
                     "swarm.11.002.postcondition.paper_run_registered",
-                    actual=(self._live_paper_rows.get(paper_id, {})
-                            or {}).get("kind"),
+                    actual=(self._live_paper_rows.get(paper_id, {}) or {}).get("kind"),
                     expected="paper",
                     duration=_dur_elapsed,
-                    context={"layer": "paper",
-                             "id": str(paper_id),
-                             "rows_in_layer": len(self._live_paper_rows)})
+                    context={
+                        "layer": "paper",
+                        "id": str(paper_id),
+                        "rows_in_layer": len(self._live_paper_rows),
+                    },
+                )
             except Exception:  # noqa: BLE001,S110 - advisory
                 pass
             self._update_paper_summary()
             return handle
 
-        def update_paper_run(self, paper_id: str, price: float,
-                             pnl: float, trades: int):
+        def update_paper_run(
+            self, paper_id: str, price: float, pnl: float, trades: int
+        ):
             """Update the live paper row with current tick state."""
             h = self._live_paper_rows.get(paper_id)
             if h is None:
@@ -2336,14 +2545,14 @@ if _HAS_QT:
             h["metric_lbl"].setText(p_str)
             h["metric_lbl"].setStyleSheet(
                 "color:#00FFEE;font-size:8px;font-family:Consolas;"
-                "background:transparent;")
+                "background:transparent;"
+            )
             self._apply_pnl_color(h, pnl)
             h["trades_lbl"].setText(f"{trades} trades")
             h["_pnl"] = pnl
             self._update_paper_summary()
 
-        def stop_paper_run(self, paper_id: str, pnl: float = 0.0,
-                           trades: int = 0):
+        def stop_paper_run(self, paper_id: str, pnl: float = 0.0, trades: int = 0):
             """Mark a live paper row as stopped."""
             h = self._live_paper_rows.get(paper_id)
             if h is None:
@@ -2374,10 +2583,10 @@ if _HAS_QT:
 
             unified_cfg = {
                 "context": cfg.get("pair", cfg.get("asset", "—")),
-                "mode":    cfg.get("mode", "LIVE"),
-                "feed":    cfg.get("timeframe", cfg.get("source", "—")),
+                "mode": cfg.get("mode", "LIVE"),
+                "feed": cfg.get("timeframe", cfg.get("source", "—")),
                 "capital": cfg.get("capital", 0),
-                "status":  "RUNNING",
+                "status": "RUNNING",
                 "metric_init": cfg.get("metric_init", "—"),
             }
             handle = self._create_swarm_row("live", label, unified_cfg)
@@ -2392,9 +2601,14 @@ if _HAS_QT:
             self._live_bot_rows[bot_id] = handle
             return handle
 
-        def update_live_run(self, bot_id: str, price: float = 0.0,
-                            pnl: float = 0.0, trades: int = 0,
-                            status: str = None):
+        def update_live_run(
+            self,
+            bot_id: str,
+            price: float = 0.0,
+            pnl: float = 0.0,
+            trades: int = 0,
+            status: str = None,
+        ):
             """Update a live bot row with current tick state.
             Symmetrical to update_sim_run / update_paper_run."""
             h = self._live_bot_rows.get(bot_id)
@@ -2407,7 +2621,8 @@ if _HAS_QT:
                 h["metric_lbl"].setText(p_str)
                 h["metric_lbl"].setStyleSheet(
                     "color:#00FFEE;font-size:8px;font-family:Consolas;"
-                    "background:transparent;")
+                    "background:transparent;"
+                )
             self._apply_pnl_color(h, pnl)
             h["trades_lbl"].setText(f"{trades} trades")
             h["_pnl"] = pnl
@@ -2429,20 +2644,17 @@ if _HAS_QT:
                 h["widget"].setParent(None)
                 h["widget"].deleteLater()
             # Restore empty label if now empty
-            if (not self._live_bot_rows
-                    and hasattr(self, "_live_rows_empty")):
+            if not self._live_bot_rows and hasattr(self, "_live_rows_empty"):
                 self._live_rows_empty.setVisible(True)
 
         def _update_sim_summary(self):
             running = sum(1 for b in self._sim_bots if b.get("running"))
-            running += sum(1 for h in self._live_sim_rows.values()
-                           if h.get("running"))
+            running += sum(1 for h in self._live_sim_rows.values() if h.get("running"))
             total = len(self._sim_bots) + len(self._live_sim_rows)
             self._sim_swarm_wins.setText(f"Bots: {running}/{total} running")
             pnls = [h.get("_pnl", 0) for h in self._live_sim_rows.values()]
             if pnls:
-                self._sim_swarm_pnl.setText(
-                    f"Total PnL: ${sum(pnls):+,.2f}")
+                self._sim_swarm_pnl.setText(f"Total PnL: ${sum(pnls):+,.2f}")
             else:
                 self._sim_swarm_pnl.setText("Total PnL: —")
             self._sim_swarm_trades.setText("Aggregate trades: —")
@@ -2450,7 +2662,9 @@ if _HAS_QT:
         def _update_paper_summary(self):
             running = sum(1 for b in self._paper_bots if b.get("running"))
             total_cap = sum(b["cap_spin"].value() for b in self._paper_bots)
-            self._paper_swarm_active.setText(f"Active: {running}/{len(self._paper_bots)}")
+            self._paper_swarm_active.setText(
+                f"Active: {running}/{len(self._paper_bots)}"
+            )
             self._paper_swarm_total.setText(f"Total Capital: ${total_cap:,.0f}")
             self._paper_swarm_pnl.setText("Net PnL: —")
 
@@ -2468,11 +2682,12 @@ if _HAS_QT:
             Wire-drag continues to work because Qt's mouse-grab keeps drag
             events on the canvas once started, even if the cursor leaves."""
             from PySide6.QtCore import QRect
-            if hasattr(self, '_grid_widget') and self._grid_widget is not None:
+
+            if hasattr(self, "_grid_widget") and self._grid_widget is not None:
                 rect = self._grid_widget.rect()
                 origin = self._grid_widget.mapTo(self, rect.topLeft())
                 self._wire_canvas.setGeometry(QRect(origin, rect.size()))
-            elif hasattr(self, '_viz_tab') and self._viz_tab is not None:
+            elif hasattr(self, "_viz_tab") and self._viz_tab is not None:
                 rect = self._viz_tab.rect()
                 origin = self._viz_tab.mapTo(self, rect.topLeft())
                 self._wire_canvas.setGeometry(QRect(origin, rect.size()))
@@ -2523,7 +2738,8 @@ if _HAS_QT:
             self._bot_swarm_privacy_dot.setText(glyph)
             self._bot_swarm_privacy_dot.setStyleSheet(
                 "QLabel{color:#00FFEE;background:transparent;"
-                "padding:0 4px;font-size:14px;}")
+                "padding:0 4px;font-size:14px;}"
+            )
 
         def _toggle_bot_swarm_identifier_mask(self) -> None:
             """Flip the shared bot_swarm.identifiers mask state. Repaints
@@ -2537,11 +2753,13 @@ if _HAS_QT:
                 if _get_privacy_mask_registry is None:
                     sys.stderr.write(
                         "[bot_swarm] WARNING: privacy_mask_registry "
-                        "import unavailable — click NO-OP\n")
+                        "import unavailable — click NO-OP\n"
+                    )
                     self._bot_swarm_privacy_dot.setStyleSheet(
                         "QFrame{background:#ff0000;border:1px solid "
                         "#cc0000;border-radius:3px;}"
-                        "/* wiring-broken indicator (v3.23.12) */")
+                        "/* wiring-broken indicator (v3.23.12) */"
+                    )
                     return
                 reg = _get_privacy_mask_registry()
                 cur = reg.is_masked("bot_swarm.identifiers")
@@ -2549,11 +2767,13 @@ if _HAS_QT:
             except Exception as exc:
                 sys.stderr.write(
                     f"[bot_swarm] WARNING: identifier mask toggle "
-                    f"failed: {type(exc).__name__}: {exc}\n")
+                    f"failed: {type(exc).__name__}: {exc}\n"
+                )
                 self._bot_swarm_privacy_dot.setStyleSheet(
                     "QFrame{background:#ff0000;border:1px solid "
                     "#cc0000;border-radius:3px;}"
-                    "/* wiring-broken indicator (v3.23.12) */")
+                    "/* wiring-broken indicator (v3.23.12) */"
+                )
                 return
             self._refresh_bot_swarm_privacy_dot()
             for w in self._bot_widgets.values():
@@ -2579,13 +2799,15 @@ if _HAS_QT:
                 self._privacy_mode_btn.setStyleSheet(
                     "QPushButton{background:#003822;color:#00ff88;"
                     "border:1px solid #00ff88;border-radius:3px;"
-                    "padding:3px 12px;font-weight:bold;}")
+                    "padding:3px 12px;font-weight:bold;}"
+                )
             else:
                 self._privacy_mode_btn.setText("Privacy Mode: OFF")
                 self._privacy_mode_btn.setStyleSheet(
                     "QPushButton{background:#0c0c1a;color:#aaa;"
                     "border:1px solid #2a2a3f;border-radius:3px;"
-                    "padding:3px 12px;}")
+                    "padding:3px 12px;}"
+                )
 
         def _on_privacy_mode_btn_clicked(self) -> None:
             """Toggle ALL fields globally. Operator-pinned Q1 (a):
@@ -2601,11 +2823,13 @@ if _HAS_QT:
                     sys.stderr.write(
                         "[bot_swarm] WARNING: privacy_mask_registry "
                         "import unavailable — Privacy Mode click "
-                        "NO-OP\n")
+                        "NO-OP\n"
+                    )
                     self._privacy_mode_btn.setStyleSheet(
                         "QPushButton{background:#ff0000;color:white;"
                         "border:1px solid #cc0000;padding:3px 12px;}"
-                        "/* wiring-broken (v3.23.18) */")
+                        "/* wiring-broken (v3.23.18) */"
+                    )
                     return
                 reg = _get_privacy_mask_registry()
                 snap = reg.to_dict()
@@ -2614,11 +2838,13 @@ if _HAS_QT:
             except Exception as exc:
                 sys.stderr.write(
                     f"[bot_swarm] WARNING: Privacy Mode toggle "
-                    f"failed: {type(exc).__name__}: {exc}\n")
+                    f"failed: {type(exc).__name__}: {exc}\n"
+                )
                 self._privacy_mode_btn.setStyleSheet(
                     "QPushButton{background:#ff0000;color:white;"
                     "border:1px solid #cc0000;padding:3px 12px;}"
-                    "/* wiring-broken (v3.23.18) */")
+                    "/* wiring-broken (v3.23.18) */"
+                )
                 return
             self._refresh_privacy_mode_btn()
             self._refresh_bot_swarm_privacy_dot()
@@ -2640,8 +2866,10 @@ if _HAS_QT:
             if not ids:
                 # No prior scope tracked — read the QListWidget items
                 # to rebuild from current state.
-                ids = [mx._source_list.item(i).data(Qt.UserRole) or ""
-                       for i in range(mx._source_list.count())]
+                ids = [
+                    mx._source_list.item(i).data(Qt.UserRole) or ""
+                    for i in range(mx._source_list.count())
+                ]
                 ids = [b for b in ids if b]
             mx.rebuild_scope(ids)
 
@@ -2681,8 +2909,7 @@ if _HAS_QT:
             ids = list(self._bot_widgets.keys())
             if not sel:
                 return ids
-            return [bid for bid in ids
-                    if self._bot_exchange_id(bid) == sel]
+            return [bid for bid in ids if self._bot_exchange_id(bid) == sel]
 
         def _rebuild_exchange_selector_items(self) -> None:
             """Repopulate Exchange combo from distinct bot.config
@@ -2796,9 +3023,9 @@ if _HAS_QT:
                 _sid = str(_wire.get("source_id", "") or "")
                 if not _sid:
                     continue
-                _outflow_pct_by_bot[_sid] = (
-                    _outflow_pct_by_bot.get(_sid, 0.0)
-                    + float(_wire.get("pct", 0) or 0))
+                _outflow_pct_by_bot[_sid] = _outflow_pct_by_bot.get(_sid, 0.0) + float(
+                    _wire.get("pct", 0) or 0
+                )
             rows: list[dict] = []
             for bid in self._bot_widgets:
                 _w = self._bot_widgets[bid]
@@ -2808,24 +3035,31 @@ if _HAS_QT:
                 # populated them. Real per-wire attribution lands
                 # with v3.23.62 SWOS design cascade.
                 _stats = _data.get("stats", {}) or {}
-                _in = float(_stats.get("ytd_folded_usd", 0.0)
-                            or _data.get("ytd_folded_usd", 0.0)
-                            or 0.0)
-                _out = float(_stats.get("ytd_scrummed_usd", 0.0)
-                             or _data.get("ytd_scrummed_usd", 0.0)
-                             or 0.0)
-                rows.append({
-                    # v3.24.41 (C03 / SWARM-4.11) — mask at the producer.
-                    # bot_swarm_list.py has ZERO mask_or references, so
-                    # whatever is handed to set_bots is rendered
-                    # verbatim: the list view showed real symbols while
-                    # the grid beside it showed ****. Same field id as
-                    # the locust labels.
-                    "bot_id": bid,
-                    "symbol": _mask_or(_sym, "bot_swarm.identifiers"),
-                    "inflow_usd": _in, "outflow_usd": _out,
-                    "outflow_pct": _outflow_pct_by_bot.get(bid, 0.0),
-                })
+                _in = float(
+                    _stats.get("ytd_folded_usd", 0.0)
+                    or _data.get("ytd_folded_usd", 0.0)
+                    or 0.0
+                )
+                _out = float(
+                    _stats.get("ytd_scrummed_usd", 0.0)
+                    or _data.get("ytd_scrummed_usd", 0.0)
+                    or 0.0
+                )
+                rows.append(
+                    {
+                        # v3.24.41 (C03 / SWARM-4.11) — mask at the producer.
+                        # bot_swarm_list.py has ZERO mask_or references, so
+                        # whatever is handed to set_bots is rendered
+                        # verbatim: the list view showed real symbols while
+                        # the grid beside it showed ****. Same field id as
+                        # the locust labels.
+                        "bot_id": bid,
+                        "symbol": _mask_or(_sym, "bot_swarm.identifiers"),
+                        "inflow_usd": _in,
+                        "outflow_usd": _out,
+                        "outflow_pct": _outflow_pct_by_bot.get(bid, 0.0),
+                    }
+                )
             self._bot_list.set_bots(rows)
             # Feed wires to the lane canvas so vertical segments
             # align with row positions after the populate.
@@ -2843,6 +3077,7 @@ if _HAS_QT:
         def _load_bot_state_dict(self) -> dict:
             try:
                 from ..core.state_manager import StateManager
+
                 return StateManager().load_state() or {}
             except Exception:
                 return {}
@@ -2878,6 +3113,7 @@ if _HAS_QT:
                 from pathlib import Path
                 import json
                 import os
+
                 p = Path.home() / ".acervator" / "bot_state.json"
                 p.parent.mkdir(parents=True, exist_ok=True)
                 # v3.24.36 (C02) — DISTINCT staging file. This used to
@@ -2889,8 +3125,8 @@ if _HAS_QT:
                 # makes that impossible without changing any behaviour.
                 tmp = p.with_suffix(f".gui.{os.getpid()}.tmp")
                 tmp.write_text(
-                    json.dumps(state, indent=2, default=str),
-                    encoding="utf-8")
+                    json.dumps(state, indent=2, default=str), encoding="utf-8"
+                )
                 tmp.replace(p)
             except Exception as exc:  # noqa: BLE001 - GUI must not die
                 logger.error(
@@ -2898,12 +3134,13 @@ if _HAS_QT:
                     "FAILED (%s: %s). Wire routing changes made in the "
                     "GUI were not persisted by this path; the durable "
                     "smart_wires channel is unaffected.",
-                    type(exc).__name__, exc)
+                    type(exc).__name__,
+                    exc,
+                )
 
         def _apply_routes_to_state(
-                self,
-                add: list[tuple[str, str, float]],
-                remove: list[tuple[str, str]]) -> None:
+            self, add: list[tuple[str, str, float]], remove: list[tuple[str, str]]
+        ) -> None:
             """Mutate bot_state.json — for each source bot, update its
             scrumming_state.smart_wire_routes list. ``add`` entries are
             deduped by dest_bot_id (replace pct if dest already wired).
@@ -2920,27 +3157,26 @@ if _HAS_QT:
                     scr["smart_wire_routes"] = routes
                 return routes
 
-            for (src, dst, pct) in add:
+            for src, dst, pct in add:
                 routes = _ensure_routes(src)
                 # Dedupe by dest_bot_id
                 replaced = False
                 for entry in routes:
-                    if isinstance(entry, dict) and (
-                            entry.get("dest_bot_id") == dst):
+                    if isinstance(entry, dict) and (entry.get("dest_bot_id") == dst):
                         entry["pct"] = float(pct)
                         replaced = True
                         break
                 if not replaced:
                     routes.append({"dest_bot_id": dst, "pct": float(pct)})
 
-            for (src, dst) in remove:
+            for src, dst in remove:
                 if src not in bots:
                     continue
                 routes = _ensure_routes(src)
                 new_routes = [
-                    e for e in routes
-                    if not (isinstance(e, dict)
-                            and e.get("dest_bot_id") == dst)
+                    e
+                    for e in routes
+                    if not (isinstance(e, dict) and e.get("dest_bot_id") == dst)
                 ]
                 bots[src]["scrumming_state"]["smart_wire_routes"] = new_routes
 
@@ -2971,7 +3207,10 @@ if _HAS_QT:
             return removed_pairs
 
         def _report_wire_hydration_shortfall(
-            self, painted: int, seen: int, rejected: int,
+            self,
+            painted: int,
+            seen: int,
+            rejected: int,
         ) -> None:
             """Record any route on disk that did not reach the canvas.
 
@@ -2986,7 +3225,11 @@ if _HAS_QT:
                 " bot_state.json painted -- %d rejected by the"
                 " bus, %d unusable; the wire overlay"
                 " under-reports the state file",
-                painted, seen, rejected, seen - painted - rejected)
+                painted,
+                seen,
+                rejected,
+                seen - painted - rejected,
+            )
 
         def _hydrate_smart_wire_routes_from_disk(self) -> int:
             """B.6: on init, replay each bot's smart_wire_routes as
@@ -3007,18 +3250,21 @@ if _HAS_QT:
             rejected = 0
             try:
                 from ..core.event_bus import get_event_bus
+
                 bus = get_event_bus()
             except Exception:
                 logger.exception(
                     "wire hydration: no event bus, so no route in"
-                    " bot_state.json reaches the canvas")
+                    " bot_state.json reaches the canvas"
+                )
                 return 0
             for bid, bot in bots.items():
                 if not isinstance(bot, dict):
                     continue
                 scr = bot.get("scrumming_state", {})
-                routes = scr.get("smart_wire_routes", []) if isinstance(
-                    scr, dict) else []
+                routes = (
+                    scr.get("smart_wire_routes", []) if isinstance(scr, dict) else []
+                )
                 if not isinstance(routes, list):
                     continue
                 for entry in routes:
@@ -3033,16 +3279,21 @@ if _HAS_QT:
                     if not dst or pct <= 0:
                         continue
                     try:
-                        bus.emit("wire.created",
-                                 source_id=str(bid), target_id=dst,
-                                 pct=pct)
+                        bus.emit(
+                            "wire.created", source_id=str(bid), target_id=dst, pct=pct
+                        )
                         n += 1
                     except Exception:
                         rejected += 1
                         logger.warning(
                             "wire hydration: the bus rejected route"
                             " %s -> %s (%s%%), so that wire is not"
-                            " painted", bid, dst, pct, exc_info=True)
+                            " painted",
+                            bid,
+                            dst,
+                            pct,
+                            exc_info=True,
+                        )
             self._report_wire_hydration_shortfall(n, seen, rejected)
             return n
 
@@ -3099,8 +3350,7 @@ if _HAS_QT:
             self._wire_mouse_pos = pos
             self._wire_canvas.update()
 
-        def _confirm_wire_removal(
-                self, pairs: list, why: str = "") -> bool:
+        def _confirm_wire_removal(self, pairs: list, why: str = "") -> bool:
             """Ask before destroying live Smart Wire(s). True to proceed.
 
             v3.24.36 (C06b). ``remove_wire`` emits ``wire.removed``,
@@ -3123,23 +3373,27 @@ if _HAS_QT:
             lines = []
             for src, dst in pairs:
                 pct = next(
-                    (w.get("pct") for w in self._wires
-                     if w.get("source_id") == src
-                     and w.get("target_id") == dst),
-                    None)
+                    (
+                        w.get("pct")
+                        for w in self._wires
+                        if w.get("source_id") == src and w.get("target_id") == dst
+                    ),
+                    None,
+                )
                 pct_txt = f" at {pct}%" if pct is not None else ""
                 lines.append(f"  • {src[:8]} → {dst[:8]}{pct_txt}")
             body = (
-                (f"{why}\n\n" if why else "")
-                + f"Disconnect {len(pairs)} Smart Wire"
-                + ("s" if len(pairs) != 1 else "")
-                + "?\n\n" + "\n".join(lines)
-                + "\n\nThis stops profit routing between these bots and "
-                  "cannot be undone."
-            )
+                f"{why}\n\n" if why else ""
+            ) + f"Disconnect {len(pairs)} Smart Wire" + (
+                "s" if len(pairs) != 1 else ""
+            ) + "?\n\n" + "\n".join(
+                lines
+            ) + "\n\nThis stops profit routing between these bots and " "cannot be undone."
             try:
                 reply = QMessageBox.question(
-                    self, "Disconnect Smart Wire?", body,
+                    self,
+                    "Disconnect Smart Wire?",
+                    body,
                     QMessageBox.Yes | QMessageBox.No,
                     QMessageBox.No,
                 )
@@ -3149,7 +3403,9 @@ if _HAS_QT:
                 # destructive action must not proceed unconfirmed.
                 logger.error(
                     "wire-removal confirmation could not be shown (%s); "
-                    "refusing the removal", exc)
+                    "refusing the removal",
+                    exc,
+                )
                 return False
 
         def _finish_wire_drag(self, pos: QPointF):
@@ -3164,8 +3420,11 @@ if _HAS_QT:
 
             if target_id and target_id != start_id:
                 # Check for duplicate — if exists, this is a disconnect drag
-                existing = [w for w in self._wires
-                            if w["source_id"] == start_id and w["target_id"] == target_id]
+                existing = [
+                    w
+                    for w in self._wires
+                    if w["source_id"] == start_id and w["target_id"] == target_id
+                ]
                 if existing:
                     # Dragging between already-connected bots = disconnect.
                     #
@@ -3177,9 +3436,10 @@ if _HAS_QT:
                     # reaches SmartWireManager.unregister_wire — real
                     # engine state, no undo.
                     if not self._confirm_wire_removal(
-                            [(start_id, target_id)],
-                            "Dragging between two already-connected bots "
-                            "disconnects them."):
+                        [(start_id, target_id)],
+                        "Dragging between two already-connected bots "
+                        "disconnects them.",
+                    ):
                         self._wire_start_id = ""
                         self._wire_canvas.update()
                         return
@@ -3206,15 +3466,21 @@ if _HAS_QT:
                     # (below). With exactly one, there was nothing.
                     # Having fewer wires was more dangerous.
                     if not self._confirm_wire_removal(
-                            [(wire_from_start[0]["source_id"],
-                              wire_from_start[0]["target_id"])],
-                            "Releasing a drag on empty space disconnects "
-                            "the source bot's only outgoing wire."):
+                        [
+                            (
+                                wire_from_start[0]["source_id"],
+                                wire_from_start[0]["target_id"],
+                            )
+                        ],
+                        "Releasing a drag on empty space disconnects "
+                        "the source bot's only outgoing wire.",
+                    ):
                         self._wire_start_id = ""
                         self._wire_canvas.update()
                         return
-                    self.remove_wire(wire_from_start[0]["source_id"],
-                                     wire_from_start[0]["target_id"])
+                    self.remove_wire(
+                        wire_from_start[0]["source_id"], wire_from_start[0]["target_id"]
+                    )
                 elif len(wire_from_start) > 1:
                     # Multiple wires — show disconnect picker
                     self._show_disconnect_picker(start_id, pos)
@@ -3227,7 +3493,8 @@ if _HAS_QT:
             menu = QMenu(self)
             menu.setStyleSheet(
                 "QMenu { background: #1a1a2f; color: #e0e0f0; border: 1px solid #3a3a5f; }"
-                "QMenu::item:selected { background: #2a2a4f; }")
+                "QMenu::item:selected { background: #2a2a4f; }"
+            )
 
             outgoing = [w for w in self._wires if w["source_id"] == bot_id]
             incoming = [w for w in self._wires if w["target_id"] == bot_id]
@@ -3262,15 +3529,24 @@ if _HAS_QT:
 
         def _show_wire_config(self, source_id: str, target_id: str):
             """Show popup to configure wire percentage."""
-            from PySide6.QtWidgets import QDialog, QFormLayout, QSpinBox, QPushButton, QDialogButtonBox
+            from PySide6.QtWidgets import (
+                QDialog,
+                QFormLayout,
+                QSpinBox,
+                QDialogButtonBox,
+            )
 
             dlg = QDialog(self)
             dlg.setWindowTitle("Configure Profit Wire")
             dlg.setMinimumWidth(350)
             form = QVBoxLayout(dlg)
 
-            form.addWidget(QLabel(f"Route profits from bot {source_id[:8]}\n"
-                                  f"to bot {target_id[:8]}"))
+            form.addWidget(
+                QLabel(
+                    f"Route profits from bot {source_id[:8]}\n"
+                    f"to bot {target_id[:8]}"
+                )
+            )
 
             params = QFormLayout()
             pct_spin = QSpinBox()
@@ -3287,19 +3563,26 @@ if _HAS_QT:
 
             if dlg.exec() == QDialog.Accepted:
                 pct = pct_spin.value()
-                self._wires.append({
-                    "source_id": source_id,
-                    "target_id": target_id,
-                    "pct": pct,
-                    "phase": 0.0,
-                })
+                self._wires.append(
+                    {
+                        "source_id": source_id,
+                        "target_id": target_id,
+                        "pct": pct,
+                        "phase": 0.0,
+                    }
+                )
                 # Update source bot config
                 from ..core.event_bus import get_event_bus
+
                 bus = get_event_bus()
-                bus.emit("bot.log", bot_id=source_id,
-                    message=f"WIRE CONNECTED: {pct}% of profit → bot {target_id[:8]}")
-                bus.emit("wire.created",
-                    source_id=source_id, target_id=target_id, pct=pct)
+                bus.emit(
+                    "bot.log",
+                    bot_id=source_id,
+                    message=f"WIRE CONNECTED: {pct}% of profit → bot {target_id[:8]}",
+                )
+                bus.emit(
+                    "wire.created", source_id=source_id, target_id=target_id, pct=pct
+                )
 
         def _on_external_wire_created(self, event) -> None:
             """v3.15.68 — handler for wire.created bus events. Adds
@@ -3317,17 +3600,18 @@ if _HAS_QT:
                 # (avoids double-add when the user just dragged it —
                 # the drag path also emits wire.created).
                 for w in self._wires:
-                    if (w.get("source_id") == src
-                            and w.get("target_id") == tgt):
+                    if w.get("source_id") == src and w.get("target_id") == tgt:
                         # Update pct if it changed
                         w["pct"] = pct
                         return
-                self._wires.append({
-                    "source_id": src,
-                    "target_id": tgt,
-                    "pct": pct,
-                    "phase": 0.0,
-                })
+                self._wires.append(
+                    {
+                        "source_id": src,
+                        "target_id": tgt,
+                        "pct": pct,
+                        "phase": 0.0,
+                    }
+                )
                 # Trigger a canvas repaint so the wire is visible.
                 if hasattr(self, "_wire_canvas") and self._wire_canvas:
                     self._wire_canvas.update()
@@ -3344,9 +3628,9 @@ if _HAS_QT:
                 if not src or not tgt:
                     return
                 self._wires = [
-                    w for w in self._wires
-                    if not (w.get("source_id") == src
-                            and w.get("target_id") == tgt)
+                    w
+                    for w in self._wires
+                    if not (w.get("source_id") == src and w.get("target_id") == tgt)
                 ]
                 if hasattr(self, "_wire_canvas") and self._wire_canvas:
                     self._wire_canvas.update()
@@ -3354,14 +3638,22 @@ if _HAS_QT:
                 pass
 
         def remove_wire(self, source_id: str, target_id: str):
-            self._wires = [w for w in self._wires
-                           if not (w["source_id"] == source_id and w["target_id"] == target_id)]
+            self._wires = [
+                w
+                for w in self._wires
+                if not (w["source_id"] == source_id and w["target_id"] == target_id)
+            ]
             self._wire_canvas.update()
             from ..core.event_bus import get_event_bus
-            get_event_bus().emit("bot.log", bot_id=source_id,
-                message=f"WIRE DISCONNECTED from bot {target_id[:8]}")
-            get_event_bus().emit("wire.removed",
-                source_id=source_id, target_id=target_id)
+
+            get_event_bus().emit(
+                "bot.log",
+                bot_id=source_id,
+                message=f"WIRE DISCONNECTED from bot {target_id[:8]}",
+            )
+            get_event_bus().emit(
+                "wire.removed", source_id=source_id, target_id=target_id
+            )
 
         def _wire_at_pos(self, pos: QPointF, threshold: float = 12.0) -> dict | None:
             """Find the wire closest to a canvas position, within threshold."""
@@ -3395,8 +3687,10 @@ if _HAS_QT:
 
         def _is_bidirectional(self, source_id: str, target_id: str) -> bool:
             """Check if a reverse wire exists (target→source)."""
-            return any(w["source_id"] == target_id and w["target_id"] == source_id
-                       for w in self._wires)
+            return any(
+                w["source_id"] == target_id and w["target_id"] == source_id
+                for w in self._wires
+            )
 
         def _get_wire_offset(self, wire: dict) -> float:
             """
@@ -3414,7 +3708,7 @@ if _HAS_QT:
 
             # Determine direction: source left of target = "left to right"
             if src_center.x() <= tgt_center.x():
-                return 25.0   # Lower slot
+                return 25.0  # Lower slot
             else:
                 return -25.0  # Upper slot
 
@@ -3424,7 +3718,8 @@ if _HAS_QT:
             menu.setStyleSheet(
                 "QMenu { background: #1a1a2f; color: #e0e0f0; border: 1px solid #3a3a5f; }"
                 "QMenu::item:selected { background: #2a2a4f; }"
-                "QMenu::separator { background: #3a3a5f; height: 1px; }")
+                "QMenu::separator { background: #3a3a5f; height: 1px; }"
+            )
 
             src_short = wire["source_id"][:8]
             tgt_short = wire["target_id"][:8]
@@ -3435,8 +3730,11 @@ if _HAS_QT:
             menu.addSeparator()
 
             disconnect_action = menu.addAction(f"Disconnect Wire")
-            disconnect_action.setIcon(self.style().standardIcon(
-                self.style().StandardPixmap.SP_DialogCloseButton))
+            disconnect_action.setIcon(
+                self.style().standardIcon(
+                    self.style().StandardPixmap.SP_DialogCloseButton
+                )
+            )
 
             # If bidirectional, offer to disconnect both
             if self._is_bidirectional(wire["source_id"], wire["target_id"]):
@@ -3496,15 +3794,17 @@ if _HAS_QT:
                     self._grid_layout.removeWidget(widget)
                     widget.deleteLater()
                     # Remove wires involving this bot
-                    self._wires = [w for w in self._wires
-                                   if w["source_id"] != bid and w["target_id"] != bid]
+                    self._wires = [
+                        w
+                        for w in self._wires
+                        if w["source_id"] != bid and w["target_id"] != bid
+                    ]
 
             # v3.23.61 — mirror to list view.
             try:
                 self._refresh_bot_list_rows()
             except Exception as _rl_exc:  # noqa: BLE001 - list mirror best-effort
-                logger.debug(
-                    "list-view row refresh raised: %s", _rl_exc)
+                logger.debug("list-view row refresh raised: %s", _rl_exc)
 
             # Re-layout after any removal so grid stays compact (no holes).
             if self._bot_widgets:
@@ -3521,7 +3821,10 @@ if _HAS_QT:
                 self._grid_layout.addWidget(
                     self._empty_label,
                     (len(widgets_in_order) // self._grid_cols) + 1,
-                    0, 1, self._grid_cols)
+                    0,
+                    1,
+                    self._grid_cols,
+                )
 
             if not self._bot_widgets:
                 self._empty_label.setVisible(True)
@@ -3594,8 +3897,9 @@ if _HAS_QT:
             p = QPainter(self)
             p.setRenderHint(QPainter.Antialiasing)
             # v3.23.61 — respect operator's wire-opacity slider.
-            _opacity = max(0, min(100,
-                int(getattr(self._viz, "_wire_opacity_pct", 100))))
+            _opacity = max(
+                0, min(100, int(getattr(self._viz, "_wire_opacity_pct", 100)))
+            )
             p.setOpacity(_opacity / 100.0)
             t = THEMES.get(self._viz._theme_key, THEMES["quantum"])
 
@@ -3608,8 +3912,9 @@ if _HAS_QT:
                 phase = wire.get("phase", 0)
                 pct = wire.get("pct", 50)
                 offset = self._viz._get_wire_offset(wire)
-                self._draw_glow_wire(p, src, tgt, t["accent"], t["accent2"],
-                                     phase, pct, offset)
+                self._draw_glow_wire(
+                    p, src, tgt, t["accent"], t["accent2"], phase, pct, offset
+                )
 
             # --- Draw dragging wire ---
             if self._viz._dragging_wire and self._viz._wire_mouse_pos:
@@ -3622,7 +3927,8 @@ if _HAS_QT:
                         is_disconnect = any(
                             w["source_id"] == self._viz._wire_start_id
                             and w["target_id"] == hover_id
-                            for w in self._viz._wires)
+                            for w in self._viz._wires
+                        )
 
                     if is_disconnect:
                         color = t["error"]  # Red for disconnect
@@ -3639,9 +3945,17 @@ if _HAS_QT:
 
             p.end()
 
-        def _draw_glow_wire(self, p: QPainter, src: QPointF, tgt: QPointF,
-                            color1: QColor, color2: QColor, phase: float,
-                            pct: int, offset: float = 0):
+        def _draw_glow_wire(
+            self,
+            p: QPainter,
+            src: QPointF,
+            tgt: QPointF,
+            color1: QColor,
+            color2: QColor,
+            phase: float,
+            pct: int,
+            offset: float = 0,
+        ):
             """Draw a glowing animated wire with bezier curve offset."""
             # Compute control point for bezier curve
             mid_x = (src.x() + tgt.x()) / 2
@@ -3670,7 +3984,7 @@ if _HAS_QT:
             p.drawPath(path)
 
             # Traveling pulse along bezier curve
-            t_pos = (math.sin(phase) * 0.5 + 0.5)  # 0..1 oscillation
+            t_pos = math.sin(phase) * 0.5 + 0.5  # 0..1 oscillation
             pulse_pt = path.pointAtPercent(t_pos)
 
             pulse_color = QColor(color2)
@@ -3694,13 +4008,19 @@ if _HAS_QT:
             arrow_size = 6
             p.setPen(QPen(color1, 2))
             p.setBrush(QBrush(color1))
-            arrow = QPolygonF([
-                arrow_pt,
-                QPointF(arrow_pt.x() - arrow_size * dx + arrow_size * 0.5 * dy,
-                        arrow_pt.y() - arrow_size * dy - arrow_size * 0.5 * dx),
-                QPointF(arrow_pt.x() - arrow_size * dx - arrow_size * 0.5 * dy,
-                        arrow_pt.y() - arrow_size * dy + arrow_size * 0.5 * dx),
-            ])
+            arrow = QPolygonF(
+                [
+                    arrow_pt,
+                    QPointF(
+                        arrow_pt.x() - arrow_size * dx + arrow_size * 0.5 * dy,
+                        arrow_pt.y() - arrow_size * dy - arrow_size * 0.5 * dx,
+                    ),
+                    QPointF(
+                        arrow_pt.x() - arrow_size * dx - arrow_size * 0.5 * dy,
+                        arrow_pt.y() - arrow_size * dy + arrow_size * 0.5 * dx,
+                    ),
+                ]
+            )
             p.drawPolygon(arrow)
 
             # Percentage label at curve midpoint

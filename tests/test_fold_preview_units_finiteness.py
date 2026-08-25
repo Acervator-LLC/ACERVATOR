@@ -44,6 +44,7 @@ being written, and the calibration of the read-first enumerator that
 found this site failed twice for its own reasons before it discriminated.
 Those failures are recorded in the unit's report.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -83,103 +84,184 @@ GOOD_REF = 0.56
 # not, and `zero` contributes nothing. Together they make the ladder
 # truncate rather than run to the end -- asserted, not assumed, by
 # `test_the_units_sweep_is_not_vacuous`.
-ALPHABET = (("nan", NAN), ("inf", INF), ("big", 10.0),
-            ("small", 3.0), ("zero", 0.0))
+ALPHABET = (("nan", NAN), ("inf", INF), ("big", 10.0), ("small", 3.0), ("zero", 0.0))
 
 # The operator's own largest real ladder: bot c8e5c5db, 156 rows,
 # captured READ-ONLY from ~/.acervator/bot_state.json on 2026-08-15.
 # Held verbatim so the in-spec control runs on the shape his money
 # actually has, not on a shape chosen to suit the assertion.
 REAL_LADDER = (
-    (0.02307, 16.05757596502564), (0.02307, 2.1225710445587276),
-    (0.02307, 10.247448159771844), (0.02307, 11.52281377261206),
-    (0.02307, 6.049591058032313), (0.02307, 0.7177170476109538),
-    (0.02307, 0.012367047853611937), (0.02307, 4.001908693042009),
-    (0.02307, 3.671684081820782), (0.02307, 4.726214689257208),
-    (0.02307, 5.392945570138096), (0.02307, 9.533339050682512),
-    (0.02307, 8.100180837008134), (0.02307, 0.9013196992226786),
-    (0.02307, 1.6060339482213937), (0.02307, 4.561425963818048),
-    (0.02307, 14.60877994835712), (0.02307, 4.7290313477999275),
-    (0.02307, 12.02830210533179), (0.02307, 0.8498303788354915),
-    (0.02307, 1.887165204349482), (0.02307, 7.350677020715576),
-    (0.02307, 8.32107736593468), (0.02307, 4.400797054879652),
-    (0.02307, 14.497836764977402), (0.02307, 2.5992029451208634),
-    (0.02307, 12.616675072006986), (0.02307, 18.38941808037523),
-    (0.02307, 0.4358232153819219), (0.02307, 91.93637900155736),
-    (0.02307, 3.162118880553647), (0.02307, 50.73230019957436),
-    (0.02307, 0.5021632350226195), (0.02307, 0.7272855505499436),
-    (0.02307, 17.15857196933031), (0.02307, 34.786738091307235),
-    (0.02307, 26.479680927564395), (0.02307, 6.859633960071549),
-    (0.02307, 45.96048078512275), (0.02307, 15.060906673779193),
-    (0.02307, 26.419814763804254), (0.02307, 11.38303522854934),
-    (0.02307, 3.891137600470989), (0.02307, 9.999999999999481),
-    (0.02443, 0.35135561404731025), (0.02443, 0.6168129967228372),
-    (0.02443, 0.3585862012275434), (0.02443, 1.756248726968331),
-    (0.02443, 0.13260474542577103), (0.02443, 1.2942436493470337),
-    (0.02443, 1.346963046598738), (0.02443, 0.9025305922932351),
-    (0.02443, 0.5399785130065273), (0.02443, 0.23298886917375258),
-    (0.02443, 1.1171732691871057), (0.02443, 0.085644402451279),
-    (0.02443, 0.8913356665100879), (0.02443, 0.42318263004657397),
-    (0.02443, 0.3291240553351481), (0.02443, 0.21371925133366018),
-    (0.02443, 1.2873961573620842), (0.02443, 0.1165338907237369),
-    (0.02443, 1.3397376007603645), (0.02443, 0.30415384504463316),
-    (0.02443, 0.4819622543690833), (0.02443, 0.3621738315243262),
-    (0.02443, 0.1425025364978587), (0.02443, 0.04107813439675888),
-    (0.02443, 0.8991023530586362), (0.02443, 1.0502164379807297),
-    (0.02443, 0.05680458512996033), (0.02443, 1.930808910845731),
-    (0.02443, 0.08525750395350751), (0.02443, 0.08643601611121352),
-    (0.02443, 0.23150177710775888), (0.02443, 0.2820709342071193),
-    (0.02443, 0.5397866370915642), (0.02443, 0.9640612000232344),
-    (0.02443, 0.9789838272393844), (0.02443, 1.7997405018809272),
-    (0.02443, 0.5714940473374044), (0.02443, 1.5800953026252937),
-    (0.02443, 1.3166743309892577), (0.02443, 4.546198009345945),
-    (0.02443, 0.21159583659744632), (0.02443, 0.30188961680306303),
-    (0.02443, 1.613399019715371), (0.02443, 0.9855889964699347),
-    (0.02443, 2.9352251394224407), (0.02443, 0.020924684024890144),
-    (0.02443, 1.6041360724286755), (0.02443, 0.7399777792564941),
-    (0.02443, 0.32619881491516844), (0.02443, 1.4506198241096315),
-    (0.02443, 3.182397021090051), (0.02443, 0.29670998434817447),
-    (0.02443, 0.38591536408210325), (0.02443, 0.2033342885343338),
-    (0.02443, 0.7821285388043792), (0.02443, 0.2456425134498349),
-    (0.02443, 0.01040035102852449), (0.02443, 0.1931614739486564),
-    (0.02443, 0.5090153865414588), (0.02443, 0.04550203365392041),
-    (0.02443, 1.3955085396915619), (0.02443, 3.326355527022752),
-    (0.02443, 1.0162769301389574), (0.02443, 3.500000000000259),
-    (0.02443, 0.4808168282827081), (0.02443, 6.470038775926412),
-    (0.02443, 0.3100560260537075), (0.02443, 0.3421942301559687),
-    (0.02443, 2.7567503962380537), (0.02443, 2.489033236437236),
-    (0.02443, 8.25021929134968), (0.02443, 1.658954273541691),
-    (0.02443, 2.232686780519298), (0.02443, 0.40099520039881176),
-    (0.02443, 5.181996844984345), (0.02443, 5.975042202743342),
-    (0.02443, 10.929694824183771), (0.02443, 1.4963594131946003),
-    (0.02443, 2.351476748092866), (0.02443, 2.976748690895869),
-    (0.02443, 0.7964361354911211), (0.02443, 4.967301274361092),
-    (0.02443, 2.197486872183556), (0.02443, 0.5510527977193407),
-    (0.02443, 0.7329140155356666), (0.02443, 0.5290119178647479),
-    (0.02443, 1.7739956484552553), (0.02443, 5.279570984031315),
-    (0.02443, 11.299027837300631), (0.02443, 6.834268329549046),
-    (0.02443, 13.817265563987716), (0.02443, 3.5494382691631774),
-    (0.02443, 13.773478685305841), (0.02443, 15.08839423847894),
-    (0.02443, 6.106631250007737), (0.02443, 12.974038444185567),
-    (0.02443, 18.03315724868122), (0.02443, 0.6381270762151452),
-    (0.02443, 16.638127076215202), (0.02443, 20.863879213328367),
-    (0.02443, 15.989889397090145), (0.02443, 7.401519778657538),
-    (0.02443, 6.930609160327798), (0.02443, 18.5988781262384),
-    (0.02443, 33.61769050986761), (0.02443, 2.845579795399722),
+    (0.02307, 16.05757596502564),
+    (0.02307, 2.1225710445587276),
+    (0.02307, 10.247448159771844),
+    (0.02307, 11.52281377261206),
+    (0.02307, 6.049591058032313),
+    (0.02307, 0.7177170476109538),
+    (0.02307, 0.012367047853611937),
+    (0.02307, 4.001908693042009),
+    (0.02307, 3.671684081820782),
+    (0.02307, 4.726214689257208),
+    (0.02307, 5.392945570138096),
+    (0.02307, 9.533339050682512),
+    (0.02307, 8.100180837008134),
+    (0.02307, 0.9013196992226786),
+    (0.02307, 1.6060339482213937),
+    (0.02307, 4.561425963818048),
+    (0.02307, 14.60877994835712),
+    (0.02307, 4.7290313477999275),
+    (0.02307, 12.02830210533179),
+    (0.02307, 0.8498303788354915),
+    (0.02307, 1.887165204349482),
+    (0.02307, 7.350677020715576),
+    (0.02307, 8.32107736593468),
+    (0.02307, 4.400797054879652),
+    (0.02307, 14.497836764977402),
+    (0.02307, 2.5992029451208634),
+    (0.02307, 12.616675072006986),
+    (0.02307, 18.38941808037523),
+    (0.02307, 0.4358232153819219),
+    (0.02307, 91.93637900155736),
+    (0.02307, 3.162118880553647),
+    (0.02307, 50.73230019957436),
+    (0.02307, 0.5021632350226195),
+    (0.02307, 0.7272855505499436),
+    (0.02307, 17.15857196933031),
+    (0.02307, 34.786738091307235),
+    (0.02307, 26.479680927564395),
+    (0.02307, 6.859633960071549),
+    (0.02307, 45.96048078512275),
+    (0.02307, 15.060906673779193),
+    (0.02307, 26.419814763804254),
+    (0.02307, 11.38303522854934),
+    (0.02307, 3.891137600470989),
+    (0.02307, 9.999999999999481),
+    (0.02443, 0.35135561404731025),
+    (0.02443, 0.6168129967228372),
+    (0.02443, 0.3585862012275434),
+    (0.02443, 1.756248726968331),
+    (0.02443, 0.13260474542577103),
+    (0.02443, 1.2942436493470337),
+    (0.02443, 1.346963046598738),
+    (0.02443, 0.9025305922932351),
+    (0.02443, 0.5399785130065273),
+    (0.02443, 0.23298886917375258),
+    (0.02443, 1.1171732691871057),
+    (0.02443, 0.085644402451279),
+    (0.02443, 0.8913356665100879),
+    (0.02443, 0.42318263004657397),
+    (0.02443, 0.3291240553351481),
+    (0.02443, 0.21371925133366018),
+    (0.02443, 1.2873961573620842),
+    (0.02443, 0.1165338907237369),
+    (0.02443, 1.3397376007603645),
+    (0.02443, 0.30415384504463316),
+    (0.02443, 0.4819622543690833),
+    (0.02443, 0.3621738315243262),
+    (0.02443, 0.1425025364978587),
+    (0.02443, 0.04107813439675888),
+    (0.02443, 0.8991023530586362),
+    (0.02443, 1.0502164379807297),
+    (0.02443, 0.05680458512996033),
+    (0.02443, 1.930808910845731),
+    (0.02443, 0.08525750395350751),
+    (0.02443, 0.08643601611121352),
+    (0.02443, 0.23150177710775888),
+    (0.02443, 0.2820709342071193),
+    (0.02443, 0.5397866370915642),
+    (0.02443, 0.9640612000232344),
+    (0.02443, 0.9789838272393844),
+    (0.02443, 1.7997405018809272),
+    (0.02443, 0.5714940473374044),
+    (0.02443, 1.5800953026252937),
+    (0.02443, 1.3166743309892577),
+    (0.02443, 4.546198009345945),
+    (0.02443, 0.21159583659744632),
+    (0.02443, 0.30188961680306303),
+    (0.02443, 1.613399019715371),
+    (0.02443, 0.9855889964699347),
+    (0.02443, 2.9352251394224407),
+    (0.02443, 0.020924684024890144),
+    (0.02443, 1.6041360724286755),
+    (0.02443, 0.7399777792564941),
+    (0.02443, 0.32619881491516844),
+    (0.02443, 1.4506198241096315),
+    (0.02443, 3.182397021090051),
+    (0.02443, 0.29670998434817447),
+    (0.02443, 0.38591536408210325),
+    (0.02443, 0.2033342885343338),
+    (0.02443, 0.7821285388043792),
+    (0.02443, 0.2456425134498349),
+    (0.02443, 0.01040035102852449),
+    (0.02443, 0.1931614739486564),
+    (0.02443, 0.5090153865414588),
+    (0.02443, 0.04550203365392041),
+    (0.02443, 1.3955085396915619),
+    (0.02443, 3.326355527022752),
+    (0.02443, 1.0162769301389574),
+    (0.02443, 3.500000000000259),
+    (0.02443, 0.4808168282827081),
+    (0.02443, 6.470038775926412),
+    (0.02443, 0.3100560260537075),
+    (0.02443, 0.3421942301559687),
+    (0.02443, 2.7567503962380537),
+    (0.02443, 2.489033236437236),
+    (0.02443, 8.25021929134968),
+    (0.02443, 1.658954273541691),
+    (0.02443, 2.232686780519298),
+    (0.02443, 0.40099520039881176),
+    (0.02443, 5.181996844984345),
+    (0.02443, 5.975042202743342),
+    (0.02443, 10.929694824183771),
+    (0.02443, 1.4963594131946003),
+    (0.02443, 2.351476748092866),
+    (0.02443, 2.976748690895869),
+    (0.02443, 0.7964361354911211),
+    (0.02443, 4.967301274361092),
+    (0.02443, 2.197486872183556),
+    (0.02443, 0.5510527977193407),
+    (0.02443, 0.7329140155356666),
+    (0.02443, 0.5290119178647479),
+    (0.02443, 1.7739956484552553),
+    (0.02443, 5.279570984031315),
+    (0.02443, 11.299027837300631),
+    (0.02443, 6.834268329549046),
+    (0.02443, 13.817265563987716),
+    (0.02443, 3.5494382691631774),
+    (0.02443, 13.773478685305841),
+    (0.02443, 15.08839423847894),
+    (0.02443, 6.106631250007737),
+    (0.02443, 12.974038444185567),
+    (0.02443, 18.03315724868122),
+    (0.02443, 0.6381270762151452),
+    (0.02443, 16.638127076215202),
+    (0.02443, 20.863879213328367),
+    (0.02443, 15.989889397090145),
+    (0.02443, 7.401519778657538),
+    (0.02443, 6.930609160327798),
+    (0.02443, 18.5988781262384),
+    (0.02443, 33.61769050986761),
+    (0.02443, 2.845579795399722),
     (0.0255726422764228, 22.6255827767871),
     (0.0255726422764228, 81.923579260178),
     (0.0255726422764228, 52.34557979539995),
     (0.0255726422764228, 89.10525816763496),
-    (0.02606, 25.639509391424966), (0.02606, 59.860490608575034),
+    (0.02606, 25.639509391424966),
+    (0.02606, 59.860490608575034),
 )
 
 
 def _units_bot(units_seq, ref=GOOD_REF):
     """A bot whose ladder varies only in `units`; every ref identical."""
-    return _bot([{"usd": 10.0, "units": u, "initial_buy_price": 0.4,
-                  "ref": ref} for u in units_seq],
-                holdings=SIZING_HOLDINGS, target=SIZING_TARGET,
-                price=SIZING_PRICE, **OPERATOR_CFG)
+    return _bot(
+        [
+            {"usd": 10.0, "units": u, "initial_buy_price": 0.4, "ref": ref}
+            for u in units_seq
+        ],
+        holdings=SIZING_HOLDINGS,
+        target=SIZING_TARGET,
+        price=SIZING_PRICE,
+        **OPERATOR_CFG,
+    )
 
 
 def _answer(units_seq, intent="manual_button"):
@@ -194,18 +276,17 @@ def _answer(units_seq, intent="manual_button"):
     """
     bot = _units_bot(units_seq)
     try:
-        asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE),
-                                                  intent))
+        asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE), intent))
     except Exception as exc:
         return (f"RAISED {type(exc).__name__}", None)
     placed = bot.seen["placed"]
     if placed is None:
-        refused = any("AUTONOMOUS FIRE REFUSED (opposing distance" in m
-                      for m in bot._bus.messages)
+        refused = any(
+            "AUTONOMOUS FIRE REFUSED (opposing distance" in m for m in bot._bus.messages
+        )
         return ("REFUSED" if refused else "NO-ORDER-NO-REFUSAL", None)
     side = getattr(placed.get("side"), "value", "?")
-    return (("ALLOWED" if side == "buy" else "SCRUMMED"),
-            float(placed["amount"]).hex())
+    return (("ALLOWED" if side == "buy" else "SCRUMMED"), float(placed["amount"]).hex())
 
 
 def _buckets(size, intent="manual_button"):
@@ -214,8 +295,7 @@ def _buckets(size, intent="manual_button"):
     for combo in itertools.product(ALPHABET, repeat=size):
         names = tuple(n for n, _ in combo)
         got = _answer(tuple(v for _, v in combo), intent)
-        out.setdefault(tuple(sorted(names)), {}).setdefault(
-            got, []).append(names)
+        out.setdefault(tuple(sorted(names)), {}).setdefault(got, []).append(names)
     return out
 
 
@@ -240,8 +320,8 @@ def test_every_units_multiset_gives_exactly_one_answer(size):
     split = {k: v for k, v in buckets.items() if len(v) > 1}
     assert not split, (
         f"size {size}: {len(split)} multiset(s) gave more than one "
-        f"answer: " + "; ".join(
-            f"{k} -> {sorted(v)}" for k, v in sorted(split.items())))
+        f"answer: " + "; ".join(f"{k} -> {sorted(v)}" for k, v in sorted(split.items()))
+    )
 
 
 @pytest.mark.parametrize("size", (2, 3, 4))
@@ -254,11 +334,11 @@ def test_the_units_sweep_covers_more_than_one_ordering(size):
     IF THIS FAILS: the sweep above is vacuous and its green is empty.
     """
     buckets = _buckets(size)
-    multi = [k for k, v in buckets.items()
-             if sum(len(o) for o in v.values()) > 1]
+    multi = [k for k, v in buckets.items() if sum(len(o) for o in v.values()) > 1]
     assert len(multi) >= len(buckets) // 2, (
         f"size {size}: only {len(multi)} of {len(buckets)} buckets held "
-        f"more than one ordering")
+        f"more than one ordering"
+    )
 
 
 def test_the_units_sweep_is_not_vacuous():
@@ -293,12 +373,13 @@ def test_the_units_sweep_is_not_vacuous():
 
     assert len(reads) < len(bot._fold_tranches), (
         f"the ladder did NOT truncate: the loop read all "
-        f"{len(reads)} rows, so no ordering can skip a row")
+        f"{len(reads)} rows, so no ordering can skip a row"
+    )
 
-    cap = bot._anchor_target_balance * (
-        bot.config.max_target_growth_pct / 100.0)
-    assert 0.0 < growth < cap, (
-        f"the cycle cap is clamping: growth {growth} against cap {cap}")
+    cap = bot._anchor_target_balance * (bot.config.max_target_growth_pct / 100.0)
+    assert (
+        0.0 < growth < cap
+    ), f"the cycle cap is clamping: growth {growth} against cap {cap}"
 
 
 # -- b. THE AMOUNT IS UNCHANGED ON WELL-FORMED LADDERS ---------------
@@ -341,8 +422,9 @@ def test_a_well_formed_ladder_still_sizes_the_same_amount(units_seq):
             expect += take * (GOOD_REF - SIZING_PRICE)
         remaining -= take
     got = bot._preview_fold_growth(buy_units, SIZING_PRICE)
-    assert float(got).hex() == float(expect).hex(), (
-        f"{units_seq}: got {got!r} want {expect!r}")
+    assert (
+        float(got).hex() == float(expect).hex()
+    ), f"{units_seq}: got {got!r} want {expect!r}"
 
 
 def test_the_operators_own_largest_real_ladder_is_unchanged():
@@ -360,20 +442,32 @@ def test_the_operators_own_largest_real_ladder_is_unchanged():
     IF THIS FAILS: the change moved the number on the one ladder that is
     certain to be exercised the next time his fold fires.
     """
-    rows = [{"usd": 1.0, "units": u, "initial_buy_price": 0.01,
-             "ref": r} for r, u in REAL_LADDER]
+    rows = [
+        {"usd": 1.0, "units": u, "initial_buy_price": 0.01, "ref": r}
+        for r, u in REAL_LADDER
+    ]
     assert len(rows) == 156, len(rows)
     refs = [r["ref"] for r in rows]
     assert len(set(refs)) == 4, "the fixture drifted"
     assert refs.count(0.02443) == 106 and refs.count(0.02307) == 44, (
         "the tie structure drifted -- the ties are the whole reason "
-        "this ladder can expose an order-dependent answer")
+        "this ladder can expose an order-dependent answer"
+    )
 
-    direct = _bot(rows, holdings=SIZING_HOLDINGS, target=SIZING_TARGET,
-                  price=SIZING_PRICE, **OPERATOR_CFG)
-    tripped = _bot(json.loads(json.dumps(rows)),
-                   holdings=SIZING_HOLDINGS, target=SIZING_TARGET,
-                   price=SIZING_PRICE, **OPERATOR_CFG)
+    direct = _bot(
+        rows,
+        holdings=SIZING_HOLDINGS,
+        target=SIZING_TARGET,
+        price=SIZING_PRICE,
+        **OPERATOR_CFG,
+    )
+    tripped = _bot(
+        json.loads(json.dumps(rows)),
+        holdings=SIZING_HOLDINGS,
+        target=SIZING_TARGET,
+        price=SIZING_PRICE,
+        **OPERATOR_CFG,
+    )
 
     a = direct._preview_fold_growth(18.0, 0.01)
     b = tripped._preview_fold_growth(18.0, 0.01)
@@ -393,14 +487,11 @@ def test_the_comparator_sees_a_ladder_that_must_differ():
     IF THIS FAILS: the equality checks in this file are not reading the
     amount, and their greens are empty.
     """
-    small = _units_bot((1.0, 1.0)).\
-        _preview_fold_growth(18.0, SIZING_PRICE)
-    large = _units_bot((10.0, 10.0)).\
-        _preview_fold_growth(18.0, SIZING_PRICE)
+    small = _units_bot((1.0, 1.0))._preview_fold_growth(18.0, SIZING_PRICE)
+    large = _units_bot((10.0, 10.0))._preview_fold_growth(18.0, SIZING_PRICE)
     assert float(small).hex() != float(large).hex(), (small, large)
 
-    higher = _units_bot((10.0, 10.0), ref=0.9).\
-        _preview_fold_growth(18.0, SIZING_PRICE)
+    higher = _units_bot((10.0, 10.0), ref=0.9)._preview_fold_growth(18.0, SIZING_PRICE)
     assert float(higher).hex() != float(large).hex(), (higher, large)
 
 
@@ -415,18 +506,13 @@ def test_the_coercion_is_unchanged_for_strings_and_none():
     IF THIS FAILS: the repair widened past its remit and silently
     dropped rows that have always been sized.
     """
-    as_str = _units_bot(("10.0", "10.0")).\
-        _preview_fold_growth(18.0, SIZING_PRICE)
-    as_num = _units_bot((10.0, 10.0)).\
-        _preview_fold_growth(18.0, SIZING_PRICE)
+    as_str = _units_bot(("10.0", "10.0"))._preview_fold_growth(18.0, SIZING_PRICE)
+    as_num = _units_bot((10.0, 10.0))._preview_fold_growth(18.0, SIZING_PRICE)
     assert float(as_str).hex() == float(as_num).hex(), (as_str, as_num)
 
-    with_none = _units_bot((None, 10.0, 10.0)).\
-        _preview_fold_growth(18.0, SIZING_PRICE)
-    with_zero = _units_bot((0.0, 10.0, 10.0)).\
-        _preview_fold_growth(18.0, SIZING_PRICE)
-    assert float(with_none).hex() == float(with_zero).hex(), (
-        with_none, with_zero)
+    with_none = _units_bot((None, 10.0, 10.0))._preview_fold_growth(18.0, SIZING_PRICE)
+    with_zero = _units_bot((0.0, 10.0, 10.0))._preview_fold_growth(18.0, SIZING_PRICE)
+    assert float(with_none).hex() == float(with_zero).hex(), (with_none, with_zero)
 
 
 # -- c. THE POISONED REMAINDER IS GONE -------------------------------
@@ -457,12 +543,13 @@ def test_the_break_fires_with_a_non_finite_row_in_the_ladder():
     growth = bot._preview_fold_growth(18.0, SIZING_PRICE)
 
     assert len(reads) < 4, (
-        f"the break never fired: the loop read all {len(reads)} rows "
-        f"({reads})")
+        f"the break never fired: the loop read all {len(reads)} rows " f"({reads})"
+    )
     assert math.isfinite(growth), growth
     assert growth > 0.0, (
         "the growth collapsed to zero -- the accumulator was poisoned "
-        "and `max(0.0, nan)` swallowed it")
+        "and `max(0.0, nan)` swallowed it"
+    )
 
 
 def test_a_non_finite_row_does_not_zero_the_growth():
@@ -476,12 +563,9 @@ def test_a_non_finite_row_does_not_zero_the_growth():
     pre-growth sizing, which is the defect `_preview_fold_growth` was
     written to prevent.
     """
-    poisoned = _units_bot((10.0, NAN, 10.0)).\
-        _preview_fold_growth(18.0, SIZING_PRICE)
-    without = _units_bot((10.0, 10.0)).\
-        _preview_fold_growth(18.0, SIZING_PRICE)
-    assert float(poisoned).hex() == float(without).hex(), (
-        poisoned, without)
+    poisoned = _units_bot((10.0, NAN, 10.0))._preview_fold_growth(18.0, SIZING_PRICE)
+    without = _units_bot((10.0, 10.0))._preview_fold_growth(18.0, SIZING_PRICE)
+    assert float(poisoned).hex() == float(without).hex(), (poisoned, without)
 
 
 @pytest.mark.parametrize("bad", (NAN, INF, -INF))
@@ -495,10 +579,8 @@ def test_every_non_finite_units_value_is_skipped_not_absorbed(bad):
     IF THIS FAILS: the guard tests for the wrong property and one class
     of damaged row still reaches the arithmetic.
     """
-    got = _units_bot((10.0, bad, 10.0)).\
-        _preview_fold_growth(18.0, SIZING_PRICE)
-    want = _units_bot((10.0, 10.0)).\
-        _preview_fold_growth(18.0, SIZING_PRICE)
+    got = _units_bot((10.0, bad, 10.0))._preview_fold_growth(18.0, SIZING_PRICE)
+    want = _units_bot((10.0, 10.0))._preview_fold_growth(18.0, SIZING_PRICE)
     assert float(got).hex() == float(want).hex(), (bad, got, want)
 
 
@@ -524,18 +606,16 @@ def test_a_row_skipped_for_units_is_reported(intent):
     """
     units = (NAN, 10.0, INF, 10.0, 0.0)
     bot = _units_bot(units)
-    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE),
-                                              intent))
+    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE), intent))
 
     unsizable = sum(1 for u in units if not math.isfinite(u))
     total = len(units)
     assert unsizable == 2 and total == 5, "the fixture drifted"
 
-    lines = [m for m in bot._bus.messages
-             if "FOLD SIZING UNITS UNREADABLE" in m]
+    lines = [m for m in bot._bus.messages if "FOLD SIZING UNITS UNREADABLE" in m]
     assert len(lines) == 1, (
-        f"expected exactly one units notice, got {len(lines)}: "
-        f"{bot._bus.messages}")
+        f"expected exactly one units notice, got {len(lines)}: " f"{bot._bus.messages}"
+    )
     line = lines[0]
     assert f"{unsizable} of {total} queued tranche(s)" in line, line
     assert "not a finite number" in line, line
@@ -554,10 +634,10 @@ def test_a_clean_ladder_says_nothing_about_unreadable_units():
     file is damaged.
     """
     bot = _units_bot((10.0, 10.0, 0.0))
-    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE),
-                                              "manual_button"))
-    assert not [m for m in bot._bus.messages
-                if "FOLD SIZING UNITS UNREADABLE" in m], bot._bus.messages
+    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE), "manual_button"))
+    assert not [
+        m for m in bot._bus.messages if "FOLD SIZING UNITS UNREADABLE" in m
+    ], bot._bus.messages
     assert bot._fold_preview_unreadable_units == 0
 
 
@@ -581,17 +661,16 @@ def test_the_units_counter_does_not_carry_over_between_folds():
     it does not have, and the notice stops meaning anything.
     """
     bot = _units_bot((NAN, 10.0, 10.0))
-    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE),
-                                              "manual_button"))
+    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE), "manual_button"))
     assert bot.seen["placed"] is not None, "the first fire must fold"
     assert bot._fold_preview_unreadable_units == 1
 
-    bot._fold_tranches = [{"usd": 10.0, "units": 10.0,
-                           "initial_buy_price": 0.4, "ref": GOOD_REF}
-                          for _ in range(3)]
+    bot._fold_tranches = [
+        {"usd": 10.0, "units": 10.0, "initial_buy_price": 0.4, "ref": GOOD_REF}
+        for _ in range(3)
+    ]
     bot._current_holdings = SIZING_HOLDINGS
-    bot._main_lots = [{"units": SIZING_HOLDINGS,
-                       "initial_buy_price": SIZING_PRICE}]
+    bot._main_lots = [{"units": SIZING_HOLDINGS, "initial_buy_price": SIZING_PRICE}]
     bot._target_balance = SIZING_TARGET
     bot._anchor_target_balance = SIZING_TARGET
     bot._fold_cycle_cap_consumed = 0.0
@@ -599,13 +678,12 @@ def test_the_units_counter_does_not_carry_over_between_folds():
     bot.seen["placed"] = None
     bot._bus.messages.clear()
     bot._manual_fire_pending = True
-    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE),
-                                              "manual_button"))
+    asyncio.run(bot._execute_manual_rebalance(_Ticker(SIZING_PRICE), "manual_button"))
     assert bot.seen["placed"] is not None, "the second fire must fold too"
-    assert bot._fold_preview_unreadable_units == 0, (
-        "the count carried over from the previous fold")
-    assert not [m for m in bot._bus.messages
-                if "FOLD SIZING UNITS UNREADABLE" in m]
+    assert (
+        bot._fold_preview_unreadable_units == 0
+    ), "the count carried over from the previous fold"
+    assert not [m for m in bot._bus.messages if "FOLD SIZING UNITS UNREADABLE" in m]
 
 
 def test_the_two_notices_are_independent():
@@ -620,21 +698,26 @@ def test_the_two_notices_are_independent():
     field that is not the damaged one.
     """
     units_bad = _units_bot((NAN, 10.0, 10.0))
-    asyncio.run(units_bad._execute_manual_rebalance(
-        _Ticker(SIZING_PRICE), "manual_button"))
+    asyncio.run(
+        units_bad._execute_manual_rebalance(_Ticker(SIZING_PRICE), "manual_button")
+    )
     msgs = units_bad._bus.messages
     assert [m for m in msgs if "FOLD SIZING UNITS UNREADABLE" in m], msgs
-    assert not [m for m in msgs
-                if "FOLD SIZING REF UNREADABLE" in m], msgs
+    assert not [m for m in msgs if "FOLD SIZING REF UNREADABLE" in m], msgs
 
-    ref_bad = _bot([{"usd": 10.0, "units": 10.0,
-                     "initial_buy_price": 0.4, "ref": r}
-                    for r in (NAN, GOOD_REF, GOOD_REF)],
-                   holdings=SIZING_HOLDINGS, target=SIZING_TARGET,
-                   price=SIZING_PRICE, **OPERATOR_CFG)
-    asyncio.run(ref_bad._execute_manual_rebalance(
-        _Ticker(SIZING_PRICE), "manual_button"))
+    ref_bad = _bot(
+        [
+            {"usd": 10.0, "units": 10.0, "initial_buy_price": 0.4, "ref": r}
+            for r in (NAN, GOOD_REF, GOOD_REF)
+        ],
+        holdings=SIZING_HOLDINGS,
+        target=SIZING_TARGET,
+        price=SIZING_PRICE,
+        **OPERATOR_CFG,
+    )
+    asyncio.run(
+        ref_bad._execute_manual_rebalance(_Ticker(SIZING_PRICE), "manual_button")
+    )
     msgs = ref_bad._bus.messages
     assert [m for m in msgs if "FOLD SIZING REF UNREADABLE" in m], msgs
-    assert not [m for m in msgs
-                if "FOLD SIZING UNITS UNREADABLE" in m], msgs
+    assert not [m for m in msgs if "FOLD SIZING UNITS UNREADABLE" in m], msgs

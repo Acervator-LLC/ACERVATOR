@@ -30,6 +30,7 @@ construction. That matters because sim-parity tooling reads this same
 path — silently dropping a gate decision would corrupt a parity claim
 rather than merely slow it down.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,15 +48,24 @@ _T0 = datetime(2026, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 
 def _row(ts: datetime, bot="b1"):
-    return json.dumps({
-        "timestamp": ts.isoformat(), "category": "bot.gate_decision",
-        "bot_id": bot,
-        "data": {"symbol": "BTC/USD", "scrum_armed": False,
-                 "fold_armed": False, "scrum_blockers": [],
-                 "fold_blockers": []}})
+    return json.dumps(
+        {
+            "timestamp": ts.isoformat(),
+            "category": "bot.gate_decision",
+            "bot_id": bot,
+            "data": {
+                "symbol": "BTC/USD",
+                "scrum_armed": False,
+                "fold_armed": False,
+                "scrum_blockers": [],
+                "fold_blockers": [],
+            },
+        }
+    )
 
 
 # ── line-level pre-filter ────────────────────────────────────────
+
 
 def test_older_line_is_rejected():
     line = _row(_T0 - timedelta(days=2))
@@ -74,9 +84,10 @@ def test_line_without_timestamp_is_kept():
 
 
 def test_malformed_stamp_is_kept():
-    assert R._line_predates(
-        '{"timestamp": "not-a-date", "bot_id": "b"}', "2026-06-01") \
+    assert (
+        R._line_predates('{"timestamp": "not-a-date", "bot_id": "b"}', "2026-06-01")
         is False
+    )
 
 
 def test_garbage_line_is_kept():
@@ -89,10 +100,12 @@ def test_empty_line_is_kept():
 
 # ── file-level skip ──────────────────────────────────────────────
 
+
 def test_rotated_file_older_than_since_is_skipped(tmp_path):
     p = tmp_path / "gate.log.3"
     p.write_text(_row(_T0 - timedelta(days=10)), encoding="utf-8")
     import os
+
     old = (_T0 - timedelta(days=9)).timestamp()
     os.utime(p, (old, old))
     assert R._file_predates(p, _T0) is True
@@ -102,6 +115,7 @@ def test_rotated_file_newer_than_since_is_kept(tmp_path):
     p = tmp_path / "gate.log.3"
     p.write_text(_row(_T0), encoding="utf-8")
     import os
+
     new = (_T0 + timedelta(days=1)).timestamp()
     os.utime(p, (new, new))
     assert R._file_predates(p, _T0) is False
@@ -113,6 +127,7 @@ def test_active_file_is_never_skipped(tmp_path):
     p = tmp_path / "gate.log"
     p.write_text(_row(_T0), encoding="utf-8")
     import os
+
     old = (_T0 - timedelta(days=30)).timestamp()
     os.utime(p, (old, old))
     assert R._file_predates(p, _T0) is False
@@ -124,23 +139,27 @@ def test_missing_file_is_not_skipped(tmp_path):
 
 # ── end-to-end equivalence ───────────────────────────────────────
 
+
 def _fixture_logs(tmp_path, monkeypatch):
     """Active file plus two rotated ones spanning a known range."""
     import os
+
     active = tmp_path / "gate.log"
-    active.write_text("\n".join(
-        _row(_T0 + timedelta(hours=h)) for h in range(4)),
-        encoding="utf-8")
+    active.write_text(
+        "\n".join(_row(_T0 + timedelta(hours=h)) for h in range(4)), encoding="utf-8"
+    )
     r1 = tmp_path / "gate.log.1"
-    r1.write_text("\n".join(
-        _row(_T0 - timedelta(days=5, hours=h)) for h in range(4)),
-        encoding="utf-8")
+    r1.write_text(
+        "\n".join(_row(_T0 - timedelta(days=5, hours=h)) for h in range(4)),
+        encoding="utf-8",
+    )
     old = (_T0 - timedelta(days=5)).timestamp()
     os.utime(r1, (old, old))
     r2 = tmp_path / "gate.log.2"
-    r2.write_text("\n".join(
-        _row(_T0 - timedelta(days=20, hours=h)) for h in range(4)),
-        encoding="utf-8")
+    r2.write_text(
+        "\n".join(_row(_T0 - timedelta(days=20, hours=h)) for h in range(4)),
+        encoding="utf-8",
+    )
     older = (_T0 - timedelta(days=20)).timestamp()
     os.utime(r2, (older, older))
     monkeypatch.setattr(R, "LIVE_GATE_LOG", active)
@@ -158,12 +177,14 @@ def test_since_matches_a_brute_force_filter(tmp_path, monkeypatch):
     _fixture_logs(tmp_path, monkeypatch)
     for days in (0, 1, 3, 6, 10, 21, 40):
         since = _T0 - timedelta(days=days)
-        fast = [e["timestamp"]
-                for e in R.live_gate_decisions(
-                    since=since, validate=False)]
-        brute = [e["timestamp"]
-                 for e in R.live_gate_decisions(validate=False)
-                 if R._parse_ts(e["timestamp"]) >= since]
+        fast = [
+            e["timestamp"] for e in R.live_gate_decisions(since=since, validate=False)
+        ]
+        brute = [
+            e["timestamp"]
+            for e in R.live_gate_decisions(validate=False)
+            if R._parse_ts(e["timestamp"]) >= since
+        ]
         assert sorted(fast) == sorted(brute), f"days={days}"
 
 
@@ -178,8 +199,7 @@ def test_since_actually_skips_rotated_files(tmp_path, monkeypatch):
         yield from real(path)
 
     monkeypatch.setattr(R, "_iter_ndjson_lines", spy)
-    list(R.live_gate_decisions(
-        since=_T0 - timedelta(days=1), validate=False))
+    list(R.live_gate_decisions(since=_T0 - timedelta(days=1), validate=False))
     assert "gate.log" in opened
     assert "gate.log.2" not in opened, "stale rotated file was parsed"
 
@@ -189,5 +209,4 @@ def test_boundary_row_is_included(tmp_path, monkeypatch):
     active = tmp_path / "gate.log"
     active.write_text(_row(_T0), encoding="utf-8")
     monkeypatch.setattr(R, "LIVE_GATE_LOG", active)
-    assert len(list(R.live_gate_decisions(
-        since=_T0, validate=False))) == 1
+    assert len(list(R.live_gate_decisions(since=_T0, validate=False))) == 1

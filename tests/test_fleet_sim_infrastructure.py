@@ -11,6 +11,7 @@ Covers:
 Fleet Replay tick-loop / GUI panel are visual + async — not covered
 by these tests (headless smoke in the panel file).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,27 +26,30 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from src.gui.simulator_tab.fleet.candle_series import (  # noqa: E402
-    CandleSeries, build_candle_series_from_rows,
+    CandleSeries,
+    build_candle_series_from_rows,
 )
 from src.gui.simulator_tab.fleet.sim_exchange import (  # noqa: E402
-    FleetSimExchange, make_symbol_series_map,
+    FleetSimExchange,
+    make_symbol_series_map,
 )
 from src.gui.simulator_tab.fleet.bot_state_loader import (  # noqa: E402
-    load_bot_configs_from_state, summarize_loaded_configs,
+    load_bot_configs_from_state,
+    summarize_loaded_configs,
 )
 from src.exchange.base import (  # noqa: E402
-    OrderSide, OrderStatus, OrderType,
+    OrderSide,
+    OrderStatus,
+    OrderType,
 )
-
 
 # --------------------------------------------------------------------- #
 # CandleSeries                                                          #
 # --------------------------------------------------------------------- #
 
+
 def _rows(n=10, base_ts=1_700_000_000_000, dt=3600_000):
-    return [
-        [base_ts + i * dt, 100.0, 110.0, 90.0, 100.0 + i, 10.0]
-        for i in range(n)]
+    return [[base_ts + i * dt, 100.0, 110.0, 90.0, 100.0 + i, 10.0] for i in range(n)]
 
 
 def test_candle_series_starts_at_cursor_zero():
@@ -56,8 +60,8 @@ def test_candle_series_starts_at_cursor_zero():
 
 def test_candle_series_step_advances_and_terminates():
     s = build_candle_series_from_rows("X/USD", _rows(3))
-    assert s.step() is True   # 0 → 1
-    assert s.step() is True   # 1 → 2 (last)
+    assert s.step() is True  # 0 → 1
+    assert s.step() is True  # 1 → 2 (last)
     assert s.step() is False  # at end
     assert s.at_end is True
 
@@ -84,7 +88,8 @@ def test_candle_series_builder_drops_malformed_rows():
     bad_zero_close = [1_700_000_000_000, 100.0, 110.0, 90.0, 0.0, 10.0]
     bad_str = [1_700_000_000_000, "x", 110.0, 90.0, 100.0, 10.0]
     s = build_candle_series_from_rows(
-        "X/USD", [good, bad_short, bad_zero_close, bad_str])
+        "X/USD", [good, bad_short, bad_zero_close, bad_str]
+    )
     assert len(s) == 1
 
 
@@ -103,21 +108,21 @@ def test_candle_series_sorts_chronologically():
 # FleetSimExchange                                                      #
 # --------------------------------------------------------------------- #
 
+
 def _ex_with_series(price_series):
     """Return a FleetSimExchange with one BTC/USD series driven by the
     given closing-price sequence. Each row is a full OHLCV entry."""
     rows = [
-        [1_700_000_000_000 + i * 3600_000,
-         p, p * 1.05, p * 0.95, p, 10.0]
-        for i, p in enumerate(price_series)]
+        [1_700_000_000_000 + i * 3600_000, p, p * 1.05, p * 0.95, p, 10.0]
+        for i, p in enumerate(price_series)
+    ]
     smap = make_symbol_series_map({"BTC/USD": rows})
     return FleetSimExchange(smap, starting_balances={"USD": 1000.0})
 
 
 def test_sim_exchange_market_order_updates_balances():
     ex = _ex_with_series([100.0])
-    order = asyncio.run(ex.place_order(
-        "BTC/USD", OrderSide.BUY, OrderType.MARKET, 1.0))
+    order = asyncio.run(ex.place_order("BTC/USD", OrderSide.BUY, OrderType.MARKET, 1.0))
     assert order.status == OrderStatus.FILLED
     assert order.average == 100.0
     balances = asyncio.run(ex.get_balances())
@@ -127,8 +132,9 @@ def test_sim_exchange_market_order_updates_balances():
 
 def test_sim_exchange_limit_order_stays_open_when_price_not_crossed():
     ex = _ex_with_series([100.0])
-    order = asyncio.run(ex.place_order(
-        "BTC/USD", OrderSide.SELL, OrderType.LIMIT, 1.0, price=200.0))
+    order = asyncio.run(
+        ex.place_order("BTC/USD", OrderSide.SELL, OrderType.LIMIT, 1.0, price=200.0)
+    )
     assert order.status == OrderStatus.OPEN
     # Balance not moved (order not filled)
     balances = asyncio.run(ex.get_balances())
@@ -139,10 +145,10 @@ def test_sim_exchange_limit_fills_when_candle_sweeps_price():
     # After the buy, we place a SELL limit at 108 and step to a
     # candle whose high sweeps 108.
     ex = _ex_with_series([100.0, 105.0, 110.0])
-    asyncio.run(ex.place_order(
-        "BTC/USD", OrderSide.BUY, OrderType.MARKET, 1.0))
-    sell_order = asyncio.run(ex.place_order(
-        "BTC/USD", OrderSide.SELL, OrderType.LIMIT, 1.0, price=108.0))
+    asyncio.run(ex.place_order("BTC/USD", OrderSide.BUY, OrderType.MARKET, 1.0))
+    sell_order = asyncio.run(
+        ex.place_order("BTC/USD", OrderSide.SELL, OrderType.LIMIT, 1.0, price=108.0)
+    )
     assert sell_order.status == OrderStatus.OPEN
     ex.step()  # advance to price=105 (high ~110.25) — sweeps 108
     latest = asyncio.run(ex.get_order(sell_order.id, "BTC/USD"))
@@ -155,23 +161,28 @@ def test_sim_exchange_limit_fills_when_candle_sweeps_price():
 
 def test_sim_exchange_cancel_order():
     ex = _ex_with_series([100.0])
-    o = asyncio.run(ex.place_order(
-        "BTC/USD", OrderSide.BUY, OrderType.LIMIT, 1.0, price=50.0))
+    o = asyncio.run(
+        ex.place_order("BTC/USD", OrderSide.BUY, OrderType.LIMIT, 1.0, price=50.0)
+    )
     assert o.status == OrderStatus.OPEN
     canceled = asyncio.run(ex.cancel_order(o.id, "BTC/USD"))
     assert canceled.status == OrderStatus.CANCELLED
 
 
 def test_sim_exchange_get_open_orders_filters_by_status_and_symbol():
-    smap = make_symbol_series_map({
-        "BTC/USD": [[1, 100, 105, 95, 100, 1]],
-        "ETH/USD": [[1, 50, 55, 45, 50, 1]],
-    })
+    smap = make_symbol_series_map(
+        {
+            "BTC/USD": [[1, 100, 105, 95, 100, 1]],
+            "ETH/USD": [[1, 50, 55, 45, 50, 1]],
+        }
+    )
     ex = FleetSimExchange(smap, starting_balances={"USD": 5000.0})
-    asyncio.run(ex.place_order(
-        "BTC/USD", OrderSide.BUY, OrderType.LIMIT, 1.0, price=50.0))
-    asyncio.run(ex.place_order(
-        "ETH/USD", OrderSide.BUY, OrderType.LIMIT, 1.0, price=30.0))
+    asyncio.run(
+        ex.place_order("BTC/USD", OrderSide.BUY, OrderType.LIMIT, 1.0, price=50.0)
+    )
+    asyncio.run(
+        ex.place_order("ETH/USD", OrderSide.BUY, OrderType.LIMIT, 1.0, price=30.0)
+    )
     all_open = asyncio.run(ex.get_open_orders())
     assert len(all_open) == 2
     btc_open = asyncio.run(ex.get_open_orders(symbol="BTC/USD"))
@@ -184,25 +195,24 @@ def test_sim_exchange_rejects_unknown_symbol():
     with pytest.raises(ValueError):
         asyncio.run(ex.get_ticker("BOGUS/USD"))
     with pytest.raises(ValueError):
-        asyncio.run(ex.place_order(
-            "BOGUS/USD", OrderSide.BUY, OrderType.MARKET, 1.0))
+        asyncio.run(ex.place_order("BOGUS/USD", OrderSide.BUY, OrderType.MARKET, 1.0))
 
 
 def test_sim_exchange_rejects_non_positive_amount():
     ex = _ex_with_series([100.0])
     with pytest.raises(ValueError):
-        asyncio.run(ex.place_order(
-            "BTC/USD", OrderSide.BUY, OrderType.MARKET, 0.0))
+        asyncio.run(ex.place_order("BTC/USD", OrderSide.BUY, OrderType.MARKET, 0.0))
     with pytest.raises(ValueError):
-        asyncio.run(ex.place_order(
-            "BTC/USD", OrderSide.BUY, OrderType.MARKET, -1.0))
+        asyncio.run(ex.place_order("BTC/USD", OrderSide.BUY, OrderType.MARKET, -1.0))
 
 
 def test_sim_exchange_get_markets_lists_wired_symbols():
-    smap = make_symbol_series_map({
-        "BTC/USD": [[1, 100, 105, 95, 100, 1]],
-        "ETH/USD": [[1, 50, 55, 45, 50, 1]],
-    })
+    smap = make_symbol_series_map(
+        {
+            "BTC/USD": [[1, 100, 105, 95, 100, 1]],
+            "ETH/USD": [[1, 50, 55, 45, 50, 1]],
+        }
+    )
     ex = FleetSimExchange(smap)
     ms = asyncio.run(ex.get_markets())
     symbols = {m.symbol for m in ms}
@@ -213,15 +223,31 @@ def test_sim_exchange_get_markets_lists_wired_symbols():
 # bot_state_loader                                                       #
 # --------------------------------------------------------------------- #
 
+
 def test_loader_filters_by_mode(tmp_path):
     payload = {
         "bots": {
-            "b1": {"config": {"mode": "scrumming", "symbol": "BTC/USD",
-                              "target_balance": 250.0}},
-            "b2": {"config": {"mode": "extractor", "symbol": "*/USD",
-                              "target_balance": 500.0}},
-            "b3": {"config": {"mode": "scrumming", "symbol": "ETH/USD",
-                              "target_balance": 100.0}},
+            "b1": {
+                "config": {
+                    "mode": "scrumming",
+                    "symbol": "BTC/USD",
+                    "target_balance": 250.0,
+                }
+            },
+            "b2": {
+                "config": {
+                    "mode": "extractor",
+                    "symbol": "*/USD",
+                    "target_balance": 500.0,
+                }
+            },
+            "b3": {
+                "config": {
+                    "mode": "scrumming",
+                    "symbol": "ETH/USD",
+                    "target_balance": 100.0,
+                }
+            },
         }
     }
     p = tmp_path / "bot_state.json"
@@ -236,9 +262,17 @@ def test_loader_filters_by_mode(tmp_path):
 
 
 def test_loader_stamps_source_bot_id(tmp_path):
-    payload = {"bots": {"bot-A": {"config": {
-        "mode": "scrumming", "symbol": "BTC/USD",
-        "target_balance": 250.0}}}}
+    payload = {
+        "bots": {
+            "bot-A": {
+                "config": {
+                    "mode": "scrumming",
+                    "symbol": "BTC/USD",
+                    "target_balance": 250.0,
+                }
+            }
+        }
+    }
     p = tmp_path / "bs.json"
     p.write_text(json.dumps(payload), encoding="utf-8")
     cfgs = load_bot_configs_from_state(p, mode_filter="scrumming")
@@ -273,24 +307,35 @@ def test_loader_survives_malformed_json(tmp_path):
 # FleetReplayPanel smoke (headless)                                      #
 # --------------------------------------------------------------------- #
 
+
 def test_fleet_replay_panel_mounts(tmp_path, monkeypatch):
     pytest.importorskip("PySide6")
     import os
+
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
+
     app = QApplication.instance() or QApplication(sys.argv)
     del app
-    from src.gui.simulator_tab.fleet.fleet_replay_panel import (
-        FleetReplayPanel)
+    from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
 
     # Redirect bot_state.json path to a fixture so the test doesn't
     # depend on the operator's real fleet.
-    payload = {"bots": {"b1": {"config": {
-        "mode": "scrumming", "symbol": "BTC/USD",
-        "target_balance": 250.0}}}}
+    payload = {
+        "bots": {
+            "b1": {
+                "config": {
+                    "mode": "scrumming",
+                    "symbol": "BTC/USD",
+                    "target_balance": 250.0,
+                }
+            }
+        }
+    }
     p = tmp_path / "bs.json"
     p.write_text(json.dumps(payload), encoding="utf-8")
     from src.gui.simulator_tab.fleet import bot_state_loader as bsl
+
     monkeypatch.setattr(bsl, "BOT_STATE_PATH", p)
 
     panel = FleetReplayPanel()
@@ -307,6 +352,7 @@ def test_fleet_replay_panel_mounts(tmp_path, monkeypatch):
 
 # ── v3.24.17: sim exchange call-signature parity ─────────────────
 
+
 def test_get_my_trades_accepts_params_kwarg():
     """ScrummingBot.sync_ytd_trade_count calls get_my_trades with
     params={"paginate": True, ...}. Before v3.24.17 the sim raised
@@ -314,16 +360,20 @@ def test_get_my_trades_accepts_params_kwarg():
     and each run emitted 35 identical failures."""
     import asyncio as _a
     from src.gui.simulator_tab.fleet.sim_exchange import FleetSimExchange
-    from src.gui.simulator_tab.fleet.candle_series import (
-        build_candle_series_from_rows)
-    rows = [[1_774_915_200_000 + i * 300_000, 10.0, 11.0, 9.0, 10.5, 1.0]
-            for i in range(5)]
+    from src.gui.simulator_tab.fleet.candle_series import build_candle_series_from_rows
+
+    rows = [
+        [1_774_915_200_000 + i * 300_000, 10.0, 11.0, 9.0, 10.5, 1.0] for i in range(5)
+    ]
     ex = FleetSimExchange(
         {"BTC/USD": build_candle_series_from_rows("BTC/USD", rows)},
-        starting_balances={"USD": 100.0})
-    out = _a.run(ex.get_my_trades(
-        "BTC/USD", since=None, limit=10,
-        params={"paginate": True, "until": 123}))
+        starting_balances={"USD": 100.0},
+    )
+    out = _a.run(
+        ex.get_my_trades(
+            "BTC/USD", since=None, limit=10, params={"paginate": True, "until": 123}
+        )
+    )
     assert isinstance(out, list)
 
 
@@ -333,17 +383,18 @@ def test_fill_carries_candle_address():
     import asyncio as _a
     from src.exchange.base import OrderSide, OrderType
     from src.gui.simulator_tab.fleet.sim_exchange import FleetSimExchange
-    from src.gui.simulator_tab.fleet.candle_series import (
-        build_candle_series_from_rows)
-    rows = [[1_774_915_200_000 + i * 300_000, 10.0, 11.0, 9.0, 10.5, 1.0]
-            for i in range(10)]
+    from src.gui.simulator_tab.fleet.candle_series import build_candle_series_from_rows
+
+    rows = [
+        [1_774_915_200_000 + i * 300_000, 10.0, 11.0, 9.0, 10.5, 1.0] for i in range(10)
+    ]
     ex = FleetSimExchange(
         {"BTC/USD": build_candle_series_from_rows("BTC/USD", rows)},
-        starting_balances={"USD": 1000.0})
+        starting_balances={"USD": 1000.0},
+    )
     ex.step()
     ex.step()
-    order = _a.run(ex.place_order(
-        "BTC/USD", OrderSide.BUY, OrderType.MARKET, 1.0))
+    order = _a.run(ex.place_order("BTC/USD", OrderSide.BUY, OrderType.MARKET, 1.0))
     assert order is not None
     trade = ex._trades[-1]
     addr = (trade.raw or {}).get("candle_address", "")
@@ -358,10 +409,14 @@ def test_fill_carries_candle_address():
 # and nine real gates had no representation — including the
 # opposing-trade-distance hysteresis the operator named directly.
 
+
 def test_no_phantom_volume_gate():
     """VOL could never illuminate: no blocker string mentions volume."""
     from src.gui.simulator_tab.fleet.sim_visuals import (
-        _GATE_ORDER_FOLD, _GATE_ORDER_SCRUM)
+        _GATE_ORDER_FOLD,
+        _GATE_ORDER_SCRUM,
+    )
+
     assert "VOL" not in _GATE_ORDER_SCRUM + _GATE_ORDER_FOLD
 
 
@@ -369,13 +424,17 @@ def test_fold_has_no_delta_gate():
     """Fold gates on tranche availability, not delta — see
     scrumming_bot.py: the fold path has no `delta` blocker."""
     from src.gui.simulator_tab.fleet.sim_visuals import _GATE_ORDER_FOLD
+
     assert "TGT" not in _GATE_ORDER_FOLD
     assert "TRNQ" in _GATE_ORDER_FOLD
 
 
 def test_opposing_trade_distance_is_represented():
     from src.gui.simulator_tab.fleet.sim_visuals import (
-        _GATE_ORDER_FOLD, _GATE_ORDER_SCRUM)
+        _GATE_ORDER_FOLD,
+        _GATE_ORDER_SCRUM,
+    )
+
     assert "OTD" in _GATE_ORDER_SCRUM
     assert "OTD" in _GATE_ORDER_FOLD
 
@@ -385,6 +444,7 @@ def test_every_real_blocker_maps_to_a_gate():
     A miss here means the panel would show a blocked side with no
     red LED explaining which gate stopped it."""
     from src.gui.simulator_tab.fleet.sim_visuals import gate_for_blocker
+
     real = {
         "delta\u22640": "TGT",
         "below_interval(\u0394%<1.0)": "INT",
@@ -406,19 +466,21 @@ def test_every_real_blocker_maps_to_a_gate():
     }
     for blocker, expected in real.items():
         assert gate_for_blocker(blocker) == expected, (
-            f"{blocker!r} -> {gate_for_blocker(blocker)!r}, "
-            f"expected {expected!r}")
+            f"{blocker!r} -> {gate_for_blocker(blocker)!r}, " f"expected {expected!r}"
+        )
 
 
 def test_target_fires_does_not_map_to_tgt():
     """Regression: the old fuzzy keyword map matched "target" inside
     "target_fires=False", lighting TGT (delta) instead of FIRE."""
     from src.gui.simulator_tab.fleet.sim_visuals import gate_for_blocker
+
     assert gate_for_blocker("target_fires=False(detect/fire)") == "FIRE"
 
 
 def test_unknown_blocker_is_surfaced_not_dropped():
     from src.gui.simulator_tab.fleet.sim_visuals import unknown_blockers
+
     out = unknown_blockers(["some-gate-added-later", "CB-soft-trip"])
     assert out == ["some-gate-added-later"]
 
@@ -427,18 +489,24 @@ def test_gate_labels_do_not_clip():
     """Pitch is measured from the widest label, not the LED size.
     The prior code drew labels into a 15px box; TRNQ needs ~28px."""
     import os
+
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtGui import QFontMetrics
     from PySide6.QtWidgets import QApplication
     import sys as _s
+
     QApplication.instance() or QApplication(_s.argv)
     from src.gui.simulator_tab.fleet.sim_visuals import (
-        GateLightsCell, _GATE_ORDER_FOLD, _GATE_ORDER_SCRUM)
+        GateLightsCell,
+        _GATE_ORDER_FOLD,
+        _GATE_ORDER_SCRUM,
+    )
+
     c = GateLightsCell()
-    f = c.font(); f.setPointSize(c._FONT_PT)
+    f = c.font()
+    f.setPointSize(c._FONT_PT)
     fm = QFontMetrics(f)
-    widest = max(fm.horizontalAdvance(g)
-                 for g in _GATE_ORDER_SCRUM + _GATE_ORDER_FOLD)
+    widest = max(fm.horizontalAdvance(g) for g in _GATE_ORDER_SCRUM + _GATE_ORDER_FOLD)
     assert c._pitch - c._GAP >= widest, "labels would overlap"
 
 
@@ -446,11 +514,14 @@ def test_landing_strip_override_routes_by_side():
     """LS is an override, not a blocker: "upper" forces bullish
     (scrum side), "lower" forces bearish (fold side)."""
     import os
+
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
     import sys as _s
+
     QApplication.instance() or QApplication(_s.argv)
     from src.gui.simulator_tab.fleet.sim_visuals import GateLightsCell
+
     c = GateLightsCell()
     c.update_gates(False, False, [], [], landing_strip_side="upper")
     assert c._ls_scrum is True and c._fold_ls is False

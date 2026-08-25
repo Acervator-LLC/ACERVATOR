@@ -83,28 +83,24 @@ def compute_safe_outflow_pct(
         distance_to_fold_pct = 0.0
     else:
         distance_to_fold_pct = max(
-            0.0,
-            min(1.0,
-                (current_price - band_lower)
-                / (band_upper - band_lower)))
+            0.0, min(1.0, (current_price - band_lower) / (band_upper - band_lower))
+        )
 
     # Safety factor 0.2 → 2.0 (steeper ramp per operator 2026-07-31).
     if band_upper <= band_lower:
-        safety_factor = 2.0     # forced conservative
+        safety_factor = 2.0  # forced conservative
     else:
         safety_factor = 0.2 + 1.8 * (1.0 - distance_to_fold_pct)
 
     # Fold reserve.
-    fold_shortfall_usd = max(
-        0.0, float(next_fold_ammo_usd) - float(current_cash_usd))
+    fold_shortfall_usd = max(0.0, float(next_fold_ammo_usd) - float(current_cash_usd))
     fold_reserve_usd = fold_shortfall_usd * safety_factor
 
     # Compound-growth reserve.
-    compound_target_usd = (
-        float(target_balance_usd)
-        * float(compound_growth_pct) / 100.0)
+    compound_target_usd = float(target_balance_usd) * float(compound_growth_pct) / 100.0
     compound_reserve_usd = max(
-        0.0, compound_target_usd - float(retained_this_cycle_usd))
+        0.0, compound_target_usd - float(retained_this_cycle_usd)
+    )
 
     reserves_total_usd = fold_reserve_usd + compound_reserve_usd
     exportable_usd = max(0.0, scrum_profit_usd - reserves_total_usd)
@@ -119,6 +115,7 @@ def compute_safe_outflow_pct(
 @dataclass
 class WireTransaction:
     """Record of a single smart wire transfer."""
+
     timestamp: int
     source_bot: str
     target_bot: str
@@ -147,6 +144,7 @@ class BotLedger:
 
       sadp: R60 (older P1 work); user invariant Session 18
     """
+
     bot_id: str
     asset: str
     total_profit: float = 0.0
@@ -154,7 +152,7 @@ class BotLedger:
     wired_in: float = 0.0
     wired_out: float = 0.0
     provenance: dict = field(default_factory=dict)  # source_bot_id → amount
-    starting_balance: float = 0.0        # v3.13.5 — seed capital
+    starting_balance: float = 0.0  # v3.13.5 — seed capital
     mature_profit_allocated: float = 0.0  # v3.13.5 — sum spent on spawns
 
     # Mature ratio follows main_window.py convention: 70% of realized
@@ -164,8 +162,7 @@ class BotLedger:
     @property
     def predominant_source(self) -> Optional[str]:
         """Find the non-SEED bot that funded this bot the most."""
-        sources = {k: v for k, v in self.provenance.items()
-                   if k != "SEED" and v > 0}
+        sources = {k: v for k, v in self.provenance.items() if k != "SEED" and v > 0}
         if not sources:
             return None
         return max(sources, key=sources.get)
@@ -213,10 +210,13 @@ class SmartWireManager:
         wires = mgr.process_wires(current_prices, mr_signals)
     """
 
-    def __init__(self, wire_back_pct: float = 0.30,
-                 mr_fund_pct: float = 0.15,
-                 min_wire_amount: float = 0.01,
-                 bus=None):
+    def __init__(
+        self,
+        wire_back_pct: float = 0.30,
+        mr_fund_pct: float = 0.15,
+        min_wire_amount: float = 0.01,
+        bus=None,
+    ):
         # v3.24.61 (C17) — injectable bus.
         #
         # THE CASCADE PLAN SAYS THIS CLASS DOES NOT NEED IT: "SmartWire-
@@ -272,8 +272,12 @@ class SmartWireManager:
         # assumed.
         try:
             from src.core.signal_contract import emit as _wb
-            _wb("topology.09.001.state_transition.bot_attached", actual=str(bot_id),
-                context={"attached_total": len(self._bot_refs)})
+
+            _wb(
+                "topology.09.001.state_transition.bot_attached",
+                actual=str(bot_id),
+                context={"attached_total": len(self._bot_refs)},
+            )
         except Exception:  # noqa: BLE001,S110 - advisory
             pass
 
@@ -300,8 +304,7 @@ class SmartWireManager:
             if not self._wires[src]:
                 del self._wires[src]
 
-    def register_wire(self, source_id: str, target_id: str,
-                      pct: float) -> dict:
+    def register_wire(self, source_id: str, target_id: str, pct: float) -> dict:
         """Create or update the wire from source_id to target_id with
         the given percentage (0-100). pct is the fraction of source's
         fold profit that will be routed to target on each fold event.
@@ -319,8 +322,7 @@ class SmartWireManager:
         disappearing into an INFO line identical to a fresh wire.
         """
         if source_id == target_id:
-            return {"applied": False,
-                    "reason": "source and target must differ"}
+            return {"applied": False, "reason": "source and target must differ"}
         # ── HOLE 1, ORIGIN SIDE (2026-08-15). The breadth here is new
         # and it closes the SAME hole as import_wires below: this was
         # `except (TypeError, ValueError)`, and float() has a third
@@ -359,9 +361,13 @@ class SmartWireManager:
         try:
             p = float(pct)
         except Exception as exc:
-            return {"applied": False,
-                    "reason": (f"pct could not be read as a number: "
-                               f"{pct!r} ({type(exc).__name__}: {exc})")}
+            return {
+                "applied": False,
+                "reason": (
+                    f"pct could not be read as a number: "
+                    f"{pct!r} ({type(exc).__name__}: {exc})"
+                ),
+            }
         # ── HOLE 2, ORIGIN SIDE (2026-08-15). The isnan test is new
         # and it is the SAME hole closed in import_wires below.
         # register_wire is the other writer into `_wires`, and it is
@@ -380,26 +386,38 @@ class SmartWireManager:
         # that nan does not fail, and would send the reader looking for
         # the wrong defect.
         if math.isnan(p):
-            return {"applied": False,
-                    "reason": ("pct must be a real number; got nan, "
-                               "which is unordered - it is not outside "
-                               "(0, 100], both comparisons are False, "
-                               "and that is why it used to be accepted")}
+            return {
+                "applied": False,
+                "reason": (
+                    "pct must be a real number; got nan, "
+                    "which is unordered - it is not outside "
+                    "(0, 100], both comparisons are False, "
+                    "and that is why it used to be accepted"
+                ),
+            }
         if p <= 0 or p > 100:
-            return {"applied": False,
-                    "reason": f"pct must be in (0, 100]; got {p}"}
+            return {"applied": False, "reason": f"pct must be in (0, 100]; got {p}"}
         prior = self._wires.get(source_id, {}).get(target_id)
         self._wires.setdefault(source_id, {})[target_id] = p
         if prior is None:
-            logger.info("SmartWire: registered %s -> %s @ %.2f%%",
-                        source_id, target_id, p)
+            logger.info(
+                "SmartWire: registered %s -> %s @ %.2f%%", source_id, target_id, p
+            )
         else:
             logger.warning(
                 "SmartWire: OVERWROTE %s -> %s: %.2f%% replaced by %.2f%%",
-                source_id, target_id, float(prior), p)
-        return {"applied": True, "source_id": source_id,
-                "target_id": target_id, "pct": p,
-                "replaced_pct": (None if prior is None else float(prior))}
+                source_id,
+                target_id,
+                float(prior),
+                p,
+            )
+        return {
+            "applied": True,
+            "source_id": source_id,
+            "target_id": target_id,
+            "pct": p,
+            "replaced_pct": (None if prior is None else float(prior)),
+        }
 
     def unregister_wire(self, source_id: str, target_id: str) -> bool:
         """Remove the wire. Returns True if it existed, False otherwise."""
@@ -407,8 +425,7 @@ class SmartWireManager:
             del self._wires[source_id][target_id]
             if not self._wires[source_id]:
                 del self._wires[source_id]
-            logger.info("SmartWire: unregistered %s -> %s",
-                        source_id, target_id)
+            logger.info("SmartWire: unregistered %s -> %s", source_id, target_id)
             return True
         return False
 
@@ -425,11 +442,13 @@ class SmartWireManager:
         out: list[dict] = []
         for src, targets in self._wires.items():
             for tgt, pct in targets.items():
-                out.append({
-                    "source_id": str(src),
-                    "target_id": str(tgt),
-                    "pct": float(pct),
-                })
+                out.append(
+                    {
+                        "source_id": str(src),
+                        "target_id": str(tgt),
+                        "pct": float(pct),
+                    }
+                )
         return out
 
     # v3.16.57 — Ledger persistence. Operator-reported bug 2026-05-13:
@@ -448,24 +467,27 @@ class SmartWireManager:
         dropped = 0
         for bot_id, ledger in self._ledgers.items():
             try:
-                out.append({
-                    "bot_id": str(bot_id),
-                    "asset": str(getattr(ledger, "asset", "") or ""),
-                    "total_profit": float(getattr(
-                        ledger, "total_profit", 0.0) or 0.0),
-                    "available_profit": float(getattr(
-                        ledger, "available_profit", 0.0) or 0.0),
-                    "wired_in": float(getattr(
-                        ledger, "wired_in", 0.0) or 0.0),
-                    "wired_out": float(getattr(
-                        ledger, "wired_out", 0.0) or 0.0),
-                    "provenance": dict(getattr(
-                        ledger, "provenance", {}) or {}),
-                    "starting_balance": float(getattr(
-                        ledger, "starting_balance", 0.0) or 0.0),
-                    "mature_profit_allocated": float(getattr(
-                        ledger, "mature_profit_allocated", 0.0) or 0.0),
-                })
+                out.append(
+                    {
+                        "bot_id": str(bot_id),
+                        "asset": str(getattr(ledger, "asset", "") or ""),
+                        "total_profit": float(
+                            getattr(ledger, "total_profit", 0.0) or 0.0
+                        ),
+                        "available_profit": float(
+                            getattr(ledger, "available_profit", 0.0) or 0.0
+                        ),
+                        "wired_in": float(getattr(ledger, "wired_in", 0.0) or 0.0),
+                        "wired_out": float(getattr(ledger, "wired_out", 0.0) or 0.0),
+                        "provenance": dict(getattr(ledger, "provenance", {}) or {}),
+                        "starting_balance": float(
+                            getattr(ledger, "starting_balance", 0.0) or 0.0
+                        ),
+                        "mature_profit_allocated": float(
+                            getattr(ledger, "mature_profit_allocated", 0.0) or 0.0
+                        ),
+                    }
+                )
             except Exception as exc:
                 # 2026-08-14 - this was `except Exception: continue`,
                 # which dropped the row in total silence. The row is
@@ -485,12 +507,18 @@ class SmartWireManager:
                     "SmartWire: export DROPPED ledger row for %s "
                     "(%s: %s) - its wired_in/wired_out history is NOT "
                     "in this save and is not recoverable from it",
-                    bot_id, type(exc).__name__, exc)
+                    bot_id,
+                    type(exc).__name__,
+                    exc,
+                )
                 continue
         if dropped:
             logger.warning(
-                "SmartWire: exported %d of %d ledger row(s); "
-                "%d dropped", len(out), len(self._ledgers), dropped)
+                "SmartWire: exported %d of %d ledger row(s); " "%d dropped",
+                len(out),
+                len(self._ledgers),
+                dropped,
+            )
         return out
 
     def import_ledgers(self, ledgers: list[dict]) -> int:
@@ -533,8 +561,8 @@ class SmartWireManager:
         # PARTIALLY applied, while a guard-drop cannot name the bot at
         # all and applies nothing. Merging them would hide which of
         # those two the operator is looking at.
-        malformed = 0      # row was not a dict at all
-        unidentified = 0   # row was a dict but carried no usable bot_id
+        malformed = 0  # row was not a dict at all
+        unidentified = 0  # row was a dict but carried no usable bot_id
         for row in ledgers:
             offered += 1
             if not isinstance(row, dict):
@@ -545,7 +573,10 @@ class SmartWireManager:
                     "so the save is corrupt; one bot's wired_in/"
                     "wired_out history is not in this session and the "
                     "row cannot say which bot",
-                    offered, len(ledgers), type(row).__name__)
+                    offered,
+                    len(ledgers),
+                    type(row).__name__,
+                )
                 continue
             bid = row.get("bot_id")
             if not bid:
@@ -555,7 +586,10 @@ class SmartWireManager:
                     "bot_id is %r, so the row cannot be applied to any "
                     "bot. Its wired_in/wired_out history is not in this "
                     "session",
-                    offered, len(ledgers), bid)
+                    offered,
+                    len(ledgers),
+                    bid,
+                )
                 continue
             bid = str(bid)
             try:
@@ -566,27 +600,24 @@ class SmartWireManager:
                     self._ledgers[bid] = BotLedger(
                         bot_id=bid,
                         asset=str(row.get("asset", "") or ""),
-                        starting_balance=float(
-                            row.get("starting_balance", 0.0) or 0.0))
+                        starting_balance=float(row.get("starting_balance", 0.0) or 0.0),
+                    )
                 lg = self._ledgers[bid]
-                lg.total_profit = float(
-                    row.get("total_profit", 0.0) or 0.0)
-                lg.available_profit = float(
-                    row.get("available_profit", 0.0) or 0.0)
+                lg.total_profit = float(row.get("total_profit", 0.0) or 0.0)
+                lg.available_profit = float(row.get("available_profit", 0.0) or 0.0)
                 lg.wired_in = float(row.get("wired_in", 0.0) or 0.0)
                 lg.wired_out = float(row.get("wired_out", 0.0) or 0.0)
                 _prov = row.get("provenance", {})
                 if isinstance(_prov, dict):
-                    lg.provenance = {str(k): float(v or 0.0)
-                                     for k, v in _prov.items()}
+                    lg.provenance = {str(k): float(v or 0.0) for k, v in _prov.items()}
                 lg.mature_profit_allocated = float(
-                    row.get("mature_profit_allocated", 0.0) or 0.0)
+                    row.get("mature_profit_allocated", 0.0) or 0.0
+                )
                 # Only update asset/starting_balance if not already set
                 # (attach_bot's register_bot may have set them already).
                 if not lg.asset and row.get("asset"):
                     lg.asset = str(row["asset"])
-                if (not lg.starting_balance
-                        and row.get("starting_balance")):
+                if not lg.starting_balance and row.get("starting_balance"):
                     lg.starting_balance = float(row["starting_balance"])
                 n += 1
             except Exception as exc:
@@ -613,11 +644,13 @@ class SmartWireManager:
                     "SmartWire: import DROPPED ledger row for %s "
                     "(%s: %s) - the row is PARTIALLY applied and that "
                     "bot's wire totals are wrong for this session",
-                    bid, type(exc).__name__, exc)
+                    bid,
+                    type(exc).__name__,
+                    exc,
+                )
                 continue
         if n > 0:
-            logger.info(
-                "SmartWire: imported %d ledger(s) from saved state", n)
+            logger.info("SmartWire: imported %d ledger(s) from saved state", n)
         # The headline must RECONCILE: accepted + lost == offered, and
         # `offered` is now every element of the list. It fires on any
         # loss, whichever of the three causes produced it - the guard
@@ -630,7 +663,13 @@ class SmartWireManager:
                 "bot_id) - each lost row is one bot's lifetime "
                 "wired_in/wired_out and provenance, absent for this "
                 "session and not recoverable from the save",
-                n, offered, lost, dropped, malformed, unidentified)
+                n,
+                offered,
+                lost,
+                dropped,
+                malformed,
+                unidentified,
+            )
         return n
 
     def import_wires(self, wires: list[dict]) -> int:
@@ -690,9 +729,9 @@ class SmartWireManager:
         # endpoint, an unreadable pct knows both endpoints, and an
         # unroutable row knows which predicate failed. Merging them
         # would hide which of the three the operator is looking at.
-        malformed = 0    # row was not a dict at all
-        unreadable = 0   # float(pct) raised
-        unroutable = 0   # no endpoint, or pct outside 0 < pct <= 100
+        malformed = 0  # row was not a dict at all
+        unreadable = 0  # float(pct) raised
+        unroutable = 0  # no endpoint, or pct outside 0 < pct <= 100
         for w in wires:
             offered += 1
             if not isinstance(w, dict):
@@ -703,7 +742,10 @@ class SmartWireManager:
                     "so the save is corrupt; one configured transfer "
                     "route does not exist this session and the row "
                     "cannot say which one",
-                    offered, len(wires), type(w).__name__)
+                    offered,
+                    len(wires),
+                    type(w).__name__,
+                )
                 continue
             src = w.get("source_id")
             tgt = w.get("target_id")
@@ -767,8 +809,16 @@ class SmartWireManager:
                     "writer here produces that, so the save is corrupt; "
                     "fold profit from %s will never reach %s this "
                     "session",
-                    offered, len(wires), src, tgt, w.get("pct"),
-                    type(exc).__name__, exc, src, tgt)
+                    offered,
+                    len(wires),
+                    src,
+                    tgt,
+                    w.get("pct"),
+                    type(exc).__name__,
+                    exc,
+                    src,
+                    tgt,
+                )
                 continue
             # ── HOLE 2 (2026-08-15): nan PASSED THIS GUARD. The
             # math.isnan clause is new. nan is UNORDERED, so `nan <= 0`
@@ -794,8 +844,7 @@ class SmartWireManager:
             # refused by `pct > 100` - measured - so this clause admits
             # exactly one new rejected class and changes the verdict for
             # nothing else. The operator's 33 real rows are untouched.
-            if (not src or not tgt or math.isnan(pct)
-                    or pct <= 0 or pct > 100):
+            if not src or not tgt or math.isnan(pct) or pct <= 0 or pct > 100:
                 unroutable += 1
                 if not src:
                     why = "source_id is empty"
@@ -807,10 +856,12 @@ class SmartWireManager:
                     # outside 0 < pct <= 100, it is unordered, and both
                     # comparisons returning False is precisely why this
                     # row used to be accepted.
-                    why = ("pct is nan, which is unordered - it is not "
-                           "outside 0 < pct <= 100, both comparisons "
-                           "are False, and that is exactly why this row "
-                           "used to be stored and counted as imported")
+                    why = (
+                        "pct is nan, which is unordered - it is not "
+                        "outside 0 < pct <= 100, both comparisons "
+                        "are False, and that is exactly why this row "
+                        "used to be stored and counted as imported"
+                    )
                 else:
                     why = "pct is outside the accepted 0 < pct <= 100"
                 logger.warning(
@@ -819,7 +870,13 @@ class SmartWireManager:
                     "so the save is corrupt; that transfer route does "
                     "not exist this session and the fold profit it "
                     "carried stays in the source bot",
-                    offered, len(wires), src, tgt, pct, why)
+                    offered,
+                    len(wires),
+                    src,
+                    tgt,
+                    pct,
+                    why,
+                )
                 continue
             self._wires.setdefault(str(src), {})[str(tgt)] = pct
             n += 1
@@ -852,7 +909,13 @@ class SmartWireManager:
                 "not exist this session, so that source bot's fold "
                 "profit is never divided and the target's wired_in "
                 "never grows",
-                n, offered, lost, malformed, unreadable, unroutable)
+                n,
+                offered,
+                lost,
+                malformed,
+                unreadable,
+                unroutable,
+            )
         # ── DIRECTIVE 4 EMITTER — "RECEIVES ... topologies" ──────────
         # import_wires does NO existence check against _bot_refs: it
         # setdefaults every well-formed row and returns the count. So a
@@ -862,16 +925,21 @@ class SmartWireManager:
         # expected = rows offered, actual = rows accepted.
         try:
             from src.core.signal_contract import emit as _w
-            _w("topology.09.002.postcondition.wires_received", actual=n,
-               expected=len(wires) if isinstance(wires, list) else 0,
-               duration=_dur_elapsed,
-               context={"sources": len(self._wires)})
+
+            _w(
+                "topology.09.002.postcondition.wires_received",
+                actual=n,
+                expected=len(wires) if isinstance(wires, list) else 0,
+                duration=_dur_elapsed,
+                context={"sources": len(self._wires)},
+            )
         except Exception:  # noqa: BLE001,S110 - advisory
             pass
         return n
 
-    def distribute_fold_profit(self, source_id: str, profit_usd: float,
-                               ref: str = "") -> list[dict]:
+    def distribute_fold_profit(
+        self, source_id: str, profit_usd: float, ref: str = ""
+    ) -> list[dict]:
         """Route pct% of source_id's realised fold profit to each target
         configured in the wire network.
 
@@ -900,12 +968,13 @@ class SmartWireManager:
         if _vis_bus is None:
             try:
                 from ..core.event_bus import get_event_bus as _gb_skip
+
                 _vis_bus = _gb_skip()
             except Exception:  # R28-OK: bus init optional; None is the safe fallback
                 _vis_bus = None
-        _src_short_skip = (str(source_id)[:8] + "\u2026"
-                           if len(str(source_id)) > 8
-                           else str(source_id))
+        _src_short_skip = (
+            str(source_id)[:8] + "\u2026" if len(str(source_id)) > 8 else str(source_id)
+        )
         # 2026-08-14 - notice-emit failures are counted here and
         # reported once, after the loop. A WARNING per wire would spam
         # a fleet with many wires; silence is what this replaces.
@@ -923,26 +992,31 @@ class SmartWireManager:
         _swos_safe_pct = 100.0
         try:
             _src_bot = self._bot_refs.get(source_id)
-            _swos_getter = getattr(
-                _src_bot, "get_swos_inputs", None)
+            _swos_getter = getattr(_src_bot, "get_swos_inputs", None)
             if _swos_getter is not None:
                 _swos_inputs = _swos_getter()
                 if _swos_inputs:
                     _swos_safe_pct = compute_safe_outflow_pct(
-                        scrum_profit_usd=float(profit_usd),
-                        **_swos_inputs)
+                        scrum_profit_usd=float(profit_usd), **_swos_inputs
+                    )
                     _n_wires = max(1, len(outgoing))
                     _per_wire_safe_pct = _swos_safe_pct / _n_wires
                     logger.debug(
                         "SWOS %s: safe=%.2f%% \u00f7 %d wires = "
                         "%.2f%% per-wire (profit=$%.4f)",
-                        _src_short_skip, _swos_safe_pct,
-                        _n_wires, _per_wire_safe_pct, profit_usd)
+                        _src_short_skip,
+                        _swos_safe_pct,
+                        _n_wires,
+                        _per_wire_safe_pct,
+                        profit_usd,
+                    )
         except Exception as _swos_exc:  # noqa: BLE001 - best-effort
             logger.debug(
                 "SWOS %s pre-check raised %s \u2014 falling back to "
                 "raw operator pct (no safety cap this fire).",
-                _src_short_skip, _swos_exc)
+                _src_short_skip,
+                _swos_exc,
+            )
         for target_id, raw_pct in outgoing.items():
             # v3.23.65 \u2014 effective pct = min(operator's rate, per-wire
             # safe pct). Never exceeds either. When SWOS is
@@ -950,13 +1024,21 @@ class SmartWireManager:
             # no-op and behaviour matches pre-v3.23.65.
             pct = min(float(raw_pct), _per_wire_safe_pct)
             share = profit_usd * float(pct) / 100.0
-            _tgt_short_skip = (str(target_id)[:8] + "\u2026"
-                               if len(str(target_id)) > 8
-                               else str(target_id))
+            _tgt_short_skip = (
+                str(target_id)[:8] + "\u2026"
+                if len(str(target_id)) > 8
+                else str(target_id)
+            )
             if share < self._min_wire:
-                results.append({"target_id": target_id, "pct": pct,
-                                "share": share, "applied": False,
-                                "reason": "below min_wire_amount"})
+                results.append(
+                    {
+                        "target_id": target_id,
+                        "pct": pct,
+                        "share": share,
+                        "applied": False,
+                        "reason": "below min_wire_amount",
+                    }
+                )
                 # v3.15.74 — visible dust-skip log on BOTH source and
                 # target buses with WIRE FLOW prefix so it picks up the
                 # magenta styling in StatusLog._render.
@@ -964,12 +1046,11 @@ class SmartWireManager:
                     _dust_msg = (
                         f"WIRE FLOW (dust skip): ${share:.4f} from "
                         f"{_src_short_skip} \u2192 {_tgt_short_skip} below "
-                        f"floor ${self._min_wire:.2f} (pct={pct:.1f}%)")
+                        f"floor ${self._min_wire:.2f} (pct={pct:.1f}%)"
+                    )
                     try:
-                        _vis_bus.emit("bot.log", bot_id=source_id,
-                                      message=_dust_msg)
-                        _vis_bus.emit("bot.log", bot_id=target_id,
-                                      message=_dust_msg)
+                        _vis_bus.emit("bot.log", bot_id=source_id, message=_dust_msg)
+                        _vis_bus.emit("bot.log", bot_id=target_id, message=_dust_msg)
                     except Exception as _emit_exc:
                         # THE BREADTH IS DELIBERATE. This block is
                         # OUTSIDE the per-route try below, so an escape
@@ -980,14 +1061,23 @@ class SmartWireManager:
                         logger.debug(
                             "SmartWire: dust-skip notice for %s -> %s "
                             "did not reach the bus (%s: %s)",
-                            _src_short_skip, _tgt_short_skip,
-                            type(_emit_exc).__name__, _emit_exc)
+                            _src_short_skip,
+                            _tgt_short_skip,
+                            type(_emit_exc).__name__,
+                            _emit_exc,
+                        )
                 continue
             target = self._bot_refs.get(target_id)
             if target is None or not hasattr(target, "apply_wire_income"):
-                results.append({"target_id": target_id, "pct": pct,
-                                "share": share, "applied": False,
-                                "reason": "target bot not attached"})
+                results.append(
+                    {
+                        "target_id": target_id,
+                        "pct": pct,
+                        "share": share,
+                        "applied": False,
+                        "reason": "target bot not attached",
+                    }
+                )
                 # v3.15.74 — visible "target unreachable" log so wires
                 # pointing at deleted/orphaned bots produce console
                 # feedback rather than silent failure.
@@ -995,10 +1085,10 @@ class SmartWireManager:
                     _orphan_msg = (
                         f"WIRE FLOW (target unreachable): ${share:.4f} "
                         f"from {_src_short_skip} \u2192 {_tgt_short_skip} "
-                        f"\u2014 target bot not attached. Wire is orphaned.")
+                        f"\u2014 target bot not attached. Wire is orphaned."
+                    )
                     try:
-                        _vis_bus.emit("bot.log", bot_id=source_id,
-                                      message=_orphan_msg)
+                        _vis_bus.emit("bot.log", bot_id=source_id, message=_orphan_msg)
                     except Exception as _emit_exc:
                         # Same containment reason as the dust-skip
                         # notice above: an escape here would skip every
@@ -1007,12 +1097,14 @@ class SmartWireManager:
                         logger.debug(
                             "SmartWire: orphan-wire notice for %s -> "
                             "%s did not reach the bus (%s: %s)",
-                            _src_short_skip, _tgt_short_skip,
-                            type(_emit_exc).__name__, _emit_exc)
+                            _src_short_skip,
+                            _tgt_short_skip,
+                            type(_emit_exc).__name__,
+                            _emit_exc,
+                        )
                 continue
             try:
-                r = target.apply_wire_income(share, source=source_id,
-                                             ref=ref)
+                r = target.apply_wire_income(share, source=source_id, ref=ref)
                 # v3.15.90 (F1 fix from 2026-04-26 silent-result-dict
                 # audit): apply_wire_income returns
                 # {"applied": False, "reason": ...} on bad input
@@ -1032,13 +1124,19 @@ class SmartWireManager:
                 # distinct "WIRE FLOW (target refused)" log so the
                 # operator sees the refusal rather than a celebration,
                 # and the transaction is NOT recorded.
-                _target_applied = bool(r.get("applied", False)) if isinstance(r, dict) else False
-                _src_short = (str(source_id)[:8] + "…"
-                              if len(str(source_id)) > 8
-                              else str(source_id))
-                _tgt_short = (str(target_id)[:8] + "…"
-                              if len(str(target_id)) > 8
-                              else str(target_id))
+                _target_applied = (
+                    bool(r.get("applied", False)) if isinstance(r, dict) else False
+                )
+                _src_short = (
+                    str(source_id)[:8] + "…"
+                    if len(str(source_id)) > 8
+                    else str(source_id)
+                )
+                _tgt_short = (
+                    str(target_id)[:8] + "…"
+                    if len(str(target_id)) > 8
+                    else str(target_id)
+                )
 
                 if not _target_applied:
                     # F1 fix: target refused the income (bad input,
@@ -1048,11 +1146,13 @@ class SmartWireManager:
                     _refusal_reason = (
                         r.get("reason", "target refused without reason")
                         if isinstance(r, dict)
-                        else f"target returned non-dict: {type(r).__name__}")
+                        else f"target returned non-dict: {type(r).__name__}"
+                    )
                     if _vis_bus is not None:
                         try:
                             _vis_bus.emit(
-                                "bot.log", bot_id=source_id,
+                                "bot.log",
+                                bot_id=source_id,
                                 message=(
                                     f"WIRE FLOW (target refused): "
                                     f"${share:.4f} from {_src_short} → "
@@ -1060,16 +1160,25 @@ class SmartWireManager:
                                     f"profit) — target apply_wire_income "
                                     f"returned applied=False. Reason: "
                                     f"{_refusal_reason}. NO transfer "
-                                    f"booked."))
+                                    f"booked."
+                                ),
+                            )
                             _vis_bus.emit(
-                                "bot.log", bot_id=target_id,
+                                "bot.log",
+                                bot_id=target_id,
                                 message=(
                                     f"WIRE FLOW (own apply refused): "
                                     f"${share:.4f} from {_src_short} → "
                                     f"{_tgt_short} — apply_wire_income "
-                                    f"refused. Reason: {_refusal_reason}."))
-                        except (AttributeError, TypeError,
-                                RuntimeError, ValueError) as _emit_exc:
+                                    f"refused. Reason: {_refusal_reason}."
+                                ),
+                            )
+                        except (
+                            AttributeError,
+                            TypeError,
+                            RuntimeError,
+                            ValueError,
+                        ) as _emit_exc:
                             # NARROWED, and this is the ONLY one of the
                             # nine where narrowing is safe. An escape
                             # lands in the sibling handler below, in
@@ -1093,23 +1202,37 @@ class SmartWireManager:
                                 "%s -> %s ($%.4f) did not reach the "
                                 "operator console (%s: %s); the "
                                 "refusal stands and is in the result",
-                                _src_short, _tgt_short, share,
-                                type(_emit_exc).__name__, _emit_exc)
-                    results.append({"target_id": target_id, "pct": pct,
-                                    "share": share, "applied": False,
-                                    "reason": _refusal_reason,
-                                    "result": r})
+                                _src_short,
+                                _tgt_short,
+                                share,
+                                type(_emit_exc).__name__,
+                                _emit_exc,
+                            )
+                    results.append(
+                        {
+                            "target_id": target_id,
+                            "pct": pct,
+                            "share": share,
+                            "applied": False,
+                            "reason": _refusal_reason,
+                            "result": r,
+                        }
+                    )
                     continue
 
                 # Audit trail (only on success — F1 fix)
                 import time as _t
-                self._transactions.append(WireTransaction(
-                    timestamp=int(_t.time()),
-                    source_bot=source_id,
-                    target_bot=target_id,
-                    amount=share,
-                    wire_type="WIRE_BACK",
-                    reason=f"fold_profit pct={pct}% ref={ref}"))
+
+                self._transactions.append(
+                    WireTransaction(
+                        timestamp=int(_t.time()),
+                        source_bot=source_id,
+                        target_bot=target_id,
+                        amount=share,
+                        wire_type="WIRE_BACK",
+                        reason=f"fold_profit pct={pct}% ref={ref}",
+                    )
+                )
                 # v3.15.68 — clear, color-coded operator-visible feedback
                 # on BOTH source and target bot buses. Prefix "WIRE FLOW:"
                 # gets magenta styling in StatusLog._render so wire
@@ -1123,8 +1246,7 @@ class SmartWireManager:
                         # needs PEP 701 (3.12+) and which ruff parses
                         # against this project's target as a syntax
                         # error. Same value, one step at a time.
-                        _placement = " → " + str(
-                            r.get("placement", "tranche"))
+                        _placement = " → " + str(r.get("placement", "tranche"))
                         _tranche_idx = r.get("tranche_index")
                         if _tranche_idx is not None:
                             _placement += " #" + str(_tranche_idx)
@@ -1147,17 +1269,23 @@ class SmartWireManager:
                         "SmartWire: could not render placement for the "
                         "%s -> %s wire ($%.4f) (%s: %s); the WIRE FLOW "
                         "line omits where the income landed",
-                        _src_short, _tgt_short, share,
-                        type(_place_exc).__name__, _place_exc)
+                        _src_short,
+                        _tgt_short,
+                        share,
+                        type(_place_exc).__name__,
+                        _place_exc,
+                    )
                 _flow_msg = (
                     f"WIRE FLOW: ${share:.2f} from {_src_short} → "
                     f"{_tgt_short} ({pct:.1f}% of fold profit"
-                    f"{f', ref={ref}' if ref else ''}){_placement}")
+                    f"{f', ref={ref}' if ref else ''}){_placement}"
+                )
                 try:
                     # C17 — injected bus wins; see __init__.
                     _bus = getattr(self, "_bus", None)
                     if _bus is None:
                         from ..core.event_bus import get_event_bus as _gb
+
                         _bus = _gb()
                     _bus.emit("bot.log", bot_id=source_id, message=_flow_msg)
                     _bus.emit("bot.log", bot_id=target_id, message=_flow_msg)
@@ -1180,28 +1308,47 @@ class SmartWireManager:
                         "transfer of $%.4f from %s to %s did not reach "
                         "the operator console (%s: %s); the transfer "
                         "stands and is in the audit trail",
-                        share, source_id, target_id,
-                        type(_emit_exc).__name__, _emit_exc)
-                results.append({"target_id": target_id, "pct": pct,
-                                "share": share, "applied": True,
-                                "result": r})
+                        share,
+                        source_id,
+                        target_id,
+                        type(_emit_exc).__name__,
+                        _emit_exc,
+                    )
+                results.append(
+                    {
+                        "target_id": target_id,
+                        "pct": pct,
+                        "share": share,
+                        "applied": True,
+                        "result": r,
+                    }
+                )
             except Exception as exc:
                 logger.warning(
-                    "SmartWire: route %s->%s raised: %s",
-                    source_id, target_id, exc)
-                results.append({"target_id": target_id, "pct": pct,
-                                "share": share, "applied": False,
-                                "reason": f"exception: {exc}"})
+                    "SmartWire: route %s->%s raised: %s", source_id, target_id, exc
+                )
+                results.append(
+                    {
+                        "target_id": target_id,
+                        "pct": pct,
+                        "share": share,
+                        "applied": False,
+                        "reason": f"exception: {exc}",
+                    }
+                )
                 # v3.15.74 — surface routing exceptions so the operator
                 # knows a wire blew up rather than guessing at silence.
                 if _vis_bus is not None:
                     try:
                         _vis_bus.emit(
-                            "bot.log", bot_id=source_id,
+                            "bot.log",
+                            bot_id=source_id,
                             message=(
                                 f"WIRE FLOW (error): ${share:.4f} from "
                                 f"{_src_short_skip} \u2192 {_tgt_short_skip} "
-                                f"raised {type(exc).__name__}: {exc}"))
+                                f"raised {type(exc).__name__}: {exc}"
+                            ),
+                        )
                     except Exception as _emit_exc:
                         # DEBUG on purpose, not WARNING. The route
                         # failure itself was already logged at WARNING
@@ -1215,8 +1362,11 @@ class SmartWireManager:
                         logger.debug(
                             "SmartWire: route-error notice for %s -> "
                             "%s did not reach the bus (%s: %s)",
-                            _src_short_skip, _tgt_short_skip,
-                            type(_emit_exc).__name__, _emit_exc)
+                            _src_short_skip,
+                            _tgt_short_skip,
+                            type(_emit_exc).__name__,
+                            _emit_exc,
+                        )
         # v3.15.74 — per-fold summary when nothing routed. If the source
         # bot has wires configured but EVERY route was filtered (dust,
         # unreachable, or errored), emit one summary log so the operator
@@ -1225,21 +1375,26 @@ class SmartWireManager:
             applied_count = sum(1 for r in results if r.get("applied"))
             if results and applied_count == 0 and _vis_bus is not None:
                 dust = sum(
-                    1 for r in results
-                    if r.get("reason") == "below min_wire_amount")
+                    1 for r in results if r.get("reason") == "below min_wire_amount"
+                )
                 unreach = sum(
-                    1 for r in results
-                    if r.get("reason") == "target bot not attached")
+                    1 for r in results if r.get("reason") == "target bot not attached"
+                )
                 errs = sum(
-                    1 for r in results
-                    if str(r.get("reason", "")).startswith("exception"))
+                    1
+                    for r in results
+                    if str(r.get("reason", "")).startswith("exception")
+                )
                 _vis_bus.emit(
-                    "bot.log", bot_id=source_id,
+                    "bot.log",
+                    bot_id=source_id,
                     message=(
                         f"WIRE FLOW: fold ${profit_usd:.4f} produced "
                         f"no routed shares ({len(results)} wire(s) "
                         f"checked: {dust} dust-skipped, "
-                        f"{unreach} unreachable, {errs} errored)"))
+                        f"{unreach} unreachable, {errs} errored)"
+                    ),
+                )
         except Exception as _emit_exc:
             # DEBUG: nothing routed, no money crossed this block, and
             # `results` is already complete and is returned unchanged.
@@ -1249,9 +1404,11 @@ class SmartWireManager:
             # escape here would break that contract after money had
             # already moved on the successful wires.
             logger.debug(
-                "SmartWire: no-flow summary for %s did not reach the "
-                "bus (%s: %s)",
-                _src_short_skip, type(_emit_exc).__name__, _emit_exc)
+                "SmartWire: no-flow summary for %s did not reach the " "bus (%s: %s)",
+                _src_short_skip,
+                type(_emit_exc).__name__,
+                _emit_exc,
+            )
         # Outside the try above on purpose: a broken bus is exactly the
         # condition this line reports, so it must not depend on it.
         if _notice_emit_fails:
@@ -1259,13 +1416,19 @@ class SmartWireManager:
                 "SmartWire: %d wire-notice emit(s) failed during the "
                 "fold on %s (%s); those wire events are missing from "
                 "the operator console",
-                len(_notice_emit_fails), _src_short_skip,
-                ", ".join(sorted(set(_notice_emit_fails))))
+                len(_notice_emit_fails),
+                _src_short_skip,
+                ", ".join(sorted(set(_notice_emit_fails))),
+            )
         return results
 
-    def register_bot(self, bot_id: str, asset: str,
-                     seed_amount: float = 200.0,
-                     funder_bot_id: Optional[str] = None) -> None:
+    def register_bot(
+        self,
+        bot_id: str,
+        asset: str,
+        seed_amount: float = 200.0,
+        funder_bot_id: Optional[str] = None,
+    ) -> None:
         """Register a bot in the smart wire network.
 
         v3.13.5 — optional funder_bot_id parameter enables the
@@ -1285,11 +1448,16 @@ class SmartWireManager:
             bot_id=bot_id,
             asset=asset,
             provenance=provenance,
-            starting_balance=seed_amount,   # v3.13.5 — capture for PPS lookup
+            starting_balance=seed_amount,  # v3.13.5 — capture for PPS lookup
         )
         source_label = funder_bot_id or "SEED"
-        logger.info("SmartWire: registered %s (%s) with $%.2f from %s",
-                     bot_id, asset, seed_amount, source_label)
+        logger.info(
+            "SmartWire: registered %s (%s) with $%.2f from %s",
+            bot_id,
+            asset,
+            seed_amount,
+            source_label,
+        )
 
     # ══════════════════════════════════════════════════════════════════
     # v3.13.5 — Mature-Profit Cascade API
@@ -1322,8 +1490,7 @@ class SmartWireManager:
     # sadp: R60 P1
     # ══════════════════════════════════════════════════════════════════
 
-    def primary_provenance_starting_balance(
-            self, bot_id: str) -> Optional[float]:
+    def primary_provenance_starting_balance(self, bot_id: str) -> Optional[float]:
         """Resolve the PPS's starting balance for this bot.
 
         For a bot whose PPS is SEED: returns the amount in provenance['SEED'].
@@ -1367,27 +1534,35 @@ class SmartWireManager:
 
         available = ledger.mature_profit_available
         if available < threshold:
-            return (False, 0.0,
-                    f"insufficient_mature (${available:.2f} < "
-                    f"${threshold:.2f})")
+            return (
+                False,
+                0.0,
+                f"insufficient_mature (${available:.2f} < " f"${threshold:.2f})",
+            )
 
         return True, threshold, "ok"
 
-    def execute_spawn_wire(self, funder_bot_id: str, new_bot_id: str,
-                            new_bot_asset: str,
-                            timestamp: int = 0) -> Optional[WireTransaction]:
+    def execute_spawn_wire(
+        self,
+        funder_bot_id: str,
+        new_bot_id: str,
+        new_bot_asset: str,
+        timestamp: int = 0,
+    ) -> Optional[WireTransaction]:
         """Perform the cascade spawn:
-          1. Verify funder can fund (re-checks the gate)
-          2. Debit funder's mature_profit_allocated
-          3. Register the new bot with funder as provenance source
-          4. Record a WireTransaction (type=MR_FUND)
-          5. Return the transaction (or None if gate fails)
+        1. Verify funder can fund (re-checks the gate)
+        2. Debit funder's mature_profit_allocated
+        3. Register the new bot with funder as provenance source
+        4. Record a WireTransaction (type=MR_FUND)
+        5. Return the transaction (or None if gate fails)
         """
         approved, amount, reason = self.can_fund_new_bot(funder_bot_id)
         if not approved:
             logger.info(
                 "SmartWire spawn gate declined: funder=%s reason=%s",
-                funder_bot_id, reason)
+                funder_bot_id,
+                reason,
+            )
             return None
 
         funder = self._ledgers[funder_bot_id]
@@ -1395,9 +1570,9 @@ class SmartWireManager:
         funder.wired_out += amount
 
         # Register the new bot with funder as provenance source
-        self.register_bot(new_bot_id, new_bot_asset,
-                          seed_amount=amount,
-                          funder_bot_id=funder_bot_id)
+        self.register_bot(
+            new_bot_id, new_bot_asset, seed_amount=amount, funder_bot_id=funder_bot_id
+        )
         # wired_in on the new bot is $amount (since it was funded by
         # another bot, not SEED)
         self._ledgers[new_bot_id].wired_in = amount
@@ -1408,14 +1583,17 @@ class SmartWireManager:
             target_bot=new_bot_id,
             amount=amount,
             wire_type="MR_FUND",
-            reason=(f"mature-profit cascade spawn "
-                    f"(threshold=${amount:.2f})"))
+            reason=(f"mature-profit cascade spawn " f"(threshold=${amount:.2f})"),
+        )
         self._transactions.append(tx)
         logger.info(
             "SmartWire cascade: %s → %s funded with $%.2f "
             "(funder retains stake + $%.2f excess mature)",
-            funder_bot_id, new_bot_id, amount,
-            funder.mature_profit_available)
+            funder_bot_id,
+            new_bot_id,
+            amount,
+            funder.mature_profit_available,
+        )
         return tx
 
     def record_profit(self, bot_id: str, amount: float) -> None:
@@ -1426,8 +1604,9 @@ class SmartWireManager:
             self._ledgers[bot_id].total_profit += amount
             self._ledgers[bot_id].available_profit += amount
 
-    def process_wires(self, undervalued_bots: list[str] = None,
-                      timestamp: int = 0) -> list[WireTransaction]:
+    def process_wires(
+        self, undervalued_bots: list[str] = None, timestamp: int = 0
+    ) -> list[WireTransaction]:
 
         # sadp: R28 R29  # wire processing: fail-loudly(R28) idempotent(R29)
         """

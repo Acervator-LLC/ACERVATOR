@@ -53,6 +53,7 @@ operator can see.
 shutdown — the last chance to get buffered records onto disk — raises
 instead of flushing.
 """
+
 from __future__ import annotations
 
 import logging
@@ -97,19 +98,18 @@ def _census(base):
     for name in [base.name] + ["%s.%d" % (base.name, i) for i in range(1, 9)]:
         p = base.parent / name
         if p.is_file():
-            lines.extend(
-                p.read_text(encoding="utf-8", errors="replace").splitlines())
+            lines.extend(p.read_text(encoding="utf-8", errors="replace").splitlines())
     return len(lines), len(set(lines))
 
 
 def _slots(base):
-    return [i for i in range(1, 9)
-            if (base.parent / ("%s.%d" % (base.name, i))).is_file()]
+    return [
+        i for i in range(1, 9) if (base.parent / ("%s.%d" % (base.name, i))).is_file()
+    ]
 
 
 class TestTheBoundExists:
-    def test_the_installed_handler_is_bounded(self, tmp_path,
-                                              clean_acervator_logger):
+    def test_the_installed_handler_is_bounded(self, tmp_path, clean_acervator_logger):
         """THE unit. Asserted on the handler LogManager actually
         installs, not on the source text, because a source that says
         `maxBytes` and a handler that rotates are different claims."""
@@ -130,7 +130,8 @@ class TestTheBoundExists:
         assert SYSTEM_LOG_BACKUP_COUNT == 5
 
     def test_the_encoding_contract_survived_the_change(
-            self, tmp_path, clean_acervator_logger):
+        self, tmp_path, clean_acervator_logger
+    ):
         """v3.24.53 cost 825 dropped records. Swapping the handler class
         is exactly the kind of change that would quietly undo it."""
         LogManager(log_dir=tmp_path)
@@ -140,11 +141,13 @@ class TestTheBoundExists:
 
 
 class TestTheRolloverBoundary:
-    def test_no_record_is_lost_across_the_boundary(self, tmp_path,
-                                                   clean_acervator_logger):
+    def test_no_record_is_lost_across_the_boundary(
+        self, tmp_path, clean_acervator_logger
+    ):
         base = tmp_path / "system.log"
-        h = SizeBoundedFileHandler(base, maxBytes=4096, backupCount=5,
-                                   encoding="utf-8", errors="replace")
+        h = SizeBoundedFileHandler(
+            base, maxBytes=4096, backupCount=5, encoding="utf-8", errors="replace"
+        )
         h.setFormatter(logging.Formatter("%(message)s"))
         clean_acervator_logger.setLevel(logging.DEBUG)
         clean_acervator_logger.addHandler(h)
@@ -157,24 +160,24 @@ class TestTheRolloverBoundary:
         assert distinct == 400, "records were duplicated at a rollover"
 
     def test_the_triggering_record_lands_in_the_new_file(
-            self, tmp_path, clean_acervator_logger):
+        self, tmp_path, clean_acervator_logger
+    ):
         """The record that pushes the file over the cap must be written
         AFTER the rename, not into the handle that was just renamed."""
         base = tmp_path / "system.log"
         base.write_bytes(b"z" * 5000)
-        h = SizeBoundedFileHandler(base, maxBytes=4096, backupCount=5,
-                                   encoding="utf-8", errors="replace")
+        h = SizeBoundedFileHandler(
+            base, maxBytes=4096, backupCount=5, encoding="utf-8", errors="replace"
+        )
         h.setFormatter(logging.Formatter("%(message)s"))
         clean_acervator_logger.setLevel(logging.DEBUG)
         clean_acervator_logger.addHandler(h)
         clean_acervator_logger.warning("the triggering record")
         h.flush()
-        assert base.read_text(encoding="utf-8").strip() == (
-            "the triggering record")
+        assert base.read_text(encoding="utf-8").strip() == ("the triggering record")
         assert (tmp_path / "system.log.1").read_bytes() == b"z" * 5000
 
-    def test_a_full_ladder_still_rolls(self, tmp_path,
-                                       clean_acervator_logger):
+    def test_a_full_ladder_still_rolls(self, tmp_path, clean_acervator_logger):
         """THE .4 -> .5 CONDITION.
 
         Every backup slot occupied, then a forced rollover. This is the
@@ -191,8 +194,9 @@ class TestTheRolloverBoundary:
             before[i] = p.read_bytes()
         base.write_bytes(b"z" * 5000)
 
-        h = SizeBoundedFileHandler(base, maxBytes=4096, backupCount=5,
-                                   encoding="utf-8", errors="replace")
+        h = SizeBoundedFileHandler(
+            base, maxBytes=4096, backupCount=5, encoding="utf-8", errors="replace"
+        )
         h.setFormatter(logging.Formatter("%(message)s"))
         clean_acervator_logger.setLevel(logging.DEBUG)
         clean_acervator_logger.addHandler(h)
@@ -202,11 +206,11 @@ class TestTheRolloverBoundary:
         assert (tmp_path / "system.log.1").read_bytes() == b"z" * 5000
         for i in range(1, 5):
             assert (tmp_path / ("system.log.%d" % (i + 1))).read_bytes() == (
-                before[i]), "slot %d did not shift to %d" % (i, i + 1)
+                before[i]
+            ), "slot %d did not shift to %d" % (i, i + 1)
         assert _slots(base) == [1, 2, 3, 4, 5]
         assert not (tmp_path / "system.log.6").exists()
-        assert base.read_text(encoding="utf-8").strip() == (
-            "crosses a full ladder")
+        assert base.read_text(encoding="utf-8").strip() == ("crosses a full ladder")
 
     def test_the_rollover_is_not_the_stdlib_one(self):
         """A NAMED, DELIBERATE OVERRIDE.
@@ -218,11 +222,9 @@ class TestTheRolloverBoundary:
         primitive. Overriding `doRollover` is the only place it is
         reachable, and this asserts the override is still in place.
         """
-        assert (SizeBoundedFileHandler.doRollover
-                is not RotatingFileHandler.doRollover)
+        assert SizeBoundedFileHandler.doRollover is not RotatingFileHandler.doRollover
 
-    def test_a_custom_rotator_is_still_honoured(self, tmp_path,
-                                                clean_acervator_logger):
+    def test_a_custom_rotator_is_still_honoured(self, tmp_path, clean_acervator_logger):
         """Overriding doRollover must not silently disable the hook it
         bypasses — including for the .4 -> .5 step, which the stdlib
         never routed through it."""
@@ -235,8 +237,9 @@ class TestTheRolloverBoundary:
         for i in range(1, 6):
             (tmp_path / ("system.log.%d" % i)).write_bytes(b"x")
         base.write_bytes(b"z" * 5000)
-        h = SizeBoundedFileHandler(base, maxBytes=4096, backupCount=5,
-                                   encoding="utf-8", errors="replace")
+        h = SizeBoundedFileHandler(
+            base, maxBytes=4096, backupCount=5, encoding="utf-8", errors="replace"
+        )
         h.rotator = rotator
         h.setFormatter(logging.Formatter("%(message)s"))
         clean_acervator_logger.setLevel(logging.DEBUG)
@@ -251,7 +254,8 @@ class TestTheRolloverBoundary:
 
 class TestAFailedRolloverIsSurvivable:
     def test_a_failed_rollover_does_not_kill_the_handler(
-            self, tmp_path, clean_acervator_logger):
+        self, tmp_path, clean_acervator_logger
+    ):
         """THE SILENT-DEATH CASE.
 
         The stdlib closes the stream, shifts, then reopens. If a shift
@@ -269,8 +273,9 @@ class TestAFailedRolloverIsSurvivable:
         def broken(source, dest):
             raise OSError(32, "destination is held open by another process")
 
-        h = SizeBoundedFileHandler(base, maxBytes=4096, backupCount=5,
-                                   encoding="utf-8", errors="replace")
+        h = SizeBoundedFileHandler(
+            base, maxBytes=4096, backupCount=5, encoding="utf-8", errors="replace"
+        )
         h.rotator = broken
         h.setFormatter(logging.Formatter("%(message)s"))
         clean_acervator_logger.setLevel(logging.DEBUG)
@@ -283,11 +288,13 @@ class TestAFailedRolloverIsSurvivable:
 
         assert not h.stream.closed, "the handler was left holding a dead stream"
         text = base.read_text(encoding="utf-8")
-        assert "after the broken rollover" in text, (
-            "the handler went silent after one failed rollover")
+        assert (
+            "after the broken rollover" in text
+        ), "the handler went silent after one failed rollover"
 
     def test_a_failed_REOPEN_does_not_silence_the_log_for_ever(
-            self, tmp_path, clean_acervator_logger):
+        self, tmp_path, clean_acervator_logger
+    ):
         """THE SILENT-DEATH CASE THE ``finally`` DID NOT COVER.
 
         The test above injects the fault into the SHIFT, which the
@@ -318,8 +325,9 @@ class TestAFailedRolloverIsSurvivable:
         base = tmp_path / "system.log"
         base.write_bytes(b"z" * 5000)
 
-        h = SizeBoundedFileHandler(base, maxBytes=4096, backupCount=5,
-                                   encoding="utf-8", errors="replace")
+        h = SizeBoundedFileHandler(
+            base, maxBytes=4096, backupCount=5, encoding="utf-8", errors="replace"
+        )
         h.setFormatter(logging.Formatter("%(message)s"))
 
         real_open = h._open
@@ -337,15 +345,18 @@ class TestAFailedRolloverIsSurvivable:
         clean_acervator_logger.addHandler(h)
 
         clean_acervator_logger.warning("during the failed reopen")
-        assert fired, ("the transient never fired, so this test proved "
-                       "nothing about a failed reopen")
+        assert fired, (
+            "the transient never fired, so this test proved "
+            "nothing about a failed reopen"
+        )
         # THE PROPERTY. Not "a stream exists" -- a CLOSED stream also
         # exists, and that is exactly the bug. The slot must be empty,
         # because an empty slot is what makes shouldRollover reopen.
         assert h.stream is None, (
             "doRollover left a closed file object bound to self.stream; "
             "shouldRollover only reopens when it is None, so every later "
-            "record dies in handleError and the log is silent for ever")
+            "record dies in handleError and the log is silent for ever"
+        )
 
         clean_acervator_logger.warning("after the failed reopen")
         clean_acervator_logger.warning("and the one after that")
@@ -354,14 +365,16 @@ class TestAFailedRolloverIsSurvivable:
         assert h.stream is not None and not h.stream.closed
         assert base.is_file(), (
             "the rollover moved the current file to .1 and never "
-            "recreated it, so there is no log to read")
+            "recreated it, so there is no log to read"
+        )
         text = base.read_text(encoding="utf-8")
         assert "after the failed reopen" in text
         assert "and the one after that" in text
         assert text.strip(), "the current file is empty"
 
     def test_the_handler_can_still_be_shut_down_after_a_failed_reopen(
-            self, tmp_path, clean_acervator_logger):
+        self, tmp_path, clean_acervator_logger
+    ):
         """``FileHandler.close`` flushes, and ``flush`` touches the
         stream. A handler holding a closed file object could therefore
         not even be closed: both raised ValueError, measured. Shutdown
@@ -369,8 +382,9 @@ class TestAFailedRolloverIsSurvivable:
         its own loss and not merely untidy."""
         base = tmp_path / "system.log"
         base.write_bytes(b"z" * 5000)
-        h = SizeBoundedFileHandler(base, maxBytes=4096, backupCount=5,
-                                   encoding="utf-8", errors="replace")
+        h = SizeBoundedFileHandler(
+            base, maxBytes=4096, backupCount=5, encoding="utf-8", errors="replace"
+        )
         h.setFormatter(logging.Formatter("%(message)s"))
         real_open = h._open
         fired: list = []
@@ -387,32 +401,30 @@ class TestAFailedRolloverIsSurvivable:
         clean_acervator_logger.warning("during the failed reopen")
         assert fired
 
-        h.flush()          # must not raise
+        h.flush()  # must not raise
         clean_acervator_logger.removeHandler(h)
-        h.close()          # must not raise
+        h.close()  # must not raise
 
 
 class TestRotationKeepsTheFileReadable:
-    def test_every_slot_stays_whole_utf8_text(self, tmp_path,
-                                              clean_acervator_logger):
+    def test_every_slot_stays_whole_utf8_text(self, tmp_path, clean_acervator_logger):
         """The only reader of system.log is the operator, in an editor.
         Nothing in src/, tools/, main.py or acervator_watchdog.py opens
         it: live_log_reader — the single sanctioned reader of the live
         log root — reads only trade/. So "does not break a reader" means
         every rotated file is still whole, decodable lines."""
         base = tmp_path / "system.log"
-        h = SizeBoundedFileHandler(base, maxBytes=4096, backupCount=5,
-                                   encoding="utf-8", errors="replace")
+        h = SizeBoundedFileHandler(
+            base, maxBytes=4096, backupCount=5, encoding="utf-8", errors="replace"
+        )
         h.setFormatter(logging.Formatter("%(message)s"))
         clean_acervator_logger.setLevel(logging.DEBUG)
         clean_acervator_logger.addHandler(h)
         for i in range(400):
-            clean_acervator_logger.warning(
-                "arrow → dash — record-%05d" % i)
+            clean_acervator_logger.warning("arrow → dash — record-%05d" % i)
         h.flush()
         checked = 0
-        for name in [base.name] + ["%s.%d" % (base.name, i)
-                                   for i in range(1, 6)]:
+        for name in [base.name] + ["%s.%d" % (base.name, i) for i in range(1, 6)]:
             p = tmp_path / name
             if not p.is_file():
                 continue
@@ -426,15 +438,17 @@ class TestRotationKeepsTheFileReadable:
 
 class TestUnderLoad:
     def test_eight_threads_across_many_rollovers_lose_nothing(
-            self, tmp_path, clean_acervator_logger):
+        self, tmp_path, clean_acervator_logger
+    ):
         """The handler is reachable from bot threads, ccxt worker
         threads and the GUI thread at once. `logging.Handler.handle`
         serialises `emit` on the handler's own lock, so rotation cannot
         interleave with an append — this asserts that rather than
         assuming it."""
         base = tmp_path / "system.log"
-        h = SizeBoundedFileHandler(base, maxBytes=8192, backupCount=5,
-                                   encoding="utf-8", errors="replace")
+        h = SizeBoundedFileHandler(
+            base, maxBytes=8192, backupCount=5, encoding="utf-8", errors="replace"
+        )
         h.setFormatter(logging.Formatter("%(message)s"))
         clean_acervator_logger.setLevel(logging.DEBUG)
         clean_acervator_logger.addHandler(h)
@@ -443,8 +457,7 @@ class TestUnderLoad:
             for i in range(150):
                 clean_acervator_logger.warning("t%02d-r%05d" % (tid, i))
 
-        threads = [threading.Thread(target=worker, args=(t,))
-                   for t in range(8)]
+        threads = [threading.Thread(target=worker, args=(t,)) for t in range(8)]
         for t in threads:
             t.start()
         for t in threads:

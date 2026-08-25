@@ -33,6 +33,7 @@ the question the inference cannot. `max_adoptable_usd` is that
 declaration, defaulting to `target_balance`: a bot asked to hold $25 has
 no business claiming $500 because it happened to be there.
 """
+
 from __future__ import annotations
 
 import sys
@@ -85,6 +86,7 @@ class TestTheDefaultIsTargetBalance:
 
     def test_the_field_exists_on_botconfig(self):
         from src.trading.bot_container import BotConfig
+
         assert hasattr(BotConfig, "max_adoptable_usd")
         assert BotConfig.max_adoptable_usd == 0.0
 
@@ -135,8 +137,7 @@ class TestTheOperatorsSurplusIsWithheld:
 
 class TestItIsWiredIntoAdoption:
     def test_the_adoption_site_applies_the_cap(self):
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(
-            encoding="utf-8")
+        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
         assert "max_adoptable_usd" in src
         assert "ADOPTION CAPPED" in src
         assert "bot.01.003.postcondition.adoption_capped" in src
@@ -144,18 +145,16 @@ class TestItIsWiredIntoAdoption:
     def test_the_cap_is_applied_before_the_lot_is_built(self):
         """Order matters: capping after `_main_lots` was written would
         record the uncapped position and then contradict it."""
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(
-            encoding="utf-8")
+        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
         i_cap = src.index("_cap_usd = float(getattr(")
-        i_lot = src.index('self._main_lots = [{')
+        i_lot = src.index("self._main_lots = [{")
         assert i_cap < i_lot, "cap must precede lot construction"
 
     def test_the_emitter_reports_what_was_withheld(self):
         """`expected` is what the exchange offered, `actual` what was
         taken, so ok=False marks every bot holding operator surplus."""
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(
-            encoding="utf-8")
-        blk = src[src.index("bot.01.003.postcondition.adoption_capped"):][:600]
+        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        blk = src[src.index("bot.01.003.postcondition.adoption_capped") :][:600]
         assert "withheld_units" in blk
         assert "cap_usd" in blk
 
@@ -164,8 +163,7 @@ class TestTheOperatorIsTold:
     def test_the_log_names_the_lever(self):
         """A cap the operator cannot find is a cap they will report as
         a bug."""
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(
-            encoding="utf-8")
-        blk = src[src.index("ADOPTION CAPPED"):][:900]
+        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        blk = src[src.index("ADOPTION CAPPED") :][:900]
         assert "max_adoptable_usd" in blk
         assert "unmanaged" in blk

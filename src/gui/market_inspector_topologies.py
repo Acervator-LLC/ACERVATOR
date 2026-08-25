@@ -21,6 +21,7 @@ Both classes are Qt widgets, so this module is import-guarded on
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,11 +32,23 @@ logger = logging.getLogger("acervator.topology_proposals_gui")
 
 try:
     from PySide6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-        QGroupBox, QScrollArea, QFrame, QDialog, QSizePolicy,
-        QTreeWidget, QTreeWidgetItem, QHeaderView, QMessageBox,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QPushButton,
+        QGroupBox,
+        QScrollArea,
+        QFrame,
+        QDialog,
+        QSizePolicy,
+        QTreeWidget,
+        QTreeWidgetItem,
+        QHeaderView,
+        QMessageBox,
     )
     from PySide6.QtCore import Qt, QTimer, Signal
+
     _HAS_QT = True
 except ImportError:  # pragma: no cover - GUI-only guard
     _HAS_QT = False
@@ -46,7 +59,7 @@ DISMISS_TTL_SECONDS: int = 24 * 60 * 60  # design doc § 10 answer 3
 # Older builds simply ignore an unknown key, so this is additive and
 # rolls back cleanly.
 DISMISS_SETTINGS_KEY: str = "topology_dismissed_proposals"
-AUTO_REFRESH_MS: int = 10 * 60 * 1000    # 10 min
+AUTO_REFRESH_MS: int = 10 * 60 * 1000  # 10 min
 SCORE_HIGH: float = 80.0
 SCORE_MID: float = 50.0
 
@@ -87,14 +100,14 @@ if _HAS_QT:
         adoptClicked = Signal(dict)  # emits the proposal on Adopt
 
         def __init__(
-            self, proposal: dict[str, Any],
+            self,
+            proposal: dict[str, Any],
             parent: Optional[QWidget] = None,
             force_adopt_disabled: bool = False,
         ) -> None:
             super().__init__(parent)
             self._proposal = dict(proposal or {})
-            self.setWindowTitle(
-                f"Preview: {self._proposal.get('title', 'topology')}")
+            self.setWindowTitle(f"Preview: {self._proposal.get('title', 'topology')}")
             self.setMinimumSize(720, 460)
 
             root = QVBoxLayout(self)
@@ -109,11 +122,11 @@ if _HAS_QT:
             header.addStretch()
             archetype = self._proposal.get("archetype", "")
             score = float(self._proposal.get("score", 0.0))
-            badge = QLabel(
-                f" {_archetype_label(archetype)}  ·  score {score:.0f} ")
+            badge = QLabel(f" {_archetype_label(archetype)}  ·  score {score:.0f} ")
             badge.setStyleSheet(
                 f"background-color: {_score_color(score)}; color: black; "
-                "padding: 2px 8px; border-radius: 8px; font-weight: bold;")
+                "padding: 2px 8px; border-radius: 8px; font-weight: bold;"
+            )
             header.addWidget(badge)
             root.addLayout(header)
 
@@ -125,31 +138,35 @@ if _HAS_QT:
             bots_v = QVBoxLayout(bots_box)
             bots_tree = QTreeWidget(bots_box)
             bots_tree.setColumnCount(4)
-            bots_tree.setHeaderLabels(
-                ["Asset", "Role", "Symbol", "Status"])
+            bots_tree.setHeaderLabels(["Asset", "Role", "Symbol", "Status"])
             bots_tree.setToolTip(
                 "Bots involved in this topology proposal — EXISTING "
                 "means the bot is already live; WILL CREATE means "
                 "adopting will open the Bot Wizard for a new bot at "
-                "the shown target USD.")
+                "the shown target USD."
+            )
             bots_tree.setRootIsDecorated(False)
             bots_tree.setAlternatingRowColors(True)
             for b in self._proposal.get("bots", []):
                 existing_id = str(b.get("existing_bot_id", "") or "")
-                status = ("EXISTING" if existing_id
-                          else f"WILL CREATE (${b.get('suggested_target_usd', 0):.0f})")
-                item = QTreeWidgetItem([
-                    str(b.get("asset", "")),
-                    str(b.get("role", "")),
-                    str(b.get("symbol", "")),
-                    status,
-                ])
+                status = (
+                    "EXISTING"
+                    if existing_id
+                    else f"WILL CREATE (${b.get('suggested_target_usd', 0):.0f})"
+                )
+                item = QTreeWidgetItem(
+                    [
+                        str(b.get("asset", "")),
+                        str(b.get("role", "")),
+                        str(b.get("symbol", "")),
+                        status,
+                    ]
+                )
                 if not existing_id:
                     for col in range(4):
                         item.setForeground(col, Qt.yellow)
                 bots_tree.addTopLevelItem(item)
-            bots_tree.header().setSectionResizeMode(
-                QHeaderView.ResizeToContents)
+            bots_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
             bots_v.addWidget(bots_tree)
             body.addWidget(bots_box, 1)
 
@@ -157,39 +174,44 @@ if _HAS_QT:
             wires_v = QVBoxLayout(wires_box)
             wires_tree = QTreeWidget(wires_box)
             wires_tree.setColumnCount(4)
-            wires_tree.setHeaderLabels(
-                ["Source", "Target", "Pct", "Rationale"])
+            wires_tree.setHeaderLabels(["Source", "Target", "Pct", "Rationale"])
             wires_tree.setToolTip(
                 "Wires the Adopt handoff will create between the bots "
                 "above. Percentages are the operator's Rate spinbox "
-                "equivalent (0-100).")
+                "equivalent (0-100)."
+            )
             wires_tree.setRootIsDecorated(False)
             wires_tree.setAlternatingRowColors(True)
             for w in self._proposal.get("wires", []):
-                item = QTreeWidgetItem([
-                    str(w.get("source_asset", "")),
-                    str(w.get("target_asset", "")),
-                    f"{float(w.get('pct', 0.0)):.1f}%",
-                    str(w.get("rationale", "")),
-                ])
+                item = QTreeWidgetItem(
+                    [
+                        str(w.get("source_asset", "")),
+                        str(w.get("target_asset", "")),
+                        f"{float(w.get('pct', 0.0)):.1f}%",
+                        str(w.get("rationale", "")),
+                    ]
+                )
                 wires_tree.addTopLevelItem(item)
-            wires_tree.header().setSectionResizeMode(
-                QHeaderView.ResizeToContents)
+            wires_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
             wires_v.addWidget(wires_tree)
             body.addWidget(wires_box, 1)
             root.addLayout(body, 1)
 
             # --- Adopt summary + notes -------------------------------
             new_bots = sum(
-                1 for b in self._proposal.get("bots", [])
-                if not b.get("existing_bot_id"))
+                1
+                for b in self._proposal.get("bots", [])
+                if not b.get("existing_bot_id")
+            )
             new_budget = sum(
                 float(b.get("suggested_target_usd", 0.0))
                 for b in self._proposal.get("bots", [])
-                if not b.get("existing_bot_id"))
+                if not b.get("existing_bot_id")
+            )
             summary = QLabel(
                 f"<i>New bots to create: {new_bots}  ·  "
-                f"target capital: ${new_budget:,.0f}</i>")
+                f"target capital: ${new_budget:,.0f}</i>"
+            )
             summary.setStyleSheet("color: #ccc;")
             root.addWidget(summary)
             for note in self._proposal.get("adopt_notes", []):
@@ -208,13 +230,13 @@ if _HAS_QT:
             self._adopt_btn = QPushButton("Adopt")
             self._adopt_btn.setEnabled(not force_adopt_disabled)
             if force_adopt_disabled:
-                self._adopt_btn.setToolTip(
-                    "Adopt is disabled (test override).")
+                self._adopt_btn.setToolTip("Adopt is disabled (test override).")
             else:
                 self._adopt_btn.setToolTip(
                     "Walk the Bot Wizard for each new bot, then draw "
                     "the wires listed above. Cancelling any wizard "
-                    "aborts the entire adoption.")
+                    "aborts the entire adoption."
+                )
             self._adopt_btn.clicked.connect(self._on_adopt)
             btn_row.addWidget(self._adopt_btn)
             root.addLayout(btn_row)
@@ -222,7 +244,6 @@ if _HAS_QT:
         def _on_adopt(self) -> None:
             self.adoptClicked.emit(self._proposal)
             self.accept()
-
 
     class _ProposalCard(QFrame):
         """One card in the right-pane list.
@@ -235,7 +256,8 @@ if _HAS_QT:
         dismissClicked = Signal(str)
 
         def __init__(
-            self, proposal: dict[str, Any],
+            self,
+            proposal: dict[str, Any],
             parent: Optional[QWidget] = None,
         ) -> None:
             super().__init__(parent)
@@ -244,9 +266,9 @@ if _HAS_QT:
             self.setFrameShadow(QFrame.Raised)
             self.setStyleSheet(
                 "_ProposalCard { border: 1px solid #333; "
-                "border-radius: 6px; margin: 2px; padding: 4px; }")
-            self.setSizePolicy(
-                QSizePolicy.Expanding, QSizePolicy.Preferred)
+                "border-radius: 6px; margin: 2px; padding: 4px; }"
+            )
+            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
             root = QVBoxLayout(self)
             root.setContentsMargins(8, 6, 8, 6)
@@ -261,18 +283,20 @@ if _HAS_QT:
             badge.setStyleSheet(
                 f"background-color: {_score_color(score)}; color: black; "
                 "padding: 1px 6px; border-radius: 6px; "
-                "font-weight: bold; font-size: 11px;")
+                "font-weight: bold; font-size: 11px;"
+            )
             top.addWidget(badge)
             root.addLayout(top)
 
             n_assets = len(proposal.get("assets", []))
             n_wires = len(proposal.get("wires", []))
             n_new = sum(
-                1 for b in proposal.get("bots", [])
-                if not b.get("existing_bot_id"))
+                1 for b in proposal.get("bots", []) if not b.get("existing_bot_id")
+            )
             meta_lbl = QLabel(
                 f"score {score:.0f}  •  {n_assets} assets  •  "
-                f"{n_wires} wires  •  {n_new} new bot(s)")
+                f"{n_wires} wires  •  {n_new} new bot(s)"
+            )
             meta_lbl.setStyleSheet("color: #888; font-size: 11px;")
             root.addWidget(meta_lbl)
 
@@ -281,19 +305,20 @@ if _HAS_QT:
             preview_btn = QPushButton("Preview")
             preview_btn.setToolTip(
                 "Open the Preview modal for this proposal — shows "
-                "the bots + wires that would be created.")
+                "the bots + wires that would be created."
+            )
             preview_btn.clicked.connect(
-                lambda: self.previewClicked.emit(self._proposal["id"]))
+                lambda: self.previewClicked.emit(self._proposal["id"])
+            )
             btns.addWidget(preview_btn)
             dismiss_btn = QPushButton("Dismiss")
-            dismiss_btn.setToolTip(
-                "Suppress this proposal for 24 hours.")
+            dismiss_btn.setToolTip("Suppress this proposal for 24 hours.")
             dismiss_btn.setStyleSheet("color: #b66;")
             dismiss_btn.clicked.connect(
-                lambda: self.dismissClicked.emit(self._proposal["id"]))
+                lambda: self.dismissClicked.emit(self._proposal["id"])
+            )
             btns.addWidget(dismiss_btn)
             root.addLayout(btns)
-
 
     class MarketInspectorTopologies(QWidget):
         """Right-pane widget: proposal list + refresh + dismiss cache.
@@ -331,14 +356,13 @@ if _HAS_QT:
             top_row = QHBoxLayout()
             self._refresh_btn = QPushButton("Refresh proposals")
             self._refresh_btn.setToolTip(
-                "Rerun topology detectors on current market state.")
+                "Rerun topology detectors on current market state."
+            )
             self._refresh_btn.clicked.connect(self.refresh)
             top_row.addWidget(self._refresh_btn)
             top_row.addStretch()
-            self._status_lbl = QLabel(
-                "No proposal source wired yet.")
-            self._status_lbl.setStyleSheet(
-                "color: #aaa; font-size: 11px;")
+            self._status_lbl = QLabel("No proposal source wired yet.")
+            self._status_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
             top_row.addWidget(self._status_lbl)
             layout.addLayout(top_row)
 
@@ -356,8 +380,8 @@ if _HAS_QT:
             layout.addWidget(self._list_group, 1)
 
             footer = QLabel(
-                "Auto-refresh: every 10 min  ·  Adopt: live "
-                "(Bot Wizard handoff)")
+                "Auto-refresh: every 10 min  ·  Adopt: live " "(Bot Wizard handoff)"
+            )
             footer.setStyleSheet("color: #666; font-size: 10px;")
             layout.addWidget(footer)
 
@@ -368,7 +392,8 @@ if _HAS_QT:
 
         # ── external API ─────────────────────────────────────────────
         def set_proposal_source(
-            self, getter: Callable[[], list[dict]],
+            self,
+            getter: Callable[[], list[dict]],
         ) -> None:
             self._proposal_source = getter
             self._status_lbl.setText("Ready — press Refresh.")
@@ -379,19 +404,17 @@ if _HAS_QT:
             try:
                 raw = self._proposal_source() or []
             except Exception as exc:  # noqa: BLE001 - detector surface
-                logger.exception(
-                    "topology proposals refresh failed: %s", exc)
+                logger.exception("topology proposals refresh failed: %s", exc)
                 self._status_lbl.setText(f"Detector error: {exc}")
                 return
             now = time.time()
             self._sweep_dismissed(now)
-            self._proposals = [
-                p for p in raw
-                if p.get("id") not in self._dismissed]
+            self._proposals = [p for p in raw if p.get("id") not in self._dismissed]
             self._render()
             self._status_lbl.setText(
                 f"{len(self._proposals)} proposal(s); "
-                f"{len(self._dismissed)} dismissed")
+                f"{len(self._dismissed)} dismissed"
+            )
 
         def current_proposals(self) -> list:
             """The non-dismissed proposals currently on display.
@@ -426,13 +449,13 @@ if _HAS_QT:
             # lose the dismissal on a crash, which is precisely when the
             # operator least wants the card back.
             self._persist_dismissed()
-            self._proposals = [
-                p for p in self._proposals
-                if p.get("id") != proposal_id]
+            self._proposals = [p for p in self._proposals if p.get("id") != proposal_id]
             self._render()
 
         def is_dismissed(
-            self, proposal_id: str, now: Optional[float] = None,
+            self,
+            proposal_id: str,
+            now: Optional[float] = None,
         ) -> bool:
             _now = time.time() if now is None else now
             expiry = self._dismissed.get(proposal_id)
@@ -473,12 +496,15 @@ if _HAS_QT:
             except Exception as exc:  # R28-OK: a bad store must not break the pane
                 logger.warning(
                     "topology dismissals could not be loaded (%s); "
-                    "continuing with an empty cache", exc)
+                    "continuing with an empty cache",
+                    exc,
+                )
                 return
             if not isinstance(raw, dict):
                 logger.warning(
                     "topology dismissals were %s, not a dict; ignoring",
-                    type(raw).__name__)
+                    type(raw).__name__,
+                )
                 return
             now = time.time()
             loaded = 0
@@ -491,8 +517,10 @@ if _HAS_QT:
                     self._dismissed[str(pid)] = exp
                     loaded += 1
             logger.info(
-                "topology dismissals restored: %d still active of %d "
-                "persisted", loaded, len(raw))
+                "topology dismissals restored: %d still active of %d " "persisted",
+                loaded,
+                len(raw),
+            )
 
         def _persist_dismissed(self) -> None:
             """Best-effort write-through. Never raises: losing a
@@ -500,12 +528,13 @@ if _HAS_QT:
             if self._dismiss_store is None:
                 return
             try:
-                self._dismiss_store.set(
-                    DISMISS_SETTINGS_KEY, dict(self._dismissed))
+                self._dismiss_store.set(DISMISS_SETTINGS_KEY, dict(self._dismissed))
             except Exception as exc:  # R28-OK: persistence is best-effort
                 logger.warning(
                     "topology dismissal could not be persisted (%s); it "
-                    "will not survive restart", exc)
+                    "will not survive restart",
+                    exc,
+                )
 
         # ── rendering ────────────────────────────────────────────────
         def _clear_cards(self) -> None:
@@ -520,7 +549,8 @@ if _HAS_QT:
             if not self._proposals:
                 empty = QLabel(
                     "No proposals right now.  Try Refresh, or wait for "
-                    "market state to shift.")
+                    "market state to shift."
+                )
                 empty.setWordWrap(True)
                 empty.setStyleSheet("color: #888; padding: 10px;")
                 self._scroll_layout.addWidget(empty)
@@ -551,18 +581,21 @@ if _HAS_QT:
             if not proposal_id:
                 return
             reply = QMessageBox.question(
-                self, "Dismiss proposal",
+                self,
+                "Dismiss proposal",
                 f"Suppress this proposal for 24 h?\n\nId: {proposal_id}",
                 QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No)
+                QMessageBox.No,
+            )
             if reply == QMessageBox.Yes:
                 self.dismiss(proposal_id)
 
 
 __all__ = [
-    "DISMISS_TTL_SECONDS", "AUTO_REFRESH_MS",
-    "SCORE_HIGH", "SCORE_MID",
+    "DISMISS_TTL_SECONDS",
+    "AUTO_REFRESH_MS",
+    "SCORE_HIGH",
+    "SCORE_MID",
 ]
 if _HAS_QT:
-    __all__.extend([
-        "TopologyPreviewDialog", "MarketInspectorTopologies"])
+    __all__.extend(["TopologyPreviewDialog", "MarketInspectorTopologies"])

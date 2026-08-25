@@ -22,6 +22,7 @@ must be observed failing on. A structural check with no plant proves
 nothing: it would report clean against a file that had never been
 gated at all.
 """
+
 from __future__ import annotations
 
 import ast
@@ -52,18 +53,16 @@ FOLD_VERDICT = "_fold_chain_result.should_fire"
 # sits ABOVE the activation call -- the check would then have reported a
 # violation that is not one.
 PRE_CHAIN_REFUSALS = {
-    "dust band (MEM-258 delta-zero short circuit)":
-        "not self._manual_fire_pending and "
-        "abs(current_value - self._target_balance) <= _dust_band_usd",
+    "dust band (MEM-258 delta-zero short circuit)": "not self._manual_fire_pending and "
+    "abs(current_value - self._target_balance) <= _dust_band_usd",
     "manual fire pending": "self._manual_fire_pending",
     "wire-stack pending (MEM-257)": "_stack_pending > 0",
     "max-cartridge": "_cartridge_pct > 0 and self._target_balance > 0",
     "detonation harvest": "getattr(self.config, 'detonation_enabled', False)",
     "zero-balance acquisition": "current_value < self._target_balance * 0.01",
     "HARD circuit breaker": "self._cb_hard_tripped",
-    "below scrumming interval":
-        "below_interval and self._fold_queue_usd == 0 and "
-        "(self._dist_accumulator == 0)",
+    "below scrumming interval": "below_interval and self._fold_queue_usd == 0 and "
+    "(self._dist_accumulator == 0)",
     "insufficient candles for TA": "not summary",
 }
 
@@ -79,22 +78,29 @@ def _read_source() -> str:
 
 def _tick(source: str) -> ast.AsyncFunctionDef:
     tree = ast.parse(source)
-    cls = next(n for n in tree.body
-               if isinstance(n, ast.ClassDef) and n.name == "ScrummingBot")
-    return next(n for n in cls.body
-                if isinstance(n, ast.AsyncFunctionDef) and n.name == "tick")
+    cls = next(
+        n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "ScrummingBot"
+    )
+    return next(
+        n for n in cls.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "tick"
+    )
 
 
 def _method(source: str, name: str) -> ast.AsyncFunctionDef:
-    return next(n for n in ast.walk(ast.parse(source))
-                if isinstance(n, ast.AsyncFunctionDef) and n.name == name)
+    return next(
+        n
+        for n in ast.walk(ast.parse(source))
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == name
+    )
 
 
 def _span(stmts: list) -> tuple[int, int] | None:
     if not stmts:
         return None
-    return (min(s.lineno for s in stmts),
-            max(getattr(s, "end_lineno", s.lineno) for s in stmts))
+    return (
+        min(s.lineno for s in stmts),
+        max(getattr(s, "end_lineno", s.lineno) for s in stmts),
+    )
 
 
 def _enclosing_tests(fn: ast.AST, lineno: int) -> list[str]:
@@ -119,9 +125,10 @@ def _enclosing_tests(fn: ast.AST, lineno: int) -> list[str]:
 
 def _call_linenos(fn: ast.AST, attr: str) -> list[int]:
     return sorted(
-        node.lineno for node in ast.walk(fn)
-        if isinstance(node, ast.Call)
-        and getattr(node.func, "attr", None) == attr)
+        node.lineno
+        for node in ast.walk(fn)
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", None) == attr
+    )
 
 
 def _called_names(fn: ast.AST) -> set[str]:
@@ -129,8 +136,7 @@ def _called_names(fn: ast.AST) -> set[str]:
     for node in ast.walk(fn):
         if not isinstance(node, ast.Call):
             continue
-        name = (getattr(node.func, "attr", None)
-                or getattr(node.func, "id", None))
+        name = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
         if isinstance(name, str):
             names.add(name)
     return names
@@ -140,8 +146,11 @@ def _ungated_calls(source: str, attr: str, verdict: str) -> list[int]:
     """Lines where `attr` is called inside `tick` without `verdict`
     among the conditions that had to hold to reach it."""
     tick = _tick(source)
-    return [ln for ln in _call_linenos(tick, attr)
-            if not any(verdict in t for t in _enclosing_tests(tick, ln))]
+    return [
+        ln
+        for ln in _call_linenos(tick, attr)
+        if not any(verdict in t for t in _enclosing_tests(tick, ln))
+    ]
 
 
 def _refusals_that_do_not_protect(source: str) -> list[str]:
@@ -162,8 +171,7 @@ def _refusals_that_do_not_protect(source: str) -> list[str]:
     returns = [n.lineno for n in ast.walk(tick) if isinstance(n, ast.Return)]
     problems: list[str] = []
     for label, guard in PRE_CHAIN_REFUSALS.items():
-        guarded = [r for r in returns
-                   if guard in _enclosing_tests(tick, r)]
+        guarded = [r for r in returns if guard in _enclosing_tests(tick, r)]
         if not guarded:
             problems.append(f"{label}: no return found under {guard!r}")
             continue
@@ -172,7 +180,8 @@ def _refusals_that_do_not_protect(source: str) -> list[str]:
                 problems.append(
                     f"{label}: return at :{r} is not between the activation "
                     f"call (:{first_activate}) and the spend call "
-                    f"(:{first_spend})")
+                    f"(:{first_spend})"
+                )
                 break
     return problems
 
@@ -185,22 +194,27 @@ def _refusals_that_do_not_protect(source: str) -> list[str]:
 def _plant_hoisted_spend(source: str) -> str:
     """THE DEFECT UNDER REPAIR: spend the tranche at the top of the tick,
     where the old code sold, instead of under the chain verdict."""
-    old = ("            await self._reconcile_stack_tranches_invisible(\n"
-           "                current_price=float(ticker.last))\n")
+    old = (
+        "            await self._reconcile_stack_tranches_invisible(\n"
+        "                current_price=float(ticker.last))\n"
+    )
     assert source.count(old) == 1, "plant anchor moved"
-    new = (old
-           + "            await self._spend_activated_stack_tranches(\n"
-             "                current_price=float(ticker.last), summary=None)\n")
+    new = (
+        old + "            await self._spend_activated_stack_tranches(\n"
+        "                current_price=float(ticker.last), summary=None)\n"
+    )
     return source.replace(old, new)
 
 
 def _plant_ungated_fold_buy(source: str) -> str:
     """A fold-side buy issued outside the fold chain's verdict."""
-    old = ("        # current_value is in USD: base_units "
-           "× quote_price × quote→USD.\n")
+    old = (
+        "        # current_value is in USD: base_units " "× quote_price × quote→USD.\n"
+    )
     assert source.count(old) == 1, "fold plant anchor moved"
     return source.replace(
-        old, "        await self._execute_buy(1.0, 1.0, None)\n" + old)
+        old, "        await self._execute_buy(1.0, 1.0, None)\n" + old
+    )
 
 
 def _plant_order_in(source: str, method_name: str) -> str:
@@ -259,8 +273,7 @@ class TestEveryPreChainRefusalPreventsTheFire:
     def test_POSITIVE_CONTROL_a_hoisted_spend_breaks_every_one(self):
         """The plant puts a spend above all nine refusals. Every one must
         be reported, or the check is reading something else."""
-        problems = _refusals_that_do_not_protect(
-            _plant_hoisted_spend(_read_source()))
+        problems = _refusals_that_do_not_protect(_plant_hoisted_spend(_read_source()))
         assert len(problems) == len(PRE_CHAIN_REFUSALS), (
             f"a spend hoisted above every refusal produced "
             f"{len(problems)} complaint(s), not {len(PRE_CHAIN_REFUSALS)}: "
@@ -274,11 +287,14 @@ class TestEveryPreChainRefusalPreventsTheFire:
         the AST, not the raw text: `ast.unparse` normalises quoting, so a
         text search misses `getattr(self.config, "detonation_enabled",
         False)` for a guard written with single quotes."""
-        tests = {ast.unparse(n.test) for n in ast.walk(_tick(_read_source()))
-                 if isinstance(n, ast.If)}
-        assert PRE_CHAIN_REFUSALS[label] in tests, (
-            f"guard for {label!r} is no longer a condition in tick()"
-        )
+        tests = {
+            ast.unparse(n.test)
+            for n in ast.walk(_tick(_read_source()))
+            if isinstance(n, ast.If)
+        }
+        assert (
+            PRE_CHAIN_REFUSALS[label] in tests
+        ), f"guard for {label!r} is no longer a condition in tick()"
 
 
 class TestStageOneIsDeliberatelyUngated:
@@ -300,8 +316,11 @@ class TestStageOneIsDeliberatelyUngated:
         The same walker, same file, on the gated fold buy."""
         source = _read_source()
         tick = _tick(source)
-        gated = [ln for ln in _call_linenos(tick, "_execute_buy")
-                 if _enclosing_tests(tick, ln)]
+        gated = [
+            ln
+            for ln in _call_linenos(tick, "_execute_buy")
+            if _enclosing_tests(tick, ln)
+        ]
         assert gated, (
             "the walker found no conditions on any _execute_buy call in "
             "tick, so its empty verdict on the activation call is void"
@@ -309,9 +328,13 @@ class TestStageOneIsDeliberatelyUngated:
 
     def test_activation_places_nothing(self):
         called = _called_names(_method(_read_source(), ACTIVATE))
-        for forbidden in ("_execute_sell", "_execute_buy",
-                          "guarded_place_order", "place_order",
-                          "create_order"):
+        for forbidden in (
+            "_execute_sell",
+            "_execute_buy",
+            "guarded_place_order",
+            "place_order",
+            "create_order",
+        ):
             assert forbidden not in called, (
                 f"stage one calls {forbidden!r} -- it would sell on ticks "
                 f"the bot refused to trade on"
@@ -327,8 +350,11 @@ class TestFoldSideGatingUnchanged:
     def test_no_execute_buy_in_tick_is_unconditional(self):
         source = _read_source()
         tick = _tick(source)
-        ungated = [ln for ln in _call_linenos(tick, "_execute_buy")
-                   if not _enclosing_tests(tick, ln)]
+        ungated = [
+            ln
+            for ln in _call_linenos(tick, "_execute_buy")
+            if not _enclosing_tests(tick, ln)
+        ]
         assert ungated == [], f"unconditional _execute_buy at {ungated}"
 
     def test_the_fold_buy_is_under_the_fold_chain_verdict(self):
@@ -336,18 +362,19 @@ class TestFoldSideGatingUnchanged:
         ungated = _ungated_calls(source, "_execute_buy", FOLD_VERDICT)
         total = len(_call_linenos(_tick(source), "_execute_buy"))
         assert total > 0, "tick no longer buys at all"
-        assert len(ungated) < total, (
-            "no _execute_buy in tick sits under the fold chain verdict"
-        )
+        assert (
+            len(ungated) < total
+        ), "no _execute_buy in tick sits under the fold chain verdict"
 
     def test_POSITIVE_CONTROL_an_unconditional_fold_buy_is_caught(self):
         planted = _plant_ungated_fold_buy(_read_source())
         tick = _tick(planted)
-        ungated = [ln for ln in _call_linenos(tick, "_execute_buy")
-                   if not _enclosing_tests(tick, ln)]
-        assert ungated, (
-            "a buy planted at tick top level was reported as gated"
-        )
+        ungated = [
+            ln
+            for ln in _call_linenos(tick, "_execute_buy")
+            if not _enclosing_tests(tick, ln)
+        ]
+        assert ungated, "a buy planted at tick top level was reported as gated"
 
 
 class TestVisibleModeUnchanged:
@@ -356,26 +383,28 @@ class TestVisibleModeUnchanged:
         which is ordinary limit-order semantics. Its reconciler must stay
         a reader: the EXCHANGE fills the resting order, not the bot."""
         called = _called_names(
-            _method(_read_source(), "_reconcile_stack_tranches_visible"))
-        for forbidden in ("_execute_sell", "_execute_buy",
-                          "guarded_place_order", "place_order",
-                          "create_order"):
-            assert forbidden not in called, (
-                f"the Visible reconciler calls {forbidden!r}"
-            )
+            _method(_read_source(), "_reconcile_stack_tranches_visible")
+        )
+        for forbidden in (
+            "_execute_sell",
+            "_execute_buy",
+            "guarded_place_order",
+            "place_order",
+            "create_order",
+        ):
+            assert (
+                forbidden not in called
+            ), f"the Visible reconciler calls {forbidden!r}"
         assert {"get_open_orders", "get_order"} <= called, (
             "positive control: the Visible reconciler no longer reads "
             "exchange state at all, so its silence proves nothing"
         )
 
     def test_POSITIVE_CONTROL_a_planted_order_is_caught(self):
-        planted = _plant_order_in(
-            _read_source(), "_reconcile_stack_tranches_visible")
-        called = _called_names(
-            _method(planted, "_reconcile_stack_tranches_visible"))
+        planted = _plant_order_in(_read_source(), "_reconcile_stack_tranches_visible")
+        called = _called_names(_method(planted, "_reconcile_stack_tranches_visible"))
         assert "guarded_place_order" in called, (
-            "the call scanner missed an order planted in the Visible "
-            "reconciler"
+            "the call scanner missed an order planted in the Visible " "reconciler"
         )
 
     def test_visible_placement_is_still_inside_the_visible_branch(self):

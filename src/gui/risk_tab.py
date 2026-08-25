@@ -14,13 +14,26 @@ logger = logging.getLogger("acervator.gui")
 
 try:
     from PySide6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-        QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox,
-        QPushButton, QGroupBox, QSplitter, QDoubleSpinBox,
-        QComboBox, QProgressBar,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QFrame,
+        QTableWidget,
+        QTableWidgetItem,
+        QHeaderView,
+        QGroupBox,
+        QSplitter,
+        QProgressBar,
     )
     from PySide6.QtCore import Qt
-    from PySide6.QtGui import QPainter, QColor, QPen, QFont  # v3.19.12 removed unused QConicalGradient
+    from PySide6.QtGui import (
+        QPainter,
+        QColor,
+        QPen,
+        QFont,
+    )  # v3.19.12 removed unused QConicalGradient
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -29,6 +42,7 @@ if _HAS_QT:
 
     class DrawdownGauge(QWidget):
         """Circular gauge showing current drawdown %."""
+
         def __init__(self, parent=None):
             super().__init__(parent)
             self.setAccessibleName("Drawdown Gauge")
@@ -81,6 +95,7 @@ if _HAS_QT:
 
     class ExposureBar(QFrame):
         """Horizontal bar showing exposure breakdown."""
+
         def __init__(self, label: str, parent=None):
             super().__init__(parent)
             self.setAccessibleName("Exposure Bar")
@@ -95,7 +110,8 @@ if _HAS_QT:
             self._bar.setStyleSheet(
                 "QProgressBar { background: #1a1a2e; border: 1px solid #2a2a3f; "
                 "border-radius: 3px; height: 18px; color: #e0e0f0; font-size: 10px; }"
-                "QProgressBar::chunk { background: #00aaff; border-radius: 2px; }")
+                "QProgressBar::chunk { background: #00aaff; border-radius: 2px; }"
+            )
             self._value_label = QLabel("$0")
             self._value_label.setMinimumWidth(70)
             self._value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -111,7 +127,8 @@ if _HAS_QT:
             self._bar.setStyleSheet(
                 f"QProgressBar {{ background: #1a1a2e; border: 1px solid #2a2a3f; "
                 f"border-radius: 3px; height: 18px; color: #e0e0f0; font-size: 10px; }}"
-                f"QProgressBar::chunk {{ background: {color}; border-radius: 2px; }}")
+                f"QProgressBar::chunk {{ background: {color}; border-radius: 2px; }}"
+            )
 
     class RiskTab(QWidget):
         """Risk & Capital Management tab."""
@@ -150,7 +167,8 @@ if _HAS_QT:
             self._lbl_bots.setStyleSheet("color: #aaa; font-size: 12px;")
             self._lbl_status = QLabel("STATUS: MONITORING")
             self._lbl_status.setStyleSheet(
-                "color: #00ffcc; font-size: 14px; font-weight: bold;")
+                "color: #00ffcc; font-size: 14px; font-weight: bold;"
+            )
             metrics.addWidget(self._lbl_status)
             metrics.addWidget(self._lbl_peak)
             metrics.addWidget(self._lbl_exposure)
@@ -163,7 +181,8 @@ if _HAS_QT:
             asset_group = QGroupBox("Asset Exposure")
             asset_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }")
+                "border-radius: 6px; color: #00ffcc; }"
+            )
             self._asset_layout = QVBoxLayout(asset_group)
             self._asset_bars: dict[str, ExposureBar] = {}
             left_layout.addWidget(asset_group)
@@ -172,7 +191,8 @@ if _HAS_QT:
             exch_group = QGroupBox("Exchange Exposure")
             exch_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }")
+                "border-radius: 6px; color: #00ffcc; }"
+            )
             self._exch_layout = QVBoxLayout(exch_group)
             self._exch_bars: dict[str, ExposureBar] = {}
             left_layout.addWidget(exch_group)
@@ -189,14 +209,18 @@ if _HAS_QT:
             alerts_group = QGroupBox("Risk Alerts")
             alerts_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }")
+                "border-radius: 6px; color: #00ffcc; }"
+            )
             alerts_layout = QVBoxLayout(alerts_group)
 
             self._alerts_table = QTableWidget()
             self._alerts_table.setColumnCount(5)
-            self._alerts_table.setHorizontalHeaderLabels([
-                "Time", "Severity", "Rule", "Message", "Action"])
-            self._alerts_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            self._alerts_table.setHorizontalHeaderLabels(
+                ["Time", "Severity", "Rule", "Message", "Action"]
+            )
+            self._alerts_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.Stretch
+            )
             self._alerts_table.setAlternatingRowColors(True)
             self._alerts_table.setEditTriggers(QTableWidget.NoEditTriggers)
             self._alerts_table.verticalHeader().setVisible(False)
@@ -207,14 +231,18 @@ if _HAS_QT:
             rules_group = QGroupBox("Risk Rules")
             rules_group.setStyleSheet(
                 "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }")
+                "border-radius: 6px; color: #00ffcc; }"
+            )
             rules_layout = QVBoxLayout(rules_group)
 
             self._rules_table = QTableWidget()
             self._rules_table.setColumnCount(4)
-            self._rules_table.setHorizontalHeaderLabels([
-                "Rule", "Threshold", "Action", "Enabled"])
-            self._rules_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            self._rules_table.setHorizontalHeaderLabels(
+                ["Rule", "Threshold", "Action", "Enabled"]
+            )
+            self._rules_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.Stretch
+            )
             self._rules_table.setAlternatingRowColors(True)
             self._rules_table.verticalHeader().setVisible(False)
             rules_layout.addWidget(self._rules_table)
@@ -239,21 +267,25 @@ if _HAS_QT:
             # Key metrics
             self._lbl_peak.setText(f"Peak P/L: ${status.get('peak_pnl', 0):,.4f}")
             self._lbl_exposure.setText(
-                f"Total Exposure: ${status.get('total_exposure', 0):,.2f}")
+                f"Total Exposure: ${status.get('total_exposure', 0):,.2f}"
+            )
 
             critical = status.get("critical_alerts", 0)
             if critical > 0:
                 self._lbl_status.setText("STATUS: CRITICAL")
                 self._lbl_status.setStyleSheet(
-                    "color: #ff3366; font-size: 14px; font-weight: bold;")
+                    "color: #ff3366; font-size: 14px; font-weight: bold;"
+                )
             elif status.get("alerts_1h", 0) > 0:
                 self._lbl_status.setText("STATUS: WARNING")
                 self._lbl_status.setStyleSheet(
-                    "color: #ffaa00; font-size: 14px; font-weight: bold;")
+                    "color: #ffaa00; font-size: 14px; font-weight: bold;"
+                )
             else:
                 self._lbl_status.setText("STATUS: MONITORING")
                 self._lbl_status.setStyleSheet(
-                    "color: #00ffcc; font-size: 14px; font-weight: bold;")
+                    "color: #00ffcc; font-size: 14px; font-weight: bold;"
+                )
 
             # Update exposure bars from snapshots
             snapshots = rm.snapshots
@@ -269,7 +301,9 @@ if _HAS_QT:
                         bar = ExposureBar(asset)
                         self._asset_bars[asset] = bar
                         self._asset_layout.addWidget(bar)
-                    color = "#ff3366" if pct > 40 else "#ffaa00" if pct > 25 else "#00aaff"
+                    color = (
+                        "#ff3366" if pct > 40 else "#ffaa00" if pct > 25 else "#00aaff"
+                    )
                     self._asset_bars[asset].set_value(pct, amount, color)
 
                 # Exchange bars
@@ -279,7 +313,9 @@ if _HAS_QT:
                         bar = ExposureBar(exch.capitalize())
                         self._exch_bars[exch] = bar
                         self._exch_layout.addWidget(bar)
-                    color = "#ff3366" if pct > 60 else "#ffaa00" if pct > 40 else "#00aaff"
+                    color = (
+                        "#ff3366" if pct > 60 else "#ffaa00" if pct > 40 else "#00aaff"
+                    )
                     self._exch_bars[exch].set_value(pct, amount, color)
 
             # Alerts table
@@ -299,7 +335,11 @@ if _HAS_QT:
                     item = QTableWidgetItem(text)
                     item.setTextAlignment(Qt.AlignCenter)
                     if col == 1:
-                        color = QColor("#ff3366") if alert.severity == "critical" else QColor("#ffaa00")
+                        color = (
+                            QColor("#ff3366")
+                            if alert.severity == "critical"
+                            else QColor("#ffaa00")
+                        )
                         item.setForeground(color)
                     self._alerts_table.setItem(row, col, item)
 
@@ -317,6 +357,8 @@ if _HAS_QT:
                     item = QTableWidgetItem(text)
                     item.setTextAlignment(Qt.AlignCenter)
                     if col == 3:
-                        color = QColor("#00ff88") if rule["enabled"] else QColor("#ff3366")
+                        color = (
+                            QColor("#00ff88") if rule["enabled"] else QColor("#ff3366")
+                        )
                         item.setForeground(color)
                     self._rules_table.setItem(row, col, item)

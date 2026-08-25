@@ -32,13 +32,17 @@ import traceback
 from typing import Callable, Optional
 
 from ...core.event_bus import EventBus
-from ...trading.bot_container import BotConfig, BotManager, BotMode, make_bot_config  # noqa: F401  (BotConfig retained for type hints; construction goes through make_bot_config per v3.20.35 fitness rule)
+from ...trading.bot_container import (
+    BotConfig,
+    BotManager,
+    BotMode,
+    make_bot_config,
+)  # noqa: F401  (BotConfig retained for type hints; construction goes through make_bot_config per v3.20.35 fitness rule)
 from ...trading.scrumming_bot import ScrummingBot
 from .fleet.fleet_replay_controller import _make_sim_capital_registry
 
 from .nuclear_candle_source import NuclearCandleSource
 from .nuclear_sim_exchange import NuclearSimExchange, _tape_id_to_base
-
 
 logger = logging.getLogger("acervator.nuclear_sim")
 
@@ -81,7 +85,8 @@ class NuclearController:
         if tape_id not in candle_source.list_tapes():
             raise ValueError(
                 f"NuclearController: tape {tape_id!r} not available. "
-                f"Discovered tapes: {candle_source.list_tapes()}")
+                f"Discovered tapes: {candle_source.list_tapes()}"
+            )
         self._src = candle_source
         self._tape_id = tape_id
         self._activity_cb = activity_cb or (lambda _msg: None)
@@ -140,18 +145,21 @@ class NuclearController:
                 f"Nuclear: scout started on {self.tape_label()} "
                 f"(sim symbol={self._sim_symbol}, "
                 f"seed=${self._seed_amount:.2f}, "
-                f"world_clock={self._world_clock_ms}ms).")
+                f"world_clock={self._world_clock_ms}ms)."
+            )
             return True
         except Exception as exc:
             self._exception_count += 1
             self._last_exception = f"{type(exc).__name__}: {exc}"
             sys.stderr.write(
                 f"[NuclearController.start] {self._last_exception}\n"
-                f"{traceback.format_exc()}")
+                f"{traceback.format_exc()}"
+            )
             logger.error("NuclearController.start failed: %s", exc)
             self._log_activity(
                 f"Nuclear: start FAILED — {self._last_exception}. "
-                f"See stderr for full traceback.")
+                f"See stderr for full traceback."
+            )
             self._teardown_quiet()
             return False
 
@@ -159,8 +167,7 @@ class NuclearController:
         if not self._running and self._scout is None:
             return
         self._log_activity("Nuclear: stopping...")
-        if (self._world_clock_task is not None
-                and not self._world_clock_task.done()):
+        if self._world_clock_task is not None and not self._world_clock_task.done():
             self._world_clock_task.cancel()
         if self._scout is not None and self._scout._task is not None:
             loop = self._scout._task.get_loop()
@@ -169,7 +176,8 @@ class NuclearController:
             except Exception as exc:
                 self._log_activity(
                     f"Nuclear: scout.stop scheduling failed: "
-                    f"{type(exc).__name__}: {exc}")
+                    f"{type(exc).__name__}: {exc}"
+                )
         for unsub in self._bus_unsubs:
             try:
                 unsub()
@@ -185,18 +193,15 @@ class NuclearController:
 
     def snapshot(self) -> dict:
         """Single-call status read for the GUI panel."""
-        uptime = (time.monotonic() - self._started_at
-                  if self._running else 0.0)
+        uptime = time.monotonic() - self._started_at if self._running else 0.0
         scout_state = "—"
         scout_holdings = 0.0
         scout_target = 0.0
         if self._scout is not None:
             try:
                 scout_state = str(self._scout.state.value)
-                scout_holdings = float(getattr(
-                    self._scout, "_current_holdings", 0.0))
-                scout_target = float(getattr(
-                    self._scout, "_target_balance", 0.0))
+                scout_holdings = float(getattr(self._scout, "_current_holdings", 0.0))
+                scout_target = float(getattr(self._scout, "_target_balance", 0.0))
             except Exception as _snap_exc:  # noqa: BLE001
                 # v3.24.32 — was a silent pass. The GUI polls this on a
                 # timer; a persistent read failure showed as frozen
@@ -286,7 +291,7 @@ class NuclearController:
             try:
                 side = str(event.data.get("side", "")).lower()
                 action = str(event.data.get("action", "")).lower()
-            except Exception:   # R28-OK
+            except Exception:  # R28-OK
                 side = ""
                 action = ""
             if "sell" in side or "scrum" in action:
@@ -295,20 +300,21 @@ class NuclearController:
                 self._fold_count += 1
             self._log_activity(
                 f"sim trade.filled #{self._trade_count}: "
-                f"side={side or '?'} action={action or '?'}")
+                f"side={side or '?'} action={action or '?'}"
+            )
 
         def _on_bot_error(event):
             self._error_count += 1
             try:
                 err = str(event.data.get("error", ""))[:240]
-            except Exception:   # R28-OK
+            except Exception:  # R28-OK
                 err = ""
             self._log_activity(f"sim bot.error #{self._error_count}: {err}")
 
         def _on_bot_log(event):
             try:
                 msg = str(event.data.get("message", ""))[:240]
-            except Exception:   # R28-OK
+            except Exception:  # R28-OK
                 msg = ""
             if msg:
                 self._log_activity(f"sim bot.log: {msg}")
@@ -375,7 +381,8 @@ class NuclearController:
                 f"persists to the operator's reservation_state.json."
             ) from _crr_exc
         scout = ScrummingBot(
-            cfg, self._exchange,
+            cfg,
+            self._exchange,
             enable_phantoms=True,
             sim_mode=True,
             capital_registry=_sim_registry,
@@ -384,12 +391,12 @@ class NuclearController:
         self._sim_bot_manager.register(scout)
         self._scout = scout
 
-    def _start_async_pieces(self,
-                              loop: asyncio.AbstractEventLoop) -> None:
+    def _start_async_pieces(self, loop: asyncio.AbstractEventLoop) -> None:
         if self._scout is None:
             raise RuntimeError("scout not constructed yet")
         self._scout_task_future = asyncio.run_coroutine_threadsafe(
-            self._scout.start(), loop)
+            self._scout.start(), loop
+        )
 
         async def _world_clock():
             interval = self._world_clock_ms / 1000.0
@@ -405,16 +412,16 @@ class NuclearController:
                     self._exception_count += 1
                     self._last_exception = f"{type(exc).__name__}: {exc}"
                     sys.stderr.write(
-                        f"[NuclearController.world_clock] "
-                        f"{self._last_exception}\n")
+                        f"[NuclearController.world_clock] " f"{self._last_exception}\n"
+                    )
                     self._log_activity(
                         f"Nuclear: world-clock exception "
                         f"#{self._exception_count}: "
-                        f"{self._last_exception}")
+                        f"{self._last_exception}"
+                    )
                 await asyncio.sleep(interval)
 
-        self._world_clock_task = asyncio.run_coroutine_threadsafe(
-            _world_clock(), loop)
+        self._world_clock_task = asyncio.run_coroutine_threadsafe(_world_clock(), loop)
 
     # ─── Internal: teardown / logging ──────────────────────────────────
 
@@ -428,25 +435,21 @@ class NuclearController:
             try:
                 _mgr.detach_bus()
             except Exception as _db_exc:  # R28-OK: teardown must finish
-                logger.debug(
-                    "nuclear: manager bus detach failed: %s", _db_exc)
+                logger.debug("nuclear: manager bus detach failed: %s", _db_exc)
         for unsub in self._bus_unsubs:
             try:
                 unsub()
             except Exception as _unsub_exc:  # noqa: BLE001
-                logger.debug(
-                    "nuclear: teardown unsubscribe failed: %s", _unsub_exc)
+                logger.debug("nuclear: teardown unsubscribe failed: %s", _unsub_exc)
         self._bus_unsubs.clear()
-        if (self._world_clock_task is not None
-                and not self._world_clock_task.done()):
+        if self._world_clock_task is not None and not self._world_clock_task.done():
             try:
                 self._world_clock_task.cancel()
             except Exception as _cancel_exc:  # noqa: BLE001
                 # A world-clock task that refuses to cancel keeps
                 # advancing the tape after "stopped" — visible only as
                 # a status panel that will not settle.
-                logger.debug(
-                    "nuclear: world-clock cancel failed: %s", _cancel_exc)
+                logger.debug("nuclear: world-clock cancel failed: %s", _cancel_exc)
         self._world_clock_task = None
         self._scout = None
         self._exchange = None
@@ -457,5 +460,4 @@ class NuclearController:
         try:
             self._activity_cb(msg)
         except Exception as _sf_exc:  # noqa: BLE001
-            logger.warning(
-                "Nuclear scout teardown failed: %s", _sf_exc)
+            logger.warning("Nuclear scout teardown failed: %s", _sf_exc)

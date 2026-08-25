@@ -33,6 +33,7 @@ that used to pin the defect now pin the repair, and each says so where
 it changed. Full coverage of that hole, and of the OverflowError hole
 beside it, lives in tests/test_smart_wire_import_wires_holes.py.
 """
+
 from __future__ import annotations
 
 import logging
@@ -59,7 +60,8 @@ PIN = "topology.09.002.postcondition.wires_received"
 HEADLINE = re.compile(
     r"import accepted (\d+) of (\d+) wire row\(s\) offered; "
     r"(\d+) lost \((\d+) not a row, (\d+) had an unreadable pct, "
-    r"(\d+) had no endpoint or a pct outside 0-100\)")
+    r"(\d+) had no endpoint or a pct outside 0-100\)"
+)
 
 
 # --------------------------------------------------------------------- #
@@ -97,13 +99,19 @@ def _same_wires(got: dict, want: dict) -> bool:
 
 
 def _warnings(records) -> list[str]:
-    return [r.getMessage() for r in records
-            if r.name == LOGGER_NAME and r.levelno >= logging.WARNING]
+    return [
+        r.getMessage()
+        for r in records
+        if r.name == LOGGER_NAME and r.levelno >= logging.WARNING
+    ]
 
 
 def _infos(records) -> list[str]:
-    return [r.getMessage() for r in records
-            if r.name == LOGGER_NAME and r.levelno == logging.INFO]
+    return [
+        r.getMessage()
+        for r in records
+        if r.name == LOGGER_NAME and r.levelno == logging.INFO
+    ]
 
 
 @pytest.fixture
@@ -145,65 +153,84 @@ ROW_SHAPES = [
     ("good", [GOOD], {"A": {"B": 25.0}}, 1),
     ("good_plus_string", [GOOD, "not-a-dict"], {"A": {"B": 25.0}}, 1),
     ("good_plus_none", [GOOD, None], {"A": {"B": 25.0}}, 1),
-    ("pct_unparseable",
-     [{"source_id": "A", "target_id": "B", "pct": "abc"}], {}, 0),
+    ("pct_unparseable", [{"source_id": "A", "target_id": "B", "pct": "abc"}], {}, 0),
     ("missing_source", [{"target_id": "B", "pct": 25.0}], {}, 0),
     ("missing_target", [{"source_id": "A", "pct": 25.0}], {}, 0),
-    ("pct_zero",
-     [{"source_id": "A", "target_id": "B", "pct": 0}], {}, 0),
-    ("pct_100",
-     [{"source_id": "A", "target_id": "B", "pct": 100}],
-     {"A": {"B": 100.0}}, 1),
-    ("pct_101",
-     [{"source_id": "A", "target_id": "B", "pct": 101}], {}, 0),
-    ("pct_negative",
-     [{"source_id": "A", "target_id": "B", "pct": -1}], {}, 0),
+    ("pct_zero", [{"source_id": "A", "target_id": "B", "pct": 0}], {}, 0),
+    (
+        "pct_100",
+        [{"source_id": "A", "target_id": "B", "pct": 100}],
+        {"A": {"B": 100.0}},
+        1,
+    ),
+    ("pct_101", [{"source_id": "A", "target_id": "B", "pct": 101}], {}, 0),
+    ("pct_negative", [{"source_id": "A", "target_id": "B", "pct": -1}], {}, 0),
     # 2026-08-15 - CHANGED, and it is the whole point of that change.
     # This row used to read `{"A": {"B": nan}}, 1`: a nan pct was
     # STORED and COUNTED as an imported wire, because nan is unordered
     # and fails both `pct <= 0` and `pct > 100`. It is now refused.
-    ("pct_nan",
-     [{"source_id": "A", "target_id": "B", "pct": float("nan")}],
-     {}, 0),
-    ("pct_inf",
-     [{"source_id": "A", "target_id": "B", "pct": float("inf")}], {}, 0),
-    ("pct_neg_inf",
-     [{"source_id": "A", "target_id": "B", "pct": float("-inf")}], {}, 0),
+    ("pct_nan", [{"source_id": "A", "target_id": "B", "pct": float("nan")}], {}, 0),
+    ("pct_inf", [{"source_id": "A", "target_id": "B", "pct": float("inf")}], {}, 0),
+    (
+        "pct_neg_inf",
+        [{"source_id": "A", "target_id": "B", "pct": float("-inf")}],
+        {},
+        0,
+    ),
     # 2026-08-15 - CHANGED with the row above; `float("nan")` is the
     # same value however it is spelled in the save.
-    ("pct_nan_string",
-     [{"source_id": "A", "target_id": "B", "pct": "nan"}],
-     {}, 0),
-    ("pct_numeric_string",
-     [{"source_id": "A", "target_id": "B", "pct": "25"}],
-     {"A": {"B": 25.0}}, 1),
-    ("pct_true",
-     [{"source_id": "A", "target_id": "B", "pct": True}],
-     {"A": {"B": 1.0}}, 1),
+    ("pct_nan_string", [{"source_id": "A", "target_id": "B", "pct": "nan"}], {}, 0),
+    (
+        "pct_numeric_string",
+        [{"source_id": "A", "target_id": "B", "pct": "25"}],
+        {"A": {"B": 25.0}},
+        1,
+    ),
+    (
+        "pct_true",
+        [{"source_id": "A", "target_id": "B", "pct": True}],
+        {"A": {"B": 1.0}},
+        1,
+    ),
     # 2026-08-15 - NEW. A bare integer too wide for a double used to
     # RAISE OverflowError out of the method, taking the whole restore
     # with it; it is now a counted, named row like any other.
-    ("pct_wide_int",
-     [{"source_id": "A", "target_id": "B", "pct": int("9" * 400)}],
-     {}, 0),
-    ("pct_wide_int_representable",
-     [{"source_id": "A", "target_id": "B", "pct": int("9" * 308)}],
-     {}, 0),
-    ("pct_false",
-     [{"source_id": "A", "target_id": "B", "pct": False}], {}, 0),
-    ("duplicate_route",
-     [{"source_id": "A", "target_id": "B", "pct": 25.0},
-      {"source_id": "A", "target_id": "B", "pct": 40.0}],
-     {"A": {"B": 40.0}}, 2),
+    (
+        "pct_wide_int",
+        [{"source_id": "A", "target_id": "B", "pct": int("9" * 400)}],
+        {},
+        0,
+    ),
+    (
+        "pct_wide_int_representable",
+        [{"source_id": "A", "target_id": "B", "pct": int("9" * 308)}],
+        {},
+        0,
+    ),
+    ("pct_false", [{"source_id": "A", "target_id": "B", "pct": False}], {}, 0),
+    (
+        "duplicate_route",
+        [
+            {"source_id": "A", "target_id": "B", "pct": 25.0},
+            {"source_id": "A", "target_id": "B", "pct": 40.0},
+        ],
+        {"A": {"B": 40.0}},
+        2,
+    ),
     ("empty_list", [], {}, 0),
-    ("mixed_six_row",
-     [GOOD,
-      "not-a-dict",
-      {"source_id": "C", "target_id": "D", "pct": "abc"},
-      {"target_id": "E", "pct": 10.0},
-      {"source_id": "F", "target_id": "G", "pct": 500},
-      {"source_id": "H", "target_id": "I", "pct": 5.0}],
-     {"A": {"B": 25.0}, "H": {"I": 5.0}}, 2),
+    (
+        "mixed_six_row",
+        [
+            GOOD,
+            "not-a-dict",
+            {"source_id": "C", "target_id": "D", "pct": "abc"},
+            {"target_id": "E", "pct": 10.0},
+            {"source_id": "F", "target_id": "G", "pct": 500},
+            {"source_id": "H", "target_id": "I", "pct": 5.0},
+        ],
+        {"A": {"B": 25.0}, "H": {"I": 5.0}},
+        2,
+    ),
 ]
 
 NON_LIST_ARGS = [("dict_arg", {"source_id": "A"}), ("none_arg", None)]
@@ -222,19 +249,22 @@ class TestTheInstrumentSees:
         SmartWireManager().import_wires([GOOD])
         assert _infos(wirelog), (
             "no INFO captured on a clean import; a clean import MUST "
-            "log 'imported 1 wire(s)', so capture is blind")
+            "log 'imported 1 wire(s)', so capture is blind"
+        )
 
     def test_log_capture_sees_a_warning(self, wirelog):
         SmartWireManager().import_wires(["not-a-dict"])
         assert _warnings(wirelog), (
             "no WARNING captured on a total-loss import; capture is "
-            "blind and every silence assertion below is worthless")
+            "blind and every silence assertion below is worthless"
+        )
 
     def test_emit_capture_sees_the_pin(self, sink):
         SmartWireManager().import_wires([GOOD])
         assert sink.count(PIN) == 1, (
             "the pin did not reach the sink; the emitter assertions "
-            "below cannot distinguish 'correct' from 'never fired'")
+            "below cannot distinguish 'correct' from 'never fired'"
+        )
 
 
 # --------------------------------------------------------------------- #
@@ -249,28 +279,28 @@ class TestTheAcceptedSetIsUnchanged:
 
     @pytest.mark.parametrize(
         ("label", "payload", "want", "count"),
-        ROW_SHAPES, ids=[r[0] for r in ROW_SHAPES])
-    def test_row_shape_lands_exactly_as_before(
-            self, label, payload, want, count):
+        ROW_SHAPES,
+        ids=[r[0] for r in ROW_SHAPES],
+    )
+    def test_row_shape_lands_exactly_as_before(self, label, payload, want, count):
         mgr = SmartWireManager()
         got_n = mgr.import_wires(list(payload))
         assert got_n == count, f"{label}: returned count changed"
-        assert _same_wires(_accepted(mgr), want), (
-            f"{label}: the restored topology changed")
+        assert _same_wires(
+            _accepted(mgr), want
+        ), f"{label}: the restored topology changed"
 
-    @pytest.mark.parametrize(("label", "arg"), NON_LIST_ARGS,
-                             ids=[r[0] for r in NON_LIST_ARGS])
-    def test_non_list_argument_still_returns_zero_and_stores_nothing(
-            self, label, arg):
+    @pytest.mark.parametrize(
+        ("label", "arg"), NON_LIST_ARGS, ids=[r[0] for r in NON_LIST_ARGS]
+    )
+    def test_non_list_argument_still_returns_zero_and_stores_nothing(self, label, arg):
         mgr = SmartWireManager()
         assert mgr.import_wires(arg) == 0
         assert _accepted(mgr) == {}
 
     def test_public_reader_agrees_with_the_snapshot(self):
         mgr = SmartWireManager()
-        mgr.import_wires([GOOD,
-                          {"source_id": "H", "target_id": "I",
-                           "pct": 5.0}])
+        mgr.import_wires([GOOD, {"source_id": "H", "target_id": "I", "pct": 5.0}])
         assert mgr.get_outgoing_wires("A") == {"B": 25.0}
         assert mgr.get_outgoing_wires("H") == {"I": 5.0}
         assert mgr.get_outgoing_wires("nobody") == {}
@@ -283,42 +313,65 @@ class TestTheAcceptedSetIsUnchanged:
 # HANDED IN as; the headline must attribute it to that same bucket.
 def _pool():
     return [
-        ("accepted", lambda i: {"source_id": f"s{i}",
-                                "target_id": f"t{i}", "pct": 10.0}),
-        ("accepted", lambda i: {"source_id": f"s{i}",
-                                "target_id": f"t{i}", "pct": "20"}),
-        ("accepted", lambda i: {"source_id": f"s{i}",
-                                "target_id": f"t{i}", "pct": 100}),
+        (
+            "accepted",
+            lambda i: {"source_id": f"s{i}", "target_id": f"t{i}", "pct": 10.0},
+        ),
+        (
+            "accepted",
+            lambda i: {"source_id": f"s{i}", "target_id": f"t{i}", "pct": "20"},
+        ),
+        (
+            "accepted",
+            lambda i: {"source_id": f"s{i}", "target_id": f"t{i}", "pct": 100},
+        ),
         # 2026-08-15 - MOVED from "accepted" to "unroutable". A nan
         # pct is now refused by the range guard and reported under the
         # third cause, so the conservation check must expect it there.
-        ("unroutable", lambda i: {"source_id": f"s{i}",
-                                  "target_id": f"t{i}",
-                                  "pct": float("nan")}),
+        (
+            "unroutable",
+            lambda i: {"source_id": f"s{i}", "target_id": f"t{i}", "pct": float("nan")},
+        ),
         # 2026-08-15 - NEW. Before the repair this row made the whole
         # batch raise, so the conservation control could never have
         # contained one.
-        ("unreadable", lambda i: {"source_id": f"s{i}",
-                                  "target_id": f"t{i}",
-                                  "pct": int("9" * 400)}),
+        (
+            "unreadable",
+            lambda i: {
+                "source_id": f"s{i}",
+                "target_id": f"t{i}",
+                "pct": int("9" * 400),
+            },
+        ),
         ("malformed", lambda i: f"row-{i}-is-a-string"),
         ("malformed", lambda i: None),
         ("malformed", lambda i: [i]),
-        ("unreadable", lambda i: {"source_id": f"s{i}",
-                                  "target_id": f"t{i}", "pct": "abc"}),
-        ("unreadable", lambda i: {"source_id": f"s{i}",
-                                  "target_id": f"t{i}", "pct": []}),
+        (
+            "unreadable",
+            lambda i: {"source_id": f"s{i}", "target_id": f"t{i}", "pct": "abc"},
+        ),
+        (
+            "unreadable",
+            lambda i: {"source_id": f"s{i}", "target_id": f"t{i}", "pct": []},
+        ),
         ("unroutable", lambda i: {"target_id": f"t{i}", "pct": 10.0}),
         ("unroutable", lambda i: {"source_id": f"s{i}", "pct": 10.0}),
-        ("unroutable", lambda i: {"source_id": f"s{i}",
-                                  "target_id": f"t{i}", "pct": 0}),
-        ("unroutable", lambda i: {"source_id": f"s{i}",
-                                  "target_id": f"t{i}", "pct": 500}),
-        ("unroutable", lambda i: {"source_id": f"s{i}",
-                                  "target_id": f"t{i}", "pct": -3}),
-        ("unroutable", lambda i: {"source_id": f"s{i}",
-                                  "target_id": f"t{i}",
-                                  "pct": float("inf")}),
+        (
+            "unroutable",
+            lambda i: {"source_id": f"s{i}", "target_id": f"t{i}", "pct": 0},
+        ),
+        (
+            "unroutable",
+            lambda i: {"source_id": f"s{i}", "target_id": f"t{i}", "pct": 500},
+        ),
+        (
+            "unroutable",
+            lambda i: {"source_id": f"s{i}", "target_id": f"t{i}", "pct": -3},
+        ),
+        (
+            "unroutable",
+            lambda i: {"source_id": f"s{i}", "target_id": f"t{i}", "pct": float("inf")},
+        ),
     ]
 
 
@@ -351,8 +404,12 @@ class TestTheTotalReconciles:
         batches = 0
 
         for batch in range(120):
-            handed: dict[str, int] = {"accepted": 0, "malformed": 0,
-                                      "unreadable": 0, "unroutable": 0}
+            handed: dict[str, int] = {
+                "accepted": 0,
+                "malformed": 0,
+                "unreadable": 0,
+                "unroutable": 0,
+            }
             payload = []
             for i in range(1 + next(stream) % 12):
                 cause, make = pool[next(stream) % len(pool)]
@@ -366,29 +423,24 @@ class TestTheTotalReconciles:
             mgr = SmartWireManager()
             n = mgr.import_wires(list(payload))
 
-            lost = (handed["malformed"] + handed["unreadable"]
-                    + handed["unroutable"])
+            lost = handed["malformed"] + handed["unreadable"] + handed["unroutable"]
             assert n == handed["accepted"], (
-                f"batch {batch}: accepted count disagrees with the "
-                f"rows handed in")
+                f"batch {batch}: accepted count disagrees with the " f"rows handed in"
+            )
 
-            heads = [m for m in
-                     (HEADLINE.search(w) for w in _warnings(wirelog)) if m]
+            heads = [m for m in (HEADLINE.search(w) for w in _warnings(wirelog)) if m]
             if not lost:
-                assert not heads, (
-                    f"batch {batch}: a clean batch fired the headline")
+                assert not heads, f"batch {batch}: a clean batch fired the headline"
                 continue
             assert len(heads) == 1, (
-                f"batch {batch}: expected exactly one headline, got "
-                f"{len(heads)}")
-            acc, off, tot, mal, unr, uno = (int(g)
-                                            for g in heads[0].groups())
+                f"batch {batch}: expected exactly one headline, got " f"{len(heads)}"
+            )
+            acc, off, tot, mal, unr, uno = (int(g) for g in heads[0].groups())
             assert off == len(payload), (
-                f"batch {batch}: offered {off} != rows handed in "
-                f"{len(payload)}")
+                f"batch {batch}: offered {off} != rows handed in " f"{len(payload)}"
+            )
             assert acc == n, f"batch {batch}: headline accepted != n"
-            assert acc + tot == off, (
-                f"batch {batch}: {acc} + {tot} != {off}")
+            assert acc + tot == off, f"batch {batch}: {acc} + {tot} != {off}"
             assert mal == handed["malformed"], f"batch {batch}: malformed"
             assert unr == handed["unreadable"], f"batch {batch}: unreadable"
             assert uno == handed["unroutable"], f"batch {batch}: unroutable"
@@ -396,12 +448,13 @@ class TestTheTotalReconciles:
 
         assert batches == 120
         assert rows_driven >= 100, (
-            f"only {rows_driven} rows driven; the control needs at "
-            f"least 100")
+            f"only {rows_driven} rows driven; the control needs at " f"least 100"
+        )
         for cause in ("accepted", "malformed", "unreadable", "unroutable"):
             assert seen_causes.get(cause, 0) > 0, (
                 f"no {cause} row was ever generated, so that bucket is "
-                f"untested and its zero says nothing")
+                f"untested and its zero says nothing"
+            )
 
 
 # --------------------------------------------------------------------- #
@@ -414,29 +467,34 @@ class TestTheSilentCaseSpeaks:
     guarded by `n > 0`, and no warning, because no counter existed."""
 
     def test_total_loss_is_reported(self, wirelog):
-        payload = ["not-a-dict",
-                   {"source_id": "A", "target_id": "B", "pct": 500},
-                   {"target_id": "B", "pct": 10.0}]
+        payload = [
+            "not-a-dict",
+            {"source_id": "A", "target_id": "B", "pct": 500},
+            {"target_id": "B", "pct": 10.0},
+        ]
         mgr = SmartWireManager()
         assert mgr.import_wires(payload) == 0
         assert _accepted(mgr) == {}
-        assert not _infos(wirelog), (
-            "a total-loss import must not claim it imported anything")
+        assert not _infos(
+            wirelog
+        ), "a total-loss import must not claim it imported anything"
         warns = _warnings(wirelog)
         assert len(warns) == 4, (
-            f"expected one line per lost row plus one headline, got "
-            f"{len(warns)}")
+            f"expected one line per lost row plus one headline, got " f"{len(warns)}"
+        )
         head = [m for m in (HEADLINE.search(w) for w in warns) if m]
         assert len(head) == 1
         acc, off, tot, mal, unr, uno = (int(g) for g in head[0].groups())
         assert (acc, off, tot, mal, unr, uno) == (0, 3, 3, 1, 0, 2)
 
     def test_each_lost_row_names_its_ordinal_and_cause(self, wirelog):
-        payload = ["not-a-dict",
-                   {"source_id": "C", "target_id": "D", "pct": "abc"},
-                   {"target_id": "E", "pct": 10.0},
-                   {"source_id": "F", "pct": 10.0},
-                   {"source_id": "G", "target_id": "H", "pct": 500}]
+        payload = [
+            "not-a-dict",
+            {"source_id": "C", "target_id": "D", "pct": "abc"},
+            {"target_id": "E", "pct": 10.0},
+            {"source_id": "F", "pct": 10.0},
+            {"source_id": "G", "target_id": "H", "pct": 500},
+        ]
         SmartWireManager().import_wires(payload)
         rows = [w for w in _warnings(wirelog) if "DROPPED" in w]
         assert len(rows) == 5, "one line per lost row"
@@ -451,7 +509,8 @@ class TestTheSilentCaseSpeaks:
         assert "row 2 of 5" in rows[1] and "float() refused" in rows[1]
         assert "ValueError" in rows[1], (
             "a widened except that does not name what it caught is the "
-            "silent swallow this file exists to remove")
+            "silent swallow this file exists to remove"
+        )
         assert "C" in rows[1] and "D" in rows[1]
         assert "row 3 of 5" in rows[2] and "source_id is empty" in rows[2]
         assert "row 4 of 5" in rows[3] and "target_id is empty" in rows[3]
@@ -461,20 +520,20 @@ class TestTheSilentCaseSpeaks:
             assert "the save is corrupt" in line, (
                 "no writer in this codebase produces these shapes, so "
                 "the message must say the save is corrupt rather than "
-                "imply routine filtering")
+                "imply routine filtering"
+            )
 
-    def test_partial_loss_is_no_longer_hidden_behind_a_cheerful_info(
-            self, wirelog):
+    def test_partial_loss_is_no_longer_hidden_behind_a_cheerful_info(self, wirelog):
         payload = [GOOD, "not-a-dict", None]
         mgr = SmartWireManager()
         assert mgr.import_wires(payload) == 1
         assert _same_wires(_accepted(mgr), {"A": {"B": 25.0}})
         assert any("imported 1 wire(s)" in m for m in _infos(wirelog))
-        head = [m for m in
-                (HEADLINE.search(w) for w in _warnings(wirelog)) if m]
+        head = [m for m in (HEADLINE.search(w) for w in _warnings(wirelog)) if m]
         assert len(head) == 1, (
             "the INFO alone is true and reassuring; without the "
-            "headline beside it two lost routes stay invisible")
+            "headline beside it two lost routes stay invisible"
+        )
         assert tuple(int(g) for g in head[0].groups()) == (1, 3, 2, 2, 0, 0)
 
     def test_the_consequence_is_stated_in_operator_terms(self, wirelog):
@@ -493,8 +552,11 @@ class TestTheSilentCaseSpeaks:
 # read-only from his save on 2026-08-15: 33 offered, 33 accepted, 0
 # lost. Bot ids here are synthetic; the SHAPE is what is under test.
 OPERATOR_SHAPED = [
-    {"source_id": f"bot{i:02d}", "target_id": f"bot{(i + 7) % 37:02d}",
-     "pct": float(5 + (i % 20))}
+    {
+        "source_id": f"bot{i:02d}",
+        "target_id": f"bot{(i + 7) % 37:02d}",
+        "pct": float(5 + (i % 20)),
+    }
     for i in range(33)
 ]
 
@@ -505,8 +567,7 @@ class TestNoFalseAlarm:
     would learn to ignore the line within a week and the warning would
     become decoration — the same defect as silence."""
 
-    def test_a_real_export_import_round_trip_says_nothing_new(
-            self, wirelog):
+    def test_a_real_export_import_round_trip_says_nothing_new(self, wirelog):
         source = SmartWireManager()
         for i in range(12):
             source.register_wire(f"src{i}", f"tgt{i}", 5.0 + i)
@@ -516,24 +577,23 @@ class TestNoFalseAlarm:
         wirelog.clear()
         restored = SmartWireManager()
         assert restored.import_wires(snapshot) == 12
-        assert _warnings(wirelog) == [], (
-            "a well-formed topology produced a new line")
+        assert _warnings(wirelog) == [], "a well-formed topology produced a new line"
         assert any("imported 12 wire(s)" in m for m in _infos(wirelog))
         assert _accepted(restored) == _accepted(source)
 
     def test_an_operator_sized_topology_says_nothing_new(self, wirelog):
         mgr = SmartWireManager()
         assert mgr.import_wires(list(OPERATOR_SHAPED)) == 33
-        assert _warnings(wirelog) == [], (
-            "33 guard-clean rows must produce no warning at all")
+        assert (
+            _warnings(wirelog) == []
+        ), "33 guard-clean rows must produce no warning at all"
 
     def test_re_importing_the_same_snapshot_stays_silent(self, wirelog):
         mgr = SmartWireManager()
         mgr.import_wires(list(OPERATOR_SHAPED))
         wirelog.clear()
         assert mgr.import_wires(list(OPERATOR_SHAPED)) == 33
-        assert _warnings(wirelog) == [], (
-            "idempotent re-import must not start warning")
+        assert _warnings(wirelog) == [], "idempotent re-import must not start warning"
 
     def test_an_empty_topology_says_nothing(self, wirelog):
         assert SmartWireManager().import_wires([]) == 0
@@ -552,14 +612,18 @@ class TestTheEmitterIsUnchanged:
 
     @pytest.mark.parametrize(
         ("label", "payload", "want", "count"),
-        ROW_SHAPES, ids=[r[0] for r in ROW_SHAPES])
+        ROW_SHAPES,
+        ids=[r[0] for r in ROW_SHAPES],
+    )
     def test_expected_is_always_the_offered_count(
-            self, sink, label, payload, want, count):
+        self, sink, label, payload, want, count
+    ):
         n = SmartWireManager().import_wires(list(payload))
         rec = sink.records(PIN)
         assert len(rec) == 1, f"{label}: the pin did not fire once"
-        assert rec[0].expected == len(payload), (
-            f"{label}: expected must be the offered count")
+        assert rec[0].expected == len(
+            payload
+        ), f"{label}: expected must be the offered count"
         assert rec[0].actual == n == count
 
     def test_the_pin_passes_on_a_clean_restore(self, sink):
@@ -576,22 +640,24 @@ class TestTheEmitterIsUnchanged:
         assert rec.expected == 3
         assert rec.actual == 1
         assert rec.ok is False, (
-            "a lossy restore that reads as a pass is a pin that cannot "
-            "fail")
+            "a lossy restore that reads as a pass is a pin that cannot " "fail"
+        )
 
     def test_the_pin_carries_the_source_count(self, sink):
         SmartWireManager().import_wires(
-            [GOOD, {"source_id": "H", "target_id": "I", "pct": 5.0}])
+            [GOOD, {"source_id": "H", "target_id": "I", "pct": 5.0}]
+        )
         assert sink.records(PIN)[0].context["sources"] == 2
 
-    @pytest.mark.parametrize(("label", "arg"), NON_LIST_ARGS,
-                             ids=[r[0] for r in NON_LIST_ARGS])
-    def test_a_non_list_argument_still_emits_nothing(
-            self, sink, label, arg):
+    @pytest.mark.parametrize(
+        ("label", "arg"), NON_LIST_ARGS, ids=[r[0] for r in NON_LIST_ARGS]
+    )
+    def test_a_non_list_argument_still_emits_nothing(self, sink, label, arg):
         assert SmartWireManager().import_wires(arg) == 0
         assert sink.count(PIN) == 0, (
             "the early return above the emitter is unchanged behaviour "
-            "and is pinned here so a later edit cannot move it quietly")
+            "and is pinned here so a later edit cannot move it quietly"
+        )
 
 
 # --------------------------------------------------------------------- #
@@ -614,17 +680,26 @@ class TestTheNanPinIsNowAFixPin:
         mgr = SmartWireManager()
         assert mgr.import_wires([row]) == 0, (
             "nan fails both `pct <= 0` and `pct > 100` because it is "
-            "unordered; the guard now tests for it directly")
+            "unordered; the guard now tests for it directly"
+        )
         assert _accepted(mgr) == {}
         warns = _warnings(wirelog)
         assert len(warns) == 2, (
             "one per-row line and one headline; a refused row that is "
-            "not reported is the silence this file exists to remove")
+            "not reported is the silence this file exists to remove"
+        )
         assert "unordered" in warns[0], (
             "the line must name nan as unordered rather than as "
-            "'outside 0 < pct <= 100', which it is not")
-        assert tuple(int(g) for g in HEADLINE.search(warns[1]).groups()) \
-            == (0, 1, 1, 0, 0, 1)
+            "'outside 0 < pct <= 100', which it is not"
+        )
+        assert tuple(int(g) for g in HEADLINE.search(warns[1]).groups()) == (
+            0,
+            1,
+            1,
+            0,
+            0,
+            1,
+        )
 
 
 class TestKnownDefectsArePinnedNotFixed:
@@ -634,12 +709,14 @@ class TestKnownDefectsArePinnedNotFixed:
     move while the logging was added."""
 
     def test_duplicate_rows_are_still_counted_twice(self, wirelog):
-        payload = [{"source_id": "A", "target_id": "B", "pct": 25.0},
-                   {"source_id": "A", "target_id": "B", "pct": 40.0}]
+        payload = [
+            {"source_id": "A", "target_id": "B", "pct": 25.0},
+            {"source_id": "A", "target_id": "B", "pct": 40.0},
+        ]
         mgr = SmartWireManager()
         assert mgr.import_wires(payload) == 2, (
             "DEFECT PIN: two rows accepted, one route exists; the "
-            "count is of ROWS, not of routes")
+            "count is of ROWS, not of routes"
+        )
         assert _accepted(mgr) == {"A": {"B": 40.0}}
-        assert _warnings(wirelog) == [], (
-            "both rows were accepted, so nothing was lost")
+        assert _warnings(wirelog) == [], "both rows were accepted, so nothing was lost"

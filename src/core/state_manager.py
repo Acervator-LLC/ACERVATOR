@@ -31,7 +31,7 @@ _DEFAULT_DIR = Path.home() / ".acervator"
 class StateManager:
     """
     Persists bot state to disk. Thread-safe via atomic writes.
-    
+
     State file structure:
     {
         "version": "1.9.4",
@@ -57,9 +57,12 @@ class StateManager:
         self._path = self._dir / "bot_state.json"
         self._backup_path = self._dir / "bot_state.backup.json"
 
-    def save_state(self, bots: list[dict],
-                   smart_wires: Optional[list[dict]] = None,
-                   smart_wire_ledgers: Optional[list[dict]] = None) -> None:
+    def save_state(
+        self,
+        bots: list[dict],
+        smart_wires: Optional[list[dict]] = None,
+        smart_wire_ledgers: Optional[list[dict]] = None,
+    ) -> None:
         """
         Save all bot states to disk atomically.
 
@@ -128,11 +131,15 @@ class StateManager:
                 logger.info(
                     "state: carried forward %d record(s) not present in "
                     "memory (not deleted, merely not loaded): %s",
-                    len(carried), ", ".join(carried[:8]))
+                    len(carried),
+                    ", ".join(carried[:8]),
+                )
         except Exception as exc:  # noqa: BLE001 - never block a save
             logger.error(
                 "state: carry-forward failed (%s) — this save reverts to "
-                "memory-only contents and MAY DROP records", exc)
+                "memory-only contents and MAY DROP records",
+                exc,
+            )
 
         state["bot_count"] = len(state["bots"])
 
@@ -163,7 +170,9 @@ class StateManager:
                     "REFUSING to refresh %s: the current %s does not parse, "
                     "and copying it would destroy the last good backup. "
                     "The existing backup is being preserved as-is.",
-                    self._backup_path.name, self._path.name)
+                    self._backup_path.name,
+                    self._path.name,
+                )
             elif self._path.exists():
                 try:
                     self._backup_path.write_bytes(self._path.read_bytes())
@@ -180,7 +189,10 @@ class StateManager:
                         "Bot state backup FAILED (%s): %s — proceeding "
                         "with save, but %s will not be recoverable from "
                         "backup if this write corrupts it",
-                        type(_bk_exc).__name__, _bk_exc, self._path.name)
+                        type(_bk_exc).__name__,
+                        _bk_exc,
+                        self._path.name,
+                    )
             tmp_path.replace(self._path)
             logger.info("Bot state saved: %d bots", len(bots))
         except Exception as exc:
@@ -223,25 +235,30 @@ class StateManager:
             bots = state.get("bots") or {}
             if bot_id not in bots:
                 logger.info(
-                    "state: delete_bot(%s) — no record on disk, nothing "
-                    "to remove", bot_id)
+                    "state: delete_bot(%s) — no record on disk, nothing " "to remove",
+                    bot_id,
+                )
                 return False
 
             removed = bots.pop(bot_id)
-            lots = len((removed.get("scrumming_state") or {}).get(
-                "main_lots") or [])
-            tranches = len((removed.get("scrumming_state") or {}).get(
-                "fold_tranches") or [])
+            lots = len((removed.get("scrumming_state") or {}).get("main_lots") or [])
+            tranches = len(
+                (removed.get("scrumming_state") or {}).get("fold_tranches") or []
+            )
 
             state["bots"] = bots
             state["bot_count"] = len(bots)
             state["smart_wire_ledgers"] = [
-                r for r in (state.get("smart_wire_ledgers") or [])
-                if str(r.get("bot_id", "")) != str(bot_id)]
+                r
+                for r in (state.get("smart_wire_ledgers") or [])
+                if str(r.get("bot_id", "")) != str(bot_id)
+            ]
             state["smart_wires"] = [
-                w for w in (state.get("smart_wires") or [])
+                w
+                for w in (state.get("smart_wires") or [])
                 if str(w.get("source_id", "")) != str(bot_id)
-                and str(w.get("target_id", "")) != str(bot_id)]
+                and str(w.get("target_id", "")) != str(bot_id)
+            ]
 
             tmp_path = self._path.with_suffix(".tmp")
             with open(tmp_path, "w", encoding="utf-8") as f:
@@ -250,8 +267,7 @@ class StateManager:
                 try:
                     self._backup_path.write_bytes(self._path.read_bytes())
                 except OSError as exc:
-                    logger.warning(
-                        "delete_bot: backup refresh failed: %s", exc)
+                    logger.warning("delete_bot: backup refresh failed: %s", exc)
             tmp_path.replace(self._path)
 
             # ERROR level on purpose. This is irreversible and destroys
@@ -261,13 +277,20 @@ class StateManager:
                 "state: DELETED bot %s from disk — %d lot(s), %d "
                 "tranche(s), and its wire/ledger rows are gone. "
                 "%d bot(s) remain.",
-                bot_id, lots, tranches, len(bots))
+                bot_id,
+                lots,
+                tranches,
+                len(bots),
+            )
             return True
         except Exception as exc:  # noqa: BLE001 - never break teardown
             logger.error(
                 "state: delete_bot(%s) FAILED (%s: %s) — the record is "
                 "still on disk and will be carried forward",
-                bot_id, type(exc).__name__, exc)
+                bot_id,
+                type(exc).__name__,
+                exc,
+            )
             return False
 
     def _read_bot_records(self, path=None) -> dict:
@@ -323,7 +346,9 @@ class StateManager:
             if on_disk is None:
                 logger.warning(
                     "C01 prune detector: %s unreadable; cannot tell "
-                    "whether this save drops anything", self._path.name)
+                    "whether this save drops anything",
+                    self._path.name,
+                )
                 return []
             dropped = sorted(on_disk - set(incoming_ids or set()))
             if dropped:
@@ -331,7 +356,9 @@ class StateManager:
                     "C01 PRUNE RISK: this save omits %d bot(s) present on "
                     "disk and will DELETE their records (per-lot cost "
                     "basis, fold tranches, anchor balance): %s",
-                    len(dropped), ", ".join(dropped[:10]))
+                    len(dropped),
+                    ", ".join(dropped[:10]),
+                )
             return dropped
         except Exception as exc:  # noqa: BLE001 - never break the save
             logger.warning("C01 prune detector failed: %s", exc)
@@ -362,8 +389,11 @@ class StateManager:
                     "C01 DAMAGE SUSPECTED: %d bot(s) present in %s but "
                     "absent from %s: %s. The backup copy is one save "
                     "cycle from being overwritten.",
-                    len(missing), self._backup_path.name,
-                    self._path.name, ", ".join(missing[:10]))
+                    len(missing),
+                    self._backup_path.name,
+                    self._path.name,
+                    ", ".join(missing[:10]),
+                )
             return missing
         except Exception as exc:  # noqa: BLE001 - never break boot
             logger.warning("C01 primary/backup diff failed: %s", exc)
@@ -384,6 +414,7 @@ class StateManager:
         depend on real time are flaky by construction.
         """
         from datetime import datetime
+
         return datetime.now().strftime("%Y%m%d_%H%M%S")
 
     def preflight_snapshot(self) -> list:
@@ -424,8 +455,7 @@ class StateManager:
             root = self._path.parent / "preflight"
             root.mkdir(parents=True, exist_ok=True)
 
-            sources = [p for p in (self._path, self._backup_path)
-                       if p.exists()]
+            sources = [p for p in (self._path, self._backup_path) if p.exists()]
             if not sources:
                 return []
 
@@ -436,11 +466,13 @@ class StateManager:
 
             # Identical to the most recent snapshot? Then skip.
             existing = sorted(root.glob("*.stamp"))
-            if existing and existing[-1].read_text(
-                    encoding="utf-8").strip() == stamp_now:
+            if (
+                existing
+                and existing[-1].read_text(encoding="utf-8").strip() == stamp_now
+            ):
                 logger.debug(
-                    "preflight: state unchanged since last snapshot; "
-                    "nothing written")
+                    "preflight: state unchanged since last snapshot; " "nothing written"
+                )
                 return []
 
             ts = self._preflight_stamp()
@@ -452,7 +484,7 @@ class StateManager:
 
             # Prune oldest complete sets beyond PREFLIGHT_KEEP.
             stamps = sorted(root.glob("*.stamp"))
-            for old in stamps[:-self.PREFLIGHT_KEEP]:
+            for old in stamps[: -self.PREFLIGHT_KEEP]:
                 old_ts = old.stem
                 for victim in root.glob(f"*.{old_ts}.json"):
                     victim.unlink(missing_ok=True)
@@ -461,13 +493,18 @@ class StateManager:
             logger.info(
                 "preflight: snapshotted %d state file(s) to %s (keeping "
                 "%d most recent)",
-                len(written), root, self.PREFLIGHT_KEEP)
+                len(written),
+                root,
+                self.PREFLIGHT_KEEP,
+            )
             return written
         except Exception as exc:  # noqa: BLE001 - must never abort boot
             logger.error(
                 "preflight snapshot FAILED (%s: %s) — continuing boot "
                 "without a pre-session copy",
-                type(exc).__name__, exc)
+                type(exc).__name__,
+                exc,
+            )
             return written
 
     def load_state(self) -> dict:
@@ -524,11 +561,16 @@ class StateManager:
                         "Failed to clear state file %s (%s): %s — stale "
                         "state remains on disk and WILL be restored on "
                         "next launch",
-                        p.name, type(_rm_exc).__name__, _rm_exc)
+                        p.name,
+                        type(_rm_exc).__name__,
+                        _rm_exc,
+                    )
         if failed:
             logger.warning(
                 "Bot state clear INCOMPLETE: removed %s, failed %s",
-                cleared or "nothing", failed)
+                cleared or "nothing",
+                failed,
+            )
         else:
             logger.info("Bot state cleared")
 
@@ -566,8 +608,12 @@ class StateManager:
                 "Bot state file %s is UNREADABLE (%s: %s). This is NOT the "
                 "same as having no saved bots. %s exists=%s and may hold a "
                 "good copy — do NOT let a save overwrite it.",
-                self._path.name, type(exc).__name__, exc,
-                self._backup_path.name, self._backup_path.exists())
+                self._path.name,
+                type(exc).__name__,
+                exc,
+                self._backup_path.name,
+                self._backup_path.exists(),
+            )
             return "unreadable"
 
     def has_saved_state(self) -> bool:

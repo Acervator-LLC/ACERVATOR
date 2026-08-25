@@ -35,6 +35,7 @@ NOTE ON NUMBERS IN THIS FILE. Every fleet here is a TEST FIXTURE — small
 synthetic configs, never the operator's data. The real fleet is 35 bots and 40
 persisted wires; nothing below touches it.
 """
+
 from __future__ import annotations
 
 import ast
@@ -53,10 +54,22 @@ from src.gui.simulator_tab.nuclear_fleet_controller import (  # noqa: E402
 
 # --- TEST FIXTURE fleet (2 bots, 1 wire). Not the operator's 35/40. ---
 FIXTURE_CONFIGS = [
-    {"mode": "scrumming", "symbol": "BTC/USD", "target_balance": 100.0,
-     "target_asset": "BTC", "base_currency": "USD", "_src_bot_id": "aaaa1111"},
-    {"mode": "scrumming", "symbol": "ETH/USD", "target_balance": 100.0,
-     "target_asset": "ETH", "base_currency": "USD", "_src_bot_id": "bbbb2222"},
+    {
+        "mode": "scrumming",
+        "symbol": "BTC/USD",
+        "target_balance": 100.0,
+        "target_asset": "BTC",
+        "base_currency": "USD",
+        "_src_bot_id": "aaaa1111",
+    },
+    {
+        "mode": "scrumming",
+        "symbol": "ETH/USD",
+        "target_balance": 100.0,
+        "target_asset": "ETH",
+        "base_currency": "USD",
+        "_src_bot_id": "bbbb2222",
+    },
 ]
 FIXTURE_WIRES = [
     {"source_id": "aaaa1111", "target_id": "bbbb2222", "pct": 20.0},
@@ -81,45 +94,59 @@ class TestTheInventedTopologyIsGone:
         list is the signature of generating a topology instead of loading one.
         """
         fn = self._topology_pairs_src()
-        mods = [n for n in ast.walk(fn)
-                if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Mod)]
+        mods = [
+            n
+            for n in ast.walk(fn)
+            if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Mod)
+        ]
         assert not mods, (
             f"a modular index remains at line(s) "
             f"{[n.lineno for n in mods]} — the fabricated circular topology "
-            "is still being generated")
+            "is still being generated"
+        )
 
     def test_it_does_not_synthesize_from_a_range_over_the_ids(self):
         fn = self._topology_pairs_src()
-        ranges = [n for n in ast.walk(fn)
-                  if isinstance(n, ast.Call)
-                  and getattr(n.func, "id", "") == "range"]
+        ranges = [
+            n
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "range"
+        ]
         assert not ranges, (
             "wires are still being generated positionally from the bot list "
-            "rather than loaded from bot_state or a proposal")
+            "rather than loaded from bot_state or a proposal"
+        )
 
 
 class TestPersistedWiresImportWithTheFleet:
     @staticmethod
     def _prepared(monkeypatch, wires, configs=None):
         import src.gui.simulator_tab.fleet.bot_state_loader as loader
+
         monkeypatch.setattr(
-            loader, "load_bot_configs_from_state",
-            lambda *a, **kw: list(configs if configs is not None
-                                  else FIXTURE_CONFIGS))
+            loader,
+            "load_bot_configs_from_state",
+            lambda *a, **kw: list(configs if configs is not None else FIXTURE_CONFIGS),
+        )
         monkeypatch.setattr(
-            loader, "load_smart_wires_from_state", lambda *a, **kw: list(wires))
+            loader, "load_smart_wires_from_state", lambda *a, **kw: list(wires)
+        )
         ctl = NuclearFleetController()
         ctl._load_tablet_series = lambda syms: {
-            s: [[1_700_000_000_000 + i * 300_000, 100.0, 101.0, 99.0,
-                 100.0, 5.0] for i in range(8)] for s in syms}
+            s: [
+                [1_700_000_000_000 + i * 300_000, 100.0, 101.0, 99.0, 100.0, 5.0]
+                for i in range(8)
+            ]
+            for s in syms
+        }
         assert ctl.prepare() is True
         return ctl
 
     def test_prepare_loads_the_fleet_wires(self, monkeypatch):
         ctl = self._prepared(monkeypatch, FIXTURE_WIRES)
         assert ctl._smart_wires == FIXTURE_WIRES, (
-            "bot_state's smart_wires are part of the fleet and must import "
-            "with it")
+            "bot_state's smart_wires are part of the fleet and must import " "with it"
+        )
 
     def test_they_are_handed_to_the_replay_controller(self, monkeypatch):
         """The child already knows how to import them (C20). Nuclear must
@@ -131,9 +158,9 @@ class TestPersistedWiresImportWithTheFleet:
         class _Spy:
             def __init__(self, **kw):
                 seen.update(kw)
-                self.progress = type("P", (), {
-                    "finished": True, "candles_played": 0,
-                    "trades_fired": 0})()
+                self.progress = type(
+                    "P", (), {"finished": True, "candles_played": 0, "trades_fired": 0}
+                )()
                 self._bots = []
 
             async def start(self):
@@ -143,13 +170,16 @@ class TestPersistedWiresImportWithTheFleet:
                 pass
 
         import src.gui.simulator_tab.fleet.fleet_replay_controller as frc
+
         monkeypatch.setattr(frc, "FleetReplayController", _Spy)
 
         import asyncio
+
         asyncio.run(asyncio.wait_for(ctl._run_cycle(0), 5.0))
         assert seen.get("smart_wires") == FIXTURE_WIRES, (
             f"Nuclear built its fleet without the persisted wires; "
-            f"kwargs seen: {sorted(seen)}")
+            f"kwargs seen: {sorted(seen)}"
+        )
 
     def test_an_empty_wire_set_is_announced_not_invented(self, monkeypatch):
         """A fleet that HAS bots but no wires must say so.
@@ -158,6 +188,7 @@ class TestPersistedWiresImportWithTheFleet:
         correct — there is no fleet to describe. The case that matters is a
         real fleet whose topology is empty.)
         """
+
         class _Bot:
             def __init__(self, bid):
                 self.bot_id = bid
@@ -171,15 +202,17 @@ class TestPersistedWiresImportWithTheFleet:
         assert ctl._smart_wires == []
         assert "no smart wires" in joined, (
             f"a fleet with no topology must say so rather than get one "
-            f"invented for it; activity={acts}")
+            f"invented for it; activity={acts}"
+        )
         assert "inert" in joined, (
             "the consequence must be stated — a reader needs to know the "
-            "tranche-chain numbers will read 0 for the wire-fed links")
+            "tranche-chain numbers will read 0 for the wire-fed links"
+        )
 
-    def test_a_fleet_with_its_own_wires_says_it_is_using_them(self,
-                                                              monkeypatch):
+    def test_a_fleet_with_its_own_wires_says_it_is_using_them(self, monkeypatch):
         """NEGATIVE CONTROL for the message above: the two cases must be
         distinguishable in the log, or 'no wires' is unfalsifiable."""
+
         class _Bot:
             def __init__(self, bid, mgr):
                 self.bot_id = bid
@@ -201,16 +234,26 @@ class TestMarketInspectorInjectionTakesPrecedence:
 
     def test_set_topologies_stores_the_proposal(self):
         ctl = NuclearFleetController()
-        prop = {"id": "x", "wires": [
-            {"source_asset": "BTC", "target_asset": "ETH", "pct": 15.0}]}
+        prop = {
+            "id": "x",
+            "wires": [{"source_asset": "BTC", "target_asset": "ETH", "pct": 15.0}],
+        }
         ctl.set_topologies([prop])
         assert ctl._topologies == [prop]
 
     def test_an_injected_proposal_supplies_the_wires(self):
         ctl = NuclearFleetController()
         ctl._configs = list(FIXTURE_CONFIGS)
-        ctl.set_topologies([{"id": "x", "wires": [
-            {"source_asset": "BTC", "target_asset": "ETH", "pct": 15.0}]}])
+        ctl.set_topologies(
+            [
+                {
+                    "id": "x",
+                    "wires": [
+                        {"source_asset": "BTC", "target_asset": "ETH", "pct": 15.0}
+                    ],
+                }
+            ]
+        )
         pairs = ctl._topology_pairs(["aaaa1111", "bbbb2222"])
         assert pairs == [("aaaa1111", "bbbb2222", 15.0)]
 

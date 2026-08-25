@@ -20,6 +20,7 @@ UI updates across a 19,680-tick replay).
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,12 +30,20 @@ logger = logging.getLogger("acervator.sim_visuals")
 
 try:
     from PySide6.QtCore import QRectF, Qt
-    from PySide6.QtGui import (
-        QBrush, QColor, QFontMetrics, QPainter, QPen)
+    from PySide6.QtGui import QBrush, QColor, QFontMetrics, QPainter, QPen
     from PySide6.QtWidgets import (
-        QAbstractItemView, QHBoxLayout, QHeaderView, QLabel, QScrollArea,
-        QSizePolicy, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+        QAbstractItemView,
+        QHBoxLayout,
+        QHeaderView,
+        QLabel,
+        QScrollArea,
+        QSizePolicy,
+        QTableWidget,
+        QTableWidgetItem,
+        QVBoxLayout,
+        QWidget,
     )
+
     _HAS_QT = True
 except ImportError:  # pragma: no cover - import guard
     _HAS_QT = False
@@ -83,8 +92,7 @@ def _show_expanded(widget, title: str) -> None:
             # The C++ dialog was destroyed while the Python handle
             # survived (WA_DeleteOnClose does exactly that). Drop the
             # stale handle and open a fresh dialog.
-            logger.debug(
-                "expand: stale dialog handle discarded (%s)", _stale_exc)
+            logger.debug("expand: stale dialog handle discarded (%s)", _stale_exc)
             try:
                 delattr(widget, "_acv_expand_dlg")
             except AttributeError:
@@ -111,13 +119,16 @@ def _show_expanded(widget, title: str) -> None:
         screen = handle.screen()
     if screen is None:
         from PySide6.QtWidgets import QApplication as _App
+
         screen = _App.primaryScreen()
 
     if screen is not None:
         avail = screen.availableGeometry()
         dlg.resize(avail.width(), avail.height() // 2)
-        dlg.move(avail.center().x() - avail.width() // 2,
-                 avail.center().y() - avail.height() // 4)
+        dlg.move(
+            avail.center().x() - avail.width() // 2,
+            avail.center().y() - avail.height() // 4,
+        )
 
     # Claim the widget for this dialog. Set AFTER the guard above, so a
     # re-entrant call sees it and a first call does not trip on itself.
@@ -166,27 +177,27 @@ def _show_expanded(widget, title: str) -> None:
 # Scrum and fold are deliberately ASYMMETRIC because the bot checks
 # genuinely different things on each side.
 _GATE_ORDER_SCRUM = (
-    "TGT",    # delta<=0
-    "INT",    # below_interval(delta% < scrumming_interval_pct)
-    "BB",     # BB-below-upper-detect / scrum_ok=False
-    "FIRE",   # target_fires=False (detect/fire state machine)
-    "TA",     # TA-not-bullish
-    "LS",     # landing-strip override (not a blocker — see below)
-    "TRND",   # trend_hold(strength)
-    "HTF",    # HTF-bullish
-    "CB",     # CB-soft-trip
-    "OTD",    # OTD-hyst / OTD-hyst-armed  (opposing trade distance)
+    "TGT",  # delta<=0
+    "INT",  # below_interval(delta% < scrumming_interval_pct)
+    "BB",  # BB-below-upper-detect / scrum_ok=False
+    "FIRE",  # target_fires=False (detect/fire state machine)
+    "TA",  # TA-not-bullish
+    "LS",  # landing-strip override (not a blocker — see below)
+    "TRND",  # trend_hold(strength)
+    "HTF",  # HTF-bullish
+    "CB",  # CB-soft-trip
+    "OTD",  # OTD-hyst / OTD-hyst-armed  (opposing trade distance)
 )
 _GATE_ORDER_FOLD = (
-    "BB",     # BB-above-lower-detect
-    "MID",    # fold_ok_midline=False
-    "TA",     # TA-not-bearish
-    "LS",     # landing-strip override
-    "TRNQ",   # no-tranches-queued (tranche queue empty)
-    "CEIL",   # MEM-253-position-ceiling
-    "HTF",    # HTF-bearish
-    "CB",     # CB-soft-trip
-    "OTD",    # OTD-hyst / OTD-hyst-armed
+    "BB",  # BB-above-lower-detect
+    "MID",  # fold_ok_midline=False
+    "TA",  # TA-not-bearish
+    "LS",  # landing-strip override
+    "TRNQ",  # no-tranches-queued (tranche queue empty)
+    "CEIL",  # MEM-253-position-ceiling
+    "HTF",  # HTF-bearish
+    "CB",  # CB-soft-trip
+    "OTD",  # OTD-hyst / OTD-hyst-armed
 )
 
 # LS is an OVERRIDE, not a blocker. At scrumming_bot.py:6212-6215 a
@@ -270,8 +281,7 @@ def unknown_blockers(blockers: list) -> list[str]:
     panel does not yet represent. Surfacing these is how we notice
     the bot grew a gate the display never learned about, which is
     exactly how "VOL" survived as a phantom for so long."""
-    return [str(b) for b in (blockers or [])
-            if not gate_for_blocker(b)]
+    return [str(b) for b in (blockers or []) if not gate_for_blocker(b)]
 
 
 if _HAS_QT:
@@ -306,14 +316,14 @@ if _HAS_QT:
             self._scroll = QScrollArea()
             self._scroll.setWidgetResizable(True)
             self._scroll.setStyleSheet(
-                "QScrollArea{background:#0a0a14;border:1px solid #2a2a44;}")
+                "QScrollArea{background:#0a0a14;border:1px solid #2a2a44;}"
+            )
             host = QWidget()
             self._host_lay = QVBoxLayout(host)
             self._host_lay.setContentsMargins(6, 4, 6, 4)
             self._host_lay.setSpacing(2)
             self._empty = QLabel("No fleet loaded.")
-            self._empty.setStyleSheet(
-                "color:#666677;font-size:11px;padding:8px;")
+            self._empty.setStyleSheet("color:#666677;font-size:11px;padding:8px;")
             self._host_lay.addWidget(self._empty)
             self._host_lay.addStretch()
             self._scroll.setWidget(host)
@@ -340,7 +350,8 @@ if _HAS_QT:
                 lbl.setMinimumWidth(96)
                 lbl.setStyleSheet(
                     "color:#00e5ff;font-size:11px;"
-                    "font-family:'Cascadia Code','Consolas',monospace;")
+                    "font-family:'Cascadia Code','Consolas',monospace;"
+                )
                 cell = GateLightsCell()
                 row.addWidget(lbl)
                 row.addWidget(cell)
@@ -355,7 +366,6 @@ if _HAS_QT:
 
         def symbols(self) -> list:
             return sorted(self._rows)
-
 
     class GateLightsCell(QWidget):
         """One LINEAR labelled row of trading gates.
@@ -382,7 +392,7 @@ if _HAS_QT:
         _GAP = 4
         _LABEL_H = 10
         _PAD = 2
-        _GROUP_GAP = 12   # visual break between scrum and fold banks
+        _GROUP_GAP = 12  # visual break between scrum and fold banks
         _FONT_PT = 6
 
         def __init__(self, parent: Optional[QWidget] = None) -> None:
@@ -404,16 +414,17 @@ if _HAS_QT:
             f.setPointSize(self._FONT_PT)
             fm = QFontMetrics(f)
             widest = max(
-                (fm.horizontalAdvance(g)
-                 for g in (_GATE_ORDER_SCRUM + _GATE_ORDER_FOLD)),
-                default=self._LED)
+                (
+                    fm.horizontalAdvance(g)
+                    for g in (_GATE_ORDER_SCRUM + _GATE_ORDER_FOLD)
+                ),
+                default=self._LED,
+            )
             self._pitch = max(self._LED, widest) + self._GAP
 
-            self.setFixedHeight(
-                self._LABEL_H + self._LED + self._PAD * 2 + 1)
+            self.setFixedHeight(self._LABEL_H + self._LED + self._PAD * 2 + 1)
             n = len(_GATE_ORDER_SCRUM) + len(_GATE_ORDER_FOLD)
-            self.setMinimumWidth(
-                n * self._pitch + self._GROUP_GAP + self._PAD * 2)
+            self.setMinimumWidth(n * self._pitch + self._GROUP_GAP + self._PAD * 2)
             self.setToolTip(
                 "Trading gates. Left bank = SCRUM (sell-high), "
                 "right bank = FOLD (buy-low).\n"
@@ -446,11 +457,15 @@ if _HAS_QT:
                 "  OTD   opposing-trade-distance hysteresis\n\n"
                 "green = passed, red = this gate blocked, "
                 "amber = not armed (other reason), grey = not "
-                "evaluated at this candle.")
+                "evaluated at this candle."
+            )
 
         def update_gates(
-            self, scrum_armed: bool, fold_armed: bool,
-            scrum_blockers: list, fold_blockers: list,
+            self,
+            scrum_armed: bool,
+            fold_armed: bool,
+            scrum_blockers: list,
+            fold_blockers: list,
             landing_strip_side: str = "",
         ) -> None:
             """v3.24.18 — ``landing_strip_side`` is "upper" / "lower"
@@ -495,20 +510,36 @@ if _HAS_QT:
                 p.setFont(f)
                 x = self._PAD
                 x = self._draw_bank(
-                    p, x, "S", _GATE_ORDER_SCRUM,
-                    self._scrum_armed, self._scrum_blocked,
-                    ls_active=self._ls_scrum)
+                    p,
+                    x,
+                    "S",
+                    _GATE_ORDER_SCRUM,
+                    self._scrum_armed,
+                    self._scrum_blocked,
+                    ls_active=self._ls_scrum,
+                )
                 x += self._GROUP_GAP
                 self._draw_bank(
-                    p, x, "F", _GATE_ORDER_FOLD,
-                    self._fold_armed, self._fold_blocked,
-                    ls_active=self._fold_ls)
+                    p,
+                    x,
+                    "F",
+                    _GATE_ORDER_FOLD,
+                    self._fold_armed,
+                    self._fold_blocked,
+                    ls_active=self._fold_ls,
+                )
             finally:
                 p.end()
 
         def _draw_bank(
-            self, painter, x: int, prefix: str, gates: tuple,
-            armed: bool, blocked: set, ls_active: bool = False,
+            self,
+            painter,
+            x: int,
+            prefix: str,
+            gates: tuple,
+            armed: bool,
+            blocked: set,
+            ls_active: bool = False,
         ) -> int:
             """Draw one side's labels + LEDs. Returns the next x.
 
@@ -522,22 +553,25 @@ if _HAS_QT:
                 # _GATE_OVERRIDE note. Cyan when the landing strip
                 # forced direction this candle; otherwise inert.
                 if label == _GATE_OVERRIDE:
-                    color = (QColor("#22d3ee") if ls_active
-                             else QColor("#333340"))
+                    color = QColor("#22d3ee") if ls_active else QColor("#333340")
                 elif not self._evaluated:
-                    color = QColor("#333340")      # never looked
+                    color = QColor("#333340")  # never looked
                 elif label in blocked:
-                    color = QColor("#ff3366")      # this gate blocked
+                    color = QColor("#ff3366")  # this gate blocked
                 elif armed:
-                    color = QColor("#00cc55")      # passed
+                    color = QColor("#00cc55")  # passed
                 else:
-                    color = QColor("#c8901e")      # not armed, other reason
+                    color = QColor("#c8901e")  # not armed, other reason
                 # label above
                 painter.setPen(QColor("#9aa0b5"))
                 painter.drawText(
-                    x, self._PAD, self._pitch - self._GAP,
+                    x,
+                    self._PAD,
+                    self._pitch - self._GAP,
                     self._LABEL_H,
-                    Qt.AlignHCenter | Qt.AlignVCenter, label)
+                    Qt.AlignHCenter | Qt.AlignVCenter,
+                    label,
+                )
                 # light below, centred in the pitch
                 painter.setPen(Qt.NoPen)
                 painter.setBrush(color)
@@ -548,8 +582,13 @@ if _HAS_QT:
             # stealing a whole gate's worth of horizontal space
             painter.setPen(QColor("#6b7280"))
             painter.drawText(
-                x - self._pitch, led_y, self._pitch - self._GAP,
-                self._LED, Qt.AlignRight | Qt.AlignVCenter, prefix)
+                x - self._pitch,
+                led_y,
+                self._pitch - self._GAP,
+                self._LED,
+                Qt.AlignRight | Qt.AlignVCenter,
+                prefix,
+            )
             return x
 
     class SimPriceVwapChart(QWidget):
@@ -597,14 +636,13 @@ if _HAS_QT:
             self.setAccessibleDescription(
                 "Stacked bands, one per simulated bot. White line "
                 "= price, cyan line = rolling VWAP. Updates each "
-                "visual-refresh tick.")
+                "visual-refresh tick."
+            )
             self.setToolTip(
-                "White = price close, cyan = rolling VWAP over "
-                "the last 30 candles.")
-            self.setStyleSheet(
-                "background:#0a0a14;")
-            self.setSizePolicy(
-                QSizePolicy.Expanding, QSizePolicy.Expanding)
+                "White = price close, cyan = rolling VWAP over " "the last 30 candles."
+            )
+            self.setStyleSheet("background:#0a0a14;")
+            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             self._symbols: list[str] = []
             # symbol -> (list[price], list[vwap])
             self._series: dict[str, tuple[list[float], list[float]]] = {}
@@ -659,6 +697,7 @@ if _HAS_QT:
             replay; the operator is watching the live end, so the bound
             discards the OLDEST."""
             from collections import deque
+
             return deque(maxlen=self._MAX_MARKERS)
 
         def resolved_markers(self, symbol: str) -> list[tuple[int, bool]]:
@@ -700,8 +739,7 @@ if _HAS_QT:
             if self._focus:
                 self.setMinimumHeight(self._FOCUS_MIN_H)
             else:
-                self.setMinimumHeight(
-                    self._BAND_HEIGHT * max(1, len(self._symbols)))
+                self.setMinimumHeight(self._BAND_HEIGHT * max(1, len(self._symbols)))
 
         def set_focus_symbol(self, symbol: str) -> None:
             """Show ONE bot's candles + VWAP, or "" for all bands.
@@ -769,14 +807,15 @@ if _HAS_QT:
 
         def clear_markers(self, symbol: Optional[str] = None) -> None:
             if symbol is None:
-                self._markers = {
-                    s: self._new_marker_store() for s in self._symbols}
+                self._markers = {s: self._new_marker_store() for s in self._symbols}
             else:
                 self._markers[symbol] = self._new_marker_store()
 
         def append_tick(
-            self, symbol: str,
-            close_price: float, volume: float,
+            self,
+            symbol: str,
+            close_price: float,
+            volume: float,
             ts: Optional[int] = None,
             open_price: Optional[float] = None,
             high: Optional[float] = None,
@@ -796,10 +835,11 @@ if _HAS_QT:
             _h = float(high) if high is not None else max(_o, float(close_price))
             _l = float(low) if low is not None else min(_o, float(close_price))
             _bars = self._candles.setdefault(symbol, [])
-            _bars.append((int(ts) if ts is not None else 0,
-                          _o, _h, _l, float(close_price)))
+            _bars.append(
+                (int(ts) if ts is not None else 0, _o, _h, _l, float(close_price))
+            )
             if len(_bars) > self._MAX_CANDLES:
-                del _bars[:len(_bars) - self._MAX_CANDLES]
+                del _bars[: len(_bars) - self._MAX_CANDLES]
             prices, vwaps = self._series[symbol]
             prices.append(float(close_price))
             # C29 — ordinal runs parallel to the price series and is
@@ -838,8 +878,7 @@ if _HAS_QT:
                 _ords = self._ordinals.get(symbol) or []
                 _marked = {o for o, _ok in (self._markers.get(symbol) or [])}
                 _keep = [
-                    i for i, o in enumerate(_ords)
-                    if (i % 2 == 0) or (o in _marked)
+                    i for i, o in enumerate(_ords) if (i % 2 == 0) or (o in _marked)
                 ]
                 self._series[symbol] = (
                     [prices[i] for i in _keep],
@@ -904,7 +943,7 @@ if _HAS_QT:
             p.drawLine(0, bot_y - gap // 2, w, bot_y - gap // 2)
 
             # ── TOP: price vs position VWAP ──────────────────────────
-            vs = list(vwaps[-len(shown):]) if vwaps else []
+            vs = list(vwaps[-len(shown) :]) if vwaps else []
             cl = [float(b[4]) for b in shown]
             tvals = cl + [v for v in vs if v]
             y_top = _band(top_y, top_h, min(tvals), max(tvals))
@@ -932,8 +971,7 @@ if _HAS_QT:
                 i = pos - (len(prices) - len(shown))
                 if 0 <= i < len(shown):
                     x = pad_l + i * step + self._CANDLE_W // 2
-                    p.setPen(QPen(
-                        QColor("#00ff88") if ok else QColor("#ffaa00"), 1))
+                    p.setPen(QPen(QColor("#00ff88") if ok else QColor("#ffaa00"), 1))
                     p.drawEllipse(x - 2, y_top(cl[i]) - 2, 4, 4)
 
             # ── BOTTOM: Stone Tablet candles ─────────────────────────
@@ -945,12 +983,18 @@ if _HAS_QT:
 
             ytd_from = self._ytd_from.get(sym)
             if ytd_from:
-                first_i = next((i for i, b in enumerate(shown)
-                                if b[0] and b[0] >= ytd_from), None)
+                first_i = next(
+                    (i for i, b in enumerate(shown) if b[0] and b[0] >= ytd_from), None
+                )
                 if first_i is not None:
                     x0 = pad_l + first_i * step
-                    p.fillRect(x0, bot_y, max(0, w - pad_r - x0), bot_h,
-                               QColor(0, 229, 255, 18))
+                    p.fillRect(
+                        x0,
+                        bot_y,
+                        max(0, w - pad_r - x0),
+                        bot_h,
+                        QColor(0, 229, 255, 18),
+                    )
                     p.setPen(QPen(QColor("#00e5ff"), 1, Qt.DashLine))
                     p.drawLine(x0, bot_y, x0, bot_y + bot_h)
                     p.drawText(x0 + 3, bot_y + 10, "YTD")
@@ -963,14 +1007,14 @@ if _HAS_QT:
                 p.setPen(QPen(col, 1))
                 p.drawLine(cx, y_bot(hgh), cx, y_bot(low))
                 y_o, y_c = y_bot(o), y_bot(c)
-                p.fillRect(x, min(y_o, y_c), self._CANDLE_W,
-                           max(1, abs(y_c - y_o)), col)
+                p.fillRect(
+                    x, min(y_o, y_c), self._CANDLE_W, max(1, abs(y_c - y_o)), col
+                )
 
             p.setPen(QPen(QColor("#666677"), 1))
             p.drawText(pad_l, h - 2, f"{lo:.8g}")
             p.drawText(w - pad_r - 70, h - 2, f"{hi:.8g}")
-            p.drawText(w - pad_r - 150, top_y + 10,
-                       f"{len(shown)}/{len(bars)} bars")
+            p.drawText(w - pad_r - 150, top_y + 10, f"{len(shown)}/{len(bars)} bars")
 
         def paintEvent(self, event) -> None:  # noqa: N802
             del event
@@ -992,11 +1036,12 @@ if _HAS_QT:
                     # Symbol label (left gutter)
                     p.setPen(QPen(QColor("#7fb3ff"), 1))
                     p.drawText(
-                        QRectF(2, band_y + 2,
-                               self._BAND_LABEL_W - 4,
-                               self._BAND_HEIGHT - 4),
+                        QRectF(
+                            2, band_y + 2, self._BAND_LABEL_W - 4, self._BAND_HEIGHT - 4
+                        ),
                         Qt.AlignLeft | Qt.AlignVCenter,
-                        sym)
+                        sym,
+                    )
                     prices, vwaps = self._series.get(sym, ([], []))
                     if len(prices) < 2:
                         continue
@@ -1009,25 +1054,24 @@ if _HAS_QT:
                     mn, mx = min(_all), max(_all)
                     span = max(mx - mn, 1e-9)
                     n = len(prices)
+
                     def _proj(vals, height, top, left, width, count):
                         for j, v in enumerate(vals):
                             x = left + int(j * (width / max(count - 1, 1)))
-                            y = top + height - int(
-                                (v - mn) / span * height)
+                            y = top + height - int((v - mn) / span * height)
                             yield x, y
+
                     # Draw price polyline (white)
                     p.setPen(QPen(QColor("#ccccdd"), 1))
                     prev = None
-                    for x, y in _proj(prices, plot_h, plot_y,
-                                       plot_x, plot_w, n):
+                    for x, y in _proj(prices, plot_h, plot_y, plot_x, plot_w, n):
                         if prev is not None:
                             p.drawLine(prev[0], prev[1], x, y)
                         prev = (x, y)
                     # Draw VWAP polyline (cyan)
                     p.setPen(QPen(QColor("#00ffcc"), 1))
                     prev = None
-                    for x, y in _proj(vwaps, plot_h, plot_y,
-                                       plot_x, plot_w, n):
+                    for x, y in _proj(vwaps, plot_h, plot_y, plot_x, plot_w, n):
                         if prev is not None:
                             p.drawLine(prev[0], prev[1], x, y)
                         prev = (x, y)
@@ -1038,8 +1082,7 @@ if _HAS_QT:
                     # never overdrawn by a polyline touching the edge.
                     p.setPen(QPen(QColor("#2a2a44"), 1))
                     p.setBrush(Qt.NoBrush)
-                    p.drawRect(plot_x - 1, plot_y - 1,
-                               plot_w + 1, plot_h + 1)
+                    p.drawRect(plot_x - 1, plot_y - 1, plot_w + 1, plot_h + 1)
 
                     # v3.24.29 — trade markers: tiny dots on the price
                     # line. Green = validated against an expected
@@ -1054,22 +1097,21 @@ if _HAS_QT:
                             if idx < 0 or idx >= n:
                                 continue
                             mx = plot_x + int(idx * step)
-                            my = plot_y + plot_h - int(
-                                (prices[idx] - mn) / span * plot_h)
-                            col = QColor(
-                                "#00ff66" if ok else "#ff3355")
+                            my = (
+                                plot_y
+                                + plot_h
+                                - int((prices[idx] - mn) / span * plot_h)
+                            )
+                            col = QColor("#00ff66" if ok else "#ff3355")
                             p.setPen(QPen(col, 1))
                             p.setBrush(QBrush(col))
-                            p.drawEllipse(
-                                QRectF(mx - 1.5, my - 1.5, 3.0, 3.0))
+                            p.drawEllipse(QRectF(mx - 1.5, my - 1.5, 3.0, 3.0))
             finally:
                 p.end()
-
 
     # ---------------------------------------------------------------- #
     # PerBotVotingReadout — lower half of the bisection                #
     # ---------------------------------------------------------------- #
-
 
     class PerBotVotingReadout(QTableWidget):
         """Compact table: one row per bot, columns = indicator vote
@@ -1077,8 +1119,7 @@ if _HAS_QT:
         green based on vote direction. Refreshed by the panel on
         each visual-refresh tick."""
 
-        _COLUMNS = ("Symbol", "Net", "Conf", "Bull", "Bear",
-                     "Direction")
+        _COLUMNS = ("Symbol", "Net", "Conf", "Bull", "Bear", "Direction")
 
         def __init__(self, parent: Optional[QWidget] = None) -> None:
             super().__init__(parent)
@@ -1087,10 +1128,12 @@ if _HAS_QT:
                 "One row per simulated bot. Columns show the bot's "
                 "latest voting-engine summary — Net score, "
                 "consensus confidence, bullish/bearish indicator "
-                "counts, and derived direction.")
+                "counts, and derived direction."
+            )
             self.setToolTip(
                 "Sim bot voting summary — Net > +0.1 = BULL, "
-                "< -0.1 = BEAR, otherwise NEUT.")
+                "< -0.1 = BEAR, otherwise NEUT."
+            )
             self.setColumnCount(len(self._COLUMNS))
             self.setHorizontalHeaderLabels(self._COLUMNS)
             self.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -1102,7 +1145,8 @@ if _HAS_QT:
                 "font-family:'Cascadia Code','Consolas',monospace;"
                 "font-size:11px;border:1px solid #2a2a44;}"
                 "QHeaderView::section{background:#1a1a2a;"
-                "color:#00ffcc;padding:4px;border:none;}")
+                "color:#00ffcc;padding:4px;border:none;}"
+            )
             hdr = self.horizontalHeader()
             # v3.24.29 — Stretch, was ResizeToContents.
             #
@@ -1129,24 +1173,26 @@ if _HAS_QT:
                     self.setItem(r, c, QTableWidgetItem("—"))
 
         def update_bot_row(
-            self, symbol: str, summary: Any,
+            self,
+            symbol: str,
+            summary: Any,
         ) -> None:
             r = self._sym_to_row.get(symbol)
             if r is None or summary is None:
                 return
             try:
                 net = float(getattr(summary, "net_score", 0.0))
-                conf = float(
-                    getattr(summary, "consensus_confidence", 0.0))
+                conf = float(getattr(summary, "consensus_confidence", 0.0))
                 bull = int(getattr(summary, "bullish_count", 0))
                 bear = int(getattr(summary, "bearish_count", 0))
             except (TypeError, ValueError):
                 return
-            direction = "BULL" if net > 0.1 else (
-                "BEAR" if net < -0.1 else "NEUT")
-            color = (QColor("#00cc55") if direction == "BULL"
-                     else QColor("#ff3366") if direction == "BEAR"
-                     else QColor("#888"))
+            direction = "BULL" if net > 0.1 else ("BEAR" if net < -0.1 else "NEUT")
+            color = (
+                QColor("#00cc55")
+                if direction == "BULL"
+                else QColor("#ff3366") if direction == "BEAR" else QColor("#888")
+            )
             self.setItem(r, 1, QTableWidgetItem(f"{net:+.2f}"))
             self.setItem(r, 2, QTableWidgetItem(f"{conf:.2f}"))
             self.setItem(r, 3, QTableWidgetItem(str(bull)))
@@ -1158,5 +1204,4 @@ if _HAS_QT:
 
 __all__ = ["_HAS_QT"]
 if _HAS_QT:
-    __all__.extend(
-        ["GateLightsCell", "SimPriceVwapChart", "PerBotVotingReadout"])
+    __all__.extend(["GateLightsCell", "SimPriceVwapChart", "PerBotVotingReadout"])

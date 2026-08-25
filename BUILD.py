@@ -3,6 +3,7 @@ BUILD - Acervator Build Launcher
 Double-click this file to build the application.
 Automatically detects and installs all required dependencies.
 """
+
 import subprocess
 import sys
 import os
@@ -77,18 +78,18 @@ Option 4: Add Defender exclusion (done automatically by build)
 # spec_name is what importlib.util.find_spec() looks for
 # pip_name is what pip install uses
 REQUIRED_PACKAGES = [
-    ("PyInstaller",  "pyinstaller"),
-    ("PySide6",      "PySide6"),
-    ("ccxt",         "ccxt"),
+    ("PyInstaller", "pyinstaller"),
+    ("PySide6", "PySide6"),
+    ("ccxt", "ccxt"),
     ("cryptography", "cryptography"),
-    ("keyring",      "keyring"),
-    ("pandas",       "pandas"),
-    ("numpy",        "numpy"),
-    ("ta",           "ta"),
-    ("tomli_w",      "tomli_w"),
-    ("aiohttp",      "aiohttp"),
-    ("certifi",      "certifi"),
-    ("psutil",       "psutil"),       # Nuclear v4 MR — system load sampling
+    ("keyring", "keyring"),
+    ("pandas", "pandas"),
+    ("numpy", "numpy"),
+    ("ta", "ta"),
+    ("tomli_w", "tomli_w"),
+    ("aiohttp", "aiohttp"),
+    ("certifi", "certifi"),
+    ("psutil", "psutil"),  # Nuclear v4 MR — system load sampling
 ]
 
 
@@ -205,9 +206,12 @@ def run_build():
     if os.path.isdir(exe_path):
         print("\n  Adding Windows Defender exclusion...")
         exc_result = subprocess.run(
-            ["powershell", "-Command",
-             f"Start-Process powershell -Verb RunAs -Wait -ArgumentList "
-             f"'-Command Add-MpPreference -ExclusionPath \"{os.path.abspath(exe_path)}\"'"],
+            [
+                "powershell",
+                "-Command",
+                f"Start-Process powershell -Verb RunAs -Wait -ArgumentList "
+                f"'-Command Add-MpPreference -ExclusionPath \"{os.path.abspath(exe_path)}\"'",
+            ],
             capture_output=True,
         )
         if exc_result.returncode == 0:

@@ -28,6 +28,7 @@ outstanding total and adding to it. Introducing a lock would add an
 await point and make the operation genuinely interruptible -- the
 opposite of what is wanted.
 """
+
 from __future__ import annotations
 
 import logging

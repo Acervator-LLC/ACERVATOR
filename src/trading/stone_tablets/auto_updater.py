@@ -44,6 +44,7 @@ Append-only, gap-driven, and boring on purpose.
   exchange rate-limit budget with the live engine, so it sleeps between
   assets and can be told to stand down.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -79,6 +80,7 @@ spends API budget to learn that."""
 @dataclass
 class UpdateReport:
     """Outcome of one sweep."""
+
     started_at: float = 0.0
     elapsed_s: float = 0.0
     assets_considered: int = 0
@@ -138,7 +140,9 @@ class StoneTabletAutoUpdater:
         logger.info(
             "stone tablets: auto-updater scheduled (first sweep in "
             "%.0fs, then every %.1fh)",
-            self._boot_delay_s, self._interval_s / 3600.0)
+            self._boot_delay_s,
+            self._interval_s / 3600.0,
+        )
         return True
 
     def stop(self) -> None:
@@ -161,8 +165,7 @@ class StoneTabletAutoUpdater:
                     # must not end the schedule; the next one may
                     # succeed once the network or exchange recovers.
                     logger.exception("stone tablets: sweep failed")
-                    self._activity(
-                        f"Stone Tablets: update sweep failed — {exc}")
+                    self._activity(f"Stone Tablets: update sweep failed — {exc}")
                 await self._sleep_or_stop(self._interval_s)
         except asyncio.CancelledError:
             logger.info("stone tablets: auto-updater cancelled")
@@ -200,13 +203,14 @@ class StoneTabletAutoUpdater:
             report.elapsed_s = time.monotonic() - t0
             self._activity(
                 "Stone Tablets: no exchange connector available — "
-                "update skipped, archive stays as-is.")
+                "update skipped, archive stays as-is."
+            )
             return report
 
         reg = get_registry()
         summaries = reg.coverage_summary()
         if self._max_assets is not None:
-            summaries = summaries[:self._max_assets]
+            summaries = summaries[: self._max_assets]
         report.assets_considered = len(summaries)
 
         adapter = CoinbaseAdapter(connector)
@@ -214,8 +218,8 @@ class StoneTabletAutoUpdater:
         now_ms = int(time.time() * 1000)
 
         self._activity(
-            f"Stone Tablets: update sweep starting over "
-            f"{len(summaries)} asset(s).")
+            f"Stone Tablets: update sweep starting over " f"{len(summaries)} asset(s)."
+        )
 
         for cov in summaries:
             if self._stop.is_set():
@@ -229,8 +233,7 @@ class StoneTabletAutoUpdater:
                 report.assets_skipped_fresh += 1
                 continue
             try:
-                fill = await filler.fill_asset(
-                    asset, since_ms=last_ts, until_ms=now_ms)
+                fill = await filler.fill_asset(asset, since_ms=last_ts, until_ms=now_ms)
                 appended = int(getattr(fill, "candles_appended", 0) or 0)
                 report.candles_appended += appended
                 if appended:
@@ -242,8 +245,7 @@ class StoneTabletAutoUpdater:
                 report.assets_failed += 1
                 if len(report.errors) < 20:
                     report.errors.append(f"{asset}: {exc}")
-                logger.warning(
-                    "stone tablets: %s update failed: %s", asset, exc)
+                logger.warning("stone tablets: %s update failed: %s", asset, exc)
             await asyncio.sleep(PER_ASSET_PAUSE_S)
 
         report.elapsed_s = time.monotonic() - t0
@@ -252,9 +254,9 @@ class StoneTabletAutoUpdater:
             f"{report.candles_appended:,} candle(s) appended across "
             f"{report.assets_updated} asset(s), "
             f"{report.assets_skipped_fresh} already current"
-            + (f", {report.assets_failed} failed"
-               if report.assets_failed else "")
-            + f" ({report.elapsed_s:.0f}s).")
+            + (f", {report.assets_failed} failed" if report.assets_failed else "")
+            + f" ({report.elapsed_s:.0f}s)."
+        )
         logger.info("stone tablets: %s", report.to_dict())
         return report
 
@@ -265,6 +267,5 @@ class StoneTabletAutoUpdater:
             "running": self.running,
             "sweeps_completed": self.sweeps_completed,
             "interval_hours": round(self._interval_s / 3600.0, 2),
-            "last": (self.last_report.to_dict()
-                     if self.last_report else None),
+            "last": (self.last_report.to_dict() if self.last_report else None),
         }

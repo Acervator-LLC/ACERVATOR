@@ -37,14 +37,13 @@ is mid-flight; marking it finished would tell the panel at
 frame for a run still in progress. Only the second refusal — nothing launched —
 may touch it.
 """
+
 from __future__ import annotations
 
 import asyncio
 import sys
 import time
 from pathlib import Path
-
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -63,14 +62,18 @@ a hang must FAIL, never wedge the suite."""
 
 
 def _candles(n=8, px=100.0):
-    return [[BASE + i * STEP, px, px * 1.01, px * 0.99, px, 10.0]
-            for i in range(n)]
+    return [[BASE + i * STEP, px, px * 1.01, px * 0.99, px, 10.0] for i in range(n)]
 
 
 def _cfg(sym="BTC/USD", src="aaaa1111"):
-    return {"mode": "scrumming", "symbol": sym, "target_balance": 100.0,
-            "target_asset": sym.split("/")[0],
-            "base_currency": sym.split("/")[1], "_src_bot_id": src}
+    return {
+        "mode": "scrumming",
+        "symbol": sym,
+        "target_balance": 100.0,
+        "target_asset": sym.split("/")[0],
+        "base_currency": sym.split("/")[1],
+        "_src_bot_id": src,
+    }
 
 
 def _refusing_controller():
@@ -78,8 +81,8 @@ def _refusing_controller():
     symbol with no candle series, so `_build_sim` produces an empty fleet
     and `start()` takes its second refusal path."""
     return FleetReplayController(
-        configs=[_cfg("NOTAPE/USD")],
-        candles_by_symbol={"BTC/USD": _candles()})
+        configs=[_cfg("NOTAPE/USD")], candles_by_symbol={"BTC/USD": _candles()}
+    )
 
 
 class TestTheProbeItself:
@@ -111,7 +114,8 @@ class TestARefusedStartReportsRefusal:
 
     def test_start_returns_true_on_a_real_run(self):
         ctl = FleetReplayController(
-            configs=[_cfg()], candles_by_symbol={"BTC/USD": _candles()})
+            configs=[_cfg()], candles_by_symbol={"BTC/USD": _candles()}
+        )
 
         async def go():
             ok = await asyncio.wait_for(ctl.start(), BUDGET_S)
@@ -137,7 +141,8 @@ class TestTheAlreadyRunningRefusalDoesNotLie:
 
     def test_a_second_start_does_not_mark_the_live_run_finished(self):
         ctl = FleetReplayController(
-            configs=[_cfg()], candles_by_symbol={"BTC/USD": _candles(n=4000)})
+            configs=[_cfg()], candles_by_symbol={"BTC/USD": _candles(n=4000)}
+        )
 
         async def go():
             assert await asyncio.wait_for(ctl.start(), BUDGET_S) is True
@@ -151,7 +156,8 @@ class TestTheAlreadyRunningRefusalDoesNotLie:
         assert second is False, "a second start must report refusal"
         assert finished_during is False, (
             "the in-flight replay was marked finished by a REFUSED second "
-            "start; the panel would stop its progress timer mid-run")
+            "start; the panel would stop its progress timer mid-run"
+        )
 
 
 class TestTheLoopYieldsToTheRestOfTheProcess:
@@ -198,6 +204,7 @@ class TestTheLoopYieldsToTheRestOfTheProcess:
         Both branches are checked below, so this stays honest whichever
         way a future implementation satisfies it.
         """
+
         async def go():
             ctl = _refusing_controller()
             await asyncio.wait_for(ctl.start(), BUDGET_S)
@@ -207,32 +214,37 @@ class TestTheLoopYieldsToTheRestOfTheProcess:
 
         assert iters < 1000, (
             f"{iters} iterations on a refused start is a hot spin, not an "
-            "exit — `progress.finished` never became True")
+            "exit — `progress.finished` never became True"
+        )
 
         if iters > 0:
             # It chose to loop rather than exit; then it MUST yield.
             assert competitor > 0, (
                 f"the loop ran {iters} times and nothing else on the event "
                 "loop advanced. main.py pumps one loop from the Qt GUI "
-                "thread, so this freezes the GUI and every live coroutine")
+                "thread, so this freezes the GUI and every live coroutine"
+            )
 
     def test_the_probe_still_detects_a_spin(self):
         """NEGATIVE CONTROL for the test above. Its `iters < 1000` bound is
         only meaningful if the probe can still observe an unbounded spin —
         so drive it with a controller left in the pre-fix state."""
+
         async def go():
             ctl = _refusing_controller()
             await asyncio.wait_for(ctl.start(), BUDGET_S)
-            ctl.progress.finished = False       # re-create the old condition
+            ctl.progress.finished = False  # re-create the old condition
             return await self._starvation_probe(ctl, seconds=0.2)
 
         iters, competitor = asyncio.run(asyncio.wait_for(go(), BUDGET_S * 3))
         assert iters > 1000, (
             "the probe no longer detects a hot spin, so the bound in the "
-            "test above proves nothing")
+            "test above proves nothing"
+        )
         assert competitor == 0, (
             "expected total starvation in the pre-fix shape; if the loop "
-            "now yields, this file's premise needs re-deriving")
+            "now yields, this file's premise needs re-deriving"
+        )
 
 
 class TestExistingCallersStillWork:
@@ -240,10 +252,11 @@ class TestExistingCallersStillWork:
 
     def test_awaiting_start_and_ignoring_the_result_still_runs(self):
         ctl = FleetReplayController(
-            configs=[_cfg()], candles_by_symbol={"BTC/USD": _candles()})
+            configs=[_cfg()], candles_by_symbol={"BTC/USD": _candles()}
+        )
 
         async def go():
-            await asyncio.wait_for(ctl.start(), BUDGET_S)   # result ignored
+            await asyncio.wait_for(ctl.start(), BUDGET_S)  # result ignored
             ctl.request_stop()
             await asyncio.wait_for(ctl.stopped_event.wait(), BUDGET_S)
             return ctl.progress.finished

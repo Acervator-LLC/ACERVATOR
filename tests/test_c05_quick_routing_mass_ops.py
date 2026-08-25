@@ -26,6 +26,7 @@ These are structural pins. Driving the widget would require a populated
 swarm and a live bus; what matters here is that no path reaches the
 mutation without a confirmation, and that no rejection is silent.
 """
+
 from __future__ import annotations
 
 import ast
@@ -43,14 +44,17 @@ VIZ = REPO_ROOT / "src" / "gui" / "bot_visualizer.py"
 
 def _fn(name: str) -> ast.FunctionDef:
     tree = ast.parse(VIZ.read_text(encoding="utf-8"))
-    return next(n for n in ast.walk(tree)
-                if isinstance(n, ast.FunctionDef) and n.name == name)
+    return next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name
+    )
 
 
 def _calls(fn: ast.FunctionDef, attr: str) -> list[int]:
-    return [n.lineno for n in ast.walk(fn)
-            if isinstance(n, ast.Call)
-            and getattr(n.func, "attr", "") == attr]
+    return [
+        n.lineno
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == attr
+    ]
 
 
 MASS_OPS = ["_on_connect_clicked", "_on_disconnect_clicked"]
@@ -62,8 +66,9 @@ class TestMassOperationsAreConfirmed:
         calls, every guard test below would pass by finding nothing to
         guard."""
         for name in MASS_OPS:
-            assert _calls(_fn(name), "_apply_routes_to_state"), \
-                f"{name} has no _apply_routes_to_state call"
+            assert _calls(
+                _fn(name), "_apply_routes_to_state"
+            ), f"{name} has no _apply_routes_to_state call"
 
     @pytest.mark.parametrize("name", MASS_OPS)
     def test_no_mutation_runs_without_a_confirmation(self, name):
@@ -74,25 +79,28 @@ class TestMassOperationsAreConfirmed:
         assert confirms, f"{name} never calls _confirm_mass"
         for m in muts:
             assert any(c < m for c in confirms), (
-                f"{name}: mutation at line {m} has no confirmation "
-                f"before it")
+                f"{name}: mutation at line {m} has no confirmation " f"before it"
+            )
 
     def test_confirmation_defaults_to_No(self):
         """A stray Return must not create or destroy 1,190 wires."""
         src = ast.get_source_segment(
-            VIZ.read_text(encoding="utf-8"), _fn("_confirm_mass"))
+            VIZ.read_text(encoding="utf-8"), _fn("_confirm_mass")
+        )
         assert "QMessageBox.No," in src
 
     def test_an_unshowable_confirmation_refuses(self):
         src = ast.get_source_segment(
-            VIZ.read_text(encoding="utf-8"), _fn("_confirm_mass"))
-        assert "return False" in src[src.index("except"):]
+            VIZ.read_text(encoding="utf-8"), _fn("_confirm_mass")
+        )
+        assert "return False" in src[src.index("except") :]
 
     def test_the_count_is_shown(self):
         """'Create 1190 wires?' is the whole point — the operator cannot
         infer the cardinality from two checked columns."""
         src = ast.get_source_segment(
-            VIZ.read_text(encoding="utf-8"), _fn("_confirm_mass"))
+            VIZ.read_text(encoding="utf-8"), _fn("_confirm_mass")
+        )
         assert "{n}" in src or "n}" in src
 
 
@@ -110,8 +118,11 @@ class TestNoRejectionIsSilent:
         bare: list[int] = []
 
         def _has(node: ast.AST, attr: str) -> bool:
-            return any(getattr(n.func, "attr", "") == attr
-                       for n in ast.walk(node) if isinstance(n, ast.Call))
+            return any(
+                getattr(n.func, "attr", "") == attr
+                for n in ast.walk(node)
+                if isinstance(n, ast.Call)
+            )
 
         def _scan(body: list[ast.stmt], guard: ast.AST | None) -> None:
             spoke = guard is not None and _has(guard, "_confirm_mass")
@@ -137,7 +148,8 @@ class TestNoRejectionIsSilent:
         _scan(_fn(name).body, None)
         assert not bare, (
             f"{name} has unexplained early return(s) at {bare}; the "
-            f"operator sees nothing and cannot tell refusal from success")
+            f"operator sees nothing and cannot tell refusal from success"
+        )
 
     def test_the_silence_detector_actually_detects_silence(self):
         """Positive control for the scanner above. A bare guard clause
@@ -147,7 +159,8 @@ class TestNoRejectionIsSilent:
             "def f(self):\n"
             "    if not self._x():\n"
             "        return\n"
-            "    self._mutate()\n").body[0]
+            "    self._mutate()\n"
+        ).body[0]
         for n in ast.walk(sample):
             if isinstance(n, ast.Return) and n.value is None:
                 bare.append(n.lineno)
@@ -163,10 +176,8 @@ class TestPersistenceFailureIsNotSwallowed:
         """A failed write with the bus events still firing leaves the
         canvas showing wires that were never saved."""
         fn = _fn(name)
-        for h in [n for n in ast.walk(fn)
-                  if isinstance(n, ast.ExceptHandler)]:
-            bare_pass = (len(h.body) == 1
-                         and isinstance(h.body[0], ast.Pass))
+        for h in [n for n in ast.walk(fn) if isinstance(n, ast.ExceptHandler)]:
+            bare_pass = len(h.body) == 1 and isinstance(h.body[0], ast.Pass)
             assert not bare_pass, (
-                f"{name} still has a silent except: pass around a "
-                f"persistence call")
+                f"{name} still has a silent except: pass around a " f"persistence call"
+            )

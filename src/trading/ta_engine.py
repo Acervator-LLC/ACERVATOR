@@ -64,7 +64,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-
 # ---------------------------------------------------------------------------
 # Units
 # ---------------------------------------------------------------------------
@@ -92,6 +91,7 @@ NO_SHRINK_RATIO = 1.0
 # A volume spike is this percentage of the window's average volume.
 VOLUME_SPIKE_PCT = 200.0
 
+
 # ---------------------------------------------------------------------------
 # Core data types
 # ---------------------------------------------------------------------------
@@ -104,11 +104,12 @@ class SignalDirection(int, Enum):
 @dataclass
 class Signal:
     """One indicator's output at a point in time."""
+
     indicator: str
     timeframe: str
     direction: SignalDirection
-    confidence: float              # 0.0 – 1.0
-    weight: float = 1.0           # Configurable importance
+    confidence: float  # 0.0 – 1.0
+    weight: float = 1.0  # Configurable importance
     details: dict = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
@@ -121,12 +122,13 @@ class Signal:
 @dataclass
 class VotingSummary:
     """Aggregated result of all indicator votes."""
+
     bullish_count: int = 0
     bearish_count: int = 0
     neutral_count: int = 0
     total_bullish_score: float = 0.0
     total_bearish_score: float = 0.0
-    net_score: float = 0.0        # Positive = bullish consensus
+    net_score: float = 0.0  # Positive = bullish consensus
     consensus_confidence: float = 0.0  # 0.0 – 1.0
     signals: list[Signal] = field(default_factory=list)
     timeframe: str = ""
@@ -146,6 +148,7 @@ class VotingSummary:
 @dataclass
 class Candle:
     """Single OHLCV candle."""
+
     timestamp: float
     open: float
     high: float
@@ -202,12 +205,10 @@ def _candle_field(value: object, field: str, row: int) -> float:
     that door instead of naming one subclass and missing the rest.
     """
     if type(value) not in (int, float):
-        raise CandleDomainError(
-            f"row {row}: {field}={value!r} is not a number")
+        raise CandleDomainError(f"row {row}: {field}={value!r} is not a number")
     number = float(value)
     if not math.isfinite(number):
-        raise CandleDomainError(
-            f"row {row}: {field}={value!r} is not finite")
+        raise CandleDomainError(f"row {row}: {field}={value!r} is not finite")
     return number
 
 
@@ -235,28 +236,34 @@ def candles_from_raw(raw: Sequence[Sequence[object]]) -> list[Candle]:
         close_px = _candle_field(r[4], "close", row)
         volume = _candle_field(r[5], "volume", row)
 
-        for name, price in (("open", open_px), ("high", high_px),
-                            ("low", low_px), ("close", close_px)):
+        for name, price in (
+            ("open", open_px),
+            ("high", high_px),
+            ("low", low_px),
+            ("close", close_px),
+        ):
             if price <= 0.0:
                 raise CandleDomainError(
-                    f"row {row}: {name}={price!r} is not a positive price")
+                    f"row {row}: {name}={price!r} is not a positive price"
+                )
         if volume < 0.0:
-            raise CandleDomainError(
-                f"row {row}: volume={volume!r} is negative")
+            raise CandleDomainError(f"row {row}: volume={volume!r} is negative")
         if low_px > high_px:
             raise CandleDomainError(
-                f"row {row}: low={low_px!r} is above high={high_px!r}")
+                f"row {row}: low={low_px!r} is above high={high_px!r}"
+            )
         if not low_px <= open_px <= high_px:
             raise CandleDomainError(
                 f"row {row}: open={open_px!r} is outside "
-                f"[low={low_px!r}, high={high_px!r}]")
+                f"[low={low_px!r}, high={high_px!r}]"
+            )
         if not low_px <= close_px <= high_px:
             raise CandleDomainError(
                 f"row {row}: close={close_px!r} is outside "
-                f"[low={low_px!r}, high={high_px!r}]")
+                f"[low={low_px!r}, high={high_px!r}]"
+            )
 
-        out.append(Candle(timestamp, open_px, high_px, low_px,
-                          close_px, volume))
+        out.append(Candle(timestamp, open_px, high_px, low_px, close_px, volume))
     return out
 
 
@@ -299,8 +306,9 @@ def _stdev(values: list[float], period: int) -> list[float]:
     return _stdev_tail(values, period, tail=None)
 
 
-def _sma_tail(values: list[float], period: int,
-              tail: Optional[int] = _TAIL_DEFAULT) -> list[float]:
+def _sma_tail(
+    values: list[float], period: int, tail: Optional[int] = _TAIL_DEFAULT
+) -> list[float]:
     """Simple moving average, computing only the last ``tail`` entries.
 
     v3.24.22. The full-history form is O(n*period): every one of n
@@ -330,14 +338,15 @@ def _sma_tail(values: list[float], period: int,
     result: list = [None] * start
     for i in range(start, n):
         if i < period - 1:
-            result.append(sum(values[:i + 1]) / (i + 1))
+            result.append(sum(values[: i + 1]) / (i + 1))
         else:
-            result.append(sum(values[i - period + 1:i + 1]) / period)
+            result.append(sum(values[i - period + 1 : i + 1]) / period)
     return result
 
 
-def _stdev_tail(values: list[float], period: int,
-                tail: Optional[int] = _TAIL_DEFAULT) -> list[float]:
+def _stdev_tail(
+    values: list[float], period: int, tail: Optional[int] = _TAIL_DEFAULT
+) -> list[float]:
     """Rolling standard deviation, last ``tail`` entries only.
 
     Same contract and same bit-identity argument as ``_sma_tail``: the
@@ -347,7 +356,7 @@ def _stdev_tail(values: list[float], period: int,
     start = 0 if tail is None else max(0, n - int(tail))
     result: list = [None] * start
     for i in range(start, n):
-        window = values[max(0, i - period + 1):i + 1]
+        window = values[max(0, i - period + 1) : i + 1]
         if len(window) < 2:
             result.append(0.0)
         else:
@@ -391,9 +400,10 @@ def _true_range(candles: list[Candle]) -> list[float]:
     for i in range(1, len(candles)):
         c = candles[i]
         prev_close = candles[i - 1].close
-        tr.append(max(c.high - c.low, abs(c.high - prev_close), abs(c.low - prev_close)))
+        tr.append(
+            max(c.high - c.low, abs(c.high - prev_close), abs(c.low - prev_close))
+        )
     return tr
-
 
 
 # ---------------------------------------------------------------------------
@@ -472,25 +482,27 @@ class ADXIndicator:
         if n < self.period * 2 + 2:
             return Signal("adx", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
 
-        dm_plus = []; dm_minus = []; tr_list = []
+        dm_plus = []
+        dm_minus = []
+        tr_list = []
         for i in range(1, n):
             h, l, c = candles[i].high, candles[i].low, candles[i].close
-            ph, pl, pc = candles[i-1].high, candles[i-1].low, candles[i-1].close
+            ph, pl, pc = candles[i - 1].high, candles[i - 1].low, candles[i - 1].close
 
-            up   = h - ph
+            up = h - ph
             down = pl - l
-            dm_plus.append(up   if up > down and up > 0   else 0.0)
+            dm_plus.append(up if up > down and up > 0 else 0.0)
             dm_minus.append(down if down > up and down > 0 else 0.0)
             tr_list.append(max(h - l, abs(h - pc), abs(l - pc)))
 
-        s_dmp = self._wilder_smooth(dm_plus,  self.period)
+        s_dmp = self._wilder_smooth(dm_plus, self.period)
         s_dmm = self._wilder_smooth(dm_minus, self.period)
-        s_tr  = self._wilder_smooth(tr_list,  self.period)
+        s_tr = self._wilder_smooth(tr_list, self.period)
 
         if not s_tr or s_tr[-1] < 1e-9:
             return Signal("adx", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
 
-        di_plus  = 100.0 * s_dmp[-1] / s_tr[-1]
+        di_plus = 100.0 * s_dmp[-1] / s_tr[-1]
         di_minus = 100.0 * s_dmm[-1] / s_tr[-1]
 
         # Previous DI for crossover
@@ -498,7 +510,8 @@ class ADXIndicator:
             p_dip = 100.0 * s_dmp[-2] / s_tr[-2]
             p_dim = 100.0 * s_dmm[-2] / s_tr[-2]
         else:
-            p_dip = di_plus; p_dim = di_minus
+            p_dip = di_plus
+            p_dim = di_minus
 
         di_sum = di_plus + di_minus
         dx = 100.0 * abs(di_plus - di_minus) / di_sum if di_sum > 1e-9 else 0.0
@@ -518,45 +531,45 @@ class ADXIndicator:
                 continue
             dip_j = 100.0 * s_dmp[j] / (s_tr[j] + 1e-9)
             dim_j = 100.0 * s_dmm[j] / (s_tr[j] + 1e-9)
-            ds    = dip_j + dim_j
+            ds = dip_j + dim_j
             dx_series.append(100.0 * abs(dip_j - dim_j) / ds if ds > 1e-9 else 0.0)
 
         # The leading `period - 1` entries of `dx_series` come from the
         # zero pad `_wilder_smooth` writes, not from real DI readings.
         # Averaging them in would drag the first ADX toward zero, so the
         # series starts at the first genuine DX.
-        _dx_valid = dx_series[self.period - 1:]
-        s_dx  = self._wilder_smooth(_dx_valid, self.period)
-        adx   = s_dx[-1] if s_dx else 0.0
+        _dx_valid = dx_series[self.period - 1 :]
+        s_dx = self._wilder_smooth(_dx_valid, self.period)
+        adx = s_dx[-1] if s_dx else 0.0
         p_adx = s_dx[-2] if len(s_dx) >= 2 else adx
 
         # Signals
-        ranging        = adx < 20
-        developing     = 20 <= adx < 35
-        strong_trend   = adx >= 35
-        parabolic      = adx >= 50
-        adx_rising     = adx > p_adx
-        bull_dominant  = di_plus > di_minus
-        bear_dominant  = di_minus > di_plus
-        di_bull_cross  = p_dip <= p_dim and di_plus > di_minus   # DI+ crosses above DI-
-        di_bear_cross  = p_dip >= p_dim and di_plus < di_minus   # DI- crosses above DI+
-        new_trend      = adx_rising and p_adx < 20 and adx >= 20  # ADX emerging from ranging
+        ranging = adx < 20
+        developing = 20 <= adx < 35
+        strong_trend = adx >= 35
+        parabolic = adx >= 50
+        adx_rising = adx > p_adx
+        bull_dominant = di_plus > di_minus
+        bear_dominant = di_minus > di_plus
+        di_bull_cross = p_dip <= p_dim and di_plus > di_minus  # DI+ crosses above DI-
+        di_bear_cross = p_dip >= p_dim and di_plus < di_minus  # DI- crosses above DI+
+        new_trend = adx_rising and p_adx < 20 and adx >= 20  # ADX emerging from ranging
 
         # Direction and confidence
         if bull_dominant and strong_trend:
-            direction  = SignalDirection.BULLISH
+            direction = SignalDirection.BULLISH
             confidence = max(0.0, min(1.0, (adx - 35) / 30 + 0.5))
         elif bear_dominant and strong_trend:
-            direction  = SignalDirection.BEARISH
+            direction = SignalDirection.BEARISH
             confidence = max(0.0, min(1.0, (adx - 35) / 30 + 0.5))
         elif bull_dominant:
-            direction  = SignalDirection.BULLISH
+            direction = SignalDirection.BULLISH
             confidence = max(0.0, min(0.5, adx / 70))
         elif bear_dominant:
-            direction  = SignalDirection.BEARISH
+            direction = SignalDirection.BEARISH
             confidence = max(0.0, min(0.5, adx / 70))
         else:
-            direction  = SignalDirection.NEUTRAL
+            direction = SignalDirection.NEUTRAL
             confidence = 0.0
 
         return Signal(
@@ -566,19 +579,19 @@ class ADXIndicator:
             confidence=confidence,
             weight=self.weight,
             details={
-                "adx":          round(adx,      2),
-                "di_plus":      round(di_plus,  2),
-                "di_minus":     round(di_minus, 2),
-                "ranging":      ranging,
-                "developing":   developing,
+                "adx": round(adx, 2),
+                "di_plus": round(di_plus, 2),
+                "di_minus": round(di_minus, 2),
+                "ranging": ranging,
+                "developing": developing,
                 "strong_trend": strong_trend,
-                "parabolic":    parabolic,
-                "adx_rising":   adx_rising,
+                "parabolic": parabolic,
+                "adx_rising": adx_rising,
                 "bull_dominant": bull_dominant,
                 "bear_dominant": bear_dominant,
                 "di_bull_cross": di_bull_cross,
                 "di_bear_cross": di_bear_cross,
-                "new_trend":    new_trend,
+                "new_trend": new_trend,
             },
         )
 
@@ -612,42 +625,49 @@ class SupertrendIndicator:
       Distance from line = trend conviction
     """
 
-    def __init__(self, period: int = 10, multiplier: float = 3.0,
-                 weight: float = 1.0):
-        self.period     = period
+    def __init__(self, period: int = 10, multiplier: float = 3.0, weight: float = 1.0):
+        self.period = period
         self.multiplier = multiplier
-        self.weight     = weight
+        self.weight = weight
 
     def compute(self, candles: list, timeframe: str = "1h") -> Signal:
         n = len(candles)
         if n < self.period + 2:
-            return Signal("supertrend", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "supertrend", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         # ATR (Wilder)
-        tr_list = [max(candles[i].high - candles[i].low,
-                       abs(candles[i].high - candles[i-1].close),
-                       abs(candles[i].low  - candles[i-1].close))
-                   for i in range(1, n)]
+        tr_list = [
+            max(
+                candles[i].high - candles[i].low,
+                abs(candles[i].high - candles[i - 1].close),
+                abs(candles[i].low - candles[i - 1].close),
+            )
+            for i in range(1, n)
+        ]
 
         # Simple ATR smoothing (Wilder)
         atr = [0.0] * (self.period)
         if len(tr_list) >= self.period:
-            first_atr = sum(tr_list[:self.period]) / self.period
+            first_atr = sum(tr_list[: self.period]) / self.period
             atr = [first_atr]
-            for tr in tr_list[self.period:]:
+            for tr in tr_list[self.period :]:
                 atr.append((atr[-1] * (self.period - 1) + tr) / self.period)
 
         if not atr:
-            return Signal("supertrend", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "supertrend", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         # Align: atr[0] corresponds to candles[period]
         start = self.period
         curr_atr = atr[-1]
 
         # Build Supertrend series (need history for sticky bands)
-        ub = [0.0]; lb = [0.0]; st = [True]   # True = bullish
+        ub = [0.0]
+        lb = [0.0]
+        st = [True]  # True = bullish
         for i in range(start, n):
             idx_atr = i - start
             if idx_atr >= len(atr):
@@ -660,32 +680,42 @@ class SupertrendIndicator:
             # Sticky bands
             prev_ub = ub[-1] if ub else raw_ub
             prev_lb = lb[-1] if lb else raw_lb
-            final_ub = raw_ub if raw_ub < prev_ub or candles[i-1].close > prev_ub else prev_ub
-            final_lb = raw_lb if raw_lb > prev_lb or candles[i-1].close < prev_lb else prev_lb
+            final_ub = (
+                raw_ub
+                if raw_ub < prev_ub or candles[i - 1].close > prev_ub
+                else prev_ub
+            )
+            final_lb = (
+                raw_lb
+                if raw_lb > prev_lb or candles[i - 1].close < prev_lb
+                else prev_lb
+            )
 
             prev_bull = st[-1]
             if prev_bull:
                 curr_bull = candles[i].close >= final_lb
             else:
-                curr_bull = candles[i].close >  final_ub
+                curr_bull = candles[i].close > final_ub
 
-            ub.append(final_ub); lb.append(final_lb); st.append(curr_bull)
+            ub.append(final_ub)
+            lb.append(final_lb)
+            st.append(curr_bull)
 
-        curr_bull  = st[-1]
-        prev_bull  = st[-2] if len(st) >= 2 else curr_bull
-        flip_bull  = curr_bull and not prev_bull   # just turned bullish
-        flip_bear  = not curr_bull and prev_bull   # just turned bearish
+        curr_bull = st[-1]
+        prev_bull = st[-2] if len(st) >= 2 else curr_bull
+        flip_bull = curr_bull and not prev_bull  # just turned bullish
+        flip_bear = not curr_bull and prev_bull  # just turned bearish
 
-        price      = candles[-1].close
-        st_line    = lb[-1] if curr_bull else ub[-1]
-        dist_pct   = abs(price - st_line) / (st_line + 1e-9)
+        price = candles[-1].close
+        st_line = lb[-1] if curr_bull else ub[-1]
+        dist_pct = abs(price - st_line) / (st_line + 1e-9)
 
         # Near-line: price within 0.5% of Supertrend line (fold entry in bull)
-        near_line  = dist_pct < 0.005
+        near_line = dist_pct < 0.005
 
         confidence = 0.0
         if flip_bull or flip_bear:
-            confidence = 0.85   # flip = strong signal
+            confidence = 0.85  # flip = strong signal
         elif curr_bull:
             confidence = max(0.0, min(0.6, dist_pct * 5 + 0.2))
         else:
@@ -700,13 +730,13 @@ class SupertrendIndicator:
             confidence=confidence,
             weight=self.weight,
             details={
-                "bullish":    curr_bull,
-                "flip_bull":  flip_bull,
-                "flip_bear":  flip_bear,
-                "st_line":    round(st_line, 6),
-                "dist_pct":   round(dist_pct * 100, 3),
-                "near_line":  near_line,
-                "curr_atr":   round(curr_atr, 6),
+                "bullish": curr_bull,
+                "flip_bull": flip_bull,
+                "flip_bear": flip_bear,
+                "st_line": round(st_line, 6),
+                "dist_pct": round(dist_pct * 100, 3),
+                "near_line": near_line,
+                "curr_atr": round(curr_atr, 6),
             },
         )
 
@@ -749,15 +779,19 @@ class ZScoreIndicator:
 
     def compute(self, candles: list, timeframe: str = "1h") -> Signal:
         if len(candles) < self.period + 1:
-            return Signal("zscore", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "zscore", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
-        closes = [c.close for c in candles[-self.period:]]
-        sma    = sum(closes) / self.period
-        variance = sum((c - sma)**2 for c in closes) / self.period
-        std    = variance**0.5
+        closes = [c.close for c in candles[-self.period :]]
+        sma = sum(closes) / self.period
+        variance = sum((c - sma) ** 2 for c in closes) / self.period
+        std = variance**0.5
 
         if std < 1e-9:
-            return Signal("zscore", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "zscore", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         z = (candles[-1].close - sma) / std
 
@@ -778,9 +812,9 @@ class ZScoreIndicator:
         # coefficient.
         z_prev = z
         if len(candles) >= self.period + 2:
-            c_prev = [c.close for c in candles[-self.period-1:-1]]
+            c_prev = [c.close for c in candles[-self.period - 1 : -1]]
             s2 = sum(c_prev) / self.period
-            v2 = sum((c - s2)**2 for c in c_prev) / self.period
+            v2 = sum((c - s2) ** 2 for c in c_prev) / self.period
             std2 = v2**0.5
             if not std2 < 1e-9:
                 z_prev = (candles[-2].close - s2) / (std2 + 1e-9)
@@ -788,27 +822,27 @@ class ZScoreIndicator:
         z_reverting = (z > 0 and z < z_prev) or (z < 0 and z > z_prev)
 
         # Extreme signals
-        extreme_high = z >  3.0
-        strong_high  = z >  2.0
-        mild_high    = z >  1.5
-        extreme_low  = z < -3.0
-        strong_low   = z < -2.0
-        mild_low     = z < -1.5
+        extreme_high = z > 3.0
+        strong_high = z > 2.0
+        mild_high = z > 1.5
+        extreme_low = z < -3.0
+        strong_low = z < -2.0
+        mild_low = z < -1.5
 
         if strong_high:
-            direction  = SignalDirection.BEARISH
+            direction = SignalDirection.BEARISH
             confidence = max(0.0, min(1.0, (z - 2.0) / 2.0 + 0.5))
         elif strong_low:
-            direction  = SignalDirection.BULLISH
+            direction = SignalDirection.BULLISH
             confidence = max(0.0, min(1.0, (-z - 2.0) / 2.0 + 0.5))
         elif mild_high:
-            direction  = SignalDirection.BEARISH
+            direction = SignalDirection.BEARISH
             confidence = 0.25
         elif mild_low:
-            direction  = SignalDirection.BULLISH
+            direction = SignalDirection.BULLISH
             confidence = 0.25
         else:
-            direction  = SignalDirection.NEUTRAL
+            direction = SignalDirection.NEUTRAL
             confidence = 0.0
 
         return Signal(
@@ -818,17 +852,17 @@ class ZScoreIndicator:
             confidence=confidence,
             weight=self.weight,
             details={
-                "z":            round(z, 3),
-                "z_prev":       round(z_prev, 3),
-                "sma":          round(sma, 6),
-                "std":          round(std, 6),
+                "z": round(z, 3),
+                "z_prev": round(z_prev, 3),
+                "sma": round(sma, 6),
+                "std": round(std, 6),
                 "extreme_high": extreme_high,
-                "strong_high":  strong_high,
-                "mild_high":    mild_high,
-                "extreme_low":  extreme_low,
-                "strong_low":   strong_low,
-                "mild_low":     mild_low,
-                "z_reverting":  z_reverting,
+                "strong_high": strong_high,
+                "mild_high": mild_high,
+                "extreme_low": extreme_low,
+                "strong_low": strong_low,
+                "mild_low": mild_low,
+                "z_reverting": z_reverting,
             },
         )
 
@@ -869,12 +903,15 @@ class KaufmanERIndicator:
 
     def compute(self, candles: list, timeframe: str = "1h") -> Signal:
         if len(candles) < self.period + 2:
-            return Signal("kaufman_er", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "kaufman_er", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
-        closes = [c.close for c in candles[-(self.period + 1):]]
+        closes = [c.close for c in candles[-(self.period + 1) :]]
         net_change = abs(closes[-1] - closes[0])
-        price_travel = sum(abs(closes[i] - closes[i-1]) for i in range(1, len(closes)))
+        price_travel = sum(
+            abs(closes[i] - closes[i - 1]) for i in range(1, len(closes))
+        )
 
         # A window where price never moved has travelled no distance, so
         # displacement over distance is 0/0. The market's quality is not
@@ -886,8 +923,9 @@ class KaufmanERIndicator:
         # 0.0 and so is the sum: this test is on a derived quantity that
         # cancels exactly, and needs no source-window test behind it.
         if price_travel <= 0.0:
-            return Signal("kaufman_er", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "kaufman_er", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         # Kaufman's Efficiency Ratio: net displacement over the total
         # distance travelled to get there. Both are prices, so `er` is
@@ -899,34 +937,34 @@ class KaufmanERIndicator:
         # that, already used when the history is too short.
         er_prev = er
         if len(candles) >= self.period + 3:
-            c2 = [c.close for c in candles[-(self.period + 2):-1]]
+            c2 = [c.close for c in candles[-(self.period + 2) : -1]]
             nc2 = abs(c2[-1] - c2[0])
-            pl2 = sum(abs(c2[i] - c2[i-1]) for i in range(1, len(c2)))
+            pl2 = sum(abs(c2[i] - c2[i - 1]) for i in range(1, len(c2)))
             if pl2 > 0.0:
                 er_prev = nc2 / (pl2 + 1e-9)
 
-        er_rising  = er > er_prev
+        er_rising = er > er_prev
         er_falling = er < er_prev
 
         # Classify
-        ideal_ranging    = er < 0.25
-        moderate         = 0.25 <= er < 0.50
-        trending         = er >= 0.50
+        ideal_ranging = er < 0.25
+        moderate = 0.25 <= er < 0.50
+        trending = er >= 0.50
         highly_efficient = er >= 0.70
-        er_peak_falling  = er_falling and er_prev >= 0.60   # trend ending
+        er_peak_falling = er_falling and er_prev >= 0.60  # trend ending
 
         # Price direction (trending ER needs direction to be useful)
         closes_all = [c.close for c in candles]
-        price_up   = closes_all[-1] > closes_all[-self.period]
+        price_up = closes_all[-1] > closes_all[-self.period]
 
         if trending and price_up:
-            direction  = SignalDirection.BULLISH
+            direction = SignalDirection.BULLISH
             confidence = max(0.0, min(0.7, er * 0.7))
         elif trending and not price_up:
-            direction  = SignalDirection.BEARISH
+            direction = SignalDirection.BEARISH
             confidence = max(0.0, min(0.7, er * 0.7))
         else:
-            direction  = SignalDirection.NEUTRAL
+            direction = SignalDirection.NEUTRAL
             confidence = 0.0
 
         return Signal(
@@ -936,22 +974,24 @@ class KaufmanERIndicator:
             confidence=confidence,
             weight=self.weight,
             details={
-                "er":              round(er, 4),
-                "er_prev":         round(er_prev, 4),
-                "er_rising":       er_rising,
-                "er_falling":      er_falling,
-                "ideal_ranging":   ideal_ranging,
-                "moderate":        moderate,
-                "trending":        trending,
+                "er": round(er, 4),
+                "er_prev": round(er_prev, 4),
+                "er_rising": er_rising,
+                "er_falling": er_falling,
+                "ideal_ranging": ideal_ranging,
+                "moderate": moderate,
+                "trending": trending,
                 "highly_efficient": highly_efficient,
                 "er_peak_falling": er_peak_falling,
-                "price_up":        price_up,
+                "price_up": price_up,
             },
         )
+
 
 # ===========================================================================
 # INDICATOR IMPLEMENTATIONS
 # ===========================================================================
+
 
 # ---------------------------------------------------------------------------
 # 1. Bollinger Bands
@@ -974,7 +1014,9 @@ class BollingerBands:
     def compute(self, candles: list[Candle], timeframe: str = "1h") -> Signal:
         closes = [c.close for c in candles]
         if len(closes) < self.period:
-            return Signal("bollinger_bands", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "bollinger_bands", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         # v3.24.22 — suffix-only. Consumes sma[-1]/std[-1] plus the
         # widths slice over the last `period` entries, so `period` is
@@ -1031,15 +1073,20 @@ class BollingerBands:
         #
         # Numerator kept verbatim per the note above; only the
         # normalisation that `band_width` already had is added.
-        widths = [((sma[i] + self.std_dev * std[i])
-                   - (sma[i] - self.std_dev * std[i])) / (sma[i] + 1e-9)
-                  for i in range(max(0, len(sma) - self.period), len(sma))]
+        widths = [
+            ((sma[i] + self.std_dev * std[i]) - (sma[i] - self.std_dev * std[i]))
+            / (sma[i] + 1e-9)
+            for i in range(max(0, len(sma) - self.period), len(sma))
+        ]
         # `width_count` is a COUNT of windows, not a bandwidth. Naming
         # it keeps the length test out of the bandwidth comparison on
         # the next line.
         width_count = len(widths)
-        avg_width = (sum(widths[-self.period:]) / self.period
-                     if width_count >= self.period else band_width)
+        avg_width = (
+            sum(widths[-self.period :]) / self.period
+            if width_count >= self.period
+            else band_width
+        )
         squeeze = band_width < avg_width * 0.75
 
         # Position within bands (0 = lower, 1 = upper)
@@ -1059,10 +1106,10 @@ class BollingerBands:
         # markets this guard exists for. `upper - lower <= 0.0` is kept
         # underneath as a subordinate floor: it can only ever make this
         # abstain more often, never less.
-        if (_window_has_no_range(closes[-self.period:])
-                or upper - lower <= 0.0):
-            return Signal("bollinger_bands", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+        if _window_has_no_range(closes[-self.period :]) or upper - lower <= 0.0:
+            return Signal(
+                "bollinger_bands", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         bb_pos = (price - lower) / (upper - lower + 1e-9)
 
@@ -1092,9 +1139,12 @@ class BollingerBands:
             confidence=confidence,
             weight=self.weight,
             details={
-                "upper": round(upper, 6), "middle": round(mid, 6),
-                "lower": round(lower, 6), "bb_position": round(bb_pos, 4),
-                "band_width": round(band_width, 6), "squeeze": squeeze,
+                "upper": round(upper, 6),
+                "middle": round(mid, 6),
+                "lower": round(lower, 6),
+                "bb_position": round(bb_pos, 4),
+                "band_width": round(band_width, 6),
+                "squeeze": squeeze,
             },
         )
 
@@ -1108,10 +1158,10 @@ class BollingerBands:
 # percentage OF that parity, then divided back into ratio space. Both
 # sides of the ceiling/floor tests below then carry the same unit by
 # construction rather than by convention.
-VX_CEILING_PCT = 130.0   # VI at 130% of parity = momentum exhausted
-VX_FLOOR_PCT   = 70.0    # VI at  70% of parity = flat / no conviction
+VX_CEILING_PCT = 130.0  # VI at 130% of parity = momentum exhausted
+VX_FLOOR_PCT = 70.0  # VI at  70% of parity = flat / no conviction
 VX_CEILING = VX_CEILING_PCT / PERCENT_PER_RATIO_UNIT
-VX_FLOOR   = VX_FLOOR_PCT / PERCENT_PER_RATIO_UNIT
+VX_FLOOR = VX_FLOOR_PCT / PERCENT_PER_RATIO_UNIT
 
 
 class VortexIndicator:
@@ -1133,7 +1183,9 @@ class VortexIndicator:
 
     def compute(self, candles: list[Candle], timeframe: str = "1h") -> Signal:
         if len(candles) < self.period + 1:
-            return Signal("vortex", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "vortex", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         vm_plus = []
         vm_minus = []
@@ -1145,7 +1197,9 @@ class VortexIndicator:
 
         n = self.period
         if len(vm_plus) < n:
-            return Signal("vortex", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "vortex", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         sum_vp = sum(vm_plus[-n:])
         sum_vm = sum(vm_minus[-n:])
@@ -1169,12 +1223,13 @@ class VortexIndicator:
         # True range is a max of differences between equal prices on a
         # halt, so the sum cancels to EXACTLY 0.0 and `<= 0.0` is sound.
         if sum_tr_window <= 0.0:
-            return Signal("vortex", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "vortex", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         sum_tr = sum_tr_window + 1e-9
 
-        vi_plus  = sum_vp / sum_tr
+        vi_plus = sum_vp / sum_tr
         vi_minus = sum_vm / sum_tr
 
         # Previous period values for crossover + acceleration detection.
@@ -1183,21 +1238,21 @@ class VortexIndicator:
         prev_vp = vi_plus
         prev_vm = vi_minus
         if len(vm_plus) >= n + 1:
-            prev_tr_window = sum(tr[-n-1:-1])
+            prev_tr_window = sum(tr[-n - 1 : -1])
             if prev_tr_window > 0.0:
-                prev_vp = sum(vm_plus[-n-1:-1]) / (prev_tr_window + 1e-9)
-                prev_vm = sum(vm_minus[-n-1:-1]) / (prev_tr_window + 1e-9)
+                prev_vp = sum(vm_plus[-n - 1 : -1]) / (prev_tr_window + 1e-9)
+                prev_vm = sum(vm_minus[-n - 1 : -1]) / (prev_tr_window + 1e-9)
 
-        separation      = vi_plus - vi_minus
-        prev_sep        = prev_vp - prev_vm
-        sep_acceleration = separation - prev_sep   # how fast lines are diverging
+        separation = vi_plus - vi_minus
+        prev_sep = prev_vp - prev_vm
+        sep_acceleration = separation - prev_sep  # how fast lines are diverging
 
         # ── Ceiling / floor detection ─────────────────────────────────────
-        vip_at_ceiling  = vi_plus  >= VX_CEILING   # bullish exhausted
-        vim_at_ceiling  = vi_minus >= VX_CEILING   # bearish exhausted
-        vip_at_floor    = vi_plus  <= VX_FLOOR     # no bullish conviction
-        vim_at_floor    = vi_minus <= VX_FLOOR     # no bearish conviction
-        both_converging = abs(separation) < 0.08   # lines near each other
+        vip_at_ceiling = vi_plus >= VX_CEILING  # bullish exhausted
+        vim_at_ceiling = vi_minus >= VX_CEILING  # bearish exhausted
+        vip_at_floor = vi_plus <= VX_FLOOR  # no bullish conviction
+        vim_at_floor = vi_minus <= VX_FLOOR  # no bearish conviction
+        both_converging = abs(separation) < 0.08  # lines near each other
 
         # ── Crossover ─────────────────────────────────────────────────────
         bullish_cross = prev_sep <= 0 and separation > 0
@@ -1206,33 +1261,41 @@ class VortexIndicator:
         # ── Post-crossover divergence acceleration ────────────────────────
         # After a bullish cross, VI+ rising AND VI- falling simultaneously
         # is the strongest possible confirmation (your image arrows)
-        bull_accel = (separation > 0 and sep_acceleration > 0.05
-                      and vi_plus > prev_vp and vi_minus < prev_vm)
-        bear_accel = (separation < 0 and sep_acceleration < -0.05
-                      and vi_minus > prev_vm and vi_plus < prev_vp)
+        bull_accel = (
+            separation > 0
+            and sep_acceleration > 0.05
+            and vi_plus > prev_vp
+            and vi_minus < prev_vm
+        )
+        bear_accel = (
+            separation < 0
+            and sep_acceleration < -0.05
+            and vi_minus > prev_vm
+            and vi_plus < prev_vp
+        )
 
-        direction  = SignalDirection.NEUTRAL
+        direction = SignalDirection.NEUTRAL
         confidence = 0.0
-        crossover  = bullish_cross or bearish_cross
+        crossover = bullish_cross or bearish_cross
 
         if bullish_cross:
-            direction  = SignalDirection.BULLISH
+            direction = SignalDirection.BULLISH
             confidence = max(0.0, min(1.0, abs(separation) * 3 + 0.5))
         elif bearish_cross:
-            direction  = SignalDirection.BEARISH
+            direction = SignalDirection.BEARISH
             confidence = max(0.0, min(1.0, abs(separation) * 3 + 0.5))
         elif bull_accel:
             # Post-crossover divergence expanding — highest-conviction bull signal
-            direction  = SignalDirection.BULLISH
+            direction = SignalDirection.BULLISH
             confidence = max(0.0, min(1.0, abs(separation) * 2 + 0.55))
         elif bear_accel:
-            direction  = SignalDirection.BEARISH
+            direction = SignalDirection.BEARISH
             confidence = max(0.0, min(1.0, abs(separation) * 2 + 0.55))
         elif separation > 0.05:
-            direction  = SignalDirection.BULLISH
+            direction = SignalDirection.BULLISH
             confidence = max(0.0, min(0.6, abs(separation) * 2))
         elif separation < -0.05:
-            direction  = SignalDirection.BEARISH
+            direction = SignalDirection.BEARISH
             confidence = max(0.0, min(0.6, abs(separation) * 2))
 
         # ── Ceiling/floor confidence modifiers ───────────────────────────
@@ -1245,7 +1308,7 @@ class VortexIndicator:
         if vim_at_ceiling:
             # Bearish momentum maxed out — this is a strong fold signal
             confidence = min(1.0, max(confidence, 0.60))
-            direction  = SignalDirection.BULLISH  # bear exhaustion = reversal coming
+            direction = SignalDirection.BULLISH  # bear exhaustion = reversal coming
 
         return Signal(
             indicator="vortex",
@@ -1254,18 +1317,18 @@ class VortexIndicator:
             confidence=confidence,
             weight=self.weight,
             details={
-                "vi_plus":          round(vi_plus,  4),
-                "vi_minus":         round(vi_minus, 4),
-                "separation":       round(separation, 4),
+                "vi_plus": round(vi_plus, 4),
+                "vi_minus": round(vi_minus, 4),
+                "separation": round(separation, 4),
                 "sep_acceleration": round(sep_acceleration, 4),
-                "crossover":        crossover,
-                "bull_accel":       bull_accel,
-                "bear_accel":       bear_accel,
-                "vip_at_ceiling":   vip_at_ceiling,
-                "vim_at_ceiling":   vim_at_ceiling,
-                "vip_at_floor":     vip_at_floor,
-                "vim_at_floor":     vim_at_floor,
-                "both_converging":  both_converging,
+                "crossover": crossover,
+                "bull_accel": bull_accel,
+                "bear_accel": bear_accel,
+                "vip_at_ceiling": vip_at_ceiling,
+                "vim_at_ceiling": vim_at_ceiling,
+                "vip_at_floor": vip_at_floor,
+                "vim_at_floor": vim_at_floor,
+                "both_converging": both_converging,
             },
         )
 
@@ -1279,7 +1342,9 @@ class MACD:
     Enhanced with divergence detection.
     """
 
-    def __init__(self, fast: int = 12, slow: int = 26, signal: int = 9, weight: float = 1.0):
+    def __init__(
+        self, fast: int = 12, slow: int = 26, signal: int = 9, weight: float = 1.0
+    ):
         self.fast = fast
         self.slow = slow
         self.signal_period = signal
@@ -1312,25 +1377,27 @@ class MACD:
         if prev_macd <= prev_signal and curr_macd > curr_signal:
             direction = SignalDirection.BULLISH
             crossover = True
-            confidence = max(0.0, min(
-                1.0,
-                abs(curr_hist) / (abs(closes[-1]) * 0.001 + 1e-9) * 0.3 + 0.5))
+            confidence = max(
+                0.0,
+                min(1.0, abs(curr_hist) / (abs(closes[-1]) * 0.001 + 1e-9) * 0.3 + 0.5),
+            )
         elif prev_macd >= prev_signal and curr_macd < curr_signal:
             direction = SignalDirection.BEARISH
             crossover = True
-            confidence = max(0.0, min(
-                1.0,
-                abs(curr_hist) / (abs(closes[-1]) * 0.001 + 1e-9) * 0.3 + 0.5))
+            confidence = max(
+                0.0,
+                min(1.0, abs(curr_hist) / (abs(closes[-1]) * 0.001 + 1e-9) * 0.3 + 0.5),
+            )
         elif curr_hist > 0 and curr_hist > prev_hist:
             direction = SignalDirection.BULLISH
-            confidence = max(0.0, min(
-                0.6,
-                abs(curr_hist) / (abs(closes[-1]) * 0.002 + 1e-9)))
+            confidence = max(
+                0.0, min(0.6, abs(curr_hist) / (abs(closes[-1]) * 0.002 + 1e-9))
+            )
         elif curr_hist < 0 and curr_hist < prev_hist:
             direction = SignalDirection.BEARISH
-            confidence = max(0.0, min(
-                0.6,
-                abs(curr_hist) / (abs(closes[-1]) * 0.002 + 1e-9)))
+            confidence = max(
+                0.0, min(0.6, abs(curr_hist) / (abs(closes[-1]) * 0.002 + 1e-9))
+            )
         elif curr_hist > 0:
             direction = SignalDirection.BULLISH
             confidence = 0.15
@@ -1343,15 +1410,25 @@ class MACD:
             price_low = min(closes[-20:])
             price_prev_low = min(closes[-40:-20]) if len(closes) >= 40 else price_low
             macd_low = min(macd_line[-20:])
-            macd_prev_low = min(macd_line[-40:-20]) if len(macd_line) >= 40 else macd_low
+            macd_prev_low = (
+                min(macd_line[-40:-20]) if len(macd_line) >= 40 else macd_low
+            )
 
-            if closes[-1] <= price_low and price_low < price_prev_low and macd_low > macd_prev_low:
+            if (
+                closes[-1] <= price_low
+                and price_low < price_prev_low
+                and macd_low > macd_prev_low
+            ):
                 divergence = "bullish"
                 direction = SignalDirection.BULLISH
                 confidence = min(1.0, max(confidence, 0.7))
-            elif closes[-1] >= max(closes[-20:]) and max(closes[-20:]) > max(closes[-40:-20] if len(closes) >= 40 else closes[-20:]):
+            elif closes[-1] >= max(closes[-20:]) and max(closes[-20:]) > max(
+                closes[-40:-20] if len(closes) >= 40 else closes[-20:]
+            ):
                 macd_high = max(macd_line[-20:])
-                macd_prev_high = max(macd_line[-40:-20]) if len(macd_line) >= 40 else macd_high
+                macd_prev_high = (
+                    max(macd_line[-40:-20]) if len(macd_line) >= 40 else macd_high
+                )
                 if macd_high < macd_prev_high:
                     divergence = "bearish"
                     direction = SignalDirection.BEARISH
@@ -1364,15 +1441,15 @@ class MACD:
             confidence=confidence,
             weight=self.weight,
             details={
-                "macd_line": round(curr_macd, 6), "signal_line": round(curr_signal, 6),
-                "histogram": round(curr_hist, 6), "crossover": crossover,
+                "macd_line": round(curr_macd, 6),
+                "signal_line": round(curr_signal, 6),
+                "histogram": round(curr_hist, 6),
+                "crossover": crossover,
                 "divergence": divergence,
             },
         )
 
-
     def compute_histogram_series(self, candles: list, n: int = 12) -> list:
-
 
         # sadp: R28  # indicator compute: fail-loudly(R28)
         """
@@ -1388,17 +1465,18 @@ class MACD:
         min_len = self.slow + self.signal_period
         if len(closes) < min_len:
             return []
-        ema_fast   = _ema(closes, self.fast)
-        ema_slow   = _ema(closes, self.slow)
-        macd_line  = [f - s for f, s in zip(ema_fast, ema_slow)]
+        ema_fast = _ema(closes, self.fast)
+        ema_slow = _ema(closes, self.slow)
+        macd_line = [f - s for f, s in zip(ema_fast, ema_slow)]
         signal_line = _ema(macd_line, self.signal_period)
-        histogram   = [m - s for m, s in zip(macd_line, signal_line)]
+        histogram = [m - s for m, s in zip(macd_line, signal_line)]
         return histogram[-n:]
 
 
 # ---------------------------------------------------------------------------
 # 3b. MACD Consolidation / Taper Detection
 # ---------------------------------------------------------------------------
+
 
 def detect_macd_taper(histogram: list, lookback: int = 8) -> dict:
     """
@@ -1463,15 +1541,15 @@ def detect_macd_taper(histogram: list, lookback: int = 8) -> dict:
     # ── Pattern 3: oscillation wedge ─────────────────────────────────────
     # Alternating signs AND decreasing peak amplitude in both halves
     signs = [1 if v > 0 else -1 for v in recent if v != 0]
-    alt_count = sum(1 for i in range(1, len(signs)) if signs[i] != signs[i-1])
+    alt_count = sum(1 for i in range(1, len(signs)) if signs[i] != signs[i - 1])
     alternating = alt_count >= len(signs) - 2 if len(signs) > 2 else False
 
-    first_half_peak  = max(abs_vals[:n//2]) if n >= 4 else 0
-    second_half_peak = max(abs_vals[n//2:]) if n >= 4 else 0
+    first_half_peak = max(abs_vals[: n // 2]) if n >= 4 else 0
+    second_half_peak = max(abs_vals[n // 2 :]) if n >= 4 else 0
     amplitude_shrinking = second_half_peak < first_half_peak * 0.85
 
     # Overall bar shrinkage fraction (any direction)
-    taper_count = sum(1 for i in range(1, n) if abs_vals[i] < abs_vals[i-1])
+    taper_count = sum(1 for i in range(1, n) if abs_vals[i] < abs_vals[i - 1])
     taper_strength = taper_count / max(n - 1, 1)
 
     # Approaching zero line?
@@ -1479,40 +1557,48 @@ def detect_macd_taper(histogram: list, lookback: int = 8) -> dict:
 
     # ── Classify ──────────────────────────────────────────────────────────
     if alternating and amplitude_shrinking and taper_strength >= 0.5:
-        result.update({
-            "taper_type":     "wedge",
-            "taper_strength": round(taper_strength, 3),
-            "bars_tapering":  taper_count,
-            "toward_cross":   toward_cross,
-            "consolidating":  True,
-        })
+        result.update(
+            {
+                "taper_type": "wedge",
+                "taper_strength": round(taper_strength, 3),
+                "bars_tapering": taper_count,
+                "toward_cross": toward_cross,
+                "consolidating": True,
+            }
+        )
     elif bull_taper >= 3:
-        result.update({
-            "taper_type":     "bullish",
-            "taper_strength": round(bull_taper / n, 3),
-            "bars_tapering":  bull_taper,
-            "toward_cross":   toward_cross,
-            "consolidating":  True,
-        })
+        result.update(
+            {
+                "taper_type": "bullish",
+                "taper_strength": round(bull_taper / n, 3),
+                "bars_tapering": bull_taper,
+                "toward_cross": toward_cross,
+                "consolidating": True,
+            }
+        )
     elif bear_taper >= 3:
-        result.update({
-            "taper_type":     "bearish",
-            "taper_strength": round(bear_taper / n, 3),
-            "bars_tapering":  bear_taper,
-            "toward_cross":   toward_cross,
-            "consolidating":  True,
-        })
+        result.update(
+            {
+                "taper_type": "bearish",
+                "taper_strength": round(bear_taper / n, 3),
+                "bars_tapering": bear_taper,
+                "toward_cross": toward_cross,
+                "consolidating": True,
+            }
+        )
     elif taper_strength >= 0.65:
         # General taper without clear directional bias
         dominant_sign = 1 if sum(recent) > 0 else -1
         t_type = "bearish" if dominant_sign > 0 else "bullish"
-        result.update({
-            "taper_type":     t_type,
-            "taper_strength": round(taper_strength, 3),
-            "bars_tapering":  taper_count,
-            "toward_cross":   toward_cross,
-            "consolidating":  True,
-        })
+        result.update(
+            {
+                "taper_type": t_type,
+                "taper_strength": round(taper_strength, 3),
+                "bars_tapering": taper_count,
+                "toward_cross": toward_cross,
+                "consolidating": True,
+            }
+        )
 
     return result
 
@@ -1526,8 +1612,14 @@ class StochasticRSI:
     K line = smoothed StochRSI, D line = SMA of K.
     """
 
-    def __init__(self, rsi_period: int = 14, stoch_period: int = 14,
-                 k_smooth: int = 3, d_smooth: int = 3, weight: float = 1.0):
+    def __init__(
+        self,
+        rsi_period: int = 14,
+        stoch_period: int = 14,
+        k_smooth: int = 3,
+        d_smooth: int = 3,
+        weight: float = 1.0,
+    ):
         self.rsi_period = rsi_period
         self.stoch_period = stoch_period
         self.k_smooth = k_smooth
@@ -1538,7 +1630,9 @@ class StochasticRSI:
         closes = [c.close for c in candles]
         needed = self.rsi_period + self.stoch_period + self.d_smooth + 5
         if len(closes) < needed:
-            return Signal("stochastic_rsi", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "stochastic_rsi", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         # Compute RSI series
         deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
@@ -1546,8 +1640,8 @@ class StochasticRSI:
         losses = [max(0, -d) for d in deltas]
 
         rsi_values = []
-        avg_gain = sum(gains[:self.rsi_period]) / self.rsi_period
-        avg_loss = sum(losses[:self.rsi_period]) / self.rsi_period
+        avg_gain = sum(gains[: self.rsi_period]) / self.rsi_period
+        avg_loss = sum(losses[: self.rsi_period]) / self.rsi_period
 
         rs_indeterminate = False
         for i in range(self.rsi_period, len(deltas)):
@@ -1567,7 +1661,9 @@ class StochasticRSI:
             rsi_values.append(100 - 100 / (1 + rs))
 
         if rs_indeterminate or len(rsi_values) < self.stoch_period:
-            return Signal("stochastic_rsi", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "stochastic_rsi", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         # Stochastic of RSI
         #
@@ -1588,12 +1684,11 @@ class StochasticRSI:
         # emit confidence-0.8 SCRUM/FOLD signals. The max() keeps the
         # original full-range behaviour on short inputs.
         _stoch_need = self.k_smooth + self.d_smooth
-        _stoch_from = max(self.stoch_period - 1,
-                          len(rsi_values) - _stoch_need)
+        _stoch_from = max(self.stoch_period - 1, len(rsi_values) - _stoch_need)
         stoch_rsi = []
         stoch_indeterminate = False
         for i in range(_stoch_from, len(rsi_values)):
-            window = rsi_values[i - self.stoch_period + 1:i + 1]
+            window = rsi_values[i - self.stoch_period + 1 : i + 1]
             low = min(window)
             high = max(window)
             # A stochastic is a position within a range. An RSI window
@@ -1609,8 +1704,9 @@ class StochasticRSI:
             stoch_rsi.append((rsi_values[i] - low) / (high - low + 1e-9) * 100)
 
         if stoch_indeterminate:
-            return Signal("stochastic_rsi", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "stochastic_rsi", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         # K line (SMA smoothing)
         k_line = _sma(stoch_rsi, self.k_smooth)
@@ -1713,32 +1809,36 @@ class IchimokuCloud:
       - Future twist to bear + price above cloud = harvest NOW
     """
 
-    def __init__(self, tenkan: int = 9, kijun: int = 26,
-                 senkou_b: int = 52, weight: float = 1.0):
-        self.tenkan   = tenkan
-        self.kijun    = kijun
+    def __init__(
+        self, tenkan: int = 9, kijun: int = 26, senkou_b: int = 52, weight: float = 1.0
+    ):
+        self.tenkan = tenkan
+        self.kijun = kijun
         self.senkou_b = senkou_b
-        self.weight   = weight
+        self.weight = weight
 
     @staticmethod
     def _mid(candles: list, start: int, period: int) -> float:
         """(highest high + lowest low) / 2 over candles[start:start+period].
-        Correct: _mid(candles, n-period, period) gives midpoint of LAST `period` candles."""
+        Correct: _mid(candles, n-period, period) gives midpoint of LAST `period` candles.
+        """
         if start < 0 or period <= 0 or start + period > len(candles):
             return 0.0
         w = candles[start : start + period]
         return (max(c.high for c in w) + min(c.low for c in w)) / 2.0
 
     def compute(self, candles: list, timeframe: str = "1h") -> Signal:
-        n   = len(candles)
-        T   = self.tenkan       #  9
-        K   = self.kijun        # 26
-        B   = self.senkou_b     # 52
-        D   = self.kijun        # displacement = 26
+        n = len(candles)
+        T = self.tenkan  #  9
+        K = self.kijun  # 26
+        B = self.senkou_b  # 52
+        D = self.kijun  # displacement = 26
 
         # Minimum: SpB(52) + displacement(26) + 1 for prev-period comparison
         if n < B + D + 1:
-            return Signal("ichimoku", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "ichimoku", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         price = candles[-1].close
 
@@ -1746,34 +1846,34 @@ class IchimokuCloud:
         # Correct: period-midpoint INCLUSIVE of current candle
         #   Tenkan = midpoint of candles[n-T : n]   ← _mid(n-T, T)
         #   Kijun  = midpoint of candles[n-K : n]   ← _mid(n-K, K)
-        tenkan = self._mid(candles, n - T,     T)
-        kijun  = self._mid(candles, n - K,     K)
+        tenkan = self._mid(candles, n - T, T)
+        kijun = self._mid(candles, n - K, K)
 
         # Previous period (for TK crossover and future-cloud twist)
         p_tenkan = self._mid(candles, n - T - 1, T)
-        p_kijun  = self._mid(candles, n - K - 1, K)
+        p_kijun = self._mid(candles, n - K - 1, K)
 
         # ── CURRENT CLOUD (displaced D periods — what price compares against NOW) ─
         # SpA at time (n-1) = (Tenkan_D_ago + Kijun_D_ago) / 2
         # Tenkan D ago = midpoint of candles[n-D-T : n-D]
-        t_D  = self._mid(candles, n - D - T,     T)   # Tenkan D periods ago
-        k_D  = self._mid(candles, n - D - K,     K)   # Kijun  D periods ago
+        t_D = self._mid(candles, n - D - T, T)  # Tenkan D periods ago
+        k_D = self._mid(candles, n - D - K, K)  # Kijun  D periods ago
         curr_spa = (t_D + k_D) / 2.0
-        curr_spb = self._mid(candles, n - D - B, B)   # SpB D periods ago
+        curr_spb = self._mid(candles, n - D - B, B)  # SpB D periods ago
 
-        cloud_top    = max(curr_spa, curr_spb)
+        cloud_top = max(curr_spa, curr_spb)
         cloud_bottom = min(curr_spa, curr_spb)
-        cloud_thick  = cloud_top - cloud_bottom
+        cloud_thick = cloud_top - cloud_bottom
         cloud_thick_pct = cloud_thick / (price + 1e-9)
 
         # ── FUTURE CLOUD (computed now — appears D periods ahead — PREDICTIVE) ─
-        fut_spa  = (tenkan + kijun) / 2.0
-        fut_spb  = self._mid(candles, n - B,     B)   # 52-period midpoint of current data
+        fut_spa = (tenkan + kijun) / 2.0
+        fut_spb = self._mid(candles, n - B, B)  # 52-period midpoint of current data
 
         p_fut_spa = (p_tenkan + p_kijun) / 2.0
         p_fut_spb = self._mid(candles, n - B - 1, B)  # SpB one period ago
 
-        fut_bull   = fut_spa > fut_spb
+        fut_bull = fut_spa > fut_spb
         # Twist: future SpA crossing SpB — regime change in D candles
         twist_bull = p_fut_spa <= p_fut_spb and fut_spa > fut_spb
         twist_bear = p_fut_spa >= p_fut_spb and fut_spa < fut_spb
@@ -1790,37 +1890,36 @@ class IchimokuCloud:
         # ── TK CROSS + LOCATION ──────────────────────────────────────────
         tk_bull_cross = p_tenkan <= p_kijun and tenkan > kijun
         tk_bear_cross = p_tenkan >= p_kijun and tenkan < kijun
-        tk_above_cloud  = min(tenkan, kijun) > cloud_top
-        tk_inside_cloud = (min(tenkan, kijun) <= cloud_top and
-                           max(tenkan, kijun) >= cloud_bottom)
-        tk_below_cloud  = max(tenkan, kijun) < cloud_bottom
+        tk_above_cloud = min(tenkan, kijun) > cloud_top
+        tk_inside_cloud = (
+            min(tenkan, kijun) <= cloud_top and max(tenkan, kijun) >= cloud_bottom
+        )
+        tk_below_cloud = max(tenkan, kijun) < cloud_bottom
 
         # ── PRICE POSITION ───────────────────────────────────────────────
-        above_cloud  = price > cloud_top
-        below_cloud  = price < cloud_bottom
+        above_cloud = price > cloud_top
+        below_cloud = price < cloud_bottom
         inside_cloud = not above_cloud and not below_cloud
 
         # Cloud breakout (price exiting cloud this candle)
         prev_p = candles[-2].close if n >= 2 else price
-        prev_above  = prev_p > cloud_top
-        prev_below  = prev_p < cloud_bottom
+        prev_above = prev_p > cloud_top
+        prev_below = prev_p < cloud_bottom
         prev_inside = not prev_above and not prev_below
-        breakout_up   = above_cloud and prev_inside
+        breakout_up = above_cloud and prev_inside
         breakout_down = below_cloud and prev_inside
 
         # ── KIJUN DYNAMICS ───────────────────────────────────────────────
         p_kijun2 = self._mid(candles, n - K - 2, K)
-        kijun_rising  = kijun > p_kijun2
-        kijun_flat    = abs(kijun - p_kijun2) < price * 0.0003
+        kijun_rising = kijun > p_kijun2
+        kijun_flat = abs(kijun - p_kijun2) < price * 0.0003
 
         # Kijun bounce: price within 0.8% of Kijun (premium entry signal)
-        kijun_bounce_bull = (above_cloud and
-                             kijun * 0.992 <= price <= kijun * 1.008)
-        kijun_bounce_bear = (below_cloud and
-                             kijun * 0.992 <= price <= kijun * 1.008)
+        kijun_bounce_bull = above_cloud and kijun * 0.992 <= price <= kijun * 1.008
+        kijun_bounce_bear = below_cloud and kijun * 0.992 <= price <= kijun * 1.008
 
         # ── TENKAN DIRECTION ─────────────────────────────────────────────
-        p_tenkan2    = self._mid(candles, n - T - 2, T)
+        p_tenkan2 = self._mid(candles, n - T - 2, T)
         tenkan_rising = tenkan > p_tenkan2
         price_above_tenkan = price > tenkan
 
@@ -1842,7 +1941,7 @@ class IchimokuCloud:
 
         # 1. Future cloud TWIST — most predictive signal
         if twist_bull:
-            score += 0.30   # regime change coming
+            score += 0.30  # regime change coming
         elif twist_bear:
             score -= 0.30
 
@@ -1860,7 +1959,7 @@ class IchimokuCloud:
 
         # 4. Chikou confirmation
         if chikou_above_hist_cloud:
-            score += 0.18   # three layers of bullish confirmation
+            score += 0.18  # three layers of bullish confirmation
         elif chikou_bull:
             score += 0.12
         elif chikou_below_hist_cloud:
@@ -1906,13 +2005,13 @@ class IchimokuCloud:
 
         # Direction + confidence
         if score > 0.08:
-            direction  = SignalDirection.BULLISH
+            direction = SignalDirection.BULLISH
             confidence = max(0.0, min(1.0, score))
         elif score < -0.08:
-            direction  = SignalDirection.BEARISH
+            direction = SignalDirection.BEARISH
             confidence = max(0.0, min(1.0, abs(score)))
         else:
-            direction  = SignalDirection.NEUTRAL
+            direction = SignalDirection.NEUTRAL
             confidence = 0.0
 
         return Signal(
@@ -1922,41 +2021,44 @@ class IchimokuCloud:
             confidence=confidence,
             weight=self.weight,
             details={
-                "price_vs_cloud":      ("above" if above_cloud else
-                                        "below" if below_cloud else "inside"),
-                "cloud_top":           round(cloud_top,  4),
-                "cloud_bottom":        round(cloud_bottom, 4),
-                "cloud_thick_pct":     round(cloud_thick_pct * 100, 2),
-                "tenkan":              round(tenkan, 4),
-                "kijun":               round(kijun,  4),
-                "fut_cloud_bull":      fut_bull,
-                "twist_to_bull":       twist_bull,
-                "twist_to_bear":       twist_bear,
-                "chikou_bull":         chikou_bull,
-                "chikou_bear":         chikou_bear,
-                "chikou_above_cloud":  chikou_above_hist_cloud,
-                "tk_bull_cross":       tk_bull_cross,
-                "tk_bear_cross":       tk_bear_cross,
-                "tk_above_cloud":      tk_above_cloud,
-                "tk_inside_cloud":     tk_inside_cloud,
-                "tk_below_cloud":      tk_below_cloud,
-                "breakout_up":         breakout_up,
-                "breakout_down":       breakout_down,
-                "kijun_bounce_bull":   kijun_bounce_bull,
-                "kijun_bounce_bear":   kijun_bounce_bear,
-                "kijun_rising":        kijun_rising,
-                "kijun_flat":          kijun_flat,
-                "spb_flat":            spb_flat,
-                "san_ko_shu_bull":     sks_bull,
-                "san_ko_shu_bear":     sks_bear,
-                "score":               round(score, 4),
+                "price_vs_cloud": (
+                    "above" if above_cloud else "below" if below_cloud else "inside"
+                ),
+                "cloud_top": round(cloud_top, 4),
+                "cloud_bottom": round(cloud_bottom, 4),
+                "cloud_thick_pct": round(cloud_thick_pct * 100, 2),
+                "tenkan": round(tenkan, 4),
+                "kijun": round(kijun, 4),
+                "fut_cloud_bull": fut_bull,
+                "twist_to_bull": twist_bull,
+                "twist_to_bear": twist_bear,
+                "chikou_bull": chikou_bull,
+                "chikou_bear": chikou_bear,
+                "chikou_above_cloud": chikou_above_hist_cloud,
+                "tk_bull_cross": tk_bull_cross,
+                "tk_bear_cross": tk_bear_cross,
+                "tk_above_cloud": tk_above_cloud,
+                "tk_inside_cloud": tk_inside_cloud,
+                "tk_below_cloud": tk_below_cloud,
+                "breakout_up": breakout_up,
+                "breakout_down": breakout_down,
+                "kijun_bounce_bull": kijun_bounce_bull,
+                "kijun_bounce_bear": kijun_bounce_bear,
+                "kijun_rising": kijun_rising,
+                "kijun_flat": kijun_flat,
+                "spb_flat": spb_flat,
+                "san_ko_shu_bull": sks_bull,
+                "san_ko_shu_bear": sks_bear,
+                "score": round(score, 4),
             },
         )
+
 
 # ---------------------------------------------------------------------------
 # 6. Volume Analysis
 # ---------------------------------------------------------------------------
 # Helper: simple EMA used for MFI smoothing (already defined as _ema above)
+
 
 class VolumeAnalysis:
     """
@@ -2002,21 +2104,24 @@ class VolumeAnalysis:
            near surface but net accumulation in the background)
     """
 
-    def __init__(self, period: int = 20,
-                 spike_threshold_pct: float = VOLUME_SPIKE_PCT,
-                 weight: float = 0.8):
-        self.period          = period
+    def __init__(
+        self,
+        period: int = 20,
+        spike_threshold_pct: float = VOLUME_SPIKE_PCT,
+        weight: float = 0.8,
+    ):
+        self.period = period
         # `vol_ratio` in compute() is this candle's volume over the
         # window average: a RATIO, 1.0 for an average candle. The spike
         # limit is the same ratio, so it is carried in percent and
         # divided down here once -- see the Units note at the top.
         self.spike_threshold = spike_threshold_pct / PERCENT_PER_RATIO_UNIT
-        self.weight          = weight
-        self.mfi_period      = 14
+        self.weight = weight
+        self.mfi_period = 14
         # A BAR COUNT, not a CMF reading. `cmf_period` read as a CMF
         # quantity, which is bounded [-1, 1], and 20 bars is not.
         self.chaikin_money_flow_period = 20
-        self.div_lookback    = 20   # candles to check for divergence
+        self.div_lookback = 20  # candles to check for divergence
 
     # ── helpers ────────────────────────────────────────────────────────────
 
@@ -2027,9 +2132,11 @@ class VolumeAnalysis:
             return 50.0
         pos_mf = neg_mf = 0.0
         for i in range(len(candles) - period, len(candles)):
-            tp  = (candles[i].high + candles[i].low + candles[i].close) / 3.0
-            ptp = (candles[i-1].high + candles[i-1].low + candles[i-1].close) / 3.0
-            mf  = tp * candles[i].volume
+            tp = (candles[i].high + candles[i].low + candles[i].close) / 3.0
+            ptp = (
+                candles[i - 1].high + candles[i - 1].low + candles[i - 1].close
+            ) / 3.0
+            mf = tp * candles[i].volume
             if tp > ptp:
                 pos_mf += mf
             elif tp < ptp:
@@ -2062,7 +2169,7 @@ class VolumeAnalysis:
                 clv = ((c.close - c.low) - (c.high - c.close)) / hl
             else:
                 clv = 0.0
-            num   += clv * c.volume
+            num += clv * c.volume
             denom += c.volume
         return num / denom if denom > 0 else 0.0
 
@@ -2071,16 +2178,15 @@ class VolumeAnalysis:
         """On-Balance Volume cumulative series."""
         obv = [0.0]
         for i in range(1, len(candles)):
-            if candles[i].close > candles[i-1].close:
+            if candles[i].close > candles[i - 1].close:
                 obv.append(obv[-1] + candles[i].volume)
-            elif candles[i].close < candles[i-1].close:
+            elif candles[i].close < candles[i - 1].close:
                 obv.append(obv[-1] - candles[i].volume)
             else:
                 obv.append(obv[-1])
         return obv
 
-    def _detect_divergence(self, closes: list, indicator: list,
-                           lookback: int) -> str:
+    def _detect_divergence(self, closes: list, indicator: list, lookback: int) -> str:
         """
         Detect price/indicator divergence over `lookback` candles.
         Returns: 'bullish' | 'bearish' | 'none'
@@ -2090,21 +2196,25 @@ class VolumeAnalysis:
         if len(closes) < lookback + 1 or len(indicator) < lookback + 1:
             return "none"
         curr_close = closes[-1]
-        curr_ind   = indicator[-1]
+        curr_ind = indicator[-1]
         past_close = min(closes[-lookback:])
-        past_ind_at_price_low = indicator[-lookback + closes[-lookback:].index(past_close)]
+        past_ind_at_price_low = indicator[
+            -lookback + closes[-lookback:].index(past_close)
+        ]
 
         # Bullish divergence: price at/near low but indicator higher than its prior low
         price_near_low = curr_close <= past_close * 1.03
-        ind_higher     = curr_ind > past_ind_at_price_low * 1.01
+        ind_higher = curr_ind > past_ind_at_price_low * 1.01
         if price_near_low and ind_higher:
             return "bullish"
 
         # Bearish divergence: price at/near high but indicator lower than its prior high
-        past_high  = max(closes[-lookback:])
-        past_ind_at_price_high = indicator[-lookback + closes[-lookback:].index(past_high)]
+        past_high = max(closes[-lookback:])
+        past_ind_at_price_high = indicator[
+            -lookback + closes[-lookback:].index(past_high)
+        ]
         price_near_high = curr_close >= past_high * 0.97
-        ind_lower       = curr_ind < past_ind_at_price_high * 0.99
+        ind_lower = curr_ind < past_ind_at_price_high * 0.99
         if price_near_high and ind_lower:
             return "bearish"
 
@@ -2113,14 +2223,21 @@ class VolumeAnalysis:
     # ── main compute ────────────────────────────────────────────────────────
 
     def compute(self, candles: list, timeframe: str = "1h") -> Signal:
-        min_len = max(self.period, self.mfi_period,
-                      self.chaikin_money_flow_period,
-                      self.div_lookback) + 5
+        min_len = (
+            max(
+                self.period,
+                self.mfi_period,
+                self.chaikin_money_flow_period,
+                self.div_lookback,
+            )
+            + 5
+        )
         if len(candles) < min_len:
-            return Signal("volume", timeframe, SignalDirection.NEUTRAL,
-                          0.0, self.weight)
+            return Signal(
+                "volume", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
-        closes  = [c.close  for c in candles]
+        closes = [c.close for c in candles]
         volumes = [c.volume for c in candles]
 
         # ── OBV ──────────────────────────────────────────────────────────
@@ -2128,21 +2245,25 @@ class VolumeAnalysis:
         obv_ema_s = _ema(obv, 5)
         obv_ema_l = _ema(obv, self.period)
         obv_rising = obv_ema_s[-1] > obv_ema_l[-1]
-        obv_accel  = obv[-1] > obv[-2]          # OBV up this candle?
+        obv_accel = obv[-1] > obv[-2]  # OBV up this candle?
 
         # OBV divergence
         obv_div = self._detect_divergence(closes, obv, self.div_lookback)
 
         # ── MFI ──────────────────────────────────────────────────────────
         mfi = self._mfi(candles, self.mfi_period)
-        mfi_ob   = mfi > 80
-        mfi_os   = mfi < 20
+        mfi_ob = mfi > 80
+        mfi_os = mfi < 20
         # MFI direction (compare to 3 candles ago for stability)
-        mfi_prev = self._mfi(candles[:-3], self.mfi_period) if len(candles) > self.mfi_period + 3 else mfi
+        mfi_prev = (
+            self._mfi(candles[:-3], self.mfi_period)
+            if len(candles) > self.mfi_period + 3
+            else mfi
+        )
         mfi_rising = mfi > mfi_prev
 
         # Simple MFI divergence: price new low vs MFI higher
-        mfi_closes  = closes[-self.div_lookback:]
+        mfi_closes = closes[-self.div_lookback :]
         if mfi_os and closes[-1] <= min(mfi_closes) * 1.02:
             mfi_div = "bullish"
         elif mfi_ob and closes[-1] >= max(mfi_closes) * 0.98:
@@ -2151,10 +2272,10 @@ class VolumeAnalysis:
             mfi_div = "none"
 
         # ── CMF ──────────────────────────────────────────────────────────
-        cmf  = self._cmf(candles, self.chaikin_money_flow_period)
-        cmf_bull    = cmf >  0.05
-        cmf_bear    = cmf < -0.05
-        cmf_strong_bull = cmf >  0.15
+        cmf = self._cmf(candles, self.chaikin_money_flow_period)
+        cmf_bull = cmf > 0.05
+        cmf_bear = cmf < -0.05
+        cmf_strong_bull = cmf > 0.15
         cmf_strong_bear = cmf < -0.15
 
         # ── A/D LINE ─────────────────────────────────────────────────────
@@ -2167,16 +2288,16 @@ class VolumeAnalysis:
             clv = ((c.close - c.low) - (c.high - c.close)) / hl if hl > 0 else 0.0
             ad.append(clv * c.volume + (ad[-1] if ad else 0.0))
 
-        ad_trend    = ad[-1] - ad[-self.period]   # + = net accumulation
-        ad_rising   = ad[-1] > ad[-2]
+        ad_trend = ad[-1] - ad[-self.period]  # + = net accumulation
+        ad_rising = ad[-1] > ad[-2]
         # A/D vs price divergence: A/D rising while price falling
         price_trend = closes[-1] - closes[-self.period]
         ad_price_div_bull = ad_trend > 0 and price_trend < 0  # A/D up, price down
         ad_price_div_bear = ad_trend < 0 and price_trend > 0  # A/D down, price up
 
         # ── VOLUME RATIO ─────────────────────────────────────────────────
-        avg_vol   = sum(volumes[-self.period:]) / self.period
-        curr_vol  = volumes[-1]
+        avg_vol = sum(volumes[-self.period :]) / self.period
+        curr_vol = volumes[-1]
         # A window that traded no volume has no average for the current
         # bar to be measured against, so the ratio is 0/0 -- and
         # `is_spike`, `is_high` and `is_low` below are all statements
@@ -2184,12 +2305,13 @@ class VolumeAnalysis:
         # (candles_from_raw refuses a negative one), so their sum is 0.0
         # exactly when every bar traded nothing.
         if avg_vol <= 0.0:
-            return Signal("volume", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "volume", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
         vol_ratio = curr_vol / (avg_vol + 1e-9)
-        is_spike  = vol_ratio > self.spike_threshold
-        is_high   = vol_ratio > 1.5
-        is_low    = vol_ratio < 0.6   # low-volume move = weak conviction
+        is_spike = vol_ratio > self.spike_threshold
+        is_high = vol_ratio > 1.5
+        is_low = vol_ratio < 0.6  # low-volume move = weak conviction
 
         # Current candle direction
         candle_up = candles[-1].close >= candles[-1].open
@@ -2198,16 +2320,16 @@ class VolumeAnalysis:
         # ── CAPITULATION SIGNAL ──────────────────────────────────────────
         # High/spike volume on a DOWN candle BUT OBV still rising:
         # Aggressive selling is being absorbed by buyers = premium fold entry
-        capitulation = (is_spike and candle_dn and obv_accel)
+        capitulation = is_spike and candle_dn and obv_accel
 
         # ── WEAK RALLY ───────────────────────────────────────────────────
         # Price up but volume below average = rally not supported = caution on scrum
-        weak_rally = (candle_up and is_low and obv_rising)
+        weak_rally = candle_up and is_low and obv_rising
 
         # ── VOLUME CONFIRMATION ──────────────────────────────────────────
         # Strong volume confirming directional move = high conviction
-        vol_confirms_bull = (is_high and candle_up and obv_accel)
-        vol_confirms_bear = (is_high and candle_dn and not obv_accel)
+        vol_confirms_bull = is_high and candle_up and obv_accel
+        vol_confirms_bear = is_high and candle_dn and not obv_accel
 
         # ── COMPOSITE SCORE ──────────────────────────────────────────────
         score = 0.0
@@ -2248,7 +2370,7 @@ class VolumeAnalysis:
 
         # Volume confirmation
         if capitulation:
-            score += 0.20   # sellers exhausted, buyers absorbing
+            score += 0.20  # sellers exhausted, buyers absorbing
         elif vol_confirms_bull:
             score += 0.10
         elif vol_confirms_bear:
@@ -2257,13 +2379,13 @@ class VolumeAnalysis:
             score -= 0.08
 
         if score > 0.1:
-            direction  = SignalDirection.BULLISH
+            direction = SignalDirection.BULLISH
             confidence = max(0.0, min(1.0, score))
         elif score < -0.1:
-            direction  = SignalDirection.BEARISH
+            direction = SignalDirection.BEARISH
             confidence = max(0.0, min(1.0, abs(score)))
         else:
-            direction  = SignalDirection.NEUTRAL
+            direction = SignalDirection.NEUTRAL
             confidence = 0.0
 
         return Signal(
@@ -2273,75 +2395,80 @@ class VolumeAnalysis:
             confidence=confidence,
             weight=self.weight,
             details={
-                "obv_rising":         obv_rising,
-                "obv_divergence":     obv_div,
-                "mfi":                round(mfi, 1),
-                "mfi_overbought":     mfi_ob,
-                "mfi_oversold":       mfi_os,
-                "mfi_divergence":     mfi_div,
-                "cmf":                round(cmf, 4),
-                "cmf_bull":           cmf_bull,
-                "cmf_bear":           cmf_bear,
-                "ad_rising":          ad_rising,
-                "ad_price_div_bull":  ad_price_div_bull,
-                "ad_price_div_bear":  ad_price_div_bear,
-                "vol_ratio":          round(vol_ratio, 2),
-                "vol_spike":          is_spike,
-                "vol_high":           is_high,
-                "vol_low":            is_low,
-                "capitulation":       capitulation,
-                "weak_rally":         weak_rally,
-                "vol_confirms_bull":  vol_confirms_bull,
-                "vol_confirms_bear":  vol_confirms_bear,
+                "obv_rising": obv_rising,
+                "obv_divergence": obv_div,
+                "mfi": round(mfi, 1),
+                "mfi_overbought": mfi_ob,
+                "mfi_oversold": mfi_os,
+                "mfi_divergence": mfi_div,
+                "cmf": round(cmf, 4),
+                "cmf_bull": cmf_bull,
+                "cmf_bear": cmf_bear,
+                "ad_rising": ad_rising,
+                "ad_price_div_bull": ad_price_div_bull,
+                "ad_price_div_bear": ad_price_div_bear,
+                "vol_ratio": round(vol_ratio, 2),
+                "vol_spike": is_spike,
+                "vol_high": is_high,
+                "vol_low": is_low,
+                "capitulation": capitulation,
+                "weak_rally": weak_rally,
+                "vol_confirms_bull": vol_confirms_bull,
+                "vol_confirms_bear": vol_confirms_bear,
             },
         )
+
 
 # ---------------------------------------------------------------------------
 # 7. CM Slingshot Indicator
 # ---------------------------------------------------------------------------
 
+
 class ATRIndicator:
     """Average True Range (14-period) — volatility absolute measure.
-    
+
     Used for:
       - Dynamic interval calibration (widen when ATR/price % is high)
       - Position size scaling (reduce size when volatility is extreme)
       - Stop-loss calibration for REH and shadow positions
       - Regime detection (ATR expansion = trend, contraction = range)
     """
+
     def __init__(self, period: int = 14):
         self.period = period
 
     def compute(self, candles: list) -> dict:
         if len(candles) < self.period + 1:
-            return {"atr": 0.0, "atr_pct": 0.0, "expanding": False,
-                    "contracting": False, "extreme_high": False}
+            return {
+                "atr": 0.0,
+                "atr_pct": 0.0,
+                "expanding": False,
+                "contracting": False,
+                "extreme_high": False,
+            }
         true_ranges = []
         for i in range(1, len(candles)):
             c, p = candles[i], candles[i - 1]
-            tr = max(c.high - c.low,
-                     abs(c.high - p.close),
-                     abs(c.low  - p.close))
+            tr = max(c.high - c.low, abs(c.high - p.close), abs(c.low - p.close))
             true_ranges.append(tr)
         # Wilder smoothing (exponential, alpha = 1/period)
-        atr = sum(true_ranges[:self.period]) / self.period
-        for tr in true_ranges[self.period:]:
+        atr = sum(true_ranges[: self.period]) / self.period
+        for tr in true_ranges[self.period :]:
             atr = (atr * (self.period - 1) + tr) / self.period
         price = candles[-1].close
         atr_pct = (atr / price) * 100 if price > 0 else 0.0
         # Trend vs range detection
         recent = true_ranges[-5:] if len(true_ranges) >= 5 else true_ranges
-        older  = true_ranges[-10:-5] if len(true_ranges) >= 10 else true_ranges
-        expanding   = sum(recent) / len(recent) > sum(older) / len(older) * 1.10
+        older = true_ranges[-10:-5] if len(true_ranges) >= 10 else true_ranges
+        expanding = sum(recent) / len(recent) > sum(older) / len(older) * 1.10
         contracting = sum(recent) / len(recent) < sum(older) / len(older) * 0.90
         return {
-            "atr":         round(atr, 8),
-            "atr_pct":     round(atr_pct, 4),   # ATR as % of price
-            "expanding":   expanding,             # volatility growing (trending)
-            "contracting": contracting,           # volatility shrinking (coiling)
-            "extreme_high": atr_pct > 5.0,        # >5% ATR = highly volatile
+            "atr": round(atr, 8),
+            "atr_pct": round(atr_pct, 4),  # ATR as % of price
+            "expanding": expanding,  # volatility growing (trending)
+            "contracting": contracting,  # volatility shrinking (coiling)
+            "extreme_high": atr_pct > 5.0,  # >5% ATR = highly volatile
         }
-
 
 
 class RSIIndicator:
@@ -2367,6 +2494,7 @@ class RSIIndicator:
     lower (0.8) in VotingEngine than StochasticRSI (1.0) since StochRSI
     is the more refined two-stage indicator and they overlap.
     """
+
     def __init__(self, period: int = 14, weight: float = 0.8):
         self.period = period
         self.weight = weight
@@ -2380,15 +2508,21 @@ class RSIIndicator:
             # warm-up path, not a degenerate one. The rsi = 50.0 it
             # already returns maps to NEUTRAL at confidence 0.0, so the
             # behaviour of this branch is untouched.
-            return {"rsi": 50.0, "overbought": False, "oversold": False,
-                    "bull_div": False, "bear_div": False, "rsi_series": [],
-                    "rs_indeterminate": False}
+            return {
+                "rsi": 50.0,
+                "overbought": False,
+                "oversold": False,
+                "bull_div": False,
+                "bear_div": False,
+                "rsi_series": [],
+                "rs_indeterminate": False,
+            }
         closes = [c.close for c in candles]
-        deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
-        gains  = [max(d, 0) for d in deltas]
+        deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+        gains = [max(d, 0) for d in deltas]
         losses = [max(-d, 0) for d in deltas]
-        avg_gain = sum(gains[:self.period]) / self.period
-        avg_loss = sum(losses[:self.period]) / self.period
+        avg_gain = sum(gains[: self.period]) / self.period
+        avg_loss = sum(losses[: self.period]) / self.period
         rsi_series = []
         rs_indeterminate = False
         for i in range(self.period, len(deltas)):
@@ -2401,25 +2535,29 @@ class RSIIndicator:
             # -- the bottom of the scale -- which the mapping below reads
             # as maximum oversold and votes BULLISH at confidence 1.0000.
             rs_indeterminate = avg_gain <= 0.0 and avg_loss <= 0.0
-            rs  = avg_gain / (avg_loss + 1e-9)
+            rs = avg_gain / (avg_loss + 1e-9)
             rsi_series.append(100 - 100 / (1 + rs))
         rsi = rsi_series[-1] if rsi_series else 50.0
         # Divergence: compare last 2 swing lows/highs
         bull_div = bear_div = False
         if len(rsi_series) >= 20 and len(closes) >= 20:
-            p_lo1 = min(closes[-20:-10]); p_lo2 = min(closes[-10:])
-            r_lo1 = min(rsi_series[-20:-10]); r_lo2 = min(rsi_series[-10:])
+            p_lo1 = min(closes[-20:-10])
+            p_lo2 = min(closes[-10:])
+            r_lo1 = min(rsi_series[-20:-10])
+            r_lo2 = min(rsi_series[-10:])
             bull_div = p_lo2 < p_lo1 and r_lo2 > r_lo1  # price lower, RSI higher
-            p_hi1 = max(closes[-20:-10]); p_hi2 = max(closes[-10:])
-            r_hi1 = max(rsi_series[-20:-10]); r_hi2 = max(rsi_series[-10:])
+            p_hi1 = max(closes[-20:-10])
+            p_hi2 = max(closes[-10:])
+            r_hi1 = max(rsi_series[-20:-10])
+            r_hi2 = max(rsi_series[-10:])
             bear_div = p_hi2 > p_hi1 and r_hi2 < r_hi1  # price higher, RSI lower
         return {
-            "rsi":        round(rsi, 2),
+            "rsi": round(rsi, 2),
             "rs_indeterminate": rs_indeterminate,
             "overbought": rsi > 70,
-            "oversold":   rsi < 30,
-            "bull_div":   bull_div,
-            "bear_div":   bear_div,
+            "oversold": rsi < 30,
+            "bull_div": bull_div,
+            "bear_div": bear_div,
             "rsi_series": rsi_series[-20:],  # last 20 values for chart overlay
         }
 
@@ -2438,8 +2576,7 @@ class RSIIndicator:
         """
         metrics = self._compute_metrics(candles)
         if metrics["rs_indeterminate"]:
-            return Signal("rsi", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal("rsi", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight)
         rsi = metrics["rsi"]
 
         # Direction
@@ -2454,7 +2591,7 @@ class RSIIndicator:
         # (|rsi-50|=20) starts producing meaningful signal
         dist = abs(rsi - 50.0)
         if dist <= 20.0:
-            confidence = (dist / 20.0) * 0.4   # 0 at center, 0.4 at threshold
+            confidence = (dist / 20.0) * 0.4  # 0 at center, 0.4 at threshold
         else:
             # Beyond the threshold: linear ramp to ~1.0 at the extremes
             confidence = 0.4 + ((dist - 20.0) / 30.0) * 0.6
@@ -2477,20 +2614,20 @@ class RSIIndicator:
             confidence=round(confidence, 4),
             weight=self.weight,
             details={
-                "rsi":        rsi,
+                "rsi": rsi,
                 "overbought": metrics["overbought"],
-                "oversold":   metrics["oversold"],
-                "bull_div":   metrics["bull_div"],
-                "bear_div":   metrics["bear_div"],
+                "oversold": metrics["oversold"],
+                "bull_div": metrics["bull_div"],
+                "bear_div": metrics["bear_div"],
             },
         )
 
 
 # ── FVG (Fair Value Gap) — named constants (R44: no magic numbers) ────────
-FVG_LOOKBACK      = 24     # candles to scan for 3-candle gap patterns
+FVG_LOOKBACK = 24  # candles to scan for 3-candle gap patterns
 FVG_PROXIMITY_PCT = 0.005  # "approaching from above": within 0.5% of FVG top
-FVG_BULL_BOOST    = 0.10   # fold confidence boost when in/near bullish FVG
-FVG_BEAR_BOOST    = 0.08   # scrum confidence boost when inside bearish FVG
+FVG_BULL_BOOST = 0.10  # fold confidence boost when in/near bullish FVG
+FVG_BEAR_BOOST = 0.08  # scrum confidence boost when inside bearish FVG
 
 
 class FVGIndicator:
@@ -2510,18 +2647,24 @@ class FVGIndicator:
     consumers (sim engine, battery engine, chart overlay) can read without
     coupling to the indicator class itself.
     """
+
     # sadp: R38, R42, R44
-    def __init__(self, lookback: int = FVG_LOOKBACK,
-                 proximity_pct: float = FVG_PROXIMITY_PCT):
+    def __init__(
+        self, lookback: int = FVG_LOOKBACK, proximity_pct: float = FVG_PROXIMITY_PCT
+    ):
         self.lookback = lookback
         self.proximity_pct = proximity_pct
 
     def compute(self, candles: list) -> dict:
         default = {
-            "fvg_bull_zone": False, "fvg_bear_zone": False,
-            "fvg_bull_count": 0,    "fvg_bear_count": 0,
-            "fvg_bull_top":   0.0,  "fvg_bull_bot":   0.0,
-            "fvg_bear_top":   0.0,  "fvg_bear_bot":   0.0,
+            "fvg_bull_zone": False,
+            "fvg_bear_zone": False,
+            "fvg_bull_count": 0,
+            "fvg_bear_count": 0,
+            "fvg_bull_top": 0.0,
+            "fvg_bull_bot": 0.0,
+            "fvg_bear_top": 0.0,
+            "fvg_bear_bot": 0.0,
         }
         if len(candles) < 3:
             return default
@@ -2531,7 +2674,7 @@ class FVGIndicator:
         # Scan window: oldest index that still has k-1 and k+1 valid.
         # Use len(candles)-1 as exclusive upper bound so we never peek
         # past the last candle (it has no k+1).
-        scan_end   = len(candles) - 1
+        scan_end = len(candles) - 1
         scan_start = max(1, scan_end - self.lookback)
         bull_zones: list = []
         bear_zones: list = []
@@ -2539,15 +2682,15 @@ class FVGIndicator:
             c_prev = candles[k - 1]
             c_next = candles[k + 1]
             if c_prev.high < c_next.low:
-                bull_zones.append((c_next.low, c_prev.high))   # (top, bot)
+                bull_zones.append((c_next.low, c_prev.high))  # (top, bot)
             if c_prev.low > c_next.high:
-                bear_zones.append((c_prev.low, c_next.high))   # (top, bot)
+                bear_zones.append((c_prev.low, c_next.high))  # (top, bot)
         # Bull trigger: price inside zone OR just above top (approaching
         # from above within proximity_pct). Pick highest-top active zone
         # (nearest to current price — fold magnet pulls downward).
         nearest_bull = None
         for top, bot in bull_zones:
-            in_zone     = bot <= price <= top
+            in_zone = bot <= price <= top
             approaching = (price > top) and (price <= top * (1.0 + self.proximity_pct))
             if in_zone or approaching:
                 if nearest_bull is None or top > nearest_bull[0]:
@@ -2559,14 +2702,14 @@ class FVGIndicator:
                 if nearest_bear is None or top > nearest_bear[0]:
                     nearest_bear = (top, bot)
         return {
-            "fvg_bull_zone":  nearest_bull is not None,
-            "fvg_bear_zone":  nearest_bear is not None,
+            "fvg_bull_zone": nearest_bull is not None,
+            "fvg_bear_zone": nearest_bear is not None,
             "fvg_bull_count": len(bull_zones),
             "fvg_bear_count": len(bear_zones),
-            "fvg_bull_top":   round(nearest_bull[0], 8) if nearest_bull else 0.0,
-            "fvg_bull_bot":   round(nearest_bull[1], 8) if nearest_bull else 0.0,
-            "fvg_bear_top":   round(nearest_bear[0], 8) if nearest_bear else 0.0,
-            "fvg_bear_bot":   round(nearest_bear[1], 8) if nearest_bear else 0.0,
+            "fvg_bull_top": round(nearest_bull[0], 8) if nearest_bull else 0.0,
+            "fvg_bull_bot": round(nearest_bull[1], 8) if nearest_bull else 0.0,
+            "fvg_bear_top": round(nearest_bear[0], 8) if nearest_bear else 0.0,
+            "fvg_bear_bot": round(nearest_bear[1], 8) if nearest_bear else 0.0,
         }
 
 
@@ -2658,22 +2801,32 @@ class SlingshotIndicator:
     blending, so the claim is removed rather than honoured.
     """
 
-    def __init__(self, bb_period: int = 20, bb_std: float = 2.0,
-                 squeeze_lookback: int = 30, snapback_lookback: int = 5,
-                 squeeze_threshold: float = 0.6, weight: float = 1.0,
-                 kc_mult: float = 1.5):
-        self.bb_period         = bb_period
-        self.bb_std            = bb_std
-        self.squeeze_lookback  = squeeze_lookback   # periods to measure avg bandwidth
-        self.snapback_lookback = snapback_lookback  # candles to look back for band break
-        self.squeeze_threshold = squeeze_threshold  # fraction of avg bandwidth = squeeze
-        self.weight            = weight
+    def __init__(
+        self,
+        bb_period: int = 20,
+        bb_std: float = 2.0,
+        squeeze_lookback: int = 30,
+        snapback_lookback: int = 5,
+        squeeze_threshold: float = 0.6,
+        weight: float = 1.0,
+        kc_mult: float = 1.5,
+    ):
+        self.bb_period = bb_period
+        self.bb_std = bb_std
+        self.squeeze_lookback = squeeze_lookback  # periods to measure avg bandwidth
+        self.snapback_lookback = (
+            snapback_lookback  # candles to look back for band break
+        )
+        self.squeeze_threshold = (
+            squeeze_threshold  # fraction of avg bandwidth = squeeze
+        )
+        self.weight = weight
         # Keltner multiplier. Carter and StockCharts both specify BB 20/2.0
         # against KC 20/1.5. LazyBear's script multiplies the BB deviation
         # by multKC instead of its own mult -- a known quirk of that one
         # transcription. `bb_std` stays 2.0, which is what this class
         # already declared and what the two prose sources agree on.
-        self.kc_mult           = kc_mult
+        self.kc_mult = kc_mult
 
     @staticmethod
     def _bandwidth(upper: float, lower: float, mid: float) -> float:
@@ -2694,12 +2847,12 @@ class SlingshotIndicator:
             return 0.0
         if n == 1:
             return float(series[0])
-        sum_x  = n * (n - 1) / 2.0
+        sum_x = n * (n - 1) / 2.0
         sum_xx = (n - 1) * n * (2 * n - 1) / 6.0
-        sum_y  = 0.0
+        sum_y = 0.0
         sum_xy = 0.0
         for x, y in enumerate(series):
-            sum_y  += y
+            sum_y += y
             sum_xy += x * y
         denom = n * sum_xx - sum_x * sum_x
         if denom == 0.0:
@@ -2712,16 +2865,17 @@ class SlingshotIndicator:
         n = len(candles)
         min_len = self.bb_period + self.squeeze_lookback + 2
         if n < min_len:
-            return Signal("slingshot", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "slingshot", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         closes = [c.close for c in candles]
         # v3.24.22 — suffix-only. The loop below reads indices
         # range(n - win, n) where win = squeeze_lookback + 5, so that is
         # the exact depth required.
         _need = self.squeeze_lookback + 5
-        sma_v  = _sma_tail(closes,   self.bb_period, tail=_need)
-        std_v  = _stdev_tail(closes, self.bb_period, tail=_need)
+        sma_v = _sma_tail(closes, self.bb_period, tail=_need)
+        std_v = _stdev_tail(closes, self.bb_period, tail=_need)
 
         # ── TRUE RANGE, COMPUTED HERE ────────────────────────────────
         # Carter's Keltner leg needs True Range. `_true_range` exists at
@@ -2734,9 +2888,9 @@ class SlingshotIndicator:
         for i in range(1, n):
             c = candles[i]
             prev_close = candles[i - 1].close
-            tr_all.append(max(c.high - c.low,
-                              abs(c.high - prev_close),
-                              abs(c.low - prev_close)))
+            tr_all.append(
+                max(c.high - c.low, abs(c.high - prev_close), abs(c.low - prev_close))
+            )
         trma_v = _sma_tail(tr_all, self.bb_period, tail=_need)
 
         # ── MOMENTUM DELTA SERIES, COMPUTED HERE ─────────────────────
@@ -2750,7 +2904,7 @@ class SlingshotIndicator:
         for i in range(delta_lo, n):
             j0 = max(0, i - self.bb_period + 1)
             hi_n = max(candles[k].high for k in range(j0, i + 1))
-            lo_n = min(candles[k].low  for k in range(j0, i + 1))
+            lo_n = min(candles[k].low for k in range(j0, i + 1))
             donchian_mid = (hi_n + lo_n) / 2.0
             sma_i = sma_v[i] if sma_v[i] is not None else closes[i]
             deltas[i] = closes[i] - (donchian_mid + sma_i) / 2.0
@@ -2762,9 +2916,9 @@ class SlingshotIndicator:
                 continue
             mid = sma_v[i]
             std = std_v[i]
-            up  = mid + self.bb_std * std
-            lo  = mid - self.bb_std * std
-            bw  = self._bandwidth(up, lo, mid)
+            up = mid + self.bb_std * std
+            lo = mid - self.bb_std * std
+            bw = self._bandwidth(up, lo, mid)
             # Keltner Channel, this class's own: ma is the same SMA the
             # bands are built on, rangema is the SMA of True Range.
             rangema = trma_v[i] if trma_v[i] is not None else 0.0
@@ -2773,19 +2927,28 @@ class SlingshotIndicator:
             # sqzOn = (lowerBB > lowerKC) and (upperBB < upperKC)
             sqz_on = (lo > lo_kc) and (up < up_kc)
             # val = linreg(delta, N, 0)
-            seg = [deltas[k] for k in range(max(delta_lo, i - self.bb_period + 1),
-                                            i + 1)]
+            seg = [
+                deltas[k] for k in range(max(delta_lo, i - self.bb_period + 1), i + 1)
+            ]
             val = self._linreg_endpoint(seg)
-            bb.append((candles[i].close, up, lo, mid, bw,
-                       sqz_on, val, rangema))
+            bb.append((candles[i].close, up, lo, mid, bw, sqz_on, val, rangema))
 
         if len(bb) < self.squeeze_lookback:
-            return Signal("slingshot", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+            return Signal(
+                "slingshot", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         last = len(bb) - 1
-        curr_close, curr_up, curr_lo, curr_mid, curr_bw, curr_sqz_on, \
-            curr_val, curr_rangema = bb[last]
+        (
+            curr_close,
+            curr_up,
+            curr_lo,
+            curr_mid,
+            curr_bw,
+            curr_sqz_on,
+            curr_val,
+            curr_rangema,
+        ) = bb[last]
 
         # ── BANDWIDTH TELEMETRY ───────────────────────────────────────
         # Retained. This is no longer what decides a squeeze -- the
@@ -2793,9 +2956,9 @@ class SlingshotIndicator:
         # `curr_bw`, `avg_bw`, `squeeze_depth` and `expansion_rate` are
         # all reported fields with live consumers, and a designed
         # behaviour is not deleted.
-        avg_bw    = sum(b[4] for b in bb[:-1]) / max(len(bb) - 1, 1)
-        prev_bw   = bb[-2][4] if len(bb) >= 2 else curr_bw
-        prev2_bw  = bb[-3][4] if len(bb) >= 3 else prev_bw
+        avg_bw = sum(b[4] for b in bb[:-1]) / max(len(bb) - 1, 1)
+        prev_bw = bb[-2][4] if len(bb) >= 2 else curr_bw
+        prev2_bw = bb[-3][4] if len(bb) >= 3 else prev_bw
         recent_bw = [b[4] for b in bb[-4:]]
 
         # ── NO VOLATILITY UNIT, NO READING ────────────────────────────
@@ -2814,19 +2977,24 @@ class SlingshotIndicator:
         # feed this window -- every high, low and close across the span
         # the `bb` loop reads. The three derived tests stay underneath as
         # subordinate floors; they can only make this abstain more often.
-        _span = candles[max(0, n - win - self.bb_period):]
+        _span = candles[max(0, n - win - self.bb_period) :]
         _span_px: list[float] = []
         for _c in _span:
             _span_px.extend((_c.high, _c.low, _c.close))
-        if (_window_has_no_range(_span_px)
-                or avg_bw <= 0.0 or prev2_bw <= 0.0 or curr_rangema <= 0.0):
-            return Signal("slingshot", timeframe,
-                          SignalDirection.NEUTRAL, 0.0, self.weight)
+        if (
+            _window_has_no_range(_span_px)
+            or avg_bw <= 0.0
+            or prev2_bw <= 0.0
+            or curr_rangema <= 0.0
+        ):
+            return Signal(
+                "slingshot", timeframe, SignalDirection.NEUTRAL, 0.0, self.weight
+            )
 
         squeeze_bw_limit = avg_bw * self.squeeze_threshold
         n_squeezed = sum(1 for bw in recent_bw if bw < squeeze_bw_limit)
         was_squeezed = n_squeezed >= 2
-        expanding    = curr_bw > prev_bw * 1.02
+        expanding = curr_bw > prev_bw * 1.02
         expansion_rate = (curr_bw - prev2_bw) / (prev2_bw + 1e-9)
         min_recent_bw = min(b[4] for b in bb[-4:])
         squeeze_depth = max(0.0, avg_bw - min_recent_bw) / (avg_bw + 1e-9)
@@ -2853,7 +3021,7 @@ class SlingshotIndicator:
         # holds: a float is > 0, < 0, or neither.
         squeeze_bull = squeeze_live and fire_val > 0.0
         squeeze_bear = squeeze_live and fire_val < 0.0
-        just_fired   = squeeze_live
+        just_fired = squeeze_live
 
         # ── SQUEEZE CONFIDENCE ────────────────────────────────────────
         # Was `squeeze_depth * 3 + expansion_rate * 2 + 0.3`. Measured
@@ -2899,9 +3067,10 @@ class SlingshotIndicator:
                     # Better if the prior close was a significant penetration
                     # and current close is moving toward midline (not just touching lo)
                     midward = curr_close > past_close
-                    snapback_conf = max(0.0, min(
-                        1.0,
-                        penetration * 8 + (0.2 if midward else 0.0) + 0.35))
+                    snapback_conf = max(
+                        0.0,
+                        min(1.0, penetration * 8 + (0.2 if midward else 0.0) + 0.35),
+                    )
                     snapback_type = "bullish_snapback"
                     snapback_break_idx = idx
                     break
@@ -2911,34 +3080,35 @@ class SlingshotIndicator:
                 if curr_close < curr_up:
                     penetration = (past_close - past_up) / (past_up + 1e-9)
                     midward = curr_close < past_close
-                    snapback_conf = max(0.0, min(
-                        1.0,
-                        penetration * 8 + (0.2 if midward else 0.0) + 0.35))
+                    snapback_conf = max(
+                        0.0,
+                        min(1.0, penetration * 8 + (0.2 if midward else 0.0) + 0.35),
+                    )
                     snapback_type = "bearish_snapback"
                     snapback_break_idx = idx
                     break
 
         # ── COMBINE ──────────────────────────────────────────────────
         # Squeeze takes precedence (predictive); snapback is reactive.
-        direction  = SignalDirection.NEUTRAL
+        direction = SignalDirection.NEUTRAL
         confidence = 0.0
         active_type = ""
 
         if squeeze_bull:
-            direction   = SignalDirection.BULLISH
-            confidence  = squeeze_conf
+            direction = SignalDirection.BULLISH
+            confidence = squeeze_conf
             active_type = "squeeze_bull"
         elif squeeze_bear:
-            direction   = SignalDirection.BEARISH
-            confidence  = squeeze_conf
+            direction = SignalDirection.BEARISH
+            confidence = squeeze_conf
             active_type = "squeeze_bear"
         elif snapback_type == "bullish_snapback":
-            direction   = SignalDirection.BULLISH
-            confidence  = snapback_conf
+            direction = SignalDirection.BULLISH
+            confidence = snapback_conf
             active_type = snapback_type
         elif snapback_type == "bearish_snapback":
-            direction   = SignalDirection.BEARISH
-            confidence  = snapback_conf
+            direction = SignalDirection.BEARISH
+            confidence = snapback_conf
             active_type = snapback_type
 
         # A squeeze that outranks a CONTRADICTING snapback is a
@@ -2948,17 +3118,20 @@ class SlingshotIndicator:
         # the grid, and it had no reported field at all.
         snapback_conflict = bool(
             snapback_type
-            and ((squeeze_bull and snapback_type == "bearish_snapback")
-                 or (squeeze_bear and snapback_type == "bullish_snapback")))
+            and (
+                (squeeze_bull and snapback_type == "bearish_snapback")
+                or (squeeze_bear and snapback_type == "bullish_snapback")
+            )
+        )
 
         # ── AGREEMENT BONUS ──────────────────────────────────────────
         # Sequential, per all three sources: the snapback's break must
         # land at or after the squeeze fire, and the re-entry (this bar)
         # must be strictly later than the fire. Two flags true on one bar
         # is not what the published pattern describes.
-        sequential = (fire_idx >= 0
-                      and bars_since_fire >= 1
-                      and snapback_break_idx >= fire_idx)
+        sequential = (
+            fire_idx >= 0 and bars_since_fire >= 1 and snapback_break_idx >= fire_idx
+        )
         agree = False
         if sequential and squeeze_bull and snapback_type == "bullish_snapback":
             agree = True
@@ -2976,28 +3149,29 @@ class SlingshotIndicator:
             confidence=confidence,
             weight=self.weight,
             details={
-                "slingshot_type":   active_type,
-                "squeeze_active":   just_fired,
-                "squeeze_bull":     squeeze_bull,
-                "squeeze_bear":     squeeze_bear,
-                "squeeze_depth":    round(squeeze_depth, 4),
-                "squeeze_conf":     round(squeeze_conf, 4),
-                "expansion_rate":   round(expansion_rate, 4),
-                "was_squeezed":     was_squeezed,
-                "snapback_type":    snapback_type,
-                "snapback_conf":    round(snapback_conf, 4),
-                "curr_bw":          round(curr_bw, 6),
-                "avg_bw":           round(avg_bw, 6),
-                "sqz_on":           curr_sqz_on,
-                "momentum":         round(curr_val, 8),
-                "fire_momentum":    round(fire_val, 8),
-                "mom_norm":         round(mom_norm, 4),
-                "bars_since_fire":  bars_since_fire,
-                "expanding":        expanding,
+                "slingshot_type": active_type,
+                "squeeze_active": just_fired,
+                "squeeze_bull": squeeze_bull,
+                "squeeze_bear": squeeze_bear,
+                "squeeze_depth": round(squeeze_depth, 4),
+                "squeeze_conf": round(squeeze_conf, 4),
+                "expansion_rate": round(expansion_rate, 4),
+                "was_squeezed": was_squeezed,
+                "snapback_type": snapback_type,
+                "snapback_conf": round(snapback_conf, 4),
+                "curr_bw": round(curr_bw, 6),
+                "avg_bw": round(avg_bw, 6),
+                "sqz_on": curr_sqz_on,
+                "momentum": round(curr_val, 8),
+                "fire_momentum": round(fire_val, 8),
+                "mom_norm": round(mom_norm, 4),
+                "bars_since_fire": bars_since_fire,
+                "expanding": expanding,
                 "snapback_conflict": snapback_conflict,
-                "agree":            agree,
+                "agree": agree,
             },
         )
+
 
 # ===========================================================================
 # VOTING ENGINE
@@ -3012,20 +3186,20 @@ DEFAULT_WEIGHTS = {
     "ichimoku": 1.1,
     "volume": 0.8,
     "slingshot": 1.0,
-    "adx": 1.0,     # P2.9 / MEM-200 — trend-strength signal. Structural tier.
+    "adx": 1.0,  # P2.9 / MEM-200 — trend-strength signal. Structural tier.
     # ── v3.19.17: indicator-coverage P0 closure (Trading-Discipline Arc #2) ──
     # Three voters previously built as full classes (Sessions 15-17 era) but
     # never wired into VotingEngine. Filed as UNWIRED in the v3.19.16
     # indicator-coverage audit. Wiring matches v3.19.16 ADX template.
-    "kaufman_er":  1.0,   # Perry Kaufman Efficiency Ratio (regime classifier)
-    "supertrend":  1.0,   # Oliver Seban ATR-trailing trend (reactive flip)
-    "zscore":      0.9,   # Statistical extremity (longer window than BB)
+    "kaufman_er": 1.0,  # Perry Kaufman Efficiency Ratio (regime classifier)
+    "supertrend": 1.0,  # Oliver Seban ATR-trailing trend (reactive flip)
+    "zscore": 0.9,  # Statistical extremity (longer window than BB)
     # ── v3.19.18: last UNWIRED indicator from v3.19.16 audit closed ──
     # Plain RSI weighted lower than StochRSI (1.0) because they overlap;
     # StochRSI is the more refined two-stage indicator. Both voting now —
     # the small redundancy is acceptable because RSI's classical 70/30
     # divergence detection still adds independent information.
-    "rsi":         0.8,
+    "rsi": 0.8,
 }
 
 
@@ -3120,7 +3294,9 @@ class VotingEngine:
         ]
 
     def compute_all(
-        self, candles: list[Candle], timeframe: str = "1h",
+        self,
+        candles: list[Candle],
+        timeframe: str = "1h",
         symbol: Optional[str] = None,
     ) -> VotingSummary:
 
@@ -3172,17 +3348,20 @@ class VotingEngine:
         try:
             from src.core.signal_contract import emit as _ta_emit
             from src.core.signal_contract import get_sink as _ta_sink
+
             if _ta_sink() is None:
                 # Nothing is collecting. Skip the whole block rather
                 # than build context dicts and evaluate invariants for
                 # a call that returns None on its first line — this
                 # runs on every candle of every live bot.
                 raise _TAInstrumentationOff
-            _ta_emit("ta.07.003.postcondition.computed", actual=len(signals),
-                     expected=len(self._indicators),
-                     duration=_dur_elapsed,
-                     context={"timeframe": timeframe,
-                              "window": len(candles)})
+            _ta_emit(
+                "ta.07.003.postcondition.computed",
+                actual=len(signals),
+                expected=len(self._indicators),
+                duration=_dur_elapsed,
+                context={"timeframe": timeframe, "window": len(candles)},
+            )
 
             # ── RAW INDICATOR VALUES ────────────────────────────────
             # Operator directive 2026-08-08: "Should also explore
@@ -3219,6 +3398,7 @@ class VotingEngine:
                     except (TypeError, ValueError):
                         _last_ts = None
             from src.trading import ta_invariants as _ta_inv
+
             for _sig in signals:
                 _details = dict(_sig.details or {})
                 # THE RECORD NOW CARRIES A VERDICT, NOT JUST A VALUE.
@@ -3238,22 +3418,26 @@ class VotingEngine:
                 _ta_emit(
                     f"ta.07.004.postcondition.raw.{_sig.indicator}",
                     actual=_details,
-                    expected=_rule, ok=_ok,
-                    context={"timeframe": timeframe,
-                             "window": len(candles),
-                             # WITHOUT THE SYMBOL THE ADDRESS IS
-                             # INCOMPLETE. candle_ts alone does not say
-                             # WHICH tablet the value came from, so a
-                             # raw record could not be joined back to
-                             # its own input and independently
-                             # recomputed -- the whole point of keeping
-                             # it. Optional so live callers are
-                             # unaffected.
-                             "symbol": symbol,
-                             "candle_ts": _last_ts,
-                             "direction": _sig.direction.name,
-                             "confidence": round(float(_sig.confidence), 6),
-                             "weight": float(_sig.weight)})
+                    expected=_rule,
+                    ok=_ok,
+                    context={
+                        "timeframe": timeframe,
+                        "window": len(candles),
+                        # WITHOUT THE SYMBOL THE ADDRESS IS
+                        # INCOMPLETE. candle_ts alone does not say
+                        # WHICH tablet the value came from, so a
+                        # raw record could not be joined back to
+                        # its own input and independently
+                        # recomputed -- the whole point of keeping
+                        # it. Optional so live callers are
+                        # unaffected.
+                        "symbol": symbol,
+                        "candle_ts": _last_ts,
+                        "direction": _sig.direction.name,
+                        "confidence": round(float(_sig.confidence), 6),
+                        "weight": float(_sig.weight),
+                    },
+                )
         except _TAInstrumentationOff:
             pass
         except Exception:  # noqa: BLE001,S110 - instrumentation is advisory
@@ -3274,9 +3458,17 @@ class VotingEngine:
           5m=0.5, 15m=0.7, 1h=1.0, 4h=1.3, 1d=1.5
         """
         tf_weights = timeframe_weights or {
-            "1m": 0.3, "5m": 0.5, "15m": 0.7, "30m": 0.85,
-            "1h": 1.0, "2h": 1.1, "4h": 1.3, "6h": 1.35,
-            "12h": 1.4, "1d": 1.5, "1w": 1.6,
+            "1m": 0.3,
+            "5m": 0.5,
+            "15m": 0.7,
+            "30m": 0.85,
+            "1h": 1.0,
+            "2h": 1.1,
+            "4h": 1.3,
+            "6h": 1.35,
+            "12h": 1.4,
+            "1d": 1.5,
+            "1w": 1.6,
         }
 
         all_signals: list[Signal] = []
@@ -3372,6 +3564,7 @@ def analyze(
 @dataclass
 class HACandle:
     """Heikin Ashi candle."""
+
     timestamp: float
     open: float
     high: float
@@ -3381,7 +3574,6 @@ class HACandle:
 
 
 def compute_heikin_ashi(candles: list[Candle]) -> list[HACandle]:
-
 
     # sadp: R28  # indicator compute: fail-loudly(R28)
     """Convert standard candles to Heikin Ashi."""
@@ -3422,23 +3614,24 @@ def compute_heikin_ashi(candles: list[Candle]) -> list[HACandle]:
 @dataclass
 class BBProximityResult:
     """Result of Bollinger Band proximity analysis."""
+
     upper: float
     middle: float
     lower: float
-    bb_position: float           # 0 = at lower, 1 = at upper
-    near_upper: bool             # Within tolerance of upper band
-    near_lower: bool             # Within tolerance of lower band
-    tolerance_pct: float         # Active tolerance %
-    landing_strip: bool          # HA consolidation near BB detected
-    landing_strip_side: str      # "upper" or "lower" or ""
-    landing_strip_candles: int   # How many candles in the pattern
-    ha_body_avg: float           # Average HA body % for recent candles
+    bb_position: float  # 0 = at lower, 1 = at upper
+    near_upper: bool  # Within tolerance of upper band
+    near_lower: bool  # Within tolerance of lower band
+    tolerance_pct: float  # Active tolerance %
+    landing_strip: bool  # HA consolidation near BB detected
+    landing_strip_side: str  # "upper" or "lower" or ""
+    landing_strip_candles: int  # How many candles in the pattern
+    ha_body_avg: float  # Average HA body % for recent candles
     consolidation_strength: float  # 0..1, how tight the consolidation is
 
 
 def detect_bb_proximity(
     candles: list[Candle],
-    tolerance_pct: float = 1.0,   # 0.25% to 5% — distance from band
+    tolerance_pct: float = 1.0,  # 0.25% to 5% — distance from band
     consolidation_threshold: float = 3.0,  # HA body % below this = tight
     min_pattern_candles: int = 2,
     max_pattern_candles: int = 10,
@@ -3459,8 +3652,8 @@ def detect_bb_proximity(
     closes = [c.close for c in candles]
     if len(closes) < bb_period:
         return BBProximityResult(
-            0, 0, 0, 0.5, False, False, tolerance_pct,
-            False, "", 0, 100.0, 0.0)
+            0, 0, 0, 0.5, False, False, tolerance_pct, False, "", 0, 100.0, 0.0
+        )
 
     # Compute BB
     # v3.24.22 — suffix-only; only [-1] is read below.
@@ -3490,8 +3683,19 @@ def detect_bb_proximity(
     # value, already returned by the short-history branch above.
     if _window_has_no_range(closes[-bb_period:]) or upper - lower <= 0:
         return BBProximityResult(
-            upper, mid, lower, 0.5, False, False, tolerance_pct,
-            False, "", 0, 100.0, 0.0)
+            upper,
+            mid,
+            lower,
+            0.5,
+            False,
+            False,
+            tolerance_pct,
+            False,
+            "",
+            0,
+            100.0,
+            0.0,
+        )
 
     bb_range = upper - lower
 
@@ -3506,8 +3710,19 @@ def detect_bb_proximity(
     ha = compute_heikin_ashi(candles)
     if len(ha) < 3:
         return BBProximityResult(
-            upper, mid, lower, bb_pos, near_upper, near_lower, tolerance_pct,
-            False, "", 0, 100.0, 0.0)
+            upper,
+            mid,
+            lower,
+            bb_pos,
+            near_upper,
+            near_lower,
+            tolerance_pct,
+            False,
+            "",
+            0,
+            100.0,
+            0.0,
+        )
 
     # Count consecutive tight HA candles from the end
     # `body_pct` (compute_heikin_ashi) is the HA body over the candle's
@@ -3561,9 +3776,12 @@ def detect_bb_proximity(
             landing_side = "lower"  # Buy signal — reversal from lower
 
     return BBProximityResult(
-        upper=upper, middle=mid, lower=lower,
+        upper=upper,
+        middle=mid,
+        lower=lower,
         bb_position=round(bb_pos, 4),
-        near_upper=near_upper, near_lower=near_lower,
+        near_upper=near_upper,
+        near_lower=near_lower,
         tolerance_pct=tolerance_pct,
         landing_strip=landing_strip,
         landing_strip_side=landing_side,
@@ -3579,13 +3797,14 @@ def detect_bb_proximity(
 @dataclass
 class TighteningResult:
     """Result of the 3-layer Landing Strip tightening detection."""
-    detected: bool              # True if tightening at BB band detected
-    side: str                   # "upper" or "lower" or ""
-    length: int                 # Number of consecutive tightening candles
-    tightening_ratio: float     # How much range shrank (0-1, higher = tighter)
-    bb_position: float          # BB position when detected
-    confidence_boost: float     # Recommended confidence boost (0.0-0.25)
-    raw_tightenings: int        # Total tightenings found (pre-BB filter)
+
+    detected: bool  # True if tightening at BB band detected
+    side: str  # "upper" or "lower" or ""
+    length: int  # Number of consecutive tightening candles
+    tightening_ratio: float  # How much range shrank (0-1, higher = tighter)
+    bb_position: float  # BB position when detected
+    confidence_boost: float  # Recommended confidence boost (0.0-0.25)
+    raw_tightenings: int  # Total tightenings found (pre-BB filter)
 
 
 def detect_landing_strip_v2(
@@ -3618,8 +3837,7 @@ def detect_landing_strip_v2(
         bodies = [abs(c.close - c.open) for c in candles]
 
     # Normalize as % of price
-    norm = [bodies[i] / max(candles[i].close, 1e-10) * 100
-            for i in range(len(bodies))]
+    norm = [bodies[i] / max(candles[i].close, 1e-10) * 100 for i in range(len(bodies))]
 
     # Count consecutive shrinks from the most recent candle backward
     # `ratio` below is one normalised body over the previous one, so an
@@ -3656,7 +3874,9 @@ def detect_landing_strip_v2(
     # tightens in the middle but wicks still test the BB bands.
     closes = [c.close for c in candles]
     if len(closes) < 20:
-        return TighteningResult(False, "", shrink_count, tightening_ratio, 0.5, 0.0, shrink_count)
+        return TighteningResult(
+            False, "", shrink_count, tightening_ratio, 0.5, 0.0, shrink_count
+        )
 
     # v3.24.22 — suffix-only; only [-1] is read below.
     sma_vals = _sma_tail(closes, 20, tail=1)
@@ -3672,8 +3892,9 @@ def detect_landing_strip_v2(
     # `upper - lower` is 4*sigma and rounds to ULPs on a halt; the width
     # test is kept underneath as a subordinate floor.
     if _window_has_no_range(closes[-20:]) or upper - lower <= 0:
-        return TighteningResult(False, "", shrink_count, tightening_ratio,
-                                0.5, 0.0, shrink_count)
+        return TighteningResult(
+            False, "", shrink_count, tightening_ratio, 0.5, 0.0, shrink_count
+        )
 
     bb_range = upper - lower
 
@@ -3700,16 +3921,30 @@ def detect_landing_strip_v2(
 
     if not near_upper and not near_lower:
         # Tightening detected but not at BB band — return raw data
-        return TighteningResult(False, "", shrink_count, tightening_ratio,
-                                round(bb_pos, 4), 0.0, shrink_count)
+        return TighteningResult(
+            False,
+            "",
+            shrink_count,
+            tightening_ratio,
+            round(bb_pos, 4),
+            0.0,
+            shrink_count,
+        )
 
     if near_upper and near_lower:
         # The tightening window reaches BOTH bands, so the channel is
         # narrower than the tolerance and no side can be named. The
         # ternary below resolved that tie to "upper" -- a reversal DOWN
         # -- regardless of where price actually sat.
-        return TighteningResult(False, "", shrink_count, tightening_ratio,
-                                round(bb_pos, 4), 0.0, shrink_count)
+        return TighteningResult(
+            False,
+            "",
+            shrink_count,
+            tightening_ratio,
+            round(bb_pos, 4),
+            0.0,
+            shrink_count,
+        )
 
     side = "upper" if near_upper else "lower"
 
@@ -3801,29 +4036,27 @@ def detect_volume_confirmed_spring(
     # BollingerBands.compute, which returns a Signal with no details
     # when it has too few candles.
     reported_bb_pos: Optional[float] = None
-    bb_signals = [s for s in voting_summary.signals
-                  if s.indicator == "bollinger_bands"]
+    bb_signals = [s for s in voting_summary.signals if s.indicator == "bollinger_bands"]
     if bb_signals:
         reported_bb_pos = bb_signals[0].details.get("bb_position")
 
     obv_div_value = "none"
-    vol_signals = [s for s in voting_summary.signals
-                   if s.indicator == "volume"]
+    vol_signals = [s for s in voting_summary.signals if s.indicator == "volume"]
     if vol_signals:
         obv_div_value = vol_signals[0].details.get("obv_divergence", "none")
 
-    near_lower = (reported_bb_pos is not None
-                  and reported_bb_pos < bb_pos_threshold)
-    landing = (bb_proximity is not None
-               and bb_proximity.landing_strip
-               and bb_proximity.landing_strip_side == "lower")
-    obv_bull = (obv_div_value == "bullish")
+    near_lower = reported_bb_pos is not None and reported_bb_pos < bb_pos_threshold
+    landing = (
+        bb_proximity is not None
+        and bb_proximity.landing_strip
+        and bb_proximity.landing_strip_side == "lower"
+    )
+    obv_bull = obv_div_value == "bullish"
     components_met = sum([near_lower, landing, obv_bull])
 
     return {
         "triggered": near_lower and landing and obv_bull,
-        "bb_position": (reported_bb_pos
-                        if reported_bb_pos is not None else -1.0),
+        "bb_position": (reported_bb_pos if reported_bb_pos is not None else -1.0),
         "landing_strip": landing,
         "obv_divergence_bullish": obv_bull,
         "components_met": components_met,
@@ -3877,26 +4110,31 @@ def detect_w_bottom(
     """
     n = len(candles)
     if n < 2 or len(bb_pos_history) != n:
-        return {"triggered": False, "name": "w_bottom",
-                "error": "insufficient candles or misaligned bb_pos_history"}
+        return {
+            "triggered": False,
+            "name": "w_bottom",
+            "error": "insufficient candles or misaligned bb_pos_history",
+        }
 
     start = max(0, n - lookback)
     window_candles = candles[start:]
     window_bb = bb_pos_history[start:]
 
-    test_indices = [i for i, bp in enumerate(window_bb)
-                    if bp < lower_threshold]
+    test_indices = [i for i, bp in enumerate(window_bb) if bp < lower_threshold]
     if len(test_indices) < 2:
-        return {"triggered": False, "name": "w_bottom",
-                "components_met": 0,
-                "test_indices_found": len(test_indices)}
+        return {
+            "triggered": False,
+            "name": "w_bottom",
+            "components_met": 0,
+            "test_indices_found": len(test_indices),
+        }
 
     best: Optional[dict] = None
     for i_test_1 in test_indices:
         for i_test_2 in test_indices:
             if i_test_2 - i_test_1 < min_separation:
                 continue
-            between = window_bb[i_test_1 + 1:i_test_2]
+            between = window_bb[i_test_1 + 1 : i_test_2]
             if not between:
                 continue
             pullback_bb = max(between)
@@ -3924,9 +4162,12 @@ def detect_w_bottom(
             }
 
     if best is None:
-        return {"triggered": False, "name": "w_bottom",
-                "components_met": 1,
-                "test_indices_found": len(test_indices)}
+        return {
+            "triggered": False,
+            "name": "w_bottom",
+            "components_met": 1,
+            "test_indices_found": len(test_indices),
+        }
     return best
 
 
@@ -3956,26 +4197,31 @@ def detect_m_top(
     """
     n = len(candles)
     if n < 2 or len(bb_pos_history) != n:
-        return {"triggered": False, "name": "m_top",
-                "error": "insufficient candles or misaligned bb_pos_history"}
+        return {
+            "triggered": False,
+            "name": "m_top",
+            "error": "insufficient candles or misaligned bb_pos_history",
+        }
 
     start = max(0, n - lookback)
     window_candles = candles[start:]
     window_bb = bb_pos_history[start:]
 
-    test_indices = [i for i, bp in enumerate(window_bb)
-                    if bp > upper_threshold]
+    test_indices = [i for i, bp in enumerate(window_bb) if bp > upper_threshold]
     if len(test_indices) < 2:
-        return {"triggered": False, "name": "m_top",
-                "components_met": 0,
-                "test_indices_found": len(test_indices)}
+        return {
+            "triggered": False,
+            "name": "m_top",
+            "components_met": 0,
+            "test_indices_found": len(test_indices),
+        }
 
     best: Optional[dict] = None
     for i_test_1 in test_indices:
         for i_test_2 in test_indices:
             if i_test_2 - i_test_1 < min_separation:
                 continue
-            between = window_bb[i_test_1 + 1:i_test_2]
+            between = window_bb[i_test_1 + 1 : i_test_2]
             if not between:
                 continue
             pullback_bb = min(between)
@@ -4003,7 +4249,10 @@ def detect_m_top(
             }
 
     if best is None:
-        return {"triggered": False, "name": "m_top",
-                "components_met": 1,
-                "test_indices_found": len(test_indices)}
+        return {
+            "triggered": False,
+            "name": "m_top",
+            "components_met": 1,
+            "test_indices_found": len(test_indices),
+        }
     return best

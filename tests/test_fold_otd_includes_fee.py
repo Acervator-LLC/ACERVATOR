@@ -48,6 +48,7 @@ FALSIFICATION: these tests are wrong if the executor's predicate stops
 being ``ticker.last <= ref * _otd_factor``, or if ``_otd_factor`` stops
 coming from a single ``otd_math`` call shared with the diagnostic.
 """
+
 from __future__ import annotations
 
 import ast
@@ -65,8 +66,7 @@ from src.trading.otd_math import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(
-    encoding="utf-8")
+SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(encoding="utf-8")
 TREE = ast.parse(SRC)
 
 # ── the executor's predicate, stated once ───────────────────────────
@@ -103,8 +103,7 @@ class TestTheInstrumentWorks:
         produces. If this drifts, every boundary test below is grading a
         threshold that does not exist."""
         assert REF * fold_rebuy_factor(INTERVAL, FEE) == THRESHOLD_WITH_FEE
-        assert REF * fold_rebuy_factor(INTERVAL, 0.0) == \
-            THRESHOLD_INTERVAL_ONLY
+        assert REF * fold_rebuy_factor(INTERVAL, 0.0) == THRESHOLD_INTERVAL_ONLY
 
     def test_the_ulp_neighbours_really_are_adjacent_floats(self):
         """A 'boundary' that is two ulps out tests nothing at the
@@ -122,9 +121,11 @@ class TestTheInstrumentWorks:
 
 
 def _tick() -> ast.AST:
-    ticks = [n for n in ast.walk(TREE)
-             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-             and n.name == "tick"]
+    ticks = [
+        n
+        for n in ast.walk(TREE)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "tick"
+    ]
     assert ticks, "no tick() found -- extractor broken, not the code"
     return max(ticks, key=lambda n: (n.end_lineno or 0) - n.lineno)
 
@@ -134,35 +135,32 @@ class TestTheFeeIsRequired:
         """THE DEFECT, stated as a test. A price exactly one interval
         below the tranche ref used to fire. It must not: that round trip
         does not clear its own fees."""
-        assert not eligible(THRESHOLD_INTERVAL_ONLY, REF,
-                            fold_rebuy_factor(INTERVAL, FEE))
+        assert not eligible(
+            THRESHOLD_INTERVAL_ONLY, REF, fold_rebuy_factor(INTERVAL, FEE)
+        )
 
     def test_that_same_price_WAS_eligible_before(self):
         """NEGATIVE CONTROL on the test above -- proves it is detecting
         the change rather than a price that was never eligible."""
-        assert eligible(THRESHOLD_INTERVAL_ONLY, REF,
-                        fold_rebuy_factor(INTERVAL, 0.0))
+        assert eligible(THRESHOLD_INTERVAL_ONLY, REF, fold_rebuy_factor(INTERVAL, 0.0))
 
     def test_a_tranche_at_interval_plus_fee_distance_is_eligible(self):
         """The gate must not be a lockout: at the full distance it
         fires."""
-        assert eligible(THRESHOLD_WITH_FEE, REF,
-                        fold_rebuy_factor(INTERVAL, FEE))
+        assert eligible(THRESHOLD_WITH_FEE, REF, fold_rebuy_factor(INTERVAL, FEE))
 
 
 class TestTheBoundary:
     """`<=`, so the threshold itself is INSIDE."""
 
     def test_exactly_at_the_threshold_is_eligible(self):
-        assert eligible(THRESHOLD_WITH_FEE, REF,
-                        fold_rebuy_factor(INTERVAL, FEE))
+        assert eligible(THRESHOLD_WITH_FEE, REF, fold_rebuy_factor(INTERVAL, FEE))
 
     def test_one_ulp_below_is_eligible(self):
         assert eligible(ONE_ULP_BELOW, REF, fold_rebuy_factor(INTERVAL, FEE))
 
     def test_one_ulp_above_is_not_eligible(self):
-        assert not eligible(ONE_ULP_ABOVE, REF,
-                            fold_rebuy_factor(INTERVAL, FEE))
+        assert not eligible(ONE_ULP_ABOVE, REF, fold_rebuy_factor(INTERVAL, FEE))
 
 
 class TestFeeZeroReproducesTheOldBehaviour:
@@ -172,13 +170,12 @@ class TestFeeZeroReproducesTheOldBehaviour:
 
     @pytest.mark.parametrize("interval", [0.0, 0.1, 1.0, 5.0, 12.5, 49.9])
     def test_zero_fee_equals_interval_only(self, interval):
-        assert fold_rebuy_factor(interval, 0.0) == \
-            fold_rebuy_factor_from_pct(
-                max(OTD_MIN_PCT, min(OTD_MAX_PCT, interval)))
+        assert fold_rebuy_factor(interval, 0.0) == fold_rebuy_factor_from_pct(
+            max(OTD_MIN_PCT, min(OTD_MAX_PCT, interval))
+        )
 
     def test_zero_fee_leaves_the_threshold_bit_identical(self):
-        assert REF * fold_rebuy_factor(INTERVAL, 0.0) == \
-            THRESHOLD_INTERVAL_ONLY
+        assert REF * fold_rebuy_factor(INTERVAL, 0.0) == THRESHOLD_INTERVAL_ONLY
 
 
 class TestTheClamp:
@@ -202,13 +199,15 @@ class TestTheClamp:
     def test_a_sum_landing_exactly_on_the_cap_is_unclamped(self):
         assert minimum_opposing_trade_distance_pct(49.4, 0.6) == 50.0
 
-    @pytest.mark.parametrize("interval", [-1e9, -1.0, 0.0, 25.0, 49.9,
-                                          50.0, 1e9])
+    @pytest.mark.parametrize("interval", [-1e9, -1.0, 0.0, 25.0, 49.9, 50.0, 1e9])
     @pytest.mark.parametrize("fee", [0.0, 0.6, 1.6, 5.0])
     def test_factor_never_leaves_its_range(self, interval, fee):
         assert 0.5 <= fold_rebuy_factor(interval, fee) <= 1.0
-        assert OTD_MIN_PCT <= minimum_opposing_trade_distance_pct(
-            interval, fee) <= OTD_MAX_PCT
+        assert (
+            OTD_MIN_PCT
+            <= minimum_opposing_trade_distance_pct(interval, fee)
+            <= OTD_MAX_PCT
+        )
 
 
 class TestTheDiagnosticAndTheExecutorAgree:
@@ -220,39 +219,49 @@ class TestTheDiagnosticAndTheExecutorAgree:
         return ast.get_source_segment(SRC, _tick()) or ""
 
     def test_the_otd_pct_is_computed_exactly_once(self):
-        calls = [n for n in ast.walk(_tick())
-                 if isinstance(n, ast.Call)
-                 and getattr(n.func, "id", "") ==
-                 "minimum_opposing_trade_distance_pct"]
+        calls = [
+            n
+            for n in ast.walk(_tick())
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "id", "") == "minimum_opposing_trade_distance_pct"
+        ]
         assert len(calls) == 1, (
             f"the OTD is computed {len(calls)} times in tick(); a second "
-            f"copy is how the instrument and the executor drift apart")
+            f"copy is how the instrument and the executor drift apart"
+        )
 
     def test_the_factor_is_assigned_exactly_once(self):
-        assigns = [n for n in ast.walk(_tick())
-                   if isinstance(n, ast.Assign)
-                   and any(getattr(t, "id", "") == "_otd_factor"
-                           for t in n.targets)]
+        assigns = [
+            n
+            for n in ast.walk(_tick())
+            if isinstance(n, ast.Assign)
+            and any(getattr(t, "id", "") == "_otd_factor" for t in n.targets)
+        ]
         assert len(assigns) == 1
 
     def test_the_single_call_passes_the_trading_fee(self):
         """The whole point. A call that passes only the interval is the
         defect back again."""
-        calls = [n for n in ast.walk(_tick())
-                 if isinstance(n, ast.Call)
-                 and getattr(n.func, "id", "") ==
-                 "minimum_opposing_trade_distance_pct"]
+        calls = [
+            n
+            for n in ast.walk(_tick())
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "id", "") == "minimum_opposing_trade_distance_pct"
+        ]
         src = ast.unparse(calls[0])
         assert "trading_fee_pct" in src, src
         assert "scrumming_interval_pct" in src, src
 
     def test_both_the_counter_and_the_executor_read_that_factor(self):
-        cmps = [ast.unparse(n) for n in ast.walk(_tick())
-                if isinstance(n, ast.Compare)
-                and "_otd_factor" in ast.unparse(n)]
+        cmps = [
+            ast.unparse(n)
+            for n in ast.walk(_tick())
+            if isinstance(n, ast.Compare) and "_otd_factor" in ast.unparse(n)
+        ]
         assert len(cmps) >= 2, (
             f"expected the diagnostic AND the executor to share the "
-            f"predicate; found {len(cmps)}: {cmps}")
+            f"predicate; found {len(cmps)}: {cmps}"
+        )
         for c in cmps:
             assert "ticker.last <=" in c, c
 
@@ -292,10 +301,9 @@ class TestMonotonicity:
         for ref in refs:
             for price_mult in (0.90, 0.94, 0.9439, 0.944, 0.95, 1.0, 1.1):
                 price = ref * price_mult
-                with_fee = eligible(price, ref,
-                                    fold_rebuy_factor(INTERVAL, FEE))
-                without = eligible(price, ref,
-                                   fold_rebuy_factor(INTERVAL, 0.0))
+                with_fee = eligible(price, ref, fold_rebuy_factor(INTERVAL, FEE))
+                without = eligible(price, ref, fold_rebuy_factor(INTERVAL, 0.0))
                 assert not (with_fee and not without), (
                     f"fee made ref={ref} price={price} eligible when the "
-                    f"interval-only rule did not")
+                    f"interval-only rule did not"
+                )

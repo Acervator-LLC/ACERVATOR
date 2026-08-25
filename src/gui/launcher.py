@@ -13,11 +13,17 @@ logger = logging.getLogger("acervator.gui")
 
 try:
     from PySide6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-        QFrame, QGraphicsDropShadowEffect,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QPushButton,
+        QFrame,
+        QGraphicsDropShadowEffect,
     )
     from PySide6.QtCore import Qt, Signal
-    from PySide6.QtGui import QFont, QColor, QPainter, QLinearGradient, QPen
+    from PySide6.QtGui import QColor, QPainter, QLinearGradient
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -26,10 +32,18 @@ if _HAS_QT:
 
     class ModeCard(QFrame):
         """Large clickable card for a trading mode."""
+
         clicked = Signal()
 
-        def __init__(self, title: str, subtitle: str, icon_char: str,
-                     color: str, features: list[str], parent=None):
+        def __init__(
+            self,
+            title: str,
+            subtitle: str,
+            icon_char: str,
+            color: str,
+            features: list[str],
+            parent=None,
+        ):
             super().__init__(parent)
             self.setAccessibleName("Mode Card")
             self._color = color
@@ -39,7 +53,8 @@ if _HAS_QT:
             self.setStyleSheet(
                 f"ModeCard {{ background: #0e0e1a; border: 2px solid #1a1a2f; "
                 f"border-radius: 16px; }}"
-                f"ModeCard:hover {{ border-color: {color}; }}")
+                f"ModeCard:hover {{ border-color: {color}; }}"
+            )
 
             layout = QVBoxLayout(self)
             layout.setContentsMargins(30, 30, 30, 30)
@@ -55,7 +70,8 @@ if _HAS_QT:
             title_lbl = QLabel(title)
             title_lbl.setAlignment(Qt.AlignCenter)
             title_lbl.setStyleSheet(
-                f"font-size: 24px; font-weight: bold; color: {color};")
+                f"font-size: 24px; font-weight: bold; color: {color};"
+            )
             layout.addWidget(title_lbl)
 
             # Subtitle
@@ -81,7 +97,8 @@ if _HAS_QT:
                 f"QPushButton {{ background: {color}; color: #0a0a12; "
                 f"border: none; border-radius: 8px; padding: 12px; "
                 f"font-size: 14px; font-weight: bold; }}"
-                f"QPushButton:hover {{ background: {color}cc; }}")
+                f"QPushButton:hover {{ background: {color}cc; }}"
+            )
             btn.clicked.connect(self.clicked.emit)
             layout.addWidget(btn)
 
@@ -99,6 +116,7 @@ if _HAS_QT:
         """
         Application launcher — choose between Crypto and Stock trading.
         """
+
         crypto_selected = Signal()
         stocks_selected = Signal()
 
@@ -118,7 +136,8 @@ if _HAS_QT:
             title.setAlignment(Qt.AlignCenter)
             title.setStyleSheet(
                 "font-size: 28px; font-weight: bold; color: #e0e0f0; "
-                "letter-spacing: 4px;")
+                "letter-spacing: 4px;"
+            )
             layout.addWidget(title)
 
             version_lbl = QLabel("Select Trading Mode")
@@ -136,7 +155,7 @@ if _HAS_QT:
             crypto_card = ModeCard(
                 title="Crypto Trading",
                 subtitle="Multi-exchange cryptocurrency trading with "
-                         "Grid and Scrumming bots",
+                "Grid and Scrumming bots",
                 icon_char="\u20bf",  # ₿
                 color="#00ffcc",
                 features=[
@@ -146,7 +165,8 @@ if _HAS_QT:
                     "Profit Folding & Distribution",
                     "Phantom Balance Bots",
                     "24/7 Trading",
-                ])
+                ],
+            )
             crypto_card.clicked.connect(self.crypto_selected.emit)
             cards.addWidget(crypto_card)
 
@@ -154,7 +174,7 @@ if _HAS_QT:
             stocks_card = ModeCard(
                 title="Stock Trading",
                 subtitle="Equity trading via TradingView signals "
-                         "with broker integration",
+                "with broker integration",
                 icon_char="\u2191",  # ↑
                 color="#00aaff",
                 features=[
@@ -164,15 +184,18 @@ if _HAS_QT:
                     "Market Hours Awareness",
                     "Paper Trading Support",
                     "Stop-Loss & Take-Profit",
-                ])
+                ],
+            )
             stocks_card.clicked.connect(self.stocks_selected.emit)
             cards.addWidget(stocks_card)
 
             layout.addLayout(cards)
 
             # Footer
-            footer = QLabel("Both modes can run simultaneously  •  "
-                           "Shared analytics, risk management, and notifications")
+            footer = QLabel(
+                "Both modes can run simultaneously  •  "
+                "Shared analytics, risk management, and notifications"
+            )
             footer.setAlignment(Qt.AlignCenter)
             footer.setStyleSheet("font-size: 11px; color: #555;")
             layout.addWidget(footer)

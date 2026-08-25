@@ -28,7 +28,17 @@ from typing import Iterable
 
 # Master ordered list — matches phantom_balance.TIMEFRAME_ORDER
 ALL_TIMEFRAMES: tuple[str, ...] = (
-    "1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w",
+    "1m",
+    "5m",
+    "15m",
+    "30m",
+    "1h",
+    "2h",
+    "4h",
+    "6h",
+    "12h",
+    "1d",
+    "1w",
 )
 
 # Per-exchange explicit allow-lists. Keys are normalized to lowercase
@@ -36,29 +46,30 @@ ALL_TIMEFRAMES: tuple[str, ...] = (
 _AVAILABILITY: dict[str, frozenset[str]] = {
     # Coinbase Advanced Trade — fixed eight granularities. NOT 4h.
     # Source: Coinbase Advanced Trade API CandleGranularity enum.
-    "coinbase":      frozenset({"1m", "5m", "15m", "30m", "1h", "2h", "6h", "1d"}),
-    "coinbasepro":   frozenset({"1m", "5m", "15m", "30m", "1h", "2h", "6h", "1d"}),
-    "cb":            frozenset({"1m", "5m", "15m", "30m", "1h", "2h", "6h", "1d"}),
-
+    "coinbase": frozenset({"1m", "5m", "15m", "30m", "1h", "2h", "6h", "1d"}),
+    "coinbasepro": frozenset({"1m", "5m", "15m", "30m", "1h", "2h", "6h", "1d"}),
+    "cb": frozenset({"1m", "5m", "15m", "30m", "1h", "2h", "6h", "1d"}),
     # Binance / Binance.US — supports 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h,
     # 6h, 8h, 12h, 1d, 3d, 1w, 1M. Acervator only uses the standard set.
-    "binance":       frozenset({"1m", "5m", "15m", "30m", "1h", "2h", "4h",
-                                "6h", "12h", "1d", "1w"}),
-    "binanceus":     frozenset({"1m", "5m", "15m", "30m", "1h", "2h", "4h",
-                                "6h", "12h", "1d", "1w"}),
-
+    "binance": frozenset(
+        {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
+    ),
+    "binanceus": frozenset(
+        {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
+    ),
     # Kraken — supports 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w (no 2h/6h/12h).
-    "kraken":        frozenset({"1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"}),
-
+    "kraken": frozenset({"1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"}),
     # Kucoin — supports a similar superset to Binance.
-    "kucoin":        frozenset({"1m", "5m", "15m", "30m", "1h", "2h", "4h",
-                                "6h", "12h", "1d", "1w"}),
-
+    "kucoin": frozenset(
+        {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
+    ),
     # Bybit, OKX — comprehensive coverage. Use full standard set.
-    "bybit":         frozenset({"1m", "5m", "15m", "30m", "1h", "2h", "4h",
-                                "6h", "12h", "1d", "1w"}),
-    "okx":           frozenset({"1m", "5m", "15m", "30m", "1h", "2h", "4h",
-                                "6h", "12h", "1d", "1w"}),
+    "bybit": frozenset(
+        {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
+    ),
+    "okx": frozenset(
+        {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
+    ),
 }
 
 
@@ -83,9 +94,7 @@ def is_supported(exchange_id: str | None, timeframe: str) -> bool:
     return timeframe in available_timeframes(exchange_id)
 
 
-def filter_timeframes(
-    exchange_id: str | None, requested: Iterable[str]
-) -> list[str]:
+def filter_timeframes(exchange_id: str | None, requested: Iterable[str]) -> list[str]:
     """Filter a list of requested timeframes down to the ones the
     exchange supports. Order-preserving."""
     allow = set(available_timeframes(exchange_id))

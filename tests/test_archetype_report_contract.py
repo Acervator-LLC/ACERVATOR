@@ -21,6 +21,7 @@ control for all of them: without it, a change that simply made
 everything red would satisfy every one and be indistinguishable from the
 fix.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -59,19 +60,24 @@ ARCHETYPE_MODULES = (
 )
 
 CODING_FIX = (
-    REPO_ROOT / "docs" / "audits"
-    / "2026-07-24_coding_archetype_multi_agent_test" / "fixtures"
+    REPO_ROOT
+    / "docs"
+    / "audits"
+    / "2026-07-24_coding_archetype_multi_agent_test"
+    / "fixtures"
 )
 
 
 def _high(line: int = 1) -> Finding:
-    return Finding(tool="t", severity="high", file="f", line=line,
-                   rule_id="R", message="m")
+    return Finding(
+        tool="t", severity="high", file="f", line=line, rule_id="R", message="m"
+    )
 
 
 def _low(line: int = 1) -> Finding:
-    return Finding(tool="t", severity="low", file="f", line=line,
-                   rule_id="R", message="m")
+    return Finding(
+        tool="t", severity="low", file="f", line=line, rule_id="R", message="m"
+    )
 
 
 class TestScannedGatesGreen:
@@ -88,8 +94,7 @@ class TestScannedGatesGreen:
 
     def test_scanned_empty_report_IS_green(self):
         """CONTROL. Without this, "always red" would pass the test above."""
-        rep = ArchetypeReport(target="x", tool_availability={"t": "ok"},
-                              scanned=True)
+        rep = ArchetypeReport(target="x", tool_availability={"t": "ok"}, scanned=True)
         assert rep.passed is True
         assert rep.why_not_green() == []
 
@@ -108,16 +113,16 @@ class TestToolAvailabilityGatesGreen:
     @pytest.mark.parametrize("status", ["missing", "error", "unavailable: x"])
     def test_non_ok_status_is_not_green(self, status):
         rep = ArchetypeReport(
-            target="x", tool_availability={"ruff": "ok", "mypy": status},
-            scanned=True)
+            target="x", tool_availability={"ruff": "ok", "mypy": status}, scanned=True
+        )
         assert rep.passed is False
         assert rep.unavailable_required() == ["mypy"]
 
     def test_all_ok_IS_green(self):
         """CONTROL for the parametrized case above."""
         rep = ArchetypeReport(
-            target="x", tool_availability={"ruff": "ok", "mypy": "ok"},
-            scanned=True)
+            target="x", tool_availability={"ruff": "ok", "mypy": "ok"}, scanned=True
+        )
         assert rep.passed is True
         assert rep.unavailable_required() == []
 
@@ -128,21 +133,24 @@ class TestToolAvailabilityGatesGreen:
         one matched neither and slipped through as though it had run.
         """
         rep = ArchetypeReport(
-            target="x", tool_availability={"ruff": "unavailable: boom"},
-            scanned=True)
+            target="x", tool_availability={"ruff": "unavailable: boom"}, scanned=True
+        )
         assert rep.passed is False
 
     def test_optional_set_is_empty_and_that_is_deliberate(self):
         assert OPTIONAL_ANALYZERS == frozenset(), (
             "adding a name here declares that analyzer's coverage "
-            "optional; it must come with a reason")
+            "optional; it must come with a reason"
+        )
 
     def test_an_optional_analyzer_would_not_void_the_report(self, monkeypatch):
         """The mechanism works, even though the set is empty today."""
         import tools.harness.report as rp
+
         monkeypatch.setattr(rp, "OPTIONAL_ANALYZERS", frozenset({"vale"}))
         rep = ArchetypeReport(
-            target="x", tool_availability={"vale": "missing"}, scanned=True)
+            target="x", tool_availability={"vale": "missing"}, scanned=True
+        )
         assert rep.passed is True
 
 
@@ -151,14 +159,14 @@ class TestFindingsStillGateGreen:
 
     def test_a_high_finding_blocks(self):
         rep = ArchetypeReport(
-            target="x", findings=[_high()],
-            tool_availability={"t": "ok"}, scanned=True)
+            target="x", findings=[_high()], tool_availability={"t": "ok"}, scanned=True
+        )
         assert rep.passed is False
 
     def test_a_low_finding_does_not_block(self):
         rep = ArchetypeReport(
-            target="x", findings=[_low()],
-            tool_availability={"t": "ok"}, scanned=True)
+            target="x", findings=[_low()], tool_availability={"t": "ok"}, scanned=True
+        )
         assert rep.passed is True
 
 
@@ -167,8 +175,11 @@ class TestBySeverityIsPublishedEverywhere:
 
     def test_by_severity_sums_to_the_finding_count(self):
         rep = ArchetypeReport(
-            target="x", findings=[_high(), _low(), _low()],
-            tool_availability={"t": "ok"}, scanned=True)
+            target="x",
+            findings=[_high(), _low(), _low()],
+            tool_availability={"t": "ok"},
+            scanned=True,
+        )
         assert sum(rep.by_severity().values()) == len(rep.findings) == 3
 
     @pytest.mark.parametrize("module", ARCHETYPE_MODULES)
@@ -177,9 +188,18 @@ class TestBySeverityIsPublishedEverywhere:
         to zero. It printed "0 findings" above "by tool: ruff=81"."""
         mod = importlib.import_module(module)
         payload = mod.ArchetypeReport(
-            target="x", findings=[mod.Finding(
-                tool="t", severity="high", file="f", line=1,
-                rule_id="R", message="m")]).to_dict()
+            target="x",
+            findings=[
+                mod.Finding(
+                    tool="t",
+                    severity="high",
+                    file="f",
+                    line=1,
+                    rule_id="R",
+                    message="m",
+                )
+            ],
+        ).to_dict()
         assert "by_severity" in payload
         assert sum(payload["by_severity"].values()) == 1
 
@@ -192,8 +212,7 @@ class TestBySeverityIsPublishedEverywhere:
 
 class TestExitCodeFollowsTheVerdict:
     def test_green_exits_zero(self):
-        rep = ArchetypeReport(target="x", tool_availability={"t": "ok"},
-                              scanned=True)
+        rep = ArchetypeReport(target="x", tool_availability={"t": "ok"}, scanned=True)
         assert cli_exit(rep) == 0
 
     def test_unscanned_exits_one(self, capsys):
@@ -222,11 +241,11 @@ class TestTheRealCLIs:
         capsys.readouterr()
         assert code != 0, (
             f"{module} returned 0 on a path that does not exist; a caller "
-            f"reading the exit code was told the file is clean")
+            f"reading the exit code was told the file is clean"
+        )
 
     @pytest.mark.parametrize("module", ARCHETYPE_MODULES)
-    def test_present_clean_path_still_exits_zero(self, module, tmp_path,
-                                                 capsys):
+    def test_present_clean_path_still_exits_zero(self, module, tmp_path, capsys):
         """CONTROL. Prove the CLIs did not simply stop passing."""
         present = tmp_path / "clean_module.py"
         present.write_text('"""A module."""\n', encoding="utf-8")
@@ -234,7 +253,8 @@ class TestTheRealCLIs:
         out = capsys.readouterr()
         assert code == 0, (
             f"{module} returned {code} on a clean present file; "
-            f"stdout={out.out[-600:]} stderr={out.err[-600:]}")
+            f"stdout={out.out[-600:]} stderr={out.err[-600:]}"
+        )
 
 
 class TestErrorsGateGreen:
@@ -248,15 +268,17 @@ class TestErrorsGateGreen:
 
     def test_a_recorded_error_is_not_green(self):
         rep = ArchetypeReport(
-            target="x", tool_availability={"t": "ok"}, scanned=True,
-            errors=["rules: source read failed: PermissionError"])
+            target="x",
+            tool_availability={"t": "ok"},
+            scanned=True,
+            errors=["rules: source read failed: PermissionError"],
+        )
         assert rep.passed is False
         assert any("error(s) recorded" in r for r in rep.why_not_green())
 
     def test_no_error_IS_green(self):
         """CONTROL. Without it, "always red" would pass the test above."""
-        rep = ArchetypeReport(target="x", tool_availability={"t": "ok"},
-                              scanned=True)
+        rep = ArchetypeReport(target="x", tool_availability={"t": "ok"}, scanned=True)
         assert rep.passed is True
         assert rep.why_not_green() == []
 
@@ -295,8 +317,9 @@ class TestRuleModulesCannotScanNothingAndReportOk:
 
         as_dir = ArchetypeReport(target="d", scanned=True)
         scan_rule_modules(as_dir, tmp_path, SCAFFOLDING, (".py",))
-        assert [f.rule_id for f in as_dir.findings] == \
-               [f.rule_id for f in as_file.findings]
+        assert [f.rule_id for f in as_dir.findings] == [
+            f.rule_id for f in as_file.findings
+        ]
         assert as_dir.tool_availability["scaffolding"] == "ok"
 
 
@@ -312,8 +335,10 @@ class TestSilentToolFailureIsAnError:
     @staticmethod
     def _proc(rc: int, out: str = "", err: str = ""):
         import subprocess
+
         return subprocess.CompletedProcess(
-            args=["x"], returncode=rc, stdout=out, stderr=err)
+            args=["x"], returncode=rc, stdout=out, stderr=err
+        )
 
     def test_non_zero_with_no_output_raises(self):
         with pytest.raises(RuntimeError, match="without output"):
@@ -336,20 +361,26 @@ class TestSilentToolFailureIsAnError:
         exist today.
         """
         import ast
-        src = (HARNESS_REPO_ROOT / Path(*module.split(".")).with_suffix(".py")
-               ).read_text(encoding="utf-8")
+
+        src = (
+            HARNESS_REPO_ROOT / Path(*module.split(".")).with_suffix(".py")
+        ).read_text(encoding="utf-8")
         tree = ast.parse(src)
-        runs = [n for n in ast.walk(tree)
-                if isinstance(n, ast.Call)
-                and isinstance(n.func, ast.Attribute)
-                and n.func.attr == "run"
-                and isinstance(n.func.value, ast.Name)
-                and n.func.value.id == "subprocess"]
+        runs = [
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "run"
+            and isinstance(n.func.value, ast.Name)
+            and n.func.value.id == "subprocess"
+        ]
         for call in runs:
             kwargs = {k.arg for k in call.keywords}
             assert "cwd" in kwargs, (
                 f"{module}: a subprocess.run at line {call.lineno} does not "
-                f"pin cwd, so its verdict depends on where the caller stood")
+                f"pin cwd, so its verdict depends on where the caller stood"
+            )
 
 
 class TestUnusedIgnoreSeverityIsReadOffTheMessage:
@@ -365,21 +396,26 @@ class TestUnusedIgnoreSeverityIsReadOffTheMessage:
     @staticmethod
     def _sev(message: str) -> str:
         from tools.harness.coding_archetype import _unused_ignore_severity
+
         return _unused_ignore_severity(message)
 
     def test_a_dead_directive_is_high(self):
         assert self._sev('Unused "type: ignore" comment') == "high"
 
     def test_an_over_broad_directive_is_medium(self):
-        assert self._sev(
-            'Unused "type: ignore" comment, use narrower [method-assign] '
-            'instead of [assignment] code') == "medium"
+        assert (
+            self._sev(
+                'Unused "type: ignore" comment, use narrower [method-assign] '
+                "instead of [assignment] code"
+            )
+            == "medium"
+        )
 
     def test_the_two_are_not_the_same(self):
         """CONTROL. One severity for both is the defect this replaced."""
         assert self._sev('Unused "type: ignore" comment') != self._sev(
-            'Unused "type: ignore" comment, use narrower [x] instead of '
-            '[y] code')
+            'Unused "type: ignore" comment, use narrower [x] instead of ' "[y] code"
+        )
 
 
 class TestTheVerdictDoesNotDependOnTheCallersDirectory:
@@ -396,14 +432,15 @@ class TestTheVerdictDoesNotDependOnTheCallersDirectory:
         """mypy defaults to ./.mypy_cache -- a cache per caller."""
         import inspect
         from tools.harness.coding_archetype import CodingArchetype
+
         src = inspect.getsource(CodingArchetype._run_mypy)
         assert "--cache-dir" in src
         assert "REPO_ROOT" in src
 
-    def test_ruff_answers_the_same_from_another_directory(self, tmp_path,
-                                                          monkeypatch):
+    def test_ruff_answers_the_same_from_another_directory(self, tmp_path, monkeypatch):
         """The real runner, twice, from two directories."""
         from tools.harness.coding_archetype import CodingArchetype
+
         target = HARNESS_REPO_ROOT / "tools" / "harness" / "claim_ledger.py"
         assert target.is_file(), "control invalid: the target is missing"
         arch = CodingArchetype()
@@ -412,8 +449,9 @@ class TestTheVerdictDoesNotDependOnTheCallersDirectory:
         monkeypatch.chdir(tmp_path)
         from_away, status_away = arch._run_ruff(target)
         assert status_root == status_away == "ok"
-        assert sorted(f.rule_id for f in from_root) == \
-               sorted(f.rule_id for f in from_away)
+        assert sorted(f.rule_id for f in from_root) == sorted(
+            f.rule_id for f in from_away
+        )
 
 
 class TestKnownGoodAndKnownBadStillDiscriminate:
@@ -425,6 +463,7 @@ class TestKnownGoodAndKnownBadStillDiscriminate:
 
     def test_known_good_returns_zero_and_known_bad_returns_one(self, capsys):
         from tools.harness.coding_archetype import main as coding_main
+
         results = {}
         for name in ("known_good.py", "known_bad.py"):
             results[name] = coding_main([str(CODING_FIX / name)])
@@ -432,4 +471,5 @@ class TestKnownGoodAndKnownBadStillDiscriminate:
         assert results["known_good.py"] == 0
         assert results["known_bad.py"] == 1, (
             "known_bad returning 0 means the instrument is blind and every "
-            "other verdict in this repo is void")
+            "other verdict in this repo is void"
+        )

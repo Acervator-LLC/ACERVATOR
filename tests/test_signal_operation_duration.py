@@ -111,8 +111,7 @@ def _tracks(short: Optional[float], long_: Optional[float]) -> bool:
 # ── the field itself ──────────────────────────────────────────────────
 
 
-def _tracks_the_operation(short: Optional[float],
-                            long_: Optional[float]) -> bool:
+def _tracks_the_operation(short: Optional[float], long_: Optional[float]) -> bool:
     """Ask `_tracks`, then put a floor under the long reading.
 
     This ADDS a condition and relaxes none: everything `_tracks`
@@ -162,8 +161,7 @@ def test_an_emitter_that_measures_nothing_records_none_not_zero():
 
 def test_a_measured_duration_is_carried_verbatim():
     sink = SignalSink()
-    sink.emit("probe.99.002.postcondition.op", actual=1, expected=1,
-              duration=0.25)
+    sink.emit("probe.99.002.postcondition.op", actual=1, expected=1, duration=0.25)
     assert sink.records()[-1].duration == 0.25
 
 
@@ -198,8 +196,7 @@ def test_the_duration_tracks_two_different_known_intervals():
 
     assert short == pytest.approx(SHORT_S, abs=0.004), short
     assert long_ == pytest.approx(LONG_S, abs=0.010), long_
-    assert _tracks_the_operation(short, long_), (
-        f"did not track: {short} vs {long_}")
+    assert _tracks_the_operation(short, long_), f"did not track: {short} vs {long_}"
 
 
 def test_the_tracking_predicate_rejects_a_constant_duration():
@@ -221,29 +218,36 @@ def test_the_site_predicate_rejects_a_bracket_that_spans_nothing() -> None:
     this site could be blinded while still handing the sink a
     `duration` field of exactly the right shape.
     """
-    assert not _tracks_the_operation(0.01, 0.01), (
-        "a constant duration must not read as tracking")
-    assert not _tracks_the_operation(None, LONG_S), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_operation(SHORT_S, None), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_operation(LONG_S, SHORT_S), (
-        "going backwards must not read as tracking")
+    assert not _tracks_the_operation(
+        0.01, 0.01
+    ), "a constant duration must not read as tracking"
+    assert not _tracks_the_operation(
+        None, LONG_S
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_operation(
+        SHORT_S, None
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_operation(
+        LONG_S, SHORT_S
+    ), "going backwards must not read as tracking"
 
     # THE DEAD CLOCK, and the measured reason this site carries a floor
     # the shared predicate does not. This pair is a real one, harvested
     # 2026-08-20 with the stop clock planted above the work. `_tracks`
     # accepts it. The floor rejects it. That is an addition to
     # `_tracks`, never a relaxation of it.
-    assert _tracks(0.0, 3.0e-07), (
-        "the shared predicate is expected to accept a dead clock here")
-    assert not _tracks_the_operation(0.0, 3.0e-07), (
-        "a bracket that spans no work must not read as tracking")
+    assert _tracks(
+        0.0, 3.0e-07
+    ), "the shared predicate is expected to accept a dead clock here"
+    assert not _tracks_the_operation(
+        0.0, 3.0e-07
+    ), "a bracket that spans no work must not read as tracking"
 
     # The honest pair measured off the real site, 2026-08-20, must
     # still read as tracking.
-    assert _tracks_the_operation(0.0050007, 0.0300008), (
-        "the real measured pair must read as tracking")
+    assert _tracks_the_operation(
+        0.0050007, 0.0300008
+    ), "the real measured pair must read as tracking"
 
 
 # ── persistence: a field the writer does not enumerate is a lost field ──
@@ -264,12 +268,12 @@ def test_a_record_written_before_this_field_existed_reads_back_as_none():
     Every record already on the operator's disk was written without this key.
     Restoring them as 0.0 would claim every legacy operation was instantaneous.
     """
-    legacy = json.loads(Signal(name="x.00.000.counter.y", site="f:1",
-                               actual=1).to_json())
+    legacy = json.loads(
+        Signal(name="x.00.000.counter.y", site="f:1", actual=1).to_json()
+    )
     legacy.pop("duration", None)
     assert "duration" not in legacy
-    restored = Signal(name=legacy["name"], site=legacy["site"],
-                      actual=legacy["actual"])
+    restored = Signal(name=legacy["name"], site=legacy["site"], actual=legacy["actual"])
     assert restored.duration is None
 
 
@@ -285,14 +289,14 @@ def test_a_sibling_emitter_in_the_same_function_does_not_claim_the_duration():
     """
     sink = SignalSink()
     owner_duration = 0.042
-    sink.emit("probe.99.030.postcondition.owns_it", actual=1,
-              duration=owner_duration)
+    sink.emit("probe.99.030.postcondition.owns_it", actual=1, duration=owner_duration)
     sink.emit("probe.99.031.postcondition.sibling", actual=1)
 
     owner, sibling = sink.records()[-2:]
     assert owner.duration == owner_duration
-    assert sibling.duration is None, (
-        "a sibling in the same operation must not repeat the owner's duration")
+    assert (
+        sibling.duration is None
+    ), "a sibling in the same operation must not repeat the owner's duration"
 
 
 # ── end to end through the first real emitter ─────────────────────────
@@ -307,8 +311,7 @@ def test_ta_07_003_carries_a_duration_that_tracks_the_real_compute():
     swallowed it, or a timer bracketing the emit instead of the work.
     """
     from src.core import signal_contract as sc
-    from src.trading.ta_engine import (
-        Signal as TASignal, SignalDirection, VotingEngine)
+    from src.trading.ta_engine import Signal as TASignal, SignalDirection, VotingEngine
 
     class _Burn:
         """An indicator whose only job is to take a known amount of time."""
@@ -320,9 +323,12 @@ def test_ta_07_003_carries_a_duration_that_tracks_the_real_compute():
 
         def compute(self, _candles, timeframe="1h"):
             _busy_wait(self.secs)
-            return TASignal(indicator="stub", timeframe=timeframe,
-                            direction=SignalDirection.NEUTRAL,
-                            confidence=0.5)
+            return TASignal(
+                indicator="stub",
+                timeframe=timeframe,
+                direction=SignalDirection.NEUTRAL,
+                confidence=0.5,
+            )
 
     sink = SignalSink()
     previous = sc.get_sink()
@@ -340,8 +346,9 @@ def test_ta_07_003_carries_a_duration_that_tracks_the_real_compute():
         # every test module collected afterwards.
         sc.set_sink(previous)
 
-    computed = [r for r in sink.records()
-                if r.name == "ta.07.003.postcondition.computed"]
+    computed = [
+        r for r in sink.records() if r.name == "ta.07.003.postcondition.computed"
+    ]
     assert len(computed) == 2 * SAMPLES, computed
 
     # The MINIMUM of each workload's samples, for the reason recorded
@@ -349,16 +356,19 @@ def test_ta_07_003_carries_a_duration_that_tracks_the_real_compute():
     # the smallest sample is the closest estimate of the real compute.
     short = min(r.duration for r in computed[:SAMPLES])
     long_ = min(r.duration for r in computed[SAMPLES:])
-    assert _tracks_the_operation(short, long_), (
-        f"did not track the real compute: {short} vs {long_}")
+    assert _tracks_the_operation(
+        short, long_
+    ), f"did not track the real compute: {short} vs {long_}"
     assert short == pytest.approx(SHORT_S, abs=0.005), short
     assert long_ == pytest.approx(LONG_S, abs=0.015), long_
 
     # Finding 1, held in the live path: no other emitter in that function
     # repeats the owner's interval.
-    assert not [r for r in sink.records()
-                if r.name != "ta.07.003.postcondition.computed"
-                and r.duration is not None]
+    assert not [
+        r
+        for r in sink.records()
+        if r.name != "ta.07.003.postcondition.computed" and r.duration is not None
+    ]
 
 
 # ── Defect A: the READER, not the dataclass default ───────────────────
@@ -376,9 +386,16 @@ def test_ta_07_003_carries_a_duration_that_tracks_the_real_compute():
 
 def _payload(with_key: bool, duration: Optional[float] = None) -> dict:
     """One record exactly as the writer emits it, with the key set."""
-    d = json.loads(Signal(name="x.00.000.postcondition.op", site="f:1",
-                          actual=1, seq=7, ts="2026-08-20T00:00:00Z",
-                          duration=duration).to_json())
+    d = json.loads(
+        Signal(
+            name="x.00.000.postcondition.op",
+            site="f:1",
+            actual=1,
+            seq=7,
+            ts="2026-08-20T00:00:00Z",
+            duration=duration,
+        ).to_json()
+    )
     if not with_key:
         d.pop("duration")
     return d
@@ -477,10 +494,8 @@ def test_a_nan_or_infinite_duration_is_refused():
     does not, so the operator's file stops being portable JSON.
     """
     sink = SignalSink()
-    sink.emit("probe.99.042.postcondition.inf", actual=1,
-              duration=float("inf"))
-    sink.emit("probe.99.043.postcondition.nan", actual=1,
-              duration=float("nan"))
+    sink.emit("probe.99.042.postcondition.inf", actual=1, duration=float("inf"))
+    sink.emit("probe.99.043.postcondition.nan", actual=1, duration=float("nan"))
     assert [r.duration for r in sink.records()[-2:]] == [None, None]
     assert sink.health()["duration_rejected"] == 2
 
@@ -495,8 +510,7 @@ def test_a_duration_that_is_not_a_number_no_longer_destroys_the_record():
     counted it, because the record never reached the buffer.
     """
     sink = SignalSink()
-    rec = sink.emit("probe.99.044.postcondition.object", actual=1,
-                    duration=object())
+    rec = sink.emit("probe.99.044.postcondition.object", actual=1, duration=object())
     assert rec is not None, "a bad duration destroyed the whole record"
     assert rec.actual == 1
     assert rec.duration is None
@@ -513,11 +527,20 @@ def test_emit_never_raises_for_any_refused_shape():
     measured"; none escapes, and none costs the record.
     """
     sink = SignalSink()
-    refused = (True, False, -1.0, -1, float("nan"), float("inf"),
-               "0.25", object(), [], {})
+    refused = (
+        True,
+        False,
+        -1.0,
+        -1,
+        float("nan"),
+        float("inf"),
+        "0.25",
+        object(),
+        [],
+        {},
+    )
     for bad in refused:
-        rec = sink.emit("probe.99.045.postcondition.shapes", actual=1,
-                        duration=bad)
+        rec = sink.emit("probe.99.045.postcondition.shapes", actual=1, duration=bad)
         assert rec is not None, bad
         assert rec.duration is None, bad
     assert sink.health()["duration_rejected"] == len(refused)
@@ -537,7 +560,8 @@ def test_the_guard_refuses_only_what_is_not_a_measurement():
     assert whole.duration == 2.0, "an integer count of seconds is a measurement"
     assert instant.duration == 0.0, (
         "an operation faster than the clock resolves rounds to 0.0, and "
-        "that is a measurement -- None is reserved for never measured")
+        "that is a measurement -- None is reserved for never measured"
+    )
     assert instant.duration is not None
     assert sink.health()["duration_rejected"] == 0
 
@@ -558,8 +582,9 @@ def test_both_emit_signatures_are_behind_the_same_gate():
     sc.set_sink(sink)
     try:
         sc.emit("probe.99.060.postcondition.direct", actual=1, duration=True)
-        sc.emit("probe.99.061.postcondition.throttled", actual=1,
-                duration=-1.0, every=60.0)
+        sc.emit(
+            "probe.99.061.postcondition.throttled", actual=1, duration=-1.0, every=60.0
+        )
         sc.emit("probe.99.062.postcondition.good", actual=1, duration=0.5)
     finally:
         # RESTORE THE PREVIOUS SINK, never None -- `set_sink` is
@@ -589,8 +614,7 @@ def test_a_duration_is_rounded_like_dt_and_keeps_what_the_clock_measured():
     sink = SignalSink()
     sink.emit("probe.99.070.postcondition.noisy", actual=1, duration=1 / 3)
     for value in (0.0000001, 0.1234567, 123.456789):
-        sink.emit("probe.99.071.postcondition.exact", actual=1,
-                  duration=value)
+        sink.emit("probe.99.071.postcondition.exact", actual=1, duration=value)
 
     noisy, tick, seven, big = (r.duration for r in sink.records()[-4:])
     assert noisy == 0.3333333, "noise below the clock floor was written"
@@ -628,15 +652,15 @@ def test_a_huge_int_duration_no_longer_destroys_the_record():
     to read the field from.
     """
     sink = SignalSink()
-    rec = sink.emit("probe.99.046.postcondition.hugeint", actual=1,
-                    duration=10 ** 400)
+    rec = sink.emit("probe.99.046.postcondition.hugeint", actual=1, duration=10**400)
     assert rec is not None, "a huge int duration destroyed the whole record"
     assert rec.actual == 1, "the record survived but lost its observation"
     assert rec.duration is None
     assert len(sink.records()) == 1, "the record never reached the buffer"
 
-    neg = sink.emit("probe.99.047.postcondition.hugenegint", actual=2,
-                    duration=-10 ** 400)
+    neg = sink.emit(
+        "probe.99.047.postcondition.hugenegint", actual=2, duration=-(10**400)
+    )
     assert neg is not None, "a huge negative int destroyed the whole record"
     assert neg.actual == 2
     assert neg.duration is None
@@ -659,14 +683,17 @@ def test_an_int_a_float_can_hold_is_still_a_measurement():
     import sys as _sys
 
     sink = SignalSink()
-    sink.emit("probe.99.048.postcondition.inbound", actual=1,
-              duration=10 ** 308)
-    sink.emit("probe.99.049.postcondition.atbound", actual=1,
-              duration=int(_sys.float_info.max))
+    sink.emit("probe.99.048.postcondition.inbound", actual=1, duration=10**308)
+    sink.emit(
+        "probe.99.049.postcondition.atbound",
+        actual=1,
+        duration=int(_sys.float_info.max),
+    )
     big, edge = sink.records()[-2:]
     assert big.duration == 1e308
-    assert edge.duration is not None, (
-        "an int a float can hold exactly was refused as if it overflowed")
+    assert (
+        edge.duration is not None
+    ), "an int a float can hold exactly was refused as if it overflowed"
     assert sink.health()["duration_rejected"] == 0
 
 
@@ -681,8 +708,8 @@ def test_the_guard_is_total_and_no_hostile_input_costs_a_record():
     was passed. Each new hostile shape belongs in this list.
     """
     hostile = (
-        10 ** 400,
-        -10 ** 400,
+        10**400,
+        -(10**400),
         "0.25",
         object(),
         [0.25],
@@ -695,17 +722,18 @@ def test_the_guard_is_total_and_no_hostile_input_costs_a_record():
     sink = SignalSink()
     for bad in hostile:
         try:
-            rec = sink.emit("probe.99.055.postcondition.total", actual=1,
-                            duration=bad)
-        except Exception as exc:            # pragma: no cover - the pin
+            rec = sink.emit("probe.99.055.postcondition.total", actual=1, duration=bad)
+        except Exception as exc:  # pragma: no cover - the pin
             pytest.fail(f"emit raised {exc!r} for duration={bad!r}")
         assert rec is not None, f"duration={bad!r} destroyed the record"
         assert rec.duration is None, bad
 
-    assert len(sink.records()) == len(hostile), (
-        "a hostile duration cost a record on its way to the buffer")
-    assert sink.health()["duration_rejected"] == len(hostile), (
-        "a refusal degraded silently instead of being counted")
+    assert len(sink.records()) == len(
+        hostile
+    ), "a hostile duration cost a record on its way to the buffer"
+    assert sink.health()["duration_rejected"] == len(
+        hostile
+    ), "a refusal degraded silently instead of being counted"
 
 
 def test_the_guard_function_itself_raises_for_no_input():
@@ -719,9 +747,23 @@ def test_the_guard_function_itself_raises_for_no_input():
     """
     from src.core.signal_contract import _as_measured_duration
 
-    hostile = (10 ** 400, -10 ** 400, 10 ** 4000, "0.25", object(), [],
-               {}, True, False, -1, -0.5, float("nan"), float("inf"),
-               float("-inf"), None)
+    hostile = (
+        10**400,
+        -(10**400),
+        10**4000,
+        "0.25",
+        object(),
+        [],
+        {},
+        True,
+        False,
+        -1,
+        -0.5,
+        float("nan"),
+        float("inf"),
+        float("-inf"),
+        None,
+    )
     for bad in hostile:
         assert _as_measured_duration(bad) is None, bad
 
@@ -774,7 +816,7 @@ def _sandwich(tmp_path, key: str, bad_literal: str):
         '{"name":"probe.before","site":"s","ok":true,"seq":1,"ts":"t",'
         '"' + key + '":0.5}',
         '{"name":"probe.bad","site":"s","ok":true,"seq":2,"ts":"t",'
-        '"' + key + '":' + bad_literal + '}',
+        '"' + key + '":' + bad_literal + "}",
         '{"name":"probe.after","site":"s","ok":true,"seq":3,"ts":"t",'
         '"' + key + '":0.75}',
     ]
@@ -802,10 +844,11 @@ def test_a_huge_dt_on_one_line_no_longer_costs_the_whole_file(tmp_path):
     """
     back = _sandwich(tmp_path, "dt", _huge())
     assert len(back) == 3, "a single bad field cost more than its own field"
-    assert [r.name for r in back] == [
-        "probe.before", "probe.bad", "probe.after"]
-    assert (back[0].dt, back[2].dt) == (0.5, 0.75), (
-        "a neighbour of the bad line lost its own good value")
+    assert [r.name for r in back] == ["probe.before", "probe.bad", "probe.after"]
+    assert (back[0].dt, back[2].dt) == (
+        0.5,
+        0.75,
+    ), "a neighbour of the bad line lost its own good value"
 
     # THE FIELD, AND ONLY THE FIELD. None is this module's existing
     # spelling for "not a usable number" -- what `_as_float` already
@@ -814,8 +857,9 @@ def test_a_huge_dt_on_one_line_no_longer_costs_the_whole_file(tmp_path):
     # record-level or a file-level failure.
     assert back[1].dt is None
     assert back[1].dt != 0.0, "an unusable interval was invented as zero"
-    assert back[1].name == "probe.bad" and back[1].seq == 2, (
-        "the record survived but lost the fields that were readable")
+    assert (
+        back[1].name == "probe.bad" and back[1].seq == 2
+    ), "the record survived but lost the fields that were readable"
 
 
 def test_a_huge_negative_duration_costs_only_its_own_field(tmp_path):
@@ -828,8 +872,7 @@ def test_a_huge_negative_duration_costs_only_its_own_field(tmp_path):
     """
     back = _sandwich(tmp_path, "duration", _huge("-"))
     assert len(back) == 3, "a single bad field cost more than its own field"
-    assert [r.name for r in back] == [
-        "probe.before", "probe.bad", "probe.after"]
+    assert [r.name for r in back] == ["probe.before", "probe.bad", "probe.after"]
     assert (back[0].duration, back[2].duration) == (0.5, 0.75)
     assert back[1].duration is None
     assert back[1].duration != 0.0, "an unusable latency was invented as zero"
@@ -844,11 +887,11 @@ def test_the_reader_survives_both_signs_inside_one_file(tmp_path):
     lines = [
         '{"name":"probe.g1","site":"s","ok":true,"seq":1,"ts":"t","dt":0.5}',
         '{"name":"probe.pos","site":"s","ok":true,"seq":2,"ts":"t","dt":'
-        + _huge() + '}',
-        '{"name":"probe.g2","site":"s","ok":true,"seq":3,"ts":"t",'
-        '"duration":0.25}',
+        + _huge()
+        + "}",
+        '{"name":"probe.g2","site":"s","ok":true,"seq":3,"ts":"t",' '"duration":0.25}',
         '{"name":"probe.neg","site":"s","ok":true,"seq":4,"ts":"t",'
-        '"duration":' + _huge("-") + '}',
+        '"duration":' + _huge("-") + "}",
         '{"name":"probe.g3","site":"s","ok":true,"seq":5,"ts":"t","dt":0.75}',
     ]
     path = tmp_path / "bothsigns.jsonl"
@@ -874,15 +917,18 @@ def test_an_undecodable_line_is_still_the_only_thing_skipped(tmp_path):
     """
     lines = [
         '{"name":"probe.ok","site":"s","ok":true,"seq":1,"ts":"t"}',
-        '{ this is not json at all',
+        "{ this is not json at all",
         '{"name":"probe.wide","site":"s","ok":false,"seq":2,"ts":"t","dt":'
-        + _huge() + '}',
+        + _huge()
+        + "}",
     ]
     path = tmp_path / "mixed.jsonl"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     back = read_records(path)
-    assert [r.name for r in back] == ["probe.ok", "probe.wide"], (
-        "undecodable and unusable were treated as the same class")
+    assert [r.name for r in back] == [
+        "probe.ok",
+        "probe.wide",
+    ], "undecodable and unusable were treated as the same class"
     assert back[1].ok is False, "the verdict was lost with the number"
     assert back[1].dt is None
 
@@ -903,8 +949,19 @@ def test_the_disk_guard_is_total_and_no_input_makes_it_raise():
     """
     from src.core.signal_contract import _as_float
 
-    hostile = (10 ** 400, -(10 ** 400), 10 ** 4000, -(10 ** 4000),
-               "0.25", object(), [], {}, True, False, None)
+    hostile = (
+        10**400,
+        -(10**400),
+        10**4000,
+        -(10**4000),
+        "0.25",
+        object(),
+        [],
+        {},
+        True,
+        False,
+        None,
+    )
     for bad in hostile:
         assert _as_float(bad) is None, bad
 
@@ -918,10 +975,12 @@ def test_the_disk_guard_is_total_and_no_input_makes_it_raise():
     assert _as_float(3) == 3.0
     assert _as_float(-3) == -3.0
     assert _as_float(1 / 3) == 1 / 3, "the disk reader started rounding"
-    assert _as_float(10 ** 308) == 1e308
-    assert _as_float(int(_sys.float_info.max)) is not None, (
-        "an int a float can hold exactly was refused as if it overflowed")
+    assert _as_float(10**308) == 1e308
+    assert (
+        _as_float(int(_sys.float_info.max)) is not None
+    ), "an int a float can hold exactly was refused as if it overflowed"
     assert _as_float(-int(_sys.float_info.max)) is not None
-    assert _as_float(float("nan")) != _as_float(float("nan")), (
-        "a NaN already on disk stopped reading back as the NaN it is")
+    assert _as_float(float("nan")) != _as_float(
+        float("nan")
+    ), "a NaN already on disk stopped reading back as the NaN it is"
     assert _as_float(float("inf")) == float("inf")

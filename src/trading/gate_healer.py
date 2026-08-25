@@ -49,6 +49,7 @@ state both counts side by side.
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import logging
@@ -78,6 +79,7 @@ class ReconstructedGate:
     present-but-None instead of absent — an explicit "unknown"
     rather than a silently missing key.
     """
+
     # identity
     symbol: str
     bot_id: str
@@ -152,17 +154,19 @@ def _indicator_votes(summary: Any) -> dict:
     rather than dropping the whole vote.
     """
     out: dict = {}
-    for sig in (getattr(summary, "signals", None) or []):
-        name = (getattr(sig, "indicator", None)
-                or getattr(sig, "name", None) or "unknown")
+    for sig in getattr(summary, "signals", None) or []:
+        name = (
+            getattr(sig, "indicator", None) or getattr(sig, "name", None) or "unknown"
+        )
         direction = getattr(sig, "direction", None)
         dname = getattr(direction, "name", None)
         out[str(name)] = {
-            "direction": (str(dname).upper() if dname
-                          else (str(direction) if direction is not None
-                                else None)),
-            "confidence": _safe_float(
-                getattr(sig, "confidence", None)),
+            "direction": (
+                str(dname).upper()
+                if dname
+                else (str(direction) if direction is not None else None)
+            ),
+            "confidence": _safe_float(getattr(sig, "confidence", None)),
             "weight": _safe_float(getattr(sig, "weight", None)),
         }
     return out
@@ -197,12 +201,15 @@ def reconstruct_market_gate(
     market half null and the reason in ``reconstruction_note``.
     """
     from .stone_tablets.addressing import (
-        format_address, index_for_ts, ticker_from_symbol)
+        format_address,
+        index_for_ts,
+        ticker_from_symbol,
+    )
 
     ticker = ticker_from_symbol(symbol)
     out = ReconstructedGate(
-        symbol=symbol, bot_id=bot_id, trade_ts=trade_ts,
-        ta_timeframe=timeframe)
+        symbol=symbol, bot_id=bot_id, trade_ts=trade_ts, ta_timeframe=timeframe
+    )
 
     if not candles:
         out.reconstruction_note = "no tablet for symbol"
@@ -210,8 +217,7 @@ def reconstruct_market_gate(
 
     idx = index_for_ts(candles, int(trade_ts * 1000))
     if idx is None:
-        out.reconstruction_note = (
-            "trade predates first candle (asset not yet listed)")
+        out.reconstruction_note = "trade predates first candle (asset not yet listed)"
         return out
 
     out.candle_index = idx
@@ -227,23 +233,22 @@ def reconstruct_market_gate(
 
     # Causal window: never look past the trade's own candle.
     start = max(0, idx - BB_LOOKBACK + 1)
-    window = candles[start:idx + 1]
+    window = candles[start : idx + 1]
     if len(window) < MIN_CANDLES_FOR_TA:
         out.reconstruction_note = (
             f"only {len(window)} candles before this trade "
-            f"(need {MIN_CANDLES_FOR_TA}) — market half left null")
+            f"(need {MIN_CANDLES_FOR_TA}) — market half left null"
+        )
         return out
 
     try:
-        from .ta_engine import (
-            VotingEngine, candles_from_raw, detect_bb_proximity)
+        from .ta_engine import VotingEngine, candles_from_raw, detect_bb_proximity
+
         parsed = candles_from_raw(window)
         summary = VotingEngine().compute_all(parsed, timeframe)
         out.ta_direction = _direction_name(summary)
-        out.ta_net_score = _safe_float(
-            getattr(summary, "net_score", None))
-        out.ta_confidence = _safe_float(
-            getattr(summary, "consensus_confidence", None))
+        out.ta_net_score = _safe_float(getattr(summary, "net_score", None))
+        out.ta_confidence = _safe_float(getattr(summary, "consensus_confidence", None))
         out.ta_bullish_count = getattr(summary, "bullish_count", None)
         out.ta_bearish_count = getattr(summary, "bearish_count", None)
         out.ta_neutral_count = getattr(summary, "neutral_count", None)
@@ -259,14 +264,14 @@ def reconstruct_market_gate(
             out.near_lower = bool(bb.near_lower)
         out.reconstruction_note = (
             f"market half rebuilt from {len(window)} candles; "
-            "bot-state fields null by design")
+            "bot-state fields null by design"
+        )
     except Exception as exc:  # noqa: BLE001 - TA surface is broad
         out.ta_direction = None
-        out.reconstruction_note = (
-            f"TA recompute failed: {type(exc).__name__}: {exc}")
+        out.reconstruction_note = f"TA recompute failed: {type(exc).__name__}: {exc}"
         logger.debug(
-            "gate_healer: TA recompute failed for %s @ %s: %s",
-            symbol, trade_ts, exc)
+            "gate_healer: TA recompute failed for %s @ %s: %s", symbol, trade_ts, exc
+        )
     return out
 
 
@@ -320,15 +325,17 @@ def heal_gate_gaps(
             rows = candle_lookup(p.symbol) or []
         except Exception as exc:  # noqa: BLE001 - lookup is external
             report.failed += 1
-            logger.debug(
-                "gate_healer: candle lookup failed for %s: %s",
-                p.symbol, exc)
+            logger.debug("gate_healer: candle lookup failed for %s: %s", p.symbol, exc)
             continue
         report.reconstructed.append(
             reconstruct_market_gate(
-                symbol=p.symbol, bot_id=p.bot_id,
-                trade_ts=p.trade_ts, candles=rows,
-                timeframe=timeframe))
+                symbol=p.symbol,
+                bot_id=p.bot_id,
+                trade_ts=p.trade_ts,
+                candles=rows,
+                timeframe=timeframe,
+            )
+        )
     return report
 
 

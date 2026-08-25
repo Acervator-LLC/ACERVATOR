@@ -22,6 +22,7 @@ wipes accrued growth. Showing the truth in the input box would destroy
 the thing it was showing. The grown value goes in a read-only row, and
 the first test below pins that the spinbox was not repointed.
 """
+
 from __future__ import annotations
 
 import ast
@@ -40,15 +41,23 @@ import src.trading.bot_container as bc  # noqa: E402
 GUI_SRC = Path(bls.__file__).read_text(encoding="utf-8")
 BC_SRC = Path(bc.__file__).read_text(encoding="utf-8")
 
-NEW_KEYS = ("live_target_balance", "standing_surplus_usd",
-            "fold_cycle_cap_consumed", "cycle_growth_budget_usd",
-            "tranches_over_cycle_cap", "tranches_over_cycle_cap_usd")
+NEW_KEYS = (
+    "live_target_balance",
+    "standing_surplus_usd",
+    "fold_cycle_cap_consumed",
+    "cycle_growth_budget_usd",
+    "tranches_over_cycle_cap",
+    "tranches_over_cycle_cap_usd",
+)
 
 
 def _get_status_src() -> str:
     for n in ast.walk(ast.parse(BC_SRC)):
-        if isinstance(n, ast.FunctionDef) and n.name == "get_status" \
-                and 1314 < n.lineno < 1614:
+        if (
+            isinstance(n, ast.FunctionDef)
+            and n.name == "get_status"
+            and 1314 < n.lineno < 1614
+        ):
             return ast.get_source_segment(BC_SRC, n) or ""
     raise AssertionError("get_status not found")
 
@@ -58,29 +67,30 @@ class TestTheSpinboxWasNotRepointed:
 
     def test_the_spinbox_still_shows_the_config_value(self):
         i = GUI_SRC.index("self._target_bal.setValue(")
-        line = GUI_SRC[i:GUI_SRC.index("\n", i)]
+        line = GUI_SRC[i : GUI_SRC.index("\n", i)]
         assert "cfg.target_balance" in line, (
             f"the Target Balance spinbox was repointed ({line.strip()}); "
             f"the change-detector will read every panel open as an edit "
-            f"and set_target_balance_live will collapse the anchor")
+            f"and set_target_balance_live will collapse the anchor"
+        )
 
     def test_it_does_not_show_the_runtime_target(self):
         i = GUI_SRC.index("self._target_bal.setValue(")
-        line = GUI_SRC[i:GUI_SRC.index("\n", i)]
+        line = GUI_SRC[i : GUI_SRC.index("\n", i)]
         assert "_target_balance" not in line
 
 
 class TestTheStatusDictCarriesTheSurface:
     @pytest.mark.parametrize("key", NEW_KEYS)
     def test_the_key_is_exported(self, key):
-        assert f'"{key}"' in _get_status_src(), (
-            f"{key} is not exported; no GUI can show it")
+        assert (
+            f'"{key}"' in _get_status_src()
+        ), f"{key} is not exported; no GUI can show it"
 
     def test_the_config_value_is_still_exported(self):
         """NEGATIVE CONTROL: the additions must not displace the field
         existing consumers read."""
-        assert '"target_balance": self.config.target_balance' \
-            in _get_status_src()
+        assert '"target_balance": self.config.target_balance' in _get_status_src()
 
     def test_live_and_config_targets_are_different_keys(self):
         """They are different quantities. Collapsing them into one key
@@ -94,8 +104,8 @@ class TestTheStatusDictCarriesTheSurface:
         arithmetic is wrapped."""
         seg = _get_status_src()
         i = seg.index("_over_cap_summary")
-        assert "try:" in seg[i:i + 400]
-        assert "except" in seg[i:i + 900]
+        assert "try:" in seg[i : i + 400]
+        assert "except" in seg[i : i + 900]
 
 
 class TestTheGuiRendersThem:
@@ -104,7 +114,7 @@ class TestTheGuiRendersThem:
 
     def test_it_reads_the_runtime_value(self):
         i = GUI_SRC.index("Live target (traded against):")
-        assert "_target_balance" in GUI_SRC[max(0, i - 2200):i]
+        assert "_target_balance" in GUI_SRC[max(0, i - 2200) : i]
 
     def test_zero_accrual_is_stated_not_left_as_a_bare_zero(self):
         """Zero accrual is the condition the whole repair exists to
@@ -127,16 +137,15 @@ class TestTheStaleClaimWasCorrected:
         while a grep of src/gui/ for `standing_surplus` returned zero
         matches."""
         i = BC_SRC.index("standing_surplus_usd: float = 0.0")
-        block = BC_SRC[max(0, i - 1400):i]
-        assert "Surfaced for visibility (Status tab + diagnostics)." \
-            not in block
+        block = BC_SRC[max(0, i - 1400) : i]
+        assert "Surfaced for visibility (Status tab + diagnostics)." not in block
 
     def test_the_comment_no_longer_claims_a_drain_exists(self):
         """It said the growth budget "drains it into target_balance over
         time". `_standing_surplus_usd` has no decrement anywhere in
         src/; that drain is Phase 2 Step 7 and has not landed."""
         i = BC_SRC.index("standing_surplus_usd: float = 0.0")
-        block = BC_SRC[max(0, i - 1400):i]
+        block = BC_SRC[max(0, i - 1400) : i]
         assert "one-way sink" in block
 
     def test_it_is_now_actually_surfaced(self):

@@ -11,6 +11,7 @@ persists atomically.
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import logging
@@ -54,9 +55,15 @@ NATIVE_TIMEFRAME: str = "5m"
 2026-08-01. Higher TFs are derived via rollup."""
 
 _TF_SECONDS: dict[str, int] = {
-    "5m": 300, "15m": 900, "30m": 1800,
-    "1h": 3600, "2h": 7200, "4h": 14_400,
-    "6h": 21_600, "12h": 43_200, "1d": 86_400,
+    "5m": 300,
+    "15m": 900,
+    "30m": 1800,
+    "1h": 3600,
+    "2h": 7200,
+    "4h": 14_400,
+    "6h": 21_600,
+    "12h": 43_200,
+    "1d": 86_400,
 }
 
 SUPPORTED_TIMEFRAMES: tuple[str, ...] = tuple(_TF_SECONDS.keys())
@@ -66,8 +73,8 @@ def _rollup_factor(tf: str) -> int:
     """Return the number of 5m candles that roll up into one `tf` candle."""
     if tf not in _TF_SECONDS:
         raise ValueError(
-            f"unsupported timeframe {tf!r}; supported: "
-            f"{SUPPORTED_TIMEFRAMES}")
+            f"unsupported timeframe {tf!r}; supported: " f"{SUPPORTED_TIMEFRAMES}"
+        )
     return _TF_SECONDS[tf] // _TF_SECONDS[NATIVE_TIMEFRAME]
 
 
@@ -81,6 +88,7 @@ class CoverageSummary:
     """Per-(asset, exchange) coverage snapshot for GUI status display.
     v3.23.98 added ``exchange_id`` — one row per (asset, exchange)
     pair covered by the registry."""
+
     asset: str
     exchange_id: str
     tablet_count: int
@@ -101,11 +109,12 @@ class WindowStatus:
     emit precise notifications instead of silently returning short
     tapes.
     """
-    FULL = "full"                # data spans entire requested window
+
+    FULL = "full"  # data spans entire requested window
     LATE_LISTING = "late_listing"  # tablet begins AFTER requested since_ms
-    STALE = "stale"              # tablet ends BEFORE requested until_ms
+    STALE = "stale"  # tablet ends BEFORE requested until_ms
     LATE_AND_STALE = "late_and_stale"  # both edges outside coverage
-    EMPTY = "empty"              # no tablet at all
+    EMPTY = "empty"  # no tablet at all
 
 
 @dataclass
@@ -119,10 +128,11 @@ class AvailabilityInfo:
         'This asset was listed on Coinbase mm/dd/yyyy and no prior
         data exists.'
     """
+
     asset: str
     exchange_id: str
-    listed_at_ms: int          # first candle in tablet (0 if none)
-    last_ts_ms: int            # last candle in tablet (0 if none)
+    listed_at_ms: int  # first candle in tablet (0 if none)
+    last_ts_ms: int  # last candle in tablet (0 if none)
     total_candles: int
     tablet_count: int
 
@@ -142,10 +152,11 @@ class AvailabilityInfo:
     def listing_notice(self, exchange_display: str = "Coinbase") -> str:
         """Human-readable notice for the Simulator Activity Log."""
         if self.listed_at_ms <= 0:
-            return (f"{self.asset}: no data in Stone Tablets on "
-                    f"{exchange_display}.")
-        return (f"{self.asset}: listed on {exchange_display} "
-                f"{self.listed_at_iso} — no prior data exists.")
+            return f"{self.asset}: no data in Stone Tablets on " f"{exchange_display}."
+        return (
+            f"{self.asset}: listed on {exchange_display} "
+            f"{self.listed_at_iso} — no prior data exists."
+        )
 
 
 # --------------------------------------------------------------------- #
@@ -207,28 +218,32 @@ class StoneTabletsRegistry:
         missing = 0
         for e in entries:
             path = tablet_path(
-                e.asset, e.timeframe, e.year, root=self._root,
-                exchange_id=e.exchange_id)
+                e.asset, e.timeframe, e.year, root=self._root, exchange_id=e.exchange_id
+            )
             # Preserve the old warn-and-skip semantics for a MANIFEST row
             # whose file is gone, without paying a full parse for it.
             # os.stat is ~406 syscalls against 406 JSON parses.
             if not path.exists():
                 logger.warning(
                     "stone_tablets: MANIFEST references %s but "
-                    "file is missing — skipping", path.name)
+                    "file is missing — skipping",
+                    path.name,
+                )
                 missing += 1
                 continue
             key = (e.asset.upper(), e.exchange_id, e.timeframe, e.year)
             self._entries[key] = e
             if e.timeframe == NATIVE_TIMEFRAME:
-                self._assets.setdefault(
-                    (e.asset.upper(), e.exchange_id),
-                    set()).add(e.year)
+                self._assets.setdefault((e.asset.upper(), e.exchange_id), set()).add(
+                    e.year
+                )
         logger.info(
             "stone_tablets: indexed %d tablet(s) covering %d "
             "(asset, exchange) pair(s); bodies load on demand%s",
-            len(self._entries), len(self._assets),
-            f"; {missing} manifest row(s) skipped" if missing else "")
+            len(self._entries),
+            len(self._assets),
+            f"; {missing} manifest row(s) skipped" if missing else "",
+        )
 
     def _tablet(self, key: tuple[str, str, str, int]) -> Optional[Tablet]:
         """Return the tablet body for ``key``, loading it on first use.
@@ -244,13 +259,18 @@ class StoneTabletsRegistry:
         if entry is None:
             return None
         path = tablet_path(
-            entry.asset, entry.timeframe, entry.year, root=self._root,
-            exchange_id=entry.exchange_id)
+            entry.asset,
+            entry.timeframe,
+            entry.year,
+            root=self._root,
+            exchange_id=entry.exchange_id,
+        )
         tab = read_tablet(path)
         if tab is None:
             logger.warning(
-                "stone_tablets: %s is unreadable or corrupt — "
-                "treating as absent", path.name)
+                "stone_tablets: %s is unreadable or corrupt — " "treating as absent",
+                path.name,
+            )
             self._entries.pop(key, None)
             return None
         self._tablets[key] = tab
@@ -277,7 +297,9 @@ class StoneTabletsRegistry:
             self._tablets.pop(oldest, None)
 
     def _keys_for(
-        self, asset_u: str, exchange_id: str,
+        self,
+        asset_u: str,
+        exchange_id: str,
         timeframe: str = NATIVE_TIMEFRAME,
     ) -> list[tuple[str, str, str, int]]:
         """Index lookup for one (asset, exchange, timeframe).
@@ -286,9 +308,11 @@ class StoneTabletsRegistry:
         whole tablet dict for this. Reads metadata only, so it never
         forces a body load.
         """
-        return [k for k in self._entries
-                if k[0] == asset_u and k[1] == exchange_id
-                and k[2] == timeframe]
+        return [
+            k
+            for k in self._entries
+            if k[0] == asset_u and k[1] == exchange_id and k[2] == timeframe
+        ]
 
     def _persist_manifest(self) -> None:
         """Write MANIFEST from the metadata index.
@@ -307,14 +331,17 @@ class StoneTabletsRegistry:
         the fix is to make the write cheap, not less frequent.
         """
         entries = sorted(
-            self._entries.values(),
-            key=lambda e: (e.asset, e.timeframe, e.year))
+            self._entries.values(), key=lambda e: (e.asset, e.timeframe, e.year)
+        )
         write_manifest(entries, root=self._root)
 
     # ── coverage queries ────────────────────────────────────────────
 
     def has_coverage(
-        self, asset: str, since_ms: int, until_ms: int,
+        self,
+        asset: str,
+        since_ms: int,
+        until_ms: int,
         timeframe: str = NATIVE_TIMEFRAME,
         exchange_id: str = "coinbase",
     ) -> bool:
@@ -326,10 +353,8 @@ class StoneTabletsRegistry:
             years = self._assets.get((asset_u, exchange_id), set())
             if not years:
                 return False
-            since_dt = datetime.fromtimestamp(
-                since_ms / 1000.0, tz=timezone.utc)
-            until_dt = datetime.fromtimestamp(
-                until_ms / 1000.0, tz=timezone.utc)
+            since_dt = datetime.fromtimestamp(since_ms / 1000.0, tz=timezone.utc)
+            until_dt = datetime.fromtimestamp(until_ms / 1000.0, tz=timezone.utc)
             spans = set(range(since_dt.year, until_dt.year + 1))
             if not spans.issubset(years):
                 return False
@@ -339,7 +364,9 @@ class StoneTabletsRegistry:
             return first <= since_ms and last >= until_ms
 
     def _native_ts_bounds(
-        self, asset_u: str, exchange_id: str,
+        self,
+        asset_u: str,
+        exchange_id: str,
     ) -> tuple[Optional[int], Optional[int]]:
         # v3.24.23 — reads MANIFEST metadata, never candle bodies.
         # first_ts_ms / last_ts_ms are stored per row, so this answers
@@ -356,7 +383,10 @@ class StoneTabletsRegistry:
         return first, last
 
     def missing_ranges(
-        self, asset: str, since_ms: int, until_ms: int,
+        self,
+        asset: str,
+        since_ms: int,
+        until_ms: int,
         timeframe: str = NATIVE_TIMEFRAME,
         exchange_id: str = "coinbase",
     ) -> list[tuple[int, int]]:
@@ -386,7 +416,9 @@ class StoneTabletsRegistry:
             return gaps
 
     def _native_ts_set(
-        self, asset_u: str, exchange_id: str,
+        self,
+        asset_u: str,
+        exchange_id: str,
     ) -> set[int]:
         # v3.24.23 — genuinely needs candle bodies, so it loads them
         # on demand rather than relying on an eager whole-archive load.
@@ -402,7 +434,10 @@ class StoneTabletsRegistry:
     # ── read ────────────────────────────────────────────────────────
 
     def get_candles(
-        self, asset: str, since_ms: int, until_ms: int,
+        self,
+        asset: str,
+        since_ms: int,
+        until_ms: int,
         timeframe: str = NATIVE_TIMEFRAME,
         exchange_id: str = "coinbase",
     ) -> list[list[float]]:
@@ -412,19 +447,23 @@ class StoneTabletsRegistry:
         if timeframe not in _TF_SECONDS:
             raise ValueError(
                 f"unsupported timeframe {timeframe!r}; "
-                f"supported: {SUPPORTED_TIMEFRAMES}")
+                f"supported: {SUPPORTED_TIMEFRAMES}"
+            )
         with self._lock:
             asset_u = asset.upper()
-            native = self._native_slice(
-                asset_u, exchange_id, since_ms, until_ms)
+            native = self._native_slice(asset_u, exchange_id, since_ms, until_ms)
             if timeframe == NATIVE_TIMEFRAME:
                 return native
-            return _rollup(native, _rollup_factor(timeframe),
-                           _TF_SECONDS[timeframe] * 1000)
+            return _rollup(
+                native, _rollup_factor(timeframe), _TF_SECONDS[timeframe] * 1000
+            )
 
     def _native_slice(
-        self, asset_u: str, exchange_id: str,
-        since_ms: int, until_ms: int,
+        self,
+        asset_u: str,
+        exchange_id: str,
+        since_ms: int,
+        until_ms: int,
     ) -> list[list[float]]:
         # v3.24.23 — body read; loads on demand.
         out: list[list[float]] = []
@@ -442,8 +481,11 @@ class StoneTabletsRegistry:
     # ── ingest ──────────────────────────────────────────────────────
 
     def ingest_candles(
-        self, asset: str, timeframe: str,
-        rows: list[list[float]], source: str,
+        self,
+        asset: str,
+        timeframe: str,
+        rows: list[list[float]],
+        source: str,
         exchange_id: str = "coinbase",
     ) -> int:
         """Append candles into the appropriate
@@ -453,7 +495,8 @@ class StoneTabletsRegistry:
         if timeframe != NATIVE_TIMEFRAME:
             raise ValueError(
                 f"ingest requires native timeframe {NATIVE_TIMEFRAME!r}; "
-                f"got {timeframe!r}. Rollup TFs are read-only.")
+                f"got {timeframe!r}. Rollup TFs are read-only."
+            )
         if not rows:
             return 0
         with self._lock:
@@ -463,12 +506,10 @@ class StoneTabletsRegistry:
                 if len(row) < 6:
                     continue
                 ts_ms = int(row[0])
-                year = datetime.fromtimestamp(
-                    ts_ms / 1000.0, tz=timezone.utc).year
+                year = datetime.fromtimestamp(ts_ms / 1000.0, tz=timezone.utc).year
                 by_year.setdefault(year, []).append(list(row))
             appended_total = 0
-            fetched_at = datetime.now(timezone.utc).isoformat(
-                timespec="seconds")
+            fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             for year, year_rows in by_year.items():
                 key = (asset_u, exchange_id, timeframe, year)
                 # v3.24.23 — _tablet() loads the body on demand. A brand
@@ -477,12 +518,16 @@ class StoneTabletsRegistry:
                 tab = self._tablet(key)
                 if tab is None:
                     tab = Tablet(
-                        asset=asset_u, exchange_id=exchange_id,
-                        timeframe=timeframe, year=year, source=source,
-                        fetched_at=fetched_at, candles=[])
+                        asset=asset_u,
+                        exchange_id=exchange_id,
+                        timeframe=timeframe,
+                        year=year,
+                        source=source,
+                        fetched_at=fetched_at,
+                        candles=[],
+                    )
                 existing_ts = {int(r[0]) for r in tab.candles}
-                new_rows = [r for r in year_rows
-                            if int(r[0]) not in existing_ts]
+                new_rows = [r for r in year_rows if int(r[0]) not in existing_ts]
                 if not new_rows:
                     continue
                 merged = list(tab.candles) + new_rows
@@ -497,8 +542,7 @@ class StoneTabletsRegistry:
                 # every 350-candle chunk (7.46 s each, ~103 chunks per
                 # asset for a YTD fill).
                 self._entries[key] = entry_from_tablet(tab)
-                self._assets.setdefault(
-                    (asset_u, exchange_id), set()).add(year)
+                self._assets.setdefault((asset_u, exchange_id), set()).add(year)
                 write_tablet(tab, root=self._root)
                 appended_total += len(new_rows)
             if appended_total > 0:
@@ -515,27 +559,30 @@ class StoneTabletsRegistry:
             # manifest reproduces the archive total (7,230,993) exactly,
             # so no candle body is needed here.
             out: list[CoverageSummary] = []
-            for (asset_u, eid) in sorted(self._assets.keys()):
+            for asset_u, eid in sorted(self._assets.keys()):
                 first, last = self._native_ts_bounds(asset_u, eid)
                 years = sorted(self._assets[(asset_u, eid)])
                 keys = self._keys_for(asset_u, eid)
-                total = sum(int(self._entries[k].candle_count)
-                            for k in keys)
-                out.append(CoverageSummary(
-                    asset=asset_u,
-                    exchange_id=eid,
-                    tablet_count=len(keys),
-                    total_candles=total,
-                    first_ts_ms=first or 0,
-                    last_ts_ms=last or 0,
-                    years=years,
-                ))
+                total = sum(int(self._entries[k].candle_count) for k in keys)
+                out.append(
+                    CoverageSummary(
+                        asset=asset_u,
+                        exchange_id=eid,
+                        tablet_count=len(keys),
+                        total_candles=total,
+                        first_ts_ms=first or 0,
+                        last_ts_ms=last or 0,
+                        years=years,
+                    )
+                )
             return out
 
     # ── v3.24.6 — availability metadata + window check ─────────────
 
     def get_asset_availability(
-        self, asset: str, exchange_id: str = "coinbase",
+        self,
+        asset: str,
+        exchange_id: str = "coinbase",
     ) -> Optional[AvailabilityInfo]:
         """Return the platform-level availability flag block for
         this (asset, exchange). None when no tablets exist for the
@@ -555,11 +602,12 @@ class StoneTabletsRegistry:
             # listed_at_ms = min first_ts across all year-tablets for
             # the (asset, exchange). Zero-guard for empty tablets.
             listed = min(
-                (int(r.listed_at_ms) for r in rows
-                 if int(r.listed_at_ms) > 0), default=0)
+                (int(r.listed_at_ms) for r in rows if int(r.listed_at_ms) > 0),
+                default=0,
+            )
             last_ts = max(
-                (int(r.last_ts_ms) for r in rows
-                 if int(r.last_ts_ms) > 0), default=0)
+                (int(r.last_ts_ms) for r in rows if int(r.last_ts_ms) > 0), default=0
+            )
             total_candles = sum(int(r.candle_count) for r in rows)
             return AvailabilityInfo(
                 asset=asset_u,
@@ -567,10 +615,14 @@ class StoneTabletsRegistry:
                 listed_at_ms=listed,
                 last_ts_ms=last_ts,
                 total_candles=total_candles,
-                tablet_count=len(rows))
+                tablet_count=len(rows),
+            )
 
     def check_window_availability(
-        self, asset: str, since_ms: int, until_ms: int,
+        self,
+        asset: str,
+        since_ms: int,
+        until_ms: int,
         exchange_id: str = "coinbase",
         stale_threshold_ms: int = 86_400_000,
         listing_tolerance_ms: int = 86_400_000,
@@ -591,8 +643,9 @@ class StoneTabletsRegistry:
         if avail is None or avail.total_candles == 0:
             return WindowStatus.EMPTY
         late = (avail.listed_at_ms - since_ms) > listing_tolerance_ms
-        stale = (avail.last_ts_ms > 0
-                 and (until_ms - avail.last_ts_ms) > stale_threshold_ms)
+        stale = (
+            avail.last_ts_ms > 0 and (until_ms - avail.last_ts_ms) > stale_threshold_ms
+        )
         if late and stale:
             return WindowStatus.LATE_AND_STALE
         if late:
@@ -602,19 +655,23 @@ class StoneTabletsRegistry:
         return WindowStatus.FULL
 
     def stale_assets(
-        self, now_ms: Optional[int] = None,
+        self,
+        now_ms: Optional[int] = None,
         threshold_days: int = 2,
         exchange_id: Optional[str] = None,
     ) -> list[str]:
         """Assets whose latest candle is older than threshold_days.
         If exchange_id is given, restrict to that exchange; else
         report any asset stale on any exchange."""
-        _now = (now_ms if now_ms is not None
-                else int(datetime.now(timezone.utc).timestamp() * 1000))
+        _now = (
+            now_ms
+            if now_ms is not None
+            else int(datetime.now(timezone.utc).timestamp() * 1000)
+        )
         threshold_ms = threshold_days * 86_400_000
         with self._lock:
             out: set[str] = set()
-            for (asset_u, eid) in self._assets:
+            for asset_u, eid in self._assets:
                 if exchange_id is not None and eid != exchange_id:
                     continue
                 _first, last = self._native_ts_bounds(asset_u, eid)

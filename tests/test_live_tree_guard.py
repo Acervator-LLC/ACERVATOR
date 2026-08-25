@@ -23,6 +23,7 @@ built in two testable pieces --
 -- and every test here uses synthetic roots. Nothing in this file
 touches the real tree.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -35,8 +36,7 @@ CONFTEST = REPO_ROOT / "tests" / "conftest.py"
 
 
 def _load_conftest():
-    spec = importlib.util.spec_from_file_location(
-        "conftest_under_test", CONFTEST)
+    spec = importlib.util.spec_from_file_location("conftest_under_test", CONFTEST)
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -47,6 +47,7 @@ cf = _load_conftest()
 
 
 # ── _snapshot ───────────────────────────────────────────────────────
+
 
 class TestSnapshot:
     def test_maps_files_to_size_and_mtime(self, tmp_path):
@@ -138,6 +139,7 @@ class TestClassify:
 
 # ── the two real breaches, replayed ─────────────────────────────────
 
+
 class TestRegressionOfRealBreaches:
     """Both shipped defects, expressed as snapshot diffs. The pre-CV1
     guard reported neither, because both are under ~/.acervator."""
@@ -156,6 +158,7 @@ class TestRegressionOfRealBreaches:
 
 
 # ── injectability ───────────────────────────────────────────────────
+
 
 def test_live_roots_is_injectable(monkeypatch, tmp_path):
     """The guard must be redirectable, or it can only be exercised by
@@ -189,21 +192,24 @@ class TestFixtureIsActuallyArmed:
         # No live app, so modifications are strict.
         monkeypatch.setattr(cf, "_live_app_running", lambda: False)
         gen = _fixture_func(cf._assert_no_live_tree_writes)(None)
-        next(gen)                 # before-snapshot
+        next(gen)  # before-snapshot
         mutate()
         try:
-            next(gen)             # after-snapshot + assertions
+            next(gen)  # after-snapshot + assertions
         except StopIteration:
-            return None           # fixture completed without complaint
+            return None  # fixture completed without complaint
         return None
 
     def test_created_file_fails_the_session(self, monkeypatch, tmp_path):
         root = tmp_path / "acervator"
         root.mkdir()
         with pytest.raises(AssertionError, match="created"):
-            self._drive(monkeypatch, (root,), tmp_path / "tablets",
-                        lambda: (root / "leaked.json").write_text(
-                            "{}", encoding="utf-8"))
+            self._drive(
+                monkeypatch,
+                (root,),
+                tmp_path / "tablets",
+                lambda: (root / "leaked.json").write_text("{}", encoding="utf-8"),
+            )
 
     def test_touched_tablet_fails_the_session(self, monkeypatch, tmp_path):
         root = tmp_path / "acervator"
@@ -212,32 +218,35 @@ class TestFixtureIsActuallyArmed:
         tab = tablets / "BTC_5m_2026.json"
         tab.write_text("[]", encoding="utf-8")
         with pytest.raises(AssertionError, match="immutable"):
-            self._drive(monkeypatch, (root,), tablets,
-                        lambda: tab.write_text("[1]", encoding="utf-8"))
+            self._drive(
+                monkeypatch,
+                (root,),
+                tablets,
+                lambda: tab.write_text("[1]", encoding="utf-8"),
+            )
 
     def test_clean_session_passes(self, monkeypatch, tmp_path):
         root = tmp_path / "acervator"
         root.mkdir()
         (root / "untouched.json").write_text("{}", encoding="utf-8")
-        self._drive(monkeypatch, (root,), tmp_path / "tablets",
-                    lambda: None)      # must not raise
+        self._drive(
+            monkeypatch, (root,), tmp_path / "tablets", lambda: None
+        )  # must not raise
 
-    def test_modification_is_tolerated_when_live_app_is_up(
-            self, monkeypatch, tmp_path):
+    def test_modification_is_tolerated_when_live_app_is_up(self, monkeypatch, tmp_path):
         """Rule 3: the operator running Acervator must not fail the suite."""
         root = tmp_path / "acervator"
         root.mkdir()
         f = root / "bot_state.json"
         f.write_text("{}", encoding="utf-8")
         monkeypatch.setattr(cf, "_live_roots", lambda: (root,))
-        monkeypatch.setattr(cf, "_stone_tablet_root",
-                            lambda: tmp_path / "tablets")
+        monkeypatch.setattr(cf, "_stone_tablet_root", lambda: tmp_path / "tablets")
         monkeypatch.setattr(cf, "_live_app_running", lambda: True)
         gen = _fixture_func(cf._assert_no_live_tree_writes)(None)
         next(gen)
         f.write_text('{"bots": {}}', encoding="utf-8")
         try:
-            next(gen)              # must NOT raise
+            next(gen)  # must NOT raise
         except StopIteration:
             pass
 
@@ -245,6 +254,7 @@ class TestFixtureIsActuallyArmed:
 def test_live_app_detection_never_raises(monkeypatch):
     """psutil is optional; its absence must not fail a suite run."""
     import builtins
+
     real_import = builtins.__import__
 
     def no_psutil(name, *a, **kw):

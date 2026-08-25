@@ -31,15 +31,26 @@ logger = logging.getLogger("acervator.data_pool")
 
 # Timeframe to seconds
 TF_SECONDS = {
-    "1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800,
-    "1h": 3600, "2h": 7200, "4h": 14400, "6h": 21600,
-    "8h": 28800, "12h": 43200, "1d": 86400, "1w": 604800,
+    "1m": 60,
+    "3m": 180,
+    "5m": 300,
+    "15m": 900,
+    "30m": 1800,
+    "1h": 3600,
+    "2h": 7200,
+    "4h": 14400,
+    "6h": 21600,
+    "8h": 28800,
+    "12h": 43200,
+    "1d": 86400,
+    "1w": 604800,
 }
 
 
 @dataclass
 class CacheEntry:
     """Cached data for one (exchange, symbol, timeframe) key."""
+
     exchange_id: str
     symbol: str
     timeframe: str
@@ -51,7 +62,7 @@ class CacheEntry:
 
     @property
     def age_seconds(self) -> float:
-        return time.time() - self.fetch_time if self.fetch_time else float('inf')
+        return time.time() - self.fetch_time if self.fetch_time else float("inf")
 
     @property
     def ttl_seconds(self) -> float:
@@ -70,6 +81,7 @@ class BalanceEntry:
     on trades or wire transfers, so a generous TTL (10s default) cuts
     the CPM burn from the 9+ get_balance sites ScrummingBot hits per
     action tick without introducing meaningful staleness."""
+
     exchange_id: str
     currency: str
     free: float = 0.0
@@ -93,6 +105,7 @@ class BalanceEntry:
 @dataclass
 class TickerEntry:
     """Cached ticker for one (exchange, symbol)."""
+
     exchange_id: str
     symbol: str
     last: float = 0
@@ -183,14 +196,14 @@ class MarketDataPool:
         key = _candle_key(exchange_id, symbol, timeframe)
         if key not in self._candles:
             self._candles[key] = CacheEntry(
-                exchange_id=exchange_id, symbol=symbol, timeframe=timeframe)
+                exchange_id=exchange_id, symbol=symbol, timeframe=timeframe
+            )
             logger.info("DataPool: +slot %s/%s@%s", exchange_id, symbol, timeframe)
         self._candles[key].subscribers += 1
 
         tkey = _ticker_key(exchange_id, symbol)
         if tkey not in self._tickers:
-            self._tickers[tkey] = TickerEntry(
-                exchange_id=exchange_id, symbol=symbol)
+            self._tickers[tkey] = TickerEntry(exchange_id=exchange_id, symbol=symbol)
         self._tickers[tkey].subscribers += 1
 
     def unregister(self, exchange_id: str, symbol: str, timeframe: str):
@@ -211,8 +224,7 @@ class MarketDataPool:
 
     # ── Data Access ────────────────────────────────────────────────
 
-    def get_candles(self, exchange_id: str, symbol: str,
-                    timeframe: str) -> list:
+    def get_candles(self, exchange_id: str, symbol: str, timeframe: str) -> list:
         """Get cached OHLCV candles. Returns [] if none."""
         key = _candle_key(exchange_id, symbol, timeframe)
         entry = self._candles.get(key)
@@ -235,7 +247,10 @@ class MarketDataPool:
     # ── Coalesced fetch (v3.16.17 P0d) ─────────────────────────────
 
     async def get_or_fetch_ticker(
-        self, connector, exchange_id: str, symbol: str,
+        self,
+        connector,
+        exchange_id: str,
+        symbol: str,
     ):
         """Coalesced ticker fetch. One concurrent fetch per (exchange, symbol).
 
@@ -266,9 +281,12 @@ class MarketDataPool:
         """
         # Lazy import to avoid circular dependency at module load
         from .base import Ticker
+
         try:
             from .ccxt_connector import CCXTQueueFullError
-        except Exception:  # R28-OK: import-resolution probe; defensive fallback when ccxt module unavailable
+        except (
+            Exception
+        ):  # R28-OK: import-resolution probe; defensive fallback when ccxt module unavailable
             CCXTQueueFullError = RuntimeError  # type: ignore
 
         tkey = _ticker_key(exchange_id, symbol)
@@ -279,7 +297,9 @@ class MarketDataPool:
             self._ticker_cache_hits += 1
             return Ticker(
                 symbol=entry.symbol,
-                bid=entry.bid, ask=entry.ask, last=entry.last,
+                bid=entry.bid,
+                ask=entry.ask,
+                last=entry.last,
                 volume_24h=entry.volume_24h,
                 timestamp=entry.timestamp,
             )
@@ -311,10 +331,15 @@ class MarketDataPool:
                     logger.warning(
                         "DataPool: detected cross-loop Lock for %s/%s "
                         "(bound=%s running=%s); replacing.",
-                        exchange_id, symbol,
-                        id(_bound_loop), id(_running_loop))
+                        exchange_id,
+                        symbol,
+                        id(_bound_loop),
+                        id(_running_loop),
+                    )
                     _need_new_lock = True
-            except RuntimeError:  # R28-OK: get_running_loop raises when no loop running; treat as "trust the cached lock"
+            except (
+                RuntimeError
+            ):  # R28-OK: get_running_loop raises when no loop running; treat as "trust the cached lock"
                 pass
         if _need_new_lock:
             lock = asyncio.Lock()
@@ -332,7 +357,9 @@ class MarketDataPool:
                 self._ticker_cache_hits += 1
                 return Ticker(
                     symbol=entry.symbol,
-                    bid=entry.bid, ask=entry.ask, last=entry.last,
+                    bid=entry.bid,
+                    ask=entry.ask,
+                    last=entry.last,
                     volume_24h=entry.volume_24h,
                     timestamp=entry.timestamp,
                 )
@@ -351,12 +378,16 @@ class MarketDataPool:
                 self._ticker_queue_full_skips += 1
                 if entry.has_data:
                     logger.debug(
-                        "DataPool: queue-full on %s/%s; serving stale "
-                        "(age=%.1fs)", exchange_id, symbol,
-                        time.time() - entry.fetch_time)
+                        "DataPool: queue-full on %s/%s; serving stale " "(age=%.1fs)",
+                        exchange_id,
+                        symbol,
+                        time.time() - entry.fetch_time,
+                    )
                     return Ticker(
                         symbol=entry.symbol,
-                        bid=entry.bid, ask=entry.ask, last=entry.last,
+                        bid=entry.bid,
+                        ask=entry.ask,
+                        last=entry.last,
                         volume_24h=entry.volume_24h,
                         timestamp=entry.timestamp,
                     )
@@ -427,16 +458,24 @@ class MarketDataPool:
         batch_start = time.time()
         try:
             raw = await connector.get_all_tickers()
-        except Exception as exc:  # R28-OK: background refresher must not propagate; bots retain their own fetch path
+        except (
+            Exception
+        ) as exc:  # R28-OK: background refresher must not propagate; bots retain their own fetch path
             logger.warning(
                 "DataPool: bulk ticker refresh failed for %s (%s); bots "
-                "fall back to individual fetches.", exchange_id, exc)
+                "fall back to individual fetches.",
+                exchange_id,
+                exc,
+            )
             return 0
 
         if not isinstance(raw, dict):
             logger.warning(
                 "DataPool: bulk ticker refresh for %s returned %s, not a "
-                "dict; ignoring.", exchange_id, type(raw).__name__)
+                "dict; ignoring.",
+                exchange_id,
+                type(raw).__name__,
+            )
             return 0
 
         updated = 0
@@ -471,16 +510,22 @@ class MarketDataPool:
         self._ticker_batch_symbols += updated
         logger.debug(
             "DataPool: bulk ticker refresh %s updated %d/%d cached "
-            "entries in one call.", exchange_id, updated,
-            sum(1 for e in self._tickers.values()
-                if e.exchange_id == exchange_id))
+            "entries in one call.",
+            exchange_id,
+            updated,
+            sum(1 for e in self._tickers.values() if e.exchange_id == exchange_id),
+        )
         return updated
 
     # ── Coalesced OHLCV fetch (v3.23.74) ───────────────────────────
 
     async def get_or_fetch_ohlcv(
-        self, connector, exchange_id: str, symbol: str,
-        timeframe: str, limit: int = 100,
+        self,
+        connector,
+        exchange_id: str,
+        symbol: str,
+        timeframe: str,
+        limit: int = 100,
     ) -> list:
         """Coalesced OHLCV fetch. Mirrors get_or_fetch_ticker.
 
@@ -504,8 +549,12 @@ class MarketDataPool:
         entry = self._candles.get(key)
 
         # Fast path: fresh + has enough rows
-        if (entry is not None and not entry.is_stale
-                and entry.candles and len(entry.candles) >= limit):
+        if (
+            entry is not None
+            and not entry.is_stale
+            and entry.candles
+            and len(entry.candles) >= limit
+        ):
             self._ohlcv_cache_hits += 1
             # Return the last `limit` rows (bots ask for a window
             # of the most-recent-N).
@@ -524,7 +573,10 @@ class MarketDataPool:
                     logger.warning(
                         "DataPool: cross-loop OHLCV lock for %s "
                         "(bound=%s running=%s); replacing.",
-                        key, id(_bound), id(_running))
+                        key,
+                        id(_bound),
+                        id(_running),
+                    )
                     _need_new_lock = True
             except RuntimeError:
                 pass
@@ -539,8 +591,12 @@ class MarketDataPool:
         async with cast(asyncio.Lock, lock):
             # Double-check freshness (another awaiter may have filled)
             entry = self._candles.get(key)
-            if (entry is not None and not entry.is_stale
-                    and entry.candles and len(entry.candles) >= limit):
+            if (
+                entry is not None
+                and not entry.is_stale
+                and entry.candles
+                and len(entry.candles) >= limit
+            ):
                 self._ohlcv_cache_hits += 1
                 return list(entry.candles[-limit:])
 
@@ -548,12 +604,13 @@ class MarketDataPool:
             # for this (exchange, symbol, TF) can still coalesce here).
             if entry is None:
                 entry = CacheEntry(
-                    exchange_id=exchange_id, symbol=symbol,
-                    timeframe=timeframe)
+                    exchange_id=exchange_id, symbol=symbol, timeframe=timeframe
+                )
                 self._candles[key] = entry
 
             candles = await connector.get_ohlcv(
-                symbol, timeframe, limit=max(limit, 100))
+                symbol, timeframe, limit=max(limit, 100)
+            )
             entry.candles = list(candles or [])
             entry.fetch_time = time.time()
             entry.fetch_count += 1
@@ -563,7 +620,10 @@ class MarketDataPool:
     # ── Coalesced balance fetch (v3.23.76) ─────────────────────────
 
     async def get_or_fetch_balance(
-        self, connector, exchange_id: str, currency: str,
+        self,
+        connector,
+        exchange_id: str,
+        currency: str,
     ):
         """Coalesced balance fetch. Mirrors get_or_fetch_ticker /
         get_or_fetch_ohlcv.
@@ -577,6 +637,7 @@ class MarketDataPool:
         Returns a ``Balance`` dataclass (matches connector.get_balance).
         """
         from .base import Balance
+
         bkey = _balance_key(exchange_id, currency)
         entry = self._balances.get(bkey)
 
@@ -584,9 +645,12 @@ class MarketDataPool:
         if entry is not None and not entry.is_stale and entry.has_data:
             self._balance_cache_hits += 1
             return Balance(
-                currency=entry.currency, free=entry.free,
-                used=entry.used, total=entry.total,
-                absent=entry.absent)
+                currency=entry.currency,
+                free=entry.free,
+                used=entry.used,
+                total=entry.total,
+                absent=entry.absent,
+            )
 
         # Slow path — per-slot lock, cross-loop self-heal
         lock = self._balance_fetch_locks.get(bkey)
@@ -601,7 +665,10 @@ class MarketDataPool:
                     logger.warning(
                         "DataPool: cross-loop balance lock for %s "
                         "(bound=%s running=%s); replacing.",
-                        bkey, id(_bound), id(_running))
+                        bkey,
+                        id(_bound),
+                        id(_running),
+                    )
                     _need_new_lock = True
             except RuntimeError:
                 pass
@@ -616,17 +683,18 @@ class MarketDataPool:
         async with cast(asyncio.Lock, lock):
             # Double-check freshness
             entry = self._balances.get(bkey)
-            if (entry is not None and not entry.is_stale
-                    and entry.has_data):
+            if entry is not None and not entry.is_stale and entry.has_data:
                 self._balance_cache_hits += 1
                 return Balance(
-                    currency=entry.currency, free=entry.free,
-                    used=entry.used, total=entry.total,
-                    absent=entry.absent)
+                    currency=entry.currency,
+                    free=entry.free,
+                    used=entry.used,
+                    total=entry.total,
+                    absent=entry.absent,
+                )
 
             if entry is None:
-                entry = BalanceEntry(
-                    exchange_id=exchange_id, currency=currency)
+                entry = BalanceEntry(exchange_id=exchange_id, currency=currency)
                 self._balances[bkey] = entry
 
             balance = await connector.get_balance(currency)
@@ -634,14 +702,15 @@ class MarketDataPool:
             entry.used = float(getattr(balance, "used", 0) or 0)
             entry.total = float(getattr(balance, "total", 0) or 0)
             entry.absent = bool(getattr(balance, "absent", False))
-            entry.currency = str(getattr(balance, "currency",
-                                          currency) or currency)
+            entry.currency = str(getattr(balance, "currency", currency) or currency)
             entry.fetch_time = time.time()
             self._balance_fetches += 1
             return balance
 
     def invalidate_balance(
-        self, exchange_id: str, currency: Optional[str] = None,
+        self,
+        exchange_id: str,
+        currency: Optional[str] = None,
     ) -> int:
         """Force the next get_or_fetch_balance for this (exchange,
         currency) to re-fetch from the connector. Called by
@@ -725,8 +794,12 @@ class MarketDataPool:
             age = now - be.fetch_time
             ages.append((age, age > 10.0))
         if not ages:
-            return {"freshest_age_s": None, "oldest_age_s": None,
-                    "fetched_slots": 0, "stale_slots": 0}
+            return {
+                "freshest_age_s": None,
+                "oldest_age_s": None,
+                "fetched_slots": 0,
+                "stale_slots": 0,
+            }
         ages_only = [a for a, _ in ages]
         return {
             "freshest_age_s": min(ages_only),
@@ -801,8 +874,12 @@ class MarketDataPool:
                     fetched += 1
                 except Exception as exc:
                     errors += 1
-                    logger.debug("DataPool: ticker error %s/%s: %s",
-                                te.exchange_id, te.symbol, exc)
+                    logger.debug(
+                        "DataPool: ticker error %s/%s: %s",
+                        te.exchange_id,
+                        te.symbol,
+                        exc,
+                    )
 
             # Refresh stale candle caches
             for key, entry in self._candles.items():
@@ -816,7 +893,8 @@ class MarketDataPool:
                     continue
                 try:
                     candles = await connector.get_ohlcv(
-                        entry.symbol, entry.timeframe, limit=100)
+                        entry.symbol, entry.timeframe, limit=100
+                    )
                     entry.candles = candles
                     entry.fetch_time = time.time()
                     entry.fetch_count += 1
@@ -825,9 +903,13 @@ class MarketDataPool:
                 except Exception as exc:
                     entry.errors += 1
                     errors += 1
-                    logger.debug("DataPool: OHLCV error %s/%s@%s: %s",
-                                entry.exchange_id, entry.symbol,
-                                entry.timeframe, exc)
+                    logger.debug(
+                        "DataPool: OHLCV error %s/%s@%s: %s",
+                        entry.exchange_id,
+                        entry.symbol,
+                        entry.timeframe,
+                        exc,
+                    )
 
             return {"fetched": fetched, "skipped": skipped, "errors": errors}
 
@@ -839,8 +921,7 @@ class MarketDataPool:
         saved = max(0, total_subs - unique)
         # v3.16.17 — ticker coalescing telemetry
         _t_total = self._ticker_fetches + self._ticker_cache_hits
-        _t_savings_pct = round(
-            self._ticker_cache_hits / max(_t_total, 1) * 100, 1)
+        _t_savings_pct = round(self._ticker_cache_hits / max(_t_total, 1) * 100, 1)
         return {
             "cache_slots": unique,
             "total_subscribers": total_subs,
@@ -861,6 +942,7 @@ class MarketDataPool:
 
 # Singleton
 _pool: Optional[MarketDataPool] = None
+
 
 def get_data_pool() -> MarketDataPool:
     global _pool

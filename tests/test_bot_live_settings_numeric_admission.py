@@ -35,6 +35,7 @@ Every table below carries POSITIVE CONTROLS — genuine ints and floats
 that must still render exactly as before. Without them a guard that
 refuses everything would pass every other row while blanking the panel.
 """
+
 from __future__ import annotations
 
 import sys
@@ -77,7 +78,7 @@ REFUSED = [
     pytest.param(float("nan"), id="nan"),
     pytest.param(float("inf"), id="inf"),
     pytest.param(float("-inf"), id="-inf"),
-    pytest.param(10 ** 400, id="huge-int"),
+    pytest.param(10**400, id="huge-int"),
     pytest.param(_HasFloat(), id="obj-with-__float__"),
 ]
 
@@ -103,8 +104,13 @@ def _cells(mark_value_usd):
     """
     from src.gui.bot_live_settings import _compose_extractor_tranche_cells
 
-    row = {"opened_at": NOW - 100.0, "base_deployed": 1.0,
-           "mark_value_usd": mark_value_usd, "state": "open", "pair": "X/Y"}
+    row = {
+        "opened_at": NOW - 100.0,
+        "base_deployed": 1.0,
+        "mark_value_usd": mark_value_usd,
+        "state": "open",
+        "pair": "X/Y",
+    }
     return _compose_extractor_tranche_cells(row, NOW)
 
 
@@ -112,8 +118,12 @@ def _tooltip(mark_price):
     """The tooltip for that same row, from the real composer."""
     from src.gui.bot_live_settings import _compose_extractor_tranche_tooltip
 
-    row = {"base_asset": "BTC", "base_deployed": 1.0, "alt_units": 2.0,
-           "mark_price_base_per_alt": mark_price}
+    row = {
+        "base_asset": "BTC",
+        "base_deployed": 1.0,
+        "alt_units": 2.0,
+        "mark_price_base_per_alt": mark_price,
+    }
     return _compose_extractor_tranche_tooltip(row)
 
 
@@ -140,7 +150,7 @@ class TestExtractorUsdCell:
         existing em-dash branch rather than some new path.
         """
         baseline = _cells(None)[COL_USD_PARKED]
-        for value in (True, False, float("nan"), float("inf"), 10 ** 400):
+        for value in (True, False, float("nan"), float("inf"), 10**400):
             assert _cells(value)[COL_USD_PARKED] == baseline
 
     @pytest.mark.parametrize("value,expected", ACCEPTED_MARKS)
@@ -154,7 +164,7 @@ class TestExtractorUsdCell:
         A guard written with `math.isfinite` raises OverflowError on
         this exact input — the guard would open the hole it closes.
         """
-        assert _cells(10 ** 400)[COL_USD_PARKED] == "—"
+        assert _cells(10**400)[COL_USD_PARKED] == "—"
 
     def test_other_columns_are_untouched(self):
         """This unit changed the USD cell only."""
@@ -189,10 +199,14 @@ class TestExtractorTooltip:
         assert "No mark available" not in tip
         assert f"{float(value):.8f}" in tip
 
-    @pytest.mark.parametrize("value", REFUSED + [
-        pytest.param(1, id="accept-int"),
-        pytest.param(1.5, id="accept-float"),
-    ])
+    @pytest.mark.parametrize(
+        "value",
+        REFUSED
+        + [
+            pytest.param(1, id="accept-int"),
+            pytest.param(1.5, id="accept-float"),
+        ],
+    )
     def test_cell_and_tooltip_never_disagree(self, value):
         """The stated contract between the two: the cell shows a dash
         exactly when the tooltip says there is no mark."""
@@ -209,8 +223,10 @@ class TestExtractorTooltip:
 def _qt_or_skip():
     pytest.importorskip("PySide6.QtWidgets")
     import os
+
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
+
     return QApplication.instance() or QApplication([])
 
 
@@ -229,12 +245,21 @@ def _build_tab(opened_ts, monkeypatch):
     # The method reads the clock itself. Freeze it, or "an hour ago"
     # is not expressible and the ages drift between runs.
     import time as _t
+
     monkeypatch.setattr(_t, "time", lambda: NOW)
 
     class _StubBot:
-        _stack_tranches = [{
-            "index": 1, "price": 100.0, "size": 2.0, "status": "pending",
-            "visible": True, "fill_price": None, "opened_ts": opened_ts}]
+        _stack_tranches = [
+            {
+                "index": 1,
+                "price": 100.0,
+                "size": 2.0,
+                "status": "pending",
+                "visible": True,
+                "fill_price": None,
+                "opened_ts": opened_ts,
+            }
+        ]
         _stack_created = 4
         _stack_discarded = 0
 
@@ -251,11 +276,17 @@ def _build_tab(opened_ts, monkeypatch):
     widget = _Dlg._create_stack_tranches_tab(_StubDlg())
     texts = [c.text() for c in widget.findChildren(QLabel)]
     summary = next(
-        (texts[i + 1] for i, t in enumerate(texts)
-         if t == "Oldest pending age:"), "<<missing>>")
+        (texts[i + 1] for i, t in enumerate(texts) if t == "Oldest pending age:"),
+        "<<missing>>",
+    )
     detail = next(
-        (t.rsplit("|", 1)[-1].strip() for t in texts
-         if t.count("|") >= 6 and "Target Price" not in t), "<<missing>>")
+        (
+            t.rsplit("|", 1)[-1].strip()
+            for t in texts
+            if t.count("|") >= 6 and "Target Price" not in t
+        ),
+        "<<missing>>",
+    )
     _ = app
     return summary, detail
 
@@ -280,21 +311,22 @@ class TestStackTrancheAge:
         """Prove the refusal REACHED the existing no-timestamp branch."""
         base_s, base_d = _build_tab(None, monkeypatch)
         assert base_s == NO_TS_SUMMARY
-        for value in (True, False, float("inf"), 10 ** 400,
-                      Decimal("1700000000")):
+        for value in (True, False, float("inf"), 10**400, Decimal("1700000000")):
             summary, detail = _build_tab(value, monkeypatch)
             assert summary == base_s
             assert detail == base_d
 
-    @pytest.mark.parametrize("value,expected", [
-        pytest.param(NOW - 3600.0, "1.0h", id="an-hour-ago"),
-        pytest.param(NOW - 90000.0, "1.0d", id="a-day-ago"),
-        pytest.param(NOW - 30.0, "30s", id="thirty-seconds-ago"),
-        pytest.param(NOW - 600.0, "10m", id="ten-minutes-ago"),
-        pytest.param(int(NOW - 3600), "1.0h", id="int-timestamp"),
-    ])
-    def test_real_timestamps_still_render_an_age(
-            self, value, expected, monkeypatch):
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            pytest.param(NOW - 3600.0, "1.0h", id="an-hour-ago"),
+            pytest.param(NOW - 90000.0, "1.0d", id="a-day-ago"),
+            pytest.param(NOW - 30.0, "30s", id="thirty-seconds-ago"),
+            pytest.param(NOW - 600.0, "10m", id="ten-minutes-ago"),
+            pytest.param(int(NOW - 3600), "1.0h", id="int-timestamp"),
+        ],
+    )
+    def test_real_timestamps_still_render_an_age(self, value, expected, monkeypatch):
         """POSITIVE CONTROL, and the one that catches a guard which
         refuses everything. Without it the panel could go permanently
         blank while every refusal test above still passed."""
@@ -302,12 +334,14 @@ class TestStackTrancheAge:
         assert summary == expected
         assert detail == expected
 
-    @pytest.mark.parametrize("value", [
-        pytest.param(float("inf"), id="inf"),
-        pytest.param(10 ** 400, id="huge-int"),
-    ])
-    def test_non_finite_does_not_take_the_dialog_down(
-            self, value, monkeypatch):
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param(float("inf"), id="inf"),
+            pytest.param(10**400, id="huge-int"),
+        ],
+    )
+    def test_non_finite_does_not_take_the_dialog_down(self, value, monkeypatch):
         """Both raised OverflowError before this fix, from `int()` and
         from `float()` respectively, with no `try` on the path to the
         operator's click."""
@@ -315,10 +349,14 @@ class TestStackTrancheAge:
         assert summary == NO_TS_SUMMARY
         assert detail == NO_TS_ROW
 
-    @pytest.mark.parametrize("value", REFUSED + [
-        pytest.param(NOW - 3600.0, id="accept-recent"),
-        pytest.param(1, id="accept-int-1"),
-    ])
+    @pytest.mark.parametrize(
+        "value",
+        REFUSED
+        + [
+            pytest.param(NOW - 3600.0, id="accept-recent"),
+            pytest.param(1, id="accept-int-1"),
+        ],
+    )
     def test_summary_and_row_never_disagree(self, value, monkeypatch):
         """The summary and the row render the age of the SAME tranche
         from the SAME key. Closing one without the other produced a
@@ -336,9 +374,18 @@ class TestAdmissionHelperIsTheRepoRule:
     def test_helper_refuses_bool_and_non_finite_and_huge_int(self):
         from src.trading.bot_container import as_finite_float
 
-        for value in (True, False, float("nan"), float("inf"),
-                      float("-inf"), 10 ** 400, _FloatSub(1.0),
-                      Decimal("1"), "1", None):
+        for value in (
+            True,
+            False,
+            float("nan"),
+            float("inf"),
+            float("-inf"),
+            10**400,
+            _FloatSub(1.0),
+            Decimal("1"),
+            "1",
+            None,
+        ):
             assert as_finite_float(value) is None
 
     def test_helper_accepts_exact_int_and_float(self):
@@ -379,8 +426,15 @@ ROW_COLUMN = {"index": 0, "price": 1, "size": 2, "fill_price": 5}
 
 def _valid_tranche():
     """One realistic pending tranche with every key valid."""
-    return {"index": 1, "price": 100.0, "size": 2.0, "status": "pending",
-            "visible": True, "fill_price": 99.0, "opened_ts": NOW - 3600.0}
+    return {
+        "index": 1,
+        "price": 100.0,
+        "size": 2.0,
+        "status": "pending",
+        "visible": True,
+        "fill_price": 99.0,
+        "opened_ts": NOW - 3600.0,
+    }
 
 
 def _build_rows(tranches, monkeypatch):
@@ -396,6 +450,7 @@ def _build_rows(tranches, monkeypatch):
     from src.gui.bot_live_settings import BotLiveSettingsDialog as _Dlg
 
     import time as _t
+
     monkeypatch.setattr(_t, "time", lambda: NOW)
 
     class _StubBot:
@@ -413,8 +468,7 @@ def _build_rows(tranches, monkeypatch):
     widget = _Dlg._create_stack_tranches_tab(_StubDlg())
     texts = [c.text() for c in widget.findChildren(QLabel)]
     summary = next((t for t in texts if "base units" in t), "<<missing>>")
-    rows = [t for t in texts
-            if t.count("|") >= 6 and "Target Price" not in t]
+    rows = [t for t in texts if t.count("|") >= 6 and "Target Price" not in t]
     _ = app
     return summary, rows
 
@@ -434,8 +488,7 @@ class TestStackRowDialogOpens:
 
     @pytest.mark.parametrize("key", ROW_KEYS)
     @pytest.mark.parametrize("value", REFUSED)
-    def test_no_exception_escapes_the_tab_builder(
-            self, key, value, monkeypatch):
+    def test_no_exception_escapes_the_tab_builder(self, key, value, monkeypatch):
         tranche = _valid_tranche()
         tranche[key] = value
         summary, rows = _build_rows([tranche], monkeypatch)
@@ -449,13 +502,14 @@ class TestStackRowDialogOpens:
         A guard written with `math.isfinite` raises OverflowError on
         this exact input, so it would open the hole it closes.
         """
-        assert _cell(key, 10 ** 400, monkeypatch) == DASH
+        assert _cell(key, 10**400, monkeypatch) == DASH
 
     def test_every_key_hostile_at_once(self, monkeypatch):
         """All four refused together still renders one whole row."""
         tranche = _valid_tranche()
-        tranche.update(index=float("inf"), price=10 ** 400,
-                       size=float("nan"), fill_price=True)
+        tranche.update(
+            index=float("inf"), price=10**400, size=float("nan"), fill_price=True
+        )
         _, rows = _build_rows([tranche], monkeypatch)
         assert len(rows) == 1
         cells = [c.strip() for c in rows[0].split("|")]
@@ -468,14 +522,12 @@ class TestStackRowRefusalIsVisible:
 
     @pytest.mark.parametrize("key", ROW_KEYS)
     @pytest.mark.parametrize("value", REFUSED)
-    def test_refused_shapes_render_the_em_dash(
-            self, key, value, monkeypatch):
+    def test_refused_shapes_render_the_em_dash(self, key, value, monkeypatch):
         assert _cell(key, value, monkeypatch) == DASH
 
     @pytest.mark.parametrize("key", ["price", "size", "fill_price"])
     @pytest.mark.parametrize("value", REFUSED)
-    def test_money_refusal_never_reads_as_zero(
-            self, key, value, monkeypatch):
+    def test_money_refusal_never_reads_as_zero(self, key, value, monkeypatch):
         """A refusal that renders zero on a money column is a NEW
         defect, not a fix: nothing on the panel would distinguish an
         unreadable size from a genuinely empty one."""
@@ -485,8 +537,7 @@ class TestStackRowRefusalIsVisible:
         assert cell == DASH
 
     @pytest.mark.parametrize("key", ROW_KEYS)
-    def test_refusal_is_padded_to_its_column_width(
-            self, key, monkeypatch):
+    def test_refusal_is_padded_to_its_column_width(self, key, monkeypatch):
         """The refusal keeps the monospace table aligned: each dash is
         padded to the minimum width that column's valid value occupies.
         """
@@ -498,8 +549,7 @@ class TestStackRowRefusalIsVisible:
         _, rows = _build_rows([tranche], monkeypatch)
         raw = rows[0].split("|")[ROW_COLUMN[key]]
         assert raw.strip() == DASH
-        assert len(raw.strip(" ").rjust(valid_widths[key])) == \
-            valid_widths[key]
+        assert len(raw.strip(" ").rjust(valid_widths[key])) == valid_widths[key]
 
 
 class TestStackRowValidInputUnchanged:
@@ -507,30 +557,34 @@ class TestStackRowValidInputUnchanged:
     everything. FAILURE MEANS: the unit changed what a real tranche
     displays, which it is not allowed to do by one character."""
 
-    @pytest.mark.parametrize("key,value,expected", [
-        pytest.param("index", 1, "1", id="index-1"),
-        pytest.param("index", 7, "7", id="index-7"),
-        pytest.param("index", 0, "0", id="index-zero"),
-        pytest.param("index", -5, "-5", id="index-negative"),
-        pytest.param("index", 2.5, "2", id="index-float-truncates"),
-        pytest.param("price", 100.0, "$100.00000000", id="price-100"),
-        pytest.param("price", 2.5, "$2.50000000", id="price-small"),
-        pytest.param("price", 0, "$0.00000000", id="price-int-zero"),
-        pytest.param("price", 0.0, "$0.00000000", id="price-float-zero"),
-        pytest.param("price", -5, "$-5.00000000", id="price-negative"),
-        pytest.param("price", 7, "$7.00000000", id="price-int"),
-        pytest.param("size", 2.0, "2.000000", id="size-2"),
-        pytest.param("size", 0, "0.000000", id="size-int-zero"),
-        pytest.param("size", 0.0, "0.000000", id="size-float-zero"),
-        pytest.param("size", -5, "-5.000000", id="size-negative"),
-        pytest.param("size", 7, "7.000000", id="size-int"),
-        pytest.param("fill_price", 99.0, "$99.00000000", id="fill-99"),
-        pytest.param("fill_price", 7, "$7.00000000", id="fill-int"),
-        pytest.param("fill_price", -5, "$-5.00000000", id="fill-negative"),
-        pytest.param("fill_price", 2.5, "$2.50000000", id="fill-small"),
-    ])
+    @pytest.mark.parametrize(
+        "key,value,expected",
+        [
+            pytest.param("index", 1, "1", id="index-1"),
+            pytest.param("index", 7, "7", id="index-7"),
+            pytest.param("index", 0, "0", id="index-zero"),
+            pytest.param("index", -5, "-5", id="index-negative"),
+            pytest.param("index", 2.5, "2", id="index-float-truncates"),
+            pytest.param("price", 100.0, "$100.00000000", id="price-100"),
+            pytest.param("price", 2.5, "$2.50000000", id="price-small"),
+            pytest.param("price", 0, "$0.00000000", id="price-int-zero"),
+            pytest.param("price", 0.0, "$0.00000000", id="price-float-zero"),
+            pytest.param("price", -5, "$-5.00000000", id="price-negative"),
+            pytest.param("price", 7, "$7.00000000", id="price-int"),
+            pytest.param("size", 2.0, "2.000000", id="size-2"),
+            pytest.param("size", 0, "0.000000", id="size-int-zero"),
+            pytest.param("size", 0.0, "0.000000", id="size-float-zero"),
+            pytest.param("size", -5, "-5.000000", id="size-negative"),
+            pytest.param("size", 7, "7.000000", id="size-int"),
+            pytest.param("fill_price", 99.0, "$99.00000000", id="fill-99"),
+            pytest.param("fill_price", 7, "$7.00000000", id="fill-int"),
+            pytest.param("fill_price", -5, "$-5.00000000", id="fill-negative"),
+            pytest.param("fill_price", 2.5, "$2.50000000", id="fill-small"),
+        ],
+    )
     def test_genuine_numbers_render_exactly_as_before(
-            self, key, value, expected, monkeypatch):
+        self, key, value, expected, monkeypatch
+    ):
         assert _cell(key, value, monkeypatch) == expected
 
     @pytest.mark.parametrize("value", [0, 0.0])
@@ -546,7 +600,8 @@ class TestStackRowValidInputUnchanged:
         _, rows = _build_rows([_valid_tranche()], monkeypatch)
         assert rows[0] == (
             "   1 |  $100.00000000  |    2.000000  |  VISIBLE  |"
-            "  pending    |  $99.00000000 |  1.0h")
+            "  pending    |  $99.00000000 |  1.0h"
+        )
 
     def test_the_valid_summary_is_byte_identical(self, monkeypatch):
         summary, _ = _build_rows([_valid_tranche()], monkeypatch)
@@ -563,40 +618,60 @@ class TestPendingSizeTotalCountsWhatItCannotRead:
         """POSITIVE CONTROL. Fails if every panel now claims to be
         partial."""
         summary, _ = _build_rows(
-            [dict(_valid_tranche(), index=1, size=2.0),
-             dict(_valid_tranche(), index=2, size=3.0)], monkeypatch)
+            [
+                dict(_valid_tranche(), index=1, size=2.0),
+                dict(_valid_tranche(), index=2, size=3.0),
+            ],
+            monkeypatch,
+        )
         assert summary == "5.000000 base units"
         assert "unreadable" not in summary
 
     def test_a_refused_member_is_counted_not_dropped(self, monkeypatch):
         summary, rows = _build_rows(
-            [dict(_valid_tranche(), index=1, size=2.0),
-             dict(_valid_tranche(), index=2, size=float("nan")),
-             dict(_valid_tranche(), index=3, size=10 ** 400)], monkeypatch)
+            [
+                dict(_valid_tranche(), index=1, size=2.0),
+                dict(_valid_tranche(), index=2, size=float("nan")),
+                dict(_valid_tranche(), index=3, size=10**400),
+            ],
+            monkeypatch,
+        )
         assert summary == "2.000000 base units  (+2 unreadable)"
         assert len(rows) == 3
 
     @pytest.mark.parametrize("value", REFUSED)
     def test_every_refused_shape_is_counted(self, value, monkeypatch):
-        summary, _ = _build_rows(
-            [dict(_valid_tranche(), size=value)], monkeypatch)
+        summary, _ = _build_rows([dict(_valid_tranche(), size=value)], monkeypatch)
         assert summary.endswith("(+1 unreadable)")
 
     def test_only_pending_tranches_are_summed(self, monkeypatch):
         """The summary counts PENDING size. A refused size on a filled
         tranche must not mark the pending total partial."""
         summary, _ = _build_rows(
-            [dict(_valid_tranche(), index=1, size=2.0, status="pending"),
-             dict(_valid_tranche(), index=2, size=float("nan"),
-                  status="filled")], monkeypatch)
+            [
+                dict(_valid_tranche(), index=1, size=2.0, status="pending"),
+                dict(_valid_tranche(), index=2, size=float("nan"), status="filled"),
+            ],
+            monkeypatch,
+        )
         assert summary == "2.000000 base units"
 
     def test_summary_and_row_never_disagree(self, monkeypatch):
         """Both render `size` from the SAME key on the SAME tranche.
         Closing one without the other produces a panel that contradicts
         itself, which is worse than the defect."""
-        for value in (2.0, 0, -5, True, float("nan"), float("inf"),
-                      10 ** 400, None, "", Decimal("2.5")):
+        for value in (
+            2.0,
+            0,
+            -5,
+            True,
+            float("nan"),
+            float("inf"),
+            10**400,
+            None,
+            "",
+            Decimal("2.5"),
+        ):
             tranche = dict(_valid_tranche(), size=value)
             summary, rows = _build_rows([tranche], monkeypatch)
             cell = [c.strip() for c in rows[0].split("|")][ROW_COLUMN["size"]]

@@ -12,6 +12,7 @@ helper that returned an empty result for every input would fail here.
 NOTE ON PATHS: every test writes to tmp_path. Nothing here touches
 ~/.acervator.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,7 +20,11 @@ import json
 import pytest
 
 from src.gui.simulator_tab.fleet.simulator_bot_state import (
-    SIM_STATE_PATH, diff_spawns, load_sim_state, save_sim_state)
+    SIM_STATE_PATH,
+    diff_spawns,
+    load_sim_state,
+    save_sim_state,
+)
 
 
 def _doc(bots: dict) -> dict:
@@ -54,8 +59,10 @@ def test_first_spawn_reports_first_spawn():
 
 
 def test_identical_reload_reports_no_drift():
-    bots = {"simulated_a": ("BTC/USD", {"units": 1.0}),
-            "simulated_b": ("ETH/USD", {"units": 2.0})}
+    bots = {
+        "simulated_a": ("BTC/USD", {"units": 1.0}),
+        "simulated_b": ("ETH/USD", {"units": 2.0}),
+    }
     prev, cur = _doc(bots), _doc(bots)
     d = diff_spawns(prev, cur)
     assert d["first_spawn"] is False
@@ -70,10 +77,18 @@ def test_changed_live_source_is_detected():
     comparing, `test_identical_reload_reports_no_drift` still passes and
     this one fails. Neither test is meaningful without the other.
     """
-    prev = _doc({"simulated_a": ("BTC/USD", {"units": 1.0}),
-                 "simulated_b": ("ETH/USD", {"units": 2.0})})
-    cur = _doc({"simulated_a": ("BTC/USD", {"units": 1.5}),
-                "simulated_b": ("ETH/USD", {"units": 2.0})})
+    prev = _doc(
+        {
+            "simulated_a": ("BTC/USD", {"units": 1.0}),
+            "simulated_b": ("ETH/USD", {"units": 2.0}),
+        }
+    )
+    cur = _doc(
+        {
+            "simulated_a": ("BTC/USD", {"units": 1.5}),
+            "simulated_b": ("ETH/USD", {"units": 2.0}),
+        }
+    )
     d = diff_spawns(prev, cur)
     assert d["changed"] == ["simulated_a"]
     assert d["unchanged"] == 1
@@ -140,6 +155,7 @@ def test_save_refuses_the_live_bot_state_path(tmp_path, monkeypatch):
     live fleet to prove a point.
     """
     import src.gui.simulator_tab.fleet.simulator_bot_state as sbs
+
     decoy = tmp_path / "bot_state.json"
     decoy.write_text(json.dumps({"bots": {"real": 1}}), encoding="utf-8")
     monkeypatch.setattr(sbs, "BOT_STATE_PATH", decoy)
@@ -153,9 +169,11 @@ def test_save_refuses_the_live_bot_state_path(tmp_path, monkeypatch):
 def test_save_allows_a_normal_path(tmp_path, monkeypatch):
     """POSITIVE CONTROL: the guard must not refuse everything."""
     import src.gui.simulator_tab.fleet.simulator_bot_state as sbs
+
     monkeypatch.setattr(sbs, "BOT_STATE_PATH", tmp_path / "bot_state.json")
-    out = sbs.save_sim_state(_doc({"simulated_a": ("BTC/USD", {})}),
-                             tmp_path / "sim.json")
+    out = sbs.save_sim_state(
+        _doc({"simulated_a": ("BTC/USD", {})}), tmp_path / "sim.json"
+    )
     assert out.exists()
     assert not (tmp_path / "bot_state.json").exists()
 

@@ -40,6 +40,7 @@ produces a wrong $0.00. The staleness marker below is still worth
 having -- showing the last known value marked stale beats showing
 nothing -- but not for the reason the doc gives.
 """
+
 from __future__ import annotations
 
 import os
@@ -57,13 +58,15 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from src.gui.main_window import (  # noqa: E402
-    _AMMO_FOLD, _AMMO_NEUTRAL, _AMMO_SCRUM, _STALE_MARKER,
+    _AMMO_FOLD,
+    _AMMO_NEUTRAL,
+    _AMMO_SCRUM,
+    _STALE_MARKER,
     _compose_ammo_cell,
 )
 
 
-def cell(stats_pv=0.0, holdings=0.0, cur_price=0.0, qrate=1.0,
-         target=50.0):
+def cell(stats_pv=0.0, holdings=0.0, cur_price=0.0, qrate=1.0, target=50.0):
     return _compose_ammo_cell(stats_pv, holdings, cur_price, qrate, target)
 
 
@@ -71,17 +74,17 @@ class TestTheInstrumentWorks:
     def test_a_surplus_reads_scrum(self):
         """Positive control. If the helper never produced a Scrum
         signal, the inversion tests below could not detect one."""
-        c = cell(holdings=5, cur_price=20.0, target=50.0)   # pv=100
+        c = cell(holdings=5, cur_price=20.0, target=50.0)  # pv=100
         assert c["color"] == _AMMO_SCRUM
         assert c["delta"] == pytest.approx(50.0)
 
     def test_a_deficit_reads_fold(self):
-        c = cell(holdings=5, cur_price=8.0, target=50.0)    # pv=40
+        c = cell(holdings=5, cur_price=8.0, target=50.0)  # pv=40
         assert c["color"] == _AMMO_FOLD
         assert c["delta"] == pytest.approx(-10.0)
 
     def test_on_target_reads_dust(self):
-        c = cell(holdings=5, cur_price=10.0, target=50.0)   # pv=50
+        c = cell(holdings=5, cur_price=10.0, target=50.0)  # pv=50
         assert c["color"] == _AMMO_NEUTRAL
 
 
@@ -98,13 +101,14 @@ class TestTheSignalIsNotInverted:
         c = cell(stats_pv=100.0, holdings=5, cur_price=8.0, target=50.0)
         assert c["color"] == _AMMO_FOLD, (
             "a position worth $40 against a $50 target is reading as "
-            "Scrum; the stale high-water mark has inverted the signal")
+            "Scrum; the stale high-water mark has inverted the signal"
+        )
         assert "buy" in c["tip"]
 
-    @pytest.mark.parametrize("price,expected_pv", [
-        (8.0, 40.0), (4.0, 20.0), (2.0, 10.0), (0.2, 1.0)])
-    def test_it_tracks_the_fall_instead_of_latching(self, price,
-                                                   expected_pv):
+    @pytest.mark.parametrize(
+        "price,expected_pv", [(8.0, 40.0), (4.0, 20.0), (2.0, 10.0), (0.2, 1.0)]
+    )
+    def test_it_tracks_the_fall_instead_of_latching(self, price, expected_pv):
         """Under max() every one of these rendered delta=+50, because
         the stale value dominated regardless of how far price fell."""
         c = cell(stats_pv=100.0, holdings=5, cur_price=price, target=50.0)

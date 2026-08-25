@@ -45,6 +45,7 @@ released at no more than anchor x max_target_growth_pct/100 per cycle.
 practice -- verified read-only against live state, which the repair plan
 had explicitly not measured.
 """
+
 from __future__ import annotations
 
 import sys
@@ -75,12 +76,13 @@ class _Bot:
 
     _apply_fold_target_growth = ScrummingBot._apply_fold_target_growth
 
-    def __init__(self, *, anchor=200.0, cap_pct=1.0, consumed=0.0,
-                 pool=0.0, target=None):
+    def __init__(
+        self, *, anchor=200.0, cap_pct=1.0, consumed=0.0, pool=0.0, target=None
+    ):
         self.bot_id = "bot-test-0001"
-        self.config = type("C", (), {
-            "max_target_growth_pct": cap_pct,
-            "profit_folding_active": True})()
+        self.config = type(
+            "C", (), {"max_target_growth_pct": cap_pct, "profit_folding_active": True}
+        )()
         self._bus = _Bus()
         self._quote_to_usd = 1.0
         self._anchor_target_balance = anchor
@@ -182,9 +184,12 @@ class TestDetonationHygiene:
         import src.trading.scrumming_bot as sbm
 
         src = Path(sbm.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_execute_detonation")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "_execute_detonation"
+        )
         written = set()
         for node in ast.walk(fn):
             tgts = []
@@ -204,9 +209,12 @@ class TestDetonationHygiene:
         import src.trading.scrumming_bot as sbm
 
         src = Path(sbm.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_execute_detonation")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "_execute_detonation"
+        )
         seg = ast.get_source_segment(src, fn) or ""
         assert "self._standing_surplus_usd = 0.0" in seg
 
@@ -218,8 +226,11 @@ class TestDetonationHygiene:
         import src.trading.scrumming_bot as sbm
 
         src = Path(sbm.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_execute_detonation")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "_execute_detonation"
+        )
         seg = ast.get_source_segment(src, fn) or ""
         assert "_fold_cycle_cap_consumed = 0" not in seg

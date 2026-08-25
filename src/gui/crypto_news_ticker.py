@@ -40,6 +40,7 @@ scheme outside the http/https allowlist is refused rather than opened,
 and the response body is read under a fixed cap. Fetches run in a
 background QThread so the GUI never blocks on network I/O.
 """
+
 from __future__ import annotations
 
 import logging
@@ -54,12 +55,12 @@ from defusedxml.ElementTree import ParseError, fromstring
 from ..core.safe_url import SafeRequest, safe_urlopen
 
 try:
-    from PySide6.QtCore import (
-        QObject, QThread, QTimer, Qt, Signal)
+    from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal
     from PySide6.QtGui import QCursor
     from PySide6.QtWidgets import QLabel, QWidget, QHBoxLayout
+
     _HAS_QT = True
-except ImportError:                                # pragma: no cover
+except ImportError:  # pragma: no cover
     _HAS_QT = False
 
 logger = logging.getLogger("acervator.crypto_news_ticker")
@@ -69,6 +70,7 @@ logger = logging.getLogger("acervator.crypto_news_ticker")
 # Feed sources — operator-selected 10 free public RSS feeds.
 # ------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class NewsSource:
     slug: str
@@ -77,26 +79,22 @@ class NewsSource:
 
 
 NEWS_SOURCES: tuple[NewsSource, ...] = (
-    NewsSource("coindesk", "CoinDesk",
-               "https://www.coindesk.com/arc/outboundfeeds/rss/"),
-    NewsSource("cointelegraph", "CoinTelegraph",
-               "https://cointelegraph.com/rss"),
-    NewsSource("decrypt", "Decrypt",
-               "https://decrypt.co/feed"),
-    NewsSource("bitcoinmagazine", "Bitcoin Magazine",
-               "https://bitcoinmagazine.com/.rss/full/"),
-    NewsSource("thedefiant", "The Defiant",
-               "https://thedefiant.io/api/feed"),
-    NewsSource("bankless", "Bankless",
-               "https://newsletter.banklesshq.com/feed"),
-    NewsSource("cryptoslate", "CryptoSlate",
-               "https://cryptoslate.com/feed/"),
-    NewsSource("cryptobriefing", "Crypto Briefing",
-               "https://cryptobriefing.com/feed/"),
-    NewsSource("cryptonews", "CryptoNews",
-               "https://cryptonews.com/news/feed/"),
-    NewsSource("bloomberg", "Bloomberg Crypto",
-               "https://feeds.bloomberg.com/crypto/news.rss"),
+    NewsSource(
+        "coindesk", "CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"
+    ),
+    NewsSource("cointelegraph", "CoinTelegraph", "https://cointelegraph.com/rss"),
+    NewsSource("decrypt", "Decrypt", "https://decrypt.co/feed"),
+    NewsSource(
+        "bitcoinmagazine", "Bitcoin Magazine", "https://bitcoinmagazine.com/.rss/full/"
+    ),
+    NewsSource("thedefiant", "The Defiant", "https://thedefiant.io/api/feed"),
+    NewsSource("bankless", "Bankless", "https://newsletter.banklesshq.com/feed"),
+    NewsSource("cryptoslate", "CryptoSlate", "https://cryptoslate.com/feed/"),
+    NewsSource("cryptobriefing", "Crypto Briefing", "https://cryptobriefing.com/feed/"),
+    NewsSource("cryptonews", "CryptoNews", "https://cryptonews.com/news/feed/"),
+    NewsSource(
+        "bloomberg", "Bloomberg Crypto", "https://feeds.bloomberg.com/crypto/news.rss"
+    ),
 )
 
 
@@ -105,7 +103,7 @@ class NewsHeadline:
     title: str
     url: str
     source: NewsSource
-    published_ts: float = 0.0   # unix seconds; 0 when unknown
+    published_ts: float = 0.0  # unix seconds; 0 when unknown
 
     def display_text(self) -> str:
         """Composed 'Source · Title' string, trimmed for the strip."""
@@ -131,8 +129,10 @@ class NewsHeadline:
 # a real shape that must keep working.
 # ------------------------------------------------------------------
 
-def parse_rss(xml_bytes: bytes, source: NewsSource,
-              limit: int = 10) -> list[NewsHeadline]:
+
+def parse_rss(
+    xml_bytes: bytes, source: NewsSource, limit: int = 10
+) -> list[NewsHeadline]:
     """Return up to ``limit`` NewsHeadlines parsed from ``xml_bytes``.
 
     Supports the two common feed shapes we care about:
@@ -150,13 +150,15 @@ def parse_rss(xml_bytes: bytes, source: NewsSource,
         root = fromstring(xml_bytes)
     except DefusedXmlException as _refused:
         logger.warning(
-            "crypto_news_ticker: %s feed refused, no headline taken "
-            "from it: %s", source.name, _refused)
+            "crypto_news_ticker: %s feed refused, no headline taken " "from it: %s",
+            source.name,
+            _refused,
+        )
         return []
     except ParseError as _malformed:
         logger.debug(
-            "crypto_news_ticker: %s feed did not parse: %s",
-            source.name, _malformed)
+            "crypto_news_ticker: %s feed did not parse: %s", source.name, _malformed
+        )
         return []
     out: list[NewsHeadline] = []
     # RSS 2.0 path
@@ -174,14 +176,16 @@ def parse_rss(xml_bytes: bytes, source: NewsSource,
                     if _href:
                         link = _href
                         break
-        pub_ts = _parse_ts(
-            _child_text(item, ("pubDate", "published", "updated")))
+        pub_ts = _parse_ts(_child_text(item, ("pubDate", "published", "updated")))
         if title and link:
-            out.append(NewsHeadline(
-                title=title.strip()[:220],
-                url=link.strip(),
-                source=source,
-                published_ts=pub_ts))
+            out.append(
+                NewsHeadline(
+                    title=title.strip()[:220],
+                    url=link.strip(),
+                    source=source,
+                    published_ts=pub_ts,
+                )
+            )
         if len(out) >= limit:
             break
     return out
@@ -206,6 +210,7 @@ def _parse_ts(raw: str) -> float:
         return 0.0
     try:
         from email.utils import parsedate_to_datetime
+
         dt = parsedate_to_datetime(raw)
         if dt is not None:
             return dt.timestamp()
@@ -213,6 +218,7 @@ def _parse_ts(raw: str) -> float:
         pass
     try:
         from datetime import datetime
+
         # Handle common ISO-8601 shapes (with/without Z, with fractional s).
         _r = raw.replace("Z", "+00:00")
         return datetime.fromisoformat(_r).timestamp()
@@ -226,8 +232,7 @@ def _parse_ts(raw: str) -> float:
 # ------------------------------------------------------------------
 
 DEFAULT_TIMEOUT_S = 8.0
-FETCH_USER_AGENT = (
-    "Mozilla/5.0 (compatible; AcervatorNewsTicker/1.0; +local)")
+FETCH_USER_AGENT = "Mozilla/5.0 (compatible; AcervatorNewsTicker/1.0; +local)"
 
 # Refusing entity declarations bounds what a feed can make the parser
 # ALLOCATE, but not what it can make the socket READ. A plain oversized
@@ -239,8 +244,9 @@ FETCH_USER_AGENT = (
 MAX_FEED_BYTES = 4 * 1024 * 1024
 
 
-def fetch_one(source: NewsSource,
-              timeout: float = DEFAULT_TIMEOUT_S) -> list[NewsHeadline]:
+def fetch_one(
+    source: NewsSource, timeout: float = DEFAULT_TIMEOUT_S
+) -> list[NewsHeadline]:
     """Blocking single-feed fetch + parse. Returns [] on any error."""
     try:
         # The scheme allowlist is PERFORMED here, not asserted in a
@@ -254,7 +260,8 @@ def fetch_one(source: NewsSource,
         req.add_header(
             "Accept",
             "application/rss+xml, application/atom+xml, "
-            "application/xml, text/xml, */*")
+            "application/xml, text/xml, */*",
+        )
         with safe_urlopen(req, timeout=timeout) as resp:
             # One byte over the cap is read on purpose: it is what
             # distinguishes "exactly at the limit" from "truncated".
@@ -262,7 +269,10 @@ def fetch_one(source: NewsSource,
         if len(body) > MAX_FEED_BYTES:
             logger.warning(
                 "crypto_news_ticker: %s response exceeded %d bytes; "
-                "dropped unparsed", source.name, MAX_FEED_BYTES)
+                "dropped unparsed",
+                source.name,
+                MAX_FEED_BYTES,
+            )
             return []
         return parse_rss(body, source)
     except ValueError as _refused:
@@ -271,18 +281,17 @@ def fetch_one(source: NewsSource,
         # can only fire once the source list carries a scheme it must
         # not have -- the one day it has to be loud, not debug.
         logger.warning(
-            "crypto_news_ticker: %s refused before fetch: %s",
-            source.name, _refused)
+            "crypto_news_ticker: %s refused before fetch: %s", source.name, _refused
+        )
         return []
     except Exception as _exc:  # noqa: BLE001 - per-feed best-effort
-        logger.debug(
-            "crypto_news_ticker: %s fetch failed: %s",
-            source.name, _exc)
+        logger.debug("crypto_news_ticker: %s fetch failed: %s", source.name, _exc)
         return []
 
 
-def fetch_all(sources: tuple[NewsSource, ...] = NEWS_SOURCES,
-              per_source_limit: int = 5) -> list[NewsHeadline]:
+def fetch_all(
+    sources: tuple[NewsSource, ...] = NEWS_SOURCES, per_source_limit: int = 5
+) -> list[NewsHeadline]:
     """Fetch every source in parallel, merge, sort by pubDate
     descending (unknown timestamps sink to the end)."""
     out: list[NewsHeadline] = []
@@ -293,8 +302,7 @@ def fetch_all(sources: tuple[NewsSource, ...] = NEWS_SOURCES,
                 headlines = f.result()
                 out.extend(headlines[:per_source_limit])
             except Exception as _exc:  # noqa: BLE001 - per-feed best-effort
-                logger.debug(
-                    "crypto_news_ticker: aggregate raised %s", _exc)
+                logger.debug("crypto_news_ticker: aggregate raised %s", _exc)
     out.sort(key=lambda h: h.published_ts, reverse=True)
     return out
 
@@ -310,6 +318,7 @@ if _HAS_QT:
 
     class _FetchWorker(QObject):
         """Runs fetch_all() in a worker thread; emits results back."""
+
         headlinesReady = Signal(list)
         failed = Signal(str)
 
@@ -350,12 +359,11 @@ if _HAS_QT:
             self._label.setToolTip(
                 "Cycling crypto + fintech headlines from 10 free RSS "
                 "feeds. Click to open story in default browser. "
-                "Hover to pause auto-advance. Refreshes hourly.")
+                "Hover to pause auto-advance. Refreshes hourly."
+            )
             self._label.setCursor(QCursor(Qt.PointingHandCursor))
-            self._label.setStyleSheet(
-                "color: #cfe6ff; font-size: 11px;")
-            self._label.setTextInteractionFlags(
-                Qt.TextSelectableByMouse)
+            self._label.setStyleSheet("color: #cfe6ff; font-size: 11px;")
+            self._label.setTextInteractionFlags(Qt.TextSelectableByMouse)
             self._label.installEventFilter(self)
             hb.addWidget(self._label, stretch=1)
 
@@ -389,11 +397,9 @@ if _HAS_QT:
             self._worker_thread.started.connect(self._worker.run)
             self._worker.headlinesReady.connect(self._on_headlines)
             self._worker.failed.connect(self._on_fetch_failed)
-            self._worker.headlinesReady.connect(
-                self._worker_thread.quit)
+            self._worker.headlinesReady.connect(self._worker_thread.quit)
             self._worker.failed.connect(self._worker_thread.quit)
-            self._worker_thread.finished.connect(
-                self._teardown_worker)
+            self._worker_thread.finished.connect(self._teardown_worker)
             self._worker_thread.start()
 
         def current_headlines(self) -> list[NewsHeadline]:
@@ -411,11 +417,9 @@ if _HAS_QT:
                 self._label.setText("(no crypto news feeds reachable)")
 
         def _on_fetch_failed(self, msg: str) -> None:
-            logger.debug(
-                "crypto_news_ticker fetch failed: %s", msg)
+            logger.debug("crypto_news_ticker fetch failed: %s", msg)
             if not self._headlines:
-                self._label.setText(
-                    "(crypto news feeds unavailable)")
+                self._label.setText("(crypto news feeds unavailable)")
 
         def _advance(self) -> None:
             if self._paused or not self._headlines:
@@ -430,14 +434,16 @@ if _HAS_QT:
             _prefix = f"[{self._index + 1}/{len(self._headlines)}] "
             self._label.setText(_prefix + h.display_text())
             self._label.setToolTip(
-                f"{h.source.name} — click to open in default browser.\n"
-                f"{h.url}")
+                f"{h.source.name} — click to open in default browser.\n" f"{h.url}"
+            )
 
         def _teardown_worker(self) -> None:
             if self._worker_thread is not None:
                 try:
                     self._worker_thread.wait(50)
-                except Exception:  # noqa: BLE001, S110 - thread wait best-effort during teardown
+                except (
+                    Exception
+                ):  # noqa: BLE001, S110 - thread wait best-effort during teardown
                     pass
                 self._worker_thread.deleteLater()
             self._worker_thread = None
@@ -459,10 +465,11 @@ if _HAS_QT:
                     h = self._headlines[self._index]
                     try:
                         import webbrowser
+
                         webbrowser.open(h.url, new=2)
                     except Exception as _wb_exc:  # noqa: BLE001
                         logger.warning(
-                            "News ticker: open failed for %r: %s",
-                            h.url, _wb_exc)
+                            "News ticker: open failed for %r: %s", h.url, _wb_exc
+                        )
                     return True
             return super().eventFilter(watched, event)

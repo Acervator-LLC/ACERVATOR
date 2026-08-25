@@ -23,11 +23,12 @@ logger = logging.getLogger("acervator.reconciliation")
 @dataclass
 class JournalEntry:
     """A single trade journal entry with full context."""
+
     timestamp: float
     bot_id: str
     symbol: str
-    action: str             # "scrum", "fold", "distribute", "grid_buy", "grid_sell"
-    side: str               # "buy" or "sell"
+    action: str  # "scrum", "fold", "distribute", "grid_buy", "grid_sell"
+    side: str  # "buy" or "sell"
     price: float
     quantity: float
     cost: float
@@ -48,12 +49,13 @@ class JournalEntry:
     slippage_pct: float = 0.0
     fill_time_ms: float = 0.0
     # Decision reasoning
-    reason: str = ""        # Why this trade was made
+    reason: str = ""  # Why this trade was made
 
 
 @dataclass
 class OrphanedOrder:
     """An order found on exchange with no matching local bot state."""
+
     exchange_id: str
     order_id: str
     symbol: str
@@ -69,6 +71,7 @@ class OrphanedOrder:
 @dataclass
 class ReconciliationResult:
     """Result of a reconciliation check."""
+
     timestamp: float
     exchange_id: str
     orders_checked: int
@@ -97,19 +100,35 @@ class TradeJournal:
         """Record a journal entry (memory + disk)."""
         self._entries.append(entry)
         if len(self._entries) > self._max_memory:
-            self._entries = self._entries[-self._max_memory:]
+            self._entries = self._entries[-self._max_memory :]
         self._write_entry(entry)
-        logger.debug("Journal: %s %s %.8f %s @ $%.8f (P/L=$%.4f)",
-                      entry.action, entry.side, entry.quantity,
-                      entry.symbol, entry.price, entry.pnl)
+        logger.debug(
+            "Journal: %s %s %.8f %s @ $%.8f (P/L=$%.4f)",
+            entry.action,
+            entry.side,
+            entry.quantity,
+            entry.symbol,
+            entry.price,
+            entry.pnl,
+        )
 
-    def record_from_trade(self, bot_id: str, symbol: str, action: str,
-                          side: str, price: float, quantity: float,
-                          cost: float = 0, pnl: float = 0,
-                          ta_summary=None, exchange_id: str = "",
-                          order_id: str = "", reason: str = "",
-                          execution_strategy: str = "market",
-                          slippage_pct: float = 0):
+    def record_from_trade(
+        self,
+        bot_id: str,
+        symbol: str,
+        action: str,
+        side: str,
+        price: float,
+        quantity: float,
+        cost: float = 0,
+        pnl: float = 0,
+        ta_summary=None,
+        exchange_id: str = "",
+        order_id: str = "",
+        reason: str = "",
+        execution_strategy: str = "market",
+        slippage_pct: float = 0,
+    ):
 
         # sadp: R28 R29 R33  # reconcile record: fail-loudly(R28) idempotent(R29) append-only(R33)
         """Convenience method to record from trade parameters."""
@@ -118,12 +137,12 @@ class TradeJournal:
         ta_tf = ""
         ta_sigs = {}
         if ta_summary:
-            ta_dir = getattr(ta_summary, 'consensus_direction', None)
+            ta_dir = getattr(ta_summary, "consensus_direction", None)
             if ta_dir:
-                ta_dir = ta_dir.name if hasattr(ta_dir, 'name') else str(ta_dir)
-            ta_conf = getattr(ta_summary, 'consensus_confidence', 0)
-            ta_tf = getattr(ta_summary, 'timeframe', '')
-            for sig in getattr(ta_summary, 'signals', []):
+                ta_dir = ta_dir.name if hasattr(ta_dir, "name") else str(ta_dir)
+            ta_conf = getattr(ta_summary, "consensus_confidence", 0)
+            ta_tf = getattr(ta_summary, "timeframe", "")
+            for sig in getattr(ta_summary, "signals", []):
                 ta_sigs[sig.indicator] = sig.direction.name
 
         entry = JournalEntry(
@@ -148,8 +167,9 @@ class TradeJournal:
         )
         self.record(entry)
 
-    def get_entries(self, bot_id: str = "", symbol: str = "",
-                    hours: float = 24, limit: int = 200) -> list[dict]:
+    def get_entries(
+        self, bot_id: str = "", symbol: str = "", hours: float = 24, limit: int = 200
+    ) -> list[dict]:
         """Query journal entries."""
         cutoff = time.time() - hours * 3600
         results = []
@@ -181,7 +201,7 @@ class TradeJournal:
             "actions": actions,
             "total_pnl": round(sum(e.pnl for e in self._entries), 4),
             "date_range": f"{time.ctime(self._entries[0].timestamp)} → "
-                          f"{time.ctime(self._entries[-1].timestamp)}",
+            f"{time.ctime(self._entries[-1].timestamp)}",
             "journal_dir": str(self._dir),
         }
 
@@ -210,12 +230,17 @@ class TradeJournal:
                             try:
                                 d = json.loads(line)
                                 # Convert dict keys that are nested dicts
-                                entry = JournalEntry(**{
-                                    k: v for k, v in d.items()
-                                    if k in JournalEntry.__dataclass_fields__
-                                })
+                                entry = JournalEntry(
+                                    **{
+                                        k: v
+                                        for k, v in d.items()
+                                        if k in JournalEntry.__dataclass_fields__
+                                    }
+                                )
                                 self._entries.append(entry)
-                            except Exception:  # R28-OK: reconciliation probe best-effort
+                            except (
+                                Exception
+                            ):  # R28-OK: reconciliation probe best-effort
                                 pass
             logger.info("Loaded %d journal entries from disk", len(self._entries))
         except Exception as e:
@@ -231,8 +256,9 @@ class ReconciliationEngine:
     def __init__(self):
         self._results: list[ReconciliationResult] = []
 
-    async def reconcile(self, exchange, bot_manager,
-                        exchange_id: str) -> ReconciliationResult:
+    async def reconcile(
+        self, exchange, bot_manager, exchange_id: str
+    ) -> ReconciliationResult:
 
         # sadp: R28 R29  # reconciliation: fail-loudly(R28) idempotent(R29)
         """
@@ -240,8 +266,8 @@ class ReconciliationEngine:
         """
         now = time.time()
         result = ReconciliationResult(
-            timestamp=now, exchange_id=exchange_id,
-            orders_checked=0, matched=0)
+            timestamp=now, exchange_id=exchange_id, orders_checked=0, matched=0
+        )
 
         try:
             # Fetch all open orders from exchange
@@ -280,15 +306,22 @@ class ReconciliationEngine:
                         quantity=order.get("amount", 0),
                         filled=order.get("filled", 0),
                         status=order.get("status", ""),
-                        created_at=order.get("timestamp", 0) / 1000
-                            if order.get("timestamp") else 0,
+                        created_at=(
+                            order.get("timestamp", 0) / 1000
+                            if order.get("timestamp")
+                            else 0
+                        ),
                         recommendation=self._recommend_action(order),
                     )
                     result.orphaned.append(orphan)
 
-            logger.info("Reconciliation %s: %d orders checked, %d matched, "
-                        "%d orphaned", exchange_id, result.orders_checked,
-                        result.matched, len(result.orphaned))
+            logger.info(
+                "Reconciliation %s: %d orders checked, %d matched, " "%d orphaned",
+                exchange_id,
+                result.orders_checked,
+                result.matched,
+                len(result.orphaned),
+            )
 
         except Exception as e:
             logger.error("Reconciliation failed for %s: %s", exchange_id, e)
@@ -301,8 +334,9 @@ class ReconciliationEngine:
         """Cancel an orphaned order."""
         try:
             await exchange.cancel_order(orphan.order_id, orphan.symbol)
-            logger.info("Cancelled orphaned order %s on %s",
-                        orphan.order_id, orphan.exchange_id)
+            logger.info(
+                "Cancelled orphaned order %s on %s", orphan.order_id, orphan.exchange_id
+            )
             return True
         except Exception as e:
             logger.error("Failed to cancel orphan %s: %s", orphan.order_id, e)
@@ -312,15 +346,16 @@ class ReconciliationEngine:
         """Recommend action for an orphaned order."""
         filled = order.get("filled", 0)
         amount = order.get("amount", 0)
-        age = time.time() - (order.get("timestamp", 0) / 1000
-                             if order.get("timestamp") else time.time())
+        age = time.time() - (
+            order.get("timestamp", 0) / 1000 if order.get("timestamp") else time.time()
+        )
 
         if filled > 0 and filled < amount:
             return "monitor"  # Partially filled, don't cancel
         if age > 86400:
-            return "cancel"   # Over 24 hours old
+            return "cancel"  # Over 24 hours old
         if age > 3600:
-            return "cancel"   # Over 1 hour old
+            return "cancel"  # Over 1 hour old
         return "monitor"
 
     def get_latest_result(self, exchange_id: str = "") -> Optional[dict]:
@@ -334,9 +369,13 @@ class ReconciliationEngine:
                     "matched": r.matched,
                     "orphaned_count": len(r.orphaned),
                     "orphaned": [
-                        {"order_id": o.order_id[:12], "symbol": o.symbol,
-                         "side": o.side, "price": o.price,
-                         "recommendation": o.recommendation}
+                        {
+                            "order_id": o.order_id[:12],
+                            "symbol": o.symbol,
+                            "side": o.side,
+                            "price": o.price,
+                            "recommendation": o.recommendation,
+                        }
                         for o in r.orphaned
                     ],
                 }
@@ -391,12 +430,13 @@ class CrashRecovery:
         """Get info about available recovery data."""
         snapshot = self.load_snapshot()
         journal_dir = self._dir.parent / "journal"
-        journal_files = list(journal_dir.glob("journal_*.jsonl")) if journal_dir.exists() else []
+        journal_files = (
+            list(journal_dir.glob("journal_*.jsonl")) if journal_dir.exists() else []
+        )
 
         return {
             "has_snapshot": snapshot is not None,
-            "snapshot_age": (time.time() - snapshot["timestamp"]
-                            if snapshot else 0),
+            "snapshot_age": (time.time() - snapshot["timestamp"] if snapshot else 0),
             "snapshot_bots": snapshot.get("bot_count", 0) if snapshot else 0,
             "journal_files": len(journal_files),
             "recovery_dir": str(self._dir),

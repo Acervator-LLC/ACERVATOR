@@ -58,6 +58,7 @@ refuses to call the function at all unless the replacement took. The
 override says where the file SHOULD go; the temporary home bounds where
 it CAN go.
 """
+
 from __future__ import annotations
 
 import ast
@@ -99,8 +100,11 @@ def _module_constant(src: str, name: str) -> object:
 
 def _function(name: str) -> ast.FunctionDef:
     """Return the named top-level function's AST node from main.py."""
-    return next(n for n in ast.walk(MAIN_TREE)
-                if isinstance(n, ast.FunctionDef) and n.name == name)
+    return next(
+        n
+        for n in ast.walk(MAIN_TREE)
+        if isinstance(n, ast.FunctionDef) and n.name == name
+    )
 
 
 @pytest.fixture
@@ -123,7 +127,8 @@ def drive_setup(monkeypatch: pytest.MonkeyPatch) -> Iterator[Driver]:
         # nothing after this line runs unless home is already fake.
         assert Path.home() == fake_home, (
             "Path.home() was not redirected, so driving the real setup "
-            "here could write into the operator's tree. Refusing.")
+            "here could write into the operator's tree. Refusing."
+        )
         if override is None:
             monkeypatch.delenv(_OVERRIDE, raising=False)
         else:
@@ -164,8 +169,9 @@ class TestTheOverrideIsRead:
         """
         node = _function("_setup_faulthandler")
         names = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
-        assert "CRASH_LOG_ROOT_ENV" in names, \
-            "_setup_faulthandler ignores the override; the leak is back"
+        assert (
+            "CRASH_LOG_ROOT_ENV" in names
+        ), "_setup_faulthandler ignores the override; the leak is back"
 
     def test_it_still_defaults_to_the_runtime_tree(self) -> None:
         """NEGATIVE CONTROL: the operator's default must not move.
@@ -175,8 +181,7 @@ class TestTheOverrideIsRead:
         leak by relocating the default would pass every other test in
         this file and quietly break the crash diagnostics.
         """
-        segment = ast.get_source_segment(
-            MAIN_SRC, _function("_setup_faulthandler"))
+        segment = ast.get_source_segment(MAIN_SRC, _function("_setup_faulthandler"))
         assert ".acervator_logs" in (segment or "")
 
     def test_the_constant_is_defined_before_faulthandler_is_armed(self) -> None:
@@ -188,26 +193,34 @@ class TestTheOverrideIsRead:
         function's own try block, and kill the boot.
         """
         declared = min(
-            n.lineno for n in MAIN_TREE.body
+            n.lineno
+            for n in MAIN_TREE.body
             if isinstance(n, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == "CRASH_LOG_ROOT_ENV"
-                    for t in n.targets))
+            and any(
+                isinstance(t, ast.Name) and t.id == "CRASH_LOG_ROOT_ENV"
+                for t in n.targets
+            )
+        )
         armed = min(
-            n.lineno for n in MAIN_TREE.body
+            n.lineno
+            for n in MAIN_TREE.body
             if isinstance(n, ast.Assign)
             and isinstance(n.value, ast.Call)
             and isinstance(n.value.func, ast.Name)
-            and n.value.func.id == "_setup_faulthandler")
+            and n.value.func.id == "_setup_faulthandler"
+        )
         assert declared < armed, (
             f"CRASH_LOG_ROOT_ENV is declared at line {declared} but "
-            f"_setup_faulthandler() is called at line {armed}")
+            f"_setup_faulthandler() is called at line {armed}"
+        )
 
 
 class TestTheRealPathHonoursIt:
     """Runtime: these call the function the application calls."""
 
     def test_the_log_lands_in_the_override_directory(
-            self, tmp_path: Path, drive_setup: Driver) -> None:
+        self, tmp_path: Path, drive_setup: Driver
+    ) -> None:
         """THE WHOLE POINT.
 
         If this goes red, a gate run is depositing files in the
@@ -216,14 +229,16 @@ class TestTheRealPathHonoursIt:
         override = tmp_path / "override"
         landed = drive_setup(tmp_path / "home", override).resolve()
 
-        assert landed.parent == override.resolve(), \
-            f"the faulthandler log landed at {landed}, not under {override}"
+        assert (
+            landed.parent == override.resolve()
+        ), f"the faulthandler log landed at {landed}, not under {override}"
         assert landed.is_file(), "a path was returned but no file exists"
         assert landed.name.startswith("faulthandler_")
         assert "faulthandler started" in landed.read_text(encoding="utf-8")
 
     def test_the_home_tree_is_left_alone_when_overridden(
-            self, tmp_path: Path, drive_setup: Driver) -> None:
+        self, tmp_path: Path, drive_setup: Driver
+    ) -> None:
         """Containment, stated as an assertion.
 
         With the override set, the home log directory must not even be
@@ -237,7 +252,8 @@ class TestTheRealPathHonoursIt:
         assert stray == [], f"faulthandler logs leaked into home: {stray}"
 
     def test_it_still_arms_and_still_writes_home_with_no_override(
-            self, tmp_path: Path, drive_setup: Driver) -> None:
+        self, tmp_path: Path, drive_setup: Driver
+    ) -> None:
         """THE APPLICATION'S OWN BEHAVIOUR, driven rather than argued.
 
         faulthandler exists because the operator relies on a native
@@ -248,10 +264,12 @@ class TestTheRealPathHonoursIt:
         home = tmp_path / "home"
         landed = drive_setup(home, None).resolve()
 
-        assert faulthandler.is_enabled(), \
-            "faulthandler did not arm; native crashes now dump nothing"
-        assert landed.parent == (home / ".acervator_logs").resolve(), \
-            f"the default log root moved to {landed.parent}"
+        assert (
+            faulthandler.is_enabled()
+        ), "faulthandler did not arm; native crashes now dump nothing"
+        assert (
+            landed.parent == (home / ".acervator_logs").resolve()
+        ), f"the default log root moved to {landed.parent}"
         assert landed.is_file()
         assert "faulthandler started" in landed.read_text(encoding="utf-8")
 
@@ -263,14 +281,16 @@ class TestThisSuiteIsRedirectedRightNow:
         """The redirect must be armed for the whole session, not a test."""
         assert os.environ.get(_OVERRIDE), (
             f"{_OVERRIDE} is unset while the suite is running, so the "
-            f"next import of main writes into the operator's tree")
+            f"next import of main writes into the operator's tree"
+        )
 
     def test_the_redirect_points_outside_the_live_tree(self) -> None:
         """A redirect that resolves back into the live tree is no redirect."""
         target = Path(os.environ[_OVERRIDE]).resolve()
-        for forbidden in (Path.home() / ".acervator",
-                          Path.home() / ".acervator_logs"):
-            assert target != forbidden, \
-                f"the redirect resolves onto the live tree: {target}"
-            assert forbidden not in target.parents, \
-                f"the redirect resolves inside the live tree: {target}"
+        for forbidden in (Path.home() / ".acervator", Path.home() / ".acervator_logs"):
+            assert (
+                target != forbidden
+            ), f"the redirect resolves onto the live tree: {target}"
+            assert (
+                forbidden not in target.parents
+            ), f"the redirect resolves inside the live tree: {target}"

@@ -23,6 +23,7 @@ Half these tests are controls. They demand real numbers back for
 every honest case, so a "fix" that simply refused everything would be
 caught here rather than in production.
 """
+
 from __future__ import annotations
 
 import logging
@@ -39,8 +40,11 @@ BTC_USD = 61234.5
 LOGGER = "acervator.bot"
 
 
-def _cfg(base_currency: str = "USD", target_balance: float = CLAIM_USD,
-         exchange_id: str = EXCHANGE) -> BotConfig:
+def _cfg(
+    base_currency: str = "USD",
+    target_balance: float = CLAIM_USD,
+    exchange_id: str = EXCHANGE,
+) -> BotConfig:
     """A real config, so the field names stay pinned to the real one."""
     return BotConfig(
         exchange_id=exchange_id,
@@ -141,8 +145,7 @@ def _bitcoin_fleet(third: Any) -> BotManager:
 
 
 def _ask(manager: BotManager, currency: str = "USD") -> Any:
-    return manager.sum_sibling_base_currency_claims(
-        "asker", EXCHANGE, currency)
+    return manager.sum_sibling_base_currency_claims("asker", EXCHANGE, currency)
 
 
 @pytest.fixture
@@ -182,6 +185,7 @@ def warned():
 # The paired test the whole file turns on.
 # ---------------------------------------------------------------------
 
+
 def test_one_unreadable_sibling_is_never_silently_dropped(warned) -> None:
     """Same fleet, twice. Readable gives the true total and says
     nothing. Unreadable gives no total and says whose claim went
@@ -197,20 +201,20 @@ def test_one_unreadable_sibling_is_never_silently_dropped(warned) -> None:
 
     assert broken is None, (
         "A total that leaves a bot's claim out is lower than the truth. "
-        f"It reported {broken!r} where the truth is {3 * CLAIM_USD}.")
+        f"It reported {broken!r} where the truth is {3 * CLAIM_USD}."
+    )
     assert len(warned) == 1
     assert "sib_3" in warned[0]
-    assert "2000.00000000" in warned[0], (
-        "The warning must say how big the gap was.")
+    assert "2000.00000000" in warned[0], "The warning must say how big the gap was."
 
 
 # ---------------------------------------------------------------------
 # Controls. Every honest case must still hand back a real number.
 # ---------------------------------------------------------------------
 
+
 def test_every_sibling_readable_totals_all_claims() -> None:
-    assert _ask(_dollar_fleet(_Bot(_cfg()))) == pytest.approx(
-        3 * CLAIM_USD)
+    assert _ask(_dollar_fleet(_Bot(_cfg()))) == pytest.approx(3 * CLAIM_USD)
 
 
 def test_the_asking_bot_does_not_claim_against_itself() -> None:
@@ -239,8 +243,7 @@ def test_a_bot_that_claims_nothing_is_a_real_zero() -> None:
 
 def test_an_allocated_chunk_counts_towards_the_total() -> None:
     """A chunk is already in pool units and is added as it stands."""
-    total = _ask(_dollar_fleet(
-        _Bot(_cfg(target_balance=0.0), chunk=250.0)))
+    total = _ask(_dollar_fleet(_Bot(_cfg(target_balance=0.0), chunk=250.0)))
     assert total == pytest.approx(2 * CLAIM_USD + 250.0)
 
 
@@ -251,14 +254,17 @@ def test_a_bitcoin_pool_converts_dollars_with_the_cached_rate() -> None:
     assert total == pytest.approx(3 * CLAIM_USD / BTC_USD)
 
 
-@pytest.mark.parametrize("bot", [
-    _Bot(_cfg(), rate=0.0),
-    _Bot(_cfg(), rate=math.nan),
-    _NoRateAttribute(_cfg()),
-    _RateRaises(_cfg()),
-], ids=["rate-zero", "rate-not-a-number", "no-rate", "rate-raises"])
-def test_a_dollar_pool_needs_no_rate_and_still_counts_in_full(
-        bot: Any) -> None:
+@pytest.mark.parametrize(
+    "bot",
+    [
+        _Bot(_cfg(), rate=0.0),
+        _Bot(_cfg(), rate=math.nan),
+        _NoRateAttribute(_cfg()),
+        _RateRaises(_cfg()),
+    ],
+    ids=["rate-zero", "rate-not-a-number", "no-rate", "rate-raises"],
+)
+def test_a_dollar_pool_needs_no_rate_and_still_counts_in_full(bot: Any) -> None:
     """One dollar per unit is the true rate for a dollar pool, not a
     stand-in for a rate we could not get. So an unusable cached rate
     costs nothing here and the claim is still counted."""
@@ -269,19 +275,31 @@ def test_a_dollar_pool_needs_no_rate_and_still_counts_in_full(
 # Defect rows. Each one used to vanish from the total in silence.
 # ---------------------------------------------------------------------
 
-@pytest.mark.parametrize("bot,expect_in_warning", [
-    (_Bot(_CfgUnreadable()), "settings could not be read"),
-    (_Bot(_CfgAllocationRaises()), "dollar allocation could not be read"),
-    (_Bot(_cfg(target_balance=math.nan)), "is not a number"),
-    (_Bot(_cfg(target_balance=-5.0)), "negative"),
-    (_ChunkRaises(_cfg()), "allocated chunk could not be read"),
-    (_Bot(_cfg(), chunk=math.nan), "not a number"),
-    (_Bot(_cfg(), chunk=-3.0), "negative"),
-], ids=["config-unreadable", "allocation-raises", "allocation-not-a-number",
-        "allocation-negative", "chunk-raises", "chunk-not-a-number",
-        "chunk-negative"])
+
+@pytest.mark.parametrize(
+    "bot,expect_in_warning",
+    [
+        (_Bot(_CfgUnreadable()), "settings could not be read"),
+        (_Bot(_CfgAllocationRaises()), "dollar allocation could not be read"),
+        (_Bot(_cfg(target_balance=math.nan)), "is not a number"),
+        (_Bot(_cfg(target_balance=-5.0)), "negative"),
+        (_ChunkRaises(_cfg()), "allocated chunk could not be read"),
+        (_Bot(_cfg(), chunk=math.nan), "not a number"),
+        (_Bot(_cfg(), chunk=-3.0), "negative"),
+    ],
+    ids=[
+        "config-unreadable",
+        "allocation-raises",
+        "allocation-not-a-number",
+        "allocation-negative",
+        "chunk-raises",
+        "chunk-not-a-number",
+        "chunk-negative",
+    ],
+)
 def test_an_unreadable_sibling_stops_the_total(
-        bot: Any, expect_in_warning: str, warned) -> None:
+    bot: Any, expect_in_warning: str, warned
+) -> None:
     total = _ask(_dollar_fleet(bot))
     assert total is None
     messages = " ".join(warned)
@@ -289,21 +307,24 @@ def test_an_unreadable_sibling_stops_the_total(
     assert expect_in_warning in messages
 
 
-@pytest.mark.parametrize("bot", [
-    _RateRaises(_cfg("BTC")),
-    _Bot(_cfg("BTC"), rate=0.0),
-    _Bot(_cfg("BTC"), rate=-1.0),
-    _Bot(_cfg("BTC"), rate=math.nan),
-    _NoRateAttribute(_cfg("BTC")),
-], ids=["rate-raises", "rate-zero", "rate-negative", "rate-not-a-number",
-        "no-rate"])
-def test_no_usable_rate_on_a_real_pool_stops_the_total(
-        bot: Any, warned) -> None:
+@pytest.mark.parametrize(
+    "bot",
+    [
+        _RateRaises(_cfg("BTC")),
+        _Bot(_cfg("BTC"), rate=0.0),
+        _Bot(_cfg("BTC"), rate=-1.0),
+        _Bot(_cfg("BTC"), rate=math.nan),
+        _NoRateAttribute(_cfg("BTC")),
+    ],
+    ids=["rate-raises", "rate-zero", "rate-negative", "rate-not-a-number", "no-rate"],
+)
+def test_no_usable_rate_on_a_real_pool_stops_the_total(bot: Any, warned) -> None:
     """Without a rate a dollar allocation cannot be turned into pool
     units. The old code used one dollar per unit, which read a $1,000
     allocation as a claim on 1,000 Bitcoin."""
     total = _bitcoin_fleet(bot).sum_sibling_base_currency_claims(
-        "asker", EXCHANGE, "BTC")
+        "asker", EXCHANGE, "BTC"
+    )
     assert total is None
     assert "sib_3" in " ".join(warned)
 
@@ -335,6 +356,5 @@ def test_nothing_can_be_mistaken_for_a_pool_with_no_claims() -> None:
     number. An unreadable fleet says nothing at all. The two answers
     must never be the same value."""
     empty = _manager(asker=_Bot(_cfg()))
-    assert empty.sum_sibling_base_currency_claims(
-        "asker", EXCHANGE, "USD") == 0.0
+    assert empty.sum_sibling_base_currency_claims("asker", EXCHANGE, "USD") == 0.0
     assert _ask(_dollar_fleet(_Bot(_CfgUnreadable()))) is None

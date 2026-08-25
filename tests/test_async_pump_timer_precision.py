@@ -45,6 +45,7 @@ WHAT EACH TEST WOULD MEAN IF IT FAILED
     own timer. Every assertion above would still pass while the running
     application kept the defect.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -133,7 +134,8 @@ def test_pump_timer_receives_its_nominal_interval(qt_app, asyncio_loop):
 
     assert len(samples) >= _FIRINGS, (
         f"the timer fired only {len(samples)} times in {_WATCHDOG_MS} ms; "
-        f"expected {_FIRINGS}. The pump is not running at all.")
+        f"expected {_FIRINGS}. The pump is not running at all."
+    )
 
     kept = samples[_DISCARD:]
     median = statistics.median(kept)
@@ -144,7 +146,8 @@ def test_pump_timer_receives_its_nominal_interval(qt_app, asyncio_loop):
         f"received a median of {median:.2f} ms (p95 {p95:.2f} ms) over "
         f"{len(kept)} firings, above the {_TOLERANCE_MS:.2f} ms ceiling. "
         f"Timer type in effect: {timer.timerType()!r}. Every coroutine in "
-        f"the application advances only when this fires.")
+        f"the application advances only when this fires."
+    )
 
 
 def test_pump_timer_asks_for_a_precise_timer(asyncio_loop):
@@ -155,7 +158,8 @@ def test_pump_timer_asks_for_a_precise_timer(asyncio_loop):
     assert timer.interval() == main.ASYNC_PUMP_INTERVAL_MS
     assert timer.timerType() == Qt.TimerType.PreciseTimer, (
         f"the pump timer is a {timer.timerType()!r}; Qt permits a coarse "
-        f"timer 5% drift and lets it coalesce with other timers.")
+        f"timer 5% drift and lets it coalesce with other timers."
+    )
 
 
 def test_a_plain_qtimer_defaults_to_coarse_on_this_build(qt_app):
@@ -167,7 +171,8 @@ def test_a_plain_qtimer_defaults_to_coarse_on_this_build(qt_app):
         f"a QTimer with no setTimerType call reports "
         f"{bare.timerType()!r} on this build, not CoarseTimer. The pump "
         f"fix is then a no-op and the tests above prove nothing; "
-        f"re-measure before trusting them.")
+        f"re-measure before trusting them."
+    )
 
 
 def test_main_wires_the_factory_in():
@@ -178,25 +183,39 @@ def test_main_wires_the_factory_in():
     tree = ast.parse(src)
 
     factory = next(
-        (n for n in tree.body
-         if isinstance(n, ast.FunctionDef) and n.name == "_make_async_pump_timer"),
-        None)
-    assert factory is not None, (
-        "main.py no longer defines _make_async_pump_timer at module level")
+        (
+            n
+            for n in tree.body
+            if isinstance(n, ast.FunctionDef) and n.name == "_make_async_pump_timer"
+        ),
+        None,
+    )
+    assert (
+        factory is not None
+    ), "main.py no longer defines _make_async_pump_timer at module level"
 
     # The pump body must live INSIDE the factory, not beside it.
     body_names = {
-        n.attr for n in ast.walk(factory)
-        if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
-        and n.value.id == "loop"}
+        n.attr
+        for n in ast.walk(factory)
+        if isinstance(n, ast.Attribute)
+        and isinstance(n.value, ast.Name)
+        and n.value.id == "loop"
+    }
     assert {"call_soon", "stop", "run_forever"} <= body_names, (
         f"_make_async_pump_timer no longer drives the asyncio loop; it "
-        f"touches only {sorted(body_names)}")
+        f"touches only {sorted(body_names)}"
+    )
 
-    entry = next(n for n in tree.body
-                 if isinstance(n, ast.FunctionDef) and n.name == "main")
-    called = {n.func.id for n in ast.walk(entry)
-              if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+    entry = next(
+        n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main"
+    )
+    called = {
+        n.func.id
+        for n in ast.walk(entry)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+    }
     assert "_make_async_pump_timer" in called, (
         "main() does not call _make_async_pump_timer; the factory is dead "
-        "code and the running application builds its own pump timer")
+        "code and the running application builds its own pump timer"
+    )

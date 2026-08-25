@@ -32,6 +32,7 @@ So the colour tests come in pairs: one that reads the model, and one
 that renders the widget and samples the pixel. Each pixel test carries
 a control that must fail if the sampler stops discriminating.
 """
+
 from __future__ import annotations
 
 import sys
@@ -46,7 +47,8 @@ if str(REPO_ROOT) not in sys.path:
 from src.core.event_bus import EventBus  # noqa: E402
 from src.trading.bot_container import BotManager, BotMode  # noqa: E402
 from src.trading.extractor_bot import (  # noqa: E402
-    ExtractorBot, ExtractorPosition,
+    ExtractorBot,
+    ExtractorPosition,
 )
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
@@ -78,9 +80,12 @@ def _parent() -> ScrummingBot:
     bot = object.__new__(_PricedScrummingBot)
     bot.bot_id = "scrum-eth"
     bot.config = _cfg(
-        exchange_id="coinbase", mode=BotMode.SCRUMMING,
-        target_asset=ETH, base_currency="USD",
-        scrumming_interval_pct=2.0, name="scrum-eth",
+        exchange_id="coinbase",
+        mode=BotMode.SCRUMMING,
+        target_asset=ETH,
+        base_currency="USD",
+        scrumming_interval_pct=2.0,
+        name="scrum-eth",
     )
     bot._bot_manager = None
     bot._fold_tranches = []
@@ -98,9 +103,12 @@ def _child(bot_id: str) -> ExtractorBot:
     bot = object.__new__(ExtractorBot)
     bot.bot_id = bot_id
     bot.config = _cfg(
-        exchange_id="coinbase", mode=BotMode.EXTRACTOR,
-        target_asset="ALT", base_currency=ETH,
-        name=f"name-of-{bot_id}", extractor_direction="normal",
+        exchange_id="coinbase",
+        mode=BotMode.EXTRACTOR,
+        target_asset="ALT",
+        base_currency=ETH,
+        name=f"name-of-{bot_id}",
+        extractor_direction="normal",
         inverted_extractor_standing_alt_units=0,
     )
     bot._positions = {}
@@ -108,18 +116,21 @@ def _child(bot_id: str) -> ExtractorBot:
     return bot
 
 
-def _position(pair: str, alt_units: float, entry: float,
-              mark: float) -> ExtractorPosition:
+def _position(
+    pair: str, alt_units: float, entry: float, mark: float
+) -> ExtractorPosition:
     """One open position, entered at a price for a quantity."""
     cost = alt_units * entry
     pos = ExtractorPosition(
-        pair=pair, state="in_flight",
+        pair=pair,
+        state="in_flight",
         artillery_size_base=cost,
         artillery_size_usd_at_entry=cost * 3000.0,
         alt_units=alt_units,
         entry_price_base_per_alt=entry,
         avg_buy_price_base_per_alt=entry,
-        cost_basis_base=cost, opened_at=1000.0,
+        cost_basis_base=cost,
+        opened_at=1000.0,
     )
     pos.last_price_base_per_alt = mark
     pos.last_priced_at = 1060.0
@@ -146,8 +157,7 @@ def _table():
     parent = _parent()
     kid_a, kid_b = _child("ext-a"), _child("ext-b")
     kid_a._positions["SOL/ETH"] = _position("SOL/ETH", 100.0, 0.005, 0.006)
-    kid_b._positions["AVAX/ETH"] = _position(
-        "AVAX/ETH", 250.0, 0.002, 0.0023)
+    kid_b._positions["AVAX/ETH"] = _position("AVAX/ETH", 250.0, 0.002, 0.0023)
     manager = BotManager(bus=EventBus())
     for bot in (parent, kid_a, kid_b):
         manager._bots[bot.bot_id] = bot
@@ -155,13 +165,28 @@ def _table():
 
     now = 1_000_000.0
     parent._fold_tranches = [
-        {"usd": 25.0, "units": 0.0125, "ref": 2100.0,
-         "initial_buy_price": 2000.0, "created_ts": now - 300,
-         "operator_initiated": True},
-        {"usd": 40.0, "units": 0.0190, "ref": 2050.0,
-         "initial_buy_price": 1980.0, "created_ts": now - 86_400},
-        {"usd": 12.5, "units": 0.0061, "ref": 1900.0,
-         "initial_buy_price": 1850.0, "created_ts": now - 260_000},
+        {
+            "usd": 25.0,
+            "units": 0.0125,
+            "ref": 2100.0,
+            "initial_buy_price": 2000.0,
+            "created_ts": now - 300,
+            "operator_initiated": True,
+        },
+        {
+            "usd": 40.0,
+            "units": 0.0190,
+            "ref": 2050.0,
+            "initial_buy_price": 1980.0,
+            "created_ts": now - 86_400,
+        },
+        {
+            "usd": 12.5,
+            "units": 0.0061,
+            "ref": 1900.0,
+            "initial_buy_price": 1850.0,
+            "created_ts": now - 260_000,
+        },
     ]
 
     dlg = BotLiveSettingsDialog.__new__(BotLiveSettingsDialog)
@@ -215,11 +240,13 @@ def _table():
     # that was in fact big enough.
     assert table.viewport().height() >= rows_height, (
         f"viewport {table.viewport().height()}px cannot show "
-        f"{rows_height}px of rows; pixel tests would sample outside it")
+        f"{rows_height}px of rows; pixel tests would sample outside it"
+    )
     last = table.visualRect(table.model().index(table.rowCount() - 1, 9))
     assert table.viewport().width() >= last.right(), (
         f"viewport {table.viewport().width()}px does not reach column 9 "
-        f"at x={last.right()}; the Fire column could not be sampled")
+        f"at x={last.right()}; the Fire column could not be sampled"
+    )
 
     # YIELD so `dlg` and `widget` stay referenced; returning would drop
     # the last reference and Qt would destroy the table mid-test.
@@ -238,23 +265,28 @@ def test_a_fold_row_reports_the_blue_background(_table):
             cell = _table.item(row, col)
             assert cell is not None, f"row {row} col {col} has no item"
             assert cell.background().color().name() == (
-                FOLD_TRANCHE_BG_HEX), f"row {row} col {col} is not blue"
+                FOLD_TRANCHE_BG_HEX
+            ), f"row {row} col {col} is not blue"
     assert FOLD_TRANCHE_BG_HEX == "#123a63"
 
 
 def test_an_extractor_row_reports_red_background_and_white_text(_table):
     """Part 2: item 4's colours, unchanged by the border work."""
     from src.gui.bot_live_settings import (
-        EXTRACTOR_TRANCHE_BG_HEX, EXTRACTOR_TRANCHE_FG_HEX,
+        EXTRACTOR_TRANCHE_BG_HEX,
+        EXTRACTOR_TRANCHE_FG_HEX,
     )
+
     for row in EXT_ROWS:
         for col in range(_table.columnCount()):
             cell = _table.item(row, col)
             assert cell is not None, f"row {row} col {col} has no item"
             assert cell.background().color().name() == (
-                EXTRACTOR_TRANCHE_BG_HEX), f"row {row} col {col} not red"
+                EXTRACTOR_TRANCHE_BG_HEX
+            ), f"row {row} col {col} not red"
             assert cell.foreground().color().name() == (
-                EXTRACTOR_TRANCHE_FG_HEX), f"row {row} col {col} not white"
+                EXTRACTOR_TRANCHE_FG_HEX
+            ), f"row {row} col {col} not white"
     assert EXTRACTOR_TRANCHE_BG_HEX == "#b3261e"
     assert EXTRACTOR_TRANCHE_FG_HEX == "#ffffff"
 
@@ -263,8 +295,10 @@ def test_the_two_row_types_are_different_colours(_table):
     """The whole point of the spec: a lease must not look like
     inventory. Asserted on the widget, not just on the constants."""
     from src.gui.bot_live_settings import (
-        EXTRACTOR_TRANCHE_BG_HEX, FOLD_TRANCHE_BG_HEX,
+        EXTRACTOR_TRANCHE_BG_HEX,
+        FOLD_TRANCHE_BG_HEX,
     )
+
     assert FOLD_TRANCHE_BG_HEX != EXTRACTOR_TRANCHE_BG_HEX
     fold_bg = _table.item(0, 0).background().color().name()
     ext_bg = _table.item(3, 0).background().color().name()
@@ -285,18 +319,17 @@ def test_the_semantic_foregrounds_survive_the_repaint(_table):
     assert source_cell.foreground().color().name() == "#00ccff"
 
     status_cell = _table.item(0, 7)
-    assert status_cell.foreground().color().name() in (
-        "#00ff88", "#ff9900")
+    assert status_cell.foreground().color().name() in ("#00ff88", "#ff9900")
 
     # A row with no manual fire keeps the ordinary body colour.
     from src.gui.bot_live_settings import FOLD_TRANCHE_FG_HEX
+
     plain = _table.item(1, 8)
     assert plain.text() == "auto scrum"
     assert plain.foreground().color().name() == FOLD_TRANCHE_FG_HEX
 
 
-def test_the_fold_row_keeps_its_fire_button_and_the_extractor_has_none(
-        _table):
+def test_the_fold_row_keeps_its_fire_button_and_the_extractor_has_none(_table):
     """The Fire button indexes `_fold_tranches`. A button on an
     Extractor row would fire an unrelated fold tranche."""
     for row in FOLD_ROWS:
@@ -345,14 +378,17 @@ def test_each_row_type_maps_to_its_own_border_colour():
     """Per-row derivation, because no single colour clears 3:1 against
     both fills and both theme backgrounds."""
     from src.gui.bot_live_settings import (
-        EXTRACTOR_TRANCHE_BG_HEX, EXTRACTOR_TRANCHE_BORDER_HEX,
-        FOLD_TRANCHE_BG_HEX, FOLD_TRANCHE_BORDER_HEX,
+        EXTRACTOR_TRANCHE_BG_HEX,
+        EXTRACTOR_TRANCHE_BORDER_HEX,
+        FOLD_TRANCHE_BG_HEX,
+        FOLD_TRANCHE_BORDER_HEX,
         TRANCHE_ROW_BORDER_BY_BG,
     )
-    assert TRANCHE_ROW_BORDER_BY_BG[FOLD_TRANCHE_BG_HEX] == (
-        FOLD_TRANCHE_BORDER_HEX)
+
+    assert TRANCHE_ROW_BORDER_BY_BG[FOLD_TRANCHE_BG_HEX] == (FOLD_TRANCHE_BORDER_HEX)
     assert TRANCHE_ROW_BORDER_BY_BG[EXTRACTOR_TRANCHE_BG_HEX] == (
-        EXTRACTOR_TRANCHE_BORDER_HEX)
+        EXTRACTOR_TRANCHE_BORDER_HEX
+    )
     assert FOLD_TRANCHE_BORDER_HEX != EXTRACTOR_TRANCHE_BORDER_HEX
 
 
@@ -369,8 +405,7 @@ def test_the_rows_are_tall_enough_to_read_as_bands(_table):
     """A fill reads as a container only when the band has height."""
     from src.gui.bot_live_settings import TRANCHE_ROW_HEIGHT_PX
 
-    assert _table.verticalHeader().defaultSectionSize() == (
-        TRANCHE_ROW_HEIGHT_PX)
+    assert _table.verticalHeader().defaultSectionSize() == (TRANCHE_ROW_HEIGHT_PX)
     assert TRANCHE_ROW_HEIGHT_PX >= 24
 
 
@@ -414,7 +449,8 @@ def _px(image, x: int, y: int) -> str:
     ix, iy = int(x * ratio), int(y * ratio)
     assert 0 <= ix < image.width() and 0 <= iy < image.height(), (
         f"logical ({x},{y}) -> device ({ix},{iy}) is outside the "
-        f"{image.width()}x{image.height()} render at ratio {ratio}")
+        f"{image.width()}x{image.height()} render at ratio {ratio}"
+    )
     return QColor(image.pixel(ix, iy)).name()
 
 
@@ -453,14 +489,15 @@ def test_the_container_edge_actually_renders_on_every_row(_table):
     """Part 3, measured at the pixel. Each row's edge is its OWN
     colour, so this also proves the per-row derivation works."""
     from src.gui.bot_live_settings import (
-        EXTRACTOR_TRANCHE_BORDER_HEX, FOLD_TRANCHE_BORDER_HEX,
+        EXTRACTOR_TRANCHE_BORDER_HEX,
+        FOLD_TRANCHE_BORDER_HEX,
     )
+
     image = _render(_table)
     for row in FOLD_ROWS:
         assert _edge_pixel(_table, image, row) == FOLD_TRANCHE_BORDER_HEX
     for row in EXT_ROWS:
-        assert _edge_pixel(_table, image, row) == (
-            EXTRACTOR_TRANCHE_BORDER_HEX)
+        assert _edge_pixel(_table, image, row) == (EXTRACTOR_TRANCHE_BORDER_HEX)
 
 
 def _bring_into_view(table, row: int, col: int) -> None:
@@ -520,8 +557,8 @@ def test_the_container_edge_survives_the_fire_button_column(_table):
         _bring_into_view(_table, row, 9)
         image = _render(_table)
         assert _edge_pixel_col(_table, image, row, 9) == (
-            FOLD_TRANCHE_BORDER_HEX), (
-            "the container edge is broken at the Fire button column")
+            FOLD_TRANCHE_BORDER_HEX
+        ), "the container edge is broken at the Fire button column"
 
 
 def test_the_container_edge_survives_the_arbiter_button_column(_table):
@@ -537,16 +574,16 @@ def test_the_container_edge_survives_the_arbiter_button_column(_table):
     is; a fold row has only a painted em dash there.
     """
     from src.gui.bot_live_settings import (
-        ARBITER_COLUMN_INDEX, EXTRACTOR_TRANCHE_BORDER_HEX,
+        ARBITER_COLUMN_INDEX,
+        EXTRACTOR_TRANCHE_BORDER_HEX,
     )
 
     for row in EXT_ROWS:
         _bring_into_view(_table, row, ARBITER_COLUMN_INDEX)
         image = _render(_table)
-        assert _edge_pixel_col(
-            _table, image, row, ARBITER_COLUMN_INDEX) == (
-            EXTRACTOR_TRANCHE_BORDER_HEX), (
-            "the container edge is broken at the Arbiter column")
+        assert _edge_pixel_col(_table, image, row, ARBITER_COLUMN_INDEX) == (
+            EXTRACTOR_TRANCHE_BORDER_HEX
+        ), "the container edge is broken at the Arbiter column"
 
 
 def test_control_the_arbiter_button_really_covers_that_cell(_table):
@@ -561,12 +598,12 @@ def test_control_the_arbiter_button_really_covers_that_cell(_table):
     button = _table.cellWidget(EXT_ROWS[0], ARBITER_COLUMN_INDEX)
     assert button is not None, "no widget in the Arbiter column"
     assert button.text() in ("Parent", "Sibling")
-    cell = _table.visualRect(
-        _table.model().index(EXT_ROWS[0], ARBITER_COLUMN_INDEX))
+    cell = _table.visualRect(_table.model().index(EXT_ROWS[0], ARBITER_COLUMN_INDEX))
     assert button.width() >= cell.width() - 4, "button is not full width"
     assert button.height() >= cell.height() - 4, (
         "button no longer covers the cell, so the edge test proves "
-        "nothing about occlusion")
+        "nothing about occlusion"
+    )
 
 
 def test_control_the_fire_button_really_covers_that_cell(_table):
@@ -591,7 +628,8 @@ def test_control_the_fire_button_really_covers_that_cell(_table):
     assert button.width() >= cell.width() - 4, "button is not full width"
     assert button.height() >= cell.height() - 4, (
         "button no longer covers the cell, so the edge test proves "
-        "nothing about occlusion")
+        "nothing about occlusion"
+    )
 
 
 def test_the_fire_button_carries_the_inset_that_frees_the_edge(_table):
@@ -604,8 +642,9 @@ def test_the_fire_button_carries_the_inset_that_frees_the_edge(_table):
     from src.gui.bot_live_settings import TRANCHE_FIRE_BTN_INSET_PX
 
     sheet = _table.cellWidget(FOLD_ROWS[0], 9).styleSheet()
-    assert f"margin: {TRANCHE_FIRE_BTN_INSET_PX // 2}px 0px" in sheet, (
-        "the Fire button lost its vertical inset")
+    assert (
+        f"margin: {TRANCHE_FIRE_BTN_INSET_PX // 2}px 0px" in sheet
+    ), "the Fire button lost its vertical inset"
 
 
 def test_control_the_pixel_sampler_discriminates(_table):
@@ -641,11 +680,10 @@ def test_control_a_row_with_no_fill_gets_no_edge(_table):
 
     image = _render(_table)
     from src.gui.bot_live_settings import FOLD_TRANCHE_BORDER_HEX
-    assert _edge_pixel(_table, image, FOLD_ROWS[0]) != (
-        FOLD_TRANCHE_BORDER_HEX)
+
+    assert _edge_pixel(_table, image, FOLD_ROWS[0]) != (FOLD_TRANCHE_BORDER_HEX)
     # The untouched rows still have theirs.
-    assert _edge_pixel(_table, image, FOLD_ROWS[1]) == (
-        FOLD_TRANCHE_BORDER_HEX)
+    assert _edge_pixel(_table, image, FOLD_ROWS[1]) == (FOLD_TRANCHE_BORDER_HEX)
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -659,9 +697,12 @@ def _srgb_to_linear(channel: float) -> float:
 
 def _luminance(hex_colour: str) -> float:
     raw = hex_colour.lstrip("#")
-    r, g, b = (int(raw[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
-    return (0.2126 * _srgb_to_linear(r) + 0.7152 * _srgb_to_linear(g)
-            + 0.0722 * _srgb_to_linear(b))
+    r, g, b = (int(raw[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+    return (
+        0.2126 * _srgb_to_linear(r)
+        + 0.7152 * _srgb_to_linear(g)
+        + 0.0722 * _srgb_to_linear(b)
+    )
 
 
 def _contrast(fg: str, bg: str) -> float:
@@ -674,8 +715,10 @@ def test_every_foreground_on_the_blue_row_clears_wcag_aa():
     """Including the two semantic colours, which is WHY this blue was
     chosen: no trading colour had to be re-tuned by a visual change."""
     from src.gui.bot_live_settings import (
-        FOLD_TRANCHE_BG_HEX, FOLD_TRANCHE_FG_HEX,
+        FOLD_TRANCHE_BG_HEX,
+        FOLD_TRANCHE_FG_HEX,
     )
+
     for fg in (FOLD_TRANCHE_FG_HEX, "#00ff88", "#ff9900", "#00ccff"):
         ratio = _contrast(fg, FOLD_TRANCHE_BG_HEX)
         assert ratio >= 4.5, f"{fg} on blue is only {ratio:.2f}:1"
@@ -684,13 +727,14 @@ def test_every_foreground_on_the_blue_row_clears_wcag_aa():
 def test_each_border_clears_the_non_text_floor_against_its_own_fill():
     """WCAG SC 1.4.11: a non-text UI boundary needs 3:1."""
     from src.gui.bot_live_settings import (
-        EXTRACTOR_TRANCHE_BG_HEX, EXTRACTOR_TRANCHE_BORDER_HEX,
-        FOLD_TRANCHE_BG_HEX, FOLD_TRANCHE_BORDER_HEX,
+        EXTRACTOR_TRANCHE_BG_HEX,
+        EXTRACTOR_TRANCHE_BORDER_HEX,
+        FOLD_TRANCHE_BG_HEX,
+        FOLD_TRANCHE_BORDER_HEX,
     )
-    assert _contrast(
-        FOLD_TRANCHE_BORDER_HEX, FOLD_TRANCHE_BG_HEX) >= 3.0
-    assert _contrast(
-        EXTRACTOR_TRANCHE_BORDER_HEX, EXTRACTOR_TRANCHE_BG_HEX) >= 3.0
+
+    assert _contrast(FOLD_TRANCHE_BORDER_HEX, FOLD_TRANCHE_BG_HEX) >= 3.0
+    assert _contrast(EXTRACTOR_TRANCHE_BORDER_HEX, EXTRACTOR_TRANCHE_BG_HEX) >= 3.0
 
 
 def test_control_the_contrast_calculator_rejects_known_bad_pairs():
@@ -760,7 +804,8 @@ def test_a_table_with_only_extractor_rows_still_paints_and_borders():
     from PySide6.QtWidgets import QApplication, QDialog, QTableWidget
 
     from src.gui.bot_live_settings import (
-        EXTRACTOR_TRANCHE_BG_HEX, BotLiveSettingsDialog,
+        EXTRACTOR_TRANCHE_BG_HEX,
+        BotLiveSettingsDialog,
     )
 
     if QApplication.instance() is None:
@@ -784,5 +829,4 @@ def test_a_table_with_only_extractor_rows_still_paints_and_borders():
     assert tables
     table = tables[0]
     assert table.rowCount() == 1
-    assert table.item(0, 0).background().color().name() == (
-        EXTRACTOR_TRANCHE_BG_HEX)
+    assert table.item(0, 0).background().color().name() == (EXTRACTOR_TRANCHE_BG_HEX)

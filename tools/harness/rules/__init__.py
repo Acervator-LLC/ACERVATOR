@@ -15,6 +15,7 @@ Each module is language-scoped (returns [] when target.suffix is not
 in its supported set) so archetypes can call all modules
 indiscriminately without dispatch logic.
 """
+
 from __future__ import annotations
 
 __all__ = ["scaffolding", "hallucination", "slop", "numeric_guard"]

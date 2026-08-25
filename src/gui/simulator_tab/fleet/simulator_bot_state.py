@@ -29,6 +29,7 @@ Divergence AFTER spawn is expected and fine -- the sim trades, the live
 bot trades, they part ways. What must never diverge is the moment of
 import.
 """
+
 from __future__ import annotations
 
 import json
@@ -51,11 +52,11 @@ __all__ = [
 
 # Beside bot_state.json, never inside it.
 SIM_STATE_PATH = (
-    Path(os.path.expanduser("~")) / ".acervator" / "simulator_bot_state.json")
+    Path(os.path.expanduser("~")) / ".acervator" / "simulator_bot_state.json"
+)
 
 # The live file, opened READ-ONLY and never written by this module.
-BOT_STATE_PATH = (
-    Path(os.path.expanduser("~")) / ".acervator" / "bot_state.json")
+BOT_STATE_PATH = Path(os.path.expanduser("~")) / ".acervator" / "bot_state.json"
 
 SCHEMA_VERSION = 1
 
@@ -74,20 +75,23 @@ def build_sim_state(bots, source_configs=None) -> dict:
     """
     by_sim_id: dict = {}
     src_by_id: dict = {}
-    for cfg in (source_configs or []):
+    for cfg in source_configs or []:
         sid = str((cfg or {}).get("_src_bot_id", "") or "")
         if sid:
             src_by_id[sid] = cfg
 
-    for bot in (bots or []):
+    for bot in bots or []:
         try:
             sim_id = str(getattr(bot, "bot_id", "") or "")
             if not sim_id:
                 continue
             # `simulated_<live_id>` — the marriage the operator asked
             # for, so a sim bot can always be traced to its original.
-            source_id = (sim_id.split("simulated_", 1)[1]
-                         if sim_id.startswith("simulated_") else "")
+            source_id = (
+                sim_id.split("simulated_", 1)[1]
+                if sim_id.startswith("simulated_")
+                else ""
+            )
             cfg = src_by_id.get(source_id) or {}
             try:
                 exported = dict(bot.export_scrumming_state())
@@ -97,8 +101,9 @@ def build_sim_state(bots, source_configs=None) -> dict:
             by_sim_id[sim_id] = {
                 "bot_id": sim_id,
                 "source_bot_id": source_id,
-                "symbol": str(getattr(getattr(bot, "config", None),
-                                      "symbol", "") or ""),
+                "symbol": str(
+                    getattr(getattr(bot, "config", None), "symbol", "") or ""
+                ),
                 "spawned_at": time.time(),
                 # What the sim bot holds AT SPAWN. Compared against the
                 # live entry below; divergence after this point is the
@@ -115,9 +120,11 @@ def build_sim_state(bots, source_configs=None) -> dict:
                 # `hyst_armed_fold_side` / `hyst_ref_fold_side` for
                 # exactly that reason.
                 "source_state_at_load": dict(
-                    (cfg or {}).get("_src_scrumming_state") or {}),
+                    (cfg or {}).get("_src_scrumming_state") or {}
+                ),
                 "config": {
-                    k: v for k, v in (cfg or {}).items()
+                    k: v
+                    for k, v in (cfg or {}).items()
                     if not str(k).startswith("_src_")
                 },
             }
@@ -131,8 +138,9 @@ def build_sim_state(bots, source_configs=None) -> dict:
     }
 
 
-def compare_to_bot_state(sim_state: dict,
-                         bot_state_path: Optional[Path] = None) -> dict:
+def compare_to_bot_state(
+    sim_state: dict, bot_state_path: Optional[Path] = None
+) -> dict:
     """Field-by-field parity of each sim bot against its live source.
 
     Compares against `source_state_at_load` -- the bot_state entry as it
@@ -155,35 +163,42 @@ def compare_to_bot_state(sim_state: dict,
     live: dict = {}
     if bot_state_path is not None:
         try:
-            live = json.loads(
-                Path(bot_state_path).read_text(encoding="utf-8")
-            ).get("bots") or {}
+            live = (
+                json.loads(Path(bot_state_path).read_text(encoding="utf-8")).get("bots")
+                or {}
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("bot_state unreadable for parity: %s", exc)
-            return {sid: {"error": str(exc)}
-                    for sid in (sim_state.get("bots") or {})}
+            return {sid: {"error": str(exc)} for sid in (sim_state.get("bots") or {})}
 
     for sim_id, entry in (sim_state.get("bots") or {}).items():
         src_id = str(entry.get("source_bot_id", "") or "")
         if bot_state_path is not None:
             live_entry = live.get(src_id)
             if live_entry is None:
-                out[sim_id] = {"source_bot_id": src_id,
-                               "error": "no live entry",
-                               "fields": 0, "differing": [], "matched": 0}
+                out[sim_id] = {
+                    "source_bot_id": src_id,
+                    "error": "no live entry",
+                    "fields": 0,
+                    "differing": [],
+                    "matched": 0,
+                }
                 continue
             live_ss = live_entry.get("scrumming_state") or {}
         else:
             live_ss = entry.get("source_state_at_load") or {}
             if not live_ss:
-                out[sim_id] = {"source_bot_id": src_id,
-                               "error": "no load-time snapshot",
-                               "fields": 0, "differing": [], "matched": 0}
+                out[sim_id] = {
+                    "source_bot_id": src_id,
+                    "error": "no load-time snapshot",
+                    "fields": 0,
+                    "differing": [],
+                    "matched": 0,
+                }
                 continue
         sim_ss = entry.get("scrumming_state") or {}
         keys = sorted(set(live_ss) | set(sim_ss))
-        differing = [k for k in keys
-                     if _canon(live_ss.get(k)) != _canon(sim_ss.get(k))]
+        differing = [k for k in keys if _canon(live_ss.get(k)) != _canon(sim_ss.get(k))]
         out[sim_id] = {
             "source_bot_id": src_id,
             "fields": len(keys),
@@ -201,15 +216,14 @@ def save_sim_state(state: dict, path: Optional[Path] = None) -> Path:
     """
     p = Path(path or SIM_STATE_PATH)
     if p.resolve() == BOT_STATE_PATH.resolve():
-        raise ValueError(
-            "refusing to write simulator state over bot_state.json")
+        raise ValueError("refusing to write simulator state over bot_state.json")
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(state, indent=2, default=repr),
-                   encoding="utf-8")
+    tmp.write_text(json.dumps(state, indent=2, default=repr), encoding="utf-8")
     os.replace(tmp, p)
-    logger.info("simulator_bot_state saved: %d bot(s) -> %s",
-                state.get("bot_count", 0), p)
+    logger.info(
+        "simulator_bot_state saved: %d bot(s) -> %s", state.get("bot_count", 0), p
+    )
     return p
 
 
@@ -232,9 +246,11 @@ def diff_spawns(prev: dict, cur: dict) -> dict:
     c = (cur or {}).get("bots") or {}
     common = set(p) & set(c)
     changed = sorted(
-        sid for sid in common
+        sid
+        for sid in common
         if _canon((p[sid] or {}).get("source_state_at_load"))
-        != _canon((c[sid] or {}).get("source_state_at_load")))
+        != _canon((c[sid] or {}).get("source_state_at_load"))
+    )
     return {
         "first_spawn": not p,
         "added": sorted(set(c) - set(p)),

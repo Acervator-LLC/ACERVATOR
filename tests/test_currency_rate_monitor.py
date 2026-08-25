@@ -4,6 +4,7 @@ Covers derived-rate math (satoshi + wei), snapshot lifecycle, staleness,
 and the manual update entry point. Async connector refresh is exercised
 with a stub connector.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -18,8 +19,10 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from src.exchange.currency_rate_monitor import (  # noqa: E402
-    CurrencyRateMonitor, CurrencyRates,
-    SATOSHI_PER_BTC, WEI_PER_ETH,
+    CurrencyRateMonitor,
+    CurrencyRates,
+    SATOSHI_PER_BTC,
+    WEI_PER_ETH,
     get_currency_monitor,
 )
 
@@ -44,7 +47,7 @@ class TestConstants:
         assert SATOSHI_PER_BTC == 100_000_000
 
     def test_wei_per_eth(self):
-        assert WEI_PER_ETH == 10 ** 18
+        assert WEI_PER_ETH == 10**18
 
 
 class TestDerivedRates:
@@ -114,8 +117,11 @@ class TestSnapshotLifecycle:
 
 class TestConnectorRefresh:
     def _run(self, coro):
-        return asyncio.get_event_loop().run_until_complete(coro) \
-            if False else asyncio.run(coro)
+        return (
+            asyncio.get_event_loop().run_until_complete(coro)
+            if False
+            else asyncio.run(coro)
+        )
 
     def test_refresh_no_connectors_records_error(self):
         mon = CurrencyRateMonitor()
@@ -140,8 +146,7 @@ class TestConnectorRefresh:
         r = self._run(mon.refresh_from_connectors({"cb": conn}))
         assert r.source == "pre"
         # Force — actually polls.
-        r2 = self._run(
-            mon.refresh_from_connectors({"cb": conn}, force=True))
+        r2 = self._run(mon.refresh_from_connectors({"cb": conn}, force=True))
         assert r2.source == "cb"
         assert r2.btc_usd == 999
 
@@ -152,8 +157,7 @@ class TestConnectorRefresh:
             async def get_ticker(self, sym):
                 raise RuntimeError("network down")
 
-        r = self._run(mon.refresh_from_connectors(
-            {"x": _BrokenConnector()}))
+        r = self._run(mon.refresh_from_connectors({"x": _BrokenConnector()}))
         assert r.error and "network down" in r.error
         assert r.btc_usd == 0.0
 

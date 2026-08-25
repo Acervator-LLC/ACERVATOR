@@ -10,6 +10,7 @@ Verifies:
   - falsification populated
   - calibration loads
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,7 +18,6 @@ from pathlib import Path
 import pytest
 
 from tools.harness.docs_archetype import DocsArchetype
-
 
 REPO = Path(__file__).resolve().parent.parent
 FIX = REPO / "docs" / "audits" / "2026-07-24_gui_docs_archetypes" / "docs_fixtures"
@@ -80,13 +80,16 @@ class TestGroundTruthRecall:
     def test_D4_prose_defects_caught_by_proselint(self, report):
         # At minimum: weasel, cliche, corporate speak, "utilize"
         proselint_hits = [f for f in report.findings if f.tool == "proselint"]
-        assert len(proselint_hits) >= 5, (
-            f"expected many proselint hits on defective prose, got {len(proselint_hits)}"
-        )
+        assert (
+            len(proselint_hits) >= 5
+        ), f"expected many proselint hits on defective prose, got {len(proselint_hits)}"
 
     def test_D5_curly_quotes_caught(self, report):
-        hits = [f for f in report.findings
-                if "curly" in f.message.lower() or "typography.symbols" in f.rule_id]
+        hits = [
+            f
+            for f in report.findings
+            if "curly" in f.message.lower() or "typography.symbols" in f.rule_id
+        ]
         assert hits, "curly-quote typography defect not caught"
 
 
@@ -109,8 +112,10 @@ class TestFalsification:
     def test_populated_on_bad(self):
         report = DocsArchetype().review(FIX / "known_bad.md")
         assert report.falsification
-        assert "documentation" in report.falsification.lower() or \
-               "diataxis" in report.falsification.lower()
+        assert (
+            "documentation" in report.falsification.lower()
+            or "diataxis" in report.falsification.lower()
+        )
 
     def test_falsification_in_to_dict(self):
         report = DocsArchetype().review(FIX / "known_good.md")
@@ -135,29 +140,33 @@ class TestStructureAnalyzer:
     def test_duplicate_h2_fires_doc005(self, tmp_path):
         # Lines: 1='# Title', 2='', 3='Mode: Reference.', 4='',
         #        5='## Step', 6='', 7='text', 8='', 9='## Step'
-        report = self._write_and_review(tmp_path, (
-            "# Title\n\nMode: Reference.\n\n"
-            "## Step\n\ntext\n\n"
-            "## Step\n\ntext\n"
-        ))
+        report = self._write_and_review(
+            tmp_path,
+            (
+                "# Title\n\nMode: Reference.\n\n"
+                "## Step\n\ntext\n\n"
+                "## Step\n\ntext\n"
+            ),
+        )
         hits = [f for f in report.findings if f.rule_id == "DOC005"]
         assert len(hits) == 1
         assert hits[0].line == 9  # second "## Step" is line 9
 
     def test_case_insensitive_duplicate(self, tmp_path):
-        report = self._write_and_review(tmp_path, (
-            "# Title\n\nMode: Reference.\n\n"
-            "## STEP\n\n"
-            "## step\n"
-        ))
+        report = self._write_and_review(
+            tmp_path, ("# Title\n\nMode: Reference.\n\n" "## STEP\n\n" "## step\n")
+        )
         hits = [f for f in report.findings if f.rule_id == "DOC005"]
         assert len(hits) == 1  # normalized to lowercase
 
     def test_no_duplicate_no_doc005(self, tmp_path):
-        report = self._write_and_review(tmp_path, (
-            "# Title\n\nMode: Reference.\n\n"
-            "## Step One\n\ntext\n\n"
-            "## Step Two\n\ntext\n"
-        ))
+        report = self._write_and_review(
+            tmp_path,
+            (
+                "# Title\n\nMode: Reference.\n\n"
+                "## Step One\n\ntext\n\n"
+                "## Step Two\n\ntext\n"
+            ),
+        )
         hits = [f for f in report.findings if f.rule_id == "DOC005"]
         assert hits == []

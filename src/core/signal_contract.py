@@ -70,6 +70,7 @@ raises. This instruments a live trading platform, where an exception
 thrown to report a schema nit would be a worse defect than the nit. It
 records; something else decides.
 """
+
 from __future__ import annotations
 
 import json
@@ -301,7 +302,8 @@ where the other three always carry a float and a positive integer.
 
 def _utc_iso(ts: Optional[float] = None) -> str:
     return datetime.fromtimestamp(
-        ts if ts is not None else time.time(), tz=timezone.utc).isoformat()
+        ts if ts is not None else time.time(), tz=timezone.utc
+    ).isoformat()
 
 
 def _json_default(o: Any) -> Any:
@@ -451,6 +453,7 @@ class Signal:
       nth       — which emission of that identity this is, 1-based.
                   0 means the field was never measured.
     """
+
     name: str
     site: str
     actual: Any
@@ -540,22 +543,26 @@ class Signal:
     duration: Optional[float] = None
 
     def to_json(self) -> str:
-        return json.dumps({
-            "ts": self.ts,
-            "seq": self.seq,
-            "module": self.module,
-            "name": self.name,
-            "kind": self.kind,
-            "ok": self.ok,
-            "expected": self.expected,
-            "actual": self.actual,
-            "count": self.count,
-            "dt": self.dt,
-            "nth": self.nth,
-            "duration": self.duration,
-            "site": self.site,
-            "context": self.context or {},
-        }, default=_json_default, separators=(",", ":"))
+        return json.dumps(
+            {
+                "ts": self.ts,
+                "seq": self.seq,
+                "module": self.module,
+                "name": self.name,
+                "kind": self.kind,
+                "ok": self.ok,
+                "expected": self.expected,
+                "actual": self.actual,
+                "count": self.count,
+                "dt": self.dt,
+                "nth": self.nth,
+                "duration": self.duration,
+                "site": self.site,
+                "context": self.context or {},
+            },
+            default=_json_default,
+            separators=(",", ":"),
+        )
 
     def message(self) -> str:
         """The operator-facing line. THE emitter message standard.
@@ -587,15 +594,15 @@ class Signal:
         verdict = "----" if self.ok is None else ("PASS" if self.ok else "FAIL")
         parts = [f"{t}  {mod:<18} {self.name:<{NAME_COLUMN}} {verdict}"]
         if self.ok is False:
-            parts.append(f" expected={render(self.expected)}"
-                         f" actual={render(self.actual)}")
+            parts.append(
+                f" expected={render(self.expected)}" f" actual={render(self.actual)}"
+            )
         elif self.kind == "sample":
             parts.append(f" {render(self.actual)}")
         if self.count > 1:
             parts.append(f" x{self.count}")
         if self.context:
-            inner = " ".join(
-                f"{k}={render(v)}" for k, v in self.context.items())
+            inner = " ".join(f"{k}={render(v)}" for k, v in self.context.items())
             parts.append(f"  [{inner}]")
         return "".join(parts)
 
@@ -766,9 +773,14 @@ def _as_measured_duration(value: Any) -> Optional[float]:
     return round(value, 7)
 
 
-def _classify(name: str, site: str, now: float,
-              snapshot: Optional[tuple],
-              fresh_within: float, stale_after: float) -> dict:
+def _classify(
+    name: str,
+    site: str,
+    now: float,
+    snapshot: Optional[tuple],
+    fresh_within: float,
+    stale_after: float,
+) -> dict:
     """Return one identity's timing view. FOUR STATES, NEVER THREE.
 
     `snapshot` is None when the identity has never been seen, and that
@@ -795,8 +807,15 @@ def _classify(name: str, site: str, now: float,
     with trade.log and gate.log, and it is never differenced.
     """
     if snapshot is None:
-        return {"name": name, "site": site, "state": PIN_NEVER,
-                "age": None, "n": 0, "last_ts": None, "last_dt": None}
+        return {
+            "name": name,
+            "site": site,
+            "state": PIN_NEVER,
+            "age": None,
+            "n": 0,
+            "last_ts": None,
+            "last_dt": None,
+        }
     last_mono, count, last_ts, last_dt = snapshot
     age = now - last_mono
     limit = max(float(stale_after), float(fresh_within))
@@ -806,8 +825,15 @@ def _classify(name: str, site: str, now: float,
         state = PIN_CURRENT
     else:
         state = PIN_STALE
-    return {"name": name, "site": site, "state": state, "age": age,
-            "n": count, "last_ts": last_ts, "last_dt": last_dt}
+    return {
+        "name": name,
+        "site": site,
+        "state": state,
+        "age": age,
+        "n": count,
+        "last_ts": last_ts,
+        "last_dt": last_dt,
+    }
 
 
 class SignalSink:
@@ -839,13 +865,16 @@ class SignalSink:
     record -- and `pin_state` reads it without waiting for anything.
     """
 
-    def __init__(self, path: Optional[Path] = None,
-                 flush_every: int = DEFAULT_FLUSH_EVERY,
-                 enabled: bool = True,
-                 max_bytes: int = MAX_FILE_BYTES,
-                 backup_count: int = FILE_BACKUP_COUNT,
-                 retain_rows: int = RETAIN_ROWS,
-                 max_identities: int = MAX_IDENTITIES) -> None:
+    def __init__(
+        self,
+        path: Optional[Path] = None,
+        flush_every: int = DEFAULT_FLUSH_EVERY,
+        enabled: bool = True,
+        max_bytes: int = MAX_FILE_BYTES,
+        backup_count: int = FILE_BACKUP_COUNT,
+        retain_rows: int = RETAIN_ROWS,
+        max_identities: int = MAX_IDENTITIES,
+    ) -> None:
         self.path = path
         self.flush_every = max(1, int(flush_every))
         self.enabled = enabled
@@ -901,13 +930,18 @@ class SignalSink:
         # touch I/O.
         self._duration_rejected = 0
 
-    def emit(self, name: str, actual: Any, expected: Any = None,
-             ok: Optional[bool] = None,
-             context: Optional[dict] = None,
-             site: Optional[str] = None,
-             module: Optional[str] = None,
-             count: int = 1,
-             duration: Optional[float] = None) -> Optional[Signal]:
+    def emit(
+        self,
+        name: str,
+        actual: Any,
+        expected: Any = None,
+        ok: Optional[bool] = None,
+        context: Optional[dict] = None,
+        site: Optional[str] = None,
+        module: Optional[str] = None,
+        count: int = 1,
+        duration: Optional[float] = None,
+    ) -> Optional[Signal]:
         """Record one observation. NEVER raises, NEVER blocks on I/O.
 
         Fires on BOTH the satisfied and violated paths — see the module
@@ -1017,8 +1051,7 @@ class SignalSink:
                     actual=freeze(actual),
                     expected=freeze(expected),
                     ok=ok,
-                    kind=("sample" if expected is None and ok is None
-                          else "check"),
+                    kind=("sample" if expected is None and ok is None else "check"),
                     count=int(count) if count else 1,
                     seq=self._seq,
                     ts=_ts,
@@ -1134,8 +1167,7 @@ class SignalSink:
                 self._rotate_failures += 1
             try:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
-                with self.path.open(
-                        "a", encoding="utf-8", errors="replace") as fh:
+                with self.path.open("a", encoding="utf-8", errors="replace") as fh:
                     for r in rows:
                         fh.write(r.to_json() + "\n")
             except OSError:
@@ -1241,8 +1273,9 @@ class SignalSink:
         """Per-signal totals. The shape an operator or an audit reads."""
         out: dict = {}
         for r in self.records():
-            s = out.setdefault(r.name, {"n": 0, "ok": 0, "bad": 0,
-                                        "unjudged": 0, "site": r.site})
+            s = out.setdefault(
+                r.name, {"n": 0, "ok": 0, "bad": 0, "unjudged": 0, "site": r.site}
+            )
             s["n"] += 1
             if r.ok is True:
                 s["ok"] += 1
@@ -1277,9 +1310,13 @@ class SignalSink:
         with self._lock:
             return tuple(sorted(self._seen))
 
-    def pin_state(self, name: str, site: str,
-                  fresh_within: float = FRESH_WITHIN,
-                  stale_after: float = STALE_AFTER) -> dict:
+    def pin_state(
+        self,
+        name: str,
+        site: str,
+        fresh_within: float = FRESH_WITHIN,
+        stale_after: float = STALE_AFTER,
+    ) -> dict:
         """How one identity is doing RIGHT NOW, with nothing arriving.
 
         THIS IS THE HANG QUERY. Ask it about a pin at any moment and it
@@ -1330,12 +1367,14 @@ class SignalSink:
             prev = self._seen.get((name, site))
             snapshot = None if prev is None else tuple(prev)
             now = time.monotonic()
-        return _classify(name, site, now, snapshot,
-                         fresh_within, stale_after)
+        return _classify(name, site, now, snapshot, fresh_within, stale_after)
 
-    def timing(self, name: Optional[str] = None,
-               fresh_within: float = FRESH_WITHIN,
-               stale_after: float = STALE_AFTER) -> dict:
+    def timing(
+        self,
+        name: Optional[str] = None,
+        fresh_within: float = FRESH_WITHIN,
+        stale_after: float = STALE_AFTER,
+    ) -> dict:
         """`{(name, site): pin_state}` for every identity SEEN so far.
 
         Pass `name` to take one name's identities, which is how the two
@@ -1361,13 +1400,16 @@ class SignalSink:
         # for. `_classify` then runs OUTSIDE the lock, so the work that
         # scales with the identity count is not work `emit` waits on.
         with self._lock:
-            snap = {key: tuple(value)
-                    for key, value in self._seen.items()
-                    if name is None or key[0] == name}
+            snap = {
+                key: tuple(value)
+                for key, value in self._seen.items()
+                if name is None or key[0] == name
+            }
             now = time.monotonic()
-        return {key: _classify(key[0], key[1], now, value,
-                               fresh_within, stale_after)
-                for key, value in snap.items()}
+        return {
+            key: _classify(key[0], key[1], now, value, fresh_within, stale_after)
+            for key, value in snap.items()
+        }
 
     def health(self) -> dict:
         """Sink integrity — reported so a partial record set announces
@@ -1427,8 +1469,7 @@ _THROTTLE_LOCK = threading.Lock()
 _THROTTLE: dict = {}
 
 
-def _throttle_admit(name: str, site: str, every: float,
-                    instance: Optional[str] = None):
+def _throttle_admit(name: str, site: str, every: float, instance: Optional[str] = None):
     """Admit this observation, or fold it into the next one.
 
     Returns the number of observations the admitted record stands for
@@ -1489,13 +1530,17 @@ def get_sink() -> Optional[SignalSink]:
         return _ACTIVE
 
 
-def emit(name: str, actual: Any, expected: Any = None,
-         ok: Optional[bool] = None,
-         context: Optional[dict] = None,
-         every: float = 0.0,
-         instance: Optional[str] = None,
-         module: Optional[str] = None,
-         duration: Optional[float] = None) -> Optional[Signal]:
+def emit(
+    name: str,
+    actual: Any,
+    expected: Any = None,
+    ok: Optional[bool] = None,
+    context: Optional[dict] = None,
+    every: float = 0.0,
+    instance: Optional[str] = None,
+    module: Optional[str] = None,
+    duration: Optional[float] = None,
+) -> Optional[Signal]:
     """Module-level emit — the universal connection point.
 
     Deliberately a plain function, not a bus subscription: a call site
@@ -1536,18 +1581,36 @@ def emit(name: str, actual: Any, expected: Any = None,
         # A FAILING check is NEVER suppressed. Rate-limiting the thing
         # you built the network to catch is how a spam control becomes
         # a blindfold.
-        _judged = ok if ok is not None else (
-            bool(actual == expected) if expected is not None else None)
+        _judged = (
+            ok
+            if ok is not None
+            else (bool(actual == expected) if expected is not None else None)
+        )
         if _judged is not False:
             _n = _throttle_admit(name, _site, float(every), instance)
             if _n is None:
                 return None
-            return sink.emit(name, actual, expected=expected, ok=ok,
-                             context=context, site=_site, module=_mod,
-                             count=_n, duration=duration)
-    return sink.emit(name, actual, expected=expected, ok=ok,
-                     context=context, site=_site, module=_mod,
-                     duration=duration)
+            return sink.emit(
+                name,
+                actual,
+                expected=expected,
+                ok=ok,
+                context=context,
+                site=_site,
+                module=_mod,
+                count=_n,
+                duration=duration,
+            )
+    return sink.emit(
+        name,
+        actual,
+        expected=expected,
+        ok=ok,
+        context=context,
+        site=_site,
+        module=_mod,
+        duration=duration,
+    )
 
 
 def install_process_sink(
@@ -1584,8 +1647,9 @@ def install_process_sink(
     collection is never allowed to prevent startup.
     """
     try:
-        base = Path(log_dir) if log_dir else (
-            Path.home() / ".acervator_logs" / "signals")
+        base = (
+            Path(log_dir) if log_dir else (Path.home() / ".acervator_logs" / "signals")
+        )
         base.mkdir(parents=True, exist_ok=True)
         # ONE FILE, SHARED BY EVERY PROCESS AND EVERY LAUNCH.
         #
@@ -1661,33 +1725,38 @@ def read_records(path: Path) -> tuple:
                 except json.JSONDecodeError:
                     continue
                 ctx = d.get("context")
-                out.append(Signal(
-                    name=d.get("name", ""), site=d.get("site", ""),
-                    actual=freeze(d.get("actual")),
-                    expected=freeze(d.get("expected")),
-                    ok=d.get("ok"), seq=int(d.get("seq", 0) or 0),
-                    ts=d.get("ts", ""),
-                    context=freeze(ctx) if ctx else None,
-                    module=d.get("module") or "",
-                    kind=d.get("kind") or "check",
-                    count=int(d.get("count") or 1),
-                    # 10.3 — ABSENT IS NOT ZERO. Every one of the
-                    # 598,500 records already on the operator's disk
-                    # was written before these two keys existed, and
-                    # each one must still read back as a valid record.
-                    # A missing `dt` restores as None ("no interval was
-                    # measured"), never as 0.0, and a missing `nth`
-                    # restores as 0 ("never measured"), never as 1 --
-                    # which would claim every legacy record was the
-                    # first emission of its identity.
-                    dt=_as_float(d.get("dt")),
-                    nth=_as_ordinal(d.get("nth")),
-                    # 10.3 phase 2 — ABSENT IS NOT ZERO, for the same
-                    # reason as `dt` above. Every record written before
-                    # this key existed restores with duration None, "no
-                    # duration was measured", never 0.0, which would
-                    # claim every legacy operation was instantaneous.
-                    duration=_as_float(d.get("duration"))))
+                out.append(
+                    Signal(
+                        name=d.get("name", ""),
+                        site=d.get("site", ""),
+                        actual=freeze(d.get("actual")),
+                        expected=freeze(d.get("expected")),
+                        ok=d.get("ok"),
+                        seq=int(d.get("seq", 0) or 0),
+                        ts=d.get("ts", ""),
+                        context=freeze(ctx) if ctx else None,
+                        module=d.get("module") or "",
+                        kind=d.get("kind") or "check",
+                        count=int(d.get("count") or 1),
+                        # 10.3 — ABSENT IS NOT ZERO. Every one of the
+                        # 598,500 records already on the operator's disk
+                        # was written before these two keys existed, and
+                        # each one must still read back as a valid record.
+                        # A missing `dt` restores as None ("no interval was
+                        # measured"), never as 0.0, and a missing `nth`
+                        # restores as 0 ("never measured"), never as 1 --
+                        # which would claim every legacy record was the
+                        # first emission of its identity.
+                        dt=_as_float(d.get("dt")),
+                        nth=_as_ordinal(d.get("nth")),
+                        # 10.3 phase 2 — ABSENT IS NOT ZERO, for the same
+                        # reason as `dt` above. Every record written before
+                        # this key existed restores with duration None, "no
+                        # duration was measured", never 0.0, which would
+                        # claim every legacy operation was instantaneous.
+                        duration=_as_float(d.get("duration")),
+                    )
+                )
     except OSError:
         return ()
     return tuple(out)

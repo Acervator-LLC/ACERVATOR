@@ -49,6 +49,7 @@ rendering was captured from live and pasted here byte for byte. Without
 them a guard that refused everything would pass every refusal test while
 blanking the panel.
 """
+
 from __future__ import annotations
 
 import json
@@ -81,8 +82,13 @@ COL_STATUS = 7
 
 #: The five keys this unit closed, and the cell each one drives.
 MONEY_KEYS = ["units", "usd", "ref", "initial_buy_price"]
-KEY_COLUMN = {"units": COL_UNITS, "usd": COL_USD, "ref": COL_REF,
-              "initial_buy_price": COL_COST, "created_ts": COL_AGE}
+KEY_COLUMN = {
+    "units": COL_UNITS,
+    "usd": COL_USD,
+    "ref": COL_REF,
+    "initial_buy_price": COL_COST,
+    "created_ts": COL_AGE,
+}
 ALL_KEYS = MONEY_KEYS + ["created_ts"]
 
 
@@ -111,7 +117,7 @@ REFUSED = [
     pytest.param(float("nan"), id="nan"),
     pytest.param(float("inf"), id="inf"),
     pytest.param(float("-inf"), id="-inf"),
-    pytest.param(10 ** 400, id="huge-int"),
+    pytest.param(10**400, id="huge-int"),
     pytest.param(_HasFloat(), id="obj-with-__float__"),
     pytest.param([1.0], id="list"),
     pytest.param({"a": 1}, id="dict"),
@@ -121,8 +127,10 @@ REFUSED = [
 def _qt_or_skip():
     pytest.importorskip("PySide6.QtWidgets")
     import os
+
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
+
     return QApplication.instance() or QApplication([])
 
 
@@ -133,9 +141,14 @@ def _valid_tranche():
     strings pasted into this file are the strings the shipped code
     produced for exactly this dict.
     """
-    return {"units": 1.5, "usd": 250.0, "ref": 30000.0,
-            "initial_buy_price": 29000.0, "created_ts": NOW - 3600.0,
-            "operator_initiated": False}
+    return {
+        "units": 1.5,
+        "usd": 250.0,
+        "ref": 30000.0,
+        "initial_buy_price": 29000.0,
+        "created_ts": NOW - 3600.0,
+        "operator_initiated": False,
+    }
 
 
 def _build(tranches, monkeypatch, cur_price=31000.0):
@@ -152,6 +165,7 @@ def _build(tranches, monkeypatch, cur_price=31000.0):
     from src.gui.bot_live_settings import BotLiveSettingsDialog as _Dlg
 
     import time as _t
+
     monkeypatch.setattr(_t, "time", lambda: NOW)
 
     class _Cfg:
@@ -195,9 +209,12 @@ def _build(tranches, monkeypatch, cur_price=31000.0):
     rows = []
     for table in widget.findChildren(QTableWidget)[:1]:
         for r in range(table.rowCount()):
-            rows.append([
-                (table.item(r, c).text() if table.item(r, c) else None)
-                for c in range(table.columnCount())])
+            rows.append(
+                [
+                    (table.item(r, c).text() if table.item(r, c) else None)
+                    for c in range(table.columnCount())
+                ]
+            )
     _ = app
     return labels, rows
 
@@ -230,8 +247,9 @@ def _fold_tab_source():
 
     from src.gui.bot_live_settings import BotLiveSettingsDialog
 
-    return textwrap.dedent(inspect.getsource(
-        BotLiveSettingsDialog._create_fold_tranches_tab))
+    return textwrap.dedent(
+        inspect.getsource(BotLiveSettingsDialog._create_fold_tranches_tab)
+    )
 
 
 def _bare_tranche_float_reads(source):
@@ -247,17 +265,18 @@ def _bare_tranche_float_reads(source):
     for node in ast.walk(ast.parse(source)):
         if not isinstance(node, ast.Call):
             continue
-        if not (isinstance(node.func, ast.Name)
-                and node.func.id == "float"):
+        if not (isinstance(node.func, ast.Name) and node.func.id == "float"):
             continue
         inner = node.args[0] if node.args else None
         if isinstance(inner, ast.BoolOp):
             inner = inner.values[0]
-        if (isinstance(inner, ast.Call)
-                and isinstance(inner.func, ast.Attribute)
-                and inner.func.attr == "get"
-                and isinstance(inner.func.value, ast.Name)
-                and inner.func.value.id in ("t", "_pt")):
+        if (
+            isinstance(inner, ast.Call)
+            and isinstance(inner.func, ast.Attribute)
+            and inner.func.attr == "get"
+            and isinstance(inner.func.value, ast.Name)
+            and inner.func.value.id in ("t", "_pt")
+        ):
             found.append(ast.unparse(node))
     return found
 
@@ -276,8 +295,7 @@ class TestTheDialogOpens:
 
     @pytest.mark.parametrize("key", ALL_KEYS)
     @pytest.mark.parametrize("value", REFUSED)
-    def test_no_exception_escapes_the_tab_builder(
-            self, key, value, monkeypatch):
+    def test_no_exception_escapes_the_tab_builder(self, key, value, monkeypatch):
         tranche = _valid_tranche()
         tranche[key] = value
         labels, rows = _build([tranche], monkeypatch)
@@ -288,23 +306,32 @@ class TestTheDialogOpens:
     def test_every_key_hostile_at_once(self, monkeypatch):
         """All five refused together still renders one whole row."""
         tranche = _valid_tranche()
-        tranche.update(units=float("inf"), usd=10 ** 400,
-                       ref=float("nan"), initial_buy_price=True,
-                       created_ts=float("inf"))
+        tranche.update(
+            units=float("inf"),
+            usd=10**400,
+            ref=float("nan"),
+            initial_buy_price=True,
+            created_ts=float("inf"),
+        )
         labels, rows = _build([tranche], monkeypatch)
         assert len(rows) == 1
-        for col in (COL_AGE, COL_UNITS, COL_USD, COL_REF, COL_COST,
-                    COL_MIN_REBUY, COL_STATUS):
+        for col in (
+            COL_AGE,
+            COL_UNITS,
+            COL_USD,
+            COL_REF,
+            COL_COST,
+            COL_MIN_REBUY,
+            COL_STATUS,
+        ):
             assert rows[0][col] == DASH
         assert _summary(labels, "Oldest tranche age:") == NO_TS_SUMMARY
 
-    def test_a_hostile_tranche_does_not_hide_a_healthy_one(
-            self, monkeypatch):
+    def test_a_hostile_tranche_does_not_hide_a_healthy_one(self, monkeypatch):
         """The refusal is per tranche. A corrupt entry must not blank
         the row beside it, which is what a raise out of the loop did."""
         good = _valid_tranche()
-        bad = dict(_valid_tranche(), usd=float("inf"),
-                   created_ts=10 ** 400)
+        bad = dict(_valid_tranche(), usd=float("inf"), created_ts=10**400)
         _, rows = _build([good, bad], monkeypatch)
         assert len(rows) == 2
         assert rows[0][COL_USD] == "$250.0000"
@@ -320,24 +347,40 @@ class TestTheDialogOpens:
 #: Captured from LIVE, through the same builder, before the change.
 #: Not one character of these may move.
 LIVE_LABELS = [
-    "Open tranches:", "1",
-    "Parked USD (in fold queue):", "$250.0000",
-    "Oldest tranche age:", "1.0h",
-    "Lifetime tranches opened:", "10",
-    "Lifetime tranches closed (fold-back fired):", "6",
-    "Cycle close ratio (closed/opened):", "60.00%  (6/10)",
+    "Open tranches:",
+    "1",
+    "Parked USD (in fold queue):",
+    "$250.0000",
+    "Oldest tranche age:",
+    "1.0h",
+    "Lifetime tranches opened:",
+    "10",
+    "Lifetime tranches closed (fold-back fired):",
+    "6",
+    "Cycle close ratio (closed/opened):",
+    "60.00%  (6/10)",
 ]
 LIVE_ROW = [
-    "1", "1.0h", "1.500000", "$250.0000", "$30000.00000000",
-    "$29000.00000000", "≤$29550.00000000",
-    "Need price ≤ OTD (+4.91%)", "auto scrum", "", DASH,
+    "1",
+    "1.0h",
+    "1.500000",
+    "$250.0000",
+    "$30000.00000000",
+    "$29000.00000000",
+    "≤$29550.00000000",
+    "Need price ≤ OTD (+4.91%)",
+    "auto scrum",
+    "",
+    DASH,
 ]
 
 
 def _digest(obj):
     import hashlib
+
     return hashlib.sha256(
-        json.dumps(obj, ensure_ascii=False).encode("utf-8")).hexdigest()
+        json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
 
 
 class TestValidInputIsByteIdentical:
@@ -372,51 +415,55 @@ class TestValidInputIsByteIdentical:
         assert labels == LIVE_LABELS
         assert rows[0] == LIVE_ROW
 
-    @pytest.mark.parametrize("key,value,expected", [
-        pytest.param("units", 7, "7.000000", id="units-int"),
-        pytest.param("units", 0, "0.000000", id="units-int-zero"),
-        pytest.param("units", 0.0, "0.000000", id="units-float-zero"),
-        pytest.param("units", -5.0, "-5.000000", id="units-negative"),
-        pytest.param("usd", 7, "$7.0000", id="usd-int"),
-        pytest.param("usd", 0, "$0.0000", id="usd-int-zero"),
-        pytest.param("usd", 0.0, "$0.0000", id="usd-float-zero"),
-        pytest.param("usd", -5.0, "$-5.0000", id="usd-negative"),
-        pytest.param("ref", 7, "$7.00000000", id="ref-int"),
-        pytest.param("ref", 0, "$0.00000000", id="ref-int-zero"),
-        pytest.param("ref", -5.0, "$-5.00000000", id="ref-negative"),
-        pytest.param("initial_buy_price", 7, "$7.00000000",
-                     id="cost-int"),
-        pytest.param("initial_buy_price", 0, "$0.00000000",
-                     id="cost-int-zero"),
-        pytest.param("initial_buy_price", -5.0, "$-5.00000000",
-                     id="cost-negative"),
-    ])
+    @pytest.mark.parametrize(
+        "key,value,expected",
+        [
+            pytest.param("units", 7, "7.000000", id="units-int"),
+            pytest.param("units", 0, "0.000000", id="units-int-zero"),
+            pytest.param("units", 0.0, "0.000000", id="units-float-zero"),
+            pytest.param("units", -5.0, "-5.000000", id="units-negative"),
+            pytest.param("usd", 7, "$7.0000", id="usd-int"),
+            pytest.param("usd", 0, "$0.0000", id="usd-int-zero"),
+            pytest.param("usd", 0.0, "$0.0000", id="usd-float-zero"),
+            pytest.param("usd", -5.0, "$-5.0000", id="usd-negative"),
+            pytest.param("ref", 7, "$7.00000000", id="ref-int"),
+            pytest.param("ref", 0, "$0.00000000", id="ref-int-zero"),
+            pytest.param("ref", -5.0, "$-5.00000000", id="ref-negative"),
+            pytest.param("initial_buy_price", 7, "$7.00000000", id="cost-int"),
+            pytest.param("initial_buy_price", 0, "$0.00000000", id="cost-int-zero"),
+            pytest.param("initial_buy_price", -5.0, "$-5.00000000", id="cost-negative"),
+        ],
+    )
     def test_genuine_numbers_render_exactly_as_live_did(
-            self, key, value, expected, monkeypatch):
+        self, key, value, expected, monkeypatch
+    ):
         assert _cell(key, value, monkeypatch) == expected
 
-    @pytest.mark.parametrize("value,expected", [
-        pytest.param(NOW - 30.0, "30s", id="thirty-seconds-ago"),
-        pytest.param(NOW - 600.0, "10m", id="ten-minutes-ago"),
-        pytest.param(NOW - 3600.0, "1.0h", id="an-hour-ago"),
-        pytest.param(NOW - 90000.0, "1.0d", id="a-day-ago"),
-        pytest.param(int(NOW - 3600), "1.0h", id="int-timestamp"),
-    ])
-    def test_real_timestamps_still_render_an_age(
-            self, value, expected, monkeypatch):
-        labels, rows = _build(
-            [dict(_valid_tranche(), created_ts=value)], monkeypatch)
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            pytest.param(NOW - 30.0, "30s", id="thirty-seconds-ago"),
+            pytest.param(NOW - 600.0, "10m", id="ten-minutes-ago"),
+            pytest.param(NOW - 3600.0, "1.0h", id="an-hour-ago"),
+            pytest.param(NOW - 90000.0, "1.0d", id="a-day-ago"),
+            pytest.param(int(NOW - 3600), "1.0h", id="int-timestamp"),
+        ],
+    )
+    def test_real_timestamps_still_render_an_age(self, value, expected, monkeypatch):
+        labels, rows = _build([dict(_valid_tranche(), created_ts=value)], monkeypatch)
         assert rows[0][COL_AGE] == expected
         assert _summary(labels, "Oldest tranche age:") == expected
 
-    @pytest.mark.parametrize("key,expected", [
-        pytest.param("units", "0.000000", id="units"),
-        pytest.param("usd", "$0.0000", id="usd"),
-        pytest.param("ref", "$0.00000000", id="ref"),
-        pytest.param("initial_buy_price", "$0.00000000", id="cost"),
-    ])
-    def test_an_absent_key_renders_what_it_always_did(
-            self, key, expected, monkeypatch):
+    @pytest.mark.parametrize(
+        "key,expected",
+        [
+            pytest.param("units", "0.000000", id="units"),
+            pytest.param("usd", "$0.0000", id="usd"),
+            pytest.param("ref", "$0.00000000", id="ref"),
+            pytest.param("initial_buy_price", "$0.00000000", id="cost"),
+        ],
+    )
+    def test_an_absent_key_renders_what_it_always_did(self, key, expected, monkeypatch):
         """PRE-EXISTING behaviour, deliberately preserved, and every
         string here was captured from live. `or 0` is gone, but
         `t.get(key, 0)` still defaults an ABSENT key to 0, so an absent
@@ -427,8 +474,7 @@ class TestValidInputIsByteIdentical:
         _, rows = _build([tranche], monkeypatch)
         assert rows[0][KEY_COLUMN[key]] == expected
 
-    def test_an_absent_ref_still_dashes_the_two_derived_cells(
-            self, monkeypatch):
+    def test_an_absent_ref_still_dashes_the_two_derived_cells(self, monkeypatch):
         """Also pre-existing and also captured from live: an absent ref
         defaults to 0, prints "$0.00000000" in its own column, and the
         `ref_v > 0` tests below then dash Min-rebuy and Status. A
@@ -441,8 +487,7 @@ class TestValidInputIsByteIdentical:
         assert rows[0][COL_MIN_REBUY] == DASH
         assert rows[0][COL_STATUS] == DASH
 
-    def test_an_absent_created_ts_still_reports_no_timestamp(
-            self, monkeypatch):
+    def test_an_absent_created_ts_still_reports_no_timestamp(self, monkeypatch):
         tranche = _valid_tranche()
         del tranche["created_ts"]
         labels, rows = _build([tranche], monkeypatch)
@@ -453,8 +498,7 @@ class TestValidInputIsByteIdentical:
         labels, rows = _build([], monkeypatch)
         assert rows == []
         assert _parked(labels) == "$0.0000"
-        assert _summary(labels, "Oldest tranche age:") == \
-            "no open tranches"
+        assert _summary(labels, "Oldest tranche age:") == "no open tranches"
 
 
 # ---------------------------------------------------------------------
@@ -470,17 +514,16 @@ class TestTheRefusalIsHonest:
 
     @pytest.mark.parametrize("key", MONEY_KEYS)
     @pytest.mark.parametrize("value", REFUSED)
-    def test_a_refused_money_value_never_reads_as_zero(
-            self, key, value, monkeypatch):
+    def test_a_refused_money_value_never_reads_as_zero(self, key, value, monkeypatch):
         cell = _cell(key, value, monkeypatch)
-        assert cell not in ("$0.0000", "$0.00000000", "0.000000", "0",
-                            "$0", "0.0")
+        assert cell not in ("$0.0000", "$0.00000000", "0.000000", "0", "$0", "0.0")
         assert cell == DASH
 
     @pytest.mark.parametrize("key", ALL_KEYS)
     @pytest.mark.parametrize("value", REFUSED)
     def test_the_refusal_reaches_the_branch_a_missing_key_takes(
-            self, key, value, monkeypatch):
+        self, key, value, monkeypatch
+    ):
         """The refusal must LAND somewhere, not merely not raise. A
         missing key is the shape each column already refused before this
         fix, so every newly refused shape must produce that exact cell.
@@ -489,8 +532,7 @@ class TestTheRefusalIsHonest:
         del absent[key]
         _, base_rows = _build([absent], monkeypatch)
         if key == "created_ts":
-            assert _cell(key, value, monkeypatch) == \
-                base_rows[0][COL_AGE]
+            assert _cell(key, value, monkeypatch) == base_rows[0][COL_AGE]
         else:
             # `units`, `usd` and `initial_buy_price` default an ABSENT
             # key to 0 and print a real zero, which is unchanged. The
@@ -499,8 +541,7 @@ class TestTheRefusalIsHonest:
             assert _cell(key, value, monkeypatch) == DASH
 
     @pytest.mark.parametrize("value", REFUSED)
-    def test_a_refused_ref_dashes_all_three_cells_it_drives(
-            self, value, monkeypatch):
+    def test_a_refused_ref_dashes_all_three_cells_it_drives(self, value, monkeypatch):
         """`ref` feeds the Sell-ref cell, the Min-rebuy estimate and the
         Status verdict. Closing one and leaving the others would print a
         rebuy target computed from a value the panel just refused."""
@@ -518,26 +559,21 @@ class TestTheRefusalIsHonest:
         assert rows[0][COL_STATUS] == "Need price ≤ OTD (+4.91%)"
 
     @pytest.mark.parametrize("value", REFUSED)
-    def test_summary_and_row_never_disagree_on_the_age(
-            self, value, monkeypatch):
+    def test_summary_and_row_never_disagree_on_the_age(self, value, monkeypatch):
         """Both render the age of the SAME tranche from the SAME key.
         Closing one without the other gives a panel that contradicts
         itself, which is worse than the defect."""
-        labels, rows = _build(
-            [dict(_valid_tranche(), created_ts=value)], monkeypatch)
+        labels, rows = _build([dict(_valid_tranche(), created_ts=value)], monkeypatch)
         assert rows[0][COL_AGE] == DASH
         assert _summary(labels, "Oldest tranche age:") == NO_TS_SUMMARY
 
     @pytest.mark.parametrize("value", REFUSED)
-    def test_summary_and_row_never_disagree_on_the_usd(
-            self, value, monkeypatch):
+    def test_summary_and_row_never_disagree_on_the_usd(self, value, monkeypatch):
         """`usd` is read twice: once for the parked total and once for
         the row cell. A dashed cell beside an unmarked total would say
         two different things about one number."""
-        labels, rows = _build(
-            [dict(_valid_tranche(), usd=value)], monkeypatch)
-        assert (rows[0][COL_USD] == DASH) == \
-            ("unreadable" in _parked(labels))
+        labels, rows = _build([dict(_valid_tranche(), usd=value)], monkeypatch)
+        assert (rows[0][COL_USD] == DASH) == ("unreadable" in _parked(labels))
 
 
 # ---------------------------------------------------------------------
@@ -556,40 +592,48 @@ class TestTheParkedTotalCountsWhatItCannotRead:
     def test_all_valid_totals_carry_no_marker(self, monkeypatch):
         """POSITIVE CONTROL. Fails if every panel now claims partial."""
         labels, _ = _build(
-            [dict(_valid_tranche(), usd=250.0),
-             dict(_valid_tranche(), usd=100.0)], monkeypatch)
+            [dict(_valid_tranche(), usd=250.0), dict(_valid_tranche(), usd=100.0)],
+            monkeypatch,
+        )
         assert _parked(labels) == "$350.0000"
         assert "unreadable" not in _parked(labels)
 
-    def test_a_refused_contributor_is_counted_not_dropped(
-            self, monkeypatch):
+    def test_a_refused_contributor_is_counted_not_dropped(self, monkeypatch):
         labels, rows = _build(
-            [dict(_valid_tranche(), usd=250.0),
-             dict(_valid_tranche(), usd=float("nan")),
-             dict(_valid_tranche(), usd=10 ** 400)], monkeypatch)
+            [
+                dict(_valid_tranche(), usd=250.0),
+                dict(_valid_tranche(), usd=float("nan")),
+                dict(_valid_tranche(), usd=10**400),
+            ],
+            monkeypatch,
+        )
         assert _parked(labels) == "$250.0000  (+2 unreadable)"
         assert len(rows) == 3
 
     @pytest.mark.parametrize("value", REFUSED)
     def test_every_refused_shape_is_counted(self, value, monkeypatch):
         labels, _ = _build(
-            [dict(_valid_tranche(), usd=250.0),
-             dict(_valid_tranche(), usd=value)], monkeypatch)
+            [dict(_valid_tranche(), usd=250.0), dict(_valid_tranche(), usd=value)],
+            monkeypatch,
+        )
         assert _parked(labels) == "$250.0000  (+1 unreadable)"
 
-    @pytest.mark.parametrize("value", [
-        pytest.param(float("nan"), id="nan"),
-        pytest.param(float("inf"), id="inf"),
-        pytest.param(float("-inf"), id="-inf"),
-    ])
-    def test_one_bad_entry_no_longer_poisons_the_whole_total(
-            self, value, monkeypatch):
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param(float("nan"), id="nan"),
+            pytest.param(float("inf"), id="inf"),
+            pytest.param(float("-inf"), id="-inf"),
+        ],
+    )
+    def test_one_bad_entry_no_longer_poisons_the_whole_total(self, value, monkeypatch):
         """This was a `sum`: a single non-finite contributor took the
         parked figure to "$nan" or "$inf" for every OTHER tranche in the
         queue as well."""
         labels, _ = _build(
-            [dict(_valid_tranche(), usd=250.0),
-             dict(_valid_tranche(), usd=value)], monkeypatch)
+            [dict(_valid_tranche(), usd=250.0), dict(_valid_tranche(), usd=value)],
+            monkeypatch,
+        )
         parked = _parked(labels)
         assert parked.startswith("$250.0000")
         assert "nan" not in parked and "inf" not in parked
@@ -598,10 +642,14 @@ class TestTheParkedTotalCountsWhatItCannotRead:
         """A marker that just echoed the tranche count would pass every
         test above while telling the operator nothing."""
         labels, _ = _build(
-            [dict(_valid_tranche(), usd=1.0),
-             dict(_valid_tranche(), usd=2.0),
-             dict(_valid_tranche(), usd=3.0),
-             dict(_valid_tranche(), usd=None)], monkeypatch)
+            [
+                dict(_valid_tranche(), usd=1.0),
+                dict(_valid_tranche(), usd=2.0),
+                dict(_valid_tranche(), usd=3.0),
+                dict(_valid_tranche(), usd=None),
+            ],
+            monkeypatch,
+        )
         assert _parked(labels) == "$6.0000  (+1 unreadable)"
 
 
@@ -620,11 +668,10 @@ class TestHugeIntDoesNotRaiseAnywhere:
 
     @pytest.mark.parametrize("key", ALL_KEYS)
     def test_huge_int_renders_a_dash(self, key, monkeypatch):
-        assert _cell(key, 10 ** 400, monkeypatch) == DASH
+        assert _cell(key, 10**400, monkeypatch) == DASH
 
     def test_huge_int_in_the_parked_total(self, monkeypatch):
-        labels, _ = _build(
-            [dict(_valid_tranche(), usd=10 ** 400)], monkeypatch)
+        labels, _ = _build([dict(_valid_tranche(), usd=10**400)], monkeypatch)
         assert _parked(labels) == "$0.0000  (+1 unreadable)"
 
     def test_the_helper_itself_does_not_raise(self):
@@ -633,8 +680,8 @@ class TestHugeIntDoesNotRaiseAnywhere:
         must return None."""
         from src.trading.bot_container import as_finite_float
 
-        assert as_finite_float(10 ** 400) is None
-        assert as_finite_float(-(10 ** 400)) is None
+        assert as_finite_float(10**400) is None
+        assert as_finite_float(-(10**400)) is None
 
     def test_math_isfinite_really_does_raise_on_it(self):
         """The two-sided half of the row above. If this ever stops
@@ -643,7 +690,7 @@ class TestHugeIntDoesNotRaiseAnywhere:
         import math
 
         with pytest.raises(OverflowError):
-            math.isfinite(10 ** 400)
+            math.isfinite(10**400)
 
 
 # ---------------------------------------------------------------------
@@ -664,36 +711,49 @@ class TestPrecisionBandIsUnchanged:
     """FAILURE MEANS: the guard silently moved a money figure. Every
     expected string below was captured from LIVE before the change."""
 
-    @pytest.mark.parametrize("key,value,expected", [
-        pytest.param("usd", 2 ** 53 + 1, "$9,007,199,254,740,992.0000",
-                     id="usd-2**53+1"),
-        pytest.param("usd", 2 ** 60 + 1,
-                     "$1,152,921,504,606,846,976.0000",
-                     id="usd-2**60+1"),
-        pytest.param("units", 2 ** 53 + 1, "9007199254740992.000000",
-                     id="units-2**53+1"),
-        pytest.param("units", 2 ** 60 + 1, "1152921504606846976.000000",
-                     id="units-2**60+1"),
-        pytest.param("ref", 2 ** 53 + 1, "$9007199254740992.00000000",
-                     id="ref-2**53+1"),
-        pytest.param("ref", 2 ** 60 + 1,
-                     "$1152921504606846976.00000000",
-                     id="ref-2**60+1"),
-        pytest.param("initial_buy_price", 2 ** 53 + 1,
-                     "$9007199254740992.00000000", id="cost-2**53+1"),
-        pytest.param("initial_buy_price", 2 ** 60 + 1,
-                     "$1152921504606846976.00000000",
-                     id="cost-2**60+1"),
-    ])
+    @pytest.mark.parametrize(
+        "key,value,expected",
+        [
+            pytest.param(
+                "usd", 2**53 + 1, "$9,007,199,254,740,992.0000", id="usd-2**53+1"
+            ),
+            pytest.param(
+                "usd", 2**60 + 1, "$1,152,921,504,606,846,976.0000", id="usd-2**60+1"
+            ),
+            pytest.param(
+                "units", 2**53 + 1, "9007199254740992.000000", id="units-2**53+1"
+            ),
+            pytest.param(
+                "units", 2**60 + 1, "1152921504606846976.000000", id="units-2**60+1"
+            ),
+            pytest.param(
+                "ref", 2**53 + 1, "$9007199254740992.00000000", id="ref-2**53+1"
+            ),
+            pytest.param(
+                "ref", 2**60 + 1, "$1152921504606846976.00000000", id="ref-2**60+1"
+            ),
+            pytest.param(
+                "initial_buy_price",
+                2**53 + 1,
+                "$9007199254740992.00000000",
+                id="cost-2**53+1",
+            ),
+            pytest.param(
+                "initial_buy_price",
+                2**60 + 1,
+                "$1152921504606846976.00000000",
+                id="cost-2**60+1",
+            ),
+        ],
+    )
     def test_the_band_renders_exactly_what_live_rendered(
-            self, key, value, expected, monkeypatch):
+        self, key, value, expected, monkeypatch
+    ):
         assert _cell(key, value, monkeypatch) == expected
 
-    @pytest.mark.parametrize("value", [2 ** 53 + 1, 2 ** 60 + 1])
-    def test_the_parked_total_is_unchanged_in_the_band(
-            self, value, monkeypatch):
-        labels, _ = _build(
-            [dict(_valid_tranche(), usd=value)], monkeypatch)
+    @pytest.mark.parametrize("value", [2**53 + 1, 2**60 + 1])
+    def test_the_parked_total_is_unchanged_in_the_band(self, value, monkeypatch):
+        labels, _ = _build([dict(_valid_tranche(), usd=value)], monkeypatch)
         assert "unreadable" not in _parked(labels)
         assert _parked(labels) == "${:,.4f}".format(float(value))
 
@@ -704,8 +764,7 @@ class TestPrecisionBandIsUnchanged:
         from src.trading.bot_container import as_finite_float
 
         for exponent in range(50, 70):
-            for value in (2 ** exponent, 2 ** exponent + 1,
-                          -(2 ** exponent) - 1):
+            for value in (2**exponent, 2**exponent + 1, -(2**exponent) - 1):
                 assert as_finite_float(value) == float(value)
 
     def test_the_int_bound_is_where_the_helper_says_it_is(self):
@@ -716,9 +775,9 @@ class TestPrecisionBandIsUnchanged:
         invented to close this band would be worse than the band."""
         from src.trading.bot_container import as_finite_float
 
-        assert as_finite_float(2 ** 1023) == float(2 ** 1023)
-        assert as_finite_float(2 ** 1023 + 1) is None
-        assert float(2 ** 1023 + 1) == float(2 ** 1023)
+        assert as_finite_float(2**1023) == float(2**1023)
+        assert as_finite_float(2**1023 + 1) is None
+        assert float(2**1023 + 1) == float(2**1023)
 
 
 # ---------------------------------------------------------------------
@@ -776,10 +835,23 @@ class TestAdmissionHelperIsTheRepoRule:
     def test_helper_refuses_every_shape_the_panel_refuses(self):
         from src.trading.bot_container import as_finite_float
 
-        for value in (True, False, float("nan"), float("inf"),
-                      float("-inf"), 10 ** 400, _FloatSub(1.0),
-                      Decimal("1"), Fraction(1, 2), "1", "", None,
-                      _HasFloat(), [1.0], {"a": 1}):
+        for value in (
+            True,
+            False,
+            float("nan"),
+            float("inf"),
+            float("-inf"),
+            10**400,
+            _FloatSub(1.0),
+            Decimal("1"),
+            Fraction(1, 2),
+            "1",
+            "",
+            None,
+            _HasFloat(),
+            [1.0],
+            {"a": 1},
+        ):
             assert as_finite_float(value) is None
 
     def test_helper_accepts_exact_int_and_float(self):
@@ -804,14 +876,13 @@ class TestTheHostileShapesAreReachable:
 
     def test_json_decodes_the_shapes_the_panel_now_refuses(self):
         assert json.loads('{"a": true}')["a"] is True
-        assert json.loads('{"a": NaN}')["a"] != json.loads(
-            '{"a": NaN}')["a"]
+        assert json.loads('{"a": NaN}')["a"] != json.loads('{"a": NaN}')["a"]
         assert json.loads('{"a": Infinity}')["a"] == float("inf")
         assert json.loads('{"a": -Infinity}')["a"] == float("-inf")
         assert json.loads('{"a": null}')["a"] is None
         huge = json.loads('{"a": 1%s}' % ("0" * 400))["a"]
         assert type(huge) is int
-        assert huge == 10 ** 400
+        assert huge == 10**400
 
     def test_a_tranche_dict_survives_a_round_trip_verbatim(self):
         """No per-key validation stands between the file and the panel,

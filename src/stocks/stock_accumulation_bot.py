@@ -25,10 +25,10 @@ from typing import Optional
 logger = logging.getLogger("acervator.stocks.accumulation")
 
 try:
-    from ..trading.ta_engine import VotingEngine, VotingSummary, Candle
-    from ..trading.phantom_balance import PhantomBalanceManager
+    from ..trading.ta_engine import VotingEngine, VotingSummary
     from ..trading.mr_inspector import MRInspector
     from ..trading.smart_wire import SmartWireManager
+
     # v3.19.12 — removed unused MarketHoursTracker import (vulture-flagged;
     # in-progress placeholder; re-add when the implementation lands).
     _HAS_DEPS = True
@@ -49,37 +49,38 @@ class BotState(Enum):
 @dataclass
 class StockAccumulationConfig:
     """Configuration for a stock accumulation bot."""
+
     broker_id: str = "alpaca"
     symbol: str = ""
     target_balance: float = 200.0
     # Accumulation thresholds (same as crypto)
-    harvest_threshold: float = 0.25    # TA confidence to harvest
-    fold_threshold: float = 0.15       # TA confidence to fold
-    interval_pct: float = 2.0          # Delta % to trigger harvest
+    harvest_threshold: float = 0.25  # TA confidence to harvest
+    fold_threshold: float = 0.15  # TA confidence to fold
+    interval_pct: float = 2.0  # Delta % to trigger harvest
     # TA configuration
-    ta_timeframe: str = "1D"           # Daily candles for stocks
+    ta_timeframe: str = "1D"  # Daily candles for stocks
     phantom_timeframes: list = field(default_factory=lambda: ["1h", "4h", "1D", "1W"])
     enable_phantoms: bool = True
     # Targeting state machine
     detect_threshold_pct: float = 50.0  # % from midline to band for TRACK
-    fire_threshold_pct: float = 1.0     # % from band for FIRE
+    fire_threshold_pct: float = 1.0  # % from band for FIRE
     # Market hours (equity-specific)
-    allow_premarket: bool = False       # 4:00-9:30 ET
-    allow_afterhours: bool = False      # 16:00-20:00 ET
-    allow_extended: bool = False        # Combined pre+after
+    allow_premarket: bool = False  # 4:00-9:30 ET
+    allow_afterhours: bool = False  # 16:00-20:00 ET
+    allow_extended: bool = False  # Combined pre+after
     # PDT protection (equity-specific)
-    pdt_protection: bool = True         # Warn if approaching 3 day-trades in 5 days
+    pdt_protection: bool = True  # Warn if approaching 3 day-trades in 5 days
     pdt_max_day_trades: int = 3
     pdt_window_days: int = 5
     # Settlement (equity-specific)
-    track_settlement: bool = True       # T+2 awareness
+    track_settlement: bool = True  # T+2 awareness
     # MR Inspector
     enable_mr_inspector: bool = True
     # Smart Wire
     enable_smart_wire: bool = True
     # Risk
-    max_position_pct: float = 25.0      # Max % of portfolio in one stock
-    stop_loss_pct: float = 0.0          # 0 = disabled (accumulation doesn't use stops)
+    max_position_pct: float = 25.0  # Max % of portfolio in one stock
+    stop_loss_pct: float = 0.0  # 0 = disabled (accumulation doesn't use stops)
 
 
 class StockAccumulationBot:
@@ -108,7 +109,7 @@ class StockAccumulationBot:
 
         # Core accumulation state (identical to crypto)
         self._target = config.target_balance
-        self._holdings: float = 0.0       # Shares held
+        self._holdings: float = 0.0  # Shares held
         self._last_price: float = 0.0
         self._fold_queue_usd: float = 0.0
         self._fold_queue_ref: float = 0.0
@@ -117,9 +118,9 @@ class StockAccumulationBot:
         self._boost_fold_sma: float = 0.0
 
         # Targeting state machine (identical to crypto)
-        self._target_mode = "search"      # search | track | fire
+        self._target_mode = "search"  # search | track | fire
         self._target_side = None
-        self._base_read_interval = 60.0   # 1 min for stocks (vs 5s for crypto)
+        self._base_read_interval = 60.0  # 1 min for stocks (vs 5s for crypto)
         self._current_read_interval = self._base_read_interval
 
         # TA engine (same 7 indicators)
@@ -180,8 +181,11 @@ class StockAccumulationBot:
         cutoff = time.time() - self.config.pdt_window_days * 86400
         recent = [t for t in self._day_trades if t > cutoff]
         if len(recent) >= self.config.pdt_max_day_trades:
-            logger.warning("PDT LIMIT: %d day trades in %d days — blocking trade",
-                           len(recent), self.config.pdt_window_days)
+            logger.warning(
+                "PDT LIMIT: %d day trades in %d days — blocking trade",
+                len(recent),
+                self.config.pdt_window_days,
+            )
             return False
         return True
 
@@ -195,12 +199,14 @@ class StockAccumulationBot:
         """Track T+2 settlement."""
         if not self.config.track_settlement:
             return
-        self._pending_settlement.append({
-            "time": time.time(),
-            "settles_at": time.time() + 2 * 86400,
-            "amount": trade_usd,
-            "side": side,
-        })
+        self._pending_settlement.append(
+            {
+                "time": time.time(),
+                "settles_at": time.time() + 2 * 86400,
+                "amount": trade_usd,
+                "side": side,
+            }
+        )
         # Clean settled trades
         now = time.time()
         self._pending_settlement = [
@@ -211,8 +217,9 @@ class StockAccumulationBot:
     def unsettled_amount(self) -> float:
         """Total USD in unsettled trades."""
         now = time.time()
-        return sum(s["amount"] for s in self._pending_settlement
-                   if s["settles_at"] > now)
+        return sum(
+            s["amount"] for s in self._pending_settlement if s["settles_at"] > now
+        )
 
     # ── Core Tick (Transposed from Crypto) ─────────────────
 
@@ -230,7 +237,7 @@ class StockAccumulationBot:
         if not candles or len(candles) < 2:
             return
 
-        price = candles[-1].close if hasattr(candles[-1], 'close') else candles[-1]
+        price = candles[-1].close if hasattr(candles[-1], "close") else candles[-1]
         self._last_price = price
         value = self._holdings * price
         delta = value - self._target
@@ -245,12 +252,18 @@ class StockAccumulationBot:
             if dd > self._max_dd:
                 self._max_dd = dd
 
-        bullish = candles[-1].close > candles[-1].open if hasattr(candles[-1], 'open') else True
+        bullish = (
+            candles[-1].close > candles[-1].open
+            if hasattr(candles[-1], "open")
+            else True
+        )
 
         # TA snapshot
         if self._voting_engine and len(candles) >= 30:
             try:
-                summary = self._voting_engine.compute_all(candles, self.config.ta_timeframe)
+                summary = self._voting_engine.compute_all(
+                    candles, self.config.ta_timeframe
+                )
                 self._last_summary = summary
             except Exception as _ta_exc:  # noqa: BLE001 - tick must continue
                 # v3.24.21 — was a bare swallow. On failure
@@ -262,7 +275,9 @@ class StockAccumulationBot:
                     "%s TA compute failed (%s): %s — retaining previous "
                     "summary; downstream signals are STALE",
                     getattr(self.config, "symbol", "?"),
-                    type(_ta_exc).__name__, _ta_exc)
+                    type(_ta_exc).__name__,
+                    _ta_exc,
+                )
 
         # Compute confidence (same as crypto)
         harvest_conf = 0.50 if bullish else 0.0
@@ -270,14 +285,21 @@ class StockAccumulationBot:
 
         # Trend hold (same as crypto)
         lookback = candles[-20:] if len(candles) >= 20 else candles
-        trend = sum(1 for c in lookback if hasattr(c, 'close') and hasattr(c, 'open')
-                    and c.close > c.open) / max(len(lookback), 1)
+        trend = sum(
+            1
+            for c in lookback
+            if hasattr(c, "close") and hasattr(c, "open") and c.close > c.open
+        ) / max(len(lookback), 1)
         in_trend_hold = trend > 0.65
 
         # ── HARVEST (sell excess above target) ────────────
-        if (delta > 0 and delta_pct >= self.config.interval_pct and
-                harvest_conf >= self.config.harvest_threshold and
-                not in_trend_hold and self._check_pdt()):
+        if (
+            delta > 0
+            and delta_pct >= self.config.interval_pct
+            and harvest_conf >= self.config.harvest_threshold
+            and not in_trend_hold
+            and self._check_pdt()
+        ):
             harvest_qty = delta / price
             if self._holdings >= harvest_qty > 0:
                 self._holdings -= harvest_qty
@@ -288,14 +310,21 @@ class StockAccumulationBot:
                 self._trades += 1
                 self._volume += harvest_usd
                 self._track_settlement(harvest_usd, "sell")
-                logger.info("HARVEST %s: %.4f shares @ $%.2f = $%.2f",
-                            self.config.symbol, harvest_qty, price, harvest_usd)
+                logger.info(
+                    "HARVEST %s: %.4f shares @ $%.2f = $%.2f",
+                    self.config.symbol,
+                    harvest_qty,
+                    price,
+                    harvest_usd,
+                )
 
         # ── FOLD (buy back at lower price) ────────────────
-        if (self._fold_queue_usd > 0 and
-                fold_conf >= self.config.fold_threshold and
-                price < self._fold_queue_ref and
-                self._check_pdt()):
+        if (
+            self._fold_queue_usd > 0
+            and fold_conf >= self.config.fold_threshold
+            and price < self._fold_queue_ref
+            and self._check_pdt()
+        ):
             buy_usd = self._fold_queue_usd
             buy_qty = buy_usd / price
             self._holdings += buy_qty
@@ -307,8 +336,13 @@ class StockAccumulationBot:
             pnl = (self._fold_queue_ref - price) / self._fold_queue_ref * buy_usd
             self._pnl += pnl
             self._track_settlement(buy_usd, "buy")
-            logger.info("FOLD %s: %.4f shares @ $%.2f, profit $%.4f",
-                        self.config.symbol, buy_qty, price, pnl)
+            logger.info(
+                "FOLD %s: %.4f shares @ $%.2f, profit $%.4f",
+                self.config.symbol,
+                buy_qty,
+                price,
+                pnl,
+            )
 
         # ── MR Inspector / Boosted Fold ───────────────────
         if self._mr_inspector and len(candles) >= 30:
@@ -332,7 +366,9 @@ class StockAccumulationBot:
                     buy_usd = self._boost_fold_q
                     buy_qty = buy_usd / price
                     self._holdings += buy_qty
-                    pnl = (self._boost_fold_ref - price) / self._boost_fold_ref * buy_usd
+                    pnl = (
+                        (self._boost_fold_ref - price) / self._boost_fold_ref * buy_usd
+                    )
                     self._pnl += pnl
                     self._boost_folds += 1
                     self._wins += 1
@@ -356,13 +392,21 @@ class StockAccumulationBot:
     async def start(self):
         self.state = BotState.RUNNING
         self._start_time = time.time()
-        logger.info("StockAccBot %s started: %s target=$%.2f",
-                    self.bot_id[:8], self.config.symbol, self._target)
+        logger.info(
+            "StockAccBot %s started: %s target=$%.2f",
+            self.bot_id[:8],
+            self.config.symbol,
+            self._target,
+        )
 
     async def stop(self):
         self.state = BotState.STOPPED
-        logger.info("StockAccBot %s stopped: %d trades, $%.2f PnL",
-                    self.bot_id[:8], self._trades, self._pnl)
+        logger.info(
+            "StockAccBot %s stopped: %d trades, $%.2f PnL",
+            self.bot_id[:8],
+            self._trades,
+            self._pnl,
+        )
 
     def set_market_open(self, is_open: bool):
         """Called by market hours tracker."""
@@ -405,8 +449,9 @@ class StockAccumulationBot:
             "max_dd": round(self._max_dd, 2),
             "dividends": round(self._dividends_received, 2),
             "unsettled": round(self.unsettled_amount, 2),
-            "day_trades_5d": len([t for t in self._day_trades
-                                  if t > time.time() - 5 * 86400]),
+            "day_trades_5d": len(
+                [t for t in self._day_trades if t > time.time() - 5 * 86400]
+            ),
             "uptime": round(uptime, 1),
             "target_mode": self._target_mode,
             "fold_queued": round(self._fold_queue_usd, 2),

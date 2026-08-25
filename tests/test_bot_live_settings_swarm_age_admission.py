@@ -67,6 +67,7 @@ rendering was captured from the shipped code and pasted here byte for
 byte. Without them a guard that refused everything would pass every
 refusal test while blanking both columns.
 """
+
 from __future__ import annotations
 
 import json
@@ -128,8 +129,8 @@ REFUSED = [
     pytest.param(float("-inf"), id="-inf"),
     pytest.param(0, id="zero"),
     pytest.param(-5.0, id="negative"),
-    pytest.param(2 ** 1023 + 1, id="int-just-over-bound"),
-    pytest.param(10 ** 400, id="huge-int"),
+    pytest.param(2**1023 + 1, id="int-just-over-bound"),
+    pytest.param(10**400, id="huge-int"),
     pytest.param(_HasFloat(), id="obj-with-__float__"),
     pytest.param([1, 2], id="list"),
     pytest.param({"a": 1}, id="dict"),
@@ -151,15 +152,17 @@ ACCEPTED = [
     # behaviour the shipped code already had — the guard neither
     # widened nor narrowed it, and a future change to the bound would
     # show up here rather than silently.
-    pytest.param(2 ** 53 + 1, "-9007197454740992s", id="int-2**53+1"),
+    pytest.param(2**53 + 1, "-9007197454740992s", id="int-2**53+1"),
 ]
 
 
 def _qt_or_skip():
     pytest.importorskip("PySide6.QtWidgets")
     import os
+
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
+
     return QApplication.instance() or QApplication([])
 
 
@@ -196,15 +199,23 @@ class _Ledger:
 
 def _valid_credit():
     """One realistic pending wire credit, every key valid."""
-    return {"ts": NOW - 3600.0, "source": "bot-parent",
-            "usd": 42.5, "ref": "scrum@30000.00000000"}
+    return {
+        "ts": NOW - 3600.0,
+        "source": "bot-parent",
+        "usd": 42.5,
+        "ref": "scrum@30000.00000000",
+    }
 
 
 def _valid_tx():
     """One realistic recent transaction, every field valid."""
-    return _Tx(timestamp=int(NOW) - 7200, source_bot=BOT_ID,
-               target_bot="bot-child", amount=17.25,
-               wire_type="SCRUM_ROUTE")
+    return _Tx(
+        timestamp=int(NOW) - 7200,
+        source_bot=BOT_ID,
+        target_bot="bot-child",
+        amount=17.25,
+        wire_type="SCRUM_ROUTE",
+    )
 
 
 def _build(monkeypatch, credits=None, txs=None, full=False):
@@ -221,15 +232,20 @@ def _build(monkeypatch, credits=None, txs=None, full=False):
     from src.gui.bot_live_settings import BotLiveSettingsDialog as _Dlg
 
     import time as _t
+
     monkeypatch.setattr(_t, "time", lambda: NOW)
 
     tx_list = list(txs) if txs is not None else []
 
     class _Mgr:
-        _wires = ({BOT_ID: {"bot-child": 25.0},
-                   "bot-parent": {BOT_ID: 40.0}} if full else {})
-        _ledgers = ({BOT_ID: _Ledger(), "bot-child": _Ledger(),
-                     "bot-parent": _Ledger()} if full else {})
+        _wires = (
+            {BOT_ID: {"bot-child": 25.0}, "bot-parent": {BOT_ID: 40.0}} if full else {}
+        )
+        _ledgers = (
+            {BOT_ID: _Ledger(), "bot-child": _Ledger(), "bot-parent": _Ledger()}
+            if full
+            else {}
+        )
         _transactions = tx_list
         _bot_refs: dict = {}
 
@@ -263,9 +279,11 @@ def _table(widget, headers):
     from PySide6.QtWidgets import QTableWidget
 
     for tbl in widget.findChildren(QTableWidget):
-        got = [tbl.horizontalHeaderItem(c).text()
-               for c in range(tbl.columnCount())
-               if tbl.horizontalHeaderItem(c) is not None]
+        got = [
+            tbl.horizontalHeaderItem(c).text()
+            for c in range(tbl.columnCount())
+            if tbl.horizontalHeaderItem(c) is not None
+        ]
         if got == headers:
             return tbl
     raise AssertionError(f"no table with headers {headers}")
@@ -273,9 +291,13 @@ def _table(widget, headers):
 
 def _rows(widget, headers):
     tbl = _table(widget, headers)
-    return [[(tbl.item(r, c).text() if tbl.item(r, c) else None)
-             for c in range(tbl.columnCount())]
-            for r in range(tbl.rowCount())]
+    return [
+        [
+            (tbl.item(r, c).text() if tbl.item(r, c) else None)
+            for c in range(tbl.columnCount())
+        ]
+        for r in range(tbl.rowCount())
+    ]
 
 
 def _dict_age(value, monkeypatch, *, omit=False):
@@ -309,6 +331,7 @@ def _obj_age(value, monkeypatch, *, omit=False):
 #     A failure here means a corrupted or hand-edited bot_state.json
 #     stops the Bot Settings dialog from opening for that bot at all.
 # ---------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("value", REFUSED)
 def test_dict_site_refuses_without_raising(value, monkeypatch):
@@ -357,6 +380,7 @@ def test_object_site_one_bad_row_keeps_the_others(monkeypatch):
 #     the fix would be silently rewriting the operator's data.
 # ---------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("value,expected", ACCEPTED)
 def test_dict_site_accepts_real_timestamps(value, expected, monkeypatch):
     assert _dict_age(value, monkeypatch) == expected
@@ -379,11 +403,14 @@ def test_dict_site_json_round_trip_preserves_a_real_age(monkeypatch):
     assert _rows(widget, PENDING_HEADERS)[0][COL_AGE] == "1.0h"
 
 
-@pytest.mark.parametrize("literal,decoded", [
-    ('{"ts": Infinity}', float("inf")),
-    ('{"ts": -Infinity}', float("-inf")),
-    ('{"ts": NaN}', float("nan")),
-])
+@pytest.mark.parametrize(
+    "literal,decoded",
+    [
+        ('{"ts": Infinity}', float("inf")),
+        ('{"ts": -Infinity}', float("-inf")),
+        ('{"ts": NaN}', float("nan")),
+    ],
+)
 def test_json_really_decodes_these_shapes(literal, decoded):
     """The control for the reachability claim itself.
 
@@ -408,15 +435,13 @@ def test_the_other_cells_on_the_row_are_untouched(monkeypatch):
     credit = _valid_credit()
     widget = _build(monkeypatch, credits=[credit])
     row = _rows(widget, PENDING_HEADERS)[0]
-    assert row == ["1.0h", "bot-parent", "$42.5000",
-                   "scrum@30000.00000000"]
+    assert row == ["1.0h", "bot-parent", "$42.5000", "scrum@30000.00000000"]
 
 
 def test_the_other_transaction_cells_are_untouched(monkeypatch):
     widget = _build(monkeypatch, txs=[_valid_tx()])
     row = _rows(widget, RECENT_HEADERS)[0]
-    assert row == ["2.0h", "OUT →", "bot-child", "$17.2500",
-                   "SCRUM_ROUTE"]
+    assert row == ["2.0h", "OUT →", "bot-child", "$17.2500", "SCRUM_ROUTE"]
 
 
 # ---------------------------------------------------------------------
@@ -424,6 +449,7 @@ def test_the_other_transaction_cells_are_untouched(monkeypatch):
 #     A failure here means the fix invented a new "no value" string,
 #     so the same absence would read two different ways in one tab.
 # ---------------------------------------------------------------------
+
 
 def test_refusal_string_equals_the_absent_timestamp_string(monkeypatch):
     """A refused value must render what an ABSENT one already rendered.
@@ -435,7 +461,7 @@ def test_refusal_string_equals_the_absent_timestamp_string(monkeypatch):
     absent_dict = _dict_age(None, monkeypatch, omit=True)
     absent_obj = _obj_age(None, monkeypatch, omit=True)
     assert absent_dict == absent_obj == DASH
-    for probe in (float("inf"), 10 ** 400, [1, 2], True, "abc"):
+    for probe in (float("inf"), 10**400, [1, 2], True, "abc"):
         assert _dict_age(probe, monkeypatch) == absent_dict
         assert _obj_age(probe, monkeypatch) == absent_obj
 
@@ -454,24 +480,24 @@ def test_refusal_is_the_dash_the_file_already_used():
 #     none at all.
 # ---------------------------------------------------------------------
 
+
 def test_huge_int_does_not_raise_inside_the_guard():
     import math
 
     from src.trading.bot_container import as_finite_float
 
     with pytest.raises(OverflowError):
-        math.isfinite(10 ** 400)
-    assert as_finite_float(10 ** 400) is None
-    assert as_finite_float(2 ** 1023 + 1) is None
+        math.isfinite(10**400)
+    assert as_finite_float(10**400) is None
+    assert as_finite_float(2**1023 + 1) is None
     # The bound is inclusive, and a float at 1e308 is still accepted —
     # only the INT path carries the bound.
-    assert as_finite_float(2 ** 1023) == float(2 ** 1023)
+    assert as_finite_float(2**1023) == float(2**1023)
     assert as_finite_float(1e308) == 1e308
 
 
-@pytest.mark.parametrize("value", [10 ** 400, 2 ** 1023 + 1])
-def test_huge_int_does_not_raise_through_either_tab_site(
-        value, monkeypatch):
+@pytest.mark.parametrize("value", [10**400, 2**1023 + 1])
+def test_huge_int_does_not_raise_through_either_tab_site(value, monkeypatch):
     assert _dict_age(value, monkeypatch) == DASH
     assert _obj_age(value, monkeypatch) == DASH
 
@@ -483,14 +509,16 @@ def test_huge_int_does_not_raise_through_either_tab_site(
 #     read was reintroduced beside a guarded one.
 # ---------------------------------------------------------------------
 
+
 def _swarm_tab_source():
     import inspect
     import textwrap
 
     from src.gui.bot_live_settings import BotLiveSettingsDialog
 
-    return textwrap.dedent(inspect.getsource(
-        BotLiveSettingsDialog._create_bot_swarm_tab))
+    return textwrap.dedent(
+        inspect.getsource(BotLiveSettingsDialog._create_bot_swarm_tab)
+    )
 
 
 def test_no_bare_float_read_feeds_format_age(monkeypatch):
@@ -505,18 +533,23 @@ def test_no_bare_float_read_feeds_format_age(monkeypatch):
     tree = ast.parse(_swarm_tab_source())
     guarded = set()
     for node in ast.walk(tree):
-        if (isinstance(node, ast.Assign)
-                and isinstance(node.value, ast.Call)
-                and isinstance(node.value.func, ast.Name)
-                and node.value.func.id == "_as_finite_float"):
+        if (
+            isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "_as_finite_float"
+        ):
             for tgt in node.targets:
                 if isinstance(tgt, ast.Name):
                     guarded.add(tgt.id)
 
-    calls = [n for n in ast.walk(tree)
-             if isinstance(n, ast.Call)
-             and isinstance(n.func, ast.Attribute)
-             and n.func.attr == "_format_age"]
+    calls = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "_format_age"
+    ]
     assert len(calls) == 2, "both Age columns must still be here"
 
     for call in calls:
@@ -524,7 +557,8 @@ def test_no_bare_float_read_feeds_format_age(monkeypatch):
         names = {n.id for n in ast.walk(arg) if isinstance(n, ast.Name)}
         assert names & guarded, (
             f"_format_age argument {ast.unparse(arg)!r} is not fed by "
-            "_as_finite_float")
+            "_as_finite_float"
+        )
 
 
 def test_the_guard_is_the_shipped_helper_not_a_local_copy():
@@ -533,12 +567,17 @@ def test_the_guard_is_the_shipped_helper_not_a_local_copy():
 
     tree = ast.parse(_swarm_tab_source())
     imported = [
-        n for n in ast.walk(tree)
+        n
+        for n in ast.walk(tree)
         if isinstance(n, ast.ImportFrom)
-        and any(a.name == "as_finite_float"
-                and a.asname == "_as_finite_float" for a in n.names)]
+        and any(
+            a.name == "as_finite_float" and a.asname == "_as_finite_float"
+            for a in n.names
+        )
+    ]
     assert imported, "the helper must be imported, not redefined"
-    assert not [n for n in ast.walk(tree)
-                if isinstance(n, ast.FunctionDef)
-                and n.name.endswith("finite_float")], (
-        "a local re-implementation of the admission rule")
+    assert not [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name.endswith("finite_float")
+    ], "a local re-implementation of the admission rule"

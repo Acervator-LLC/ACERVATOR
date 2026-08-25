@@ -41,8 +41,16 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
-    QCheckBox, QFormLayout, QFrame, QGridLayout,
-    QHBoxLayout, QLabel, QPushButton, QSpinBox, QVBoxLayout, QWidget,
+    QCheckBox,
+    QFormLayout,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
 )
 
 from .nuclear_fleet_controller import (
@@ -99,11 +107,13 @@ def _section_label(text: str) -> QLabel:
 class NuclearModePanel(QWidget):
     """Operator-facing panel for Nuclear Mode (fleet soak)."""
 
-    def __init__(self,
-                 activity_log_cb: Optional[Callable[[str], None]] = None,
-                 perf_log_cb: Optional[Callable[[str], None]] = None,
-                 async_loop_getter: Optional[Callable[[], asyncio.AbstractEventLoop]] = None,
-                 parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self,
+        activity_log_cb: Optional[Callable[[str], None]] = None,
+        perf_log_cb: Optional[Callable[[str], None]] = None,
+        async_loop_getter: Optional[Callable[[], asyncio.AbstractEventLoop]] = None,
+        parent: Optional[QWidget] = None,
+    ) -> None:
         super().__init__(parent)
         self.setAccessibleName("Nuclear Mode Panel")
         self._activity_log_cb = activity_log_cb or (lambda _msg: None)
@@ -138,7 +148,8 @@ class NuclearModePanel(QWidget):
         header_lay.setSpacing(4)
         title = QLabel("Nuclear Mode — Fleet Soak")
         title.setStyleSheet(
-            "color:#ffcc44;font-size:15px;font-weight:bold;border:none;")
+            "color:#ffcc44;font-size:15px;font-weight:bold;border:none;"
+        )
         header_lay.addWidget(title)
         sub = QLabel(
             "Loops the LIVE fleet from bot_state — bots, Smart Wires and "
@@ -150,7 +161,8 @@ class NuclearModePanel(QWidget):
             "reliability under load. Tablets are read-only and bot_state "
             "is never written; noise is applied to a copy. This is an "
             "abuse test, not a validation run — it measures coverage and "
-            "survival, never trade accuracy.")
+            "survival, never trade accuracy."
+        )
         sub.setStyleSheet("color:#aab;border:none;font-size:11px;")
         sub.setWordWrap(True)
         header_lay.addWidget(sub)
@@ -159,8 +171,7 @@ class NuclearModePanel(QWidget):
         # ─── Tape selector ──────────────────────────────────────────
         self._tape_card = QFrame()
         self._tape_card.setStyleSheet(
-            "QFrame{background:#0a0a14;border:1px solid #2a2a44;"
-            "border-radius:4px;}"
+            "QFrame{background:#0a0a14;border:1px solid #2a2a44;" "border-radius:4px;}"
         )
         tape_outer = QVBoxLayout(self._tape_card)
         tape_outer.setContentsMargins(8, 8, 8, 8)
@@ -169,8 +180,7 @@ class NuclearModePanel(QWidget):
         # The empty-state body is built but kept hidden when tapes exist
         self._empty_label = QLabel("")
         self._empty_label.setWordWrap(True)
-        self._empty_label.setStyleSheet(
-            "color:#ff9966;border:none;font-size:11px;")
+        self._empty_label.setStyleSheet("color:#ff9966;border:none;font-size:11px;")
         self._empty_label.hide()
         tape_outer.addWidget(self._empty_label)
 
@@ -183,8 +193,7 @@ class NuclearModePanel(QWidget):
         tape_form = QFormLayout()
         tape_form.setSpacing(6)
         self._fleet_detail = QLabel("—")
-        self._fleet_detail.setStyleSheet(
-            "color:#88c0ff;border:none;font-size:11px;")
+        self._fleet_detail.setStyleSheet("color:#88c0ff;border:none;font-size:11px;")
         self._fleet_detail.setWordWrap(True)
         tape_form.addRow("Fleet:", self._fleet_detail)
 
@@ -204,8 +213,7 @@ class NuclearModePanel(QWidget):
         # ─── Config ─────────────────────────────────────────────────
         cfg_card = QFrame()
         cfg_card.setStyleSheet(
-            "QFrame{background:#0a0a14;border:1px solid #2a2a44;"
-            "border-radius:4px;}"
+            "QFrame{background:#0a0a14;border:1px solid #2a2a44;" "border-radius:4px;}"
         )
         cfg_outer = QVBoxLayout(cfg_card)
         cfg_outer.setContentsMargins(8, 8, 8, 8)
@@ -227,7 +235,8 @@ class NuclearModePanel(QWidget):
         self._cycle_candles_spin.setSuffix(" candles")
         self._cycle_candles_spin.setToolTip(
             "Candles played per cycle. Each cycle replays the fleet's "
-            "tablets under a freshly drawn market structure.")
+            "tablets under a freshly drawn market structure."
+        )
         cfg_form.addRow("Cycle length:", self._cycle_candles_spin)
 
         self._max_cycles_spin = QSpinBox()
@@ -236,7 +245,8 @@ class NuclearModePanel(QWidget):
         self._max_cycles_spin.setSpecialValueText("unlimited")
         self._max_cycles_spin.setToolTip(
             "Stop after this many cycles. 0 = run until Stop is "
-            "clicked — the soak case.")
+            "clicked — the soak case."
+        )
         cfg_form.addRow("Max cycles:", self._max_cycles_spin)
 
         self._noise_check = QCheckBox("Vary market structure per cycle")
@@ -246,7 +256,8 @@ class NuclearModePanel(QWidget):
             "successive loops present different market conditions. "
             "Stone Tablets are never modified — the noise is applied to "
             "a copy. Untick to replay the tablets unperturbed, which is "
-            "how you ask whether a failure also happens on clean data.")
+            "how you ask whether a failure also happens on clean data."
+        )
         cfg_form.addRow("", self._noise_check)
 
         self._load_osc_check = QCheckBox("Oscillate system load")
@@ -255,7 +266,8 @@ class NuclearModePanel(QWidget):
             "Sweep concurrency across cycles so the platform is "
             "stressed under varying load. Independent of market noise: "
             "this varies how hard the machine works, not what the "
-            "market does.")
+            "market does."
+        )
         cfg_form.addRow("", self._load_osc_check)
 
         cfg_outer.addLayout(cfg_form)
@@ -293,8 +305,7 @@ class NuclearModePanel(QWidget):
         # ─── Live status ────────────────────────────────────────────
         status_card = QFrame()
         status_card.setStyleSheet(
-            "QFrame{background:#0a0a14;border:1px solid #2a2a44;"
-            "border-radius:4px;}"
+            "QFrame{background:#0a0a14;border:1px solid #2a2a44;" "border-radius:4px;}"
         )
         status_outer = QVBoxLayout(status_card)
         status_outer.setContentsMargins(8, 8, 8, 8)
@@ -324,8 +335,7 @@ class NuclearModePanel(QWidget):
             lbl = QLabel(f"{label}:")
             lbl.setStyleSheet("color:#88aaff;font-size:11px;border:none;")
             val = QLabel("—")
-            val.setStyleSheet(
-                "color:#fff;font-size:12px;font-weight:bold;border:none;")
+            val.setStyleSheet("color:#fff;font-size:12px;font-weight:bold;border:none;")
             self._status_labels[key] = val
             return lbl, val
 
@@ -386,11 +396,13 @@ class NuclearModePanel(QWidget):
         self._empty_label.hide()
         try:
             from .fleet import bot_state_loader as _loader
+
             cfgs = _loader.load_bot_configs_from_state()
             wires = _loader.load_smart_wires_from_state()
         except Exception as exc:  # noqa: BLE001 - preview is best-effort
             self._fleet_detail.setText(
-                f"Could not read bot_state — {type(exc).__name__}: {exc}")
+                f"Could not read bot_state — {type(exc).__name__}: {exc}"
+            )
             self._start_btn.setEnabled(False)
             return
 
@@ -403,15 +415,18 @@ class NuclearModePanel(QWidget):
                 "Nuclear Mode loops the LIVE fleet's own Stone Tablets "
                 "under varying\nmarket structure and system load. It does "
                 "not synthesise bots, and it\nnever writes to bot_state or "
-                "to the tablet archive.")
+                "to the tablet archive."
+            )
             self._empty_label.show()
             return
 
-        symbols = sorted({
-            str(c.get("symbol", "") or "") for c in cfgs if c.get("symbol")})
+        symbols = sorted(
+            {str(c.get("symbol", "") or "") for c in cfgs if c.get("symbol")}
+        )
         self._fleet_detail.setText(
             f"{len(cfgs)} bot(s) · {len(symbols)} symbol(s) · "
-            f"{len(wires)} Smart Wire(s) from bot_state")
+            f"{len(wires)} Smart Wire(s) from bot_state"
+        )
         self._start_btn.setEnabled(True)
 
     # ─── Slots ──────────────────────────────────────────────────────────
@@ -438,12 +453,13 @@ class NuclearModePanel(QWidget):
         if self._async_loop_getter is not None:
             try:
                 loop = self._async_loop_getter()
-            except Exception:   # R28-OK
+            except Exception:  # R28-OK
                 loop = None
         if loop is None:
             self._activity_log_cb(
                 "Nuclear: no async loop available; cannot start the soak. "
-                "(SimulatorTab must call set_async_loop before launch.)")
+                "(SimulatorTab must call set_async_loop before launch.)"
+            )
             return
         try:
             self._controller = NuclearFleetController(
@@ -457,7 +473,8 @@ class NuclearModePanel(QWidget):
         except Exception as exc:  # noqa: BLE001 - construction guard
             self._activity_log_cb(
                 f"Nuclear: controller construction failed: "
-                f"{type(exc).__name__}: {exc}")
+                f"{type(exc).__name__}: {exc}"
+            )
             self._controller = None
             return
 
@@ -469,8 +486,8 @@ class NuclearModePanel(QWidget):
             ready = self._controller.prepare()
         except Exception as exc:  # noqa: BLE001 - loader guard
             self._activity_log_cb(
-                f"Nuclear: fleet load failed: "
-                f"{type(exc).__name__}: {exc}")
+                f"Nuclear: fleet load failed: " f"{type(exc).__name__}: {exc}"
+            )
             self._controller = None
             return
         if not ready:
@@ -483,9 +500,9 @@ class NuclearModePanel(QWidget):
         if _reg is None:
             self._activity_log_cb(
                 "Nuclear: Simulator Swarm unavailable — the soak will run "
-                "but will not draw swarm rows.")
-        self._controller.set_swarm_hooks(
-            register=_reg, update=_upd, stop=_stop)
+                "but will not draw swarm rows."
+            )
+        self._controller.set_swarm_hooks(register=_reg, update=_upd, stop=_stop)
 
         # v3.24.79 — inject the Market Inspector's current proposals.
         #
@@ -498,19 +515,20 @@ class NuclearModePanel(QWidget):
             self._controller.set_topologies(_topos)
             self._activity_log_cb(
                 f"Nuclear: injecting {len(_topos)} Market Inspector "
-                "topology proposal(s) on top of the fleet's own wires.")
+                "topology proposal(s) on top of the fleet's own wires."
+            )
         else:
             self._activity_log_cb(
                 "Nuclear: no Market Inspector proposal injected — "
-                "stressing the fleet's own bot_state topology.")
+                "stressing the fleet's own bot_state topology."
+            )
 
         try:
-            asyncio.run_coroutine_threadsafe(
-                self._controller.start(), loop)
+            asyncio.run_coroutine_threadsafe(self._controller.start(), loop)
         except Exception as exc:  # noqa: BLE001 - scheduling guard
             self._activity_log_cb(
-                f"Nuclear: could not schedule the soak: "
-                f"{type(exc).__name__}: {exc}")
+                f"Nuclear: could not schedule the soak: " f"{type(exc).__name__}: {exc}"
+            )
             self._controller = None
             return
 
@@ -639,7 +657,10 @@ class NuclearModePanel(QWidget):
         )
 
     def set_visual_widgets(
-        self, price_chart=None, voting_readout=None, stat_strip=None,
+        self,
+        price_chart=None,
+        voting_readout=None,
+        stat_strip=None,
     ) -> None:
         """Attach the shared Simulator visual panels.
 
@@ -679,8 +700,10 @@ class NuclearModePanel(QWidget):
                 px = float(snap.get("last_price", 0.0) or 0.0)
                 if px > 0:
                     chart.append_tick(
-                        symbol, close_price=px,
-                        volume=float(snap.get("last_volume", 0.0) or 0.0))
+                        symbol,
+                        close_price=px,
+                        volume=float(snap.get("last_volume", 0.0) or 0.0),
+                    )
                     chart.update()
             except Exception as exc:  # noqa: BLE001 - GUI best-effort
                 logger.debug("nuclear: price chart feed failed: %s", exc)
@@ -694,23 +717,31 @@ class NuclearModePanel(QWidget):
                 # Replay's. `update_bot_row` was the sim-only summary
                 # table's API and no longer exists.
                 _tf = str(getattr(summary, "timeframe", "") or "5m")
-                readout.update_data({_tf: {
-                    "bullish": summary.bullish_count,
-                    "bearish": summary.bearish_count,
-                    "neutral": summary.neutral_count,
-                    "net_score": summary.net_score,
-                    "confidence": summary.consensus_confidence,
-                    "direction": summary.consensus_direction.name,
-                    "signals": [
-                        {"indicator": _s.indicator,
-                         "direction": _s.direction.name,
-                         "confidence": _s.confidence, "details": {}}
-                        for _s in summary.signals],
-                    "locks": [],
-                }}, symbol)
+                readout.update_data(
+                    {
+                        _tf: {
+                            "bullish": summary.bullish_count,
+                            "bearish": summary.bearish_count,
+                            "neutral": summary.neutral_count,
+                            "net_score": summary.net_score,
+                            "confidence": summary.consensus_confidence,
+                            "direction": summary.consensus_direction.name,
+                            "signals": [
+                                {
+                                    "indicator": _s.indicator,
+                                    "direction": _s.direction.name,
+                                    "confidence": _s.confidence,
+                                    "details": {},
+                                }
+                                for _s in summary.signals
+                            ],
+                            "locks": [],
+                        }
+                    },
+                    symbol,
+                )
             except Exception as exc:  # noqa: BLE001 - GUI best-effort
                 logger.debug("nuclear: voting readout feed failed: %s", exc)
-
 
     def _refresh_status(self) -> None:
         """Fill the live status rows from the controller snapshot.

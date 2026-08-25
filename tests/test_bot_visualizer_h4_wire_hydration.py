@@ -62,6 +62,7 @@ re-armed.
 NO TEST HERE READS ``~/.acervator/bot_state.json``. Every case installs
 its own state through ``_load_bot_state_dict``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -97,22 +98,32 @@ def _state(routes: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
 
 # 4 routes on disk. Two are paintable. One has no destination and one
 # has a zero percentage, so the shipped filter drops those two.
-MIXED = _state({
-    "BTC-USD": [{"dest_bot_id": "ETH-USD", "pct": 25.0},
-                {"dest_bot_id": "", "pct": 10.0}],
-    "SOL-USD": [{"dest_bot_id": "ADA-USD", "pct": 40.0},
-                {"dest_bot_id": "DOGE-USD", "pct": 0.0}],
-})
+MIXED = _state(
+    {
+        "BTC-USD": [
+            {"dest_bot_id": "ETH-USD", "pct": 25.0},
+            {"dest_bot_id": "", "pct": 10.0},
+        ],
+        "SOL-USD": [
+            {"dest_bot_id": "ADA-USD", "pct": 40.0},
+            {"dest_bot_id": "DOGE-USD", "pct": 0.0},
+        ],
+    }
+)
 MIXED_ON_DISK = 4
 MIXED_PAINTABLE = 2
 
-TWO_PAINTABLE = _state({
-    "BTC-USD": [{"dest_bot_id": "ETH-USD", "pct": 25.0}],
-    "SOL-USD": [{"dest_bot_id": "ADA-USD", "pct": 40.0}],
-})
-ONE_PAINTABLE = _state({
-    "BTC-USD": [{"dest_bot_id": "ETH-USD", "pct": 25.0}],
-})
+TWO_PAINTABLE = _state(
+    {
+        "BTC-USD": [{"dest_bot_id": "ETH-USD", "pct": 25.0}],
+        "SOL-USD": [{"dest_bot_id": "ADA-USD", "pct": 40.0}],
+    }
+)
+ONE_PAINTABLE = _state(
+    {
+        "BTC-USD": [{"dest_bot_id": "ETH-USD", "pct": 25.0}],
+    }
+)
 
 
 class _BusThatRejects:
@@ -145,11 +156,14 @@ def qapp() -> QCoreApplication:
 @pytest.fixture
 def on_disk(monkeypatch: pytest.MonkeyPatch) -> InstallState:
     """Return an installer that fixes what the hydration reads from disk."""
+
     def _install(state: dict[str, Any]) -> None:
         monkeypatch.setattr(
-            bv.BotVisualizationTab, "_load_bot_state_dict",
+            bv.BotVisualizationTab,
+            "_load_bot_state_dict",
             lambda _self: state,
         )
+
     return _install
 
 
@@ -180,7 +194,8 @@ class TestTheOracle:
     """A zero record count is a claim about the sink, not about the code."""
 
     def test_the_capture_fixture_sees_this_modules_logger(
-        self, capture_log: CaptureLog,
+        self,
+        capture_log: CaptureLog,
     ) -> None:
         """Fail means every log assertion in this file is void."""
         with capture_log(LOGGER_NAME) as records:
@@ -192,7 +207,9 @@ class TestARejectedRouteIsRecorded:
     """The S112 finding: a route the bus refuses must leave a record."""
 
     def test_the_rejected_route_is_named_with_its_exception(
-        self, monkeypatch: pytest.MonkeyPatch, on_disk: InstallState,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        on_disk: InstallState,
         capture_log: CaptureLog,
     ) -> None:
         """Fail means a refused route is dropped in silence again."""
@@ -210,7 +227,9 @@ class TestARejectedRouteDoesNotStopTheRest:
     """Record-keeping must not become a control-flow change."""
 
     def test_the_later_route_still_reaches_the_bus(
-        self, monkeypatch: pytest.MonkeyPatch, on_disk: InstallState,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        on_disk: InstallState,
     ) -> None:
         """Fail means one bad route now costs every route after it."""
         on_disk(MIXED)
@@ -225,7 +244,9 @@ class TestTheShortfallIsStated:
     """The gap between routes on disk and wires painted must be recorded."""
 
     def test_the_record_states_painted_of_total(
-        self, on_disk: InstallState, capture_log: CaptureLog,
+        self,
+        on_disk: InstallState,
+        capture_log: CaptureLog,
     ) -> None:
         """Fail means the overlay can under-report the state file unseen."""
         on_disk(MIXED)
@@ -242,7 +263,9 @@ class TestAFullyPaintedFleetIsQuiet:
     """Paired control. The warning above must depend on a real shortfall."""
 
     def test_no_shortfall_record_when_every_route_is_painted(
-        self, on_disk: InstallState, capture_log: CaptureLog,
+        self,
+        on_disk: InstallState,
+        capture_log: CaptureLog,
     ) -> None:
         """Fail means the warning is unconditional and states nothing."""
         on_disk(TWO_PAINTABLE)
@@ -256,7 +279,8 @@ class TestTheReturnedCountIsTheEventsDelivered:
     """The docstring claims the return value counts events emitted."""
 
     def test_the_real_bus_delivers_exactly_the_returned_count(
-        self, on_disk: InstallState,
+        self,
+        on_disk: InstallState,
     ) -> None:
         """Fail means the docstring sentence is false."""
         on_disk(MIXED)
@@ -264,8 +288,9 @@ class TestTheReturnedCountIsTheEventsDelivered:
         bus = eb.get_event_bus()
         stop = bus.subscribe(
             "wire.created",
-            lambda e: seen.append((str(e.data.get("source_id")),
-                                   str(e.data.get("target_id")))),
+            lambda e: seen.append(
+                (str(e.data.get("source_id")), str(e.data.get("target_id")))
+            ),
         )
         try:
             painted = _bare_tab()._hydrate_smart_wire_routes_from_disk()
@@ -279,7 +304,9 @@ class TestNoEventBusIsRecorded:
     """A total loss of hydration must not be silent."""
 
     def test_an_unavailable_bus_returns_zero_and_records_why(
-        self, monkeypatch: pytest.MonkeyPatch, on_disk: InstallState,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        on_disk: InstallState,
         capture_log: CaptureLog,
     ) -> None:
         """Fail means every wire vanishes from the overlay with no trace."""
@@ -301,13 +328,20 @@ class TestNoEventBusIsRecorded:
 class TestTheCallerConsumesTheCount:
     """H4 itself. The constructor must record the number it received."""
 
-    @pytest.mark.parametrize(("state", "expected"), [
-        (ONE_PAINTABLE, 1),
-        (TWO_PAINTABLE, 2),
-    ])
+    @pytest.mark.parametrize(
+        ("state", "expected"),
+        [
+            (ONE_PAINTABLE, 1),
+            (TWO_PAINTABLE, 2),
+        ],
+    )
     def test_construction_records_the_count_the_method_returned(
-        self, qapp: QCoreApplication, on_disk: InstallState,
-        capture_log: CaptureLog, state: dict[str, Any], expected: int,
+        self,
+        qapp: QCoreApplication,
+        on_disk: InstallState,
+        capture_log: CaptureLog,
+        state: dict[str, Any],
+        expected: int,
     ) -> None:
         """Fail means the return value is discarded again.
 
@@ -319,25 +353,28 @@ class TestTheCallerConsumesTheCount:
             for _tab in _built_tab(qapp):
                 pass
         wanted = f"{expected} wire.created event(s) emitted"
-        assert [m for m in _messages(records) if wanted in m], _messages(
-            records)
+        assert [m for m in _messages(records) if wanted in m], _messages(records)
 
 
 class TestTheCallerRecordsAHydrationThatRaised:
     """The S110 finding: a whole failed hydration must leave a record."""
 
     def test_construction_survives_and_records_the_failure(
-        self, qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch,
+        self,
+        qapp: QCoreApplication,
+        monkeypatch: pytest.MonkeyPatch,
         capture_log: CaptureLog,
     ) -> None:
         """Fail means the tab hides a total hydration failure again."""
+
         def _raise(_self: object) -> int:
             msg = "hydration exploded"
             raise RuntimeError(msg)
 
         monkeypatch.setattr(
             bv.BotVisualizationTab,
-            "_hydrate_smart_wire_routes_from_disk", _raise,
+            "_hydrate_smart_wire_routes_from_disk",
+            _raise,
         )
         built = False
         with capture_log(LOGGER_NAME) as records:

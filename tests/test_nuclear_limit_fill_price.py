@@ -39,6 +39,7 @@ Fleet's model is deliberately NOT copied here. Fleet rests the order and
 sweeps it later; Nuclear is single-shot by design. This pins the FILL
 PRICE, not the resting semantics — the venues stay forks.
 """
+
 from __future__ import annotations
 
 import sys
@@ -88,8 +89,8 @@ def _venue(candle=None):
 
 async def _place(ex, side, otype, amount, price=None):
     return await ex.place_order(
-        symbol=SYM, side=side, order_type=otype,
-        amount=amount, price=price)
+        symbol=SYM, side=side, order_type=otype, amount=amount, price=price
+    )
 
 
 class TestTheInstrumentWorks:
@@ -114,25 +115,23 @@ class TestFreeMoneyIsGone:
     async def test_a_buy_far_below_the_market_does_not_fill_at_its_limit(self):
         """THE defect. A $1.00 bid against a $100 market filled at $1.00
         — a 99% fabricated discount, and better the lower it bid."""
-        o = await _place(_venue(), OrderSide.BUY, OrderType.LIMIT, 1.0,
-                         price=1.0)
+        o = await _place(_venue(), OrderSide.BUY, OrderType.LIMIT, 1.0, price=1.0)
         assert o.average != pytest.approx(1.0), (
             "a BUY limit filled at a price the market never traded; "
-            "any strategy bidding low is being paid to do so")
+            "any strategy bidding low is being paid to do so"
+        )
 
     @pytest.mark.asyncio
     async def test_a_sell_far_above_the_market_does_not_fill_at_its_limit(self):
         """The mirror: asking $10,000 into a $100 market."""
-        o = await _place(_venue(), OrderSide.SELL, OrderType.LIMIT, 1.0,
-                         price=10_000.0)
+        o = await _place(_venue(), OrderSide.SELL, OrderType.LIMIT, 1.0, price=10_000.0)
         assert o.average != pytest.approx(10_000.0)
 
     @pytest.mark.asyncio
     async def test_an_unfillable_buy_does_not_report_a_fill(self):
         """Not filling is the honest outcome — reporting a fill at the
         close would be a different fabrication."""
-        o = await _place(_venue(), OrderSide.BUY, OrderType.LIMIT, 1.0,
-                         price=1.0)
+        o = await _place(_venue(), OrderSide.BUY, OrderType.LIMIT, 1.0, price=1.0)
         assert float(getattr(o, "filled", 0) or 0) == 0.0
 
     @pytest.mark.asyncio
@@ -149,14 +148,12 @@ class TestFillableLimitsStillFill:
     async def test_a_buy_at_or_above_the_low_fills(self):
         """NEGATIVE CONTROL: refusing everything would 'fix' the defect
         while removing limit orders from the simulator entirely."""
-        o = await _place(_venue(), OrderSide.BUY, OrderType.LIMIT, 1.0,
-                         price=98.0)
+        o = await _place(_venue(), OrderSide.BUY, OrderType.LIMIT, 1.0, price=98.0)
         assert float(getattr(o, "filled", 0) or 0) > 0.0
 
     @pytest.mark.asyncio
     async def test_a_sell_at_or_below_the_high_fills(self):
-        o = await _place(_venue(), OrderSide.SELL, OrderType.LIMIT, 1.0,
-                         price=102.0)
+        o = await _place(_venue(), OrderSide.SELL, OrderType.LIMIT, 1.0, price=102.0)
         assert float(getattr(o, "filled", 0) or 0) > 0.0
 
     @pytest.mark.asyncio
@@ -164,23 +161,21 @@ class TestFillableLimitsStillFill:
         """The mirror of the defect: a BUY limit ABOVE the market must
         not fill at its own (worse) price when the market was cheaper.
         That would fabricate a LOSS."""
-        o = await _place(_venue(), OrderSide.BUY, OrderType.LIMIT, 1.0,
-                         price=104.0)
-        assert o.average == pytest.approx(100.0), (
-            f"filled at {o.average}, worse than the {100.0} close")
+        o = await _place(_venue(), OrderSide.BUY, OrderType.LIMIT, 1.0, price=104.0)
+        assert o.average == pytest.approx(
+            100.0
+        ), f"filled at {o.average}, worse than the {100.0} close"
 
     @pytest.mark.asyncio
     async def test_a_sell_below_the_market_fills_at_the_market(self):
-        o = await _place(_venue(), OrderSide.SELL, OrderType.LIMIT, 1.0,
-                         price=96.0)
+        o = await _place(_venue(), OrderSide.SELL, OrderType.LIMIT, 1.0, price=96.0)
         assert o.average == pytest.approx(100.0)
 
     @pytest.mark.asyncio
     async def test_a_marketable_buy_never_fills_above_its_limit(self):
         """The limit is a ceiling for a BUY, whatever the close does."""
         ex = _venue([0, 100.0, 105.0, 95.0, 103.0, 10.0])  # close 103
-        o = await _place(ex, OrderSide.BUY, OrderType.LIMIT, 1.0,
-                         price=99.0)
+        o = await _place(ex, OrderSide.BUY, OrderType.LIMIT, 1.0, price=99.0)
         if float(getattr(o, "filled", 0) or 0) > 0.0:
             assert o.average <= 99.0 + 1e-9
 
@@ -197,7 +192,7 @@ class TestTheDocstringGuaranteeIsTrue:
         """
         import src.gui.simulator_tab.nuclear_sim_exchange as m
 
-        doc = (m.__doc__ or "")
+        doc = m.__doc__ or ""
         # Behavioural in spirit, scoped to the R28 FL guarantee line
         # rather than the whole docstring. An earlier version forbade
         # the PHRASE "zero balances" anywhere, which a docstring
@@ -208,7 +203,8 @@ class TestTheDocstringGuaranteeIsTrue:
         assert "zero balances" in _guarantee, (
             "SN-17 gave this venue a balance precondition, so the R28 FL "
             "guarantee should list zero balances among the conditions "
-            "that raise")
+            "that raise"
+        )
 
     @pytest.mark.asyncio
     async def test_a_zero_balance_buy_now_raises(self):
@@ -228,5 +224,4 @@ class TestTheDocstringGuaranteeIsTrue:
         ex._balances = {"USD": 0.0, "BTC": 0.0}
         with pytest.raises(ValueError):
             await _place(ex, OrderSide.BUY, OrderType.MARKET, 1.0)
-        assert ex._balances["USD"] == 0.0, (
-            "a refused order still moved the ledger")
+        assert ex._balances["USD"] == 0.0, "a refused order still moved the ledger"

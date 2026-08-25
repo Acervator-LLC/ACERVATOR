@@ -16,6 +16,7 @@ The dialog subscribes to the event bus's
 events from BotManager.start_all() with phase ∈
 {begin, bot_started, done, cancelled}.
 """
+
 from __future__ import annotations
 
 import logging
@@ -65,7 +66,8 @@ class StartAllProgressDialog(QtWidgets.QDialog):
             "between each (verify-then-next + a 2s minimum gap so the "
             "per-exchange CCXT call queue has time to drain). Click "
             "Cancel to abort the remaining bots — bots already started "
-            "will keep running.")
+            "will keep running."
+        )
         self._subline.setWordWrap(True)
         self._subline.setStyleSheet("color: #888888;")
         layout.addWidget(self._subline)
@@ -90,10 +92,11 @@ class StartAllProgressDialog(QtWidgets.QDialog):
         # Subscribe to engine events
         try:
             from src.core.event_bus import get_event_bus
+
             self._bus = get_event_bus()
             self._unsub = self._bus.subscribe(
-                "bot_manager.start_all_progress",
-                self._on_progress_event)
+                "bot_manager.start_all_progress", self._on_progress_event
+            )
         except Exception:
             self._bus = None
             self._unsub = None
@@ -131,11 +134,14 @@ class StartAllProgressDialog(QtWidgets.QDialog):
         except (AttributeError, TypeError, ValueError) as _pe_exc:
             logger.exception(
                 "Start All progress event dropped (%s): %s",
-                type(_pe_exc).__name__, _pe_exc)
+                type(_pe_exc).__name__,
+                _pe_exc,
+            )
 
     @QtCore.Slot(str, int, int, str)
-    def _handle_progress_main_thread(self, phase: str, total: int,
-                                      started: int, bot_id: str) -> None:
+    def _handle_progress_main_thread(
+        self, phase: str, total: int, started: int, bot_id: str
+    ) -> None:
         if phase == "begin":
             if total == 0:
                 # Nothing to do — close immediately so the dialog
@@ -145,20 +151,21 @@ class StartAllProgressDialog(QtWidgets.QDialog):
                 self._close_btn.setEnabled(True)
                 QtCore.QTimer.singleShot(800, self.accept)
                 return
-            self._headline.setText(
-                f"Auto-starting {total} bots (0/{total} verified)")
+            self._headline.setText(f"Auto-starting {total} bots (0/{total} verified)")
             self._list.clear()
         elif phase == "bot_starting":
             # v3.16.11 — show the bot is currently being verified
             self._headline.setText(
                 f"Auto-starting {total} bots "
-                f"({started}/{total} verified, starting {bot_id}...)")
+                f"({started}/{total} verified, starting {bot_id}...)"
+            )
             if bot_id:
                 self._list.addItem(f"⏳ {bot_id} (starting...)")
                 self._list.scrollToBottom()
         elif phase == "bot_started":
             self._headline.setText(
-                f"Auto-starting {total} bots ({started}/{total} verified)")
+                f"Auto-starting {total} bots ({started}/{total} verified)"
+            )
             if bot_id:
                 # Replace the "starting..." line with a verified line
                 self._replace_last_matching(bot_id, f"✓ {bot_id}")
@@ -167,18 +174,16 @@ class StartAllProgressDialog(QtWidgets.QDialog):
             # moved on. Mark as a warning so operator can review.
             if bot_id:
                 self._replace_last_matching(
-                    bot_id,
-                    f"⚠ {bot_id} (start verify timed out — may still come up)")
+                    bot_id, f"⚠ {bot_id} (start verify timed out — may still come up)"
+                )
         elif phase == "done":
-            self._headline.setText(
-                f"Done — {total} bot(s) processed.")
+            self._headline.setText(f"Done — {total} bot(s) processed.")
             self._cancel_btn.setEnabled(False)
             self._close_btn.setEnabled(True)
             # Auto-dismiss after 2 seconds so it doesn't linger
             QtCore.QTimer.singleShot(2000, self.accept)
         elif phase == "cancelled":
-            self._headline.setText(
-                f"Cancelled — {started}/{total} bots had started.")
+            self._headline.setText(f"Cancelled — {started}/{total} bots had started.")
             self._cancel_btn.setEnabled(False)
             self._close_btn.setEnabled(True)
 
@@ -205,8 +210,7 @@ class StartAllProgressDialog(QtWidgets.QDialog):
             self._bot_manager.cancel_start_all()
         except Exception as _c_exc:  # noqa: BLE001 - UI must still respond
             logger.exception("cancel_start_all failed: %s", _c_exc)
-            self._headline.setText(
-                "Cancel FAILED — bots may still be starting")
+            self._headline.setText("Cancel FAILED — bots may still be starting")
             self._cancel_btn.setEnabled(False)
             return
         self._cancel_btn.setEnabled(False)
@@ -222,6 +226,6 @@ class StartAllProgressDialog(QtWidgets.QDialog):
                 self._unsub()
         except Exception as _u_exc:  # noqa: BLE001 - close must proceed
             logger.exception(
-                "Start All progress unsubscribe failed, handler leaked: "
-                "%s", _u_exc)
+                "Start All progress unsubscribe failed, handler leaked: " "%s", _u_exc
+            )
         super().closeEvent(event)

@@ -21,6 +21,7 @@ belt-and-suspenders).
 This module is pure UI plumbing. The gate decision (what paths prompt,
 what the target ceiling is) lives in scrumming_bot.py._execute_buy.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -28,12 +29,17 @@ import logging
 from typing import Optional
 
 try:
-    from PySide6.QtCore import Qt, QObject, Signal, Slot, QTimer
+    from PySide6.QtCore import Qt, QObject, Signal, Slot
     from PySide6.QtWidgets import (
-        QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-        QFrame, QApplication,
+        QDialog,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QPushButton,
+        QFrame,
     )
     from PySide6.QtGui import QFont
+
     _QT_AVAILABLE = True
 except ImportError:  # pragma: no cover
     _QT_AVAILABLE = False
@@ -53,12 +59,14 @@ def get_broker() -> "_BuyConfirmationBroker":
         if not _QT_AVAILABLE:
             raise RuntimeError(
                 "PySide6 not available; buy confirmation dialog "
-                "cannot be used in this environment.")
+                "cannot be used in this environment."
+            )
         _broker = _BuyConfirmationBroker()
     return _broker
 
 
 if _QT_AVAILABLE:
+
     class _BuyConfirmationBroker(QObject):
         """
         Bridge between bot async tasks and the GUI main thread.
@@ -86,8 +94,7 @@ if _QT_AVAILABLE:
             self._pending: dict[str, dict] = {}
             # Connect to our own slot with AutoConnection so cross-thread
             # emissions queue to the main thread.
-            self._request_signal.connect(
-                self._on_request_received, Qt.AutoConnection)
+            self._request_signal.connect(self._on_request_received, Qt.AutoConnection)
 
         async def request_confirmation(
             self,
@@ -139,7 +146,9 @@ if _QT_AVAILABLE:
                 self._pending.pop(request_id, None)
                 logger.warning(
                     "Buy confirmation timed out after %ss for bot %s",
-                    timeout_sec, bot_id)
+                    timeout_sec,
+                    bot_id,
+                )
                 return "timeout"
 
         @Slot(str, object)
@@ -171,7 +180,6 @@ if _QT_AVAILABLE:
             if not fut.done():
                 loop.call_soon_threadsafe(fut.set_result, answer)
             self._pending.pop(request_id, None)
-
 
     class BuyConfirmationDialog(QDialog):
         """The modal itself. Shows buy details + three action buttons."""
@@ -235,10 +243,12 @@ if _QT_AVAILABLE:
             btn_skip = QPushButton("Skip this cycle")
             btn_yes.setStyleSheet(
                 "padding: 8px 16px; background-color: #225522; "
-                "color: white; font-weight: bold;")
+                "color: white; font-weight: bold;"
+            )
             btn_no.setStyleSheet(
                 "padding: 8px 16px; background-color: #552222; "
-                "color: white; font-weight: bold;")
+                "color: white; font-weight: bold;"
+            )
             btn_skip.setStyleSheet("padding: 8px 16px;")
             btn_yes.clicked.connect(lambda: self._answer("yes"))
             btn_no.clicked.connect(lambda: self._answer("no"))
@@ -252,14 +262,14 @@ if _QT_AVAILABLE:
             self.result_value = value
             self.accept()
 
-
 else:
     # Headless / no-Qt environments: stub so imports don't break.
     class _BuyConfirmationBroker:  # type: ignore[no-redef]
         async def request_confirmation(self, **kwargs) -> str:
             logger.warning(
                 "Buy confirmation requested in headless environment; "
-                "returning 'no' (safe default).")
+                "returning 'no' (safe default)."
+            )
             return "no"
 
     class BuyConfirmationDialog:  # type: ignore[no-redef]

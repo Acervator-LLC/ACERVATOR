@@ -29,8 +29,17 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 SKIP_DIRS = {
-    ".git", ".claude", "__pycache__", ".pytest_cache", ".mypy_cache",
-    ".ruff_cache", ".hypothesis", ".venv", "node_modules", "build", "dist",
+    ".git",
+    ".claude",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".hypothesis",
+    ".venv",
+    "node_modules",
+    "build",
+    "dist",
     "_archive",
 }
 
@@ -74,70 +83,107 @@ def git_remotes() -> list[str]:
     for line in config.read_text(encoding="utf-8", errors="replace").splitlines():
         stripped = line.strip()
         if stripped.startswith('[remote "') and stripped.endswith('"]'):
-            names.append(stripped[len('[remote "'):-2])
+            names.append(stripped[len('[remote "') : -2])
     return names
 
 
 # Each entry: (number, title, [(label, needle)], how to read the result).
 # A probe is a QUESTION, so the label says what a hit would mean.
 PROBES: list[tuple[int, str, list[tuple[str, str]], str]] = [
-    (4, "Tranche tracking under the parent + row painting", [
-        ("extractor paint routine", "_paint_extractor_tranche_rows"),
-        ("fold paint routine", "_paint_fold_tranche_row"),
-        ("row border delegate", "_TrancheRowBorderDelegate"),
-        ("delegate wired", "setItemDelegate"),
-        # Named _cells, not _row. The first version of this probe searched
-        # for `_compose_extractor_tranche_row` and reported 0 — which is
-        # exactly why a probe prints the pattern it searched for. A wrong
-        # needle and an absent feature look identical without it.
-        ("row composer", "_compose_extractor_tranche_cells"),
-    ], "all five present means the follow-up spec shipped"),
-
-    (6, "Distribution across Stack Tranches", [
-        ("spread across ladder", "distribute_across"),
-        ("per-rung allocation", "allocate_across_tranches"),
-    ], "no hits means open"),
-
-    (13, "Profiler butterfly view + emitter coverage map", [
-        ("butterfly", "butterfly"),
-        ("call graph", "call_graph"),
-        ("callee edges", "callee"),
-        ("coverage map", "coverage_map"),
-    ], "no hits means nothing built"),
-
-    (14, "Decouple stack SPAWN from stack USE", [
-        ("stack_mode gate sites", "stack_mode"),
-        ("spawn bypass", "bypass_stack"),
-    ], "read the creation gate by hand; a count alone cannot say WHERE it gates"),
-
-    (15, "Compounding distribution modes equal/linear/quadratic", [
-        ("mode enum", "DistributionMode"),
-        ("mode field", "distribution_mode"),
-    ], "the bare word quadratic is the SPACING enum, a different axis; do not count it"),
-
-    (17, "System Status tab", [
-        ("tab class", "SystemStatusTab"),
-        ("snake case", "system_status"),
-    ], "System Status as free text also matches exchange API URLs; do not count it"),
-
-    (18, "History tab Gates column legibility", [
-        ("item delegate anywhere", "QStyledItemDelegate"),
-        ("gates cell render", "gates_cell"),
-    ], "the queue note says the repo had NO delegate on 2026-08-11; if one exists it arrived since"),
-
-    (19, "Tranche Merge Secondary Rule (below exchange minimum)", [
-        ("PRIMARY price merge", "_apply_merge_rule"),
-        ("merge threshold", "MERGE_THRESHOLD"),
-        ("size merge", "merge_below_minimum"),
-        ("exchange minimum reader", "min_order_size"),
-    ], "the primary is a PRICE merge; the secondary is a SIZE merge and is the open half"),
-
-    (20, "Wire credits when a tranche despawns on age", [
-        ("per-bot credit pool", "_pending_wire_credits"),
-        ("credit ledger", "pending_wire_ledger"),
-        ("absorb into tranche", "_absorb_pending_wire_credits_into"),
-        ("despawn setting", "tranche_despawn_days"),
-    ], "the pool is a per-bot scalar so the pool cannot be orphaned; the open question is ABSORBED value on despawn"),
+    (
+        4,
+        "Tranche tracking under the parent + row painting",
+        [
+            ("extractor paint routine", "_paint_extractor_tranche_rows"),
+            ("fold paint routine", "_paint_fold_tranche_row"),
+            ("row border delegate", "_TrancheRowBorderDelegate"),
+            ("delegate wired", "setItemDelegate"),
+            # Named _cells, not _row. The first version of this probe searched
+            # for `_compose_extractor_tranche_row` and reported 0 — which is
+            # exactly why a probe prints the pattern it searched for. A wrong
+            # needle and an absent feature look identical without it.
+            ("row composer", "_compose_extractor_tranche_cells"),
+        ],
+        "all five present means the follow-up spec shipped",
+    ),
+    (
+        6,
+        "Distribution across Stack Tranches",
+        [
+            ("spread across ladder", "distribute_across"),
+            ("per-rung allocation", "allocate_across_tranches"),
+        ],
+        "no hits means open",
+    ),
+    (
+        13,
+        "Profiler butterfly view + emitter coverage map",
+        [
+            ("butterfly", "butterfly"),
+            ("call graph", "call_graph"),
+            ("callee edges", "callee"),
+            ("coverage map", "coverage_map"),
+        ],
+        "no hits means nothing built",
+    ),
+    (
+        14,
+        "Decouple stack SPAWN from stack USE",
+        [
+            ("stack_mode gate sites", "stack_mode"),
+            ("spawn bypass", "bypass_stack"),
+        ],
+        "read the creation gate by hand; a count alone cannot say WHERE it gates",
+    ),
+    (
+        15,
+        "Compounding distribution modes equal/linear/quadratic",
+        [
+            ("mode enum", "DistributionMode"),
+            ("mode field", "distribution_mode"),
+        ],
+        "the bare word quadratic is the SPACING enum, a different axis; do not count it",
+    ),
+    (
+        17,
+        "System Status tab",
+        [
+            ("tab class", "SystemStatusTab"),
+            ("snake case", "system_status"),
+        ],
+        "System Status as free text also matches exchange API URLs; do not count it",
+    ),
+    (
+        18,
+        "History tab Gates column legibility",
+        [
+            ("item delegate anywhere", "QStyledItemDelegate"),
+            ("gates cell render", "gates_cell"),
+        ],
+        "the queue note says the repo had NO delegate on 2026-08-11; if one exists it arrived since",
+    ),
+    (
+        19,
+        "Tranche Merge Secondary Rule (below exchange minimum)",
+        [
+            ("PRIMARY price merge", "_apply_merge_rule"),
+            ("merge threshold", "MERGE_THRESHOLD"),
+            ("size merge", "merge_below_minimum"),
+            ("exchange minimum reader", "min_order_size"),
+        ],
+        "the primary is a PRICE merge; the secondary is a SIZE merge and is the open half",
+    ),
+    (
+        20,
+        "Wire credits when a tranche despawns on age",
+        [
+            ("per-bot credit pool", "_pending_wire_credits"),
+            ("credit ledger", "pending_wire_ledger"),
+            ("absorb into tranche", "_absorb_pending_wire_credits_into"),
+            ("despawn setting", "tranche_despawn_days"),
+        ],
+        "the pool is a per-bot scalar so the pool cannot be orphaned; the open question is ABSORBED value on despawn",
+    ),
 ]
 
 GIT_ITEM = 16
@@ -166,22 +212,30 @@ def report(only: set[int]) -> int:
                 print(f"   remote configured: {name}")
         else:
             print("   remote     0 configured  (.git/config declares no [remote])")
-        print("   READ AS: no remote means not uploaded from this tree. "
-              "Operator's call, never push unasked.\n")
+        print(
+            "   READ AS: no remote means not uploaded from this tree. "
+            "Operator's call, never push unasked.\n"
+        )
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("items", nargs="*", type=int,
-                        help="queue numbers to probe; default every known item")
+    parser.add_argument(
+        "items",
+        nargs="*",
+        type=int,
+        help="queue numbers to probe; default every known item",
+    )
     args = parser.parse_args()
     known = {n for n, _, _, _ in PROBES} | {GIT_ITEM}
     unknown = [i for i in args.items if i not in known]
     if unknown:
         print(f"no probe defined for item(s) {unknown}. Known: {sorted(known)}")
-        print("A missing probe is not evidence of anything. Add one rather than "
-              "reading the queue table.")
+        print(
+            "A missing probe is not evidence of anything. Add one rather than "
+            "reading the queue table."
+        )
         return 2
     return report(set(args.items))
 

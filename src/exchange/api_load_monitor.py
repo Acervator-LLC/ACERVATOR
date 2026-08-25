@@ -31,8 +31,8 @@ from typing import Optional
 logger = logging.getLogger("acervator.api_load_monitor")
 
 
-DEFAULT_CEILING_CPM = 600.0   # 10 rps × 60 s (matches connector 100 ms floor)
-DEFAULT_SAFETY_PCT = 0.75     # refuse new phantoms above this
+DEFAULT_CEILING_CPM = 600.0  # 10 rps × 60 s (matches connector 100 ms floor)
+DEFAULT_SAFETY_PCT = 0.75  # refuse new phantoms above this
 DEFAULT_WINDOW_SECONDS = 60.0
 
 # One phantom bot performs ~one exchange-heavy tick per candle.
@@ -48,12 +48,13 @@ PHANTOM_CPM_ESTIMATE_PER_TF = 1.0
 @dataclass
 class LoadReading:
     """Snapshot of one exchange's recent API load."""
+
     exchange: str
     window_seconds: float
     call_count: int
     calls_per_minute: float
     p95_latency_ms: float
-    load_score: float          # in [0, 1] against ceiling
+    load_score: float  # in [0, 1] against ceiling
     ceiling_cpm: float
 
 
@@ -81,23 +82,18 @@ class APILoadMonitor:
     def _api_log(self):
         """Late import so headless tests can stub the log module."""
         from .api_logger import get_api_log
+
         return get_api_log()
 
     def _window_entries(self, exchange: str) -> list:
         now = time.time()
         cutoff = now - self._window_s
         try:
-            all_entries = self._api_log().get_for_exchange(
-                exchange, count=10_000)
+            all_entries = self._api_log().get_for_exchange(exchange, count=10_000)
         except Exception as _exc:  # noqa: BLE001 - probe best-effort
-            logger.debug(
-                "api_log.get_for_exchange failed for %s: %s",
-                exchange, _exc)
+            logger.debug("api_log.get_for_exchange failed for %s: %s", exchange, _exc)
             return []
-        return [
-            e for e in all_entries
-            if float(e.get("timestamp", 0) or 0) >= cutoff
-        ]
+        return [e for e in all_entries if float(e.get("timestamp", 0) or 0) >= cutoff]
 
     def sample(self, exchange: str) -> LoadReading:
         """Compute a snapshot reading for one exchange."""
@@ -108,12 +104,14 @@ class APILoadMonitor:
         # P95 latency on the entries we have
         p95 = 0.0
         if entries:
-            lat = sorted(
-                float(e.get("elapsed_ms", 0) or 0) for e in entries)
+            lat = sorted(float(e.get("elapsed_ms", 0) or 0) for e in entries)
             idx = max(0, min(len(lat) - 1, int(len(lat) * 0.95)))
             p95 = lat[idx]
-        score = min(1.0, max(0.0, cpm / self._ceiling_cpm)) \
-            if self._ceiling_cpm > 0 else 0.0
+        score = (
+            min(1.0, max(0.0, cpm / self._ceiling_cpm))
+            if self._ceiling_cpm > 0
+            else 0.0
+        )
         return LoadReading(
             exchange=exchange,
             window_seconds=self._window_s,
@@ -121,15 +119,14 @@ class APILoadMonitor:
             calls_per_minute=round(cpm, 1),
             p95_latency_ms=round(p95, 1),
             load_score=round(score, 3),
-            ceiling_cpm=self._ceiling_cpm)
+            ceiling_cpm=self._ceiling_cpm,
+        )
 
     def load_score(self, exchange: str) -> float:
         """Convenience: just the [0, 1] score."""
         return self.sample(exchange).load_score
 
-    def projected_cpm_with_new_phantoms(
-        self, exchange: str, tf_count: int
-    ) -> float:
+    def projected_cpm_with_new_phantoms(self, exchange: str, tf_count: int) -> float:
         """Estimate current CPM plus what a new N-phantom set adds."""
         current = self.sample(exchange).calls_per_minute
         added = max(0, int(tf_count)) * PHANTOM_CPM_ESTIMATE_PER_TF
@@ -155,7 +152,8 @@ class APILoadMonitor:
                 f"OK — projected {projected:.0f} CPM "
                 f"(threshold {threshold:.0f} = "
                 f"{int(self._safety_pct * 100)} % of "
-                f"{self._ceiling_cpm:.0f})")
+                f"{self._ceiling_cpm:.0f})"
+            )
         return False, (
             f"REFUSED — projected {projected:.0f} CPM would exceed "
             f"safety threshold {threshold:.0f} "
@@ -163,7 +161,8 @@ class APILoadMonitor:
             f"{self._ceiling_cpm:.0f}). Current load: "
             f"{reading.calls_per_minute:.0f} CPM "
             f"({int(reading.load_score * 100)} %). Try again after "
-            f"load drops, or reduce the phantom timeframe count.")
+            f"load drops, or reduce the phantom timeframe count."
+        )
 
 
 # ---------------------------------------------------------------------

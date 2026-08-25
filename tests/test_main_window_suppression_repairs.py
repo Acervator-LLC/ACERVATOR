@@ -18,6 +18,7 @@ it covers REMOVES them, so adding one here would be self-defeating. Qt
 and application imports are therefore function-local rather than
 module-level behind an import-order pragma.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -43,12 +44,14 @@ ERROR_COLOUR = "#ff3366"
 
 def _mw():
     from src.gui import main_window
+
     return main_window
 
 
 @pytest.fixture(scope="module")
 def qapp():
     from PySide6.QtWidgets import QApplication
+
     app = QApplication.instance() or QApplication(sys.argv)
     yield app
 
@@ -94,6 +97,7 @@ def _errors(sink: _LogSink) -> list[logging.LogRecord]:
 
 # ---------------------------------------------------------------- H1 --
 # The bot-delete path swallowed the only stop. MONEY, LIVE-ORDER.
+
 
 class _StopSpy:
     def __init__(self) -> None:
@@ -154,6 +158,7 @@ def delete_rig(qapp, monkeypatch):
     """
     del qapp
     import src.core.sound_engine as sound_engine
+
     mw = _mw()
     monkeypatch.setattr(mw, "QMessageBox", _YesBox)
     monkeypatch.setattr(sound_engine, "get_sound_engine", _SilentSound)
@@ -171,8 +176,7 @@ def delete_rig(qapp, monkeypatch):
     return _build
 
 
-def test_h1_delete_records_a_failed_stop_at_the_operators_surface(
-        delete_rig):
+def test_h1_delete_records_a_failed_stop_at_the_operators_surface(delete_rig):
     """A closed loop is the shutdown window the audit named.
 
     A failure here would mean the only stop on the delete path is still
@@ -197,8 +201,7 @@ def test_h1_delete_records_a_failed_stop_at_the_operators_surface(
     assert manager.unregistered == ["BTC-1"]
 
 
-def test_h1_ordinary_delete_stops_the_bot_and_logs_nothing_spurious(
-        delete_rig):
+def test_h1_ordinary_delete_stops_the_bot_and_logs_nothing_spurious(delete_rig):
     """The healthy path must be untouched.
 
     A failure here would mean the repair changed the ordinary delete:
@@ -220,6 +223,7 @@ def test_h1_ordinary_delete_stops_the_bot_and_logs_nothing_spurious(
 
 # ---------------------------------------------------------------- H2 --
 # The wire verifier answered "registered" when it did not know. MONEY.
+
 
 class _WireManager:
     def __init__(self, behaviour: str) -> None:
@@ -285,6 +289,7 @@ def test_h2_unreadable_engine_is_not_counted_as_registered(gui_log):
 # ---------------------------------------------------------------- H3 --
 # Disconnect reported a success it did not achieve. LIVE-ORDER.
 
+
 class _Connector:
     def __init__(self, mode: str) -> None:
         self.mode = mode
@@ -303,6 +308,7 @@ class _Connector:
 
 def _api_tab(mode: str):
     from PySide6.QtWidgets import QLabel, QPushButton, QTextEdit
+
     win = _driven("_do_disconnect", "_log", owner="APITesterTab")
     win._connector = _Connector(mode)
     win._connected = True
@@ -359,6 +365,7 @@ def test_h3_clean_disconnect_says_nothing_extra(qapp):
 # ---------------------------------------------------------------- H5 --
 # A journal write was dropped in silence. STATE-WRITE.
 
+
 class _Journal:
     def __init__(self, mode: str) -> None:
         self.mode = mode
@@ -372,8 +379,11 @@ class _Journal:
 
 class _FeedbackEvent:
     def __init__(self) -> None:
-        self.data = {"feedback": "watch the BTC ladder",
-                     "authenticated": True, "timestamp": "T"}
+        self.data = {
+            "feedback": "watch the BTC ladder",
+            "authenticated": True,
+            "timestamp": "T",
+        }
 
 
 class _FeedbackSettings:
@@ -422,6 +432,7 @@ def test_h5_written_journal_note_says_nothing(qapp, gui_log):
 # ---------------------------------------------------------------- H6 --
 # Bot error records were dropped on a malformed event. OBSERVABILITY.
 
+
 class _ErrorEvent:
     def __init__(self, data: dict) -> None:
         self.data = data
@@ -449,8 +460,8 @@ def test_h6_malformed_event_drop_is_recorded(gui_log):
     win = _error_log_win()
 
     win._on_bot_error_for_log(
-        _ErrorEvent({"bot_id": "BTC-1", "error": "429",
-                     "consecutive": "three"}))
+        _ErrorEvent({"bot_id": "BTC-1", "error": "429", "consecutive": "three"})
+    )
 
     assert win._error_log_buffer == []
     errors = _errors(gui_log)
@@ -465,7 +476,8 @@ def test_h6_well_formed_event_is_buffered_quietly(gui_log):
     win = _error_log_win()
 
     win._on_bot_error_for_log(
-        _ErrorEvent({"bot_id": "BTC-1", "error": "429", "consecutive": 3}))
+        _ErrorEvent({"bot_id": "BTC-1", "error": "429", "consecutive": 3})
+    )
 
     assert len(win._error_log_buffer) == 1
     row = win._error_log_buffer[0]
@@ -478,8 +490,7 @@ def test_h6_well_formed_event_is_buffered_quietly(gui_log):
     "event",
     [
         _ErrorEvent({"bot_id": "BTC-1", "error": "429", "consecutive": 3}),
-        _ErrorEvent({"bot_id": "BTC-1", "error": "429",
-                     "consecutive": "three"}),
+        _ErrorEvent({"bot_id": "BTC-1", "error": "429", "consecutive": "three"}),
         None,
         _PoisonedEvent(),
     ],
@@ -500,6 +511,7 @@ def test_h6_never_raises_over_the_closed_input_table(event, gui_log):
 # The thread-violation diagnostic wrote nothing when it could not
 # write. OBSERVABILITY.
 
+
 def _call_off_gui_thread(win) -> list[BaseException]:
     """Run the slot on a non-GUI thread and collect anything that
     escapes it.
@@ -515,8 +527,7 @@ def _call_off_gui_thread(win) -> list[BaseException]:
             escaped.append(args.exc_value)
 
     def _run() -> None:
-        win._on_api_event({"action": "FETCH_BALANCE",
-                           "_thread_name": "asyncio-worker"})
+        win._on_api_event({"action": "FETCH_BALANCE", "_thread_name": "asyncio-worker"})
 
     previous = threading.excepthook
     threading.excepthook = _hook
@@ -538,6 +549,7 @@ def fake_home(monkeypatch, tmp_path):
     under it, so the test redirects the root rather than exercising the
     operator's own logs.
     """
+
     def _home(cls) -> pathlib.Path:
         del cls
         return tmp_path
@@ -566,8 +578,7 @@ def test_h7_unwritable_violation_log_reaches_the_logger(fake_home, gui_log):
     assert "asyncio-worker" in message
 
 
-def test_h7_writable_violation_log_still_writes_the_file(
-        fake_home, gui_log):
+def test_h7_writable_violation_log_still_writes_the_file(fake_home, gui_log):
     """A failure here would mean the repair broke the file record it was
     meant to back up, or now logs an error on the path that worked.
     """

@@ -5,19 +5,19 @@ Hard cap: 10,000,000 ACRV (never changes, enforced in token_ledger.py)
 Season rewards decrease each season.  Later tokens are harder to earn.
 Rarity tiers are awarded based on performance rank within the field.
 """
+
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import Optional
 
 # ── Supply constants ──────────────────────────────────────────────────────────
 
-TOTAL_SUPPLY_CAP  = 10_000_000      # Hard cap — immutable
-GENESIS_SEASON    = 1
-INITIAL_REWARD    = 500_000         # Season 1 reward pool
-DECAY_FACTOR      = 0.85            # Each season awards 85% of the prior season
-MIN_SEASON_REWARD = 100             # Floor — never less than this per season
+TOTAL_SUPPLY_CAP = 10_000_000  # Hard cap — immutable
+GENESIS_SEASON = 1
+INITIAL_REWARD = 500_000  # Season 1 reward pool
+DECAY_FACTOR = 0.85  # Each season awards 85% of the prior season
+MIN_SEASON_REWARD = 100  # Floor — never less than this per season
 
 
 def season_reward(season: int) -> int:
@@ -39,15 +39,16 @@ def cumulative_supply(through_season: int) -> int:
 
 # ── Rarity tiers ──────────────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class RarityTier:
-    name:         str
-    emoji:        str
-    description:  str
-    rank_pct_max: float       # top N% of field qualifies (1.0 = all)
-    condition:    str         # human-readable additional condition
-    max_ever:     Optional[int]   # None = unlimited within season budget
-    base_value:   int             # ACRV tokens awarded per win
+    name: str
+    emoji: str
+    description: str
+    rank_pct_max: float  # top N% of field qualifies (1.0 = all)
+    condition: str  # human-readable additional condition
+    max_ever: Optional[int]  # None = unlimited within season budget
+    base_value: int  # ACRV tokens awarded per win
 
     def qualifies(self, rank_pct: float, market_regime: str = "ANY") -> bool:
         """
@@ -112,9 +113,12 @@ RARITY_TIERS = [
 TIER_BY_NAME = {t.name: t for t in RARITY_TIERS}
 
 
-def classify_tier(rank_pct: float, market_regime: str = "ANY",
-                  perfect: bool = False,
-                  consecutive_top1: int = 0) -> Optional[RarityTier]:
+def classify_tier(
+    rank_pct: float,
+    market_regime: str = "ANY",
+    perfect: bool = False,
+    consecutive_top1: int = 0,
+) -> Optional[RarityTier]:
     """
     Return the highest tier this bot qualifies for given its performance metrics.
     Returns None if below Harvest threshold.

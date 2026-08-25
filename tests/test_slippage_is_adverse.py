@@ -33,6 +33,7 @@ That is a coverage gap in the harness, not a correctness defect. The
 resting code works and is pinned directly by
 tests/test_fleet_sim_infrastructure.py.
 """
+
 from __future__ import annotations
 
 import math
@@ -49,7 +50,7 @@ if str(REPO_ROOT) not in sys.path:
 from src.core.execution_discipline import fill_price  # noqa: E402
 
 PRICE = 100.0
-SPREAD = 0.001          # 0.1%
+SPREAD = 0.001  # 0.1%
 N = 20_000
 
 
@@ -82,7 +83,8 @@ class TestSlippageIsAlwaysAgainstTheTrader:
         assert mean_cost > 0.0, "slippage averaged to zero or better"
         assert mean_cost == pytest.approx(expected, rel=0.10), (
             f"mean adverse slippage {mean_cost:.6f} does not match the "
-            f"half-normal expectation {expected:.6f}")
+            f"half-normal expectation {expected:.6f}"
+        )
 
     def test_it_does_not_cancel_out_over_many_fills(self):
         """The claim the old docstring invited. On an accumulation
@@ -119,7 +121,8 @@ class TestTheDocstringMatchesTheDistribution:
         _first = doc.split(".", 1)[0]
         assert "zero-mean" not in _first.lower(), (
             "the opening line still calls this a zero-mean draw; the "
-            "applied slippage has mean spread*sqrt(2/pi) > 0")
+            "applied slippage has mean spread*sqrt(2/pi) > 0"
+        )
 
     def test_it_records_why_the_limits_cross(self):
         """SN-18 was closed on this reasoning. If the note goes, the

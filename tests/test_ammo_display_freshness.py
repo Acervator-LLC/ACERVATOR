@@ -26,6 +26,7 @@ rendered a confident signal colour for an order that silently never
 happened -- "already within dust band ... No-op". Zero is one of the
 operator's "strange, intermittent and hard to explain amounts".
 """
+
 from __future__ import annotations
 
 import sys
@@ -70,13 +71,15 @@ class TestTheFreshPriceReader:
     def test_it_prefers_the_pool_price(self):
         """POSITIVE CONTROL: without this the whole fix is inert."""
         price, age = _fresh_display_price(
-            _Pool(_Entry(250.0, 2.0)), "coinbase", "BTC/USD", 100.0)
+            _Pool(_Entry(250.0, 2.0)), "coinbase", "BTC/USD", 100.0
+        )
         assert price == pytest.approx(250.0)
         assert age == pytest.approx(2.0, abs=1.0)
 
     def test_it_reports_the_age(self):
         _, age = _fresh_display_price(
-            _Pool(_Entry(250.0, 120.0)), "coinbase", "BTC/USD", 100.0)
+            _Pool(_Entry(250.0, 120.0)), "coinbase", "BTC/USD", 100.0
+        )
         assert age == pytest.approx(120.0, abs=2.0)
 
     def test_no_pool_falls_back_with_no_age(self):
@@ -87,20 +90,21 @@ class TestTheFreshPriceReader:
         assert age is None
 
     def test_a_missing_entry_falls_back(self):
-        price, age = _fresh_display_price(
-            _Pool(None), "coinbase", "NEW/USD", 100.0)
+        price, age = _fresh_display_price(_Pool(None), "coinbase", "NEW/USD", 100.0)
         assert price == pytest.approx(100.0) and age is None
 
     def test_a_zero_price_entry_falls_back(self):
         """A cache slot registered but never filled must not blank the
         readout."""
         price, _ = _fresh_display_price(
-            _Pool(_Entry(0.0, 1.0)), "coinbase", "BTC/USD", 100.0)
+            _Pool(_Entry(0.0, 1.0)), "coinbase", "BTC/USD", 100.0
+        )
         assert price == pytest.approx(100.0)
 
     def test_a_raising_pool_does_not_break_the_dashboard(self):
         price, age = _fresh_display_price(
-            _Pool(boom=True), "coinbase", "BTC/USD", 100.0)
+            _Pool(boom=True), "coinbase", "BTC/USD", 100.0
+        )
         assert price == pytest.approx(100.0) and age is None
 
     def test_it_asks_for_the_right_symbol(self):
@@ -117,8 +121,9 @@ class TestTheAgeIsSurfaced:
         assert _STALE_MARKER not in out["text"]
 
     def test_an_old_price_is_marked(self):
-        out = _compose_ammo_cell(0.0, 2.0, 50.0, 1.0, 80.0,
-                                 price_age_s=_PRICE_STALE_AFTER_S + 60)
+        out = _compose_ammo_cell(
+            0.0, 2.0, 50.0, 1.0, 80.0, price_age_s=_PRICE_STALE_AFTER_S + 60
+        )
         assert _STALE_MARKER in out["text"]
         assert "old" in out["tip"].lower()
 
@@ -139,8 +144,9 @@ class TestTheAgeIsSurfaced:
     def test_an_old_price_loses_its_signal_colour(self):
         """A confident green on a five-minute-old number is the defect."""
         fresh = _compose_ammo_cell(0.0, 2.0, 50.0, 1.0, 80.0, price_age_s=1.0)
-        old = _compose_ammo_cell(0.0, 2.0, 50.0, 1.0, 80.0,
-                                 price_age_s=_PRICE_STALE_AFTER_S + 60)
+        old = _compose_ammo_cell(
+            0.0, 2.0, 50.0, 1.0, 80.0, price_age_s=_PRICE_STALE_AFTER_S + 60
+        )
         assert fresh["color"] != old["color"]
 
 
@@ -169,12 +175,16 @@ class TestTheManualFireBandSplit:
         import src.trading.scrumming_bot as sb
 
         src = Path(sb.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_execute_manual_rebalance")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "_execute_manual_rebalance"
+        )
         seg = ast.get_source_segment(src, fn) or ""
-        assert f"* {_MANUAL_FIRE_DUST_PCT}" in seg, (
-            "engine dust band no longer matches _MANUAL_FIRE_DUST_PCT")
+        assert (
+            f"* {_MANUAL_FIRE_DUST_PCT}" in seg
+        ), "engine dust band no longer matches _MANUAL_FIRE_DUST_PCT"
 
     def test_an_exactly_zero_delta_is_not_flagged(self):
         """A bot sitting precisely on target is not a surprising no-op."""

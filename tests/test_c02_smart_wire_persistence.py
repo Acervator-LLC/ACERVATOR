@@ -31,6 +31,7 @@ corruption the moment either writer moves off that thread.
 NOTHING HERE CONSTRUCTS A StateManager OR WRITES ANYTHING. Its default
 config_dir is the operator's live tree.
 """
+
 from __future__ import annotations
 
 import ast
@@ -48,17 +49,20 @@ SCRUM = REPO_ROOT / "src" / "trading" / "scrumming_bot.py"
 
 def _fn(path: Path, name: str) -> ast.FunctionDef:
     tree = ast.parse(path.read_text(encoding="utf-8"))
-    return next(n for n in ast.walk(tree)
-                if isinstance(n, ast.FunctionDef) and n.name == name)
+    return next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name
+    )
 
 
 def _suffix_args(fn: ast.FunctionDef) -> list[str]:
     """Literal arguments passed to `.with_suffix(...)` inside `fn`."""
     out = []
     for n in ast.walk(fn):
-        if (isinstance(n, ast.Call)
-                and getattr(n.func, "attr", "") == "with_suffix"
-                and n.args):
+        if (
+            isinstance(n, ast.Call)
+            and getattr(n.func, "attr", "") == "with_suffix"
+            and n.args
+        ):
             a = n.args[0]
             if isinstance(a, ast.Constant) and isinstance(a.value, str):
                 out.append(a.value)
@@ -71,10 +75,12 @@ class TestStagingFilesDoNotCollide:
     def test_the_extractor_sees_both_writers(self):
         """Positive control. If either walk found nothing, the collision
         test below would pass by finding no evidence of a collision."""
-        assert _suffix_args(_fn(STATE_MGR, "save_state")), \
-            "no with_suffix() found in StateManager.save_state"
-        assert _suffix_args(_fn(VIZ, "_save_bot_state_dict")), \
-            "no with_suffix() found in _save_bot_state_dict"
+        assert _suffix_args(
+            _fn(STATE_MGR, "save_state")
+        ), "no with_suffix() found in StateManager.save_state"
+        assert _suffix_args(
+            _fn(VIZ, "_save_bot_state_dict")
+        ), "no with_suffix() found in _save_bot_state_dict"
 
     def test_gui_writer_does_not_stage_through_bot_state_tmp(self):
         """The collision itself. `.tmp` here means the GUI stages
@@ -83,7 +89,8 @@ class TestStagingFilesDoNotCollide:
         assert ".tmp" not in gui, (
             f"bot_visualizer stages through {gui} — the same temp path "
             f"StateManager.save_state uses. Either writer can rename "
-            f"the other's partial write over the live position file.")
+            f"the other's partial write over the live position file."
+        )
 
     def test_state_manager_still_uses_its_own(self):
         """Negative control: the fix must move the GUI writer, not
@@ -96,15 +103,21 @@ class TestChannelOneCannotSurviveASave:
         """Why channel 1 is empty on all 35 live bots: the exporter
         that rebuilds scrumming_state every 60s does not carry it."""
         fn = _fn(SCRUM, "export_scrumming_state")
-        keys = {k.value for n in ast.walk(fn) if isinstance(n, ast.Dict)
-                for k in n.keys
-                if isinstance(k, ast.Constant) and isinstance(k.value, str)}
-        assert "main_lots" in keys, \
-            "positive control failed — extractor found no known key"
+        keys = {
+            k.value
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Dict)
+            for k in n.keys
+            if isinstance(k, ast.Constant) and isinstance(k.value, str)
+        }
+        assert (
+            "main_lots" in keys
+        ), "positive control failed — extractor found no known key"
         assert "smart_wire_routes" not in keys, (
             "smart_wire_routes is now exported; if that is deliberate, "
             "channel 1 has become durable and this cascade's premise "
-            "needs revisiting")
+            "needs revisiting"
+        )
 
     def test_the_trading_layer_never_reads_it(self):
         """A key only the GUI knows about is not a persistence
@@ -121,15 +134,12 @@ class TestTheGuiWriterIsNoLongerSilent:
         """A failed write to the operator's position file could
         previously fail for weeks with no signal."""
         fn = _fn(VIZ, "_save_bot_state_dict")
-        handlers = [n for n in ast.walk(fn)
-                    if isinstance(n, ast.ExceptHandler)]
+        handlers = [n for n in ast.walk(fn) if isinstance(n, ast.ExceptHandler)]
         assert handlers, "no exception handler in _save_bot_state_dict"
         for h in handlers:
-            bare_pass = (len(h.body) == 1
-                         and isinstance(h.body[0], ast.Pass))
+            bare_pass = len(h.body) == 1 and isinstance(h.body[0], ast.Pass)
             assert not bare_pass, (
-                "the write to bot_state.json still swallows failures "
-                "silently")
-        src = ast.get_source_segment(
-            VIZ.read_text(encoding="utf-8"), fn) or ""
+                "the write to bot_state.json still swallows failures " "silently"
+            )
+        src = ast.get_source_segment(VIZ.read_text(encoding="utf-8"), fn) or ""
         assert "logger.error" in src

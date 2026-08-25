@@ -21,10 +21,10 @@ class SoundConfig:
     sell_sound: bool = True
     error_sound: bool = True
     bot_state_sound: bool = True
-    fire_sound: bool = True   # MEM-236 — scrum/fold fire SFX
+    fire_sound: bool = True  # MEM-236 — scrum/fold fire SFX
     track_sound: bool = True  # MEM-236 — tracking beep
-    profit_sound: bool = True # MEM-238 — coins-in-bucket on P/L increase
-    drip_sound: bool = True   # MEM-238 — water drip on accumulation
+    profit_sound: bool = True  # MEM-238 — coins-in-bucket on P/L increase
+    drip_sound: bool = True  # MEM-238 — water drip on accumulation
     volume: float = 0.7
 
 
@@ -42,9 +42,14 @@ class SoundEngine:
             return
         try:
             import tempfile
+
             self._temp_dir = tempfile.mkdtemp(prefix="qat_sounds_")
-            self._gen_tone("buy", [(180, 60), (220, 50), (280, 50), (350, 70), (440, 80)])
-            self._gen_tone("sell", [(880, 80), (1100, 60), (1320, 60), (1100, 50), (1320, 100)])
+            self._gen_tone(
+                "buy", [(180, 60), (220, 50), (280, 50), (350, 70), (440, 80)]
+            )
+            self._gen_tone(
+                "sell", [(880, 80), (1100, 60), (1320, 60), (1100, 50), (1320, 100)]
+            )
             self._gen_tone("error", [(600, 100), (400, 100), (300, 150)])
             self._gen_tone("state", [(800, 30)])
             # MEM-236 — tracking beep: short clean 1.4kHz pulse, 35ms
@@ -79,6 +84,7 @@ class SoundEngine:
         dependency so this runs in minimal installs.
         """
         import math, struct, wave, io, os, random
+
         sample_rate = 22050
 
         # Initial crack (6ms) — high-freq filtered noise spike
@@ -119,8 +125,10 @@ class SoundEngine:
         for i in range(body_n):
             t = i / sample_rate
             # Low tone (slightly detuned 2-freq for weight)
-            tone = (math.sin(2 * math.pi * 90 * t) * 0.6
-                    + math.sin(2 * math.pi * 63 * t) * 0.4)
+            tone = (
+                math.sin(2 * math.pi * 90 * t) * 0.6
+                + math.sin(2 * math.pi * 63 * t) * 0.4
+            )
             # Pink-ish noise (LPF'd white)
             wn = (random.random() * 2) - 1
             body_env = math.exp(-6 * t)
@@ -143,14 +151,14 @@ class SoundEngine:
             all_samples.append(int(v * self._config.volume * 32767))
 
         buf = io.BytesIO()
-        with wave.open(buf, 'wb') as w:
+        with wave.open(buf, "wb") as w:
             w.setnchannels(1)
             w.setsampwidth(2)
             w.setframerate(sample_rate)
-            w.writeframes(struct.pack(f'<{len(all_samples)}h', *all_samples))
+            w.writeframes(struct.pack(f"<{len(all_samples)}h", *all_samples))
 
         path = os.path.join(self._temp_dir, f"{name}.wav")
-        with open(path, 'wb') as f:
+        with open(path, "wb") as f:
             f.write(buf.getvalue())
         self._cache[name] = path
 
@@ -191,7 +199,7 @@ class SoundEngine:
         # One coin = (strike_time_ms, ring_f1_Hz, ring_f2_Hz, amp)
         # Each coin slightly different so they don't sound identical.
         coins = [
-            (0,   2650.0, 2710.0, 0.85),  # first coin — loudest
+            (0, 2650.0, 2710.0, 0.85),  # first coin — loudest
             (135, 2380.0, 2460.0, 0.65),  # second coin, slightly lower
             (280, 2820.0, 2890.0, 0.50),  # third coin, highest/quietest
         ]
@@ -252,14 +260,14 @@ class SoundEngine:
             all_samples.append(int(v * self._config.volume * 32767))
 
         buf = io.BytesIO()
-        with wave.open(buf, 'wb') as w:
+        with wave.open(buf, "wb") as w:
             w.setnchannels(1)
             w.setsampwidth(2)
             w.setframerate(sample_rate)
-            w.writeframes(struct.pack(f'<{len(all_samples)}h', *all_samples))
+            w.writeframes(struct.pack(f"<{len(all_samples)}h", *all_samples))
 
         path = os.path.join(self._temp_dir, f"{name}.wav")
-        with open(path, 'wb') as f:
+        with open(path, "wb") as f:
             f.write(buf.getvalue())
         self._cache[name] = path
 
@@ -346,19 +354,20 @@ class SoundEngine:
             all_samples.append(int(v * self._config.volume * 32767))
 
         buf = io.BytesIO()
-        with wave.open(buf, 'wb') as w:
+        with wave.open(buf, "wb") as w:
             w.setnchannels(1)
             w.setsampwidth(2)
             w.setframerate(sample_rate)
-            w.writeframes(struct.pack(f'<{len(all_samples)}h', *all_samples))
+            w.writeframes(struct.pack(f"<{len(all_samples)}h", *all_samples))
 
         path = os.path.join(self._temp_dir, f"{name}.wav")
-        with open(path, 'wb') as f:
+        with open(path, "wb") as f:
             f.write(buf.getvalue())
         self._cache[name] = path
 
     def _gen_tone(self, name: str, tones: list[tuple[int, int]]) -> None:
         import math, struct, wave, io, os
+
         sample_rate = 22050
         all_samples = []
         for freq, dur_ms in tones:
@@ -375,14 +384,14 @@ class SoundEngine:
                 all_samples.append(int(val * env * self._config.volume * 32767))
 
         buf = io.BytesIO()
-        with wave.open(buf, 'wb') as w:
+        with wave.open(buf, "wb") as w:
             w.setnchannels(1)
             w.setsampwidth(2)
             w.setframerate(sample_rate)
-            w.writeframes(struct.pack(f'<{len(all_samples)}h', *all_samples))
+            w.writeframes(struct.pack(f"<{len(all_samples)}h", *all_samples))
 
         path = os.path.join(self._temp_dir, f"{name}.wav")
-        with open(path, 'wb') as f:
+        with open(path, "wb") as f:
             f.write(buf.getvalue())
         self._cache[name] = path
 
@@ -418,8 +427,10 @@ class SoundEngine:
 
         try:
             import sys
+
             if sys.platform == "win32":
                 import winsound
+
                 winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_ASYNC)
         except Exception as exc:
             logger.debug("Sound playback failed: %s", exc)
@@ -461,10 +472,12 @@ class SoundEngine:
     def cleanup(self) -> None:
         if self._temp_dir:
             import shutil
+
             shutil.rmtree(self._temp_dir, ignore_errors=True)
 
 
 _global_sound: Optional[SoundEngine] = None
+
 
 def get_sound_engine() -> SoundEngine:
     global _global_sound

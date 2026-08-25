@@ -118,11 +118,13 @@ class SMSEngine:
             import base64
 
             url = f"https://api.twilio.com/2010-04-01/Accounts/{self._config.twilio_sid}/Messages.json"
-            data = urllib.parse.urlencode({
-                "To": self._config.phone_number,
-                "From": self._config.twilio_from_number,
-                "Body": message,
-            }).encode()
+            data = urllib.parse.urlencode(
+                {
+                    "To": self._config.phone_number,
+                    "From": self._config.twilio_from_number,
+                    "Body": message,
+                }
+            ).encode()
             auth = base64.b64encode(
                 f"{self._config.twilio_sid}:{self._config.twilio_auth_token}".encode()
             ).decode()
@@ -147,7 +149,9 @@ class SMSEngine:
             msg["Subject"] = ""
             msg.set_content(message)
 
-            with smtplib.SMTP(self._config.smtp_server, self._config.smtp_port, timeout=10) as server:
+            with smtplib.SMTP(
+                self._config.smtp_server, self._config.smtp_port, timeout=10
+            ) as server:
                 server.starttls()
                 server.login(self._config.smtp_username, self._config.smtp_password)
                 server.send_message(msg)
@@ -166,6 +170,7 @@ class SMSEngine:
 
 
 _global_sms: Optional[SMSEngine] = None
+
 
 def get_sms_engine() -> SMSEngine:
     global _global_sms

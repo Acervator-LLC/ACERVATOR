@@ -95,7 +95,7 @@ from src.core.signal_contract import SignalSink  # noqa: E402
 # and only ever adds a condition.
 from tests.test_signal_operation_duration import _tracks  # noqa: E402
 
-if TYPE_CHECKING:                       # pragma: no cover
+if TYPE_CHECKING:  # pragma: no cover
     # Annotation only. PySide6 must not be imported at module scope: the
     # predicate control below is pure Python and has to run on a box
     # without Qt.
@@ -129,8 +129,7 @@ LEVER_LONG_S = 1.60
 # ── the duration predicate: pure Python, runs without Qt ───────────────
 
 
-def _tracks_the_fetch(short: Optional[float],
-                      long_: Optional[float]) -> bool:
+def _tracks_the_fetch(short: Optional[float], long_: Optional[float]) -> bool:
     """Ask `_tracks`, then put a floor under the long reading.
 
     `_tracks` asks that the long reading be more than twice the short
@@ -211,10 +210,8 @@ def _no_live_logs(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("PySide6")
     import src.trading.live_log_reader as llr
 
-    monkeypatch.setattr(llr, "live_gate_decisions",
-                        lambda *a, **kw: iter(()))
-    monkeypatch.setattr(llr, "live_voting_panel_snapshots",
-                        lambda *a, **kw: iter(()))
+    monkeypatch.setattr(llr, "live_gate_decisions", lambda *a, **kw: iter(()))
+    monkeypatch.setattr(llr, "live_voting_panel_snapshots", lambda *a, **kw: iter(()))
 
 
 @pytest.fixture(scope="module")
@@ -241,9 +238,10 @@ def async_loop() -> Iterator[asyncio.AbstractEventLoop]:
 class _FakeBotManager:
     """The two attributes the tab reads off the bot manager."""
 
-    def __init__(self,
-                 loop: Optional[asyncio.AbstractEventLoop] = None,
-                 ) -> None:
+    def __init__(
+        self,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+    ) -> None:
         self._async_loop = loop
         self._bots: dict = {}
 
@@ -256,9 +254,15 @@ def _tab(loop: Optional[asyncio.AbstractEventLoop] = None) -> HistoryTab:
     return tab
 
 
-def _row(tid: str, symbol: str = "CHIP/USD", exchange: str = "coinbase",
-         side: str = "BUY", ts: float = 0.0, price: float = 10.0,
-         amount: float = 2.0) -> dict:
+def _row(
+    tid: str,
+    symbol: str = "CHIP/USD",
+    exchange: str = "coinbase",
+    side: str = "BUY",
+    ts: float = 0.0,
+    price: float = 10.0,
+    amount: float = 2.0,
+) -> dict:
     """One normalized trade row, the shape `normalize_trade` returns."""
     from datetime import datetime, timezone
 
@@ -273,8 +277,7 @@ def _row(tid: str, symbol: str = "CHIP/USD", exchange: str = "coinbase",
         "fee": 0.01,
         "fee_currency": "USD",
         "timestamp": ts,
-        "datetime": (datetime.fromtimestamp(ts, tz=timezone.utc)
-                     if ts > 0 else None),
+        "datetime": (datetime.fromtimestamp(ts, tz=timezone.utc) if ts > 0 else None),
     }
 
 
@@ -300,8 +303,7 @@ def _collect() -> Iterator[SignalSink]:
         sc.set_sink(previous)
 
 
-def _pump(app: QApplication, ready: Callable[[], bool],
-          timeout: float = 12.0) -> bool:
+def _pump(app: QApplication, ready: Callable[[], bool], timeout: float = 12.0) -> bool:
     """Spin the Qt event loop until `ready()`, or until `timeout`.
 
     The fetch is observed by a `QTimer`, so the pin cannot fire unless
@@ -318,10 +320,13 @@ def _pump(app: QApplication, ready: Callable[[], bool],
     return ready()
 
 
-def _run_fetch(app: QApplication, loop: asyncio.AbstractEventLoop,
-               monkeypatch: pytest.MonkeyPatch,
-               rows_for: Callable[[float], list],
-               delay_s: float = 0.0) -> tuple:
+def _run_fetch(
+    app: QApplication,
+    loop: asyncio.AbstractEventLoop,
+    monkeypatch: pytest.MonkeyPatch,
+    rows_for: Callable[[float], list],
+    delay_s: float = 0.0,
+) -> tuple:
     """Drive the REAL `_kick_async_fetch` end to end; return the sink.
 
     `rows_for` is handed the `since_ts` the tab computed off its own From
@@ -332,9 +337,9 @@ def _run_fetch(app: QApplication, loop: asyncio.AbstractEventLoop,
 
     captured: dict = {}
 
-    async def _fake_fetch(bot_manager: _FakeBotManager,
-                          since_ts: float,
-                          *a: object, **kw: object) -> list:
+    async def _fake_fetch(
+        bot_manager: _FakeBotManager, since_ts: float, *a: object, **kw: object
+    ) -> list:
         # The bot manager is captured, not discarded: the tab passes its
         # own `_bot_manager` positionally, and a fetch handed the wrong
         # object would return nothing and look like an empty account.
@@ -357,13 +362,18 @@ def _run_fetch(app: QApplication, loop: asyncio.AbstractEventLoop,
 
 
 def test_the_fetch_pin_reports_the_rows_that_landed(
-        qapp: QApplication, async_loop: asyncio.AbstractEventLoop,
-        monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication,
+    async_loop: asyncio.AbstractEventLoop,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Clean fetch: every stored row is admissible."""
+
     def rows(since_ts: float) -> list:
-        return [_row("t1", ts=since_ts + 10),
-                _row("t2", ts=since_ts + 20),
-                _row("t3", symbol="RAVE/USD", ts=since_ts + 30)]
+        return [
+            _row("t1", ts=since_ts + 10),
+            _row("t2", ts=since_ts + 20),
+            _row("t3", symbol="RAVE/USD", ts=since_ts + 30),
+        ]
 
     tab, sink, captured = _run_fetch(qapp, async_loop, monkeypatch, rows)
     assert captured["bot_manager"] is tab._bot_manager
@@ -378,8 +388,10 @@ def test_the_fetch_pin_reports_the_rows_that_landed(
 
 
 def test_a_duplicate_or_out_of_window_row_is_reported(
-        qapp: QApplication, async_loop: asyncio.AbstractEventLoop,
-        monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication,
+    async_loop: asyncio.AbstractEventLoop,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """THE ADMISSION CONTROL.
 
     The dedupe key is `(exchange, symbol, id)` and it is held inside
@@ -389,24 +401,29 @@ def test_a_duplicate_or_out_of_window_row_is_reported(
     Nothing downstream re-checks either rule, so if this pin cannot see
     them, nothing can.
     """
+
     def rows(since_ts: float) -> list:
-        return [_row("t1", ts=since_ts + 10),
-                _row("t1", ts=since_ts + 10),          # duplicate key
-                _row("t2", ts=since_ts - 5_000),       # before the window
-                _row("t3", ts=since_ts + 30)]
+        return [
+            _row("t1", ts=since_ts + 10),
+            _row("t1", ts=since_ts + 10),  # duplicate key
+            _row("t2", ts=since_ts - 5_000),  # before the window
+            _row("t3", ts=since_ts + 30),
+        ]
 
     tab, sink, _ = _run_fetch(qapp, async_loop, monkeypatch, rows)
     rec = _records(sink, TRADES)[0]
-    assert rec.expected == 4          # four rows were stored
-    assert rec.actual == 2            # two of them are admissible
+    assert rec.expected == 4  # four rows were stored
+    assert rec.actual == 2  # two of them are admissible
     assert rec.ok is False
     assert rec.context["distinct_keys"] == 3
     assert len(tab._all_trades) == 4
 
 
 def test_the_fetch_duration_tracks_the_real_fetch(
-        qapp: QApplication, async_loop: asyncio.AbstractEventLoop,
-        monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication,
+    async_loop: asyncio.AbstractEventLoop,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """THE DURATION LEVER. Two known workloads, one site, no clock touched.
 
     The lever is `asyncio.sleep` INSIDE the fetch coroutine, on the loop
@@ -415,14 +432,15 @@ def test_the_fetch_duration_tracks_the_real_fetch(
     subtraction, or the `duration=` argument, so the value read back is
     the site's own measurement of work that genuinely took that long.
     """
+
     def rows(since_ts: float) -> list:
         return [_row("t1", ts=since_ts + 10)]
 
-    _, sink_s, _ = _run_fetch(qapp, async_loop, monkeypatch, rows,
-                              delay_s=LEVER_SHORT_S)
+    _, sink_s, _ = _run_fetch(
+        qapp, async_loop, monkeypatch, rows, delay_s=LEVER_SHORT_S
+    )
     short = _records(sink_s, TRADES)[0].duration
-    _, sink_l, _ = _run_fetch(qapp, async_loop, monkeypatch, rows,
-                              delay_s=LEVER_LONG_S)
+    _, sink_l, _ = _run_fetch(qapp, async_loop, monkeypatch, rows, delay_s=LEVER_LONG_S)
     long_ = _records(sink_l, TRADES)[0].duration
     assert short is not None and long_ is not None
     # The short reading cannot exceed one lever plus one poll interval.
@@ -438,14 +456,12 @@ def _loaded_tab() -> HistoryTab:
     tab._all_trades = [
         _row("a1", symbol="CHIP/USD", exchange="coinbase", ts=1_000),
         _row("a2", symbol="RAVE/USD", exchange="coinbase", ts=1_010),
-        _row("a3", symbol="MOSS/USD", exchange="kraken", ts=1_020,
-             side="SELL"),
+        _row("a3", symbol="MOSS/USD", exchange="kraken", ts=1_020, side="SELL"),
     ]
     return tab
 
 
-def test_the_dropdowns_offer_exactly_what_was_loaded(
-        qapp: QApplication) -> None:
+def test_the_dropdowns_offer_exactly_what_was_loaded(qapp: QApplication) -> None:
     tab = _loaded_tab()
     with _collect() as sink:
         tab._populate_filter_options()
@@ -456,13 +472,13 @@ def test_the_dropdowns_offer_exactly_what_was_loaded(
     assert rec.context["symbols_offered"] == 3
     assert rec.context["exchanges_offered"] == 2
     # Read the widget itself, not the record, to confirm the record.
-    offered = {tab._sym_combo.itemText(i)
-               for i in range(tab._sym_combo.count())}
+    offered = {tab._sym_combo.itemText(i) for i in range(tab._sym_combo.count())}
     assert offered == {"(all)", "CHIP/USD", "MOSS/USD", "RAVE/USD"}
 
 
 def test_a_dropdown_that_loses_an_entry_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """THE DROPDOWN CONTROL. A list of the wrong MEMBERS, not the wrong size.
 
     Staged at the widget boundary: one `addItem` does not land. That is
@@ -502,11 +518,9 @@ def _filterable_tab() -> HistoryTab:
     return tab
 
 
-def test_every_retained_row_matches_the_selected_filters(
-        qapp: QApplication) -> None:
+def test_every_retained_row_matches_the_selected_filters(qapp: QApplication) -> None:
     tab = _filterable_tab()
-    tab._side_combo.setCurrentIndex(
-        tab._side_combo.findText("BUY"))
+    tab._side_combo.setCurrentIndex(tab._side_combo.findText("BUY"))
     with _collect() as sink:
         tab._apply_filters()
     rec = _records(sink, FILTERS)[0]
@@ -519,7 +533,8 @@ def test_every_retained_row_matches_the_selected_filters(
 
 
 def test_a_row_that_beat_the_filter_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """THE STALE-READ CONTROL.
 
     Five predicates are read off three combos and two date edits, and the
@@ -544,7 +559,7 @@ def test_a_row_that_beat_the_filter_is_reported(
     with _collect() as sink:
         tab._apply_filters()
     rec = _records(sink, FILTERS)[0]
-    assert rec.actual == 1            # the one SELL row that slipped
+    assert rec.actual == 1  # the one SELL row that slipped
     assert rec.expected == 0
     assert rec.ok is False
     assert rec.context["side"] == "BUY"
@@ -561,8 +576,7 @@ def _paged_tab(n_rows: int) -> HistoryTab:
     return tab
 
 
-def test_the_table_draws_a_full_page_and_a_short_last_page(
-        qapp: QApplication) -> None:
+def test_the_table_draws_a_full_page_and_a_short_last_page(qapp: QApplication) -> None:
     tab = _paged_tab(250)
     with _collect() as sink:
         tab._page = 0
@@ -578,20 +592,20 @@ def test_the_table_draws_a_full_page_and_a_short_last_page(
     assert tab._table.rowCount() == 50
 
 
-def test_a_page_beyond_the_last_is_clamped_and_still_agrees(
-        qapp: QApplication) -> None:
+def test_a_page_beyond_the_last_is_clamped_and_still_agrees(qapp: QApplication) -> None:
     """The clamp and the arithmetic are the two sides of this pin."""
     tab = _paged_tab(120)
     tab._page = 9
     with _collect() as sink:
         tab._render_page()
     rec = _records(sink, PAGE)[0]
-    assert rec.context["page"] == 1          # clamped from 9
+    assert rec.context["page"] == 1  # clamped from 9
     assert (rec.actual, rec.expected, rec.ok) == (20, 20, True)
 
 
 def test_a_half_drawn_table_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """THE PARTIAL-RENDER CONTROL.
 
     `setRowCount(n)` makes `rowCount()` return `n` whether or not one
@@ -615,7 +629,7 @@ def test_a_half_drawn_table_is_reported(
     assert rec.actual == 60
     assert rec.expected == 100
     assert rec.ok is False
-    assert rec.context["row_count"] == 100   # the table still claims 100
+    assert rec.context["row_count"] == 100  # the table still claims 100
 
 
 # ── 05.006 joiner_indexes_built ────────────────────────────────────────
@@ -629,19 +643,29 @@ ISO = "2026-08-19T12:00:0%dZ"
 
 
 def test_the_joiner_buckets_every_entry_it_accepted(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import src.trading.live_log_reader as llr
 
     monkeypatch.setattr(
-        llr, "live_gate_decisions",
-        lambda *a, **kw: iter([_gate_entry("bot-a", ISO % 1),
-                               _gate_entry("bot-a", ISO % 2),
-                               _gate_entry("bot-b", ISO % 3),
-                               _gate_entry("", ISO % 4)]))
+        llr,
+        "live_gate_decisions",
+        lambda *a, **kw: iter(
+            [
+                _gate_entry("bot-a", ISO % 1),
+                _gate_entry("bot-a", ISO % 2),
+                _gate_entry("bot-b", ISO % 3),
+                _gate_entry("", ISO % 4),
+            ]
+        ),
+    )
     monkeypatch.setattr(
-        llr, "live_voting_panel_snapshots",
-        lambda *a, **kw: iter([_gate_entry("bot-a", ISO % 5),
-                               _gate_entry("bot-b", ISO % 6)]))
+        llr,
+        "live_voting_panel_snapshots",
+        lambda *a, **kw: iter(
+            [_gate_entry("bot-a", ISO % 5), _gate_entry("bot-b", ISO % 6)]
+        ),
+    )
     tab = _tab()
     page = [_row("j1", ts=1_755_000_000.0)]
     with _collect() as sink:
@@ -656,7 +680,8 @@ def test_the_joiner_buckets_every_entry_it_accepted(
 
 
 def test_a_reader_that_throws_mid_iteration_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """THE SILENT-COLLAPSE CONTROL, and the reason this pin exists.
 
     The fail-soft handler discards the WHOLE gate index on any reader
@@ -674,15 +699,17 @@ def test_a_reader_that_throws_mid_iteration_is_reported(
 
     monkeypatch.setattr(llr, "live_gate_decisions", _throws)
     monkeypatch.setattr(
-        llr, "live_voting_panel_snapshots",
-        lambda *a, **kw: iter([_gate_entry("bot-b", ISO % 5)]))
+        llr,
+        "live_voting_panel_snapshots",
+        lambda *a, **kw: iter([_gate_entry("bot-b", ISO % 5)]),
+    )
     tab = _tab()
     page = [_row("j1", ts=1_755_000_000.0)]
     with _collect() as sink:
         tab._build_joiner_indexes_for_page(page)
     rec = _records(sink, JOINER)[0]
-    assert rec.expected == 3          # two gate entries plus one vote
-    assert rec.actual == 1            # the gate index was emptied
+    assert rec.expected == 3  # two gate entries plus one vote
+    assert rec.actual == 1  # the gate index was emptied
     assert rec.ok is False
     assert rec.context["gate_accepted"] == 2
     assert rec.context["gate_buckets"] == 0
@@ -692,8 +719,7 @@ def test_a_reader_that_throws_mid_iteration_is_reported(
 # ── 05.007 csv_exported ────────────────────────────────────────────────
 
 
-def _export(tab: HistoryTab, monkeypatch: pytest.MonkeyPatch,
-            target: Path) -> None:
+def _export(tab: HistoryTab, monkeypatch: pytest.MonkeyPatch, target: Path) -> None:
     import src.gui.history_tab as hist
 
     class _Dialog:
@@ -716,8 +742,8 @@ def _export(tab: HistoryTab, monkeypatch: pytest.MonkeyPatch,
 
 
 def test_the_csv_holds_every_row_that_was_exported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     tab = _paged_tab(5)
     target = tmp_path / "history.csv"
     with _collect() as sink:
@@ -730,13 +756,13 @@ def test_the_csv_holds_every_row_that_was_exported(
     # The file itself, not the record.
     with target.open("r", newline="", encoding="utf-8") as fh:
         written = list(csv.reader(fh))
-    assert len(written) == 6            # header plus five rows
+    assert len(written) == 6  # header plus five rows
     assert written[0][0] == "timestamp_utc"
 
 
 def test_a_short_write_is_reported(
-        qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path) -> None:
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """THE SHORT-WRITE CONTROL.
 
     The message box reports `len(self._filtered)` -- the ASK -- and has
@@ -762,15 +788,14 @@ def test_a_short_write_is_reported(
                 return None
             return self._inner.writerow(row)
 
-    monkeypatch.setattr(csv, "writer",
-                        lambda *a, **kw: _Skips(real_writer(*a, **kw)))
+    monkeypatch.setattr(csv, "writer", lambda *a, **kw: _Skips(real_writer(*a, **kw)))
     with _collect() as sink:
         _export(tab, monkeypatch, target)
     monkeypatch.undo()
     rec = _records(sink, CSV)[0]
-    assert rec.expected == 6          # six rows were handed to the writer
-    assert rec.actual == 3            # three reached the file
+    assert rec.expected == 6  # six rows were handed to the writer
+    assert rec.actual == 3  # three reached the file
     assert rec.ok is False
     assert rec.context["readback"] is True
     with target.open("r", newline="", encoding="utf-8") as fh:
-        assert len(list(csv.reader(fh))) == 4    # header plus three
+        assert len(list(csv.reader(fh))) == 4  # header plus three

@@ -17,21 +17,32 @@ Features:
 from __future__ import annotations
 
 import logging
-import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 logger = logging.getLogger("acervator.gui")
 
 try:
     from PySide6.QtWidgets import (
-        QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QCheckBox,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QComboBox,
+        QCheckBox,
     )
-    from PySide6.QtCore import Qt, QTimer, QRectF, QPointF, Signal
+    from PySide6.QtCore import Qt, QRectF, QPointF, Signal
     from PySide6.QtGui import (
-        QPainter, QPen, QBrush, QColor, QFont, QFontMetrics,
-        QLinearGradient, QPolygonF, QPainterPath,
+        QPainter,
+        QPen,
+        QBrush,
+        QColor,
+        QFont,
+        QFontMetrics,
+        QLinearGradient,
+        QPolygonF,
     )
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -50,7 +61,7 @@ class Candle:
 @dataclass
 class TradeMarker:
     time: int
-    side: str        # "buy" or "sell"
+    side: str  # "buy" or "sell"
     price: float
     label: str = ""
 
@@ -58,10 +69,11 @@ class TradeMarker:
 @dataclass
 class PositionMarker:
     """Active position shown on chart with visibility mode icon."""
+
     price: float
-    side: str          # "buy" or "sell"
-    visibility: str    # "internal" (invisible) or "orderbook" (visible)
-    level: int = 0     # Grid level index
+    side: str  # "buy" or "sell"
+    visibility: str  # "internal" (invisible) or "orderbook" (visible)
+    level: int = 0  # Grid level index
     filled: bool = False
     asset_held: float = 0.0
 
@@ -94,9 +106,9 @@ if _HAS_QT:
         # reference). The cyan/purple choice was carryover from the
         # original cyberpunk theming and read as "fake" against the
         # rest of the platform's serious-trading aesthetic.
-        UP_FILL = QColor(38, 166, 154)      # Coinbase teal-green
+        UP_FILL = QColor(38, 166, 154)  # Coinbase teal-green
         UP_BORDER = QColor(80, 220, 200)
-        DOWN_FILL = QColor(239, 83, 80)     # Coinbase red
+        DOWN_FILL = QColor(239, 83, 80)  # Coinbase red
         DOWN_BORDER = QColor(255, 130, 120)
         UP_WICK = QColor(38, 166, 154, 220)
         DOWN_WICK = QColor(239, 83, 80, 220)
@@ -112,8 +124,8 @@ if _HAS_QT:
         # Position marker colors
         BUY_POS_COLOR = QColor(0, 200, 150)
         SELL_POS_COLOR = QColor(255, 80, 120)
-        INVISIBLE_ICON = QColor(255, 160, 0)    # Orange for invisible
-        VISIBLE_ICON = QColor(0, 180, 255)       # Blue for visible/orderbook
+        INVISIBLE_ICON = QColor(255, 160, 0)  # Orange for invisible
+        VISIBLE_ICON = QColor(0, 180, 255)  # Blue for visible/orderbook
 
         TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"]
 
@@ -151,15 +163,17 @@ if _HAS_QT:
             self._show_volume = True
             self._show_slingshot = False
             self._show_bbullseye = False
-            self._bb_data: list[tuple] = []   # [(upper, middle, lower), ...]
+            self._bb_data: list[tuple] = []  # [(upper, middle, lower), ...]
             # MACD's compute uses EMA12/EMA26 internally; these are
             # private intermediates, not user-facing toggles.
             self._ema12_internal: list[float] = []
             self._ema26_internal: list[float] = []
-            self._vortex_data: list[tuple] = []    # [(vi_plus, vi_minus), ...]
-            self._macd_data: list[tuple] = []      # [(macd, signal, hist), ...]
+            self._vortex_data: list[tuple] = []  # [(vi_plus, vi_minus), ...]
+            self._macd_data: list[tuple] = []  # [(macd, signal, hist), ...]
             self._stochrsi_data: list[float] = []
-            self._ichimoku_data: list[tuple] = []  # [(tenkan, kijun, span_a, span_b, chikou), ...]
+            self._ichimoku_data: list[tuple] = (
+                []
+            )  # [(tenkan, kijun, span_a, span_b, chikou), ...]
             self._slingshot_data: list = []
             self._bbullseye_data: list = []
             # Tactical battlefield layers (P1f):
@@ -184,8 +198,10 @@ if _HAS_QT:
             self._tb_anchor_price: Optional[float] = None
             self._tb_ceiling_price: Optional[float] = None
             self._fire_armed_state: dict = {
-                "scrum_armed": False, "fold_armed": False,
-                "scrum_blockers": [], "fold_blockers": [],
+                "scrum_armed": False,
+                "fold_armed": False,
+                "scrum_blockers": [],
+                "fold_blockers": [],
             }
 
             self.setMinimumHeight(200)
@@ -262,10 +278,10 @@ if _HAS_QT:
             self._bb_data = []
             for i in range(n):
                 if i >= 19:
-                    window = closes[i-19:i+1]
+                    window = closes[i - 19 : i + 1]
                     sma = sum(window) / 20
-                    std = (sum((x - sma)**2 for x in window) / 20) ** 0.5
-                    self._bb_data.append((sma + 2*std, sma, sma - 2*std))
+                    std = (sum((x - sma) ** 2 for x in window) / 20) ** 0.5
+                    self._bb_data.append((sma + 2 * std, sma, sma - 2 * std))
                 else:
                     self._bb_data.append(None)
             # EMA 12 / EMA 26 — private intermediates for MACD only
@@ -299,28 +315,35 @@ if _HAS_QT:
             vm_plus, vm_minus, trs = [], [], []
             for i in range(n):
                 if i == 0:
-                    vm_plus.append(0.0); vm_minus.append(0.0); trs.append(highs[0] - lows[0])
+                    vm_plus.append(0.0)
+                    vm_minus.append(0.0)
+                    trs.append(highs[0] - lows[0])
                 else:
-                    vm_plus.append(abs(highs[i] - lows[i-1]))
-                    vm_minus.append(abs(lows[i] - highs[i-1]))
-                    trs.append(max(highs[i] - lows[i],
-                                   abs(highs[i] - closes[i-1]),
-                                   abs(lows[i] - closes[i-1])))
+                    vm_plus.append(abs(highs[i] - lows[i - 1]))
+                    vm_minus.append(abs(lows[i] - highs[i - 1]))
+                    trs.append(
+                        max(
+                            highs[i] - lows[i],
+                            abs(highs[i] - closes[i - 1]),
+                            abs(lows[i] - closes[i - 1]),
+                        )
+                    )
             period = 14
             for i in range(n):
                 if i < period:
                     self._vortex_data.append(None)
                 else:
-                    s_plus = sum(vm_plus[i-period+1:i+1])
-                    s_minus = sum(vm_minus[i-period+1:i+1])
-                    s_tr = sum(trs[i-period+1:i+1]) or 1e-9
+                    s_plus = sum(vm_plus[i - period + 1 : i + 1])
+                    s_minus = sum(vm_minus[i - period + 1 : i + 1])
+                    s_tr = sum(trs[i - period + 1 : i + 1]) or 1e-9
                     self._vortex_data.append((s_plus / s_tr, s_minus / s_tr))
 
             # MACD (12, 26, 9): line = EMA12 - EMA26; signal = EMA9(line)
             self._macd_data = []
             if n > 0:
-                macd_line = [self._ema12_internal[i] - self._ema26_internal[i]
-                             for i in range(n)]
+                macd_line = [
+                    self._ema12_internal[i] - self._ema26_internal[i] for i in range(n)
+                ]
                 signal = []
                 if macd_line:
                     s = macd_line[0]
@@ -338,7 +361,7 @@ if _HAS_QT:
             rsi_period = 14
             gains, losses = [0.0], [0.0]
             for i in range(1, n):
-                chg = closes[i] - closes[i-1]
+                chg = closes[i] - closes[i - 1]
                 gains.append(max(chg, 0.0))
                 losses.append(max(-chg, 0.0))
             avg_gain, avg_loss = 0.0, 0.0
@@ -348,8 +371,8 @@ if _HAS_QT:
                     rsi_series.append(None)
                     continue
                 if i == rsi_period:
-                    avg_gain = sum(gains[1:rsi_period+1]) / rsi_period
-                    avg_loss = sum(losses[1:rsi_period+1]) / rsi_period
+                    avg_gain = sum(gains[1 : rsi_period + 1]) / rsi_period
+                    avg_loss = sum(losses[1 : rsi_period + 1]) / rsi_period
                 else:
                     avg_gain = (avg_gain * (rsi_period - 1) + gains[i]) / rsi_period
                     avg_loss = (avg_loss * (rsi_period - 1) + losses[i]) / rsi_period
@@ -360,7 +383,9 @@ if _HAS_QT:
                 if i < rsi_period * 2 or rsi_series[i] is None:
                     self._stochrsi_data.append(None)
                     continue
-                window = [r for r in rsi_series[i-rsi_period+1:i+1] if r is not None]
+                window = [
+                    r for r in rsi_series[i - rsi_period + 1 : i + 1] if r is not None
+                ]
                 if not window:
                     self._stochrsi_data.append(None)
                     continue
@@ -372,8 +397,11 @@ if _HAS_QT:
             def _mid(lo_series, hi_series, i, period):
                 if i < period - 1:
                     return None
-                return (max(hi_series[i-period+1:i+1]) +
-                        min(lo_series[i-period+1:i+1])) / 2
+                return (
+                    max(hi_series[i - period + 1 : i + 1])
+                    + min(lo_series[i - period + 1 : i + 1])
+                ) / 2
+
             self._ichimoku_data = []
             for i in range(n):
                 tenkan = _mid(lows, highs, i, 9)
@@ -381,7 +409,11 @@ if _HAS_QT:
                 # Span A / B are shifted FORWARD 26 in canonical Ichimoku;
                 # for chart overlay we compute them at their native index
                 # and the paint layer handles the shift.
-                span_a = ((tenkan + kijun) / 2) if (tenkan is not None and kijun is not None) else None
+                span_a = (
+                    ((tenkan + kijun) / 2)
+                    if (tenkan is not None and kijun is not None)
+                    else None
+                )
                 span_b = _mid(lows, highs, i, 52)
                 # Chikou is close shifted BACKWARD 26 (displayed 26 ago).
                 chikou = closes[i]
@@ -446,8 +478,9 @@ if _HAS_QT:
             self._grid_lines = lines
             self.update()
 
-        def set_target_balance_lines(self, anchor_price: Optional[float],
-                                      ceiling_price: Optional[float]) -> None:
+        def set_target_balance_lines(
+            self, anchor_price: Optional[float], ceiling_price: Optional[float]
+        ) -> None:
             """v3.16.24 — Set the Target Balance anchor + ceiling
             horizontal lines on the price pane. Both are price-axis
             values (USD/unit). Pass None for either to hide that
@@ -459,10 +492,13 @@ if _HAS_QT:
             self._tb_ceiling_price = ceiling_price
             self.update()
 
-        def set_fire_armed_state(self, scrum_armed: bool,
-                                  fold_armed: bool,
-                                  scrum_blockers: list = None,
-                                  fold_blockers: list = None) -> None:
+        def set_fire_armed_state(
+            self,
+            scrum_armed: bool,
+            fold_armed: bool,
+            scrum_blockers: list = None,
+            fold_blockers: list = None,
+        ) -> None:
             """v3.16.24 — Mirror the bot's _last_gate_state for live
             display of whether auto-fire would fire RIGHT NOW. The
             chart paints a green/red glow at the right edge when
@@ -486,14 +522,16 @@ if _HAS_QT:
             OHLC row (18), and time-axis (18). Operators can always
             drag the grip downward beyond this; we never shrink below
             it on toggle."""
-            base = 28 + 18 + 220 + 18    # header + OHLC + price + time
+            base = 28 + 18 + 220 + 18  # header + OHLC + price + time
             if self._show_volume:
                 base += 28
-            n_subs = sum([
-                bool(self._show_macd and self._macd_data),
-                bool(self._show_vortex and self._vortex_data),
-                bool(self._show_stochrsi and self._stochrsi_data),
-            ])
+            n_subs = sum(
+                [
+                    bool(self._show_macd and self._macd_data),
+                    bool(self._show_vortex and self._vortex_data),
+                    bool(self._show_stochrsi and self._stochrsi_data),
+                ]
+            )
             base += n_subs * 60
             return base
 
@@ -521,15 +559,16 @@ if _HAS_QT:
                     try:
                         _parent.setMinimumHeight(target + 36)
                         _parent.updateGeometry()
-                    except Exception:  # R28-OK: parent resize is best-effort  # noqa: S110
+                    except (
+                        Exception
+                    ):  # R28-OK: parent resize is best-effort  # noqa: S110
                         pass
 
         def mouseMoveEvent(self, event):
             self._mouse_x = int(event.position().x())
             self._mouse_y = int(event.position().y())
             # v3.16.23 — bottom resize-grip cursor feedback
-            in_grip = (event.position().y() >=
-                       self.height() - self._resize_grip_h)
+            in_grip = event.position().y() >= self.height() - self._resize_grip_h
             if self._resize_active or in_grip:
                 self.setCursor(Qt.SizeVerCursor)
             else:
@@ -550,7 +589,9 @@ if _HAS_QT:
                     try:
                         _parent.setMinimumHeight(new_h + 36)
                         _parent.updateGeometry()
-                    except Exception:  # R28-OK: parent may not support resize; chart still grows  # noqa: S110
+                    except (
+                        Exception
+                    ):  # R28-OK: parent may not support resize; chart still grows  # noqa: S110
                         pass
                 self.updateGeometry()
                 self.update()
@@ -584,9 +625,7 @@ if _HAS_QT:
                 self._drag_active = True
                 self._drag_start_x = int(event.position().x())
                 self._drag_start_visible_start = (
-                    self._visible_start
-                    if self._visible_start is not None
-                    else 0
+                    self._visible_start if self._visible_start is not None else 0
                 )
 
         def mouseReleaseEvent(self, event):
@@ -718,10 +757,10 @@ if _HAS_QT:
 
             # --- Margins ---
             ML = 8
-            MR = 78            # right margin (price axis + badges)
-            MT = 28            # header
-            OHLC_H = 18        # OHLC info row at top of price pane
-            MB = 18            # time axis at bottom
+            MR = 78  # right margin (price axis + badges)
+            MT = 28  # header
+            OHLC_H = 18  # OHLC info row at top of price pane
+            MB = 18  # time axis at bottom
 
             # --- Determine visible sub-panes ---
             show_macd = self._show_macd and self._macd_data
@@ -731,7 +770,7 @@ if _HAS_QT:
 
             # --- Pane heights ---
             VOL_H = 28 if show_volume else 0
-            SUB_H = 60         # height of each oscillator sub-pane
+            SUB_H = 60  # height of each oscillator sub-pane
             n_subs = sum([bool(show_macd), bool(show_vortex), bool(show_stochrsi)])
             total_sub_h = SUB_H * n_subs
 
@@ -766,12 +805,15 @@ if _HAS_QT:
             sub_layout = []  # [(name, top, bot), ...]
             sy = vol_bot
             if show_macd:
-                sub_layout.append(("macd", sy, sy + SUB_H)); sy += SUB_H
+                sub_layout.append(("macd", sy, sy + SUB_H))
+                sy += SUB_H
             if show_vortex:
-                sub_layout.append(("vortex", sy, sy + SUB_H)); sy += SUB_H
+                sub_layout.append(("vortex", sy, sy + SUB_H))
+                sy += SUB_H
             if show_stochrsi:
-                sub_layout.append(("stochrsi", sy, sy + SUB_H)); sy += SUB_H
-            time_axis_y = sy   # top of time-axis label band
+                sub_layout.append(("stochrsi", sy, sy + SUB_H))
+                sy += SUB_H
+            time_axis_y = sy  # top of time-axis label band
 
             cw = max(2, chart_w / n)
             gap = max(1, cw * 0.18)
@@ -800,7 +842,7 @@ if _HAS_QT:
                 return ML + i * cw
 
             max_vol = max((c.volume for c in visible_candles), default=1) or 1
-            chart_h = price_h    # alias preserved for legacy paint blocks below
+            chart_h = price_h  # alias preserved for legacy paint blocks below
             MT_legacy = price_top  # legacy MT = top of price pane area
 
             # --- Nice-number horizontal price grid (TradingView-style) ---
@@ -810,27 +852,32 @@ if _HAS_QT:
             # $0.10) rather than arbitrary ($0.0762, $0.0864, ...).
             def _nice_step(span: float, target_ticks: int = 6) -> float:
                 import math as _m
+
                 if span <= 0:
                     return 1.0
                 raw = span / max(target_ticks, 1)
                 mag = 10 ** _m.floor(_m.log10(raw))
                 frac = raw / mag
                 # Choose 1, 2, 5, or 10 × magnitude for human readability
-                if frac < 1.5:   return 1 * mag
-                if frac < 3.5:   return 2 * mag
-                if frac < 7.5:   return 5 * mag
+                if frac < 1.5:
+                    return 1 * mag
+                if frac < 3.5:
+                    return 2 * mag
+                if frac < 7.5:
+                    return 5 * mag
                 return 10 * mag
 
             grid_step = _nice_step(pr, target_ticks=6)
             if grid_step > 0:
                 import math as _m
+
                 g0 = _m.ceil(lo / grid_step) * grid_step
                 g = g0
                 while g <= hi + 1e-12:
                     y = int(p2y(g))
                     if price_top <= y <= price_bot:
                         # Major lines on every 2nd step for rhythm
-                        is_major = (round((g - g0) / grid_step) % 2 == 0)
+                        is_major = round((g - g0) / grid_step) % 2 == 0
                         gc = self.GRID_MAJOR if is_major else self.GRID_MINOR
                         p.setPen(QPen(gc, 1, Qt.DotLine))
                         p.drawLine(ML, y, w - MR, y)
@@ -846,6 +893,7 @@ if _HAS_QT:
             # (everything above the time-axis label band). Labels go below.
             if n >= 2:
                 import time as _t
+
                 tick_stride = max(1, n // 6)
                 span_sec = max(1, visible_candles[-1].time - visible_candles[0].time)
                 use_date = span_sec > 24 * 3600
@@ -890,10 +938,12 @@ if _HAS_QT:
                     ha_h = max(c.high, ha_o, ha_c)
                     ha_l = min(c.low, ha_o, ha_c)
                     ha_candles.append((ha_o, ha_h, ha_l, ha_c, c.volume))
-                    prev_o = ha_o; prev_c = ha_c
+                    prev_o = ha_o
+                    prev_c = ha_c
             else:
-                ha_candles = [(c.open, c.high, c.low, c.close, c.volume)
-                              for c in visible_candles]
+                ha_candles = [
+                    (c.open, c.high, c.low, c.close, c.volume) for c in visible_candles
+                ]
 
             for i, (ha_o, ha_h, ha_l, ha_c, _vol) in enumerate(ha_candles):
                 x = i2x(i)
@@ -1043,10 +1093,14 @@ if _HAS_QT:
                     # Slice to visible window
                     span_a = span_a_full[v_start:v_end]
                     span_b = span_b_full[v_start:v_end]
-                    tenkan = [full_ichi[k][0] if full_ichi[k] else None
-                              for k in range(v_start, v_end)]
-                    kijun = [full_ichi[k][1] if full_ichi[k] else None
-                             for k in range(v_start, v_end)]
+                    tenkan = [
+                        full_ichi[k][0] if full_ichi[k] else None
+                        for k in range(v_start, v_end)
+                    ]
+                    kijun = [
+                        full_ichi[k][1] if full_ichi[k] else None
+                        for k in range(v_start, v_end)
+                    ]
 
                     # ── KUMO CLOUD FILL ──────────────────────────────
                     # Walk through the visible window, building polygons
@@ -1054,10 +1108,10 @@ if _HAS_QT:
                     # span_b are defined. Color each segment by whether
                     # SpA > SpB (bullish, green) or SpA < SpB (bearish,
                     # red). Crossover points start a new segment.
-                    bull_color = QColor(38, 200, 130, 50)   # bullish kumo
-                    bear_color = QColor(239, 90, 110, 50)   # bearish kumo
-                    seg_pts_top = []   # the higher of SpA/SpB
-                    seg_pts_bot = []   # the lower of SpA/SpB
+                    bull_color = QColor(38, 200, 130, 50)  # bullish kumo
+                    bear_color = QColor(239, 90, 110, 50)  # bearish kumo
+                    seg_pts_top = []  # the higher of SpA/SpB
+                    seg_pts_bot = []  # the lower of SpA/SpB
                     seg_bullish = None  # current segment's polarity
 
                     def _flush_segment():
@@ -1069,7 +1123,8 @@ if _HAS_QT:
                         p.drawPolygon(QPolygonF(poly_pts))
 
                     for k in range(len(span_a)):
-                        sa = span_a[k]; sb = span_b[k]
+                        sa = span_a[k]
+                        sb = span_b[k]
                         if sa is None or sb is None:
                             # Gap → flush current segment
                             _flush_segment()
@@ -1135,8 +1190,8 @@ if _HAS_QT:
                 # follower — the pattern follows the BB envelope, not
                 # a fixed price level.
                 if self._show_bbullseye and bb_visible:
-                    TOUCH_TOL = 0.005   # 0.5%
-                    WICK_TOL = 0.002    # 0.2%
+                    TOUCH_TOL = 0.005  # 0.5%
+                    WICK_TOL = 0.002  # 0.2%
 
                     def _band_zone_polygon(band_idx: int, tol: float):
                         """Return upper+lower point lists tracing the
@@ -1204,42 +1259,47 @@ if _HAS_QT:
                     n_full = len(full_closes)
                     BB_PERIOD = 20
                     BB_STD = 2.0
-                    SQ_LB = 30      # squeeze lookback
-                    SN_LB = 5       # snapback lookback
-                    SQ_THR = 0.6    # bandwidth threshold (fraction of avg)
+                    SQ_LB = 30  # squeeze lookback
+                    SN_LB = 5  # snapback lookback
+                    SQ_THR = 0.6  # bandwidth threshold (fraction of avg)
                     if n_full >= BB_PERIOD + SQ_LB + 2:
                         # Pre-compute SMA, stdev, BB tuples per candle
                         sl_bb = [None] * n_full
                         for k in range(BB_PERIOD - 1, n_full):
-                            window = full_closes[k - BB_PERIOD + 1: k + 1]
+                            window = full_closes[k - BB_PERIOD + 1 : k + 1]
                             mid = sum(window) / BB_PERIOD
                             var = sum((x - mid) ** 2 for x in window) / BB_PERIOD
-                            std = var ** 0.5
+                            std = var**0.5
                             up = mid + BB_STD * std
                             lo = mid - BB_STD * std
                             bw = (up - lo) / (mid + 1e-9)
                             sl_bb[k] = (full_closes[k], up, lo, mid, bw)
 
                         # Walk every candle and record fire events
-                        fires = []   # [(idx, kind, bullish)]; kind in {"squeeze","snapback"}
+                        fires = (
+                            []
+                        )  # [(idx, kind, bullish)]; kind in {"squeeze","snapback"}
                         for k in range(BB_PERIOD + SQ_LB, n_full):
                             # Squeeze: avg over [k-SQ_LB..k-1], current bandwidth
-                            window = sl_bb[k - SQ_LB: k]
+                            window = sl_bb[k - SQ_LB : k]
                             window = [b for b in window if b is not None]
                             if len(window) < SQ_LB - 2:
                                 continue
                             avg_bw = sum(b[4] for b in window) / len(window)
-                            curr = sl_bb[k]; prev = sl_bb[k - 1]
+                            curr = sl_bb[k]
+                            prev = sl_bb[k - 1]
                             if curr is None or prev is None:
                                 continue
-                            recent4 = [b for b in sl_bb[k - 3: k + 1] if b is not None]
-                            n_squeezed = sum(1 for b in recent4 if b[4] < avg_bw * SQ_THR)
+                            recent4 = [b for b in sl_bb[k - 3 : k + 1] if b is not None]
+                            n_squeezed = sum(
+                                1 for b in recent4 if b[4] < avg_bw * SQ_THR
+                            )
                             was_squeezed = n_squeezed >= 2
                             expanding = curr[4] > prev[4] * 1.02
                             if was_squeezed and expanding:
-                                bullish = curr[0] > curr[3]   # close > middle
+                                bullish = curr[0] > curr[3]  # close > middle
                                 fires.append((k, "squeeze", bullish))
-                                continue   # squeeze fired; don't double-mark snapback
+                                continue  # squeeze fired; don't double-mark snapback
 
                             # Snapback: any of last SN_LB closes was outside band,
                             # and current close is back inside moving toward middle
@@ -1259,7 +1319,7 @@ if _HAS_QT:
                                     break
 
                         # Render fire events that fall in the visible window
-                        for (idx, kind, bullish) in fires:
+                        for idx, kind, bullish in fires:
                             if idx < v_start or idx >= v_end:
                                 continue
                             vis_i = idx - v_start
@@ -1278,12 +1338,14 @@ if _HAS_QT:
                             if kind == "squeeze":
                                 # Diamond — compression-then-release
                                 sz = 6
-                                diamond = QPolygonF([
-                                    QPointF(x, anchor_y - sz),
-                                    QPointF(x + sz, anchor_y),
-                                    QPointF(x, anchor_y + sz),
-                                    QPointF(x - sz, anchor_y),
-                                ])
+                                diamond = QPolygonF(
+                                    [
+                                        QPointF(x, anchor_y - sz),
+                                        QPointF(x + sz, anchor_y),
+                                        QPointF(x, anchor_y + sz),
+                                        QPointF(x - sz, anchor_y),
+                                    ]
+                                )
                                 p.drawPolygon(diamond)
                             else:
                                 # Circle — mean-reversion snapback
@@ -1350,26 +1412,30 @@ if _HAS_QT:
                         # Green glow on upper half of price pane
                         scrum_top = price_top + 4
                         scrum_bot = price_top + (price_h * 0.5)
-                        grad = QLinearGradient(glow_x, scrum_top,
-                                               glow_x + glow_w, scrum_top)
+                        grad = QLinearGradient(
+                            glow_x, scrum_top, glow_x + glow_w, scrum_top
+                        )
                         grad.setColorAt(0.0, QColor(0, 230, 140, 0))
                         grad.setColorAt(1.0, QColor(0, 230, 140, 220))
                         p.setBrush(QBrush(grad))
                         p.setPen(Qt.NoPen)
-                        p.drawRect(QRectF(glow_x, scrum_top,
-                                          glow_w, scrum_bot - scrum_top))
+                        p.drawRect(
+                            QRectF(glow_x, scrum_top, glow_w, scrum_bot - scrum_top)
+                        )
                     if _fold_on:
                         # Red glow on lower half of price pane
                         fold_top = price_top + (price_h * 0.5)
                         fold_bot = price_bot - 4
-                        grad = QLinearGradient(glow_x, fold_top,
-                                               glow_x + glow_w, fold_top)
+                        grad = QLinearGradient(
+                            glow_x, fold_top, glow_x + glow_w, fold_top
+                        )
                         grad.setColorAt(0.0, QColor(255, 80, 100, 0))
                         grad.setColorAt(1.0, QColor(255, 80, 100, 220))
                         p.setBrush(QBrush(grad))
                         p.setPen(Qt.NoPen)
-                        p.drawRect(QRectF(glow_x, fold_top,
-                                          glow_w, fold_bot - fold_top))
+                        p.drawRect(
+                            QRectF(glow_x, fold_top, glow_w, fold_bot - fold_top)
+                        )
 
                 # ===========================================================
                 # SUB-PANES (MACD, Vortex, StochRSI) — proper per-pane
@@ -1396,8 +1462,7 @@ if _HAS_QT:
                     """Right-side numeric label for a sub-pane axis value."""
                     if value is None:
                         return
-                    txt = (f"{value:.4f}" if abs(value) < 10
-                           else f"{value:.2f}")
+                    txt = f"{value:.4f}" if abs(value) < 10 else f"{value:.2f}"
                     tw = fm.horizontalAdvance(txt) + 8
                     badge_y = (top + bot) / 2 - 8
                     badge = QRectF(w - MR + 2, badge_y, tw, 14)
@@ -1408,8 +1473,9 @@ if _HAS_QT:
                     p.setFont(font_sm)
                     p.drawText(badge, Qt.AlignCenter, txt)
 
-                def _paint_oscillator(top, bot, data, extract,
-                                      color, width=1.2, vmin=None, vmax=None):
+                def _paint_oscillator(
+                    top, bot, data, extract, color, width=1.2, vmin=None, vmax=None
+                ):
                     """Draw a single oscillator line series scaled to the
                     given vertical bounds. vmin/vmax fix the scale; if
                     None they auto-fit to the data range.
@@ -1427,10 +1493,12 @@ if _HAS_QT:
                     last_val = None
                     for i, d in enumerate(data):
                         if d is None:
-                            prev = None; continue
+                            prev = None
+                            continue
                         v = extract(d)
                         if v is None:
-                            prev = None; continue
+                            prev = None
+                            continue
                         x = i2x(i) + cw / 2
                         y = bot - ((v - sp_lo) / rng) * (bot - top)
                         if prev is not None:
@@ -1447,29 +1515,39 @@ if _HAS_QT:
                 stochrsi_visible = self._stochrsi_data[v_start:v_end]
 
                 # Walk sub_layout in order, render each pane
-                for (sp_name, sp_top, sp_bot) in sub_layout:
+                for sp_name, sp_top, sp_bot in sub_layout:
                     if sp_name == "macd" and macd_visible:
                         _paint_sub_grid(sp_top, sp_bot, "MACD (12, 26, 9)")
                         # Auto-fit scale across line + signal + histogram
                         all_vals = []
                         for d in macd_visible:
-                            if d is None: continue
+                            if d is None:
+                                continue
                             all_vals.extend([d[0], d[1], d[2]])
                         if all_vals:
                             v_lo, v_hi = min(all_vals), max(all_vals)
                             v_pad = max(abs(v_lo), abs(v_hi)) * 0.1 or 1e-6
-                            v_lo -= v_pad; v_hi += v_pad
+                            v_lo -= v_pad
+                            v_hi += v_pad
                             if v_lo < 0 < v_hi:
-                                zero_y = sp_bot - ((0 - v_lo) / (v_hi - v_lo)) * (sp_bot - sp_top)
+                                zero_y = sp_bot - ((0 - v_lo) / (v_hi - v_lo)) * (
+                                    sp_bot - sp_top
+                                )
                                 p.setPen(QPen(self.GRID_MINOR, 1, Qt.DashLine))
                                 p.drawLine(ML, int(zero_y), w - MR, int(zero_y))
                             for i, d in enumerate(macd_visible):
-                                if d is None: continue
+                                if d is None:
+                                    continue
                                 hist = d[2]
-                                if hist is None: continue
+                                if hist is None:
+                                    continue
                                 x = i2x(i) + gap / 2
-                                y0 = sp_bot - ((0 - v_lo) / (v_hi - v_lo)) * (sp_bot - sp_top)
-                                y1 = sp_bot - ((hist - v_lo) / (v_hi - v_lo)) * (sp_bot - sp_top)
+                                y0 = sp_bot - ((0 - v_lo) / (v_hi - v_lo)) * (
+                                    sp_bot - sp_top
+                                )
+                                y1 = sp_bot - ((hist - v_lo) / (v_hi - v_lo)) * (
+                                    sp_bot - sp_top
+                                )
                                 if hist >= 0:
                                     color = QColor(0, 200, 130, 160)
                                     border = QColor(0, 240, 160, 200)
@@ -1478,36 +1556,58 @@ if _HAS_QT:
                                     border = QColor(255, 90, 130, 200)
                                 p.setBrush(QBrush(color))
                                 p.setPen(QPen(border, 1))
-                                p.drawRect(QRectF(x, min(y0, y1), bw, abs(y1 - y0) or 1))
+                                p.drawRect(
+                                    QRectF(x, min(y0, y1), bw, abs(y1 - y0) or 1)
+                                )
                             last_macd = _paint_oscillator(
-                                sp_top, sp_bot, macd_visible,
+                                sp_top,
+                                sp_bot,
+                                macd_visible,
                                 lambda t: t[0] if t else None,
-                                QColor(255, 204, 0, 230), 1.4,
-                                vmin=v_lo, vmax=v_hi)
+                                QColor(255, 204, 0, 230),
+                                1.4,
+                                vmin=v_lo,
+                                vmax=v_hi,
+                            )
                             last_sig = _paint_oscillator(
-                                sp_top, sp_bot, macd_visible,
+                                sp_top,
+                                sp_bot,
+                                macd_visible,
                                 lambda t: t[1] if t else None,
-                                QColor(180, 100, 240, 220), 1.0,
-                                vmin=v_lo, vmax=v_hi)
-                            _sub_axis_label(sp_top, sp_bot, last_macd,
-                                            QColor(255, 204, 0))
+                                QColor(180, 100, 240, 220),
+                                1.0,
+                                vmin=v_lo,
+                                vmax=v_hi,
+                            )
+                            _sub_axis_label(
+                                sp_top, sp_bot, last_macd, QColor(255, 204, 0)
+                            )
                     elif sp_name == "vortex" and vortex_visible:
                         _paint_sub_grid(sp_top, sp_bot, "Vortex (14)")
                         ref_y = sp_bot - ((1.0 - 0.3) / (1.7 - 0.3)) * (sp_bot - sp_top)
                         p.setPen(QPen(self.GRID_MINOR, 1, Qt.DashLine))
                         p.drawLine(ML, int(ref_y), w - MR, int(ref_y))
                         last_plus = _paint_oscillator(
-                            sp_top, sp_bot, vortex_visible,
+                            sp_top,
+                            sp_bot,
+                            vortex_visible,
                             lambda t: t[0] if t else None,
-                            QColor(0, 200, 255, 230), 1.4,
-                            vmin=0.3, vmax=1.7)
+                            QColor(0, 200, 255, 230),
+                            1.4,
+                            vmin=0.3,
+                            vmax=1.7,
+                        )
                         last_minus = _paint_oscillator(
-                            sp_top, sp_bot, vortex_visible,
+                            sp_top,
+                            sp_bot,
+                            vortex_visible,
                             lambda t: t[1] if t else None,
-                            QColor(255, 80, 120, 230), 1.4,
-                            vmin=0.3, vmax=1.7)
-                        _sub_axis_label(sp_top, sp_bot, last_plus,
-                                        QColor(0, 200, 255))
+                            QColor(255, 80, 120, 230),
+                            1.4,
+                            vmin=0.3,
+                            vmax=1.7,
+                        )
+                        _sub_axis_label(sp_top, sp_bot, last_plus, QColor(0, 200, 255))
                     elif sp_name == "stochrsi" and stochrsi_visible:
                         _paint_sub_grid(sp_top, sp_bot, "Stoch RSI (14, 14)")
                         # 0.2 / 0.8 reference lines (dashed)
@@ -1516,12 +1616,16 @@ if _HAS_QT:
                             p.setPen(QPen(self.GRID_MINOR, 1, Qt.DashLine))
                             p.drawLine(ML, int(ref_y), w - MR, int(ref_y))
                         last_v = _paint_oscillator(
-                            sp_top, sp_bot, stochrsi_visible,
+                            sp_top,
+                            sp_bot,
+                            stochrsi_visible,
                             lambda v: v,
-                            QColor(255, 144, 96, 230), 1.4,
-                            vmin=0.0, vmax=1.0)
-                        _sub_axis_label(sp_top, sp_bot, last_v,
-                                        QColor(255, 144, 96))
+                            QColor(255, 144, 96, 230),
+                            1.4,
+                            vmin=0.0,
+                            vmax=1.0,
+                        )
+                        _sub_axis_label(sp_top, sp_bot, last_v, QColor(255, 144, 96))
 
                 # Session 26 P1f — tranche floor lines. Operator framing:
                 # "those in tranches that have a minimum target." MEM-171
@@ -1531,7 +1635,7 @@ if _HAS_QT:
                     p.setPen(QPen(QColor(255, 200, 0, 180), 1, Qt.DashLine))
                     font_fl = QFont("Consolas", 7)
                     p.setFont(font_fl)
-                    for (fp, label) in self._tranche_floors:
+                    for fp, label in self._tranche_floors:
                         try:
                             yf = p2y(float(fp))
                         except (TypeError, ValueError):
@@ -1540,8 +1644,7 @@ if _HAS_QT:
                         p.drawLine(ML, int(yf), w - MR, int(yf))
                         # Label at left margin
                         p.setPen(QColor(255, 200, 0, 220))
-                        p.drawText(QPointF(ML + 4, yf - 2),
-                                   f"FLOOR {label}")
+                        p.drawText(QPointF(ML + 4, yf - 2), f"FLOOR {label}")
 
             # --- Trade markers (simulator-matched style) ---
             type_colors = {
@@ -1557,7 +1660,8 @@ if _HAS_QT:
                 # outside the visible window so we don't paint them at
                 # the chart edges where they'd be misleading.
                 best_i = min(
-                    range(n), key=lambda i: abs(visible_candles[i].time - m.time))
+                    range(n), key=lambda i: abs(visible_candles[i].time - m.time)
+                )
                 # If marker is outside visible time range, skip
                 t_first = visible_candles[0].time
                 t_last = visible_candles[-1].time
@@ -1570,12 +1674,14 @@ if _HAS_QT:
 
                 # Diamond marker
                 sz = 5
-                diamond = QPolygonF([
-                    QPointF(mx, my - sz),      # top
-                    QPointF(mx + sz, my),      # right
-                    QPointF(mx, my + sz),      # bottom
-                    QPointF(mx - sz, my),      # left
-                ])
+                diamond = QPolygonF(
+                    [
+                        QPointF(mx, my - sz),  # top
+                        QPointF(mx + sz, my),  # right
+                        QPointF(mx, my + sz),  # bottom
+                        QPointF(mx - sz, my),  # left
+                    ]
+                )
                 p.setBrush(QBrush(tc))
                 p.setPen(QPen(QColor(255, 255, 255, 120), 0.8))
                 p.drawPolygon(diamond)
@@ -1641,10 +1747,10 @@ if _HAS_QT:
                     ci = int((mx - ML) / cw)
                     if 0 <= ci < n:
                         import time as _t2
+
                         c = visible_candles[ci]
                         try:
-                            tstr = _t2.strftime("%Y-%m-%d %H:%M",
-                                                _t2.gmtime(c.time))
+                            tstr = _t2.strftime("%Y-%m-%d %H:%M", _t2.gmtime(c.time))
                         except Exception:
                             tstr = ""
                         if tstr:
@@ -1667,9 +1773,19 @@ if _HAS_QT:
                             ("L", self._fmt_price(c.low), self.TEXT_LIGHT),
                             ("C", self._fmt_price(c.close), tip_color),
                             ("Δ", f"{chg:+.6g} ({chg_pct:+.2f}%)", tip_color),
-                            ("V", (f"{c.volume/1e6:.2f}M" if c.volume >= 1e6
-                                   else f"{c.volume/1e3:.1f}K" if c.volume >= 1e3
-                                   else f"{c.volume:.0f}"), self.TEXT_DIM),
+                            (
+                                "V",
+                                (
+                                    f"{c.volume/1e6:.2f}M"
+                                    if c.volume >= 1e6
+                                    else (
+                                        f"{c.volume/1e3:.1f}K"
+                                        if c.volume >= 1e3
+                                        else f"{c.volume:.0f}"
+                                    )
+                                ),
+                                self.TEXT_DIM,
+                            ),
                         ]
                         # Tooltip dims
                         line_h = 14
@@ -1731,9 +1847,19 @@ if _HAS_QT:
                     ("C", self._fmt_price(last.close), acc),
                     ("", f"{chg:+.6g}", acc),
                     ("", f"({chg_pct:+.2f}%)", acc),
-                    ("VOL", (f"{last.volume/1e6:.2f}M" if last.volume >= 1e6
-                             else f"{last.volume/1e3:.1f}K" if last.volume >= 1e3
-                             else f"{last.volume:.2f}"), self.TEXT_DIM),
+                    (
+                        "VOL",
+                        (
+                            f"{last.volume/1e6:.2f}M"
+                            if last.volume >= 1e6
+                            else (
+                                f"{last.volume/1e3:.1f}K"
+                                if last.volume >= 1e3
+                                else f"{last.volume:.2f}"
+                            )
+                        ),
+                        self.TEXT_DIM,
+                    ),
                 ]
                 for lbl, val, col in ohlc_parts:
                     if lbl:
@@ -1757,16 +1883,18 @@ if _HAS_QT:
             p.setPen(QPen(grip_color, 1.2))
             cx = w / 2
             for off in (-12, 0, 12):
-                p.drawLine(int(cx + off - 4), int(grip_y),
-                           int(cx + off + 4), int(grip_y))
+                p.drawLine(
+                    int(cx + off - 4), int(grip_y), int(cx + off + 4), int(grip_y)
+                )
 
             p.end()
 
         # ---------------------------------------------------------------
         # Position markers with Invisible vs Visible icons
         # ---------------------------------------------------------------
-        def _draw_positions(self, p: QPainter, w: int, ml: int, mr: int,
-                            mt: int, ch: int, p2y, font):
+        def _draw_positions(
+            self, p: QPainter, w: int, ml: int, mr: int, mt: int, ch: int, p2y, font
+        ):
             if not self._positions:
                 return
 
@@ -1780,8 +1908,11 @@ if _HAS_QT:
                 line_color = self.BUY_POS_COLOR if is_buy else self.SELL_POS_COLOR
 
                 # Dashed line across chart
-                pen = QPen(QColor(line_color.red(), line_color.green(),
-                                  line_color.blue(), 50), 1, Qt.DashDotLine)
+                pen = QPen(
+                    QColor(line_color.red(), line_color.green(), line_color.blue(), 50),
+                    1,
+                    Qt.DashDotLine,
+                )
                 p.setPen(pen)
                 p.drawLine(ml, int(y), w - mr, int(y))
 
@@ -1795,12 +1926,14 @@ if _HAS_QT:
                     color = self.INVISIBLE_ICON
                     if pos.filled:
                         color = QColor(color.red(), color.green(), color.blue(), 100)
-                    diamond = QPolygonF([
-                        QPointF(icon_x + icon_size, icon_y),
-                        QPointF(icon_x + icon_size * 2, icon_y - icon_size),
-                        QPointF(icon_x + icon_size * 3, icon_y),
-                        QPointF(icon_x + icon_size * 2, icon_y + icon_size),
-                    ])
+                    diamond = QPolygonF(
+                        [
+                            QPointF(icon_x + icon_size, icon_y),
+                            QPointF(icon_x + icon_size * 2, icon_y - icon_size),
+                            QPointF(icon_x + icon_size * 3, icon_y),
+                            QPointF(icon_x + icon_size * 2, icon_y + icon_size),
+                        ]
+                    )
                     p.setBrush(QBrush(color))
                     p.setPen(QPen(color.lighter(140), 1))
                     p.drawPolygon(diamond)
@@ -1809,16 +1942,19 @@ if _HAS_QT:
                     color = self.VISIBLE_ICON
                     if pos.filled:
                         color = QColor(color.red(), color.green(), color.blue(), 100)
-                    rect = QRectF(icon_x + icon_size * 0.5, icon_y - icon_size,
-                                  icon_size * 2, icon_size * 2)
+                    rect = QRectF(
+                        icon_x + icon_size * 0.5,
+                        icon_y - icon_size,
+                        icon_size * 2,
+                        icon_size * 2,
+                    )
                     p.setBrush(Qt.NoBrush)
                     p.setPen(QPen(color, 1.5))
                     p.drawRect(rect)
                     # Center dot
                     p.setBrush(QBrush(color))
                     p.setPen(Qt.NoPen)
-                    p.drawEllipse(QPointF(icon_x + icon_size * 1.5,
-                                          icon_y), 2, 2)
+                    p.drawEllipse(QPointF(icon_x + icon_size * 1.5, icon_y), 2, 2)
 
                 # Level label on right axis
                 status = ""
@@ -1830,8 +1966,13 @@ if _HAS_QT:
                     status = " ON BOOK"
                 label = f"{'B' if is_buy else 'S'}{pos.level}{status}"
                 p.setFont(font)
-                p.setPen(QPen(QColor(line_color.red(), line_color.green(),
-                                     line_color.blue(), 140)))
+                p.setPen(
+                    QPen(
+                        QColor(
+                            line_color.red(), line_color.green(), line_color.blue(), 140
+                        )
+                    )
+                )
                 p.drawText(w - mr + 6, icon_y + 3, label)
 
         # ---------------------------------------------------------------
@@ -1864,7 +2005,6 @@ if _HAS_QT:
             if self._error_text:
                 p.setPen(QPen(QColor(255, 100, 50)))
                 p.drawText(8, 18 + 14, self._error_text)
-
 
     # ===================================================================
     # Chart Panel: toolbar + chart
@@ -1912,39 +2052,55 @@ if _HAS_QT:
             # multi-pane rendering as of v3.16.21. Slingshot and
             # BB-Bullseye remain disabled until R46 MLHCI delivers
             # their visual specs (Wave 2).
-            def _add_indicator_cb(name: str, attr: str, color: str,
-                                   tooltip: str, enabled: bool = True):
+            def _add_indicator_cb(
+                name: str, attr: str, color: str, tooltip: str, enabled: bool = True
+            ):
                 cb = QCheckBox(name)
                 cb.setStyleSheet(f"color: {color}; font-size: 9px;")
-                cb.setToolTip(tooltip if enabled
-                              else tooltip + "  [spec pending — P1f / R46 MLHCI]")
+                cb.setToolTip(
+                    tooltip
+                    if enabled
+                    else tooltip + "  [spec pending — P1f / R46 MLHCI]"
+                )
                 cb.setEnabled(enabled)
-                cb.toggled.connect(
-                    lambda v, a=attr: self._toggle_indicator(a, v))
+                cb.toggled.connect(lambda v, a=attr: self._toggle_indicator(a, v))
                 ind_row.addWidget(cb)
                 return cb
 
             # Vortex / MACD / StochRSI / Ichimoku — computed + painted.
             self._cb_vortex = _add_indicator_cb(
-                "Vortex", "vortex", "#00ff88",
-                "Vortex Indicator (VI+ green / VI- red, period 14, sub-pane)")
+                "Vortex",
+                "vortex",
+                "#00ff88",
+                "Vortex Indicator (VI+ green / VI- red, period 14, sub-pane)",
+            )
             self._cb_macd = _add_indicator_cb(
-                "MACD", "macd", "#ffcc00",
-                "MACD line (yellow) + signal (purple), 12/26/9, sub-pane")
+                "MACD",
+                "macd",
+                "#ffcc00",
+                "MACD line (yellow) + signal (purple), 12/26/9, sub-pane",
+            )
             self._cb_stochrsi = _add_indicator_cb(
-                "SRsi", "stochrsi", "#ff9060",
-                "Stochastic RSI (14/14), 0..1 oscillator, sub-pane")
+                "SRsi",
+                "stochrsi",
+                "#ff9060",
+                "Stochastic RSI (14/14), 0..1 oscillator, sub-pane",
+            )
             self._cb_ichimoku = _add_indicator_cb(
-                "Ichi", "ichimoku", "#c080ff",
+                "Ichi",
+                "ichimoku",
+                "#c080ff",
                 "Ichimoku Cloud: Tenkan(orange)/Kijun(blue)/Span A(green)/"
-                "Span B(red), shift +26. Price pane overlay.")
+                "Span B(red), shift +26. Price pane overlay.",
+            )
             # Volume already renders by default; checkbox reflects + toggles that.
             self._cb_volume = QCheckBox("Vol")
             self._cb_volume.setStyleSheet("color: #80ffcc; font-size: 9px;")
             self._cb_volume.setToolTip("Volume bars (bottom strip)")
             self._cb_volume.setChecked(True)
             self._cb_volume.toggled.connect(
-                lambda v: self._toggle_indicator("volume", v))
+                lambda v: self._toggle_indicator("volume", v)
+            )
             ind_row.addWidget(self._cb_volume)
             # v3.16.22 — Slingshot / BB-Bullseye now enabled with
             # placeholder visuals so the toggles WORK (operator
@@ -1954,23 +2110,29 @@ if _HAS_QT:
             # paint is shipping today so the dead-toggle problem
             # is fixed.
             self._cb_slingshot = _add_indicator_cb(
-                "Sling", "slingshot", "#ff4488",
+                "Sling",
+                "slingshot",
+                "#ff4488",
                 "Slingshot markers — placeholder paint at HA color flips "
-                "(final visual queued for Wave 2)")
+                "(final visual queued for Wave 2)",
+            )
             self._cb_bbullseye = _add_indicator_cb(
-                "BBull", "bbullseye", "#ff00aa",
+                "BBull",
+                "bbullseye",
+                "#ff00aa",
                 "BB Bullseye zone — placeholder shaded band at BB middle "
-                "(final visual queued for Wave 2)")
+                "(final visual queued for Wave 2)",
+            )
 
             toolbar.addLayout(ind_row)
             toolbar.addStretch()
 
             legend = QHBoxLayout()
             legend.setSpacing(12)
-            inv_lbl = QLabel("\u25C6 Invisible")
+            inv_lbl = QLabel("\u25c6 Invisible")
             inv_lbl.setStyleSheet("color: #ffa000; font-size: 9px;")
             legend.addWidget(inv_lbl)
-            vis_lbl = QLabel("\u25A1 On Book")
+            vis_lbl = QLabel("\u25a1 On Book")
             vis_lbl.setStyleSheet("color: #00b4ff; font-size: 9px;")
             legend.addWidget(vis_lbl)
             toolbar.addLayout(legend)
@@ -2011,7 +2173,9 @@ if _HAS_QT:
             setattr(self._chart, f"_show_{name}", on)
             try:  # noqa: SIM105
                 self._chart._apply_height_for_panes()
-            except Exception:  # R28-OK: best-effort UX polish; chart still updates without resize  # noqa: S110
+            except (
+                Exception
+            ):  # R28-OK: best-effort UX polish; chart still updates without resize  # noqa: S110
                 pass
             self._chart.update()
 

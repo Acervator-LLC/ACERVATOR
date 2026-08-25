@@ -34,10 +34,10 @@ THREE concrete defects in the prior code:
 This module is mode-aware and unit-tested in
 `tests/test_extractor_start_balance_v3_20_66.py`. MEM-412.
 """
+
 from __future__ import annotations
 
 from typing import Optional, Tuple
-
 
 # USD-like assets — for these, wallet balance is already in USD and
 # no price oracle is needed.
@@ -100,13 +100,14 @@ def check_start_balance(
 
         if base_free_usd is None:
             bal_summary = (
-                f"[EXTRACTOR {sym_tag}] "
-                f"{base}: {base_free:.6f} free (pool)")
+                f"[EXTRACTOR {sym_tag}] " f"{base}: {base_free:.6f} free (pool)"
+            )
         else:
             bal_summary = (
                 f"[EXTRACTOR {sym_tag}] "
                 f"{base}: {base_free:.6f} free (pool, "
-                f"~${base_free_usd:.2f})")
+                f"~${base_free_usd:.2f})"
+            )
 
         # Sufficiency: USD value ≥ chunk size when we can compute USD,
         # else fall back to any non-zero base balance.
@@ -123,14 +124,13 @@ def check_start_balance(
             f"{bal_summary}. Extractor needs ${chunk_size_usd:.2f} "
             f"worth of {base} in the pool to fund chunks. "
             f"Deposit {base} or reduce the Extractor chunk size "
-            f"(currently ${chunk_size_usd:.2f}).")
+            f"(currently ${chunk_size_usd:.2f})."
+        )
         return False, msg, bal_summary
 
     # ── Scrumming branch ──────────────────────────────────────────
     sym_tag = f"{target}/{base}" if target else base
-    bal_summary = (
-        f"[SCRUMMING {sym_tag}] "
-        f"{base}: {base_free:.4f} free (spend)")
+    bal_summary = f"[SCRUMMING {sym_tag}] " f"{base}: {base_free:.4f} free (spend)"
     if target_free > 0:
         bal_summary += f", {target}: {target_free:.6f} free (target)"
 
@@ -141,5 +141,6 @@ def check_start_balance(
     msg = (
         f"Insufficient balance on {exchange_label}: {bal_summary}. "
         f"Bot requires {base} to place orders. Deposit funds or "
-        f"reduce target balance (currently ${target_balance:.2f}).")
+        f"reduce target balance (currently ${target_balance:.2f})."
+    )
     return False, msg, bal_summary

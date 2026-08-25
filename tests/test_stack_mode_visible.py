@@ -4,6 +4,7 @@ Source-shape + minimal-stub tests. Full end-to-end wiring (real
 exchange fills, live order-book placement) requires the sim
 harness — pinned separately.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,6 +27,7 @@ if str(REPO) not in sys.path:
 class TestOrderTypeIOCLimit:
     def test_ioc_limit_enum_present(self):
         from src.exchange.base import OrderType
+
         assert hasattr(OrderType, "IOC_LIMIT")
         assert OrderType.IOC_LIMIT.value == "ioc_limit"
 
@@ -33,12 +35,13 @@ class TestOrderTypeIOCLimit:
         """ccxt connector must map IOC_LIMIT → create_order(type='limit',
         params={'timeInForce': 'IOC'})."""
         src = (REPO / "src" / "exchange" / "ccxt_connector.py").read_text(
-            encoding="utf-8", errors="replace")
-        assert 'OrderType.IOC_LIMIT' in src
-        assert 'timeInForce' in src and 'IOC' in src
-        assert '_ccxt_type = "limit"' in src, (
-            "IOC_LIMIT must map to native ccxt 'limit' + IOC time_in_force"
+            encoding="utf-8", errors="replace"
         )
+        assert "OrderType.IOC_LIMIT" in src
+        assert "timeInForce" in src and "IOC" in src
+        assert (
+            '_ccxt_type = "limit"' in src
+        ), "IOC_LIMIT must map to native ccxt 'limit' + IOC time_in_force"
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +53,8 @@ class TestVisibleModeSourceShape:
     @pytest.fixture(scope="class")
     def source(self) -> str:
         return (REPO / "src" / "trading" / "scrumming_bot.py").read_text(
-            encoding="utf-8", errors="replace")
+            encoding="utf-8", errors="replace"
+        )
 
     def test_open_stack_from_scrum_is_async(self, source):
         assert re.search(
@@ -62,33 +66,35 @@ class TestVisibleModeSourceShape:
         exchange orders via guarded_place_order per tranche."""
         m = re.search(
             r"async def _open_stack_from_scrum\([^)]*\)[^:]*:(.*?)(?=\n    async def |\n    def )",
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
         assert m
         body = m.group(1)
-        assert "not self._invisible" in body or "_visible = not self._invisible" in body, (
-            "Visible branch must detect not self._invisible"
-        )
-        assert "guarded_place_order" in body, (
-            "Visible tranches must be placed via guarded_place_order"
-        )
+        assert (
+            "not self._invisible" in body or "_visible = not self._invisible" in body
+        ), "Visible branch must detect not self._invisible"
+        assert (
+            "guarded_place_order" in body
+        ), "Visible tranches must be placed via guarded_place_order"
         assert "OrderSide.SELL" in body
 
     def test_aggressive_selects_ioc_limit(self, source):
         m = re.search(
             r"async def _open_stack_from_scrum\([^)]*\)[^:]*:(.*?)(?=\n    async def |\n    def )",
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
         body = m.group(1)
-        assert "OrderType.IOC_LIMIT" in body, (
-            "Aggressive path must use OrderType.IOC_LIMIT"
-        )
-        assert "OrderType.LIMIT" in body, (
-            "Non-aggressive Visible path must use OrderType.LIMIT"
-        )
-        assert "_aggressive" in body, (
-            "Order type selection must gate on self._aggressive"
-        )
+        assert (
+            "OrderType.IOC_LIMIT" in body
+        ), "Aggressive path must use OrderType.IOC_LIMIT"
+        assert (
+            "OrderType.LIMIT" in body
+        ), "Non-aggressive Visible path must use OrderType.LIMIT"
+        assert (
+            "_aggressive" in body
+        ), "Order type selection must gate on self._aggressive"
 
     def test_visible_reconciler_method_defined(self, source):
         assert "async def _reconcile_stack_tranches_visible(" in source
@@ -96,21 +102,23 @@ class TestVisibleModeSourceShape:
     def test_visible_reconciler_uses_get_open_orders(self, source):
         m = re.search(
             r"async def _reconcile_stack_tranches_visible\([^)]*\)[^:]*:(.*?)(?=\n    async def |\n    def )",
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
         assert m
         body = m.group(1)
-        assert "get_open_orders" in body, (
-            "Visible reconciler must call exchange.get_open_orders"
-        )
-        assert "get_order" in body, (
-            "Visible reconciler must call get_order for terminal state"
-        )
+        assert (
+            "get_open_orders" in body
+        ), "Visible reconciler must call exchange.get_open_orders"
+        assert (
+            "get_order" in body
+        ), "Visible reconciler must call get_order for terminal state"
 
     def test_visible_reconciler_marks_filled_and_cancelled(self, source):
         m = re.search(
             r"async def _reconcile_stack_tranches_visible\([^)]*\)[^:]*:(.*?)(?=\n    async def |\n    def )",
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
         body = m.group(1)
         assert '"filled"' in body
@@ -129,7 +137,8 @@ class TestStackTranchesTab:
     @pytest.fixture(scope="class")
     def source(self) -> str:
         return (REPO / "src" / "gui" / "bot_live_settings.py").read_text(
-            encoding="utf-8", errors="replace")
+            encoding="utf-8", errors="replace"
+        )
 
     def test_create_stack_tranches_tab_defined(self, source):
         assert "def _create_stack_tranches_tab(" in source
@@ -161,7 +170,7 @@ class TestStackTranchesTab:
         call, catch it at test time."""
         m = re.search(
             r'and\s+getattr\(cfg,\s*"stack_mode"[^)]*\):\s*\n\s*tabs\.addTab\('
-            r'[^)]*_create_stack_tranches_tab',
+            r"[^)]*_create_stack_tranches_tab",
             source,
         )
         assert m is None, (
@@ -174,17 +183,19 @@ class TestStackTranchesTab:
     def test_tab_reads_stack_tranches_ledger(self, source):
         m = re.search(
             r"def _create_stack_tranches_tab\(self\)[^:]*:(.*?)(?=\n        def )",
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
         assert m
         body = m.group(1)
-        assert '_stack_tranches' in body, "tab must read _bot._stack_tranches"
-        assert '_stack_created' in body, "tab must read _bot._stack_created"
+        assert "_stack_tranches" in body, "tab must read _bot._stack_tranches"
+        assert "_stack_created" in body, "tab must read _bot._stack_created"
 
     def test_tab_surfaces_pending_filled_cancelled(self, source):
         m = re.search(
             r"def _create_stack_tranches_tab\(self\)[^:]*:(.*?)(?=\n        def )",
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
         body = m.group(1)
         assert '"pending"' in body
@@ -194,10 +205,11 @@ class TestStackTranchesTab:
     def test_tab_shows_visible_vs_invisible_mode_per_tranche(self, source):
         m = re.search(
             r"def _create_stack_tranches_tab\(self\)[^:]*:(.*?)(?=\n        def )",
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
         body = m.group(1)
-        assert 'VISIBLE' in body and 'INVISIBLE' in body
+        assert "VISIBLE" in body and "INVISIBLE" in body
 
 
 # ---------------------------------------------------------------------------
@@ -213,8 +225,11 @@ class TestAsyncOpenStackRegression:
         from src.trading.scrumming_bot import ScrummingBot
 
         class _StubBus:
-            def __init__(self): self.messages = []
-            def emit(self, event, **kw): self.messages.append((event, kw))
+            def __init__(self):
+                self.messages = []
+
+            def emit(self, event, **kw):
+                self.messages.append((event, kw))
 
         class _StubCfg:
             symbol = "BTC/USD"
@@ -236,13 +251,12 @@ class TestAsyncOpenStackRegression:
                 self._bus = _StubBus()
                 self._stack_tranches = []
                 self._stack_created = 0
-                self._invisible = True   # Invisible → no exchange call
+                self._invisible = True  # Invisible → no exchange call
                 self._aggressive = False
 
         bot = _StubBot()
         n = asyncio.run(
-            ScrummingBot._open_stack_from_scrum(
-                bot, scrum_price=100.0, scrum_size=30.0)
+            ScrummingBot._open_stack_from_scrum(bot, scrum_price=100.0, scrum_size=30.0)
         )
         assert n == 3
         assert len(bot._stack_tranches) == 3

@@ -28,6 +28,7 @@ to the LIVE bus and asserted to receive exactly zero events while the
 sim bot emits. Absence of sound and absence of delivery are different
 claims, and only the second one is checkable.
 """
+
 from __future__ import annotations
 
 import ast
@@ -52,8 +53,7 @@ def _bot(sim_mode: bool, bus):
     b.bot_id = "b1"
     b._sim_mode = sim_mode
     b._bus = bus
-    b.config = type("C", (), {"symbol": "BTC/USD",
-                              "target_asset": "BTC"})()
+    b.config = type("C", (), {"symbol": "BTC/USD", "target_asset": "BTC"})()
     return b
 
 
@@ -93,10 +93,10 @@ class TestSimRunsNowRecordTheTrace:
         _bot(sim_mode=True, bus=priv)._emit_trade_notification("SCRUM", "SENT")
         assert c.events, (
             "sim bot still returns early; the SENT/PLACED/FILLED/"
-            "CANCELLED trace is lost")
+            "CANCELLED trace is lost"
+        )
 
-    @pytest.mark.parametrize("stage", ["SENT", "PLACED", "FILLED",
-                                       "CANCELLED"])
+    @pytest.mark.parametrize("stage", ["SENT", "PLACED", "FILLED", "CANCELLED"])
     def test_every_stage_is_recorded(self, stage):
         priv, c = EventBus(), _Counter()
         priv.subscribe("*", c.on_any)
@@ -109,7 +109,8 @@ class TestSimRunsNowRecordTheTrace:
         priv, c = EventBus(), _Counter()
         priv.subscribe("*", c.on_any)
         _bot(sim_mode=True, bus=priv)._emit_trade_notification(
-            "SCRUM", "CANCELLED", extra="below TA confidence floor")
+            "SCRUM", "CANCELLED", extra="below TA confidence floor"
+        )
         blob = " ".join(str(getattr(e, "data", e)) for e in c.events)
         assert "below TA confidence floor" in blob
 
@@ -130,7 +131,8 @@ class TestTheLiveBusReceivesNothing:
             assert c.events == [], (
                 f"{len(c.events)} sim notification(s) reached the LIVE "
                 f"bus, where main_window forwards them to the sound "
-                f"engine")
+                f"engine"
+            )
         finally:
             off()
 
@@ -154,9 +156,12 @@ class TestTheGuardIsGoneAndTheReasonIsRecorded:
         the comment recording the removal necessarily names the removed
         thing, and a substring search would match it forever."""
         src = SB.read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_emit_trade_notification")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "_emit_trade_notification"
+        )
         for node in ast.walk(fn):
             if not isinstance(node, ast.If):
                 continue
@@ -164,18 +169,22 @@ class TestTheGuardIsGoneAndTheReasonIsRecorded:
             if "_sim_mode" not in test_src:
                 continue
             body = [s for s in node.body if not isinstance(s, ast.Pass)]
-            assert not (len(body) == 1
-                        and isinstance(body[0], ast.Return)), (
-                f"the sim early return survives at line {node.lineno}")
+            assert not (
+                len(body) == 1 and isinstance(body[0], ast.Return)
+            ), f"the sim early return survives at line {node.lineno}"
 
     def test_isolation_is_what_keeps_the_run_silent_now(self):
         """The guard was load-bearing before C17. Its replacement must
         be recorded at the site, or someone reinstates it."""
         src = SB.read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_emit_trade_notification")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "_emit_trade_notification"
+        )
         seg = ast.get_source_segment(src, fn) or ""
         assert "C17" in seg or "private bus" in seg.lower(), (
             "nothing at this site explains why dropping the sim guard "
-            "is safe; the next reader will put it back")
+            "is safe; the next reader will put it back"
+        )

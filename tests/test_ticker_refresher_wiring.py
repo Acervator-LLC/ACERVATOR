@@ -10,6 +10,7 @@ The saving depends on 35 bots on one exchange producing exactly ONE bulk
 call. If `_connectors_by_exchange` ever returned one entry per bot the
 change would cost more than the per-bot polling it replaces.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -61,8 +62,7 @@ class TestOneCallPerExchange:
         assert list(m._connectors_by_exchange()) == ["coinbase"]
 
     def test_distinct_exchanges_each_get_one(self):
-        m = _mgr({"a": _Bot("coinbase"), "b": _Bot("kraken"),
-                  "c": _Bot("coinbase")})
+        m = _mgr({"a": _Bot("coinbase"), "b": _Bot("kraken"), "c": _Bot("coinbase")})
         assert sorted(m._connectors_by_exchange()) == ["coinbase", "kraken"]
 
     def test_a_bot_without_a_connector_is_skipped(self):
@@ -84,8 +84,9 @@ class TestRefreshOnce:
     @pytest.mark.asyncio
     async def test_it_refreshes_each_exchange_once(self):
         pool = _Pool(per_call=5)
-        m = _mgr({"a": _Bot("coinbase"), "b": _Bot("kraken"),
-                  "c": _Bot("coinbase")}, pool)
+        m = _mgr(
+            {"a": _Bot("coinbase"), "b": _Bot("kraken"), "c": _Bot("coinbase")}, pool
+        )
         assert await m.refresh_all_tickers_once() == 10
         assert sorted(pool.calls) == ["coinbase", "kraken"]
 

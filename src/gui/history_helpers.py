@@ -33,6 +33,7 @@ Isolated pieces (all pure, all testable without Qt):
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import logging
@@ -68,6 +69,7 @@ pin (operator 2026-06-13)."""
 # Trade normalization                                                    #
 # --------------------------------------------------------------------- #
 
+
 def normalize_trade(trade: Any, exchange_id: str) -> Optional[dict]:
     """Convert an exchange ``Trade`` dataclass (or ccxt dict) into a
     uniform row dict. Returns None for malformed inputs.
@@ -95,13 +97,15 @@ def normalize_trade(trade: Any, exchange_id: str) -> Optional[dict]:
             amount = float(trade.get("amount", 0) or 0)
             price = float(trade.get("price", 0) or 0)
             fee_obj = trade.get("fee", {}) or {}
-            fee = float((fee_obj.get("cost") if isinstance(fee_obj, dict)
-                         else fee_obj) or 0)
-            fee_ccy = str((fee_obj.get("currency")
-                           if isinstance(fee_obj, dict) else "") or "")
+            fee = float(
+                (fee_obj.get("cost") if isinstance(fee_obj, dict) else fee_obj) or 0
+            )
+            fee_ccy = str(
+                (fee_obj.get("currency") if isinstance(fee_obj, dict) else "") or ""
+            )
             ts_raw = trade.get("timestamp", 0)
             ts = float(ts_raw or 0)
-            if ts > 10_000_000_000:   # ccxt millisecond convention
+            if ts > 10_000_000_000:  # ccxt millisecond convention
                 ts /= 1000.0
         except Exception:
             return None
@@ -147,14 +151,14 @@ def normalize_trade(trade: Any, exchange_id: str) -> Optional[dict]:
         "fee": fee,
         "fee_currency": fee_ccy,
         "timestamp": ts,
-        "datetime": (datetime.fromtimestamp(ts, tz=timezone.utc)
-                     if ts > 0 else None),
+        "datetime": (datetime.fromtimestamp(ts, tz=timezone.utc) if ts > 0 else None),
     }
 
 
 # --------------------------------------------------------------------- #
 # Chunked-window trade fetcher — H5 fix                                  #
 # --------------------------------------------------------------------- #
+
 
 def _bots_of(bot_manager: Any) -> list:
     if bot_manager is None:
@@ -176,19 +180,19 @@ def _pairs_from_bot_manager(bot_manager: Any) -> dict[str, tuple[Any, set[str]]]
             symbol = str(getattr(cfg, "symbol", "") or "")
             if not symbol:
                 continue
-            exch_id = str(getattr(cfg, "exchange_id", "") or "") or \
-                type(exch).__name__
+            exch_id = str(getattr(cfg, "exchange_id", "") or "") or type(exch).__name__
             if exch_id not in by_exchange:
                 by_exchange[exch_id] = (exch, set())
             by_exchange[exch_id][1].add(symbol)
         except Exception as _bx:
-            logger.debug(
-                "history_helpers: bot enumeration skipped one entry: %s", _bx)
+            logger.debug("history_helpers: bot enumeration skipped one entry: %s", _bx)
     return by_exchange
 
 
 async def _fetch_paginated(
-    exch: Any, symbol: str, since_ts: float,
+    exch: Any,
+    symbol: str,
+    since_ts: float,
     per_page_limit: int = CHUNK_PER_CALL_LIMIT,
 ) -> list[Any]:
     """One paginated ``get_my_trades`` call.
@@ -215,7 +219,8 @@ async def _fetch_paginated(
                 symbol=symbol,
                 since=since_ts if since_ts > 0 else None,
                 limit=per_page_limit,
-                params={"paginate": True})
+                params={"paginate": True},
+            )
         except TypeError:
             # Connector doesn't accept ``params`` kwarg — fall back
             # to the plain since+limit call. Coverage will be
@@ -224,20 +229,24 @@ async def _fetch_paginated(
             trades = await exch.get_my_trades(
                 symbol=symbol,
                 since=since_ts if since_ts > 0 else None,
-                limit=per_page_limit)
+                limit=per_page_limit,
+            )
         return list(trades or [])
     except Exception as exc:  # noqa: BLE001 - per-symbol best-effort
         logger.warning(
             "history_helpers: get_my_trades(%s, since=%.0f) raised: %s",
-            symbol, since_ts, exc)
+            symbol,
+            since_ts,
+            exc,
+        )
         return []
 
 
 async def fetch_all_history_chunked(
     bot_manager: Any,
     since_ts: float,
-    chunk_days: int = CHUNK_WINDOW_DAYS,   # retained for signature compat
-    max_chunks: int = 48,                  # retained for signature compat
+    chunk_days: int = CHUNK_WINDOW_DAYS,  # retained for signature compat
+    max_chunks: int = 48,  # retained for signature compat
 ) -> list[dict]:
     """Pull trade history from every active (exchange, symbol) pair.
 
@@ -267,8 +276,8 @@ async def fetch_all_history_chunked(
     for exch_id, (exch, symbols) in by_exchange.items():
         if not hasattr(exch, "get_my_trades"):
             logger.debug(
-                "history_helpers: exchange %s has no get_my_trades; skipping",
-                exch_id)
+                "history_helpers: exchange %s has no get_my_trades; skipping", exch_id
+            )
             continue
         for symbol in sorted(symbols):
             trades = await _fetch_paginated(exch, symbol, since_ts)
@@ -288,9 +297,12 @@ async def fetch_all_history_chunked(
                 all_trades.append(rec)
                 new_this_call += 1
             logger.debug(
-                "history_helpers: paginated %s %s → %d raw, "
-                "%d new after dedupe",
-                exch_id, symbol, len(trades), new_this_call)
+                "history_helpers: paginated %s %s → %d raw, " "%d new after dedupe",
+                exch_id,
+                symbol,
+                len(trades),
+                new_this_call,
+            )
 
     all_trades.sort(key=lambda r: r.get("timestamp", 0), reverse=True)
     return all_trades
@@ -311,8 +323,7 @@ def resolve_bot_label(bot_manager: Any, exchange_id: str, symbol: str) -> str:
                 ticker = symbol.split("/")[0] if "/" in symbol else symbol
             return f"{ticker}/{bot_id[-4:]}" if bot_id else ticker
         except Exception as _label_exc:  # noqa: BLE001 - per-bot best-effort
-            logger.debug(
-                "history_helpers: resolve_bot_label skip: %s", _label_exc)
+            logger.debug("history_helpers: resolve_bot_label skip: %s", _label_exc)
             continue
     return ""
 
@@ -332,8 +343,7 @@ def resolve_bot_id_for_row(bot_manager: Any, row: dict) -> str:
                 continue
             return str(getattr(bot, "bot_id", "") or "")
         except Exception as _id_exc:  # noqa: BLE001 - per-bot best-effort
-            logger.debug(
-                "history_helpers: resolve_bot_id skip: %s", _id_exc)
+            logger.debug("history_helpers: resolve_bot_id skip: %s", _id_exc)
             continue
     return ""
 
@@ -341,6 +351,7 @@ def resolve_bot_id_for_row(bot_manager: Any, row: dict) -> str:
 # --------------------------------------------------------------------- #
 # Gate + voting log join                                                 #
 # --------------------------------------------------------------------- #
+
 
 def _parse_entry_ts(s: str) -> Optional[float]:
     if not s:
@@ -354,9 +365,11 @@ def _parse_entry_ts(s: str) -> Optional[float]:
 
 
 def _earliest_page_ts(page_rows: list[dict]) -> Optional[float]:
-    stamps = [float(r.get("timestamp", 0) or 0)
-              for r in page_rows
-              if (r.get("timestamp") or 0) > 0]
+    stamps = [
+        float(r.get("timestamp", 0) or 0)
+        for r in page_rows
+        if (r.get("timestamp") or 0) > 0
+    ]
     return min(stamps) if stamps else None
 
 
@@ -369,7 +382,8 @@ def build_page_gate_index(page_rows: list[dict]) -> dict:
     since = None
     if min_ts is not None:
         since = datetime.fromtimestamp(
-            max(0.0, min_ts - JOIN_TOLERANCE_SECONDS), tz=timezone.utc)
+            max(0.0, min_ts - JOIN_TOLERANCE_SECONDS), tz=timezone.utc
+        )
     try:
         from src.trading.live_log_reader import live_gate_decisions
     except Exception:
@@ -385,8 +399,7 @@ def build_page_gate_index(page_rows: list[dict]) -> dict:
                 continue
             idx.setdefault((bot_id, int(ts) // 60), []).append(entry)
     except Exception as _exc:
-        logger.debug(
-            "history_helpers: gate index build fail-soft: %s", _exc)
+        logger.debug("history_helpers: gate index build fail-soft: %s", _exc)
         return {}
     return idx
 
@@ -400,7 +413,8 @@ def build_page_voting_index(page_rows: list[dict]) -> dict:
     since = None
     if min_ts is not None:
         since = datetime.fromtimestamp(
-            max(0.0, min_ts - JOIN_TOLERANCE_SECONDS), tz=timezone.utc)
+            max(0.0, min_ts - JOIN_TOLERANCE_SECONDS), tz=timezone.utc
+        )
     try:
         from src.trading.live_log_reader import live_voting_panel_snapshots
     except Exception:
@@ -416,14 +430,14 @@ def build_page_voting_index(page_rows: list[dict]) -> dict:
                 continue
             idx.setdefault((bot_id, int(ts) // 60), []).append(entry)
     except Exception as _exc:
-        logger.debug(
-            "history_helpers: voting index build fail-soft: %s", _exc)
+        logger.debug("history_helpers: voting index build fail-soft: %s", _exc)
         return {}
     return idx
 
 
 def _best_entry_within_window(
-    candidates: list[dict], target_ts: float,
+    candidates: list[dict],
+    target_ts: float,
 ) -> Optional[dict]:
     if not candidates:
         return None
@@ -441,7 +455,9 @@ def _best_entry_within_window(
 
 
 def lookup_gate_entry(
-    index: dict, bot_id: str, ts: float,
+    index: dict,
+    bot_id: str,
+    ts: float,
 ) -> Optional[dict]:
     if not bot_id or ts <= 0 or not index:
         return None
@@ -455,7 +471,10 @@ def lookup_gate_entry(
 
 
 def lookup_voting_entry(
-    index: dict, bot_id: str, ts: float, side: str = "",
+    index: dict,
+    bot_id: str,
+    ts: float,
+    side: str = "",
 ) -> Optional[dict]:
     if not bot_id or ts <= 0 or not index:
         return None
@@ -467,9 +486,10 @@ def lookup_voting_entry(
             candidates.extend(entries)
     if side:
         same_side = [
-            e for e in candidates
-            if str((e.get("data") or {}).get("side", "")
-                   ).upper() in ("", side.upper())]
+            e
+            for e in candidates
+            if str((e.get("data") or {}).get("side", "")).upper() in ("", side.upper())
+        ]
         if same_side:
             candidates = same_side
     return _best_entry_within_window(candidates, ts)
@@ -478,6 +498,7 @@ def lookup_voting_entry(
 # --------------------------------------------------------------------- #
 # Cell text + tooltip builders                                          #
 # --------------------------------------------------------------------- #
+
 
 def gate_cell_text(entry: Optional[dict]) -> str:
     """Compact text for the Gates column cell.
@@ -521,9 +542,7 @@ def gate_cell_text(entry: Optional[dict]) -> str:
 
 
 def _html_escape(s: str) -> str:
-    return (s.replace("&", "&amp;")
-             .replace("<", "&lt;")
-             .replace(">", "&gt;"))
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def gate_cell_tooltip(entry: Optional[dict]) -> str:
@@ -544,7 +563,8 @@ def gate_cell_tooltip(entry: Optional[dict]) -> str:
             "found in the gate log within the join window. Gate logging "
             "may not have been running at that time, or the trade fired "
             "on a path that does not consult the gate chain "
-            "(CARTRIDGE / WIRE_STACK fires bypass it by design).")
+            "(CARTRIDGE / WIRE_STACK fires bypass it by design)."
+        )
     data = entry.get("data") or {}
     sym = str(data.get("symbol", "") or "?")
     s_armed = bool(data.get("scrum_armed"))
@@ -577,8 +597,10 @@ def gate_cell_tooltip(entry: Optional[dict]) -> str:
         lines.append("")
         lines.append("Neither side armed and no blocker was recorded.")
     lines.append("")
-    lines.append("Same gate vocabulary as the Simulator's gate row: "
-                 "left bank SCRUM, right bank FOLD.")
+    lines.append(
+        "Same gate vocabulary as the Simulator's gate row: "
+        "left bank SCRUM, right bank FOLD."
+    )
     return "\n".join(lines)
 
 
@@ -630,7 +652,8 @@ def voting_cell_tooltip(entry: Optional[dict]) -> str:
     parts.append(
         f"votes: <span style='color:#00ff88'>{bullish} bull</span> · "
         f"<span style='color:#ff5566'>{bearish} bear</span> · "
-        f"{neutral} neutral")
+        f"{neutral} neutral"
+    )
     parts.append(f"net_score: {net:+.3f}   confidence: {conf:.2f}")
 
     signals = panel.get("signals") or []
@@ -643,22 +666,20 @@ def voting_cell_tooltip(entry: Optional[dict]) -> str:
                 c = float(s.get("confidence", 0) or 0)
                 w = float(s.get("weight", 0) or 0)
                 t = str(s.get("timeframe", "") or "")
-                name = str(
-                    s.get("indicator", "") or s.get("name", "") or "?")
+                name = str(s.get("indicator", "") or s.get("name", "") or "?")
             except (TypeError, ValueError):
                 continue
             arrow = "↑" if d > 0 else ("↓" if d < 0 else "·")
-            color = ("#00ff88" if d > 0
-                     else "#ff5566" if d < 0 else "#888")
+            color = "#00ff88" if d > 0 else "#ff5566" if d < 0 else "#888"
             parts.append(
                 f"  <span style='color:{color}'>{arrow}</span> "
                 f"{_html_escape(name):<24} "
-                f"conf={c:.2f} wt={w:.2f} tf={_html_escape(t)}")
+                f"conf={c:.2f} wt={w:.2f} tf={_html_escape(t)}"
+            )
         if len(signals) > 20:
             parts.append(f"  …+{len(signals) - 20} more")
 
-    return "<pre style='margin:0;font-family:monospace'>" + \
-        "\n".join(parts) + "</pre>"
+    return "<pre style='margin:0;font-family:monospace'>" + "\n".join(parts) + "</pre>"
 
 
 def grade_tooltip(grade: str, grade_context: Optional[dict] = None) -> str:
@@ -681,19 +702,26 @@ def grade_tooltip(grade: str, grade_context: Optional[dict] = None) -> str:
     if grade_context:
         parts.append("")
         for k, v in list(grade_context.items())[:8]:
-            parts.append(
-                f"{_html_escape(str(k))}: {_html_escape(str(v))}")
+            parts.append(f"{_html_escape(str(k))}: {_html_escape(str(v))}")
     return "<pre style='margin:0'>" + "\n".join(parts) + "</pre>"
 
 
 __all__ = [
-    "DEFAULT_START_DATE", "CHUNK_WINDOW_DAYS", "CHUNK_PER_CALL_LIMIT",
+    "DEFAULT_START_DATE",
+    "CHUNK_WINDOW_DAYS",
+    "CHUNK_PER_CALL_LIMIT",
     "JOIN_TOLERANCE_SECONDS",
-    "normalize_trade", "fetch_all_history_chunked",
-    "resolve_bot_label", "resolve_bot_id_for_row",
-    "build_page_gate_index", "build_page_voting_index",
-    "lookup_gate_entry", "lookup_voting_entry",
-    "gate_cell_text", "gate_cell_tooltip",
-    "voting_cell_text", "voting_cell_tooltip",
+    "normalize_trade",
+    "fetch_all_history_chunked",
+    "resolve_bot_label",
+    "resolve_bot_id_for_row",
+    "build_page_gate_index",
+    "build_page_voting_index",
+    "lookup_gate_entry",
+    "lookup_voting_entry",
+    "gate_cell_text",
+    "gate_cell_tooltip",
+    "voting_cell_text",
+    "voting_cell_tooltip",
     "grade_tooltip",
 ]

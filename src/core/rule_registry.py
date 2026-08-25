@@ -62,49 +62,181 @@ REGISTRY_PATH = ROOT / "sadp" / "RULE_REGISTRY.json"
 # ---------------------------------------------------------------------------
 
 RULE_META = {
-    "R1":  {"title": "Target increments after every fold",           "group": "A", "protection": "CORE"},
-    "R2":  {"title": "Landing Strip v2 import path",                 "group": "A", "protection": "STANDARD"},
-    "R3":  {"title": "No targeting_mode reset after scrum/fold",     "group": "A", "protection": "STANDARD"},
-    "R4":  {"title": "Trend-hold override threshold",                "group": "A", "protection": "STANDARD"},
-    "R5":  {"title": "Bearish candle base confidence = 0.15",        "group": "A", "protection": "CORE"},
-    "R6":  {"title": "Two execution paths — change both or neither", "group": "A", "protection": "STANDARD"},
-    "R7":  {"title": "HA candles only, no toggle",                   "group": "B", "protection": "STANDARD"},
-    "R8":  {"title": "HBoxLayout centering with addStretch()",       "group": "B", "protection": "STANDARD"},
-    "R9":  {"title": "init_live_monitor() startup sequence",         "group": "B", "protection": "STANDARD"},
-    "R10": {"title": "BB Bullseye delta threshold >= interval",      "group": "A", "protection": "CORE"},
-    "R11": {"title": "Hedge reserve — separate, never skimmed",      "group": "A", "protection": "CORE"},
-    "R12": {"title": "Smart Target cap at holdings × price × 0.995","group": "A", "protection": "CORE"},
-    "R13": {"title": "ASSET_PERIODS lookup — never positional",      "group": "A", "protection": "STANDARD"},
-    "R14": {"title": "Battery constants are fixed",                   "group": "A", "protection": "STANDARD"},
-    "R15": {"title": "Live data routing in run_portfolio",           "group": "A", "protection": "STANDARD"},
-    "R16": {"title": "Module loading order in RAIntSimBat",          "group": "A", "protection": "STANDARD"},
-    "R17": {"title": "No GUI dimension changes without approval",    "group": "B", "protection": "STANDARD"},
-    "R18": {"title": "Pre/post dimension check on GUI work",         "group": "B", "protection": "STANDARD"},
-    "R19": {"title": "Trace first, fix second",                      "group": "B", "protection": "STANDARD"},
-    "R20": {"title": "Full battery default (all 39 sims)",           "group": "C", "protection": "STANDARD"},
-    "R21": {"title": "All research → Product Manual",               "group": "D", "protection": "STANDARD"},
-    "R22": {"title": "Pre/post battery on engine logic change",      "group": "C", "protection": "STANDARD"},
-    "R23": {"title": "Hop file rename on new AI session",            "group": "E", "protection": "STANDARD"},
-    "R24": {"title": "Human docs → PDF output",                      "group": "D", "protection": "STANDARD"},
-    "R25": {"title": "Micro-Management Loop + version sweep",        "group": "E", "protection": "STANDARD"},
-    "R26": {"title": "Development Chronicle — session-close update", "group": "D", "protection": "STANDARD"},
-    "R27": {"title": "Documentation ecosystem + code consistency",   "group": "F", "protection": "STANDARD"},
+    "R1": {
+        "title": "Target increments after every fold",
+        "group": "A",
+        "protection": "CORE",
+    },
+    "R2": {
+        "title": "Landing Strip v2 import path",
+        "group": "A",
+        "protection": "STANDARD",
+    },
+    "R3": {
+        "title": "No targeting_mode reset after scrum/fold",
+        "group": "A",
+        "protection": "STANDARD",
+    },
+    "R4": {
+        "title": "Trend-hold override threshold",
+        "group": "A",
+        "protection": "STANDARD",
+    },
+    "R5": {
+        "title": "Bearish candle base confidence = 0.15",
+        "group": "A",
+        "protection": "CORE",
+    },
+    "R6": {
+        "title": "Two execution paths — change both or neither",
+        "group": "A",
+        "protection": "STANDARD",
+    },
+    "R7": {
+        "title": "HA candles only, no toggle",
+        "group": "B",
+        "protection": "STANDARD",
+    },
+    "R8": {
+        "title": "HBoxLayout centering with addStretch()",
+        "group": "B",
+        "protection": "STANDARD",
+    },
+    "R9": {
+        "title": "init_live_monitor() startup sequence",
+        "group": "B",
+        "protection": "STANDARD",
+    },
+    "R10": {
+        "title": "BB Bullseye delta threshold >= interval",
+        "group": "A",
+        "protection": "CORE",
+    },
+    "R11": {
+        "title": "Hedge reserve — separate, never skimmed",
+        "group": "A",
+        "protection": "CORE",
+    },
+    "R12": {
+        "title": "Smart Target cap at holdings × price × 0.995",
+        "group": "A",
+        "protection": "CORE",
+    },
+    "R13": {
+        "title": "ASSET_PERIODS lookup — never positional",
+        "group": "A",
+        "protection": "STANDARD",
+    },
+    "R14": {
+        "title": "Battery constants are fixed",
+        "group": "A",
+        "protection": "STANDARD",
+    },
+    "R15": {
+        "title": "Live data routing in run_portfolio",
+        "group": "A",
+        "protection": "STANDARD",
+    },
+    "R16": {
+        "title": "Module loading order in RAIntSimBat",
+        "group": "A",
+        "protection": "STANDARD",
+    },
+    "R17": {
+        "title": "No GUI dimension changes without approval",
+        "group": "B",
+        "protection": "STANDARD",
+    },
+    "R18": {
+        "title": "Pre/post dimension check on GUI work",
+        "group": "B",
+        "protection": "STANDARD",
+    },
+    "R19": {"title": "Trace first, fix second", "group": "B", "protection": "STANDARD"},
+    "R20": {
+        "title": "Full battery default (all 39 sims)",
+        "group": "C",
+        "protection": "STANDARD",
+    },
+    "R21": {
+        "title": "All research → Product Manual",
+        "group": "D",
+        "protection": "STANDARD",
+    },
+    "R22": {
+        "title": "Pre/post battery on engine logic change",
+        "group": "C",
+        "protection": "STANDARD",
+    },
+    "R23": {
+        "title": "Hop file rename on new AI session",
+        "group": "E",
+        "protection": "STANDARD",
+    },
+    "R24": {"title": "Human docs → PDF output", "group": "D", "protection": "STANDARD"},
+    "R25": {
+        "title": "Micro-Management Loop + version sweep",
+        "group": "E",
+        "protection": "STANDARD",
+    },
+    "R26": {
+        "title": "Development Chronicle — session-close update",
+        "group": "D",
+        "protection": "STANDARD",
+    },
+    "R27": {
+        "title": "Documentation ecosystem + code consistency",
+        "group": "F",
+        "protection": "STANDARD",
+    },
     # SADP Group G — Financial Software Standards
-    "R28": {"title": "Fail loudly — explicit failure over silent default",  "group": "G", "protection": "STANDARD"},
-    "R29": {"title": "Idempotency — financial operations safe to retry",    "group": "G", "protection": "STANDARD"},
+    "R28": {
+        "title": "Fail loudly — explicit failure over silent default",
+        "group": "G",
+        "protection": "STANDARD",
+    },
+    "R29": {
+        "title": "Idempotency — financial operations safe to retry",
+        "group": "G",
+        "protection": "STANDARD",
+    },
     # SADP Group H — Code Quality Standards
-    "R30": {"title": "Semantic versioning — MAJOR.MINOR.PATCH discipline",  "group": "H", "protection": "STANDARD"},
-    "R31": {"title": "McCabe complexity gate — CC limits per function",     "group": "H", "protection": "STANDARD"},
-    "R32": {"title": "Circuit breaker — stop calling failing dependencies", "group": "H", "protection": "STANDARD"},
+    "R30": {
+        "title": "Semantic versioning — MAJOR.MINOR.PATCH discipline",
+        "group": "H",
+        "protection": "STANDARD",
+    },
+    "R31": {
+        "title": "McCabe complexity gate — CC limits per function",
+        "group": "H",
+        "protection": "STANDARD",
+    },
+    "R32": {
+        "title": "Circuit breaker — stop calling failing dependencies",
+        "group": "H",
+        "protection": "STANDARD",
+    },
     # SADP Group I — Architecture Standards
-    "R33": {"title": "Immutable audit log — append-only financial records", "group": "I", "protection": "STANDARD"},
-    "R34": {"title": "Single responsibility — one reason to change",        "group": "I", "protection": "STANDARD"},
+    "R33": {
+        "title": "Immutable audit log — append-only financial records",
+        "group": "I",
+        "protection": "STANDARD",
+    },
+    "R34": {
+        "title": "Single responsibility — one reason to change",
+        "group": "I",
+        "protection": "STANDARD",
+    },
     # SADP Group J — Session Management
-    "R35": {"title": "Context fill monitoring — report fill%% at every R25/R26", "group": "J", "protection": "STANDARD"},
+    "R35": {
+        "title": "Context fill monitoring — report fill%% at every R25/R26",
+        "group": "J",
+        "protection": "STANDARD",
+    },
 }
 
-VALID_RULES  = set(RULE_META.keys())  # auto-derived from RULE_META
-CORE_RULES   = {r for r, m in RULE_META.items() if m["protection"] == "CORE"}
+VALID_RULES = set(RULE_META.keys())  # auto-derived from RULE_META
+CORE_RULES = {r for r, m in RULE_META.items() if m["protection"] == "CORE"}
 VALID_STATES = {"LOCKED", "UNLOCKED", "SUSPENDED", "DEPRECATED"}
 
 
@@ -112,15 +244,16 @@ VALID_STATES = {"LOCKED", "UNLOCKED", "SUSPENDED", "DEPRECATED"}
 # Registry entry
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class RuleEntry:
-    rule:       str
-    state:      str          # LOCKED | UNLOCKED | SUSPENDED | DEPRECATED
-    reason:     str = ""
-    expires:    str = ""     # version string, e.g. "v3.7.0" — for SUSPENDED
+    rule: str
+    state: str  # LOCKED | UNLOCKED | SUSPENDED | DEPRECATED
+    reason: str = ""
+    expires: str = ""  # version string, e.g. "v3.7.0" — for SUSPENDED
     changed_by: str = "admin"
-    timestamp:  str = ""
-    history:    list = field(default_factory=list)  # previous states
+    timestamp: str = ""
+    history: list = field(default_factory=list)  # previous states
 
     def __post_init__(self):
         if not self.timestamp:
@@ -146,6 +279,7 @@ class RuleEntry:
 # Registry
 # ---------------------------------------------------------------------------
 
+
 class RuleRegistry:
     """
     Manages the persistent state of all governance rules.
@@ -153,7 +287,7 @@ class RuleRegistry:
     """
 
     def __init__(self, path: Path = REGISTRY_PATH):
-        self.path    = path
+        self.path = path
         self._entries: dict[str, RuleEntry] = {}
         self._load()
 
@@ -181,8 +315,7 @@ class RuleRegistry:
     def _save(self):
         self.path.write_text(
             json.dumps(
-                {r: e.to_dict() for r, e in sorted(self._entries.items())},
-                indent=2
+                {r: e.to_dict() for r, e in sorted(self._entries.items())}, indent=2
             )
         )
 
@@ -192,9 +325,7 @@ class RuleRegistry:
         if not rule.startswith("R"):
             rule = "R" + rule
         if rule not in VALID_RULES:
-            raise ValueError(
-                f"Unknown rule: {rule!r}. Valid rules: R1–R27."
-            )
+            raise ValueError(f"Unknown rule: {rule!r}. Valid rules: R1–R27.")
         return rule
 
     # ── Commands ─────────────────────────────────────────────────────────────
@@ -207,11 +338,15 @@ class RuleRegistry:
             return f"ℹ  {rule} is already LOCKED."
 
         old_state = entry.state
-        entry.history.append({
-            "from": old_state, "to": "LOCKED",
-            "reason": reason, "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-        })
-        entry.state  = "LOCKED"
+        entry.history.append(
+            {
+                "from": old_state,
+                "to": "LOCKED",
+                "reason": reason,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+        entry.state = "LOCKED"
         entry.reason = reason or f"Locked by admin (was {old_state})."
         entry.timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         entry.expires = ""
@@ -235,11 +370,15 @@ class RuleRegistry:
             return f"ℹ  {rule} is already UNLOCKED."
 
         old_state = entry.state
-        entry.history.append({
-            "from": old_state, "to": "UNLOCKED",
-            "reason": reason, "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-        })
-        entry.state  = "UNLOCKED"
+        entry.history.append(
+            {
+                "from": old_state,
+                "to": "UNLOCKED",
+                "reason": reason,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+        entry.state = "UNLOCKED"
         entry.reason = reason or f"Unlocked by admin (was {old_state})."
         entry.timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         entry.expires = ""
@@ -272,24 +411,32 @@ class RuleRegistry:
         if not reason:
             return (
                 f"⚠  RULE SUSPEND requires a --reason.\n"
-                f"   Syntax: RULE SUSPEND {rule} --reason \"explanation\""
+                f'   Syntax: RULE SUSPEND {rule} --reason "explanation"'
             )
 
         entry = self._entries[rule]
         old_state = entry.state
-        entry.history.append({
-            "from": old_state, "to": "SUSPENDED",
-            "reason": reason, "expires": expires,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-        })
-        entry.state  = "SUSPENDED"
+        entry.history.append(
+            {
+                "from": old_state,
+                "to": "SUSPENDED",
+                "reason": reason,
+                "expires": expires,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+        entry.state = "SUSPENDED"
         entry.reason = reason
         entry.expires = expires
         entry.timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         self._save()
 
         meta = RULE_META[rule]
-        expiry_note = f"\n   Expires: {expires}" if expires else "\n   Expires: manually via RULE RESTORE"
+        expiry_note = (
+            f"\n   Expires: {expires}"
+            if expires
+            else "\n   Expires: manually via RULE RESTORE"
+        )
         return (
             f"⏸  {rule} SUSPENDED\n"
             f"   Title:  {meta['title']}\n"
@@ -310,12 +457,15 @@ class RuleRegistry:
             )
 
         old_state = entry.state
-        entry.history.append({
-            "from": old_state, "to": "LOCKED",
-            "reason": "Restored by admin.",
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-        })
-        entry.state  = "LOCKED"
+        entry.history.append(
+            {
+                "from": old_state,
+                "to": "LOCKED",
+                "reason": "Restored by admin.",
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+        entry.state = "LOCKED"
         entry.reason = f"Restored from {old_state} by admin."
         entry.expires = ""
         entry.timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -335,8 +485,12 @@ class RuleRegistry:
             f"  {'Rule':<6} {'State':<12} {'Group':<7} {'Prot':<9} Title",
             "  " + "─" * 54,
         ]
-        state_sym = {"LOCKED": "🔒", "UNLOCKED": "🔓",
-                     "SUSPENDED": "⏸ ", "DEPRECATED": "✕ "}
+        state_sym = {
+            "LOCKED": "🔒",
+            "UNLOCKED": "🔓",
+            "SUSPENDED": "⏸ ",
+            "DEPRECATED": "✕ ",
+        }
         for rule_id in sorted(self._entries.keys(), key=lambda r: int(r[1:])):
             e = self._entries[rule_id]
             m = RULE_META[rule_id]
@@ -348,6 +502,7 @@ class RuleRegistry:
             )
         # Summary counts
         from collections import Counter
+
         counts = Counter(e.state for e in self._entries.values())
         lines += [
             "  " + "─" * 54,
@@ -366,10 +521,14 @@ class RuleRegistry:
         return "\n".join(lines)
 
     def _format_single(self, rule: str) -> str:
-        e   = self._entries[rule]
-        m   = RULE_META[rule]
-        state_sym = {"LOCKED": "🔒", "UNLOCKED": "🔓",
-                     "SUSPENDED": "⏸ ", "DEPRECATED": "✕ "}
+        e = self._entries[rule]
+        m = RULE_META[rule]
+        state_sym = {
+            "LOCKED": "🔒",
+            "UNLOCKED": "🔓",
+            "SUSPENDED": "⏸ ",
+            "DEPRECATED": "✕ ",
+        }
         lines = [
             f"{'─'*50}",
             f"  {rule}  {state_sym.get(e.state,'?')} {e.state}",
@@ -382,22 +541,26 @@ class RuleRegistry:
         lines.append(f"  Changed:    {e.timestamp}")
         if e.history:
             lines.append(f"  History ({len(e.history)} changes):")
-            for h in e.history[-3:]:   # last 3
+            for h in e.history[-3:]:  # last 3
                 lines.append(f"    {h['timestamp']}  {h['from']} → {h['to']}")
-                if h.get('reason'):
+                if h.get("reason"):
                     lines.append(f"      Reason: {h['reason']}")
         lines.append(f"{'─'*50}")
         return "\n".join(lines)
 
     def list_rules(self, filter_state: Optional[str] = None) -> str:
-        state_sym = {"LOCKED": "🔒", "UNLOCKED": "🔓",
-                     "SUSPENDED": "⏸ ", "DEPRECATED": "✕ "}
+        state_sym = {
+            "LOCKED": "🔒",
+            "UNLOCKED": "🔓",
+            "SUSPENDED": "⏸ ",
+            "DEPRECATED": "✕ ",
+        }
         rows = []
         for rule_id in sorted(self._entries.keys(), key=lambda r: int(r[1:])):
             e = self._entries[rule_id]
             if filter_state and e.state != filter_state.upper():
                 continue
-            m   = RULE_META[rule_id]
+            m = RULE_META[rule_id]
             sym = state_sym.get(e.state, "?")
             rows.append(f"  {sym} {rule_id:<5}  {e.state:<12}  {m['title']}")
         header = (
@@ -413,11 +576,15 @@ class RuleRegistry:
         events = []
         for rule_id, e in self._entries.items():
             for h in e.history:
-                events.append({
-                    "rule": rule_id, "timestamp": h.get("timestamp", ""),
-                    "from": h.get("from", "?"), "to": h.get("to", "?"),
-                    "reason": h.get("reason", ""),
-                })
+                events.append(
+                    {
+                        "rule": rule_id,
+                        "timestamp": h.get("timestamp", ""),
+                        "from": h.get("from", "?"),
+                        "to": h.get("to", "?"),
+                        "reason": h.get("reason", ""),
+                    }
+                )
         events.sort(key=lambda x: x["timestamp"], reverse=True)
         events = events[:last]
 
@@ -429,11 +596,15 @@ class RuleRegistry:
             f"  RULE AUDIT — last {last} changes",
             f"{'─'*55}",
         ]
-        state_sym = {"LOCKED": "🔒", "UNLOCKED": "🔓",
-                     "SUSPENDED": "⏸", "DEPRECATED": "✕"}
+        state_sym = {
+            "LOCKED": "🔒",
+            "UNLOCKED": "🔓",
+            "SUSPENDED": "⏸",
+            "DEPRECATED": "✕",
+        }
         for ev in events:
             f_sym = state_sym.get(ev["from"], "?")
-            t_sym = state_sym.get(ev["to"],   "?")
+            t_sym = state_sym.get(ev["to"], "?")
             lines.append(
                 f"  {ev['timestamp']}  {ev['rule']:<5}  "
                 f"{f_sym} {ev['from']:<12} → {t_sym} {ev['to']}"
@@ -461,6 +632,7 @@ class RuleRegistry:
 # ---------------------------------------------------------------------------
 # CLI — parse RULE commands from conversation
 # ---------------------------------------------------------------------------
+
 
 def parse_rule_command(
     text: str,
@@ -492,53 +664,64 @@ def parse_rule_command(
     sadp: R28 FL  R55 GOV  R68 DPA
     """
     text = text.strip()
-    if not re.match(r'^RULE\s+', text, re.I):
+    if not re.match(r"^RULE\s+", text, re.I):
         return None
 
-    reg = (RuleRegistry(path=registry_path) if registry_path is not None
-           else RuleRegistry())
+    reg = (
+        RuleRegistry(path=registry_path)
+        if registry_path is not None
+        else RuleRegistry()
+    )
 
     # Extract --reason "..."
     reason_m = re.search(r'--reason\s+"([^"]+)"', text, re.I)
-    reason   = reason_m.group(1) if reason_m else ""
+    reason = reason_m.group(1) if reason_m else ""
 
     # Extract --expires v<X.X.X>
-    expires_m = re.search(r'--expires\s+(v[\d.]+)', text, re.I)
-    expires   = expires_m.group(1) if expires_m else ""
+    expires_m = re.search(r"--expires\s+(v[\d.]+)", text, re.I)
+    expires = expires_m.group(1) if expires_m else ""
 
     # Extract --last N
-    last_m = re.search(r'--last\s+(\d+)', text, re.I)
+    last_m = re.search(r"--last\s+(\d+)", text, re.I)
     last_n = int(last_m.group(1)) if last_m else 10
 
     # Extract filter flags
     filter_state = None
-    if re.search(r'--locked\b',     text, re.I): filter_state = "LOCKED"
-    if re.search(r'--unlocked\b',   text, re.I): filter_state = "UNLOCKED"
-    if re.search(r'--suspended\b',  text, re.I): filter_state = "SUSPENDED"
-    if re.search(r'--deprecated\b', text, re.I): filter_state = "DEPRECATED"
+    if re.search(r"--locked\b", text, re.I):
+        filter_state = "LOCKED"
+    if re.search(r"--unlocked\b", text, re.I):
+        filter_state = "UNLOCKED"
+    if re.search(r"--suspended\b", text, re.I):
+        filter_state = "SUSPENDED"
+    if re.search(r"--deprecated\b", text, re.I):
+        filter_state = "DEPRECATED"
 
     # Extract rule identifier
-    rule_m = re.search(r'\b(R\d+)\b', text, re.I)
-    rule   = rule_m.group(1).upper() if rule_m else None
+    rule_m = re.search(r"\b(R\d+)\b", text, re.I)
+    rule = rule_m.group(1).upper() if rule_m else None
 
     # Parse subcommand
-    sub_m = re.match(r'^RULE\s+(\w+)', text, re.I)
+    sub_m = re.match(r"^RULE\s+(\w+)", text, re.I)
     if not sub_m:
         return "⚠  Unrecognised RULE command. Try: RULE STATUS"
     sub = sub_m.group(1).upper()
 
     try:
         if sub == "LOCK":
-            if not rule: return "⚠  Syntax: RULE LOCK R<N>"
+            if not rule:
+                return "⚠  Syntax: RULE LOCK R<N>"
             return reg.lock(rule, reason)
         elif sub == "UNLOCK":
-            if not rule: return "⚠  Syntax: RULE UNLOCK R<N>"
+            if not rule:
+                return "⚠  Syntax: RULE UNLOCK R<N>"
             return reg.unlock(rule, reason)
         elif sub == "SUSPEND":
-            if not rule: return "⚠  Syntax: RULE SUSPEND R<N> --reason \"...\""
+            if not rule:
+                return '⚠  Syntax: RULE SUSPEND R<N> --reason "..."'
             return reg.suspend(rule, reason, expires)
         elif sub == "RESTORE":
-            if not rule: return "⚠  Syntax: RULE RESTORE R<N>"
+            if not rule:
+                return "⚠  Syntax: RULE RESTORE R<N>"
             return reg.restore(rule)
         elif sub == "STATUS":
             return reg.status(rule)
@@ -558,6 +741,7 @@ def parse_rule_command(
 # ---------------------------------------------------------------------------
 # Initialise registry with sensible defaults
 # ---------------------------------------------------------------------------
+
 
 def initialise_defaults(path: Path | None = None) -> RuleRegistry:
     """
@@ -583,6 +767,7 @@ def initialise_defaults(path: Path | None = None) -> RuleRegistry:
 
 if __name__ == "__main__":
     import sys
+
     if len(sys.argv) > 1:
         cmd = " ".join(sys.argv[1:])
         result = parse_rule_command("RULE " + cmd)

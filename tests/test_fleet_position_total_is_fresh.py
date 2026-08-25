@@ -25,6 +25,7 @@ rather than contributing $0. A bot with a real position reporting zero
 would understate the portfolio far worse than staleness does, and an
 empty portfolio is a more dangerous lie than a slightly old one.
 """
+
 from __future__ import annotations
 
 import ast
@@ -48,19 +49,29 @@ class _Stats:
         self.position_value = pv
         self.current_price = price
         self.cash_balance_usd = cash
-        for k in ("realised_pnl", "unrealised_pnl", "total_trades",
-                  "trade_volume", "total_errors", "exchange_trade_count",
-                  "exchange_data_fresh_ts", "cost_basis_total_exchange",
-                  "realised_pnl_exchange", "fees_total_exchange",
-                  "total_scrummed_usd", "total_folded_usd",
-                  "ytd_scrummed_usd", "ytd_folded_usd", "position_value_exchange"):
+        for k in (
+            "realised_pnl",
+            "unrealised_pnl",
+            "total_trades",
+            "trade_volume",
+            "total_errors",
+            "exchange_trade_count",
+            "exchange_data_fresh_ts",
+            "cost_basis_total_exchange",
+            "realised_pnl_exchange",
+            "fees_total_exchange",
+            "total_scrummed_usd",
+            "total_folded_usd",
+            "ytd_scrummed_usd",
+            "ytd_folded_usd",
+            "position_value_exchange",
+        ):
             if not hasattr(self, k):
                 setattr(self, k, 0.0)
 
 
 class _Bot:
-    def __init__(self, bot_id, holdings, price, cached_pv, qrate=1.0,
-                 cash=0.0):
+    def __init__(self, bot_id, holdings, price, cached_pv, qrate=1.0, cash=0.0):
         self.bot_id = bot_id
         self.state = BotState.RUNNING
         self.stats = _Stats(cached_pv, price, cash)
@@ -94,12 +105,10 @@ class TestItRecomputes:
         gave the same answer there was never a defect to fix."""
         bots = [_Bot("a", 2.0, 50.0, 90.0), _Bot("b", 1.0, 20.0, 18.0)]
         cached_sum = sum(b.stats.position_value for b in bots)
-        assert _agg(bots)["crypto_position_value_usd"] != pytest.approx(
-            cached_sum)
+        assert _agg(bots)["crypto_position_value_usd"] != pytest.approx(cached_sum)
 
     def test_it_sums_across_bots(self):
-        out = _agg([_Bot("a", 2.0, 50.0, 0.0),
-                    _Bot("b", 1.0, 20.0, 0.0)])
+        out = _agg([_Bot("a", 2.0, 50.0, 0.0), _Bot("b", 1.0, 20.0, 0.0)])
         assert out["crypto_position_value_usd"] == pytest.approx(120.0)
 
     def test_the_quote_rate_is_applied(self):
@@ -145,13 +154,16 @@ class TestTheOtherConsumersAlreadyAgree:
         import src.trading.scrumming_bot as sbm
 
         src = Path(sbm.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_execute_manual_rebalance")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "_execute_manual_rebalance"
+        )
         seg = ast.get_source_segment(src, fn) or ""
         assert "self._current_holdings * price" in seg
 
     def test_the_aggregate_no_longer_only_reads_the_cached_field(self):
         i = BC_SRC.index("crypto_position_value_usd +=")
-        window = BC_SRC[max(0, i - 1800):i]
+        window = BC_SRC[max(0, i - 1800) : i]
         assert "_current_holdings" in window

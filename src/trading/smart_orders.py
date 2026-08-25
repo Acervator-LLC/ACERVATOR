@@ -54,23 +54,25 @@ class ExecutionStrategy(Enum):
 @dataclass
 class ExecutionConfig:
     """Configuration for an execution strategy."""
+
     strategy: ExecutionStrategy = ExecutionStrategy.MARKET
     # Iceberg params
-    iceberg_slices: int = 5              # Number of chunks
-    iceberg_delay_ms: int = 500          # Delay between chunks (ms)
+    iceberg_slices: int = 5  # Number of chunks
+    iceberg_delay_ms: int = 500  # Delay between chunks (ms)
     # TWAP params
-    twap_duration_seconds: int = 60      # Spread order over this window
-    twap_slices: int = 10                # Number of TWAP intervals
+    twap_duration_seconds: int = 60  # Spread order over this window
+    twap_slices: int = 10  # Number of TWAP intervals
     # Limit-timeout params
-    limit_offset_pct: float = 0.1        # Place limit X% from market
-    limit_timeout_seconds: int = 30      # Convert to market after timeout
+    limit_offset_pct: float = 0.1  # Place limit X% from market
+    limit_timeout_seconds: int = 30  # Convert to market after timeout
     # Adaptive thresholds
-    large_order_pct: float = 5.0         # % of daily volume = "large"
+    large_order_pct: float = 5.0  # % of daily volume = "large"
 
 
 @dataclass
 class ExecutionResult:
     """Result of an order execution."""
+
     success: bool
     strategy_used: str
     total_quantity: float
@@ -92,12 +94,17 @@ class SmartOrderEngine:
         self.config = config or ExecutionConfig()
         self._active_executions: dict[str, dict] = {}
 
-    async def execute(self, exchange, symbol: str, side: str,
-                      quantity: float, config: ExecutionConfig = None,
-                      *,
-                      bot_id: Optional[str] = None,
-                      total_holdings: Optional[float] = None
-                      ) -> ExecutionResult:
+    async def execute(
+        self,
+        exchange,
+        symbol: str,
+        side: str,
+        quantity: float,
+        config: ExecutionConfig = None,
+        *,
+        bot_id: Optional[str] = None,
+        total_holdings: Optional[float] = None,
+    ) -> ExecutionResult:
 
         # sadp: R28 R29  # smart order: fail-loudly(R28) idempotent(R29)
         """
@@ -150,10 +157,10 @@ class SmartOrderEngine:
         # at DEBUG so operators can grep audit logs for bypass cases.
         # Only fires on sells — buys add to holdings, can't violate
         # another bot's claim.
-        if bot_id is not None and total_holdings is not None \
-                and side.lower() == "sell":
+        if bot_id is not None and total_holdings is not None and side.lower() == "sell":
             try:
                 from .capital_reservation import get_registry
+
                 registry = get_registry()
                 base_asset = _extract_base_asset(symbol)
                 effective = registry.effective_available(
@@ -190,23 +197,26 @@ class SmartOrderEngine:
                 logger.error(
                     "smart_orders.execute: registry pre-flight raised "
                     "%s — falling through to exchange placement. "
-                    "Investigate immediately.", exc,
+                    "Investigate immediately.",
+                    exc,
                 )
-        elif (bot_id is None or total_holdings is None) \
-                and side.lower() == "sell":
+        elif (bot_id is None or total_holdings is None) and side.lower() == "sell":
             # Operator-greppable audit trail for bypass cases.
             logger.debug(
                 "smart_orders.execute: sell with bot_id=%r "
                 "total_holdings=%r — registry pre-flight skipped "
                 "(opt-in path).",
-                bot_id, total_holdings,
+                bot_id,
+                total_holdings,
             )
 
         # Get reference price
         try:
             ticker = await exchange.fetch_ticker(symbol)
             ref_price = ticker.get("last", 0) or ticker.get("close", 0)
-        except Exception:  # R28-OK: ref-price probe; 0 disables price-aware logic downstream
+        except (
+            Exception
+        ):  # R28-OK: ref-price probe; 0 disables price-aware logic downstream
             ref_price = 0
 
         strategy = cfg.strategy
@@ -216,16 +226,20 @@ class SmartOrderEngine:
         try:
             if strategy == ExecutionStrategy.ICEBERG:
                 result = await self._execute_iceberg(
-                    exchange, symbol, side, quantity, cfg, ref_price)
+                    exchange, symbol, side, quantity, cfg, ref_price
+                )
             elif strategy == ExecutionStrategy.TWAP:
                 result = await self._execute_twap(
-                    exchange, symbol, side, quantity, cfg, ref_price)
+                    exchange, symbol, side, quantity, cfg, ref_price
+                )
             elif strategy == ExecutionStrategy.LIMIT_TIMEOUT:
                 result = await self._execute_limit_timeout(
-                    exchange, symbol, side, quantity, cfg, ref_price)
+                    exchange, symbol, side, quantity, cfg, ref_price
+                )
             else:
                 result = await self._execute_market(
-                    exchange, symbol, side, quantity, ref_price)
+                    exchange, symbol, side, quantity, ref_price
+                )
 
             result.elapsed_ms = (time.time() - start) * 1000
             result.strategy_used = strategy.value
@@ -234,15 +248,19 @@ class SmartOrderEngine:
         except Exception as exc:
             logger.error("Smart order execution failed: %s", exc)
             return ExecutionResult(
-                success=False, strategy_used=strategy.value,
-                total_quantity=quantity, avg_fill_price=0,
-                slippage_pct=0, total_cost=0,
+                success=False,
+                strategy_used=strategy.value,
+                total_quantity=quantity,
+                avg_fill_price=0,
+                slippage_pct=0,
+                total_cost=0,
                 elapsed_ms=(time.time() - start) * 1000,
-                error=str(exc))
+                error=str(exc),
+            )
 
-    async def _execute_market(self, exchange, symbol: str, side: str,
-                               quantity: float, ref_price: float
-                               ) -> ExecutionResult:
+    async def _execute_market(
+        self, exchange, symbol: str, side: str, quantity: float, ref_price: float
+    ) -> ExecutionResult:
 
         # sadp: R28 R29  # smart order: fail-loudly(R28) idempotent(R29)
         """Simple market order."""
@@ -256,14 +274,24 @@ class SmartOrderEngine:
             slippage = -slippage  # Negative = received less than ref
 
         return ExecutionResult(
-            success=True, strategy_used="market",
-            total_quantity=quantity, avg_fill_price=fill_price,
-            slippage_pct=round(slippage, 4), total_cost=cost,
-            fills=[{"price": fill_price, "quantity": quantity, "type": "market"}])
+            success=True,
+            strategy_used="market",
+            total_quantity=quantity,
+            avg_fill_price=fill_price,
+            slippage_pct=round(slippage, 4),
+            total_cost=cost,
+            fills=[{"price": fill_price, "quantity": quantity, "type": "market"}],
+        )
 
-    async def _execute_iceberg(self, exchange, symbol: str, side: str,
-                                quantity: float, cfg: ExecutionConfig,
-                                ref_price: float) -> ExecutionResult:
+    async def _execute_iceberg(
+        self,
+        exchange,
+        symbol: str,
+        side: str,
+        quantity: float,
+        cfg: ExecutionConfig,
+        ref_price: float,
+    ) -> ExecutionResult:
 
         # sadp: R28 R29  # smart order: fail-loudly(R28) idempotent(R29)
         """Split order into smaller chunks with delays."""
@@ -277,17 +305,22 @@ class SmartOrderEngine:
 
         for i in range(slices):
             try:
-                order = await exchange.create_order(
-                    symbol, "market", side, chunk_size)
+                order = await exchange.create_order(symbol, "market", side, chunk_size)
                 fill_price = order.get("average", ref_price) or ref_price
                 cost = order.get("cost", fill_price * chunk_size)
-                fills.append({
-                    "price": fill_price, "quantity": chunk_size,
-                    "type": "iceberg", "slice": i + 1})
+                fills.append(
+                    {
+                        "price": fill_price,
+                        "quantity": chunk_size,
+                        "type": "iceberg",
+                        "slice": i + 1,
+                    }
+                )
                 total_cost += cost
                 total_filled += chunk_size
-                logger.debug("Iceberg %d/%d: %.8f @ $%.2f",
-                             i + 1, slices, chunk_size, fill_price)
+                logger.debug(
+                    "Iceberg %d/%d: %.8f @ $%.2f", i + 1, slices, chunk_size, fill_price
+                )
             except Exception as e:
                 logger.warning("Iceberg slice %d failed: %s", i + 1, e)
 
@@ -298,14 +331,24 @@ class SmartOrderEngine:
         slippage = ((avg_price - ref_price) / ref_price * 100) if ref_price else 0
 
         return ExecutionResult(
-            success=total_filled > 0, strategy_used="iceberg",
-            total_quantity=total_filled, avg_fill_price=avg_price,
-            slippage_pct=round(abs(slippage), 4), total_cost=total_cost,
-            fills=fills)
+            success=total_filled > 0,
+            strategy_used="iceberg",
+            total_quantity=total_filled,
+            avg_fill_price=avg_price,
+            slippage_pct=round(abs(slippage), 4),
+            total_cost=total_cost,
+            fills=fills,
+        )
 
-    async def _execute_twap(self, exchange, symbol: str, side: str,
-                             quantity: float, cfg: ExecutionConfig,
-                             ref_price: float) -> ExecutionResult:
+    async def _execute_twap(
+        self,
+        exchange,
+        symbol: str,
+        side: str,
+        quantity: float,
+        cfg: ExecutionConfig,
+        ref_price: float,
+    ) -> ExecutionResult:
 
         # sadp: R28 R29  # smart order: fail-loudly(R28) idempotent(R29)
         """Spread order across time window."""
@@ -319,13 +362,17 @@ class SmartOrderEngine:
 
         for i in range(slices):
             try:
-                order = await exchange.create_order(
-                    symbol, "market", side, chunk_size)
+                order = await exchange.create_order(symbol, "market", side, chunk_size)
                 fill_price = order.get("average", ref_price) or ref_price
                 cost = order.get("cost", fill_price * chunk_size)
-                fills.append({
-                    "price": fill_price, "quantity": chunk_size,
-                    "type": "twap", "interval": i + 1})
+                fills.append(
+                    {
+                        "price": fill_price,
+                        "quantity": chunk_size,
+                        "type": "twap",
+                        "interval": i + 1,
+                    }
+                )
                 total_cost += cost
                 total_filled += chunk_size
             except Exception as e:
@@ -338,14 +385,24 @@ class SmartOrderEngine:
         slippage = ((avg_price - ref_price) / ref_price * 100) if ref_price else 0
 
         return ExecutionResult(
-            success=total_filled > 0, strategy_used="twap",
-            total_quantity=total_filled, avg_fill_price=avg_price,
-            slippage_pct=round(abs(slippage), 4), total_cost=total_cost,
-            fills=fills)
+            success=total_filled > 0,
+            strategy_used="twap",
+            total_quantity=total_filled,
+            avg_fill_price=avg_price,
+            slippage_pct=round(abs(slippage), 4),
+            total_cost=total_cost,
+            fills=fills,
+        )
 
-    async def _execute_limit_timeout(self, exchange, symbol: str, side: str,
-                                      quantity: float, cfg: ExecutionConfig,
-                                      ref_price: float) -> ExecutionResult:
+    async def _execute_limit_timeout(
+        self,
+        exchange,
+        symbol: str,
+        side: str,
+        quantity: float,
+        cfg: ExecutionConfig,
+        ref_price: float,
+    ) -> ExecutionResult:
 
         # sadp: R28 R29  # smart order: fail-loudly(R28) idempotent(R29)
         """Place limit order, fall back to market if not filled."""
@@ -357,7 +414,8 @@ class SmartOrderEngine:
 
         try:
             order = await exchange.create_order(
-                symbol, "limit", side, quantity, limit_price)
+                symbol, "limit", side, quantity, limit_price
+            )
             order_id = order.get("id", "")
 
             # Wait for fill
@@ -389,10 +447,15 @@ class SmartOrderEngine:
                 except Exception:  # R28-OK: order helper best-effort fallback
                     pass
                 # Market order remainder
-                mkt = await exchange.create_order(
-                    symbol, "market", side, remaining)
+                mkt = await exchange.create_order(symbol, "market", side, remaining)
                 mkt_price = mkt.get("average", ref_price) or ref_price
-                fills.append({"price": mkt_price, "quantity": remaining, "type": "market_fallback"})
+                fills.append(
+                    {
+                        "price": mkt_price,
+                        "quantity": remaining,
+                        "type": "market_fallback",
+                    }
+                )
                 total_cost += mkt_price * remaining
 
             total_filled = filled + remaining
@@ -400,32 +463,45 @@ class SmartOrderEngine:
             slippage = ((avg_price - ref_price) / ref_price * 100) if ref_price else 0
 
             return ExecutionResult(
-                success=True, strategy_used="limit_timeout",
-                total_quantity=total_filled, avg_fill_price=avg_price,
-                slippage_pct=round(abs(slippage), 4), total_cost=total_cost,
-                fills=fills)
+                success=True,
+                strategy_used="limit_timeout",
+                total_quantity=total_filled,
+                avg_fill_price=avg_price,
+                slippage_pct=round(abs(slippage), 4),
+                total_cost=total_cost,
+                fills=fills,
+            )
 
         except Exception as exc:
             # Fall back to pure market
             logger.warning("Limit-timeout failed, falling back to market: %s", exc)
-            return await self._execute_market(exchange, symbol, side, quantity, ref_price)
+            return await self._execute_market(
+                exchange, symbol, side, quantity, ref_price
+            )
 
-    async def _choose_strategy(self, exchange, symbol: str,
-                                quantity: float, cfg: ExecutionConfig
-                                ) -> ExecutionStrategy:
+    async def _choose_strategy(
+        self, exchange, symbol: str, quantity: float, cfg: ExecutionConfig
+    ) -> ExecutionStrategy:
         """Adaptively choose execution strategy based on order size."""
         try:
             ticker = await exchange.fetch_ticker(symbol)
-            volume_24h = ticker.get("quoteVolume", 0) or ticker.get("baseVolume", 0) * ticker.get("last", 1)
+            volume_24h = ticker.get("quoteVolume", 0) or ticker.get(
+                "baseVolume", 0
+            ) * ticker.get("last", 1)
             order_value = quantity * (ticker.get("last", 0) or 1)
 
             if volume_24h > 0:
                 order_pct = (order_value / volume_24h) * 100
                 if order_pct >= cfg.large_order_pct:
-                    logger.info("Adaptive: order is %.2f%% of daily volume → ICEBERG", order_pct)
+                    logger.info(
+                        "Adaptive: order is %.2f%% of daily volume → ICEBERG", order_pct
+                    )
                     return ExecutionStrategy.ICEBERG
                 elif order_pct >= cfg.large_order_pct / 2:
-                    logger.info("Adaptive: order is %.2f%% of daily volume → LIMIT_TIMEOUT", order_pct)
+                    logger.info(
+                        "Adaptive: order is %.2f%% of daily volume → LIMIT_TIMEOUT",
+                        order_pct,
+                    )
                     return ExecutionStrategy.LIMIT_TIMEOUT
 
         except Exception:  # R28-OK: order helper best-effort fallback

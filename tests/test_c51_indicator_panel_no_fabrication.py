@@ -32,6 +32,7 @@ check has to happen when the callback FIRES, three seconds later, which
 is where the gate below sits. These tests assert the fire-time
 behaviour instead.
 """
+
 from __future__ import annotations
 
 import os
@@ -43,6 +44,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
 
 @pytest.fixture(autouse=True)
 def _destroy_widgets():
@@ -59,7 +61,7 @@ def _destroy_widgets():
     yield
     try:
         from PySide6.QtWidgets import QApplication
-    except ImportError:                                   # pragma: no cover
+    except ImportError:  # pragma: no cover
         return
     app = QApplication.instance()
     if app is None:
@@ -69,7 +71,6 @@ def _destroy_widgets():
         w.setParent(None)
         w.deleteLater()
     app.processEvents()
-
 
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -110,7 +111,8 @@ class TestTheInstrumentWorks:
         panel._generate_demo_ta()
         assert panel._data, (
             "demo generation produced nothing even in a demo context; "
-            "the refusal tests below would then prove nothing")
+            "the refusal tests below would then prove nothing"
+        )
 
     def test_the_fabricated_values_look_real(self, panel):
         """Documents WHY this mattered: the output is not obviously
@@ -141,8 +143,7 @@ class TestRealBotIsNeverFabricated:
         panel._data = {}
         panel._on_bot_selected()
         assert panel._selected_bot_id == bot_id
-        assert panel._data == {}, (
-            "the panel fabricated TA for a real bot on selection")
+        assert panel._data == {}, "the panel fabricated TA for a real bot on selection"
 
     def test_the_3s_timer_callback_does_not_invent_data(self, panel):
         """Entry path 1 -- fired 3 s after construction, by which time
@@ -157,8 +158,7 @@ class TestRealBotIsNeverFabricated:
         """Entry path 3 -- the worst one. It called the generator
         unconditionally, right after bot creation."""
         bot_id = _add_real_bot(panel)
-        panel.force_refresh(bot_id=bot_id, symbol="BTC/USD",
-                            ta_timeframe="1h")
+        panel.force_refresh(bot_id=bot_id, symbol="BTC/USD", ta_timeframe="1h")
         assert panel._data == {}
 
     def test_the_direct_call_is_gated_too(self, panel):
@@ -189,10 +189,10 @@ class TestTheEmptyStateIsExplicit:
     def test_the_tables_are_emptied(self, panel):
         """A refusal must not leave the PREVIOUS bot's rows on screen
         under the new bot's symbol."""
-        panel._generate_demo_ta()          # demo context: populates
+        panel._generate_demo_ta()  # demo context: populates
         assert panel._table_a.rowCount() > 0
         _add_real_bot(panel)
-        panel._generate_demo_ta()          # now refuses
+        panel._generate_demo_ta()  # now refuses
         assert panel._table_a.rowCount() == 0
         assert panel._data == {}
 
@@ -211,13 +211,12 @@ class TestSimModeStillWorks:
 
 
 class TestFailureIsNotSilent:
-    def test_a_failed_generation_records_and_clears(self, panel,
-                                                   monkeypatch):
+    def test_a_failed_generation_records_and_clears(self, panel, monkeypatch):
         """The blanket except wrapped the whole body -- including the
         RNG construction -- and returned normally, so a failure left
         stale values on screen with nothing to show for it."""
         panel._generate_demo_ta()
-        assert panel._data                      # populated first
+        assert panel._data  # populated first
 
         import random
 
@@ -226,8 +225,8 @@ class TestFailureIsNotSilent:
 
         monkeypatch.setattr(random, "Random", _boom)
         panel._generate_demo_ta()
-        assert panel._last_demo_error, (
-            "a failed generation left no record at all")
+        assert panel._last_demo_error, "a failed generation left no record at all"
         assert "rng exploded" in panel._last_demo_error
-        assert panel._data == {}, (
-            "a failed generation left the previous values on screen")
+        assert (
+            panel._data == {}
+        ), "a failed generation left the previous values on screen"

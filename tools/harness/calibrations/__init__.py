@@ -6,6 +6,7 @@ Usage from an archetype:
     from tools.harness.calibrations import load
     prompt_text = load("coding")   # returns the coding.md contents
 """
+
 from __future__ import annotations
 
 from pathlib import Path

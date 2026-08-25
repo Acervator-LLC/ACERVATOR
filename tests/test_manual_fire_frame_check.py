@@ -21,6 +21,7 @@ the position the wrong way.
 This harness measures the disagreement. It deliberately does not encode
 an opinion about which frame is correct -- that is a strategy question.
 """
+
 from __future__ import annotations
 
 import json
@@ -67,14 +68,19 @@ class TestTheArithmetic:
         assert rows[0]["delta_if_live"] == pytest.approx(-2.10, abs=0.01)
 
     def test_the_quote_rate_is_applied(self):
-        rows = analyse({"bots": {"a": _bot("X/BTC", 2.0, 50.0, 100.0, 100.0,
-                                           qrate=3.0)}})
+        rows = analyse(
+            {"bots": {"a": _bot("X/BTC", 2.0, 50.0, 100.0, 100.0, qrate=3.0)}}
+        )
         assert rows[0]["position"] == pytest.approx(300.0)
 
     def test_units_sum_across_lots_and_junk_is_skipped(self):
         rec = _bot("X/USD", 0, 2.0, 10.0, 10.0)
-        rec["scrumming_state"]["main_lots"] = [{"units": 4.0}, "junk", None,
-                                               {"units": 6.0}]
+        rec["scrumming_state"]["main_lots"] = [
+            {"units": 4.0},
+            "junk",
+            None,
+            {"units": 6.0},
+        ]
         rows = analyse({"bots": {"a": rec}})
         assert rows[0]["position"] == pytest.approx(20.0)
 
@@ -93,8 +99,7 @@ class TestTheSignFlipIsCaught:
 
     def test_same_direction_is_not_flagged(self):
         """Both readings say sell; only the size differs."""
-        rows = analyse({"bots": {"a": _bot("ETH/USD", 1.0, 206.38, 200.0,
-                                           200.38)}})
+        rows = analyse({"bots": {"a": _bot("ETH/USD", 1.0, 206.38, 200.0, 200.38)}})
         assert rows[0]["delta_if_config"] > 0 and rows[0]["delta_if_live"] > 0
         assert rows[0]["direction_inverts"] is False
 
@@ -113,25 +118,36 @@ class TestTheInstrumentFailsLoudly:
         clean bill of health. Measuring nothing must not look like a
         pass."""
         p = tmp_path / "s.json"
-        p.write_text(json.dumps({"bots": {
-            "a": _bot("X/USD", 0.0, 0.0, 50.0, 55.0),
-            "b": _bot("Y/USD", 0.0, 0.0, 25.0, 25.0),
-        }}), encoding="utf-8")
+        p.write_text(
+            json.dumps(
+                {
+                    "bots": {
+                        "a": _bot("X/USD", 0.0, 0.0, 50.0, 55.0),
+                        "b": _bot("Y/USD", 0.0, 0.0, 25.0, 25.0),
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
         assert main(["--state", str(p)]) == 3
         assert "INSTRUMENT FAILURE" in capsys.readouterr().err
 
     def test_a_working_run_reports_the_control(self, capsys, tmp_path):
         """NEGATIVE CONTROL: the failure path must not fire on good data."""
         p = tmp_path / "s.json"
-        p.write_text(json.dumps({"bots": {
-            "a": _bot("BTC/USD", 1.0, 250.0, 250.0, 250.0)}}), encoding="utf-8")
+        p.write_text(
+            json.dumps({"bots": {"a": _bot("BTC/USD", 1.0, 250.0, 250.0, 250.0)}}),
+            encoding="utf-8",
+        )
         assert main(["--state", str(p)]) == 0
         assert "positive control: 1/1" in capsys.readouterr().out
 
     def test_divergence_sets_a_nonzero_exit(self, tmp_path):
         p = tmp_path / "s.json"
-        p.write_text(json.dumps({"bots": {
-            "a": _bot("CAP/USD", 1.0, 53.31, 50.0, 55.41)}}), encoding="utf-8")
+        p.write_text(
+            json.dumps({"bots": {"a": _bot("CAP/USD", 1.0, 53.31, 50.0, 55.41)}}),
+            encoding="utf-8",
+        )
         assert main(["--state", str(p)]) == 1
 
     def test_a_missing_state_file_is_not_a_pass(self, tmp_path):
@@ -146,10 +162,21 @@ class TestItNeverWrites:
         import tools.harness.manual_fire_frame_check as m
 
         src = Path(m.__file__).read_text(encoding="utf-8")
-        banned = {"write_text", "write_bytes", "mkdir", "unlink", "rename",
-                  "replace", "rmtree", "remove"}
-        called = {getattr(c.func, "attr", "") for c in ast.walk(ast.parse(src))
-                  if isinstance(c, ast.Call)}
+        banned = {
+            "write_text",
+            "write_bytes",
+            "mkdir",
+            "unlink",
+            "rename",
+            "replace",
+            "rmtree",
+            "remove",
+        }
+        called = {
+            getattr(c.func, "attr", "")
+            for c in ast.walk(ast.parse(src))
+            if isinstance(c, ast.Call)
+        }
         assert not (called & banned), f"harness can write: {called & banned}"
 
     def test_it_constructs_no_project_classes(self):

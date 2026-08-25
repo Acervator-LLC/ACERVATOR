@@ -11,8 +11,7 @@ from __future__ import annotations
 import logging
 import math
 import time
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 logger = logging.getLogger("acervator.analytics")
 
@@ -20,6 +19,7 @@ logger = logging.getLogger("acervator.analytics")
 @dataclass
 class TradeRecord:
     """A single completed trade (round-trip: entry + exit)."""
+
     trade_id: str
     bot_id: str
     symbol: str
@@ -41,6 +41,7 @@ class TradeRecord:
 @dataclass
 class EquityPoint:
     """A single point on the equity curve."""
+
     timestamp: float
     equity: float  # Total portfolio value
     pnl_cumulative: float
@@ -51,6 +52,7 @@ class EquityPoint:
 @dataclass
 class BotPerformance:
     """Aggregated performance metrics for a single bot."""
+
     bot_id: str
     symbol: str
     mode: str
@@ -91,9 +93,10 @@ class AnalyticsEngine:
         """Add a completed trade to the analytics store."""
         self._trades.append(trade)
         if len(self._trades) > self._max_trades:
-            self._trades = self._trades[-self._max_trades:]
-        logger.debug("Trade recorded: %s %s P/L=$%.4f",
-                      trade.symbol, trade.side, trade.pnl)
+            self._trades = self._trades[-self._max_trades :]
+        logger.debug(
+            "Trade recorded: %s %s P/L=$%.4f", trade.symbol, trade.side, trade.pnl
+        )
 
     def record_trade_from_dict(self, d: dict):
 
@@ -146,7 +149,7 @@ class AnalyticsEngine:
         )
         self._equity_curve.append(point)
         if len(self._equity_curve) > self._max_equity_points:
-            self._equity_curve = self._equity_curve[-self._max_equity_points:]
+            self._equity_curve = self._equity_curve[-self._max_equity_points :]
 
         return point
 
@@ -154,10 +157,15 @@ class AnalyticsEngine:
         """Return equity curve points for the last N hours."""
         cutoff = time.time() - (hours * 3600)
         return [
-            {"timestamp": p.timestamp, "equity": p.equity,
-             "pnl": p.pnl_cumulative, "drawdown": p.drawdown_pct,
-             "bots": p.bot_count}
-            for p in self._equity_curve if p.timestamp >= cutoff
+            {
+                "timestamp": p.timestamp,
+                "equity": p.equity,
+                "pnl": p.pnl_cumulative,
+                "drawdown": p.drawdown_pct,
+                "bots": p.bot_count,
+            }
+            for p in self._equity_curve
+            if p.timestamp >= cutoff
         ]
 
     def get_bot_performance(self, bot_id: str = "") -> list[BotPerformance]:
@@ -204,10 +212,17 @@ class AnalyticsEngine:
         """Return overall portfolio performance summary."""
         if not self._trades:
             return {
-                "total_trades": 0, "win_rate": 0, "total_pnl": 0,
-                "profit_factor": 0, "sharpe_ratio": 0, "max_drawdown": 0,
-                "avg_hold_time": "0s", "expectancy": 0, "best_trade": 0,
-                "worst_trade": 0, "trades_today": 0,
+                "total_trades": 0,
+                "win_rate": 0,
+                "total_pnl": 0,
+                "profit_factor": 0,
+                "sharpe_ratio": 0,
+                "max_drawdown": 0,
+                "avg_hold_time": "0s",
+                "expectancy": 0,
+                "best_trade": 0,
+                "worst_trade": 0,
+                "trades_today": 0,
             }
 
         wins = [t for t in self._trades if t.pnl > 0]
@@ -238,11 +253,15 @@ class AnalyticsEngine:
             "total_pnl": round(total_pnl, 4),
             "gross_profit": round(gross_profit, 4),
             "gross_loss": round(gross_loss, 4),
-            "profit_factor": round(gross_profit / gross_loss, 2) if gross_loss > 0 else float('inf'),
+            "profit_factor": (
+                round(gross_profit / gross_loss, 2) if gross_loss > 0 else float("inf")
+            ),
             "sharpe_ratio": round(sharpe, 2),
             "max_drawdown": round(max_dd, 2),
             "avg_hold_time": self._format_duration(avg_hold),
-            "expectancy": round(total_pnl / len(self._trades), 4) if self._trades else 0,
+            "expectancy": (
+                round(total_pnl / len(self._trades), 4) if self._trades else 0
+            ),
             "best_trade": round(max(t.pnl for t in self._trades), 4),
             "worst_trade": round(min(t.pnl for t in self._trades), 4),
             "trades_today": trades_today,
@@ -250,8 +269,9 @@ class AnalyticsEngine:
             "unique_symbols": len(set(t.symbol for t in self._trades)),
         }
 
-    def _compute_performance(self, bot_id: str,
-                              trades: list[TradeRecord]) -> BotPerformance:
+    def _compute_performance(
+        self, bot_id: str, trades: list[TradeRecord]
+    ) -> BotPerformance:
         """Compute detailed performance metrics for a set of trades."""
         if not trades:
             return BotPerformance(bot_id=bot_id, symbol="", mode="")
@@ -293,7 +313,11 @@ class AnalyticsEngine:
         return BotPerformance(
             bot_id=bot_id,
             symbol=trades[0].symbol,
-            mode=trades[0].side.split("_")[0] if "_" in trades[0].side else trades[0].side,
+            mode=(
+                trades[0].side.split("_")[0]
+                if "_" in trades[0].side
+                else trades[0].side
+            ),
             total_trades=len(trades),
             winning_trades=len(wins),
             losing_trades=len(losses),
@@ -306,7 +330,9 @@ class AnalyticsEngine:
             avg_loss=round(gross_loss / len(losses), 4) if losses else 0,
             avg_hold_seconds=sum(t.hold_seconds for t in trades) / len(trades),
             win_rate=round(len(wins) / len(trades) * 100, 1),
-            profit_factor=round(gross_profit / gross_loss, 2) if gross_loss > 0 else float('inf'),
+            profit_factor=(
+                round(gross_profit / gross_loss, 2) if gross_loss > 0 else float("inf")
+            ),
             sharpe_ratio=round(sharpe, 2),
             max_drawdown_pct=round(max_dd, 2),
             expectancy=round(total_pnl / len(trades), 4),

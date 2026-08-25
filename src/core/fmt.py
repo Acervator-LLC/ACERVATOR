@@ -7,7 +7,7 @@ Universal price and value formatting for dust-priced coins.
 
 def fmt_price(value: float) -> str:
     """Format a price with adaptive precision.
-    
+
     Ensures dust-priced coins like BONK ($0.00002) are never truncated to $0.00.
     Always shows at least 8 significant digits for sub-cent prices.
     """

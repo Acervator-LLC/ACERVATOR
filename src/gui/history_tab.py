@@ -26,6 +26,7 @@ Chrome (filter bar, table, pagination, CSV export) preserved.
 
 sadp: R28 (fail-loud display), R44 (exchange truth), R70 RCN
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -40,11 +41,23 @@ try:
     from PySide6.QtCore import QDateTime, Qt, QTimer, Signal
     from PySide6.QtGui import QColor
     from PySide6.QtWidgets import (
-        QAbstractItemView, QComboBox, QDateTimeEdit, QFileDialog,
-        QGroupBox, QHBoxLayout, QHeaderView, QLabel,
-        QMessageBox, QProgressBar, QPushButton,
-        QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+        QAbstractItemView,
+        QComboBox,
+        QDateTimeEdit,
+        QFileDialog,
+        QGroupBox,
+        QHBoxLayout,
+        QHeaderView,
+        QLabel,
+        QMessageBox,
+        QProgressBar,
+        QPushButton,
+        QTableWidget,
+        QTableWidgetItem,
+        QVBoxLayout,
+        QWidget,
     )  # v3.19.12 removed unused QSpacerItem
+
     _HAS_QT = True
 except ImportError:
     # THE FALLBACK THIS REPLACES DID NOT DO WHAT ITS COMMENT PROMISED.
@@ -134,9 +147,7 @@ def _resolve_bot_label(bot_manager, exchange_id: str, symbol: str) -> str:
                 ticker = symbol.split("/")[0] if "/" in symbol else symbol
             return f"{ticker}/{bot_id[-4:]}" if bot_id else ticker
         except Exception as _bot_exc:  # noqa: BLE001 - best-effort label
-            logger.debug(
-                "history_tab bot-label lookup skipped one bot: %s",
-                _bot_exc)
+            logger.debug("history_tab bot-label lookup skipped one bot: %s", _bot_exc)
             continue
     return ""
 
@@ -171,7 +182,7 @@ if _HAS_QT:
             super().__init__(parent)
             self._bot_manager = None
             self._all_trades: list[dict] = []  # full unfiltered fetch
-            self._filtered: list[dict] = []    # post-filter view
+            self._filtered: list[dict] = []  # post-filter view
             self._page = 0
             self._fetch_in_flight = False
             self._last_fetched_ts: float = 0.0
@@ -221,9 +232,9 @@ if _HAS_QT:
             # exact "2026-04-01 00:00" label regardless of the operator's
             # timezone offset. Convert to UTC unix seconds at fetch time.
             from PySide6.QtCore import QDate, QTime
+
             fl.addWidget(QLabel("From:"))
-            _default_from = QDateTime(
-                QDate(2026, 4, 1), QTime(0, 0, 0))
+            _default_from = QDateTime(QDate(2026, 4, 1), QTime(0, 0, 0))
             self._from_dt = QDateTimeEdit(_default_from)
             self._from_dt.setCalendarPopup(True)
             self._from_dt.setDisplayFormat("yyyy-MM-dd HH:mm")
@@ -231,7 +242,8 @@ if _HAS_QT:
             self._from_dt.setToolTip(
                 "Default is the 2026-04-01 platform launch date. Drag "
                 "or type an earlier/later date to widen or narrow the "
-                "trade fetch window.")
+                "trade fetch window."
+            )
             fl.addWidget(self._from_dt)
 
             fl.addWidget(QLabel("To:"))
@@ -265,20 +277,19 @@ if _HAS_QT:
 
             # Apply / Reset / Refresh buttons
             self._apply_btn = QPushButton("Apply")
-            self._apply_btn.setToolTip(
-                "Apply current filters to the loaded history.")
+            self._apply_btn.setToolTip("Apply current filters to the loaded history.")
             self._apply_btn.clicked.connect(self._apply_filters)
             fl.addWidget(self._apply_btn)
 
             self._reset_btn = QPushButton("Reset")
-            self._reset_btn.setToolTip(
-                "Clear all filters and show full history.")
+            self._reset_btn.setToolTip("Clear all filters and show full history.")
             self._reset_btn.clicked.connect(self._reset_filters)
             fl.addWidget(self._reset_btn)
 
             self._refresh_btn = QPushButton("Refresh")
             self._refresh_btn.setToolTip(
-                "Pull fresh trade history from every active exchange.")
+                "Pull fresh trade history from every active exchange."
+            )
             self._refresh_btn.clicked.connect(self.refresh)
             fl.addWidget(self._refresh_btn)
 
@@ -301,10 +312,23 @@ if _HAS_QT:
             # rows where no gate/voting entry exists render as '—'.
             self._table = QTableWidget()
             self._table.setColumnCount(13)
-            self._table.setHorizontalHeaderLabels([
-                "Timestamp (UTC)", "Exchange", "Symbol", "Bot",
-                "Side", "Amount", "Price", "Cost USD",
-                "Fee", "Trade ID", "Grade", "Gates", "Voting"])
+            self._table.setHorizontalHeaderLabels(
+                [
+                    "Timestamp (UTC)",
+                    "Exchange",
+                    "Symbol",
+                    "Bot",
+                    "Side",
+                    "Amount",
+                    "Price",
+                    "Cost USD",
+                    "Fee",
+                    "Trade ID",
+                    "Grade",
+                    "Gates",
+                    "Voting",
+                ]
+            )
             # v3.23.71 H2: column renamed Gate → Gates. Header tooltip
             # walks the operator through the join contract.
             _hdr = self._table.horizontalHeaderItem(11)
@@ -312,22 +336,26 @@ if _HAS_QT:
                 _hdr.setToolTip(
                     "Join against ~/.acervator_logs/trade/gate.log entries "
                     "within ±60s of the trade. Hover any cell for the full "
-                    "scrum/fold arm state + blocker list at trade time.")
+                    "scrum/fold arm state + blocker list at trade time."
+                )
             _hdr = self._table.horizontalHeaderItem(12)
             if _hdr is not None:
                 _hdr.setToolTip(
                     "Join against ~/.acervator_logs/trade/voting.log "
                     "snapshots. Hover any cell for the per-indicator "
                     "direction / confidence / timeframe / weight roll-up "
-                    "the panel saw at trade time.")
+                    "the panel saw at trade time."
+                )
             _hdr = self._table.horizontalHeaderItem(10)
             if _hdr is not None:
                 _hdr.setToolTip(
                     "On-demand grade (A–F) computed by "
                     "src.trading.trade_grader from surrounding same-asset "
-                    "trades on this page. Hover for the letter meaning.")
+                    "trades on this page. Hover for the letter meaning."
+                )
             self._table.horizontalHeader().setSectionResizeMode(
-                QHeaderView.ResizeToContents)
+                QHeaderView.ResizeToContents
+            )
             self._table.horizontalHeader().setStretchLastSection(False)
             self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
             self._table.setAlternatingRowColors(True)
@@ -361,7 +389,8 @@ if _HAS_QT:
 
             self._export_btn = QPushButton("Export CSV…")
             self._export_btn.setToolTip(
-                "Export the currently-filtered history view to a CSV file.")
+                "Export the currently-filtered history view to a CSV file."
+            )
             self._export_btn.clicked.connect(self._export_csv)
             foot.addWidget(self._export_btn)
 
@@ -372,8 +401,7 @@ if _HAS_QT:
             if self._fetch_in_flight:
                 return
             if self._bot_manager is None:
-                self._summary.setText(
-                    "Bot manager unavailable — cannot fetch history.")
+                self._summary.setText("Bot manager unavailable — cannot fetch history.")
                 return
             # Compute since_ts from the From filter (UTC unix seconds)
             try:
@@ -386,7 +414,8 @@ if _HAS_QT:
             loop = getattr(self._bot_manager, "_async_loop", None)
             if loop is None:
                 self._summary.setText(
-                    "Async loop not ready — try again after platform starts.")
+                    "Async loop not ready — try again after platform starts."
+                )
                 return
 
             self._fetch_in_flight = True
@@ -399,9 +428,10 @@ if _HAS_QT:
                 # limit=500 call that dropped trades for any bot with
                 # more than the exchange's per-time-range cap.
                 from .history_helpers import fetch_all_history_chunked
+
                 future = asyncio.run_coroutine_threadsafe(
-                    fetch_all_history_chunked(self._bot_manager, since_ts),
-                    loop)
+                    fetch_all_history_chunked(self._bot_manager, since_ts), loop
+                )
             except Exception as exc:
                 self._fetch_in_flight = False
                 self._progress.setVisible(False)
@@ -425,9 +455,9 @@ if _HAS_QT:
                             result = future.result(timeout=0.1)
                         except Exception as rx:
                             self._summary.setText(
-                                f"Fetch raised: {type(rx).__name__}: {rx}")
-                            logger.warning(
-                                "history fetch raised: %s", rx)
+                                f"Fetch raised: {type(rx).__name__}: {rx}"
+                            )
+                            logger.warning("history fetch raised: %s", rx)
                             return
                         self._all_trades = list(result or [])
                         # The rows are stored and the fetch is over.
@@ -472,8 +502,11 @@ if _HAS_QT:
                         _seen_keys: set = set()
                         _admissible = 0
                         for _row in self._all_trades:
-                            _key = (_row.get("exchange"), _row.get("symbol"),
-                                    _row.get("id"))
+                            _key = (
+                                _row.get("exchange"),
+                                _row.get("symbol"),
+                                _row.get("id"),
+                            )
                             _dupe = _key in _seen_keys
                             _seen_keys.add(_key)
                             _row_ts = float(_row.get("timestamp", 0) or 0)
@@ -483,26 +516,28 @@ if _HAS_QT:
                                 continue
                             _admissible += 1
                         with contextlib.suppress(Exception):
-                            from src.core.signal_contract import (
-                                emit as _hist_emit)
+                            from src.core.signal_contract import emit as _hist_emit
+
                             _hist_emit(
                                 "history.05.002.postcondition.trades_stored",
                                 actual=_admissible,
                                 expected=len(self._all_trades),
                                 duration=_dur_elapsed,
-                                context={"since_ts": float(since_ts),
-                                         "distinct_keys": len(_seen_keys),
-                                         "poll_interval_s": 0.4})
+                                context={
+                                    "since_ts": float(since_ts),
+                                    "distinct_keys": len(_seen_keys),
+                                    "poll_interval_s": 0.4,
+                                },
+                            )
                         self._last_fetched_ts = time.time()
                         # v3.23.71 H4: emit for Simulator's front-load.
                         if self.history_refreshed is not None:
                             try:
-                                self.history_refreshed.emit(
-                                    list(self._all_trades))
+                                self.history_refreshed.emit(list(self._all_trades))
                             except Exception as _sig_exc:  # noqa: BLE001
                                 logger.debug(
-                                    "history_refreshed emit failed: %s",
-                                    _sig_exc)
+                                    "history_refreshed emit failed: %s", _sig_exc
+                                )
                         self._populate_filter_options()
                         self._apply_filters()
                         return
@@ -514,14 +549,14 @@ if _HAS_QT:
                         self._refresh_btn.setEnabled(True)
                         self._summary.setText(
                             "Fetch timeout (60s). Exchange may be rate-"
-                            "limited; try again.")
+                            "limited; try again."
+                        )
                 except Exception as exc:
                     poll_timer.stop()
                     self._fetch_in_flight = False
                     self._progress.setVisible(False)
                     self._refresh_btn.setEnabled(True)
-                    logger.warning(
-                        "history poll exception: %s", exc)
+                    logger.warning("history poll exception: %s", exc)
 
             poll_timer.timeout.connect(_check)
             poll_timer.start()
@@ -534,8 +569,9 @@ if _HAS_QT:
             self._exch_combo.blockSignals(True)
             self._exch_combo.clear()
             self._exch_combo.addItem("(all)")
-            for x in sorted({r["exchange"] for r in self._all_trades
-                             if r.get("exchange")}):
+            for x in sorted(
+                {r["exchange"] for r in self._all_trades if r.get("exchange")}
+            ):
                 self._exch_combo.addItem(x)
             idx = self._exch_combo.findText(cur_exch)
             if idx >= 0:
@@ -547,8 +583,7 @@ if _HAS_QT:
             self._sym_combo.blockSignals(True)
             self._sym_combo.clear()
             self._sym_combo.addItem("(all)")
-            for s in sorted({r["symbol"] for r in self._all_trades
-                             if r.get("symbol")}):
+            for s in sorted({r["symbol"] for r in self._all_trades if r.get("symbol")}):
                 self._sym_combo.addItem(s)
             idx = self._sym_combo.findText(cur_sym)
             if idx >= 0:
@@ -578,28 +613,30 @@ if _HAS_QT:
             # venue names one that way, and the alternative -- trusting
             # index 0 to be the sentinel -- would silently pass a list
             # that had lost it.
-            _want_exch = {r["exchange"] for r in self._all_trades
-                          if r.get("exchange")}
-            _want_sym = {r["symbol"] for r in self._all_trades
-                         if r.get("symbol")}
+            _want_exch = {r["exchange"] for r in self._all_trades if r.get("exchange")}
+            _want_sym = {r["symbol"] for r in self._all_trades if r.get("symbol")}
             _have_exch = {
-                self._exch_combo.itemText(i)
-                for i in range(self._exch_combo.count())} - {"(all)"}
+                self._exch_combo.itemText(i) for i in range(self._exch_combo.count())
+            } - {"(all)"}
             _have_sym = {
-                self._sym_combo.itemText(i)
-                for i in range(self._sym_combo.count())} - {"(all)"}
-            _mismatched = len(_want_exch ^ _have_exch) + len(
-                _want_sym ^ _have_sym)
+                self._sym_combo.itemText(i) for i in range(self._sym_combo.count())
+            } - {"(all)"}
+            _mismatched = len(_want_exch ^ _have_exch) + len(_want_sym ^ _have_sym)
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _hist_emit
+
                 _hist_emit(
                     "history.05.003.postcondition.filter_options_built",
-                    actual=_mismatched, expected=0,
-                    context={"exchanges_offered": len(_have_exch),
-                             "exchanges_loaded": len(_want_exch),
-                             "symbols_offered": len(_have_sym),
-                             "symbols_loaded": len(_want_sym),
-                             "trades_loaded": len(self._all_trades)})
+                    actual=_mismatched,
+                    expected=0,
+                    context={
+                        "exchanges_offered": len(_have_exch),
+                        "exchanges_loaded": len(_want_exch),
+                        "symbols_offered": len(_have_sym),
+                        "symbols_loaded": len(_want_sym),
+                        "trades_loaded": len(self._all_trades),
+                    },
+                )
 
         def _apply_filters(self) -> None:
             # v3.20.36 — operator-reported 2026-05-31: pressing Apply with
@@ -616,12 +653,15 @@ if _HAS_QT:
             # already calls _apply_filters() recursively on success
             # (_kick_async_fetch line ~477), so the filter pass runs
             # automatically once data arrives.
-            if (self._last_fetched_ts == 0
-                    and not self._fetch_in_flight
-                    and self._bot_manager is not None):
+            if (
+                self._last_fetched_ts == 0
+                and not self._fetch_in_flight
+                and self._bot_manager is not None
+            ):
                 logger.info(
                     "history: Apply pressed with no prior fetch; "
-                    "kicking implicit fetch")
+                    "kicking implicit fetch"
+                )
                 self._kick_async_fetch()
                 return
             try:
@@ -685,23 +725,29 @@ if _HAS_QT:
                     _violations += 1
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _hist_emit
+
                 _hist_emit(
                     "history.05.004.postcondition.filters_applied",
-                    actual=_violations, expected=0,
-                    context={"kept": len(self._filtered),
-                             "loaded": len(self._all_trades),
-                             "exchange": _v_exch, "symbol": _v_sym,
-                             "side": _v_side,
-                             "from_ts": float(from_ts),
-                             "to_ts": float(to_ts)})
+                    actual=_violations,
+                    expected=0,
+                    context={
+                        "kept": len(self._filtered),
+                        "loaded": len(self._all_trades),
+                        "exchange": _v_exch,
+                        "symbol": _v_sym,
+                        "side": _v_side,
+                        "from_ts": float(from_ts),
+                        "to_ts": float(to_ts),
+                    },
+                )
             self._page = 0
             self._render_page()
 
         def _reset_filters(self) -> None:
             # v3.23.71 H1: reset From = 2026-04-01 (matches init default).
             from PySide6.QtCore import QDate, QTime
-            self._from_dt.setDateTime(
-                QDateTime(QDate(2026, 4, 1), QTime(0, 0, 0)))
+
+            self._from_dt.setDateTime(QDateTime(QDate(2026, 4, 1), QTime(0, 0, 0)))
             self._to_dt.setDateTime(QDateTime.currentDateTime())
             self._exch_combo.setCurrentIndex(0)
             self._sym_combo.setCurrentIndex(0)
@@ -729,17 +775,17 @@ if _HAS_QT:
             self._table.setRowCount(len(rows))
             for row_i, r in enumerate(rows):
                 dt = r.get("datetime")
-                ts_str = (dt.strftime("%Y-%m-%d %H:%M:%S")
-                          if dt is not None else "—")
+                ts_str = dt.strftime("%Y-%m-%d %H:%M:%S") if dt is not None else "—"
                 self._table.setItem(row_i, 0, QTableWidgetItem(ts_str))
-                self._table.setItem(row_i, 1, QTableWidgetItem(
-                    str(r.get("exchange", ""))))
-                self._table.setItem(row_i, 2, QTableWidgetItem(
-                    str(r.get("symbol", ""))))
+                self._table.setItem(
+                    row_i, 1, QTableWidgetItem(str(r.get("exchange", "")))
+                )
+                self._table.setItem(
+                    row_i, 2, QTableWidgetItem(str(r.get("symbol", "")))
+                )
                 bot_label = _resolve_bot_label(
-                    self._bot_manager,
-                    r.get("exchange", ""),
-                    r.get("symbol", ""))
+                    self._bot_manager, r.get("exchange", ""), r.get("symbol", "")
+                )
                 self._table.setItem(row_i, 3, QTableWidgetItem(bot_label))
                 side_item = QTableWidgetItem(str(r.get("side", "")))
                 if r.get("side") == "BUY":
@@ -747,18 +793,25 @@ if _HAS_QT:
                 elif r.get("side") == "SELL":
                     side_item.setForeground(QColor("#ff5566"))
                 self._table.setItem(row_i, 4, side_item)
-                self._table.setItem(row_i, 5, QTableWidgetItem(
-                    f"{r.get('amount', 0):,.8f}"))
-                self._table.setItem(row_i, 6, QTableWidgetItem(
-                    f"${r.get('price', 0):,.8f}"))
-                self._table.setItem(row_i, 7, QTableWidgetItem(
-                    f"${r.get('cost', 0):,.4f}"))
-                fee_str = (f"{r.get('fee', 0):,.6f} {r.get('fee_currency', '')}"
-                           if r.get("fee", 0) > 0 else "—")
+                self._table.setItem(
+                    row_i, 5, QTableWidgetItem(f"{r.get('amount', 0):,.8f}")
+                )
+                self._table.setItem(
+                    row_i, 6, QTableWidgetItem(f"${r.get('price', 0):,.8f}")
+                )
+                self._table.setItem(
+                    row_i, 7, QTableWidgetItem(f"${r.get('cost', 0):,.4f}")
+                )
+                fee_str = (
+                    f"{r.get('fee', 0):,.6f} {r.get('fee_currency', '')}"
+                    if r.get("fee", 0) > 0
+                    else "—"
+                )
                 self._table.setItem(row_i, 8, QTableWidgetItem(fee_str))
                 tid = str(r.get("id", ""))
-                self._table.setItem(row_i, 9, QTableWidgetItem(
-                    tid[:16] + "…" if len(tid) > 16 else tid))
+                self._table.setItem(
+                    row_i, 9, QTableWidgetItem(tid[:16] + "…" if len(tid) > 16 else tid)
+                )
                 # v3.20.78 — Grade column (idx 10). On-demand grading via
                 # sadp._tools.trade_grader using context from the
                 # surrounding filtered trades (same asset/exchange) on
@@ -780,6 +833,7 @@ if _HAS_QT:
                 # v3.23.71 H3: Grade cell gets a tooltip explaining the
                 # letter's meaning.
                 from .history_helpers import grade_tooltip as _grade_tt
+
                 grade_item.setToolTip(_grade_tt(grade_str))
                 self._table.setItem(row_i, 10, grade_item)
 
@@ -796,10 +850,12 @@ if _HAS_QT:
                     voting_cell_text as _vote_txt,
                     voting_cell_tooltip as _vote_tt,
                 )
+
                 bid_for_join = _resolve_bid(self._bot_manager, r)
                 ts_for_join = float(r.get("timestamp", 0) or 0)
                 gate_entry = _lookup_gate(
-                    self._page_gate_index, bid_for_join, ts_for_join)
+                    self._page_gate_index, bid_for_join, ts_for_join
+                )
                 gate_str = _gate_txt(gate_entry)
                 gate_item = QTableWidgetItem(gate_str)
                 if "S" in gate_str and "F" not in gate_str:
@@ -830,7 +886,9 @@ if _HAS_QT:
                 if gate_entry:
                     try:
                         from .simulator_tab.fleet.sim_visuals import (
-                            GateLightsCell as _GLC)
+                            GateLightsCell as _GLC,
+                        )
+
                         _gd = gate_entry.get("data") or {}
                         _cell = _GLC()
                         _cell.update_gates(
@@ -838,16 +896,19 @@ if _HAS_QT:
                             fold_armed=bool(_gd.get("fold_armed")),
                             scrum_blockers=list(_gd.get("scrum_blockers") or []),
                             fold_blockers=list(_gd.get("fold_blockers") or []),
-                            landing_strip_side=_gd.get("landing_strip_side"))
+                            landing_strip_side=_gd.get("landing_strip_side"),
+                        )
                         _cell.setToolTip(_gate_tt(gate_entry))
                         self._table.setCellWidget(row_i, 11, _cell)
                     except Exception as _glc_exc:  # noqa: BLE001 - GUI guard
-                        logger.debug(
-                            "gate lights cell unavailable: %s", _glc_exc)
+                        logger.debug("gate lights cell unavailable: %s", _glc_exc)
 
                 vote_entry = _lookup_vote(
-                    self._page_voting_index, bid_for_join, ts_for_join,
-                    str(r.get("side", "") or ""))
+                    self._page_voting_index,
+                    bid_for_join,
+                    ts_for_join,
+                    str(r.get("side", "") or ""),
+                )
                 voting_str = _vote_txt(vote_entry)
                 voting_item = QTableWidgetItem(voting_str)
                 up = voting_str.upper()
@@ -880,27 +941,36 @@ if _HAS_QT:
             # build, which has its own pin below and its own log I/O, and
             # one number covering both would be attributable to neither.
             _drawn = sum(
-                1 for _i in range(self._table.rowCount())
-                if self._table.item(_i, 0) is not None)
-            _want_rows = min(self.PAGE_SIZE,
-                             max(0, total - self._page * self.PAGE_SIZE))
+                1
+                for _i in range(self._table.rowCount())
+                if self._table.item(_i, 0) is not None
+            )
+            _want_rows = min(
+                self.PAGE_SIZE, max(0, total - self._page * self.PAGE_SIZE)
+            )
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _hist_emit
+
                 _hist_emit(
                     "history.05.005.postcondition.page_rendered",
-                    actual=_drawn, expected=_want_rows,
-                    context={"page": self._page, "pages": max_page + 1,
-                             "filtered": total,
-                             "row_count": self._table.rowCount(),
-                             "page_size": self.PAGE_SIZE})
+                    actual=_drawn,
+                    expected=_want_rows,
+                    context={
+                        "page": self._page,
+                        "pages": max_page + 1,
+                        "filtered": total,
+                        "row_count": self._table.rowCount(),
+                        "page_size": self.PAGE_SIZE,
+                    },
+                )
 
             # Page label
             if total == 0:
                 self._page_label.setText("No matches")
             else:
                 self._page_label.setText(
-                    f"Page {self._page + 1} / {max_page + 1} "
-                    f"({total} trades)")
+                    f"Page {self._page + 1} / {max_page + 1} " f"({total} trades)"
+                )
             self._prev_btn.setEnabled(self._page > 0)
             self._next_btn.setEnabled(self._page < max_page)
 
@@ -913,19 +983,21 @@ if _HAS_QT:
             total_loaded = len(self._all_trades)
             buy_count = sum(1 for r in self._filtered if r.get("side") == "BUY")
             sell_count = sum(1 for r in self._filtered if r.get("side") == "SELL")
-            buy_usd = sum(r.get("cost", 0) for r in self._filtered
-                          if r.get("side") == "BUY")
-            sell_usd = sum(r.get("cost", 0) for r in self._filtered
-                           if r.get("side") == "SELL")
+            buy_usd = sum(
+                r.get("cost", 0) for r in self._filtered if r.get("side") == "BUY"
+            )
+            sell_usd = sum(
+                r.get("cost", 0) for r in self._filtered if r.get("side") == "SELL"
+            )
             self._summary.setText(
                 f"{total} of {total_loaded} trades shown · "
                 f"BUYs: {buy_count} (${buy_usd:,.2f}) · "
                 f"SELLs: {sell_count} (${sell_usd:,.2f}) · "
-                f"{fetched_str}")
+                f"{fetched_str}"
+            )
 
         # ── Trade grading (v3.20.78) ─────────────────────────────────────
-        def _grade_row(self, row_i: int, page_rows: list,
-                        r: dict) -> str:
+        def _grade_row(self, row_i: int, page_rows: list, r: dict) -> str:
             """Grade a single trade row.
 
             Uses the surrounding page-context for ref-price + future-price
@@ -935,7 +1007,10 @@ if _HAS_QT:
             context."""
             try:
                 from src.trading.trade_grader import (
-                    TradeRecord, PriceContext, grade_trade)
+                    TradeRecord,
+                    PriceContext,
+                    grade_trade,
+                )
             except Exception:
                 return "—"
             symbol = str(r.get("symbol", ""))
@@ -988,6 +1063,7 @@ if _HAS_QT:
             ref = None
             if len(same_sym_prior_prices) >= 3:
                 import statistics
+
                 ref = statistics.median(same_sym_prior_prices[:5])
             rec = TradeRecord(
                 trade_id=str(r.get("id", "")),
@@ -1051,7 +1127,8 @@ if _HAS_QT:
                 min_ts = min(
                     float(r.get("timestamp", 0) or 0)
                     for r in page_rows
-                    if (r.get("timestamp") or 0) > 0)
+                    if (r.get("timestamp") or 0) > 0
+                )
                 since_ts = max(0.0, min_ts - 60.0)
                 since: Optional[datetime] = None
                 if since_ts > 0:
@@ -1063,7 +1140,9 @@ if _HAS_QT:
             # keeps the GUI importable even if sadp._tools is unavailable.
             try:
                 from src.trading.live_log_reader import (
-                    live_gate_decisions, live_voting_panel_snapshots)
+                    live_gate_decisions,
+                    live_voting_panel_snapshots,
+                )
             except Exception:
                 return
 
@@ -1122,20 +1201,24 @@ if _HAS_QT:
             # gap: an empty page has no window to read for, and a failed
             # `live_log_reader` import means the join was never attempted
             # rather than attempted and lost.
-            _bucketed = (
-                sum(len(v) for v in self._page_gate_index.values())
-                + sum(len(v) for v in self._page_voting_index.values()))
+            _bucketed = sum(len(v) for v in self._page_gate_index.values()) + sum(
+                len(v) for v in self._page_voting_index.values()
+            )
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _hist_emit
+
                 _hist_emit(
                     "history.05.006.postcondition.joiner_indexes_built",
                     actual=_bucketed,
                     expected=_gate_accepted + _voting_accepted,
-                    context={"gate_accepted": _gate_accepted,
-                             "voting_accepted": _voting_accepted,
-                             "gate_buckets": len(self._page_gate_index),
-                             "voting_buckets": len(self._page_voting_index),
-                             "page_rows": len(page_rows)})
+                    context={
+                        "gate_accepted": _gate_accepted,
+                        "voting_accepted": _voting_accepted,
+                        "gate_buckets": len(self._page_gate_index),
+                        "voting_buckets": len(self._page_voting_index),
+                        "page_rows": len(page_rows),
+                    },
+                )
 
         @staticmethod
         def _parse_entry_ts(s: str) -> Optional[float]:
@@ -1167,45 +1250,62 @@ if _HAS_QT:
         def _export_csv(self) -> None:
             if not self._filtered:
                 QMessageBox.information(
-                    self, "No data", "Nothing to export — apply filters or "
-                                      "refresh first.")
+                    self,
+                    "No data",
+                    "Nothing to export — apply filters or " "refresh first.",
+                )
                 return
             default_name = (
-                f"acervator_history_"
-                f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+                f"acervator_history_" f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            )
             path, _ = QFileDialog.getSaveFileName(
-                self, "Export trade history",
-                default_name, "CSV files (*.csv)")
+                self, "Export trade history", default_name, "CSV files (*.csv)"
+            )
             if not path:
                 return
             try:
                 with open(path, "w", newline="", encoding="utf-8") as f:
                     w = csv.writer(f)
-                    w.writerow([
-                        "timestamp_utc", "exchange", "symbol", "bot",
-                        "side", "amount", "price", "cost_usd",
-                        "fee", "fee_currency", "trade_id"])
+                    w.writerow(
+                        [
+                            "timestamp_utc",
+                            "exchange",
+                            "symbol",
+                            "bot",
+                            "side",
+                            "amount",
+                            "price",
+                            "cost_usd",
+                            "fee",
+                            "fee_currency",
+                            "trade_id",
+                        ]
+                    )
                     for r in self._filtered:
                         dt = r.get("datetime")
-                        ts_str = (dt.strftime("%Y-%m-%d %H:%M:%S")
-                                  if dt is not None else "")
+                        ts_str = (
+                            dt.strftime("%Y-%m-%d %H:%M:%S") if dt is not None else ""
+                        )
                         bot_label = _resolve_bot_label(
                             self._bot_manager,
                             r.get("exchange", ""),
-                            r.get("symbol", ""))
-                        w.writerow([
-                            ts_str,
-                            r.get("exchange", ""),
                             r.get("symbol", ""),
-                            bot_label,
-                            r.get("side", ""),
-                            f"{r.get('amount', 0):.8f}",
-                            f"{r.get('price', 0):.8f}",
-                            f"{r.get('cost', 0):.4f}",
-                            f"{r.get('fee', 0):.6f}",
-                            r.get("fee_currency", ""),
-                            r.get("id", ""),
-                        ])
+                        )
+                        w.writerow(
+                            [
+                                ts_str,
+                                r.get("exchange", ""),
+                                r.get("symbol", ""),
+                                bot_label,
+                                r.get("side", ""),
+                                f"{r.get('amount', 0):.8f}",
+                                f"{r.get('price', 0):.8f}",
+                                f"{r.get('cost', 0):.4f}",
+                                f"{r.get('fee', 0):.6f}",
+                                r.get("fee_currency", ""),
+                                r.get("id", ""),
+                            ]
+                        )
                 # 05.007 -- COUNT THE FILE'S OWN ROWS, NOT THE ROWS
                 # THAT WERE HANDED TO THE WRITER.
                 #
@@ -1230,24 +1330,31 @@ if _HAS_QT:
                 # is never reported to the operator as a failed export.
                 _written = -1
                 try:
-                    with open(path, "r", newline="",
-                              encoding="utf-8") as _rf:
+                    with open(path, "r", newline="", encoding="utf-8") as _rf:
                         _written = sum(1 for _ in csv.reader(_rf)) - 1
                 except (OSError, csv.Error) as _rb_exc:
-                    logger.debug(
-                        "history csv read-back failed: %s", _rb_exc)
+                    logger.debug("history csv read-back failed: %s", _rb_exc)
                 with contextlib.suppress(Exception):
                     from src.core.signal_contract import emit as _hist_emit
+
                     _hist_emit(
                         "history.05.007.postcondition.csv_exported",
-                        actual=_written, expected=len(self._filtered),
-                        context={"readback": _written >= 0,
-                                 "loaded": len(self._all_trades)})
+                        actual=_written,
+                        expected=len(self._filtered),
+                        context={
+                            "readback": _written >= 0,
+                            "loaded": len(self._all_trades),
+                        },
+                    )
                 QMessageBox.information(
-                    self, "Export complete",
-                    f"Wrote {len(self._filtered)} rows to:\n{path}")
+                    self,
+                    "Export complete",
+                    f"Wrote {len(self._filtered)} rows to:\n{path}",
+                )
             except Exception as exc:
                 logger.exception("CSV export raised")
                 QMessageBox.warning(
-                    self, "Export failed",
-                    f"Could not write CSV:\n\n{type(exc).__name__}: {exc}")
+                    self,
+                    "Export failed",
+                    f"Could not write CSV:\n\n{type(exc).__name__}: {exc}",
+                )

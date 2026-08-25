@@ -22,6 +22,7 @@ it votes with its full magnitude on the side it was meant to doubt.
 `squeeze_depth` on the line above already guards its own numerator with
 `max(0.0, ...)`. This is that same guard, missing one line down.
 """
+
 from __future__ import annotations
 
 import math
@@ -42,8 +43,16 @@ def _contracting(n=200, start=100.0):
     for i in range(n):
         amp = max(0.02, 8.0 * (1.0 - i / n) ** 3)
         c = start + math.sin(i / 2.0) * amp
-        out.append(Candle(1_700_000_000_000 + i * 300_000,
-                          c, c + amp * 0.5, c - amp * 0.5, c, 100.0))
+        out.append(
+            Candle(
+                1_700_000_000_000 + i * 300_000,
+                c,
+                c + amp * 0.5,
+                c - amp * 0.5,
+                c,
+                100.0,
+            )
+        )
     return out
 
 
@@ -52,15 +61,25 @@ def _expanding(n=200, start=100.0):
     for i in range(n):
         amp = 0.05 + 6.0 * (i / n) ** 3
         c = start + math.sin(i / 2.0) * amp
-        out.append(Candle(1_700_000_000_000 + i * 300_000,
-                          c, c + amp * 0.5, c - amp * 0.5, c, 100.0))
+        out.append(
+            Candle(
+                1_700_000_000_000 + i * 300_000,
+                c,
+                c + amp * 0.5,
+                c - amp * 0.5,
+                c,
+                100.0,
+            )
+        )
     return out
 
 
 def _flat(n=200, start=100.0):
     """Zero volatility -- exercises the epsilon-guarded divisions."""
-    return [Candle(1_700_000_000_000 + i * 300_000,
-                   start, start, start, start, 100.0) for i in range(n)]
+    return [
+        Candle(1_700_000_000_000 + i * 300_000, start, start, start, start, 100.0)
+        for i in range(n)
+    ]
 
 
 class TestConfidenceStaysInsideZeroToOne:
@@ -131,8 +150,7 @@ class TestSignalConfidenceIsNeverNegative:
         the details dict."""
         for maker in (_contracting, _expanding, _flat):
             sig = SlingshotIndicator().compute(maker())
-            assert 0.0 <= sig.confidence <= 1.0, (maker.__name__,
-                                                  sig.confidence)
+            assert 0.0 <= sig.confidence <= 1.0, (maker.__name__, sig.confidence)
 
     def test_weighted_score_cannot_invert(self):
         """`_aggregate` takes abs(weighted_score), so a negative
@@ -142,6 +160,8 @@ class TestSignalConfidenceIsNeverNegative:
         for maker in (_contracting, _expanding, _flat):
             sig = SlingshotIndicator().compute(maker())
             ws = sig.weighted_score
-            assert (ws == 0.0
-                    or (ws > 0) == (sig.direction.value > 0)), (
-                maker.__name__, ws, sig.direction)
+            assert ws == 0.0 or (ws > 0) == (sig.direction.value > 0), (
+                maker.__name__,
+                ws,
+                sig.direction,
+            )

@@ -7,14 +7,20 @@ Supports paper trading for testing. REST + WebSocket.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from typing import Optional
 
 from .broker_base import (
-    BrokerBase, AccountInfo, StockPosition, StockOrder, StockQuote,
-    OrderType, OrderSide, TimeInForce, PositionSide,
+    BrokerBase,
+    AccountInfo,
+    StockPosition,
+    StockOrder,
+    StockQuote,
+    OrderType,
+    OrderSide,
+    TimeInForce,
+    PositionSide,
 )
 
 logger = logging.getLogger("acervator.stocks.alpaca")
@@ -48,7 +54,7 @@ SUPPORTED_BROKERS = {
 class AlpacaConnector(BrokerBase):
     """
     Alpaca Markets broker connector.
-    
+
     Usage:
         connector = AlpacaConnector()
         await connector.connect(api_key, api_secret, paper=True)
@@ -77,9 +83,12 @@ class AlpacaConnector(BrokerBase):
             account = await self.get_account()
             if account.account_id:
                 self._connected = True
-                logger.info("Connected to Alpaca (%s): equity=$%.2f, buying_power=$%.2f",
-                           "paper" if paper else "LIVE",
-                           account.equity, account.buying_power)
+                logger.info(
+                    "Connected to Alpaca (%s): equity=$%.2f, buying_power=$%.2f",
+                    "paper" if paper else "LIVE",
+                    account.equity,
+                    account.buying_power,
+                )
                 return True
         except Exception as e:
             logger.error("Alpaca connection failed: %s", e)
@@ -92,7 +101,9 @@ class AlpacaConnector(BrokerBase):
         if self._session:
             try:
                 await self._session.close()
-            except Exception:  # R28-OK: shutdown best-effort; session may already be closed
+            except (
+                Exception
+            ):  # R28-OK: shutdown best-effort; session may already be closed
                 pass
             self._session = None
 
@@ -117,16 +128,18 @@ class AlpacaConnector(BrokerBase):
         positions = []
         for p in data:
             qty = float(p.get("qty", 0))
-            positions.append(StockPosition(
-                symbol=p.get("symbol", ""),
-                quantity=qty,
-                avg_entry_price=float(p.get("avg_entry_price", 0)),
-                current_price=float(p.get("current_price", 0)),
-                market_value=float(p.get("market_value", 0)),
-                unrealized_pnl=float(p.get("unrealized_pl", 0)),
-                unrealized_pnl_pct=float(p.get("unrealized_plpc", 0)) * 100,
-                side=PositionSide.LONG if qty > 0 else PositionSide.SHORT,
-            ))
+            positions.append(
+                StockPosition(
+                    symbol=p.get("symbol", ""),
+                    quantity=qty,
+                    avg_entry_price=float(p.get("avg_entry_price", 0)),
+                    current_price=float(p.get("current_price", 0)),
+                    market_value=float(p.get("market_value", 0)),
+                    unrealized_pnl=float(p.get("unrealized_pl", 0)),
+                    unrealized_pnl_pct=float(p.get("unrealized_plpc", 0)) * 100,
+                    side=PositionSide.LONG if qty > 0 else PositionSide.SHORT,
+                )
+            )
         return positions
 
     async def get_position(self, symbol: str) -> Optional[StockPosition]:
@@ -147,11 +160,16 @@ class AlpacaConnector(BrokerBase):
         except Exception:
             return None
 
-    async def place_order(self, symbol: str, side: OrderSide, quantity: float,
-                          order_type: OrderType = OrderType.MARKET,
-                          limit_price: float = 0, stop_price: float = 0,
-                          time_in_force: TimeInForce = TimeInForce.DAY
-                          ) -> StockOrder:
+    async def place_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+        quantity: float,
+        order_type: OrderType = OrderType.MARKET,
+        limit_price: float = 0,
+        stop_price: float = 0,
+        time_in_force: TimeInForce = TimeInForce.DAY,
+    ) -> StockOrder:
         """Place a stock order via Alpaca."""
         body = {
             "symbol": symbol,
@@ -189,8 +207,8 @@ class AlpacaConnector(BrokerBase):
     async def get_quote(self, symbol: str) -> StockQuote:
         """Get latest quote."""
         data = await self._request(
-            "GET", f"/v2/stocks/{symbol}/quotes/latest",
-            base_url=self._data_url)
+            "GET", f"/v2/stocks/{symbol}/quotes/latest", base_url=self._data_url
+        )
         quote = data.get("quote", {})
         return StockQuote(
             symbol=symbol,
@@ -201,29 +219,44 @@ class AlpacaConnector(BrokerBase):
             timestamp=time.time(),
         )
 
-    async def get_bars(self, symbol: str, timeframe: str = "1D",
-                       limit: int = 100) -> list[dict]:
+    async def get_bars(
+        self, symbol: str, timeframe: str = "1D", limit: int = 100
+    ) -> list[dict]:
         """Get OHLCV bars."""
-        tf_map = {"1Min": "1Min", "5Min": "5Min", "15Min": "15Min",
-                  "1H": "1Hour", "1D": "1Day", "1W": "1Week",
-                  "1m": "1Min", "5m": "5Min", "15m": "15Min",
-                  "1h": "1Hour", "1d": "1Day", "1w": "1Week"}
+        tf_map = {
+            "1Min": "1Min",
+            "5Min": "5Min",
+            "15Min": "15Min",
+            "1H": "1Hour",
+            "1D": "1Day",
+            "1W": "1Week",
+            "1m": "1Min",
+            "5m": "5Min",
+            "15m": "15Min",
+            "1h": "1Hour",
+            "1d": "1Day",
+            "1w": "1Week",
+        }
         alpaca_tf = tf_map.get(timeframe, "1Day")
 
         data = await self._request(
-            "GET", f"/v2/stocks/{symbol}/bars?timeframe={alpaca_tf}&limit={limit}",
-            base_url=self._data_url)
+            "GET",
+            f"/v2/stocks/{symbol}/bars?timeframe={alpaca_tf}&limit={limit}",
+            base_url=self._data_url,
+        )
 
         bars = []
         for bar in data.get("bars", []):
-            bars.append({
-                "timestamp": bar.get("t", ""),
-                "open": float(bar.get("o", 0)),
-                "high": float(bar.get("h", 0)),
-                "low": float(bar.get("l", 0)),
-                "close": float(bar.get("c", 0)),
-                "volume": int(bar.get("v", 0)),
-            })
+            bars.append(
+                {
+                    "timestamp": bar.get("t", ""),
+                    "open": float(bar.get("o", 0)),
+                    "high": float(bar.get("h", 0)),
+                    "low": float(bar.get("l", 0)),
+                    "close": float(bar.get("c", 0)),
+                    "volume": int(bar.get("v", 0)),
+                }
+            )
         return bars
 
     async def get_market_status(self) -> dict:
@@ -251,10 +284,12 @@ class AlpacaConnector(BrokerBase):
             avg_fill_price=float(data.get("filled_avg_price", 0) or 0),
         )
 
-    async def _request(self, method: str, path: str, body: dict = None,
-                       base_url: str = None) -> dict:
+    async def _request(
+        self, method: str, path: str, body: dict = None, base_url: str = None
+    ) -> dict:
         """Make authenticated API request to Alpaca."""
         import aiohttp
+
         url = (base_url or self._base_url) + path
         headers = {
             "APCA-API-KEY-ID": self._api_key,

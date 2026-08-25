@@ -124,6 +124,7 @@ before any write, nothing mutated at all), and the read-back keeps a
 live fault injection through ``_FlakyUnits`` -- a plain list whose
 stored units do not read back the same twice.
 """
+
 from __future__ import annotations
 
 import ast
@@ -152,8 +153,7 @@ class _Bus:
         self.events.append((name, kw))
 
 
-def _bot(*, target=200.0, anchor=200.0, holdings=1.0, price=200.0,
-         quote_to_usd=1.0):
+def _bot(*, target=200.0, anchor=200.0, holdings=1.0, price=200.0, quote_to_usd=1.0):
     """A parent base-currency bot, built the way the other tests build one.
 
     ``holdings`` is seeded through ``_main_lots`` as well, because the
@@ -162,30 +162,34 @@ def _bot(*, target=200.0, anchor=200.0, holdings=1.0, price=200.0,
     """
     b = object.__new__(ScrummingBot)
     b.bot_id = "parent-eth"
-    b.config = type("C", (), {
-        "symbol": "ETH/USD",
-        "target_asset": "ETH",
-        "base_currency": "ETH",
-        "target_balance": target,
-        "max_target_growth_pct": 1.0,
-        "profit_folding_active": True,
-        "scrumming_interval_pct": 1.0,
-    })()
+    b.config = type(
+        "C",
+        (),
+        {
+            "symbol": "ETH/USD",
+            "target_asset": "ETH",
+            "base_currency": "ETH",
+            "target_balance": target,
+            "max_target_growth_pct": 1.0,
+            "profit_folding_active": True,
+            "scrumming_interval_pct": 1.0,
+        },
+    )()
     b._target_balance = target
     b._anchor_target_balance = anchor
     b._current_holdings = holdings
     b._quote_to_usd = quote_to_usd
     b._bus = _Bus()
     b._fold_tranches = []
-    b._main_lots = ([{"units": holdings, "initial_buy_price": price}]
-                    if holdings > 0 else [])
+    b._main_lots = (
+        [{"units": holdings, "initial_buy_price": price}] if holdings > 0 else []
+    )
     return b
 
 
 def _delta(bot, price):
     """The shipped decision quantity: scrumming_bot.py:6247 + :7072."""
-    current_value = (bot._current_holdings * price
-                     * float(bot._quote_to_usd or 1.0))
+    current_value = bot._current_holdings * price * float(bot._quote_to_usd or 1.0)
     return current_value - bot._target_balance
 
 
@@ -199,6 +203,7 @@ def _interval_usd(bot):
 
 
 # ── the purpose test, and its controls ──────────────────────────────
+
 
 def test_containment_holds_delta_flat_when_base_currency_arrives():
     """THE POINT. The arrival lands whole and delta does not move.
@@ -216,13 +221,15 @@ def test_containment_holds_delta_flat_when_base_currency_arrives():
     # Extractor returns 0.1 ETH, worth $20 at the observed price. The
     # caller supplies both observed quantities and nothing else.
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert out["applied"] is True
 
     after = _delta(bot, 200.0)
     assert after == pytest.approx(before), (
         "containment must leave delta unchanged, else the parent scrums "
-        f"the Extractor's gain (delta moved {before} -> {after})")
+        f"the Extractor's gain (delta moved {before} -> {after})"
+    )
     # A method that did nothing at all would also leave delta flat.
     # Pin that both halves actually moved.
     assert bot._current_holdings == pytest.approx(1.1)
@@ -237,14 +244,15 @@ def test_POSITIVE_CONTROL_without_containment_delta_goes_positive():
     """
     bot = _bot(target=200.0, holdings=1.0, price=200.0)
     before = _delta(bot, 200.0)
-    bot._current_holdings += 0.1          # arrival, no containment call
+    bot._current_holdings += 0.1  # arrival, no containment call
     after = _delta(bot, 200.0)
 
     assert after > before
     assert after == pytest.approx(20.0)
     assert abs(after) >= _interval_usd(bot), (
         "the uncontained arrival must exceed the scrum threshold, "
-        "otherwise this control does not demonstrate the failure")
+        "otherwise this control does not demonstrate the failure"
+    )
 
 
 def test_POSITIVE_CONTROL_lift_without_units_drives_delta_negative():
@@ -257,17 +265,19 @@ def test_POSITIVE_CONTROL_lift_without_units_drives_delta_negative():
     """
     bot = _bot(target=200.0, holdings=1.0, price=200.0)
     before = _delta(bot, 200.0)
-    bot._target_balance += 20.0           # lift, no units booked
+    bot._target_balance += 20.0  # lift, no units booked
     after = _delta(bot, 200.0)
 
     assert after < before
     assert after == pytest.approx(-20.0)
     assert abs(after) >= _interval_usd(bot), (
         "the phantom shortfall must exceed the trade threshold, "
-        "otherwise this control does not demonstrate the failure")
+        "otherwise this control does not demonstrate the failure"
+    )
 
 
 # ── the holdings half ───────────────────────────────────────────────
+
 
 def test_the_method_books_the_holdings_half_itself():
     """No caller is required to pair anything. The method owns both."""
@@ -275,7 +285,8 @@ def test_the_method_books_the_holdings_half_itself():
     lots_before = len(bot._main_lots)
 
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert out["applied"] is True
     assert bot._current_holdings == pytest.approx(1.1)
@@ -290,7 +301,8 @@ def test_the_arrival_keeps_the_main_lots_invariant():
     assert bot._main_lots_invariant_ok() is True
 
     bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert bot._main_lots_invariant_ok() is True
 
@@ -303,7 +315,7 @@ def test_POSITIVE_CONTROL_units_without_a_lot_break_the_invariant():
     True here, the test above is checking nothing.
     """
     bot = _bot(target=200.0, holdings=1.0, price=200.0)
-    bot._current_holdings += 0.1          # no matching lot appended
+    bot._current_holdings += 0.1  # no matching lot appended
     assert bot._main_lots_invariant_ok() is False
 
 
@@ -316,7 +328,8 @@ def test_lot_price_is_the_observed_arrival_price():
     """
     bot = _bot(target=200.0, holdings=1.0, price=100.0, quote_to_usd=2.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert out["applied"] is True
     # $20 over 0.1 units at 2.0 USD per quote unit = 100.0 quote.
@@ -331,16 +344,19 @@ def test_delta_stays_flat_when_the_quote_is_not_usd():
     assert before == pytest.approx(0.0)
 
     bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert _delta(bot, 100.0) == pytest.approx(before)
 
 
 # ── atomicity ───────────────────────────────────────────────────────
 
+
 def _method_tree():
     src = textwrap.dedent(
-        inspect.getsource(ScrummingBot.apply_extractor_tranche_return))
+        inspect.getsource(ScrummingBot.apply_extractor_tranche_return)
+    )
     return ast.parse(src)
 
 
@@ -352,23 +368,25 @@ def test_the_arrival_block_cannot_yield_to_the_event_loop():
     applied. An ``await`` inside the method would hand control back to
     the loop between the two halves and reintroduce the transient delta.
     """
-    assert not inspect.iscoroutinefunction(
-        ScrummingBot.apply_extractor_tranche_return)
-    suspends = [n for n in ast.walk(_method_tree())
-                if isinstance(n, (ast.Await, ast.Yield, ast.YieldFrom))]
-    assert suspends == [], (
-        f"{len(suspends)} suspension point(s) inside the arrival method")
+    assert not inspect.iscoroutinefunction(ScrummingBot.apply_extractor_tranche_return)
+    suspends = [
+        n
+        for n in ast.walk(_method_tree())
+        if isinstance(n, (ast.Await, ast.Yield, ast.YieldFrom))
+    ]
+    assert (
+        suspends == []
+    ), f"{len(suspends)} suspension point(s) inside the arrival method"
 
 
 def test_POSITIVE_CONTROL_the_suspension_scanner_sees_an_await():
     """The scanner above must not be blind."""
-    probe = ast.parse(
-        "async def f():\n"
-        "    x = 1\n"
-        "    await g()\n"
-        "    y = 2\n")
-    suspends = [n for n in ast.walk(probe)
-                if isinstance(n, (ast.Await, ast.Yield, ast.YieldFrom))]
+    probe = ast.parse("async def f():\n" "    x = 1\n" "    await g()\n" "    y = 2\n")
+    suspends = [
+        n
+        for n in ast.walk(probe)
+        if isinstance(n, (ast.Await, ast.Yield, ast.YieldFrom))
+    ]
     assert len(suspends) == 1
 
 
@@ -400,7 +418,8 @@ def test_no_observer_ever_sees_a_half_applied_arrival():
     bot._bus = bus
 
     bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert bus.deltas, "the observer never ran; this test proves nothing"
     for seen in bus.deltas:
@@ -427,26 +446,30 @@ def test_the_result_reports_the_residual_it_kept_at_zero():
     """USD gained by holdings minus USD added to target. USD both sides."""
     bot = _bot(target=200.0, holdings=1.0, price=200.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert out["atomic"] is True
     assert out["delta_shift_usd"] == pytest.approx(0.0, abs=1e-9)
 
 
 # ── the invariants ──────────────────────────────────────────────────
 
+
 def test_lift_is_exact_and_uncapped():
     """A return larger than the 1% Growth Rate Cap must lift in full."""
     bot = _bot(target=200.0, anchor=200.0)
     # 1% of anchor is $2.00. This return is 25x that.
     bot.apply_extractor_tranche_return(
-        usd_value=50.0, source="extractor-1", base_units=0.25)
+        usd_value=50.0, source="extractor-1", base_units=0.25
+    )
     assert bot._target_balance == pytest.approx(250.0)
 
 
 def test_anchor_moves_with_target():
     bot = _bot(target=200.0, anchor=200.0)
     bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert bot._anchor_target_balance == pytest.approx(220.0)
     assert bot.config.target_balance == pytest.approx(220.0)
 
@@ -454,7 +477,8 @@ def test_anchor_moves_with_target():
 def test_result_is_structured():
     bot = _bot()
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert out["applied"] is True
     assert out["contained_usd"] == pytest.approx(20.0)
     assert out["new_target_balance"] == pytest.approx(220.0)
@@ -462,8 +486,7 @@ def test_result_is_structured():
     assert out["base_units"] == pytest.approx(0.1)
 
 
-@pytest.mark.parametrize("bad", [0.0, -1.0, None, "x", float("nan"),
-                                 float("inf")])
+@pytest.mark.parametrize("bad", [0.0, -1.0, None, "x", float("nan"), float("inf")])
 def test_bad_usd_value_mutates_nothing(bad):
     """FAIL-CLOSED. A money path must refuse rather than guess.
 
@@ -473,7 +496,8 @@ def test_bad_usd_value_mutates_nothing(bad):
     """
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value=bad, source="extractor-1", base_units=0.1)
+        usd_value=bad, source="extractor-1", base_units=0.1
+    )
     assert out["applied"] is False
     assert "reason" in out
     assert bot._target_balance == pytest.approx(200.0)
@@ -482,8 +506,7 @@ def test_bad_usd_value_mutates_nothing(bad):
     assert len(bot._main_lots) == 1
 
 
-@pytest.mark.parametrize("bad", [0.0, -1.0, None, "x", float("nan"),
-                                 float("inf")])
+@pytest.mark.parametrize("bad", [0.0, -1.0, None, "x", float("nan"), float("inf")])
 def test_bad_base_units_mutates_nothing(bad):
     """``base_units`` is load-bearing now, so it is validated as hard.
 
@@ -492,7 +515,8 @@ def test_bad_base_units_mutates_nothing(bad):
     """
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=bad)
+        usd_value=20.0, source="extractor-1", base_units=bad
+    )
     assert out["applied"] is False
     assert "reason" in out
     assert bot._target_balance == pytest.approx(200.0)
@@ -517,7 +541,8 @@ def test_unusable_quote_rate_mutates_nothing(bad_rate):
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     bot._quote_to_usd = bad_rate
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert out["applied"] is False
     assert bot._target_balance == pytest.approx(200.0)
     assert bot._current_holdings == pytest.approx(1.0)
@@ -540,7 +565,8 @@ def test_zero_quote_rate_is_coerced_the_way_the_tick_coerces_it():
     assert before == pytest.approx(0.0)
 
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert out["applied"] is True
     assert _delta(bot, 200.0) == pytest.approx(before)
@@ -557,9 +583,8 @@ def test_POSITIVE_CONTROL_a_mismatched_rate_moves_delta():
     bot = _bot(target=200.0, holdings=1.0, price=200.0)
     before = _delta(bot, 200.0)
 
-    mispriced_units = 0.05          # $20 booked as if the rate were 2.0
-    bot._main_lots.append({"units": mispriced_units,
-                           "initial_buy_price": 200.0})
+    mispriced_units = 0.05  # $20 booked as if the rate were 2.0
+    bot._main_lots.append({"units": mispriced_units, "initial_buy_price": 200.0})
     bot._current_holdings += mispriced_units
     bot._target_balance += 20.0
 
@@ -573,7 +598,8 @@ def test_missing_lot_ledger_mutates_nothing():
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     del bot._main_lots
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert out["applied"] is False
     assert bot._target_balance == pytest.approx(200.0)
     assert bot._current_holdings == pytest.approx(1.0)
@@ -583,7 +609,8 @@ def test_emits_a_falsifiable_record():
     """Every claim needs an emitter that can falsify it."""
     bot = _bot()
     bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     names = [n for n, _ in bot._bus.events]
     assert any("extractor" in n or "bot.log" in n for n in names), names
 
@@ -592,7 +619,8 @@ def test_repeated_returns_accumulate_both_halves():
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0, price=200.0)
     for _ in range(3):
         bot.apply_extractor_tranche_return(
-            usd_value=10.0, source="extractor-1", base_units=0.05)
+            usd_value=10.0, source="extractor-1", base_units=0.05
+        )
     assert bot._target_balance == pytest.approx(230.0)
     assert bot._anchor_target_balance == pytest.approx(230.0)
     assert bot._current_holdings == pytest.approx(1.15)
@@ -627,23 +655,29 @@ def _self_writes(func) -> set[str]:
         elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
             targets = [node.target]
         for tgt in targets:
-            if (isinstance(tgt, ast.Attribute)
-                    and isinstance(tgt.value, ast.Name)
-                    and tgt.value.id == "self"):
+            if (
+                isinstance(tgt, ast.Attribute)
+                and isinstance(tgt.value, ast.Name)
+                and tgt.value.id == "self"
+            ):
                 out.add(tgt.attr)
     return out
 
 
 def _lot_appends(func) -> list[int]:
     tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
-    return [n.lineno for n in ast.walk(tree)
-            if isinstance(n, ast.Call)
-            and isinstance(n.func, ast.Attribute)
-            and n.func.attr == "append"
-            and "main_lots" in ast.unparse(n.func.value)]
+    return [
+        n.lineno
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "append"
+        and "main_lots" in ast.unparse(n.func.value)
+    ]
 
 
 # ── D1: nothing is coerced inside the atomic block ──────────────────
+
 
 def _atomic_block_tree() -> ast.Module:
     """Parse only the statements between the two ATOMIC ARRIVAL banners.
@@ -664,7 +698,7 @@ def _atomic_block_tree() -> ast.Module:
     assert start is not None, "the atomic block's opening banner is gone"
     assert end is not None, "the atomic block's closing banner is gone"
     assert end > start
-    return ast.parse(textwrap.dedent("\n".join(lines[start + 1:end])))
+    return ast.parse(textwrap.dedent("\n".join(lines[start + 1 : end])))
 
 
 def test_the_atomic_block_contains_assignments_only():
@@ -683,24 +717,30 @@ def test_the_atomic_block_contains_assignments_only():
     calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
     assert len(calls) == 1, (
         f"the atomic block makes {len(calls)} calls; exactly one is "
-        f"allowed, the ledger append, and it must take a name")
+        f"allowed, the ledger append, and it must take a name"
+    )
     assert isinstance(calls[0].func, ast.Attribute)
     assert calls[0].func.attr == "append"
     assert calls[0].args and isinstance(calls[0].args[0], ast.Name), (
         "the lot must be built and bound ABOVE the block; a dict "
-        "literal here is a construction inside the atomic region")
+        "literal here is a construction inside the atomic region"
+    )
 
-    arithmetic = [n for n in ast.walk(tree)
-                  if isinstance(n, (ast.BinOp, ast.BoolOp, ast.Compare,
-                                    ast.IfExp, ast.Subscript))]
+    arithmetic = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.BinOp, ast.BoolOp, ast.Compare, ast.IfExp, ast.Subscript))
+    ]
     assert arithmetic == [], (
         f"{len(arithmetic)} computation(s) inside the atomic block; "
-        f"every one is a place a raise can strand a half write")
+        f"every one is a place a raise can strand a half write"
+    )
 
     for node in tree.body:
         assert isinstance(node, (ast.Assign, ast.Expr)), (
             f"{type(node).__name__} in the atomic block; assignments "
-            f"and the single append only")
+            f"and the single append only"
+        )
 
 
 def test_POSITIVE_CONTROL_the_block_scanner_sees_a_coercion():
@@ -708,8 +748,7 @@ def test_POSITIVE_CONTROL_the_block_scanner_sees_a_coercion():
     probe = ast.parse("x = float(y) + 1\nz.append({'a': 1})\n")
     calls = [n for n in ast.walk(probe) if isinstance(n, ast.Call)]
     arithmetic = [n for n in ast.walk(probe) if isinstance(n, ast.BinOp)]
-    literal_args = [n for n in calls
-                    if n.args and isinstance(n.args[0], ast.Dict)]
+    literal_args = [n for n in calls if n.args and isinstance(n.args[0], ast.Dict)]
     assert len(calls) == 2
     assert len(arithmetic) == 1
     assert len(literal_args) == 1
@@ -726,7 +765,8 @@ def test_a_non_numeric_anchor_refuses_and_writes_nothing():
     bot._anchor_target_balance = "not-a-number"
 
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert out["applied"] is False
     assert "_anchor_target_balance" in out["reason"]
@@ -751,8 +791,7 @@ def test_POSITIVE_CONTROL_a_coercion_between_writes_strands_three_of_four():
         bot._main_lots.append({"units": 0.1, "initial_buy_price": 200.0})
         bot._current_holdings = bot._current_holdings + 0.1
         bot._target_balance = bot._target_balance + 20.0
-        bot._anchor_target_balance = (
-            float(bot._anchor_target_balance) + 20.0)
+        bot._anchor_target_balance = float(bot._anchor_target_balance) + 20.0
 
     assert bot._current_holdings == pytest.approx(1.1)
     assert bot._target_balance == pytest.approx(220.0)
@@ -762,11 +801,15 @@ def test_POSITIVE_CONTROL_a_coercion_between_writes_strands_three_of_four():
 
 # ── D2: the divisor is a product, and products underflow ────────────
 
-@pytest.mark.parametrize("units,rate", [
-    (1e-200, 1e-200),
-    (5e-324, 1e-8),
-    (1e-300, 1e-30),
-])
+
+@pytest.mark.parametrize(
+    "units,rate",
+    [
+        (1e-200, 1e-200),
+        (5e-324, 1e-8),
+        (1e-300, 1e-30),
+    ],
+)
 def test_an_underflowing_price_divisor_refuses(units, rate):
     """D2. Both factors pass; their product is exactly 0.0.
 
@@ -777,7 +820,8 @@ def test_an_underflowing_price_divisor_refuses(units, rate):
     bot._quote_to_usd = rate
 
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=units)
+        usd_value=20.0, source="extractor-1", base_units=units
+    )
 
     assert out["applied"] is False
     assert "divisor" in out["reason"]
@@ -803,19 +847,22 @@ def test_an_overflowing_divisor_refuses_too():
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     bot._quote_to_usd = 1e300
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=1e300)
+        usd_value=20.0, source="extractor-1", base_units=1e300
+    )
     assert out["applied"] is False
     assert bot._target_balance == pytest.approx(200.0)
 
 
 # ── D3: a flag is not an amount ─────────────────────────────────────
 
+
 @pytest.mark.parametrize("flag", [True, False])
 def test_a_bool_usd_value_is_refused(flag):
     """D3. ``usd_value=True`` lifted the target by exactly $1.00."""
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value=flag, source="extractor-1", base_units=0.1)
+        usd_value=flag, source="extractor-1", base_units=0.1
+    )
     assert out["applied"] is False
     assert "bool" in out["reason"]
     assert bot._target_balance == pytest.approx(200.0)
@@ -829,7 +876,8 @@ def test_a_bool_base_units_is_refused(flag):
     """The other half. ``base_units=True`` booked 1.0 whole unit."""
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=flag)
+        usd_value=20.0, source="extractor-1", base_units=flag
+    )
     assert out["applied"] is False
     assert "bool" in out["reason"]
     assert bot._current_holdings == pytest.approx(1.0)
@@ -845,6 +893,7 @@ def test_POSITIVE_CONTROL_the_numeric_checks_cannot_see_a_bool():
 
 
 # ── D4: the atomicity emitter must be able to fail ──────────────────
+
 
 class _DropAppendLedger(list):
     """A ledger subclass that accepts the call and drops the write.
@@ -905,8 +954,9 @@ def _flaky_ledger_bot(*, hidden: float = 0.1) -> ScrummingBot:
     and ``_lot_units_booked`` comes back 0.0.
     """
     bot = _bot(target=200.0, holdings=1.0, price=200.0)
-    bot._main_lots = [{"units": _FlakyUnits(1.0, 1.0 - hidden),
-                       "initial_buy_price": 200.0}]
+    bot._main_lots = [
+        {"units": _FlakyUnits(1.0, 1.0 - hidden), "initial_buy_price": 200.0}
+    ]
     return bot
 
 
@@ -914,6 +964,7 @@ def _flaky_ledger_bot(*, hidden: float = 0.1) -> ScrummingBot:
 def sink():
     """Install a SignalSink for the duration of one test."""
     from src.core import signal_contract as sc
+
     previous = sc.get_sink()
     collector = sc.SignalSink(path=None)
     sc.reset_throttle()
@@ -928,11 +979,13 @@ def test_the_arrival_emits_its_atomicity_record(sink):
     """D4, mutation 1: DELETE THE EMITS. This test then fails."""
     bot = _bot(target=200.0, holdings=1.0, price=200.0)
     bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert sink.count("extractor.02.002.invariant.arrival_atomic") == 1, (
         "no atomicity record was emitted; an emitter that no test "
-        "exercises is decoration")
+        "exercises is decoration"
+    )
     assert sink.count("extractor.02.001.postcondition.tranche_contained") == 1
 
 
@@ -945,7 +998,8 @@ def test_the_atomicity_emitter_keeps_its_contract_name(sink):
     """
     bot = _bot(target=200.0, holdings=1.0, price=200.0)
     bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert "extractor.02.002.invariant.arrival_atomic" in sink.names()
     assert "extractor.02.001.postcondition.tranche_contained" in sink.names()
@@ -965,7 +1019,8 @@ def test_a_ledger_that_drops_the_lot_is_refused_before_any_write(sink):
     bot._main_lots = _DropAppendLedger(bot._main_lots)
 
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert out["applied"] is False
     assert "_main_lots" in out["reason"]
@@ -992,7 +1047,8 @@ def test_a_ledger_that_raises_from_append_is_refused_before_any_write():
     bot._main_lots = _RaiseAfterAppendLedger(bot._main_lots)
 
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert out["applied"] is False
     assert "_main_lots" in out["reason"]
@@ -1009,11 +1065,11 @@ def test_POSITIVE_CONTROL_that_ledger_really_does_raise_and_strand():
     Run the v3.25.6 block shape by hand -- append first, then the three
     stores -- and the raise lands between them, exactly as measured.
     """
-    ledger = _RaiseAfterAppendLedger([{"units": 1.0,
-                                       "initial_buy_price": 200.0}])
+    ledger = _RaiseAfterAppendLedger([{"units": 1.0, "initial_buy_price": 200.0}])
     assert isinstance(ledger, list), (
         "isinstance is what admitted this ledger; if that stops being "
-        "true the defect being screened for has changed")
+        "true the defect being screened for has changed"
+    )
     assert type(ledger) is not list
 
     holdings, target = 1.0, 200.0
@@ -1040,7 +1096,8 @@ def test_a_ledger_that_does_not_read_back_is_reported_not_atomic(sink):
     bot = _flaky_ledger_bot()
 
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert out["applied"] is True
     assert out["main_lots_added"] == 1
@@ -1048,7 +1105,8 @@ def test_a_ledger_that_does_not_read_back_is_reported_not_atomic(sink):
     assert out["lot_gap_usd"] == pytest.approx(-20.0)
     assert out["atomic"] is False, (
         "the ledger read back no new units and the method still called "
-        "the arrival atomic")
+        "the arrival atomic"
+    )
     assert out["ledger_gap_usd"] == pytest.approx(-20.0)
 
     records = sink.records("extractor.02.002.invariant.arrival_atomic")
@@ -1066,7 +1124,8 @@ def test_POSITIVE_CONTROL_the_healthy_arrival_is_reported_atomic(sink):
     """
     bot = _bot(target=200.0, holdings=1.0, price=200.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert out["atomic"] is True
     assert out["lot_units_booked"] == pytest.approx(0.1)
@@ -1090,7 +1149,8 @@ def test_the_tolerance_is_too_small_to_hide_an_arrival():
     assert tolerance > 0
     assert tolerance < 0.01, (
         f"tolerance {tolerance!r} is large enough to hide a real "
-        f"arrival; it is part of the check, not a knob")
+        f"arrival; it is part of the check, not a knob"
+    )
 
 
 def test_POSITIVE_CONTROL_a_wide_tolerance_would_swallow_the_residual():
@@ -1104,12 +1164,14 @@ def test_a_corrupt_lot_after_a_good_arrival_refuses_the_next_one(sink):
     """A ledger that stops being summable cannot be added to again."""
     bot = _bot(target=200.0, holdings=1.0, price=200.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert out["atomic"] is True
 
     bot._main_lots[-1]["units"] = "corrupted"
     followup = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert followup["applied"] is False
     assert "units" in followup["reason"]
     assert bot._target_balance == pytest.approx(220.0)
@@ -1117,6 +1179,7 @@ def test_a_corrupt_lot_after_a_good_arrival_refuses_the_next_one(sink):
 
 
 # ── D6: the atomicity claim, with its condition ─────────────────────
+
 
 def test_the_arrival_adds_no_delta_of_its_own_only_mark_to_market():
     """D6. ``d(delta) = base_units * quote_to_usd * (P - arrival_price)``.
@@ -1131,20 +1194,21 @@ def test_the_arrival_adds_no_delta_of_its_own_only_mark_to_market():
     untouched = _bot(target=200.0, holdings=1.0, price=200.0)
 
     out = contained.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     arrival_price = out["arrival_price"]
 
     assert _delta(contained, arrival_price) == pytest.approx(
-        _delta(untouched, arrival_price)), (
-        "at the arrival price the containment must be exact")
+        _delta(untouched, arrival_price)
+    ), "at the arrival price the containment must be exact"
 
     for probe_price in (180.0, 210.0, 250.0):
-        gap = (_delta(contained, probe_price)
-               - _delta(untouched, probe_price))
+        gap = _delta(contained, probe_price) - _delta(untouched, probe_price)
         expected = 0.1 * 1.0 * (probe_price - arrival_price)
         assert gap == pytest.approx(expected), (
             f"at ${probe_price} the arrival moved delta by {gap}, not "
-            f"the mark-to-market {expected} the docstring states")
+            f"the mark-to-market {expected} the docstring states"
+        )
 
 
 def test_POSITIVE_CONTROL_the_condition_is_not_vacuous():
@@ -1154,6 +1218,7 @@ def test_POSITIVE_CONTROL_the_condition_is_not_vacuous():
 
 # ── D5: the pairing does not survive reconciliation ─────────────────
 
+
 def test_reconcile_holdings_never_writes_the_target_balance():
     """D5, structurally. The claim the docstring's limitation rests on."""
     writes = _self_writes(ScrummingBot._reconcile_holdings)
@@ -1161,7 +1226,8 @@ def test_reconcile_holdings_never_writes_the_target_balance():
     assert "_main_lots" in writes
     assert "_target_balance" not in writes, (
         "reconcile now moves the target; the KNOWN LIMITATION section of "
-        "apply_extractor_tranche_return is stale and must be rewritten")
+        "apply_extractor_tranche_return is stale and must be rewritten"
+    )
 
 
 def test_KNOWN_LIMITATION_drift_down_reconcile_breaks_the_pairing():
@@ -1176,7 +1242,8 @@ def test_KNOWN_LIMITATION_drift_down_reconcile_breaks_the_pairing():
     """
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0, price=200.0)
     bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert _delta(bot, 200.0) == pytest.approx(0.0)
 
     async def _balance(asset):
@@ -1191,13 +1258,16 @@ def test_KNOWN_LIMITATION_drift_down_reconcile_breaks_the_pairing():
     assert bot._anchor_target_balance == pytest.approx(220.0), (
         "v3.25.7 -- the anchor is stranded too, and it is the wider "
         "half: the growth cap and the position ceiling are both taken "
-        "from it")
+        "from it"
+    )
     assert _delta(bot, 200.0) == pytest.approx(-20.0), (
         "the documented limitation changed; update the KNOWN LIMITATION "
-        "section of the docstring to match")
+        "section of the docstring to match"
+    )
 
 
 # ── D7: how the rest of the file really maintains the two halves ────
+
 
 def test_execute_buy_moves_the_scalar_and_appends_no_lot():
     """D7. The premise the v3.25.5 summary asserted, and got backwards.
@@ -1211,7 +1281,8 @@ def test_execute_buy_moves_the_scalar_and_appends_no_lot():
     assert inspect.iscoroutinefunction(ScrummingBot._execute_buy)
     assert _lot_appends(ScrummingBot._execute_buy) == [], (
         "_execute_buy now appends a lot; the docstring's derivation of "
-        "the two shapes is stale")
+        "the two shapes is stale"
+    )
     assert "_current_holdings" in _self_writes(ScrummingBot._execute_buy)
 
 
@@ -1225,16 +1296,17 @@ def test_the_containment_method_does_both_halves_without_suspending():
     atomic-block scanner is the exact instrument, and it already proves
     there is precisely one append and that it takes a bound name.
     """
-    assert not inspect.iscoroutinefunction(
-        ScrummingBot.apply_extractor_tranche_return)
-    appends = [n for n in ast.walk(_atomic_block_tree())
-               if isinstance(n, ast.Call)
-               and isinstance(n.func, ast.Attribute)
-               and n.func.attr == "append"]
+    assert not inspect.iscoroutinefunction(ScrummingBot.apply_extractor_tranche_return)
+    appends = [
+        n
+        for n in ast.walk(_atomic_block_tree())
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "append"
+    ]
     assert len(appends) == 1
     writes = _self_writes(ScrummingBot.apply_extractor_tranche_return)
-    for attr in ("_current_holdings", "_target_balance",
-                 "_anchor_target_balance"):
+    for attr in ("_current_holdings", "_target_balance", "_anchor_target_balance"):
         assert attr in writes
 
 
@@ -1247,36 +1319,36 @@ def test_POSITIVE_CONTROL_the_append_scanner_finds_a_real_append():
 
 CITATION_ANCHORS: dict[int, str] = {
     574: '# Invariant: sum(l["units"] for l in _main_lots)',
-    1628: 'def _apply_fold_target_growth(self, accum_profit: float,',
-    1702: '_cycle_cap_growth = self._anchor_target_balance * (_cap_pct',
-    2378: 'self._target_balance = float(self._target_balance) + u',
-    2382: 'self.config.target_balance = self._target_balance',
-    2474: 'def _positive_observed_quantity(',
-    2536: 'def _finite_state_number(',
-    2581: 'def _sum_lot_units(lots: Any) -> tuple[float | None, str | None]:',
-    3453: 'fill_price = await self._execute_buy(',
-    3498: 'self._main_lots.append({',
-    4619: 'return float(self._current_holdings) * float(price)',
-    4714: 'return self._anchor_target_balance * mult',
-    5671: '_tracked_units_bootstrap = sum(',
-    5676: 'self._current_holdings = min(',
+    1628: "def _apply_fold_target_growth(self, accum_profit: float,",
+    1702: "_cycle_cap_growth = self._anchor_target_balance * (_cap_pct",
+    2378: "self._target_balance = float(self._target_balance) + u",
+    2382: "self.config.target_balance = self._target_balance",
+    2474: "def _positive_observed_quantity(",
+    2536: "def _finite_state_number(",
+    2581: "def _sum_lot_units(lots: Any) -> tuple[float | None, str | None]:",
+    3453: "fill_price = await self._execute_buy(",
+    3498: "self._main_lots.append({",
+    4619: "return float(self._current_holdings) * float(price)",
+    4714: "return self._anchor_target_balance * mult",
+    5671: "_tracked_units_bootstrap = sum(",
+    5676: "self._current_holdings = min(",
     6347: 'float(getattr(_bal1, "total", 0)',
     6389: 'getattr(_bal1, "absent", False) or',
-    6610: 'self._current_holdings = sum(',
-    6777: '# _main_lots and derives _current_holdings from that source',
-    6783: 'self._current_holdings * ticker.last',
-    7550: 'entry_fill = await self._execute_buy(',
-    7573: 'self._main_lots.append({',
-    7608: 'delta = current_value - self._target_balance',
+    6610: "self._current_holdings = sum(",
+    6777: "# _main_lots and derives _current_holdings from that source",
+    6783: "self._current_holdings * ticker.last",
+    7550: "entry_fill = await self._execute_buy(",
+    7573: "self._main_lots.append({",
+    7608: "delta = current_value - self._target_balance",
     9262: 'price <= tranche["initial_buy_price"]',
-    9530: '_patent_only_eligible = sum(',
-    9791: '# MEM-171 / ADR-004 patent invariant is NOT abandoned in',
+    9530: "_patent_only_eligible = sum(",
+    9791: "# MEM-171 / ADR-004 patent invariant is NOT abandoned in",
     9803: 'if ticker.last <= float(t.get("ref", 0)) * _otd_factor',
-    10010: 'buy_fill = await self._execute_buy(',
-    10067: 'self._main_lots.append({',
-    10519: 'hedge_fill = await self._execute_buy(',
-    10553: 'self._main_lots.append({',
-    11323: 'async def _reconcile_holdings(self, reason:',
+    10010: "buy_fill = await self._execute_buy(",
+    10067: "self._main_lots.append({",
+    10519: "hedge_fill = await self._execute_buy(",
+    10553: "self._main_lots.append({",
+    11323: "async def _reconcile_holdings(self, reason:",
     # 2026-08-13 re-anchor, U2. ONE insertion into scrumming_bot.py --
     # the two units parsers, the block that widens the audited figure
     # from the scalar to the lot book, and the coerced rescale write --
@@ -1334,11 +1406,11 @@ CITATION_ANCHORS: dict[int, str] = {
     # the three lines it replaced, because one added line above the
     # drift-down branch would have moved every anchor below it a
     # second time.
-    11573: 'if exchange_units < internal_units - 1e-9:',
-    11595: 'self._current_holdings = exchange_units',
-    11597: '# Drift UP (or effectively equal): extra units are NOT the',
-    11614: '# _current_holdings + _main_lots unchanged.',
-    11742: 'async def _execute_manual_rebalance(',
+    11573: "if exchange_units < internal_units - 1e-9:",
+    11595: "self._current_holdings = exchange_units",
+    11597: "# Drift UP (or effectively equal): extra units are NOT the",
+    11614: "# _current_holdings + _main_lots unchanged.",
+    11742: "async def _execute_manual_rebalance(",
     # 2026-08-15 re-anchor, the nan-ladder unit. ONE insertion, +104
     # lines, entirely inside the U3 gate block in
     # `_execute_manual_rebalance`: the ref filter that replaced the bare
@@ -1367,12 +1439,12 @@ CITATION_ANCHORS: dict[int, str] = {
     # the source, once by `ast.literal_eval` of the dict itself -- and
     # both read 42. The stale number was the work order's, and it is
     # recorded here so the next reader does not trust it either.
-    12703: 'self._main_lots.append({',
-    12720: 'self._main_lots.append({',
-    12729: 'self._current_holdings += fill_amount',
-    14369: 'async def _execute_buy(',
-    14846: 'self._current_holdings += amount',
-    14971: 'def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:',
+    12703: "self._main_lots.append({",
+    12720: "self._main_lots.append({",
+    12729: "self._current_holdings += fill_amount",
+    14369: "async def _execute_buy(",
+    14846: "self._current_holdings += amount",
+    14971: "def _main_lots_invariant_ok(self, tol: float = 1e-6) -> bool:",
     # 2026-08-20 re-anchor, ISSUE #21 -- the capital-reservation grant
     # postcondition. ONE insertion into `scrumming_bot.py`, +47 lines,
     # entirely inside the success branch of
@@ -1448,11 +1520,13 @@ def test_every_citation_points_at_the_line_it_claims():
     """
     lines = _source_lines()
     for lineno, anchor_text in CITATION_ANCHORS.items():
-        assert 1 <= lineno <= len(lines), (
-            f"citation :{lineno} is past the end of the file")
+        assert (
+            1 <= lineno <= len(lines)
+        ), f"citation :{lineno} is past the end of the file"
         assert anchor_text in lines[lineno - 1], (
             f"citation :{lineno} claims {anchor_text!r} but that line reads "
-            f"{lines[lineno - 1].strip()!r}")
+            f"{lines[lineno - 1].strip()!r}"
+        )
 
 
 def test_every_cited_number_has_an_anchor():
@@ -1464,7 +1538,8 @@ def test_every_cited_number_has_an_anchor():
     missing = sorted(_cited_line_numbers() - set(CITATION_ANCHORS))
     assert missing == [], (
         f"cited but unanchored: {missing}. Add each to CITATION_ANCHORS "
-        f"with a phrase from the line it names.")
+        f"with a phrase from the line it names."
+    )
 
 
 def test_POSITIVE_CONTROL_the_citation_checker_catches_a_shifted_line():
@@ -1489,11 +1564,13 @@ def test_the_invariant_helper_names_test_files_that_exist():
         path = REPO_ROOT / relative
         assert path.exists(), f"{relative} is cited and does not exist"
         body = path.read_text(encoding="utf-8")
-        assert "_main_lots_invariant_ok" in body, (
-            f"{relative} is cited as a caller and never calls it")
+        assert (
+            "_main_lots_invariant_ok" in body
+        ), f"{relative} is cited as a caller and never calls it"
 
 
 # ── D10: the fail-closed promise, made true ─────────────────────────
+
 
 def test_a_non_numeric_target_balance_refuses():
     """Raised ValueError before.
@@ -1504,7 +1581,8 @@ def test_a_non_numeric_target_balance_refuses():
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     bot._target_balance = "oops"
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert out["applied"] is False
     assert "_target_balance" in out["reason"]
     assert bot._target_balance == "oops"
@@ -1515,7 +1593,8 @@ def test_a_missing_holdings_scalar_refuses():
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     bot._current_holdings = None
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert out["applied"] is False
     assert "_current_holdings" in out["reason"]
     assert len(bot._main_lots) == 1
@@ -1530,7 +1609,8 @@ def test_a_source_that_cannot_be_rendered_refuses():
 
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source=_Unrenderable(), base_units=0.1)
+        usd_value=20.0, source=_Unrenderable(), base_units=0.1
+    )
     assert out["applied"] is False
     assert "source" in out["reason"]
     assert bot._target_balance == pytest.approx(200.0)
@@ -1542,7 +1622,8 @@ def test_a_corrupt_lot_in_the_ledger_refuses_the_arrival():
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     bot._main_lots.append({"units": None, "initial_buy_price": 1.0})
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert out["applied"] is False
     assert "_main_lots" in out["reason"]
     assert bot._target_balance == pytest.approx(200.0)
@@ -1554,7 +1635,8 @@ def test_an_overflowing_target_refuses_rather_than_writing_inf():
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     bot._target_balance = 1.7e308
     out = bot.apply_extractor_tranche_return(
-        usd_value=1.7e308, source="extractor-1", base_units=0.1)
+        usd_value=1.7e308, source="extractor-1", base_units=0.1
+    )
     assert out["applied"] is False
     assert bot._target_balance == 1.7e308
     assert bot._current_holdings == pytest.approx(1.0)
@@ -1576,7 +1658,8 @@ def test_the_operator_log_line_reports_the_verdict_not_the_conclusion():
     """
     bot = _flaky_ledger_bot()
     bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     messages = [kw.get("message", "") for _, kw in bot._bus.events]
     contained = [m for m in messages if "EXTRACTOR TRANCHE CONTAINED" in m]
@@ -1589,7 +1672,8 @@ def test_POSITIVE_CONTROL_the_healthy_log_line_states_containment():
     """The paired control: the good path must still say it succeeded."""
     bot = _bot(target=200.0, holdings=1.0, price=200.0)
     bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     messages = [kw.get("message", "") for _, kw in bot._bus.events]
     contained = [m for m in messages if "EXTRACTOR TRANCHE CONTAINED" in m]
@@ -1599,6 +1683,7 @@ def test_POSITIVE_CONTROL_the_healthy_log_line_states_containment():
 
 
 # ── R4: the success branch must publish what it checked ─────────────
+
 
 def test_the_success_line_publishes_the_measurements_it_passed_on():
     """R4. v3.25.6's success branch stated a conclusion and no numbers.
@@ -1612,14 +1697,22 @@ def test_the_success_line_publishes_the_measurements_it_passed_on():
     """
     bot = _bot(target=200.0, holdings=1.0, price=200.0)
     bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     messages = [kw.get("message", "") for _, kw in bot._bus.events]
     line = next(m for m in messages if "EXTRACTOR TRANCHE CONTAINED" in m)
 
     assert "neither scrummed nor chased" in line
-    for token in ("CHECKED", "lot 0.1 of 0.1 units", "holdings $",
-                  "target $", "anchor $", "ledger gap $", "tol $"):
+    for token in (
+        "CHECKED",
+        "lot 0.1 of 0.1 units",
+        "holdings $",
+        "target $",
+        "anchor $",
+        "ledger gap $",
+        "tol $",
+    ):
         assert token in line, f"{token!r} missing from the success line: {line}"
 
 
@@ -1631,19 +1724,19 @@ def test_POSITIVE_CONTROL_both_branches_carry_the_same_measurements():
     """
     good = _bot(target=200.0, holdings=1.0, price=200.0)
     good.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     bad = _flaky_ledger_bot()
     bad.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     def _fields(bot) -> set[str]:
         """The NAMES in the measured block, without their values."""
         messages = [kw.get("message", "") for _, kw in bot._bus.events]
-        line = next(m for m in messages
-                    if "EXTRACTOR TRANCHE CONTAINED" in m)
+        line = next(m for m in messages if "EXTRACTOR TRANCHE CONTAINED" in m)
         inner = line.split("[", 1)[1].split("]", 1)[0]
-        return {part.strip().split(" ")[0]
-                for part in re.split(r"[,;]", inner)}
+        return {part.strip().split(" ")[0] for part in re.split(r"[,;]", inner)}
 
     assert _fields(good) == _fields(bad)
     assert len(_fields(good)) >= 5
@@ -1654,6 +1747,7 @@ def test_POSITIVE_CONTROL_both_branches_carry_the_same_measurements():
 # v3.25.7 — the eleven defects the v3.25.6 suite could not see
 # ════════════════════════════════════════════════════════════════════
 
+
 def _deaf_bot(*dropped: str, **kwargs) -> ScrummingBot:
     """A bot whose ``__setattr__`` silently drops the named stores.
 
@@ -1662,6 +1756,7 @@ def _deaf_bot(*dropped: str, **kwargs) -> ScrummingBot:
     else about the bot is the ordinary fixture, so a test using it is
     testing the verdict and not the fixture.
     """
+
     class _Deaf(ScrummingBot):
         _DROPPED = frozenset(dropped)
 
@@ -1678,6 +1773,7 @@ def _deaf_bot(*dropped: str, **kwargs) -> ScrummingBot:
 
 # ── R1: a money path must refuse a TYPE, not only a value ───────────
 
+
 def test_the_operator_string_probe_now_refuses_and_mutates_nothing():
     """R1, the operator's probe, inverted.
 
@@ -1688,7 +1784,8 @@ def test_the_operator_string_probe_now_refuses_and_mutates_nothing():
     """
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value="20.0", source="extractor-1", base_units="0.1")
+        usd_value="20.0", source="extractor-1", base_units="0.1"
+    )
 
     assert out["applied"] is False
     assert "str" in out["reason"], out["reason"]
@@ -1699,15 +1796,25 @@ def test_the_operator_string_probe_now_refuses_and_mutates_nothing():
     assert bot._main_lots_invariant_ok() is True
 
 
-@pytest.mark.parametrize("bad", ["20.0", "  20  ", b"20", bytearray(b"20"),
-                                 [20.0], (20.0,), {"usd": 20.0},
-                                 10 ** 400, complex(20, 0)])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "20.0",
+        "  20  ",
+        b"20",
+        bytearray(b"20"),
+        [20.0],
+        (20.0,),
+        {"usd": 20.0},
+        10**400,
+        complex(20, 0),
+    ],
+)
 def test_a_non_numeric_type_on_the_money_path_is_refused(bad):
     """Both halves, every shape a caller can hand a money path."""
     for keyword in ("usd_value", "base_units"):
         bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
-        arguments = {"usd_value": 20.0, "base_units": 0.1,
-                     "source": "extractor-1"}
+        arguments = {"usd_value": 20.0, "base_units": 0.1, "source": "extractor-1"}
         arguments[keyword] = bad
         out = bot.apply_extractor_tranche_return(**arguments)
 
@@ -1732,7 +1839,7 @@ def test_POSITIVE_CONTROL_float_reads_the_strings_the_type_gate_refuses():
     assert math.isfinite(parsed)
     assert parsed > 0
     with pytest.raises(OverflowError):
-        float(10 ** 400)
+        float(10**400)
 
 
 def test_a_numeric_string_in_the_bots_own_state_is_refused_too():
@@ -1744,7 +1851,8 @@ def test_a_numeric_string_in_the_bots_own_state_is_refused_too():
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     bot._target_balance = "200.0"
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert out["applied"] is False
     assert "_target_balance" in out["reason"]
@@ -1761,6 +1869,7 @@ def test_POSITIVE_CONTROL_the_decider_cannot_read_that_state_either():
 
 # ── R2: the verdict must assert the arrival LANDED ──────────────────
 
+
 def test_a_verdict_of_differences_cannot_see_an_absent_arrival(sink):
     """R2. Reproduced against v3.25.6, then closed.
 
@@ -1770,20 +1879,27 @@ def test_a_verdict_of_differences_cannot_see_an_absent_arrival(sink):
     differences and a readability flag all agreed, because a difference
     agrees when nothing happens. Only the anchor actually moved.
     """
-    bot = _deaf_bot("_current_holdings", "_target_balance",
-                    target=200.0, anchor=200.0, holdings=1.0, price=200.0)
-    bot._main_lots = [{"units": _FlakyUnits(1.0, 0.9),
-                       "initial_buy_price": 200.0}]
+    bot = _deaf_bot(
+        "_current_holdings",
+        "_target_balance",
+        target=200.0,
+        anchor=200.0,
+        holdings=1.0,
+        price=200.0,
+    )
+    bot._main_lots = [{"units": _FlakyUnits(1.0, 0.9), "initial_buy_price": 200.0}]
 
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert bot._current_holdings == pytest.approx(1.0)
     assert bot._target_balance == pytest.approx(200.0)
     assert bot._anchor_target_balance == pytest.approx(220.0)
 
-    assert out["atomic"] is False, (
-        "nothing but the anchor moved and the verdict still said atomic")
+    assert (
+        out["atomic"] is False
+    ), "nothing but the anchor moved and the verdict still said atomic"
     assert out["lot_gap_usd"] == pytest.approx(-20.0)
     assert out["holdings_gap_usd"] == pytest.approx(-20.0)
     assert out["target_gap_usd"] == pytest.approx(-20.0)
@@ -1800,22 +1916,28 @@ def test_POSITIVE_CONTROL_the_v3_25_6_terms_all_read_zero_there(sink):
     stale: if they ever stop reading zero here, the defect being
     screened for has changed and this text must change with it.
     """
-    bot = _deaf_bot("_current_holdings", "_target_balance",
-                    target=200.0, anchor=200.0, holdings=1.0, price=200.0)
-    bot._main_lots = [{"units": _FlakyUnits(1.0, 0.9),
-                       "initial_buy_price": 200.0}]
+    bot = _deaf_bot(
+        "_current_holdings",
+        "_target_balance",
+        target=200.0,
+        anchor=200.0,
+        holdings=1.0,
+        price=200.0,
+    )
+    bot._main_lots = [{"units": _FlakyUnits(1.0, 0.9), "initial_buy_price": 200.0}]
     bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     context = sink.records("extractor.02.002.invariant.arrival_atomic")[0].context
-    old_delta_shift = (context["lot_usd_booked"]
-                       - context["target_usd_added"])
+    old_delta_shift = context["lot_usd_booked"] - context["target_usd_added"]
     assert old_delta_shift == pytest.approx(0.0, abs=1e-9)
     assert context["ledger_gap_usd"] == pytest.approx(0.0, abs=1e-9)
     assert context["anchor_gap_usd"] == pytest.approx(0.0, abs=1e-9)
 
 
 # ── R11: the term named for the scalar must measure the scalar ──────
+
 
 def test_delta_shift_is_measured_from_the_scalar_the_tick_prices(sink):
     """R11. ``_delta_shift_usd`` is d(delta), so it reads d(holdings).
@@ -1825,25 +1947,28 @@ def test_delta_shift_is_measured_from_the_scalar_the_tick_prices(sink):
     Drop the scalar store and keep the lot: the tick's delta moves by
     -$20.00 while the old term reads exactly 0.00.
     """
-    bot = _deaf_bot("_current_holdings",
-                    target=200.0, anchor=200.0, holdings=1.0, price=200.0)
+    bot = _deaf_bot(
+        "_current_holdings", target=200.0, anchor=200.0, holdings=1.0, price=200.0
+    )
     assert _delta(bot, 200.0) == pytest.approx(0.0)
 
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert bot._current_holdings == pytest.approx(1.0)
     assert bot._target_balance == pytest.approx(220.0)
     assert _delta(bot, 200.0) == pytest.approx(-20.0)
-    assert out["delta_shift_usd"] == pytest.approx(-20.0), (
-        "delta moved -$20 and the term named for it must say so")
+    assert out["delta_shift_usd"] == pytest.approx(
+        -20.0
+    ), "delta moved -$20 and the term named for it must say so"
     assert out["atomic"] is False
 
     context = sink.records("extractor.02.002.invariant.arrival_atomic")[0].context
-    ledger_sourced = (context["lot_usd_booked"]
-                      - context["target_usd_added"])
-    assert ledger_sourced == pytest.approx(0.0, abs=1e-9), (
-        "the v3.25.6 term reads zero here; that is the defect")
+    ledger_sourced = context["lot_usd_booked"] - context["target_usd_added"]
+    assert ledger_sourced == pytest.approx(
+        0.0, abs=1e-9
+    ), "the v3.25.6 term reads zero here; that is the defect"
 
 
 def test_POSITIVE_CONTROL_the_two_sources_agree_on_a_healthy_arrival():
@@ -1854,7 +1979,8 @@ def test_POSITIVE_CONTROL_the_two_sources_agree_on_a_healthy_arrival():
     """
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0, price=200.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert out["delta_shift_usd"] == pytest.approx(0.0, abs=1e-9)
     assert out["lot_gap_usd"] == pytest.approx(0.0, abs=1e-9)
     assert out["holdings_gap_usd"] == pytest.approx(0.0, abs=1e-9)
@@ -1862,6 +1988,7 @@ def test_POSITIVE_CONTROL_the_two_sources_agree_on_a_healthy_arrival():
 
 
 # ── R6: the condition names TWO quote rates, not one ────────────────
+
 
 def test_the_delta_condition_needs_the_usd_price_to_be_unchanged():
     """R6. ``d(delta) = b * (P * q_tick - arrival_price * q_arr)``.
@@ -1871,46 +1998,47 @@ def test_the_delta_condition_needs_the_usd_price_to_be_unchanged():
     ``P == arrival_price``. Hold the quote-side price EXACTLY at the
     arrival price and move only the rate: delta moves anyway.
     """
-    contained = _bot(target=200.0, holdings=1.0, price=200.0,
-                     quote_to_usd=1.0)
-    untouched = _bot(target=200.0, holdings=1.0, price=200.0,
-                     quote_to_usd=1.0)
+    contained = _bot(target=200.0, holdings=1.0, price=200.0, quote_to_usd=1.0)
+    untouched = _bot(target=200.0, holdings=1.0, price=200.0, quote_to_usd=1.0)
     out = contained.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     arrival_price = out["arrival_price"]
 
     for q_tick in (1.10, 0.90):
         contained._quote_to_usd = q_tick
         untouched._quote_to_usd = q_tick
-        gap = (_delta(contained, arrival_price)
-               - _delta(untouched, arrival_price))
+        gap = _delta(contained, arrival_price) - _delta(untouched, arrival_price)
         expected = 0.1 * (arrival_price * q_tick - arrival_price * 1.0)
         assert gap == pytest.approx(expected), (
             f"at q_tick={q_tick}, with P frozen at the arrival price, "
-            f"the arrival moved delta by {gap}, not {expected}")
+            f"the arrival moved delta by {gap}, not {expected}"
+        )
         assert abs(gap) > 1.0, "the rate move must be visible, not noise"
 
 
 def test_POSITIVE_CONTROL_the_condition_holds_when_both_rates_agree():
     """The paired half: same price AND same rate, and delta is flat."""
-    contained = _bot(target=200.0, holdings=1.0, price=200.0,
-                     quote_to_usd=1.0)
-    untouched = _bot(target=200.0, holdings=1.0, price=200.0,
-                     quote_to_usd=1.0)
+    contained = _bot(target=200.0, holdings=1.0, price=200.0, quote_to_usd=1.0)
+    untouched = _bot(target=200.0, holdings=1.0, price=200.0, quote_to_usd=1.0)
     out = contained.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert _delta(contained, out["arrival_price"]) == pytest.approx(
-        _delta(untouched, out["arrival_price"]))
+        _delta(untouched, out["arrival_price"])
+    )
 
 
 # ── R7: the drift-down reconcile strands the ANCHOR too ─────────────
+
 
 def test_reconcile_holdings_never_writes_the_anchor_target_balance():
     """R7, structurally. The half of the claim v3.25.6 left out."""
     writes = _self_writes(ScrummingBot._reconcile_holdings)
     assert "_anchor_target_balance" not in writes, (
         "reconcile now moves the anchor; the KNOWN LIMITATION section of "
-        "apply_extractor_tranche_return is stale and must be rewritten")
+        "apply_extractor_tranche_return is stale and must be rewritten"
+    )
 
 
 def test_the_stranded_anchor_widens_the_growth_cap_and_the_ceiling():
@@ -1925,15 +2053,17 @@ def test_the_stranded_anchor_widens_the_growth_cap_and_the_ceiling():
     bot.config.position_ceiling_multiple = 2.0
 
     def _growth_cap() -> float:
-        return (bot._anchor_target_balance
-                * float(bot.config.max_target_growth_pct) / 100.0)
+        return (
+            bot._anchor_target_balance * float(bot.config.max_target_growth_pct) / 100.0
+        )
 
     cap_before = _growth_cap()
     ceiling_before = bot.position_ceiling_usd
     assert ceiling_before == pytest.approx(400.0)
 
     bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     async def _balance(asset):
         assert asset == "ETH"
@@ -1943,8 +2073,9 @@ def test_the_stranded_anchor_widens_the_growth_cap_and_the_ceiling():
     assert asyncio.run(bot._reconcile_holdings(reason="test")) is True
 
     assert bot._current_holdings == pytest.approx(1.0)
-    assert bot._anchor_target_balance == pytest.approx(220.0), (
-        "the anchor lift survived the reconcile; that is the limitation")
+    assert bot._anchor_target_balance == pytest.approx(
+        220.0
+    ), "the anchor lift survived the reconcile; that is the limitation"
     assert _growth_cap() == pytest.approx(cap_before * 1.1)
     assert bot.position_ceiling_usd == pytest.approx(ceiling_before + 40.0)
 
@@ -1965,6 +2096,7 @@ def test_POSITIVE_CONTROL_both_limits_really_read_the_anchor():
 
 # ── R3: the premise the exact-list guard rests on ───────────────────
 
+
 def test_every_main_lots_assignment_builds_a_plain_list():
     """Nothing legitimate is refused by the exact-list guard.
 
@@ -1978,27 +2110,34 @@ def test_every_main_lots_assignment_builds_a_plain_list():
         if not isinstance(node, ast.Assign):
             continue
         for target in node.targets:
-            if (isinstance(target, ast.Attribute)
-                    and target.attr == "_main_lots"
-                    and isinstance(target.value, ast.Name)
-                    and target.value.id == "self"):
+            if (
+                isinstance(target, ast.Attribute)
+                and target.attr == "_main_lots"
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "self"
+            ):
                 sites.append((target.lineno, type(node.value).__name__))
     assert sites, "the scanner found no assignment; it proves nothing"
     for lineno, kind in sites:
         assert kind in ("List", "ListComp"), (
             f"scrumming_bot.py:{lineno} assigns a {kind} to _main_lots; "
-            f"the exact-list guard would refuse every arrival on that bot")
+            f"the exact-list guard would refuse every arrival on that bot"
+        )
 
 
 def test_POSITIVE_CONTROL_the_ledger_shape_scanner_sees_a_wrapper():
     """The scanner must not report clean for every shape."""
     probe = ast.parse("self._main_lots = Wrapper([])\n")
-    kinds = [type(node.value).__name__ for node in ast.walk(probe)
-             if isinstance(node, ast.Assign)]
+    kinds = [
+        type(node.value).__name__
+        for node in ast.walk(probe)
+        if isinstance(node, ast.Assign)
+    ]
     assert kinds == ["Call"]
 
 
 # ── R10: the fail-closed promise, made true and then measured ───────
+
 
 def _corrupt_lot_type(bot):
     bot._main_lots.append(["units", 1.0])
@@ -2012,12 +2151,11 @@ class _BoomUnits:
 
 
 def _hostile_units(bot):
-    bot._main_lots.append({"units": _BoomUnits(),
-                           "initial_buy_price": 1.0})
+    bot._main_lots.append({"units": _BoomUnits(), "initial_buy_price": 1.0})
 
 
 def _huge_target(bot):
-    bot._target_balance = 10 ** 400
+    bot._target_balance = 10**400
 
 
 def _shadowed_tolerance(bot):
@@ -2034,7 +2172,7 @@ def _unusable_rate(bot):
 
 def _huge_rate(bot):
     """A valid int that ``float()`` refuses: OverflowError, not ValueError."""
-    bot._quote_to_usd = 10 ** 400
+    bot._quote_to_usd = 10**400
 
 
 def _no_bot_id(bot):
@@ -2053,8 +2191,11 @@ HOSTILE_ARRANGEMENTS = [
 ]
 
 
-@pytest.mark.parametrize("label,arrange", HOSTILE_ARRANGEMENTS,
-                         ids=[name for name, _ in HOSTILE_ARRANGEMENTS])
+@pytest.mark.parametrize(
+    "label,arrange",
+    HOSTILE_ARRANGEMENTS,
+    ids=[name for name, _ in HOSTILE_ARRANGEMENTS],
+)
 def test_the_method_never_raises_on_any_named_input(label, arrange):
     """R10. The promise says "returns a refusal"; this measures it.
 
@@ -2064,18 +2205,27 @@ def test_the_method_never_raises_on_any_named_input(label, arrange):
     """
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0, price=200.0)
     arrange(bot)
-    before = (bot._current_holdings, bot._target_balance,
-              bot._anchor_target_balance, len(bot._main_lots))
+    before = (
+        bot._current_holdings,
+        bot._target_balance,
+        bot._anchor_target_balance,
+        len(bot._main_lots),
+    )
 
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert isinstance(out, dict), label
     assert "applied" in out, label
     if out["applied"] is False:
         assert "reason" in out, label
-        after = (bot._current_holdings, bot._target_balance,
-                 bot._anchor_target_balance, len(bot._main_lots))
+        after = (
+            bot._current_holdings,
+            bot._target_balance,
+            bot._anchor_target_balance,
+            len(bot._main_lots),
+        )
         assert after == before, f"{label} refused and still mutated state"
 
 
@@ -2085,7 +2235,7 @@ def test_POSITIVE_CONTROL_those_arrangements_really_are_hostile():
     with pytest.raises(TypeError):
         _ = not_a_lot["units"]
     with pytest.raises(OverflowError):
-        float(10 ** 400)
+        float(10**400)
     with pytest.raises(TypeError):
         _ = abs(-20.0) <= "wide"
     with pytest.raises(RuntimeError):
@@ -2098,7 +2248,8 @@ def test_a_shadowed_tolerance_is_refused_before_the_writes():
     bot._ARRIVAL_ATOMIC_TOL_USD = "wide"
 
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
 
     assert out["applied"] is False
     assert "_ARRIVAL_ATOMIC_TOL_USD" in out["reason"]
@@ -2112,13 +2263,15 @@ def test_POSITIVE_CONTROL_the_class_tolerance_is_still_the_one_in_force():
     """The refusal above must not have disabled the real constant."""
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0, price=200.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=0.1)
+        usd_value=20.0, source="extractor-1", base_units=0.1
+    )
     assert out["applied"] is True
     assert out["atomic"] is True
     assert ScrummingBot._ARRIVAL_ATOMIC_TOL_USD == pytest.approx(1e-6)
 
 
 # ── R5: the divisor guard is the one that refuses an inf product ────
+
 
 def test_an_overflowing_divisor_is_named_by_the_divisor_guard():
     """R5. The D2 comment claimed the PRICE check caught this.
@@ -2130,7 +2283,8 @@ def test_an_overflowing_divisor_is_named_by_the_divisor_guard():
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     bot._quote_to_usd = 1e300
     out = bot.apply_extractor_tranche_return(
-        usd_value=20.0, source="extractor-1", base_units=1e300)
+        usd_value=20.0, source="extractor-1", base_units=1e300
+    )
 
     assert out["applied"] is False
     assert "divisor" in out["reason"], out["reason"]
@@ -2146,13 +2300,15 @@ def test_POSITIVE_CONTROL_the_price_check_has_its_own_reachable_reason():
     """
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value=5e-324, source="extractor-1", base_units=1e300)
+        usd_value=5e-324, source="extractor-1", base_units=1e300
+    )
     assert out["applied"] is False
     assert "arrival price" in out["reason"], out["reason"]
     assert "divisor" not in out["reason"], out["reason"]
 
 
 # ── R2b: a sub-tolerance arrival cannot be judged by residuals alone ──
+
 
 def _stringifying_bot(**kwargs) -> ScrummingBot:
     """A bot whose ``__setattr__`` stores the three scalars as text.
@@ -2162,9 +2318,11 @@ def _stringifying_bot(**kwargs) -> ScrummingBot:
     readability flag exists for, and it is the only one where the four
     residual terms cannot tell the story on their own.
     """
+
     class _Stringify(ScrummingBot):
-        _SCALARS = frozenset(("_current_holdings", "_target_balance",
-                              "_anchor_target_balance"))
+        _SCALARS = frozenset(
+            ("_current_holdings", "_target_balance", "_anchor_target_balance")
+        )
 
         def __setattr__(self, name: str, value: object) -> None:
             if name in _Stringify._SCALARS and getattr(self, "_armed", False):
@@ -2187,23 +2345,24 @@ def test_an_unreadable_scalar_after_the_write_is_not_called_atomic():
     separate a healthy bot from one whose three balances are now text.
     Only the read-back flag can, so it is in the conjunction.
     """
-    bot = _stringifying_bot(target=200.0, anchor=200.0, holdings=1.0,
-                            price=200.0)
+    bot = _stringifying_bot(target=200.0, anchor=200.0, holdings=1.0, price=200.0)
 
     out = bot.apply_extractor_tranche_return(
-        usd_value=1e-9, source="extractor-1", base_units=1e-11)
+        usd_value=1e-9, source="extractor-1", base_units=1e-11
+    )
 
     assert out["applied"] is True
     assert out["state_readable"] is False
     assert out["ledger_readable"] is True
-    for key in ("lot_gap_usd", "holdings_gap_usd", "target_gap_usd",
-                "anchor_gap_usd"):
+    for key in ("lot_gap_usd", "holdings_gap_usd", "target_gap_usd", "anchor_gap_usd"):
         assert abs(out[key]) <= ScrummingBot._ARRIVAL_ATOMIC_TOL_USD, (
             f"{key} is outside tolerance; this test needs an arrival the "
-            f"residuals cannot resolve")
+            f"residuals cannot resolve"
+        )
     assert out["atomic"] is False, (
         "three balances came back as text and the verdict still said "
-        "the arrival was atomic")
+        "the arrival was atomic"
+    )
 
 
 def test_POSITIVE_CONTROL_the_same_tiny_arrival_is_atomic_when_readable():
@@ -2215,7 +2374,8 @@ def test_POSITIVE_CONTROL_the_same_tiny_arrival_is_atomic_when_readable():
     """
     bot = _bot(target=200.0, anchor=200.0, holdings=1.0, price=200.0)
     out = bot.apply_extractor_tranche_return(
-        usd_value=1e-9, source="extractor-1", base_units=1e-11)
+        usd_value=1e-9, source="extractor-1", base_units=1e-11
+    )
 
     assert out["applied"] is True
     assert out["state_readable"] is True

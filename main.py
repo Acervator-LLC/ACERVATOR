@@ -43,6 +43,7 @@ from typing import Optional, TYPE_CHECKING  # v3.23.88: _CRASH_LOG_PATH sentinel
 
 # Purge bytecache to ensure fresh source is always loaded
 import os, shutil
+
 for _root, _dirs, _ in os.walk(os.path.dirname(os.path.abspath(__file__))):
     for _d in _dirs:
         if _d == "__pycache__":
@@ -99,6 +100,7 @@ def _early_debug(msg: str, *args: object) -> None:
     try:
         import os as _o
         import sys as _s
+
         if _o.environ.get("ACERVATOR_DEBUG_BOOT") != "1":
             return
         _s.stderr.write("[boot] " + (msg % args if args else msg) + "\n")
@@ -164,13 +166,19 @@ def _check_stale_dist_binary() -> None:
     """
     try:
         live_init = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "src", "__init__.py")
+            os.path.dirname(os.path.abspath(__file__)), "src", "__init__.py"
+        )
         dist_init = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
-            "dist", "Acervator", "_internal", "src", "__init__.py")
+            "dist",
+            "Acervator",
+            "_internal",
+            "src",
+            "__init__.py",
+        )
         if not os.path.isfile(live_init) or not os.path.isfile(dist_init):
             return
+
         def _read_version(p):
             try:
                 with open(p, "r", encoding="utf-8") as f:
@@ -198,9 +206,9 @@ def _check_stale_dist_binary() -> None:
         # banner that runs above it.
         def _marker_path():
             from pathlib import Path as _P
+
             _override = os.environ.get(CRASH_LOG_ROOT_ENV)
-            marker_dir = (_P(_override) if _override
-                          else _P.home() / ".acervator_logs")
+            marker_dir = _P(_override) if _override else _P.home() / ".acervator_logs"
             return marker_dir / "STALE_DIST_WARNING.txt"
 
         def _report_clear_failure(path, exc):
@@ -223,7 +231,8 @@ def _check_stale_dist_binary() -> None:
                     f"removed: {path or '<unresolved>'} ({exc}). The "
                     "source and dist versions now AGREE, so that file "
                     "names versions that are no longer current. Delete "
-                    "it by hand.\n")
+                    "it by hand.\n"
+                )
                 stream.flush()
             except (OSError, ValueError, AttributeError) as _rep_exc:
                 _early_debug("stale-binary clear notice failed: %s", _rep_exc)
@@ -299,6 +308,7 @@ def _check_stale_dist_binary() -> None:
 # Defer the import of `sys` until we have it; this guard runs after the
 # stdlib imports below — but we need stderr now, so do a minimal import.
 import sys  # noqa: E402
+
 _check_stale_dist_binary()
 
 import asyncio
@@ -310,7 +320,6 @@ import threading
 import traceback
 from datetime import datetime
 from pathlib import Path
-
 
 # ---------------------------------------------------------------------------
 # MEM-217 (Session 24 Phase 3a) — faulthandler
@@ -330,6 +339,7 @@ from pathlib import Path
 # so that if any of those imports itself crashes, we still get a trace.
 # ---------------------------------------------------------------------------
 
+
 def _setup_faulthandler():
     """Open a per-run faulthandler log and register it. Returns the open
     file handle so the caller keeps it alive for the process lifetime.
@@ -341,8 +351,7 @@ def _setup_faulthandler():
     look for it, with the same name and the same header.
     """
     _override = os.environ.get(CRASH_LOG_ROOT_ENV)
-    log_dir = (Path(_override) if _override
-               else Path.home() / ".acervator_logs")
+    log_dir = Path(_override) if _override else Path.home() / ".acervator_logs"
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
     except Exception:
@@ -354,21 +363,29 @@ def _setup_faulthandler():
         # the entire process lifetime as the destination for fatal-
         # signal dumps. A `with` block would close it on exit, which
         # defeats the purpose. Deliberate long-lived handle.
-        fh_file = open(fh_path, "a", buffering=1)  # noqa: SIM115 - line-buffered lifetime handle
+        fh_file = open(
+            fh_path, "a", buffering=1
+        )  # noqa: SIM115 - line-buffered lifetime handle
         # Write a header so we can correlate with crash_*.log entries
-        fh_file.write(f"=== faulthandler started {datetime.now().isoformat()} "
-                      f"pid={os.getpid()} py={sys.version.split()[0]} "
-                      f"platform={sys.platform} ===\n")
+        fh_file.write(
+            f"=== faulthandler started {datetime.now().isoformat()} "
+            f"pid={os.getpid()} py={sys.version.split()[0]} "
+            f"platform={sys.platform} ===\n"
+        )
         fh_file.flush()
         faulthandler.enable(file=fh_file, all_threads=True)
         # On Unix, register SIGUSR1 to dump all threads on demand.
         # On Windows, faulthandler.register is not available for signals,
         # but faulthandler.enable() already covers the fatal signals.
-        if hasattr(faulthandler, 'register') and hasattr(__import__('signal'), 'SIGUSR1'):
+        if hasattr(faulthandler, "register") and hasattr(
+            __import__("signal"), "SIGUSR1"
+        ):
             try:
                 import signal
-                faulthandler.register(signal.SIGUSR1, file=fh_file,
-                                      all_threads=True, chain=False)
+
+                faulthandler.register(
+                    signal.SIGUSR1, file=fh_file, all_threads=True, chain=False
+                )
             except (AttributeError, ValueError, OSError):
                 pass
         return fh_file, fh_path
@@ -418,9 +435,14 @@ logger = logging.getLogger("acervator")
 # Acervator's own loggers stay at INFO (the operator-facing event stream
 # the dashboards consume).
 # ---------------------------------------------------------------------------
-for _noisy in ("ccxt", "ccxt.base", "ccxt.base.exchange",
-               "urllib3", "urllib3.connectionpool",
-               "urllib3.util.retry"):
+for _noisy in (
+    "ccxt",
+    "ccxt.base",
+    "ccxt.base.exchange",
+    "urllib3",
+    "urllib3.connectionpool",
+    "urllib3.util.retry",
+):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 
@@ -459,8 +481,7 @@ def _get_crash_log_path() -> Path:
     if _CRASH_LOG_PATH is not None:
         return _CRASH_LOG_PATH
     _override = os.environ.get(CRASH_LOG_ROOT_ENV)
-    log_dir = (Path(_override) if _override
-               else Path.home() / ".acervator_logs")
+    log_dir = Path(_override) if _override else Path.home() / ".acervator_logs"
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
     except Exception as _mk_exc:  # noqa: BLE001 - fall back to cwd
@@ -475,7 +496,7 @@ def _crash_log(category: str, message: str) -> None:
     never raises. Flushes immediately because the process may be
     about to die."""
     try:
-        ts = datetime.now().isoformat(timespec='milliseconds')
+        ts = datetime.now().isoformat(timespec="milliseconds")
         line = f"[{ts}] [{category}] [thread={threading.current_thread().name}] {message}\n"
         with open(_get_crash_log_path(), "a", encoding="utf-8") as f:
             f.write(line)
@@ -495,10 +516,10 @@ def _install_diagnostic_hooks() -> None:
 
     def _sys_excepthook(exc_type, exc_value, tb):
         tb_text = "".join(traceback.format_exception(exc_type, exc_value, tb))
-        _crash_log("SYS_EXCEPTHOOK",
-                   f"{exc_type.__name__}: {exc_value}\n{tb_text}")
+        _crash_log("SYS_EXCEPTHOOK", f"{exc_type.__name__}: {exc_value}\n{tb_text}")
         logger.error("UNCAUGHT EXCEPTION: %s: %s", exc_type.__name__, exc_value)
         import contextlib
+
         with contextlib.suppress(Exception):
             _original_excepthook(exc_type, exc_value, tb)
 
@@ -506,35 +527,56 @@ def _install_diagnostic_hooks() -> None:
 
     # --- threading.excepthook — uncaught exceptions in any Thread ---
     def _thread_excepthook(args):
-        tb_text = "".join(traceback.format_exception(
-            args.exc_type, args.exc_value, args.exc_traceback))
+        tb_text = "".join(
+            traceback.format_exception(
+                args.exc_type, args.exc_value, args.exc_traceback
+            )
+        )
         thread_name = args.thread.name if args.thread else "unknown"
-        _crash_log("THREAD_EXCEPTHOOK",
-                   f"thread={thread_name} {args.exc_type.__name__}: "
-                   f"{args.exc_value}\n{tb_text}")
-        logger.error("UNCAUGHT EXCEPTION in thread %s: %s: %s",
-                     thread_name, args.exc_type.__name__, args.exc_value)
+        _crash_log(
+            "THREAD_EXCEPTHOOK",
+            f"thread={thread_name} {args.exc_type.__name__}: "
+            f"{args.exc_value}\n{tb_text}",
+        )
+        logger.error(
+            "UNCAUGHT EXCEPTION in thread %s: %s: %s",
+            thread_name,
+            args.exc_type.__name__,
+            args.exc_value,
+        )
 
     threading.excepthook = _thread_excepthook
 
-    _crash_log("BOOT", f"Diagnostic hooks installed. Python {sys.version.split()[0]} on {sys.platform}.")
+    _crash_log(
+        "BOOT",
+        f"Diagnostic hooks installed. Python {sys.version.split()[0]} on {sys.platform}.",
+    )
 
 
 def _install_asyncio_handler(loop) -> None:
     """Install an asyncio exception handler on the given loop.
     Must be called AFTER the loop is created (see pump_async setup)."""
+
     def _asyncio_exception_handler(loop, context):
         msg = context.get("message", "")
         exc = context.get("exception")
         if exc:
-            tb_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-            _crash_log("ASYNCIO",
-                       f"{type(exc).__name__}: {exc} | message={msg}\n{tb_text}")
-            logger.error("UNHANDLED ASYNCIO EXCEPTION: %s: %s | message=%s",
-                         type(exc).__name__, exc, msg)
+            tb_text = "".join(
+                traceback.format_exception(type(exc), exc, exc.__traceback__)
+            )
+            _crash_log(
+                "ASYNCIO", f"{type(exc).__name__}: {exc} | message={msg}\n{tb_text}"
+            )
+            logger.error(
+                "UNHANDLED ASYNCIO EXCEPTION: %s: %s | message=%s",
+                type(exc).__name__,
+                exc,
+                msg,
+            )
         else:
             _crash_log("ASYNCIO", f"message={msg} | context={context}")
             logger.error("ASYNCIO ERROR: %s", msg)
+
     loop.set_exception_handler(_asyncio_exception_handler)
 
 
@@ -611,8 +653,8 @@ ASYNC_PUMP_INTERVAL_MS = 50
 
 
 def _make_async_pump_timer(
-        loop: asyncio.AbstractEventLoop,
-        interval_ms: int = ASYNC_PUMP_INTERVAL_MS) -> QTimer:
+    loop: asyncio.AbstractEventLoop, interval_ms: int = ASYNC_PUMP_INTERVAL_MS
+) -> QTimer:
     """Return the QTimer that drains `loop`'s ready callbacks.
 
     PreciseTimer is not decoration. A QTimer whose type is never set
@@ -654,6 +696,7 @@ def main() -> int:
     # successfully as a positive child-path signal. The env var is NOT
     # documented and is gated to test harness use only.
     import os as _os
+
     if _os.environ.get("_ACERVATOR_TEST_EXIT_IMMEDIATELY") == "1":
         sys.stderr.write("MEM-219 test hook: main() entered, exiting 0\n")
         return 0
@@ -671,14 +714,22 @@ def main() -> int:
 
     # --- Dependency check (non-blocking — warn only) ---------------------
     import importlib.util
+
     _missing = []
-    for _mod, _pip in [("ccxt", "ccxt"), ("cryptography", "cryptography"),
-                       ("aiohttp", "aiohttp"), ("numpy", "numpy")]:
+    for _mod, _pip in [
+        ("ccxt", "ccxt"),
+        ("cryptography", "cryptography"),
+        ("aiohttp", "aiohttp"),
+        ("numpy", "numpy"),
+    ]:
         if importlib.util.find_spec(_mod) is None:
             _missing.append(_pip)
     if _missing:
-        logger.warning("Missing packages: %s — install via: pip install %s",
-                       ", ".join(_missing), " ".join(_missing))
+        logger.warning(
+            "Missing packages: %s — install via: pip install %s",
+            ", ".join(_missing),
+            " ".join(_missing),
+        )
 
     # --- psutil auto-install (silent, best-effort) ----------------------
     # psutil is required for Nuclear mode. Rather than block the user
@@ -694,13 +745,19 @@ def main() -> int:
     if importlib.util.find_spec("psutil") is None:
         import sys as _sys
         import subprocess as _sp
-        logger.info("psutil not found — attempting silent install via "
-                     "`%s -m pip install psutil>=5.9.0`", _sys.executable)
+
+        logger.info(
+            "psutil not found — attempting silent install via "
+            "`%s -m pip install psutil>=5.9.0`",
+            _sys.executable,
+        )
         try:
             r = _sp.run(
-                [_sys.executable, "-m", "pip", "install", "--quiet",
-                 "psutil>=5.9.0"],
-                capture_output=True, text=True, timeout=60)
+                [_sys.executable, "-m", "pip", "install", "--quiet", "psutil>=5.9.0"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
             if r.returncode == 0:
                 importlib.invalidate_caches()
                 if importlib.util.find_spec("psutil") is not None:
@@ -709,17 +766,23 @@ def main() -> int:
                     logger.warning(
                         "pip reported success but psutil still not "
                         "importable — Nuclear mode will offer in-app "
-                        "install dialog on first use.")
+                        "install dialog on first use."
+                    )
             else:
                 logger.warning(
                     "Silent psutil install failed (rc=%d). Nuclear mode "
                     "will offer in-app install dialog on first use. "
-                    "stderr: %s", r.returncode, (r.stderr or "")[:400])
+                    "stderr: %s",
+                    r.returncode,
+                    (r.stderr or "")[:400],
+                )
         except Exception as _e:
             logger.warning(
                 "Silent psutil install errored (%s: %s). Nuclear mode "
                 "will offer in-app install dialog on first use.",
-                type(_e).__name__, _e)
+                type(_e).__name__,
+                _e,
+            )
 
     # --- Stone Tablets registry (v3.23.97) -----------------------------
     # Operator directive 2026-08-01: Stone Tablets are a core part of
@@ -727,25 +790,34 @@ def main() -> int:
     # from the first tick. Never fetches — pure index read.
     try:
         from src.trading.stone_tablets import get_registry as _get_st_reg
+
         _st = _get_st_reg()
         _cov = _st.coverage_summary()
         logger.info(
             "Stone Tablets: %d tablet(s) covering %d asset(s)",
-            sum(c.tablet_count for c in _cov), len(_cov))
+            sum(c.tablet_count for c in _cov),
+            len(_cov),
+        )
         _stale = _st.stale_assets(threshold_days=2)
         if _stale:
             logger.info(
-                "Stone Tablets: %d asset(s) stale (last candle "
-                ">2d old): %s", len(_stale), ", ".join(_stale[:10]))
+                "Stone Tablets: %d asset(s) stale (last candle " ">2d old): %s",
+                len(_stale),
+                ", ".join(_stale[:10]),
+            )
     except Exception as _st_exc:  # noqa: BLE001 - boot-diagnostic best-effort
         logger.warning(
             "Stone Tablets registry init failed at boot: %s "
-            "(sim replay will need to fetch on demand)", _st_exc)
+            "(sim replay will need to fetch on demand)",
+            _st_exc,
+        )
 
     # --- Core services --------------------------------------------------
     from src.core.settings import SettingsManager
     from src.core.logging_engine import LogManager
-    from src.core.encryption import KeyringManager  # v3.23.88: CredentialVault import retired (unused)
+    from src.core.encryption import (
+        KeyringManager,
+    )  # v3.23.88: CredentialVault import retired (unused)
     from src.core.event_bus import get_event_bus
     from src.trading.bot_container import BotManager
 
@@ -761,22 +833,28 @@ def main() -> int:
     # seeing the logs sub directories remain empty across iterations."
     # Pre-fix: log_trade() was defined but never called by anyone.
     log_manager.attach_to_bus(bus)
+
     # v3.16.60 — Symbol resolver. Operator-reported 2026-05-15: every
     # trade.log entry had empty "symbol" field because emit sites don't
     # include it. Resolver looks up bot.config.symbol by bot_id via
     # the BotManager so trade.log entries can be audited by asset.
     def _resolve_bot_symbol(bot_id: str) -> str:
         try:
-            bot = bot_manager.get_bot(bot_id) if hasattr(
-                bot_manager, "get_bot") else None
+            bot = (
+                bot_manager.get_bot(bot_id) if hasattr(bot_manager, "get_bot") else None
+            )
             if bot is None:
-                bot = bot_manager._bots.get(bot_id) if hasattr(
-                    bot_manager, "_bots") else None
+                bot = (
+                    bot_manager._bots.get(bot_id)
+                    if hasattr(bot_manager, "_bots")
+                    else None
+                )
             if bot is not None and hasattr(bot, "config"):
                 return str(getattr(bot.config, "symbol", "") or "")
         except Exception as _res_exc:  # noqa: BLE001 - R28-OK: resolver fail-soft
             logger.debug("symbol resolver skipped bot_id %r: %s", bot_id, _res_exc)
         return ""
+
     if hasattr(log_manager, "set_symbol_resolver"):
         log_manager.set_symbol_resolver(_resolve_bot_symbol)
 
@@ -794,10 +872,10 @@ def main() -> int:
     # application starts normally. Instrumentation never blocks launch.
     try:
         from src.core.signal_contract import install_process_sink
+
         _sig_sink = install_process_sink()
         if _sig_sink is not None:
-            log_manager.info(
-                f"Signal collection active -> {_sig_sink.path}")
+            log_manager.info(f"Signal collection active -> {_sig_sink.path}")
     except Exception as _sig_exc:  # noqa: BLE001 - advisory
         log_manager.warning(f"Signal collection unavailable: {_sig_exc}")
 
@@ -848,14 +926,16 @@ def main() -> int:
     # in heavy PySide6 + multi-threaded JSON-parsing applications.
     # ---------------------------------------------------------------------
     import gc as _gc
+
     _gc.disable()
     _gc_timer = QTimer()
     _gc_timer.timeout.connect(lambda: _gc.collect())
-    _gc_timer.start(5000)   # every 5 seconds on the GUI thread
+    _gc_timer.start(5000)  # every 5 seconds on the GUI thread
     log_manager.info(
         "MEM-263: automatic GC disabled; periodic gc.collect() "
         "scheduled on GUI thread (5s cadence). Mitigates CCXT-worker-"
-        "thread access violation pattern observed v3.18.1.")
+        "thread access violation pattern observed v3.18.1."
+    )
     # Keep the timer alive for the process lifetime by holding a
     # module-level reference (QTimer is garbage-collected normally
     # otherwise; we just disabled the only thing that would collect it
@@ -864,6 +944,7 @@ def main() -> int:
 
     # --- Apply theme ----------------------------------------------------
     from src.gui.theme_engine import ThemeManager
+
     theme_mgr = ThemeManager()
     theme_name = settings.get("theme", "cyberpunk_dark")
     theme_mgr.apply_theme(theme_name, app)
@@ -918,7 +999,8 @@ def main() -> int:
     if _preflight:
         log_manager.info(
             f"Preflight: {len(_preflight)} state file(s) copied aside "
-            f"before restore")
+            f"before restore"
+        )
     # v3.24.35 — surface pre-existing C01 damage while it is still
     # recoverable. The backup lags the primary by one save cycle, so a
     # bot present there and missing from the primary was pruned by the
@@ -927,15 +1009,18 @@ def main() -> int:
     if _damaged:
         log_manager.warning(
             f"Preflight: {len(_damaged)} bot(s) exist in the backup but "
-            f"NOT in the primary state file: {', '.join(_damaged[:5])}")
+            f"NOT in the primary state file: {', '.join(_damaged[:5])}"
+        )
 
     # Volume-aware trade execution guard
     from src.trading.volume_guard import VolumeGuard, VolumeGuardConfig
+
     volume_guard = VolumeGuard(config=VolumeGuardConfig())
     bot_manager.set_volume_guard(volume_guard)
 
     # Shared market data pool (one API call per timeframe, not per bot)
     from src.exchange.data_pool import get_data_pool
+
     data_pool = get_data_pool()
     bot_manager.set_data_pool(data_pool)
 
@@ -974,8 +1059,8 @@ def main() -> int:
             restored = bot_manager.restore_bots_from_state(saved)
             if restored:
                 crypto_window._status_log.log(
-                    f"Restored {len(restored)} bot(s) from previous session",
-                    "info")
+                    f"Restored {len(restored)} bot(s) from previous session", "info"
+                )
         # v3.15.68 — Bot Swarm state preservation: rehydrate Smart Wires
         # AFTER bots so register-by-id lookups succeed. Operator directive
         # 2026-04-26: "Bot swarm state is not being preserved."
@@ -983,11 +1068,11 @@ def main() -> int:
             wire_count = bot_manager.restore_smart_wires_from_state(saved)
             if wire_count:
                 crypto_window._status_log.log(
-                    f"Restored {wire_count} Smart Wire(s) from previous "
-                    f"session", "info")
+                    f"Restored {wire_count} Smart Wire(s) from previous " f"session",
+                    "info",
+                )
         except Exception as _wexc:
-            log_manager.warning(
-                f"Smart Wire restore raised: {_wexc}")
+            log_manager.warning(f"Smart Wire restore raised: {_wexc}")
 
         # v3.16.12 — auto-restart ALL restored bots with a progress dialog.
         # v3.16.11 had THREE problems compounding:
@@ -1001,14 +1086,18 @@ def main() -> int:
         # actual dialog + start_all() trigger fires from a QTimer
         # singleShot scheduled AFTER the splash fades AND the async
         # loop is alive. See line ~820 below.
-        _autostart_bot_count = len([
-            b for b in bot_manager._bots.values()
-            if b.state.value in ("idle", "stopped")
-        ])
+        _autostart_bot_count = len(
+            [
+                b
+                for b in bot_manager._bots.values()
+                if b.state.value in ("idle", "stopped")
+            ]
+        )
         if _autostart_bot_count > 0:
             log_manager.info(
                 f"Will auto-start {_autostart_bot_count} bot(s) "
-                f"after splash screen completes...")
+                f"after splash screen completes..."
+            )
 
     # --- Animated splash screen (frameless top-level window) ----------------
     from PySide6.QtWidgets import QWidget as _QW
@@ -1017,10 +1106,12 @@ def main() -> int:
 
     class SplashScreen(_QW):
         """Frameless splash with phased fade-in, glow, and fade-out."""
+
         def __init__(self, target_window):
             super().__init__(None)
             self.setWindowFlags(
-                Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.SplashScreen)
+                Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.SplashScreen
+            )
             self.setAttribute(Qt.WA_DeleteOnClose)
             self.setAttribute(Qt.WA_TranslucentBackground, False)
             self._target = target_window
@@ -1036,6 +1127,7 @@ def main() -> int:
             self._on_finished_callback = None
 
             from PySide6.QtWidgets import QApplication
+
             screen = QApplication.primaryScreen()
             if screen:
                 self.setGeometry(screen.geometry())
@@ -1078,10 +1170,13 @@ def main() -> int:
             x = max(0, min(1, (self._t - start) / duration))
             return x * x * (3 - 2 * x)
 
-        def paintEvent(self, _event):  # v3.23.88: Qt-required signature; body doesn't use event
+        def paintEvent(
+            self, _event
+        ):  # v3.23.88: Qt-required signature; body doesn't use event
             import math
             from src import __version__
             from PySide6.QtGui import QPen
+
             p = QPainter(self)
             p.setRenderHint(QPainter.Antialiasing)
             w, h = self.width(), self.height()
@@ -1123,8 +1218,9 @@ def main() -> int:
                 glow_r = int(60 * pulse)
                 p.setPen(Qt.NoPen)
                 p.setBrush(QColor(0, 255, 238, logo_a // 8))
-                p.drawEllipse(QRectF(cx - glow_r, logo_y - glow_r,
-                                     glow_r * 2, glow_r * 2))
+                p.drawEllipse(
+                    QRectF(cx - glow_r, logo_y - glow_r, glow_r * 2, glow_r * 2)
+                )
 
             pen = QPen(QColor(0, 255, 238, logo_a))
             pen.setWidthF(2.0)
@@ -1177,51 +1273,71 @@ def main() -> int:
                 pen2 = QPen(QColor(0, 255, 238, sub_a))
                 pen2.setWidthF(1.5)
                 p.setPen(pen2)
-                p.drawLine(int(cx - line_w / 2), int(cy + 22),
-                           int(cx + line_w / 2), int(cy + 22))
+                p.drawLine(
+                    int(cx - line_w / 2),
+                    int(cy + 22),
+                    int(cx + line_w / 2),
+                    int(cy + 22),
+                )
 
             p.setPen(QColor(140, 155, 210, sub_a))
             p.setFont(QFont("Segoe UI", 12))
-            p.drawText(QRectF(0, cy + 30, w, 22), Qt.AlignCenter,
-                       "An Accumulation Trading Platform")
+            p.drawText(
+                QRectF(0, cy + 30, w, 22),
+                Qt.AlignCenter,
+                "An Accumulation Trading Platform",
+            )
 
             p.setPen(QColor(90, 150, 255, sub_a))
             p.setFont(QFont("Consolas", 9))
-            p.drawText(QRectF(0, cy + 55, w, 16), Qt.AlignCenter,
-                       f"v{__version__}")
+            p.drawText(QRectF(0, cy + 55, w, 16), Qt.AlignCenter, f"v{__version__}")
 
             p.setPen(QColor(140, 140, 170, cred_a))
             p.setFont(QFont("Segoe UI", 9))
-            p.drawText(QRectF(0, cy + 90, w, 16), Qt.AlignCenter,
-                       "Designed, prompted, and engineered by")
+            p.drawText(
+                QRectF(0, cy + 90, w, 16),
+                Qt.AlignCenter,
+                "Designed, prompted, and engineered by",
+            )
             p.setPen(QColor(255, 200, 80, cred_a))
             p.setFont(QFont("Segoe UI", 13, QFont.Bold))
-            p.drawText(QRectF(0, cy + 108, w, 24), Qt.AlignCenter,
-                       "Ekthelius the Accumulator")
+            p.drawText(
+                QRectF(0, cy + 108, w, 24), Qt.AlignCenter, "Ekthelius the Accumulator"
+            )
             p.setPen(QColor(180, 170, 140, int(cred_a * 0.7)))
             p.setFont(QFont("Segoe UI", 9))
-            p.drawText(QRectF(0, cy + 132, w, 16), Qt.AlignCenter,
-                       "a.k.a. Anthony L. Brown")
+            p.drawText(
+                QRectF(0, cy + 132, w, 16), Qt.AlignCenter, "a.k.a. Anthony L. Brown"
+            )
 
             p.setPen(QColor(140, 140, 170, cred_a))
             p.setFont(QFont("Segoe UI", 9))
-            p.drawText(QRectF(0, cy + 160, w, 16), Qt.AlignCenter,
-                       "Built, simulated, tested, and verified by")
+            p.drawText(
+                QRectF(0, cy + 160, w, 16),
+                Qt.AlignCenter,
+                "Built, simulated, tested, and verified by",
+            )
             p.setPen(QColor(120, 160, 255, cred_a))
             p.setFont(QFont("Segoe UI", 12, QFont.Bold))
-            p.drawText(QRectF(0, cy + 178, w, 20), Qt.AlignCenter,
-                       "Claude of Anthropic")
+            p.drawText(
+                QRectF(0, cy + 178, w, 20), Qt.AlignCenter, "Claude of Anthropic"
+            )
 
             if t > 3.0:
                 hint_a = int(min(1, (t - 3.0) / 0.5) * 80)
                 p.setPen(QColor(80, 80, 110, hint_a))
                 p.setFont(QFont("Segoe UI", 8))
-                p.drawText(QRectF(0, h - 30, w, 16), Qt.AlignCenter,
-                           "click anywhere to continue")
+                p.drawText(
+                    QRectF(0, h - 30, w, 16),
+                    Qt.AlignCenter,
+                    "click anywhere to continue",
+                )
 
             p.end()
 
-        def mousePressEvent(self, _event):  # v3.23.88: Qt-required signature; body doesn't use event
+        def mousePressEvent(
+            self, _event
+        ):  # v3.23.88: Qt-required signature; body doesn't use event
             self._t = 6.0
             self._phase = "fadeout"
 
@@ -1244,11 +1360,14 @@ def main() -> int:
     # 2026-05-01 RuntimeError on BONK after creating a 15th bot).
     try:
         bot_manager.set_async_loop(loop)
-    except Exception as _bm_loop_exc:  # R28-OK: defensive — bot_manager may pre-date set_async_loop in older builds
+    except (
+        Exception
+    ) as _bm_loop_exc:  # R28-OK: defensive — bot_manager may pre-date set_async_loop in older builds
         log_manager.warning(
             f"BotManager.set_async_loop wiring failed: "
             f"{_bm_loop_exc}. Falling back to legacy throwaway-loop "
-            f"bootstrap pattern (cross-loop Lock risk).")
+            f"bootstrap pattern (cross-loop Lock risk)."
+        )
 
     # v3.24.xx — bulk ticker refresher (operator item 1, 2026-08-06:
     # "the Ammo read out is not updating often enough").
@@ -1273,12 +1392,16 @@ def main() -> int:
         if bot_manager.start_ticker_refresher(TICKER_REFRESH_SECONDS):
             log_manager.info(
                 f"Bulk ticker refresher started "
-                f"(every {TICKER_REFRESH_SECONDS:.1f}s).")
-    except Exception as _tr_exc:  # R28-OK: display-freshness optimisation must never block startup
+                f"(every {TICKER_REFRESH_SECONDS:.1f}s)."
+            )
+    except (
+        Exception
+    ) as _tr_exc:  # R28-OK: display-freshness optimisation must never block startup
         log_manager.warning(
             f"Bulk ticker refresher not started: {_tr_exc}. Bots keep "
             f"their individual fetch path; Ammo refreshes at each bot's "
-            f"read-rate cadence.")
+            f"read-rate cadence."
+        )
 
     # MEM-216 — install exception handler on the loop. Unhandled
     # exceptions in scheduled coroutines (e.g., bot.start() raising
@@ -1297,7 +1420,7 @@ def main() -> int:
     _write_heartbeat()
     heartbeat_timer = QTimer()
     heartbeat_timer.timeout.connect(_write_heartbeat)
-    heartbeat_timer.start(2000)   # 2 seconds
+    heartbeat_timer.start(2000)  # 2 seconds
 
     # Periodic state save (every 60 seconds)
     def periodic_save():
@@ -1328,7 +1451,8 @@ def main() -> int:
     def _trigger_auto_restart():
         try:
             eligible = [
-                b for b in bot_manager._bots.values()
+                b
+                for b in bot_manager._bots.values()
                 if b.state.value in ("idle", "stopped")
             ]
             if not eligible:
@@ -1336,9 +1460,10 @@ def main() -> int:
                 return
             log_manager.info(
                 f"Auto-restart firing for {len(eligible)} bot(s) "
-                f"(verify-then-next staggered, GUI-thread)...")
-            from src.gui.start_all_progress_dialog import (
-                StartAllProgressDialog)
+                f"(verify-then-next staggered, GUI-thread)..."
+            )
+            from src.gui.start_all_progress_dialog import StartAllProgressDialog
+
             dlg = StartAllProgressDialog(bot_manager, parent=crypto_window)
             dlg.show()
             dlg.raise_()
@@ -1347,8 +1472,8 @@ def main() -> int:
             total = len(eligible)
             bot_manager._start_all_cancel = False
             bot_manager._bus.emit(
-                "bot_manager.start_all_progress",
-                phase="begin", total=total, started=0)
+                "bot_manager.start_all_progress", phase="begin", total=total, started=0
+            )
 
             VERIFY_TIMEOUT_S = 8.0
             POLL_INTERVAL_MS = 250
@@ -1370,18 +1495,27 @@ def main() -> int:
                 if idx >= total:
                     bot_manager._bus.emit(
                         "bot_manager.start_all_progress",
-                        phase="done", total=total, started=total)
+                        phase="done",
+                        total=total,
+                        started=total,
+                    )
                     return
                 if getattr(bot_manager, "_start_all_cancel", False):
                     bot_manager._bus.emit(
                         "bot_manager.start_all_progress",
-                        phase="cancelled", total=total, started=idx)
+                        phase="cancelled",
+                        total=total,
+                        started=idx,
+                    )
                     return
                 bot = eligible[idx]
                 bot_manager._bus.emit(
                     "bot_manager.start_all_progress",
                     phase="bot_starting",
-                    total=total, started=idx, bot_id=bot.bot_id)
+                    total=total,
+                    started=idx,
+                    bot_id=bot.bot_id,
+                )
                 # Use the GUI's full-start flow (decrypts creds,
                 # connects exchange, then schedules bot.start()).
                 try:
@@ -1389,9 +1523,11 @@ def main() -> int:
                 except Exception as _start_exc:
                     log_manager.warning(
                         f"Auto-start of bot {bot.bot_id} via "
-                        f"_on_bot_command raised: {_start_exc}")
+                        f"_on_bot_command raised: {_start_exc}"
+                    )
 
                 import time as _t
+
                 _start_at = _t.monotonic()
 
                 def _verify_or_next() -> None:
@@ -1400,25 +1536,29 @@ def main() -> int:
                         bot_manager._bus.emit(
                             "bot_manager.start_all_progress",
                             phase="cancelled",
-                            total=total, started=idx)
+                            total=total,
+                            started=idx,
+                        )
                         return
                     if bot.state.value == "running":
                         bot_manager._bus.emit(
                             "bot_manager.start_all_progress",
                             phase="bot_started",
-                            total=total, started=idx + 1,
-                            bot_id=bot.bot_id)
-                        QTimer.singleShot(
-                            MIN_GAP_MS, lambda: _start_one(idx + 1))
+                            total=total,
+                            started=idx + 1,
+                            bot_id=bot.bot_id,
+                        )
+                        QTimer.singleShot(MIN_GAP_MS, lambda: _start_one(idx + 1))
                     elif elapsed >= VERIFY_TIMEOUT_S:
                         bot_manager._bus.emit(
                             "bot_manager.start_all_progress",
                             phase="bot_timeout",
-                            total=total, started=idx + 1,
+                            total=total,
+                            started=idx + 1,
                             bot_id=bot.bot_id,
-                            timeout_seconds=VERIFY_TIMEOUT_S)
-                        QTimer.singleShot(
-                            MIN_GAP_MS, lambda: _start_one(idx + 1))
+                            timeout_seconds=VERIFY_TIMEOUT_S,
+                        )
+                        QTimer.singleShot(MIN_GAP_MS, lambda: _start_one(idx + 1))
                     else:
                         QTimer.singleShot(POLL_INTERVAL_MS, _verify_or_next)
 
@@ -1431,7 +1571,8 @@ def main() -> int:
             log_manager.warning(
                 f"Auto-restart trigger raised: {exc}. "
                 f"Bots remain in IDLE; operator can start manually via "
-                f"Start All button.")
+                f"Start All button."
+            )
 
     if _autostart_bot_count > 0:
         # v3.16.18 — splash-strict auto-start hand-off (operator
@@ -1452,7 +1593,9 @@ def main() -> int:
         # before, but STRICTLY after the splash painter is done.
         try:
             _splash._on_finished_callback = _trigger_auto_restart
-        except Exception:  # R28-OK: splash may have been torn down early; fall back to fixed timer
+        except (
+            Exception
+        ):  # R28-OK: splash may have been torn down early; fall back to fixed timer
             QTimer.singleShot(9500, _trigger_auto_restart)
 
     log_manager.info("Application ready — main window displayed")
@@ -1473,16 +1616,14 @@ def main() -> int:
         _pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
         if _pending:
             log_manager.info(
-                "Cancelling %d still-pending asyncio tasks before "
-                "loop.close()", len(_pending))
+                "Cancelling %d still-pending asyncio tasks before " "loop.close()",
+                len(_pending),
+            )
             for _t in _pending:
                 _t.cancel()
-            loop.run_until_complete(
-                asyncio.gather(*_pending, return_exceptions=True))
+            loop.run_until_complete(asyncio.gather(*_pending, return_exceptions=True))
     except Exception as _cancel_exc:  # noqa: BLE001 - shutdown best-effort
-        log_manager.warning(
-            "pending-task drain at shutdown raised: %s",
-            _cancel_exc)
+        log_manager.warning("pending-task drain at shutdown raised: %s", _cancel_exc)
     loop.close()
     log_manager.info("Application shutdown complete")
 
@@ -1531,13 +1672,15 @@ if __name__ == "__main__":
         # Watchdog mode — spawn self as child, supervise from outside.
         try:
             import acervator_watchdog as _wd
+
             sys.exit(_wd.run_self_watchdog(frozen=_is_frozen))
         except Exception as _exc:
             # If the watchdog itself cannot start (e.g., bundled spec
             # missed acervator_watchdog.py), fall back to running the
             # app directly so the operator is never blocked.
-            sys.stderr.write(f"MEM-219: watchdog failed ({_exc}); "
-                             f"running app directly.\n")
+            sys.stderr.write(
+                f"MEM-219: watchdog failed ({_exc}); " f"running app directly.\n"
+            )
             sys.exit(main())
     else:
         # Dev default — run app directly. Pass --watchdog to supervise.

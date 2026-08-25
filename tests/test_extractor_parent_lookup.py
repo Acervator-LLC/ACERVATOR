@@ -31,6 +31,7 @@ THE TABLE BELOW IS THE WHOLE ACCEPTED SET. It was written before the
 lookup existed. Each row names the bots on the books, the currency
 handed back, and the bot that must come out.
 """
+
 from __future__ import annotations
 
 import sys
@@ -62,12 +63,16 @@ def _bot(kind: str, bot_id: str, target_asset: str, exchange: str):
     mode = BotMode.SCRUMMING if kind == SCRUMMING else BotMode.EXTRACTOR
     bot = object.__new__(cls)
     bot.bot_id = bot_id
-    bot.config = type("_Cfg", (), {
-        "exchange_id": exchange,
-        "mode": mode,
-        "target_asset": target_asset,
-        "base_currency": "USD",
-    })()
+    bot.config = type(
+        "_Cfg",
+        (),
+        {
+            "exchange_id": exchange,
+            "mode": mode,
+            "target_asset": target_asset,
+            "base_currency": "USD",
+        },
+    )()
     return bot
 
 
@@ -92,32 +97,46 @@ ONE_ETH_HOLDER = [(SCRUMMING, "scrum-eth", "ETH", COINBASE)]
 # (row name, bots on the books, exchange asking, currency handed back,
 #  bot id expected)
 TABLE = [
-    ("1 one holder",
-     ONE_ETH_HOLDER, COINBASE, "ETH", "scrum-eth"),
-    ("2 no holder",
-     [(SCRUMMING, "scrum-btc", "BTC", COINBASE)], COINBASE, "ETH", None),
-    ("3 two holders refuse",
-     [(SCRUMMING, "scrum-eth-a", "ETH", COINBASE),
-      (SCRUMMING, "scrum-eth-b", "ETH", COINBASE)], COINBASE, "ETH", None),
-    ("4 lower case",
-     ONE_ETH_HOLDER, COINBASE, "eth", "scrum-eth"),
-    ("5 surrounding spaces",
-     ONE_ETH_HOLDER, COINBASE, "  ETH  ", "scrum-eth"),
-    ("6a empty text",
-     ONE_ETH_HOLDER, COINBASE, "", None),
-    ("6b nothing",
-     ONE_ETH_HOLDER, COINBASE, None, None),
-    ("6c a number",
-     ONE_ETH_HOLDER, COINBASE, 123, None),
-    ("7 holder is an extractor",
-     [(EXTRACTOR, "extract-eth", "ETH", COINBASE)], COINBASE, "ETH", None),
+    ("1 one holder", ONE_ETH_HOLDER, COINBASE, "ETH", "scrum-eth"),
+    ("2 no holder", [(SCRUMMING, "scrum-btc", "BTC", COINBASE)], COINBASE, "ETH", None),
+    (
+        "3 two holders refuse",
+        [
+            (SCRUMMING, "scrum-eth-a", "ETH", COINBASE),
+            (SCRUMMING, "scrum-eth-b", "ETH", COINBASE),
+        ],
+        COINBASE,
+        "ETH",
+        None,
+    ),
+    ("4 lower case", ONE_ETH_HOLDER, COINBASE, "eth", "scrum-eth"),
+    ("5 surrounding spaces", ONE_ETH_HOLDER, COINBASE, "  ETH  ", "scrum-eth"),
+    ("6a empty text", ONE_ETH_HOLDER, COINBASE, "", None),
+    ("6b nothing", ONE_ETH_HOLDER, COINBASE, None, None),
+    ("6c a number", ONE_ETH_HOLDER, COINBASE, 123, None),
+    (
+        "7 holder is an extractor",
+        [(EXTRACTOR, "extract-eth", "ETH", COINBASE)],
+        COINBASE,
+        "ETH",
+        None,
+    ),
     # 8 and 9 are one pair. They differ in the holder's exchange and in
     # nothing else, so 9 finding nothing can only be the exchange.
-    ("8 the holder is on the same exchange",
-     [(SCRUMMING, "scrum-eth", "ETH", COINBASE)], COINBASE, "ETH",
-     "scrum-eth"),
-    ("9 the only holder is on another exchange",
-     [(SCRUMMING, "scrum-eth", "ETH", KRAKEN)], COINBASE, "ETH", None),
+    (
+        "8 the holder is on the same exchange",
+        [(SCRUMMING, "scrum-eth", "ETH", COINBASE)],
+        COINBASE,
+        "ETH",
+        "scrum-eth",
+    ),
+    (
+        "9 the only holder is on another exchange",
+        [(SCRUMMING, "scrum-eth", "ETH", KRAKEN)],
+        COINBASE,
+        "ETH",
+        None,
+    ),
 ]
 
 
@@ -130,14 +149,16 @@ def test_parent_lookup_table(entries, asked_from, handed_back, expected_id):
     manager = _manager(entries)
     try:
         found = manager.find_parent_bot_for_base_currency(
-            handed_back, exchange_id=asked_from)
+            handed_back, exchange_id=asked_from
+        )
     finally:
         manager.detach_bus()
 
     if expected_id is None:
         assert found is None, (
             f"expected no parent for {handed_back!r}, got "
-            f"{getattr(found, 'bot_id', found)!r}")
+            f"{getattr(found, 'bot_id', found)!r}"
+        )
     else:
         assert found is not None, f"expected {expected_id}, got nothing"
         assert found.bot_id == expected_id
@@ -149,8 +170,7 @@ def test_the_bot_that_comes_back_can_take_the_money():
     """
     manager = _manager(ONE_ETH_HOLDER)
     try:
-        found = manager.find_parent_bot_for_base_currency(
-            "ETH", exchange_id=COINBASE)
+        found = manager.find_parent_bot_for_base_currency("ETH", exchange_id=COINBASE)
     finally:
         manager.detach_bus()
     assert callable(getattr(found, "apply_extractor_tranche_return", None))
@@ -163,7 +183,9 @@ def test_an_empty_set_of_books_finds_nothing():
     """
     manager = _manager([])
     try:
-        assert manager.find_parent_bot_for_base_currency(
-            "ETH", exchange_id=COINBASE) is None
+        assert (
+            manager.find_parent_bot_for_base_currency("ETH", exchange_id=COINBASE)
+            is None
+        )
     finally:
         manager.detach_bus()

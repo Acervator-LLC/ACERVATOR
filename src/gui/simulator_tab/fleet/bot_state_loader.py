@@ -12,6 +12,7 @@ This keeps the sim isolated from any lingering live-side state
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import json
@@ -23,8 +24,7 @@ from typing import Any, Optional
 
 logger = logging.getLogger("acervator.simulator.fleet.bot_state_loader")
 
-BOT_STATE_PATH: Path = Path(
-    os.path.expanduser("~/.acervator/bot_state.json"))
+BOT_STATE_PATH: Path = Path(os.path.expanduser("~/.acervator/bot_state.json"))
 """Live state file path — read-only from sim."""
 
 
@@ -36,19 +36,17 @@ def _read_state_file(path: Path) -> dict:
         logger.warning("bot_state loader: file not found at %s", path)
         return {}
     except json.JSONDecodeError as exc:
-        logger.warning(
-            "bot_state loader: JSON decode error in %s: %s", path, exc)
+        logger.warning("bot_state loader: JSON decode error in %s: %s", path, exc)
         return {}
     if not isinstance(data, dict):
         logger.warning(
-            "bot_state loader: top-level is %s, expected dict",
-            type(data).__name__)
+            "bot_state loader: top-level is %s, expected dict", type(data).__name__
+        )
         return {}
     return data
 
 
-CARRIED_SECTIONS: tuple[str, ...] = (
-    "bot_id", "config", "scrumming_state", "stats")
+CARRIED_SECTIONS: tuple[str, ...] = ("bot_id", "config", "scrumming_state", "stats")
 """The bot_state sections this loader forwards, and the ONLY ones.
 
 10.4. This is the CARRY CONTRACT, and `fleet.03.003` is judged against
@@ -111,19 +109,25 @@ def _sections_carried(
     """
     src_cfg = entry.get("config")
     checks = (
-        ("bot_id", True,
-         loaded is not None and loaded.get("_src_bot_id") == bot_id),
-        ("config", "config" in entry,
-         loaded is not None and isinstance(src_cfg, dict)
-         and set(src_cfg) <= set(loaded)),
-        ("scrumming_state", "scrumming_state" in entry,
-         loaded is not None and "_src_scrumming_state" in loaded),
-        ("stats", "stats" in entry,
-         loaded is not None and "_src_stats" in loaded),
+        ("bot_id", True, loaded is not None and loaded.get("_src_bot_id") == bot_id),
+        (
+            "config",
+            "config" in entry,
+            loaded is not None
+            and isinstance(src_cfg, dict)
+            and set(src_cfg) <= set(loaded),
+        ),
+        (
+            "scrumming_state",
+            "scrumming_state" in entry,
+            loaded is not None and "_src_scrumming_state" in loaded,
+        ),
+        ("stats", "stats" in entry, loaded is not None and "_src_stats" in loaded),
     )
     offered = [name for name, is_offered, _ in checks if is_offered]
-    landed = [name for name, is_offered, has_landed in checks
-              if is_offered and has_landed]
+    landed = [
+        name for name, is_offered, has_landed in checks if is_offered and has_landed
+    ]
     dropped = sorted(k for k in entry if k not in CARRIED_SECTIONS)
     return offered, landed, dropped
 
@@ -152,8 +156,8 @@ def load_bot_configs_from_state(
     bots = data.get("bots") or {}
     if not isinstance(bots, dict):
         logger.warning(
-            "bot_state loader: bots must be a dict, got %s",
-            type(bots).__name__)
+            "bot_state loader: bots must be a dict, got %s", type(bots).__name__
+        )
         return []
     out: list[dict[str, Any]] = []
     for bot_id, entry in bots.items():
@@ -220,19 +224,26 @@ def load_bot_configs_from_state(
     from src.core.signal_contract import emit as _emit
 
     _eligible = [
-        bid for bid, e in bots.items()
-        if isinstance(e, dict) and isinstance(e.get("config"), dict)
-        and (not mode_filter
-             or (e["config"].get("mode") or "").lower() == mode_filter)
+        bid
+        for bid, e in bots.items()
+        if isinstance(e, dict)
+        and isinstance(e.get("config"), dict)
+        and (not mode_filter or (e["config"].get("mode") or "").lower() == mode_filter)
     ]
-    _emit("fleet.03.001.postcondition.bots_loaded", actual=len(out), expected=len(_eligible),
-          duration=_dur_elapsed,
-          context={"mode_filter": mode_filter})
+    _emit(
+        "fleet.03.001.postcondition.bots_loaded",
+        actual=len(out),
+        expected=len(_eligible),
+        duration=_dur_elapsed,
+        context={"mode_filter": mode_filter},
+    )
 
     # Traceability: sim ids must BE the live ids.
-    _emit("fleet.03.002.invariant.bot_ids_mirror_live",
-          actual=sorted(c.get("_src_bot_id", "") for c in out),
-          expected=sorted(_eligible))
+    _emit(
+        "fleet.03.002.invariant.bot_ids_mirror_live",
+        actual=sorted(c.get("_src_bot_id", "") for c in out),
+        expected=sorted(_eligible),
+    )
 
     # The "all pieces" qualifier. Records which sections of a bot_state
     # entry reach the sim and which the loader has no carry for, so an
@@ -276,20 +287,23 @@ def load_bot_configs_from_state(
         _dropped: set[str] = set()
         _missing: list[str] = []
         for _bid in _eligible:
-            _o, _l, _d = _sections_carried(
-                bots[_bid], _by_id.get(str(_bid)), str(_bid))
+            _o, _l, _d = _sections_carried(bots[_bid], _by_id.get(str(_bid)), str(_bid))
             _offered += len(_o)
             _landed += len(_l)
             _dropped.update(_d)
             _missing.extend(f"{_bid}.{_s}" for _s in _o if _s not in _l)
-        _emit("fleet.03.003.invariant.sections_imported",
-              actual=_landed,
-              expected=_offered,
-              context={"bots": len(_eligible),
-                       "carries": list(CARRIED_SECTIONS),
-                       "dropped": sorted(_dropped),
-                       "missing": _missing[:10],
-                       "missing_total": len(_missing)})
+        _emit(
+            "fleet.03.003.invariant.sections_imported",
+            actual=_landed,
+            expected=_offered,
+            context={
+                "bots": len(_eligible),
+                "carries": list(CARRIED_SECTIONS),
+                "dropped": sorted(_dropped),
+                "missing": _missing[:10],
+                "missing_total": len(_missing),
+            },
+        )
     return out
 
 
@@ -323,8 +337,8 @@ def load_smart_wires_from_state(
     wires = data.get("smart_wires") or []
     if not isinstance(wires, list):
         logger.warning(
-            "bot_state loader: smart_wires must be a list, got %s",
-            type(wires).__name__)
+            "bot_state loader: smart_wires must be a list, got %s", type(wires).__name__
+        )
         return []
     out = [w for w in wires if isinstance(w, dict)]
     # `out` is complete; stop before the emitter's own block, for the
@@ -335,8 +349,13 @@ def load_smart_wires_from_state(
     # Nothing recorded how many were persisted versus how many reached
     # the sim, so a partial topology import was invisible.
     from src.core.signal_contract import emit as _emit
-    _emit("fleet.03.004.postcondition.wires_loaded", actual=len(out),
-          expected=len(wires), duration=_dur_elapsed)
+
+    _emit(
+        "fleet.03.004.postcondition.wires_loaded",
+        actual=len(out),
+        expected=len(wires),
+        duration=_dur_elapsed,
+    )
     return out
 
 

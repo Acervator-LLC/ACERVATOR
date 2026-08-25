@@ -1,0 +1,23 @@
+# flake8 configuration — kept in sync with black (see [tool.black] in
+# pyproject.toml). flake8 does not read pyproject.toml, so it lives here.
+#
+# Philosophy: black owns layout/whitespace, so flake8 ignores the codes black
+# is responsible for and focuses on the things black cannot see — unused
+# imports/names, undefined names, and other real defects (the F-codes).
+[flake8]
+max-line-length = 88
+
+# E203 / W503 / W504 / E704: layout decisions black makes deliberately and
+#   pycodestyle disagrees with. Ignoring them is the standard black+flake8 pin.
+# E501: line length is black's job; black leaves only lines it cannot wrap
+#   (long strings, URLs), and flagging those adds noise without a safe fix.
+extend-ignore = E203, W503, W504, E704, E501
+
+exclude =
+    .git,
+    .venv,
+    __pycache__,
+    build,
+    dist,
+    *.egg-info,
+    tests/obsolete

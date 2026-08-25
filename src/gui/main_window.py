@@ -69,8 +69,7 @@ def _ammo_price_pool():
         return None
 
 
-def _fresh_display_price(pool, exchange_id: str, symbol: str,
-                         fallback_price: float):
+def _fresh_display_price(pool, exchange_id: str, symbol: str, fallback_price: float):
     """Best available price for DISPLAY, plus its age in seconds.
 
     WHY THIS EXISTS (corrects a wrong fix shipped 2026-08-06)
@@ -103,14 +102,23 @@ def _fresh_display_price(pool, exchange_id: str, symbol: str,
             if last > 0 and fetched > 0:
                 return last, max(0.0, time.time() - fetched)
     except Exception:  # R28-OK: display path must never raise on a cache read
-        logger.debug("Ammo: pool price lookup failed for %s/%s",
-                     exchange_id, symbol, exc_info=True)
+        logger.debug(
+            "Ammo: pool price lookup failed for %s/%s",
+            exchange_id,
+            symbol,
+            exc_info=True,
+        )
     return fallback_price, None
 
 
-def _compose_ammo_cell(stats_pv: float, holdings: float, cur_price: float,
-                       qrate: float, target_val: float,
-                       price_age_s: float | None = None) -> dict:
+def _compose_ammo_cell(
+    stats_pv: float,
+    holdings: float,
+    cur_price: float,
+    qrate: float,
+    target_val: float,
+    price_age_s: float | None = None,
+) -> dict:
     """Compute the Ammo cell: distance from target, and its signal.
 
     v3.24.38 (C10 / NF-5). Extracted from ``update_bots`` so the most
@@ -138,6 +146,7 @@ def _compose_ammo_cell(stats_pv: float, holdings: float, cur_price: float,
 
     Returns {text, color, tip, delta, stale, position_val}.
     """
+
     def _mag(v: float) -> str:
         return f"${abs(v):,.4f}"
 
@@ -155,19 +164,32 @@ def _compose_ammo_cell(stats_pv: float, holdings: float, cur_price: float,
         # full target as a Fold signal; the operator needs initial
         # entry. Not hidden, and not a rogue $0.
         delta = 0.0 - target_val
-        return {"text": _mag(delta) if target_val > 0 else "---",
-                "color": _AMMO_FOLD, "delta": delta, "stale": False,
-                "position_val": position_val,
-                "tip": ("No position — initial entry pending. "
-                        "Ammo = full target (bot must buy in).")}
+        return {
+            "text": _mag(delta) if target_val > 0 else "---",
+            "color": _AMMO_FOLD,
+            "delta": delta,
+            "stale": False,
+            "position_val": position_val,
+            "tip": (
+                "No position — initial entry pending. "
+                "Ammo = full target (bot must buy in)."
+            ),
+        }
 
     if position_val <= 0 and holdings > 0:
         # Holdings exist, no price and no cached value. Honest pending
         # marker — do NOT render $0.
-        return {"text": "pending…", "color": _AMMO_NEUTRAL, "delta": 0.0,
-                "stale": False, "position_val": position_val,
-                "tip": (f"Holdings present ({holdings:.6f}) but price not "
-                        f"yet fetched. Ammo will update on first tick.")}
+        return {
+            "text": "pending…",
+            "color": _AMMO_NEUTRAL,
+            "delta": 0.0,
+            "stale": False,
+            "position_val": position_val,
+            "tip": (
+                f"Holdings present ({holdings:.6f}) but price not "
+                f"yet fetched. Ammo will update on first tick."
+            ),
+        }
 
     delta = position_val - target_val
     # Dust band: max(target x 0.001, $0.01). Below this the bot is
@@ -191,10 +213,12 @@ def _compose_ammo_cell(stats_pv: float, holdings: float, cur_price: float,
     mf_dust = max(target_val * _MANUAL_FIRE_DUST_PCT, 0.01)
     manual_fire_noop = 0 < abs(delta) <= mf_dust
     if manual_fire_noop and not stale:
-        tip = (f"{tip}\n\nMANUAL FIRE WILL NOT ACT: |delta| "
-               f"${abs(delta):,.4f} is inside Manual Fire's own dust "
-               f"band of ${mf_dust:,.2f} (1% of target). The autonomous "
-               f"engine still works this range; the button will no-op.")
+        tip = (
+            f"{tip}\n\nMANUAL FIRE WILL NOT ACT: |delta| "
+            f"${abs(delta):,.4f} is inside Manual Fire's own dust "
+            f"band of ${mf_dust:,.2f} (1% of target). The autonomous "
+            f"engine still works this range; the button will no-op."
+        )
 
     text = _mag(delta) if target_val > 0 else "---"
     if stale:
@@ -204,9 +228,11 @@ def _compose_ammo_cell(stats_pv: float, holdings: float, cur_price: float,
         # unmarked figure of unknown age is what NF-5 was.
         color = _AMMO_NEUTRAL
         text = f"{text} {_STALE_MARKER}"
-        tip = (f"STALE — price unavailable this tick, so this is the last "
-               f"known position value (${stats_pv:,.4f}), not a current "
-               f"one. Do not fire on it.")
+        tip = (
+            f"STALE — price unavailable this tick, so this is the last "
+            f"known position value (${stats_pv:,.4f}), not a current "
+            f"one. Do not fire on it."
+        )
     elif price_age_s is not None and price_age_s > _PRICE_STALE_AFTER_S:
         # Computable, but from an old price. Distinct from the branch
         # above: the arithmetic ran, the INPUT is what aged. Previously
@@ -214,28 +240,54 @@ def _compose_ammo_cell(stats_pv: float, holdings: float, cur_price: float,
         # distinguish a 2-second price from a 5-minute one.
         color = _AMMO_NEUTRAL
         text = f"{text} {_STALE_MARKER}"
-        tip = (f"PRICE {price_age_s:,.0f}s OLD — this figure is computed "
-               f"from a price that has not refreshed recently, so the "
-               f"true delta may differ. Manual Fire will act on the "
-               f"CURRENT price, not this one.")
-    return {"text": text, "color": color, "tip": tip, "delta": delta,
-            "stale": stale, "position_val": position_val,
-            "manual_fire_noop": manual_fire_noop,
-            "price_age_s": price_age_s}
+        tip = (
+            f"PRICE {price_age_s:,.0f}s OLD — this figure is computed "
+            f"from a price that has not refreshed recently, so the "
+            f"true delta may differ. Manual Fire will act on the "
+            f"CURRENT price, not this one."
+        )
+    return {
+        "text": text,
+        "color": color,
+        "tip": tip,
+        "delta": delta,
+        "stale": stale,
+        "position_val": position_val,
+        "manual_fire_noop": manual_fire_noop,
+        "price_age_s": price_age_s,
+    }
+
 
 try:
     from PySide6.QtWidgets import (
-        QMainWindow, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
-        QLabel, QPushButton, QFrame, QTableWidget, QTableWidgetItem,
-        QHeaderView, QStatusBar, QSplitter, QGroupBox,
-        QTextEdit, QPlainTextEdit, QMessageBox, QDialog,
-        QScrollArea, QGraphicsOpacityEffect, QComboBox, QLineEdit,
-        QCheckBox, QSizePolicy,
+        QMainWindow,
+        QTabWidget,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QPushButton,
+        QFrame,
+        QTableWidget,
+        QTableWidgetItem,
+        QHeaderView,
+        QStatusBar,
+        QSplitter,
+        QGroupBox,
+        QTextEdit,
+        QPlainTextEdit,
+        QMessageBox,
+        QDialog,
+        QScrollArea,
+        QGraphicsOpacityEffect,
+        QComboBox,
+        QLineEdit,
+        QCheckBox,
+        QSizePolicy,
     )  # v3.19.12 removed unused QToolTip
-    from PySide6.QtCore import (Qt, QTimer, Slot, Signal, QObject,
-                                QSignalBlocker)
-    from PySide6.QtGui import (QColor, QIcon, QFont, QMouseEvent,
-                               QTextCharFormat)
+    from PySide6.QtCore import Qt, QTimer, Slot, Signal, QObject, QSignalBlocker
+    from PySide6.QtGui import QColor, QIcon, QFont, QMouseEvent, QTextCharFormat
+
     # v3.19.12 removed unused QPropertyAnimation, QEasingCurve, QAction
     _HAS_QT = True
 except ImportError:
@@ -255,10 +307,10 @@ from src.gui.qt_safe_events import safe_process_events  # v3.15.99 P4.1
 # Cell format: "0.00400 (+1.5%)"  — single line, ~14 chars. The
 # color hex is applied by the caller via item.setForeground(QColor(hex)).
 def _compose_table_target_denom_cell(
-        quote_currency: str,
-        base_asset: str,
-        exchange_id: str,
-        target_usd: float,
+    quote_currency: str,
+    base_asset: str,
+    exchange_id: str,
+    target_usd: float,
 ) -> tuple[str, str]:
     _quote = (quote_currency or "").upper()
     _base = (base_asset or "").upper()
@@ -271,9 +323,9 @@ def _compose_table_target_denom_cell(
     if target_usd <= 0:
         return ("", _neutral)
     try:
-        from src.exchange.currency_rate_monitor import (
-            get_currency_monitor)
+        from src.exchange.currency_rate_monitor import get_currency_monitor
         from src.exchange.market_pairs_scout import get_scout
+
         _rates = get_currency_monitor().snapshot()
         _scout = get_scout()
         if _quote == "BTC":
@@ -284,18 +336,15 @@ def _compose_table_target_denom_cell(
             _quote_usd = 0.0
         if _quote_usd <= 0:
             return ("pending", _neutral)
-        _pair = _scout.get_pair(
-            _base, _quote,
-            exchange_id=(exchange_id or None))
+        _pair = _scout.get_pair(_base, _quote, exchange_id=(exchange_id or None))
         if _pair is None:
             return ("—", _neutral)
-        _usd_pair = _scout.get_pair(
-            _base, "USD", exchange_id=(exchange_id or None))
+        _usd_pair = _scout.get_pair(_base, "USD", exchange_id=(exchange_id or None))
         if _usd_pair is None:
             _usd_pair = _scout.get_pair(
-                _base, "USDC", exchange_id=(exchange_id or None))
-        _usd_pct = (
-            float(_usd_pair.pct_24h) if _usd_pair else 0.0)
+                _base, "USDC", exchange_id=(exchange_id or None)
+            )
+        _usd_pct = float(_usd_pair.pct_24h) if _usd_pair else 0.0
         _units = target_usd / _quote_usd
         _delta = float(_pair.pct_24h) - _usd_pct
         if abs(_delta) < 0.1:
@@ -335,6 +384,7 @@ if _HAS_QT:
     # PySide6 doesn't support CSS keyframes. We use QTimer-based opacity pulse instead.
     class PulseManager:
         """Manages a subtle opacity pulse on accent widgets."""
+
         def __init__(self):
             self._widgets = []
             self._timer = QTimer()
@@ -347,12 +397,17 @@ if _HAS_QT:
 
         def _tick(self):
             import math
+
             self._phase += 0.05
             # Subtle pulse between 0.85 and 1.0 opacity
             opacity = 0.925 + 0.075 * math.sin(self._phase)
             for w in self._widgets:
                 try:  # noqa: SIM105
-                    w.setWindowOpacity(opacity) if hasattr(w, 'setWindowOpacity') else None
+                    (
+                        w.setWindowOpacity(opacity)
+                        if hasattr(w, "setWindowOpacity")
+                        else None
+                    )
                 except RuntimeError:
                     pass
 
@@ -407,7 +462,9 @@ if _HAS_QT:
             #    typical activity at production rates).
             try:  # noqa: SIM105
                 self.document().setMaximumBlockCount(5000)
-            except Exception:  # R28-OK: defensive — older Qt may not support  # noqa: S110
+            except (
+                Exception
+            ):  # R28-OK: defensive — older Qt may not support  # noqa: S110
                 pass
             # 2. Throughput tracking. Every successful render bumps
             #    _last_render_time + _total_renders. The watchdog
@@ -417,6 +474,7 @@ if _HAS_QT:
             #    running. Operator gets visibility BEFORE the next
             #    morning's "log stopped at 5 AM" surprise.
             import time as _t
+
             self._last_render_time: float = _t.time()
             self._total_renders: int = 0
             self._render_errors: int = 0
@@ -442,10 +500,10 @@ if _HAS_QT:
                 self.append(
                     f'<span style="color:#888">[—]</span> '
                     f'<span style="color:#00ffcc;font-style:italic;">'
-                    f'(resumed — {len(buffered)} buffered message(s) above)'
-                    f'</span>')
-                self.verticalScrollBar().setValue(
-                    self.verticalScrollBar().maximum())
+                    f"(resumed — {len(buffered)} buffered message(s) above)"
+                    f"</span>"
+                )
+                self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
 
         def toggle_pause(self) -> bool:
             """Flip the paused flag; return new state."""
@@ -489,6 +547,7 @@ if _HAS_QT:
             MainWindow polls this every 60s; the operator can also
             call it interactively from the Console tab."""
             import time as _t
+
             try:
                 blocks = self.document().blockCount()
             except Exception:  # R28-OK: doc accessor edge case
@@ -496,8 +555,7 @@ if _HAS_QT:
             return {
                 "paused": self._paused,
                 "pause_buffer_size": len(self._pause_buffer),
-                "last_render_age_sec": round(
-                    _t.time() - self._last_render_time, 1),
+                "last_render_age_sec": round(_t.time() - self._last_render_time, 1),
                 "total_renders": self._total_renders,
                 "render_errors": self._render_errors,
                 "last_render_error": self._last_render_error,
@@ -516,13 +574,14 @@ if _HAS_QT:
             try:
                 self._render_safe(ts, message, level)
                 import time as _t
+
                 self._last_render_time = _t.time()
                 self._total_renders += 1
             except Exception as exc:
                 import time as _t
+
                 self._render_errors += 1
-                self._last_render_error = (
-                    f"{type(exc).__name__}: {exc}")
+                self._last_render_error = f"{type(exc).__name__}: {exc}"
                 self._last_render_error_time = _t.time()
                 # Surface to file logger (separate channel) so the
                 # operator can recover what was lost
@@ -530,9 +589,14 @@ if _HAS_QT:
                     logger.error(
                         "StatusLog._render exception (#%d): %s | "
                         "message=%r level=%r",
-                        self._render_errors, self._last_render_error,
-                        message[:200], level)
-                except Exception:  # R28-OK: defensive — logger itself may have failed  # noqa: S110
+                        self._render_errors,
+                        self._last_render_error,
+                        message[:200],
+                        level,
+                    )
+                except (
+                    Exception
+                ):  # R28-OK: defensive — logger itself may have failed  # noqa: S110
                     pass
 
         def _render_safe(self, ts: str, message: str, level: str = "info") -> None:
@@ -545,7 +609,7 @@ if _HAS_QT:
             if message.startswith("TRADE NOTIFICATION:"):
                 # Extract the stage if present so we can color by stage
                 # (FILLED green, CANCELLED red, SENT/PLACED amber).
-                stage_color = "#ff3366"   # red default (CANCELLED / generic)
+                stage_color = "#ff3366"  # red default (CANCELLED / generic)
                 if "FILLED" in message:
                     stage_color = "#00ff88"
                 elif "PLACED" in message:
@@ -555,9 +619,9 @@ if _HAS_QT:
                 self.append(
                     f'<span style="color:#888">[{ts}]</span> '
                     f'<span style="color:{stage_color};font-size:14px;'
-                    f'font-weight:bold;">{message}</span>')
-                self.verticalScrollBar().setValue(
-                    self.verticalScrollBar().maximum())
+                    f'font-weight:bold;">{message}</span>'
+                )
+                self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
                 return
             # v3.15.68 — WIRE FLOW logs (Smart Wire profit routing):
             # distinct magenta color, slightly larger, bold so the
@@ -569,34 +633,38 @@ if _HAS_QT:
             # WIRE INCOME and WIRE INCOME PENDING now also get the
             # magenta treatment so the operator sees the full source→
             # target flow uniformly.
-            if (message.startswith("WIRE FLOW")
-                    or message.startswith("WIRE INCOME")):
+            if message.startswith("WIRE FLOW") or message.startswith("WIRE INCOME"):
                 self.append(
                     f'<span style="color:#888">[{ts}]</span> '
                     f'<span style="color:#ff66dd;font-size:12px;'
-                    f'font-weight:bold;">⚡ {message}</span>')
-                self.verticalScrollBar().setValue(
-                    self.verticalScrollBar().maximum())
+                    f'font-weight:bold;">⚡ {message}</span>'
+                )
+                self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
                 return
             # v3.15.69 — WIRE STACK logs (wire income converting to
             # asset acquisition at entry). Green-tinted magenta (gold)
             # to distinguish from generic WIRE FLOW.
-            if (message.startswith("WIRE STACK")
-                    or message.startswith("WIRE STACK FIRE")):
+            if message.startswith("WIRE STACK") or message.startswith(
+                "WIRE STACK FIRE"
+            ):
                 self.append(
                     f'<span style="color:#888">[{ts}]</span> '
                     f'<span style="color:#ffcc44;font-size:12px;'
-                    f'font-weight:bold;">⚡ {message}</span>')
-                self.verticalScrollBar().setValue(
-                    self.verticalScrollBar().maximum())
+                    f'font-weight:bold;">⚡ {message}</span>'
+                )
+                self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
                 return
             colors = {
-                "info": "#00ffcc", "success": "#00ff88",
-                "warning": "#ffaa00", "error": "#ff3366",
+                "info": "#00ffcc",
+                "success": "#00ff88",
+                "warning": "#ffaa00",
+                "error": "#ff3366",
             }
             color = colors.get(level, "#e0e0f0")
-            self.append(f'<span style="color:#888">[{ts}]</span> '
-                        f'<span style="color:{color}">{message}</span>')
+            self.append(
+                f'<span style="color:#888">[{ts}]</span> '
+                f'<span style="color:{color}">{message}</span>'
+            )
             self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
 
     # ---------------------------------------------------------------
@@ -650,7 +718,8 @@ if _HAS_QT:
             # the parent QHBoxLayout `stretch=1` on each card, but we
             # keep the typography readable.
             self._value.setStyleSheet(
-                "font-size: 14px; font-weight: bold; color: #00ffcc;")
+                "font-size: 14px; font-weight: bold; color: #00ffcc;"
+            )
             layout.addLayout(self._label_row)
             layout.addWidget(self._value)
             # v3.23.7 — last raw (unmasked) value so a dot-toggle can
@@ -667,8 +736,7 @@ if _HAS_QT:
             takes effect on the next set."""
             self._raw_value = str(value)
             if self._privacy_field_id:
-                self._value.setText(
-                    mask_or(self._raw_value, self._privacy_field_id))
+                self._value.setText(mask_or(self._raw_value, self._privacy_field_id))
             else:
                 self._value.setText(self._raw_value)
 
@@ -691,7 +759,8 @@ if _HAS_QT:
                 # Re-apply mask_or to the last raw value
                 if self._privacy_field_id:
                     self._value.setText(
-                        mask_or(self._raw_value, self._privacy_field_id))
+                        mask_or(self._raw_value, self._privacy_field_id)
+                    )
 
             dot = PrivacyDot(field_id, on_toggle=_on_toggle)
             # v3.23.23 — dot goes BELOW the value in the outer VBox,
@@ -709,8 +778,7 @@ if _HAS_QT:
             if self._privacy_dot is not None:
                 self._privacy_dot.refresh()
             if self._privacy_field_id:
-                self._value.setText(
-                    mask_or(self._raw_value, self._privacy_field_id))
+                self._value.setText(mask_or(self._raw_value, self._privacy_field_id))
 
         def set_clickable(self, clickable: bool, tooltip_suffix: str = "") -> None:
             """v3.16.52 — opt this card into click handling.
@@ -741,8 +809,10 @@ if _HAS_QT:
             # suppress, and none can appear if the Qt stubs later
             # resolve. Behaviour is unchanged; the getattr guard below
             # stays because tests hand this method event doubles.
-            if (self._is_clickable
-                    and getattr(event, "button", lambda: None)() == Qt.LeftButton):
+            if (
+                self._is_clickable
+                and getattr(event, "button", lambda: None)() == Qt.LeftButton
+            ):
                 self.clicked.emit()
             super().mousePressEvent(event)
 
@@ -765,13 +835,17 @@ if _HAS_QT:
         def notify(self, message: str, level: str = "info") -> None:
             ts = datetime.now().strftime("%H:%M:%S")
             colors = {
-                "info": "#00ffcc", "success": "#00ff88",
-                "warning": "#ffaa00", "error": "#ff3366",
+                "info": "#00ffcc",
+                "success": "#00ff88",
+                "warning": "#ffaa00",
+                "error": "#ff3366",
                 "market": "#88ccff",
             }
             color = colors.get(level, "#e0e0f0")
-            self.append(f'<span style="color:#555">{ts}</span> '
-                        f'<span style="color:{color}">{message}</span>')
+            self.append(
+                f'<span style="color:#555">{ts}</span> '
+                f'<span style="color:{color}">{message}</span>'
+            )
             self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
 
     # ---------------------------------------------------------------
@@ -825,7 +899,9 @@ if _HAS_QT:
             try:
                 reg = get_privacy_mask_registry()
                 reg.set_masked(self._field_id, not reg.is_masked(self._field_id))
-            except Exception:  # R28-OK: GUI repaint never crashes on registry  # noqa: S110
+            except (
+                Exception
+            ):  # R28-OK: GUI repaint never crashes on registry  # noqa: S110
                 pass
             self.refresh()
             if callable(self._on_toggle):
@@ -853,12 +929,10 @@ if _HAS_QT:
                 masked = False
             if masked:
                 glyph = "○"
-                tip = (f"{self._field_id}: MASKED. "
-                       "Click to reveal.")
+                tip = f"{self._field_id}: MASKED. " "Click to reveal."
             else:
                 glyph = "●"
-                tip = (f"{self._field_id}: REVEALED. "
-                       "Click to mask.")
+                tip = f"{self._field_id}: REVEALED. " "Click to mask."
             self.setText(glyph)
             self.setStyleSheet(
                 "PrivacyDot { "
@@ -897,9 +971,15 @@ if _HAS_QT:
         """
 
         _COLS = [
-            "Bot ID", "Exchange", "Base", "Reserved USD",
-            "Reserved Base", "Mode", "Last Rate USD/Base",
-            "Initial USD", "Profit Δ",
+            "Bot ID",
+            "Exchange",
+            "Base",
+            "Reserved USD",
+            "Reserved Base",
+            "Mode",
+            "Last Rate USD/Base",
+            "Initial USD",
+            "Profit Δ",
         ]
 
         def __init__(self, parent=None):
@@ -927,7 +1007,9 @@ if _HAS_QT:
                 return
             try:
                 reservations = registry.get_reservations()
-            except Exception:  # R28-OK: GUI refresh best-effort; never crash on registry probe
+            except (
+                Exception
+            ):  # R28-OK: GUI refresh best-effort; never crash on registry probe
                 self.setRowCount(0)
                 return
             # Capture initial USD for any new bot — first observation wins
@@ -936,8 +1018,7 @@ if _HAS_QT:
                     self._initial_usd_by_bot[r.bot_id] = float(r.reserved_usd)
             self.setRowCount(len(reservations))
             for row, r in enumerate(reservations):
-                initial = self._initial_usd_by_bot.get(
-                    r.bot_id, float(r.reserved_usd))
+                initial = self._initial_usd_by_bot.get(r.bot_id, float(r.reserved_usd))
                 profit_delta = float(r.reserved_usd) - initial
                 values = [
                     r.bot_id,
@@ -957,7 +1038,6 @@ if _HAS_QT:
             """Explicit clear — used by tests + on bot manager teardown."""
             self.setRowCount(0)
             self._initial_usd_by_bot.clear()
-
 
     class SpendableProfitsWidget(QFrame):
         """Estimated expendable liquidity across all bots/exchanges.
@@ -979,24 +1059,13 @@ if _HAS_QT:
         # introspect the styling intent without re-parsing the literal
         # stylesheet strings each refactor.
         _LABEL_STYLE = (
-            "color: #888; font-size: 10px; "
-            "letter-spacing: 1px; font-weight: 600;"
+            "color: #888; font-size: 10px; " "letter-spacing: 1px; font-weight: 600;"
         )
-        _VALUE_STYLE_DEFAULT = (
-            "color: #ccc; font-size: 16px; font-weight: bold;"
-        )
-        _VALUE_STYLE_HIGHLIGHT = (
-            "color: #00ff88; font-size: 16px; font-weight: bold;"
-        )
-        _VALUE_STYLE_NEGATIVE = (
-            "color: #ff3366; font-size: 16px; font-weight: bold;"
-        )
-        _VALUE_STYLE_MUTED = (
-            "color: #888; font-size: 16px; font-weight: bold;"
-        )
-        _SEPARATOR_STYLE = (
-            "color: #2a2a3a; font-size: 24px; margin: 0 2px;"
-        )
+        _VALUE_STYLE_DEFAULT = "color: #ccc; font-size: 16px; font-weight: bold;"
+        _VALUE_STYLE_HIGHLIGHT = "color: #00ff88; font-size: 16px; font-weight: bold;"
+        _VALUE_STYLE_NEGATIVE = "color: #ff3366; font-size: 16px; font-weight: bold;"
+        _VALUE_STYLE_MUTED = "color: #888; font-size: 16px; font-weight: bold;"
+        _SEPARATOR_STYLE = "color: #2a2a3a; font-size: 24px; margin: 0 2px;"
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -1029,10 +1098,12 @@ if _HAS_QT:
             self._spend_label = QLabel("SPENDABLE")
             self._spend_label.setStyleSheet(
                 "color: #00ffcc; font-size: 10px; letter-spacing: 1px; "
-                "font-weight: 700;")
+                "font-weight: 700;"
+            )
             self._spend_label.setToolTip(
                 "Estimated expendable liquidity from positions filled 30+ days.\n"
-                "Passive income safely withdrawable without disrupting positions.")
+                "Passive income safely withdrawable without disrupting positions."
+            )
             spend_col.addWidget(self._spend_label)
             self._amount = QLabel("$0.00")
             self._amount.setStyleSheet(self._VALUE_STYLE_HIGHLIGHT)
@@ -1041,7 +1112,8 @@ if _HAS_QT:
             # at index 2 in the VBox so the v3.19.29 layout pin
             # (label at index 0, value at index 1) still passes.
             self._spend_dot = PrivacyDot(
-                "kpi.spendable", on_toggle=self._on_privacy_toggle)
+                "kpi.spendable", on_toggle=self._on_privacy_toggle
+            )
             self._privacy_dots.append(self._spend_dot)
             spend_col.addWidget(self._spend_dot, alignment=Qt.AlignHCenter)
             outer.addLayout(spend_col)
@@ -1051,9 +1123,9 @@ if _HAS_QT:
             # the same label-row-with-dot pattern.
             _KPI_FIELD_BY_KEY = {
                 "total_realised": "kpi.realised",
-                "locked":         "kpi.locked",
-                "mature":         "kpi.mature",
-                "exchanges":      "kpi.exch",
+                "locked": "kpi.locked",
+                "mature": "kpi.mature",
+                "exchanges": "kpi.exch",
             }
 
             # Build a column per remaining stat
@@ -1089,8 +1161,8 @@ if _HAS_QT:
                 # holds: itemAt(0).widget() is QLabel, itemAt(1).widget()
                 # is QLabel.
                 dot = PrivacyDot(
-                    _KPI_FIELD_BY_KEY[key],
-                    on_toggle=self._on_privacy_toggle)
+                    _KPI_FIELD_BY_KEY[key], on_toggle=self._on_privacy_toggle
+                )
                 self._privacy_dots.append(dot)
                 self._kpi_dots[key] = dot
                 col.addWidget(dot, alignment=Qt.AlignHCenter)
@@ -1117,10 +1189,14 @@ if _HAS_QT:
                 self._amount.setToolTip(
                     "Spendable amount is not derivable from current data "
                     "sources. Requires exchange-pulled position-age data "
-                    "(see P0a in NEXT_SESSION_ORDERS.md).")
+                    "(see P0a in NEXT_SESSION_ORDERS.md)."
+                )
             else:
-                style = (self._VALUE_STYLE_HIGHLIGHT if sp >= 0
-                         else self._VALUE_STYLE_NEGATIVE)
+                style = (
+                    self._VALUE_STYLE_HIGHLIGHT
+                    if sp >= 0
+                    else self._VALUE_STYLE_NEGATIVE
+                )
                 raw_sp = f"${sp:,.2f}"
                 self._amount.setStyleSheet(style)
                 self._amount.setToolTip("")
@@ -1190,11 +1266,15 @@ if _HAS_QT:
             self._trade_log: list[dict] = []
 
             from .chart_data import ChartDataFetcher
+
             self._fetcher = ChartDataFetcher()
 
-        def update_charts(self, bot_statuses: list[dict],
-                          bot_manager=None,
-                          exchange_connectors: dict = None) -> None:
+        def update_charts(
+            self,
+            bot_statuses: list[dict],
+            bot_manager=None,
+            exchange_connectors: dict = None,
+        ) -> None:
             """Create or update chart panels for each bot.
 
             v3.20.31 — Extractor bots are multi-target (their symbol
@@ -1206,9 +1286,7 @@ if _HAS_QT:
             from .native_chart import ChartPanel
 
             # Pre-filter: Extractors don't get charts (multi-target).
-            bot_statuses = [
-                s for s in bot_statuses
-                if s.get("mode", "") != "extractor"]
+            bot_statuses = [s for s in bot_statuses if s.get("mode", "") != "extractor"]
 
             seen = set()
             for status in bot_statuses:
@@ -1246,7 +1324,8 @@ if _HAS_QT:
                     }
 
                     panel.chart.timeframe_changed.connect(
-                        lambda tf, bid=bot_id: self._on_tf_changed(bid, tf))
+                        lambda tf, bid=bot_id: self._on_tf_changed(bid, tf)
+                    )
 
                 info = self._chart_panels[bot_id]
                 stats = status.get("stats", {})
@@ -1255,7 +1334,9 @@ if _HAS_QT:
                 panel = info["panel"]
 
                 if price > 0:
-                    panel.chart._symbol = f"{symbol}  \u2022  ${price:.8f}  \u2022  {state.upper()}"
+                    panel.chart._symbol = (
+                        f"{symbol}  \u2022  ${price:.8f}  \u2022  {state.upper()}"
+                    )
 
                 # --- Feed active positions to chart ---
                 # v3.20.4 — grid_bot position-marker emission removed
@@ -1277,17 +1358,16 @@ if _HAS_QT:
                         # don't cross-pollute markers.
                         try:
                             trades_for_bot = [
-                                t for t in self._trade_log
+                                t
+                                for t in self._trade_log
                                 if t.get("bot_id") == bot_id
                                 and t.get("symbol") == symbol
                             ]
                             if trades_for_bot:
-                                panel.chart.set_trade_history_markers(
-                                    trades_for_bot)
+                                panel.chart.set_trade_history_markers(trades_for_bot)
                         except Exception as _tm_exc:
                             # Non-blocking — marker render is cosmetic
-                            logger.debug(
-                                "chart trade markers skipped: %s", _tm_exc)
+                            logger.debug("chart trade markers skipped: %s", _tm_exc)
 
                         # v3.16.24 Wave 3 — Target Balance anchor +
                         # ceiling lines on the price pane. Convert
@@ -1299,27 +1379,28 @@ if _HAS_QT:
                         # undefined). Ceiling = anchor × (1 + cap_pct).
                         try:
                             anchor_usd = float(
-                                getattr(bot, "_anchor_target_balance",
-                                        getattr(bot, "_target_balance", 0))
-                                or 0)
-                            cap_pct = float(getattr(
-                                bot.config, "max_target_growth_pct", 1.0)
-                                or 1.0)
-                            holdings = float(
-                                getattr(bot, "_current_holdings", 0) or 0)
-                            qrate = float(
-                                getattr(bot, "_quote_to_usd", 1.0) or 1.0)
+                                getattr(
+                                    bot,
+                                    "_anchor_target_balance",
+                                    getattr(bot, "_target_balance", 0),
+                                )
+                                or 0
+                            )
+                            cap_pct = float(
+                                getattr(bot.config, "max_target_growth_pct", 1.0) or 1.0
+                            )
+                            holdings = float(getattr(bot, "_current_holdings", 0) or 0)
+                            qrate = float(getattr(bot, "_quote_to_usd", 1.0) or 1.0)
                             if anchor_usd > 0 and holdings > 0 and qrate > 0:
                                 anchor_px = anchor_usd / holdings / qrate
                                 ceiling_px = anchor_px * (1.0 + cap_pct / 100.0)
                                 panel.chart.set_target_balance_lines(
-                                    anchor_px, ceiling_px)
+                                    anchor_px, ceiling_px
+                                )
                             else:
-                                panel.chart.set_target_balance_lines(
-                                    None, None)
+                                panel.chart.set_target_balance_lines(None, None)
                         except Exception as _tb_exc:
-                            logger.debug(
-                                "chart TB lines skipped: %s", _tb_exc)
+                            logger.debug("chart TB lines skipped: %s", _tb_exc)
 
                         # v3.16.24 Wave 3 — Fire-armed glow. Mirrors the
                         # bot's _last_gate_state (added v3.16.16) so the
@@ -1335,8 +1416,7 @@ if _HAS_QT:
                                 gs.get("fold_blockers") or [],
                             )
                         except Exception as _fa_exc:
-                            logger.debug(
-                                "chart fire-armed glow skipped: %s", _fa_exc)
+                            logger.debug("chart fire-armed glow skipped: %s", _fa_exc)
 
                         # Tranche floor lines from current _main_lots.
                         # MEM-171 discipline: bot will NOT fold below these.
@@ -1346,8 +1426,7 @@ if _HAS_QT:
                                 # Dedup by floor price (avoid stacked labels)
                                 floors_by_price: dict = {}
                                 for lot in lots:
-                                    fp = float(lot.get(
-                                        "initial_buy_price", 0) or 0)
+                                    fp = float(lot.get("initial_buy_price", 0) or 0)
                                     if fp <= 0:
                                         continue
                                     units = float(lot.get("units", 0) or 0)
@@ -1356,14 +1435,12 @@ if _HAS_QT:
                                     prior = floors_by_price.get(fp, 0.0)
                                     floors_by_price[fp] = prior + units
                                 floors = [
-                                    (fp, f"${fp:.4f}" if fp < 1
-                                         else f"${fp:.2f}")
+                                    (fp, f"${fp:.4f}" if fp < 1 else f"${fp:.2f}")
                                     for fp in sorted(floors_by_price)
                                 ]
                                 panel.chart.set_tranche_floors(floors)
                         except Exception as _tf_exc:
-                            logger.debug(
-                                "chart tranche floors skipped: %s", _tf_exc)
+                            logger.debug("chart tranche floors skipped: %s", _tf_exc)
 
                 panel.chart.update()
 
@@ -1408,28 +1485,38 @@ if _HAS_QT:
             _drift = 0
             for _st in bot_statuses:
                 _held = self._chart_panels.get(_st.get("bot_id", ""))
-                if (_held is not None
-                        and _held.get("symbol") != _st.get("symbol", "")):
+                if _held is not None and _held.get("symbol") != _st.get("symbol", ""):
                     _drift += 1
             import contextlib
+
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _ch_emit
+
                 _ch_emit(
                     "charts.13.001.invariant.panels_mounted",
-                    actual=_mounted, expected=len(self._chart_panels),
+                    actual=_mounted,
+                    expected=len(self._chart_panels),
                     every=30.0,
-                    context={"layout_items": self._scroll_layout.count(),
-                             "statuses": len(bot_statuses),
-                             "kept": len(seen)})
+                    context={
+                        "layout_items": self._scroll_layout.count(),
+                        "statuses": len(bot_statuses),
+                        "kept": len(seen),
+                    },
+                )
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _ch_emit
+
                 _ch_emit(
                     "charts.13.002.postcondition.panel_symbols_current",
-                    actual=_drift, expected=0,
+                    actual=_drift,
+                    expected=0,
                     every=30.0,
-                    context={"panels": len(self._chart_panels),
-                             "statuses": len(bot_statuses),
-                             "mounted": _mounted})
+                    context={
+                        "panels": len(self._chart_panels),
+                        "statuses": len(bot_statuses),
+                        "mounted": _mounted,
+                    },
+                )
 
         def _on_tf_changed(self, bot_id: str, tf: str):
             """Re-arm this panel's fetch after a timeframe change.
@@ -1455,18 +1542,24 @@ if _HAS_QT:
             _rearmed = bool(
                 _panel is not None
                 and _info.get("last_fetch", -1) == 0
-                and _panel.timeframe == tf)
+                and _panel.timeframe == tf
+            )
             import contextlib
+
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _ch_emit
+
                 _ch_emit(
                     "charts.13.003.postcondition.timeframe_rearmed",
-                    actual=_rearmed, expected=True,
-                    context={"requested_tf": tf,
-                             "panel_tf": (_panel.timeframe
-                                          if _panel is not None else ""),
-                             "known_bot": _panel is not None,
-                             "panels": len(self._chart_panels)})
+                    actual=_rearmed,
+                    expected=True,
+                    context={
+                        "requested_tf": tf,
+                        "panel_tf": (_panel.timeframe if _panel is not None else ""),
+                        "known_bot": _panel is not None,
+                        "panels": len(self._chart_panels),
+                    },
+                )
 
         async def fetch_chart_data(self, exchange_connectors: dict = None) -> None:
             """Fetch OHLCV data for all chart panels.
@@ -1497,6 +1590,7 @@ if _HAS_QT:
             import contextlib
             import time as _time
             from .native_chart import Candle
+
             now = _time.time()
 
             for bot_id, info in self._chart_panels.items():
@@ -1536,15 +1630,22 @@ if _HAS_QT:
                 _src = ""
                 try:
                     candles_raw, source = await self._fetcher.fetch(
-                        symbol, tf, exchange=exchange, limit=100)
+                        symbol, tf, exchange=exchange, limit=100
+                    )
                     _elapsed = _time.monotonic() - _t0
                     _raw_n = len(candles_raw or [])
                     _src = str(source)
 
                     if candles_raw:
                         candles = [
-                            Candle(time=c.time, open=c.open, high=c.high,
-                                   low=c.low, close=c.close, volume=c.volume)
+                            Candle(
+                                time=c.time,
+                                open=c.open,
+                                high=c.high,
+                                low=c.low,
+                                close=c.close,
+                                volume=c.volume,
+                            )
                             for c in candles_raw
                         ]
                         info["panel"].chart.set_candles(candles)
@@ -1579,18 +1680,24 @@ if _HAS_QT:
                 # than instanced because it is bounded already: the
                 # 30 s check at the top of the loop lets each panel
                 # past at most once per window.
-                _shown = len(
-                    getattr(info["panel"].chart, "_candles", None) or [])
+                _shown = len(getattr(info["panel"].chart, "_candles", None) or [])
                 with contextlib.suppress(Exception):
                     from src.core.signal_contract import emit as _ch_emit
+
                     _ch_emit(
                         "charts.13.004.postcondition.panel_refreshed",
-                        actual=_shown, expected=_raw_n,
+                        actual=_shown,
+                        expected=_raw_n,
                         duration=_elapsed,
-                        context={"outcome": _outcome, "source": _src,
-                                 "symbol": symbol, "timeframe": tf,
-                                 "exchange_id": info.get("exchange_id", ""),
-                                 "throttle_s": 30})
+                        context={
+                            "outcome": _outcome,
+                            "source": _src,
+                            "symbol": symbol,
+                            "timeframe": tf,
+                            "exchange_id": info.get("exchange_id", ""),
+                            "throttle_s": 30,
+                        },
+                    )
 
             # 10.6 -- charts.13.005. A panel is STALE when no pass has
             # written its `last_fetch` for three throttle windows, and
@@ -1618,30 +1725,39 @@ if _HAS_QT:
                     _stale += 1
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _ch_emit
+
                 _ch_emit(
                     "charts.13.005.invariant.panels_fresh",
-                    actual=_stale, expected=0,
+                    actual=_stale,
+                    expected=0,
                     every=30.0,
-                    context={"panels": len(self._chart_panels),
-                             "never_fetched": _never,
-                             "oldest_age_s": round(_oldest, 3),
-                             "stale_after_s": _stale_after,
-                             "throttle_s": 30,
-                             "connectors": len(exchange_connectors or {})})
+                    context={
+                        "panels": len(self._chart_panels),
+                        "never_fetched": _never,
+                        "oldest_age_s": round(_oldest, 3),
+                        "stale_after_s": _stale_after,
+                        "throttle_s": 30,
+                        "connectors": len(exchange_connectors or {}),
+                    },
+                )
 
         def log_trade(self, trade_data: dict) -> None:
             """Record a trade for chart markup."""
-            self._trade_log.append({
-                "timestamp": datetime.now().isoformat(),
-                **trade_data,
-            })
+            self._trade_log.append(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    **trade_data,
+                }
+            )
 
-        def push_synthetic_candles(self,
-                                   bot_id: str,
-                                   symbol: str,
-                                   candles: list,
-                                   scenario: str = "",
-                                   last_price: float = 0.0) -> None:
+        def push_synthetic_candles(
+            self,
+            bot_id: str,
+            symbol: str,
+            candles: list,
+            scenario: str = "",
+            last_price: float = 0.0,
+        ) -> None:
             """Live-inject synthetic candles for a Nuclear Mode scenario.
 
             Creates a ChartPanel if the bot_id is new, then pushes the
@@ -1662,8 +1778,10 @@ if _HAS_QT:
                 idx = self._scroll_layout.count() - 1
                 self._scroll_layout.insertWidget(idx, panel)
                 self._chart_panels[bot_id] = {
-                    "panel": panel, "symbol": symbol,
-                    "exchange_id": "NUCLEAR", "last_fetch": 0,
+                    "panel": panel,
+                    "symbol": symbol,
+                    "exchange_id": "NUCLEAR",
+                    "last_fetch": 0,
                     "synthetic": True,
                 }
 
@@ -1672,23 +1790,33 @@ if _HAS_QT:
             # Convert to native-chart Candle dataclass (dict → Candle ok too)
             native_candles = []
             for c in candles:
-                if hasattr(c, 'open'):
-                    native_candles.append(NativeCandle(
-                        time=int(getattr(c, 'time', 0)),
-                        open=float(c.open), high=float(c.high),
-                        low=float(c.low), close=float(c.close),
-                        volume=float(getattr(c, 'volume', 0))))
+                if hasattr(c, "open"):
+                    native_candles.append(
+                        NativeCandle(
+                            time=int(getattr(c, "time", 0)),
+                            open=float(c.open),
+                            high=float(c.high),
+                            low=float(c.low),
+                            close=float(c.close),
+                            volume=float(getattr(c, "volume", 0)),
+                        )
+                    )
                 else:  # dict
-                    native_candles.append(NativeCandle(
-                        time=int(c.get('time', 0)),
-                        open=float(c['open']), high=float(c['high']),
-                        low=float(c['low']), close=float(c['close']),
-                        volume=float(c.get('volume', 0))))
+                    native_candles.append(
+                        NativeCandle(
+                            time=int(c.get("time", 0)),
+                            open=float(c["open"]),
+                            high=float(c["high"]),
+                            low=float(c["low"]),
+                            close=float(c["close"]),
+                            volume=float(c.get("volume", 0)),
+                        )
+                    )
             panel.chart.set_candles(native_candles)
             label_price = last_price or (
-                native_candles[-1].close if native_candles else 0.0)
-            panel.chart._symbol = (
-                f"{symbol}  •  ${label_price:.4f}  •  ⚡{scenario}")
+                native_candles[-1].close if native_candles else 0.0
+            )
+            panel.chart._symbol = f"{symbol}  •  ${label_price:.4f}  •  ⚡{scenario}"
             panel.update()
 
     # ---------------------------------------------------------------
@@ -1726,9 +1854,10 @@ if _HAS_QT:
     # Named here rather than repaired -- a repair to any of the three
     # would be a change nothing can observe.
     def _reanchor_bot_selection(
-            table: BotStatusTable | ExtractorBotTable,
-            previous_bot_id: str,
-            bot_ids: list[str]) -> None:
+        table: BotStatusTable | ExtractorBotTable,
+        previous_bot_id: str,
+        bot_ids: list[str],
+    ) -> None:
         """Put the highlight back on the BOT it was on, not on its row.
 
         `previous_bot_id` is read off the table BEFORE the rewrite;
@@ -1782,9 +1911,8 @@ if _HAS_QT:
                 table.selectRow(target)
 
     def _select_row_for_bot(
-            table: BotStatusTable | ExtractorBotTable,
-            bot_id: str,
-            bot_ids: list[str]) -> None:
+        table: BotStatusTable | ExtractorBotTable, bot_id: str, bot_ids: list[str]
+    ) -> None:
         """Put the highlight on the row whose Detail button was pressed.
 
         issue #52. The Detail button sits INSIDE A CELL, and a click on
@@ -1882,33 +2010,48 @@ if _HAS_QT:
         # v3.23.49 — Target BTC / Target ETH inserted after Target USD
         # (operator directive 2026-07-28). Fire moved 6→8; Detail 7→9.
         COLUMNS = [
-            "Bot ID", "Symbol", "Mode",
-            "Trades", "Target", "Target BTC", "Target ETH",
-            "Ammo", "Fire", "",
+            "Bot ID",
+            "Symbol",
+            "Mode",
+            "Trades",
+            "Target",
+            "Target BTC",
+            "Target ETH",
+            "Ammo",
+            "Fire",
+            "",
         ]
         COLUMN_TOOLTIPS = {
             0: "Unique identifier for this bot instance",
             1: "Trading pair (Target Asset / Base Currency)",
-            2: ("Trading mode + current state.\n"
+            2: (
+                "Trading mode + current state.\n"
                 "Green = RUNNING · Amber = PAUSED · Gray = IDLE/STOPPED\n"
-                "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING"),
+                "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING"
+            ),
             3: "Total number of executed buy and sell trades",
             4: "Target Balance — the operator-set balance this bot trades\n"
-               "relative to. Hard-capped per MEM-246 Phase B.",
-            5: ("Target Balance denominated in BTC (target USD ÷ BTC/USD spot).\n"
+            "relative to. Hard-capped per MEM-246 Phase B.",
+            5: (
+                "Target Balance denominated in BTC (target USD ÷ BTC/USD spot).\n"
                 "Suffix Δ = 24h % change of <target>/BTC minus 24h % of "
                 "<target>/USD.\n"
                 "Positive Δ (green) = BTC-quoted pair cheaper in USD terms than USD-quoted.\n"
-                "Blank when pair unlisted on this exchange or target is BTC itself."),
-            6: ("Target Balance denominated in ETH (target USD ÷ ETH/USD spot).\n"
+                "Blank when pair unlisted on this exchange or target is BTC itself."
+            ),
+            6: (
+                "Target Balance denominated in ETH (target USD ÷ ETH/USD spot).\n"
                 "Suffix Δ = 24h % change of <target>/ETH minus 24h % of "
                 "<target>/USD.\n"
                 "Positive Δ (green) = ETH-quoted pair cheaper in USD terms than USD-quoted.\n"
-                "Blank when pair unlisted on this exchange or target is ETH itself."),
-            7: ("Ammo — distance of current position value from Target.\n"
+                "Blank when pair unlisted on this exchange or target is ETH itself."
+            ),
+            7: (
+                "Ammo — distance of current position value from Target.\n"
                 "Green = surplus above target (Scrum territory, next action = SELL).\n"
                 "Red = deficit below target (Fold territory, next action = BUY).\n"
-                "Neutral grey = within dust band around target (no action pending)."),
+                "Neutral grey = within dust band around target (no action pending)."
+            ),
             8: "Manual Fire — force immediate scrum/fold evaluation on next tick",
             9: "Click for full bot detail and status explanation",
         }
@@ -1916,13 +2059,13 @@ if _HAS_QT:
         # MEM-236 — Mode cell color mapping. Mirrors the state_colors dict
         # that used to live in the State column. Readable on dark background.
         STATE_COLORS = {
-            "running":   QColor("#00ff88"),
-            "idle":      QColor("#888888"),
-            "paused":    QColor("#ffaa00"),
-            "error":     QColor("#ff3366"),
-            "cooldown":  QColor("#ff6600"),
-            "stopped":   QColor("#666666"),
-            "starting":  QColor("#00e6ff"),
+            "running": QColor("#00ff88"),
+            "idle": QColor("#888888"),
+            "paused": QColor("#ffaa00"),
+            "error": QColor("#ff3366"),
+            "cooldown": QColor("#ff6600"),
+            "stopped": QColor("#666666"),
+            "starting": QColor("#00e6ff"),
         }
 
         # v3.23.7 — Privacy field id per column. Maps the 7 maskable
@@ -1970,8 +2113,7 @@ if _HAS_QT:
             # operator can toggle a column's mask by clicking its
             # header. Only the 7 maskable columns (0..6) respond; the
             # Detail column (7) keeps its sort-only behavior.
-            self.horizontalHeader().sectionClicked.connect(
-                self._on_header_clicked)
+            self.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
 
             # v3.23.54 — Symbol cell (col 1) is a hyperlink: click
             # opens the pair's chart on the bot's exchange in the
@@ -2016,8 +2158,7 @@ if _HAS_QT:
             for col, base_label in enumerate(self.COLUMNS):
                 field_id = self.PRIVACY_FIELD_BY_COL.get(col)
                 if not field_id:
-                    self.setHorizontalHeaderItem(
-                        col, QTableWidgetItem(base_label))
+                    self.setHorizontalHeaderItem(col, QTableWidgetItem(base_label))
                     continue
                 masked = reg.is_masked(field_id)
                 # Visible glyph: ● (filled) = revealed, ○ (hollow) = masked
@@ -2027,7 +2168,8 @@ if _HAS_QT:
                 state_tip = (
                     f"\n\nPrivacy: {'MASKED' if masked else 'REVEALED'} "
                     f"(field {field_id}).\n"
-                    "Click this header to toggle.")
+                    "Click this header to toggle."
+                )
                 item.setToolTip((tip + state_tip).strip())
                 self.setHorizontalHeaderItem(col, item)
 
@@ -2067,11 +2209,14 @@ if _HAS_QT:
                 # rather than try to render in the wrong column shape.
                 if mode != "scrumming":
                     import logging as _l
+
                     _l.getLogger(__name__).warning(
                         "BotStatusTable.update_bots received non-scrumming "
                         "status (mode=%r bot=%r) — should have been routed "
                         "to ExtractorBotTable. Skipping row.",
-                        mode, bid[:8] if bid else "?")
+                        mode,
+                        bid[:8] if bid else "?",
+                    )
                     continue
                 # MEM-247 — Target + Ammo (Session 26 operator directive).
                 # Target = operator-set balance this bot trades relative to.
@@ -2102,9 +2247,10 @@ if _HAS_QT:
                 # absent, so a bot type that does not export it renders
                 # exactly as before rather than reading 0.
                 target_val = float(
-                    status.get("live_target_balance",
-                               status.get("target_balance", 0.0))
-                    or status.get("target_balance", 0.0) or 0.0)
+                    status.get("live_target_balance", status.get("target_balance", 0.0))
+                    or status.get("target_balance", 0.0)
+                    or 0.0
+                )
                 # MEM-248 Ammo rogue-number rewrite. Operator caught the
                 # previous fix HIDING real exposure: an XRP bot that held
                 # 104.8 XRP (≈$149.85 — deep Scrum territory) rendered as
@@ -2126,7 +2272,8 @@ if _HAS_QT:
                     _ammo_price_pool(),
                     str(status.get("exchange", "") or ""),
                     str(status.get("symbol", "") or ""),
-                    float(stats.get("current_price", 0.0)))
+                    float(stats.get("current_price", 0.0)),
+                )
                 # v3.15.55 — quote→USD multiplier (operator directive
                 # 2026-04-25: crypto-quoted pairs like BTC/ETH must
                 # evaluate Target Balance in USD even though trades
@@ -2134,8 +2281,13 @@ if _HAS_QT:
                 # bot exports 1.0 here, so the math is unchanged.
                 qrate = float(status.get("quote_to_usd", 1.0) or 1.0)
                 _ammo = _compose_ammo_cell(
-                    stats_pv, holdings, cur_price, qrate, target_val,
-                    price_age_s=_price_age)
+                    stats_pv,
+                    holdings,
+                    cur_price,
+                    qrate,
+                    target_val,
+                    price_age_s=_price_age,
+                )
                 delta = _ammo["delta"]
                 position_val = _ammo["position_val"]
                 ammo_color = QColor(_ammo["color"])
@@ -2149,22 +2301,21 @@ if _HAS_QT:
                 # consistency.
                 def _mag(v: float) -> str:
                     return f"${abs(v):,.4f}"
+
                 target_text = _mag(target_val) if target_val > 0 else "---"
                 # v3.23.49 — Target BTC / Target ETH cell text + color.
                 # Reads from MarketPairsScout + CurrencyRateMonitor.
                 # Blank for self-reference (BTC bot → no Target BTC row)
                 # or when pair not listed on this exchange.
                 symbol = status.get("symbol", "") or ""
-                base_asset = (
-                    symbol.split("/")[0].upper()
-                    if "/" in symbol else "")
+                base_asset = symbol.split("/")[0].upper() if "/" in symbol else ""
                 exchange_id = status.get("exchange", "") or ""
-                target_btc_text, target_btc_color = \
-                    _compose_table_target_denom_cell(
-                        "BTC", base_asset, exchange_id, target_val)
-                target_eth_text, target_eth_color = \
-                    _compose_table_target_denom_cell(
-                        "ETH", base_asset, exchange_id, target_val)
+                target_btc_text, target_btc_color = _compose_table_target_denom_cell(
+                    "BTC", base_asset, exchange_id, target_val
+                )
+                target_eth_text, target_eth_color = _compose_table_target_denom_cell(
+                    "ETH", base_asset, exchange_id, target_val
+                )
                 # v3.23.49 — columns: BotID, Symbol, Mode, Trades,
                 # Target USD, Target BTC, Target ETH, Ammo, Fire, Detail.
                 # v3.23.7 — each maskable cell passes through mask_or().
@@ -2175,9 +2326,7 @@ if _HAS_QT:
                     mask_or(bid, "bot_table.bot_id"),
                     mask_or(status.get("symbol", ""), "bot_table.symbol"),
                     mask_or(mode, "bot_table.mode"),
-                    mask_or(
-                        str(stats.get("total_trades", 0)),
-                        "bot_table.trades"),
+                    mask_or(str(stats.get("total_trades", 0)), "bot_table.trades"),
                     mask_or(target_text, "bot_table.target"),
                     mask_or(target_btc_text, "bot_table.target"),
                     mask_or(target_eth_text, "bot_table.target"),
@@ -2196,6 +2345,7 @@ if _HAS_QT:
                         try:
                             base = text.split("/")[0] if "/" in text else text
                             from .bot_wizard import _get_coin_icon
+
                             icon = _get_coin_icon(base, 18, download=False)
                             if icon:
                                 item.setIcon(icon)
@@ -2209,22 +2359,27 @@ if _HAS_QT:
                         # available; leave uncolored when not.
                         try:
                             from ..exchange.exchange_chart_urls import (
-                                chart_url as _chart_url)
+                                chart_url as _chart_url,
+                            )
+
                             _url = _chart_url(
-                                exchange_id,
-                                status.get("symbol", "") or "")
+                                exchange_id, status.get("symbol", "") or ""
+                            )
                             if _url:
                                 from PySide6.QtCore import Qt as _Qt
-                                item.setData(
-                                    _Qt.UserRole, _url)
+
+                                item.setData(_Qt.UserRole, _url)
                                 item.setForeground(QColor("#66ccff"))
                                 _f = item.font()
                                 _f.setUnderline(True)
                                 item.setFont(_f)
                                 item.setToolTip(
                                     f"Open chart on {exchange_id} "
-                                    f"in default browser: {_url}")
-                        except Exception as _chart_url_exc:  # noqa: BLE001 - chart-URL best-effort
+                                    f"in default browser: {_url}"
+                                )
+                        except (
+                            Exception
+                        ) as _chart_url_exc:  # noqa: BLE001 - chart-URL best-effort
                             # DEBUG: cosmetic only. The cell keeps its
                             # plain text and stays un-clickable; no data
                             # the operator trades on is lost. Log the
@@ -2234,16 +2389,17 @@ if _HAS_QT:
                             logger.debug(
                                 "Chart-URL decoration skipped: %s: %s",
                                 type(_chart_url_exc).__name__,
-                                _chart_url_exc)
+                                _chart_url_exc,
+                            )
                     # v3.18.6 — color-code Mode cell (col 2 after Exchange
                     # removal) based on bot state.
                     if col == 2:
-                        color = self.STATE_COLORS.get(
-                            state, QColor("#e0e0f0"))
+                        color = self.STATE_COLORS.get(state, QColor("#e0e0f0"))
                         item.setForeground(color)
                         # Tooltip on the cell shows the actual state text
                         item.setToolTip(
-                            f"Mode: {mode}\nState: {state.upper() if state else 'UNKNOWN'}")
+                            f"Mode: {mode}\nState: {state.upper() if state else 'UNKNOWN'}"
+                        )
                     # v3.23.49 — Target BTC / Target ETH cell coloring
                     # (cols 5, 6). Colour comes from _compose_table_...
                     # (green on positive Δ, red on negative, grey when
@@ -2285,9 +2441,11 @@ if _HAS_QT:
                 detonation_enabled = status.get("detonation_enabled", False)
                 detonation_tf = status.get("detonation_timeframe", "1d")
                 # Fold is hard-stopped when ceiling enabled AND ratio >= 1.0
-                fold_blocked_by_ceiling = (ceiling_enabled
+                fold_blocked_by_ceiling = (
+                    ceiling_enabled
                     and ceiling_ratio is not None
-                    and ceiling_ratio >= 1.0)
+                    and ceiling_ratio >= 1.0
+                )
                 # v3.23.7 — Fire button face passes through mask_or so
                 # the "Fire" word becomes "****" when bot_table.fire is
                 # masked. The button stays clickable — masking is a
@@ -2300,16 +2458,16 @@ if _HAS_QT:
                 # ensureVisible() which jumps the table. NoFocus
                 # blocks the focus grab entirely. Operator-reported.
                 fire_btn.setFocusPolicy(Qt.NoFocus)
-                is_scrumming = (mode == "scrumming")
-                is_active = (state in ("running", "paused"))
+                is_scrumming = mode == "scrumming"
+                is_active = state in ("running", "paused")
                 fire_btn.setEnabled(is_scrumming and is_active)
                 if is_scrumming and is_active:
                     # Helper to apply a glow effect with a given color.
                     def _apply_glow(color_hex: str) -> None:
                         try:
-                            from PySide6.QtWidgets import (
-                                QGraphicsDropShadowEffect)
+                            from PySide6.QtWidgets import QGraphicsDropShadowEffect
                             from PySide6.QtGui import QColor as _QC
+
                             glow = QGraphicsDropShadowEffect(fire_btn)
                             glow.setColor(_QC(color_hex))
                             glow.setBlurRadius(18)
@@ -2335,22 +2493,26 @@ if _HAS_QT:
                                 parts.append(
                                     f"\n\n⚠ CEILING REACHED "
                                     f"({pct:.1f}% of ${ceiling_usd:.2f}) — "
-                                    f"fold hard-stopped, scrum only.")
+                                    f"fold hard-stopped, scrum only."
+                                )
                             elif ceiling_ratio >= 0.5:
                                 parts.append(
                                     f"\n\n⚠ Approaching ceiling "
                                     f"({pct:.1f}% of ${ceiling_usd:.2f}) — "
-                                    f"fold rate tapered to {fold_taper*100:.0f}%.")
+                                    f"fold rate tapered to {fold_taper*100:.0f}%."
+                                )
                             else:
                                 parts.append(
                                     f"\n\nCeiling: {pct:.1f}% of "
                                     f"${ceiling_usd:.2f} "
-                                    f"(fold rate: {fold_taper*100:.0f}%).")
+                                    f"(fold rate: {fold_taper*100:.0f}%)."
+                                )
                         if detonation_enabled:
                             parts.append(
                                 f"\nDetonation armed: monitoring "
                                 f"{detonation_tf.upper()} for BULLISH "
-                                f"auto-harvest.")
+                                f"auto-harvest."
+                            )
                         return "".join(parts)
 
                     if armed_action == "scrum":
@@ -2368,14 +2530,15 @@ if _HAS_QT:
                                 "font-size: 10px; padding: 1px 6px; "
                                 "color: #ffffff; font-weight: bold; "
                                 "background-color: #d61a3d; "
-                                "border: 1px solid #ff3366;")
+                                "border: 1px solid #ff3366;"
+                            )
                             _apply_glow("#ff3366")
                             fire_btn.setToolTip(
                                 "ARMED for SCRUM (auto would fire). "
                                 "Holdings above target; all gates clear. "
                                 "Clicking fires a MARKET sell to "
-                                "rebalance back to target."
-                                + _risk_suffix())
+                                "rebalance back to target." + _risk_suffix()
+                            )
                         else:
                             # Outline only — manual override available
                             # but auto-fire is blocked by ≥1 gate.
@@ -2383,19 +2546,24 @@ if _HAS_QT:
                                 "font-size: 10px; padding: 1px 6px; "
                                 "color: #ff3366; font-weight: bold; "
                                 "background-color: transparent; "
-                                "border: 1px dashed #ff3366;")
+                                "border: 1px dashed #ff3366;"
+                            )
                             # No glow — visually quieter so operator
                             # sees the difference at a glance.
                             _blockers_text = (
                                 "\nBlocked by: " + ", ".join(_scrum_blockers)
-                                if _scrum_blockers else "")
+                                if _scrum_blockers
+                                else ""
+                            )
                             fire_btn.setToolTip(
                                 "Manual SCRUM override available — "
                                 "delta > 0 but auto-fire blocked. "
                                 "Clicking fires a MARKET sell sized to "
                                 "rebalance back to target (bypasses "
                                 "auto's TA/BB/HTF gates)."
-                                + _blockers_text + _risk_suffix())
+                                + _blockers_text
+                                + _risk_suffix()
+                            )
                     elif armed_action == "fold":
                         # v3.16.16 — visual disambiguation (mirror of
                         # SCRUM side above).
@@ -2409,29 +2577,31 @@ if _HAS_QT:
                                 "font-size: 10px; padding: 1px 6px; "
                                 "color: #cccccc; font-weight: bold; "
                                 "background-color: #2d5f48; "
-                                "border: 1px dashed #888888;")
+                                "border: 1px dashed #888888;"
+                            )
                             _apply_glow("#557766")
                             fire_btn.setToolTip(
                                 "Fold would be armed, but POSITION "
                                 "CEILING has been reached. Fold is "
                                 "hard-stopped. Manual Fire will still "
                                 "attempt to rebalance (operator "
-                                "override bypasses the ceiling)."
-                                + _risk_suffix())
+                                "override bypasses the ceiling)." + _risk_suffix()
+                            )
                         elif _auto_armed_fold:
                             # Solid green — auto-fire FOLD would fire NOW.
                             fire_btn.setStyleSheet(
                                 "font-size: 10px; padding: 1px 6px; "
                                 "color: #ffffff; font-weight: bold; "
                                 "background-color: #2d9d5f; "
-                                "border: 1px solid #3ed080;")
+                                "border: 1px solid #3ed080;"
+                            )
                             _apply_glow("#3ed080")
                             fire_btn.setToolTip(
                                 "ARMED for FOLD (auto would fire). "
                                 "Holdings below target; all gates clear. "
                                 "Clicking fires a MARKET buy to "
-                                "rebalance back to target."
-                                + _risk_suffix())
+                                "rebalance back to target." + _risk_suffix()
+                            )
                         else:
                             # Outline only — manual override available
                             # but auto-fire is blocked.
@@ -2439,17 +2609,22 @@ if _HAS_QT:
                                 "font-size: 10px; padding: 1px 6px; "
                                 "color: #3ed080; font-weight: bold; "
                                 "background-color: transparent; "
-                                "border: 1px dashed #3ed080;")
+                                "border: 1px dashed #3ed080;"
+                            )
                             _blockers_text = (
                                 "\nBlocked by: " + ", ".join(_fold_blockers)
-                                if _fold_blockers else "")
+                                if _fold_blockers
+                                else ""
+                            )
                             fire_btn.setToolTip(
                                 "Manual FOLD override available — "
                                 "delta < 0 but auto-fire blocked. "
                                 "Clicking fires a MARKET buy sized to "
                                 "rebalance back to target (bypasses "
                                 "auto's TA/BB/MEM-171 gates)."
-                                + _blockers_text + _risk_suffix())
+                                + _blockers_text
+                                + _risk_suffix()
+                            )
                     elif scrum_phase == "fire":
                         # Organic fire approach but delta is within
                         # the dust band — no rebalance needed. Amber
@@ -2459,51 +2634,57 @@ if _HAS_QT:
                             "font-size: 10px; padding: 1px 6px; "
                             "color: #000000; font-weight: bold; "
                             "background-color: #ffaa00; "
-                            "border: 1px solid #ffcc44;")
+                            "border: 1px solid #ffcc44;"
+                        )
                         _apply_glow("#ffcc44")
                         fire_btn.setToolTip(
                             "Organic FIRE phase — bot at band but "
                             "holdings within dust band of target. "
-                            "Clicking has no effect."
-                            + _risk_suffix())
+                            "Clicking has no effect." + _risk_suffix()
+                        )
                     elif scrum_phase == "track":
                         fire_btn.setStyleSheet(
                             "font-size: 10px; padding: 1px 6px; "
-                            "color: #ffaa00; font-weight: bold;")
+                            "color: #ffaa00; font-weight: bold;"
+                        )
                         fire_btn.setToolTip(
                             "TRACKING — bot detected band approach. "
                             "Fire is available but bot is within dust "
-                            "band; rebalance would be a no-op.")
+                            "band; rebalance would be a no-op."
+                        )
                     else:
                         # SEARCH / idle — subdued red
                         fire_btn.setStyleSheet(
                             "font-size: 10px; padding: 1px 6px; "
-                            "color: #ff3366; font-weight: bold;")
+                            "color: #ff3366; font-weight: bold;"
+                        )
                         fire_btn.setToolTip(
                             "Bot within dust band of target. "
-                            "Manual Fire would be a no-op.")
+                            "Manual Fire would be a no-op."
+                        )
                 else:
                     fire_btn.setStyleSheet(
-                        "font-size: 10px; padding: 1px 6px; color: #555;")
+                        "font-size: 10px; padding: 1px 6px; color: #555;"
+                    )
                     if not is_scrumming:
                         fire_btn.setToolTip("Manual Fire is scrumming-only.")
                     else:
                         fire_btn.setToolTip(
-                            f"Bot is {state}; start or resume to enable Fire.")
-                fire_btn.clicked.connect(
-                    lambda checked, b=bid: self._on_fire(b))
-                self.setCellWidget(row, 8, fire_btn)   # v3.23.49 — col 6→8
+                            f"Bot is {state}; start or resume to enable Fire."
+                        )
+                fire_btn.clicked.connect(lambda checked, b=bid: self._on_fire(b))
+                self.setCellWidget(row, 8, fire_btn)  # v3.23.49 — col 6→8
 
                 # Detail button (col 7) — unchanged semantic; col index
                 # shifted from 8→7 by v3.18.6 Exchange removal.
                 detail_btn = QPushButton("Detail")
                 detail_btn.setFixedHeight(22)
                 detail_btn.setStyleSheet("font-size: 10px; padding: 1px 6px;")
-                detail_btn.setToolTip("View full bot status, configuration, and error details")
-                detail_btn.clicked.connect(
-                    lambda checked, b=bid: self._on_detail(b)
+                detail_btn.setToolTip(
+                    "View full bot status, configuration, and error details"
                 )
-                self.setCellWidget(row, 9, detail_btn)   # v3.23.49 — col 7→9
+                detail_btn.clicked.connect(lambda checked, b=bid: self._on_detail(b))
+                self.setCellWidget(row, 9, detail_btn)  # v3.23.49 — col 7→9
 
             # issue #51 -- the highlight follows the BOT, not the row.
             _reanchor_bot_selection(self, _selected_before, self._bot_ids)
@@ -2531,15 +2712,16 @@ if _HAS_QT:
             if item is None:
                 return
             from PySide6.QtCore import Qt as _Qt
+
             url = item.data(_Qt.UserRole)
             if not url:
                 return
             try:
                 import webbrowser
+
                 webbrowser.open(str(url), new=2)
             except Exception as _wb_exc:  # noqa: BLE001 - best-effort
-                logger.warning(
-                    "Chart URL open failed for %r: %s", url, _wb_exc)
+                logger.warning("Chart URL open failed for %r: %s", url, _wb_exc)
 
         def _on_fire(self, bot_id: str) -> None:
             """MEM-236 — Manual Fire button click handler."""
@@ -2594,50 +2776,64 @@ if _HAS_QT:
         # 8 columns, indexed identically to BotStatusTable for any
         # shared selection/render helpers — only the labels differ.
         COLUMNS = [
-            "Bot ID", "Symbol", "Mode",
-            "Trades", "Pool", "Liquid", "Fire", "",
+            "Bot ID",
+            "Symbol",
+            "Mode",
+            "Trades",
+            "Pool",
+            "Liquid",
+            "Fire",
+            "",
         ]
         COLUMN_TOOLTIPS = {
             0: "Unique identifier for this Extractor instance",
             1: "Base currency this Extractor accumulates",
-            2: ("Trading mode + current state.\n"
+            2: (
+                "Trading mode + current state.\n"
                 "Green = RUNNING · Amber = PAUSED · Gray = IDLE/STOPPED\n"
-                "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING"),
+                "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING"
+            ),
             3: "Total number of executed trades across all positions",
-            4: ("Pool — operator-set chunk size in USD (the budget "
+            4: (
+                "Pool — operator-set chunk size in USD (the budget "
                 "this Extractor owns and rotates through positions). "
                 "Live-edit in the bot's Settings tab → Extractor → "
-                "Pool size (USD)."),
-            5: ("Liquid — USD-equivalent of the base-currency units "
+                "Pool size (USD)."
+            ),
+            5: (
+                "Liquid — USD-equivalent of the base-currency units "
                 "currently NOT deployed to any open position. As "
                 "positions close back to base, Liquid grows. Pool "
                 "minus Liquid is the currently-deployed amount.\n"
                 "Color: green = pool fully in base (no open "
                 "positions), yellow = positions open, none in "
-                "drawdown, red = at least one position in drawdown."),
-            6: ("Manual Fire is per-position for Extractors. "
-                "Use the Detail dialog's Positions Held tab."),
+                "drawdown, red = at least one position in drawdown."
+            ),
+            6: (
+                "Manual Fire is per-position for Extractors. "
+                "Use the Detail dialog's Positions Held tab."
+            ),
             7: "Click for full bot detail and status explanation",
         }
 
         # Same state→color mapping as BotStatusTable so the Mode cell
         # color scheme matches across both tables.
         STATE_COLORS = {
-            "running":   QColor("#00ff88"),
-            "idle":      QColor("#888888"),
-            "paused":    QColor("#ffaa00"),
-            "error":     QColor("#ff3366"),
-            "cooldown":  QColor("#ff6600"),
-            "stopped":   QColor("#666666"),
-            "starting":  QColor("#00e6ff"),
+            "running": QColor("#00ff88"),
+            "idle": QColor("#888888"),
+            "paused": QColor("#ffaa00"),
+            "error": QColor("#ff3366"),
+            "cooldown": QColor("#ff6600"),
+            "stopped": QColor("#666666"),
+            "starting": QColor("#00e6ff"),
         }
 
         # Pool color mapping for the Liquid cell foreground —
         # moved verbatim from BotStatusTable.EXTRACTOR_POOL_COLORS.
         POOL_COLORS = {
-            "green":   QColor("#00ff88"),
-            "yellow":  QColor("#ffaa00"),
-            "red":     QColor("#ff3366"),
+            "green": QColor("#00ff88"),
+            "yellow": QColor("#ffaa00"),
+            "red": QColor("#ff3366"),
         }
 
         def __init__(self, on_bot_clicked=None, parent=None):
@@ -2645,13 +2841,10 @@ if _HAS_QT:
             self._on_bot_clicked = on_bot_clicked
             self.setColumnCount(len(self.COLUMNS))
             self.setHorizontalHeaderLabels(self.COLUMNS)
-            self.horizontalHeader().setSectionResizeMode(
-                QHeaderView.Stretch)
-            self.horizontalHeader().setSectionResizeMode(
-                6, QHeaderView.Fixed)
+            self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            self.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
             self.setColumnWidth(6, 70)
-            self.horizontalHeader().setSectionResizeMode(
-                7, QHeaderView.Fixed)
+            self.horizontalHeader().setSectionResizeMode(7, QHeaderView.Fixed)
             self.setColumnWidth(7, 60)
             self.setAlternatingRowColors(True)
             self.setSelectionBehavior(QTableWidget.SelectRows)
@@ -2676,16 +2869,11 @@ if _HAS_QT:
                 bid = status.get("bot_id", "")
                 self._bot_ids.append(bid)
                 state = status.get("state", "")
-                chunk_size_usd = float(
-                    status.get("chunk_size_usd", 0.0) or 0.0)
-                chunk_free_base = float(
-                    status.get("chunk_free_base", 0.0) or 0.0)
-                chunk_size_base = float(
-                    status.get("chunk_size_base", 0.0) or 0.0)
-                n_positions = int(
-                    status.get("n_positions_open", 0) or 0)
-                n_drawdown = int(
-                    status.get("n_positions_drawdown", 0) or 0)
+                chunk_size_usd = float(status.get("chunk_size_usd", 0.0) or 0.0)
+                chunk_free_base = float(status.get("chunk_free_base", 0.0) or 0.0)
+                chunk_size_base = float(status.get("chunk_size_base", 0.0) or 0.0)
+                n_positions = int(status.get("n_positions_open", 0) or 0)
+                n_drawdown = int(status.get("n_positions_drawdown", 0) or 0)
                 pool_color_name = status.get("pool_color", "green")
                 base_currency = status.get("base_currency", "")
 
@@ -2693,8 +2881,7 @@ if _HAS_QT:
                 # Uses the chunk_size_usd ↔ chunk_size_base ratio so
                 # we display in the same units as Pool.
                 if chunk_size_base > 0:
-                    deployed_base = max(
-                        chunk_size_base - chunk_free_base, 0.0)
+                    deployed_base = max(chunk_size_base - chunk_free_base, 0.0)
                     usd_per_base = chunk_size_usd / chunk_size_base
                     free_usd = chunk_free_base * usd_per_base
                     deployed_usd = deployed_base * usd_per_base
@@ -2708,14 +2895,9 @@ if _HAS_QT:
                 # $0.00 deployed". New: "$100.00" / "$100.00". The
                 # column header carries the semantic; the cell shows
                 # the number.
-                pool_text = (
-                    f"${chunk_size_usd:,.2f}"
-                    if chunk_size_usd > 0 else "---")
-                liquid_text = (
-                    f"${free_usd:,.2f}"
-                    if chunk_size_usd > 0 else "---")
-                liquid_color = self.POOL_COLORS.get(
-                    pool_color_name, QColor("#a8a8c5"))
+                pool_text = f"${chunk_size_usd:,.2f}" if chunk_size_usd > 0 else "---"
+                liquid_text = f"${free_usd:,.2f}" if chunk_size_usd > 0 else "---"
+                liquid_color = self.POOL_COLORS.get(pool_color_name, QColor("#a8a8c5"))
                 liquid_tip = (
                     f"Extractor pool: {pool_color_name.upper()}\n"
                     f"  • {n_positions} position(s) open\n"
@@ -2724,7 +2906,8 @@ if _HAS_QT:
                     f"  • {chunk_free_base:.8f} {base_currency} free "
                     f"({free_usd:.2f} USD)\n"
                     f"  • {deployed_base:.8f} {base_currency} "
-                    f"deployed ({deployed_usd:.2f} USD)")
+                    f"deployed ({deployed_usd:.2f} USD)"
+                )
 
                 items = [
                     bid,
@@ -2744,21 +2927,22 @@ if _HAS_QT:
                     if col == 1 and text:
                         try:
                             from .bot_wizard import _get_coin_icon
+
                             icon = _get_coin_icon(text, 18, download=False)
                             if icon:
                                 item.setIcon(icon)
                         except Exception:  # noqa: S110
                             pass
                     if col == 2:  # Mode cell
-                        color = self.STATE_COLORS.get(
-                            state, QColor("#e0e0f0"))
+                        color = self.STATE_COLORS.get(state, QColor("#e0e0f0"))
                         item.setForeground(color)
                         item.setToolTip(
                             f"Mode: extractor (Base Currency "
                             f"Extractor Multi-Target)\nState: "
                             f"{state.upper() if state else 'UNKNOWN'}\n"
                             f"v3.19.1 — accumulates base-currency "
-                            f"units via top-N pair scanning.")
+                            f"units via top-N pair scanning."
+                        )
                     if col == 5:  # Liquid cell
                         item.setForeground(liquid_color)
                         item.setToolTip(liquid_tip)
@@ -2777,10 +2961,12 @@ if _HAS_QT:
                 fire_btn.setFocusPolicy(Qt.NoFocus)
                 fire_btn.setEnabled(False)
                 fire_btn.setStyleSheet(
-                    "font-size: 10px; padding: 1px 6px; color: #555;")
+                    "font-size: 10px; padding: 1px 6px; color: #555;"
+                )
                 fire_btn.setToolTip(
                     "Manual Fire is per-position for Extractor bots. "
-                    "Use the Detail dialog's Positions Held tab.")
+                    "Use the Detail dialog's Positions Held tab."
+                )
                 self.setCellWidget(row, 6, fire_btn)
 
                 # Detail button — IDENTICAL to BotStatusTable's:
@@ -2790,13 +2976,11 @@ if _HAS_QT:
                 # widget shape achieves the visual match.
                 detail_btn = QPushButton("Detail")
                 detail_btn.setFixedHeight(22)
-                detail_btn.setStyleSheet(
-                    "font-size: 10px; padding: 1px 6px;")
+                detail_btn.setStyleSheet("font-size: 10px; padding: 1px 6px;")
                 detail_btn.setToolTip(
-                    "View full bot status, configuration, and error "
-                    "details")
-                detail_btn.clicked.connect(
-                    lambda checked, b=bid: self._on_detail(b))
+                    "View full bot status, configuration, and error " "details"
+                )
+                detail_btn.clicked.connect(lambda checked, b=bid: self._on_detail(b))
                 self.setCellWidget(row, 7, detail_btn)
 
             # issue #51 -- the highlight follows the BOT, not the row.
@@ -2826,10 +3010,17 @@ if _HAS_QT:
     # Exchange Tab - working buttons
     # ---------------------------------------------------------------
     class ExchangeTab(QWidget):
-        def __init__(self, exchange_id: str, exchange_name: str,
-                     on_new_bot=None, on_bot_clicked=None,
-                     on_bot_cmd=None, on_bot_fire=None,  # MEM-236
-                     status_log=None, parent=None):
+        def __init__(
+            self,
+            exchange_id: str,
+            exchange_name: str,
+            on_new_bot=None,
+            on_bot_clicked=None,
+            on_bot_cmd=None,
+            on_bot_fire=None,  # MEM-236
+            status_log=None,
+            parent=None,
+        ):
             super().__init__(parent)
             self.exchange_id = exchange_id
             self._status_log = status_log
@@ -2861,10 +3052,10 @@ if _HAS_QT:
                 "operator reveals them.\n\n"
                 "Per-dot toggles remain available even when this is "
                 "OFF — Privacy Mode is a fast 'mask everything' "
-                "shortcut for screen-sharing.")
+                "shortcut for screen-sharing."
+            )
             self._privacy_mode_btn.setFocusPolicy(Qt.NoFocus)
-            self._privacy_mode_btn.clicked.connect(
-                self._on_global_privacy_clicked)
+            self._privacy_mode_btn.clicked.connect(self._on_global_privacy_clicked)
             self._refresh_privacy_mode_btn_style()
             header.addWidget(self._privacy_mode_btn)
             # v3.23.54 — cycling crypto news ticker fills the header
@@ -2874,12 +3065,12 @@ if _HAS_QT:
             # click to open in default browser, hover to pause.
             try:
                 from .crypto_news_ticker import CryptoNewsTicker
+
                 self._news_ticker = CryptoNewsTicker()
                 header.addWidget(self._news_ticker, stretch=1)
                 self._news_ticker.start()
             except Exception as _news_exc:  # noqa: BLE001 - ticker best-effort
-                logger.debug(
-                    "news ticker failed to initialise: %s", _news_exc)
+                logger.debug("news ticker failed to initialise: %s", _news_exc)
                 header.addStretch()  # fall back to plain space
             self._add_bot_btn = QPushButton("+ New Bot")
             self._add_bot_btn.setProperty("accent", True)
@@ -2895,10 +3086,10 @@ if _HAS_QT:
             # the +New Bot button." This label surfaces the
             # coalesced-cache countdown from MarketDataPool so the
             # operator can see the pool cadence at a glance.
-            self._pull_rate_lbl = QLabel(
-                "Next data pull: — ")
+            self._pull_rate_lbl = QLabel("Next data pull: — ")
             self._pull_rate_lbl.setStyleSheet(
-                "color:#7fb3ff; font-size:11px; padding:2px 6px;")
+                "color:#7fb3ff; font-size:11px; padding:2px 6px;"
+            )
             self._pull_rate_lbl.setToolTip(
                 "MarketDataPool freshness diagnostic. Slots = number "
                 "of distinct (exchange, symbol[, TF]) cache entries. "
@@ -2908,12 +3099,12 @@ if _HAS_QT:
                 "(ticker 5s, balance 10s, OHLCV = timeframe). "
                 "Cache-hit = coalesced-hits / (hits + fetches). "
                 "Coalescing added v3.23.74 (OHLCV) + v3.23.76 (balances) "
-                "to fix the CPM saturation the operator flagged 2026-07-31.")
+                "to fix the CPM saturation the operator flagged 2026-07-31."
+            )
             layout.addWidget(self._pull_rate_lbl)
             self._pull_rate_timer = QTimer(self)
             self._pull_rate_timer.setInterval(1000)
-            self._pull_rate_timer.timeout.connect(
-                self._update_pull_rate_label)
+            self._pull_rate_timer.timeout.connect(self._update_pull_rate_label)
             self._pull_rate_timer.start()
 
             # v3.20.5 — Two stacked tables (operator directive
@@ -2928,7 +3119,8 @@ if _HAS_QT:
             self._scrum_label = QLabel("Scrumming Bots")
             self._scrum_label.setStyleSheet(
                 "font-size: 11px; color: #a8a8c5; "
-                "font-weight: bold; padding: 6px 2px 2px 2px;")
+                "font-weight: bold; padding: 6px 2px 2px 2px;"
+            )
             layout.addWidget(self._scrum_label)
 
             # v3.20.65 — bug-2 PROPER fix: the v3.20.62 attempt wired
@@ -2963,18 +3155,18 @@ if _HAS_QT:
                     on_bot_clicked(bot_id)
 
             self._bot_table = BotStatusTable(
-                on_bot_clicked=_scrum_clicked,
-                on_fire_clicked=on_bot_fire)
+                on_bot_clicked=_scrum_clicked, on_fire_clicked=on_bot_fire
+            )
             layout.addWidget(self._bot_table)
 
             # Extractor Bots section
             self._extractor_label = QLabel("Extractor Bots")
             self._extractor_label.setStyleSheet(
                 "font-size: 11px; color: #a8a8c5; "
-                "font-weight: bold; padding: 10px 2px 2px 2px;")
+                "font-weight: bold; padding: 10px 2px 2px 2px;"
+            )
             layout.addWidget(self._extractor_label)
-            self._extractor_table = ExtractorBotTable(
-                on_bot_clicked=_extractor_clicked)
+            self._extractor_table = ExtractorBotTable(on_bot_clicked=_extractor_clicked)
             layout.addWidget(self._extractor_table)
 
             # v3.20.65 fix: wire row-selection signals (not just the
@@ -2997,10 +3189,10 @@ if _HAS_QT:
                     self._bot_table.setCurrentCell(-1, -1)
                     self._bot_table.blockSignals(False)
 
-            self._bot_table.itemSelectionChanged.connect(
-                _on_scrum_selection_changed)
+            self._bot_table.itemSelectionChanged.connect(_on_scrum_selection_changed)
             self._extractor_table.itemSelectionChanged.connect(
-                _on_extractor_selection_changed)
+                _on_extractor_selection_changed
+            )
 
             # Start both sections hidden — update_bots() reveals
             # them as bots of each type appear.
@@ -3011,9 +3203,13 @@ if _HAS_QT:
 
             # Command bar - all buttons wired
             cmd_bar = QHBoxLayout()
-            for label, cmd in [("Start", "start"), ("Pause", "pause"),
-                               ("Stop", "stop"), ("Restart", "restart"),
-                               ("Delete", "delete")]:
+            for label, cmd in [
+                ("Start", "start"),
+                ("Pause", "pause"),
+                ("Stop", "stop"),
+                ("Restart", "restart"),
+                ("Delete", "delete"),
+            ]:
                 btn = QPushButton(label)
                 if label == "Delete":
                     btn.setProperty("danger", True)
@@ -3036,6 +3232,7 @@ if _HAS_QT:
             """
             try:
                 from ..exchange.data_pool import get_data_pool
+
                 pool = get_data_pool()
                 summary = pool.pull_rate_summary()
             except Exception:  # noqa: BLE001,S110 - countdown best-effort
@@ -3045,17 +3242,19 @@ if _HAS_QT:
             bal_s = summary.get("balance_slots", 0)
             slots = tick_s + ohlc_s + bal_s
             if slots <= 0:
-                self._pull_rate_lbl.setText(
-                    "Data pool: idle (no active bots)")
+                self._pull_rate_lbl.setText("Data pool: idle (no active bots)")
                 return
-            fetches = (summary["ticker_fetches"]
-                       + summary["ohlcv_fetches"]
-                       + summary.get("balance_fetches", 0))
-            hits = (summary["ticker_hits"]
-                    + summary["ohlcv_hits"]
-                    + summary.get("balance_hits", 0))
-            hit_rate = (100.0 * hits / (hits + fetches)
-                        if (hits + fetches) > 0 else 0.0)
+            fetches = (
+                summary["ticker_fetches"]
+                + summary["ohlcv_fetches"]
+                + summary.get("balance_fetches", 0)
+            )
+            hits = (
+                summary["ticker_hits"]
+                + summary["ohlcv_hits"]
+                + summary.get("balance_hits", 0)
+            )
+            hit_rate = 100.0 * hits / (hits + fetches) if (hits + fetches) > 0 else 0.0
             # v3.23.76 — countdown replaced with freshest / oldest
             # slot ages. Prior "next pull" semantic was meaningless
             # under passive on-demand coalescing (as soon as any
@@ -3069,7 +3268,8 @@ if _HAS_QT:
             if fresh is None:
                 self._pull_rate_lbl.setText(
                     f"Data pool: {slots} slots · awaiting first "
-                    f"fetch  ·  cache-hit {hit_rate:.0f}%")
+                    f"fetch  ·  cache-hit {hit_rate:.0f}%"
+                )
                 return
             # v3.23.85 — per-type slot breakdown so growth is
             # attributable (operator flagged +35 slots between
@@ -3080,7 +3280,8 @@ if _HAS_QT:
                 f"(tick {tick_s}/ohlcv {ohlc_s}/bal {bal_s})  ·  "
                 f"freshest {fresh:>4.0f}s  ·  "
                 f"oldest {old:>4.0f}s  ·  "
-                f"{stale} stale  ·  cache-hit {hit_rate:.0f}%")
+                f"{stale} stale  ·  cache-hit {hit_rate:.0f}%"
+            )
 
         def _cmd(self, command: str) -> None:
             # v3.20.62 — bug-2 fix: resolve Extractor/Scrumming
@@ -3102,8 +3303,7 @@ if _HAS_QT:
                     bot_id = self._extractor_table.get_selected_bot_id()
             if not bot_id:
                 if self._status_log:
-                    self._status_log.log(
-                        "Select a bot first.", "warning")
+                    self._status_log.log("Select a bot first.", "warning")
                 return
             # 10.8 -- exchange.15.001, AND IT IS THE HIGHEST-STAKES SITE
             # IN THE TAB. A command that lands on the wrong bot is a
@@ -3149,24 +3349,34 @@ if _HAS_QT:
             _scrum_sel = self._bot_table.get_selected_bot_id()
             _ext_sel = self._extractor_table.get_selected_bot_id()
             if _chosen == "extractor":
-                _from = ("extractor" if bot_id == _ext_sel
-                         else "scrumming" if bot_id == _scrum_sel
-                         else "neither")
+                _from = (
+                    "extractor"
+                    if bot_id == _ext_sel
+                    else "scrumming" if bot_id == _scrum_sel else "neither"
+                )
             else:
-                _from = ("scrumming" if bot_id == _scrum_sel
-                         else "extractor" if bot_id == _ext_sel
-                         else "neither")
+                _from = (
+                    "scrumming"
+                    if bot_id == _scrum_sel
+                    else "extractor" if bot_id == _ext_sel else "neither"
+                )
             import contextlib
+
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _ex_emit
+
                 _ex_emit(
                     "exchange.15.001.postcondition.command_routed_to_chosen_table",
-                    actual=_from, expected=_chosen,
-                    context={"exchange": self.exchange_id,
-                             "command": command,
-                             "scrumming_selected": bool(_scrum_sel),
-                             "extractor_selected": bool(_ext_sel),
-                             "fell_back": _from != _chosen})
+                    actual=_from,
+                    expected=_chosen,
+                    context={
+                        "exchange": self.exchange_id,
+                        "command": command,
+                        "scrumming_selected": bool(_scrum_sel),
+                        "extractor_selected": bool(_ext_sel),
+                        "fell_back": _from != _chosen,
+                    },
+                )
             if self._on_bot_cmd:
                 self._on_bot_cmd(bot_id, command)
 
@@ -3176,17 +3386,17 @@ if _HAS_QT:
             # back to which bot the operator's highlight was on, so the
             # two ids are taken here, off the widgets, before anything
             # touches them.
-            _sel_before = (self._bot_table.get_selected_bot_id(),
-                           self._extractor_table.get_selected_bot_id())
+            _sel_before = (
+                self._bot_table.get_selected_bot_id(),
+                self._extractor_table.get_selected_bot_id(),
+            )
             # v3.20.5 — pre-filter by mode and route to the correct
             # table. Hide a section if its list is empty so the
             # dashboard doesn't show an empty-table header.
-            scrum_statuses = [
-                s for s in statuses
-                if s.get("mode", "") == "scrumming"]
+            scrum_statuses = [s for s in statuses if s.get("mode", "") == "scrumming"]
             extractor_statuses = [
-                s for s in statuses
-                if s.get("mode", "") == "extractor"]
+                s for s in statuses if s.get("mode", "") == "extractor"
+            ]
             self._bot_table.update_bots(scrum_statuses)
             self._extractor_table.update_bots(extractor_statuses)
             self._scrum_label.setVisible(bool(scrum_statuses))
@@ -3309,42 +3519,53 @@ if _HAS_QT:
             for _row in range(self._extractor_table.rowCount()):
                 if self._extractor_table.item(_row, 0) is not None:
                     _ext_drawn += 1
-            _sel_after = (self._bot_table.get_selected_bot_id(),
-                          self._extractor_table.get_selected_bot_id())
+            _sel_after = (
+                self._bot_table.get_selected_bot_id(),
+                self._extractor_table.get_selected_bot_id(),
+            )
             _moved = [
                 bool(_was and _now and _was != _now)
-                for _was, _now in zip(_sel_before, _sel_after, strict=True)]
+                for _was, _now in zip(_sel_before, _sel_after, strict=True)
+            ]
             import contextlib
+
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _ex_emit
+
                 _ex_emit(
                     "exchange.15.002.invariant.every_bot_reaches_a_table",
                     actual=_scrum_drawn + _ext_drawn,
                     expected=len(statuses),
                     every=30.0,
                     instance=self.exchange_id,
-                    context={"exchange": self.exchange_id,
-                             "scrumming_rows": _scrum_drawn,
-                             "extractor_rows": _ext_drawn,
-                             "routed_scrumming": len(scrum_statuses),
-                             "routed_extractor": len(extractor_statuses)})
+                    context={
+                        "exchange": self.exchange_id,
+                        "scrumming_rows": _scrum_drawn,
+                        "extractor_rows": _ext_drawn,
+                        "routed_scrumming": len(scrum_statuses),
+                        "routed_extractor": len(extractor_statuses),
+                    },
+                )
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _ex_emit
+
                 _ex_emit(
                     "exchange.15.003.invariant.selection_survives_refresh",
-                    actual=sum(_moved), expected=0,
+                    actual=sum(_moved),
+                    expected=0,
                     every=30.0,
                     instance=self.exchange_id,
-                    context={"exchange": self.exchange_id,
-                             "scrumming_selection_moved": _moved[0],
-                             "extractor_selection_moved": _moved[1],
-                             "selections_before": sum(
-                                 1 for _s in _sel_before if _s),
-                             "selections_after": sum(
-                                 1 for _s in _sel_after if _s),
-                             "preferred_table": self._last_clicked_table,
-                             "scrumming_rows": _scrum_drawn,
-                             "extractor_rows": _ext_drawn})
+                    context={
+                        "exchange": self.exchange_id,
+                        "scrumming_selection_moved": _moved[0],
+                        "extractor_selection_moved": _moved[1],
+                        "selections_before": sum(1 for _s in _sel_before if _s),
+                        "selections_after": sum(1 for _s in _sel_after if _s),
+                        "preferred_table": self._last_clicked_table,
+                        "scrumming_rows": _scrum_drawn,
+                        "extractor_rows": _ext_drawn,
+                    },
+                )
 
         # v3.23.7 — global Privacy Mode handlers
         def _on_global_privacy_clicked(self) -> None:
@@ -3363,8 +3584,8 @@ if _HAS_QT:
                 # unmask. This matches the spec's two-state button.
                 snapshot = reg.to_dict()
                 any_revealed = any(
-                    not snapshot.get(fid, False)
-                    for fid in reg.known_field_ids())
+                    not snapshot.get(fid, False) for fid in reg.known_field_ids()
+                )
                 reg.set_all(any_revealed)
             except Exception:  # R28-OK
                 return
@@ -3387,21 +3608,29 @@ if _HAS_QT:
             # NO DURATION (E8) and NO `every=`: an operator press, and
             # a walk over a dict already in memory.
             import contextlib
+
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _ex_emit
+
                 _reg = get_privacy_mask_registry()
                 _ids = _reg.known_field_ids()
                 _state = _reg.to_dict()
                 _applied = sum(
-                    1 for _fid in _ids
-                    if bool(_state.get(_fid, False)) is bool(any_revealed))
+                    1
+                    for _fid in _ids
+                    if bool(_state.get(_fid, False)) is bool(any_revealed)
+                )
                 _ex_emit(
                     "exchange.15.004.postcondition.privacy_applied_to_every_field",
-                    actual=_applied, expected=len(_ids),
-                    context={"exchange": self.exchange_id,
-                             "masking": bool(any_revealed),
-                             "fields_declared": len(_ids),
-                             "fields_left_behind": len(_ids) - _applied})
+                    actual=_applied,
+                    expected=len(_ids),
+                    context={
+                        "exchange": self.exchange_id,
+                        "masking": bool(any_revealed),
+                        "fields_declared": len(_ids),
+                        "fields_left_behind": len(_ids) - _applied,
+                    },
+                )
             self._refresh_privacy_mode_btn_style()
             # 10.8 -- exchange.15.005. THE LABEL THE OPERATOR READS
             # AGAINST THE STATE THE RENDERERS READ. 15-004 asks whether
@@ -3439,18 +3668,22 @@ if _HAS_QT:
             # after its own restyle, with nothing in between.
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _ex_emit
+
                 _reg = get_privacy_mask_registry()
                 _shown_on = "ON" in self._privacy_mode_btn.text()
                 _ids = _reg.known_field_ids()
                 _state = _reg.to_dict()
-                _all_masked = all(
-                    bool(_state.get(_fid, False)) for _fid in _ids)
+                _all_masked = all(bool(_state.get(_fid, False)) for _fid in _ids)
                 _ex_emit(
                     "exchange.15.005.postcondition.privacy_button_matches_registry",
-                    actual=_shown_on, expected=_all_masked,
-                    context={"exchange": self.exchange_id,
-                             "masking": bool(any_revealed),
-                             "fields_declared": len(_ids)})
+                    actual=_shown_on,
+                    expected=_all_masked,
+                    context={
+                        "exchange": self.exchange_id,
+                        "masking": bool(any_revealed),
+                        "fields_declared": len(_ids),
+                    },
+                )
             try:
                 root = self.window()
                 if hasattr(root, "refresh_all_privacy_widgets"):
@@ -3463,8 +3696,7 @@ if _HAS_QT:
             ON (all fields masked) = green; OFF = muted."""
             try:
                 reg = get_privacy_mask_registry()
-                all_masked = all(
-                    reg.is_masked(fid) for fid in reg.known_field_ids())
+                all_masked = all(reg.is_masked(fid) for fid in reg.known_field_ids())
             except Exception:
                 all_masked = False
             if all_masked:
@@ -3511,7 +3743,9 @@ if _HAS_QT:
             layout.setSpacing(4)
 
             # --- Connection panel ---
-            conn_group = QGroupBox("Exchange Connection (Isolated - does not affect bots)")
+            conn_group = QGroupBox(
+                "Exchange Connection (Isolated - does not affect bots)"
+            )
             conn_layout = QVBoxLayout(conn_group)
             conn_layout.setContentsMargins(6, 14, 6, 6)
             conn_layout.setSpacing(4)
@@ -3520,13 +3754,18 @@ if _HAS_QT:
             row1.addWidget(QLabel("Exchange:"))
             self._exchange = QComboBox()
             from ..exchange.ccxt_connector import SUPPORTED_EXCHANGES
+
             for eid in sorted(SUPPORTED_EXCHANGES.keys()):
                 self._exchange.addItem(eid.capitalize(), eid)
             row1.addWidget(self._exchange)
             self._use_stored = QCheckBox("Use stored credentials")
             self._use_stored.setChecked(True)
-            self._use_stored.setToolTip("Use API keys saved in Settings instead of entering manually")
-            self._use_stored.toggled.connect(lambda on: self._manual_frame.setVisible(not on))
+            self._use_stored.setToolTip(
+                "Use API keys saved in Settings instead of entering manually"
+            )
+            self._use_stored.toggled.connect(
+                lambda on: self._manual_frame.setVisible(not on)
+            )
             row1.addWidget(self._use_stored)
             conn_layout.addLayout(row1)
 
@@ -3551,7 +3790,9 @@ if _HAS_QT:
 
             row2 = QHBoxLayout()
             self._connect_btn = QPushButton("Connect")
-            self._connect_btn.setToolTip("Establish isolated connection to exchange API")
+            self._connect_btn.setToolTip(
+                "Establish isolated connection to exchange API"
+            )
             self._connect_btn.clicked.connect(self._do_connect)
             row2.addWidget(self._connect_btn)
             self._disconnect_btn = QPushButton("Disconnect")
@@ -3575,13 +3816,19 @@ if _HAS_QT:
             btn_layout.setSpacing(3)
 
             self._symbol_input = QLineEdit("BTC/USDT")
-            self._symbol_input.setToolTip("Trading pair for ticker, orderbook, OHLCV queries")
+            self._symbol_input.setToolTip(
+                "Trading pair for ticker, orderbook, OHLCV queries"
+            )
             btn_layout.addWidget(self._symbol_input)
 
             tests = [
                 ("Fetch Markets", "fetch_markets", "Load all trading pairs"),
                 ("Fetch Ticker", "fetch_ticker", "Current bid/ask/last price"),
-                ("Fetch Balances", "fetch_balances", "Account balances (requires auth)"),
+                (
+                    "Fetch Balances",
+                    "fetch_balances",
+                    "Account balances (requires auth)",
+                ),
                 ("Fetch Order Book", "fetch_orderbook", "Top 20 bids and asks"),
                 ("Fetch OHLCV (1h x50)", "fetch_ohlcv", "50 hourly candles"),
                 ("Fetch Open Orders", "fetch_open_orders", "Currently open orders"),
@@ -3603,7 +3850,8 @@ if _HAS_QT:
             raw_btn.setToolTip(
                 "Bypass CCXT and make a direct HTTP request to the exchange.\n"
                 "Shows exact HTTP status, headers, and response body.\n"
-                "Use this to diagnose connection failures.")
+                "Use this to diagnose connection failures."
+            )
             raw_btn.clicked.connect(self._raw_http_probe)
             btn_layout.addWidget(raw_btn)
 
@@ -3626,19 +3874,29 @@ if _HAS_QT:
             # streaming log. QPlainTextEdit not appropriate here.
             self._result_view = QTextEdit()
             self._result_view.setReadOnly(True)
-            self._result_view.setPlaceholderText("Connect to an exchange and run a test...")
+            self._result_view.setPlaceholderText(
+                "Connect to an exchange and run a test..."
+            )
             rl.addWidget(self._result_view)
             ops_splitter.addWidget(result_group)
             ops_splitter.setSizes([250, 750])
             layout.addWidget(ops_splitter)
 
-        def _log(self, title: str, detail: str, elapsed: float = 0, level: str = "info"):
-            colors = {"info": "#00aaff", "success": "#00ff88", "warning": "#ffaa00", "error": "#ff3366"}
+        def _log(
+            self, title: str, detail: str, elapsed: float = 0, level: str = "info"
+        ):
+            colors = {
+                "info": "#00aaff",
+                "success": "#00ff88",
+                "warning": "#ffaa00",
+                "error": "#ff3366",
+            }
             color = colors.get(level, "#ccc")
             timing = f" ({elapsed:.0f}ms)" if elapsed > 0 else ""
             self._result_info.setText(f"{title}{timing}")
             self._result_info.setStyleSheet(f"color: {color}; font-weight: bold;")
             import time as _t
+
             ts = _t.strftime("%H:%M:%S")
             self._result_view.append(
                 f'<span style="color:#888">[{ts}]</span> '
@@ -3646,18 +3904,20 @@ if _HAS_QT:
                 f'<pre style="color:#ccc; margin:0; white-space:pre-wrap;">{detail}</pre><br>'
             )
             self._result_view.verticalScrollBar().setValue(
-                self._result_view.verticalScrollBar().maximum())
+                self._result_view.verticalScrollBar().maximum()
+            )
 
         def _get_settings(self):
             p = self.parent()
             while p:
-                if hasattr(p, '_settings'):
+                if hasattr(p, "_settings"):
                     return p._settings
                 p = p.parent()
             return None
 
         def _do_connect(self):
-            import time as _t, concurrent.futures
+            import time as _t
+
             eid = self._exchange.currentData()
             # 10.9 -- the two values apitest.16.001 reads, bound
             # BEFORE the try so the `finally` can read them on every
@@ -3676,11 +3936,12 @@ if _HAS_QT:
             self._conn_status.setText(f"Connecting to {eid.capitalize()}...")
             self._conn_status.setStyleSheet("color: #00aaff;")
             self._connect_btn.setEnabled(False)
-            from PySide6.QtWidgets import QApplication
+
             safe_process_events("legacy P4.1 site")
 
             try:
                 from ..exchange.ccxt_connector import CCXTConnector
+
                 if self._use_stored.isChecked():
                     sm = self._get_settings()
                     if not sm:
@@ -3692,16 +3953,24 @@ if _HAS_QT:
                             exch = e
                             break
                     if not exch or not exch.get("api_key_enc"):
-                        self._log("NO CREDENTIALS",
+                        self._log(
+                            "NO CREDENTIALS",
                             f"No stored credentials for {eid.capitalize()}.\n"
                             f"Uncheck 'Use stored credentials' to enter manually,\n"
-                            f"or add the exchange in Settings.", level="error")
+                            f"or add the exchange in Settings.",
+                            level="error",
+                        )
                         return
                     from ..core.encryption import decrypt
+
                     master = f"qat_{sm.get('username', 'user')}_vault"
                     key = decrypt(exch["api_key_enc"], master)
                     secret = decrypt(exch["api_secret_enc"], master)
-                    pp = decrypt(exch["passphrase_enc"], master) if exch.get("passphrase_enc") else ""
+                    pp = (
+                        decrypt(exch["passphrase_enc"], master)
+                        if exch.get("passphrase_enc")
+                        else ""
+                    )
                 else:
                     key = self._api_key.text().strip()
                     secret = self._api_secret.text().strip()
@@ -3716,35 +3985,47 @@ if _HAS_QT:
                 conn.sync_connect(key, secret, pp)
                 elapsed = (_t.monotonic() - start) * 1000
                 _call_s = elapsed / 1000.0
-                mcount = len(conn._ccxt.markets) if conn._ccxt and conn._ccxt.markets else 0
+                mcount = (
+                    len(conn._ccxt.markets) if conn._ccxt and conn._ccxt.markets else 0
+                )
 
                 self._connector = conn
                 self._connected = True
                 self._connect_btn.setEnabled(False)
                 self._disconnect_btn.setEnabled(True)
-                self._conn_status.setText(f"Connected: {eid.capitalize()} ({mcount} markets)")
+                self._conn_status.setText(
+                    f"Connected: {eid.capitalize()} ({mcount} markets)"
+                )
                 self._conn_status.setStyleSheet("color: #00ff88;")
-                self._log(f"CONNECTED to {eid.capitalize()}",
+                self._log(
+                    f"CONNECTED to {eid.capitalize()}",
                     f"Markets: {mcount}\nAuth: OK\nThis connection is isolated from bots.",
-                    elapsed, "success")
+                    elapsed,
+                    "success",
+                )
                 # Register history callback if the trade history tab is available
                 try:
                     main_win = self.window()
-                    if (hasattr(main_win, '_trade_history_tab')
-                            and main_win._trade_history_tab is not None):
+                    if (
+                        hasattr(main_win, "_trade_history_tab")
+                        and main_win._trade_history_tab is not None
+                    ):
                         conn.set_history_callback(
-                            main_win._trade_history_tab.get_history_callback())
+                            main_win._trade_history_tab.get_history_callback()
+                        )
                         # Register all active bot symbols for scanning
-                        if (hasattr(main_win, '_bot_manager')
-                                and main_win._bot_manager):
+                        if hasattr(main_win, "_bot_manager") and main_win._bot_manager:
                             main_win._bot_manager.set_connector(conn)
                 except Exception as _e:
                     logger.debug("History callback registration: %s", _e)
             except Exception as exc:
                 from ..exchange.ccxt_connector import CCXTConnector as CC
+
                 self._conn_status.setText("Failed")
                 self._conn_status.setStyleSheet("color: #ff3366;")
-                self._log("CONNECTION FAILED", CC._format_exchange_error(exc), level="error")
+                self._log(
+                    "CONNECTION FAILED", CC._format_exchange_error(exc), level="error"
+                )
             finally:
                 if not self._connected:
                     self._connect_btn.setEnabled(True)
@@ -3786,25 +4067,32 @@ if _HAS_QT:
                 # NO `every=`: the Connect button is the cadence, so
                 # silence from this pin says nothing about the tab.
                 _session = getattr(self._connector, "_ex", None)
-                _usable = (self._connector is not None
-                           and self._connected
-                           and _session is not None)
+                _usable = (
+                    self._connector is not None
+                    and self._connected
+                    and _session is not None
+                )
                 _claims = self._conn_status.text().startswith("Connected")
                 import contextlib
+
                 with contextlib.suppress(Exception):
                     from src.core.signal_contract import emit as _api_emit
+
                     _api_emit(
                         "apitest.16.001.postcondition.label_matches_session",
-                        actual=_usable, expected=_claims,
-                        context={"exchange": eid,
-                                 "used_stored_credentials":
-                                     bool(self._use_stored.isChecked()),
-                                 "credentials_supplied": _supplied,
-                                 "connector_held":
-                                     self._connector is not None,
-                                 "disconnect_enabled":
-                                     self._disconnect_btn.isEnabled()},
-                        duration=_call_s)
+                        actual=_usable,
+                        expected=_claims,
+                        context={
+                            "exchange": eid,
+                            "used_stored_credentials": bool(
+                                self._use_stored.isChecked()
+                            ),
+                            "credentials_supplied": _supplied,
+                            "connector_held": self._connector is not None,
+                            "disconnect_enabled": self._disconnect_btn.isEnabled(),
+                        },
+                        duration=_call_s,
+                    )
 
         def _do_disconnect(self):
             # 10.9 -- the state apitest.16.002 reads on every exit
@@ -3828,6 +4116,7 @@ if _HAS_QT:
             # read it, so on a real tab -- which has the widget -- the
             # record is byte for byte the one it was.
             import contextlib
+
             _eid = None
             with contextlib.suppress(Exception):
                 _eid = self._exchange.currentData()
@@ -3846,11 +4135,10 @@ if _HAS_QT:
                 # close and a display that asserts the opposite.
                 try:
                     import concurrent.futures
+
                     _close_at = time.monotonic()
-                    with concurrent.futures.ThreadPoolExecutor(
-                            max_workers=1) as pool:
-                        fut = pool.submit(
-                            asyncio.run, self._connector.disconnect())
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                        fut = pool.submit(asyncio.run, self._connector.disconnect())
                     # The executor's __exit__ waits for the worker, so
                     # this reading spans the whole close attempt and
                     # not the submit. It stays None if the executor
@@ -3858,8 +4146,7 @@ if _HAS_QT:
                     _close_s = time.monotonic() - _close_at
                     failure = fut.exception()
                 except Exception as exc:
-                    logger.exception(
-                        "API tester: disconnect call failed")
+                    logger.exception("API tester: disconnect call failed")
                     failure = exc
                 if failure is not None:
                     self._log(
@@ -3868,7 +4155,8 @@ if _HAS_QT:
                         "The exchange session may still be open. "
                         "The connector reference is dropped either "
                         "way, so nothing can close it from here.",
-                        level="error")
+                        level="error",
+                    )
                 self._connector = None
             self._connected = False
             self._connect_btn.setEnabled(True)
@@ -3899,35 +4187,40 @@ if _HAS_QT:
             # when there was no connector to close.
             #
             # NO `every=`: the Disconnect button is the cadence.
-            _released = (failure is None
-                         and self._connector is None
-                         and not self._connected)
-            _claims_closed = self._conn_status.text().startswith(
-                "Disconnected")
+            _released = (
+                failure is None and self._connector is None and not self._connected
+            )
+            _claims_closed = self._conn_status.text().startswith("Disconnected")
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _api_emit
+
                 _api_emit(
                     "apitest.16.002.postcondition.session_released",
-                    actual=_released, expected=_claims_closed,
-                    context={"exchange": _eid,
-                             "connector_held": _held,
-                             "failure_class": (type(failure).__name__
-                                               if failure is not None
-                                               else "")},
-                    duration=_close_s)
+                    actual=_released,
+                    expected=_claims_closed,
+                    context={
+                        "exchange": _eid,
+                        "connector_held": _held,
+                        "failure_class": (
+                            type(failure).__name__ if failure is not None else ""
+                        ),
+                    },
+                    duration=_close_s,
+                )
 
         def _run_test(self, test: str):
             if not self._connected or not self._connector:
                 self._log("ERROR", "Connect first", level="error")
                 return
             import time as _t, json
+
             sym = self._symbol_input.text().strip()
             self._log(f"Running {test}...", f"Symbol: {sym}", level="info")
-            from PySide6.QtWidgets import QApplication
+
             safe_process_events("legacy P4.1 site")
 
             # Use sync exchange (no asyncio/aiohttp)
-            c = getattr(self._connector, '_ccxt_sync', self._connector._ccxt)
+            c = getattr(self._connector, "_ccxt_sync", self._connector._ccxt)
 
             # Started OUTSIDE the try. The failure handler below reads
             # `start` to report how long the call took before it broke;
@@ -3952,7 +4245,11 @@ if _HAS_QT:
                 if test == "fetch_markets":
                     m = c.markets
                     syms = sorted(m.keys())[:50]
-                    result = {"total": len(m), "spot": sum(1 for v in m.values() if v.get("type") == "spot"), "first_50": syms}
+                    result = {
+                        "total": len(m),
+                        "spot": sum(1 for v in m.values() if v.get("type") == "spot"),
+                        "first_50": syms,
+                    }
                 elif test == "fetch_ticker":
                     result = c.fetch_ticker(sym)
                 elif test == "fetch_balances":
@@ -3961,7 +4258,11 @@ if _HAS_QT:
                     result = c.fetch_order_book(sym, limit=20)
                 elif test == "fetch_ohlcv":
                     d = c.fetch_ohlcv(sym, "1h", limit=50)
-                    result = {"candles": len(d), "latest_close": d[-1][4] if d else 0, "oldest_close": d[0][4] if d else 0}
+                    result = {
+                        "candles": len(d),
+                        "latest_close": d[-1][4] if d else 0,
+                        "oldest_close": d[0][4] if d else 0,
+                    }
                 elif test == "fetch_open_orders":
                     result = c.fetch_open_orders(sym)
                 elif test == "fetch_trades":
@@ -3973,16 +4274,30 @@ if _HAS_QT:
 
                 if isinstance(result, dict):
                     if "free" in result and isinstance(result["free"], dict):
-                        result["free"] = {k: v for k, v in result["free"].items() if v and float(v or 0) > 0}
+                        result["free"] = {
+                            k: v
+                            for k, v in result["free"].items()
+                            if v and float(v or 0) > 0
+                        }
                     if "used" in result and isinstance(result["used"], dict):
-                        result["used"] = {k: v for k, v in result["used"].items() if v and float(v or 0) > 0}
+                        result["used"] = {
+                            k: v
+                            for k, v in result["used"].items()
+                            if v and float(v or 0) > 0
+                        }
                     if "total" in result and isinstance(result["total"], dict):
-                        result["total"] = {k: v for k, v in result["total"].items() if v and float(v or 0) > 0}
+                        result["total"] = {
+                            k: v
+                            for k, v in result["total"].items()
+                            if v and float(v or 0) > 0
+                        }
                     display = json.dumps(result, indent=2, default=str)
                     if len(display) > 3000:
                         display = display[:3000] + "\n... (truncated)"
                 elif isinstance(result, list):
-                    display = f"[{len(result)} items]\n" + json.dumps(result[:5], indent=2, default=str)
+                    display = f"[{len(result)} items]\n" + json.dumps(
+                        result[:5], indent=2, default=str
+                    )
                     if len(result) > 5:
                         display += f"\n... and {len(result) - 5} more"
                 else:
@@ -4013,29 +4328,37 @@ if _HAS_QT:
                 _ran = result is not _nothing
                 _headline = self._result_info.text()
                 _claimed_ok = _headline.split(" (")[0].endswith(" OK")
-                _entries = (len(result)
-                            if isinstance(result, (dict, list)) else 1)
+                _entries = len(result) if isinstance(result, (dict, list)) else 1
                 import contextlib
+
                 with contextlib.suppress(Exception):
                     from src.core.signal_contract import emit as _api_emit
+
                     _api_emit(
                         "apitest.16.003.postcondition.reported_ok_ran_a_test",
-                        actual=_ran, expected=_claimed_ok,
-                        context={"exchange":
-                                     self._exchange.currentData(),
-                                 "test": test,
-                                 "result_kind": type(result).__name__,
-                                 "result_entries": _entries,
-                                 "truncated": "(truncated)" in display},
-                        duration=(elapsed / 1000.0 if _ran else None))
+                        actual=_ran,
+                        expected=_claimed_ok,
+                        context={
+                            "exchange": self._exchange.currentData(),
+                            "test": test,
+                            "result_kind": type(result).__name__,
+                            "result_entries": _entries,
+                            "truncated": "(truncated)" in display,
+                        },
+                        duration=(elapsed / 1000.0 if _ran else None),
+                    )
             except Exception as exc:
                 elapsed = (_t.monotonic() - start) * 1000
                 from ..exchange.ccxt_connector import CCXTConnector as CC
-                self._log(f"{test} FAILED", CC._format_exchange_error(exc), elapsed, "error")
+
+                self._log(
+                    f"{test} FAILED", CC._format_exchange_error(exc), elapsed, "error"
+                )
 
         def _raw_http_probe(self):
             """Bypass CCXT entirely. Direct HTTP + SSL diagnostics."""
             import time as _t, json, ssl, socket
+
             eid = self._exchange.currentData()
 
             # --- SSL Diagnostic first ---
@@ -4049,8 +4372,12 @@ if _HAS_QT:
             }
             host = host_map.get(eid, f"api.{eid}.com")
 
-            self._log("SSL DIAGNOSTIC", f"Testing SSL/TLS connection to {host}:443...", level="info")
-            from PySide6.QtWidgets import QApplication
+            self._log(
+                "SSL DIAGNOSTIC",
+                f"Testing SSL/TLS connection to {host}:443...",
+                level="info",
+            )
+
             safe_process_events("legacy P4.1 site")
 
             # Test 1: Raw TCP connection
@@ -4059,9 +4386,17 @@ if _HAS_QT:
                 sock = socket.create_connection((host, 443), timeout=10)
                 tcp_elapsed = (_t.monotonic() - start) * 1000
                 sock.close()
-                self._log(f"TCP OK ({tcp_elapsed:.0f}ms)", f"Connected to {host}:443", level="success")
+                self._log(
+                    f"TCP OK ({tcp_elapsed:.0f}ms)",
+                    f"Connected to {host}:443",
+                    level="success",
+                )
             except Exception as exc:
-                self._log("TCP FAILED", f"Cannot reach {host}:443 - {exc}\nThis is a network/firewall issue, not an API issue.", level="error")
+                self._log(
+                    "TCP FAILED",
+                    f"Cannot reach {host}:443 - {exc}\nThis is a network/firewall issue, not an API issue.",
+                    level="error",
+                )
                 return
 
             safe_process_events("legacy P4.1 site")
@@ -4076,21 +4411,25 @@ if _HAS_QT:
                         cert = ssock.getpeercert()
                         subject = dict(x[0] for x in cert.get("subject", []))
                         issuer = dict(x[0] for x in cert.get("issuer", []))
-                        self._log(f"SSL OK ({ssl_elapsed:.0f}ms)",
+                        self._log(
+                            f"SSL OK ({ssl_elapsed:.0f}ms)",
                             f"Protocol: {ssock.version()}\n"
                             f"Cipher: {ssock.cipher()[0]}\n"
                             f"Server CN: {subject.get('commonName', '?')}\n"
                             f"Issuer: {issuer.get('organizationName', '?')}\n"
                             f"Not After: {cert.get('notAfter', '?')}",
-                            level="success")
+                            level="success",
+                        )
             except ssl.SSLCertVerificationError as exc:
-                self._log("SSL CERT FAILED",
+                self._log(
+                    "SSL CERT FAILED",
                     f"Python cannot verify the SSL certificate for {host}.\n"
                     f"Error: {exc}\n"
                     f"FIX: Run 'pip install --upgrade certifi' then rebuild.\n"
                     f"This is why CCXT fails but your browser works - browsers use\n"
                     f"the Windows certificate store, Python uses its own CA bundle.",
-                    level="error")
+                    level="error",
+                )
             except Exception as exc:
                 self._log("SSL FAILED", f"{type(exc).__name__}: {exc}", level="error")
 
@@ -4099,44 +4438,77 @@ if _HAS_QT:
             # Test 3: SSL with certifi (if available)
             try:
                 import certifi
+
                 start = _t.monotonic()
                 ctx2 = ssl.create_default_context(cafile=certifi.where())
                 with socket.create_connection((host, 443), timeout=10) as sock:
                     with ctx2.wrap_socket(sock, server_hostname=host) as ssock:
                         ssl_elapsed = (_t.monotonic() - start) * 1000
-                        self._log(f"SSL+certifi OK ({ssl_elapsed:.0f}ms)",
+                        self._log(
+                            f"SSL+certifi OK ({ssl_elapsed:.0f}ms)",
                             f"Certifi CA bundle: {certifi.where()}\n"
                             f"Protocol: {ssock.version()}",
-                            level="success")
+                            level="success",
+                        )
             except ImportError:
-                self._log("certifi NOT INSTALLED",
+                self._log(
+                    "certifi NOT INSTALLED",
                     "Install with: pip install certifi\nThis provides CA certificates Python needs on Windows.",
-                    level="warning")
+                    level="warning",
+                )
             except Exception as exc:
-                self._log("SSL+certifi FAILED", f"{type(exc).__name__}: {exc}", level="error")
+                self._log(
+                    "SSL+certifi FAILED", f"{type(exc).__name__}: {exc}", level="error"
+                )
 
             safe_process_events("legacy P4.1 site")
 
             # --- HTTP endpoint probes ---
             probes = {
                 "coinbase": [
-                    ("GET", "https://api.coinbase.com/api/v3/brokerage/market/products", "v3 Public Products (what CCXT uses)"),
-                    ("GET", "https://api.coinbase.com/v2/currencies", "v2 Currencies (legacy)"),
-                    ("GET", "https://api.exchange.coinbase.com/products", "Exchange Products (alt)"),
+                    (
+                        "GET",
+                        "https://api.coinbase.com/api/v3/brokerage/market/products",
+                        "v3 Public Products (what CCXT uses)",
+                    ),
+                    (
+                        "GET",
+                        "https://api.coinbase.com/v2/currencies",
+                        "v2 Currencies (legacy)",
+                    ),
+                    (
+                        "GET",
+                        "https://api.exchange.coinbase.com/products",
+                        "Exchange Products (alt)",
+                    ),
                 ],
                 "binance": [
-                    ("GET", "https://api.binance.com/api/v3/exchangeInfo", "Exchange Info"),
+                    (
+                        "GET",
+                        "https://api.binance.com/api/v3/exchangeInfo",
+                        "Exchange Info",
+                    ),
                     ("GET", "https://api.binance.com/api/v3/ping", "Ping"),
                 ],
                 "kraken": [
-                    ("GET", "https://api.kraken.com/0/public/SystemStatus", "System Status"),
-                    ("GET", "https://api.kraken.com/0/public/AssetPairs", "Asset Pairs"),
+                    (
+                        "GET",
+                        "https://api.kraken.com/0/public/SystemStatus",
+                        "System Status",
+                    ),
+                    (
+                        "GET",
+                        "https://api.kraken.com/0/public/AssetPairs",
+                        "Asset Pairs",
+                    ),
                 ],
             }
             default_probe = [("GET", f"https://api.{eid}.com", "Root endpoint")]
             endpoints = probes.get(eid, default_probe)
 
-            self._log("HTTP PROBES", f"Testing {len(endpoints)} endpoints...", level="info")
+            self._log(
+                "HTTP PROBES", f"Testing {len(endpoints)} endpoints...", level="info"
+            )
             safe_process_events("legacy P4.1 site")
 
             import urllib.error
@@ -4145,6 +4517,7 @@ if _HAS_QT:
             ssl_ctx = None
             try:
                 import certifi
+
                 ssl_ctx = ssl.create_default_context(cafile=certifi.where())
             except ImportError:
                 ssl_ctx = ssl.create_default_context()
@@ -4194,7 +4567,9 @@ if _HAS_QT:
                                 keys = list(parsed.keys())[:10]
                                 body_display = f"JSON keys: {keys}\n"
                                 if isinstance(parsed.get("products"), list):
-                                    body_display += f"Products count: {len(parsed['products'])}\n"
+                                    body_display += (
+                                        f"Products count: {len(parsed['products'])}\n"
+                                    )
                                 body_display += json.dumps(parsed, indent=2)[:800]
                         except json.JSONDecodeError:
                             pass
@@ -4242,7 +4617,12 @@ if _HAS_QT:
 
                 except Exception as exc:
                     elapsed = (_t.monotonic() - start) * 1000
-                    self._log(f"ERROR - {desc}", f"URL: {url}\n{type(exc).__name__}: {exc}", elapsed, "error")
+                    self._log(
+                        f"ERROR - {desc}",
+                        f"URL: {url}\n{type(exc).__name__}: {exc}",
+                        elapsed,
+                        "error",
+                    )
 
                 safe_process_events("legacy P4.1 site")
 
@@ -4267,22 +4647,29 @@ if _HAS_QT:
             # NO `every=`: the Raw HTTP Probe button is the cadence.
             _sweep_s = _t.monotonic() - _sweep_at
             import contextlib
+
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _api_emit
+
                 _api_emit(
                     "apitest.16.004.postcondition.green_probe_read_a_body",
-                    actual=_green_with_body, expected=_green,
-                    context={"exchange": eid,
-                             "host": host,
-                             "endpoints": len(endpoints),
-                             "attempted": _attempted,
-                             "http_statuses": _statuses,
-                             "not_green": _attempted - _green},
-                    duration=_sweep_s)
+                    actual=_green_with_body,
+                    expected=_green,
+                    context={
+                        "exchange": eid,
+                        "host": host,
+                        "endpoints": len(endpoints),
+                        "attempted": _attempted,
+                        "http_statuses": _statuses,
+                        "not_green": _attempted - _green,
+                    },
+                    duration=_sweep_s,
+                )
 
         def _check_exchange_status(self):
             """Check exchange status pages for known outages."""
             import time as _t, json
+
             eid = self._exchange.currentData()
 
             status_urls = {
@@ -4297,16 +4684,23 @@ if _HAS_QT:
             # critical; `maintenance` is carried too because some
             # pages report it, and a value the venue never sends costs
             # nothing while a missing one would paint a false red.
-            _mappable = ("none", "minor", "major", "critical",
-                         "maintenance")
+            _mappable = ("none", "minor", "major", "critical", "maintenance")
 
             url = status_urls.get(eid)
             if not url:
-                self._log("STATUS", f"No known status page for {eid.capitalize()}", level="warning")
+                self._log(
+                    "STATUS",
+                    f"No known status page for {eid.capitalize()}",
+                    level="warning",
+                )
                 return
 
-            self._log("CHECKING STATUS", f"Querying {eid.capitalize()} status page...", level="info")
-            from PySide6.QtWidgets import QApplication
+            self._log(
+                "CHECKING STATUS",
+                f"Querying {eid.capitalize()} status page...",
+                level="info",
+            )
+
             safe_process_events("legacy P4.1 site")
 
             try:
@@ -4362,24 +4756,32 @@ if _HAS_QT:
                         _ind_seen = str(s.get("indicator", ""))[:32]
                         _fetch_s = _t.monotonic() - start
                         import contextlib
+
                         with contextlib.suppress(Exception):
-                            from src.core.signal_contract import (
-                                emit as _api_emit)
+                            from src.core.signal_contract import emit as _api_emit
+
                             _api_emit(
                                 "apitest.16.005.postcondition.indicator_is_mappable",
-                                actual=_ind_seen, expected=_mappable,
+                                actual=_ind_seen,
+                                expected=_mappable,
                                 ok=_ind_seen in _mappable,
-                                context={"exchange": eid,
-                                         "http_status":
-                                             getattr(resp, "status", None),
-                                         "body_bytes": len(body),
-                                         "level_shown": level},
-                                duration=_fetch_s)
+                                context={
+                                    "exchange": eid,
+                                    "http_status": getattr(resp, "status", None),
+                                    "body_bytes": len(body),
+                                    "level_shown": level,
+                                },
+                                duration=_fetch_s,
+                            )
                     else:
-                        self._log("STATUS", json.dumps(data, indent=2)[:800], elapsed, "info")
+                        self._log(
+                            "STATUS", json.dumps(data, indent=2)[:800], elapsed, "info"
+                        )
 
             except Exception as exc:
-                self._log("STATUS CHECK FAILED", f"{type(exc).__name__}: {exc}", level="error")
+                self._log(
+                    "STATUS CHECK FAILED", f"{type(exc).__name__}: {exc}", level="error"
+                )
 
     # ---------------------------------------------------------------
     # The Console Pause flag
@@ -4465,9 +4867,11 @@ if _HAS_QT:
         the WORDING without a widget, and so the drawing test and the
         wording test fail separately when they fail.
         """
-        return (f"──── [SIGNALS GAP] {skipped} earlier records skipped "
-                f"to stay current · NOT LOST · on disk in "
-                f"~/.acervator_logs/signals/session.jsonl ────")
+        return (
+            f"──── [SIGNALS GAP] {skipped} earlier records skipped "
+            f"to stay current · NOT LOST · on disk in "
+            f"~/.acervator_logs/signals/session.jsonl ────"
+        )
 
     def _draw_signal_gap_marker(view: QPlainTextEdit, *, skipped: int) -> int:
         """Draw one gap marker into the signals pane. Returns blocks added.
@@ -4507,9 +4911,11 @@ if _HAS_QT:
         if skipped <= 0:
             return 0
         from html import escape as _esc
+
         view.appendHtml(
             '<span style="color:#ffb000;background-color:#33220a">'
-            f'{_esc(_signal_gap_marker_text(skipped))}</span>')
+            f"{_esc(_signal_gap_marker_text(skipped))}</span>"
+        )
         return 1
 
     # ---------------------------------------------------------------
@@ -4541,8 +4947,8 @@ if _HAS_QT:
             self.setWindowTitle("Acervator v" + __version__ + "")
             self.setMinimumSize(1400, 900)
             self._bot_manager = bot_manager
-        # Trade historian callback will be registered in _post_init_hook()
-        # after the history tab is constructed.
+            # Trade historian callback will be registered in _post_init_hook()
+            # after the history tab is constructed.
             self._settings = settings_manager
             self._exchange_tabs: dict[str, ExchangeTab] = {}
             self._bus = get_event_bus()
@@ -4556,19 +4962,26 @@ if _HAS_QT:
             # broker's request_confirmation(); the modal runs on this thread.
             try:
                 from .buy_confirmation_dialog import get_broker as _get_bcd_broker
+
                 self._buy_confirmation_broker = _get_bcd_broker()
             except Exception as _bcd_exc:
                 logger.warning(
                     "MEM-228 buy confirmation broker init failed: %s; "
                     "buys requiring confirmation will fail-closed.",
-                    _bcd_exc)
+                    _bcd_exc,
+                )
                 self._buy_confirmation_broker = None
 
             # --- Advanced subsystems ---
             from ..trading.risk_manager import RiskManager
             from ..trading.analytics_engine import AnalyticsEngine
-            from ..trading.reconciliation import TradeJournal, ReconciliationEngine, CrashRecovery
+            from ..trading.reconciliation import (
+                TradeJournal,
+                ReconciliationEngine,
+                CrashRecovery,
+            )
             from ..core.notifications import get_notification_manager
+
             self._risk_manager = RiskManager(bot_manager)
             self._analytics = AnalyticsEngine()
             self._journal = TradeJournal()
@@ -4588,6 +5001,7 @@ if _HAS_QT:
             # we capture (timestamp, bot_id, error_msg, consecutive)
             # tuples in a bounded deque so the dialog can show them.
             from collections import deque as _deque
+
             self._error_log_buffer: _deque = _deque(maxlen=200)
             self._bus.subscribe("bot.error", self._on_bot_error_for_log)
 
@@ -4607,7 +5021,11 @@ if _HAS_QT:
             self._init_live_monitor()
 
             self._status_log.log("Acervator v" + __version__ + " started.", "success")
-            logger.info("Acervator v" + __version__ + " — Console logging active. All system messages appear here.")
+            logger.info(
+                "Acervator v"
+                + __version__
+                + " — Console logging active. All system messages appear here."
+            )
             self._verify_exchanges_on_startup()
 
         def set_async_loop(self, loop) -> None:
@@ -4619,13 +5037,14 @@ if _HAS_QT:
             # to keep backwards compatibility with the Phase A skeleton
             # that didn't expose set_async_loop on SimulatorTab.
             try:
-                if (getattr(self, "_simulator", None) is not None
-                        and hasattr(self._simulator, "set_async_loop")):
+                if getattr(self, "_simulator", None) is not None and hasattr(
+                    self._simulator, "set_async_loop"
+                ):
                     self._simulator.set_async_loop(loop)
-            except Exception as _exc:   # R28-OK: propagation best-effort
+            except Exception as _exc:  # R28-OK: propagation best-effort
                 logger.warning(
-                    "set_async_loop: SimulatorTab propagation failed: %s",
-                    _exc)
+                    "set_async_loop: SimulatorTab propagation failed: %s", _exc
+                )
 
         def _setup_menu(self) -> None:
             menu_bar = self.menuBar()
@@ -4638,6 +5057,7 @@ if _HAS_QT:
             exchange_menu.addAction("&Add Exchange", self._add_exchange)
             theme_menu = menu_bar.addMenu("&Theme")
             from .theme_engine import THEMES
+
             for name, tokens in THEMES.items():
                 theme_menu.addAction(
                     tokens.display_name,
@@ -4675,13 +5095,15 @@ if _HAS_QT:
                 "Total Scrummed (high score) — cumulative USD sold "
                 "across all bots since the platform run started. Grows "
                 "with every SCRUM (sell at upper-band) + MANUAL_SCRUM "
-                "fill. Resets to $0.00 only on a fresh process start.")
+                "fill. Resets to $0.00 only on a fresh process start."
+            )
             self._stat_folded = StatCard("Folded", "$0.00")
             self._stat_folded.setToolTip(
                 "Total Folded (high score) — cumulative USD bought "
                 "across all bots since the platform run started. Grows "
                 "with every FOLD (buy at lower-band) + MANUAL_FOLD "
-                "fill. Resets to $0.00 only on a fresh process start.")
+                "fill. Resets to $0.00 only on a fresh process start."
+            )
             # Keep _stat_pnl as a backing field referenced elsewhere in
             # the class but hide it from the header. Other code paths
             # (e.g., _stat_pnl.set_value updates from background tasks)
@@ -4689,9 +5111,13 @@ if _HAS_QT:
             self._stat_pnl = StatCard("P/L", "$0.00")
             self._stat_pnl.setVisible(False)
             self._stat_trades = StatCard("Trades", "0")
-            self._stat_trades.setToolTip("Total executed buy and sell trades across all active bots.")
+            self._stat_trades.setToolTip(
+                "Total executed buy and sell trades across all active bots."
+            )
             self._stat_bots = StatCard("Bots", "0")
-            self._stat_bots.setToolTip("Bots currently in RUNNING state (actively trading).")
+            self._stat_bots.setToolTip(
+                "Bots currently in RUNNING state (actively trading)."
+            )
             # v3.16.46 — relabeled per operator directive 2026-05-10:
             # "No error counter updating despite all the prior CCX
             # error occurrences." The card now shows lifetime cumulative
@@ -4708,12 +5134,12 @@ if _HAS_QT:
                 "Error count across all bots since last reset. "
                 "Click to open the Error Log; use the Reset button "
                 "inside to clear all previous faults.\n\n"
-                "Hover bot rows to see current ERROR/COOLDOWN state.")
+                "Hover bot rows to see current ERROR/COOLDOWN state."
+            )
             # v3.16.52 — Errors card is clickable; opens a dialog showing
             # the rolling error log buffer (last 200 bot.error events plus
             # each bot's current last_error / consecutive_errors snapshot).
-            self._stat_errors.set_clickable(
-                True, "Click to open the error log.")
+            self._stat_errors.set_clickable(True, "Click to open the error log.")
             self._stat_errors.clicked.connect(self._show_error_log_dialog)
             # v3.23.7 — attach a privacy dot to each of the 5 top-right
             # counter cards. The dot toggles that field's mask state in
@@ -4724,8 +5150,13 @@ if _HAS_QT:
             self._stat_trades.attach_privacy_dot("counter.trades")
             self._stat_bots.attach_privacy_dot("counter.bots")
             self._stat_errors.attach_privacy_dot("counter.errors")
-            for card in [self._stat_scrummed, self._stat_folded,
-                         self._stat_trades, self._stat_bots, self._stat_errors]:
+            for card in [
+                self._stat_scrummed,
+                self._stat_folded,
+                self._stat_trades,
+                self._stat_bots,
+                self._stat_errors,
+            ]:
                 top_row.addWidget(card, stretch=1)
 
             # Mode toggle: Crypto ↔ Stock
@@ -4758,12 +5189,14 @@ if _HAS_QT:
             # sadp: R28 FL + bridge = MEM-136 architecture
             try:
                 from .shared_testnet import SharedTestnetBridge
+
                 SharedTestnetBridge.install_on(self)
             except Exception as _e:
                 import traceback as _tb
+
                 logging.getLogger("acervator").warning(
-                    f"SharedTestnetBridge install failed: {_e}\n"
-                    f"{_tb.format_exc()}")
+                    f"SharedTestnetBridge install failed: {_e}\n" f"{_tb.format_exc()}"
+                )
                 # Non-fatal — tabs degrade to their own LocalTestnet
                 self._local_testnet = None
                 self._testnet_bridge = None
@@ -4790,13 +5223,20 @@ if _HAS_QT:
 
             # ── Equity exchange IDs (routes to Stock layer) ────────────
             self._equity_exchange_ids = {
-                "alpaca", "ibkr", "schwab", "tdameritrade",
-                "webull", "tastytrade", "fidelity", "etrade",
+                "alpaca",
+                "ibkr",
+                "schwab",
+                "tdameritrade",
+                "webull",
+                "tastytrade",
+                "fidelity",
+                "etrade",
                 "interactivebrokers",
             }
 
             # ── QStackedWidget: page 0 = Crypto, page 1 = Stock ────────
             from PySide6.QtWidgets import QStackedWidget
+
             self._trading_stack = QStackedWidget()
 
             def _make_layer(label_text: str, accent: str) -> tuple:
@@ -4821,7 +5261,8 @@ if _HAS_QT:
                 ph_card.setMinimumSize(280, 140)
                 ph_card.setStyleSheet(
                     f"QFrame {{ background: rgba(0,255,204,8); "
-                    f"border: 1px solid {accent}44; border-radius: 6px; }}")
+                    f"border: 1px solid {accent}44; border-radius: 6px; }}"
+                )
                 ph_layout = QVBoxLayout(ph_card)
                 ph_layout.setAlignment(Qt.AlignCenter)
                 ph_layout.setSpacing(12)
@@ -4833,7 +5274,8 @@ if _HAS_QT:
                 ph_add.setMinimumSize(180, 36)
                 ph_add.setStyleSheet(
                     f"QPushButton {{ border: 1px solid {accent}; "
-                    f"color: {accent}; border-radius: 4px; }}")
+                    f"color: {accent}; border-radius: 4px; }}"
+                )
                 ph_add.clicked.connect(self._add_exchange)
                 ph_layout.addWidget(ph_add, alignment=Qt.AlignCenter)
                 ph_hint = QLabel(f"Add a {label_text} exchange to begin trading")
@@ -4847,28 +5289,37 @@ if _HAS_QT:
                 return page, tab_w, {}, placeholder
 
             # Build both layers
-            (crypto_page, self._crypto_tab_widget,
-             _crypto_tabs, self._crypto_placeholder) = _make_layer("Crypto", "#00ccaa")
-            (stock_page, self._stock_tab_widget,
-             _stock_tabs, self._stock_placeholder) = _make_layer("Stock", "#6699ff")
+            (
+                crypto_page,
+                self._crypto_tab_widget,
+                _crypto_tabs,
+                self._crypto_placeholder,
+            ) = _make_layer("Crypto", "#00ccaa")
+            (
+                stock_page,
+                self._stock_tab_widget,
+                _stock_tabs,
+                self._stock_placeholder,
+            ) = _make_layer("Stock", "#6699ff")
 
             self._crypto_exchange_tabs: dict = _crypto_tabs
-            self._stock_exchange_tabs: dict  = _stock_tabs
+            self._stock_exchange_tabs: dict = _stock_tabs
 
-            self._trading_stack.addWidget(crypto_page)   # index 0
-            self._trading_stack.addWidget(stock_page)    # index 1
-            self._trading_stack.setCurrentIndex(0)       # start in crypto
+            self._trading_stack.addWidget(crypto_page)  # index 0
+            self._trading_stack.addWidget(stock_page)  # index 1
+            self._trading_stack.setCurrentIndex(0)  # start in crypto
 
             # Legacy alias: points to whichever layer is active
             # Updated by _toggle_trading_mode()
-            self._tab_widget        = self._crypto_tab_widget
-            self._exchange_tabs     = self._crypto_exchange_tabs
+            self._tab_widget = self._crypto_tab_widget
+            self._exchange_tabs = self._crypto_exchange_tabs
             self._empty_placeholder = self._crypto_placeholder
 
             top_splitter.addWidget(self._trading_stack)
 
             # Right panel: indicator voting only (Price Chart removed per request)
             from .indicator_panel import IndicatorVotingPanel
+
             self._indicator_panel = IndicatorVotingPanel()
             self._chart = None  # No chart in trading tab
             top_splitter.addWidget(self._indicator_panel)
@@ -4897,46 +5348,67 @@ if _HAS_QT:
             # NO DURATION. Assembly is widget construction on the
             # GUI thread with no bounded operation behind it, and a
             # number here would be fabricated (E8).
-            _crypto_host = (self._crypto_tab_widget.parentWidget()
-                            if self._crypto_tab_widget else None)
-            _stock_host = (self._stock_tab_widget.parentWidget()
-                           if self._stock_tab_widget else None)
-            _alias_host = (self._tab_widget.parentWidget()
-                           if self._tab_widget else None)
-            _crypto_page = (self._trading_stack.indexOf(_crypto_host)
-                            if _crypto_host is not None else -1)
-            _stock_page = (self._trading_stack.indexOf(_stock_host)
-                           if _stock_host is not None else -1)
-            _alias_page = (self._trading_stack.indexOf(_alias_host)
-                           if _alias_host is not None else -1)
+            _crypto_host = (
+                self._crypto_tab_widget.parentWidget()
+                if self._crypto_tab_widget
+                else None
+            )
+            _stock_host = (
+                self._stock_tab_widget.parentWidget()
+                if self._stock_tab_widget
+                else None
+            )
+            _alias_host = self._tab_widget.parentWidget() if self._tab_widget else None
+            _crypto_page = (
+                self._trading_stack.indexOf(_crypto_host)
+                if _crypto_host is not None
+                else -1
+            )
+            _stock_page = (
+                self._trading_stack.indexOf(_stock_host)
+                if _stock_host is not None
+                else -1
+            )
+            _alias_page = (
+                self._trading_stack.indexOf(_alias_host)
+                if _alias_host is not None
+                else -1
+            )
             _visible_page = self._trading_stack.currentIndex()
             _stack_slot = top_splitter.indexOf(self._trading_stack)
             _panel_slot = top_splitter.indexOf(self._indicator_panel)
-            _faults = sum((
-                self._trading_stack.count() != 2,
-                _crypto_page != 0,
-                _stock_page != 1,
-                _stack_slot != 0,
-                _panel_slot != 1,
-                _alias_page != _visible_page,
-            ))
+            _faults = sum(
+                (
+                    self._trading_stack.count() != 2,
+                    _crypto_page != 0,
+                    _stock_page != 1,
+                    _stack_slot != 0,
+                    _panel_slot != 1,
+                    _alias_page != _visible_page,
+                )
+            )
             import contextlib
+
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _tr_emit
+
                 _tr_emit(
                     "trading.12.001.postcondition.tab_assembled",
-                    actual=_faults, expected=0,
-                    context={"stack_pages": self._trading_stack.count(),
-                             "crypto_page": _crypto_page,
-                             "stock_page": _stock_page,
-                             "stack_slot": _stack_slot,
-                             "panel_slot": _panel_slot,
-                             "splitter_slots": top_splitter.count(),
-                             "alias_page": _alias_page,
-                             "visible_page": _visible_page,
-                             "chart_removed": self._chart is None,
-                             "equity_ids":
-                                 len(self._equity_exchange_ids)})
+                    actual=_faults,
+                    expected=0,
+                    context={
+                        "stack_pages": self._trading_stack.count(),
+                        "crypto_page": _crypto_page,
+                        "stock_page": _stock_page,
+                        "stack_slot": _stack_slot,
+                        "panel_slot": _panel_slot,
+                        "splitter_slots": top_splitter.count(),
+                        "alias_page": _alias_page,
+                        "visible_page": _visible_page,
+                        "chart_removed": self._chart is None,
+                        "equity_ids": len(self._equity_exchange_ids),
+                    },
+                )
 
             main_splitter.addWidget(top_splitter)
 
@@ -4958,6 +5430,7 @@ if _HAS_QT:
             class _NotifyStub:
                 def __init__(self, status_log):
                     self._log = status_log
+
                 def notify(self, *args, **kwargs):
                     # Accept any legacy signature: .notify(msg, level) or
                     # .notify(level, msg, ...). Coerce to a single string for
@@ -4972,8 +5445,9 @@ if _HAS_QT:
                     # the log instead of vanishing silently.
                     try:
                         parts = [str(a) for a in args if a is not None]
-                        parts += [f"{k}={v}" for k, v in kwargs.items()
-                                  if v is not None]
+                        parts += [
+                            f"{k}={v}" for k, v in kwargs.items() if v is not None
+                        ]
                         msg = " | ".join(parts) if parts else ""
                         if msg and self._log is not None:
                             # 10.5 -- trading.12.006. The stub is
@@ -4996,9 +5470,10 @@ if _HAS_QT:
                             _rev = _doc.revision()
                             self._log.append(f"[notification] {msg}")
                             import contextlib
+
                             with contextlib.suppress(Exception):
-                                from src.core.signal_contract import (
-                                    emit as _tr_emit)
+                                from src.core.signal_contract import emit as _tr_emit
+
                                 _tr_emit(
                                     "trading.12.006.postcondition"
                                     ".notification_relayed",
@@ -5008,9 +5483,12 @@ if _HAS_QT:
                                         "parts": len(parts),
                                         "chars": len(msg),
                                         "blocks": _doc.blockCount(),
-                                        "revision": _doc.revision()})
+                                        "revision": _doc.revision(),
+                                    },
+                                )
                     except Exception:  # noqa: S110
-                        pass   # sadp: R61 ACCEPT — notify stub must never raise
+                        pass  # sadp: R61 ACCEPT — notify stub must never raise
+
             # status_log is created a few lines below; defer _spool assignment
             # until after it exists. See "self._spool = _NotifyStub(...)"
             # immediately after self._status_log = StatusLog().
@@ -5047,7 +5525,9 @@ if _HAS_QT:
                 "Pause the Activity Log spool so errors don't scroll "
                 "off-screen. Messages received while paused are "
                 "buffered (cap 2000) and flushed on resume in "
-                "chronological order. v3.15.67.")
+                "chronological order. v3.15.67."
+            )
+
             def _on_activity_pause_toggled(checked: bool):
                 if checked:
                     self._status_log.pause()
@@ -5063,20 +5543,24 @@ if _HAS_QT:
                 # when the errors he paused for scroll away.
                 # NO DURATION: a flag flip has no operation (E8).
                 import contextlib
+
                 with contextlib.suppress(Exception):
                     from src.core.signal_contract import emit as _tr_emit
+
                     _stats = self._status_log.health_stats()
                     _tr_emit(
-                        "trading.12.005.postcondition"
-                        ".activity_log_paused",
-                        actual=_stats["paused"], expected=checked,
-                        context={"buffered": _stats["pause_buffer_size"],
-                                 "renders": _stats["total_renders"],
-                                 "render_errors":
-                                     _stats["render_errors"],
-                                 "blocks": _stats["document_blocks"]})
-            self._activity_pause_btn.toggled.connect(
-                _on_activity_pause_toggled)
+                        "trading.12.005.postcondition" ".activity_log_paused",
+                        actual=_stats["paused"],
+                        expected=checked,
+                        context={
+                            "buffered": _stats["pause_buffer_size"],
+                            "renders": _stats["total_renders"],
+                            "render_errors": _stats["render_errors"],
+                            "blocks": _stats["document_blocks"],
+                        },
+                    )
+
+            self._activity_pause_btn.toggled.connect(_on_activity_pause_toggled)
             activity_header_row.addWidget(self._activity_pause_btn)
             activity_layout.addLayout(activity_header_row)
             self._status_log = StatusLog()
@@ -5108,59 +5592,66 @@ if _HAS_QT:
             def _activity_log_watchdog():
                 try:
                     stats = self._status_log.health_stats()
-                except Exception as _wd_exc:  # R28-OK: defensive — never let watchdog itself crash
+                except (
+                    Exception
+                ) as _wd_exc:  # R28-OK: defensive — never let watchdog itself crash
                     logger.warning(
-                        "Activity-Log watchdog stat fetch failed: %s",
-                        _wd_exc)
+                        "Activity-Log watchdog stat fetch failed: %s", _wd_exc
+                    )
                     return
                 import time as _t
+
                 now = _t.time()
                 # New render errors since last check?
                 cur_errs = stats["render_errors"]
                 if cur_errs > self._activity_log_last_errors:
                     delta = cur_errs - self._activity_log_last_errors
                     self._activity_log_last_errors = cur_errs
-                    msg = (f"⚠ ACTIVITY-LOG WATCHDOG: {delta} new render "
-                           f"error(s) since last check (total {cur_errs}). "
-                           f"Last: {stats['last_render_error']}. "
-                           f"Output messages may be missing — see "
-                           f"acervator.log for raw exception detail.")
+                    msg = (
+                        f"⚠ ACTIVITY-LOG WATCHDOG: {delta} new render "
+                        f"error(s) since last check (total {cur_errs}). "
+                        f"Last: {stats['last_render_error']}. "
+                        f"Output messages may be missing — see "
+                        f"acervator.log for raw exception detail."
+                    )
                     self._status_log.force_log(msg, "error")
                     logger.error(msg)
                 # No-activity windows
                 age = stats["last_render_age_sec"]
                 # Only alert if bots are active — quiet idle is fine
-                bots_active = (
-                    self._bot_manager
-                    and any(b.state.value == "running"
-                            for b in getattr(self._bot_manager, "_bots",
-                                             {}).values()))
+                bots_active = self._bot_manager and any(
+                    b.state.value == "running"
+                    for b in getattr(self._bot_manager, "_bots", {}).values()
+                )
                 if bots_active and age > 600:
                     # Throttle: re-alert every 10 min while silent
                     if now - self._activity_log_alert_sent_at > 600:
-                        msg = (f"⚠ ACTIVITY-LOG WATCHDOG: no new log "
-                               f"messages for {age:.0f}s while {sum(1 for b in self._bot_manager._bots.values() if b.state.value == 'running')} "
-                               f"bot(s) running. paused={stats['paused']}, "
-                               f"buffered={stats['pause_buffer_size']}, "
-                               f"document_blocks={stats['document_blocks']}.")
+                        msg = (
+                            f"⚠ ACTIVITY-LOG WATCHDOG: no new log "
+                            f"messages for {age:.0f}s while {sum(1 for b in self._bot_manager._bots.values() if b.state.value == 'running')} "
+                            f"bot(s) running. paused={stats['paused']}, "
+                            f"buffered={stats['pause_buffer_size']}, "
+                            f"document_blocks={stats['document_blocks']}."
+                        )
                         self._status_log.force_log(msg, "warning")
                         logger.warning(msg)
                         self._activity_log_alert_sent_at = now
                 if bots_active and age > 1800:
                     # Critical: 30+ min silence with bots running
                     if now - self._activity_log_critical_sent_at > 1800:
-                        msg = (f"🚨 ACTIVITY-LOG WATCHDOG CRITICAL: no "
-                               f"new log messages for {age:.0f}s. Likely "
-                               f"silent failure — check acervator.log "
-                               f"and bot status panels directly.")
+                        msg = (
+                            f"🚨 ACTIVITY-LOG WATCHDOG CRITICAL: no "
+                            f"new log messages for {age:.0f}s. Likely "
+                            f"silent failure — check acervator.log "
+                            f"and bot status panels directly."
+                        )
                         self._status_log.force_log(msg, "error")
                         logger.error(msg)
                         self._activity_log_critical_sent_at = now
 
             self._activity_log_watchdog_timer = QTimer(self)
-            self._activity_log_watchdog_timer.timeout.connect(
-                _activity_log_watchdog)
-            self._activity_log_watchdog_timer.start(60_000)   # 60s
+            self._activity_log_watchdog_timer.timeout.connect(_activity_log_watchdog)
+            self._activity_log_watchdog_timer.start(60_000)  # 60s
 
             api_widget = QWidget()
             api_layout = QVBoxLayout(api_widget)
@@ -5184,13 +5675,15 @@ if _HAS_QT:
                 "Freeze the API Interaction Log so you can capture an "
                 "error without it scrolling away. Internal events keep "
                 "happening; the buffer just stops appending to the view. "
-                "v3.15.67.")
+                "v3.15.67."
+            )
             # Pause state lives on the main_window since QPlainTextEdit
             # doesn't have a custom subclass like StatusLog. The
             # _on_api_event handler checks this flag.
             self._api_log_paused: bool = False
             self._api_log_pause_buffer: list[str] = []
             self._api_log_pause_buffer_cap: int = 2000
+
             def _on_api_pause_toggled(checked: bool):
                 self._api_log_paused = checked
                 if checked:
@@ -5203,17 +5696,22 @@ if _HAS_QT:
                         self._api_log_view.appendPlainText(line)
                     if buf:
                         self._api_log_view.appendPlainText(
-                            f"--- (resumed; {len(buf)} buffered line(s) above) ---")
+                            f"--- (resumed; {len(buf)} buffered line(s) above) ---"
+                        )
                     self._api_pause_btn.setText("⏸  Pause API Log")
+
             self._api_pause_btn.toggled.connect(_on_api_pause_toggled)
             api_header_row.addWidget(self._api_pause_btn)
             api_layout.addLayout(api_header_row)
             # MEM-204 — QPlainTextEdit (same reason as the main Console).
             self._api_log_view = QPlainTextEdit()
             self._api_log_view.setReadOnly(True)
-            self._api_log_view.setPlaceholderText("API calls, responses, timing, data usage...")
+            self._api_log_view.setPlaceholderText(
+                "API calls, responses, timing, data usage..."
+            )
             self._api_log_view.setToolTip(
-                "Every API call: endpoint, reason, result, timing, data usage")
+                "Every API call: endpoint, reason, result, timing, data usage"
+            )
             self._api_log_view.setLineWrapMode(QPlainTextEdit.NoWrap)
             self._api_log_view.setMaximumBlockCount(2000)
             api_layout.addWidget(self._api_log_view)
@@ -5230,6 +5728,7 @@ if _HAS_QT:
             trading_layout.addWidget(main_splitter)
 
             from ..exchange.api_logger import get_api_log
+
             self._api_logger = get_api_log()
             self._api_logger.add_listener(self._on_api_event)
 
@@ -5248,6 +5747,7 @@ if _HAS_QT:
 
             # --- Tab 4: Bot Visualization ---
             from .bot_visualizer import BotVisualizationTab
+
             self._bot_viz = BotVisualizationTab()
             self._main_tabs.addTab(self._bot_viz, "Bot Swarm")
 
@@ -5259,6 +5759,7 @@ if _HAS_QT:
             # set_exchange_source(): connectors are looked up lazily
             # so the tab always sees the current dict.
             from .market_inspector import MarketInspectorTab
+
             self._market_inspector = MarketInspectorTab()
             # v3.24.57 (C35) — hand the proposals pane a place to
             # persist 24 h dismissals. The pane deliberately does not
@@ -5267,11 +5768,9 @@ if _HAS_QT:
             try:
                 self._market_inspector.set_dismiss_store(self._settings)
             except Exception as _ds_exc:  # noqa: BLE001 - persistence is optional
-                logger.debug(
-                    "topology dismiss-store wiring skipped: %s", _ds_exc)
+                logger.debug("topology dismiss-store wiring skipped: %s", _ds_exc)
             self._market_inspector.set_exchange_source(
-                connectors_getter=(
-                    lambda: getattr(self, "_exchange_connectors", {})),
+                connectors_getter=(lambda: getattr(self, "_exchange_connectors", {})),
                 scheduler=self._schedule_async,
             )
             # v3.23.68 — wire topology proposals into the right pane.
@@ -5279,14 +5778,13 @@ if _HAS_QT:
             # (and the 10-min auto-timer), so this is a pure getter
             # that assembles the context dict from live subsystems.
             self._market_inspector.set_proposal_source(
-                lambda: self._build_topology_proposals())
+                lambda: self._build_topology_proposals()
+            )
             # v3.23.69 — wire the Adopt handoff: preview modal's Adopt
             # button emits `adoptRequested(proposal)` → the pane
             # forwards to the orchestrator on the main window.
-            self._market_inspector.set_adopt_handler(
-                self._adopt_topology_proposal)
-            self._main_tabs.addTab(
-                self._market_inspector, "Market Inspector")
+            self._market_inspector.set_adopt_handler(self._adopt_topology_proposal)
+            self._main_tabs.addTab(self._market_inspector, "Market Inspector")
 
             # --- Tabs 6 + 6b: Simulator and Paper Trader — REMOVED v3.16.46 ---
             # Operator directive 2026-05-10: "Delete the Simulator and
@@ -5315,6 +5813,7 @@ if _HAS_QT:
             # intended tab order:
             #   Trading | Paper Trader | Simulator | Asset Charts | ...
             from .simulator_tab import SimulatorTab
+
             self._simulator = SimulatorTab()
             self._main_tabs.insertTab(1, self._simulator, "Simulator")
             # v3.23.80 — wire connectors getter for Fleet Replay's
@@ -5322,7 +5821,8 @@ if _HAS_QT:
             # older SimulatorTab without this hook still boots.
             if hasattr(self._simulator, "set_connectors_getter"):
                 self._simulator.set_connectors_getter(
-                    lambda: getattr(self, "_exchange_connectors", {}))
+                    lambda: getattr(self, "_exchange_connectors", {})
+                )
             # v3.23.81 — wire bot_manager so Fetch YTD can enumerate
             # via _pairs_from_bot_manager (mirror History Tab pattern).
             # This is the authoritative path; connectors-getter above
@@ -5345,7 +5845,8 @@ if _HAS_QT:
             # Resolved at Start, when both tabs certainly exist.
             if hasattr(self._simulator, "set_swarm_getter"):
                 self._simulator.set_swarm_getter(
-                    lambda: getattr(self, "_bot_viz", None))
+                    lambda: getattr(self, "_bot_viz", None)
+                )
             # v3.24.79 — Market Inspector TOPOLOGY injection into Nuclear.
             #
             # Operator directive 2026-08-07: Nuclear "is supposed to be
@@ -5365,9 +5866,13 @@ if _HAS_QT:
                 self._simulator.set_topology_getter(
                     lambda: (
                         self._market_inspector.current_topology_proposals()
-                        if hasattr(getattr(self, "_market_inspector", None),
-                                   "current_topology_proposals")
-                        else []))
+                        if hasattr(
+                            getattr(self, "_market_inspector", None),
+                            "current_topology_proposals",
+                        )
+                        else []
+                    )
+                )
             # Paper Trader still pending Phase E. Sentinel-None
             # preserved for any legacy code path that references the
             # attribute during the transition.
@@ -5462,6 +5967,7 @@ if _HAS_QT:
             # exchange's get_my_trades() API (v3.16.46+).
             try:
                 from .history_tab import HistoryTab
+
                 self._history_tab = HistoryTab()
                 self._history_tab.set_bot_manager(self._bot_manager)
                 self._main_tabs.addTab(self._history_tab, "History")
@@ -5479,23 +5985,21 @@ if _HAS_QT:
                 # front-load handler.
                 try:
                     sim_tab = getattr(self, "_simulator", None)
-                    fleet_panel = getattr(sim_tab, "fleet_replay",
-                                          None)
-                    if (fleet_panel is not None
-                            and hasattr(self._history_tab,
-                                        "history_refreshed")
-                            and self._history_tab.history_refreshed
-                            is not None
-                            and hasattr(fleet_panel,
-                                        "on_history_refreshed")):
+                    fleet_panel = getattr(sim_tab, "fleet_replay", None)
+                    if (
+                        fleet_panel is not None
+                        and hasattr(self._history_tab, "history_refreshed")
+                        and self._history_tab.history_refreshed is not None
+                        and hasattr(fleet_panel, "on_history_refreshed")
+                    ):
                         self._history_tab.history_refreshed.connect(
-                            fleet_panel.on_history_refreshed)
+                            fleet_panel.on_history_refreshed
+                        )
                         logger.info(
-                            "H4 bridge wired: History → Simulator "
-                            "front-load")
+                            "H4 bridge wired: History → Simulator " "front-load"
+                        )
                 except Exception as _br_exc:  # noqa: BLE001
-                    logger.debug(
-                        "H4 bridge wire failed: %s", _br_exc)
+                    logger.debug("H4 bridge wire failed: %s", _br_exc)
             except Exception as exc:
                 logger.warning("History tab unavailable: %s", exc)
                 self._history_tab = None
@@ -5513,16 +6017,17 @@ if _HAS_QT:
             self._console.setFont(QFont("Consolas", 9))
             self._console.setStyleSheet(
                 "QPlainTextEdit { background: #0a0a12; color: #c0c0c0; "
-                "border: none; padding: 4px; }")
+                "border: none; padding: 4px; }"
+            )
             self._console.setLineWrapMode(QPlainTextEdit.NoWrap)
-            self._console.setMaximumBlockCount(2000)   # cap buffer
+            self._console.setMaximumBlockCount(2000)  # cap buffer
             # Qt built-in auto-scroll when cursor is at end — no manual
             # verticalScrollBar().setValue() per append needed.
             self._console.setCenterOnScroll(False)
 
             # MEM-221 (Session 24, 2026-04-22) — thread-safe log handler.
             #
-            # Previous implementation called cursor.insertText(), 
+            # Previous implementation called cursor.insertText(),
             # self._te.document(), sb.setValue() directly from emit().
             # emit() runs on whatever thread called logger.xxx() — which
             # includes ThreadPoolExecutor workers created by asyncio.to_thread.
@@ -5586,12 +6091,15 @@ if _HAS_QT:
                     # object as the bare Qt.AutoConnection used before
                     # (verified: `is` holds); the scoped spelling is
                     # the one the type stubs declare.
-                    self.append.connect(
-                        self._deliver, Qt.ConnectionType.AutoConnection)
+                    self.append.connect(self._deliver, Qt.ConnectionType.AutoConnection)
 
                 @Slot(str, int, int, int)
                 def _deliver(
-                    self, msg: str, r: int, g: int, b: int,
+                    self,
+                    msg: str,
+                    r: int,
+                    g: int,
+                    b: int,
                 ) -> None:
                     """Paint one console line on the main thread.
 
@@ -5602,10 +6110,10 @@ if _HAS_QT:
 
             class _QtLogHandler(logging.Handler):
                 COLORS = {
-                    "DEBUG":    QColor("#666"),
-                    "INFO":     QColor("#aaa"),
-                    "WARNING":  QColor("#ffaa00"),
-                    "ERROR":    QColor("#ff3366"),
+                    "DEBUG": QColor("#666"),
+                    "INFO": QColor("#aaa"),
+                    "WARNING": QColor("#ffaa00"),
+                    "ERROR": QColor("#ff3366"),
                     "CRITICAL": QColor("#ff0044"),
                 }
                 HIGHLIGHT = QColor("#00ffcc")  # indicator panel events
@@ -5651,14 +6159,16 @@ if _HAS_QT:
                     """
                     try:
                         msg = self.format(record)
-                        color = (self.HIGHLIGHT
-                                 if "INDICATOR PANEL" in msg
-                                 else self.COLORS.get(record.levelname,
-                                                      self.COLORS["INFO"]))
+                        color = (
+                            self.HIGHLIGHT
+                            if "INDICATOR PANEL" in msg
+                            else self.COLORS.get(record.levelname, self.COLORS["INFO"])
+                        )
                         # ALWAYS signal — the slot decides buffer vs paint
                         # based on the (main-thread-owned) pause state.
                         self._append_signal.emit(
-                            msg, color.red(), color.green(), color.blue())
+                            msg, color.red(), color.green(), color.blue()
+                        )
                     except Exception:  # noqa: S110
                         # Never raise from a log handler — would
                         # propagate up through every logger.xxx() call
@@ -5681,7 +6191,10 @@ if _HAS_QT:
                             self._append_signal.emit(
                                 f"[CONSOLE PAUSE] {self._buffer_dropped} "
                                 f"messages dropped (buffer cap={self._buffer_max})",
-                                255, 170, 0)
+                                255,
+                                170,
+                                0,
+                            )
                             self._buffer_dropped = 0
 
                 def buffered_count(self) -> int:
@@ -5734,9 +6247,12 @@ if _HAS_QT:
                         pass
 
             qt_handler = _QtLogHandler(self._console)
-            qt_handler.setFormatter(logging.Formatter(
-                "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-                datefmt="%H:%M:%S"))
+            qt_handler.setFormatter(
+                logging.Formatter(
+                    "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                    datefmt="%H:%M:%S",
+                )
+            )
             # Attach to root logger to capture EVERYTHING
             root_logger = logging.getLogger()
             root_logger.addHandler(qt_handler)
@@ -5766,7 +6282,8 @@ if _HAS_QT:
             # Control bar
             control_bar = QWidget()
             control_bar.setStyleSheet(
-                "QWidget { background: #14141e; border-bottom: 1px solid #2a2a3a; }")
+                "QWidget { background: #14141e; border-bottom: 1px solid #2a2a3a; }"
+            )
             control_layout = QHBoxLayout(control_bar)
             control_layout.setContentsMargins(6, 4, 6, 4)
             control_layout.setSpacing(8)
@@ -5780,7 +6297,8 @@ if _HAS_QT:
                 "font-family: Consolas; font-size: 10px; }"
                 "QPushButton:checked { background: #663300; color: #ffaa00; "
                 "border-color: #ffaa00; }"
-                "QPushButton:hover { background: #22222e; }")
+                "QPushButton:hover { background: #22222e; }"
+            )
             self._console_pause_btn.clicked.connect(self._toggle_console_pause)
             control_layout.addWidget(self._console_pause_btn)
 
@@ -5788,7 +6306,8 @@ if _HAS_QT:
             self._console_pause_indicator = QLabel("")
             self._console_pause_indicator.setStyleSheet(
                 "color: #ffaa00; font-family: Consolas; font-size: 10px; "
-                "padding: 0 8px;")
+                "padding: 0 8px;"
+            )
             control_layout.addWidget(self._console_pause_indicator)
 
             control_layout.addStretch(1)
@@ -5799,7 +6318,8 @@ if _HAS_QT:
                 "QPushButton { background: #1a1a26; color: #c0c0c0; "
                 "border: 1px solid #3a3a4a; padding: 4px 12px; "
                 "font-family: Consolas; font-size: 10px; }"
-                "QPushButton:hover { background: #22222e; }")
+                "QPushButton:hover { background: #22222e; }"
+            )
             clear_btn.clicked.connect(self._console.clear)
             control_layout.addWidget(clear_btn)
 
@@ -5829,6 +6349,7 @@ if _HAS_QT:
             # it, and an out-of-process collector reading the same
             # append-only JSONL is another.
             from PySide6.QtWidgets import QSplitter as _Splitter
+
             _sig_box = QWidget()
             _sig_lay = QVBoxLayout(_sig_box)
             _sig_lay.setContentsMargins(0, 0, 0, 0)
@@ -5837,7 +6358,8 @@ if _HAS_QT:
             _sig_hdr = QLabel("  SIGNALS — name · expected · actual")
             _sig_hdr.setStyleSheet(
                 "background:#0a0a14;color:#00ffcc;font-family:Consolas;"
-                "font-size:10px;padding:3px;border-top:1px solid #2a2a44;")
+                "font-size:10px;padding:3px;border-top:1px solid #2a2a44;"
+            )
             _sig_lay.addWidget(_sig_hdr)
 
             self._signal_view = QPlainTextEdit()
@@ -5845,7 +6367,8 @@ if _HAS_QT:
             self._signal_view.setMaximumBlockCount(2000)
             self._signal_view.setStyleSheet(
                 "QPlainTextEdit{background:#05050a;color:#c0ffe0;"
-                "font-family:Consolas;font-size:10px;border:none;}")
+                "font-family:Consolas;font-size:10px;border:none;}"
+            )
             _sig_lay.addWidget(self._signal_view, 1)
 
             _split = _Splitter(Qt.Vertical)
@@ -5903,8 +6426,7 @@ if _HAS_QT:
             # has stopped reports every 5 s until it starts again.
             self._console_health_timer = QTimer(self)
             self._console_health_timer.setInterval(5000)
-            self._console_health_timer.timeout.connect(
-                self._emit_console_health)
+            self._console_health_timer.timeout.connect(self._emit_console_health)
             self._console_health_timer.start()
 
             # Refresh the buffered-count label every 500ms while paused
@@ -5913,7 +6435,8 @@ if _HAS_QT:
             self._console_pause_refresh = QTimer(self)
             self._console_pause_refresh.setInterval(500)
             self._console_pause_refresh.timeout.connect(
-                self._refresh_console_pause_indicator)
+                self._refresh_console_pause_indicator
+            )
 
             self._main_tabs.addTab(console_container, "Console")
 
@@ -5926,8 +6449,13 @@ if _HAS_QT:
             # tab into its target slot. If the operator wants a
             # different order later, edit CANONICAL_TAB_ORDER only.
             CANONICAL_TAB_ORDER = [
-                "Trading", "Market Inspector", "Bot Swarm",
-                "Asset Charts", "History", "Simulator", "Console",
+                "Trading",
+                "Market Inspector",
+                "Bot Swarm",
+                "Asset Charts",
+                "History",
+                "Simulator",
+                "Console",
             ]
             self._reorder_main_tabs(CANONICAL_TAB_ORDER)
 
@@ -5977,7 +6505,7 @@ if _HAS_QT:
             """
             try:
                 tab_name = self._main_tabs.tabText(index)
-            except Exception:   # R28-OK: defensive — tab index race during teardown
+            except Exception:  # R28-OK: defensive — tab index race during teardown
                 return
             isolated_tabs = {"Simulator", "Paper Trader"}
             container = getattr(self, "_header_strip_container", None)
@@ -6000,14 +6528,14 @@ if _HAS_QT:
                         last_ts = getattr(hist, "_last_fetched_ts", 0.0)
                         in_flight = getattr(hist, "_fetch_in_flight", False)
                         import time as _t
-                        is_stale = (last_ts == 0
-                                    or _t.time() - last_ts > 300)
+
+                        is_stale = last_ts == 0 or _t.time() - last_ts > 300
                         if is_stale and not in_flight:
                             hist.refresh()
-                    except Exception as _hexc:   # R28-OK: defensive
+                    except Exception as _hexc:  # R28-OK: defensive
                         logger.debug(
-                            "History auto-refresh on tab-activate "
-                            "skipped: %s", _hexc)
+                            "History auto-refresh on tab-activate " "skipped: %s", _hexc
+                        )
 
         # v3.16.7 — Console Tab pause function (operator directive
         # 2026-04-28: "the Console Tab needs its own pause function.
@@ -6056,8 +6584,7 @@ if _HAS_QT:
                 # stub that owns three attributes, and an AttributeError
                 # here would be swallowed by the `except` below and take
                 # the whole drain down with it.
-                self._signal_drain_ticks = getattr(
-                    self, "_signal_drain_ticks", 0) + 1
+                self._signal_drain_ticks = getattr(self, "_signal_drain_ticks", 0) + 1
                 if getattr(self, "_console_paused", False):
                     return
                 view = getattr(self, "_signal_view", None)
@@ -6066,6 +6593,7 @@ if _HAS_QT:
                 from html import escape as _esc
 
                 from src.core.signal_contract import get_sink, render
+
                 sink = get_sink()
                 if sink is None:
                     return
@@ -6083,10 +6611,10 @@ if _HAS_QT:
                 # emits: see the ledger comment beside the timer.
                 _shown = new[-200:]
                 _skipped = len(new) - len(_shown)
-                self._signal_read = getattr(
-                    self, "_signal_read", 0) + len(new)
-                self._signal_slice_dropped = getattr(
-                    self, "_signal_slice_dropped", 0) + _skipped
+                self._signal_read = getattr(self, "_signal_read", 0) + len(new)
+                self._signal_slice_dropped = (
+                    getattr(self, "_signal_slice_dropped", 0) + _skipped
+                )
                 self._signal_rendered = getattr(self, "_signal_rendered", 0)
                 # issue #48. THE GAP IS DRAWN, NOT ONLY COUNTED. A
                 # number that lives in the emitter stream helps whoever
@@ -6112,8 +6640,8 @@ if _HAS_QT:
                 # an unbounded render would stall the Qt GUI thread,
                 # and that is an arc of its own.
                 self._signal_markers = getattr(
-                    self, "_signal_markers", 0) + _draw_signal_gap_marker(
-                        view, skipped=_skipped)
+                    self, "_signal_markers", 0
+                ) + _draw_signal_gap_marker(view, skipped=_skipped)
                 for r in _shown:
                     if r.ok is True:
                         mark, colour = "OK  ", "#00ff88"
@@ -6127,14 +6655,18 @@ if _HAS_QT:
                     # "<Foo at 0x...>". Observed: a site of "<stdin>"
                     # vanished, leaving a bare ":23". That is data loss in
                     # the one pane whose job is to show data faithfully.
-                    exp = ("" if r.expected is None
-                           else f"  exp={_esc(render(r.expected))}")
+                    exp = (
+                        ""
+                        if r.expected is None
+                        else f"  exp={_esc(render(r.expected))}"
+                    )
                     view.appendHtml(
                         f'<span style="color:{colour}">{mark}</span> '
                         f'<span style="color:#88c0ff">{_esc(r.name)}</span>'
                         f'<span style="color:#667788"> {_esc(r.site)}</span>'
                         f'<span style="color:#c0ffe0">  '
-                        f'got={_esc(render(r.actual))}{exp}</span>')
+                        f"got={_esc(render(r.actual))}{exp}</span>"
+                    )
                     # AFTER the append, never before. A raise inside
                     # `appendHtml` leaves the count truthful about what
                     # is really on the pane rather than about what this
@@ -6190,8 +6722,11 @@ if _HAS_QT:
                 _held = int(handler.buffered_count())
                 _dropped = int(getattr(handler, "_buffer_dropped", 0))
                 if _console is not None:
-                    _before = (0 if _console.document().isEmpty()
-                               else int(_console.blockCount()))
+                    _before = (
+                        0
+                        if _console.document().isEmpty()
+                        else int(_console.blockCount())
+                    )
             except Exception:  # noqa: BLE001 - observation only
                 _console = None
             _t0 = _pause_clock.monotonic()
@@ -6226,15 +6761,17 @@ if _HAS_QT:
             # a number here would be fabricated.
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _co_emit
+
                 _co_emit(
                     "console.14.004.postcondition.pause_quiets_both_panes",
                     actual=bool(getattr(self, "_console_paused", False)),
                     expected=paused,
                     context={
-                        "log_pane_paused": bool(
-                            getattr(handler, "_paused", False)),
+                        "log_pane_paused": bool(getattr(handler, "_paused", False)),
                         "button_checked": paused,
-                        "buffered": _held})
+                        "buffered": _held,
+                    },
+                )
             # 10.7 -- console.14.005, THE RESUME ONLY. On the pause
             # press `set_paused` delivers nothing, so there is no
             # delivery to judge and the pin stays quiet rather than
@@ -6255,19 +6792,20 @@ if _HAS_QT:
             if not paused and _after >= 0 and _console is not None:
                 with contextlib.suppress(Exception):
                     from src.core.signal_contract import emit as _co_emit
+
                     _co_emit(
                         "console.14.005.postcondition.pause_buffer_delivered",
                         actual=_after,
-                        expected=max(
-                            _before + _held + (1 if _dropped else 0), 1),
+                        expected=max(_before + _held + (1 if _dropped else 0), 1),
                         duration=_elapsed,
                         context={
                             "held": _held,
                             "dropped_at_cap": _dropped,
-                            "buffer_cap": int(
-                                getattr(handler, "_buffer_max", 0)),
+                            "buffer_cap": int(getattr(handler, "_buffer_max", 0)),
                             "blocks_before": _before,
-                            "max_blocks": int(_console.maximumBlockCount())})
+                            "max_blocks": int(_console.maximumBlockCount()),
+                        },
+                    )
 
         def _refresh_console_pause_indicator(self) -> None:
             """While paused, update the buffered-count display every 500ms."""
@@ -6346,6 +6884,7 @@ if _HAS_QT:
                 import contextlib
 
                 from src.core.signal_contract import emit as _co_emit
+
                 _ticks = getattr(self, "_signal_drain_ticks", 0)
                 _seen = getattr(self, "_signal_health_ticks_seen", 0)
                 # Advanced on EVERY invocation, admitted or folded. The
@@ -6380,40 +6919,48 @@ if _HAS_QT:
                 with contextlib.suppress(Exception):
                     _co_emit(
                         "console.14.001.invariant.records_rendered",
-                        actual=_rendered, expected=_read,
+                        actual=_rendered,
+                        expected=_read,
                         every=30.0,
                         context={
-                            "lost_to_slice": getattr(
-                                self, "_signal_slice_dropped", 0),
+                            "lost_to_slice": getattr(self, "_signal_slice_dropped", 0),
                             "slice_cap": 200,
                             "watermark": getattr(self, "_signal_seq", 0),
-                            "drain_ticks": _ticks})
+                            "drain_ticks": _ticks,
+                        },
+                    )
                 with contextlib.suppress(Exception):
                     _co_emit(
                         "console.14.002.invariant.view_holds_rendered",
-                        actual=_blocks, expected=_want,
+                        actual=_blocks,
+                        expected=_want,
                         every=30.0,
                         context={
-                            "evicted": max(
-                                0, _rendered + _markers - _blocks),
+                            "evicted": max(0, _rendered + _markers - _blocks),
                             "max_blocks": _cap,
                             "rendered": _rendered,
-                            "gap_markers": _markers})
+                            "gap_markers": _markers,
+                        },
+                    )
                 with contextlib.suppress(Exception):
                     _co_emit(
                         "console.14.003.invariant.drain_alive",
-                        actual=bool(_ticks - _seen > 0), expected=True,
+                        actual=bool(_ticks - _seen > 0),
+                        expected=True,
                         every=30.0,
                         context={
                             "ticks_since_last_look": _ticks - _seen,
                             "drain_timer_active": bool(
-                                _timer is not None and _timer.isActive()),
-                            "drain_interval_ms": int(
-                                _timer.interval()) if _timer is not None
-                            else 0,
-                            "look_interval_ms": int(
-                                _look.interval()) if _look is not None
-                            else 0})
+                                _timer is not None and _timer.isActive()
+                            ),
+                            "drain_interval_ms": (
+                                int(_timer.interval()) if _timer is not None else 0
+                            ),
+                            "look_interval_ms": (
+                                int(_look.interval()) if _look is not None else 0
+                            ),
+                        },
+                    )
             except Exception as exc:  # noqa: BLE001 - display is best-effort
                 logger.debug("console health emit failed: %s", exc)
 
@@ -6428,17 +6975,20 @@ if _HAS_QT:
             self._api_load_label = QLabel("API: —")
             self._api_load_label.setStyleSheet(
                 "color: #888; font-size: 10px; padding: 0 8px; "
-                "font-family: Consolas;")
+                "font-family: Consolas;"
+            )
             self._api_load_label.setToolTip(
                 "Trailing 60 s calls-per-minute on the busiest "
                 "connected exchange. Green ≤ 50 %, amber ≤ 75 %, "
-                "red above the 75 % phantom-creation safety threshold.")
+                "red above the 75 % phantom-creation safety threshold."
+            )
             status.addPermanentWidget(self._api_load_label)
 
             # AI Monitor indicator
             self._ai_monitor_label = QLabel("AI: OFF")
             self._ai_monitor_label.setStyleSheet(
-                "color: #555; font-size: 10px; padding: 0 8px; font-family: Consolas;")
+                "color: #555; font-size: 10px; padding: 0 8px; font-family: Consolas;"
+            )
             status.addPermanentWidget(self._ai_monitor_label)
 
             # Update AI monitor indicator from saved settings
@@ -6447,7 +6997,8 @@ if _HAS_QT:
                 if ai_cfg.get("enabled") and ai_cfg.get("api_key"):
                     self._ai_monitor_label.setText("AI: READY")
                     self._ai_monitor_label.setStyleSheet(
-                        "color: #00ddff; font-size: 10px; padding: 0 8px; font-family: Consolas;")
+                        "color: #00ddff; font-size: 10px; padding: 0 8px; font-family: Consolas;"
+                    )
 
             self.setStatusBar(status)
 
@@ -6459,19 +7010,16 @@ if _HAS_QT:
             cadence), so this fires at 2 s tick without hammering
             the exchange."""
             try:
-                from ..exchange.currency_rate_monitor import (
-                    get_currency_monitor)
+                from ..exchange.currency_rate_monitor import get_currency_monitor
+
                 mon = get_currency_monitor()
-                connectors = getattr(
-                    self, "_exchange_connectors", {}) or {}
+                connectors = getattr(self, "_exchange_connectors", {}) or {}
                 if connectors:
-                    self._schedule_async(
-                        mon.refresh_from_connectors(connectors))
+                    self._schedule_async(mon.refresh_from_connectors(connectors))
                 # Push whatever snapshot we currently have (may still
                 # be empty on the very first tick).
                 if hasattr(self, "_indicator_panel"):
-                    self._indicator_panel.update_currency_rates(
-                        mon.snapshot())
+                    self._indicator_panel.update_currency_rates(mon.snapshot())
             except Exception as exc:  # noqa: BLE001 - pump best-effort
                 logger.debug("currency rate pump raised: %s", exc)
 
@@ -6485,36 +7033,36 @@ if _HAS_QT:
             fires safely at every dashboard tick."""
             try:
                 from ..exchange.market_pairs_scout import get_scout
+
                 scout = get_scout()
-                connectors = getattr(
-                    self, "_exchange_connectors", {}) or {}
+                connectors = getattr(self, "_exchange_connectors", {}) or {}
                 if connectors:
                     # v3.23.59 — coalesce (same reason as chart
                     # fetch above): cancel the last pending scout
                     # refresh before scheduling the next.
                     self._cancel_if_pending(
-                        getattr(self,
-                                "_pending_scout_refresh", None))
-                    self._pending_scout_refresh = (
-                        self._schedule_async(
-                            scout.refresh_from_connectors(connectors)))
+                        getattr(self, "_pending_scout_refresh", None)
+                    )
+                    self._pending_scout_refresh = self._schedule_async(
+                        scout.refresh_from_connectors(connectors)
+                    )
             except Exception as exc:  # noqa: BLE001 - pump best-effort
-                logger.debug(
-                    "market pairs scout pump raised: %s", exc)
+                logger.debug("market pairs scout pump raised: %s", exc)
 
         def _refresh_api_load_pill(self) -> None:
             """Update the status-bar API-load pill from api_load_monitor.
             Reports the worst-loaded connected exchange."""
             try:
-                from ..exchange.api_load_monitor import (
-                    get_load_monitor)
+                from ..exchange.api_load_monitor import get_load_monitor
+
                 mon = get_load_monitor()
                 connectors = getattr(self, "_exchange_connectors", {}) or {}
                 if not connectors:
                     self._api_load_label.setText("API: —")
                     self._api_load_label.setStyleSheet(
                         "color: #888; font-size: 10px; padding: 0 8px; "
-                        "font-family: Consolas;")
+                        "font-family: Consolas;"
+                    )
                     return
                 worst = None
                 for eid in connectors.keys():
@@ -6527,7 +7075,8 @@ if _HAS_QT:
                 text = (
                     f"API {worst.exchange}: "
                     f"{worst.calls_per_minute:.0f}/"
-                    f"{worst.ceiling_cpm:.0f} CPM ({pct} %)")
+                    f"{worst.ceiling_cpm:.0f} CPM ({pct} %)"
+                )
                 if worst.load_score > mon.safety_pct:
                     colour = "#ff3366"
                 elif worst.load_score > 0.5:
@@ -6537,7 +7086,8 @@ if _HAS_QT:
                 self._api_load_label.setText(text)
                 self._api_load_label.setStyleSheet(
                     f"color: {colour}; font-size: 10px; padding: 0 8px; "
-                    f"font-family: Consolas;")
+                    f"font-family: Consolas;"
+                )
             except Exception as _pill_exc:  # noqa: BLE001 - pill best-effort
                 # DEBUG: the API-load pill is a decoration on the status
                 # bar. When it cannot be refreshed it keeps its previous
@@ -6547,7 +7097,9 @@ if _HAS_QT:
                 # that a timer would otherwise flood once a second.
                 logger.debug(
                     "API-load pill refresh skipped: %s: %s",
-                    type(_pill_exc).__name__, _pill_exc)
+                    type(_pill_exc).__name__,
+                    _pill_exc,
+                )
 
         def _setup_refresh_timer(self) -> None:
             self._timer = QTimer(self)
@@ -6558,6 +7110,7 @@ if _HAS_QT:
             """Subtle pulsation on accent elements using QGraphicsOpacityEffect.
             This approach does NOT interfere with theme stylesheets."""
             from PySide6.QtWidgets import QGraphicsOpacityEffect
+
             self._pulse_phase = 0.0
             self._pulse_effects: list[QGraphicsOpacityEffect] = []
             # MEM-239 — registry of Fire button drop-shadow glow effects;
@@ -6567,7 +7120,10 @@ if _HAS_QT:
 
             # Apply opacity effects to stat cards, accent buttons, group box titles
             pulse_targets = [
-                self._stat_pnl, self._stat_trades, self._stat_bots, self._stat_errors,
+                self._stat_pnl,
+                self._stat_trades,
+                self._stat_bots,
+                self._stat_errors,
                 self._spendable_widget,
             ]
             for widget in pulse_targets:
@@ -6616,6 +7172,7 @@ if _HAS_QT:
             # (stronger oscillation than the opacity pulse — the glow should
             # read as "alive", not subtle).
             import math as _math
+
             glow_blur = 17.0 + 5.0 * _math.sin(self._pulse_phase * 1.6)
             dead = []
             for effect in self._fire_glow_effects:
@@ -6627,7 +7184,8 @@ if _HAS_QT:
                     dead.append(effect)
             if dead:
                 self._fire_glow_effects = [
-                    e for e in self._fire_glow_effects if e not in dead]
+                    e for e in self._fire_glow_effects if e not in dead
+                ]
 
         # v3.23.7 — Global privacy-mask refresh hook
         def refresh_all_privacy_widgets(self) -> None:
@@ -6640,19 +7198,24 @@ if _HAS_QT:
             """
             # 1. Spendable widget — 5 KPI dots + values
             try:
-                if hasattr(self, "_spendable_widget") and \
-                        self._spendable_widget is not None:
+                if (
+                    hasattr(self, "_spendable_widget")
+                    and self._spendable_widget is not None
+                ):
                     self._spendable_widget.refresh_privacy_dots()
             except Exception:  # R28-OK  # noqa: S110
                 pass
             # 2. Top-right StatCards — 5 counter dots + values
-            for attr_name in ("_stat_scrummed", "_stat_folded",
-                              "_stat_trades", "_stat_bots",
-                              "_stat_errors"):
+            for attr_name in (
+                "_stat_scrummed",
+                "_stat_folded",
+                "_stat_trades",
+                "_stat_bots",
+                "_stat_errors",
+            ):
                 try:
                     card = getattr(self, attr_name, None)
-                    if card is not None and hasattr(
-                            card, "refresh_privacy_dot"):
+                    if card is not None and hasattr(card, "refresh_privacy_dot"):
                         card.refresh_privacy_dot()
                 except Exception:  # R28-OK  # noqa: S110
                     pass
@@ -6668,9 +7231,9 @@ if _HAS_QT:
                     # last known list re-applies all cell formatting.
                     try:
                         if self._bot_manager and hasattr(tab, "exchange_id"):
-                            statuses = (
-                                self._bot_manager.list_bots_by_exchange(
-                                    tab.exchange_id))
+                            statuses = self._bot_manager.list_bots_by_exchange(
+                                tab.exchange_id
+                            )
                             tab.update_bots(statuses)
                     except Exception:  # R28-OK  # noqa: S110
                         pass
@@ -6678,10 +7241,11 @@ if _HAS_QT:
                 pass
             # 4. IVP / Indicator panel — refresh bot-selector dot
             try:
-                if hasattr(self, "_indicator_panel") and \
-                        self._indicator_panel is not None and \
-                        hasattr(self._indicator_panel,
-                                "refresh_privacy_dot"):
+                if (
+                    hasattr(self, "_indicator_panel")
+                    and self._indicator_panel is not None
+                    and hasattr(self._indicator_panel, "refresh_privacy_dot")
+                ):
                     self._indicator_panel.refresh_privacy_dot()
             except Exception:  # R28-OK  # noqa: S110
                 pass
@@ -6689,6 +7253,7 @@ if _HAS_QT:
         def _setup_tooltips(self) -> None:
             """Apply tooltips for all abbreviated and technical terms. Rescans periodically."""
             from PySide6.QtWidgets import QApplication
+
             app = QApplication.instance()
             if app:
                 current = app.styleSheet() or ""
@@ -6788,6 +7353,7 @@ if _HAS_QT:
             # the violation instead of crashing; the log preserves the
             # diagnostic the operator lost in Session 23.
             import threading as _threading
+
             current = _threading.current_thread().name
             origin = entry.get("_thread_name", "unknown")
             if current != "MainThread":
@@ -6797,14 +7363,20 @@ if _HAS_QT:
                 try:
                     from pathlib import Path as _P
                     from datetime import datetime as _dt
-                    log_path = _P.home() / ".acervator_logs" / \
-                        f"thread_violation_{_dt.now().strftime('%Y%m%d')}.log"
+
+                    log_path = (
+                        _P.home()
+                        / ".acervator_logs"
+                        / f"thread_violation_{_dt.now().strftime('%Y%m%d')}.log"
+                    )
                     log_path.parent.mkdir(parents=True, exist_ok=True)
                     with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(f"[{_dt.now().isoformat()}] _on_api_event "
-                                f"called on thread={current} "
-                                f"(origin={origin}) — REFUSED to avoid Qt "
-                                f"qFatal. Entry action={entry.get('action')}.\n")
+                        f.write(
+                            f"[{_dt.now().isoformat()}] _on_api_event "
+                            f"called on thread={current} "
+                            f"(origin={origin}) — REFUSED to avoid Qt "
+                            f"qFatal. Entry action={entry.get('action')}.\n"
+                        )
                 except Exception:
                     # Suppression audit 2026-08-13, H7. The
                     # refusal above still happens; only the
@@ -6818,18 +7390,24 @@ if _HAS_QT:
                         "_on_api_event called on thread=%s "
                         "(origin=%s) - REFUSED to avoid Qt qFatal; "
                         "the thread_violation log file could not "
-                        "be written", current, origin)
+                        "be written",
+                        current,
+                        origin,
+                    )
                 return
 
             import time as _time
+
             ts = _time.strftime("%H:%M:%S", _time.localtime(entry["timestamp"]))
 
             # MEM-204 — plain-text append, no HTML parsing. Colors dropped
             # here (less critical than the main Console). Reason, endpoint,
             # result, timing are all self-explanatory from the text prefix.
             exchange_tag = entry["exchange"].upper()
-            plain_lines = [f"[{ts}] {exchange_tag} {entry['action']}",
-                           f"  Reason: {entry['reason']}"]
+            plain_lines = [
+                f"[{ts}] {exchange_tag} {entry['action']}",
+                f"  Reason: {entry['reason']}",
+            ]
             if entry.get("endpoint"):
                 plain_lines.append(f"  Endpoint: {entry['endpoint']}")
             if entry.get("result"):
@@ -6860,43 +7438,70 @@ if _HAS_QT:
         def _verify_exchanges_on_startup(self) -> None:
             """Check exchange connectivity on launch and log to API panel."""
             from ..exchange.api_logger import get_api_log
+
             _log = get_api_log()
 
             exchanges = self._settings.list_exchanges() if self._settings else []
             if not exchanges:
-                self._status_log.log("No exchanges configured. Go to Settings to add one.", "warning")
+                self._status_log.log(
+                    "No exchanges configured. Go to Settings to add one.", "warning"
+                )
                 self._spool.notify("No exchanges configured.", "warning")
-                _log.record(exchange="app", action="STARTUP_CHECK",
+                _log.record(
+                    exchange="app",
+                    action="STARTUP_CHECK",
                     reason="Application launched, checking configured exchanges",
-                    result="No exchanges configured", level="warning",
-                    data_usage="User needs to add an exchange in Settings before creating bots")
+                    result="No exchanges configured",
+                    level="warning",
+                    data_usage="User needs to add an exchange in Settings before creating bots",
+                )
                 return
 
-            _log.record(exchange="app", action="STARTUP_CHECK",
+            _log.record(
+                exchange="app",
+                action="STARTUP_CHECK",
                 reason=f"Application launched, verifying {len(exchanges)} exchange(s)",
-                result="Checking credentials...", level="info",
-                data_usage="Each exchange will be checked for stored API credentials")
+                result="Checking credentials...",
+                level="info",
+                data_usage="Each exchange will be checked for stored API credentials",
+            )
 
             self._status_log.log(f"Verifying {len(exchanges)} exchange(s)...")
             for exch in exchanges:
                 eid = exch.get("exchange_id", "")
                 has_key = bool(exch.get("api_key_enc", ""))
                 if has_key:
-                    self._status_log.log(f"  {eid.capitalize()}: credentials stored", "info")
-                    self._spool.notify(f"{eid.capitalize()}: credentials present, ready to trade", "info")
-                    _log.record(exchange=eid, action="CREDENTIAL_CHECK",
+                    self._status_log.log(
+                        f"  {eid.capitalize()}: credentials stored", "info"
+                    )
+                    self._spool.notify(
+                        f"{eid.capitalize()}: credentials present, ready to trade",
+                        "info",
+                    )
+                    _log.record(
+                        exchange=eid,
+                        action="CREDENTIAL_CHECK",
                         reason=f"Checking if {eid.capitalize()} has stored API credentials",
                         result="Credentials found (encrypted). Ready for authenticated API calls.",
                         level="success",
-                        data_usage="Bot can be started for this exchange. Will authenticate on first API call.")
+                        data_usage="Bot can be started for this exchange. Will authenticate on first API call.",
+                    )
                 else:
-                    self._status_log.log(f"  {eid.capitalize()}: no credentials - add in Settings", "warning")
-                    self._spool.notify(f"{eid.capitalize()}: no API credentials", "warning")
-                    _log.record(exchange=eid, action="CREDENTIAL_CHECK",
+                    self._status_log.log(
+                        f"  {eid.capitalize()}: no credentials - add in Settings",
+                        "warning",
+                    )
+                    self._spool.notify(
+                        f"{eid.capitalize()}: no API credentials", "warning"
+                    )
+                    _log.record(
+                        exchange=eid,
+                        action="CREDENTIAL_CHECK",
                         reason=f"Checking if {eid.capitalize()} has stored API credentials",
                         result="No credentials found. Cannot make authenticated API calls.",
                         level="warning",
-                        data_usage="User must add API key and secret in Settings before trading on this exchange.")
+                        data_usage="User must add API key and secret in Settings before trading on this exchange.",
+                    )
 
         @Slot()
         def _refresh_dashboard(self) -> None:
@@ -6916,8 +7521,7 @@ if _HAS_QT:
                 self._stat_trades.set_value(str(agg["total_trades"]))
                 self._stat_bots.set_value(str(agg["running"]))
                 # v3.16.46 — show lifetime cumulative count, not current-state.
-                self._stat_errors.set_value(str(
-                    agg.get("total_errors_lifetime", 0)))
+                self._stat_errors.set_value(str(agg.get("total_errors_lifetime", 0)))
 
                 # v3.16.48 — Operator directive 2026-05-10:
                 #   "How and why are you calculating the P/L!?
@@ -6935,30 +7539,32 @@ if _HAS_QT:
                 # specified what they want shown there; if added later,
                 # it must come from a direct exchange-pulled source).
                 exchanges = len(self._exchange_tabs)
-                _wallet_cash = float(agg.get(
-                    "wallet_cash_usd", 0.0) or 0.0)
-                _crypto_value = float(agg.get(
-                    "crypto_position_value_usd", 0.0) or 0.0)
+                _wallet_cash = float(agg.get("wallet_cash_usd", 0.0) or 0.0)
+                _crypto_value = float(agg.get("crypto_position_value_usd", 0.0) or 0.0)
                 # If no bot has refreshed cash yet AND no positions are
                 # known, show "—" (early-startup state). Otherwise show
                 # whatever we have, even partial.
                 if _wallet_cash > 0 or _crypto_value > 0:
-                    self._spendable_widget.update_profits({
-                        "spendable": _wallet_cash,
-                        "total_realised": None,    # not exchange-pulled — show "—"
-                        "locked": _crypto_value,
-                        "mature": None,            # not exchange-pulled — show "—"
-                        "exchange_count": exchanges,
-                    })
+                    self._spendable_widget.update_profits(
+                        {
+                            "spendable": _wallet_cash,
+                            "total_realised": None,  # not exchange-pulled — show "—"
+                            "locked": _crypto_value,
+                            "mature": None,  # not exchange-pulled — show "—"
+                            "exchange_count": exchanges,
+                        }
+                    )
                 else:
                     # Pre-refresh state — show "—"
-                    self._spendable_widget.update_profits({
-                        "spendable": None,
-                        "total_realised": None,
-                        "locked": None,
-                        "mature": None,
-                        "exchange_count": exchanges,
-                    })
+                    self._spendable_widget.update_profits(
+                        {
+                            "spendable": None,
+                            "total_realised": None,
+                            "locked": None,
+                            "mature": None,
+                            "exchange_count": exchanges,
+                        }
+                    )
 
                 # Update exchange tabs
                 all_statuses = []
@@ -6986,32 +7592,35 @@ if _HAS_QT:
                     self._bot_viz.update_bots(all_statuses)
                 except Exception as e:
                     logger.error("DASHBOARD: Bot Viz CRASHED: %s", e)
-                    import traceback; traceback.print_exc()
+                    import traceback
+
+                    traceback.print_exc()
 
                 # Update charts and market map with ALL bots
                 if all_statuses:
                     try:
-                        self._charts_tab.update_charts(all_statuses,
-                            bot_manager=self._bot_manager)
+                        self._charts_tab.update_charts(
+                            all_statuses, bot_manager=self._bot_manager
+                        )
                     except Exception as e:
                         logger.error("DASHBOARD: Asset Charts CRASHED: %s", e)
-                        import traceback; traceback.print_exc()
+                        import traceback
+
+                        traceback.print_exc()
                     try:
-                        self._market_inspector.update_active_symbols(
-                            all_statuses)
+                        self._market_inspector.update_active_symbols(all_statuses)
                     except Exception as e:
-                        logger.error(
-                            "DASHBOARD: Market Inspector CRASHED: %s", e)
-                        import traceback; traceback.print_exc()
+                        logger.error("DASHBOARD: Market Inspector CRASHED: %s", e)
+                        import traceback
+
+                        traceback.print_exc()
 
                     # v3.23.40 — refresh API-load pill on the dashboard
                     # tick. Cheap (reads in-memory api_log).
                     try:
                         self._refresh_api_load_pill()
                     except Exception as _api_pill_exc:
-                        logger.debug(
-                            "API-load pill refresh raised: %s",
-                            _api_pill_exc)
+                        logger.debug("API-load pill refresh raised: %s", _api_pill_exc)
 
                     # v3.23.41 — schedule a lazy BTC/USD + ETH/USD
                     # rate refresh (short-circuits if snapshot is
@@ -7021,8 +7630,7 @@ if _HAS_QT:
                     try:
                         self._pump_currency_rates()
                     except Exception as _rate_exc:
-                        logger.debug(
-                            "currency rate pump raised: %s", _rate_exc)
+                        logger.debug("currency rate pump raised: %s", _rate_exc)
 
                     # v3.23.47 — schedule a lazy MarketPairsScout
                     # refresh so every bot (and the Bot Details Status
@@ -7033,9 +7641,7 @@ if _HAS_QT:
                     try:
                         self._pump_market_pairs_scout()
                     except Exception as _scout_exc:
-                        logger.debug(
-                            "market pairs scout pump raised: %s",
-                            _scout_exc)
+                        logger.debug("market pairs scout pump raised: %s", _scout_exc)
 
                     # MEM-236 — Tracking beep dispatcher. Operator
                     # directive: "Have bots beep at increasing speeds
@@ -7061,10 +7667,13 @@ if _HAS_QT:
                     except Exception as exc:
                         logger.debug("tracking beep failed: %s", exc)
                 else:
-                    if not getattr(self, '_dash_empty_warned', False):
-                        logger.warning("DASHBOARD: all_statuses EMPTY — tabs not fed. "
-                                       "exchange_tabs=%d, list_bots=%d",
-                                       len(self._exchange_tabs), len(all_bot_statuses))
+                    if not getattr(self, "_dash_empty_warned", False):
+                        logger.warning(
+                            "DASHBOARD: all_statuses EMPTY — tabs not fed. "
+                            "exchange_tabs=%d, list_bots=%d",
+                            len(self._exchange_tabs),
+                            len(all_bot_statuses),
+                        )
                         self._dash_empty_warned = True
 
                 # Feed Indicator Panel
@@ -7076,10 +7685,13 @@ if _HAS_QT:
                         sel_bid = self._indicator_panel.selected_bot_id
                         if sel_bid:
                             bot = self._bot_manager.get_bot(sel_bid)
-                            if bot and getattr(bot, '_last_summary', None):
+                            if bot and getattr(bot, "_last_summary", None):
                                 summary = bot._last_summary
-                                tf = getattr(bot.config, 'ta_timeframe', None) or \
-                                     getattr(summary, 'timeframe', None) or "1h"
+                                tf = (
+                                    getattr(bot.config, "ta_timeframe", None)
+                                    or getattr(summary, "timeframe", None)
+                                    or "1h"
+                                )
                                 parent_net = float(summary.net_score)
                                 parent_tf_data = {
                                     "bullish": summary.bullish_count,
@@ -7089,10 +7701,12 @@ if _HAS_QT:
                                     "confidence": summary.consensus_confidence,
                                     "direction": summary.consensus_direction.name,
                                     "signals": [
-                                        {"indicator": s.indicator,
-                                         "direction": s.direction.name,
-                                         "confidence": s.confidence,
-                                         "details": getattr(s, 'details', {})}
+                                        {
+                                            "indicator": s.indicator,
+                                            "direction": s.direction.name,
+                                            "confidence": s.confidence,
+                                            "details": getattr(s, "details", {}),
+                                        }
                                         for s in summary.signals
                                     ],
                                     "locks": [],
@@ -7106,11 +7720,12 @@ if _HAS_QT:
                                 merged: dict = {tf: parent_tf_data}
                                 composite_net = parent_net
                                 try:
-                                    if getattr(
-                                            bot, "_phantoms_enabled", False):
-                                        pmulti = bot.get_multi_tf_summary() \
-                                            if hasattr(bot, "get_multi_tf_summary") \
+                                    if getattr(bot, "_phantoms_enabled", False):
+                                        pmulti = (
+                                            bot.get_multi_tf_summary()
+                                            if hasattr(bot, "get_multi_tf_summary")
                                             else {}
+                                        )
                                         # Add phantom rows that aren't
                                         # the same TF as parent.
                                         for p_tf, p_data in (pmulti or {}).items():
@@ -7122,7 +7737,9 @@ if _HAS_QT:
                                         # phantom_balance. Parent gets
                                         # weight = rank(parent_tf).
                                         from ..trading.phantom_balance import (
-                                            tf_rank as _tf_rank)
+                                            tf_rank as _tf_rank,
+                                        )
+
                                         num = parent_net * max(1, _tf_rank(tf))
                                         den = max(1, _tf_rank(tf))
                                         for p_tf, p_data in (pmulti or {}).items():
@@ -7132,23 +7749,24 @@ if _HAS_QT:
                                             if p_rank <= _tf_rank(tf):
                                                 continue  # LTF phantoms don't feed composite
                                             p_conf = float(
-                                                p_data.get("confidence", 0) or 0)
+                                                p_data.get("confidence", 0) or 0
+                                            )
                                             if p_conf < 0.30:
                                                 continue
                                             p_net = float(
-                                                p_data.get("net_score", 0) or 0)
+                                                p_data.get("net_score", 0) or 0
+                                            )
                                             num += p_net * p_rank * p_conf
                                             den += p_rank * p_conf
                                         if den > 0:
                                             composite_net = num / den
                                 except Exception as _cp_exc:
                                     logger.debug(
-                                        "phantom composite Net calc raised: %s",
-                                        _cp_exc)
+                                        "phantom composite Net calc raised: %s", _cp_exc
+                                    )
                                 parent_tf_data["composite_net"] = composite_net
                                 symbol = bot.config.symbol
-                                self._indicator_panel.update_data(
-                                    merged, symbol)
+                                self._indicator_panel.update_data(merged, symbol)
                                 # UNIT 1 — keep the reading that was
                                 # just rendered. `_last_summary` lives
                                 # only on the bot object, so a restart
@@ -7160,10 +7778,14 @@ if _HAS_QT:
                                 # panel skips the write unless the
                                 # reading actually changed.
                                 self._indicator_panel.remember_ta(
-                                    sel_bid, symbol, merged)
+                                    sel_bid, symbol, merged
+                                )
                                 logger.debug(
                                     "IVP feed: %s %s -> %d timeframe(s)",
-                                    sel_bid[:8], symbol, len(merged))
+                                    sel_bid[:8],
+                                    symbol,
+                                    len(merged),
+                                )
                             else:
                                 # v3.24.54 (R1) — neither `if` above had
                                 # an else, so a selected bot with no
@@ -7191,22 +7813,30 @@ if _HAS_QT:
                                 # second clause — which never resolves
                                 # on its own. The bot already records
                                 # which applies. Ask it.
-                                _sym = ("" if bot is None
-                                        else getattr(bot.config, "symbol", "")
-                                        or "")
+                                _sym = (
+                                    ""
+                                    if bot is None
+                                    else getattr(bot.config, "symbol", "") or ""
+                                )
                                 _cause, _detail = self._ivp_empty_state_cause(
-                                    bot, sel_bid)
+                                    bot, sel_bid
+                                )
                                 self._indicator_panel.show_no_data(
-                                    bot_id=sel_bid, symbol=_sym,
-                                    cause=_cause, detail=_detail)
+                                    bot_id=sel_bid,
+                                    symbol=_sym,
+                                    cause=_cause,
+                                    detail=_detail,
+                                )
                         else:
-                            self._indicator_panel.show_no_data(
-                                cause="no_selection")
+                            self._indicator_panel.show_no_data(cause="no_selection")
                     except Exception as exc:
                         logger.error("DASHBOARD: Indicator panel CRASHED: %s", exc)
 
                 if all_statuses:
-                    if hasattr(self, '_exchange_connectors') and self._exchange_connectors:
+                    if (
+                        hasattr(self, "_exchange_connectors")
+                        and self._exchange_connectors
+                    ):
                         try:  # noqa: SIM105
                             # v3.23.59 — coalesce: cancel any still-
                             # pending fetch before spawning the next.
@@ -7215,12 +7845,13 @@ if _HAS_QT:
                             # exchange latency lets multiple ticks'
                             # fetches pile up.
                             self._cancel_if_pending(
-                                getattr(self,
-                                        "_pending_chart_fetch", None))
-                            self._pending_chart_fetch = (
-                                self._schedule_async(
-                                    self._charts_tab.fetch_chart_data(
-                                        self._exchange_connectors)))
+                                getattr(self, "_pending_chart_fetch", None)
+                            )
+                            self._pending_chart_fetch = self._schedule_async(
+                                self._charts_tab.fetch_chart_data(
+                                    self._exchange_connectors
+                                )
+                            )
                         except Exception:  # noqa: S110
                             pass
                         # v3.23.37 — Market Inspector owns its own
@@ -7230,23 +7861,24 @@ if _HAS_QT:
                         # periodic fetch was tuned for the 60 s ticker
                         # refresh, which does not apply to the HTF
                         # analyzer.
-                        pass
 
                 # --- Advanced subsystem updates (every 2s cycle) ---
                 try:
                     # Risk manager evaluation
                     if self._risk_manager:
                         from ..core.notifications import AlertEvent
+
                         new_alerts = self._risk_manager.evaluate(self._bot_manager)
                         for alert in new_alerts:
                             if alert.severity == "critical":
                                 self._notif_manager.send(
                                     AlertEvent.DRAWDOWN_CRITICAL,
                                     f"Risk: {alert.rule_name}",
-                                    alert.message)
+                                    alert.message,
+                                )
 
                     # Analytics equity snapshot (every 10s)
-                    if self._analytics and hasattr(self, '_last_equity_snap'):
+                    if self._analytics and hasattr(self, "_last_equity_snap"):
                         if time.time() - self._last_equity_snap >= 10:
                             self._analytics.snapshot_equity(self._bot_manager)
                             self._last_equity_snap = time.time()
@@ -7261,10 +7893,11 @@ if _HAS_QT:
                     # P/L milestone check
                     if self._notif_manager and agg:
                         self._notif_manager.check_pnl_milestone(
-                            agg.get("total_realised_pnl", 0))
+                            agg.get("total_realised_pnl", 0)
+                        )
 
                     # Refresh new tabs (throttled to every 4s to avoid UI churn)
-                    if not hasattr(self, '_last_tab_refresh'):
+                    if not hasattr(self, "_last_tab_refresh"):
                         self._last_tab_refresh = 0
                     if time.time() - self._last_tab_refresh >= 4:
                         self._last_tab_refresh = time.time()
@@ -7274,23 +7907,27 @@ if _HAS_QT:
                             self._risk_tab.refresh(self._risk_manager)
                         if self._journal_tab:
                             self._journal_tab.refresh(
-                                self._journal, self._recon_engine,
-                                self._crash_recovery)
+                                self._journal, self._recon_engine, self._crash_recovery
+                            )
                         if self._alerts_tab:
                             self._alerts_tab.refresh(self._notif_manager)
 
                     # AI Monitor check (async, only when interval elapsed)
-                    if (self._bot_manager and self._bot_manager._live_monitor
-                            and self._bot_manager._live_monitor.should_check):
-                        self._schedule_async(
-                            self._bot_manager.check_live_monitor())
+                    if (
+                        self._bot_manager
+                        and self._bot_manager._live_monitor
+                        and self._bot_manager._live_monitor.should_check
+                    ):
+                        self._schedule_async(self._bot_manager.check_live_monitor())
 
                 except Exception as sub_exc:
                     logger.error("DASHBOARD: Subsystem update error: %s", sub_exc)
 
             except Exception as exc:
                 logger.error("DASHBOARD: _refresh_dashboard CRASHED: %s", exc)
-                import traceback; traceback.print_exc()
+                import traceback
+
+                traceback.print_exc()
 
         # --- Exchange tab management ---
         def _is_equity_exchange(self, exchange_id: str) -> bool:
@@ -7303,12 +7940,12 @@ if _HAS_QT:
 
             # Route to the correct layer regardless of which mode is active
             if is_equity:
-                target_tabs    = self._stock_exchange_tabs
-                target_widget  = self._stock_tab_widget
+                target_tabs = self._stock_exchange_tabs
+                target_widget = self._stock_tab_widget
                 target_ph_attr = "_stock_placeholder"
             else:
-                target_tabs    = self._crypto_exchange_tabs
-                target_widget  = self._crypto_tab_widget
+                target_tabs = self._crypto_exchange_tabs
+                target_widget = self._crypto_tab_widget
                 target_ph_attr = "_crypto_placeholder"
 
             if exchange_id in target_tabs:
@@ -7326,7 +7963,8 @@ if _HAS_QT:
                     self._empty_placeholder = None
 
             tab = ExchangeTab(
-                exchange_id, display_name,
+                exchange_id,
+                display_name,
                 on_new_bot=self._create_bot,
                 on_bot_clicked=self._on_bot_clicked,
                 on_bot_cmd=self._on_bot_command,
@@ -7360,19 +7998,22 @@ if _HAS_QT:
             elif self._crypto_tab_widget.indexOf(tab) >= 0:
                 _landed = "crypto"
             import contextlib
+
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _tr_emit
+
                 _tr_emit(
                     "trading.12.002.postcondition.exchange_tab_routed",
                     actual=_landed,
                     expected="stock" if is_equity else "crypto",
-                    context={"exchange": exchange_id,
-                             "stock_tabs": self._stock_tab_widget.count(),
-                             "crypto_tabs":
-                                 self._crypto_tab_widget.count(),
-                             "in_layer_store":
-                                 target_tabs.get(exchange_id) is tab,
-                             "placeholder_dropped": ph is not None})
+                    context={
+                        "exchange": exchange_id,
+                        "stock_tabs": self._stock_tab_widget.count(),
+                        "crypto_tabs": self._crypto_tab_widget.count(),
+                        "in_layer_store": target_tabs.get(exchange_id) is tab,
+                        "placeholder_dropped": ph is not None,
+                    },
+                )
 
         # --- v3.16.52 — Error-log capture + click-to-open dialog ----
         def _on_bot_error_for_log(self, event) -> None:
@@ -7390,22 +8031,26 @@ if _HAS_QT:
             """
             try:
                 from datetime import datetime as _dt
+
                 _ts = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
-                _bot_id = str(getattr(event, "data", {}).get("bot_id", "")
-                              or getattr(event, "bot_id", "")
-                              or "")
-                _err = str(getattr(event, "data", {}).get("error", "")
-                           or getattr(event, "error", "")
-                           or "")
-                _consec = int(getattr(event, "data", {}).get(
-                    "consecutive", 0) or 0)
-                self._error_log_buffer.append(
-                    (_ts, _bot_id, _err, _consec))
+                _bot_id = str(
+                    getattr(event, "data", {}).get("bot_id", "")
+                    or getattr(event, "bot_id", "")
+                    or ""
+                )
+                _err = str(
+                    getattr(event, "data", {}).get("error", "")
+                    or getattr(event, "error", "")
+                    or ""
+                )
+                _consec = int(getattr(event, "data", {}).get("consecutive", 0) or 0)
+                self._error_log_buffer.append((_ts, _bot_id, _err, _consec))
             except Exception:  # R28-OK: telemetry capture must never raise
                 logger.exception(
                     "bot.error capture failed; this error record "
                     "was dropped and the Errors card under-reports "
-                    "by one")
+                    "by one"
+                )
 
         @Slot()
         def _show_error_log_dialog(self) -> None:
@@ -7420,8 +8065,7 @@ if _HAS_QT:
                 dlg = self._build_error_log_dialog()
                 dlg.exec()
             except Exception as exc:
-                logger.exception(
-                    "Error Log dialog raised: %s", exc)
+                logger.exception("Error Log dialog raised: %s", exc)
 
         def _wire_manager(self):
             """The live SmartWireManager, or None.
@@ -7466,11 +8110,14 @@ if _HAS_QT:
                 logger.exception(
                     "C06c: wire read-back raised for %s -> %s; the "
                     "wire is reported as NOT confirmed",
-                    src_id, tgt_id)
+                    src_id,
+                    tgt_id,
+                )
                 return False
 
         def _topology_wire_collisions(
-                self, wires: list, asset_to_bot: dict) -> list[dict]:
+            self, wires: list, asset_to_bot: dict
+        ) -> list[dict]:
             """Which proposal wires land on a pair that is ALREADY wired.
 
             Only existing-to-existing pairs can appear here: a bot the
@@ -7491,21 +8138,21 @@ if _HAS_QT:
                     tgt_id = asset_to_bot.get(tgt_asset, "")
                     if not src_id or not tgt_id or src_id == tgt_id:
                         continue
-                    current = (mgr.get_outgoing_wires(src_id) or {}).get(
-                        tgt_id)
+                    current = (mgr.get_outgoing_wires(src_id) or {}).get(tgt_id)
                     if current is None:
                         continue
-                    out.append({
-                        "source_asset": src_asset,
-                        "target_asset": tgt_asset,
-                        "source_id": src_id,
-                        "target_id": tgt_id,
-                        "current_pct": float(current),
-                        "proposed_pct": float(w.get("pct", 0.0)),
-                    })
+                    out.append(
+                        {
+                            "source_asset": src_asset,
+                            "target_asset": tgt_asset,
+                            "source_id": src_id,
+                            "target_id": tgt_id,
+                            "current_pct": float(current),
+                            "proposed_pct": float(w.get("pct", 0.0)),
+                        }
+                    )
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning(
-                        "C06c: collision pre-flight skipped a wire: %s", exc)
+                    logger.warning("C06c: collision pre-flight skipped a wire: %s", exc)
             return out
 
         def _snapshot_wires_for_adopt(self, title: str):
@@ -7537,22 +8184,27 @@ if _HAS_QT:
                 base = getattr(sm, "_dir", None)
                 if base is None:
                     from ..core.state_manager import _DEFAULT_DIR
+
                     base = _DEFAULT_DIR
                 root = base / "topology_snapshots"
                 root.mkdir(parents=True, exist_ok=True)
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 dest = root / f"wires_before_adopt.{ts}.json"
                 dest.write_text(
-                    json.dumps({"title": title, "taken_at": ts,
-                                "wires": wires}, indent=2),
-                    encoding="utf-8")
+                    json.dumps(
+                        {"title": title, "taken_at": ts, "wires": wires}, indent=2
+                    ),
+                    encoding="utf-8",
+                )
                 for old in sorted(root.glob("wires_before_adopt.*.json"))[:-20]:
                     old.unlink(missing_ok=True)
                 return dest
             except Exception as exc:  # noqa: BLE001
                 logger.error(
                     "C06c: wire snapshot FAILED (%s) — the adopt will "
-                    "proceed with no restore point", exc)
+                    "proceed with no restore point",
+                    exc,
+                )
                 return None
 
         def _wire_ivp_snapshot_dir(self) -> None:
@@ -7579,13 +8231,12 @@ if _HAS_QT:
                 base = getattr(sm, "_dir", None)
                 if base is None:
                     from ..core.state_manager import _DEFAULT_DIR
+
                     base = _DEFAULT_DIR
                 panel.set_ta_state_dir(base)
                 self._ivp_snapshot_dir_wired = True
-                logger.info(
-                    "IVP: TA snapshots resolved to %s", base)
-            except (AttributeError, ImportError, OSError, TypeError,
-                    ValueError) as exc:
+                logger.info("IVP: TA snapshots resolved to %s", base)
+            except (AttributeError, ImportError, OSError, TypeError, ValueError) as exc:
                 # Named rather than blanket: the only things reachable
                 # here are a missing StateManager attribute, the lazy
                 # import, and Path() rejecting whatever `_dir` turned
@@ -7594,7 +8245,8 @@ if _HAS_QT:
                 logger.warning(
                     "IVP: TA snapshot directory not wired (%s); stored "
                     "readings will fall back to the default state dir",
-                    exc)
+                    exc,
+                )
 
         def _ivp_cached_candle_count(self, bot) -> int | None:
             """Rows the shared MarketDataPool ALREADY holds for this bot.
@@ -7615,7 +8267,8 @@ if _HAS_QT:
                 key = _candle_key(
                     getattr(bot.config, "exchange_id", ""),
                     getattr(bot.config, "symbol", ""),
-                    getattr(bot.config, "ta_timeframe", "1h") or "1h")
+                    getattr(bot.config, "ta_timeframe", "1h") or "1h",
+                )
                 entry = getattr(pool, "_candles", {}).get(key)
                 if entry is None:
                     return None
@@ -7672,8 +8325,7 @@ if _HAS_QT:
             detail: dict = {"bot_id": str(bot_id or "")}
             state = ""
             try:
-                state = str(getattr(
-                    getattr(bot, "state", None), "value", "")).lower()
+                state = str(getattr(getattr(bot, "state", None), "value", "")).lower()
             except (AttributeError, TypeError, ValueError) as exc:
                 # A state object whose __str__ raises. Named rather than
                 # blanket: an unreadable state must leave `state` empty
@@ -7686,38 +8338,38 @@ if _HAS_QT:
                 return "not_running", detail
             if state == "error":
                 detail["error"] = str(
-                    getattr(getattr(bot, "stats", None), "last_error", "")
-                    or "")
+                    getattr(getattr(bot, "stats", None), "last_error", "") or ""
+                )
                 return "bot_error", detail
 
             try:
-                parked_ticks = int(
-                    getattr(bot, "_at_target_counter", 0) or 0)
+                parked_ticks = int(getattr(bot, "_at_target_counter", 0) or 0)
             except (TypeError, ValueError):
                 parked_ticks = 0
             if parked_ticks > 0:
                 try:
-                    position = float(
-                        getattr(bot, "position_value_usd", 0.0) or 0.0)
-                    target = float(
-                        getattr(bot, "_target_balance", 0.0) or 0.0)
+                    position = float(getattr(bot, "position_value_usd", 0.0) or 0.0)
+                    target = float(getattr(bot, "_target_balance", 0.0) or 0.0)
                 except (TypeError, ValueError):
                     position, target = 0.0, 0.0
-                detail.update({
-                    "position": position,
-                    "target": target,
-                    "delta": position - target,
-                })
+                detail.update(
+                    {
+                        "position": position,
+                        "target": target,
+                        "delta": position - target,
+                    }
+                )
                 return "parked_at_target", detail
 
             cached = self._ivp_cached_candle_count(bot)
             if cached is not None and cached < 30:
-                detail.update({
-                    "candles": cached,
-                    "symbol": getattr(bot.config, "symbol", "") or "",
-                    "timeframe": (
-                        getattr(bot.config, "ta_timeframe", "") or "1h"),
-                })
+                detail.update(
+                    {
+                        "candles": cached,
+                        "symbol": getattr(bot.config, "symbol", "") or "",
+                        "timeframe": (getattr(bot.config, "ta_timeframe", "") or "1h"),
+                    }
+                )
                 return "too_few_candles", detail
 
             return "cold_start", detail
@@ -7740,7 +8392,8 @@ if _HAS_QT:
                 f"{', '.join(str(b)[:8] for b in created_ids)}. "
                 f"They are not wired. Remove them from the Bot Swarm tab "
                 f"if they are not wanted.",
-                "warning")
+                "warning",
+            )
 
         def _adopt_topology_proposal(self, proposal: dict) -> None:
             """v3.23.69 — hand a topology proposal from the Market
@@ -7763,12 +8416,13 @@ if _HAS_QT:
                  to that event).
             """
             from PySide6.QtWidgets import QMessageBox
+
             if not isinstance(proposal, dict) or not proposal.get("bots"):
                 return
             if not self._bot_manager:
                 QMessageBox.warning(
-                    self, "Adopt topology",
-                    "Bot manager not available.")
+                    self, "Adopt topology", "Bot manager not available."
+                )
                 return
 
             # v3.24.39 (D23, operator 2026-08-06) � an adopt APPLIES the
@@ -7789,13 +8443,13 @@ if _HAS_QT:
             # writes the pre-adopt registry to disk, so an adopt the
             # operator regrets is recoverable.
             new_bots = [
-                b for b in proposal.get("bots", [])
-                if not b.get("existing_bot_id")]
+                b for b in proposal.get("bots", []) if not b.get("existing_bot_id")
+            ]
             wires = list(proposal.get("wires", []))
             new_count = len(new_bots)
             new_budget = sum(
-                float(b.get("suggested_target_usd", 0.0))
-                for b in new_bots)
+                float(b.get("suggested_target_usd", 0.0)) for b in new_bots
+            )
 
             # asset symbol � bot_id (existing OR freshly created).
             # v3.24.37 (C06c) � hoisted ABOVE the confirmation. It used
@@ -7806,7 +8460,8 @@ if _HAS_QT:
             for b in proposal.get("bots", []):
                 if b.get("existing_bot_id"):
                     asset_to_bot[str(b.get("asset", "")).upper()] = str(
-                        b["existing_bot_id"])
+                        b["existing_bot_id"]
+                    )
 
             # Pre-flight the collisions. Only existing-to-existing pairs
             # can collide: a bot that does not exist yet has no wires.
@@ -7828,13 +8483,14 @@ if _HAS_QT:
                     summary_lines.append(
                         f"    {c['source_asset']} -> {c['target_asset']}: "
                         f"{c['current_pct']:.2f}% -> "
-                        f"{c['proposed_pct']:.2f}%")
+                        f"{c['proposed_pct']:.2f}%"
+                    )
                 if len(collisions) > 12:
-                    summary_lines.append(
-                        f"    ... and {len(collisions) - 12} more")
+                    summary_lines.append(f"    ... and {len(collisions) - 12} more")
                 summary_lines.append(
                     "The previous rates are saved to a snapshot file "
-                    "before anything is applied.")
+                    "before anything is applied."
+                )
             summary_lines += [
                 "",
                 "The Bot Wizard will open for each new bot; cancel any "
@@ -7842,14 +8498,16 @@ if _HAS_QT:
                 "not modified.",
             ]
             reply = QMessageBox.question(
-                self, "Adopt topology",
+                self,
+                "Adopt topology",
                 "\n".join(summary_lines),
                 QMessageBox.Ok | QMessageBox.Cancel,
-                QMessageBox.Cancel)
+                QMessageBox.Cancel,
+            )
             if reply != QMessageBox.Ok:
                 self._status_log.log(
-                    "Topology adoption cancelled at confirm gate.",
-                    "info")
+                    "Topology adoption cancelled at confirm gate.", "info"
+                )
                 return
 
             # v3.24.37 (C06c) � snapshot the wire registry before the
@@ -7857,11 +8515,12 @@ if _HAS_QT:
             # that has already been applied; without it the only record
             # of the pre-adopt topology was the operator's memory.
             snap = self._snapshot_wires_for_adopt(
-                str(proposal.get("title", "topology")))
+                str(proposal.get("title", "topology"))
+            )
             if snap:
                 self._status_log.log(
-                    f"Topology adopt: wire snapshot saved to {snap.name}",
-                    "info")
+                    f"Topology adopt: wire snapshot saved to {snap.name}", "info"
+                )
 
             created_ids: list[str] = []
             for i, b in enumerate(new_bots, start=1):
@@ -7870,22 +8529,24 @@ if _HAS_QT:
                 self._status_log.log(
                     f"Topology adopt: creating bot {i}/{new_count} — "
                     f"{asset} target ${target_usd:.0f}",
-                    "info")
+                    "info",
+                )
                 before_ids = {
                     str(s.get("bot_id", ""))
-                    for s in (self._bot_manager.list_bots() or [])}
+                    for s in (self._bot_manager.list_bots() or [])
+                }
                 try:
                     self._create_bot(
                         exchange_id="",
-                        defaults_override={
-                            "default_target_balance": target_usd})
+                        defaults_override={"default_target_balance": target_usd},
+                    )
                 except Exception as _cb_exc:  # noqa: BLE001 - wizard surface
-                    logger.exception(
-                        "Topology adopt: _create_bot raised: %s", _cb_exc)
+                    logger.exception("Topology adopt: _create_bot raised: %s", _cb_exc)
                     self._status_log.log(
                         f"Topology adopt aborted: bot creation raised "
                         f"({_cb_exc}). No wires drawn.",
-                        "error")
+                        "error",
+                    )
                     return
                 after = self._bot_manager.list_bots() or []
                 after_ids = {str(s.get("bot_id", "")) for s in after}
@@ -7894,7 +8555,8 @@ if _HAS_QT:
                     self._status_log.log(
                         f"Topology adopt aborted at bot {i}/{new_count} "
                         f"({asset}): wizard cancelled. No wires drawn.",
-                        "warning")
+                        "warning",
+                    )
                     self._report_adopt_orphans(created_ids)
                     return
                 # Wizard could in theory create multiple bots if the
@@ -7914,8 +8576,8 @@ if _HAS_QT:
                 # `dict` is the element type BotManager.list_bots()
                 # declares, and the {} default is one too.
                 made: dict = next(
-                    (s for s in after
-                     if str(s.get("bot_id", "")) == chosen), {})
+                    (s for s in after if str(s.get("bot_id", "")) == chosen), {}
+                )
                 made_symbol = str(made.get("symbol", "") or "")
                 made_base = made_symbol.split("/")[0].split("-")[0].upper()
                 if asset and made_base and made_base != asset:
@@ -7925,15 +8587,18 @@ if _HAS_QT:
                         f"created {made_symbol}. Binding {asset} to that "
                         f"bot would route this topology's wires through "
                         f"the wrong asset. No wires drawn.",
-                        "error")
+                        "error",
+                    )
                     QMessageBox.warning(
-                        self, "Adopt topology",
+                        self,
+                        "Adopt topology",
                         f"Adoption stopped.\n\nStep {i} of {new_count} "
                         f"asked for a {asset} bot, but the bot that was "
                         f"created trades {made_symbol}.\n\nNo wires have "
                         f"been drawn. Any bots already created are "
                         f"listed in the status log and were left in "
-                        f"place.")
+                        f"place.",
+                    )
                     self._report_adopt_orphans(created_ids + [chosen])
                     return
                 if asset and not made_base:
@@ -7941,11 +8606,15 @@ if _HAS_QT:
                     # does not abort � but it must not read as verified.
                     logger.warning(
                         "Topology adopt: bot %s reports no symbol; "
-                        "binding %s to it UNVERIFIED", chosen, asset)
+                        "binding %s to it UNVERIFIED",
+                        chosen,
+                        asset,
+                    )
                     self._status_log.log(
                         f"Topology adopt: could not read a symbol from "
                         f"the new bot; binding {asset} unverified.",
-                        "warning")
+                        "warning",
+                    )
                 created_ids.append(chosen)
                 asset_to_bot[asset] = chosen
 
@@ -7956,9 +8625,7 @@ if _HAS_QT:
             # the confirm gate. They ARE applied; this is kept only so
             # the closing summary can say how many were changes rather
             # than new wires.
-            changed_pairs = {
-                (c["source_asset"], c["target_asset"]) for c in collisions
-            }
+            changed_pairs = {(c["source_asset"], c["target_asset"]) for c in collisions}
 
             wires_drawn = 0
             wires_changed = 0
@@ -7972,17 +8639,17 @@ if _HAS_QT:
                     self._status_log.log(
                         f"Topology adopt: skip wire {src_asset}→"
                         f"{tgt_asset} (unresolved bot id)",
-                        "warning")
+                        "warning",
+                    )
                     continue
                 if (src_asset, tgt_asset) in changed_pairs:
                     wires_changed += 1
                 try:
                     self._bus.emit(
-                        "wire.created",
-                        source_id=src_id, target_id=tgt_id, pct=pct)
+                        "wire.created", source_id=src_id, target_id=tgt_id, pct=pct
+                    )
                 except Exception as _emit_exc:  # noqa: BLE001 - bus surface
-                    logger.exception(
-                        "Topology adopt: wire emit raised: %s", _emit_exc)
+                    logger.exception("Topology adopt: wire emit raised: %s", _emit_exc)
                     continue
                 # v3.24.37 (C06c) � count what the ENGINE accepted, not
                 # what we emitted. register_wire refuses a non-numeric,
@@ -7997,23 +8664,26 @@ if _HAS_QT:
                         f"Topology adopt: {src_asset}→{tgt_asset} @ "
                         f"{pct:.2f}% was REFUSED by the wire engine and "
                         f"is not routing profit",
-                        "error")
+                        "error",
+                    )
 
-            tail = (f" ({wires_changed} replaced an existing rate)"
-                    if wires_changed else "")
+            tail = (
+                f" ({wires_changed} replaced an existing rate)" if wires_changed else ""
+            )
             self._status_log.log(
                 f"Topology adopted: {proposal.get('title','')} — "
                 f"{new_count} new bot(s), {wires_drawn}/{len(wires)} "
                 f"wire(s) drawn{tail}.",
-                "success" if wires_drawn or not wires else "warning")
+                "success" if wires_drawn or not wires else "warning",
+            )
             try:
                 self._spool.notify(
                     f"Topology adopted: {new_count} bot(s), "
                     f"{wires_drawn} wire(s){tail}",
-                    "success")
+                    "success",
+                )
             except Exception as _spool_exc:  # noqa: BLE001
-                logger.warning(
-                    "Topology adopt: spool notify failed: %s", _spool_exc)
+                logger.warning("Topology adopt: spool notify failed: %s", _spool_exc)
 
         def _build_topology_proposals(self) -> list[dict]:
             """v3.23.68 — assemble live topology-detector context and
@@ -8023,14 +8693,11 @@ if _HAS_QT:
             keep it cheap (all detectors are pure over the fixture).
             """
             try:
-                from ..trading.topology_proposals import (
-                    detect_all_topologies)
-                from ..trading.market_inspector import (
-                    get_shared_inspector)
+                from ..trading.topology_proposals import detect_all_topologies
+                from ..trading.market_inspector import get_shared_inspector
                 from ..exchange.market_pairs_scout import get_scout
             except Exception as _imp_exc:  # noqa: BLE001 - import guard
-                logger.debug(
-                    "topology proposals unavailable: %s", _imp_exc)
+                logger.debug("topology proposals unavailable: %s", _imp_exc)
                 return []
 
             # Assemble tickers_by_asset from the scout snapshot. We
@@ -8051,18 +8718,17 @@ if _HAS_QT:
                         cur = tickers.get(base)
                         vol = float(getattr(snap, "volume_24h", 0.0) or 0.0)
                         if cur is None or vol > float(
-                                cur.get("baseVolume", 0.0) or 0.0):
+                            cur.get("baseVolume", 0.0) or 0.0
+                        ):
                             tickers[base] = {
                                 "quote": quote,
                                 "symbol": snap.symbol,
                                 "baseVolume": vol,
-                                "last": float(
-                                    getattr(snap, "last", 0.0) or 0.0),
+                                "last": float(getattr(snap, "last", 0.0) or 0.0),
                                 "existing_bot_id": "",
                             }
             except Exception as _scout_exc:  # noqa: BLE001 - scout best-effort
-                logger.debug(
-                    "topology: scout snapshot unavailable: %s", _scout_exc)
+                logger.debug("topology: scout snapshot unavailable: %s", _scout_exc)
 
             # Tag existing_bot_id when a running bot targets this asset.
             bots_snapshot: list[dict] = []
@@ -8073,25 +8739,27 @@ if _HAS_QT:
                         base = sym.split("/")[0].upper() if "/" in sym else ""
                         if not base:
                             continue
-                        if base in tickers and not tickers[base][
-                                "existing_bot_id"]:
-                            tickers[base]["existing_bot_id"] = str(
-                                st.get("bot_id", ""))
-                        bots_snapshot.append({
-                            "bot_id": st.get("bot_id", ""),
-                            "asset": base,
-                            "quote": (sym.split("/")[1].upper()
-                                      if "/" in sym else "USD"),
-                            "symbol": sym,
-                            "position_val": float(
-                                st.get("stats", {}).get(
-                                    "position_value", 0.0) or 0.0),
-                            "target_balance": float(
-                                st.get("target_balance", 0.0) or 0.0),
-                        })
+                        if base in tickers and not tickers[base]["existing_bot_id"]:
+                            tickers[base]["existing_bot_id"] = str(st.get("bot_id", ""))
+                        bots_snapshot.append(
+                            {
+                                "bot_id": st.get("bot_id", ""),
+                                "asset": base,
+                                "quote": (
+                                    sym.split("/")[1].upper() if "/" in sym else "USD"
+                                ),
+                                "symbol": sym,
+                                "position_val": float(
+                                    st.get("stats", {}).get("position_value", 0.0)
+                                    or 0.0
+                                ),
+                                "target_balance": float(
+                                    st.get("target_balance", 0.0) or 0.0
+                                ),
+                            }
+                        )
             except Exception as _bot_exc:  # noqa: BLE001 - manager surface
-                logger.debug(
-                    "topology: bot snapshot unavailable: %s", _bot_exc)
+                logger.debug("topology: bot snapshot unavailable: %s", _bot_exc)
 
             # Pull opposing pairs from the shared MarketInspector.
             opposing: list[dict] = []
@@ -8100,18 +8768,21 @@ if _HAS_QT:
                 for op in getattr(inspector, "_last_pairs", []) or []:
                     l_sym = op.long_side.symbol
                     s_sym = op.short_side.symbol
-                    l_asset = (l_sym.split("/")[0].upper()
-                               if "/" in l_sym else l_sym.upper())
-                    s_asset = (s_sym.split("/")[0].upper()
-                               if "/" in s_sym else s_sym.upper())
-                    opposing.append({
-                        "long_asset": l_asset,
-                        "short_asset": s_asset,
-                        "corr": float(op.correlation_30d),
-                    })
+                    l_asset = (
+                        l_sym.split("/")[0].upper() if "/" in l_sym else l_sym.upper()
+                    )
+                    s_asset = (
+                        s_sym.split("/")[0].upper() if "/" in s_sym else s_sym.upper()
+                    )
+                    opposing.append(
+                        {
+                            "long_asset": l_asset,
+                            "short_asset": s_asset,
+                            "corr": float(op.correlation_30d),
+                        }
+                    )
             except Exception as _op_exc:  # noqa: BLE001 - inspector surface
-                logger.debug(
-                    "topology: opposing-pairs unavailable: %s", _op_exc)
+                logger.debug("topology: opposing-pairs unavailable: %s", _op_exc)
 
             # Correlations for momentum funnel: reuse opposing-pair
             # data where available (both directions), leave the rest
@@ -8131,8 +8802,7 @@ if _HAS_QT:
             try:
                 return detect_all_topologies(ctx)
             except Exception as _det_exc:  # noqa: BLE001 - detector surface
-                logger.exception(
-                    "topology: detect_all_topologies raised: %s", _det_exc)
+                logger.exception("topology: detect_all_topologies raised: %s", _det_exc)
                 return []
 
         def _build_error_log_dialog(self):
@@ -8140,9 +8810,18 @@ if _HAS_QT:
             tests can introspect the contents without running .exec().
             """
             from PySide6.QtWidgets import (
-                QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTabWidget,
-                QTableWidget, QTableWidgetItem, QPushButton, QHeaderView,
-                QAbstractItemView)
+                QDialog,
+                QVBoxLayout,
+                QHBoxLayout,
+                QLabel,
+                QTabWidget,
+                QTableWidget,
+                QTableWidgetItem,
+                QPushButton,
+                QHeaderView,
+                QAbstractItemView,
+            )
+
             dlg = QDialog(self)
             dlg.setWindowTitle("Error Log")
             dlg.resize(900, 480)
@@ -8158,7 +8837,8 @@ if _HAS_QT:
             hdr = QLabel(
                 f"<b>Errors:</b> {_life} &nbsp;·&nbsp; "
                 f"<b>Buffered events:</b> "
-                f"{len(self._error_log_buffer)} (capped at 200)")
+                f"{len(self._error_log_buffer)} (capped at 200)"
+            )
             hdr.setStyleSheet("padding: 6px 4px; color: #c0c4d8;")
             v.addWidget(hdr)
 
@@ -8169,17 +8849,18 @@ if _HAS_QT:
             ev_tab = QTableWidget()
             ev_tab.setColumnCount(4)
             ev_tab.setHorizontalHeaderLabels(
-                ["Timestamp", "Bot", "Consecutive", "Error"])
-            ev_tab.horizontalHeader().setSectionResizeMode(
-                3, QHeaderView.Stretch)
+                ["Timestamp", "Bot", "Consecutive", "Error"]
+            )
+            ev_tab.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
             ev_tab.setEditTriggers(QAbstractItemView.NoEditTriggers)
             # Most-recent-first
             events = list(reversed(list(self._error_log_buffer)))
             ev_tab.setRowCount(len(events))
             for row, (ts, bot_id, err, consec) in enumerate(events):
                 ev_tab.setItem(row, 0, QTableWidgetItem(str(ts)))
-                _bid_short = (str(bot_id)[:8] + "…"
-                              if len(str(bot_id)) > 8 else str(bot_id))
+                _bid_short = (
+                    str(bot_id)[:8] + "…" if len(str(bot_id)) > 8 else str(bot_id)
+                )
                 ev_tab.setItem(row, 1, QTableWidgetItem(_bid_short))
                 ev_tab.setItem(row, 2, QTableWidgetItem(str(consec)))
                 ev_tab.setItem(row, 3, QTableWidgetItem(str(err)))
@@ -8189,10 +8870,9 @@ if _HAS_QT:
             snap = QTableWidget()
             snap.setColumnCount(5)
             snap.setHorizontalHeaderLabels(
-                ["Bot", "Asset", "Lifetime errors",
-                 "Consecutive (now)", "Last error"])
-            snap.horizontalHeader().setSectionResizeMode(
-                4, QHeaderView.Stretch)
+                ["Bot", "Asset", "Lifetime errors", "Consecutive (now)", "Last error"]
+            )
+            snap.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
             snap.setEditTriggers(QAbstractItemView.NoEditTriggers)
             try:
                 _bots = list(self._bot_manager._bots.values())
@@ -8228,7 +8908,9 @@ if _HAS_QT:
             btn_reset.setToolTip(
                 "Clear the rolling event buffer AND zero every "
                 "bot's total_errors, consecutive_errors, and "
-                "last_error snapshot. Cannot be undone.")
+                "last_error snapshot. Cannot be undone."
+            )
+
             def _reset_all_errors():
                 self._error_log_buffer.clear()
                 try:
@@ -8237,7 +8919,9 @@ if _HAS_QT:
                             _bot.stats.total_errors = 0
                             _bot.stats.consecutive_errors = 0
                             _bot.stats.last_error = ""
-                        except Exception as _bot_reset_exc:  # noqa: BLE001 - per-bot best-effort
+                        except (
+                            Exception
+                        ) as _bot_reset_exc:  # noqa: BLE001 - per-bot best-effort
                             # WARNING: the operator pressed "Reset all
                             # errors" and this bot's counters survived
                             # it. The header card will keep counting a
@@ -8251,7 +8935,8 @@ if _HAS_QT:
                                 "were NOT cleared (%s: %s); the error "
                                 "card still counts it.",
                                 type(_bot_reset_exc).__name__,
-                                _bot_reset_exc)
+                                _bot_reset_exc,
+                            )
                             continue
                     # Persist so a restart doesn't restore the old
                     # counters from disk.
@@ -8268,7 +8953,9 @@ if _HAS_QT:
                             "Reset all errors: state was cleared in "
                             "memory but NOT saved (%s: %s); a restart "
                             "will restore the old counters.",
-                            type(_save_exc).__name__, _save_exc)
+                            type(_save_exc).__name__,
+                            _save_exc,
+                        )
                 except Exception as _reset_exc:  # noqa: BLE001
                     # WARNING: the roster itself could not be walked, so
                     # the reset did not run at all. The dialog still
@@ -8278,8 +8965,11 @@ if _HAS_QT:
                         "Reset all errors: the bot roster could not be "
                         "walked (%s: %s); per-bot counters were left "
                         "as they were.",
-                        type(_reset_exc).__name__, _reset_exc)
+                        type(_reset_exc).__name__,
+                        _reset_exc,
+                    )
                 dlg.accept()  # operator reopens to see empty state
+
             btn_reset.clicked.connect(_reset_all_errors)
             btns.addWidget(btn_reset)
             btn_close = QPushButton("Close")
@@ -8312,8 +9002,9 @@ if _HAS_QT:
             prefix = ""
             if bot_id:
                 try:
-                    bot = (self._bot_manager.get_bot(bot_id)
-                           if self._bot_manager else None)
+                    bot = (
+                        self._bot_manager.get_bot(bot_id) if self._bot_manager else None
+                    )
                     if bot is not None:
                         ticker = getattr(bot.config, "target_asset", "")
                         id_tail = bot_id[-4:] if len(bot_id) >= 4 else bot_id
@@ -8323,7 +9014,9 @@ if _HAS_QT:
                             prefix = f"[{id_tail}] "
                     else:
                         # Bot not in manager — still show the id tail
-                        prefix = f"[{bot_id[-8:]}] " if len(bot_id) >= 8 else f"[{bot_id}] "
+                        prefix = (
+                            f"[{bot_id[-8:]}] " if len(bot_id) >= 8 else f"[{bot_id}] "
+                        )
                 except Exception:
                     # Best-effort: unknown errors should not silence logs
                     prefix = f"[{bot_id[-8:]}] " if len(bot_id) >= 8 else ""
@@ -8372,8 +9065,9 @@ if _HAS_QT:
                 return
             if getattr(bot.config, "profit_folding_active", True):
                 self._status_log.log(
-                    f"Wire active: {source_id[:8]} "
-                    f"(profit folding is ON)", "success")
+                    f"Wire active: {source_id[:8]} " f"(profit folding is ON)",
+                    "success",
+                )
             else:
                 # Informative, not coercive. The wire still routes at
                 # scrum time; only the fold-compound contribution is off.
@@ -8382,7 +9076,9 @@ if _HAS_QT:
                     f"Folding is OFF for this bot, so its fold-compound "
                     f"contribution will not fire. Scrum-time routing is "
                     f"unaffected. Enable it in Live Settings if you want "
-                    f"compounding from this wire.", "warning")
+                    f"compounding from this wire.",
+                    "warning",
+                )
 
         def _on_tf_lock_changed(self, event) -> None:
             """Propagate TF lock from Indicator Panel to all Accumulation Bot coordinators."""
@@ -8390,11 +9086,15 @@ if _HAS_QT:
             if not self._bot_manager:
                 return
             from ..trading.scrumming_bot import ScrummingBot
+
             for bot in self._bot_manager._bots.values():
-                if isinstance(bot, ScrummingBot) and hasattr(bot, '_coordinator'):
+                if isinstance(bot, ScrummingBot) and hasattr(bot, "_coordinator"):
                     bot._coordinator._lock_timeframe = tf
             if tf:
-                self._status_log.log(f"TF Lock set: {tf} — Accumulation Bots will respect higher-TF direction", "info")
+                self._status_log.log(
+                    f"TF Lock set: {tf} — Accumulation Bots will respect higher-TF direction",
+                    "info",
+                )
 
         def _init_live_monitor(self) -> None:
             """Initialize LiveMonitor from saved settings."""
@@ -8407,48 +9107,65 @@ if _HAS_QT:
                 self._status_log.log(
                     f"AI Monitor enabled (phrase: '{phrase}...', "
                     f"interval: {ai_cfg.get('interval_hours', 4)}h)",
-                    "info")
+                    "info",
+                )
             else:
-                self._status_log.log("AI Monitor: disabled (configure in Settings → AI Monitor)", "#666")
+                self._status_log.log(
+                    "AI Monitor: disabled (configure in Settings → AI Monitor)", "#666"
+                )
 
         def _on_ai_feedback(self, event) -> None:
             """Handle AI feedback received from LiveMonitor."""
-            data = event.data if hasattr(event, 'data') else {}
+            data = event.data if hasattr(event, "data") else {}
             feedback = data.get("feedback", "")
             authenticated = data.get("authenticated", False)
 
             # Update status bar indicator
-            if hasattr(self, '_ai_monitor_label'):
+            if hasattr(self, "_ai_monitor_label"):
                 if authenticated:
                     self._ai_monitor_label.setText("AI: ✓ AUTH")
                     self._ai_monitor_label.setStyleSheet(
                         "color: #00ff88; font-size: 10px; padding: 0 8px; "
-                        "font-family: Consolas; font-weight: bold;")
+                        "font-family: Consolas; font-weight: bold;"
+                    )
                 else:
                     self._ai_monitor_label.setText("AI: ⚠ UNAUTH")
                     self._ai_monitor_label.setStyleSheet(
                         "color: #ffaa00; font-size: 10px; padding: 0 8px; "
-                        "font-family: Consolas; font-weight: bold;")
+                        "font-family: Consolas; font-weight: bold;"
+                    )
             if feedback:
                 # Show in status log
                 tag = "✓ AUTH" if authenticated else "⚠ UNAUTH"
                 self._status_log.log(
                     f"[AI MONITOR {tag}] {feedback[:200]}",
-                    "#00ddff" if authenticated else "#ffaa00")
+                    "#00ddff" if authenticated else "#ffaa00",
+                )
                 # Log to journal if configured
                 ai_cfg = self._settings.get("ai_monitor", {}) if self._settings else {}
                 if ai_cfg.get("log_feedback"):
                     try:
                         from ..trading.live_monitor import TradeRecord
+
                         rec = TradeRecord(
                             timestamp=data.get("timestamp", ""),
-                            unix_ts=time.time(), bot_id="AI_MONITOR",
-                            asset="SYSTEM", action="AI_FEEDBACK", side="neutral",
-                            price=0, quantity=0, usd_value=0,
-                            target_balance=0, portfolio_value=0,
-                            delta_pct=0, confidence=0,
-                            notes=feedback[:500])
-                        if hasattr(self, '_journal') and hasattr(self._journal, 'record'):
+                            unix_ts=time.time(),
+                            bot_id="AI_MONITOR",
+                            asset="SYSTEM",
+                            action="AI_FEEDBACK",
+                            side="neutral",
+                            price=0,
+                            quantity=0,
+                            usd_value=0,
+                            target_balance=0,
+                            portfolio_value=0,
+                            delta_pct=0,
+                            confidence=0,
+                            notes=feedback[:500],
+                        )
+                        if hasattr(self, "_journal") and hasattr(
+                            self._journal, "record"
+                        ):
                             self._journal.record(rec)
                     except Exception:
                         # Suppression audit 2026-08-13, H5. A
@@ -8458,8 +9175,8 @@ if _HAS_QT:
                         # above; this says the durable copy did
                         # not land, which nothing used to say.
                         logger.exception(
-                            "AI feedback note was not written to "
-                            "the journal")
+                            "AI feedback note was not written to " "the journal"
+                        )
 
         # --- Bot click - show detail ---
         def _on_bot_clicked(self, bot_id: str) -> None:
@@ -8483,19 +9200,21 @@ if _HAS_QT:
             saved_tab_index = None
             current_bot = bot
             while current_bot is not None:
-                dlg = BotLiveSettingsDialog(
-                    current_bot, self._bot_manager, self)
-                dlg.settings_changed.connect(
-                    self._on_live_settings_changed)
+                dlg = BotLiveSettingsDialog(current_bot, self._bot_manager, self)
+                dlg.settings_changed.connect(self._on_live_settings_changed)
                 if saved_geometry is not None:
                     try:  # noqa: SIM105
                         dlg.setGeometry(saved_geometry)
-                    except Exception:  # R28-OK: geometry restore is best-effort UX polish  # noqa: S110
+                    except (
+                        Exception
+                    ):  # R28-OK: geometry restore is best-effort UX polish  # noqa: S110
                         pass
                 if saved_tab_index is not None:
                     try:  # noqa: SIM105
                         dlg._tabs.setCurrentIndex(int(saved_tab_index))
-                    except Exception:  # R28-OK: tab-restore is best-effort UX polish  # noqa: S110
+                    except (
+                        Exception
+                    ):  # R28-OK: tab-restore is best-effort UX polish  # noqa: S110
                         pass
                 dlg.exec()
                 # Capture geometry + tab BEFORE handling navigation so
@@ -8523,8 +9242,10 @@ if _HAS_QT:
             self._status_log.log(
                 f"Bot {bot_id[:8]}: settings updated live — "
                 f"{', '.join(f'{k}={v}' for k, v in changes.items())}",
-                "success")
+                "success",
+            )
             from ..core.sound_engine import get_sound_engine
+
             get_sound_engine().play_state_change()
 
         # --- Bot commands ---
@@ -8536,10 +9257,10 @@ if _HAS_QT:
             spawning the next. Returns ``None`` when running in the
             fallback thread-pool path (rare / test-only)."""
             if self._async_loop:
-                return asyncio.run_coroutine_threadsafe(
-                    coro, self._async_loop)
+                return asyncio.run_coroutine_threadsafe(coro, self._async_loop)
             # Fallback: run in thread pool (one-shot, no persistent task)
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 pool.submit(asyncio.run, coro)
             return None
@@ -8561,7 +9282,9 @@ if _HAS_QT:
                 # supersedes. Nothing the operator reads changes.
                 logger.debug(
                     "Pending future not cancelled: %s: %s",
-                    type(_cancel_exc).__name__, _cancel_exc)
+                    type(_cancel_exc).__name__,
+                    _cancel_exc,
+                )
 
         def _connect_exchange_for_bot(self, bot) -> tuple[bool, str]:
             """
@@ -8569,13 +9292,18 @@ if _HAS_QT:
             Returns (success, message).
             """
             from ..exchange.api_logger import get_api_log
+
             _log = get_api_log()
             eid = bot.config.exchange_id
 
-            _log.record(exchange=eid, action="BOT_CONNECT",
+            _log.record(
+                exchange=eid,
+                action="BOT_CONNECT",
                 reason=f"Connecting bot {bot.bot_id} to {eid.capitalize()}",
-                result="Looking up stored credentials...", level="info",
-                data_usage="Will authenticate with exchange API and verify balance")
+                result="Looking up stored credentials...",
+                level="info",
+                data_usage="Will authenticate with exchange API and verify balance",
+            )
 
             # Find credentials in settings
             exchanges = self._settings.list_exchanges() if self._settings else []
@@ -8587,21 +9315,34 @@ if _HAS_QT:
 
             if not exch_config:
                 msg = f"Exchange {eid} not found in settings. Add it in Settings first."
-                _log.record(exchange=eid, action="BOT_CONNECT_FAILED",
-                    reason="No exchange configuration found", result=msg, level="error",
-                    data_usage="Bot cannot start without exchange configuration")
+                _log.record(
+                    exchange=eid,
+                    action="BOT_CONNECT_FAILED",
+                    reason="No exchange configuration found",
+                    result=msg,
+                    level="error",
+                    data_usage="Bot cannot start without exchange configuration",
+                )
                 return False, msg
 
             if not exch_config.get("api_key_enc"):
-                msg = f"No API credentials for {eid.capitalize()}. Add them in Settings."
-                _log.record(exchange=eid, action="BOT_CONNECT_FAILED",
-                    reason="No API credentials stored", result=msg, level="error",
-                    data_usage="Bot requires authenticated API access to check balances and place orders")
+                msg = (
+                    f"No API credentials for {eid.capitalize()}. Add them in Settings."
+                )
+                _log.record(
+                    exchange=eid,
+                    action="BOT_CONNECT_FAILED",
+                    reason="No API credentials stored",
+                    result=msg,
+                    level="error",
+                    data_usage="Bot requires authenticated API access to check balances and place orders",
+                )
                 return False, msg
 
             # Decrypt credentials and connect
             try:
                 from ..core.encryption import decrypt
+
                 master = f"qat_{self._settings.get('username', 'user')}_vault"
                 api_key = decrypt(exch_config["api_key_enc"], master)
                 api_secret = decrypt(exch_config["api_secret_enc"], master)
@@ -8616,10 +9357,14 @@ if _HAS_QT:
                 if exch_config.get("passphrase_enc"):
                     passphrase = decrypt(exch_config["passphrase_enc"], master)
 
-                _log.record(exchange=eid, action="BOT_AUTHENTICATING",
+                _log.record(
+                    exchange=eid,
+                    action="BOT_AUTHENTICATING",
                     reason="Credentials decrypted, connecting to exchange API",
-                    result="Calling exchange.connect()...", level="info",
-                    data_usage="Will load markets and verify API key validity")
+                    result="Calling exchange.connect()...",
+                    level="info",
+                    data_usage="Will load markets and verify API key validity",
+                )
 
                 from ..exchange.ccxt_connector import CCXTConnector
 
@@ -8640,33 +9385,48 @@ if _HAS_QT:
                 # it's only needed for the manual Refresh button path.
                 try:
                     connector.add_scan_symbol(bot.config.symbol)
-                    if (hasattr(self, '_trade_history_tab')
-                            and self._trade_history_tab is not None):
+                    if (
+                        hasattr(self, "_trade_history_tab")
+                        and self._trade_history_tab is not None
+                    ):
                         connector.set_history_callback(
-                            self._trade_history_tab.get_history_callback())
+                            self._trade_history_tab.get_history_callback()
+                        )
                 except Exception as _exc:
                     # Never let history wiring break bot-start.
-                    logger.warning("MEM-231 pre-connect history wiring "
-                                   "failed: %s", _exc)
+                    logger.warning(
+                        "MEM-231 pre-connect history wiring " "failed: %s", _exc
+                    )
 
                 # Connect synchronously - no asyncio needed
                 # sync_connect's contract is a str with "" for absent;
                 # convert at that boundary and nowhere earlier.
-                connector.sync_connect(
-                    api_key, api_secret, passphrase or "")
+                connector.sync_connect(api_key, api_secret, passphrase or "")
 
-                _log.record(exchange=eid, action="BOT_CONNECTED",
+                _log.record(
+                    exchange=eid,
+                    action="BOT_CONNECTED",
                     reason="Exchange API authenticated successfully",
-                    result="Markets loaded, checking balances...", level="success",
-                    data_usage="Bot now has a live exchange connection for trading")
+                    result="Markets loaded, checking balances...",
+                    level="success",
+                    data_usage="Bot now has a live exchange connection for trading",
+                )
 
                 # Check balance using sync CCXT
-                balances_raw = connector._ccxt_sync.fetch_balance() if hasattr(connector, '_ccxt_sync') else {}
+                balances_raw = (
+                    connector._ccxt_sync.fetch_balance()
+                    if hasattr(connector, "_ccxt_sync")
+                    else {}
+                )
 
                 base = bot.config.base_currency
 
                 # Sync fetch_balance returns dict with 'free', 'used', 'total' sub-dicts
-                free_bals = balances_raw.get("free", {}) if isinstance(balances_raw, dict) else {}
+                free_bals = (
+                    balances_raw.get("free", {})
+                    if isinstance(balances_raw, dict)
+                    else {}
+                )
                 base_free = float(free_bals.get(base, 0) or 0)
                 # v3.20.31 ROOT-CAUSE FIX (operator-reported 2026-05-25).
                 # Extractor and ScrummingBot have OPPOSITE semantics
@@ -8693,8 +9453,8 @@ if _HAS_QT:
                 # for Extractor / spend-and-target for Scrumming.
                 from ..trading.bot_container import BotMode as _BM
                 from .start_balance_check import check_start_balance
-                _is_extractor_mode = (
-                    bot.config.mode == _BM.EXTRACTOR)
+
+                _is_extractor_mode = bot.config.mode == _BM.EXTRACTOR
 
                 # Compute target / target_free only for Scrumming;
                 # for Extractor, target is the pool sigil "*" and
@@ -8705,7 +9465,8 @@ if _HAS_QT:
                 else:
                     _target_for_helper = bot.config.target_asset
                     _target_free_for_helper = float(
-                        free_bals.get(_target_for_helper, 0) or 0)
+                        free_bals.get(_target_for_helper, 0) or 0
+                    )
 
                 # For non-USD-like base assets on Extractor, fetch
                 # the spot price so the USD-denominated chunk threshold
@@ -8713,23 +9474,30 @@ if _HAS_QT:
                 # check used a raw `base_free < 1.0` threshold that
                 # demanded ≥ 1 BTC ($63k+) to start a $50-chunk bot.
                 _base_usd_price = None
-                if (_is_extractor_mode
-                        and base.upper() not in {
-                            "USD", "USDC", "USDT", "DAI", "BUSD",
-                            "PYUSD", "FDUSD"}):
+                if _is_extractor_mode and base.upper() not in {
+                    "USD",
+                    "USDC",
+                    "USDT",
+                    "DAI",
+                    "BUSD",
+                    "PYUSD",
+                    "FDUSD",
+                }:
                     try:
                         if hasattr(connector, "_ccxt_sync"):
-                            _t = connector._ccxt_sync.fetch_ticker(
-                                f"{base}/USD")
+                            _t = connector._ccxt_sync.fetch_ticker(f"{base}/USD")
                             _base_usd_price = float(
-                                _t.get("last") or _t.get("close") or 0
-                                or 0)
+                                _t.get("last") or _t.get("close") or 0 or 0
+                            )
                             if _base_usd_price <= 0:
                                 _base_usd_price = None
                     except Exception as _exc:
                         logger.warning(
                             "v3.20.66: could not fetch %s/USD price "
-                            "for start-balance check: %s", base, _exc)
+                            "for start-balance check: %s",
+                            base,
+                            _exc,
+                        )
                         _base_usd_price = None
 
                 _sufficient, _start_msg, bal_summary = check_start_balance(
@@ -8740,10 +9508,9 @@ if _HAS_QT:
                     target=_target_for_helper,
                     target_free=_target_free_for_helper,
                     chunk_size_usd=float(
-                        getattr(bot.config,
-                                "extractor_chunk_size_usd", 0) or 0),
-                    target_balance=float(
-                        getattr(bot.config, "target_balance", 0) or 0),
+                        getattr(bot.config, "extractor_chunk_size_usd", 0) or 0
+                    ),
+                    target_balance=float(getattr(bot.config, "target_balance", 0) or 0),
                     base_usd_price=_base_usd_price,
                 )
 
@@ -8751,23 +9518,31 @@ if _HAS_QT:
                 if _is_extractor_mode:
                     _bc_reason = (
                         f"Checking available {base} pool for "
-                        f"Extractor bot {bot.bot_id}")
+                        f"Extractor bot {bot.bot_id}"
+                    )
                     _bc_data = (
                         f"Extractor needs {base} pool to fund "
                         f"chunks. Chunk size: "
-                        f"${float(getattr(bot.config, 'extractor_chunk_size_usd', 0) or 0):.2f}")
+                        f"${float(getattr(bot.config, 'extractor_chunk_size_usd', 0) or 0):.2f}"
+                    )
                 else:
                     _bc_reason = (
                         f"Checking available {base} and "
                         f"{bot.config.target_asset} for bot "
-                        f"{bot.bot_id}")
+                        f"{bot.bot_id}"
+                    )
                     _bc_data = (
                         f"Bot needs {base} to place buy orders. "
-                        f"Target balance: ${bot.config.target_balance:.2f}")
-                _log.record(exchange=eid, action="BALANCE_CHECK",
+                        f"Target balance: ${bot.config.target_balance:.2f}"
+                    )
+                _log.record(
+                    exchange=eid,
+                    action="BALANCE_CHECK",
                     reason=_bc_reason,
-                    result=bal_summary, level="info",
-                    data_usage=_bc_data)
+                    result=bal_summary,
+                    level="info",
+                    data_usage=_bc_data,
+                )
 
                 if not _sufficient:
                     # check_start_balance returns the reason as
@@ -8783,11 +9558,16 @@ if _HAS_QT:
                     # so it is what the operator gets instead.
                     _start_reason = _start_msg or (
                         f"Insufficient balance on {eid.capitalize()} to "
-                        f"start trading. {bal_summary}")
-                    _log.record(exchange=eid, action="INSUFFICIENT_BALANCE",
+                        f"start trading. {bal_summary}"
+                    )
+                    _log.record(
+                        exchange=eid,
+                        action="INSUFFICIENT_BALANCE",
                         reason="Not enough funds to start trading",
-                        result=_start_reason, level="error",
-                        data_usage="Bot will NOT start. User must deposit funds or adjust bot configuration.")
+                        result=_start_reason,
+                        level="error",
+                        data_usage="Bot will NOT start. User must deposit funds or adjust bot configuration.",
+                    )
                     return False, _start_reason
 
                 # Replace placeholder exchange with real connector
@@ -8801,27 +9581,36 @@ if _HAS_QT:
                 # pre-connect wiring (see above) — they must be set
                 # BEFORE sync_connect spawns the scan thread.
                 try:
-                    if hasattr(self, '_bot_manager') and self._bot_manager:
+                    if hasattr(self, "_bot_manager") and self._bot_manager:
                         self._bot_manager.set_connector(connector)
                 except Exception as _exc:
                     logger.warning("MEM-222 set_connector failed: %s", _exc)
 
-                _log.record(exchange=eid, action="BOT_READY",
+                _log.record(
+                    exchange=eid,
+                    action="BOT_READY",
                     reason="Balance verified, exchange connected",
                     result=f"Bot {bot.bot_id} ready to trade. {bal_summary}",
                     level="success",
-                    data_usage="Bot will now enter the trading loop: fetch price, compute grid, place orders")
+                    data_usage="Bot will now enter the trading loop: fetch price, compute grid, place orders",
+                )
 
                 return True, f"Connected. {bal_summary}"
 
             except Exception as exc:
                 # Use CCXTConnector's detailed error formatter if available
                 from ..exchange.ccxt_connector import CCXTConnector
+
                 detail = CCXTConnector._format_exchange_error(exc)
                 msg = f"Connection failed: {detail}"
-                _log.record(exchange=eid, action="BOT_CONNECT_FAILED",
-                    reason=detail, result=msg, level="error",
-                    data_usage="See DIAGNOSIS above for specific troubleshooting steps")
+                _log.record(
+                    exchange=eid,
+                    action="BOT_CONNECT_FAILED",
+                    reason=detail,
+                    result=msg,
+                    level="error",
+                    data_usage="See DIAGNOSIS above for specific troubleshooting steps",
+                )
                 return False, msg
 
         def _on_bot_fire(self, bot_id: str) -> None:
@@ -8838,23 +9627,27 @@ if _HAS_QT:
             try:
                 ok = self._bot_manager.force_fire(bot_id, aggressive=True)
             except Exception as exc:
-                self._status_log.log(
-                    f"Fire on {bot_id[:8]} failed: {exc}", "error")
+                self._status_log.log(f"Fire on {bot_id[:8]} failed: {exc}", "error")
                 return
             if ok:
                 self._status_log.log(
                     f"🎯 Manual Fire (aggressive): {bot_id[:8]} will "
                     f"rebalance to target on next tick "
-                    f"(bypasses gates).", "info")
+                    f"(bypasses gates).",
+                    "info",
+                )
                 try:
                     from ..core.sound_engine import get_sound_engine
+
                     get_sound_engine().play_fire()
                 except Exception:  # noqa: S110
                     pass
             else:
                 self._status_log.log(
                     f"Manual Fire unavailable for {bot_id[:8]} "
-                    f"(grid bot or unknown id).", "warning")
+                    f"(grid bot or unknown id).",
+                    "warning",
+                )
 
         def _on_trade_filled_sfx(self, event) -> None:
             """MEM-236 — Auto-play Fire SFX on scrum/fold/dist fills.
@@ -8881,6 +9674,7 @@ if _HAS_QT:
                 ttype = (event.data.get("type") or "").upper()
                 profit = event.data.get("profit", 0) or 0
                 from ..core.sound_engine import get_sound_engine
+
                 se = get_sound_engine()
                 # Rifle — scrum/fold/dist firing events (MEM-236)
                 if ttype in ("SCRUM", "FOLD", "DIST"):
@@ -8910,6 +9704,7 @@ if _HAS_QT:
               self._beep_last_ts: timestamp of last beep emitted
             """
             import time
+
             hottest = None
             for s in statuses:
                 if s.get("mode") != "scrumming":
@@ -8935,6 +9730,7 @@ if _HAS_QT:
             self._beep_last_ts = now
             try:
                 from ..core.sound_engine import get_sound_engine
+
                 get_sound_engine().play_track()
             except Exception:  # noqa: S110
                 pass
@@ -8948,8 +9744,10 @@ if _HAS_QT:
                 return
 
             from ..exchange.api_logger import get_api_log
+
             _log = get_api_log()
             from ..core.sound_engine import get_sound_engine
+
             sound = get_sound_engine()
 
             if command == "start":
@@ -8971,11 +9769,15 @@ if _HAS_QT:
                 self._status_log.log(
                     f"⏳ Starting bot {bot_id}... Connecting to {eid_display} "
                     f"(this can take 5-15 seconds, app may appear frozen)",
-                    "info")
+                    "info",
+                )
                 self._spool.notify(
-                    f"⏳ Bot {bot_id}: connecting to {eid_display}...", "info")
-                from PySide6.QtWidgets import QApplication
-                safe_process_events("legacy P4.1 site")   # paint the "Connecting..." message
+                    f"⏳ Bot {bot_id}: connecting to {eid_display}...", "info"
+                )
+
+                safe_process_events(
+                    "legacy P4.1 site"
+                )  # paint the "Connecting..." message
 
                 # Step 1: Connect to real exchange and verify balance.
                 # Synchronous on the main thread — blocks GUI during
@@ -8983,10 +9785,8 @@ if _HAS_QT:
                 # message posted above.
                 success, msg = self._connect_exchange_for_bot(bot)
                 if not success:
-                    self._status_log.log(
-                        f"Cannot start bot {bot_id}: {msg}", "error")
-                    self._spool.notify(
-                        f"Bot {bot_id} FAILED: {msg}", "error")
+                    self._status_log.log(f"Cannot start bot {bot_id}: {msg}", "error")
+                    self._spool.notify(f"Bot {bot_id} FAILED: {msg}", "error")
                     sound.play_error()
                     return
 
@@ -8996,7 +9796,7 @@ if _HAS_QT:
                 # MEM-212 — Real Money config paper trail (once per session).
                 # Popup was removed in MEM-212; this is the non-blocking
                 # replacement that logs the bot's config for audit.
-                if not getattr(bot, '_user_verified', False):
+                if not getattr(bot, "_user_verified", False):
                     cfg = bot.config
                     sym = cfg.symbol
                     vis = "Invisible" if cfg.visibility == "internal" else "Order Book"
@@ -9028,10 +9828,11 @@ if _HAS_QT:
                     self._status_log.log(
                         f"⚠ REAL MONEY: Bot {bot_id[:8]} on "
                         f"{cfg.exchange_id.capitalize()} — {sym} — {detail}",
-                        "warning")
+                        "warning",
+                    )
                     self._spool.notify(
-                        f"⚠ Bot {bot_id[:8]} starting on REAL — {sym}",
-                        "warning")
+                        f"⚠ Bot {bot_id[:8]} starting on REAL — {sym}", "warning"
+                    )
                     bot._user_verified = True
 
                 # Step 2: Schedule bot.start() on the persistent asyncio loop
@@ -9042,7 +9843,8 @@ if _HAS_QT:
                     sound.play_state_change()
                 except Exception as exc:
                     self._status_log.log(
-                        f"Failed to start bot {bot_id}: {exc}", "error")
+                        f"Failed to start bot {bot_id}: {exc}", "error"
+                    )
                     sound.play_error()
 
             elif command == "pause":
@@ -9053,7 +9855,9 @@ if _HAS_QT:
                     self._spool.notify(f"Bot {bot_id} PAUSED", "warning")
                     sound.play_state_change()
                 except Exception as exc:
-                    self._status_log.log(f"Failed to pause bot {bot_id}: {exc}", "error")
+                    self._status_log.log(
+                        f"Failed to pause bot {bot_id}: {exc}", "error"
+                    )
 
             elif command == "stop":
                 self._status_log.log(f"Stopping bot {bot_id}...", "info")
@@ -9073,8 +9877,9 @@ if _HAS_QT:
                 self._status_log.log(
                     f"⏳ Restarting bot {bot_id}... Reconnecting to "
                     f"{eid_display} (5-15 seconds, app may appear frozen)",
-                    "info")
-                from PySide6.QtWidgets import QApplication
+                    "info",
+                )
+
                 safe_process_events("legacy P4.1 site")
                 try:
                     self._schedule_async(bot.stop())
@@ -9085,15 +9890,20 @@ if _HAS_QT:
                         self._spool.notify(f"Bot {bot_id} RESTARTED", "success")
                         sound.play_state_change()
                     else:
-                        self._status_log.log(f"Cannot restart bot {bot_id}: {msg}", "error")
+                        self._status_log.log(
+                            f"Cannot restart bot {bot_id}: {msg}", "error"
+                        )
                         sound.play_error()
                 except Exception as exc:
-                    self._status_log.log(f"Failed to restart bot {bot_id}: {exc}", "error")
+                    self._status_log.log(
+                        f"Failed to restart bot {bot_id}: {exc}", "error"
+                    )
                     sound.play_error()
 
             elif command == "delete":
                 confirm = QMessageBox.question(
-                    self, "Delete Bot",
+                    self,
+                    "Delete Bot",
                     f"Delete bot {bot_id}? This cannot be undone.",
                     QMessageBox.Yes | QMessageBox.No,
                 )
@@ -9116,7 +9926,8 @@ if _HAS_QT:
                             f"Failed to stop bot {bot_id} before "
                             f"delete: {exc}. It was NOT told to "
                             f"stop and may still be trading.",
-                            "error")
+                            "error",
+                        )
                     self._bot_manager.unregister(bot_id)
                     self._status_log.log(f"Bot {bot_id} deleted.", "warning")
                     self._spool.notify(f"Bot {bot_id} DELETED", "warning")
@@ -9137,12 +9948,16 @@ if _HAS_QT:
                     # auto-start bots with a pop-up notice. Tired of
                     # starting them one by one with each new build."
                     from .start_all_progress_dialog import StartAllProgressDialog
-                    eligible = [b for b in self._bot_manager._bots.values()
-                                if b.state.value in ("idle", "stopped")]
+
+                    eligible = [
+                        b
+                        for b in self._bot_manager._bots.values()
+                        if b.state.value in ("idle", "stopped")
+                    ]
                     if not eligible:
                         self._status_log.log(
-                            "start_all: no bots eligible (none idle/stopped).",
-                            "info")
+                            "start_all: no bots eligible (none idle/stopped).", "info"
+                        )
                         return
                     # Show the progress dialog BEFORE scheduling so it can
                     # subscribe to the 'begin' event.
@@ -9165,8 +9980,8 @@ if _HAS_QT:
             _wing = getattr(self, "_trading_mode", "crypto") or "crypto"
             self._status_log.log(f"Opening settings ({_wing} wing)...")
             from .settings_dialog import SettingsDialog
-            dlg = SettingsDialog(
-                self._settings, self._status_log, self, wing=_wing)
+
+            dlg = SettingsDialog(self._settings, self._status_log, self, wing=_wing)
             dlg.settings_changed.connect(self._on_settings_changed)
             dlg.exec()
 
@@ -9183,21 +9998,25 @@ if _HAS_QT:
                 if ai_cfg.get("enabled") and ai_cfg.get("api_key"):
                     self._ai_monitor_label.setText("AI: READY")
                     self._ai_monitor_label.setStyleSheet(
-                        "color: #00ddff; font-size: 10px; padding: 0 8px; font-family: Consolas;")
+                        "color: #00ddff; font-size: 10px; padding: 0 8px; font-family: Consolas;"
+                    )
                     self._status_log.log(
                         f"AI Monitor reconfigured (phrase: '{ai_cfg.get('connect_phrase', '')[:20]}...')",
-                        "info")
+                        "info",
+                    )
                 else:
                     self._ai_monitor_label.setText("AI: OFF")
                     self._ai_monitor_label.setStyleSheet(
-                        "color: #555; font-size: 10px; padding: 0 8px; font-family: Consolas;")
+                        "color: #555; font-size: 10px; padding: 0 8px; font-family: Consolas;"
+                    )
 
             self._status_log.log("Settings saved.", "success")
 
         def _reset_settings(self) -> None:
             """Reset all settings to defaults and clear stored exchanges."""
             confirm = QMessageBox.question(
-                self, "Reset All Settings",
+                self,
+                "Reset All Settings",
                 "This will clear ALL settings, exchanges, and stored credentials.\n"
                 "The application will restart with the setup wizard.\n\n"
                 "Are you sure?",
@@ -9206,12 +10025,15 @@ if _HAS_QT:
             if confirm == QMessageBox.Yes:
                 if self._settings:
                     self._settings.reset_defaults()
-                self._status_log.log("All settings reset. Restart the application.", "warning")
+                self._status_log.log(
+                    "All settings reset. Restart the application.", "warning"
+                )
                 self._spool.notify("Settings reset. Please restart.", "warning")
                 QMessageBox.information(
-                    self, "Settings Reset",
+                    self,
+                    "Settings Reset",
                     "All settings have been cleared.\n"
-                    "Close and reopen the application to run the setup wizard."
+                    "Close and reopen the application to run the setup wizard.",
                 )
 
         def _toggle_trading_mode(self):
@@ -9235,17 +10057,19 @@ if _HAS_QT:
                 # Flip the duplex — all stateful wing tabs.
                 # v3.16.46 — Paper Trader tab removed; sentinel-None
                 # check skips the flip safely when stack is absent.
-                if getattr(self, '_paper_trader_stack', None) is not None:
+                if getattr(self, "_paper_trader_stack", None) is not None:
                     self._paper_trader_stack.setCurrentIndex(1)
                     self._paper_trader = self._paper_trader_equity
                 # Point aliases at the stock layer
-                self._tab_widget        = self._stock_tab_widget
-                self._exchange_tabs     = self._stock_exchange_tabs
+                self._tab_widget = self._stock_tab_widget
+                self._exchange_tabs = self._stock_exchange_tabs
                 self._empty_placeholder = self._stock_placeholder
                 self.setWindowTitle("Acervator — STOCK WING")
                 self._status_log.log(
                     "→ STOCK WING: equity exchanges + equity Paper Trader. "
-                    "(Crypto wing paused.)", "info")
+                    "(Crypto wing paused.)",
+                    "info",
+                )
             else:
                 self._trading_mode = "crypto"
                 self._mode_btn.setText("Crypto Mode")
@@ -9253,17 +10077,19 @@ if _HAS_QT:
                 self._trading_stack.setCurrentIndex(0)
                 # v3.16.46 — Paper Trader tab removed; sentinel-None
                 # check skips the flip safely when stack is absent.
-                if getattr(self, '_paper_trader_stack', None) is not None:
+                if getattr(self, "_paper_trader_stack", None) is not None:
                     self._paper_trader_stack.setCurrentIndex(0)
                     self._paper_trader = self._paper_trader_crypto
                 # Point aliases at the crypto layer
-                self._tab_widget        = self._crypto_tab_widget
-                self._exchange_tabs     = self._crypto_exchange_tabs
+                self._tab_widget = self._crypto_tab_widget
+                self._exchange_tabs = self._crypto_exchange_tabs
                 self._empty_placeholder = self._crypto_placeholder
                 self.setWindowTitle("Acervator — CRYPTO WING")
                 self._status_log.log(
                     "→ CRYPTO WING: crypto exchanges + crypto Paper Trader. "
-                    "(Stock wing paused.)", "info")
+                    "(Stock wing paused.)",
+                    "info",
+                )
             self._update_mode_btn_style()
 
             # 10.5 -- THE LEGACY ALIAS TRACKS THE VISIBLE LAYER.
@@ -9281,38 +10107,49 @@ if _HAS_QT:
             # branches assign neither, so this cannot echo them.
             # The other two aliases ride in the context, checked by
             # identity against the layer stores.
-            _alias_host = (self._tab_widget.parentWidget()
-                           if self._tab_widget else None)
-            _alias_page = (self._trading_stack.indexOf(_alias_host)
-                           if _alias_host is not None else -1)
+            _alias_host = self._tab_widget.parentWidget() if self._tab_widget else None
+            _alias_page = (
+                self._trading_stack.indexOf(_alias_host)
+                if _alias_host is not None
+                else -1
+            )
             _stock_wing = self._trading_mode == "stock"
             import contextlib
+
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _tr_emit
+
                 _tr_emit(
                     "trading.12.004.postcondition.active_layer_alias",
                     actual=_alias_page,
                     expected=self._trading_stack.currentIndex(),
-                    context={"mode": self._trading_mode,
-                             "tabs_alias_ok": self._exchange_tabs is (
-                                 self._stock_exchange_tabs if _stock_wing
-                                 else self._crypto_exchange_tabs),
-                             "placeholder_alias_ok":
-                                 self._empty_placeholder is (
-                                     self._stock_placeholder
-                                     if _stock_wing
-                                     else self._crypto_placeholder),
-                             "tabs_in_alias": self._tab_widget.count(),
-                             "stack_pages":
-                                 self._trading_stack.count()})
+                    context={
+                        "mode": self._trading_mode,
+                        "tabs_alias_ok": self._exchange_tabs
+                        is (
+                            self._stock_exchange_tabs
+                            if _stock_wing
+                            else self._crypto_exchange_tabs
+                        ),
+                        "placeholder_alias_ok": self._empty_placeholder
+                        is (
+                            self._stock_placeholder
+                            if _stock_wing
+                            else self._crypto_placeholder
+                        ),
+                        "tabs_in_alias": self._tab_widget.count(),
+                        "stack_pages": self._trading_stack.count(),
+                    },
+                )
 
         def _update_mode_btn_style(self):
             """Update mode button and layer tab headers to reflect the active layer.
             Tab widget tinting is skipped if the stack hasn't been built yet
             (safe to call early during _setup_ui before the trading stack exists).
             """
-            tabs_ready = (hasattr(self, '_crypto_tab_widget')
-                          and hasattr(self, '_stock_tab_widget'))
+            tabs_ready = hasattr(self, "_crypto_tab_widget") and hasattr(
+                self, "_stock_tab_widget"
+            )
 
             if self._trading_mode == "crypto":
                 self._mode_btn.setStyleSheet(
@@ -9324,7 +10161,8 @@ if _HAS_QT:
                 if tabs_ready:
                     self._crypto_tab_widget.setStyleSheet(
                         "QTabBar::tab:selected { border-bottom: 2px solid #00ccaa; "
-                        "color: #00ccaa; }")
+                        "color: #00ccaa; }"
+                    )
                     self._stock_tab_widget.setStyleSheet("")
             else:
                 self._mode_btn.setStyleSheet(
@@ -9336,7 +10174,8 @@ if _HAS_QT:
                 if tabs_ready:
                     self._stock_tab_widget.setStyleSheet(
                         "QTabBar::tab:selected { border-bottom: 2px solid #6699ff; "
-                        "color: #6699ff; }")
+                        "color: #6699ff; }"
+                    )
                     self._crypto_tab_widget.setStyleSheet("")
 
         def _add_exchange(self) -> None:
@@ -9349,11 +10188,11 @@ if _HAS_QT:
             # exchanges, which is misleading.
             _wing = getattr(self, "_trading_mode", "crypto") or "crypto"
             self._status_log.log(
-                f"Opening settings to add exchange "
-                f"({_wing} wing)...")
+                f"Opening settings to add exchange " f"({_wing} wing)..."
+            )
             from .settings_dialog import SettingsDialog
-            dlg = SettingsDialog(
-                self._settings, self._status_log, self, wing=_wing)
+
+            dlg = SettingsDialog(self._settings, self._status_log, self, wing=_wing)
             dlg.exec()
             # Sync exchange tabs with settings after dialog closes
             self._sync_exchange_tabs()
@@ -9367,7 +10206,7 @@ if _HAS_QT:
                 return
             _wanted: list[str] = []
             for exch in self._settings.list_exchanges():
-                eid  = exch.get("exchange_id", "")
+                eid = exch.get("exchange_id", "")
                 name = exch.get("display_name", eid.capitalize())
                 if not eid:
                     continue
@@ -9377,15 +10216,18 @@ if _HAS_QT:
                 # records for instrumentation alone.
                 _wanted.append(eid)
                 # Route to correct layer dict
-                target = (self._stock_exchange_tabs
-                          if self._is_equity_exchange(eid)
-                          else self._crypto_exchange_tabs)
+                target = (
+                    self._stock_exchange_tabs
+                    if self._is_equity_exchange(eid)
+                    else self._crypto_exchange_tabs
+                )
                 if eid not in target:
                     self.add_exchange_tab(eid, name)
                     self._status_log.log(
                         f"Exchange tab added: {name} "
                         f"({'stock' if self._is_equity_exchange(eid) else 'crypto'} layer)",
-                        "success")
+                        "success",
+                    )
 
             # 10.5 -- EVERY CONFIGURED EXCHANGE REACHED A TAB BAR.
             #
@@ -9408,22 +10250,27 @@ if _HAS_QT:
                 if _tab is None or _bar.indexOf(_tab) < 0:
                     _missing += 1
             import contextlib
+
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _tr_emit
+
                 _tr_emit(
-                    "trading.12.003.postcondition"
-                    ".exchange_tabs_synced",
-                    actual=_missing, expected=0,
-                    context={"configured": len(_wanted),
-                             "crypto_bar": self._crypto_tab_widget.count(),
-                             "stock_bar": self._stock_tab_widget.count(),
-                             "crypto_store":
-                                 len(self._crypto_exchange_tabs),
-                             "stock_store":
-                                 len(self._stock_exchange_tabs)})
+                    "trading.12.003.postcondition" ".exchange_tabs_synced",
+                    actual=_missing,
+                    expected=0,
+                    context={
+                        "configured": len(_wanted),
+                        "crypto_bar": self._crypto_tab_widget.count(),
+                        "stock_bar": self._stock_tab_widget.count(),
+                        "crypto_store": len(self._crypto_exchange_tabs),
+                        "stock_store": len(self._stock_exchange_tabs),
+                    },
+                )
 
         def _refuse_extractor_without_parent(
-            self, base_currency: str, exchange_id: str,
+            self,
+            base_currency: str,
+            exchange_id: str,
         ) -> bool:
             """Refuse this Extractor if nothing can parent it.
 
@@ -9443,31 +10290,38 @@ if _HAS_QT:
             of event: a check that ran before anything was built and
             said no.
             """
-            reason = self._extractor_parent_refusal(
-                base_currency, exchange_id)
+            reason = self._extractor_parent_refusal(base_currency, exchange_id)
             if reason is None:
                 return False
             QMessageBox.critical(
-                self, "Extractor needs a parent bot",
-                f"{reason}\n\nBot creation aborted.")
-            self._status_log.log(
-                f"Extractor creation REFUSED — {reason}", "error")
+                self,
+                "Extractor needs a parent bot",
+                f"{reason}\n\nBot creation aborted.",
+            )
+            self._status_log.log(f"Extractor creation REFUSED — {reason}", "error")
             logger.warning(
                 "Extractor creation refused for %s on %s: no single "
-                "Scrumming Bot holds it", base_currency, exchange_id)
+                "Scrumming Bot holds it",
+                base_currency,
+                exchange_id,
+            )
             from ..exchange.api_logger import get_api_log
+
             get_api_log().record(
                 exchange=exchange_id,
                 action="BOT_CREATE_REFUSED",
                 reason="Extractor has no single parent Scrumming Bot "
-                       "for its base currency",
+                "for its base currency",
                 result=f"REFUSED: {base_currency}",
                 level="warning",
-                data_usage="No bot was created and no state was written.")
+                data_usage="No bot was created and no state was written.",
+            )
             return True
 
         def _extractor_parent_refusal(
-            self, base_currency: str, exchange_id: str,
+            self,
+            base_currency: str,
+            exchange_id: str,
         ) -> str | None:
             """Say why an Extractor may not be created here, or nothing.
 
@@ -9517,20 +10371,23 @@ if _HAS_QT:
                     f"{_asset}.\n\n"
                     f"An Extractor hands its base currency back to the "
                     f"Scrumming Bot that holds it, so it may not be "
-                    f"created until that bot is known to exist.")
+                    f"created until that bot is known to exist."
+                )
 
             # The decision is the shipped lookup's, not this window's.
             # It is exchange-bound and refuses to guess between two
             # holders; both refusals arrive here as nothing.
             parent = manager.find_parent_bot_for_base_currency(
-                base_currency, exchange_id=exchange_id)
+                base_currency, exchange_id=exchange_id
+            )
             if parent is not None:
                 return None
 
             # Only now, to EXPLAIN a refusal already decided, is the
             # roster counted. Same matching rules, one copy of them.
             candidates = manager.list_parent_bot_candidates_for_base_currency(
-                base_currency, exchange_id=exchange_id)
+                base_currency, exchange_id=exchange_id
+            )
 
             if not candidates:
                 return (
@@ -9542,7 +10399,8 @@ if _HAS_QT:
                     f"gain. With no such bot there is nowhere for the "
                     f"money to go.\n\n"
                     f"Create a Scrumming Bot for {_asset} on {_venue} "
-                    f"first, then create this Extractor.")
+                    f"first, then create this Extractor."
+                )
 
             _ids = ", ".join(bot_id for bot_id, _bot in candidates)
             return (
@@ -9555,10 +10413,12 @@ if _HAS_QT:
                 f"the right one stayed short.\n\n"
                 f"Naming the parent is your call. Leave exactly one "
                 f"Scrumming Bot holding {_asset} on {_venue}, then "
-                f"create this Extractor.")
+                f"create this Extractor."
+            )
 
         def _create_bot(
-            self, exchange_id: str = "",
+            self,
+            exchange_id: str = "",
             defaults_override: Optional[dict] = None,
         ) -> None:
             """Open the Bot Creation Wizard.
@@ -9570,12 +10430,19 @@ if _HAS_QT:
             """
             self._status_log.log(f"Creating new bot for {exchange_id}...")
             from ..exchange.api_logger import get_api_log
+
             _log = get_api_log()
-            _log.record(exchange=exchange_id or "app", action="BOT_WIZARD_OPEN",
-                reason="User clicked +New Bot", result="Opening wizard...", level="info",
-                data_usage="Wizard will fetch available markets from exchange API for asset selection")
+            _log.record(
+                exchange=exchange_id or "app",
+                action="BOT_WIZARD_OPEN",
+                reason="User clicked +New Bot",
+                result="Opening wizard...",
+                level="info",
+                data_usage="Wizard will fetch available markets from exchange API for asset selection",
+            )
 
             from .bot_wizard import BotCreationWizard
+
             exchanges = self._settings.list_exchanges() if self._settings else []
             defaults = self._settings.get_all() if self._settings else {}
             if defaults_override:
@@ -9585,11 +10452,14 @@ if _HAS_QT:
                 config = wizard.get_bot_config()
                 logger.info("Bot creation config: %s", config)
 
-                _log.record(exchange=config.get("exchange_id", exchange_id), action="BOT_CREATE",
+                _log.record(
+                    exchange=config.get("exchange_id", exchange_id),
+                    action="BOT_CREATE",
                     reason=f"Creating {config.get('mode','').upper()} bot for {config.get('target_asset','')}/{config.get('base_currency','')}",
                     result=f"Balance=${config.get('target_balance',0):.2f}, Positions={config.get('position_count',0)}",
                     level="info",
-                    data_usage="Bot will be registered with BotManager in IDLE state. Must be started manually.")
+                    data_usage="Bot will be registered with BotManager in IDLE state. Must be started manually.",
+                )
 
                 try:
                     from ..trading.bot_container import BotMode
@@ -9600,7 +10470,11 @@ if _HAS_QT:
                     # endpoint (no credentials required). On failure: block.
                     # On success with warnings: show + require operator ack.
                     try:
-                        from .preflight_check import check_symbol, format_result_for_user
+                        from .preflight_check import (
+                            check_symbol,
+                            format_result_for_user,
+                        )
+
                         # v3.19.28 — Extractor is MULTI-PAIR by design.
                         # There is no canonical symbol to validate at
                         # creation time:
@@ -9634,15 +10508,21 @@ if _HAS_QT:
                             self._status_log.log(
                                 "Pre-flight skipped (Extractor mode is "
                                 "multi-pair; symbol validation deferred "
-                                "to runtime watch-list refresh)", "info")
+                                "to runtime watch-list refresh)",
+                                "info",
+                            )
                             _pf = None
                             _pf_text = ""
                         else:
-                            _pf_symbol = (config.get("target_asset", "BTC") + "/"
-                                          + config.get("base_currency", "USDT"))
+                            _pf_symbol = (
+                                config.get("target_asset", "BTC")
+                                + "/"
+                                + config.get("base_currency", "USDT")
+                            )
                             _pf_exchange = config.get("exchange_id", exchange_id)
-                            _pf_target = config.get("target_balance",
-                                                    config.get("investment_amount", 200.0))
+                            _pf_target = config.get(
+                                "target_balance", config.get("investment_amount", 200.0)
+                            )
                             _pf = check_symbol(
                                 exchange_id=_pf_exchange,
                                 symbol=_pf_symbol,
@@ -9654,41 +10534,51 @@ if _HAS_QT:
                         if _pf is not None:
                             if not _pf.success:
                                 QMessageBox.critical(
-                                    self, "Pre-flight check failed",
-                                    f"{_pf_text}\n\nBot creation aborted.")
+                                    self,
+                                    "Pre-flight check failed",
+                                    f"{_pf_text}\n\nBot creation aborted.",
+                                )
                                 self._status_log.log(
                                     f"Pre-flight FAILED for {_pf_symbol} on "
-                                    f"{_pf_exchange}: {_pf.message}", "error")
+                                    f"{_pf_exchange}: {_pf.message}",
+                                    "error",
+                                )
                                 return
                             if _pf.warnings:
                                 _pf_reply = QMessageBox.question(
-                                    self, "Pre-flight check — warnings",
+                                    self,
+                                    "Pre-flight check — warnings",
                                     f"{_pf_text}\n\nProceed with bot creation?",
                                     QMessageBox.Yes | QMessageBox.No,
-                                    QMessageBox.No)
+                                    QMessageBox.No,
+                                )
                                 if _pf_reply != QMessageBox.Yes:
                                     self._status_log.log(
                                         f"Bot creation declined at pre-flight "
                                         f"({len(_pf.warnings)} warning(s))",
-                                        "warning")
+                                        "warning",
+                                    )
                                     return
                             self._status_log.log(
                                 f"Pre-flight OK for {_pf_symbol} on "
                                 f"{_pf_exchange} ({_pf.elapsed_ms:.0f} ms)",
-                                "info")
+                                "info",
+                            )
                     except ImportError:
                         # CCXT not available or preflight_check module missing.
                         # Log and continue — bot creation not blocked by
                         # tooling gap, only by actual failure.
                         self._status_log.log(
-                            "Pre-flight check skipped (module unavailable)",
-                            "warning")
+                            "Pre-flight check skipped (module unavailable)", "warning"
+                        )
                     except Exception as _pf_exc:
                         # Unexpected failure in the check itself; do not
                         # block bot creation — surface the issue and continue.
                         self._status_log.log(
                             f"Pre-flight check errored: {type(_pf_exc).__name__}: "
-                            f"{_pf_exc} — continuing anyway", "warning")
+                            f"{_pf_exc} — continuing anyway",
+                            "warning",
+                        )
 
                     # v3.20.4 — two-way mode dispatch (grid removed
                     # v3.20.4; was already dead since v3.16.0).
@@ -9745,36 +10635,38 @@ if _HAS_QT:
 
                     # Shared kwargs — always passed.
                     _shared_kwargs = {
-                        "exchange_id": config.get(
-                            "exchange_id", exchange_id),
-                        "base_currency": config.get(
-                            "base_currency", "USDT"),
-                        "target_asset": config.get(
-                            "target_asset", _ta_default),
+                        "exchange_id": config.get("exchange_id", exchange_id),
+                        "base_currency": config.get("base_currency", "USDT"),
+                        "target_asset": config.get("target_asset", _ta_default),
                         # MEM-244 risk controls — shared on the dataclass
                         # but manifest-grouped as SCRUMMING_ONLY since
                         # Extractor doesn't consume them. Skip in
                         # _scrum_kwargs (factory enforces).
                         "target_balance": config.get(
                             "target_balance",
-                            config.get("extractor_chunk_size_usd", 200.0)
-                            if _mode == BotMode.EXTRACTOR else 200.0),
+                            (
+                                config.get("extractor_chunk_size_usd", 200.0)
+                                if _mode == BotMode.EXTRACTOR
+                                else 200.0
+                            ),
+                        ),
                         "ta_timeframe": config.get("ta_timeframe", "1h"),
                         "visibility": config.get("visibility", "orderbook"),
-                        "aggressive_trading": config.get(
-                            "aggressive_trading", False),
+                        "aggressive_trading": config.get("aggressive_trading", False),
                         # v3.23.25 — Stack Mode (renamed from
                         # bulk_trading). See bot_container.py:
                         # _sanitize_deprecated_kwargs for the
                         # older-bot_state.json compatibility path.
                         "stack_mode": config.get(
-                            "stack_mode",
-                            config.get("bulk_trading", False)),
+                            "stack_mode", config.get("bulk_trading", False)
+                        ),
                         "split_distance": config.get("split_distance", 1.0),
                         "stack_tranche_count_target": config.get(
-                            "stack_tranche_count_target", 3),
+                            "stack_tranche_count_target", 3
+                        ),
                         "stack_spacing_mode": config.get(
-                            "stack_spacing_mode", "linear"),
+                            "stack_spacing_mode", "linear"
+                        ),
                         # v3.23.25 bulk_partial_on_return retired
                     }
 
@@ -9788,69 +10680,76 @@ if _HAS_QT:
                             # shape violation: BotConfig.__init__() got an
                             # unexpected keyword argument 'position_count'"
                             # in v3.23.20.
-                            "investment_amount": config.get(
-                                "investment_amount", 200.0),
-                            "increment_style": config.get(
-                                "increment_style", "linear"),
+                            "investment_amount": config.get("investment_amount", 200.0),
+                            "increment_style": config.get("increment_style", "linear"),
                             # v3.23.25 market_check_interval kwarg removed
                             "max_target_growth_pct": config.get(
-                                "max_target_growth_pct", 1.0),
+                                "max_target_growth_pct", 1.0
+                            ),
                             "scrumming_interval_pct": config.get(
-                                "scrumming_interval_pct", 1.0),
+                                "scrumming_interval_pct", 1.0
+                            ),
                             "profit_folding_active": config.get(
-                                "profit_folding_active", True),
-                            "bb_tolerance_pct": config.get(
-                                "bb_tolerance_pct", 1.0),
+                                "profit_folding_active", True
+                            ),
+                            "bb_tolerance_pct": config.get("bb_tolerance_pct", 1.0),
                             "bb_landing_strip_candles": config.get(
-                                "bb_landing_strip_candles", 3),
-                            "scrum_detect_pct": config.get(
-                                "scrum_detect_pct", 75),
-                            "scrum_fire_pct": config.get(
-                                "scrum_fire_pct", 0.5),
-                            "bb_midline_gate": config.get(
-                                "bb_midline_gate", True),
-                            "scrum_read_rate_min": config.get(
-                                "scrum_read_rate_min", 5),
-                            "band_travel_pct": config.get(
-                                "band_travel_pct", 70),
-                            "bb_bullseye_check": config.get(
-                                "bb_bullseye_check", True),
+                                "bb_landing_strip_candles", 3
+                            ),
+                            "scrum_detect_pct": config.get("scrum_detect_pct", 75),
+                            "scrum_fire_pct": config.get("scrum_fire_pct", 0.5),
+                            "bb_midline_gate": config.get("bb_midline_gate", True),
+                            "scrum_read_rate_min": config.get("scrum_read_rate_min", 5),
+                            "band_travel_pct": config.get("band_travel_pct", 70),
+                            "bb_bullseye_check": config.get("bb_bullseye_check", True),
                             "hedge_rebalance_active": config.get(
-                                "hedge_rebalance_active", True),
-                            "hedge_balance": config.get(
-                                "hedge_balance", 200.0),
+                                "hedge_rebalance_active", True
+                            ),
+                            "hedge_balance": config.get("hedge_balance", 200.0),
                         }
                     else:  # BotMode.EXTRACTOR
                         _mode_kwargs = {
                             "extractor_chunk_size_usd": config.get(
-                                "extractor_chunk_size_usd", 100.0),
+                                "extractor_chunk_size_usd", 100.0
+                            ),
                             "extractor_artillery_size_usd": config.get(
-                                "extractor_artillery_size_usd", 5.0),
+                                "extractor_artillery_size_usd", 5.0
+                            ),
                             "extractor_scan_top_n": config.get(
-                                "extractor_scan_top_n", 8),
+                                "extractor_scan_top_n", 8
+                            ),
                             "extractor_scan_refresh_candles": config.get(
-                                "extractor_scan_refresh_candles", 60),
+                                "extractor_scan_refresh_candles", 60
+                            ),
                             "extractor_pool_reserve_pct": config.get(
-                                "extractor_pool_reserve_pct", 50.0),
+                                "extractor_pool_reserve_pct", 50.0
+                            ),
                             "extractor_exit_pct": config.get(
-                                "extractor_exit_pct", 100.0),
+                                "extractor_exit_pct", 100.0
+                            ),
                             "extractor_max_compounding_tier": config.get(
-                                "extractor_max_compounding_tier", 3),
+                                "extractor_max_compounding_tier", 3
+                            ),
                             "extractor_max_cost_basis_multiple": config.get(
-                                "extractor_max_cost_basis_multiple", 2.0),
-                            "extractor_alt_targets": list(config.get(
-                                "extractor_alt_targets", []) or []),
+                                "extractor_max_cost_basis_multiple", 2.0
+                            ),
+                            "extractor_alt_targets": list(
+                                config.get("extractor_alt_targets", []) or []
+                            ),
                         }
 
                     try:
                         bot_config = make_bot_config(
-                            _mode, **_shared_kwargs, **_mode_kwargs)
+                            _mode, **_shared_kwargs, **_mode_kwargs
+                        )
                     except (ValueError, TypeError) as _bc_err:
                         # Factory rejected — this is OPERATOR-VISIBLE.
                         # Better to fail loudly at construction than
                         # to let a malformed config reach the runtime.
-                        msg = (f"Bot creation REJECTED — mode-shape "
-                               f"violation: {_bc_err}")
+                        msg = (
+                            f"Bot creation REJECTED — mode-shape "
+                            f"violation: {_bc_err}"
+                        )
                         self._status_log.log(msg, "error")
                         self._spool.notify(msg, "error")
                         logger.error("Bot creation rejected: %s", _bc_err)
@@ -9868,12 +10767,14 @@ if _HAS_QT:
                     if _mode_violations:
                         for _v in _mode_violations:
                             logger.warning(
-                                "Mode-shape violation on bot config "
-                                "(mode=%s): %s",
-                                bot_config.mode.value, _v)
+                                "Mode-shape violation on bot config " "(mode=%s): %s",
+                                bot_config.mode.value,
+                                _v,
+                            )
                             self._status_log.log(
-                                f"⚠ Bot config mode-shape "
-                                f"violation: {_v}", "warning")
+                                f"⚠ Bot config mode-shape " f"violation: {_v}",
+                                "warning",
+                            )
 
                     # STANDING QUEUE ITEM 3 (operator, 2026-08-10) — a
                     # Scrumming Bot holding the base currency must exist
@@ -9883,10 +10784,12 @@ if _HAS_QT:
                     # written yet, so a refusal leaves no trace to undo.
                     # See _extractor_parent_refusal for why the restore
                     # path deliberately does NOT do this.
-                    if (bot_config.mode == BotMode.EXTRACTOR
-                            and self._refuse_extractor_without_parent(
-                                bot_config.base_currency,
-                                bot_config.exchange_id)):
+                    if (
+                        bot_config.mode == BotMode.EXTRACTOR
+                        and self._refuse_extractor_without_parent(
+                            bot_config.base_currency, bot_config.exchange_id
+                        )
+                    ):
                         return
 
                     # v3.20.4 — grid legacy migration warning removed
@@ -9895,8 +10798,10 @@ if _HAS_QT:
                     # closed the silent-mutation P0; with grid gone
                     # it reduces to two-way.
                     from ..trading.scrumming_bot import ScrummingBot
+
                     if bot_config.mode == BotMode.EXTRACTOR:
                         from ..trading.extractor_bot import ExtractorBot
+
                         bot = ExtractorBot(
                             bot_config,
                             _PlaceholderExchange(bot_config.exchange_id),
@@ -9904,11 +10809,11 @@ if _HAS_QT:
                         )
                     else:
                         bot = ScrummingBot(
-                                bot_config,
-                                _PlaceholderExchange(bot_config.exchange_id),
-                                enable_phantoms=config.get("enable_phantoms", False),
-                                phantom_timeframes=config.get("phantom_timeframes", []),
-                            )
+                            bot_config,
+                            _PlaceholderExchange(bot_config.exchange_id),
+                            enable_phantoms=config.get("enable_phantoms", False),
+                            phantom_timeframes=config.get("phantom_timeframes", []),
+                        )
 
                     if self._bot_manager:
                         # v3.20.71 Phase B-2 — register() returns
@@ -9922,7 +10827,8 @@ if _HAS_QT:
                         if not _granted:
                             _msg = (
                                 f"Bot creation refused by CapitalRegistry: "
-                                f"{_refuse_reason or 'over-allocation'}")
+                                f"{_refuse_reason or 'over-allocation'}"
+                            )
                             try:  # noqa: SIM105
                                 self._status_log.log(_msg, "error")
                             except Exception:  # noqa: S110
@@ -9933,47 +10839,68 @@ if _HAS_QT:
                     if bot_config.mode == BotMode.SCRUMMING:
                         try:
                             self._indicator_panel.update_bot_list(
-                                self._bot_manager.list_bots())
+                                self._bot_manager.list_bots()
+                            )
                             self._indicator_panel.force_refresh(
-                                bot_id=bot.bot_id, symbol=bot_config.symbol,
-                                ta_timeframe=bot_config.ta_timeframe)
+                                bot_id=bot.bot_id,
+                                symbol=bot_config.symbol,
+                                ta_timeframe=bot_config.ta_timeframe,
+                            )
                         except Exception:  # noqa: S110
                             pass
 
-                    msg = (f"Bot {bot.bot_id} created: {bot_config.symbol} "
-                           f"({bot_config.mode.value}) - IDLE")
+                    msg = (
+                        f"Bot {bot.bot_id} created: {bot_config.symbol} "
+                        f"({bot_config.mode.value}) - IDLE"
+                    )
                     self._status_log.log(msg, "success")
                     self._spool.notify(msg, "success")
                     self.statusBar().showMessage(msg, 5000)
 
-                    _log.record(exchange=bot_config.exchange_id, action="BOT_CREATED",
+                    _log.record(
+                        exchange=bot_config.exchange_id,
+                        action="BOT_CREATED",
                         reason="Bot instantiated and registered with BotManager",
                         result=f"ID={bot.bot_id}, State=IDLE, Symbol={bot_config.symbol}",
                         level="success",
                         data_usage="Bot is IDLE. Click Start to connect to exchange and begin trading. "
-                                   "Starting will authenticate API, load markets, fetch balances, and enter the trading loop.")
+                        "Starting will authenticate API, load markets, fetch balances, and enter the trading loop.",
+                    )
 
                     from ..core.sound_engine import get_sound_engine
+
                     get_sound_engine().play_state_change()
 
                 except Exception as exc:
                     self._status_log.log(f"Failed to create bot: {exc}", "error")
                     logger.error("Bot creation failed: %s", exc)
-                    _log.record(exchange=exchange_id, action="BOT_CREATE_FAILED",
-                        reason=str(exc), result=f"ERROR: {type(exc).__name__}", level="error",
-                        data_usage="Bot was not created. Check error details above.")
+                    _log.record(
+                        exchange=exchange_id,
+                        action="BOT_CREATE_FAILED",
+                        reason=str(exc),
+                        result=f"ERROR: {type(exc).__name__}",
+                        level="error",
+                        data_usage="Bot was not created. Check error details above.",
+                    )
             else:
                 self._status_log.log("Bot creation cancelled.", "warning")
-                _log.record(exchange=exchange_id or "app", action="BOT_WIZARD_CANCELLED",
-                    reason="User cancelled bot creation wizard", result="No bot created", level="warning",
-                    data_usage="No action taken")
+                _log.record(
+                    exchange=exchange_id or "app",
+                    action="BOT_WIZARD_CANCELLED",
+                    reason="User cancelled bot creation wizard",
+                    result="No bot created",
+                    level="warning",
+                    data_usage="No action taken",
+                )
 
         def _switch_theme(self, name: str) -> None:
             from .theme_engine import ThemeManager
+
             tm = ThemeManager()
             app = self.parent()
             if app is None:
                 from PySide6.QtWidgets import QApplication
+
                 app = QApplication.instance()
             if app:
                 tm.apply_theme(name, app)

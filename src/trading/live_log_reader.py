@@ -40,7 +40,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
-
 # ─── Single canonical path resolution — the only place these constants live ───
 
 LIVE_LOG_ROOT: Path = Path.home() / ".acervator_logs"
@@ -56,23 +55,41 @@ LIVE_PNL_DIR: Path = LIVE_TRADE_DIR / "pnl"
 # ─── Schema pins (v3.23.0 baseline; update in same cascade as any new field) ───
 
 GATE_LOG_REQUIRED_TOP_FIELDS = (
-    "timestamp", "category", "bot_id", "data",
+    "timestamp",
+    "category",
+    "bot_id",
+    "data",
 )
 GATE_LOG_REQUIRED_DATA_FIELDS = (
-    "symbol", "scrum_armed", "fold_armed",
-    "scrum_blockers", "fold_blockers",
+    "symbol",
+    "scrum_armed",
+    "fold_armed",
+    "scrum_blockers",
+    "fold_blockers",
 )
 GATE_LOG_OPTIONAL_DATA_FIELDS = (
-    "evaluated_at_tick", "scrum_fixture", "fold_fixture",
-    "indicators", "state",
+    "evaluated_at_tick",
+    "scrum_fixture",
+    "fold_fixture",
+    "indicators",
+    "state",
 )
 
 TRADE_LOG_REQUIRED_TOP_FIELDS = (
-    "timestamp", "category", "bot_id", "data",
+    "timestamp",
+    "category",
+    "bot_id",
+    "data",
 )
 TRADE_LOG_REQUIRED_DATA_FIELDS = (
-    "action", "symbol", "side", "amount", "price",
-    "status", "usd", "operator_initiated",
+    "action",
+    "symbol",
+    "side",
+    "amount",
+    "price",
+    "status",
+    "usd",
+    "operator_initiated",
 )
 
 
@@ -96,24 +113,29 @@ def _validate_gate_entry(entry: dict) -> None:
         if f not in entry:
             raise SchemaDriftError(
                 f"gate.log entry missing top-level field {f!r}: "
-                f"{list(entry.keys())}")
+                f"{list(entry.keys())}"
+            )
     data = entry.get("data")
     if not isinstance(data, dict):
         raise SchemaDriftError(
-            f"gate.log entry 'data' must be a dict, got {type(data).__name__}")
+            f"gate.log entry 'data' must be a dict, got {type(data).__name__}"
+        )
     for f in GATE_LOG_REQUIRED_DATA_FIELDS:
         if f not in data:
             raise SchemaDriftError(
                 f"gate.log entry data missing required field {f!r}: "
-                f"{list(data.keys())}")
+                f"{list(data.keys())}"
+            )
     if not isinstance(data["scrum_blockers"], list):
         raise SchemaDriftError(
             f"gate.log scrum_blockers must be a list, got "
-            f"{type(data['scrum_blockers']).__name__}")
+            f"{type(data['scrum_blockers']).__name__}"
+        )
     if not isinstance(data["fold_blockers"], list):
         raise SchemaDriftError(
             f"gate.log fold_blockers must be a list, got "
-            f"{type(data['fold_blockers']).__name__}")
+            f"{type(data['fold_blockers']).__name__}"
+        )
 
 
 def _validate_trade_entry(entry: dict) -> None:
@@ -126,16 +148,19 @@ def _validate_trade_entry(entry: dict) -> None:
         if f not in entry:
             raise SchemaDriftError(
                 f"trade.log entry missing top-level field {f!r}: "
-                f"{list(entry.keys())}")
+                f"{list(entry.keys())}"
+            )
     data = entry.get("data")
     if not isinstance(data, dict):
         raise SchemaDriftError(
-            f"trade.log entry 'data' must be a dict, got {type(data).__name__}")
+            f"trade.log entry 'data' must be a dict, got {type(data).__name__}"
+        )
     for f in TRADE_LOG_REQUIRED_DATA_FIELDS:
         if f not in data:
             raise SchemaDriftError(
                 f"trade.log entry data missing required field {f!r}: "
-                f"{list(data.keys())}")
+                f"{list(data.keys())}"
+            )
 
 
 def _parse_ts(s: str) -> Optional[datetime]:
@@ -250,7 +275,7 @@ def _line_predates(line: str, since_prefix: str) -> bool:
     k = head.find('"', j + 1)
     if k < 0:
         return False
-    stamp = head[j + 1:k]
+    stamp = head[j + 1 : k]
     if len(stamp) < 10 or stamp[4] != "-" or stamp[7] != "-":
         return False
     return stamp < since_prefix
@@ -278,14 +303,15 @@ def _rotated_files_for(path: Path) -> list[Path]:
     # don't silently miss files.
     rotated = sorted(
         path.parent.glob(f"{path.name}.[0-9]*"),
-        key=lambda p: int(p.suffix.lstrip(".") or "0"))
+        key=lambda p: int(p.suffix.lstrip(".") or "0"),
+    )
     files.extend(rotated)
     return files
 
 
 def live_gate_decisions(
-        since: Optional[datetime] = None,
-        validate: bool = True) -> Iterator[dict]:
+    since: Optional[datetime] = None, validate: bool = True
+) -> Iterator[dict]:
     """Yield gate-decision entries from live's gate.log + rotated copies.
 
     v3.23.6: globs ``gate.log`` + ``gate.log.[0-9]*`` so the full
@@ -326,8 +352,7 @@ def live_gate_decisions(
             yield entry
 
 
-def live_voting_panel_snapshots(
-        since: Optional[datetime] = None) -> Iterator[dict]:
+def live_voting_panel_snapshots(since: Optional[datetime] = None) -> Iterator[dict]:
     """v3.23.6 — Yield voting-panel-snapshot entries from live's voting.log.
 
     Operator pin 2026-06-13: snapshot cadence is per-fired-trade (NOT
@@ -357,8 +382,8 @@ def live_voting_panel_snapshots(
 
 
 def live_trades(
-        since: Optional[datetime] = None,
-        validate: bool = True) -> Iterator[dict]:
+    since: Optional[datetime] = None, validate: bool = True
+) -> Iterator[dict]:
     """Yield trade-fill entries from live's trade.log (ALL trades).
 
     Args:
@@ -382,8 +407,8 @@ def live_trades(
 
 
 def live_autonomous_trades(
-        since: Optional[datetime] = None,
-        validate: bool = True) -> Iterator[dict]:
+    since: Optional[datetime] = None, validate: bool = True
+) -> Iterator[dict]:
     """Yield ONLY autonomous (non-operator-initiated) trade fills.
 
     This is the sim parity tool's ground-truth iterator. Replaces the
@@ -404,8 +429,7 @@ def live_autonomous_trades(
             yield entry
 
 
-def autonomous_fire_count_by_bot(
-        since: Optional[datetime] = None) -> dict[str, int]:
+def autonomous_fire_count_by_bot(since: Optional[datetime] = None) -> dict[str, int]:
     """Count autonomous fires per bot_id since the given cutoff.
 
     Convenience helper for the most common parity-tool query: how many
@@ -421,8 +445,7 @@ def autonomous_fire_count_by_bot(
     return counts
 
 
-def gate_decision_count_by_bot(
-        since: Optional[datetime] = None) -> dict[str, dict]:
+def gate_decision_count_by_bot(since: Optional[datetime] = None) -> dict[str, dict]:
     """Aggregate gate.log per-bot: fire-count + block-count.
 
     Returns a dict keyed by bot_id with values:
@@ -445,8 +468,8 @@ def gate_decision_count_by_bot(
         data = entry.get("data", {})
         bucket = out.setdefault(
             bot_id,
-            {"scrum_armed": 0, "fold_armed": 0,
-             "scrum_blocked": 0, "fold_blocked": 0})
+            {"scrum_armed": 0, "fold_armed": 0, "scrum_blocked": 0, "fold_blocked": 0},
+        )
         if data.get("scrum_armed"):
             bucket["scrum_armed"] += 1
         else:
@@ -471,11 +494,11 @@ def layout_summary() -> dict[str, Any]:
         "gate_log": str(LIVE_GATE_LOG),
         "gate_log_exists": LIVE_GATE_LOG.is_file(),
         "gate_log_size_bytes": (
-            LIVE_GATE_LOG.stat().st_size
-            if LIVE_GATE_LOG.is_file() else 0),
+            LIVE_GATE_LOG.stat().st_size if LIVE_GATE_LOG.is_file() else 0
+        ),
         "trade_log": str(LIVE_TRADE_LOG),
         "trade_log_exists": LIVE_TRADE_LOG.is_file(),
         "trade_log_size_bytes": (
-            LIVE_TRADE_LOG.stat().st_size
-            if LIVE_TRADE_LOG.is_file() else 0),
+            LIVE_TRADE_LOG.stat().st_size if LIVE_TRADE_LOG.is_file() else 0
+        ),
     }

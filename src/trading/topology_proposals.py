@@ -26,6 +26,7 @@ Bot Wizard.
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import json
@@ -80,12 +81,14 @@ PROPOSAL_CAP: int = 20
 REPO_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 SECTOR_MAP_PATH: Path = Path(__file__).resolve().parent / "sector_map.json"
 TARGET_DEFAULTS_PATH: Path = (
-    Path(__file__).resolve().parent / "asset_target_defaults.json")
+    Path(__file__).resolve().parent / "asset_target_defaults.json"
+)
 
 
 # --------------------------------------------------------------------------- #
 # Config loaders                                                              #
 # --------------------------------------------------------------------------- #
+
 
 def load_sector_map(path: Optional[Path] = None) -> dict[str, str]:
     """Read the hand-curated ``{asset: sector_tag}`` map.
@@ -104,7 +107,8 @@ def load_sector_map(path: Optional[Path] = None) -> dict[str, str]:
     return {
         str(k).upper(): str(v).lower()
         for k, v in assets.items()
-        if isinstance(k, str) and isinstance(v, str)}
+        if isinstance(k, str) and isinstance(v, str)
+    }
 
 
 def load_target_defaults(path: Optional[Path] = None) -> tuple[dict[str, float], float]:
@@ -117,8 +121,7 @@ def load_target_defaults(path: Optional[Path] = None) -> tuple[dict[str, float],
     try:
         raw = json.loads(_path.read_text(encoding="utf-8"))
     except Exception as _exc:  # noqa: BLE001 - config-load best-effort
-        logger.debug(
-            "topology_proposals: target defaults load failed (%s)", _exc)
+        logger.debug("topology_proposals: target defaults load failed (%s)", _exc)
         return {}, DEFAULT_TARGET_USD_FALLBACK
     if not isinstance(raw, dict):
         return {}, DEFAULT_TARGET_USD_FALLBACK
@@ -131,8 +134,7 @@ def load_target_defaults(path: Optional[Path] = None) -> tuple[dict[str, float],
             except (TypeError, ValueError):
                 continue
     try:
-        fallback = float(raw.get(
-            "fallback_usd", DEFAULT_TARGET_USD_FALLBACK))
+        fallback = float(raw.get("fallback_usd", DEFAULT_TARGET_USD_FALLBACK))
     except (TypeError, ValueError):
         fallback = DEFAULT_TARGET_USD_FALLBACK
     return out, fallback
@@ -161,6 +163,7 @@ def suggested_target_usd(
 # --------------------------------------------------------------------------- #
 # Proposal schema builder                                                     #
 # --------------------------------------------------------------------------- #
+
 
 def make_proposal(
     *,
@@ -196,7 +199,10 @@ def make_proposal(
 
 
 def _make_bot_entry(
-    asset: str, quote: str, symbol: str, role: str,
+    asset: str,
+    quote: str,
+    symbol: str,
+    role: str,
     existing_bot_id: str = "",
     target_defaults: Optional[dict[str, float]] = None,
     target_fallback: Optional[float] = None,
@@ -208,12 +214,16 @@ def _make_bot_entry(
         "existing_bot_id": existing_bot_id,
         "role": role,
         "suggested_target_usd": suggested_target_usd(
-            asset, target_defaults, target_fallback),
+            asset, target_defaults, target_fallback
+        ),
     }
 
 
 def _make_wire(
-    source: str, target: str, pct: float, rationale: str,
+    source: str,
+    target: str,
+    pct: float,
+    rationale: str,
 ) -> dict[str, Any]:
     return {
         "source_asset": source.upper(),
@@ -226,6 +236,7 @@ def _make_wire(
 # --------------------------------------------------------------------------- #
 # Correlation helpers                                                          #
 # --------------------------------------------------------------------------- #
+
 
 def _pearson(xs: list[float], ys: list[float]) -> float:
     """Sample Pearson correlation; 0.0 on degenerate input."""
@@ -253,6 +264,7 @@ def _pearson(xs: list[float], ys: list[float]) -> float:
 # Detector: momentum funnel (§ 3.1)                                            #
 # --------------------------------------------------------------------------- #
 
+
 def detect_momentum_funnel(
     tickers_by_asset: dict[str, dict[str, Any]],
     correlations: dict[tuple[str, str], float],
@@ -275,7 +287,8 @@ def detect_momentum_funnel(
     usd_quote_assets = [
         a.upper()
         for a, meta in tickers_by_asset.items()
-        if (meta.get("quote", "") or "").upper() in ("USD", "USDC")]
+        if (meta.get("quote", "") or "").upper() in ("USD", "USDC")
+    ]
 
     if len(usd_quote_assets) < min_cluster:
         return []
@@ -302,9 +315,9 @@ def detect_momentum_funnel(
     for cluster in clusters:
         ranked = sorted(
             cluster,
-            key=lambda a: float(
-                tickers_by_asset.get(a, {}).get("baseVolume", 0.0)),
-            reverse=True)
+            key=lambda a: float(tickers_by_asset.get(a, {}).get("baseVolume", 0.0)),
+            reverse=True,
+        )
         leader = ranked[0]
         laggers = ranked[1:]
         assets_list = ranked
@@ -314,19 +327,21 @@ def detect_momentum_funnel(
                 quote=tickers_by_asset[a].get("quote", "USD"),
                 symbol=tickers_by_asset[a].get("symbol", f"{a}/USD"),
                 role=("leader" if a == leader else "lagger"),
-                existing_bot_id=str(
-                    tickers_by_asset[a].get("existing_bot_id", "")),
+                existing_bot_id=str(tickers_by_asset[a].get("existing_bot_id", "")),
                 target_defaults=target_defaults,
                 target_fallback=target_fallback,
             )
-            for a in assets_list]
+            for a in assets_list
+        ]
         wires = [
             _make_wire(
-                source=leader, target=lag, pct=MOMENTUM_WIRE_PCT,
-                rationale=(
-                    f"Leader {leader} feeds lagger {lag} "
-                    "(24h volume rank)"))
-            for lag in laggers]
+                source=leader,
+                target=lag,
+                pct=MOMENTUM_WIRE_PCT,
+                rationale=(f"Leader {leader} feeds lagger {lag} " "(24h volume rank)"),
+            )
+            for lag in laggers
+        ]
         avg_corr = 0.0
         pairs = 0
         for a in cluster:
@@ -338,26 +353,29 @@ def detect_momentum_funnel(
         if pairs > 0:
             avg_corr /= pairs
         score = max(0.0, min(100.0, 100.0 * avg_corr))
-        title = (
-            f"Momentum funnel: {leader} → "
-            f"{', '.join(laggers)}")
-        out.append(make_proposal(
-            archetype="momentum_funnel",
-            assets=assets_list,
-            bots=bots,
-            wires=wires,
-            title=title,
-            score=score,
-            adopt_notes=[
-                f"{len(assets_list)} bots; leader {leader} wires "
-                f"{MOMENTUM_WIRE_PCT}% to each of {len(laggers)} lagger(s)."],
-            now=now))
+        title = f"Momentum funnel: {leader} → " f"{', '.join(laggers)}"
+        out.append(
+            make_proposal(
+                archetype="momentum_funnel",
+                assets=assets_list,
+                bots=bots,
+                wires=wires,
+                title=title,
+                score=score,
+                adopt_notes=[
+                    f"{len(assets_list)} bots; leader {leader} wires "
+                    f"{MOMENTUM_WIRE_PCT}% to each of {len(laggers)} lagger(s)."
+                ],
+                now=now,
+            )
+        )
     return out
 
 
 # --------------------------------------------------------------------------- #
 # Detector: mean-reversion pair (§ 3.2)                                        #
 # --------------------------------------------------------------------------- #
+
 
 def detect_mean_reversion_pair(
     opposing_pairs: list[dict[str, Any]],
@@ -392,51 +410,72 @@ def detect_mean_reversion_pair(
         if not meta_a or not meta_b:
             continue
         vol_usd_a = float(meta_a.get("baseVolume", 0.0)) * float(
-            meta_a.get("last", 0.0))
+            meta_a.get("last", 0.0)
+        )
         vol_usd_b = float(meta_b.get("baseVolume", 0.0)) * float(
-            meta_b.get("last", 0.0))
+            meta_b.get("last", 0.0)
+        )
         if vol_usd_a < min_volume_usd or vol_usd_b < min_volume_usd:
             continue
         seen_pairs.add(pair_key)
         bots = [
             _make_bot_entry(
-                asset=a, quote=meta_a.get("quote", "USD"),
+                asset=a,
+                quote=meta_a.get("quote", "USD"),
                 symbol=meta_a.get("symbol", f"{a}/USD"),
                 role="peer_a",
                 existing_bot_id=str(meta_a.get("existing_bot_id", "")),
                 target_defaults=target_defaults,
-                target_fallback=target_fallback),
+                target_fallback=target_fallback,
+            ),
             _make_bot_entry(
-                asset=b, quote=meta_b.get("quote", "USD"),
+                asset=b,
+                quote=meta_b.get("quote", "USD"),
                 symbol=meta_b.get("symbol", f"{b}/USD"),
                 role="peer_b",
                 existing_bot_id=str(meta_b.get("existing_bot_id", "")),
                 target_defaults=target_defaults,
-                target_fallback=target_fallback)]
+                target_fallback=target_fallback,
+            ),
+        ]
         wires = [
-            _make_wire(a, b, MEAN_REVERSION_WIRE_PCT,
-                       f"{a} scrum funds {b} fold (anti-corr {corr:.2f})"),
-            _make_wire(b, a, MEAN_REVERSION_WIRE_PCT,
-                       f"{b} scrum funds {a} fold (anti-corr {corr:.2f})")]
+            _make_wire(
+                a,
+                b,
+                MEAN_REVERSION_WIRE_PCT,
+                f"{a} scrum funds {b} fold (anti-corr {corr:.2f})",
+            ),
+            _make_wire(
+                b,
+                a,
+                MEAN_REVERSION_WIRE_PCT,
+                f"{b} scrum funds {a} fold (anti-corr {corr:.2f})",
+            ),
+        ]
         # Score: |corr| ∈ [0.60, 1.0] → [60, 100].
         score = max(0.0, min(100.0, 100.0 * abs(corr)))
-        out.append(make_proposal(
-            archetype="mean_reversion_pair",
-            assets=[a, b],
-            bots=bots,
-            wires=wires,
-            title=f"Mean-rev pair: {a} ↔ {b}",
-            score=score,
-            adopt_notes=[
-                f"Bidirectional {MEAN_REVERSION_WIRE_PCT}% wires; both sides "
-                f"liquid (≥ ${min_volume_usd:,.0f} 24h)."],
-            now=now))
+        out.append(
+            make_proposal(
+                archetype="mean_reversion_pair",
+                assets=[a, b],
+                bots=bots,
+                wires=wires,
+                title=f"Mean-rev pair: {a} ↔ {b}",
+                score=score,
+                adopt_notes=[
+                    f"Bidirectional {MEAN_REVERSION_WIRE_PCT}% wires; both sides "
+                    f"liquid (≥ ${min_volume_usd:,.0f} 24h)."
+                ],
+                now=now,
+            )
+        )
     return out
 
 
 # --------------------------------------------------------------------------- #
 # Detector: sector cluster (§ 3.3)                                             #
 # --------------------------------------------------------------------------- #
+
 
 def detect_sector_cluster(
     tickers_by_asset: dict[str, dict[str, Any]],
@@ -483,11 +522,13 @@ def detect_sector_cluster(
             members,
             key=lambda a: (
                 -float(tickers_by_asset.get(a, {}).get("baseVolume", 0.0)),
-                a),
+                a,
+            ),
         )[:max_cluster]
         sector_volume = sum(
             float(tickers_by_asset.get(a, {}).get("baseVolume", 0.0) or 0.0)
-            for a in ranked)
+            for a in ranked
+        )
         prepared.append((sector, ranked, sector_volume))
 
     # Normalise liquidity against the most liquid qualifying sector.
@@ -506,44 +547,58 @@ def detect_sector_cluster(
                 quote=tickers_by_asset[a].get("quote", "USD"),
                 symbol=tickers_by_asset[a].get("symbol", f"{a}/USD"),
                 role=("hub" if a == hub else "spoke"),
-                existing_bot_id=str(
-                    tickers_by_asset[a].get("existing_bot_id", "")),
+                existing_bot_id=str(tickers_by_asset[a].get("existing_bot_id", "")),
                 target_defaults=target_defaults,
                 target_fallback=target_fallback,
             )
-            for a in ranked]
+            for a in ranked
+        ]
         wires = [
             _make_wire(
-                source=hub, target=sp, pct=SECTOR_WIRE_PCT,
-                rationale=(
-                    f"Sector {sector}: hub {hub} feeds spoke {sp}"))
-            for sp in spokes]
+                source=hub,
+                target=sp,
+                pct=SECTOR_WIRE_PCT,
+                rationale=(f"Sector {sector}: hub {hub} feeds spoke {sp}"),
+            )
+            for sp in spokes
+        ]
         # Score: size blended with liquidity (C35). Size alone put every
         # full sector on 100.0 and left the leader to dict order.
         _size_ratio = len(ranked) / float(max_cluster)
         _liq_ratio = (sector_volume / _max_volume) if _max_volume > 0 else 0.0
-        score = max(0.0, min(100.0, 100.0 * (
-            SECTOR_SIZE_WEIGHT * _size_ratio
-            + SECTOR_LIQUIDITY_WEIGHT * _liq_ratio)))
-        out.append(make_proposal(
-            archetype="sector_cluster",
-            assets=ranked,
-            bots=bots,
-            wires=wires,
-            title=(
-                f"Sector cluster ({sector}): {hub} → "
-                f"{', '.join(spokes)}"),
-            score=score,
-            adopt_notes=[
-                f"Sector '{sector}': hub {hub} wires "
-                f"{SECTOR_WIRE_PCT}% to each of {len(spokes)} spoke(s)."],
-            now=now))
+        score = max(
+            0.0,
+            min(
+                100.0,
+                100.0
+                * (
+                    SECTOR_SIZE_WEIGHT * _size_ratio
+                    + SECTOR_LIQUIDITY_WEIGHT * _liq_ratio
+                ),
+            ),
+        )
+        out.append(
+            make_proposal(
+                archetype="sector_cluster",
+                assets=ranked,
+                bots=bots,
+                wires=wires,
+                title=(f"Sector cluster ({sector}): {hub} → " f"{', '.join(spokes)}"),
+                score=score,
+                adopt_notes=[
+                    f"Sector '{sector}': hub {hub} wires "
+                    f"{SECTOR_WIRE_PCT}% to each of {len(spokes)} spoke(s)."
+                ],
+                now=now,
+            )
+        )
     return out
 
 
 # --------------------------------------------------------------------------- #
 # Detector: distance-to-band (§ 3.4)                                           #
 # --------------------------------------------------------------------------- #
+
 
 def detect_distance_to_band(
     bots_snapshot: list[dict[str, Any]],
@@ -589,8 +644,7 @@ def detect_distance_to_band(
                     "symbol": s_symbol,
                     "existing_bot_id": str(s_bot.get("bot_id", "")),
                     "role": "scrum_deep",
-                    "suggested_target_usd": float(
-                        s_bot.get("target_balance", 0.0)),
+                    "suggested_target_usd": float(s_bot.get("target_balance", 0.0)),
                 },
                 {
                     "asset": f_asset,
@@ -598,41 +652,47 @@ def detect_distance_to_band(
                     "symbol": f_symbol,
                     "existing_bot_id": str(f_bot.get("bot_id", "")),
                     "role": "fold_deep",
-                    "suggested_target_usd": float(
-                        f_bot.get("target_balance", 0.0)),
+                    "suggested_target_usd": float(f_bot.get("target_balance", 0.0)),
                 },
             ]
             wires = [
                 _make_wire(
-                    source=s_asset, target=f_asset,
+                    source=s_asset,
+                    target=f_asset,
                     pct=DISTANCE_WIRE_PCT,
                     rationale=(
                         f"{s_asset} bot {s_bot.get('bot_id','')[:6]} "
                         f"({s_bot['_dist_pct']:+.1f}%) → "
                         f"{f_bot.get('bot_id','')[:6]} "
-                        f"({f_bot['_dist_pct']:+.1f}%)"))]
+                        f"({f_bot['_dist_pct']:+.1f}%)"
+                    ),
+                )
+            ]
             # Score: sum of |distance| capped at 100.
             score = max(
-                0.0, min(100.0,
-                         abs(s_bot["_dist_pct"]) + abs(f_bot["_dist_pct"])))
-            out.append(make_proposal(
-                archetype="distance_to_band",
-                assets=[s_asset],
-                bots=bots,
-                wires=wires,
-                title=(
-                    f"Distance handoff: {s_asset} "
-                    f"deep-scrum → deep-fold"),
-                score=score,
-                adopt_notes=[
-                    f"Intra-{s_asset} handoff: {DISTANCE_WIRE_PCT}% wire."],
-                now=now))
+                0.0, min(100.0, abs(s_bot["_dist_pct"]) + abs(f_bot["_dist_pct"]))
+            )
+            out.append(
+                make_proposal(
+                    archetype="distance_to_band",
+                    assets=[s_asset],
+                    bots=bots,
+                    wires=wires,
+                    title=(f"Distance handoff: {s_asset} " f"deep-scrum → deep-fold"),
+                    score=score,
+                    adopt_notes=[
+                        f"Intra-{s_asset} handoff: {DISTANCE_WIRE_PCT}% wire."
+                    ],
+                    now=now,
+                )
+            )
     return out
 
 
 # --------------------------------------------------------------------------- #
 # Top-level orchestrator (§ 7.1)                                               #
 # --------------------------------------------------------------------------- #
+
 
 def detect_all_topologies(
     context: dict[str, Any],
@@ -671,18 +731,33 @@ def detect_all_topologies(
     now = context.get("now")
 
     proposals: list[dict[str, Any]] = []
-    proposals.extend(detect_momentum_funnel(
-        tickers, correlations,
-        target_defaults=target_defaults,
-        target_fallback=target_fallback, now=now))
-    proposals.extend(detect_mean_reversion_pair(
-        opposing, tickers,
-        target_defaults=target_defaults,
-        target_fallback=target_fallback, now=now))
-    proposals.extend(detect_sector_cluster(
-        tickers, sector_map,
-        target_defaults=target_defaults,
-        target_fallback=target_fallback, now=now))
+    proposals.extend(
+        detect_momentum_funnel(
+            tickers,
+            correlations,
+            target_defaults=target_defaults,
+            target_fallback=target_fallback,
+            now=now,
+        )
+    )
+    proposals.extend(
+        detect_mean_reversion_pair(
+            opposing,
+            tickers,
+            target_defaults=target_defaults,
+            target_fallback=target_fallback,
+            now=now,
+        )
+    )
+    proposals.extend(
+        detect_sector_cluster(
+            tickers,
+            sector_map,
+            target_defaults=target_defaults,
+            target_fallback=target_fallback,
+            now=now,
+        )
+    )
     proposals.extend(detect_distance_to_band(bots_snapshot, now=now))
 
     # Rank by score desc; on ties keep the higher archetype priority
@@ -697,14 +772,18 @@ def detect_all_topologies(
     # the sector and its members) and gives a total order when score and
     # archetype both tie.
     _ARCHETYPE_RANK = {
-        "momentum": 0, "mean_reversion": 1,
-        "sector_cluster": 2, "distance_to_band": 3,
+        "momentum": 0,
+        "mean_reversion": 1,
+        "sector_cluster": 2,
+        "distance_to_band": 3,
     }
-    proposals.sort(key=lambda p: (
-        -float(p["score"]),
-        _ARCHETYPE_RANK.get(str(p.get("archetype", "")), 99),
-        str(p.get("title", "")),
-    ))
+    proposals.sort(
+        key=lambda p: (
+            -float(p["score"]),
+            _ARCHETYPE_RANK.get(str(p.get("archetype", "")), 99),
+            str(p.get("title", "")),
+        )
+    )
 
     # Dedup by asset-overlap: keep the higher-scoring proposal when
     # two share ≥ 2 assets AND ≥ 50% of the smaller's asset set.
@@ -731,15 +810,26 @@ def detect_all_topologies(
 
 
 __all__ = [
-    "MOMENTUM_MIN_CORR", "MOMENTUM_MIN_CLUSTER_SIZE", "MOMENTUM_WIRE_PCT",
-    "MEAN_REVERSION_MAX_CORR", "MEAN_REVERSION_MIN_VOLUME_USD",
+    "MOMENTUM_MIN_CORR",
+    "MOMENTUM_MIN_CLUSTER_SIZE",
+    "MOMENTUM_WIRE_PCT",
+    "MEAN_REVERSION_MAX_CORR",
+    "MEAN_REVERSION_MIN_VOLUME_USD",
     "MEAN_REVERSION_WIRE_PCT",
-    "SECTOR_MIN_CLUSTER_SIZE", "SECTOR_MAX_CLUSTER_SIZE", "SECTOR_WIRE_PCT",
-    "DISTANCE_DEEP_PCT", "DISTANCE_WIRE_PCT",
-    "DEFAULT_TARGET_USD_FALLBACK", "PROPOSAL_CAP",
-    "load_sector_map", "load_target_defaults", "suggested_target_usd",
+    "SECTOR_MIN_CLUSTER_SIZE",
+    "SECTOR_MAX_CLUSTER_SIZE",
+    "SECTOR_WIRE_PCT",
+    "DISTANCE_DEEP_PCT",
+    "DISTANCE_WIRE_PCT",
+    "DEFAULT_TARGET_USD_FALLBACK",
+    "PROPOSAL_CAP",
+    "load_sector_map",
+    "load_target_defaults",
+    "suggested_target_usd",
     "make_proposal",
-    "detect_momentum_funnel", "detect_mean_reversion_pair",
-    "detect_sector_cluster", "detect_distance_to_band",
+    "detect_momentum_funnel",
+    "detect_mean_reversion_pair",
+    "detect_sector_cluster",
+    "detect_distance_to_band",
     "detect_all_topologies",
 ]

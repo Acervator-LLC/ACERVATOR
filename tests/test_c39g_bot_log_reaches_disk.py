@@ -28,6 +28,7 @@ answered until this lands and one real session produces evidence.
 
 tmp_path only — LogManager takes log_dir for exactly this.
 """
+
 from __future__ import annotations
 
 import json
@@ -57,8 +58,11 @@ def _diag_lines(root: Path) -> list[dict]:
     hits = list(root.rglob("diagnostics.log"))
     if not hits:
         return []
-    return [json.loads(ln) for ln in
-            hits[0].read_text(encoding="utf-8").splitlines() if ln.strip()]
+    return [
+        json.loads(ln)
+        for ln in hits[0].read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    ]
 
 
 class TestBotLogReachesDisk:
@@ -70,13 +74,16 @@ class TestBotLogReachesDisk:
         assert lines[0]["data"]["message"] == "hello from a bot"
         assert lines[0]["bot_id"] == "abc123"
 
-    @pytest.mark.parametrize("marker", [
-        "[COMPOUND SKIPPED] (auto): profit_folding_active=False",
-        "TARGET GROWN (auto): surplus $12.3456, applied $1.0000",
-        "TARGET-GROW HELD (auto): surplus accrues to standing pool",
-        "FOLD_DIAG_SURPLUS_CHECK: buy_fill=$0.00001234",
-        "[WIRE FIRE] scrum-route: $4.2000",
-    ])
+    @pytest.mark.parametrize(
+        "marker",
+        [
+            "[COMPOUND SKIPPED] (auto): profit_folding_active=False",
+            "TARGET GROWN (auto): surplus $12.3456, applied $1.0000",
+            "TARGET-GROW HELD (auto): surplus accrues to standing pool",
+            "FOLD_DIAG_SURPLUS_CHECK: buy_fill=$0.00001234",
+            "[WIRE FIRE] scrum-route: $4.2000",
+        ],
+    )
     def test_each_real_marker_survives_to_disk(self, wired, marker):
         """The exact vocabulary the operator was told to grep for."""
         _mgr, bus, root = wired
@@ -100,7 +107,7 @@ class TestBotLogReachesDisk:
         f = list(root.rglob("diagnostics.log"))[0]
         for line in f.read_text(encoding="utf-8").splitlines():
             if line.strip():
-                json.loads(line)     # each line parses alone
+                json.loads(line)  # each line parses alone
 
 
 class TestItCannotBreakTheTradingLoop:
@@ -109,8 +116,7 @@ class TestItCannotBreakTheTradingLoop:
         bus.emit("bot.log", bot_id="b1", message="")
         assert _diag_lines(root) == []
 
-    def test_a_writer_failure_does_not_propagate(self, wired,
-                                                 monkeypatch):
+    def test_a_writer_failure_does_not_propagate(self, wired, monkeypatch):
         """A diagnostic writer must never take down the loop it
         observes."""
         mgr, bus, _root = wired
@@ -123,7 +129,7 @@ class TestItCannotBreakTheTradingLoop:
 
     def test_a_malformed_event_is_ignored(self, wired):
         _mgr, bus, root = wired
-        bus.emit("bot.log")           # no message, no bot_id
+        bus.emit("bot.log")  # no message, no bot_id
         assert _diag_lines(root) == []
 
 
@@ -133,7 +139,8 @@ class TestSubscriptionIsSymmetric:
         the exact shape of the Nuclear BotManager leak found in the Bot
         Swarm audit."""
         src = (REPO_ROOT / "src" / "core" / "logging_engine.py").read_text(
-            encoding="utf-8")
+            encoding="utf-8"
+        )
         assert 'bus.subscribe("bot.log"' in src
         assert 'bus.unsubscribe("bot.log"' in src
 

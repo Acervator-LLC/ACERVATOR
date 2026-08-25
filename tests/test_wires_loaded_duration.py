@@ -87,8 +87,7 @@ def _tracks(short: Optional[float], long_: Optional[float]) -> bool:
     return long_ > short * 2.0
 
 
-def _tracks_the_load(short: Optional[float],
-                       long_: Optional[float]) -> bool:
+def _tracks_the_load(short: Optional[float], long_: Optional[float]) -> bool:
     """Ask `_tracks`, then put a floor under the long reading.
 
     This ADDS a condition and relaxes none: everything `_tracks`
@@ -109,8 +108,13 @@ def _tracks_the_load(short: Optional[float],
 def _drive(monkeypatch, burn_s: float, sink: SignalSink, payload=None) -> list:
     def _slow_read(_path):
         _busy_wait(burn_s)
-        return {"smart_wires": [{"source_id": "a", "target_id": "b",
-                                 "pct": 1.0}] if payload is None else payload}
+        return {
+            "smart_wires": (
+                [{"source_id": "a", "target_id": "b", "pct": 1.0}]
+                if payload is None
+                else payload
+            )
+        }
 
     monkeypatch.setattr(bsl, "_read_state_file", _slow_read)
     previous = sc.get_sink()
@@ -171,8 +175,7 @@ def test_the_duration_tracks_two_different_load_costs(monkeypatch):
 
     assert short == pytest.approx(SHORT_S, abs=0.005), short
     assert long_ == pytest.approx(LONG_S, abs=0.015), long_
-    assert _tracks_the_load(short, long_), (
-        f"did not track: {short} vs {long_}")
+    assert _tracks_the_load(short, long_), f"did not track: {short} vs {long_}"
 
 
 def test_the_tracking_predicate_rejects_a_constant_duration():
@@ -190,29 +193,36 @@ def test_the_site_predicate_rejects_a_bracket_that_spans_nothing() -> None:
     this site could be blinded while still handing the sink a
     `duration` field of exactly the right shape.
     """
-    assert not _tracks_the_load(0.01, 0.01), (
-        "a constant duration must not read as tracking")
-    assert not _tracks_the_load(None, LONG_S), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_load(SHORT_S, None), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_load(LONG_S, SHORT_S), (
-        "going backwards must not read as tracking")
+    assert not _tracks_the_load(
+        0.01, 0.01
+    ), "a constant duration must not read as tracking"
+    assert not _tracks_the_load(
+        None, LONG_S
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_load(
+        SHORT_S, None
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_load(
+        LONG_S, SHORT_S
+    ), "going backwards must not read as tracking"
 
     # THE DEAD CLOCK, and the measured reason this site carries a floor
     # the shared predicate does not. This pair is a real one, harvested
     # 2026-08-20 with the stop clock planted above the work. `_tracks`
     # accepts it. The floor rejects it. That is an addition to
     # `_tracks`, never a relaxation of it.
-    assert _tracks(0.0, 3.0e-07), (
-        "the shared predicate is expected to accept a dead clock here")
-    assert not _tracks_the_load(0.0, 3.0e-07), (
-        "a bracket that spans no work must not read as tracking")
+    assert _tracks(
+        0.0, 3.0e-07
+    ), "the shared predicate is expected to accept a dead clock here"
+    assert not _tracks_the_load(
+        0.0, 3.0e-07
+    ), "a bracket that spans no work must not read as tracking"
 
     # The honest pair measured off the real site, 2026-08-20, must
     # still read as tracking.
-    assert _tracks_the_load(0.005000, 0.030000), (
-        "the real measured pair must read as tracking")
+    assert _tracks_the_load(
+        0.005000, 0.030000
+    ), "the real measured pair must read as tracking"
 
 
 def test_a_refused_load_emits_nothing_at_all(monkeypatch):

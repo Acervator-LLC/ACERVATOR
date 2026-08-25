@@ -17,6 +17,7 @@ by another process or by the operator's own hand on the Coinbase site.
 It stops the fleet racing ITSELF, which is the only party it can
 coordinate. Tests below pin that boundary rather than implying more.
 """
+
 from __future__ import annotations
 
 import sys
@@ -81,13 +82,13 @@ class TestTheFleetStopsRacingItself:
 
     def test_currencies_do_not_share_a_budget(self, led):
         led.reserve(wallet_key("coinbase", "USD"), 100.0)
-        assert led.available(wallet_key("coinbase", "USDC"),
-                             100.0) == pytest.approx(100.0)
+        assert led.available(wallet_key("coinbase", "USDC"), 100.0) == pytest.approx(
+            100.0
+        )
 
     def test_exchanges_do_not_share_a_budget(self, led):
         led.reserve(wallet_key("coinbase", "USD"), 100.0)
-        assert led.available(wallet_key("kraken", "USD"),
-                             100.0) == pytest.approx(100.0)
+        assert led.available(wallet_key("kraken", "USD"), 100.0) == pytest.approx(100.0)
 
 
 class TestItCannotHandOutMoreThanExists:
@@ -153,10 +154,15 @@ class TestTheReserveIsAtomic:
         src = Path(m.__file__).read_text(encoding="utf-8")
         tree = ast.parse(src)
         for name in ("reserve", "release", "available", "reserved"):
-            fn = next(n for n in ast.walk(tree)
-                      if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                      and n.name == name)
-            assert not isinstance(fn, ast.AsyncFunctionDef), \
-                f"{name} became a coroutine; the no-lock design is unsafe"
-            assert not any(isinstance(x, ast.Await) for x in ast.walk(fn)), \
-                f"{name} contains an await; reservation is no longer atomic"
+            fn = next(
+                n
+                for n in ast.walk(tree)
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and n.name == name
+            )
+            assert not isinstance(
+                fn, ast.AsyncFunctionDef
+            ), f"{name} became a coroutine; the no-lock design is unsafe"
+            assert not any(
+                isinstance(x, ast.Await) for x in ast.walk(fn)
+            ), f"{name} contains an await; reservation is no longer atomic"

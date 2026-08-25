@@ -27,6 +27,7 @@ sim bot 110% of a live bot's base units, so sim out-scrums live and the
 inflation reads as the fix working. `test_sim_seed_is_unchanged` pins
 that the seed did not move.
 """
+
 from __future__ import annotations
 
 import ast
@@ -47,8 +48,7 @@ SB = REPO_ROOT / "src" / "trading" / "scrumming_bot.py"
 
 
 def _registry(tmp_path):
-    return CapitalReservationRegistry(
-        state_path=tmp_path / "res.json", autosave=False)
+    return CapitalReservationRegistry(state_path=tmp_path / "res.json", autosave=False)
 
 
 class TestTheDefectIsReal:
@@ -58,17 +58,26 @@ class TestTheDefectIsReal:
         below would be unnecessary and the tests vacuous."""
         reg = _registry(tmp_path)
         with pytest.raises(ValueError):
-            reg.reserve(bot_id="b1", asset="BTC", qty=1.10,
-                        reason="sim", bot_kind="scrumming",
-                        total_holdings=1.0)
+            reg.reserve(
+                bot_id="b1",
+                asset="BTC",
+                qty=1.10,
+                reason="sim",
+                bot_kind="scrumming",
+                total_holdings=1.0,
+            )
 
-    def test_the_same_claim_succeeds_when_holdings_are_not_asserted(
-            self, tmp_path):
+    def test_the_same_claim_succeeds_when_holdings_are_not_asserted(self, tmp_path):
         """...and passing None is what unblocks it."""
         reg = _registry(tmp_path)
-        tok = reg.reserve(bot_id="b1", asset="BTC", qty=1.10,
-                          reason="sim", bot_kind="scrumming",
-                          total_holdings=None)
+        tok = reg.reserve(
+            bot_id="b1",
+            asset="BTC",
+            qty=1.10,
+            reason="sim",
+            bot_kind="scrumming",
+            total_holdings=None,
+        )
         assert tok
 
 
@@ -78,23 +87,33 @@ class TestTheMarginIsNotAnInventoryTarget:
         at it would give every sim bot 110% of a live bot's base units,
         and sim would out-scrum live while looking fixed."""
         src = SB.read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.FunctionDef)
-                  and n.name == "_compute_reservation_qty")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.FunctionDef) and n.name == "_compute_reservation_qty"
+        )
         seg = ast.get_source_segment(src, fn) or ""
-        assert "1.10" in seg or "1.1" in seg, (
-            "the safety margin moved; re-derive C16 before trusting it")
+        assert (
+            "1.10" in seg or "1.1" in seg
+        ), "the safety margin moved; re-derive C16 before trusting it"
 
     def test_sim_seed_is_unchanged(self):
         """C16 step 2: sim holdings stay at exactly target/open_px so
         sim and live start from identical inventory. Asserted against
         the seeding site, not against a number I chose."""
-        fc = (REPO_ROOT / "src" / "gui" / "simulator_tab" / "fleet"
-              / "fleet_replay_controller.py")
+        fc = (
+            REPO_ROOT
+            / "src"
+            / "gui"
+            / "simulator_tab"
+            / "fleet"
+            / "fleet_replay_controller.py"
+        )
         src = fc.read_text(encoding="utf-8")
         assert "1.10" not in src, (
             "the reservation ceiling leaked into the sim seeding path; "
-            "sim inventory would exceed live")
+            "sim inventory would exceed live"
+        )
 
 
 class TestTheRegistryContract:
@@ -105,8 +124,9 @@ class TestTheRegistryContract:
         fail a correct fix. The plan already corrects itself; this pins
         the reason."""
         reg = _registry(tmp_path)
-        t1 = reg.reserve(bot_id="b1", asset="BTC", qty=1.0, reason="r",
-                         bot_kind="scrumming")
+        t1 = reg.reserve(
+            bot_id="b1", asset="BTC", qty=1.0, reason="r", bot_kind="scrumming"
+        )
         assert t1 not in ("b1",)
         assert len(t1) > 8, "token does not look like a uuid hex"
 
@@ -114,8 +134,9 @@ class TestTheRegistryContract:
         """The idempotent-update contract: N ticks must not accumulate N
         tokens for one bot."""
         reg = _registry(tmp_path)
-        tok = reg.reserve(bot_id="b1", asset="BTC", qty=1.0, reason="r",
-                          bot_kind="scrumming")
+        tok = reg.reserve(
+            bot_id="b1", asset="BTC", qty=1.0, reason="r", bot_kind="scrumming"
+        )
         for q in (1.1, 1.2, 1.3):
             reg.update(tok, bot_id="b1", new_qty=q)
         mine = [r for r in reg._reservations.values() if r.bot_id == "b1"]
@@ -127,8 +148,9 @@ class TestTheRegistryContract:
         token' is the wrong assertion. Only ELIGIBLE bots do."""
         reg = _registry(tmp_path)
         with pytest.raises(ValueError):
-            reg.reserve(bot_id="b0", asset="BTC", qty=0.0, reason="r",
-                        bot_kind="scrumming")
+            reg.reserve(
+                bot_id="b0", asset="BTC", qty=0.0, reason="r", bot_kind="scrumming"
+            )
 
 
 class TestTheSimPathPassesNone:
@@ -138,9 +160,15 @@ class TestTheSimPathPassesNone:
         exceeds."""
         src = SB.read_text(encoding="utf-8")
         tree = ast.parse(src)
-        fn = next((n for n in ast.walk(tree)
-                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                   and "_ensure_capital_reservation" in n.name), None)
+        fn = next(
+            (
+                n
+                for n in ast.walk(tree)
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and "_ensure_capital_reservation" in n.name
+            ),
+            None,
+        )
         assert fn is not None, "the ensure method was renamed"
 
         # AST, not substring. An earlier version of this test checked
@@ -150,20 +178,25 @@ class TestTheSimPathPassesNone:
         # docs/audits/2026-08-07_traps_that_pass_a_naive_test.md, sprung
         # inside the test written to verify the fix for it.
         sim_branches = [
-            n for n in ast.walk(fn)
+            n
+            for n in ast.walk(fn)
             if isinstance(n, ast.If)
             and "_sim_mode" in (ast.get_source_segment(src, n.test) or "")
         ]
         assert sim_branches, (
             "the ensure path has no executable sim branch; sim "
-            "reservations still fail the over-commit check every tick")
+            "reservations still fail the over-commit check every tick"
+        )
 
     def test_the_reason_is_recorded_at_the_site(self):
         """Someone will read `total_holdings=None` and 'fix' it back."""
         src = SB.read_text(encoding="utf-8")
         tree = ast.parse(src)
-        fn = next(n for n in ast.walk(tree)
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and "_ensure_capital_reservation" in n.name)
+        fn = next(
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and "_ensure_capital_reservation" in n.name
+        )
         seg = ast.get_source_segment(src, fn) or ""
         assert "C16" in seg

@@ -52,6 +52,7 @@ interval-only factor exactly, or (d) the returned distance is not
 monotonically non-decreasing in either input while both stay under the
 clamp.
 """
+
 from __future__ import annotations
 
 # The Minimum Opposing Trade Distance must stay inside these bounds for
@@ -62,9 +63,7 @@ OTD_MIN_PCT = 0.0
 OTD_MAX_PCT = 50.0
 
 
-def minimum_opposing_trade_distance_pct(
-    interval_pct: float, fee_pct: float
-) -> float:
+def minimum_opposing_trade_distance_pct(interval_pct: float, fee_pct: float) -> float:
     """The clamped percentage an opposing trade must travel.
 
     ``interval_pct`` is ``config.scrumming_interval_pct``; ``fee_pct`` is
@@ -100,4 +99,5 @@ def fold_rebuy_factor_from_pct(otd_pct: float) -> float:
 def fold_rebuy_factor(interval_pct: float, fee_pct: float) -> float:
     """``minimum_opposing_trade_distance_pct`` expressed as a factor."""
     return fold_rebuy_factor_from_pct(
-        minimum_opposing_trade_distance_pct(interval_pct, fee_pct))
+        minimum_opposing_trade_distance_pct(interval_pct, fee_pct)
+    )

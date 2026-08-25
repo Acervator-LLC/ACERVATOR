@@ -32,25 +32,27 @@ moves the asset's rolling S/B ratio in the operator-favored direction.
 
 sadp: R28 R42 R55 R63 R68 R70
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-
 # ─────────────────────────────────────────────────────────────────────
 # Data shapes
 # ─────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class TradeRecord:
     """A single executed trade. Both Coinbase CSV and RAIntSimBat
     per-trade logs normalize into this shape."""
+
     trade_id: str
     timestamp: Optional[datetime]
     asset: str
-    side: str            # "buy" or "sell"
+    side: str  # "buy" or "sell"
     price: float
     quantity: float
     fee: float
@@ -67,6 +69,7 @@ class PriceContext:
     each axis is computed if its inputs are present, otherwise that
     axis contributes "N/A" to the rationale and doesn't affect the
     overall grade."""
+
     ref_price_at_decision: Optional[float] = None
     # Future prices = next N candles after the trade. Used for MFE/MAE.
     future_prices: list[float] = field(default_factory=list)
@@ -84,6 +87,7 @@ class PriceContext:
 @dataclass
 class TradeGrade:
     """A graded trade — deterministic output of grade_trade()."""
+
     trade_id: str
     asset: str
     side: str
@@ -111,8 +115,10 @@ class TradeGrade:
 # Sub-scorers — each axis is a pure function
 # ─────────────────────────────────────────────────────────────────────
 
-def _score_execution(record: TradeRecord,
-                       ctx: PriceContext) -> tuple[Optional[float], Optional[float]]:
+
+def _score_execution(
+    record: TradeRecord, ctx: PriceContext
+) -> tuple[Optional[float], Optional[float]]:
     """Score execution quality from slippage in bps.
 
     Returns (score, bps). Score is 1.0 at zero slippage, 0.0 at 100bps
@@ -133,8 +139,9 @@ def _score_execution(record: TradeRecord,
     return (score, bps)
 
 
-def _score_timing(record: TradeRecord,
-                    ctx: PriceContext) -> tuple[Optional[float], Optional[float], Optional[float]]:
+def _score_timing(
+    record: TradeRecord, ctx: PriceContext
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
     """Score timing from MFE / MAE.
 
     Returns (score, mfe_pct, mae_pct). Score is 1.0 when MFE > |MAE|
@@ -174,8 +181,9 @@ def _score_timing(record: TradeRecord,
     return (score, mfe_pct, mae_pct)
 
 
-def _score_strategic(record: TradeRecord,
-                       ctx: PriceContext) -> tuple[Optional[float], Optional[float]]:
+def _score_strategic(
+    record: TradeRecord, ctx: PriceContext
+) -> tuple[Optional[float], Optional[float]]:
     """Score strategic alignment from S/B ratio impact.
 
     Returns (score, improvement_delta). Score is 1.0 when the trade
@@ -200,8 +208,9 @@ def _score_strategic(record: TradeRecord,
     return (score, delta)
 
 
-def _score_outcome(record: TradeRecord,
-                     ctx: PriceContext) -> tuple[Optional[float], Optional[float]]:
+def _score_outcome(
+    record: TradeRecord, ctx: PriceContext
+) -> tuple[Optional[float], Optional[float]]:
     """Score outcome from realized P&L per unit if the round-trip has
     closed. None if still open."""
     if ctx.realized_pnl_per_unit is None:
@@ -220,6 +229,7 @@ def _score_outcome(record: TradeRecord,
 # ─────────────────────────────────────────────────────────────────────
 # Letter grade boundaries
 # ─────────────────────────────────────────────────────────────────────
+
 
 def _letter_from_numeric(num: float) -> str:
     """Map [0.0, 1.0] numeric grade to A+/A/B/C/D/F."""
@@ -241,6 +251,7 @@ def _letter_from_numeric(num: float) -> str:
 # Main grader API
 # ─────────────────────────────────────────────────────────────────────
 
+
 def grade_trade(record: TradeRecord, ctx: PriceContext) -> TradeGrade:
     """Grade a single trade across all five axes.
 
@@ -260,9 +271,11 @@ def grade_trade(record: TradeRecord, ctx: PriceContext) -> TradeGrade:
     strategic_score, sb_delta = _score_strategic(record, ctx)
     outcome_score, realized = _score_outcome(record, ctx)
 
-    sub_scores = [s for s in (exec_score, timing_score,
-                                 strategic_score, outcome_score)
-                   if s is not None]
+    sub_scores = [
+        s
+        for s in (exec_score, timing_score, strategic_score, outcome_score)
+        if s is not None
+    ]
     if sub_scores:
         overall_num = sum(sub_scores) / len(sub_scores)
     else:
@@ -304,8 +317,7 @@ def grade_trade(record: TradeRecord, ctx: PriceContext) -> TradeGrade:
         mfe_pct=round(mfe, 3) if mfe is not None else None,
         mae_pct=round(mae, 3) if mae is not None else None,
         sb_improvement=round(sb_delta, 4) if sb_delta is not None else None,
-        realized_pnl_per_unit=(round(realized, 6)
-                                 if realized is not None else None),
+        realized_pnl_per_unit=(round(realized, 6) if realized is not None else None),
         regime=ctx.regime_tag,
         rationale=rationale,
     )
@@ -315,8 +327,10 @@ def grade_trade(record: TradeRecord, ctx: PriceContext) -> TradeGrade:
 # Aggregate grading
 # ─────────────────────────────────────────────────────────────────────
 
-def grade_trades(records: list[TradeRecord],
-                  contexts: list[PriceContext]) -> list[TradeGrade]:
+
+def grade_trades(
+    records: list[TradeRecord], contexts: list[PriceContext]
+) -> list[TradeGrade]:
     """Grade a sequence of trades. records and contexts must be
     parallel lists (same length, same order).
 
@@ -326,7 +340,8 @@ def grade_trades(records: list[TradeRecord],
     if len(records) != len(contexts):
         raise ValueError(
             f"grade_trades: parallel-list shape mismatch: "
-            f"{len(records)} records vs {len(contexts)} contexts")
+            f"{len(records)} records vs {len(contexts)} contexts"
+        )
     return [grade_trade(r, c) for r, c in zip(records, contexts)]
 
 
@@ -340,23 +355,22 @@ def grade_distribution(grades: list[TradeGrade]) -> dict:
     """
     out: dict = {
         "count_total": len(grades),
-        "count_by_letter": {
-            "A+": 0, "A": 0, "B": 0, "C": 0, "D": 0, "F": 0},
+        "count_by_letter": {"A+": 0, "A": 0, "B": 0, "C": 0, "D": 0, "F": 0},
         "mean_numeric": 0.0,
         "mean_per_axis": {
-            "execution": None, "timing": None,
-            "strategic": None, "outcome": None,
+            "execution": None,
+            "timing": None,
+            "strategic": None,
+            "outcome": None,
         },
         "by_asset": {},
     }
     if not grades:
         return out
 
-    out["mean_numeric"] = round(
-        sum(g.overall_numeric for g in grades) / len(grades), 4)
+    out["mean_numeric"] = round(sum(g.overall_numeric for g in grades) / len(grades), 4)
     for g in grades:
-        out["count_by_letter"][g.overall] = (
-            out["count_by_letter"].get(g.overall, 0) + 1)
+        out["count_by_letter"][g.overall] = out["count_by_letter"].get(g.overall, 0) + 1
 
     # Per-axis means (filtering None)
     for axis_attr, axis_key in [
@@ -365,8 +379,9 @@ def grade_distribution(grades: list[TradeGrade]) -> dict:
         ("strategic_score", "strategic"),
         ("outcome_score", "outcome"),
     ]:
-        vals = [getattr(g, axis_attr) for g in grades
-                  if getattr(g, axis_attr) is not None]
+        vals = [
+            getattr(g, axis_attr) for g in grades if getattr(g, axis_attr) is not None
+        ]
         if vals:
             out["mean_per_axis"][axis_key] = round(sum(vals) / len(vals), 4)
 
@@ -378,8 +393,8 @@ def grade_distribution(grades: list[TradeGrade]) -> dict:
         out["by_asset"][asset] = {
             "count": len(asset_grades),
             "mean_numeric": round(
-                sum(g.overall_numeric for g in asset_grades)
-                / len(asset_grades), 4),
+                sum(g.overall_numeric for g in asset_grades) / len(asset_grades), 4
+            ),
             "letter_counts": {
                 k: sum(1 for g in asset_grades if g.overall == k)
                 for k in ["A+", "A", "B", "C", "D", "F"]

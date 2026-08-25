@@ -34,6 +34,7 @@ Keying on empty lots would miss exactly the bots that need it: BICO and
 IMU now carry a lot from the erroneous cartridge buy, while their scrum
 history is still zero.
 """
+
 from __future__ import annotations
 
 import sys
@@ -53,19 +54,23 @@ SYM = "BICO/USDC"
 ASSET = "BICO"
 STEP = 300_000
 T0 = 1_776_778_500_000
-SEED_UNITS = 347.96          # the operator's manual $25 of BICO
+SEED_UNITS = 347.96  # the operator's manual $25 of BICO
 PX = 0.0706380489
 
 
 def _rows(n=400):
-    return [[T0 + i * STEP, PX, PX * 1.002, PX * 0.998, PX, 500.0]
-            for i in range(n)]
+    return [[T0 + i * STEP, PX, PX * 1.002, PX * 0.998, PX, 500.0] for i in range(n)]
 
 
 def _cfg(**over):
-    c = {"mode": "scrumming", "symbol": SYM, "target_balance": 25.0,
-         "target_asset": ASSET, "base_currency": "USDC",
-         "_src_bot_id": "cd98052b"}
+    c = {
+        "mode": "scrumming",
+        "symbol": SYM,
+        "target_balance": 25.0,
+        "target_asset": ASSET,
+        "base_currency": "USDC",
+        "_src_bot_id": "cd98052b",
+    }
     c.update(over)
     return c
 
@@ -76,14 +81,13 @@ def _bot(exchange_units=SEED_UNITS, cfg=None):
     from src.exchange.tablet_backend import TabletBackend
 
     be = TabletBackend(
-        {SYM: _rows()},
-        balances={"USDC": 500.0, ASSET: float(exchange_units)})
+        {SYM: _rows()}, balances={"USDC": 500.0, ASSET: float(exchange_units)}
+    )
     for _ in range(300):
         be.step()
     conn = CCXTConnector("coinbase")
     conn.attach_backend(be)
-    bot = frc._instantiate_bot(cfg or _cfg(), conn,
-                              frc._make_sim_capital_registry())
+    bot = frc._instantiate_bot(cfg or _cfg(), conn, frc._make_sim_capital_registry())
     return bot, be
 
 
@@ -145,8 +149,7 @@ class TestTheAdoptionArithmetic:
         would leave real units unattributed and rebuild the same blind
         spot one layer down."""
         units_worth_50 = SEED_UNITS * 2
-        assert self._own(units_worth_50, 0.0, False) == pytest.approx(
-            units_worth_50)
+        assert self._own(units_worth_50, 0.0, False) == pytest.approx(units_worth_50)
 
 
 class TestTheInvariantSurvives:
@@ -156,7 +159,8 @@ class TestTheInvariantSurvives:
         bot, _ = _bot()
         bot._main_lots = [{"units": SEED_UNITS, "initial_buy_price": PX}]
         bot._current_holdings = sum(
-            float(x.get("units", 0) or 0) for x in bot._main_lots)
+            float(x.get("units", 0) or 0) for x in bot._main_lots
+        )
         assert bot._main_lots_invariant_ok() is True
         assert bot._current_holdings == pytest.approx(SEED_UNITS)
 

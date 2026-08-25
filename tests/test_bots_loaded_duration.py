@@ -37,8 +37,10 @@ from src.core.signal_contract import SignalSink
 from src.gui.simulator_tab.fleet import bot_state_loader as bsl
 
 OWNER = "fleet.03.001.postcondition.bots_loaded"
-SIBLINGS = ("fleet.03.002.invariant.bot_ids_mirror_live",
-            "fleet.03.003.invariant.sections_imported")
+SIBLINGS = (
+    "fleet.03.002.invariant.bot_ids_mirror_live",
+    "fleet.03.003.invariant.sections_imported",
+)
 
 SHORT_S = 0.005
 LONG_S = 0.030
@@ -103,8 +105,7 @@ def _tracks(short: Optional[float], long_: Optional[float]) -> bool:
     return long_ > short * 2.0
 
 
-def _tracks_the_load(short: Optional[float],
-                       long_: Optional[float]) -> bool:
+def _tracks_the_load(short: Optional[float], long_: Optional[float]) -> bool:
     """Ask `_tracks`, then put a floor under the long reading.
 
     This ADDS a condition and relaxes none: everything `_tracks`
@@ -124,13 +125,17 @@ def _tracks_the_load(short: Optional[float],
 
 def _state(n_bots: int = 2) -> dict:
     """A minimal bot_state shape the loader accepts."""
-    return {"bots": {f"bot{i}": {"config": {"mode": "scrumming",
-                                            "symbol": f"X{i}/USD"}}
-                     for i in range(n_bots)}}
+    return {
+        "bots": {
+            f"bot{i}": {"config": {"mode": "scrumming", "symbol": f"X{i}/USD"}}
+            for i in range(n_bots)
+        }
+    }
 
 
 def _drive(monkeypatch, burn_s: float, sink: SignalSink) -> None:
     """Run the real loader once with a read of known cost."""
+
     def _slow_read(_path):
         _busy_wait(burn_s)
         return _state()
@@ -194,8 +199,7 @@ def test_the_duration_tracks_two_different_load_costs(monkeypatch):
 
     assert short == pytest.approx(SHORT_S, abs=0.005), short
     assert long_ == pytest.approx(LONG_S, abs=0.015), long_
-    assert _tracks_the_load(short, long_), (
-        f"did not track: {short} vs {long_}")
+    assert _tracks_the_load(short, long_), f"did not track: {short} vs {long_}"
 
 
 def test_the_tracking_predicate_rejects_a_constant_duration():
@@ -213,34 +217,40 @@ def test_the_site_predicate_rejects_a_bracket_that_spans_nothing() -> None:
     this site could be blinded while still handing the sink a
     `duration` field of exactly the right shape.
     """
-    assert not _tracks_the_load(0.01, 0.01), (
-        "a constant duration must not read as tracking")
-    assert not _tracks_the_load(None, LONG_S), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_load(SHORT_S, None), (
-        "an absent duration must not read as tracking")
-    assert not _tracks_the_load(LONG_S, SHORT_S), (
-        "going backwards must not read as tracking")
+    assert not _tracks_the_load(
+        0.01, 0.01
+    ), "a constant duration must not read as tracking"
+    assert not _tracks_the_load(
+        None, LONG_S
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_load(
+        SHORT_S, None
+    ), "an absent duration must not read as tracking"
+    assert not _tracks_the_load(
+        LONG_S, SHORT_S
+    ), "going backwards must not read as tracking"
 
     # THE DEAD CLOCK, and the measured reason this site carries a floor
     # the shared predicate does not. This pair is a real one, harvested
     # 2026-08-20 with the stop clock planted above the work. `_tracks`
     # accepts it. The floor rejects it. That is an addition to
     # `_tracks`, never a relaxation of it.
-    assert _tracks(0.0, 4.0e-07), (
-        "the shared predicate is expected to accept a dead clock here")
-    assert not _tracks_the_load(0.0, 4.0e-07), (
-        "a bracket that spans no work must not read as tracking")
+    assert _tracks(
+        0.0, 4.0e-07
+    ), "the shared predicate is expected to accept a dead clock here"
+    assert not _tracks_the_load(
+        0.0, 4.0e-07
+    ), "a bracket that spans no work must not read as tracking"
 
     # The honest pair measured off the real site, 2026-08-20, must
     # still read as tracking.
-    assert _tracks_the_load(0.005002, 0.030002), (
-        "the real measured pair must read as tracking")
+    assert _tracks_the_load(
+        0.005002, 0.030002
+    ), "the real measured pair must read as tracking"
 
 
 @pytest.mark.parametrize("sibling", SIBLINGS)
-def test_a_sibling_emitter_does_not_repeat_the_owners_duration(
-        monkeypatch, sibling):
+def test_a_sibling_emitter_does_not_repeat_the_owners_duration(monkeypatch, sibling):
     """Finding 1, held in the live path.
 
     Both siblings fire on the same call as the owner. If either carried the
@@ -255,5 +265,6 @@ def test_a_sibling_emitter_does_not_repeat_the_owners_duration(
 
     got = _durations(sink, sibling)
     assert got, f"{sibling} did not fire; the control proves nothing"
-    assert all(d is None for d in got), (
-        f"{sibling} claimed a duration it does not own: {got}")
+    assert all(
+        d is None for d in got
+    ), f"{sibling} claimed a duration it does not own: {got}"

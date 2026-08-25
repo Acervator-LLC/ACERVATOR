@@ -56,6 +56,7 @@ hold on the run where the assertion fails. Re-typing them here would
 give this repository two copies to keep in step, which is the same
 shape of defect the marker itself had.
 """
+
 from __future__ import annotations
 
 import ast
@@ -156,8 +157,7 @@ class Latch:
     and lets a test change one thing between runs.
     """
 
-    def __init__(self, tmp_path: Path,
-                 monkeypatch: pytest.MonkeyPatch) -> None:
+    def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         self._mp = monkeypatch
         self.tree = tmp_path / "tree"
         self.home = tmp_path / "home"
@@ -177,9 +177,10 @@ class Latch:
 
     def versions(self, live: str | None, dist: str | None) -> None:
         """Lay out (or remove) the two files the guard compares."""
-        for path in (self.tree / "src" / "__init__.py",
-                     self.tree / "dist" / "Acervator" / "_internal" / "src"
-                     / "__init__.py"):
+        for path in (
+            self.tree / "src" / "__init__.py",
+            self.tree / "dist" / "Acervator" / "_internal" / "src" / "__init__.py",
+        ):
             if path.exists():
                 path.unlink()
         _build_tree(self.tree, live, dist)
@@ -190,12 +191,14 @@ class Latch:
         This is the "cannot tell" input that must NOT clear: the file is
         there and readable, and ``_read_version`` still returns None.
         """
-        rel = ("src", "__init__.py") if live else (
-            "dist", "Acervator", "_internal", "src", "__init__.py")
+        rel = (
+            ("src", "__init__.py")
+            if live
+            else ("dist", "Acervator", "_internal", "src", "__init__.py")
+        )
         path = self.tree.joinpath(*rel)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text('RELEASE = "3.25.7"\n', encoding="utf-8",
-                        newline="\n")
+        path.write_text('RELEASE = "3.25.7"\n', encoding="utf-8", newline="\n")
 
     def run(self, *, override: bool = True) -> None:
         """One call of the guard, contained before anything can write."""
@@ -205,7 +208,8 @@ class Latch:
         # system, so nothing past this line runs unless home is fake.
         assert Path.home() == self.home, (
             "Path.home() was not redirected, so driving the real guard "
-            "here could reach the operator's tree. Refusing.")
+            "here could reach the operator's tree. Refusing."
+        )
         self._mp.delenv("ACERVATOR_DEBUG_BOOT", raising=False)
         if override:
             self._mp.setenv(_OVERRIDE, str(self.override))
@@ -228,7 +232,8 @@ class TestTheFullCycle:
     """
 
     def test_three_sequential_imports_write_then_clear_then_do_nothing(
-            self, tmp_path: Path) -> None:
+        self, tmp_path: Path
+    ) -> None:
         """One tree, three bare imports, existence reported after each.
 
         Bare ``import main`` and not a direct call, because module
@@ -243,17 +248,17 @@ class TestTheFullCycle:
         override.mkdir()
         seen = []
 
-        _build_tree(tree, "3.25.7", "3.25.6")          # 1: stale dist
+        _build_tree(tree, "3.25.7", "3.25.6")  # 1: stale dist
         first = _child_import(tree, home, override)
         seen.append((override / _MARKER_FILE).is_file())
 
-        (tree / "dist" / "Acervator" / "_internal" / "src"
-         / "__init__.py").write_text(
-            '__version__ = "3.25.7"\n', encoding="utf-8", newline="\n")
-        second = _child_import(tree, home, override)   # 2: rebuilt
+        (tree / "dist" / "Acervator" / "_internal" / "src" / "__init__.py").write_text(
+            '__version__ = "3.25.7"\n', encoding="utf-8", newline="\n"
+        )
+        second = _child_import(tree, home, override)  # 2: rebuilt
         seen.append((override / _MARKER_FILE).is_file())
 
-        third = _child_import(tree, home, override)    # 3: still matched
+        third = _child_import(tree, home, override)  # 3: still matched
         seen.append((override / _MARKER_FILE).is_file())
 
         for result in (first, second, third):
@@ -261,10 +266,10 @@ class TestTheFullCycle:
         assert seen == [True, False, False], (
             f"marker existence after each import was {seen}, expected "
             f"[True, False, False]: written on the mismatch, removed by "
-            f"the rebuild, and not resurrected by a matched run")
+            f"the rebuild, and not resurrected by a matched run"
+        )
 
-    def test_the_operators_default_path_clears_too(
-            self, tmp_path: Path) -> None:
+    def test_the_operators_default_path_clears_too(self, tmp_path: Path) -> None:
         """No override at all -- the launch the operator actually runs.
 
         A clear that only worked under the test override would leave the
@@ -280,15 +285,16 @@ class TestTheFullCycle:
         assert _child_import(tree, home, None).returncode == 0
         assert marker.is_file(), "the mismatch wrote no marker to fake home"
 
-        (tree / "dist" / "Acervator" / "_internal" / "src"
-         / "__init__.py").write_text(
-            '__version__ = "3.25.7"\n', encoding="utf-8", newline="\n")
+        (tree / "dist" / "Acervator" / "_internal" / "src" / "__init__.py").write_text(
+            '__version__ = "3.25.7"\n', encoding="utf-8", newline="\n"
+        )
         result = _child_import(tree, home, None)
 
         assert result.returncode == 0, result.stderr
         assert not marker.exists(), (
             "the marker survived a rebuild on the default path; the "
-            "operator is still being told about a mismatch that is gone")
+            "operator is still being told about a mismatch that is gone"
+        )
 
 
 class TestATrueWarningSurvives:
@@ -300,7 +306,8 @@ class TestATrueWarningSurvives:
     """
 
     def test_a_second_mismatched_run_leaves_the_marker_in_place(
-            self, latch: Latch) -> None:
+        self, latch: Latch
+    ) -> None:
         latch.versions("3.25.7", "3.25.6")
         latch.run()
         assert latch.marker.is_file(), "the first run wrote no marker"
@@ -309,10 +316,10 @@ class TestATrueWarningSurvives:
 
         assert latch.marker.is_file(), (
             "a second run with the versions STILL mismatched removed the "
-            "warning; the operator loses a true warning on every relaunch")
+            "warning; the operator loses a true warning on every relaunch"
+        )
 
-    def test_the_content_is_refreshed_not_merely_survived(
-            self, latch: Latch) -> None:
+    def test_the_content_is_refreshed_not_merely_survived(self, latch: Latch) -> None:
         """Present is not enough -- it has to be CURRENT.
 
         A marker left untouched across a version bump would still be
@@ -332,7 +339,8 @@ class TestATrueWarningSurvives:
         assert "Live source version : 4.0.0" in second
         assert "3.25.7" not in second, (
             "the marker still names the previous live version, so it is "
-            "stale content sitting in a present file")
+            "stale content sitting in a present file"
+        )
 
 
 class TestAnUnknownVersionDoesNotClear:
@@ -350,8 +358,7 @@ class TestAnUnknownVersionDoesNotClear:
     operator's stale-binary warning.
     """
 
-    def test_an_unparseable_live_version_keeps_the_marker(
-            self, latch: Latch) -> None:
+    def test_an_unparseable_live_version_keeps_the_marker(self, latch: Latch) -> None:
         latch.versions("3.25.7", "3.25.6")
         latch.run()
         body = latch.marker.read_text(encoding="utf-8")
@@ -361,11 +368,13 @@ class TestAnUnknownVersionDoesNotClear:
 
         assert latch.marker.is_file(), (
             "a version file with no __version__ line cleared the marker; "
-            "an unknown version was treated as agreement")
+            "an unknown version was treated as agreement"
+        )
         assert latch.marker.read_text(encoding="utf-8") == body
 
     def test_an_unreadable_version_file_keeps_the_marker(
-            self, latch: Latch, monkeypatch: pytest.MonkeyPatch) -> None:
+        self, latch: Latch, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Drive ``_read_version``'s own except branch, not a fake."""
         latch.versions("3.25.7", "3.25.6")
         latch.run()
@@ -377,13 +386,13 @@ class TestAnUnknownVersionDoesNotClear:
         monkeypatch.setattr("builtins.open", unreadable)
         latch.run()
 
-        assert latch.marker.is_file(), (
-            "an OSError while reading a version cleared the marker")
+        assert (
+            latch.marker.is_file()
+        ), "an OSError while reading a version cleared the marker"
         monkeypatch.undo()
         assert latch.marker.read_text(encoding="utf-8") == body
 
-    def test_the_same_driver_DOES_clear_on_a_readable_match(
-            self, latch: Latch) -> None:
+    def test_the_same_driver_DOES_clear_on_a_readable_match(self, latch: Latch) -> None:
         """POSITIVE CONTROL for the two tests above.
 
         Both of them assert that a file is still there. A driver that
@@ -400,7 +409,8 @@ class TestAnUnknownVersionDoesNotClear:
 
         assert not latch.marker.exists(), (
             "the driver never cleared anything, so the survival tests "
-            "beside it prove nothing")
+            "beside it prove nothing"
+        )
 
     def test_a_vanished_dist_keeps_the_marker(self, latch: Latch) -> None:
         """DECISION, DEFENDED: a missing ``dist`` does not clear.
@@ -423,7 +433,8 @@ class TestAnUnknownVersionDoesNotClear:
 
         assert latch.marker.is_file(), (
             "removing dist cleared the marker; absence of evidence was "
-            "read as evidence of a rebuild")
+            "read as evidence of a rebuild"
+        )
 
 
 class TestNoDirectoryIsCreatedByTheClearPath:
@@ -436,7 +447,8 @@ class TestNoDirectoryIsCreatedByTheClearPath:
     """
 
     def test_a_missing_override_root_is_still_missing_afterwards(
-            self, latch: Latch) -> None:
+        self, latch: Latch
+    ) -> None:
         latch.versions("3.25.7", "3.25.7")
         assert not latch.override.exists(), "the fixture pre-created it"
 
@@ -444,20 +456,20 @@ class TestNoDirectoryIsCreatedByTheClearPath:
 
         assert not latch.override.exists(), (
             f"the clear path created {latch.override} in order to look "
-            f"for a file that was never in it")
+            f"for a file that was never in it"
+        )
 
-    def test_the_home_log_root_is_not_created_either(
-            self, latch: Latch) -> None:
+    def test_the_home_log_root_is_not_created_either(self, latch: Latch) -> None:
         """The same question on the branch that reaches the operator."""
         latch.versions("3.25.7", "3.25.7")
 
         latch.run(override=False)
 
-        assert not (latch.home / ".acervator_logs").exists(), (
-            "a matched pair created the operator's log directory")
+        assert not (
+            latch.home / ".acervator_logs"
+        ).exists(), "a matched pair created the operator's log directory"
 
-    def test_the_probe_can_see_a_directory_appear(
-            self, latch: Latch) -> None:
+    def test_the_probe_can_see_a_directory_appear(self, latch: Latch) -> None:
         """POSITIVE CONTROL. The two tests above assert an absence.
 
         An absence is a claim about the instrument until the instrument
@@ -471,7 +483,8 @@ class TestNoDirectoryIsCreatedByTheClearPath:
 
         assert latch.override.is_dir(), (
             "even the WRITE path created nothing, so the absence "
-            "measured above is a blind instrument, not a result")
+            "measured above is a blind instrument, not a result"
+        )
 
 
 class TestTheGuardStillNeverRaises:
@@ -489,8 +502,11 @@ class TestTheGuardStillNeverRaises:
     """
 
     def test_a_failing_unlink_neither_raises_nor_goes_quiet(
-            self, latch: Latch, monkeypatch: pytest.MonkeyPatch,
-            capsys: pytest.CaptureFixture[str]) -> None:
+        self,
+        latch: Latch,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
         latch.versions("3.25.7", "3.25.6")
         latch.run()
         assert latch.marker.is_file()
@@ -505,7 +521,7 @@ class TestTheGuardStillNeverRaises:
         latch.versions("3.25.7", "3.25.7")
         monkeypatch.setattr(Path, "unlink", vetoed)
 
-        latch.run()          # must not raise
+        latch.run()  # must not raise
 
         monkeypatch.undo()
         err = capsys.readouterr().err
@@ -513,12 +529,13 @@ class TestTheGuardStillNeverRaises:
         assert "could not be removed" in err, (
             f"a failed clear produced no visible report; stderr was "
             f"{err!r}. The marker now names versions that are not "
-            f"current and nothing says so.")
+            f"current and nothing says so."
+        )
         assert _MARKER_FILE in err, "the report does not name the file"
 
     def test_a_read_only_marker_does_not_kill_the_guard(
-            self, latch: Latch,
-            capsys: pytest.CaptureFixture[str]) -> None:
+        self, latch: Latch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """The real Windows refusal, not a simulated one."""
         latch.versions("3.25.7", "3.25.6")
         latch.run()
@@ -533,24 +550,26 @@ class TestTheGuardStillNeverRaises:
         except PermissionError:
             pass
         else:
-            pytest.skip("this platform deletes read-only files, so a "
-                        "read-only marker cannot exercise the failure")
+            pytest.skip(
+                "this platform deletes read-only files, so a "
+                "read-only marker cannot exercise the failure"
+            )
 
         marker.chmod(stat.S_IREAD)
         capsys.readouterr()
         try:
             latch.versions("3.25.7", "3.25.7")
-            latch.run()      # must not raise
+            latch.run()  # must not raise
             err = capsys.readouterr().err
             assert marker.is_file(), "the read-only file was removed anyway"
-            assert "could not be removed" in err, (
-                f"a read-only marker failed to clear in silence: {err!r}")
+            assert (
+                "could not be removed" in err
+            ), f"a read-only marker failed to clear in silence: {err!r}"
         finally:
             marker.chmod(stat.S_IWRITE)
             probe.chmod(stat.S_IWRITE)
 
-    def test_a_directory_in_the_markers_place_is_left_alone(
-            self, latch: Latch) -> None:
+    def test_a_directory_in_the_markers_place_is_left_alone(self, latch: Latch) -> None:
         """The probe is ``is_file``, so a directory is skipped by shape.
 
         Stated rather than assumed: nothing here reaches ``unlink``, and
@@ -564,17 +583,18 @@ class TestTheGuardStillNeverRaises:
         imposter = latch.override / _MARKER_FILE
         imposter.mkdir()
         (imposter / "not_ours.txt").write_text(
-            "someone else's file", encoding="utf-8", newline="\n")
+            "someone else's file", encoding="utf-8", newline="\n"
+        )
 
-        latch.run()          # must not raise
+        latch.run()  # must not raise
 
         assert imposter.is_dir(), "the guard removed a directory"
         assert (imposter / "not_ours.txt").is_file(), (
             "the guard deleted the contents of a directory that merely "
-            "shares the marker's name")
+            "shares the marker's name"
+        )
 
-    def test_a_child_import_survives_a_read_only_marker(
-            self, tmp_path: Path) -> None:
+    def test_a_child_import_survives_a_read_only_marker(self, tmp_path: Path) -> None:
         """rc 0 and no traceback, measured across a real process.
 
         The in-process tests above run the guard long after boot. Only a
@@ -598,13 +618,13 @@ class TestTheGuardStillNeverRaises:
             try:
                 (override / "probe").mkdir()
                 (override / "probe").rmdir()
-            except OSError:                       # pragma: no cover
+            except OSError:  # pragma: no cover
                 probe_removable = False
             assert probe_removable, "the override root is not writable"
 
-            (tree / "dist" / "Acervator" / "_internal" / "src"
-             / "__init__.py").write_text(
-                '__version__ = "3.25.7"\n', encoding="utf-8", newline="\n")
+            (
+                tree / "dist" / "Acervator" / "_internal" / "src" / "__init__.py"
+            ).write_text('__version__ = "3.25.7"\n', encoding="utf-8", newline="\n")
             result = _child_import(tree, home, override)
 
             assert result.returncode == 0, result.stderr
@@ -612,7 +632,8 @@ class TestTheGuardStillNeverRaises:
             if marker.is_file():
                 assert "could not be removed" in result.stderr, (
                     f"the child could not clear the marker and said "
-                    f"nothing: {result.stderr!r}")
+                    f"nothing: {result.stderr!r}"
+                )
         finally:
             marker.chmod(stat.S_IWRITE)
 
@@ -626,27 +647,28 @@ class TestTheBannerIsUnchanged:
     """
 
     def test_the_marker_is_the_pinned_banner_character_for_character(
-            self, latch: Latch) -> None:
+        self, latch: Latch
+    ) -> None:
         latch.versions("3.25.7", "3.25.6")
         latch.run()
 
-        assert latch.marker.read_text(encoding="utf-8") == \
-            BANNER_TEMPLATE.format(live="3.25.7", dist="3.25.6")
+        assert latch.marker.read_text(encoding="utf-8") == BANNER_TEMPLATE.format(
+            live="3.25.7", dist="3.25.6"
+        )
 
     def test_the_marker_still_equals_what_went_to_stderr(
-            self, latch: Latch,
-            capsys: pytest.CaptureFixture[str]) -> None:
+        self, latch: Latch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Two sinks, one string. They must not drift apart."""
         capsys.readouterr()
         latch.versions("3.25.7", "3.25.6")
         latch.run()
 
-        assert latch.marker.read_text(encoding="utf-8") == \
-            capsys.readouterr().err
+        assert latch.marker.read_text(encoding="utf-8") == capsys.readouterr().err
 
     def test_a_matched_pair_still_prints_nothing(
-            self, latch: Latch,
-            capsys: pytest.CaptureFixture[str]) -> None:
+        self, latch: Latch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """The clear must be silent. A guard that announced every
         successful removal would print on every launch and be muted."""
         latch.versions("3.25.7", "3.25.6")
@@ -658,8 +680,7 @@ class TestTheBannerIsUnchanged:
 
         captured = capsys.readouterr()
         assert not latch.marker.exists()
-        assert captured.err == "", (
-            f"the clear path printed {captured.err!r}")
+        assert captured.err == "", f"the clear path printed {captured.err!r}"
         assert captured.out == ""
 
 
@@ -678,40 +699,50 @@ class TestTheClearIsStructurallyWhereItClaimsToBe:
 
     @staticmethod
     def _attr_calls(node: ast.AST, name: str) -> list[ast.Call]:
-        return [n for n in ast.walk(node)
-                if isinstance(n, ast.Call)
-                and isinstance(n.func, ast.Attribute)
-                and n.func.attr == name]
+        return [
+            n
+            for n in ast.walk(node)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == name
+        ]
 
     def _branch(self) -> ast.If:
         """The mismatch ``if`` whose ``orelse`` holds the clear."""
-        found = [n for n in ast.walk(self._guard())
-                 if isinstance(n, ast.If)
-                 and self._attr_calls(n, "mkdir")
-                 and any(self._attr_calls(s, "unlink") for s in n.orelse)]
+        found = [
+            n
+            for n in ast.walk(self._guard())
+            if isinstance(n, ast.If)
+            and self._attr_calls(n, "mkdir")
+            and any(self._attr_calls(s, "unlink") for s in n.orelse)
+        ]
         assert len(found) == 1, (
             f"expected exactly one branch with a mkdir on one side and an "
-            f"unlink on the other, found {len(found)}")
+            f"unlink on the other, found {len(found)}"
+        )
         return found[0]
 
     def test_the_clear_path_contains_no_mkdir(self) -> None:
         branch = self._branch()
-        offenders = [s for s in branch.orelse
-                     if self._attr_calls(s, "mkdir")]
+        offenders = [s for s in branch.orelse if self._attr_calls(s, "mkdir")]
         assert not offenders, (
             "the clear path calls mkdir; it would create a directory in "
-            "order to look for a file that is not in it")
+            "order to look for a file that is not in it"
+        )
 
     def test_the_clear_is_armed_by_both_versions_being_known(self) -> None:
         """Pins the decision, not just today's behaviour."""
         branch = self._branch()
-        assert len(branch.orelse) == 1 and isinstance(branch.orelse[0], ast.If), \
-            "the clear is no longer an elif on the version comparison"
-        names = {n.id for n in ast.walk(branch.orelse[0].test)
-                 if isinstance(n, ast.Name)}
+        assert len(branch.orelse) == 1 and isinstance(
+            branch.orelse[0], ast.If
+        ), "the clear is no longer an elif on the version comparison"
+        names = {
+            n.id for n in ast.walk(branch.orelse[0].test) if isinstance(n, ast.Name)
+        }
         assert {"live_ver", "dist_ver"} <= names, (
             f"the clear's condition reads {sorted(names)}; an unknown "
-            f"version can now reach it and delete a true warning")
+            f"version can now reach it and delete a true warning"
+        )
 
     def test_the_guard_reads_the_override_before_it_deletes(self) -> None:
         """One spelling of the directory, or the clear misses a copy.
@@ -724,17 +755,23 @@ class TestTheClearIsStructurallyWhereItClaimsToBe:
         guard = self._guard()
         # Nested helpers only. `ast.walk` yields the guard itself first,
         # and the guard trivially "contains" every name in its own body.
-        resolvers = [n for n in ast.walk(guard)
-                     if isinstance(n, ast.FunctionDef) and n is not guard
-                     and any(isinstance(c, ast.Name)
-                             and c.id == "CRASH_LOG_ROOT_ENV"
-                             for c in ast.walk(n))]
+        resolvers = [
+            n
+            for n in ast.walk(guard)
+            if isinstance(n, ast.FunctionDef)
+            and n is not guard
+            and any(
+                isinstance(c, ast.Name) and c.id == "CRASH_LOG_ROOT_ENV"
+                for c in ast.walk(n)
+            )
+        ]
         assert len(resolvers) == 1, (
             f"{len(resolvers)} places inside the guard resolve the marker "
-            f"directory; there must be exactly one")
+            f"directory; there must be exactly one"
+        )
         assert ".acervator_logs" in ast.get_source_segment(
-            MAIN_SRC, resolvers[0]), \
-            "the single resolver no longer names the operator's log root"
+            MAIN_SRC, resolvers[0]
+        ), "the single resolver no longer names the operator's log root"
 
 
 class TestTheSuiteIsStillContained:
@@ -743,10 +780,10 @@ class TestTheSuiteIsStillContained:
     def test_the_override_is_set_for_this_process(self) -> None:
         assert os.environ.get(_OVERRIDE), (
             f"{_OVERRIDE} is unset, so an import of main in this process "
-            f"reads and writes the operator's own log tree")
+            f"reads and writes the operator's own log tree"
+        )
 
-    def test_the_only_use_of_real_home_is_the_containment_assert(
-            self) -> None:
+    def test_the_only_use_of_real_home_is_the_containment_assert(self) -> None:
         """Read this file's own source. One use of ``Path.home()`` is
         legitimate -- the assertion in ``Latch.run`` that refuses to
         proceed unless home has been redirected. Any OTHER use would be
@@ -755,23 +792,31 @@ class TestTheSuiteIsStillContained:
         rather than a blanket ban that the fixture itself would break.
         """
         body = ast.parse(Path(__file__).read_text(encoding="utf-8"))
-        everywhere = [n for n in ast.walk(body)
-                      if isinstance(n, ast.Call)
-                      and isinstance(n.func, ast.Attribute)
-                      and n.func.attr == "home"]
-        in_asserts = [n for stmt in ast.walk(body)
-                      if isinstance(stmt, ast.Assert)
-                      for n in ast.walk(stmt)
-                      if isinstance(n, ast.Call)
-                      and isinstance(n.func, ast.Attribute)
-                      and n.func.attr == "home"]
+        everywhere = [
+            n
+            for n in ast.walk(body)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "home"
+        ]
+        in_asserts = [
+            n
+            for stmt in ast.walk(body)
+            if isinstance(stmt, ast.Assert)
+            for n in ast.walk(stmt)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "home"
+        ]
         assert everywhere, (
             "the containment assertion that reads Path.home() is gone, so "
-            "nothing checks that home was redirected before a delete")
+            "nothing checks that home was redirected before a delete"
+        )
         loose = [n.lineno for n in everywhere if n not in in_asserts]
         assert not loose, (
             f"Path.home() is called outside an assert at line(s) {loose}; "
-            f"every path this file touches must be under tmp_path")
+            f"every path this file touches must be under tmp_path"
+        )
 
 
 def test_the_platform_is_the_one_that_was_measured() -> None:

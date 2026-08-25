@@ -44,6 +44,7 @@ a second implementation that could drift from it.
 
 Stone Tablets are READ ONLY. Noise is applied to copies.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -70,6 +71,7 @@ would measure the warm-up rather than the topology."""
 @dataclass
 class AssetOutcome:
     """Per-asset result within one trial."""
+
     asset: str
     symbol: str
     base_start: float = 0.0
@@ -92,6 +94,7 @@ class AssetOutcome:
 @dataclass
 class StressTrial:
     """One replay under one noise realisation."""
+
     seed: int
     noise_pct: float = 0.0
     candles_played: int = 0
@@ -116,6 +119,7 @@ class StressTrial:
 @dataclass
 class StressReport:
     """Aggregate across trials for one proposal."""
+
     proposal_id: str
     title: str
     archetype: str
@@ -188,7 +192,8 @@ class StressReport:
 
 
 def _noised_rows(
-    rows: list[list[float]], seed: int,
+    rows: list[list[float]],
+    seed: int,
 ) -> tuple[list[list[float]], float]:
     """Apply Nuclear-Mode noise to a copy of ``rows``.
 
@@ -226,10 +231,10 @@ def _config_for(bot_entry: dict[str, Any]) -> dict[str, Any]:
         "exchange_id": "sim",
         "base_currency": quote,
         "target_asset": asset,
-        "target_balance": float(
-            bot_entry.get("suggested_target_usd", 200.0) or 200.0),
+        "target_balance": float(bot_entry.get("suggested_target_usd", 200.0) or 200.0),
         "investment_amount": float(
-            bot_entry.get("suggested_target_usd", 200.0) or 200.0),
+            bot_entry.get("suggested_target_usd", 200.0) or 200.0
+        ),
         "scrumming_interval_pct": 1.0,
         "ta_timeframe": "1h",
     }
@@ -261,8 +266,7 @@ def run_topology_stress(
     )
     bots = list(proposal.get("bots", []) or [])
     if not bots:
-        logger.warning(
-            "topology_stress: proposal %s has no bots", report.proposal_id)
+        logger.warning("topology_stress: proposal %s has no bots", report.proposal_id)
         return report
 
     for t in range(max(1, int(trials))):
@@ -273,8 +277,7 @@ def run_topology_stress(
         except Exception as exc:  # noqa: BLE001 - one trial must not
             # discard the others' evidence
             trial.error = f"{type(exc).__name__}: {exc}"
-            logger.warning(
-                "topology_stress: trial %d failed: %s", seed, exc)
+            logger.warning("topology_stress: trial %d failed: %s", seed, exc)
         report.trials.append(trial)
     return report
 
@@ -299,7 +302,8 @@ def _run_one_trial(
         if not rows or len(rows) < MIN_CANDLES:
             raise ValueError(
                 f"{asset}: needs >= {MIN_CANDLES} candles for TA warm-up, "
-                f"got {0 if not rows else len(rows)}")
+                f"got {0 if not rows else len(rows)}"
+            )
         noised, pct = _noised_rows(rows[:candle_cap], seed)
         series[cfg["symbol"]] = noised
         # Every asset in a trial shares the seed, so the amplitude is
@@ -308,8 +312,11 @@ def _run_one_trial(
         configs.append(cfg)
 
     ctl = FleetReplayController(
-        configs=configs, candles_by_symbol=series,
-        tick_delay_s=0.0, max_candles=candle_cap)
+        configs=configs,
+        candles_by_symbol=series,
+        tick_delay_s=0.0,
+        max_candles=candle_cap,
+    )
 
     async def _drive():
         await ctl.start()
@@ -323,8 +330,7 @@ def _run_one_trial(
 
     exchange = getattr(ctl, "_exchange", None)
     balances = dict(getattr(exchange, "_balances", {}) or {})
-    per_symbol = dict(
-        getattr(ctl.progress, "per_symbol_trade_count", {}) or {})
+    per_symbol = dict(getattr(ctl.progress, "per_symbol_trade_count", {}) or {})
     # The sim wallet opens holding quote only (the controller seeds
     # {"USD": sum of target_balance}), so base_start is normally 0 —
     # but read the recorded opening rather than assuming it, or a
@@ -333,15 +339,21 @@ def _run_one_trial(
 
     for cfg in configs:
         asset, quote, symbol = (
-            cfg["target_asset"], cfg["base_currency"], cfg["symbol"])
-        trial.assets.append(AssetOutcome(
-            asset=asset, symbol=symbol,
-            base_start=float(opening.get(asset, 0.0)),
-            base_end=float(balances.get(asset, 0.0)),
-            quote_start=float(opening.get(quote, 0.0)),
-            quote_end=float(balances.get(quote, 0.0)),
-            trades=int(per_symbol.get(symbol, 0)),
-        ))
+            cfg["target_asset"],
+            cfg["base_currency"],
+            cfg["symbol"],
+        )
+        trial.assets.append(
+            AssetOutcome(
+                asset=asset,
+                symbol=symbol,
+                base_start=float(opening.get(asset, 0.0)),
+                base_end=float(balances.get(asset, 0.0)),
+                quote_start=float(opening.get(quote, 0.0)),
+                quote_end=float(balances.get(quote, 0.0)),
+                trades=int(per_symbol.get(symbol, 0)),
+            )
+        )
 
 
 def format_stress_report(report: StressReport) -> list[str]:
@@ -351,12 +363,12 @@ def format_stress_report(report: StressReport) -> list[str]:
     isolation is the number that misleads.
     """
     out: list[str] = []
-    out.append(
-        f"Topology stress: {report.title or report.proposal_id}")
+    out.append(f"Topology stress: {report.title or report.proposal_id}")
     out.append(
         f"  archetype {report.archetype}  ·  assets "
         f"{', '.join(report.assets) or '—'}  ·  "
-        f"proposal score {report.proposal_score:.1f}")
+        f"proposal score {report.proposal_score:.1f}"
+    )
 
     if not report.completed:
         out.append("  VERDICT: NO_DATA — every trial failed")
@@ -368,21 +380,25 @@ def format_stress_report(report: StressReport) -> list[str]:
     disp_txt = "n/a" if disp == float("inf") else f"{disp:.2f}"
     out.append(
         f"  VERDICT: {report.verdict}   median base gained "
-        f"{report.median_base_gained:+.8f}   dispersion {disp_txt}")
+        f"{report.median_base_gained:+.8f}   dispersion {disp_txt}"
+    )
 
     if report.sign_flipped:
         out.append(
             "  Accumulation changed SIGN across noise realisations — "
             "this proposal's outcome is decided by which price wiggles "
-            "it met, not by the topology.")
+            "it met, not by the topology."
+        )
     elif disp == float("inf"):
         out.append(
             "  Median accumulation is zero while trials disagree; "
-            "dispersion is undefined, NOT stable.")
+            "dispersion is undefined, NOT stable."
+        )
 
-    out.append(f"  trials: {len(report.completed)} completed"
-               + (f", {len(report.failed)} failed"
-                  if report.failed else ""))
+    out.append(
+        f"  trials: {len(report.completed)} completed"
+        + (f", {len(report.failed)} failed" if report.failed else "")
+    )
     for t in report.completed:
         out.append(
             # 2dp: at 1dp two distinct seeds can print the same
@@ -391,7 +407,8 @@ def format_stress_report(report: StressReport) -> list[str]:
             f"    seed {t.seed:>4}  noise {t.noise_pct * 100:5.2f}%  "
             f"{t.candles_played:>6,} candles  {t.trades_fired:>4} trades"
             f"  base {t.total_base_gained:+.8f}"
-            + (f"  ({t.exceptions} exceptions)" if t.exceptions else ""))
+            + (f"  ({t.exceptions} exceptions)" if t.exceptions else "")
+        )
     for t in report.failed[:3]:
         out.append(f"    seed {t.seed:>4}  FAILED: {t.error}")
     return out

@@ -22,6 +22,7 @@ orders       ``place_order`` submitted more than once, or the circuit
 annotations  ``HistoryAnalysis`` stopped resolving, which is the defect
              mypy and pyright both reported before Unit C.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -125,8 +126,13 @@ class FakeBackend:
         self.calls.append(("fetch_ticker", symbol))
         if self.fetch_ticker_raises is not None:
             raise self.fetch_ticker_raises
-        return {"bid": 100.0, "ask": 101.0, "last": 100.5,
-                "quoteVolume": 5000.0, "timestamp": 1700000000000}
+        return {
+            "bid": 100.0,
+            "ask": 101.0,
+            "last": 100.5,
+            "quoteVolume": 5000.0,
+            "timestamp": 1700000000000,
+        }
 
     def create_order(
         self,
@@ -138,15 +144,25 @@ class FakeBackend:
         params: Any = None,
     ) -> dict[str, Any]:
         """Return a filled order, or raise the configured error."""
-        self.calls.append(("create_order", symbol, order_type, side,
-                           float(amount), price, params))
+        self.calls.append(
+            ("create_order", symbol, order_type, side, float(amount), price, params)
+        )
         if self.create_order_raises is not None:
             raise self.create_order_raises
-        return {"id": "ORD-1", "symbol": symbol, "side": side,
-                "type": order_type, "amount": amount, "price": price or 0,
-                "filled": amount, "remaining": 0, "status": "closed",
-                "timestamp": 1700000000000, "average": price or 0,
-                "fee": {"cost": 0.1, "currency": "USD"}}
+        return {
+            "id": "ORD-1",
+            "symbol": symbol,
+            "side": side,
+            "type": order_type,
+            "amount": amount,
+            "price": price or 0,
+            "filled": amount,
+            "remaining": 0,
+            "status": "closed",
+            "timestamp": 1700000000000,
+            "average": price or 0,
+            "fee": {"cost": 0.1, "currency": "USD"},
+        }
 
 
 # ---------------------------------------------------------------------
@@ -282,12 +298,15 @@ def test_preflight_call_shape_is_unchanged(
         assert isinstance(opened[0]["kwargs"]["context"], ssl.SSLContext)
 
 
-@pytest.mark.parametrize("bad_url", [
-    "file:///C:/Windows/win.ini",
-    "ftp://example.com/x",
-    "data:text/plain;base64,QQ==",
-    "gopher://x/1",
-])
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "file:///C:/Windows/win.ini",
+        "ftp://example.com/x",
+        "data:text/plain;base64,QQ==",
+        "gopher://x/1",
+    ],
+)
 @pytest.mark.usefixtures("fake_ccxt")
 def test_preflight_refuses_non_http_scheme(
     monkeypatch: pytest.MonkeyPatch,
@@ -330,8 +349,7 @@ def test_refused_scheme_never_reaches_a_transport(
         return real_open(self, *args, **kwargs)
 
     monkeypatch.setattr(urllib.request.OpenerDirector, "open", spy)
-    monkeypatch.setitem(
-        M.PREFLIGHT_URLS, "kraken", "file:///C:/Windows/win.ini")
+    monkeypatch.setitem(M.PREFLIGHT_URLS, "kraken", "file:///C:/Windows/win.ini")
 
     conn = M.CCXTConnector("kraken")
     try:
@@ -348,6 +366,7 @@ def test_preflight_failure_stops_before_markets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A dead network is one ConnectionError, and no markets load."""
+
     def boom(*_args: Any, **_kwargs: Any) -> Any:
         raise OSError("network is unreachable")
 
@@ -388,7 +407,8 @@ def test_absent_passphrase_is_one_behaviour(
 
     assert str(caught.value) == (
         "Kucoin requires an API passphrase. "
-        "This is set when you create the API key on the exchange.")
+        "This is set when you create the API key on the exchange."
+    )
     assert conn.is_connected is False
     assert FakeSyncExchange.configs == []
 
@@ -462,12 +482,15 @@ def test_connect_retry_budget(
     assert str(caught.value) == "RuntimeError: exchange said no"
 
 
-@pytest.mark.parametrize(("error", "attempts", "backoff"), [
-    (RequestTimeout("read timed out"), RETRYABLE_ATTEMPTS, [1.0, 2.0]),
-    (NetworkError("conn reset"), RETRYABLE_ATTEMPTS, [1.0, 2.0]),
-    (ExchangeError("bad symbol"), 1, []),
-    (ValueError("nope"), 1, []),
-])
+@pytest.mark.parametrize(
+    ("error", "attempts", "backoff"),
+    [
+        (RequestTimeout("read timed out"), RETRYABLE_ATTEMPTS, [1.0, 2.0]),
+        (NetworkError("conn reset"), RETRYABLE_ATTEMPTS, [1.0, 2.0]),
+        (ExchangeError("bad symbol"), 1, []),
+        (ValueError("nope"), 1, []),
+    ],
+)
 def test_get_ticker_retry_budget(
     sleeps: dict[str, list[float]],
     error: BaseException,
@@ -507,11 +530,14 @@ def test_get_ticker_success_is_one_call(
 # =====================================================================
 # orders — live money
 # =====================================================================
-@pytest.mark.parametrize("error", [
-    ExchangeError("insufficient funds"),
-    RequestTimeout("read timed out"),
-    NetworkError("connection reset"),
-])
+@pytest.mark.parametrize(
+    "error",
+    [
+        ExchangeError("insufficient funds"),
+        RequestTimeout("read timed out"),
+        NetworkError("connection reset"),
+    ],
+)
 def test_place_order_never_retries(error: BaseException) -> None:
     """TD-014: a failed submission is submitted once and only once.
 
@@ -523,8 +549,11 @@ def test_place_order_never_retries(error: BaseException) -> None:
     backend.create_order_raises = error
     try:
         with pytest.raises(type(error)) as caught:
-            asyncio.run(conn.place_order(
-                "UNITC-NORETRY", OrderSide.SELL, OrderType.LIMIT, 1.0, 50.0))
+            asyncio.run(
+                conn.place_order(
+                    "UNITC-NORETRY", OrderSide.SELL, OrderType.LIMIT, 1.0, 50.0
+                )
+            )
     finally:
         shutdown(conn)
 
@@ -536,14 +565,14 @@ def test_place_order_success_shape() -> None:
     """A limit order reaches ccxt with the arguments it always had."""
     conn, backend = connected()
     try:
-        order = asyncio.run(conn.place_order(
-            "BTC/USD", OrderSide.BUY, OrderType.LIMIT, 0.5, 100.0))
+        order = asyncio.run(
+            conn.place_order("BTC/USD", OrderSide.BUY, OrderType.LIMIT, 0.5, 100.0)
+        )
     finally:
         shutdown(conn)
 
     submitted = [c for c in backend.calls if c[0] == "create_order"]
-    assert submitted == [
-        ("create_order", "BTC/USD", "limit", "buy", 0.5, 100.0, None)]
+    assert submitted == [("create_order", "BTC/USD", "limit", "buy", 0.5, 100.0, None)]
     assert order.id == "ORD-1"
     assert order.filled == 0.5
     assert order.fee == 0.1
@@ -562,15 +591,19 @@ def test_place_order_short_circuits_on_open_breaker() -> None:
     before = breaker.stats.total_short_circuits
     try:
         with pytest.raises(CircuitBreakerOpenError) as caught:
-            asyncio.run(conn.place_order(
-                "UNITC-OPEN", OrderSide.BUY, OrderType.LIMIT, 1.0, 10.0))
+            asyncio.run(
+                conn.place_order(
+                    "UNITC-OPEN", OrderSide.BUY, OrderType.LIMIT, 1.0, 10.0
+                )
+            )
     finally:
         shutdown(conn)
 
     assert backend.count("create_order") == 0
     assert breaker.stats.total_short_circuits == before + 1
     assert str(caught.value).startswith(
-        "Circuit breaker for 'coinbase:UNITC-OPEN' is OPEN;")
+        "Circuit breaker for 'coinbase:UNITC-OPEN' is OPEN;"
+    )
 
 
 def test_unconnected_connector_refuses_orders() -> None:
@@ -578,8 +611,9 @@ def test_unconnected_connector_refuses_orders() -> None:
     conn = M.CCXTConnector("coinbase")
     try:
         with pytest.raises(RuntimeError) as caught:
-            asyncio.run(conn.place_order(
-                "BTC/USD", OrderSide.BUY, OrderType.LIMIT, 1.0, 1.0))
+            asyncio.run(
+                conn.place_order("BTC/USD", OrderSide.BUY, OrderType.LIMIT, 1.0, 1.0)
+            )
     finally:
         shutdown(conn)
 
@@ -602,11 +636,14 @@ def test_queue_cap_fails_fast() -> None:
 # =====================================================================
 # annotations — the name-defined finding
 # =====================================================================
-@pytest.mark.parametrize("method", [
-    "_on_history_result",
-    "get_history",
-    "set_history_callback",
-])
+@pytest.mark.parametrize(
+    "method",
+    [
+        "_on_history_result",
+        "get_history",
+        "set_history_callback",
+    ],
+)
 def test_history_annotations_resolve(method: str) -> None:
     """Every annotation on the history surface must name a real type.
 
@@ -625,8 +662,7 @@ def test_history_callback_roundtrip() -> None:
 
     conn = M.CCXTConnector("coinbase")
     seen: list[tuple[str, Any]] = []
-    analysis = HistoryAnalysis(
-        symbol="BTC/USD", exchange_id="coinbase", trade_count=3)
+    analysis = HistoryAnalysis(symbol="BTC/USD", exchange_id="coinbase", trade_count=3)
     try:
         assert conn._on_history_ready is None
 
@@ -658,5 +694,4 @@ def test_supported_exchange_listing_shape() -> None:
     for row in rows:
         assert sorted(row) == ["id", "name", "requires_passphrase"]
         assert isinstance(row["requires_passphrase"], bool)
-        assert row["requires_passphrase"] == (
-            row["id"] in M.PASSPHRASE_EXCHANGES)
+        assert row["requires_passphrase"] == (row["id"] in M.PASSPHRASE_EXCHANGES)

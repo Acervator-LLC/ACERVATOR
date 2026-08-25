@@ -25,6 +25,7 @@ respect content.
 needs against what the column got. It exists so this is a measurement
 rather than an opinion about a screenshot.
 """
+
 from __future__ import annotations
 
 import sys
@@ -52,7 +53,7 @@ def _destroy_widgets():
     yield
     try:
         from PySide6.QtWidgets import QApplication
-    except ImportError:                                   # pragma: no cover
+    except ImportError:  # pragma: no cover
         return
     app = QApplication.instance()
     if app is None:
@@ -67,7 +68,7 @@ def _destroy_widgets():
 def _qapp():
     try:
         from PySide6.QtWidgets import QApplication
-    except ImportError:                                   # pragma: no cover
+    except ImportError:  # pragma: no cover
         pytest.skip("PySide6 unavailable")
     return QApplication.instance() or QApplication([])
 
@@ -75,6 +76,7 @@ def _qapp():
 def _sim_tab(w=1920, h=1080):
     app = _qapp()
     from src.gui.simulator_tab.simulator_tab import SimulatorTab
+
     tab = SimulatorTab()
     tab.resize(w, h)
     tab.show()
@@ -96,6 +98,7 @@ class TestTheInstrument:
         fit; if the instrument still reports everything fitting, a
         green result from it means nothing."""
         from PySide6.QtWidgets import QTableWidget
+
         tab = _sim_tab()
         panel = tab._sim_voting_readout
         for t in panel.findChildren(QTableWidget):
@@ -132,15 +135,15 @@ class TestThePanelFitsItsPane:
         tab = _sim_tab(1920, 1080)
         r = tab._sim_voting_readout
         assert r.minimumSizeHint().width() <= r.width(), (
-            f"panel demands {r.minimumSizeHint().width()}px, "
-            f"has {r.width()}px")
+            f"panel demands {r.minimumSizeHint().width()}px, " f"has {r.width()}px"
+        )
 
     def test_the_panel_is_not_taller_than_its_allocation(self):
         tab = _sim_tab(1920, 1080)
         r = tab._sim_voting_readout
         assert r.minimumSizeHint().height() <= r.height(), (
-            f"panel demands {r.minimumSizeHint().height()}px, "
-            f"has {r.height()}px")
+            f"panel demands {r.minimumSizeHint().height()}px, " f"has {r.height()}px"
+        )
 
 
 class TestTheTradingTabIsUnaffected:
@@ -149,6 +152,7 @@ class TestTheTradingTabIsUnaffected:
         the Trading Tab's own panel must not regress to achieve it."""
         _qapp()
         from src.gui.indicator_panel import IndicatorVotingPanel
+
         p = IndicatorVotingPanel()
         p.resize(900, 460)
         p.show()

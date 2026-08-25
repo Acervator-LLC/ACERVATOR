@@ -94,7 +94,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 REPO = Path(__file__).resolve().parent.parent
 
-if TYPE_CHECKING:                       # pragma: no cover
+if TYPE_CHECKING:  # pragma: no cover
     # Annotation only. PySide6 must not be imported at module scope: the
     # three source-reading tests below are pure Python and have to run on
     # a box without Qt. A skipped test is not evidence, so the skip is
@@ -118,8 +118,16 @@ MAIN_WINDOW = REPO / "src" / "gui" / "main_window.py"
 # Substrings that must never appear in a record this tab writes. A
 # context is written to disk, and a bot id is operator-chosen text the
 # privacy registry masks in the bot table.
-FORBIDDEN = ("api_key", "apikey", "secret", "passphrase", "password",
-             "credential", "token", "bot_id")
+FORBIDDEN = (
+    "api_key",
+    "apikey",
+    "secret",
+    "passphrase",
+    "password",
+    "credential",
+    "token",
+    "bot_id",
+)
 
 
 # ── Qt fixtures ────────────────────────────────────────────────────────
@@ -172,9 +180,17 @@ class _Raw:
 
 
 def _rows(count: int) -> list[_Raw]:
-    return [_Raw(time=1_700_000_000 + i * 60, open=1.0 + i, high=2.0 + i,
-                 low=0.5 + i, close=1.5 + i, volume=10.0 + i)
-            for i in range(count)]
+    return [
+        _Raw(
+            time=1_700_000_000 + i * 60,
+            open=1.0 + i,
+            high=2.0 + i,
+            low=0.5 + i,
+            close=1.5 + i,
+            volume=10.0 + i,
+        )
+        for i in range(count)
+    ]
 
 
 class _Fetcher:
@@ -190,25 +206,35 @@ class _Fetcher:
         self._delay = delay
         self.calls = 0
 
-    async def fetch(self, symbol: str, timeframe: str = "1h",
-                    exchange: Any = None, limit: int = 100) -> Any:
+    async def fetch(
+        self, symbol: str, timeframe: str = "1h", exchange: Any = None, limit: int = 100
+    ) -> Any:
         del symbol, timeframe, exchange, limit
         self.calls += 1
         if self._delay:
             await asyncio.sleep(self._delay)
-        answer = (self._answers[min(self.calls - 1, len(self._answers) - 1)]
-                  if self._answers else ([], "empty"))
+        answer = (
+            self._answers[min(self.calls - 1, len(self._answers) - 1)]
+            if self._answers
+            else ([], "empty")
+        )
         if isinstance(answer, BaseException):
             raise answer
         return answer
 
 
-def _status(bot_id: str, symbol: str, mode: str = "scrumming",
-            exchange: str = "coinbase") -> dict:
+def _status(
+    bot_id: str, symbol: str, mode: str = "scrumming", exchange: str = "coinbase"
+) -> dict:
     """One `get_status()` snapshot of the shape `update_charts` reads."""
-    return {"bot_id": bot_id, "symbol": symbol, "mode": mode,
-            "exchange": exchange, "state": "running",
-            "stats": {"current_price": 0.0}}
+    return {
+        "bot_id": bot_id,
+        "symbol": symbol,
+        "mode": mode,
+        "exchange": exchange,
+        "state": "running",
+        "stats": {"current_price": 0.0},
+    }
 
 
 def _records(sink: SignalSink, name: str) -> list:
@@ -251,10 +277,13 @@ def _chart_emit_calls() -> list[ast.Call]:
     question.
     """
     tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
-    return [node for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "_ch_emit"]
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_ch_emit"
+    ]
 
 
 def _pin_name(call: ast.Call) -> str:
@@ -276,8 +305,7 @@ def _keyword(call: ast.Call, name: str) -> ast.expr | None:
 def test_panel_mounting_is_reported(qapp: QApplication) -> None:
     """Two qualifying bots put two panels in the layout and the dict."""
     with _collect() as sink, _tab(qapp) as tab:
-        tab.update_charts([_status("alpha", "BTC/USD"),
-                           _status("bravo", "ETH/USD")])
+        tab.update_charts([_status("alpha", "BTC/USD"), _status("bravo", "ETH/USD")])
         rec = _only(sink, MOUNTED)
     assert rec.ok is True, rec.context
     assert rec.actual == 2
@@ -291,7 +319,8 @@ def test_panel_mounting_is_reported(qapp: QApplication) -> None:
 
 
 def test_a_panel_dropped_from_the_dict_but_left_on_screen_is_reported(
-        qapp: QApplication) -> None:
+    qapp: QApplication,
+) -> None:
     """THE FALSIFIER for `13-001`.
 
     The seam is the removal pass, which does three things in order:
@@ -302,10 +331,9 @@ def test_a_panel_dropped_from_the_dict_but_left_on_screen_is_reported(
     see this. Asking the layout can.
     """
     with _collect() as sink, _tab(qapp) as tab:
-        tab.update_charts([_status("alpha", "BTC/USD"),
-                           _status("bravo", "ETH/USD")])
+        tab.update_charts([_status("alpha", "BTC/USD"), _status("bravo", "ETH/USD")])
         assert len(tab._chart_panels) == 2
-        tab._chart_panels.pop("bravo")          # widget deliberately kept
+        tab._chart_panels.pop("bravo")  # widget deliberately kept
         tab.update_charts([_status("alpha", "BTC/USD")])
         rec = _records(sink, MOUNTED)[-1]
     assert rec.ok is False
@@ -330,8 +358,7 @@ def test_panel_symbols_current_is_reported(qapp: QApplication) -> None:
     assert rec.duration is None
 
 
-def test_a_panel_still_fetching_the_old_pair_is_reported(
-        qapp: QApplication) -> None:
+def test_a_panel_still_fetching_the_old_pair_is_reported(qapp: QApplication) -> None:
     """THE FALSIFIER for `13-002`, and it is a live defect.
 
     `update_charts` writes `info["symbol"]` in the CREATE branch only.
@@ -379,7 +406,8 @@ def test_timeframe_rearm_is_reported(qapp: QApplication) -> None:
 
 
 def test_a_timeframe_change_from_a_dropped_panel_is_reported(
-        qapp: QApplication) -> None:
+    qapp: QApplication,
+) -> None:
     """THE FALSIFIER for `13-003`.
 
     The seam is the removal pass again. It pops the entry and calls
@@ -392,7 +420,7 @@ def test_a_timeframe_change_from_a_dropped_panel_is_reported(
     with _collect() as sink, _tab(qapp) as tab:
         tab.update_charts([_status("alpha", "BTC/USD")])
         panel = tab._chart_panels["alpha"]["panel"]
-        tab.update_charts([])                   # removal pass, deleteLater
+        tab.update_charts([])  # removal pass, deleteLater
         panel._tf_combo.setCurrentText("4h")
         rec = _only(sink, REARMED)
     assert rec.ok is False
@@ -405,8 +433,7 @@ def test_a_timeframe_change_from_a_dropped_panel_is_reported(
 # ── 13-004  the chart holds the candles THIS fetch returned ────────────
 
 
-def test_a_fetch_that_returns_candles_is_reported(
-        qapp: QApplication) -> None:
+def test_a_fetch_that_returns_candles_is_reported(qapp: QApplication) -> None:
     """The success path: chart, expectation and source all agree."""
     with _collect() as sink, _tab(qapp) as tab:
         tab.update_charts([_status("alpha", "BTC/USD")])
@@ -426,7 +453,8 @@ def test_a_fetch_that_returns_candles_is_reported(
 
 
 def test_a_panel_left_showing_candles_by_an_empty_fetch_is_reported(
-        qapp: QApplication) -> None:
+    qapp: QApplication,
+) -> None:
     """THE FALSIFIER for `13-004`, and the failure the operator cannot see.
 
     The second fetch comes back empty. `set_error(source)` writes an
@@ -437,10 +465,9 @@ def test_a_panel_left_showing_candles_by_an_empty_fetch_is_reported(
     """
     with _collect() as sink, _tab(qapp) as tab:
         tab.update_charts([_status("alpha", "BTC/USD")])
-        tab._fetcher = _Fetcher((_rows(3), "exchange"),
-                                ([], "coingecko: rate limited"))
+        tab._fetcher = _Fetcher((_rows(3), "exchange"), ([], "coingecko: rate limited"))
         asyncio.run(tab.fetch_chart_data({"coinbase": object()}))
-        tab._chart_panels["alpha"]["last_fetch"] = 0   # clear the throttle
+        tab._chart_panels["alpha"]["last_fetch"] = 0  # clear the throttle
         asyncio.run(tab.fetch_chart_data({"coinbase": object()}))
         rec = _records(sink, REFRESHED)[-1]
         assert len(tab._chart_panels["alpha"]["panel"].chart._candles) == 3
@@ -460,7 +487,7 @@ def test_a_fetch_that_raises_is_reported(qapp: QApplication) -> None:
         tab._fetcher = _Fetcher(RuntimeError("coinbase 401 unauthorized"))
         asyncio.run(tab.fetch_chart_data({"coinbase": object()}))
         rec = _only(sink, REFRESHED)
-    assert rec.ok is True, rec.context     # nothing was showing before
+    assert rec.ok is True, rec.context  # nothing was showing before
     assert rec.actual == 0
     assert rec.expected == 0
     assert rec.context["outcome"] == "raised"
@@ -469,8 +496,7 @@ def test_a_fetch_that_raises_is_reported(qapp: QApplication) -> None:
     assert rec.duration is not None
 
 
-def test_the_duration_tracks_two_different_fetch_workloads(
-        qapp: QApplication) -> None:
+def test_the_duration_tracks_two_different_fetch_workloads(qapp: QApplication) -> None:
     """THE CONTROL for the duration on `13-004`.
 
     A number that is the same for a fast fetch and a slow one is not a
@@ -488,8 +514,9 @@ def test_the_duration_tracks_two_different_fetch_workloads(
         asyncio.run(tab.fetch_chart_data({"coinbase": object()}))
         quick, slow = _records(sink, REFRESHED)
     assert quick.duration is not None and slow.duration is not None
-    assert slow.duration >= quick.duration + 0.20, (
-        f"quick={quick.duration} slow={slow.duration}")
+    assert (
+        slow.duration >= quick.duration + 0.20
+    ), f"quick={quick.duration} slow={slow.duration}"
     assert quick.duration < 0.20
 
 
@@ -499,8 +526,7 @@ def test_the_duration_tracks_two_different_fetch_workloads(
 def test_panel_freshness_is_reported(qapp: QApplication) -> None:
     """After a pass, every panel carries this pass's `last_fetch`."""
     with _collect() as sink, _tab(qapp) as tab:
-        tab.update_charts([_status("alpha", "BTC/USD"),
-                           _status("bravo", "ETH/USD")])
+        tab.update_charts([_status("alpha", "BTC/USD"), _status("bravo", "ETH/USD")])
         tab._fetcher = _Fetcher((_rows(4), "exchange"))
         asyncio.run(tab.fetch_chart_data({"coinbase": object()}))
         rec = _only(sink, FRESH)
@@ -513,8 +539,7 @@ def test_panel_freshness_is_reported(qapp: QApplication) -> None:
     assert rec.duration is None
 
 
-def test_a_panel_the_fetch_loop_skips_forever_is_reported(
-        qapp: QApplication) -> None:
+def test_a_panel_the_fetch_loop_skips_forever_is_reported(qapp: QApplication) -> None:
     """THE FALSIFIER for `13-005`.
 
     `push_synthetic_candles` is the tab's own way of creating a panel
@@ -527,13 +552,14 @@ def test_a_panel_the_fetch_loop_skips_forever_is_reported(
     """
     with _collect() as sink, _tab(qapp) as tab:
         tab.update_charts([_status("alpha", "BTC/USD")])
-        tab.push_synthetic_candles("nuke", "*/USDC", _rows(5),
-                                   scenario="flash", last_price=1.0)
+        tab.push_synthetic_candles(
+            "nuke", "*/USDC", _rows(5), scenario="flash", last_price=1.0
+        )
         tab._fetcher = _Fetcher((_rows(4), "exchange"))
         asyncio.run(tab.fetch_chart_data({"coinbase": object()}))
         rec = _only(sink, FRESH)
         assert tab._chart_panels["nuke"]["last_fetch"] == 0
-        assert len(_records(sink, REFRESHED)) == 1   # only `alpha` reported
+        assert len(_records(sink, REFRESHED)) == 1  # only `alpha` reported
     assert rec.ok is False
     assert rec.actual == 1
     assert rec.expected == 0
@@ -547,8 +573,11 @@ def test_a_panel_the_fetch_loop_skips_forever_is_reported(
 def test_only_the_fetch_pin_carries_a_duration() -> None:
     """E8 in this tab: one postcondition behind a network call, and
     nothing else. The other four walk a dict or a layout."""
-    carriers = {_pin_name(call) for call in _chart_emit_calls()
-                if _keyword(call, "duration") is not None}
+    carriers = {
+        _pin_name(call)
+        for call in _chart_emit_calls()
+        if _keyword(call, "duration") is not None
+    }
     assert carriers == {REFRESHED}
 
 
@@ -562,14 +591,10 @@ def test_the_cadence_declaration_is_what_the_source_does() -> None:
     every: dict[str, Any] = {}
     for call in _chart_emit_calls():
         node = _keyword(call, "every")
-        every[_pin_name(call)] = (node.value
-                                  if isinstance(node, ast.Constant)
-                                  else None)
+        every[_pin_name(call)] = node.value if isinstance(node, ast.Constant) else None
     assert set(every) == set(CHARTS_PINS)
-    assert {name for name, value in every.items() if value is None} == set(
-        UNTHROTTLED)
-    assert {value for name, value in every.items()
-            if name not in UNTHROTTLED} == {30.0}
+    assert {name for name, value in every.items() if value is None} == set(UNTHROTTLED)
+    assert {value for name, value in every.items() if name not in UNTHROTTLED} == {30.0}
 
 
 def test_no_context_carries_credential_material_or_a_bot_id() -> None:

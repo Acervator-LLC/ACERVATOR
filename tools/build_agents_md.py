@@ -8,6 +8,7 @@ implementation in the SADP package.
 
 For programmatic use, import from `sadp._tools.build_agents_md` directly.
 """
+
 import sys
 from pathlib import Path
 
@@ -17,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import sadp._tools.build_agents_md as _impl  # noqa: E402
 from sadp._tools.build_agents_md import main  # noqa: E402
+
 # Re-export full module namespace (including underscore-prefixed
 # private helpers that test files import) by copying module dict.
 globals().update({k: v for k, v in vars(_impl).items() if not k.startswith("__")})

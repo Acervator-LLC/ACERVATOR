@@ -30,6 +30,7 @@ EVERY MECHANISM HERE HAS A PAIRED CONTROL. A test that still passes
 when the thing it tests is blinded is not evidence, so each group
 carries a control that must fail if the mechanism stopped working.
 """
+
 from __future__ import annotations
 
 import copy
@@ -68,9 +69,12 @@ def _parent(bot_id="scrum-eth", target_asset=ETH, exchange=COINBASE):
     bot = object.__new__(ScrummingBot)
     bot.bot_id = bot_id
     bot.config = _cfg(
-        exchange_id=exchange, mode=BotMode.SCRUMMING,
-        target_asset=target_asset, base_currency="USD",
-        scrumming_interval_pct=2.0, name=bot_id,
+        exchange_id=exchange,
+        mode=BotMode.SCRUMMING,
+        target_asset=target_asset,
+        base_currency="USD",
+        scrumming_interval_pct=2.0,
+        name=bot_id,
     )
     bot._bot_manager = None
     bot._fold_tranches = []
@@ -91,9 +95,12 @@ def _child(bot_id="ext-1", base_currency=ETH, exchange=COINBASE):
     bot = object.__new__(ExtractorBot)
     bot.bot_id = bot_id
     bot.config = _cfg(
-        exchange_id=exchange, mode=BotMode.EXTRACTOR,
-        target_asset="ALT", base_currency=base_currency,
-        name=f"name-of-{bot_id}", extractor_direction="normal",
+        exchange_id=exchange,
+        mode=BotMode.EXTRACTOR,
+        target_asset="ALT",
+        base_currency=base_currency,
+        name=f"name-of-{bot_id}",
+        extractor_direction="normal",
         inverted_extractor_standing_alt_units=0,
     )
     bot._positions = {}
@@ -115,8 +122,14 @@ def _child(bot_id="ext-1", base_currency=ETH, exchange=COINBASE):
     return bot
 
 
-def _position(pair="SOL/ETH", alt_units=100.0, entry_price=0.005,
-              mark=0.006, opened_at=1000.0, arbiter=None):
+def _position(
+    pair="SOL/ETH",
+    alt_units=100.0,
+    entry_price=0.005,
+    mark=0.006,
+    opened_at=1000.0,
+    arbiter=None,
+):
     """One open Extractor position, entered at a price for a quantity.
 
     `arbiter=None` means "do not name the field at all", which is how a
@@ -129,14 +142,17 @@ def _position(pair="SOL/ETH", alt_units=100.0, entry_price=0.005,
     if arbiter is not None:
         kw["arbiter"] = arbiter
     pos = ExtractorPosition(
-        pair=pair, state="in_flight",
+        pair=pair,
+        state="in_flight",
         artillery_size_base=cost_basis_base,
         artillery_size_usd_at_entry=cost_basis_base * 3000.0,
         alt_units=alt_units,
         entry_price_base_per_alt=entry_price,
         avg_buy_price_base_per_alt=entry_price,
         cost_basis_base=cost_basis_base,
-        opened_at=opened_at, **kw)
+        opened_at=opened_at,
+        **kw,
+    )
     if mark is not None:
         pos.last_price_base_per_alt = mark
         pos.last_priced_at = opened_at + 60.0
@@ -186,10 +202,26 @@ def test_control_the_field_is_real_and_not_a_hard_coded_sibling():
     assert ARBITER_PARENT == "parent"
 
 
-@pytest.mark.parametrize("value", [
-    True, False, None, 0, 1, 3.5, "child", "Child", "paren", "",
-    "  ", "parental", ["parent"], {"parent": True}, object(),
-])
+@pytest.mark.parametrize(
+    "value",
+    [
+        True,
+        False,
+        None,
+        0,
+        1,
+        3.5,
+        "child",
+        "Child",
+        "paren",
+        "",
+        "  ",
+        "parental",
+        ["parent"],
+        {"parent": True},
+        object(),
+    ],
+)
 def test_anything_that_is_not_the_word_parent_reads_as_sibling(value):
     """FAIL TOWARDS THE INERT VALUE.
 
@@ -202,9 +234,16 @@ def test_anything_that_is_not_the_word_parent_reads_as_sibling(value):
     assert normalize_arbiter(value) == ARBITER_SIBLING
 
 
-@pytest.mark.parametrize("value", [
-    "parent", "PARENT", "Parent", " parent ", "\tparent\n",
-])
+@pytest.mark.parametrize(
+    "value",
+    [
+        "parent",
+        "PARENT",
+        "Parent",
+        " parent ",
+        "\tparent\n",
+    ],
+)
 def test_control_the_word_parent_really_does_read_as_parent(value):
     """THE CONTROL for the test above.
 
@@ -221,6 +260,7 @@ def test_the_coercion_cannot_raise_on_an_object_that_refuses_to_print():
     record is a position the bot stops managing. So this read is
     incapable of raising: it never calls `__str__` on anything.
     """
+
     class _Hostile:
         def __str__(self):
             raise RuntimeError("no string for you")
@@ -232,7 +272,7 @@ def test_the_coercion_cannot_raise_on_an_object_that_refuses_to_print():
 
 
 def test_the_two_words_on_the_surface_are_the_operators_own():
-    """"Sibling", never "child" — the operator's word, that spelling."""
+    """ "Sibling", never "child" — the operator's word, that spelling."""
     assert arbiter_label(ARBITER_PARENT) == "Parent"
     assert arbiter_label(ARBITER_SIBLING) == "Sibling"
     assert arbiter_label("nonsense") == "Sibling"
@@ -264,10 +304,8 @@ def test_toggling_one_tranche_leaves_every_sibling_tranche_alone():
     setting wearing a per-row costume.
     """
     _, child = _family()
-    child._positions["AVAX/ETH"] = _position(
-        pair="AVAX/ETH", opened_at=2000.0)
-    child._positions["INJ/ETH"] = _position(
-        pair="INJ/ETH", opened_at=3000.0)
+    child._positions["AVAX/ETH"] = _position(pair="AVAX/ETH", opened_at=2000.0)
+    child._positions["INJ/ETH"] = _position(pair="INJ/ETH", opened_at=3000.0)
 
     child.toggle_tranche_arbiter(_id_of(child, "AVAX/ETH"))
 
@@ -284,16 +322,12 @@ def test_control_each_of_those_tranches_can_be_flipped_on_its_own():
     the wrong reason. Each must be individually settable.
     """
     _, child = _family()
-    child._positions["AVAX/ETH"] = _position(
-        pair="AVAX/ETH", opened_at=2000.0)
-    child._positions["INJ/ETH"] = _position(
-        pair="INJ/ETH", opened_at=3000.0)
+    child._positions["AVAX/ETH"] = _position(pair="AVAX/ETH", opened_at=2000.0)
+    child._positions["INJ/ETH"] = _position(pair="INJ/ETH", opened_at=3000.0)
 
     for pair in ("SOL/ETH", "AVAX/ETH", "INJ/ETH"):
-        assert child.toggle_tranche_arbiter(
-            _id_of(child, pair)) == ARBITER_PARENT
-    assert all(p.arbiter == ARBITER_PARENT
-               for p in child._positions.values())
+        assert child.toggle_tranche_arbiter(_id_of(child, pair)) == ARBITER_PARENT
+    assert all(p.arbiter == ARBITER_PARENT for p in child._positions.values())
 
 
 def test_two_extractors_on_the_same_pair_are_told_apart():
@@ -313,14 +347,12 @@ def test_two_extractors_on_the_same_pair_are_told_apart():
     assert kid_b._positions["SOL/ETH"].arbiter == ARBITER_PARENT
     assert kid_a._positions["SOL/ETH"].arbiter == ARBITER_SIBLING
     # And the other Extractor refuses its sibling's id outright.
-    assert kid_a.toggle_tranche_arbiter(
-        _id_of(kid_b, "SOL/ETH")) is None
+    assert kid_a.toggle_tranche_arbiter(_id_of(kid_b, "SOL/ETH")) is None
 
 
 def test_an_id_that_matches_nothing_is_refused_and_writes_nothing():
     _, child = _family()
-    for bogus in ("", None, "ext-1|SOL/ETH", "nope", 17,
-                  "ext-1|SOL/ETH|9999.000000"):
+    for bogus in ("", None, "ext-1|SOL/ETH", "nope", 17, "ext-1|SOL/ETH|9999.000000"):
         assert child.toggle_tranche_arbiter(bogus) is None
         assert child.set_tranche_arbiter(bogus, ARBITER_PARENT) is None
     assert child._positions["SOL/ETH"].arbiter == ARBITER_SIBLING
@@ -346,10 +378,8 @@ def test_the_right_tranche_changes_after_another_one_has_closed():
     so by the time a button is clicked an earlier tranche may be gone.
     """
     _, child = _family()
-    child._positions["AVAX/ETH"] = _position(
-        pair="AVAX/ETH", opened_at=2000.0)
-    child._positions["INJ/ETH"] = _position(
-        pair="INJ/ETH", opened_at=3000.0)
+    child._positions["AVAX/ETH"] = _position(pair="AVAX/ETH", opened_at=2000.0)
+    child._positions["INJ/ETH"] = _position(pair="INJ/ETH", opened_at=3000.0)
     captured = _id_of(child, "INJ/ETH")
 
     # The first tranche exits while the captured id sits in a closure.
@@ -402,8 +432,9 @@ def test_the_id_the_row_carries_is_the_id_the_setter_accepts():
     parent, child = _family()
     row = parent.open_extractor_tranches()[0]
     assert row["tranche_id"] == _id_of(child, "SOL/ETH")
-    assert child.set_tranche_arbiter(
-        row["tranche_id"], ARBITER_PARENT) == ARBITER_PARENT
+    assert (
+        child.set_tranche_arbiter(row["tranche_id"], ARBITER_PARENT) == ARBITER_PARENT
+    )
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -418,8 +449,7 @@ def _restore(child, state):
 
 def test_the_value_round_trips_through_export_and_import():
     _, child = _family()
-    child._positions["AVAX/ETH"] = _position(
-        pair="AVAX/ETH", opened_at=2000.0)
+    child._positions["AVAX/ETH"] = _position(pair="AVAX/ETH", opened_at=2000.0)
     child.toggle_tranche_arbiter(_id_of(child, "SOL/ETH"))
 
     restored = _restore(child, child.export_state())
@@ -445,8 +475,7 @@ def test_export_names_the_key_for_every_position():
     """The export literal is an EXPLICIT key list, not a dataclass
     dump: a field that is not named there is dropped on every save."""
     _, child = _family()
-    child._positions["AVAX/ETH"] = _position(
-        pair="AVAX/ETH", opened_at=2000.0)
+    child._positions["AVAX/ETH"] = _position(pair="AVAX/ETH", opened_at=2000.0)
     saved = child.export_state()["positions"]
     assert len(saved) == 2
     assert all("arbiter" in p for p in saved)
@@ -483,7 +512,7 @@ def test_control_the_importer_reads_the_field_instead_of_defaulting():
 
 
 def test_an_old_record_loads_otherwise_completely_unchanged():
-    """"Exactly as before" is a claim about EVERY field, not one.
+    """ "Exactly as before" is a claim about EVERY field, not one.
 
     A field added to the constructor call is a chance to disturb the
     others, so the whole restored position is compared against the
@@ -538,13 +567,11 @@ def test_control_import_still_drops_a_record_that_is_genuinely_broken():
 def test_the_parents_row_carries_the_arbiter_value():
     """The row dict is the ONLY thing the surface sees."""
     parent, child = _family()
-    assert parent.open_extractor_tranches()[0]["arbiter"] == (
-        ARBITER_SIBLING)
+    assert parent.open_extractor_tranches()[0]["arbiter"] == (ARBITER_SIBLING)
 
     child.toggle_tranche_arbiter(_id_of(child, "SOL/ETH"))
 
-    assert parent.open_extractor_tranches()[0]["arbiter"] == (
-        ARBITER_PARENT)
+    assert parent.open_extractor_tranches()[0]["arbiter"] == (ARBITER_PARENT)
 
 
 def test_the_row_reports_one_of_the_two_values_even_when_state_is_junk():
@@ -552,8 +579,7 @@ def test_the_row_reports_one_of_the_two_values_even_when_state_is_junk():
     value, so the emitter normalises on the way out as well as in."""
     parent, child = _family()
     child._positions["SOL/ETH"].arbiter = "something else entirely"
-    assert parent.open_extractor_tranches()[0]["arbiter"] == (
-        ARBITER_SIBLING)
+    assert parent.open_extractor_tranches()[0]["arbiter"] == (ARBITER_SIBLING)
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -745,14 +771,18 @@ def _family_tab():
     parent = _parent()
     kid_a, kid_b = _child("ext-a"), _child("ext-b")
     kid_a._positions["SOL/ETH"] = _position()
-    kid_b._positions["AVAX/ETH"] = _position(
-        pair="AVAX/ETH", opened_at=2000.0)
+    kid_b._positions["AVAX/ETH"] = _position(pair="AVAX/ETH", opened_at=2000.0)
     _wire(parent, kid_a, kid_b)
-    parent._fold_tranches = [{
-        "usd": 25.0, "units": 0.01, "ref": 2100.0,
-        "initial_buy_price": 2000.0, "created_ts": 1.0,
-        "operator_initiated": True,
-    }]
+    parent._fold_tranches = [
+        {
+            "usd": 25.0,
+            "units": 0.01,
+            "ref": 2100.0,
+            "initial_buy_price": 2000.0,
+            "created_ts": 1.0,
+            "operator_initiated": True,
+        }
+    ]
     parent.get_status = lambda: {"stats": {"current_price": 2000.0}}
 
     dlg, widget, table = _build_tab(parent)
@@ -771,26 +801,28 @@ def test_the_arbiter_column_is_appended_after_fire(_family_tab):
     is expected — which is why the new column is APPENDED.
     """
     from src.gui.bot_live_settings import (
-        ARBITER_COLUMN_INDEX, ARBITER_COLUMN_HEADER,
+        ARBITER_COLUMN_INDEX,
+        ARBITER_COLUMN_HEADER,
     )
+
     _, _, _, table, _ = _family_tab
 
     assert ARBITER_COLUMN_INDEX == 10
     assert table.columnCount() == 11
     assert table.horizontalHeaderItem(FIRE_COLUMN).text() == "Fire"
-    assert table.horizontalHeaderItem(
-        ARBITER_COLUMN_INDEX).text() == ARBITER_COLUMN_HEADER
+    assert (
+        table.horizontalHeaderItem(ARBITER_COLUMN_INDEX).text() == ARBITER_COLUMN_HEADER
+    )
     assert ARBITER_COLUMN_HEADER == "Arbiter"
 
 
-def test_each_extractor_row_has_its_own_toggle_reading_sibling(
-        _family_tab):
+def test_each_extractor_row_has_its_own_toggle_reading_sibling(_family_tab):
     """A toggling status button per row, in the operator's words."""
     from src.gui.bot_live_settings import ARBITER_COLUMN_INDEX
+
     _, _, _, table, _ = _family_tab
 
-    buttons = [table.cellWidget(r, ARBITER_COLUMN_INDEX)
-               for r in EXT_ROWS]
+    buttons = [table.cellWidget(r, ARBITER_COLUMN_INDEX) for r in EXT_ROWS]
     assert all(b is not None for b in buttons)
     assert [b.text() for b in buttons] == ["Sibling", "Sibling"]
     assert buttons[0] is not buttons[1]
@@ -808,17 +840,18 @@ def test_the_button_label_matches_the_stored_value(_family_tab):
     kid_a._positions["SOL/ETH"].arbiter = ARBITER_PARENT
     second_dlg, second_widget, table = _build_tab(parent)
     try:
-        labels = sorted(table.cellWidget(r, ARBITER_COLUMN_INDEX).text()
-                        for r in EXT_ROWS)
+        labels = sorted(
+            table.cellWidget(r, ARBITER_COLUMN_INDEX).text() for r in EXT_ROWS
+        )
         assert labels == ["Parent", "Sibling"]
     finally:
         _destroy_tab(second_dlg, second_widget)
 
 
-def test_clicking_the_toggle_flips_the_stored_value_and_the_label(
-        _family_tab):
+def test_clicking_the_toggle_flips_the_stored_value_and_the_label(_family_tab):
     """The click reaches the CHILD's position, not a display copy."""
     from src.gui.bot_live_settings import ARBITER_COLUMN_INDEX
+
     _, kid_a, kid_b, table, _ = _family_tab
 
     row = _row_of(table, "ext-a")
@@ -832,16 +865,15 @@ def test_clicking_the_toggle_flips_the_stored_value_and_the_label(
     # And the other tranche is untouched, on both surfaces.
     assert kid_b._positions["AVAX/ETH"].arbiter == ARBITER_SIBLING
     other = _row_of(table, "ext-b")
-    assert table.cellWidget(
-        other, ARBITER_COLUMN_INDEX).text() == "Sibling"
+    assert table.cellWidget(other, ARBITER_COLUMN_INDEX).text() == "Sibling"
 
 
 def test_clicking_twice_returns_the_tranche_to_sibling(_family_tab):
     from src.gui.bot_live_settings import ARBITER_COLUMN_INDEX
+
     _, kid_a, _, table, _ = _family_tab
 
-    button = table.cellWidget(
-        _row_of(table, "ext-a"), ARBITER_COLUMN_INDEX)
+    button = table.cellWidget(_row_of(table, "ext-a"), ARBITER_COLUMN_INDEX)
     button.click()
     button.click()
 
@@ -863,8 +895,7 @@ def _row_of(table, child_bot_id):
     raise AssertionError(f"no Extractor row for {child_bot_id}")
 
 
-def test_a_click_on_a_tranche_that_closed_changes_nothing(
-        _family_tab, monkeypatch):
+def test_a_click_on_a_tranche_that_closed_changes_nothing(_family_tab, monkeypatch):
     """The table is a snapshot and the Extractors keep ticking.
 
     A position can close while the panel sits on screen. The click
@@ -873,16 +904,17 @@ def test_a_click_on_a_tranche_that_closed_changes_nothing(
     from PySide6.QtWidgets import QMessageBox
 
     from src.gui.bot_live_settings import ARBITER_COLUMN_INDEX
+
     _, kid_a, kid_b, table, _ = _family_tab
 
     warnings: list[tuple] = []
     monkeypatch.setattr(
-        QMessageBox, "warning",
-        lambda *a, **kw: warnings.append(a) or QMessageBox.Ok)
+        QMessageBox, "warning", lambda *a, **kw: warnings.append(a) or QMessageBox.Ok
+    )
 
     row = _row_of(table, "ext-a")
     button = table.cellWidget(row, ARBITER_COLUMN_INDEX)
-    kid_a._positions.clear()          # the Extractor exited
+    kid_a._positions.clear()  # the Extractor exited
     button.click()
 
     assert warnings, "a refusal must be reported, not swallowed"
@@ -892,7 +924,8 @@ def test_a_click_on_a_tranche_that_closed_changes_nothing(
 
 
 def test_control_the_same_click_works_while_the_tranche_is_open(
-        _family_tab, monkeypatch):
+    _family_tab, monkeypatch
+):
     """THE CONTROL for the test above.
 
     If clicks never did anything, the refusal test would pass for a
@@ -901,15 +934,15 @@ def test_control_the_same_click_works_while_the_tranche_is_open(
     from PySide6.QtWidgets import QMessageBox
 
     from src.gui.bot_live_settings import ARBITER_COLUMN_INDEX
+
     _, kid_a, _, table, _ = _family_tab
 
     warnings: list[tuple] = []
     monkeypatch.setattr(
-        QMessageBox, "warning",
-        lambda *a, **kw: warnings.append(a) or QMessageBox.Ok)
+        QMessageBox, "warning", lambda *a, **kw: warnings.append(a) or QMessageBox.Ok
+    )
 
-    button = table.cellWidget(
-        _row_of(table, "ext-a"), ARBITER_COLUMN_INDEX)
+    button = table.cellWidget(_row_of(table, "ext-a"), ARBITER_COLUMN_INDEX)
     button.click()
 
     assert warnings == []
@@ -921,10 +954,10 @@ def test_a_click_reaches_the_child_that_owns_the_row(_family_tab):
     """Rows from several Extractors are merged into one list, so the
     write must be routed by `child_bot_id`, not to "the" Extractor."""
     from src.gui.bot_live_settings import ARBITER_COLUMN_INDEX
+
     _, kid_a, kid_b, table, _ = _family_tab
 
-    table.cellWidget(
-        _row_of(table, "ext-b"), ARBITER_COLUMN_INDEX).click()
+    table.cellWidget(_row_of(table, "ext-b"), ARBITER_COLUMN_INDEX).click()
 
     assert kid_b._positions["AVAX/ETH"].arbiter == ARBITER_PARENT
     assert kid_a._positions["SOL/ETH"].arbiter == ARBITER_SIBLING
@@ -933,6 +966,7 @@ def test_a_click_reaches_the_child_that_owns_the_row(_family_tab):
 def test_clicking_the_toggle_places_no_order(_family_tab):
     """The control sits one column from a live Fire button."""
     from src.gui.bot_live_settings import ARBITER_COLUMN_INDEX
+
     parent, kid_a, kid_b, table, _ = _family_tab
 
     exchange = _RecordingExchange()
@@ -955,13 +989,14 @@ def test_a_fold_row_has_no_arbiter_button_and_says_so(_family_tab):
     no child holding it, so the cell prints the same em dash item 4
     prints under Fire on an Extractor row."""
     from src.gui.bot_live_settings import (
-        ARBITER_COLUMN_INDEX, ARBITER_NOT_APPLICABLE,
+        ARBITER_COLUMN_INDEX,
+        ARBITER_NOT_APPLICABLE,
     )
+
     _, _, _, table, _ = _family_tab
 
     assert table.cellWidget(FOLD_ROW, ARBITER_COLUMN_INDEX) is None
-    assert table.item(FOLD_ROW, ARBITER_COLUMN_INDEX).text() == (
-        ARBITER_NOT_APPLICABLE)
+    assert table.item(FOLD_ROW, ARBITER_COLUMN_INDEX).text() == (ARBITER_NOT_APPLICABLE)
     assert ARBITER_NOT_APPLICABLE == "—"
 
 
@@ -984,9 +1019,11 @@ def test_every_column_of_both_row_kinds_is_still_painted(_family_tab):
     a cell holding only a widget would reproduce it.
     """
     from src.gui.bot_live_settings import (
-        EXTRACTOR_TRANCHE_BG_HEX, EXTRACTOR_TRANCHE_FG_HEX,
+        EXTRACTOR_TRANCHE_BG_HEX,
+        EXTRACTOR_TRANCHE_FG_HEX,
         FOLD_TRANCHE_BG_HEX,
     )
+
     _, _, _, table, _ = _family_tab
 
     for col in range(table.columnCount()):
@@ -996,21 +1033,20 @@ def test_every_column_of_both_row_kinds_is_still_painted(_family_tab):
         for row in EXT_ROWS:
             cell = table.item(row, col)
             assert cell is not None, f"ext column {col} has no item"
-            assert cell.background().color().name() == (
-                EXTRACTOR_TRANCHE_BG_HEX)
-            assert cell.foreground().color().name() == (
-                EXTRACTOR_TRANCHE_FG_HEX)
+            assert cell.background().color().name() == (EXTRACTOR_TRANCHE_BG_HEX)
+            assert cell.foreground().color().name() == (EXTRACTOR_TRANCHE_FG_HEX)
 
 
-def test_the_toggle_carries_the_inset_that_frees_the_container_edge(
-        _family_tab):
+def test_the_toggle_carries_the_inset_that_frees_the_container_edge(_family_tab):
     """`setCellWidget` paints a widget over the delegate's rule, so a
     full-height button breaks the row's edge at its own column — the
     measured defect the Fire button's margin exists to prevent."""
     from src.gui.bot_live_settings import (
-        ARBITER_COLUMN_INDEX, EXTRACTOR_TRANCHE_BG_HEX,
+        ARBITER_COLUMN_INDEX,
+        EXTRACTOR_TRANCHE_BG_HEX,
         TRANCHE_FIRE_BTN_INSET_PX,
     )
+
     _, _, _, table, _ = _family_tab
 
     sheet = table.cellWidget(EXT_ROWS[0], ARBITER_COLUMN_INDEX).styleSheet()
@@ -1041,8 +1077,9 @@ def test_this_file_leaves_no_dialog_alive_for_the_next_suite():
     app = QApplication.instance() or QApplication([])
 
     def _mine():
-        return [w for w in app.topLevelWidgets()
-                if isinstance(w, BotLiveSettingsDialog)]
+        return [
+            w for w in app.topLevelWidgets() if isinstance(w, BotLiveSettingsDialog)
+        ]
 
     parent, _ = _family()
     parent.get_status = lambda: {"stats": {"current_price": 2000.0}}
@@ -1050,12 +1087,13 @@ def test_this_file_leaves_no_dialog_alive_for_the_next_suite():
 
     dlg, widget, _table = _build_tab(parent)
     assert len(_mine()) == before + 1, (
-        "the build added no dialog, so the teardown check below would "
-        "prove nothing")
+        "the build added no dialog, so the teardown check below would " "prove nothing"
+    )
 
     _destroy_tab(dlg, widget)
-    assert len(_mine()) == before, (
-        "a dialog outlived this test and will break the next suite")
+    assert (
+        len(_mine()) == before
+    ), "a dialog outlived this test and will break the next suite"
 
 
 def test_the_tooltip_does_not_claim_a_behaviour_that_does_not_exist():
@@ -1072,5 +1110,4 @@ def test_the_tooltip_does_not_claim_a_behaviour_that_does_not_exist():
     assert "Sibling" in tip
     assert "no order" in tip.lower()
     assert "not built" in tip.lower()
-    assert _compose_arbiter_tooltip(ARBITER_SIBLING).startswith(
-        "ARBITER: Sibling")
+    assert _compose_arbiter_tooltip(ARBITER_SIBLING).startswith("ARBITER: Sibling")

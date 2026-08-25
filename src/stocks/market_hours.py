@@ -16,10 +16,10 @@ logger = logging.getLogger("acervator.stocks.hours")
 
 
 class MarketSession(Enum):
-    PRE_MARKET = "pre_market"       # 4:00 AM - 9:30 AM ET
-    REGULAR = "regular"             # 9:30 AM - 4:00 PM ET
-    AFTER_HOURS = "after_hours"     # 4:00 PM - 8:00 PM ET
-    CLOSED = "closed"               # 8:00 PM - 4:00 AM ET
+    PRE_MARKET = "pre_market"  # 4:00 AM - 9:30 AM ET
+    REGULAR = "regular"  # 9:30 AM - 4:00 PM ET
+    AFTER_HOURS = "after_hours"  # 4:00 PM - 8:00 PM ET
+    CLOSED = "closed"  # 8:00 PM - 4:00 AM ET
     WEEKEND = "weekend"
     HOLIDAY = "holiday"
 
@@ -97,14 +97,17 @@ class MarketHours:
         """Check if regular market is currently open."""
         return self.get_session(dt) == MarketSession.REGULAR
 
-    def is_trading_allowed(self, allow_extended: bool = False,
-                           dt: datetime = None) -> bool:
+    def is_trading_allowed(
+        self, allow_extended: bool = False, dt: datetime = None
+    ) -> bool:
         """Check if any trading is allowed right now."""
         session = self.get_session(dt)
         if session == MarketSession.REGULAR:
             return True
-        if allow_extended and session in (MarketSession.PRE_MARKET,
-                                          MarketSession.AFTER_HOURS):
+        if allow_extended and session in (
+            MarketSession.PRE_MARKET,
+            MarketSession.AFTER_HOURS,
+        ):
             return True
         return False
 
@@ -176,7 +179,11 @@ class MarketHours:
         }
         status = names.get(session, "Unknown")
 
-        if session in (MarketSession.CLOSED, MarketSession.WEEKEND, MarketSession.HOLIDAY):
+        if session in (
+            MarketSession.CLOSED,
+            MarketSession.WEEKEND,
+            MarketSession.HOLIDAY,
+        ):
             ttopen = self.time_to_open(dt)
             if ttopen:
                 hours = ttopen.total_seconds() / 3600
@@ -199,8 +206,11 @@ class MarketHours:
     def _detect_et_offset(self) -> float:
         """Detect offset from local time to ET."""
         import time as _time
+
         # UTC offset of local time
-        local_offset = -(_time.timezone if _time.daylight == 0 else _time.altzone) / 3600
+        local_offset = (
+            -(_time.timezone if _time.daylight == 0 else _time.altzone) / 3600
+        )
         # ET is UTC-5 (EST) or UTC-4 (EDT)
         # Approximate: use -5 as default
         et_offset = -5

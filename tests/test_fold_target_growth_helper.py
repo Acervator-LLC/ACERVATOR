@@ -7,6 +7,7 @@ source-shape pins verifying:
   * trade.filled emit for manual/cartridge FOLD now carries the
     actual growth value (was hardcoded 0.0)
 """
+
 from __future__ import annotations
 
 import re
@@ -29,20 +30,22 @@ if str(REPO) not in sys.path:
 @pytest.fixture(scope="module")
 def source() -> str:
     return (REPO / "src" / "trading" / "scrumming_bot.py").read_text(
-        encoding="utf-8", errors="replace")
+        encoding="utf-8", errors="replace"
+    )
 
 
 class TestHelperExists:
     def test_helper_defined(self, source):
-        assert "def _apply_fold_target_growth(self" in source, (
-            "shared drain helper must exist on ScrummingBot"
-        )
+        assert (
+            "def _apply_fold_target_growth(self" in source
+        ), "shared drain helper must exist on ScrummingBot"
 
     def test_helper_returns_growth_applied(self, source):
         # Match method body up to next `def `
         m = re.search(
             r"def _apply_fold_target_growth\([^)]*\)[^:]*:(.*?)(?=\n    def )",
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
         assert m, "could not isolate helper body"
         body = m.group(1)
@@ -111,13 +114,14 @@ class TestManualCartridgePathUsesHelper:
         m = re.search(
             r'self\._bus\.emit\("trade\.filled",\s*bot_id=self\.bot_id,\s*'
             r'data=\{[^}]*?"type":\s*_fold_label\b[^}]*?\}',
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
         assert m, "could not locate _fold_label trade.filled emit"
         block = m.group(0)
-        assert '"profit": _growth_applied' in block, (
-            "manual FOLD trade.filled must emit profit=_growth_applied"
-        )
+        assert (
+            '"profit": _growth_applied' in block
+        ), "manual FOLD trade.filled must emit profit=_growth_applied"
         assert '"profit": 0.0' not in block, (
             "manual FOLD trade.filled still hardcodes profit=0.0 — "
             "Option B regression"
@@ -166,13 +170,14 @@ def _make_stub(
 
 def _call_helper(stub, accum_profit, source="test"):
     from src.trading.scrumming_bot import ScrummingBot
+
     return ScrummingBot._apply_fold_target_growth(stub, accum_profit, source)
 
 
 class TestHelperBehavior:
     def test_positive_surplus_grows_target(self):
         stub = _make_stub(target=200.0, anchor=200.0)
-        growth = _call_helper(stub, accum_profit=1.0)   # $1 surplus, $2 cap
+        growth = _call_helper(stub, accum_profit=1.0)  # $1 surplus, $2 cap
         assert growth == pytest.approx(1.0)
         assert stub._target_balance == pytest.approx(201.0)
         assert stub._fold_cycle_cap_consumed == pytest.approx(1.0)
@@ -186,14 +191,13 @@ class TestHelperBehavior:
         assert stub._standing_surplus_usd == pytest.approx(3.0)
 
     def test_cap_fully_consumed_returns_zero_and_accrues(self):
-        stub = _make_stub(
-            target=200.0, anchor=200.0, fold_cycle_cap_consumed=2.0)
+        stub = _make_stub(target=200.0, anchor=200.0, fold_cycle_cap_consumed=2.0)
         growth = _call_helper(stub, accum_profit=1.0)
         assert growth == 0.0
         assert stub._target_balance == 200.0, "target unchanged when cap full"
-        assert stub._standing_surplus_usd == pytest.approx(1.0), (
-            "surplus accrues to standing pool when cap fully consumed"
-        )
+        assert stub._standing_surplus_usd == pytest.approx(
+            1.0
+        ), "surplus accrues to standing pool when cap fully consumed"
 
     def test_profit_folding_active_false_returns_zero(self):
         stub = _make_stub(profit_folding_active=False)

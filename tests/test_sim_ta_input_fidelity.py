@@ -38,14 +38,13 @@ never reach the pool. The key collision the plan warns about cannot
 occur today. The guard is therefore a structural pin keeping it that
 way, not a key redesign.
 """
+
 from __future__ import annotations
 
 import ast
 import json
 import sys
 from pathlib import Path
-
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -85,17 +84,23 @@ class TestSimNeverReachesTheLivePool:
             src = p.read_text(encoding="utf-8", errors="replace")
             tree = ast.parse(src)
             for n in ast.walk(tree):
-                if isinstance(n, ast.Call) and \
-                        getattr(n.func, "id", "") == "get_data_pool":
+                if (
+                    isinstance(n, ast.Call)
+                    and getattr(n.func, "id", "") == "get_data_pool"
+                ):
                     offenders.append(f"{p.name}:{n.lineno}")
-                if isinstance(n, ast.ImportFrom) and \
-                        n.module and "data_pool" in n.module:
+                if (
+                    isinstance(n, ast.ImportFrom)
+                    and n.module
+                    and "data_pool" in n.module
+                ):
                     offenders.append(f"{p.name}:{n.lineno} (import)")
         assert not offenders, (
             f"a simulator path reaches the live MarketDataPool: "
             f"{offenders}. With the real exchange_id restored its key is "
             f"identical to live's, so the replay would read live candles "
-            f"AND write replay candles into the live cache.")
+            f"AND write replay candles into the live cache."
+        )
 
     def test_set_data_pool_still_has_one_live_caller(self):
         """POSITIVE CONTROL on the premise. If something started wiring
@@ -107,7 +112,8 @@ class TestSimNeverReachesTheLivePool:
                 callers.append(f"{p.name}:{n.lineno}")
         assert callers == ["main.py:735"] or len(callers) == 1, (
             f"set_data_pool now has callers {callers}; verify none of "
-            f"them is a simulator path")
+            f"them is a simulator path"
+        )
 
 
 # --------------------------------------------------------------------
@@ -119,17 +125,20 @@ class TestPhantomEnablementHonoursPersistedState:
         operator's real state. If this ever becomes True somewhere, the
         default below changes meaning."""
         state = json.loads(
-            (Path.home() / ".acervator" / "bot_state.json")
-            .read_text(encoding="utf-8"))
+            (Path.home() / ".acervator" / "bot_state.json").read_text(encoding="utf-8")
+        )
         bots = state.get("bots", {})
         assert bots, "no bots in live state; cannot ground this test"
         entry = {r.get("phantoms_enabled") for r in bots.values()}
         assert entry == {False}, f"entry-level values: {entry}"
-        in_cfg = {(r.get("config") or {}).get("phantoms_enabled", "MISSING")
-                  for r in bots.values()}
+        in_cfg = {
+            (r.get("config") or {}).get("phantoms_enabled", "MISSING")
+            for r in bots.values()
+        }
         assert in_cfg == {"MISSING"}, (
             f"the flag appeared inside config: {in_cfg}; a fix reading "
-            f"config['phantoms_enabled'] would now find something")
+            f"config['phantoms_enabled'] would now find something"
+        )
 
     def test_the_controller_no_longer_hardcodes_phantoms_on(self):
         """SN-57 inverted: the sim forced phantoms ON for all 35, which
@@ -143,11 +152,13 @@ class TestPhantomEnablementHonoursPersistedState:
                 assert seg.strip() not in ("True", "False"), (
                     f"enable_phantoms is hardcoded {seg!r} at line "
                     f"{call.lineno}; it must derive from the persisted "
-                    f"per-bot flag")
+                    f"per-bot flag"
+                )
 
     def test_the_default_comes_from_the_entry_level_flag(self):
         from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-            resolve_phantoms_enabled)
+            resolve_phantoms_enabled,
+        )
 
         assert resolve_phantoms_enabled({"phantoms_enabled": False}) is False
         assert resolve_phantoms_enabled({"phantoms_enabled": True}) is True
@@ -155,7 +166,8 @@ class TestPhantomEnablementHonoursPersistedState:
     def test_a_missing_flag_defaults_off(self):
         """Faithful-to-live is the safe default: 35/35 are False."""
         from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-            resolve_phantoms_enabled)
+            resolve_phantoms_enabled,
+        )
 
         assert resolve_phantoms_enabled({}) is False
 
@@ -163,19 +175,19 @@ class TestPhantomEnablementHonoursPersistedState:
         """Without this, C17 and C46's phantom changes would be
         'verified' by a replay in which _tick never ran."""
         from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-            resolve_phantoms_enabled)
+            resolve_phantoms_enabled,
+        )
 
-        assert resolve_phantoms_enabled({"phantoms_enabled": False},
-                                        force=True) is True
+        assert resolve_phantoms_enabled({"phantoms_enabled": False}, force=True) is True
 
     def test_the_toggle_cannot_silently_force_them_off(self):
         """NEGATIVE CONTROL: an override that can disable is a second
         way to get a phantom-less replay that looks configured."""
         from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-            resolve_phantoms_enabled)
+            resolve_phantoms_enabled,
+        )
 
-        assert resolve_phantoms_enabled({"phantoms_enabled": True},
-                                        force=False) is True
+        assert resolve_phantoms_enabled({"phantoms_enabled": True}, force=False) is True
 
 
 # --------------------------------------------------------------------
@@ -193,9 +205,11 @@ class TestTheSimBotCarriesTheRealVenue:
             if not isinstance(n, ast.Assign):
                 continue
             for t in n.targets:
-                if not (isinstance(t, ast.Subscript)
-                        and isinstance(t.slice, ast.Constant)
-                        and t.slice.value == "exchange_id"):
+                if not (
+                    isinstance(t, ast.Subscript)
+                    and isinstance(t.slice, ast.Constant)
+                    and t.slice.value == "exchange_id"
+                ):
                     continue
                 seg = ast.get_source_segment(src, n.value) or ""
                 # The requirement is that the REAL venue wins when
@@ -209,7 +223,8 @@ class TestTheSimBotCarriesTheRealVenue:
                 # string outright and failed that correct fallback.
                 assert "cfg" in seg or "_real_venue" in seg, (
                     f"line {n.lineno} sets exchange_id without consulting "
-                    f"the config; the real venue is discarded")
+                    f"the config; the real venue is discarded"
+                )
 
     def test_the_real_venue_wins_over_the_sim_id(self):
         """Behavioural, not textual: given a config that names a venue,
@@ -227,14 +242,14 @@ class TestTheSimBotCarriesTheRealVenue:
             (None, "fleet_sim", "fleet_sim"),
         ):
             got = str(real or "").strip() or simid
-            assert got == expected, (
-                f"venue precedence wrong for {real!r}: got {got!r}")
+            assert got == expected, f"venue precedence wrong for {real!r}: got {got!r}"
 
     def test_timeframes_gained_no_sim_key(self):
         """Rule M9: never put a sim identifier in a live table. It would
         silently apply Coinbase's set to a future Kraken fleet."""
-        tf = (REPO_ROOT / "src" / "exchange" / "timeframes.py"
-              ).read_text(encoding="utf-8")
+        tf = (REPO_ROOT / "src" / "exchange" / "timeframes.py").read_text(
+            encoding="utf-8"
+        )
         assert "fleet_sim" not in tf
 
 
@@ -244,26 +259,37 @@ class TestTheSimBotCarriesTheRealVenue:
 class TestSimExchangeServesTheRequestedTimeframe:
     def test_the_timeframe_is_no_longer_discarded(self):
         src = SIM_EXCHANGE.read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "get_ohlcv")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "get_ohlcv"
+        )
         deletes = [n for n in ast.walk(fn) if isinstance(n, ast.Delete)]
         for d in deletes:
             names = {getattr(t, "id", "") for t in d.targets}
             assert "timeframe" not in names, (
                 f"`del timeframe` survives at line {d.lineno}; six "
-                f"phantoms read the identical series")
+                f"phantoms read the identical series"
+            )
 
     def test_the_parameter_is_actually_used(self):
         """Removing the del is not enough — the parameter has to reach
         the lookup, or six phantoms still get one series."""
         src = SIM_EXCHANGE.read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "get_ohlcv")
-        used = [n for n in ast.walk(fn)
-                if isinstance(n, ast.Name) and n.id == "timeframe"
-                and isinstance(n.ctx, ast.Load)]
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "get_ohlcv"
+        )
+        used = [
+            n
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Name)
+            and n.id == "timeframe"
+            and isinstance(n.ctx, ast.Load)
+        ]
         assert used, "the timeframe parameter is never read"
 
 
@@ -281,17 +307,22 @@ class TestPhantomCadenceIsNotWallClockInSim:
         Fixing SN-1 without this leaves the bias just as unfaithful.
         """
         src = PHANTOM.read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_run_loop")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "_run_loop"
+        )
         seg = ast.get_source_segment(src, fn) or ""
         assert "_sim_mode" in seg or "sim" in seg.lower(), (
             "the phantom run loop has no sim branch; ticks are still "
-            "driven by wall clock")
+            "driven by wall clock"
+        )
 
     def test_a_sim_phantom_exposes_a_cursor_driven_tick(self):
         from src.trading.phantom_balance import PhantomBalanceBot
 
         assert hasattr(PhantomBalanceBot, "tick_for_cursor"), (
             "no cursor-driven entry point; the replay cannot advance "
-            "phantoms in step with its own clock")
+            "phantoms in step with its own clock"
+        )

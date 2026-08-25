@@ -67,6 +67,7 @@ pins every record `_all` evicted.
 `test_the_walk_touches_what_arrived_not_the_whole_window` red: the Qt
 GUI thread pays for the length of the session twice a second.
 """
+
 from __future__ import annotations
 
 import json
@@ -108,8 +109,9 @@ def _census(path):
 
 
 def _slots(path):
-    return [i for i in range(1, 9)
-            if (path.parent / ("%s.%d" % (path.name, i))).is_file()]
+    return [
+        i for i in range(1, 9) if (path.parent / ("%s.%d" % (path.name, i))).is_file()
+    ]
 
 
 class _CountingRecord:
@@ -174,8 +176,7 @@ class TestTheBoundExists:
 class TestTheRolloverBoundary:
     def test_rotation_happens_at_the_cap(self, tmp_path):
         p = tmp_path / "session.jsonl"
-        s = SignalSink(path=p, flush_every=1, max_bytes=20_000,
-                       backup_count=5)
+        s = SignalSink(path=p, flush_every=1, max_bytes=20_000, backup_count=5)
         for i in range(300):
             s.emit("ctl", actual=i)
         s.flush()
@@ -187,8 +188,7 @@ class TestTheRolloverBoundary:
         monotonic per sink. A gap in seq is a lost record even if the
         line count happened to work out."""
         p = tmp_path / "session.jsonl"
-        s = SignalSink(path=p, flush_every=1, max_bytes=20_000,
-                       backup_count=5)
+        s = SignalSink(path=p, flush_every=1, max_bytes=20_000, backup_count=5)
         for i in range(300):
             s.emit("ctl", actual=i)
         s.flush()
@@ -216,23 +216,22 @@ class TestTheRolloverBoundary:
             before[i] = f.read_bytes()
         p.write_bytes(b"x" * 30_000)
 
-        s = SignalSink(path=p, flush_every=1, max_bytes=20_000,
-                       backup_count=5)
+        s = SignalSink(path=p, flush_every=1, max_bytes=20_000, backup_count=5)
         s.emit("ctl", actual="crosses a full ladder")
         s.flush()
 
         assert (tmp_path / "session.jsonl.1").read_bytes() == b"x" * 30_000
         for i in range(1, 5):
-            assert (tmp_path / ("session.jsonl.%d" % (i + 1))).read_bytes() \
-                == before[i], "slot %d did not shift to %d" % (i, i + 1)
+            assert (tmp_path / ("session.jsonl.%d" % (i + 1))).read_bytes() == before[
+                i
+            ], "slot %d did not shift to %d" % (i, i + 1)
         assert _slots(p) == [1, 2, 3, 4, 5]
         assert len(p.read_text(encoding="utf-8").strip().splitlines()) == 1
         assert s.health()["rotate_failures"] == 0
 
     def test_nothing_is_kept_beyond_the_backup_count(self, tmp_path):
         p = tmp_path / "session.jsonl"
-        s = SignalSink(path=p, flush_every=1, max_bytes=8_000,
-                       backup_count=3)
+        s = SignalSink(path=p, flush_every=1, max_bytes=8_000, backup_count=3)
         for i in range(400):
             s.emit("ctl", actual=i)
         s.flush()
@@ -253,16 +252,14 @@ class TestTheRolloverBoundary:
 
 
 class TestAFailedRotationKeepsTheRecords:
-    def test_a_rotation_that_raises_still_writes_the_rows(self, tmp_path,
-                                                          monkeypatch):
+    def test_a_rotation_that_raises_still_writes_the_rows(self, tmp_path, monkeypatch):
         """Missing the bound for one cycle is recoverable. Losing the
         batch is not, and a cap that silently stops being enforced is
         the same failure as a sink that silently stops recording — so
         it is counted in `health()`.
         """
         p = tmp_path / "session.jsonl"
-        s = SignalSink(path=p, flush_every=1, max_bytes=20_000,
-                       backup_count=5)
+        s = SignalSink(path=p, flush_every=1, max_bytes=20_000, backup_count=5)
         for i in range(60):
             s.emit("ctl", actual=i)
         s.flush()
@@ -293,8 +290,7 @@ class TestRotationDoesNotBreakAReader:
         both. This asserts it instead of asserting it in prose.
         """
         p = tmp_path / "session.jsonl"
-        s = SignalSink(path=p, flush_every=1, max_bytes=20_000,
-                       backup_count=5)
+        s = SignalSink(path=p, flush_every=1, max_bytes=20_000, backup_count=5)
         for i in range(300):
             s.emit("ctl", actual=i, expected=i)
         s.flush()
@@ -306,13 +302,14 @@ class TestRotationDoesNotBreakAReader:
 
         from_backups = 0
         for i in _slots(p):
-            from_backups += len(read_records(
-                tmp_path / ("session.jsonl.%d" % i)))
-        assert len(current) + from_backups == 300, (
-            "history was destroyed rather than moved")
+            from_backups += len(read_records(tmp_path / ("session.jsonl.%d" % i)))
+        assert (
+            len(current) + from_backups == 300
+        ), "history was destroyed rather than moved"
 
-        assert len(s.since(0)) == 300, (
-            "the Console's in-memory reader was disturbed by a rotation")
+        assert (
+            len(s.since(0)) == 300
+        ), "the Console's in-memory reader was disturbed by a rotation"
 
 
 class TestUnderLoad:
@@ -330,15 +327,15 @@ class TestUnderLoad:
         # than a literal that can drift away from it. Eight is the
         # ceiling `_census` and `_slots` scan to.
         LADDER_DEPTH = 8
-        s = SignalSink(path=p, flush_every=1, max_bytes=40_000,
-                       backup_count=LADDER_DEPTH)
+        s = SignalSink(
+            path=p, flush_every=1, max_bytes=40_000, backup_count=LADDER_DEPTH
+        )
 
         def worker(tid):
             for i in range(120):
                 s.emit("ctl", actual={"t": tid, "i": i})
 
-        threads = [threading.Thread(target=worker, args=(t,))
-                   for t in range(8)]
+        threads = [threading.Thread(target=worker, args=(t,)) for t in range(8)]
         for t in threads:
             t.start()
         for t in threads:
@@ -362,10 +359,12 @@ class TestUnderLoad:
         occupied = _slots(p)
         assert occupied, (
             "no rotation happened, so no rollover was exercised and the "
-            "race this test is about was never reachable")
+            "race this test is about was never reachable"
+        )
         assert len(occupied) < LADDER_DEPTH, (
             "the ladder overflowed: records aged off the end by design, "
-            "so a short `total` below would mean retirement, not loss")
+            "so a short `total` below would mean retirement, not loss"
+        )
         total, distinct = _census(p)
         assert total == 960
         assert distinct == 960
@@ -398,9 +397,11 @@ class TestTheEmitterNeverStops:
 
         assert all(r is not None for r in returned), (
             "emit refused a record; there is a row at which the "
-            "instrument still switches itself off")
-        assert [r.seq for r in returned] == list(range(1, 1001)), (
-            "the sequence is not continuous, so records were skipped")
+            "instrument still switches itself off"
+        )
+        assert [r.seq for r in returned] == list(
+            range(1, 1001)
+        ), "the sequence is not continuous, so records were skipped"
         assert s.health()["emitted"] == 1000
 
     def test_the_disk_still_holds_every_record(self, tmp_path):
@@ -415,8 +416,7 @@ class TestTheEmitterNeverStops:
         assert total == 1000, "records that were emitted never reached disk"
         assert distinct == 1000
 
-    def test_memory_stays_bounded_while_the_disk_keeps_everything(
-            self, tmp_path):
+    def test_memory_stays_bounded_while_the_disk_keeps_everything(self, tmp_path):
         """The cap's SECOND, unstated reason: it was the only bound on
         `_all`. MEASURED at 818.1 retained bytes per record, the
         2,000,000-row cap was a 1,560 MB ceiling, and lifting it
@@ -466,13 +466,15 @@ class TestTheEmitterNeverStops:
         s = SignalSink(path=None, flush_every=1, retain_rows=100)
         for i in range(1000):
             s.emit("ctl", actual=i)
-        s.flush()                      # a no-op: there is no path
+        s.flush()  # a no-op: there is no path
 
         assert s.health()["buffered"] == 100, (
             "the buffer grew without limit while there was nowhere to "
-            "write, which pins every evicted record in memory too")
-        assert s.health()["dropped"] == 900, (
-            "records were lost from the buffer without being counted")
+            "write, which pins every evicted record in memory too"
+        )
+        assert (
+            s.health()["dropped"] == 900
+        ), "records were lost from the buffer without being counted"
 
     def test_the_buffer_stays_bounded_across_a_flush(self, tmp_path):
         """`flush` swaps in a fresh buffer. Swapping in a plain list
@@ -484,14 +486,12 @@ class TestTheEmitterNeverStops:
         for i in range(60):
             s.emit("ctl", actual=i)
         s.flush()
-        s.path = None                  # nowhere to write again
+        s.path = None  # nowhere to write again
         for i in range(500):
             s.emit("ctl", actual=i)
-        assert s.health()["buffered"] == 50, (
-            "the post-flush buffer lost its bound")
+        assert s.health()["buffered"] == 50, "the post-flush buffer lost its bound"
 
-    def test_health_does_not_report_a_cap_that_no_longer_exists(
-            self, tmp_path):
+    def test_health_does_not_report_a_cap_that_no_longer_exists(self, tmp_path):
         """`capped` meant "the emitter has stopped recording". Nothing
         stops it now, so a permanently-False key would be a promise no
         reader could falsify."""
@@ -518,13 +518,22 @@ class TestTheEmitterNeverStops:
         # fails here, which is what the exact set protects, and
         # the new one is an int, so the no-bool rule below still
         # covers it.
-        assert set(health) == {"emitted", "buffered", "retained", "evicted",
-                               "dropped", "rotate_failures", "identities",
-                               "identity_overflow", "duration_rejected",
-                               "path"}
+        assert set(health) == {
+            "emitted",
+            "buffered",
+            "retained",
+            "evicted",
+            "dropped",
+            "rotate_failures",
+            "identities",
+            "identity_overflow",
+            "duration_rejected",
+            "path",
+        }
         assert not any(isinstance(v, bool) for v in health.values()), (
             "a bool in health() is a promise no reader can falsify, "
-            "which is exactly what `capped` was")
+            "which is exactly what `capped` was"
+        )
 
     def test_the_retention_window_cannot_be_zero(self, tmp_path):
         """A window of zero would be a sink that keeps nothing -- the
@@ -556,17 +565,16 @@ class TestSinceCostsWhatArrived:
 
         out = s.since(49_995)
 
-        assert [r._seq for r in out] == [49_996, 49_997, 49_998, 49_999,
-                                         50_000]
+        assert [r._seq for r in out] == [49_996, 49_997, 49_998, 49_999, 50_000]
         # Five arrivals plus the one that stops the walk. A scan of the
         # whole window would read 50,000.
         assert len(tally) <= 12, (
             "since() read %d records to return 5; it is scanning the "
             "whole window, so the GUI thread pays for session length "
-            "on every poll" % len(tally))
+            "on every poll" % len(tally)
+        )
 
-    def test_the_walk_still_returns_everything_when_the_watermark_is_old(
-            self):
+    def test_the_walk_still_returns_everything_when_the_watermark_is_old(self):
         """The early stop must not truncate a caller that has fallen
         behind, or the Console silently skips records."""
         s = SignalSink(path=None, retain_rows=100)

@@ -23,6 +23,7 @@ brief (which said four):
 
 PR-0 records and reports. Nothing carries forward yet.
 """
+
 from __future__ import annotations
 
 import sys
@@ -44,8 +45,10 @@ def _record(bot_id: str, **cfg) -> dict:
         "bot_id": bot_id,
         "config": base,
         "state_when_saved": "idle",
-        "scrumming_state": {"main_lots": [{"qty": 1.0, "price": 100.0}],
-                            "fold_tranches": [{"usd": 5.0}]},
+        "scrumming_state": {
+            "main_lots": [{"qty": 1.0, "price": 100.0}],
+            "fold_tranches": [{"usd": 5.0}],
+        },
     }
 
 
@@ -117,7 +120,7 @@ class TestExplicitDeleteClearsTheLedger:
         assert "bot-x" not in mgr._boot_state_records
 
     def test_unregister_of_an_unknown_id_is_a_noop(self, mgr):
-        mgr.unregister("never-existed")   # must not raise
+        mgr.unregister("never-existed")  # must not raise
 
 
 class TestLedgerHelperIsSafe:
@@ -125,7 +128,7 @@ class TestLedgerHelperIsSafe:
         """It is called from inside except-handlers that are already
         dealing with a failure; it must not add a second one."""
         mgr._restore_ledger = None
-        mgr._ledger_skip("bot-a", "reason")   # must not raise
+        mgr._ledger_skip("bot-a", "reason")  # must not raise
 
 
 class TestImportFailureIsWorseThanASkip:
@@ -156,8 +159,7 @@ class TestImportFailureIsWorseThanASkip:
         inner = getattr(c, "bot", None) or c
         assert getattr(inner, "_state_import_failed", None) is False
 
-    def test_a_failed_import_does_not_register_the_bot(self, mgr,
-                                                       monkeypatch):
+    def test_a_failed_import_does_not_register_the_bot(self, mgr, monkeypatch):
         """v3.24.48 — was `test_failed_scrumming_import_sets_the_flag`,
         which reached into `mgr._bots["bot-a"]` to read the flag. The bot
         is deliberately no longer there.
@@ -175,7 +177,8 @@ class TestImportFailureIsWorseThanASkip:
         mgr.restore_bots_from_state({"bots": {"bot-a": _record("bot-a")}})
         assert "bot-a" not in mgr._bots, (
             "a bot whose state failed to import is registered with "
-            "DEFAULT state; the next save will overwrite its record")
+            "DEFAULT state; the next save will overwrite its record"
+        )
 
     def test_failed_import_is_recorded_in_the_ledger(self, mgr, monkeypatch):
         """The ledger is now the ONLY in-memory trace of the failure,
@@ -197,8 +200,7 @@ class TestImportFailureIsWorseThanASkip:
         mgr.restore_bots_from_state({"bots": {"bot-a": _record("bot-a")}})
         assert "bot-a" in mgr._bots
 
-    def test_the_boot_record_is_still_available_to_carry(self, mgr,
-                                                         monkeypatch):
+    def test_the_boot_record_is_still_available_to_carry(self, mgr, monkeypatch):
         """PR-1 needs the ORIGINAL record, not the defaults now in
         memory. Prove the boot snapshot still holds the real lots."""
         from src.trading.scrumming_bot import ScrummingBot

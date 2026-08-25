@@ -37,6 +37,7 @@ FALSIFICATION — this rule module is wrong if:
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import ast
@@ -76,8 +77,7 @@ def _try_except_pass_shape(node: ast.Try) -> tuple[str, ...] | None:
     if len(node.handlers) != 1:
         return None
     handler = node.handlers[0]
-    if not (len(handler.body) == 1
-            and isinstance(handler.body[0], ast.Pass)):
+    if not (len(handler.body) == 1 and isinstance(handler.body[0], ast.Pass)):
         return None
     # Exception type name
     exc_name = "Exception"
@@ -123,8 +123,7 @@ _LONG_FUNC_THRESHOLD = 200
 def _find_long_functions(tree: ast.AST) -> list[tuple[int, str, int]]:
     hits: list[tuple[int, str, int]] = []
     for node in ast.walk(tree):
-        if not isinstance(
-                node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         end = getattr(node, "end_lineno", None)
         if end is None:
@@ -164,30 +163,51 @@ def scan(target: Path, source: str) -> list[Any]:
         return findings
 
     for line, exc, count in _find_duplicate_try_except(tree):
-        findings.append(Finding(
-            tool="slop", severity="medium",
-            file=str(target), line=line, rule_id="SL001",
-            message=(
-                f"try/except/{exc} with pass body repeats {count}× "
-                "in this file. Factor into a helper or use "
-                "contextlib.suppress().")))
+        findings.append(
+            Finding(
+                tool="slop",
+                severity="medium",
+                file=str(target),
+                line=line,
+                rule_id="SL001",
+                message=(
+                    f"try/except/{exc} with pass body repeats {count}× "
+                    "in this file. Factor into a helper or use "
+                    "contextlib.suppress()."
+                ),
+            )
+        )
 
     for line, name, span in _find_long_functions(tree):
-        findings.append(Finding(
-            tool="slop", severity="low",
-            file=str(target), line=line, rule_id="SL002",
-            message=(
-                f"function {name!r} spans {span} lines "
-                f"(>{_LONG_FUNC_THRESHOLD}). Split candidate.")))
+        findings.append(
+            Finding(
+                tool="slop",
+                severity="low",
+                file=str(target),
+                line=line,
+                rule_id="SL002",
+                message=(
+                    f"function {name!r} spans {span} lines "
+                    f"(>{_LONG_FUNC_THRESHOLD}). Split candidate."
+                ),
+            )
+        )
 
     big = _file_too_big(source)
     if big is not None:
-        findings.append(Finding(
-            tool="slop", severity="low",
-            file=str(target), line=1, rule_id="SL003",
-            message=(
-                f"file spans {big} lines (>{_BIG_FILE_THRESHOLD}). "
-                "Split candidate.")))
+        findings.append(
+            Finding(
+                tool="slop",
+                severity="low",
+                file=str(target),
+                line=1,
+                rule_id="SL003",
+                message=(
+                    f"file spans {big} lines (>{_BIG_FILE_THRESHOLD}). "
+                    "Split candidate."
+                ),
+            )
+        )
 
     return findings
 

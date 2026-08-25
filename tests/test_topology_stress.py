@@ -22,6 +22,7 @@ Mostly the VERDICT logic. A stress report that called a fragile topology
 robust would be worse than no stress test at all — it would launder a
 bad proposal through a process that looks rigorous.
 """
+
 from __future__ import annotations
 
 import sys
@@ -49,8 +50,7 @@ def _rows(n, px=100.0):
     out = []
     for i in range(n):
         px *= 1.0 + (0.012 if i % 3 else -0.009)
-        out.append([_BASE + i * _STEP, px, px * 1.01, px * 0.99,
-                    px * 1.004, 25.0 + i])
+        out.append([_BASE + i * _STEP, px, px * 1.01, px * 0.99, px * 1.004, 25.0 + i])
     return out
 
 
@@ -59,20 +59,23 @@ def _trial(seed, gained, ok=True):
     if not ok:
         t.error = "boom"
         return t
-    t.assets = [AssetOutcome(asset="BTC", symbol="BTC/USD",
-                             base_start=0.0, base_end=gained)]
+    t.assets = [
+        AssetOutcome(asset="BTC", symbol="BTC/USD", base_start=0.0, base_end=gained)
+    ]
     return t
 
 
 def _report(*gains, failed=0):
-    r = StressReport(proposal_id="p", title="t", archetype="a",
-                     assets=["BTC"], proposal_score=50.0)
+    r = StressReport(
+        proposal_id="p", title="t", archetype="a", assets=["BTC"], proposal_score=50.0
+    )
     r.trials = [_trial(i, g) for i, g in enumerate(gains)]
     r.trials += [_trial(900 + i, 0.0, ok=False) for i in range(failed)]
     return r
 
 
 # ── verdicts ─────────────────────────────────────────────────────
+
 
 def test_consistent_accumulation_is_robust():
     assert _report(0.10, 0.11, 0.09).verdict == "ROBUST"
@@ -114,6 +117,7 @@ def test_failures_do_not_discard_surviving_trials():
 
 # ── dispersion semantics ─────────────────────────────────────────
 
+
 def test_single_trial_has_zero_dispersion():
     assert _report(0.10).dispersion == 0.0
 
@@ -136,19 +140,19 @@ def test_dispersion_is_relative_to_magnitude():
 
 # ── outcome arithmetic ───────────────────────────────────────────
 
+
 def test_base_gained_is_end_minus_start():
-    a = AssetOutcome(asset="BTC", symbol="BTC/USD",
-                     base_start=1.0, base_end=1.25)
+    a = AssetOutcome(asset="BTC", symbol="BTC/USD", base_start=1.0, base_end=1.25)
     assert abs(a.base_gained - 0.25) < 1e-12
 
 
 def test_quote_spent_is_positive_when_buying():
-    a = AssetOutcome(asset="BTC", symbol="BTC/USD",
-                     quote_start=1000.0, quote_end=750.0)
+    a = AssetOutcome(asset="BTC", symbol="BTC/USD", quote_start=1000.0, quote_end=750.0)
     assert abs(a.quote_spent - 250.0) < 1e-12
 
 
 # ── noise ────────────────────────────────────────────────────────
+
 
 def test_noise_does_not_mutate_source_rows():
     """Stone Tablet rows must never be modified — the archive is the
@@ -174,8 +178,10 @@ def test_different_seeds_give_different_noise():
 
 def test_noise_amplitude_is_in_the_directed_band():
     from src.gui.simulator_tab.nuclear_candle_source import (
-        _NOISE_MAX_PCT, _NOISE_MIN_PCT,
+        _NOISE_MAX_PCT,
+        _NOISE_MIN_PCT,
     )
+
     for seed in range(20):
         _rowset, pct = _noised_rows(_rows(60), seed=seed)
         assert _NOISE_MIN_PCT <= pct <= _NOISE_MAX_PCT
@@ -190,10 +196,16 @@ def test_noise_preserves_row_count_and_timestamps():
 
 # ── config translation ───────────────────────────────────────────
 
+
 def test_config_shape_matches_the_replay_builder():
-    cfg = _config_for({"asset": "btc", "quote": "usd",
-                       "symbol": "BTC/USD",
-                       "suggested_target_usd": 300.0})
+    cfg = _config_for(
+        {
+            "asset": "btc",
+            "quote": "usd",
+            "symbol": "BTC/USD",
+            "suggested_target_usd": 300.0,
+        }
+    )
     assert cfg["mode"] == "scrumming"
     assert cfg["target_asset"] == "BTC"
     assert cfg["base_currency"] == "USD"
@@ -207,6 +219,7 @@ def test_config_synthesises_a_missing_symbol():
 
 # ── orchestration guards ─────────────────────────────────────────
 
+
 def test_proposal_without_bots_returns_empty_report():
     r = run_topology_stress({"id": "x", "bots": []}, {}, trials=3)
     assert r.trials == []
@@ -216,25 +229,37 @@ def test_proposal_without_bots_returns_empty_report():
 def test_short_history_fails_the_trial_not_the_run():
     """Below the TA warm-up floor a trial would measure warm-up, not
     the topology — so it must fail loudly rather than return a number."""
-    prop = {"id": "x", "title": "t", "archetype": "a", "assets": ["BTC"],
-            "score": 10.0,
-            "bots": [{"asset": "BTC", "quote": "USD",
-                      "symbol": "BTC/USD",
-                      "suggested_target_usd": 100.0}]}
+    prop = {
+        "id": "x",
+        "title": "t",
+        "archetype": "a",
+        "assets": ["BTC"],
+        "score": 10.0,
+        "bots": [
+            {
+                "asset": "BTC",
+                "quote": "USD",
+                "symbol": "BTC/USD",
+                "suggested_target_usd": 100.0,
+            }
+        ],
+    }
     r = run_topology_stress(prop, {"BTC": _rows(10)}, trials=2)
     assert len(r.failed) == 2
-    assert all("warm-up" in t.error or "candles" in t.error
-               for t in r.failed)
+    assert all("warm-up" in t.error or "candles" in t.error for t in r.failed)
 
 
 def test_missing_asset_data_fails_the_trial():
-    prop = {"id": "x", "bots": [{"asset": "NOPE", "quote": "USD",
-                                 "symbol": "NOPE/USD"}]}
+    prop = {
+        "id": "x",
+        "bots": [{"asset": "NOPE", "quote": "USD", "symbol": "NOPE/USD"}],
+    }
     r = run_topology_stress(prop, {}, trials=1)
     assert len(r.failed) == 1
 
 
 # ── the report ───────────────────────────────────────────────────
+
 
 def test_report_leads_with_the_verdict():
     text = "\n".join(format_stress_report(_report(0.10, 0.11)))

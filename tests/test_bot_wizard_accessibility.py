@@ -37,6 +37,7 @@ class asserted below and requires it to report an empty tooltip, an
 empty accessible name and no parent widget. If a bare widget passed
 those, every other assertion in this file would be vacuous.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -134,20 +135,21 @@ class TestOracleDiscriminates:
     measures nothing.
     """
 
-    @pytest.mark.parametrize(
-        "factory", [QComboBox, QListWidget, QPushButton, QWizard])
+    @pytest.mark.parametrize("factory", [QComboBox, QListWidget, QPushButton, QWizard])
     def test_bare_widget_reports_no_text_and_no_parent(self, factory):
         bare = factory()
         try:
             assert bare.toolTip() == "", (
                 f"a bare {factory.__name__} already reports a tooltip, so "
-                "the tooltip assertions below prove nothing")
+                "the tooltip assertions below prove nothing"
+            )
             assert bare.accessibleName() == "", (
-                f"a bare {factory.__name__} already reports an accessible "
-                "name")
+                f"a bare {factory.__name__} already reports an accessible " "name"
+            )
             assert bare.parentWidget() is None, (
                 f"a bare {factory.__name__} already reports a parent, so "
-                "the layout assertions below prove nothing")
+                "the layout assertions below prove nothing"
+            )
         finally:
             # A bare QWizard is a top-level QDialog too. See _destroy.
             _destroy(bare)
@@ -158,14 +160,16 @@ class TestExtractorPoolPage:
 
     def test_page_builds_with_a_layout(self, pool_page):
         assert isinstance(pool_page, bot_wizard.ExtractorPoolPage)
-        assert pool_page.layout() is not None, (
-            "the page has no layout, so nothing it built is visible")
+        assert (
+            pool_page.layout() is not None
+        ), "the page has no layout, so nothing it built is visible"
 
     @pytest.mark.parametrize("attr", sorted(POOL_CONTROLS))
     def test_control_reaches_the_page_layout(self, pool_page, attr):
         control = getattr(pool_page, attr)
-        assert control.parentWidget() is pool_page, (
-            f"{attr} was built but never reached the page's layout")
+        assert (
+            control.parentWidget() is pool_page
+        ), f"{attr} was built but never reached the page's layout"
 
     @pytest.mark.parametrize("attr,phrase", sorted(POOL_CONTROLS.items()))
     def test_control_announces_what_it_does(self, pool_page, attr, phrase):
@@ -173,7 +177,8 @@ class TestExtractorPoolPage:
         assert tip != "", f"{attr} has no tooltip; GUI001 fires again"
         assert phrase in tip, (
             f"{attr} has a tooltip that no longer says what it does; "
-            f"expected the phrase {phrase!r} in {tip!r}")
+            f"expected the phrase {phrase!r} in {tip!r}"
+        )
 
     def test_alt_list_carries_an_accessible_name(self, pool_page):
         assert pool_page._alt_list.accessibleName() == ALT_LIST_ACCESSIBLE_NAME
@@ -183,14 +188,16 @@ class TestBotCreationWizard:
     """The wizard itself: it builds every page and announces itself."""
 
     def test_wizard_builds_every_page(self, wizard):
-        expected = sorted({
-            bot_wizard.PAGE_ASSET,
-            bot_wizard.PAGE_MODE,
-            bot_wizard.PAGE_PARAMS,
-            bot_wizard.PAGE_FOLDING,
-            bot_wizard.PAGE_PHANTOM,
-            bot_wizard.PAGE_EXTRACTOR_POOL,
-        })
+        expected = sorted(
+            {
+                bot_wizard.PAGE_ASSET,
+                bot_wizard.PAGE_MODE,
+                bot_wizard.PAGE_PARAMS,
+                bot_wizard.PAGE_FOLDING,
+                bot_wizard.PAGE_PHANTOM,
+                bot_wizard.PAGE_EXTRACTOR_POOL,
+            }
+        )
         assert sorted(wizard.pageIds()) == expected
         assert wizard.startId() == bot_wizard.PAGE_MODE
 
@@ -203,8 +210,9 @@ class TestBotCreationWizard:
         assert isinstance(pool, bot_wizard.ExtractorPoolPage)
         # QWizard reparents a page onto its own frame, not onto itself,
         # so this asserts "in a layout", not "child of the wizard".
-        assert pool.parentWidget() is not None, (
-            "the Extractor pool page never reached the wizard's layout")
+        assert (
+            pool.parentWidget() is not None
+        ), "the Extractor pool page never reached the wizard's layout"
         assert pool._alt_list.toolTip() != ""
 
 
@@ -216,7 +224,8 @@ class TestGetCoinIcon:
         assert isinstance(icon, QIcon)
         assert not icon.isNull(), (
             "the fallback painter produced an empty icon, so callers get "
-            "a blank square instead of a letter badge")
+            "a blank square instead of a letter badge"
+        )
 
     def test_returns_none_when_qt_is_absent(self, monkeypatch):
         """The no-Qt arm the annotation declares.

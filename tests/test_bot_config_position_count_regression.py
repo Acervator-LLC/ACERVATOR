@@ -17,14 +17,13 @@ Fix landed v3.23.21:
 These pins catch any reintroduction of grid-shape fields into the
 wizard config or the BotConfig dataclass.
 """
+
 from __future__ import annotations
 
 import ast
-import inspect
 from pathlib import Path
 
 import pytest
-
 
 REPO = Path(__file__).resolve().parent.parent
 WIZARD = REPO / "src" / "gui" / "bot_wizard.py"
@@ -42,6 +41,7 @@ class TestBotConfigSurface:
         consumers or update this pin."""
         from src.trading.bot_container import BotConfig
         import dataclasses
+
         field_names = {f.name for f in dataclasses.fields(BotConfig)}
         assert "position_count" not in field_names, (
             "BotConfig has re-acquired position_count field; either "
@@ -53,6 +53,7 @@ class TestBotConfigSurface:
         """Direct sanity check: passing position_count still raises
         TypeError, matching the operator's original error message."""
         from src.trading.bot_container import BotConfig
+
         with pytest.raises(TypeError, match="position_count"):
             BotConfig(
                 exchange_id="coinbase",
@@ -72,6 +73,7 @@ class TestBotConfigSurface:
         TypeError because position_count reached BotConfig.__init__.
         This test was rewritten to lock the new behavior in place."""
         from src.trading.bot_container import make_bot_config, BotMode
+
         cfg = make_bot_config(
             BotMode.SCRUMMING,
             exchange_id="coinbase",
@@ -112,11 +114,13 @@ class TestBotWizardSourcePins:
         # `defaults.get("default_position_count", ...)` (a defaults
         # dict key, not a BotConfig kwarg).
         # We reject: `"position_count": self._positions.value()` shape
-        assert '"position_count":' not in wizard_source or \
-               '"default_position_count"' in wizard_source, (
+        assert (
+            '"position_count":' not in wizard_source
+            or '"default_position_count"' in wizard_source
+        ), (
             'wizard emits raw "position_count" key — grid branch may '
-            'have been reintroduced. Grep bot_wizard.py for the '
-            'exact pattern.'
+            "have been reintroduced. Grep bot_wizard.py for the "
+            "exact pattern."
         )
 
     def test_no_position_distance_pct_kwarg(self, wizard_source):
@@ -139,6 +143,7 @@ class TestBotWizardSourcePins:
         # If someone re-adds `if self._is_grid:` immediately followed
         # by `cfg.update({` — that's the exact pattern we removed.
         import re
+
         m = re.search(
             r"if\s+self\._is_grid\s*:\s*\n\s*cfg\.update\(",
             wizard_source,
@@ -159,16 +164,19 @@ class TestMainWindowScrummingKwargsPin:
     @pytest.fixture(scope="class")
     def main_window_source(self) -> str:
         return (REPO / "src" / "gui" / "main_window.py").read_text(
-            encoding="utf-8", errors="replace",
+            encoding="utf-8",
+            errors="replace",
         )
 
     def test_scrumming_mode_kwargs_no_position_count(self, main_window_source):
         """The SCRUMMING _mode_kwargs block must not include position_count."""
         import re
+
         # Isolate the SCRUMMING branch
         block = re.search(
             r"if _mode == BotMode\.SCRUMMING:\s*\n\s*_mode_kwargs = \{(.*?)\}\s*\n\s*else",
-            main_window_source, re.DOTALL,
+            main_window_source,
+            re.DOTALL,
         )
         assert block, "SCRUMMING _mode_kwargs block not found in main_window.py"
         body = block.group(1)
@@ -176,15 +184,17 @@ class TestMainWindowScrummingKwargsPin:
             'main_window.py SCRUMMING _mode_kwargs re-emits "position_count" '
             "— the v3.23.22 fix has been reverted. This is the branch that "
             "reaches make_bot_config() directly and fires the "
-            'BotConfig.__init__() got an unexpected keyword argument '
+            "BotConfig.__init__() got an unexpected keyword argument "
             '"position_count" runtime error.'
         )
 
     def test_scrumming_mode_kwargs_no_position_distance_pct(self, main_window_source):
         import re
+
         block = re.search(
             r"if _mode == BotMode\.SCRUMMING:\s*\n\s*_mode_kwargs = \{(.*?)\}\s*\n\s*else",
-            main_window_source, re.DOTALL,
+            main_window_source,
+            re.DOTALL,
         )
         assert block
         assert '"position_distance_pct"' not in block.group(1)

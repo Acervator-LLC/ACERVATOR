@@ -24,13 +24,12 @@ proves nothing on its own. The pin below checks the C++ side via
 shiboken's `isValid`, and falls back to the wrapper weakref only when
 shiboken is unavailable.
 """
+
 from __future__ import annotations
 
 import os
 import sys
 from pathlib import Path
-
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -45,6 +44,7 @@ from src.gui.simulator_tab.fleet.sim_visuals import (  # noqa: E402
 
 def _app():
     from PySide6.QtWidgets import QApplication
+
     return QApplication.instance() or QApplication([])
 
 
@@ -63,6 +63,7 @@ def _panel_with_chart():
 
 def _open_dialogs(app):
     from PySide6.QtWidgets import QDialog
+
     return [w for w in app.topLevelWidgets() if isinstance(w, QDialog)]
 
 
@@ -108,15 +109,16 @@ class TestASecondExpandCannotOrphanTheChart:
         try:
             _show_expanded(chart, "Chart")
             app.processEvents()
-            _show_expanded(chart, "Chart")   # the second click
+            _show_expanded(chart, "Chart")  # the second click
             app.processEvents()
 
             for d in _open_dialogs(app):
                 d.close()
             app.processEvents()
 
-            assert chart.parentWidget() is panel, (
-                "the chart was handed back to a dialog, not the panel")
+            assert (
+                chart.parentWidget() is panel
+            ), "the chart was handed back to a dialog, not the panel"
         finally:
             win.close()
             app.processEvents()
@@ -130,8 +132,9 @@ class TestASecondExpandCannotOrphanTheChart:
             app.processEvents()
             _show_expanded(chart, "Chart")
             app.processEvents()
-            assert len(_open_dialogs(app)) - before == 1, (
-                "a second dialog was opened over the first")
+            assert (
+                len(_open_dialogs(app)) - before == 1
+            ), "a second dialog was opened over the first"
         finally:
             for d in _open_dialogs(app):
                 d.close()
@@ -152,9 +155,9 @@ class TestASecondExpandCannotOrphanTheChart:
 
             _show_expanded(chart, "Chart")
             app.processEvents()
-            assert chart.parentWidget() is not panel, (
-                "Expand stopped working after the first use"
-            )
+            assert (
+                chart.parentWidget() is not panel
+            ), "Expand stopped working after the first use"
         finally:
             for d in _open_dialogs(app):
                 d.close()
@@ -182,15 +185,18 @@ class TestTheDialogIsDestroyed:
 
             try:
                 import shiboken6
+
                 alive = shiboken6.isValid(dlg)
             except Exception:
                 import weakref
+
                 ref = weakref.ref(dlg)
                 del dlg
                 alive = ref() is not None
             assert not alive, (
                 "the dialog survived its close; WA_DeleteOnClose is not "
-                "set and each Expand leaks one")
+                "set and each Expand leaks one"
+            )
         finally:
             win.close()
             app.processEvents()
@@ -205,18 +211,23 @@ class TestTheGuardIsStructural:
         import src.gui.simulator_tab.fleet.sim_visuals as m
 
         src = Path(m.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.FunctionDef)
-                  and n.name == "_show_expanded")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.FunctionDef) and n.name == "_show_expanded"
+        )
         # An early return guarding re-entry must exist before the
         # QDialog is constructed.
-        ctor = [n.lineno for n in ast.walk(fn) if isinstance(n, ast.Call)
-                and getattr(n.func, "id", "") == "QDialog"]
-        rets = [n.lineno for n in ast.walk(fn)
-                if isinstance(n, ast.Return)]
+        ctor = [
+            n.lineno
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "QDialog"
+        ]
+        rets = [n.lineno for n in ast.walk(fn) if isinstance(n, ast.Return)]
         assert ctor, "QDialog construction not found"
-        assert rets and min(rets) < min(ctor), (
-            "no early return guards dialog construction")
+        assert rets and min(rets) < min(
+            ctor
+        ), "no early return guards dialog construction"
 
     def test_delete_on_close_is_set(self):
         import ast
@@ -224,8 +235,10 @@ class TestTheGuardIsStructural:
         import src.gui.simulator_tab.fleet.sim_visuals as m
 
         src = Path(m.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.FunctionDef)
-                  and n.name == "_show_expanded")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.FunctionDef) and n.name == "_show_expanded"
+        )
         seg = ast.get_source_segment(src, fn) or ""
         assert "WA_DeleteOnClose" in seg

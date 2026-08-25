@@ -30,6 +30,7 @@ The invariant is *yields per candle*, not wall-clock speed. Wall-clock is
 machine- and load-dependent and would make this test flaky; yields/candle
 is deterministic and is the quantity that multiplies by the pump period.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -74,7 +75,8 @@ def test_rapid_calls_collapse_to_one_yield():
     asyncio.run(run())
     assert c.progress.yields_emitted == 0, (
         f"{c.progress.yields_emitted} yields for 35 back-to-back bots; "
-        "under the GUI pump each costs ~50 ms")
+        "under the GUI pump each costs ~50 ms"
+    )
 
 
 def test_a_yield_happens_once_the_budget_elapses():
@@ -95,9 +97,9 @@ def test_budget_resets_after_yielding():
     c._last_yield = time.perf_counter() - (_YIELD_BUDGET_S * 2)
 
     async def run():
-        await c._maybe_yield()   # yields, resets
+        await c._maybe_yield()  # yields, resets
         for _ in range(20):
-            await c._maybe_yield()   # all inside the fresh budget
+            await c._maybe_yield()  # all inside the fresh budget
 
     asyncio.run(run())
     assert c.progress.yields_emitted == 1
@@ -129,25 +131,28 @@ def test_yields_per_candle_beats_the_old_count_scheme():
     # Upper bound from the budget itself: at most one yield per 20 ms.
     ceiling = (elapsed / _YIELD_BUDGET_S) / candles + 0.01
     assert per_candle <= ceiling, (
-        f"{per_candle:.4f} yields/candle exceeds the {ceiling:.4f} "
-        "budget ceiling")
+        f"{per_candle:.4f} yields/candle exceeds the {ceiling:.4f} " "budget ceiling"
+    )
     assert per_candle < 5.0, (
         f"{per_candle:.4f} yields/candle is no better than the old "
-        "count-based scheme (5.0 at 35 bots)")
+        "count-based scheme (5.0 at 35 bots)"
+    )
 
 
 def test_old_constant_is_gone():
     """_YIELD_EVERY_N_BOTS bought GUI responsiveness at 5x the replay's
     throughput. It must not come back."""
-    src = (REPO / "src" / "gui" / "simulator_tab" / "fleet"
-           / "fleet_replay_controller.py").read_text(encoding="utf-8")
+    src = (
+        REPO / "src" / "gui" / "simulator_tab" / "fleet" / "fleet_replay_controller.py"
+    ).read_text(encoding="utf-8")
     assert "_YIELD_EVERY_N_BOTS = " not in src
 
 
 def test_counter_is_persisted_to_the_run_log():
     """Diagnosing this cost a hand-derivation across 62 run directories
     because the rate was never recorded. It is recorded now."""
-    src = (REPO / "src" / "gui" / "simulator_tab" / "fleet"
-           / "fleet_replay_controller.py").read_text(encoding="utf-8")
+    src = (
+        REPO / "src" / "gui" / "simulator_tab" / "fleet" / "fleet_replay_controller.py"
+    ).read_text(encoding="utf-8")
     assert '"yields_per_candle"' in src
     assert '"yields_emitted"' in src

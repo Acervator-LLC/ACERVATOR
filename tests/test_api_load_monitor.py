@@ -6,21 +6,22 @@ should_allow_new_phantom_set gating against the 75 % threshold.
 Uses a stub APIInteractionLog so tests don't depend on the process-wide
 singleton or the real record() pipeline.
 """
+
 from __future__ import annotations
 
 import sys
 import time
 from pathlib import Path
 
-import pytest
-
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from src.exchange.api_load_monitor import (  # noqa: E402
-    APILoadMonitor, LoadReading,
-    DEFAULT_CEILING_CPM, DEFAULT_SAFETY_PCT,
+    APILoadMonitor,
+    LoadReading,
+    DEFAULT_CEILING_CPM,
+    DEFAULT_SAFETY_PCT,
     PHANTOM_CPM_ESTIMATE_PER_TF,
     get_load_monitor,
 )
@@ -74,10 +75,8 @@ class TestSample:
     def test_load_score_bounded_at_1(self):
         # Ceiling 600 CPM; 1000 entries in 60 s = 1000 CPM → capped at 1.0
         now = time.time()
-        entries = [_mk_entry("coinbase", now - i * 0.05)
-                   for i in range(1000)]
-        mon = _monitor_with_entries(
-            entries, window_seconds=60.0, ceiling_cpm=600.0)
+        entries = [_mk_entry("coinbase", now - i * 0.05) for i in range(1000)]
+        mon = _monitor_with_entries(entries, window_seconds=60.0, ceiling_cpm=600.0)
         r = mon.sample("coinbase")
         assert r.load_score == 1.0
 
@@ -92,8 +91,7 @@ class TestSample:
     def test_p95_latency_computed(self):
         now = time.time()
         # 20 entries at 100 ms, one big 1000 ms outlier
-        entries = [_mk_entry("coinbase", now - i, elapsed_ms=100.0)
-                   for i in range(20)]
+        entries = [_mk_entry("coinbase", now - i, elapsed_ms=100.0) for i in range(20)]
         entries.append(_mk_entry("coinbase", now - 0.5, elapsed_ms=1000.0))
         mon = _monitor_with_entries(entries)
         r = mon.sample("coinbase")
@@ -103,8 +101,9 @@ class TestSample:
 
     def test_other_exchange_ignored(self):
         now = time.time()
-        entries = ([_mk_entry("coinbase", now - i) for i in range(5)]
-                   + [_mk_entry("binance", now - i) for i in range(50)])
+        entries = [_mk_entry("coinbase", now - i) for i in range(5)] + [
+            _mk_entry("binance", now - i) for i in range(50)
+        ]
         mon = _monitor_with_entries(entries)
         assert mon.sample("coinbase").call_count == 5
 
@@ -126,8 +125,7 @@ class TestShouldAllowNewPhantomSet:
     def test_hot_exchange_refuses_new_set(self):
         # 500 CPM current → adding 6 = 506, threshold = 450 → refused
         now = time.time()
-        entries = [_mk_entry("coinbase", now - i * 0.12)
-                   for i in range(500)]
+        entries = [_mk_entry("coinbase", now - i * 0.12) for i in range(500)]
         mon = _monitor_with_entries(entries, window_seconds=60.0)
         allow, reason = mon.should_allow_new_phantom_set("coinbase", 6)
         assert allow is False
@@ -138,21 +136,19 @@ class TestShouldAllowNewPhantomSet:
         # ceiling=600, safety=0.75 → threshold=450
         # If current=445 and tf_count=5 → projected=450 → equal, allowed
         now = time.time()
-        entries = [_mk_entry("coinbase", now - i * 0.135)
-                   for i in range(445)]
+        entries = [_mk_entry("coinbase", now - i * 0.135) for i in range(445)]
         mon = _monitor_with_entries(entries, window_seconds=60.0)
         allow, _r = mon.should_allow_new_phantom_set(
-            "coinbase", int(5 / PHANTOM_CPM_ESTIMATE_PER_TF))
+            "coinbase", int(5 / PHANTOM_CPM_ESTIMATE_PER_TF)
+        )
         # At the boundary, still allowed.
         assert allow is True
 
     def test_custom_safety_pct_applied(self):
         # ceiling=600, custom safety=0.5 → threshold=300
         now = time.time()
-        entries = [_mk_entry("coinbase", now - i * 0.2)
-                   for i in range(299)]
-        mon = _monitor_with_entries(
-            entries, window_seconds=60.0, safety_pct=0.5)
+        entries = [_mk_entry("coinbase", now - i * 0.2) for i in range(299)]
+        mon = _monitor_with_entries(entries, window_seconds=60.0, safety_pct=0.5)
         # Just under threshold, adding 5 phantoms would push over
         allow, _r = mon.should_allow_new_phantom_set("coinbase", 5)
         assert allow is False

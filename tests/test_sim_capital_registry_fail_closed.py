@@ -29,6 +29,7 @@ Defence in depth is the point. The factory raising is the first line; a
 sim bot that somehow reaches `_crr()` without a registry must still
 refuse rather than resolve the live one.
 """
+
 from __future__ import annotations
 
 import sys
@@ -60,7 +61,8 @@ class TestTheFactoryFailsClosed:
         """POSITIVE CONTROL. If the factory cannot produce a registry at
         all, every abort assertion below passes for the wrong reason."""
         from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-            _make_sim_capital_registry)
+            _make_sim_capital_registry,
+        )
 
         reg = _make_sim_capital_registry()
         assert reg is not None
@@ -68,7 +70,8 @@ class TestTheFactoryFailsClosed:
     def test_the_private_registry_does_not_autosave(self):
         """Autosave is what would reach the operator's tree."""
         from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-            _make_sim_capital_registry)
+            _make_sim_capital_registry,
+        )
 
         reg = _make_sim_capital_registry()
         assert getattr(reg, "_autosave", False) is False
@@ -76,7 +79,8 @@ class TestTheFactoryFailsClosed:
     def test_the_private_registry_is_not_the_singleton(self):
         from src.trading.capital_reservation import get_registry
         from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-            _make_sim_capital_registry)
+            _make_sim_capital_registry,
+        )
 
         assert _make_sim_capital_registry() is not get_registry()
 
@@ -85,7 +89,8 @@ class TestTheFactoryFailsClosed:
         import tempfile
 
         from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-            _make_sim_capital_registry)
+            _make_sim_capital_registry,
+        )
 
         def _boom(*a, **k):
             raise OSError("no space left on device")
@@ -93,19 +98,21 @@ class TestTheFactoryFailsClosed:
         monkeypatch.setattr(tempfile, "mkdtemp", _boom)
         with pytest.raises(RuntimeError) as ei:
             _make_sim_capital_registry()
-        assert "isolation" in str(ei.value).lower(), (
-            "the abort must name WHY, not just fail")
+        assert (
+            "isolation" in str(ei.value).lower()
+        ), "the abort must name WHY, not just fail"
 
     def test_the_abort_leaves_the_live_file_untouched(self, monkeypatch):
         import tempfile
 
         from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-            _make_sim_capital_registry)
+            _make_sim_capital_registry,
+        )
 
         before = _live_fingerprint()
         monkeypatch.setattr(
-            tempfile, "mkdtemp",
-            lambda *a, **k: (_ for _ in ()).throw(OSError("boom")))
+            tempfile, "mkdtemp", lambda *a, **k: (_ for _ in ()).throw(OSError("boom"))
+        )
         with pytest.raises(RuntimeError):
             _make_sim_capital_registry()
         assert _live_fingerprint() == before
@@ -124,15 +131,14 @@ class TestInstantiateBotRefusesWithoutARegistry:
         refusal is therefore pinned three ways: the return value here,
         the operator-visible reason below, and the structural check that
         the guard precedes the try block."""
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-            _instantiate_bot)
+        from src.gui.simulator_tab.fleet.fleet_replay_controller import _instantiate_bot
 
         before = _live_fingerprint()
-        bot = _instantiate_bot({"symbol": "BTC/USD", "bot_id": "x"},
-                               object(), None)
+        bot = _instantiate_bot({"symbol": "BTC/USD", "bot_id": "x"}, object(), None)
         assert bot is None, (
             "a sim bot must not be constructed without an injected "
-            "capital registry — it would resolve the live singleton")
+            "capital registry — it would resolve the live singleton"
+        )
         assert _live_fingerprint() == before
 
     def test_the_guard_runs_before_the_blanket_except(self):
@@ -146,16 +152,19 @@ class TestInstantiateBotRefusesWithoutARegistry:
         import src.gui.simulator_tab.fleet.fleet_replay_controller as m
 
         src = Path(m.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.FunctionDef)
-                  and n.name == "_instantiate_bot")
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.FunctionDef) and n.name == "_instantiate_bot"
+        )
         body = [s for s in fn.body if not isinstance(s, ast.Expr)]
         first = body[0]
         assert isinstance(first, ast.If), (
-            "the registry guard is not the first statement in "
-            "_instantiate_bot")
-        first_try = next((i for i, s in enumerate(fn.body)
-                          if isinstance(s, ast.Try)), None)
+            "the registry guard is not the first statement in " "_instantiate_bot"
+        )
+        first_try = next(
+            (i for i, s in enumerate(fn.body) if isinstance(s, ast.Try)), None
+        )
         assert first_try is None or first.lineno < fn.body[first_try].lineno
 
     def test_the_refusal_is_not_silent(self):
@@ -176,18 +185,18 @@ class TestInstantiateBotRefusesWithoutARegistry:
         h = _Capture(level=logging.WARNING)
         m.logger.addHandler(h)
         try:
-            m._instantiate_bot({"symbol": "BTC/USD", "bot_id": "x"},
-                               object(), None)
+            m._instantiate_bot({"symbol": "BTC/USD", "bot_id": "x"}, object(), None)
         finally:
             m.logger.removeHandler(h)
 
         blob = " ".join(records).lower()
         assert "registry" in blob, (
-            "the operator must be told WHY the bot was skipped; got: "
-            f"{records}")
+            "the operator must be told WHY the bot was skipped; got: " f"{records}"
+        )
         assert "reservation_state" in blob, (
             "the message should name the live file at risk, so the "
-            "operator can weigh the refusal")
+            "operator can weigh the refusal"
+        )
 
 
 class TestCrrBackstop:
@@ -210,7 +219,8 @@ class TestCrrBackstop:
         got = self._bot(sim_mode=True)._crr()
         assert got is not get_registry(), (
             "a sim bot resolved the process-wide registry that autosaves "
-            "to the operator's reservation_state.json")
+            "to the operator's reservation_state.json"
+        )
         assert got is None
 
     def test_a_live_bot_still_gets_the_singleton(self):

@@ -27,13 +27,12 @@ Ordered before C04 deliberately: the broken wire-canvas overlay is
 currently the only thing shielding the default List view from these
 gestures, so fixing the overlay first would ARM them.
 """
+
 from __future__ import annotations
 
 import ast
 import sys
 from pathlib import Path
-
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -44,22 +43,26 @@ VIZ = REPO_ROOT / "src" / "gui" / "bot_visualizer.py"
 
 def _fn(name: str) -> ast.FunctionDef:
     tree = ast.parse(VIZ.read_text(encoding="utf-8"))
-    return next(n for n in ast.walk(tree)
-                if isinstance(n, ast.FunctionDef) and n.name == name)
+    return next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name
+    )
 
 
 def _calls(fn: ast.FunctionDef, attr: str) -> list[int]:
-    return [n.lineno for n in ast.walk(fn)
-            if isinstance(n, ast.Call)
-            and getattr(n.func, "attr", "") == attr]
+    return [
+        n.lineno
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == attr
+    ]
 
 
 class TestEveryRemovalIsGuarded:
     def test_the_extractor_finds_the_removals(self):
         """Positive control: if this walk found no remove_wire calls,
         every test below would pass by finding nothing to guard."""
-        assert _calls(_fn("_finish_wire_drag"), "remove_wire"), \
-            "no remove_wire calls found in _finish_wire_drag"
+        assert _calls(
+            _fn("_finish_wire_drag"), "remove_wire"
+        ), "no remove_wire calls found in _finish_wire_drag"
 
     def test_no_removal_runs_without_a_confirmation(self):
         """THE invariant. Every remove_wire in the drag handler must be
@@ -69,16 +72,19 @@ class TestEveryRemovalIsGuarded:
         confirms = _calls(fn, "_confirm_wire_removal")
         assert len(confirms) >= len(removals), (
             f"{len(removals)} remove_wire call(s) but only "
-            f"{len(confirms)} confirmation(s) in _finish_wire_drag")
+            f"{len(confirms)} confirmation(s) in _finish_wire_drag"
+        )
         for r in removals:
-            assert any(c < r for c in confirms), (
-                f"remove_wire at line {r} has no confirmation before it")
+            assert any(
+                c < r for c in confirms
+            ), f"remove_wire at line {r} has no confirmation before it"
 
     def test_the_helper_exists_and_returns_a_decision(self):
         fn = _fn("_confirm_wire_removal")
         returns = [n for n in ast.walk(fn) if isinstance(n, ast.Return)]
-        assert len(returns) >= 2, \
-            "confirmation helper must be able to both accept and refuse"
+        assert (
+            len(returns) >= 2
+        ), "confirmation helper must be able to both accept and refuse"
 
 
 class TestTheDialogDefaultsToSafety:
@@ -86,25 +92,30 @@ class TestTheDialogDefaultsToSafety:
         """A stray Return keypress must not destroy a wire. Mirrors the
         Disconnect All dialog, which already defaulted to No."""
         src = ast.get_source_segment(
-            VIZ.read_text(encoding="utf-8"), _fn("_confirm_wire_removal"))
-        assert "QMessageBox.No," in src, \
-            "confirmation does not pass No as the default button"
+            VIZ.read_text(encoding="utf-8"), _fn("_confirm_wire_removal")
+        )
+        assert (
+            "QMessageBox.No," in src
+        ), "confirmation does not pass No as the default button"
 
     def test_an_unshowable_dialog_refuses(self):
         """If the dialog cannot be shown, the destructive action must
         NOT proceed unconfirmed. Fail closed."""
         src = ast.get_source_segment(
-            VIZ.read_text(encoding="utf-8"), _fn("_confirm_wire_removal"))
-        tail = src[src.index("except"):]
-        assert "return False" in tail, \
-            "an unshowable confirmation must refuse, not proceed"
+            VIZ.read_text(encoding="utf-8"), _fn("_confirm_wire_removal")
+        )
+        tail = src[src.index("except") :]
+        assert (
+            "return False" in tail
+        ), "an unshowable confirmation must refuse, not proceed"
 
     def test_the_pct_is_shown(self):
         """The routing percentage is the part that cannot be
         reconstructed from memory — the operator knows which bots were
         wired, rarely at what rate."""
         src = ast.get_source_segment(
-            VIZ.read_text(encoding="utf-8"), _fn("_confirm_wire_removal"))
+            VIZ.read_text(encoding="utf-8"), _fn("_confirm_wire_removal")
+        )
         assert "pct" in src
 
 
@@ -119,22 +130,27 @@ class TestLoggerIsBound:
 
     def test_module_binds_logger(self):
         import src.gui.bot_visualizer as bv
+
         assert hasattr(bv, "logger"), (
             "bot_visualizer uses logger.* but never binds it; every "
-            "such call is a NameError waiting inside an except handler")
+            "such call is a NameError waiting inside an except handler"
+        )
 
     def test_every_logger_use_has_a_binding(self):
         """Generalised: any module-level name used as `logger.x` must be
         bound in the module."""
         tree = ast.parse(VIZ.read_text(encoding="utf-8"))
-        uses = [n for n in ast.walk(tree)
-                if isinstance(n, ast.Attribute)
-                and isinstance(n.value, ast.Name)
-                and n.value.id == "logger"]
+        uses = [
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Attribute)
+            and isinstance(n.value, ast.Name)
+            and n.value.id == "logger"
+        ]
         assert uses, "positive control: no logger.* uses found"
         bound = any(
             isinstance(n, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == "logger"
-                    for t in n.targets)
-            for n in tree.body)
+            and any(isinstance(t, ast.Name) and t.id == "logger" for t in n.targets)
+            for n in tree.body
+        )
         assert bound, f"{len(uses)} logger.* uses, no module-level binding"

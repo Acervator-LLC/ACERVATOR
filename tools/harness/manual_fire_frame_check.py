@@ -37,6 +37,7 @@ whose defaults resolve into the operator's runtime tree.
 
     python -m tools.harness.manual_fire_frame_check [--json] [--threshold 1.0]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -67,28 +68,35 @@ def analyse(state: dict) -> list[dict]:
         d_cfg = position - t_cfg
         d_live = position - t_live
         gap = abs(d_cfg - d_live)
-        out.append({
-            "symbol": str(cfg.get("symbol", "?")),
-            "position": position,
-            "target_config": t_cfg,
-            "target_live": t_live,
-            "delta_if_config": d_cfg,
-            "delta_if_live": d_live,
-            "unexplained_usd": gap,
-            # A sign flip means the two readings disagree on whether to
-            # buy or sell -- not merely on how much.
-            "direction_inverts": (d_cfg * d_live) < 0,
-            "gap_pct_of_order": (gap / abs(d_cfg) * 100.0) if abs(d_cfg) > 1e-9
-            else float("inf"),
-        })
+        out.append(
+            {
+                "symbol": str(cfg.get("symbol", "?")),
+                "position": position,
+                "target_config": t_cfg,
+                "target_live": t_live,
+                "delta_if_config": d_cfg,
+                "delta_if_live": d_live,
+                "unexplained_usd": gap,
+                # A sign flip means the two readings disagree on whether to
+                # buy or sell -- not merely on how much.
+                "direction_inverts": (d_cfg * d_live) < 0,
+                "gap_pct_of_order": (
+                    (gap / abs(d_cfg) * 100.0) if abs(d_cfg) > 1e-9 else float("inf")
+                ),
+            }
+        )
     return out
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--threshold", type=float, default=0.005,
-                    help="USD gap above which a bot counts as diverging")
+    ap.add_argument(
+        "--threshold",
+        type=float,
+        default=0.005,
+        help="USD gap above which a bot counts as diverging",
+    )
     ap.add_argument("--state", type=Path, default=None)
     args = ap.parse_args(argv)
 
@@ -105,38 +113,43 @@ def main(argv: list[str] | None = None) -> int:
     # field layout moved and this tool is measuring nothing -- which
     # would otherwise render as "no divergence, all clear".
     if not any(r["position"] > 0 for r in rows):
-        print("INSTRUMENT FAILURE: every position recomputed to zero. The "
-              "field layout has changed and this tool is measuring "
-              "nothing. Do NOT read the output below as a pass.",
-              file=sys.stderr)
+        print(
+            "INSTRUMENT FAILURE: every position recomputed to zero. The "
+            "field layout has changed and this tool is measuring "
+            "nothing. Do NOT read the output below as a pass.",
+            file=sys.stderr,
+        )
         return 3
 
     if args.json:
         print(json.dumps(rows, indent=2))
-        return 1 if any(r["unexplained_usd"] > args.threshold
-                        for r in rows) else 0
+        return 1 if any(r["unexplained_usd"] > args.threshold for r in rows) else 0
 
     live = sum(1 for r in rows if r["position"] > 0)
     print(f"positive control: {live}/{len(rows)} bots have a live position\n")
-    print(f"{'SYMBOL':<12}{'position':>10}{'@config':>10}{'@live':>10}"
-          f"{'unexplained':>13}")
+    print(
+        f"{'SYMBOL':<12}{'position':>10}{'@config':>10}{'@live':>10}"
+        f"{'unexplained':>13}"
+    )
     for r in sorted(rows, key=lambda x: -x["unexplained_usd"]):
         flag = "  <-- INVERTS direction" if r["direction_inverts"] else ""
-        print(f"{r['symbol']:<12}{r['position']:>10.2f}"
-              f"{r['delta_if_config']:>+10.2f}{r['delta_if_live']:>+10.2f}"
-              f"{r['unexplained_usd']:>13.2f}{flag}")
+        print(
+            f"{r['symbol']:<12}{r['position']:>10.2f}"
+            f"{r['delta_if_config']:>+10.2f}{r['delta_if_live']:>+10.2f}"
+            f"{r['unexplained_usd']:>13.2f}{flag}"
+        )
 
     over = [r for r in rows if r["unexplained_usd"] > args.threshold]
     inverts = [r for r in rows if r["direction_inverts"]]
     total = sum(r["unexplained_usd"] for r in rows)
     print(f"\nbots diverging >${args.threshold:.3f}: {len(over)} of {len(rows)}")
-    print(f"bots where the frames give OPPOSITE trade directions: "
-          f"{len(inverts)}")
+    print(f"bots where the frames give OPPOSITE trade directions: " f"{len(inverts)}")
     for r in inverts:
-        print(f"   {r['symbol']:<12} @config {r['delta_if_config']:+.2f} "
-              f"vs @live {r['delta_if_live']:+.2f}")
-    print(f"total unexplained across one full-fleet Manual Fire: "
-          f"${total:,.2f}")
+        print(
+            f"   {r['symbol']:<12} @config {r['delta_if_config']:+.2f} "
+            f"vs @live {r['delta_if_live']:+.2f}"
+        )
+    print(f"total unexplained across one full-fleet Manual Fire: " f"${total:,.2f}")
     print("\nThis measures the disagreement, not which frame is correct.")
     return 1 if over else 0
 

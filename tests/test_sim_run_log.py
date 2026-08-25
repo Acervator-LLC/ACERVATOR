@@ -9,6 +9,7 @@ The tests that matter most are the SEPARATION ones. A sim row must
 never be mistakable for a live trade, and this log must never write
 into the live tree — that is the failure it exists downstream of.
 """
+
 from __future__ import annotations
 
 import json
@@ -37,6 +38,7 @@ def _log(tmp_path, **kw) -> SimRunLog:
 
 # ── separation from live ─────────────────────────────────────────
 
+
 def test_default_root_is_sim_tree_not_live():
     """The live tree is ~/.acervator_logs/trade/. This must not be
     anywhere inside it."""
@@ -64,6 +66,7 @@ def test_every_gate_row_marks_itself_sim(tmp_path):
 def test_refuses_to_attach_to_live_bot_bus(tmp_path):
     """Attaching to a live bot would write live decisions into the
     sim log — the mirror image of the contamination we just fixed."""
+
     class _Bus:
         def subscribe(self, *_a, **_k):
             raise AssertionError("must not subscribe")
@@ -107,6 +110,7 @@ def test_attach_returns_false_without_bus(tmp_path):
 
 # ── master-clock timestamps ──────────────────────────────────────
 
+
 def test_trade_uses_master_clock_not_wall(tmp_path):
     """Wall-clock stamps would make sim rows uncomparable to live
     history — the defect v3.24.5 fixed inside the sim exchange."""
@@ -129,15 +133,25 @@ def test_gate_uses_master_clock(tmp_path):
 
 # ── schema parity with live ──────────────────────────────────────
 
+
 def test_trade_row_mirrors_live_schema(tmp_path):
     log = _log(tmp_path)
     rid = log.start_run()
-    log.record_trade("BTC/USD", "sell", 2.0, 50.0,
-                     bot_id="b", action="SCRUM", usd=100.0)
+    log.record_trade(
+        "BTC/USD", "sell", 2.0, 50.0, bot_id="b", action="SCRUM", usd=100.0
+    )
     log.finish_run()
     d = load_run_trades(rid, tmp_path)[0]["data"]
-    for k in ("action", "symbol", "side", "amount", "price",
-              "status", "usd", "operator_initiated"):
+    for k in (
+        "action",
+        "symbol",
+        "side",
+        "amount",
+        "price",
+        "status",
+        "usd",
+        "operator_initiated",
+    ):
         assert k in d, f"live trade.log field {k!r} missing"
     assert d["side"] == "SELL", "side must be upper-cased like live"
 
@@ -145,29 +159,42 @@ def test_trade_row_mirrors_live_schema(tmp_path):
 def test_gate_row_mirrors_live_schema(tmp_path):
     log = _log(tmp_path)
     rid = log.start_run()
-    log.record_gate("b", "BTC/USD", {
-        "scrum_armed": True, "fold_armed": False,
-        "scrum_blockers": ["a"], "fold_blockers": [],
-        "scrum_fixture": {"x": 1}, "fold_fixture": {"y": 2}})
+    log.record_gate(
+        "b",
+        "BTC/USD",
+        {
+            "scrum_armed": True,
+            "fold_armed": False,
+            "scrum_blockers": ["a"],
+            "fold_blockers": [],
+            "scrum_fixture": {"x": 1},
+            "fold_fixture": {"y": 2},
+        },
+    )
     log.finish_run()
     d = load_run_gates(rid, tmp_path)[0]["data"]
-    for k in ("symbol", "scrum_armed", "fold_armed",
-              "scrum_blockers", "fold_blockers",
-              "scrum_fixture", "fold_fixture"):
+    for k in (
+        "symbol",
+        "scrum_armed",
+        "fold_armed",
+        "scrum_blockers",
+        "fold_blockers",
+        "scrum_fixture",
+        "fold_fixture",
+    ):
         assert k in d, f"live gate.log field {k!r} missing"
 
 
 def test_candle_address_is_carried(tmp_path):
     log = _log(tmp_path)
     rid = log.start_run()
-    log.record_trade("BTC/USD", "SELL", 1.0, 1.0,
-                     candle_address="001234_BTC")
+    log.record_trade("BTC/USD", "SELL", 1.0, 1.0, candle_address="001234_BTC")
     log.finish_run()
-    assert load_run_trades(rid, tmp_path)[0][
-        "candle_address"] == "001234_BTC"
+    assert load_run_trades(rid, tmp_path)[0]["candle_address"] == "001234_BTC"
 
 
 # ── buffering + durability ───────────────────────────────────────
+
 
 def test_rows_flush_at_threshold(tmp_path):
     log = _log(tmp_path, flush_every=3)
@@ -183,7 +210,7 @@ def test_finish_flushes_partial_buffer(tmp_path):
     log = _log(tmp_path, flush_every=1000)
     rid = log.start_run()
     log.record_trade("BTC/USD", "SELL", 1.0, 1.0)
-    assert load_run_trades(rid, tmp_path) == []   # still buffered
+    assert load_run_trades(rid, tmp_path) == []  # still buffered
     log.finish_run()
     assert len(load_run_trades(rid, tmp_path)) == 1
 
@@ -198,6 +225,7 @@ def test_explicit_flush_works(tmp_path):
 
 
 # ── lifecycle guards ─────────────────────────────────────────────
+
 
 def test_records_ignored_before_start(tmp_path):
     log = _log(tmp_path)
@@ -230,14 +258,15 @@ def test_run_id_is_unique_per_run(tmp_path):
 
 # ── meta + index ─────────────────────────────────────────────────
 
+
 def test_meta_records_config_and_summary(tmp_path):
     log = _log(tmp_path)
     rid = log.start_run(config={"bots": 27})
     log.record_trade("BTC/USD", "SELL", 1.0, 1.0)
     log.finish_run(summary={"candles_played": 500})
     meta = json.loads(
-        (tmp_path / "runs" / rid / "meta.json").read_text(
-            encoding="utf-8"))
+        (tmp_path / "runs" / rid / "meta.json").read_text(encoding="utf-8")
+    )
     assert meta["config"]["bots"] == 27
     assert meta["summary"]["candles_played"] == 500
     assert meta["summary"]["trades_logged"] == 1
@@ -266,23 +295,23 @@ def test_load_missing_run_returns_empty(tmp_path):
 
 # ── failure tolerance ────────────────────────────────────────────
 
+
 def test_unwritable_root_degrades_to_noop(tmp_path):
     """Losing the sim record must never take down the replay."""
     blocker = tmp_path / "blocked"
     blocker.write_text("not a directory", encoding="utf-8")
     log = SimRunLog(root=blocker)
     rid = log.start_run()
-    assert rid          # still returns an id
+    assert rid  # still returns an id
     assert log.is_open is False
-    log.record_trade("BTC/USD", "SELL", 1.0, 1.0)   # must not raise
+    log.record_trade("BTC/USD", "SELL", 1.0, 1.0)  # must not raise
     log.finish_run()
 
 
 def test_unserialisable_payload_is_skipped(tmp_path):
     log = _log(tmp_path)
     rid = log.start_run()
-    log.record_trade("BTC/USD", "SELL", 1.0, 1.0,
-                     extra={"bad": object()})
+    log.record_trade("BTC/USD", "SELL", 1.0, 1.0, extra={"bad": object()})
     log.finish_run()
     # default=str keeps it writable; the row must still be valid JSON
     for row in load_run_trades(rid, tmp_path):
@@ -296,14 +325,13 @@ def test_unserialisable_payload_is_skipped(tmp_path):
 # v3.24.13 but nothing supplied one, so the field was empty on every
 # persisted trade — a parameter that existed but never became data.
 
+
 def test_candle_address_survives_roundtrip(tmp_path):
     log = _log(tmp_path)
     rid = log.start_run()
-    log.record_trade("BTC/USD", "BUY", 1.0, 100.0,
-                     candle_address="004096_BTC")
+    log.record_trade("BTC/USD", "BUY", 1.0, 100.0, candle_address="004096_BTC")
     log.finish_run()
-    assert load_run_trades(rid, tmp_path)[0][
-        "candle_address"] == "004096_BTC"
+    assert load_run_trades(rid, tmp_path)[0]["candle_address"] == "004096_BTC"
 
 
 def test_missing_address_is_empty_not_absent(tmp_path):

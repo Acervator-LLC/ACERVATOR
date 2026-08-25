@@ -12,6 +12,7 @@ Coverage:
     F9  ensure_asset_coverage builds a tablet from nothing (first-time
         generation flow — operator directive 2026-08-01)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -64,17 +65,20 @@ class _FakeAdapter(ExchangeAdapter):
         # it has to use them.
         self.requested: list[tuple[str, str, str]] = []
 
-    async def fetch_chunk(self, asset, quote, since_ms, until_ms,
-                          timeframe=NATIVE_TIMEFRAME):
+    async def fetch_chunk(
+        self, asset, quote, since_ms, until_ms, timeframe=NATIVE_TIMEFRAME
+    ):
         self.calls.append((since_ms, until_ms))
         self.requested.append((asset, quote, timeframe))
         if self._script:
             return self._script.pop(0)
         # Default: generate a chunk of synthetic candles
-        rows = [[since_ms + i * STEP_5M_MS,
-                 100.0, 101.0, 99.0, 100.5, 5.0]
-                for i in range(min(self.chunk_limit,
-                                   (until_ms - since_ms) // STEP_5M_MS + 1))]
+        rows = [
+            [since_ms + i * STEP_5M_MS, 100.0, 101.0, 99.0, 100.5, 5.0]
+            for i in range(
+                min(self.chunk_limit, (until_ms - since_ms) // STEP_5M_MS + 1)
+            )
+        ]
         return FetchAttempt(since_ms, until_ms, rows)
 
 
@@ -86,8 +90,7 @@ class _FakeAdapter(ExchangeAdapter):
 def test_exchange_adapter_is_abstract():
     base = ExchangeAdapter(connector=None)
     with pytest.raises(NotImplementedError):
-        asyncio.run(base.fetch_chunk(
-            "BTC", "USD", 0, 1000, NATIVE_TIMEFRAME))
+        asyncio.run(base.fetch_chunk("BTC", "USD", 0, 1000, NATIVE_TIMEFRAME))
 
 
 # --------------------------------------------------------------------- #
@@ -109,15 +112,21 @@ def test_coinbase_adapter_chunk_span():
 
 def test_gap_filler_skips_when_covered(tmp_path):
     reg = StoneTabletsRegistry(root=tmp_path)
-    rows = [[_START_MS + i * STEP_5M_MS, 100.0, 101.0, 99.0,
-             100.5, 5.0] for i in range(20)]
+    rows = [
+        [_START_MS + i * STEP_5M_MS, 100.0, 101.0, 99.0, 100.5, 5.0] for i in range(20)
+    ]
     reg.ingest_candles(
-        asset="BTC", timeframe=NATIVE_TIMEFRAME,
-        rows=rows, source="test", exchange_id="fake")
+        asset="BTC",
+        timeframe=NATIVE_TIMEFRAME,
+        rows=rows,
+        source="test",
+        exchange_id="fake",
+    )
     adapter = _FakeAdapter([])
     filler = GapFiller(reg, adapter)
-    report = asyncio.run(filler.fill_asset(
-        "BTC", _START_MS, _START_MS + 19 * STEP_5M_MS))
+    report = asyncio.run(
+        filler.fill_asset("BTC", _START_MS, _START_MS + 19 * STEP_5M_MS)
+    )
     assert report.gaps_requested == 0
     assert report.chunks_attempted == 0
     assert adapter.calls == []  # never called the exchange
@@ -150,17 +159,22 @@ def test_gap_filler_walks_gap_in_chunks_and_ingests(tmp_path):
 def test_gap_filler_records_chunk_errors(tmp_path):
     reg = StoneTabletsRegistry(root=tmp_path)
     # Script: first chunk errors, subsequent chunks succeed
-    err = FetchAttempt(_START_MS, _START_MS + 9 * STEP_5M_MS,
-                       [], error="synthetic 429 rate-limit")
+    err = FetchAttempt(
+        _START_MS, _START_MS + 9 * STEP_5M_MS, [], error="synthetic 429 rate-limit"
+    )
     ok = FetchAttempt(
         _START_MS + 10 * STEP_5M_MS,
         _START_MS + 19 * STEP_5M_MS,
-        [[_START_MS + (10 + i) * STEP_5M_MS,
-          100.0, 101.0, 99.0, 100.5, 5.0] for i in range(10)])
+        [
+            [_START_MS + (10 + i) * STEP_5M_MS, 100.0, 101.0, 99.0, 100.5, 5.0]
+            for i in range(10)
+        ],
+    )
     adapter = _FakeAdapter([err, ok])
     filler = GapFiller(reg, adapter)
-    report = asyncio.run(filler.fill_asset(
-        "BTC", _START_MS, _START_MS + 19 * STEP_5M_MS))
+    report = asyncio.run(
+        filler.fill_asset("BTC", _START_MS, _START_MS + 19 * STEP_5M_MS)
+    )
     assert report.chunks_error >= 1
     assert report.chunks_ok >= 1
     assert any("synthetic 429" in e for e in report.errors)
@@ -175,20 +189,28 @@ def test_gap_filler_records_chunk_errors(tmp_path):
 
 def test_target_discovery_from_bot_state(tmp_path):
     state_path = tmp_path / "bot_state.json"
-    state_path.write_text(json.dumps({
-        "bots": {
-            "bot-1": {"config": {"symbol": "BTC/USD",
-                                 "exchange_id": "coinbase"}},
-            "bot-2": {"config": {"symbol": "ETH/USD",
-                                 "exchange_id": "coinbase"}},
-            "bot-3": {"config": {"symbol": "XRP/USD",
-                                 "exchange_id": "kraken"}},
-        }}))
+    state_path.write_text(
+        json.dumps(
+            {
+                "bots": {
+                    "bot-1": {
+                        "config": {"symbol": "BTC/USD", "exchange_id": "coinbase"}
+                    },
+                    "bot-2": {
+                        "config": {"symbol": "ETH/USD", "exchange_id": "coinbase"}
+                    },
+                    "bot-3": {"config": {"symbol": "XRP/USD", "exchange_id": "kraken"}},
+                }
+            }
+        )
+    )
     disc = TargetAssetDiscovery(bot_state_path=state_path)
     targets = disc.enumerate()
     assert sorted(targets) == [
-        ("BTC", "coinbase"), ("ETH", "coinbase"),
-        ("XRP", "kraken")]
+        ("BTC", "coinbase"),
+        ("ETH", "coinbase"),
+        ("XRP", "kraken"),
+    ]
 
 
 # --------------------------------------------------------------------- #
@@ -200,19 +222,17 @@ def test_target_discovery_prefers_bot_manager(tmp_path):
     # bot_state.json says one thing, bot_manager says another —
     # bot_manager wins when it's non-empty.
     state_path = tmp_path / "bot_state.json"
-    state_path.write_text(json.dumps({
-        "bots": {"stale-bot": {"config": {"symbol": "OLD/USD"}}}
-    }))
+    state_path.write_text(
+        json.dumps({"bots": {"stale-bot": {"config": {"symbol": "OLD/USD"}}}})
+    )
 
     class _FakeBotMgr:
         def __init__(self):
             b = SimpleNamespace()
-            b.config = SimpleNamespace(
-                symbol="NEW/USD", exchange_id="coinbase")
+            b.config = SimpleNamespace(symbol="NEW/USD", exchange_id="coinbase")
             self._bots = {"live-bot": b}
 
-    disc = TargetAssetDiscovery(
-        bot_manager=_FakeBotMgr(), bot_state_path=state_path)
+    disc = TargetAssetDiscovery(bot_manager=_FakeBotMgr(), bot_state_path=state_path)
     targets = disc.enumerate()
     assert targets == [("NEW", "coinbase")]
 
@@ -225,22 +245,24 @@ def test_target_discovery_prefers_bot_manager(tmp_path):
 def test_build_orchestrator_dispatches_per_target(tmp_path):
     reg = StoneTabletsRegistry(root=tmp_path)
     state_path = tmp_path / "bot_state.json"
-    state_path.write_text(json.dumps({
-        "bots": {
-            "bot-1": {"config": {"symbol": "BTC/USD",
-                                 "exchange_id": "fake"}},
-            "bot-2": {"config": {"symbol": "ETH/USD",
-                                 "exchange_id": "fake"}},
-        }}))
+    state_path.write_text(
+        json.dumps(
+            {
+                "bots": {
+                    "bot-1": {"config": {"symbol": "BTC/USD", "exchange_id": "fake"}},
+                    "bot-2": {"config": {"symbol": "ETH/USD", "exchange_id": "fake"}},
+                }
+            }
+        )
+    )
     disc = TargetAssetDiscovery(bot_state_path=state_path)
     adapter = _FakeAdapter([])
     orch = BuildOrchestrator(
-        registry=reg,
-        adapters_by_exchange={"fake": adapter},
-        discovery=disc)
-    report = asyncio.run(orch.build_ytd(
-        since_ms=_START_MS,
-        until_ms=_START_MS + 14 * STEP_5M_MS))
+        registry=reg, adapters_by_exchange={"fake": adapter}, discovery=disc
+    )
+    report = asyncio.run(
+        orch.build_ytd(since_ms=_START_MS, until_ms=_START_MS + 14 * STEP_5M_MS)
+    )
     assert len(report.reports) == 2
     assets = sorted(r.asset for r in report.reports)
     assert assets == ["BTC", "ETH"]
@@ -259,13 +281,14 @@ def test_discover_all_exchange_markets_filters_active_and_quote():
 
     async def _get_markets():
         return [
-            SimpleNamespace(base="BTC", quote="USD",  active=True),
-            SimpleNamespace(base="ETH", quote="USD",  active=True),
+            SimpleNamespace(base="BTC", quote="USD", active=True),
+            SimpleNamespace(base="ETH", quote="USD", active=True),
             SimpleNamespace(base="ADA", quote="USDC", active=True),
-            SimpleNamespace(base="XRP", quote="EUR",  active=True),
-            SimpleNamespace(base="OLD", quote="USD",  active=False),
-            SimpleNamespace(base="",    quote="USD",  active=True),
+            SimpleNamespace(base="XRP", quote="EUR", active=True),
+            SimpleNamespace(base="OLD", quote="USD", active=False),
+            SimpleNamespace(base="", quote="USD", active=True),
         ]
+
     fake = SimpleNamespace()
     fake.get_markets = _get_markets
     result = asyncio.run(discover_all_exchange_markets(fake))
@@ -283,13 +306,15 @@ def test_build_universe_dispatches_per_discovered_market(tmp_path):
     """v3.24.4 F11 — build_universe fills every discovered market
     on the exchange, skipping any without a wired adapter."""
     from types import SimpleNamespace
+
     reg = StoneTabletsRegistry(root=tmp_path)
 
     async def _get_markets():
         return [
-            SimpleNamespace(base="BTC", quote="USD",  active=True),
+            SimpleNamespace(base="BTC", quote="USD", active=True),
             SimpleNamespace(base="ETH", quote="USDC", active=True),
         ]
+
     fake_conn = SimpleNamespace()
     fake_conn.get_markets = _get_markets
     adapter = _FakeAdapter([])
@@ -300,9 +325,11 @@ def test_build_universe_dispatches_per_discovered_market(tmp_path):
         discovery=TargetAssetDiscovery(),
     )
     until = _START_MS + 14 * STEP_5M_MS
-    report = asyncio.run(orch.build_universe(
-        exchange_id="fake", connector=fake_conn,
-        since_ms=_START_MS, until_ms=until))
+    report = asyncio.run(
+        orch.build_universe(
+            exchange_id="fake", connector=fake_conn, since_ms=_START_MS, until_ms=until
+        )
+    )
     assets = sorted(r.asset for r in report.reports)
     assert assets == ["BTC", "ETH"]
     assert report.total_candles > 0
@@ -319,14 +346,11 @@ def test_first_time_generation_flow(tmp_path):
     filler = GapFiller(reg, adapter)
     until = _START_MS + 24 * STEP_5M_MS
     # Registry has NO tablet for this asset — first-time generation
-    assert not reg.has_coverage(
-        "BRANDNEW", _START_MS, until, exchange_id="fake")
-    report = asyncio.run(filler.fill_asset(
-        "BRANDNEW", _START_MS, until))
+    assert not reg.has_coverage("BRANDNEW", _START_MS, until, exchange_id="fake")
+    report = asyncio.run(filler.fill_asset("BRANDNEW", _START_MS, until))
     assert report.candles_appended > 0
     # After: coverage exists
     assert len(reg.coverage_summary()) >= 1
-    branded = [c for c in reg.coverage_summary()
-               if c.asset == "BRANDNEW"]
+    branded = [c for c in reg.coverage_summary() if c.asset == "BRANDNEW"]
     assert branded
     assert branded[0].exchange_id == "fake"

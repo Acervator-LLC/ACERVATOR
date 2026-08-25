@@ -25,6 +25,7 @@ so it never raised -- it just meant every live fill price was an
 estimate. ``sim_exchange.py:440`` DOES set it, so the simulator had real
 fill prices and live never did.
 """
+
 from __future__ import annotations
 
 import sys
@@ -46,33 +47,59 @@ from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 class TestParseOrderCarriesTheFillPrice:
     def test_average_is_populated_from_the_payload(self):
         """POSITIVE CONTROL. Everything downstream reads this field."""
-        o = CCXTConnector._parse_order({
-            "id": "x", "symbol": "BTC/USD", "side": "buy", "type": "market",
-            "amount": 1.0, "filled": 1.0, "average": 250.0, "status": "closed",
-        })
+        o = CCXTConnector._parse_order(
+            {
+                "id": "x",
+                "symbol": "BTC/USD",
+                "side": "buy",
+                "type": "market",
+                "amount": 1.0,
+                "filled": 1.0,
+                "average": 250.0,
+                "status": "closed",
+            }
+        )
         assert o.average == pytest.approx(250.0)
 
     def test_it_falls_back_to_cost_over_filled(self):
         """Some venues omit `average` and report `cost` (= filled x avg)."""
-        o = CCXTConnector._parse_order({
-            "id": "x", "symbol": "BTC/USD", "side": "buy", "type": "market",
-            "filled": 4.0, "cost": 1000.0, "status": "closed",
-        })
+        o = CCXTConnector._parse_order(
+            {
+                "id": "x",
+                "symbol": "BTC/USD",
+                "side": "buy",
+                "type": "market",
+                "filled": 4.0,
+                "cost": 1000.0,
+                "status": "closed",
+            }
+        )
         assert o.average == pytest.approx(250.0)
 
     def test_an_unfilled_order_reports_zero_not_a_divide_by_zero(self):
-        o = CCXTConnector._parse_order({
-            "id": "x", "symbol": "BTC/USD", "side": "buy", "type": "market",
-            "filled": 0.0, "cost": 0.0, "status": "open",
-        })
+        o = CCXTConnector._parse_order(
+            {
+                "id": "x",
+                "symbol": "BTC/USD",
+                "side": "buy",
+                "type": "market",
+                "filled": 0.0,
+                "cost": 0.0,
+                "status": "open",
+            }
+        )
         assert o.average == 0.0
 
     def test_the_coinbase_create_order_payload_still_parses(self):
         """NEGATIVE CONTROL: the real create_order response carries none
         of these fields. It must yield zeros, not raise."""
-        o = CCXTConnector._parse_order({
-            "id": "abc", "symbol": "BTC/USD", "side": "buy",
-        })
+        o = CCXTConnector._parse_order(
+            {
+                "id": "abc",
+                "symbol": "BTC/USD",
+                "side": "buy",
+            }
+        )
         assert o.average == 0.0 and o.filled == 0.0
 
 
@@ -123,7 +150,8 @@ class TestItPrefersWhatTheExchangeReports:
         """POSITIVE CONTROL, and the no-extra-API-call guarantee."""
         ex = _Exchange()
         amt, px, real = await _bot(ex)._settled_fill(
-            _Order(filled=2.0, average=50.0), "BTC/USD", 9.0, 99.0)
+            _Order(filled=2.0, average=50.0), "BTC/USD", 9.0, 99.0
+        )
         assert (amt, px, real) == (pytest.approx(2.0), pytest.approx(50.0), True)
         assert ex.calls == 0
 
@@ -131,8 +159,7 @@ class TestItPrefersWhatTheExchangeReports:
     async def test_an_empty_order_is_refetched(self):
         """The Coinbase case: create_order says nothing, fetch_order does."""
         ex = _Exchange(_Order(filled=3.0, average=20.0))
-        amt, px, real = await _bot(ex)._settled_fill(
-            _Order(), "BTC/USD", 9.0, 99.0)
+        amt, px, real = await _bot(ex)._settled_fill(_Order(), "BTC/USD", 9.0, 99.0)
         assert (amt, px, real) == (pytest.approx(3.0), pytest.approx(20.0), True)
         assert ex.calls >= 1
 
@@ -140,8 +167,7 @@ class TestItPrefersWhatTheExchangeReports:
     async def test_it_polls_until_the_order_settles(self):
         """A market order is not settled the instant create_order returns."""
         ex = _Exchange(_Order(), _Order(filled=1.5, average=30.0))
-        amt, px, real = await _bot(ex)._settled_fill(
-            _Order(), "BTC/USD", 9.0, 99.0)
+        amt, px, real = await _bot(ex)._settled_fill(_Order(), "BTC/USD", 9.0, 99.0)
         assert real is True and amt == pytest.approx(1.5)
         assert ex.calls >= 2
 
@@ -152,7 +178,8 @@ class TestFallingBackIsAllowedButNeverSilent:
         """The order DID execute. Refusing to book it would be worse
         than booking an estimate -- but it must be flagged."""
         amt, px, real = await _bot(_Exchange(_Order()))._settled_fill(
-            _Order(), "BTC/USD", 9.0, 99.0)
+            _Order(), "BTC/USD", 9.0, 99.0
+        )
         assert (amt, px) == (pytest.approx(9.0), pytest.approx(99.0))
         assert real is False, "an estimate must not be reported as a real fill"
 
@@ -160,29 +187,30 @@ class TestFallingBackIsAllowedButNeverSilent:
     async def test_the_operator_is_told(self):
         emitted = []
         b = _bot(_Exchange(_Order()))
-        b._bus = type("B", (), {
-            "emit": lambda self, *a, **k: emitted.append(k.get("message", ""))})()
+        b._bus = type(
+            "B",
+            (),
+            {"emit": lambda self, *a, **k: emitted.append(k.get("message", ""))},
+        )()
         await b._settled_fill(_Order(), "BTC/USD", 9.0, 99.0)
-        assert any("ESTIMATE" in m for m in emitted), \
-            "a fabricated fill must say so in the log"
+        assert any(
+            "ESTIMATE" in m for m in emitted
+        ), "a fabricated fill must say so in the log"
 
     @pytest.mark.asyncio
     async def test_a_raising_exchange_does_not_propagate(self):
         """This runs after the order is already placed. Raising here
         would abandon the accounting for a trade that really happened."""
         ex = _Boom()
-        amt, px, real = await _bot(ex)._settled_fill(
-            _Order(), "BTC/USD", 9.0, 99.0)
-        assert (amt, px, real) == (pytest.approx(9.0), pytest.approx(99.0),
-                                   False)
+        amt, px, real = await _bot(ex)._settled_fill(_Order(), "BTC/USD", 9.0, 99.0)
+        assert (amt, px, real) == (pytest.approx(9.0), pytest.approx(99.0), False)
 
     @pytest.mark.asyncio
     async def test_partial_knowledge_is_kept_not_discarded(self):
         """Amount reported, price not: keep the real amount and estimate
         only the missing half."""
         ex = _Exchange(_Order(filled=2.5, average=0.0))
-        amt, px, real = await _bot(ex)._settled_fill(
-            _Order(), "BTC/USD", 9.0, 99.0)
+        amt, px, real = await _bot(ex)._settled_fill(_Order(), "BTC/USD", 9.0, 99.0)
         assert amt == pytest.approx(2.5), "a REAL filled amount was discarded"
         assert px == pytest.approx(99.0)
         assert real is False
@@ -191,7 +219,8 @@ class TestFallingBackIsAllowedButNeverSilent:
     async def test_an_order_with_no_id_skips_the_refetch(self):
         ex = _Exchange(_Order(filled=5.0, average=5.0))
         amt, px, real = await _bot(ex)._settled_fill(
-            _Order(oid=""), "BTC/USD", 9.0, 99.0)
+            _Order(oid=""), "BTC/USD", 9.0, 99.0
+        )
         assert ex.calls == 0 and real is False and amt == pytest.approx(9.0)
 
 
@@ -207,13 +236,21 @@ class TestTheCallSitesUseIt:
         import src.trading.scrumming_bot as m
 
         src = Path(m.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_execute_manual_rebalance")
-        calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call)
-                 and getattr(n.func, "attr", "") == "_settled_fill"]
-        assert len(calls) == 2, \
-            f"SCRUM and FOLD must both read the settled fill; found {len(calls)}"
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "_execute_manual_rebalance"
+        )
+        calls = [
+            n
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "attr", "") == "_settled_fill"
+        ]
+        assert (
+            len(calls) == 2
+        ), f"SCRUM and FOLD must both read the settled fill; found {len(calls)}"
 
     def test_the_old_fabricating_chain_is_gone_from_manual_fire(self):
         """Asserted over the AST, not the source text: a comment
@@ -223,9 +260,17 @@ class TestTheCallSitesUseIt:
         import src.trading.scrumming_bot as m
 
         src = Path(m.__file__).read_text(encoding="utf-8")
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_execute_manual_rebalance")
-        assigned = {t.id for n in ast.walk(fn) if isinstance(n, ast.Assign)
-                    for t in n.targets if isinstance(t, ast.Name)}
+        fn = next(
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "_execute_manual_rebalance"
+        )
+        assigned = {
+            t.id
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Assign)
+            for t in n.targets
+            if isinstance(t, ast.Name)
+        }
         assert "_filled_raw" not in assigned

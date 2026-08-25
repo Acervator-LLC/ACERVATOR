@@ -28,6 +28,7 @@ dist/Acervator/_internal/src/__init__.py exist with differing versions.
 It is armed only for the operator running a source tree next to a stale
 build - exactly when the warning is supposed to help.
 """
+
 from __future__ import annotations
 
 import os
@@ -47,6 +48,7 @@ def test_guard_survives_an_exception_in_its_own_body(monkeypatch):
     Before the fix this raised NameError: name 'logger' is not defined,
     from the handler that exists to prevent exactly that.
     """
+
     def boom(*_a, **_kw):
         raise OSError("simulated filesystem failure")
 
@@ -84,15 +86,21 @@ def test_guard_references_no_late_bound_module_global():
     positive -- the previous version of this test flagged all four.
     """
     import ast
+
     src = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
-    fn = next(n for n in ast.walk(tree)
-              if isinstance(n, ast.FunctionDef)
-              and n.name == "_check_stale_dist_binary")
+    fn = next(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_check_stale_dist_binary"
+    )
     call_line = next(
-        n.lineno for n in ast.walk(tree)
-        if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
-        and getattr(n.value.func, "id", "") == "_check_stale_dist_binary")
+        n.lineno
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Expr)
+        and isinstance(n.value, ast.Call)
+        and getattr(n.value.func, "id", "") == "_check_stale_dist_binary"
+    )
 
     # Split top-level bindings by whether they land before or after the
     # guard's call site. A name is only a hazard if it is bound EXCLUSIVELY
@@ -101,7 +109,7 @@ def test_guard_references_no_late_bound_module_global():
     # reports both as unbound when neither is.
     early_bound: set[str] = set()
     late_bound: dict[str, int] = {}
-    for node in tree.body:                      # top level only, not walk
+    for node in tree.body:  # top level only, not walk
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             names = [(a.asname or a.name).split(".")[0] for a in node.names]
         elif isinstance(node, ast.Assign):
@@ -114,11 +122,17 @@ def test_guard_references_no_late_bound_module_global():
             else:
                 late_bound.setdefault(name, node.lineno)
 
-    used = {n.id for n in ast.walk(fn)
-            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
-    unbound = sorted(f"{n} (bound at :{late_bound[n]})"
-                     for n in (used & late_bound.keys()) - early_bound)
+    used = {
+        n.id
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)
+    }
+    unbound = sorted(
+        f"{n} (bound at :{late_bound[n]})"
+        for n in (used & late_bound.keys()) - early_bound
+    )
     assert not unbound, (
         f"_check_stale_dist_binary() reads name(s) {unbound} that are not "
         f"bound before its call site at main.py:{call_line}; any branch "
-        f"touching them raises NameError at module level and kills boot")
+        f"touching them raises NameError at module level and kills boot"
+    )

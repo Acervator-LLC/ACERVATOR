@@ -34,6 +34,7 @@ This file is exchange-agnostic. The CCXT connector consumes it via
 exchange-specific way (Coinbase: `client_oid`, Binance:
 `newClientOrderId`, Kraken: `userref`).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -41,7 +42,7 @@ import logging
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -60,11 +61,12 @@ class TradeIntent:
     """The exact trade the bot wants to submit. The intent is hashed to
     derive the deterministic coid; identical intents collide deliberately
     so a retry cannot create a second order."""
+
     symbol: str
-    side: str          # "buy" / "sell"
-    amount: float      # in base asset units
+    side: str  # "buy" / "sell"
+    amount: float  # in base asset units
     price: Optional[float]  # None for market orders
-    bot_id: str        # which bot is firing
+    bot_id: str  # which bot is firing
     purpose: str = ""  # "scrum" / "fold" / "cartridge" / "manual" / etc.
 
     def fingerprint(self, session_nonce: str) -> str:
@@ -87,8 +89,7 @@ class TradeIntent:
 class IdempotencyLayer:
     """Per-process idempotency cache with a TTL window."""
 
-    def __init__(self, ttl_seconds: float = 300.0,
-                 max_entries: int = 5000) -> None:
+    def __init__(self, ttl_seconds: float = 300.0, max_entries: int = 5000) -> None:
         self.ttl_seconds = ttl_seconds
         self.max_entries = max_entries
         # Session nonce: stable for this process lifetime, NOT
@@ -111,15 +112,19 @@ class IdempotencyLayer:
                 logger.info(
                     "Idempotency: reusing coid=%s for retry of "
                     "%s %s %.8f@%s (issued %.1fs ago)",
-                    cached.coid, intent.side, intent.symbol,
+                    cached.coid,
+                    intent.side,
+                    intent.symbol,
                     intent.amount,
                     "MKT" if intent.price is None else f"{intent.price:.8f}",
-                    time.time() - cached.issued_at)
+                    time.time() - cached.issued_at,
+                )
                 return cached.coid
             # New intent — generate a coid and cache it
             coid = f"acrv-{fp}"
             self._cache[fp] = _CachedCoid(
-                coid=coid, issued_at=time.time(), intent_hash=fp)
+                coid=coid, issued_at=time.time(), intent_hash=fp
+            )
             self._enforce_size_limit()
             return coid
 
@@ -156,9 +161,8 @@ class IdempotencyLayer:
         if len(self._cache) <= self.max_entries:
             return
         # Drop the oldest entries
-        sorted_items = sorted(
-            self._cache.items(), key=lambda kv: kv[1].issued_at)
-        for k, _ in sorted_items[:len(self._cache) - self.max_entries]:
+        sorted_items = sorted(self._cache.items(), key=lambda kv: kv[1].issued_at)
+        for k, _ in sorted_items[: len(self._cache) - self.max_entries]:
             del self._cache[k]
 
     def stats(self) -> dict:

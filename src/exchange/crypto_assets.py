@@ -14,10 +14,8 @@ Logo caching: logos are downloaded once and cached in
 from __future__ import annotations
 
 from ..core.safe_url import safe_urlopen
-import hashlib
 import logging
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -32,18 +30,19 @@ LOGO_CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "resources" / "
 @dataclass
 class CryptoAsset:
     """Metadata for a cryptocurrency."""
-    symbol: str                    # e.g. "BTC"
-    name: str                      # e.g. "Bitcoin"
-    coingecko_id: str = ""         # e.g. "bitcoin"
-    logo_url: str = ""             # Primary logo URL
-    logo_fallback_url: str = ""    # Fallback CDN
-    whitepaper_url: str = ""       # Link to official whitepaper
+
+    symbol: str  # e.g. "BTC"
+    name: str  # e.g. "Bitcoin"
+    coingecko_id: str = ""  # e.g. "bitcoin"
+    logo_url: str = ""  # Primary logo URL
+    logo_fallback_url: str = ""  # Fallback CDN
+    whitepaper_url: str = ""  # Link to official whitepaper
     website: str = ""
-    description: str = ""          # Internal description from whitepaper
-    consensus: str = ""            # e.g. "Proof of Work"
-    max_supply: str = ""           # e.g. "21,000,000"
+    description: str = ""  # Internal description from whitepaper
+    consensus: str = ""  # e.g. "Proof of Work"
+    max_supply: str = ""  # e.g. "21,000,000"
     launch_year: int = 0
-    category: str = ""             # e.g. "Currency", "Smart Contract Platform"
+    category: str = ""  # e.g. "Currency", "Smart Contract Platform"
 
 
 # ---------------------------------------------------------------------------
@@ -51,12 +50,15 @@ class CryptoAsset:
 # ---------------------------------------------------------------------------
 ASSETS: dict[str, CryptoAsset] = {}
 
+
 def _register(symbol: str, **kwargs) -> None:
     ASSETS[symbol] = CryptoAsset(symbol=symbol, **kwargs)
 
+
 # --- Major cryptocurrencies with whitepaper-derived descriptions -----------
 
-_register("BTC",
+_register(
+    "BTC",
     name="Bitcoin",
     coingecko_id="bitcoin",
     logo_url="https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
@@ -76,7 +78,8 @@ _register("BTC",
     category="Currency",
 )
 
-_register("ETH",
+_register(
+    "ETH",
     name="Ethereum",
     coingecko_id="ethereum",
     logo_url="https://assets.coingecko.com/coins/images/279/small/ethereum.png",
@@ -96,7 +99,8 @@ _register("ETH",
     category="Smart Contract Platform",
 )
 
-_register("BNB",
+_register(
+    "BNB",
     name="BNB",
     coingecko_id="binancecoin",
     logo_url="https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png",
@@ -114,7 +118,8 @@ _register("BNB",
     category="Exchange Token / Smart Contract Platform",
 )
 
-_register("SOL",
+_register(
+    "SOL",
     name="Solana",
     coingecko_id="solana",
     logo_url="https://assets.coingecko.com/coins/images/4128/small/solana.png",
@@ -132,7 +137,8 @@ _register("SOL",
     category="Smart Contract Platform",
 )
 
-_register("XRP",
+_register(
+    "XRP",
     name="XRP",
     coingecko_id="ripple",
     logo_url="https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-128.png",
@@ -150,7 +156,8 @@ _register("XRP",
     category="Payments",
 )
 
-_register("ADA",
+_register(
+    "ADA",
     name="Cardano",
     coingecko_id="cardano",
     logo_url="https://assets.coingecko.com/coins/images/975/small/cardano.png",
@@ -169,7 +176,8 @@ _register("ADA",
     category="Smart Contract Platform",
 )
 
-_register("DOGE",
+_register(
+    "DOGE",
     name="Dogecoin",
     coingecko_id="dogecoin",
     logo_url="https://assets.coingecko.com/coins/images/5/small/dogecoin.png",
@@ -187,7 +195,8 @@ _register("DOGE",
     category="Currency / Meme",
 )
 
-_register("AVAX",
+_register(
+    "AVAX",
     name="Avalanche",
     coingecko_id="avalanche-2",
     logo_url="https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png",
@@ -205,7 +214,8 @@ _register("AVAX",
     category="Smart Contract Platform",
 )
 
-_register("DOT",
+_register(
+    "DOT",
     name="Polkadot",
     coingecko_id="polkadot",
     logo_url="https://assets.coingecko.com/coins/images/12171/small/polkadot.png",
@@ -223,7 +233,8 @@ _register("DOT",
     category="Interoperability",
 )
 
-_register("LINK",
+_register(
+    "LINK",
     name="Chainlink",
     coingecko_id="chainlink",
     logo_url="https://assets.coingecko.com/coins/images/877/small/chainlink-new-logo.png",
@@ -243,68 +254,219 @@ _register("LINK",
 
 # Additional assets with descriptions
 for sym, name, cgid, cat, desc in [
-    ("MATIC", "Polygon", "matic-network", "Layer 2",
-     "Ethereum scaling solution using sidechains for fast, low-cost transactions."),
-    ("UNI", "Uniswap", "uniswap", "DEX",
-     "Decentralized exchange protocol enabling automated token swaps on Ethereum."),
-    ("LTC", "Litecoin", "litecoin", "Currency",
-     "Peer-to-peer cryptocurrency forked from Bitcoin with faster block times."),
-    ("ATOM", "Cosmos", "cosmos", "Interoperability",
-     "Hub connecting independent blockchains via IBC protocol for cross-chain communication."),
-    ("XLM", "Stellar", "stellar", "Payments",
-     "Open network for moving money and tokenized assets with near-instant settlement."),
-    ("ALGO", "Algorand", "algorand", "Smart Contract Platform",
-     "Pure proof-of-stake blockchain with instant finality and low fees."),
-    ("FIL", "Filecoin", "filecoin", "Storage",
-     "Decentralized storage network where users rent unused hard drive space."),
-    ("NEAR", "NEAR Protocol", "near", "Smart Contract Platform",
-     "Sharded proof-of-stake blockchain designed for developer-friendly dApp creation."),
-    ("APT", "Aptos", "aptos", "Smart Contract Platform",
-     "Layer 1 blockchain using Move language, built by former Meta/Diem engineers."),
-    ("ARB", "Arbitrum", "arbitrum", "Layer 2",
-     "Optimistic rollup scaling Ethereum with lower fees and faster transactions."),
-    ("OP", "Optimism", "optimism", "Layer 2",
-     "Optimistic rollup for Ethereum scaling with retroactive public goods funding."),
-    ("SUI", "Sui", "sui", "Smart Contract Platform",
-     "Layer 1 blockchain using Move language with object-centric data model."),
-    ("INJ", "Injective", "injective-protocol", "DeFi",
-     "Decentralized exchange protocol optimized for cross-chain derivatives trading."),
-    ("AAVE", "Aave", "aave", "DeFi / Lending",
-     "Decentralized lending protocol where users earn interest or borrow assets."),
-    ("MKR", "Maker", "maker", "DeFi / Stablecoin",
-     "Governance token for MakerDAO, the protocol behind the DAI stablecoin."),
-    ("CRV", "Curve", "curve-dao-token", "DEX",
-     "DEX optimized for stablecoin and pegged-asset swaps with minimal slippage."),
-    ("RUNE", "THORChain", "thorchain", "DEX / Cross-chain",
-     "Decentralized liquidity protocol enabling native cross-chain swaps."),
-    ("FTM", "Fantom", "fantom", "Smart Contract Platform",
-     "DAG-based smart contract platform with fast finality and low fees."),
-    ("SAND", "The Sandbox", "the-sandbox", "Gaming / Metaverse",
-     "Virtual world where players build, own, and monetize gaming experiences."),
-    ("MANA", "Decentraland", "decentraland", "Gaming / Metaverse",
-     "Virtual reality platform powered by Ethereum where users buy and build on land."),
-    ("GRT", "The Graph", "the-graph", "Data Indexing",
-     "Indexing protocol for querying blockchain data, the Google of Web3."),
-    ("RENDER", "Render", "render-token", "GPU Computing",
-     "Distributed GPU rendering network connecting artists with GPU providers."),
-    ("TIA", "Celestia", "celestia", "Data Availability",
-     "Modular blockchain providing data availability layer for rollups."),
-    ("SEI", "Sei", "sei-network", "Smart Contract Platform",
-     "Layer 1 blockchain optimized for DeFi trading with built-in order matching."),
-    ("PEPE", "Pepe", "pepe", "Meme",
-     "Meme coin inspired by Pepe the Frog. Community-driven, no utility beyond speculation."),
-    ("WIF", "dogwifhat", "dogwifhat", "Meme",
-     "Solana-based meme coin featuring a Shiba Inu wearing a hat."),
-    ("SHIB", "Shiba Inu", "shiba-inu", "Meme",
-     "Ethereum meme token with ShibaSwap DEX and growing ecosystem."),
-    ("BONK", "Bonk", "bonk", "Meme",
-     "Solana-based meme coin. Community airdrop token, dust-priced with high volatility."),
-    ("FLOKI", "Floki", "floki", "Meme",
-     "Meme coin with utility ambitions including NFT gaming and DeFi products."),
-    ("JUP", "Jupiter", "jupiter-exchange-solana", "DEX",
-     "Solana DEX aggregator routing trades through multiple liquidity sources."),
+    (
+        "MATIC",
+        "Polygon",
+        "matic-network",
+        "Layer 2",
+        "Ethereum scaling solution using sidechains for fast, low-cost transactions.",
+    ),
+    (
+        "UNI",
+        "Uniswap",
+        "uniswap",
+        "DEX",
+        "Decentralized exchange protocol enabling automated token swaps on Ethereum.",
+    ),
+    (
+        "LTC",
+        "Litecoin",
+        "litecoin",
+        "Currency",
+        "Peer-to-peer cryptocurrency forked from Bitcoin with faster block times.",
+    ),
+    (
+        "ATOM",
+        "Cosmos",
+        "cosmos",
+        "Interoperability",
+        "Hub connecting independent blockchains via IBC protocol for cross-chain communication.",
+    ),
+    (
+        "XLM",
+        "Stellar",
+        "stellar",
+        "Payments",
+        "Open network for moving money and tokenized assets with near-instant settlement.",
+    ),
+    (
+        "ALGO",
+        "Algorand",
+        "algorand",
+        "Smart Contract Platform",
+        "Pure proof-of-stake blockchain with instant finality and low fees.",
+    ),
+    (
+        "FIL",
+        "Filecoin",
+        "filecoin",
+        "Storage",
+        "Decentralized storage network where users rent unused hard drive space.",
+    ),
+    (
+        "NEAR",
+        "NEAR Protocol",
+        "near",
+        "Smart Contract Platform",
+        "Sharded proof-of-stake blockchain designed for developer-friendly dApp creation.",
+    ),
+    (
+        "APT",
+        "Aptos",
+        "aptos",
+        "Smart Contract Platform",
+        "Layer 1 blockchain using Move language, built by former Meta/Diem engineers.",
+    ),
+    (
+        "ARB",
+        "Arbitrum",
+        "arbitrum",
+        "Layer 2",
+        "Optimistic rollup scaling Ethereum with lower fees and faster transactions.",
+    ),
+    (
+        "OP",
+        "Optimism",
+        "optimism",
+        "Layer 2",
+        "Optimistic rollup for Ethereum scaling with retroactive public goods funding.",
+    ),
+    (
+        "SUI",
+        "Sui",
+        "sui",
+        "Smart Contract Platform",
+        "Layer 1 blockchain using Move language with object-centric data model.",
+    ),
+    (
+        "INJ",
+        "Injective",
+        "injective-protocol",
+        "DeFi",
+        "Decentralized exchange protocol optimized for cross-chain derivatives trading.",
+    ),
+    (
+        "AAVE",
+        "Aave",
+        "aave",
+        "DeFi / Lending",
+        "Decentralized lending protocol where users earn interest or borrow assets.",
+    ),
+    (
+        "MKR",
+        "Maker",
+        "maker",
+        "DeFi / Stablecoin",
+        "Governance token for MakerDAO, the protocol behind the DAI stablecoin.",
+    ),
+    (
+        "CRV",
+        "Curve",
+        "curve-dao-token",
+        "DEX",
+        "DEX optimized for stablecoin and pegged-asset swaps with minimal slippage.",
+    ),
+    (
+        "RUNE",
+        "THORChain",
+        "thorchain",
+        "DEX / Cross-chain",
+        "Decentralized liquidity protocol enabling native cross-chain swaps.",
+    ),
+    (
+        "FTM",
+        "Fantom",
+        "fantom",
+        "Smart Contract Platform",
+        "DAG-based smart contract platform with fast finality and low fees.",
+    ),
+    (
+        "SAND",
+        "The Sandbox",
+        "the-sandbox",
+        "Gaming / Metaverse",
+        "Virtual world where players build, own, and monetize gaming experiences.",
+    ),
+    (
+        "MANA",
+        "Decentraland",
+        "decentraland",
+        "Gaming / Metaverse",
+        "Virtual reality platform powered by Ethereum where users buy and build on land.",
+    ),
+    (
+        "GRT",
+        "The Graph",
+        "the-graph",
+        "Data Indexing",
+        "Indexing protocol for querying blockchain data, the Google of Web3.",
+    ),
+    (
+        "RENDER",
+        "Render",
+        "render-token",
+        "GPU Computing",
+        "Distributed GPU rendering network connecting artists with GPU providers.",
+    ),
+    (
+        "TIA",
+        "Celestia",
+        "celestia",
+        "Data Availability",
+        "Modular blockchain providing data availability layer for rollups.",
+    ),
+    (
+        "SEI",
+        "Sei",
+        "sei-network",
+        "Smart Contract Platform",
+        "Layer 1 blockchain optimized for DeFi trading with built-in order matching.",
+    ),
+    (
+        "PEPE",
+        "Pepe",
+        "pepe",
+        "Meme",
+        "Meme coin inspired by Pepe the Frog. Community-driven, no utility beyond speculation.",
+    ),
+    (
+        "WIF",
+        "dogwifhat",
+        "dogwifhat",
+        "Meme",
+        "Solana-based meme coin featuring a Shiba Inu wearing a hat.",
+    ),
+    (
+        "SHIB",
+        "Shiba Inu",
+        "shiba-inu",
+        "Meme",
+        "Ethereum meme token with ShibaSwap DEX and growing ecosystem.",
+    ),
+    (
+        "BONK",
+        "Bonk",
+        "bonk",
+        "Meme",
+        "Solana-based meme coin. Community airdrop token, dust-priced with high volatility.",
+    ),
+    (
+        "FLOKI",
+        "Floki",
+        "floki",
+        "Meme",
+        "Meme coin with utility ambitions including NFT gaming and DeFi products.",
+    ),
+    (
+        "JUP",
+        "Jupiter",
+        "jupiter-exchange-solana",
+        "DEX",
+        "Solana DEX aggregator routing trades through multiple liquidity sources.",
+    ),
 ]:
-    _register(sym,
+    _register(
+        sym,
         name=name,
         coingecko_id=cgid,
         logo_url=f"https://assets.coingecko.com/coins/images/1/small/{cgid}.png",
@@ -338,8 +500,7 @@ class AssetManager:
         """Search assets by symbol or name (case-insensitive)."""
         q = query.lower()
         return [
-            a for a in ASSETS.values()
-            if q in a.symbol.lower() or q in a.name.lower()
+            a for a in ASSETS.values() if q in a.symbol.lower() or q in a.name.lower()
         ]
 
     def get_logo_path(self, symbol: str) -> Optional[Path]:
@@ -363,9 +524,9 @@ class AssetManager:
 
         try:
             import urllib.request
+
             dest = self._cache_dir / f"{symbol.upper()}.png"
-            req = urllib.request.Request(url, headers={
-                "User-Agent": "Acervator/2.8"})
+            req = urllib.request.Request(url, headers={"User-Agent": "Acervator/2.8"})
             with safe_urlopen(req, timeout=10) as resp:
                 data = resp.read()
             if len(data) > 100:  # Valid image

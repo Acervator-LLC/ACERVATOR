@@ -62,6 +62,7 @@ shift. ``verify_addressing_stable()`` exists to detect that.
 
 sadp: R28 SSS + R70 RCN
 """
+
 from __future__ import annotations
 
 import logging
@@ -86,6 +87,7 @@ class CandleAddress:
     tablet is keyed by base asset + exchange, so the pair's quote
     is not part of the address.
     """
+
     index: int
     ticker: str
 
@@ -118,8 +120,7 @@ def parse_address(address: str) -> Optional[CandleAddress]:
     m = _ADDRESS_RE.match(str(address or "").strip())
     if m is None:
         return None
-    return CandleAddress(
-        index=int(m.group("index")), ticker=m.group("ticker"))
+    return CandleAddress(index=int(m.group("index")), ticker=m.group("ticker"))
 
 
 def ticker_from_symbol(symbol: str) -> str:
@@ -160,7 +161,9 @@ def index_for_ts(rows: list, ts_ms: int) -> Optional[int]:
 
 
 def address_for_ts(
-    ticker: str, rows: list, ts_ms: int,
+    ticker: str,
+    rows: list,
+    ts_ms: int,
 ) -> Optional[str]:
     """Convenience: resolve a timestamp straight to an address
     string, or None when the timestamp precedes the tablet."""
@@ -182,7 +185,8 @@ def ts_for_index(rows: list, index: int) -> Optional[int]:
 
 
 def verify_addressing_stable(
-    rows: list, expected_first_ts_ms: int,
+    rows: list,
+    expected_first_ts_ms: int,
 ) -> bool:
     """True when the tablet still begins at the timestamp addresses
     were assigned against.

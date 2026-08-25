@@ -73,6 +73,7 @@ finding names a Qt `.emit` or an `EventBus.emit`. Two fixtures under
 `docs/audits/2026-08-10_watchdog_archetype/fixtures` hold both sides:
 `known_good` must exit 0, `known_bad` must exit 1.
 """
+
 from __future__ import annotations
 
 import ast
@@ -109,6 +110,7 @@ _MECHANISM_FILE = "signal_contract.py"
 @dataclass
 class PinCall:
     """One pin call site and whether it reaches the handler."""
+
     file: str
     line: int
     callee: str
@@ -174,8 +176,11 @@ class _PinScan(ast.NodeVisitor):
                 val = node.value
                 if isinstance(val, ast.Name):
                     from_wire = val.id in self.wired_names
-                elif (isinstance(val, ast.Attribute) and val.attr == "emit"
-                        and isinstance(val.value, ast.Name)):
+                elif (
+                    isinstance(val, ast.Attribute)
+                    and val.attr == "emit"
+                    and isinstance(val.value, ast.Name)
+                ):
                     from_wire = val.value.id in self.module_names
                 else:
                     continue
@@ -198,21 +203,22 @@ class _PinScan(ast.NodeVisitor):
             # accusing working code is the costlier mistake.
             if func.id in self.wired_names:
                 callee, wired = func.id, True
-            elif (func.id in self.pin_names or func.id == "emit"
-                    or func.id.endswith("_emit")):
+            elif (
+                func.id in self.pin_names
+                or func.id == "emit"
+                or func.id.endswith("_emit")
+            ):
                 callee, wired = func.id, False
         elif isinstance(func, ast.Attribute) and func.attr == "emit":
             recv = func.value
-            head = (recv.id if isinstance(recv, ast.Name)
-                    else getattr(recv, "attr", ""))
+            head = recv.id if isinstance(recv, ast.Name) else getattr(recv, "attr", "")
             # Only `signal_contract.emit(...)`. Every other object that
             # owns `.emit` is a Qt widget or the bus, and neither is a
             # pin.
             if head in self.module_names:
                 callee, wired = f"{head}.emit", True
         if callee is not None:
-            self.calls.append(
-                PinCall(str(self.path), node.lineno, callee, wired))
+            self.calls.append(PinCall(str(self.path), node.lineno, callee, wired))
         self.generic_visit(node)
 
 
@@ -231,8 +237,12 @@ def _scan_module(path: Path) -> tuple[list[PinCall], Optional[str]]:
 def is_test_path(path: Path) -> bool:
     parts = {p.lower() for p in path.parts}
     name = path.name.lower()
-    return ("tests" in parts or name.startswith("test_")
-            or name.endswith("_test.py") or name == "conftest.py")
+    return (
+        "tests" in parts
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or name == "conftest.py"
+    )
 
 
 def is_exempt(path: Path) -> bool:
@@ -247,8 +257,7 @@ def is_exempt(path: Path) -> bool:
 def _iter_python(base: Path) -> list[Path]:
     if base.is_file():
         return [base] if base.suffix == ".py" else []
-    return [p for p in sorted(base.rglob("*.py"))
-            if "__pycache__" not in p.parts]
+    return [p for p in sorted(base.rglob("*.py")) if "__pycache__" not in p.parts]
 
 
 # --------------------------------------------------------------------- #
@@ -292,28 +301,33 @@ class WatchdogArchetype:
         # on a directory holding one unparseable module: exit 0,
         # passed=True, pin-wiring `ok`, and the SyntaxError sitting
         # unread in `errors`.
-        rep.tool_availability["pin-wiring"] = (
-            "error" if unscanned else "ok")
+        rep.tool_availability["pin-wiring"] = "error" if unscanned else "ok"
 
         for call in calls:
             if call.wired:
                 continue
-            rep.findings.append(Finding(
-                tool="pin-wiring", severity="high", file=call.file,
-                line=call.line, rule_id="W001",
-                message=(
-                    f"`{call.callee}(...)` is a pin that does not reach the "
-                    f"handler. Only `emit` from src/core/signal_contract.py "
-                    f"hands a reading to the installed sink; this name is "
-                    f"not bound to it anywhere in this file, so the reading "
-                    f"goes nowhere and nothing downstream can see it. A pin "
-                    f"that reports into nothing is indistinguishable from a "
-                    f"pin nobody wrote. Import it: "
-                    f"`from src.core.signal_contract import emit`.")))
+            rep.findings.append(
+                Finding(
+                    tool="pin-wiring",
+                    severity="high",
+                    file=call.file,
+                    line=call.line,
+                    rule_id="W001",
+                    message=(
+                        f"`{call.callee}(...)` is a pin that does not reach the "
+                        f"handler. Only `emit` from src/core/signal_contract.py "
+                        f"hands a reading to the installed sink; this name is "
+                        f"not bound to it anywhere in this file, so the reading "
+                        f"goes nowhere and nothing downstream can see it. A pin "
+                        f"that reports into nothing is indistinguishable from a "
+                        f"pin nobody wrote. Import it: "
+                        f"`from src.core.signal_contract import emit`."
+                    ),
+                )
+            )
 
         wired = sum(1 for c in calls if c.wired)
-        rep.falsification = self._falsification(
-            len(gated), wired, len(calls) - wired)
+        rep.falsification = self._falsification(len(gated), wired, len(calls) - wired)
         return rep
 
     @staticmethod
@@ -330,7 +344,8 @@ class WatchdogArchetype:
             f"only one is a pin; (c) either fixture in "
             f"docs/audits/2026-08-10_watchdog_archetype/fixtures stops "
             f"discriminating, known_good exiting non-zero or known_bad "
-            f"exiting zero.")
+            f"exiting zero."
+        )
 
 
 # --------------------------------------------------------------------- #

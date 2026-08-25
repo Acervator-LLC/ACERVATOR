@@ -8,6 +8,7 @@ _open_stack_from_scrum helper using a minimal stub bot.
 
 Full end-to-end tests require a sim or mock exchange (2B-3 scope).
 """
+
 from __future__ import annotations
 
 import re
@@ -30,28 +31,30 @@ class TestSourceShape:
     @pytest.fixture(scope="class")
     def source(self) -> str:
         return (REPO / "src" / "trading" / "scrumming_bot.py").read_text(
-            encoding="utf-8", errors="replace")
+            encoding="utf-8", errors="replace"
+        )
 
     def test_open_stack_from_scrum_method_defined(self, source):
-        assert "def _open_stack_from_scrum(" in source, (
-            "_open_stack_from_scrum helper must exist on ScrummingBot"
-        )
+        assert (
+            "def _open_stack_from_scrum(" in source
+        ), "_open_stack_from_scrum helper must exist on ScrummingBot"
 
     def test_open_stack_calls_split_scrum_into_tranches(self, source):
         # Extract the _open_stack method body (async since v3.23.28)
         m = re.search(
             r"async def _open_stack_from_scrum\([^)]*\)[^:]*:(.*?)(?=\n    def |\n    async def )",
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
         assert m, "_open_stack_from_scrum body not found (must be async def)"
         body = m.group(1)
-        assert "split_scrum_into_tranches" in body, (
-            "_open_stack_from_scrum must call split_scrum_into_tranches"
-        )
+        assert (
+            "split_scrum_into_tranches" in body
+        ), "_open_stack_from_scrum must call split_scrum_into_tranches"
         # And it must populate the ledger
-        assert "self._stack_tranches.append" in body, (
-            "_open_stack_from_scrum must append to _stack_tranches"
-        )
+        assert (
+            "self._stack_tranches.append" in body
+        ), "_open_stack_from_scrum must append to _stack_tranches"
 
     def test_reconcile_method_defined(self, source):
         assert "async def _reconcile_stack_tranches_invisible(" in source
@@ -59,14 +62,15 @@ class TestSourceShape:
     def test_reconcile_gated_on_invisible_and_stack_mode(self, source):
         m = re.search(
             r"async def _reconcile_stack_tranches_invisible\([^)]*\)[^:]*:(.*?)(?=\n    async def |\n    def )",
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
         assert m, "reconcile body not found"
         body = m.group(1)
-        assert "self._invisible" in body, (
-            "reconciler must gate on self._invisible (Invisible-mode only)"
-        )
-        assert 'stack_mode' in body, "reconciler must gate on stack_mode"
+        assert (
+            "self._invisible" in body
+        ), "reconciler must gate on self._invisible (Invisible-mode only)"
+        assert "stack_mode" in body, "reconciler must gate on stack_mode"
 
     def test_activation_stage_places_no_order_of_any_kind(self, source):
         """v3.23.44 RESTATEMENT. This test used to require the reconciler
@@ -79,21 +83,30 @@ class TestSourceShape:
         one places NOTHING.
         """
         import ast
+
         fn = next(
-            n for n in ast.walk(ast.parse(source))
+            n
+            for n in ast.walk(ast.parse(source))
             if isinstance(n, ast.AsyncFunctionDef)
-            and n.name == "_reconcile_stack_tranches_invisible")
+            and n.name == "_reconcile_stack_tranches_invisible"
+        )
         # CALLS, not prose. A text scan reports the docstring, which names
         # `_execute_sell` precisely to say it is no longer called.
         called = {
             getattr(node.func, "attr", None) or getattr(node.func, "id", None)
-            for node in ast.walk(fn) if isinstance(node, ast.Call)}
-        for forbidden in ("_execute_sell", "_execute_buy",
-                          "guarded_place_order", "place_order",
-                          "create_order"):
-            assert forbidden not in called, (
-                f"stage one must not place an order: it calls {forbidden!r}"
-            )
+            for node in ast.walk(fn)
+            if isinstance(node, ast.Call)
+        }
+        for forbidden in (
+            "_execute_sell",
+            "_execute_buy",
+            "guarded_place_order",
+            "place_order",
+            "create_order",
+        ):
+            assert (
+                forbidden not in called
+            ), f"stage one must not place an order: it calls {forbidden!r}"
         assert "emit" in called, (
             "positive control: the call scanner found nothing at all in "
             "_reconcile_stack_tranches_invisible, so its silence about "
@@ -104,7 +117,8 @@ class TestSourceShape:
         """The retired contract, moved to the stage that now owns it."""
         m = re.search(
             r"async def _spend_activated_stack_tranches\(.*?\)[^:]*:(.*?)(?=\n    async def |\n    def )",
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
         assert m, "_spend_activated_stack_tranches body not found"
         body = m.group(1)
@@ -117,37 +131,35 @@ class TestSourceShape:
         # Signature must include bypass_stack
         m = re.search(
             r"async def _execute_sell\(\s*self,\s*amount:[^)]*bypass_stack:\s*bool\s*=\s*False",
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
-        assert m, (
-            "_execute_sell must accept bypass_stack: bool = False param"
-        )
+        assert m, "_execute_sell must accept bypass_stack: bool = False param"
 
     def test_execute_sell_branches_on_stack_mode(self, source):
         # After the docstring, near the top: check for stack_mode branch
         # that calls _open_stack_from_scrum
         m = re.search(
             r"async def _execute_sell\(.*?# ==+\s*\n\s*# v3\.15\.77",
-            source, re.DOTALL,
+            source,
+            re.DOTALL,
         )
         assert m, "_execute_sell entry block not located"
         head = m.group(0)
-        assert "not bypass_stack" in head, (
-            "_execute_sell branch must check `not bypass_stack`"
-        )
-        assert 'stack_mode' in head, (
-            "_execute_sell branch must check config.stack_mode"
-        )
-        assert "self._open_stack_from_scrum(" in head, (
-            "_execute_sell branch must call _open_stack_from_scrum"
-        )
+        assert (
+            "not bypass_stack" in head
+        ), "_execute_sell branch must check `not bypass_stack`"
+        assert "stack_mode" in head, "_execute_sell branch must check config.stack_mode"
+        assert (
+            "self._open_stack_from_scrum(" in head
+        ), "_execute_sell branch must call _open_stack_from_scrum"
 
     def test_tick_loop_wires_reconciler(self, source):
         # After the main-path ticker fetch (line ~4246 region), the
         # reconciler must be called with current_price=float(ticker.last)
-        assert "await self._reconcile_stack_tranches_invisible(" in source, (
-            "tick loop must call the reconciler after fetching ticker"
-        )
+        assert (
+            "await self._reconcile_stack_tranches_invisible(" in source
+        ), "tick loop must call the reconciler after fetching ticker"
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +169,7 @@ class TestSourceShape:
 
 class _StubExchangeInterface:
     """Just holds a min_order_size attribute for _open_stack_from_scrum."""
+
     def __init__(self, min_order_size=0.0):
         self.min_order_size = min_order_size
 
@@ -170,12 +183,14 @@ class _StubConfig:
 class _StubBus:
     def __init__(self):
         self.messages = []
+
     def emit(self, event, **kwargs):
         self.messages.append((event, kwargs))
 
 
 class _StubBot:
     """Minimum surface _open_stack_from_scrum needs. NOT a ScrummingBot."""
+
     def __init__(self, **overrides):
         self.bot_id = "stub-bot"
         self.config = _StubConfig(
@@ -202,11 +217,13 @@ class TestOpenStackFromScrumBehavior:
     def _method(self):
         """Import the unbound method off ScrummingBot for testing on a stub."""
         from src.trading.scrumming_bot import ScrummingBot
+
         return ScrummingBot._open_stack_from_scrum
 
     def test_populates_ledger_with_n_tranches(self):
         bot = _StubBot()
         import asyncio
+
         n = asyncio.run(self._method()(bot, scrum_price=100.0, scrum_size=30.0))
         assert n == 3
         assert len(bot._stack_tranches) == 3
@@ -226,22 +243,22 @@ class TestOpenStackFromScrumBehavior:
         """
         bot = _StubBot()
         import asyncio
+
         asyncio.run(self._method()(bot, scrum_price=100.0, scrum_size=30.0))
         first = bot._stack_tranches[0]
         anchor = 100.0 * (1.0 + (1.0 + 0.6) / 100.0)
-        assert anchor == pytest.approx(101.6, rel=1e-12), (
-            "the ANCHOR is still scrum_price x (1 + min_opposing/100)"
-        )
-        assert first["price"] == pytest.approx(anchor * 1.01, rel=1e-9), (
-            "level 1 must sit exactly one initial gap above the anchor"
-        )
-        assert first["price"] > anchor, (
-            "retired contract: no rung sits AT the anchor"
-        )
+        assert anchor == pytest.approx(
+            101.6, rel=1e-12
+        ), "the ANCHOR is still scrum_price x (1 + min_opposing/100)"
+        assert first["price"] == pytest.approx(
+            anchor * 1.01, rel=1e-9
+        ), "level 1 must sit exactly one initial gap above the anchor"
+        assert first["price"] > anchor, "retired contract: no rung sits AT the anchor"
 
     def test_all_tranches_pending(self):
         bot = _StubBot()
         import asyncio
+
         asyncio.run(self._method()(bot, scrum_price=100.0, scrum_size=30.0))
         for t in bot._stack_tranches:
             assert t["status"] == "pending"
@@ -249,6 +266,7 @@ class TestOpenStackFromScrumBehavior:
     def test_tranche_has_open_metadata(self):
         bot = _StubBot()
         import asyncio
+
         asyncio.run(self._method()(bot, scrum_price=100.0, scrum_size=30.0))
         t = bot._stack_tranches[0]
         assert "opened_ts" in t
@@ -259,6 +277,7 @@ class TestOpenStackFromScrumBehavior:
         """When split_scrum_into_tranches raises ValueError, return 0
         and log — don't crash the tick."""
         import asyncio
+
         bot = _StubBot()
         # Force Invisible so no exchange call is needed on the happy path
         bot._invisible = True
@@ -268,8 +287,10 @@ class TestOpenStackFromScrumBehavior:
         assert bot._stack_tranches == []
         assert bot._stack_created == 0
         # A log message must have been emitted
-        assert any("STACK OPEN FAILED" in kwargs.get("message", "")
-                   for _, kwargs in bot._bus.messages)
+        assert any(
+            "STACK OPEN FAILED" in kwargs.get("message", "")
+            for _, kwargs in bot._bus.messages
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +331,7 @@ class _StubStats:
 
 class _StubExchange:
     """No open orders — keeps the P0b stacked-SELL guard permissive."""
+
     def __init__(self):
         self.get_open_orders_calls = 0
 
@@ -362,22 +384,26 @@ class _SellStubBot:
     def _emit_trade_notification(self, kind, state, detail):
         self.notifications.append((kind, state, detail))
 
-    async def _execute_sell(self, amount, price, summary,
-                            bypass_stack=False):
+    async def _execute_sell(self, amount, price, summary, bypass_stack=False):
         """Delegate to the REAL ScrummingBot._execute_sell. The reconciler
         calls self._execute_sell, so without this the stub would fail with
         AttributeError and the test would pass for the wrong reason."""
         from src.trading.scrumming_bot import ScrummingBot
-        return await ScrummingBot._execute_sell(
-            self, amount=amount, price=price, summary=summary,
-            bypass_stack=bypass_stack)
 
-    async def guarded_place_order(self, symbol, side, order_type,
-                                  amount, price):
-        self.placed_orders.append({
-            "symbol": symbol, "side": side, "order_type": order_type,
-            "amount": amount, "price": price,
-        })
+        return await ScrummingBot._execute_sell(
+            self, amount=amount, price=price, summary=summary, bypass_stack=bypass_stack
+        )
+
+    async def guarded_place_order(self, symbol, side, order_type, amount, price):
+        self.placed_orders.append(
+            {
+                "symbol": symbol,
+                "side": side,
+                "order_type": order_type,
+                "amount": amount,
+                "price": price,
+            }
+        )
         return _StubOrder(100.0 if price is None else float(price))
 
     async def _reconcile_holdings(self, reason=""):
@@ -385,31 +411,34 @@ class _SellStubBot:
         return None
 
     def log_messages(self) -> list[str]:
-        return [kwargs.get("message", "")
-                for _, kwargs in self._bus.messages]
+        return [kwargs.get("message", "") for _, kwargs in self._bus.messages]
 
 
 class _RealSummary:
     """Stands in for a VotingSummary. Only the two attributes
     _execute_sell reads are needed."""
+
     consensus_direction = "sell"
     consensus_confidence = 0.75
 
 
 def _execute_sell_method():
     from src.trading.scrumming_bot import ScrummingBot
+
     return ScrummingBot._execute_sell
 
 
 def _reconcile_invisible_method():
     """STAGE ONE -- activation. Places nothing."""
     from src.trading.scrumming_bot import ScrummingBot
+
     return ScrummingBot._reconcile_stack_tranches_invisible
 
 
 def _spend_method():
     """STAGE TWO -- spend, called only inside the chain's should_fire."""
     from src.trading.scrumming_bot import ScrummingBot
+
     return ScrummingBot._spend_activated_stack_tranches
 
 
@@ -422,10 +451,13 @@ class TestExecuteSellStubIsHonest:
         guarded_place_order. Proves a later 'no order placed' result is
         caused by the summary, not by a gate refusing the stub."""
         import asyncio
+
         bot = _SellStubBot()
-        fill = asyncio.run(_execute_sell_method()(
-            bot, amount=1.0, price=100.0,
-            summary=_RealSummary(), bypass_stack=True))
+        fill = asyncio.run(
+            _execute_sell_method()(
+                bot, amount=1.0, price=100.0, summary=_RealSummary(), bypass_stack=True
+            )
+        )
         assert bot.placed_orders, (
             "positive control failed: a valid summary must reach "
             "guarded_place_order. The stub's gates are not permissive."
@@ -443,9 +475,11 @@ class TestExecuteSellStubIsHonest:
             # consensus_confidence deliberately absent
 
         bot = _SellStubBot()
-        asyncio.run(_execute_sell_method()(
-            bot, amount=1.0, price=100.0,
-            summary=_Blind(), bypass_stack=True))
+        asyncio.run(
+            _execute_sell_method()(
+                bot, amount=1.0, price=100.0, summary=_Blind(), bypass_stack=True
+            )
+        )
         assert not bot.placed_orders, (
             "control is blind: a summary missing consensus_confidence "
             "must not reach guarded_place_order"
@@ -464,18 +498,18 @@ class _RefusingSellStubBot(_SellStubBot):
         self.refusing = True
         self.refused_calls: list[tuple] = []
 
-    async def _execute_sell(self, amount, price, summary,
-                            bypass_stack=False):
+    async def _execute_sell(self, amount, price, summary, bypass_stack=False):
         if self.refusing:
             self.refused_calls.append((amount, price))
             return None
         return await super()._execute_sell(
-            amount=amount, price=price, summary=summary,
-            bypass_stack=bypass_stack)
+            amount=amount, price=price, summary=summary, bypass_stack=bypass_stack
+        )
 
 
 def _run(coro):
     import asyncio
+
     return asyncio.run(coro)
 
 
@@ -487,11 +521,13 @@ def _opened_bot(confidence=0.75, cls=_SellStubBot):
     bot = cls()
     summary = _RealSummary()
     summary.consensus_confidence = confidence
-    _run(ScrummingBot._open_stack_from_scrum(
-        bot, scrum_price=100.0, scrum_size=30.0, summary=summary))
+    _run(
+        ScrummingBot._open_stack_from_scrum(
+            bot, scrum_price=100.0, scrum_size=30.0, summary=summary
+        )
+    )
     assert bot._stack_tranches, "stack must open before anything else"
-    assert not bot.placed_orders, (
-        "Invisible mode must place nothing at stack-open time")
+    assert not bot.placed_orders, "Invisible mode must place nothing at stack-open time"
     return bot
 
 
@@ -509,16 +545,15 @@ class TestStageOneActivatesAndSellsNothing:
     def test_crossing_the_threshold_places_no_order(self):
         bot = _opened_bot()
         target = float(bot._stack_tranches[0]["price"])
-        activated = _run(_reconcile_invisible_method()(
-            bot, current_price=target + 1.0))
+        activated = _run(_reconcile_invisible_method()(bot, current_price=target + 1.0))
         assert activated == 1
         assert bot.placed_orders == [], (
             "stage one placed an order. A crossed price threshold is not a "
             "trading gate; it may only make the tranche a candidate."
         )
-        assert bot.exchange.get_open_orders_calls == 0, (
-            "stage one reached the exchange at all"
-        )
+        assert (
+            bot.exchange.get_open_orders_calls == 0
+        ), "stage one reached the exchange at all"
 
     def test_crossing_the_threshold_marks_the_tranche_activated(self):
         bot = _opened_bot()
@@ -541,8 +576,7 @@ class TestStageOneActivatesAndSellsNothing:
     def test_below_threshold_does_not_activate(self):
         bot = _opened_bot()
         target = float(bot._stack_tranches[0]["price"])
-        activated = _run(_reconcile_invisible_method()(
-            bot, current_price=target - 1.0))
+        activated = _run(_reconcile_invisible_method()(bot, current_price=target - 1.0))
         assert activated == 0
         assert bot._stack_tranches[0]["activated"] is False
         assert not bot.placed_orders
@@ -578,12 +612,12 @@ class TestStageTwoSpendsOnlyWhatTheGateAuthorises:
         bot = _opened_bot()
         target = float(bot._stack_tranches[0]["price"])
         _run(_reconcile_invisible_method()(bot, current_price=target + 1.0))
-        spent = _run(_spend_method()(
-            bot, current_price=target + 1.0, summary=_RealSummary()))
+        spent = _run(
+            _spend_method()(bot, current_price=target + 1.0, summary=_RealSummary())
+        )
         assert spent == 1
         assert bot.placed_orders, (
-            "with the chain authorising, an activated tranche must actually "
-            "be spent"
+            "with the chain authorising, an activated tranche must actually " "be spent"
         )
         assert bot._stack_tranches[0]["status"] == "filled"
 
@@ -591,8 +625,7 @@ class TestStageTwoSpendsOnlyWhatTheGateAuthorises:
         """Authority alone is not enough either. Both stages must have
         happened -- the gate does not reach past the threshold."""
         bot = _opened_bot()
-        spent = _run(_spend_method()(
-            bot, current_price=100.0, summary=_RealSummary()))
+        spent = _run(_spend_method()(bot, current_price=100.0, summary=_RealSummary()))
         assert spent == 0
         assert not bot.placed_orders
 
@@ -605,13 +638,11 @@ class TestStageTwoSpendsOnlyWhatTheGateAuthorises:
         target = float(bot._stack_tranches[0]["price"])
         live = target + 7.25
         _run(_reconcile_invisible_method()(bot, current_price=live))
-        _run(_spend_method()(bot, current_price=live,
-                             summary=_RealSummary()))
+        _run(_spend_method()(bot, current_price=live, summary=_RealSummary()))
         signal = [m for m in bot.log_messages() if "SELL signal:" in m]
         assert signal, "no SELL signal line emitted"
         assert f"${live:.8f}" in signal[0], (
-            f"sell was priced at something other than the live price: "
-            f"{signal[0]}"
+            f"sell was priced at something other than the live price: " f"{signal[0]}"
         )
 
     def test_the_live_vote_is_what_reaches_the_sell_log(self):
@@ -629,11 +660,12 @@ class TestStageTwoSpendsOnlyWhatTheGateAuthorises:
         _run(_spend_method()(bot, current_price=target + 1.0, summary=live))
         signal = [m for m in bot.log_messages() if "SELL signal:" in m]
         assert signal, "no SELL signal line emitted"
-        assert "confidence=0.91" in signal[0], (
-            f"the live vote did not reach the sell log: {signal[0]}"
-        )
+        assert (
+            "confidence=0.91" in signal[0]
+        ), f"the live vote did not reach the sell log: {signal[0]}"
         assert bot._stack_tranches[0]["open_confidence"] == pytest.approx(
-            0.62), "the forensic record of the opening vote was overwritten"
+            0.62
+        ), "the forensic record of the opening vote was overwritten"
 
     def test_the_recorded_open_vote_is_the_fallback_with_no_live_vote(self):
         """The v3.23.43 fix stays load-bearing: `_execute_sell` reads
@@ -643,13 +675,12 @@ class TestStageTwoSpendsOnlyWhatTheGateAuthorises:
         bot = _opened_bot(confidence=0.62)
         target = float(bot._stack_tranches[0]["price"])
         _run(_reconcile_invisible_method()(bot, current_price=target + 1.0))
-        spent = _run(_spend_method()(
-            bot, current_price=target + 1.0, summary=None))
+        spent = _run(_spend_method()(bot, current_price=target + 1.0, summary=None))
         assert spent == 1
         signal = [m for m in bot.log_messages() if "SELL signal:" in m]
-        assert "confidence=0.62" in signal[0], (
-            f"fallback to the recorded open vote failed: {signal[0]}"
-        )
+        assert (
+            "confidence=0.62" in signal[0]
+        ), f"fallback to the recorded open vote failed: {signal[0]}"
 
     def test_memorised_trade_carries_the_live_summary(self):
         bot = _opened_bot(confidence=0.62)
@@ -667,8 +698,7 @@ class TestStageTwoSpendsOnlyWhatTheGateAuthorises:
         bot = _opened_bot()
         target = float(bot._stack_tranches[0]["price"])
         _run(_reconcile_invisible_method()(bot, current_price=target + 1.0))
-        _run(_spend_method()(bot, current_price=target + 1.0,
-                             summary=_RealSummary()))
+        _run(_spend_method()(bot, current_price=target + 1.0, summary=_RealSummary()))
         failures = [m for m in bot.log_messages() if "SELL FAILED" in m]
         assert not failures, f"tranche spend emitted failures: {failures}"
 
@@ -681,12 +711,11 @@ class TestStageTwoSpendsOnlyWhatTheGateAuthorises:
         placed_after_first = len(bot.placed_orders)
         calls_after_first = bot.exchange.get_open_orders_calls
         _run(spend(bot, current_price=target + 1.0, summary=_RealSummary()))
-        assert len(bot.placed_orders) == placed_after_first, (
-            "tranche re-spent on a later authorised tick"
-        )
+        assert (
+            len(bot.placed_orders) == placed_after_first
+        ), "tranche re-spent on a later authorised tick"
         assert bot.exchange.get_open_orders_calls == calls_after_first, (
-            "spend stage still burns a get_open_orders call on a filled "
-            "tranche"
+            "spend stage still burns a get_open_orders call on a filled " "tranche"
         )
 
 
@@ -708,11 +737,12 @@ class TestTheTrancheSurvivesARefusal:
         assert t["status"] == "pending"
         assert t["activated"] is True
         assert len(bot._stack_tranches) == 3, "the ledger changed size"
-        spent = _run(_spend_method()(
-            bot, current_price=target + 1.0, summary=_RealSummary()))
-        assert spent == 1, (
-            "the tranche did not survive ten refusals in a spendable state"
+        spent = _run(
+            _spend_method()(bot, current_price=target + 1.0, summary=_RealSummary())
         )
+        assert (
+            spent == 1
+        ), "the tranche did not survive ten refusals in a spendable state"
 
     def test_an_execute_sell_refusal_leaves_it_pending_and_activated(self):
         """The other refusal surface: the chain authorised, but a gate
@@ -721,8 +751,9 @@ class TestTheTrancheSurvivesARefusal:
         bot = _opened_bot(cls=_RefusingSellStubBot)
         target = float(bot._stack_tranches[0]["price"])
         _run(_reconcile_invisible_method()(bot, current_price=target + 1.0))
-        spent = _run(_spend_method()(
-            bot, current_price=target + 1.0, summary=_RealSummary()))
+        spent = _run(
+            _spend_method()(bot, current_price=target + 1.0, summary=_RealSummary())
+        )
         t = bot._stack_tranches[0]
         assert spent == 0
         assert bot.refused_calls, (
@@ -731,9 +762,9 @@ class TestTheTrancheSurvivesARefusal:
         )
         assert t["status"] == "pending"
         assert t["activated"] is True
-        assert any("NOT SPENT" in m for m in bot.log_messages()), (
-            "a refused spend must say so in the operator's log"
-        )
+        assert any(
+            "NOT SPENT" in m for m in bot.log_messages()
+        ), "a refused spend must say so in the operator's log"
 
     def test_repeated_refusals_never_duplicate_or_lose_the_tranche(self):
         bot = _opened_bot(cls=_RefusingSellStubBot)
@@ -741,17 +772,18 @@ class TestTheTrancheSurvivesARefusal:
         _run(_reconcile_invisible_method()(bot, current_price=target + 1.0))
         spend = _spend_method()
         for _ in range(5):
-            _run(spend(bot, current_price=target + 1.0,
-                       summary=_RealSummary()))
+            _run(spend(bot, current_price=target + 1.0, summary=_RealSummary()))
         assert len(bot.refused_calls) == 5
         assert len(bot._stack_tranches) == 3
         assert [t["status"] for t in bot._stack_tranches] == [
-            "pending", "pending", "pending"]
+            "pending",
+            "pending",
+            "pending",
+        ]
         assert bot.placed_orders == []
 
         bot.refusing = False
-        spent = _run(spend(bot, current_price=target + 1.0,
-                           summary=_RealSummary()))
+        spent = _run(spend(bot, current_price=target + 1.0, summary=_RealSummary()))
         assert spent == 1, "five refusals consumed the tranche"
         assert len(bot.placed_orders) == 1, (
             "five refusals plus one authorisation placed "
@@ -766,6 +798,7 @@ class TestShipsDormant:
     def test_the_config_default_is_off(self):
         from src.trading.bot_container import BotConfig
         import dataclasses
+
         field = {f.name: f for f in dataclasses.fields(BotConfig)}["stack_mode"]
         assert field.default is False
 
@@ -773,10 +806,13 @@ class TestShipsDormant:
         bot = _opened_bot()
         target = float(bot._stack_tranches[0]["price"])
         bot.config.stack_mode = False
-        assert _run(_reconcile_invisible_method()(
-            bot, current_price=target + 1.0)) == 0
-        assert _run(_spend_method()(
-            bot, current_price=target + 1.0, summary=_RealSummary())) == 0
+        assert _run(_reconcile_invisible_method()(bot, current_price=target + 1.0)) == 0
+        assert (
+            _run(
+                _spend_method()(bot, current_price=target + 1.0, summary=_RealSummary())
+            )
+            == 0
+        )
         assert not bot.placed_orders
 
     def test_both_stages_are_no_ops_in_visible_mode(self):
@@ -785,8 +821,11 @@ class TestShipsDormant:
         bot = _opened_bot()
         target = float(bot._stack_tranches[0]["price"])
         bot._invisible = False
-        assert _run(_reconcile_invisible_method()(
-            bot, current_price=target + 1.0)) == 0
-        assert _run(_spend_method()(
-            bot, current_price=target + 1.0, summary=_RealSummary())) == 0
+        assert _run(_reconcile_invisible_method()(bot, current_price=target + 1.0)) == 0
+        assert (
+            _run(
+                _spend_method()(bot, current_price=target + 1.0, summary=_RealSummary())
+            )
+            == 0
+        )
         assert not bot.placed_orders

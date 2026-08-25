@@ -34,6 +34,7 @@ THE SECOND HALF. The BOUND was in the wrong space too. The panel passes
 fallback therefore fired on every run, making the bound the longest single
 series rather than the union.
 """
+
 from __future__ import annotations
 
 import ast
@@ -80,13 +81,15 @@ class TestTheInstrumentSeparatesTheTwoSpaces:
     def test_the_planted_gap_really_does_displace_later_candles(self):
         # Slots 0..9 and 30..39 — twenty interior slots absent.
         clock_ts = clock_timestamps_from_candles(
-            {"A/USD": _rows(range(0, 10)), "B/USD": _rows(range(30, 40))})
+            {"A/USD": _rows(range(0, 10)), "B/USD": _rows(range(30, 40))}
+        )
         assert len(clock_ts) == 20
-        assert _union_index(clock_ts, 30) == 10   # union position
-        assert 30 != 10                            # grid slot
+        assert _union_index(clock_ts, 30) == 10  # union position
+        assert 30 != 10  # grid slot
         # And the clock the run loop actually uses agrees with the helper.
         mc = MasterClock.from_series(
-            [_Series(_rows(range(0, 10))), _Series(_rows(range(30, 40)))])
+            [_Series(_rows(range(0, 10))), _Series(_rows(range(30, 40)))]
+        )
         assert list(mc.timestamps) == clock_ts
 
     def test_a_gapless_union_makes_the_two_spaces_identical(self):
@@ -100,16 +103,22 @@ class TestTheInstrumentSeparatesTheTwoSpaces:
 class TestAnchorsResolveToUnionPositions:
     def test_a_trade_after_the_gap_anchors_at_its_union_index(self):
         clock_ts = clock_timestamps_from_candles(
-            {"A/USD": _rows(range(0, 10)), "B/USD": _rows(range(30, 40))})
-        trade_ts = (BASE + 30 * STEP) / 1000.0     # trade timestamps are SECONDS
+            {"A/USD": _rows(range(0, 10)), "B/USD": _rows(range(30, 40))}
+        )
+        trade_ts = (BASE + 30 * STEP) / 1000.0  # trade timestamps are SECONDS
 
         anchors = build_anchor_indices(
-            [trade_ts], base_ts_ms=BASE, n_candles=len(clock_ts),
-            warmup=0, clock_ts_ms=clock_ts)
+            [trade_ts],
+            base_ts_ms=BASE,
+            n_candles=len(clock_ts),
+            warmup=0,
+            clock_ts_ms=clock_ts,
+        )
 
         assert anchors == {10}, (
             "the anchor must be the trade's position in the master clock's "
-            f"union, not its slot on a gapless ruler; got {sorted(anchors)}")
+            f"union, not its slot on a gapless ruler; got {sorted(anchors)}"
+        )
 
     def test_the_real_world_shape_truncates_warmup_it_does_not_drop_trades(self):
         """THE HONEST SEVERITY TEST — modelled on the operator's actual data,
@@ -130,19 +139,26 @@ class TestAnchorsResolveToUnionPositions:
         79%-truncated TA window is a fidelity loss. It is not a missed trade.
         """
         drift, warm = 79, 100
-        clock_ts = clock_timestamps_from_candles({
-            "A/USD": _rows(range(0, 300)),
-            "B/USD": _rows(range(300 + drift, 600 + drift)),
-        })
-        trade_slot = 400 + drift              # comfortably after the gap
+        clock_ts = clock_timestamps_from_candles(
+            {
+                "A/USD": _rows(range(0, 300)),
+                "B/USD": _rows(range(300 + drift, 600 + drift)),
+            }
+        )
+        trade_slot = 400 + drift  # comfortably after the gap
         trade_ts = (BASE + trade_slot * STEP) / 1000.0
         true_idx = _union_index(clock_ts, trade_slot)
 
         old = build_anchor_indices(
-            [trade_ts], base_ts_ms=BASE, n_candles=len(clock_ts), warmup=warm)
+            [trade_ts], base_ts_ms=BASE, n_candles=len(clock_ts), warmup=warm
+        )
         new = build_anchor_indices(
-            [trade_ts], base_ts_ms=BASE, n_candles=len(clock_ts),
-            warmup=warm, clock_ts_ms=clock_ts)
+            [trade_ts],
+            base_ts_ms=BASE,
+            n_candles=len(clock_ts),
+            warmup=warm,
+            clock_ts_ms=clock_ts,
+        )
 
         # The trade candle survives BOTH ways — this is why the defect went
         # unnoticed, and why calling it "dropped trades" would be false.
@@ -155,7 +171,8 @@ class TestAnchorsResolveToUnionPositions:
         assert new_warmup == warm, f"fixed path must give {warm}, got {new_warmup}"
         assert old_warmup == warm - drift, (
             f"unfixed path should give {warm - drift} real warm-up candles, "
-            f"got {old_warmup}")
+            f"got {old_warmup}"
+        )
         assert old != new
 
     def test_a_drift_beyond_the_warmup_would_lose_the_trade_candle(self):
@@ -166,20 +183,27 @@ class TestAnchorsResolveToUnionPositions:
         skipping the very candles it exists to evaluate — silently, since a
         skipped candle logs nothing.
         """
-        drift, warm = 140, 100            # past the margin
-        clock_ts = clock_timestamps_from_candles({
-            "A/USD": _rows(range(0, 300)),
-            "B/USD": _rows(range(300 + drift, 600 + drift)),
-        })
+        drift, warm = 140, 100  # past the margin
+        clock_ts = clock_timestamps_from_candles(
+            {
+                "A/USD": _rows(range(0, 300)),
+                "B/USD": _rows(range(300 + drift, 600 + drift)),
+            }
+        )
         trade_slot = 400 + drift
         trade_ts = (BASE + trade_slot * STEP) / 1000.0
         true_idx = _union_index(clock_ts, trade_slot)
 
         old = build_anchor_indices(
-            [trade_ts], base_ts_ms=BASE, n_candles=len(clock_ts), warmup=warm)
+            [trade_ts], base_ts_ms=BASE, n_candles=len(clock_ts), warmup=warm
+        )
         new = build_anchor_indices(
-            [trade_ts], base_ts_ms=BASE, n_candles=len(clock_ts),
-            warmup=warm, clock_ts_ms=clock_ts)
+            [trade_ts],
+            base_ts_ms=BASE,
+            n_candles=len(clock_ts),
+            warmup=warm,
+            clock_ts_ms=clock_ts,
+        )
 
         assert true_idx not in old, "beyond the margin the true candle is lost"
         assert true_idx in new
@@ -189,40 +213,62 @@ class TestAnchorsResolveToUnionPositions:
         mid = (BASE + 7 * STEP + STEP // 3) / 1000.0
 
         anchors = build_anchor_indices(
-            [mid], base_ts_ms=BASE, n_candles=len(clock_ts),
-            warmup=0, clock_ts_ms=clock_ts)
+            [mid],
+            base_ts_ms=BASE,
+            n_candles=len(clock_ts),
+            warmup=0,
+            clock_ts_ms=clock_ts,
+        )
 
         assert anchors == {7}
 
     def test_a_trade_before_the_first_candle_is_dropped_not_clamped(self):
         clock_ts = clock_timestamps_from_candles({"A/USD": _rows(range(5, 20))})
         early = (BASE + 1 * STEP) / 1000.0
-        assert build_anchor_indices(
-            [early], base_ts_ms=BASE, n_candles=len(clock_ts),
-            warmup=0, clock_ts_ms=clock_ts) == set()
+        assert (
+            build_anchor_indices(
+                [early],
+                base_ts_ms=BASE,
+                n_candles=len(clock_ts),
+                warmup=0,
+                clock_ts_ms=clock_ts,
+            )
+            == set()
+        )
 
     def test_warmup_counts_union_candles_not_grid_slots(self):
         """The live consequence. Warm-up must reach back 100 candles the read
         head will actually evaluate, not 100 ruler slots that may not exist."""
         clock_ts = clock_timestamps_from_candles(
-            {"A/USD": _rows(range(0, 10)), "B/USD": _rows(range(30, 40))})
-        trade_ts = (BASE + 32 * STEP) / 1000.0     # union index 12
+            {"A/USD": _rows(range(0, 10)), "B/USD": _rows(range(30, 40))}
+        )
+        trade_ts = (BASE + 32 * STEP) / 1000.0  # union index 12
 
         anchors = build_anchor_indices(
-            [trade_ts], base_ts_ms=BASE, n_candles=len(clock_ts),
-            warmup=5, clock_ts_ms=clock_ts)
+            [trade_ts],
+            base_ts_ms=BASE,
+            n_candles=len(clock_ts),
+            warmup=5,
+            clock_ts_ms=clock_ts,
+        )
 
         assert anchors == {7, 8, 9, 10, 11, 12}, (
             "warm-up must span union positions, so it crosses the gap into "
-            f"the earlier series; got {sorted(anchors)}")
+            f"the earlier series; got {sorted(anchors)}"
+        )
 
     def test_the_bound_is_the_union_size(self):
         clock_ts = clock_timestamps_from_candles(
-            {"A/USD": _rows(range(0, 10)), "B/USD": _rows(range(30, 40))})
+            {"A/USD": _rows(range(0, 10)), "B/USD": _rows(range(30, 40))}
+        )
         last = (BASE + 39 * STEP) / 1000.0
         anchors = build_anchor_indices(
-            [last], base_ts_ms=BASE, n_candles=len(clock_ts),
-            warmup=0, clock_ts_ms=clock_ts)
+            [last],
+            base_ts_ms=BASE,
+            n_candles=len(clock_ts),
+            warmup=0,
+            clock_ts_ms=clock_ts,
+        )
         assert anchors == {19}
         assert max(anchors) < len(clock_ts)
 
@@ -230,17 +276,20 @@ class TestAnchorsResolveToUnionPositions:
 class TestTheUnionHelper:
     def test_it_dedupes_across_series(self):
         ts = clock_timestamps_from_candles(
-            {"A/USD": _rows(range(0, 10)), "B/USD": _rows(range(5, 15))})
+            {"A/USD": _rows(range(0, 10)), "B/USD": _rows(range(5, 15))}
+        )
         assert len(ts) == 15
         assert ts == sorted(set(ts))
 
     def test_it_skips_empty_and_malformed_rows(self):
-        ts = clock_timestamps_from_candles({
-            "A/USD": _rows(range(0, 3)),
-            "B/USD": [],
-            "C/USD": [["not-a-timestamp", 1, 1, 1, 1, 1]],
-            "D/USD": None,
-        })
+        ts = clock_timestamps_from_candles(
+            {
+                "A/USD": _rows(range(0, 3)),
+                "B/USD": [],
+                "C/USD": [["not-a-timestamp", 1, 1, 1, 1, 1]],
+                "D/USD": None,
+            }
+        )
         assert len(ts) == 3
 
     def test_it_matches_master_clock_exactly(self):
@@ -262,15 +311,20 @@ class TestTheCallSitesPassTheClock:
 
     @staticmethod
     def _anchor_calls():
-        panel = (REPO_ROOT / "src" / "gui" / "simulator_tab" / "fleet"
-                 / "fleet_replay_panel.py")
+        panel = (
+            REPO_ROOT
+            / "src"
+            / "gui"
+            / "simulator_tab"
+            / "fleet"
+            / "fleet_replay_panel.py"
+        )
         tree = ast.parse(panel.read_text(encoding="utf-8"))
         found = []
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            name = getattr(node.func, "id", None) or getattr(
-                node.func, "attr", None)
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
             if name in ("build_anchor_indices", "_bai"):
                 found.append(node)
         return found
@@ -279,8 +333,9 @@ class TestTheCallSitesPassTheClock:
         """POSITIVE CONTROL for the pin below — if the call sites are ever
         renamed away, the kwarg assertion would pass vacuously on an empty
         list."""
-        assert len(self._anchor_calls()) >= 2, (
-            "expected the screening-mode and expected-index call sites")
+        assert (
+            len(self._anchor_calls()) >= 2
+        ), "expected the screening-mode and expected-index call sites"
 
     @pytest.mark.parametrize("kw", ["clock_ts_ms", "n_candles"])
     def test_every_call_site_passes(self, kw):
@@ -288,4 +343,5 @@ class TestTheCallSitesPassTheClock:
             assert any(k.arg == kw for k in call.keywords), (
                 f"a build_anchor_indices call at line {call.lineno} does not "
                 f"pass {kw}=; anchors would silently fall back to the gapless "
-                "ruler")
+                "ruler"
+            )

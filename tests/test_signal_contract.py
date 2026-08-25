@@ -10,6 +10,7 @@ miniature and shows the record set falsifies it. A contract framework that
 cannot catch the failure it was commissioned for is theatre, which is the one
 thing the operator said he would not accept.
 """
+
 from __future__ import annotations
 
 import json
@@ -45,8 +46,12 @@ class TestTheRecordShape:
     fields needed to order and slice them."""
 
     def test_it_carries_all_four(self, sink):
-        s = sink.emit("ta.07.003.postcondition.computed", actual=40, expected=1800,
-                      context={"bot_id": "c8e5c5db"})
+        s = sink.emit(
+            "ta.07.003.postcondition.computed",
+            actual=40,
+            expected=1800,
+            context={"bot_id": "c8e5c5db"},
+        )
         assert s.name == "ta.07.003.postcondition.computed"
         assert s.expected == 1800
         assert s.actual == 40
@@ -94,7 +99,7 @@ class TestItEmitsOnTheSuccessPath:
         sink.emit("ta.07.003.postcondition.computed", actual=100, expected=100)
         ran_ok = sink.count("ta.07.003.postcondition.computed")
 
-        s2 = SignalSink(flush_every=1000)          # nothing emitted at all
+        s2 = SignalSink(flush_every=1000)  # nothing emitted at all
         never_ran = s2.count("ta.07.003.postcondition.computed")
 
         assert ran_ok == 1
@@ -115,9 +120,9 @@ class TestItCatchesTheLieItWasBuiltFor:
         counter = 0
         for _ in range(CANDLES):
             counter += 1
-            sink.emit("tick.entered", actual=1)      # what bots_ticked counted
+            sink.emit("tick.entered", actual=1)  # what bots_ticked counted
             if counter < SKIP:
-                continue                              # the throttle
+                continue  # the throttle
             counter = 0
             sink.emit("ta.07.003.postcondition.computed", actual=1)
 
@@ -128,7 +133,8 @@ class TestItCatchesTheLieItWasBuiltFor:
         assert computes == CANDLES // SKIP
         assert computes < ticks, (
             "the record set cannot distinguish per-candle TA from throttled "
-            "TA; this design does not solve the problem it exists for")
+            "TA; this design does not solve the problem it exists for"
+        )
 
     def test_tick_entries_alone_would_have_hidden_it(self, sink):
         """Why the old instrumentation failed: `bots_ticked` counted tick
@@ -145,7 +151,7 @@ class TestDataIsNotMutableAfterRetrieval:
     def test_a_record_cannot_be_edited(self, sink):
         s = sink.emit("x", actual=1, expected=1)
         with pytest.raises(Exception):
-            s.actual = 999                       # frozen dataclass
+            s.actual = 999  # frozen dataclass
 
     def test_retrieval_returns_an_immutable_collection(self, sink):
         sink.emit("x", actual=1)
@@ -156,7 +162,7 @@ class TestDataIsNotMutableAfterRetrieval:
 
     def test_a_consumer_cannot_shrink_the_captured_set(self, sink):
         sink.emit("x", actual=1)
-        sink.records()                            # a caller takes a copy
+        sink.records()  # a caller takes a copy
         assert sink.count("x") == 1
 
     def test_mutating_the_caller_context_does_not_alter_the_record(self, sink):
@@ -199,8 +205,8 @@ class TestTheEmitPathDoesNoIO:
         d = tmp_path / "is_a_dir.jsonl"
         d.mkdir()
         s = SignalSink(path=d, flush_every=1)
-        assert s.emit("x", actual=1) is not None    # emit still succeeds
-        assert s.health()["dropped"] >= 1           # and the loss is visible
+        assert s.emit("x", actual=1) is not None  # emit still succeeds
+        assert s.health()["dropped"] >= 1  # and the loss is visible
 
 
 class TestStorageIsAppendOnly:
@@ -226,8 +232,13 @@ class TestStorageIsAppendOnly:
         """
         p = tmp_path / "s.jsonl"
         s = SignalSink(path=p, flush_every=1)
-        s.emit("ta.07.003.postcondition.computed", actual=40, expected=1800,
-               context={"bot_id": "c8e5c5db"}, count=7)
+        s.emit(
+            "ta.07.003.postcondition.computed",
+            actual=40,
+            expected=1800,
+            context={"bot_id": "c8e5c5db"},
+            count=7,
+        )
         written = s.records()[0]
         back = read_records(p)
         assert len(back) == 1
@@ -269,7 +280,7 @@ class TestStorageIsAppendOnly:
         p = tmp_path / "s.jsonl"
         s = SignalSink(path=p, flush_every=1)
         s.emit("x", actual={"nested": [1, 2]}, expected=None)
-        s.emit("y", actual=object())            # unserialisable -> repr
+        s.emit("y", actual=object())  # unserialisable -> repr
         for line in p.read_text(encoding="utf-8").strip().splitlines():
             json.loads(line)
 
@@ -289,8 +300,7 @@ class TestTheConnectionLayer:
 
     def test_the_site_is_the_callers_not_the_modules(self, sink):
         emit("x", actual=1)
-        assert sink.records("x")[0].site.startswith(
-            "test_signal_contract.py:")
+        assert sink.records("x")[0].site.startswith("test_signal_contract.py:")
 
     def test_the_sink_is_swappable(self, tmp_path):
         a = SignalSink(flush_every=1000)

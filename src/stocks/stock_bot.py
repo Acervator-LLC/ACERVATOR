@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
@@ -24,9 +24,9 @@ logger = logging.getLogger("acervator.stocks.bot")
 
 class StockBotMode(Enum):
     ACCUMULATION = "accumulation"  # Core engine (transposed from crypto)
-    SIGNAL = "signal"       # TradingView webhook-driven
-    DCA = "dca"             # Dollar-cost averaging
-    SWING = "swing"         # TA-driven swing trading
+    SIGNAL = "signal"  # TradingView webhook-driven
+    DCA = "dca"  # Dollar-cost averaging
+    SWING = "swing"  # TA-driven swing trading
 
 
 class StockBotState(Enum):
@@ -40,24 +40,25 @@ class StockBotState(Enum):
 @dataclass
 class StockBotConfig:
     """Configuration for a stock trading bot."""
+
     broker_id: str = "alpaca"
     symbol: str = ""
     mode: StockBotMode = StockBotMode.SIGNAL
     # Capital
-    investment_amount: float = 1000.0   # Total capital allocated
-    position_size: float = 100.0        # Per-trade size in USD
-    max_position_pct: float = 25.0      # Max % of portfolio in this stock
+    investment_amount: float = 1000.0  # Total capital allocated
+    position_size: float = 100.0  # Per-trade size in USD
+    max_position_pct: float = 25.0  # Max % of portfolio in this stock
     # Risk
-    stop_loss_pct: float = 5.0          # Stop loss %
-    take_profit_pct: float = 10.0       # Take profit %
-    trailing_stop_pct: float = 0.0      # Trailing stop (0 = disabled)
+    stop_loss_pct: float = 5.0  # Stop loss %
+    take_profit_pct: float = 10.0  # Take profit %
+    trailing_stop_pct: float = 0.0  # Trailing stop (0 = disabled)
     # DCA settings
-    dca_interval_hours: float = 24.0    # Buy interval for DCA
-    dca_amount: float = 50.0            # USD per DCA buy
+    dca_interval_hours: float = 24.0  # Buy interval for DCA
+    dca_amount: float = 50.0  # USD per DCA buy
     # Swing settings
     ta_timeframe: str = "1D"
     swing_entry_confidence: float = 0.6  # TA confidence to enter
-    swing_exit_confidence: float = 0.4   # TA confidence to exit
+    swing_exit_confidence: float = 0.4  # TA confidence to exit
     # Grid settings
     grid_levels: int = 10
     grid_spread_pct: float = 2.0
@@ -65,19 +66,20 @@ class StockBotConfig:
     allow_premarket: bool = False
     allow_afterhours: bool = False
     # Execution
-    order_type: str = "market"          # market, limit
+    order_type: str = "market"  # market, limit
     limit_offset_pct: float = 0.1
 
 
 @dataclass
 class StockBotStats:
     """Runtime statistics for a stock bot."""
+
     total_trades: int = 0
     winning_trades: int = 0
     losing_trades: int = 0
     total_pnl: float = 0.0
     total_volume: float = 0.0
-    current_position: float = 0        # Shares held
+    current_position: float = 0  # Shares held
     avg_entry_price: float = 0
     current_price: float = 0
     unrealized_pnl: float = 0
@@ -92,7 +94,7 @@ class StockBotStats:
 class StockBot:
     """
     Stock trading bot with multiple strategy modes.
-    
+
     Lifecycle: create → start → (trading loop) → stop
     All trading decisions respect market hours.
     """
@@ -144,9 +146,13 @@ class StockBot:
             return
         self.state = StockBotState.RUNNING
         self._start_time = time.time()
-        logger.info("StockBot %s started: %s (%s) on %s",
-                    self.bot_id[:8], self.config.symbol,
-                    self.config.mode.value, self.config.broker_id)
+        logger.info(
+            "StockBot %s started: %s (%s) on %s",
+            self.bot_id[:8],
+            self.config.symbol,
+            self.config.mode.value,
+            self.config.broker_id,
+        )
 
     async def stop(self):
         """Stop the trading bot."""
@@ -165,7 +171,7 @@ class StockBot:
     def handle_signal(self, signal: dict):
         """
         Handle an incoming trade signal (from TradingView or TA).
-        
+
         signal dict: {action, symbol, price, quantity, strategy, ...}
         """
         if self.state != StockBotState.RUNNING:
@@ -179,9 +185,13 @@ class StockBot:
         if symbol and symbol.upper() != self.config.symbol.upper():
             return
 
-        logger.info("StockBot %s signal: %s %s @ $%.2f",
-                    self.bot_id[:8], action, self.config.symbol,
-                    signal.get("price", 0))
+        logger.info(
+            "StockBot %s signal: %s %s @ $%.2f",
+            self.bot_id[:8],
+            action,
+            self.config.symbol,
+            signal.get("price", 0),
+        )
 
         if action in ("buy", "long"):
             self._queue_buy(signal)
@@ -197,14 +207,16 @@ class StockBot:
         if qty <= 0 and price > 0:
             qty = self.config.position_size / price
 
-        self._trade_history.append({
-            "time": time.time(),
-            "action": "buy",
-            "symbol": self.config.symbol,
-            "price": price,
-            "quantity": qty,
-            "status": "queued",
-        })
+        self._trade_history.append(
+            {
+                "time": time.time(),
+                "action": "buy",
+                "symbol": self.config.symbol,
+                "price": price,
+                "quantity": qty,
+                "status": "queued",
+            }
+        )
         self.stats.total_trades += 1
         self.stats.total_volume += price * qty
         self.stats.last_trade_time = time.time()
@@ -217,17 +229,23 @@ class StockBot:
         if qty <= 0:
             return
 
-        pnl = (price - self.stats.avg_entry_price) * qty if self.stats.avg_entry_price > 0 else 0
+        pnl = (
+            (price - self.stats.avg_entry_price) * qty
+            if self.stats.avg_entry_price > 0
+            else 0
+        )
 
-        self._trade_history.append({
-            "time": time.time(),
-            "action": "sell",
-            "symbol": self.config.symbol,
-            "price": price,
-            "quantity": qty,
-            "pnl": pnl,
-            "status": "queued",
-        })
+        self._trade_history.append(
+            {
+                "time": time.time(),
+                "action": "sell",
+                "symbol": self.config.symbol,
+                "price": price,
+                "quantity": qty,
+                "pnl": pnl,
+                "status": "queued",
+            }
+        )
         self.stats.total_trades += 1
         self.stats.total_pnl += pnl
         if pnl > 0:
@@ -265,8 +283,12 @@ class StockBotManager:
     def register(self, bot: StockBot):
         """Register a stock bot."""
         self._bots[bot.bot_id] = bot
-        logger.info("Stock bot registered: %s (%s %s)",
-                    bot.bot_id[:8], bot.config.symbol, bot.config.mode.value)
+        logger.info(
+            "Stock bot registered: %s (%s %s)",
+            bot.bot_id[:8],
+            bot.config.symbol,
+            bot.config.mode.value,
+        )
 
     def unregister(self, bot_id: str):
         """Remove a stock bot."""

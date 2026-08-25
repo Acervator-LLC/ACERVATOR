@@ -22,6 +22,7 @@ EVERY test here isolates SIDECAR_PATH onto tmp_path. `main()` calls
 `_remove_sidecar()` on failure, so an unisolated test would delete the
 operator's real sidecar as a side effect.
 """
+
 from __future__ import annotations
 
 import json
@@ -54,8 +55,9 @@ def _all_checks_pass(monkeypatch):
     """Make the three checks succeed without running them for real."""
     monkeypatch.setattr(crr, "_run_pytest", lambda: (True, 1105, ""))
     monkeypatch.setattr(crr, "_run_archetype_selfcheck", lambda: (True, [], []))
-    monkeypatch.setattr(crr, "_run_claim_ledger_check",
-                        lambda: (True, "no open claims"))
+    monkeypatch.setattr(
+        crr, "_run_claim_ledger_check", lambda: (True, "no open claims")
+    )
 
 
 class TestVersionRead:
@@ -64,30 +66,37 @@ class TestVersionRead:
 
     def test_matches_the_package_dunder(self):
         import src
+
         assert crr._read_version() == src.__version__
 
 
 class TestSkippedChecksCannotBeGreen:
     """The defect this cascade exists to close."""
 
-    @pytest.mark.parametrize("flags", [
-        ["--no-pytest"],
-        ["--no-archetypes"],
-        ["--no-claims"],
-        ["--no-pytest", "--no-archetypes", "--no-claims"],
-    ])
+    @pytest.mark.parametrize(
+        "flags",
+        [
+            ["--no-pytest"],
+            ["--no-archetypes"],
+            ["--no-claims"],
+            ["--no-pytest", "--no-archetypes", "--no-claims"],
+        ],
+    )
     def test_any_skip_flag_refuses_to_declare_ready(
-            self, flags, capsys, _isolate_sidecar, _all_checks_pass):
+        self, flags, capsys, _isolate_sidecar, _all_checks_pass
+    ):
         rc = crr.main(flags)
         out = capsys.readouterr().out
         assert rc != 0, f"{flags} produced a zero exit"
         assert "[OK] Release-ready" not in out
         assert "skipped" in out
-        assert not _isolate_sidecar.exists(), (
-            f"{flags} wrote a sidecar; a skipped run must write none")
+        assert (
+            not _isolate_sidecar.exists()
+        ), f"{flags} wrote a sidecar; a skipped run must write none"
 
     def test_full_run_is_green_and_writes_sidecar(
-            self, capsys, _isolate_sidecar, _all_checks_pass):
+        self, capsys, _isolate_sidecar, _all_checks_pass
+    ):
         rc = crr.main([])
         out = capsys.readouterr().out
         assert rc == 0, out
@@ -96,18 +105,22 @@ class TestSkippedChecksCannotBeGreen:
 
 
 class TestSidecarContents:
-    def test_sidecar_records_which_checks_ran(
-            self, _isolate_sidecar, _all_checks_pass):
+    def test_sidecar_records_which_checks_ran(self, _isolate_sidecar, _all_checks_pass):
         crr.main([])
         data = json.loads(_isolate_sidecar.read_text(encoding="utf-8"))
         assert data["checks_run"] == {
-            "pytest": "ran", "archetypes": "ran", "claims": "ran"}
+            "pytest": "ran",
+            "archetypes": "ran",
+            "claims": "ran",
+        }
         assert data["tests"] == 1105
         assert data["version"] == crr._read_version()
 
     def test_sidecar_timestamp_is_iso_and_parseable(
-            self, _isolate_sidecar, _all_checks_pass):
+        self, _isolate_sidecar, _all_checks_pass
+    ):
         from datetime import datetime
+
         crr.main([])
         data = json.loads(_isolate_sidecar.read_text(encoding="utf-8"))
         # The hook parses this with fromisoformat after stripping Z.
@@ -116,7 +129,8 @@ class TestSidecarContents:
 
 class TestZeroCollectedTests:
     def test_green_pytest_with_zero_tests_is_a_failure(
-            self, capsys, monkeypatch, _isolate_sidecar):
+        self, capsys, monkeypatch, _isolate_sidecar
+    ):
         """A suite that collected nothing cannot support a claim."""
         monkeypatch.setattr(crr, "_run_pytest", lambda: (True, 0, ""))
         monkeypatch.setattr(crr, "_run_archetype_selfcheck", lambda: (True, [], []))
@@ -155,17 +169,23 @@ class TestMainPyVersionLiterals:
         import ast
         import re
         import src
+
         tree = ast.parse(self._main_py_source())
-        bare = [(n.lineno, n.value) for n in ast.walk(tree)
-                if isinstance(n, ast.Constant) and isinstance(n.value, str)
-                and re.fullmatch(self._VERSION_RE, n.value)]
+        bare = [
+            (n.lineno, n.value)
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Constant)
+            and isinstance(n.value, str)
+            and re.fullmatch(self._VERSION_RE, n.value)
+        ]
         # Zero bare literals is the correct end state, not a failure:
         # main() now binds `from src import __version__`. Any literal
         # that reappears must at least agree with the package.
         mismatched = [(ln, v) for ln, v in bare if v != src.__version__]
         assert not mismatched, (
             f"main.py version literal(s) disagree with "
-            f"src.__version__=={src.__version__}: {mismatched}")
+            f"src.__version__=={src.__version__}: {mismatched}"
+        )
 
     def test_main_sources_its_version_from_the_package(self):
         """Positive control for the test above.
@@ -175,15 +195,18 @@ class TestMainPyVersionLiterals:
         both version tests green -- and the drift would restart.
         """
         import ast
+
         tree = ast.parse(self._main_py_source())
         imports_version = any(
             isinstance(n, ast.ImportFrom)
             and (n.module or "").split(".")[0] == "src"
             and any(a.name == "__version__" for a in n.names)
-            for n in ast.walk(tree))
+            for n in ast.walk(tree)
+        )
         assert imports_version, (
             "main.py no longer imports __version__ from src; its version "
-            "strings are hardcoded again")
+            "strings are hardcoded again"
+        )
 
     def test_branded_version_strings_match_package_version(self):
         """Catches a version embedded in a longer string that claims to
@@ -198,24 +221,26 @@ class TestMainPyVersionLiterals:
         import ast
         import re
         import src
+
         branded = re.compile(r"Acervator\s+v?(\d+\.\d+\.\d+)", re.IGNORECASE)
         tree = ast.parse(self._main_py_source())
         bad = []
         for n in ast.walk(tree):
-            if not (isinstance(n, ast.Constant)
-                    and isinstance(n.value, str)):
+            if not (isinstance(n, ast.Constant) and isinstance(n.value, str)):
                 continue
             for found in branded.findall(n.value):
                 if found != src.__version__:
                     bad.append((n.lineno, n.value.strip()[:60], found))
         assert not bad, (
             f"main.py brands itself with a stale version while "
-            f"src.__version__=={src.__version__}: {bad}")
+            f"src.__version__=={src.__version__}: {bad}"
+        )
 
 
 class TestFailurePathsRemoveSidecar:
     def test_pytest_failure_removes_a_stale_green_sidecar(
-            self, monkeypatch, _isolate_sidecar):
+        self, monkeypatch, _isolate_sidecar
+    ):
         _isolate_sidecar.write_text('{"version": "0.0.0"}', encoding="utf-8")
         monkeypatch.setattr(crr, "_run_pytest", lambda: (False, 3, "boom"))
         monkeypatch.setattr(crr, "_run_archetype_selfcheck", lambda: (True, [], []))
@@ -223,11 +248,13 @@ class TestFailurePathsRemoveSidecar:
         assert crr.main([]) != 0
         assert not _isolate_sidecar.exists()
 
-    def test_archetype_failure_is_reported(
-            self, capsys, monkeypatch, _isolate_sidecar):
+    def test_archetype_failure_is_reported(self, capsys, monkeypatch, _isolate_sidecar):
         monkeypatch.setattr(crr, "_run_pytest", lambda: (True, 1105, ""))
-        monkeypatch.setattr(crr, "_run_archetype_selfcheck",
-                            lambda: (False, ["coding: ruff missing"], []))
+        monkeypatch.setattr(
+            crr,
+            "_run_archetype_selfcheck",
+            lambda: (False, ["coding: ruff missing"], []),
+        )
         monkeypatch.setattr(crr, "_run_claim_ledger_check", lambda: (True, ""))
         assert crr.main([]) != 0
         assert "ruff missing" in capsys.readouterr().out

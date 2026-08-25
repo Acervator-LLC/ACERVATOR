@@ -18,6 +18,7 @@ inspecting widgets, so they measure what the system DID.
 `performance_log_cb` 5 times, so both callbacks must survive the merge
 as public methods regardless of how many panes exist.
 """
+
 from __future__ import annotations
 
 import sys
@@ -46,10 +47,11 @@ def tab():
     binding is unavailable so the suite still runs headless-less."""
     try:
         from PySide6.QtWidgets import QApplication
-    except ImportError:                                   # pragma: no cover
+    except ImportError:  # pragma: no cover
         pytest.skip("PySide6 unavailable")
     QApplication.instance() or QApplication([])
     from src.gui.simulator_tab.simulator_tab import SimulatorTab
+
     return SimulatorTab()
 
 
@@ -103,8 +105,10 @@ class TestPauseIsRecordedNotSilent:
         tab._perf_paused = False
         tab.log_activity("a")
         tab.log_performance("p")
-        by = {r.actual: r.context["delivered"]
-              for r in sink.records("sim.06.014.event.log.line")}
+        by = {
+            r.actual: r.context["delivered"]
+            for r in sink.records("sim.06.014.event.log.line")
+        }
         assert by == {"activity": False, "performance": True}
 
 

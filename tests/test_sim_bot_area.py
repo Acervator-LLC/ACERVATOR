@@ -19,6 +19,7 @@ the other way is a cycle. `SimulatorTab` is only ever constructed BY
 returning None when it cannot be resolved keeps a headless import of
 this panel a legitimate caller.
 """
+
 from __future__ import annotations
 
 import sys
@@ -38,7 +39,7 @@ def _destroy_widgets():
     yield
     try:
         from PySide6.QtWidgets import QApplication
-    except ImportError:                                   # pragma: no cover
+    except ImportError:  # pragma: no cover
         return
     app = QApplication.instance()
     if app is None:
@@ -58,7 +59,7 @@ STEP = 300_000
 def _qapp():
     try:
         from PySide6.QtWidgets import QApplication
-    except ImportError:                                   # pragma: no cover
+    except ImportError:  # pragma: no cover
         pytest.skip("PySide6 unavailable")
     return QApplication.instance() or QApplication([])
 
@@ -73,15 +74,29 @@ def _rows(n=300, px0=1.0):
 
 def _controller():
     from src.gui.simulator_tab.fleet.fleet_replay_controller import (
-        FleetReplayController)
-    cfgs = [{"mode": "scrumming", "symbol": s, "target_balance": 100.0,
-             "target_asset": s.split("/")[0], "base_currency": "USD",
-             "_src_bot_id": f"bot{i:04d}"} for i, s in enumerate(SYMS)]
+        FleetReplayController,
+    )
+
+    cfgs = [
+        {
+            "mode": "scrumming",
+            "symbol": s,
+            "target_balance": 100.0,
+            "target_asset": s.split("/")[0],
+            "base_currency": "USD",
+            "_src_bot_id": f"bot{i:04d}",
+        }
+        for i, s in enumerate(SYMS)
+    ]
     ctl = FleetReplayController(
-        configs=cfgs, candles_by_symbol={s: _rows() for s in SYMS},
-        smart_wires=[], tick_delay_s=0.0, max_candles=50,
+        configs=cfgs,
+        candles_by_symbol={s: _rows() for s in SYMS},
+        smart_wires=[],
+        tick_delay_s=0.0,
+        max_candles=50,
         activity_log_cb=lambda *_: None,
-        performance_log_cb=lambda *_: None)
+        performance_log_cb=lambda *_: None,
+    )
     ctl._build_sim()
     for _ in range(120):
         ctl._tape.step()
@@ -90,8 +105,8 @@ def _controller():
 
 def _panel_with_fleet():
     _qapp()
-    from src.gui.simulator_tab.fleet.fleet_replay_panel import (
-        FleetReplayPanel)
+    from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
+
     p = FleetReplayPanel()
     p._controller = _controller()
     return p
@@ -101,6 +116,7 @@ def _tab():
     _qapp()
     import src.gui.main_window  # noqa: F401 - as the real app has it
     from src.gui.simulator_tab.simulator_tab import SimulatorTab
+
     t = SimulatorTab()
     t.resize(1600, 900)
     return t
@@ -117,9 +133,18 @@ class TestTheAdapterMatchesTheTableContract:
         wrong -- so the contract is checked here instead."""
         p = _panel_with_fleet()
         for st in p.sim_bot_statuses():
-            for k in ("bot_id", "symbol", "mode", "state", "exchange",
-                      "target_balance", "live_target_balance",
-                      "current_holdings", "quote_to_usd", "stats"):
+            for k in (
+                "bot_id",
+                "symbol",
+                "mode",
+                "state",
+                "exchange",
+                "target_balance",
+                "live_target_balance",
+                "current_holdings",
+                "quote_to_usd",
+                "stats",
+            ):
                 assert k in st, k
             for k in ("current_price", "position_value"):
                 assert k in st["stats"], k
@@ -139,13 +164,12 @@ class TestTheAdapterMatchesTheTableContract:
         """A zero price would make Ammo read as the whole target on
         every row, which looks like a fleet that has never bought."""
         p = _panel_with_fleet()
-        assert all(st["stats"]["current_price"] > 0
-                   for st in p.sim_bot_statuses())
+        assert all(st["stats"]["current_price"] > 0 for st in p.sim_bot_statuses())
 
     def test_no_controller_yields_no_rows_rather_than_raising(self):
         _qapp()
-        from src.gui.simulator_tab.fleet.fleet_replay_panel import (
-            FleetReplayPanel)
+        from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
+
         assert FleetReplayPanel().sim_bot_statuses() == []
 
 
@@ -161,16 +185,26 @@ class TestItIsTheTradingTabsTable:
         t = _tab()
         t.mount_bot_status_table()
         from src.gui.main_window import BotStatusTable
-        assert isinstance(t.fleet_replay._bot_status_table_widget,
-                          BotStatusTable)
+
+        assert isinstance(t.fleet_replay._bot_status_table_widget, BotStatusTable)
 
     def test_the_columns_are_the_trading_tabs_columns(self):
         t = _tab()
         t.mount_bot_status_table()
         from src.gui.main_window import BotStatusTable
+
         assert list(BotStatusTable.COLUMNS) == [
-            "Bot ID", "Symbol", "Mode", "Trades", "Target",
-            "Target BTC", "Target ETH", "Ammo", "Fire", ""]
+            "Bot ID",
+            "Symbol",
+            "Mode",
+            "Trades",
+            "Target",
+            "Target BTC",
+            "Target ETH",
+            "Ammo",
+            "Fire",
+            "",
+        ]
 
     def test_mounting_twice_does_not_stack_two_tables(self):
         t = _tab()
@@ -217,8 +251,10 @@ class TestTheActiveBotDropdown:
         st = t.fleet_replay.sim_bot_statuses()
         t.fleet_replay._bot_status_table_widget.update_bots(st)
         t.refresh_active_bot_roster(st)
-        ids = {t._active_bot_picker.itemData(i)
-               for i in range(1, t._active_bot_picker.count())}
+        ids = {
+            t._active_bot_picker.itemData(i)
+            for i in range(1, t._active_bot_picker.count())
+        }
         assert ids == {s["bot_id"] for s in st}
 
     def test_a_reload_keeps_the_selection(self):
@@ -239,8 +275,8 @@ class TestTheActiveBotDropdown:
 
 class TestTheRenderIsReported:
     def test_the_emitter_reports_rows_against_bots(self):
-        from src.core.signal_contract import (
-            SignalSink, reset_throttle, set_sink)
+        from src.core.signal_contract import SignalSink, reset_throttle, set_sink
+
         sink = SignalSink(flush_every=10_000)
         set_sink(sink)
         reset_throttle()
@@ -258,15 +294,18 @@ class TestTheRenderIsReported:
     def test_a_dropped_row_reports_false(self):
         """NEGATIVE CONTROL -- an adapter that skips a bot must not
         look identical to one that renders them all."""
-        from src.core.signal_contract import (
-            SignalSink, reset_throttle, set_sink)
+        from src.core.signal_contract import SignalSink, reset_throttle, set_sink
+
         sink = SignalSink(flush_every=10_000)
         set_sink(sink)
         reset_throttle()
         try:
             p = _panel_with_fleet()
             p.emit_bot_table(len(SYMS) - 1)
-            assert sink.records("sim.06.010.postcondition.bot_table.rendered")[0].ok is False
+            assert (
+                sink.records("sim.06.010.postcondition.bot_table.rendered")[0].ok
+                is False
+            )
         finally:
             set_sink(None)
             reset_throttle()
