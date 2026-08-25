@@ -425,13 +425,25 @@ class SimRunLog:
         acceptable there. If ``keep_runs`` is ever raised far above
         200 this becomes a visible hitch and belongs off the thread.
 
-        Never raises. Losing a retention pass is recoverable; taking
-        down the replay that just finished is not.
+        WHAT THIS CATCHES, AND WHY IT IS NOT A BLIND ``except``.
+        ``apply_retention`` turns every failure it anticipates into a
+        ``refused``, a ``skipped`` or an ``errors`` entry and returns
+        normally, so this handler only ever sees a defect. The named
+        tuple is what a filesystem walk and a JSON rewrite can
+        actually raise.
+
+        A class NOT in that tuple propagates, deliberately. The
+        caller already holds the outer guarantee --
+        ``fleet_replay_controller.py:2192`` wraps this whole
+        ``finish_run`` in its own handler -- so the replay is safe
+        either way, and swallowing an unknown exception class here
+        would only hide a bug that nothing else is looking for.
         """
         try:
             return apply_retention(
                 self.root, protect=frozenset({self.run_id}))
-        except Exception as exc:      # noqa: BLE001 - advisory pass
+        except (OSError, ValueError, TypeError, AttributeError,
+                KeyError, IndexError, RuntimeError) as exc:
             logger.warning("sim retention pass failed: %s", exc)
             return RetentionResult(refused=f"pass raised: {exc}")
 

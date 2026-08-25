@@ -42,7 +42,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from src.trading.sim_run_log import (  # noqa: E402
+from src.trading.sim_run_log import (
     BULK_FILENAMES,
     PROTECTED_TREE_NAME,
     RetentionPolicy,
