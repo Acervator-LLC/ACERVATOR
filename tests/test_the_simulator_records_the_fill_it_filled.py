@@ -79,25 +79,47 @@ SYMS = ("CHIP/USD", "SPK/USD")
 TARGET_BALANCE = 100.0
 TAPE_CANDLES = 400
 
-# MEASURED on this tape: no fill by candle 60, one fill by candle 80.
-# The run plays the whole tape, so it carries about 5x margin over the
-# warm-up the first acquisition actually needs.
-FIRST_FILL_OBSERVED_BY = 80
+# RE-MEASURED after issue #111 violation B, on the sawtooth tape below:
+# 8 fills, the first on candle 150. The old figure was 80, taken from
+# the STRUCTURAL opening acquisition that the ruling removed. The run
+# plays the whole tape, so it carries about 2.7x margin over the
+# warm-up the first fill actually needs.
+FIRST_FILL_OBSERVED_BY = 150
 
 
 def _rows(n: int = TAPE_CANDLES, px0: float = 1.0) -> list[list[float]]:
+    """Return a tape a bot that opens AT target still has work on.
+
+    ISSUE #111 VIOLATION B. This tape used to oscillate inside a 1.2%
+    band, which never arms a scrum: the only fill it produced was the
+    STRUCTURAL opening acquisition, and the operator's ruling removed
+    that by giving a bot with no bot_state a locked side at open. This
+    file's floor is ONE FILL, so the tape has to be able to produce one
+    from a trading decision: a sawtooth of about 10%, two orders of
+    magnitude outside the MEM-258 dust band (0.1% of target,
+    scrumming_bot.py:7144).
+    """
     out: list[list[float]] = []
     px = px0
     for i in range(n):
-        px *= 1.0 + ((i % 7) - 3) * 0.002
-        out.append([T0 + i * STEP, px, px * 1.006, px * 0.994, px, 90.0])
+        px *= 1.002 if (i // 50) % 2 == 0 else 0.998
+        out.append([T0 + i * STEP, px, px * 1.001, px * 0.999, px, 90.0])
     return out
 
 
 def _controller() -> FleetReplayController:
+    # `ta_timeframe` is the tape's own `5m`. `BotConfig` defaults it to
+    # `1h` (bot_container.py:203) and `TabletBackend.fetch_ohlcv`
+    # refuses a timeframe it holds no series for (tablet_backend.py:392)
+    # rather than serving `5m` in its place, so a `1h` bot can never
+    # clear the TA gate here. It could still make the structural opening
+    # acquisition, which is how that went unnoticed; with the
+    # acquisition gone a `1h` config would leave this file no fill to
+    # check the record against.
     cfgs = [{"mode": "scrumming", "symbol": s,
              "target_balance": TARGET_BALANCE,
              "target_asset": s.split("/")[0],
+             "ta_timeframe": "5m",
              "base_currency": "USD", "_src_bot_id": f"bot{i:04d}"}
             for i, s in enumerate(SYMS)]
     return FleetReplayController(
@@ -337,20 +359,26 @@ class TestTheFillReachesTheRunLog:
 
         `_spendable_now` read `self._exchange._balances`, an attribute
         `CCXTConnector` does not have, so the `AttributeError` was
-        caught and 0.0 written on every row. Exactly one fill happens
-        on this tape and nothing moves the wallet after it, so the
-        recorded value must equal the tape's closing USD.
+        caught and 0.0 written on every row.
+
+        Nothing moves the wallet after the LAST fill, so that row's
+        recorded value must equal the tape's closing USD. This used to
+        read `rows[0]` and require exactly one fill, which was true only
+        while the single STRUCTURAL opening acquisition was the whole
+        run; issue #111 violation B removed that fill and the tape now
+        settles several. The derivation is unchanged — it just names the
+        last row instead of the only one.
         """
-        assert len(run.ledger) == 1, (
+        assert len(run.ledger) >= 1, (
             "this check derives the expected spendable from the fact "
-            f"that nothing moves the wallet after the last fill; "
-            f"{len(run.ledger)} fills make that derivation unsound")
+            "that nothing moves the wallet after the last fill; zero "
+            "fills make that derivation unsound")
         closing_usd = float(run.wallet.get("USD", 0.0))
         assert closing_usd > 0.0, run.wallet
-        assert run.rows[0]["data"]["spendable_usd"] == pytest.approx(
+        assert run.rows[-1]["data"]["spendable_usd"] == pytest.approx(
             closing_usd), (
-            f"the row records spendable "
-            f"{run.rows[0]['data']['spendable_usd']} against a tape "
+            f"the last row records spendable "
+            f"{run.rows[-1]['data']['spendable_usd']} against a tape "
             f"wallet of {run.wallet}")
 
     def test_spendable_now_reports_the_tape_wallet(

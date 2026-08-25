@@ -43,23 +43,30 @@ becomes a maintenance burden that the next gate change weakens, and a
 weakened test is how this hole reopens. The floor is ONE fill: below
 it the Simulator produces nothing for the parity criterion to consume.
 
-WHY THIS TAPE SHOULD TRADE, AND THE MARGIN. A scrumming bot holds none
-of its target asset at candle 0 and is told to hold `target_balance`
-of it, so its opening acquisition is structural rather than a signal
-accident — the fill is exactly `target_balance` of quote. It still
-waits for the deepest indicator guard in the engine, 51 candles.
-MEASURED on this tape: no fill by candle 60, one fill by candle 80.
-The replay below plays the whole 400-candle tape, so the run carries
-about a 5x margin over the warm-up depth the fill actually needs. A
-gate change that pushes the first acquisition past 400 candles of
-ordinary data is a thing the operator wants told, not hidden.
+WHY THIS TAPE SHOULD TRADE, AND THE MARGIN. This paragraph used to
+read: "a scrumming bot holds none of its target asset at candle 0 and
+is told to hold `target_balance` of it, so its opening acquisition is
+structural rather than a signal accident". ISSUE #111 VIOLATION B
+REMOVED THAT FILL. The operator ruled that a bot carrying no bot_state
+opens with a LOCKED SIDE — `target_balance` of base at the tape's
+first close, so locked and spendable start equal — and a bot that
+opens AT target buys nothing on arrival. The old fill was the only one
+this file's oscillating tape could ever produce, so the floor rested
+on an artefact rather than on trading.
 
-WHY TWO BOTS AND ONLY ONE FILL. `_build_sim` seeds the wallet with the
-SUM of the fleet's target balances (v3.24.9), so a 2-bot fleet at
-$100 each starts with $200. The first acquisition costs $100 plus fee,
-which leaves the second bot short of its own target. That is the
-seeding rule working, not a defect, and it is why the floor here is
-`>= 1` and not `== 2`.
+The tape is now a sawtooth of about 10%, and the TA timeframe is the
+tape's own, so the fill this file requires is a scrum. RE-MEASURED: 8
+fills, the first on candle 150. The replay plays the whole 400-candle
+tape, about a 2.7x margin over the warm-up the first fill needs. A
+gate change that pushes the first fill past 400 candles of ordinary
+data is a thing the operator wants told, not hidden.
+
+WHY THE FLOOR IS ONE FILL AND NOT TWO. It was `>= 1` because the old
+wallet could fund exactly one opening acquisition for a two-bot fleet
+— the seeding rule working, not a defect, and the same arithmetic that
+issue #111 violation B closed. It stays `>= 1` for the reason above it:
+a COUNT would pin trade-count parity, which is not this project's
+criterion for the Simulator.
 """
 from __future__ import annotations
 
@@ -86,12 +93,15 @@ SYMS = ("CHIP/USD", "SPK/USD")
 TARGET_BALANCE = 100.0
 
 # The deepest indicator guard in the voting engine is 51 candles
-# (ZScore, period + 1), and the first acquisition on this tape was
-# MEASURED between candle 61 and candle 80. 400 is the tape length and
-# the run is uncapped, so the margin over the measured requirement is
-# about 5x.
+# (ZScore, period + 1). RE-MEASURED after issue #111 violation B, on
+# the sawtooth tape below and with TA on the tape's own timeframe: 8
+# fills, the first on candle 150, then 264 and 300. The old figure was
+# 80, taken from the STRUCTURAL opening acquisition that the ruling
+# removed; a fill now needs the price to travel far enough for a scrum,
+# which takes longer. 400 is the tape length and the run is uncapped,
+# so the margin over the measured requirement is about 2.7x.
 TAPE_CANDLES = 400
-FIRST_FILL_OBSERVED_BY = 80
+FIRST_FILL_OBSERVED_BY = 150
 
 
 # What the class-scoped `played` fixture hands each check: the
@@ -100,12 +110,27 @@ _Played = tuple[FleetReplayController, float]
 
 
 def _rows(n: int = TAPE_CANDLES, px0: float = 1.0) -> list[list[float]]:
-    """Return a synthetic tablet: n whole candles on the 5-min grid."""
+    """Return a synthetic tablet: n whole candles on the 5-min grid.
+
+    ISSUE #111 VIOLATION B CHANGED WHAT THIS TAPE HAS TO DO. The old
+    tape oscillated inside a 1.2% band, which never moved a position
+    far enough to arm a scrum. The only fill it ever produced was the
+    STRUCTURAL opening acquisition, and the operator's ruling removed
+    that: a bot with no bot_state now opens with a locked side, at
+    target, so it buys nothing on arrival.
+
+    A file whose whole point is "the Simulator must FIRE" cannot rest
+    its floor on a fill that no longer exists, so this is a sawtooth --
+    fifty candles up at 0.2% each, then fifty down, a swing of about
+    10%. That is two orders of magnitude outside the MEM-258 dust band
+    (0.1% of target, scrumming_bot.py:7144), so the fill this file now
+    requires is a TRADING decision rather than an arrival artefact.
+    """
     out: list[list[float]] = []
     px = px0
     for i in range(n):
-        px *= 1.0 + ((i % 7) - 3) * 0.002
-        out.append([T0 + i * STEP, px, px * 1.006, px * 0.994, px, 90.0])
+        px *= 1.002 if (i // 50) % 2 == 0 else 0.998
+        out.append([T0 + i * STEP, px, px * 1.001, px * 0.999, px, 90.0])
     return out
 
 
@@ -119,9 +144,18 @@ def _controller(*, build: bool = True) -> FleetReplayController:
     `bots_ticked=1600` and `trades_fired=2` against a tape ledger
     holding one fill.
     """
+    # `ta_timeframe` is the tape's own `5m`. `BotConfig` defaults it to
+    # `1h` (bot_container.py:203) and `TabletBackend.fetch_ohlcv`
+    # refuses a timeframe it holds no series for (tablet_backend.py:392)
+    # rather than serving `5m` in its place, so on a `5m`-only tape a
+    # `1h` bot can never clear the TA gate. It could still make the
+    # structural opening acquisition, which is why this went unnoticed;
+    # with that acquisition gone (issue #111 violation B) a `1h` config
+    # here would make every assertion below vacuous.
     cfgs = [{"mode": "scrumming", "symbol": s,
              "target_balance": TARGET_BALANCE,
              "target_asset": s.split("/")[0],
+             "ta_timeframe": "5m",
              "base_currency": "USD", "_src_bot_id": f"bot{i:04d}"}
             for i, s in enumerate(SYMS)]
     ctl = FleetReplayController(
@@ -305,7 +339,16 @@ class TestASimulatorReplayFiresATrade:
         assert bought, (
             "no base asset holds a positive quantity after the replay, "
             f"so nothing settled; wallet={balances}")
-        seeded = TARGET_BALANCE * len(SYMS)
-        assert float(balances.get("USD", 0.0)) < seeded, (
-            f"the quote leg still holds its full ${seeded:,.2f} seed, "
-            "so no acquisition was paid for")
+        # ISSUE #111 VIOLATION B. This used to require the quote leg to
+        # be BELOW its seed, because the fleet's first act was always an
+        # opening acquisition. A bot that opens with a locked side is
+        # already at target and buys nothing structural, so a settled
+        # scrum can leave the quote leg either side of the seed. What
+        # must not happen is that it did not move at all, which is the
+        # counter-without-a-settlement state this check exists for.
+        opening = dict(ctl._tape.snapshot().get("opening_balances", {}))
+        assert float(balances.get("USD", 0.0)) != float(
+            opening.get("USD", 0.0)), (
+            f"the quote leg still holds exactly its opening "
+            f"${float(opening.get('USD', 0.0)):,.2f}, so nothing was "
+            "paid for or received")

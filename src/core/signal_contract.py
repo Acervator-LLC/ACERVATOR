@@ -298,8 +298,8 @@ overnight needs the whole night in the window. At the measured
 holds 25.7 hours -- a day with headroom.
 
 WORST CASE, stated because the measured case is not a bound: if every
-one of the 77 pins in the tree went maximally loud at once, the rule
-admits 77 / 10 s = 7.7 records per second. At the measured 600 bytes
+one of the 78 pins in the tree went maximally loud at once, the rule
+admits 78 / 10 s = 7.8 records per second. At the measured 600 bytes
 per digest line that is 16.2 MB/h, and 96 MB still holds 5.9 hours --
 still 2.8x the 2.13 hours the whole 300 MB main ladder holds today.
 The ceiling is set by the PIN COUNT and the interval, never by any
@@ -684,6 +684,7 @@ _TOGGLE_PINS: tuple[str, ...] = (
     "fleet.03.005.invariant.state_parity",
     "fleet.03.006.postcondition.state_imported",
     "fleet.03.007.postcondition.positions_seeded_from_lots",
+    "fleet.03.008.postcondition.lotless_opened_locked",
     "gui.04.001.postcondition.voting_panel.fit",
     "gui.04.002.postcondition.clear_settled",
     "gui.04.003.postcondition.despawn_rows_match_ledger",
@@ -735,13 +736,13 @@ _TOGGLE_PINS: tuple[str, ...] = (
     "apitest.16.005.postcondition.indicator_is_mappable",
     "instance.17.001.postcondition.auto_start_permitted",
 )
-"""The sixty-one pins that need a trigger. Silence from one is normal."""
+"""The sixty-two pins that need a trigger. Silence from one is normal."""
 
 CADENCE_BY_NAME = MappingProxyType({
     **{pin: CADENCE_ALWAYS_ON for pin in _ALWAYS_ON_PINS},
     **{pin: CADENCE_TOGGLE for pin in _TOGGLE_PINS},
 })
-"""Every pin's declared category, by current name. 77 entries."""
+"""Every pin's declared category, by current name. 78 entries."""
 
 _NAME_TEMPLATE = "{}"
 """How a register row spells a leaf built at run time.

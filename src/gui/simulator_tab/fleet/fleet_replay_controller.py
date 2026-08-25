@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from bisect import bisect_right
 from dataclasses import dataclass, field
@@ -400,6 +401,86 @@ def _instantiate_bot(
             "FleetReplayController: skip %s config (build failed: %s)",
             cfg.get("symbol", "?"), _cfg_exc)
         return None
+
+
+# ccxt OHLCV column order is [ts, open, high, low, close, volume], so
+# the close a bot reads through `fetch_ticker` sits at index 4
+# (tablet_backend.py:403). Named rather than written as a literal
+# because `opening_lot_for_lotless` both indexes it and length-checks
+# the row against it, and two spellings of one column would drift.
+OHLCV_CLOSE = 4
+
+
+def _positive_finite(value: object) -> Optional[float]:
+    """Return *value* as a positive finite float, or None.
+
+    One gate for the two readings `opening_lot_for_lotless` takes off
+    caller-shaped data, so a target and a price are judged by the same
+    rule rather than by two hand-copies of it. A config value comes out
+    of JSON, so the accepted types are the ones JSON can hold; anything
+    else is refused rather than coerced, and a string that does not
+    parse is refused too.
+    """
+    if not isinstance(value, (int, float, str)):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number) or number <= 0.0:
+        return None
+    return number
+
+
+def opening_lot_for_lotless(
+        target_balance: object, rows: list[list]) -> Optional[dict]:
+    """Return the one lot a bot with NO bot_state opens locked with.
+
+    Issue #111 violation B. Operator ruling: "locked and spendable start
+    equal". `_build_sim` seeds the quote leg at `target_balance`, so the
+    base leg opens at the units that same money buys at the tape's own
+    opening price -- `target_balance / price`. Valued at that price the
+    two sides are the SAME NUMBER, which is the ruling stated literally.
+
+    WHY A BOT NEEDS ONE. A bot that opens FLAT must buy its whole target
+    before it can do anything else, and that costs `target x (1 + fee)`.
+    The wallet seed is `sum(target_balance)` exactly, so N targets cannot
+    fund N such acquisitions: the last bot is always short by the fees
+    the earlier ones paid. Measured on a 400-candle synthetic tape,
+    closing USD 100.00 / 99.40 / 98.80 at fleet sizes 1 / 2 / 3 -- the
+    0.6% fee exactly. At size 1 the only bot IS the starved one, so it
+    fired nothing at all. Whether a bot could trade depended on how many
+    OTHER bots existed. Live has no such coupling, and Live, Paper and
+    Sim may differ only in where market data comes from.
+
+    THE PRICE IS THE TAPE'S FIRST CLOSE, not a separate opinion about
+    the opening price. `TabletBackend` starts every cursor at 0
+    (tablet_backend.py:115) and `fetch_ticker` serves `rows[-1][4]` of
+    the visible slice (:404), so at the opening tick the bot reads this
+    exact figure from the venue.
+
+    Returns None -- open flat, unchanged -- when there is no target, no
+    tape, or no usable price. A lot with a zero or non-finite basis
+    "claims infinite profit against every price and can arm a sell that
+    never should have armed" (`_book_reconciliation_lot`,
+    scrumming_bot.py:11948); refusing to write one is that same rule.
+
+    The lot shape is the documented one, `{units, initial_buy_price}`
+    (scrumming_bot.py:692), carrying the `operator_initiated` flag both
+    live lot writers set (scrumming_bot.py:3774 and :11983).
+    """
+    target = _positive_finite(target_balance)
+    first = rows[0] if rows else []
+    price = (_positive_finite(first[OHLCV_CLOSE])
+             if len(first) > OHLCV_CLOSE else None)
+    if target is None or price is None:
+        return None
+    units = _positive_finite(target / price)
+    if units is None:
+        return None
+    return {"units": units,
+            "initial_buy_price": price,
+            "operator_initiated": False}
 
 
 class FleetReplayController:
@@ -951,6 +1032,11 @@ class FleetReplayController:
         _imported_state = 0
         _import_failed = 0
         _import_missing = 0
+        # Bots with NO `_src_scrumming_state` — see the locked-side
+        # block below the loop. Collected HERE because this is where the
+        # key is read; re-deriving it later would be a second answer to
+        # the same question.
+        _no_bot_state: list[tuple[Any, dict]] = []
         for cfg in self._configs:
             sym = str(cfg.get("symbol", "") or "")
             if sym not in available_symbols:
@@ -1080,6 +1166,7 @@ class FleetReplayController:
                         _import_failed += 1
                 elif _scrum is None:
                     _import_missing += 1
+                    _no_bot_state.append((bot, cfg))
                 self._bots.append(bot)
                 # v3.24.80 — record the join for trade attribution.
                 if sym:
@@ -1100,6 +1187,12 @@ class FleetReplayController:
                         "no trades. Its target_balance did not reach "
                         "the wallet seed.")
         self._build_smart_wires(_joinable)
+        # A bot with NO bot_state opens with a locked side, so
+        # that the credit loop below has lots to seed it from.
+        # Issue #111 violation B; see the method for the ruling,
+        # the measurement and why this is not the second source
+        # of initiating state that block removed.
+        self._open_locked_sides(_no_bot_state)
         # ── SEED THE EXCHANGE FROM THE FLEET'S OWN LOTS ─────────────
         # bot_state is the ONLY source of initiating state.
         #
@@ -1157,6 +1250,81 @@ class FleetReplayController:
                if _import_missing else ""))
 
         self._assert_capital_isolation()
+
+    def _open_locked_sides(
+            self, lotless: list[tuple[Any, dict]]) -> None:
+        """Open every bot that carries no bot_state with a locked side.
+
+        Issue #111 violation B. Operator ruling: "locked and spendable
+        start equal." Called immediately before the credit loop in
+        `_build_sim`, because the lots this writes are what that loop
+        reads.
+
+        A proposal fleet carries no `_src_scrumming_state`
+        (`topology_stress._config_for`, topology_stress.py:216, builds
+        exactly such configs), so the import in `_build_sim` never ran,
+        no bot got lots, and every bot opened FLAT.
+        `opening_lot_for_lotless` carries the measurement of what that
+        cost.
+
+        WHY THIS IS NOT THE SECOND SOURCE OF INITIATING STATE THAT THE
+        CREDIT BLOCK REMOVED. That removal was about OVERRIDING
+        bot_state: the sim synthesised a position for bots that HAD a
+        persisted one, so an invented figure won over the real lots.
+        These bots have no bot_state at all. `_src_scrumming_state` is
+        set only from a real `scrumming_state` entry
+        (bot_state_loader.py:191-192), so its ABSENCE means there is
+        nothing to override and no parity claim to break. The
+        discriminator is the missing KEY, never an empty lot list: a bot
+        whose bot_state says FLAT is a bot whose real state IS flat, and
+        `_build_sim` does not put it in this list.
+
+        THE LOT IS WRITTEN THROUGH THE PAIR THE BOT_STATE PATH USES.
+        `export_scrumming_state` then `import_scrumming_state`
+        (scrumming_bot.py:3786), the same inverse pair `_build_sim`
+        calls on a restored fleet. Every field except `main_lots` is the
+        bot's own current value, so the round trip resets nothing.
+
+        THE TAPE IS NOT TOUCHED HERE. The single credit loop in
+        `_build_sim` reads `_main_lots` and credits the venue, exactly
+        as it does for a restored fleet. This method moves no balance
+        and adds no second credit path.
+        """
+        opened = 0
+        units = 0.0
+        for bot, cfg in lotless:
+            symbol = str(cfg.get("symbol", "") or "")
+            lot = opening_lot_for_lotless(
+                cfg.get("target_balance"),
+                self._candles_by_symbol.get(symbol) or [])
+            if lot is None:
+                continue
+            try:
+                state = bot.export_scrumming_state()
+                state["main_lots"] = [dict(lot)]
+                bot.import_scrumming_state(state)
+            except Exception as exc:  # noqa: BLE001 - never fail a build
+                self._activity(
+                    f"  WARNING {symbol or '?'}: could not open a locked "
+                    f"side ({type(exc).__name__}: {exc}) — this bot "
+                    "starts flat and must buy its whole target before "
+                    "it can trade.")
+                continue
+            opened += 1
+            units += float(lot["units"])
+        if opened:
+            self._activity(
+                f"Locked side: {opened} of {len(lotless)} bot(s) carry "
+                "no bot_state and opened holding their target_balance "
+                "in base units at the tape's first close; locked and "
+                "spendable start equal.")
+        try:
+            from src.core.signal_contract import emit as _ol
+            _ol("fleet.03.008.postcondition.lotless_opened_locked",
+                actual=opened, expected=len(lotless),
+                context={"total_units": round(units, 8)})
+        except Exception as _olx:  # noqa: BLE001 - advisory
+            logger.debug("locked-side emit failed: %s", _olx)
 
     def _build_smart_wires(self, joinable: bool) -> None:
         """Attach the fleet's persisted Smart Wires to THIS replay.

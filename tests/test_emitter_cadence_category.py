@@ -9,7 +9,7 @@ allowed to go quiet for eleven minutes before anything said so.
 
 Now each pin declares a category, in the register and in the roster the
 sink reads, and staleness is evaluated for the `always_on` class alone.
-Sixteen pins are always-on, sixty-one are toggles, and the always-on
+Sixteen pins are always-on, sixty-two are toggles, and the always-on
 budget falls from 660 s to 10 s -- 66 times tighter.
 
 WHY THIS FILE IS MOSTLY CONTROLS
@@ -126,22 +126,30 @@ def _registry_cadence() -> dict:
 
 
 class TestEveryPinCarriesACategory:
-    """The roster and the register both cover all 77 pins."""
+    """The roster and the register both cover all 78 pins.
 
-    def test_the_roster_holds_seventy_seven_pins(self):
-        assert len(CADENCE_BY_NAME) == 77
+    THE COUNT IS A CENSUS, NOT A CONSTANT TO KEEP QUIET. It moved from
+    77 to 78 when issue #111 violation B added
+    `fleet.03.008.postcondition.lotless_opened_locked`. A pin that
+    arrives without the roster, the register and this census all moving
+    together is the drift these checks exist to catch, so the number is
+    written out rather than derived from either side.
+    """
 
-    def test_the_split_is_sixteen_and_sixty_one(self):
+    def test_the_roster_holds_seventy_eight_pins(self):
+        assert len(CADENCE_BY_NAME) == 78
+
+    def test_the_split_is_sixteen_and_sixty_two(self):
         counts = {term: sum(1 for v in CADENCE_BY_NAME.values() if v == term)
                   for term in CADENCE_CATEGORIES}
-        assert counts == {CADENCE_ALWAYS_ON: 16, CADENCE_TOGGLE: 61}
+        assert counts == {CADENCE_ALWAYS_ON: 16, CADENCE_TOGGLE: 62}
 
     def test_every_category_is_in_the_vocabulary(self):
         assert set(CADENCE_BY_NAME.values()) == set(CADENCE_CATEGORIES)
 
     def test_the_register_declares_a_category_for_every_id(self):
         cells = _registry_cadence()
-        assert len(cells) == 77
+        assert len(cells) == 78
         for emitter_id, cell in cells.items():
             term = cell.partition(":")[0].strip()
             assert term in CADENCE_CATEGORIES, f"{emitter_id}: {cell!r}"
