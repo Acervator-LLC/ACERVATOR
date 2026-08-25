@@ -149,8 +149,13 @@ def _extract_hiddenimports(src: str) -> set[str]:
     call's `hiddenimports=(...)` argument."""
     # Grab the hiddenimports=(...) block (it wraps a tuple with a
     # list concat, so we take the outer parenthesized region).
+    # NOTE: the comment-skip is line-bounded (`#[^\n]*\n`, never `.` under
+    # DOTALL) and its trailing `\s*` stops at the next `#`/`collect_submodules`,
+    # so there is exactly one way to match any input. The old form
+    # `(?:# .*\n\s*)*` let `.`+`\s*` both consume newlines under DOTALL, which
+    # backtracked catastrophically (~180s on the real spec files — a ReDoS).
     m = re.search(
-        r"hiddenimports=\(\s*(?:# .*\n\s*)*collect_submodules\(['\"]src['\"]\)\s*\+\s*\[(.*?)\]",
+        r"hiddenimports=\(\s*(?:#[^\n]*\n\s*)*collect_submodules\(['\"]src['\"]\)\s*\+\s*\[(.*?)\]",
         src,
         re.DOTALL,
     )

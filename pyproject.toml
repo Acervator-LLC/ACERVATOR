@@ -25,20 +25,34 @@ dependencies = [
     "defusedxml>=0.7.1",
 ]
 
-# Dev/CI tooling. Installed in CI with `pip install -e .[dev]`. Kept out of
-# the runtime dependency list so a packaged build never ships them.
+# Dev/CI tooling. Kept out of the runtime dependency list so a packaged
+# build never ships them. Two extras, so CI's fast lane installs only what
+# the core suite needs:
+#   [test] — the lean set to run `pytest` (fast lane, every push/PR).
+#   [dev]  — everything: [test] plus black/flake8 and the archetype analyzers
+#            (slow/full lane only, plus local development).
 [project.optional-dependencies]
-dev = [
+# Lean test runtime. `pytest-xdist` gives `-n auto` process parallelism, the
+# single biggest CI wall-clock win on this CPU-bound suite.
+test = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-qt>=4.4",
+    "pytest-xdist>=3.5",
+]
+dev = [
+    # Self-reference (PEP 621): dev is a strict superset of test.
+    "quantum-auto-trader[test]",
     "black>=24.0",
     "flake8>=7.0",
     # Analyzers the archetype-review harness (tools/harness/*_archetype.py)
     # shells out to. Without them ArchetypeReport.passed fails closed
     # ("<tool>: not installed"), so the archetype test suite needs them on
     # PATH. `vale` (docs prose) is an optional Go binary, not pip-installable,
-    # and the docs archetype treats it as available-if-present.
+    # and the docs archetype treats it as available-if-present. These are
+    # heavy (semgrep, opencv) — the fast lane deliberately does NOT install
+    # them, and the archetype tests that need them are marked so the fast
+    # lane deselects them (see the `archetype` marker below).
     "ruff>=0.1",
     "bandit>=1.7",
     "mypy>=1.0",
@@ -69,6 +83,18 @@ testpaths = ["tests"]
 # TD-021: test_swarm_row_parity reads source under default codec; ignore until encoding fix ships.
 norecursedirs = ["obsolete", "__pycache__", ".git"]
 addopts = "--ignore=tests/obsolete --ignore=tests/test_swarm_row_parity.py"
+# Lanes. `tests/conftest.py::pytest_collection_modifyitems` applies these by
+# file, so no per-file `pytestmark` is needed:
+#   slow      — end-to-end engine-replay suites (full FleetReplayController
+#               runs over synthetic candles); minutes of CPU each.
+#   archetype — archetype-harness tests that shell out to heavy analyzers
+#               (semgrep/mypy/vulture/vale/opencv), installed only via [dev].
+# Fast CI lane runs `-m "not slow and not archetype"`; the full lane runs the
+# complement. Unknown-marker warnings are errors, so both must be declared.
+markers = [
+    "slow: end-to-end engine-replay suite; heavy CPU, deferred to the full CI lane",
+    "archetype: archetype-harness test needing the [dev] analyzer toolchain",
+]
 
 # v3.19.7 — Coverage configuration. Coverage is NOT enabled by default
 # (would slow the 1533-test suite by ~3×). Operator runs coverage

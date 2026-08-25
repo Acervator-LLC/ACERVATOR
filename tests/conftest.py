@@ -396,3 +396,34 @@ def _destroy_qt_widgets():
             # Already destroyed by its own parent; nothing to do.
             continue
     app.processEvents()
+
+
+# --------------------------------------------------------------------------- #
+# CI lane markers, applied by file (see [tool.pytest.ini_options].markers).    #
+#                                                                              #
+# Two lanes keep PR CI fast without losing coverage on merge:                  #
+#   * `slow`      — end-to-end engine-replay suites. Each test builds a real   #
+#                   FleetReplayController and plays synthetic candles through  #
+#                   the live Scrum/Fold + TA engine; these are minutes of CPU  #
+#                   and dominate the suite's wall clock.                       #
+#   * `archetype` — archetype-harness tests. They shell out to heavy analyzers #
+#                   (semgrep/mypy/vulture/vale/opencv) that ship only in the   #
+#                   [dev] extra, so the fast lane — which installs [test] only #
+#                   — must deselect them.                                      #
+#                                                                              #
+# Marking by file here (rather than a `pytestmark` in each module) keeps the   #
+# lane definition in one auditable place and covers files added later that     #
+# match the pattern.                                                           #
+_SLOW_FILES = {
+    "test_pin_observability.py",
+    "test_fleet_replay_controller.py",
+}
+
+
+def pytest_collection_modifyitems(config, items):
+    for item in items:
+        name = Path(str(item.fspath)).name
+        if name in _SLOW_FILES:
+            item.add_marker(pytest.mark.slow)
+        if "archetype" in name:
+            item.add_marker(pytest.mark.archetype)
