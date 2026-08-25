@@ -63,9 +63,29 @@ _needs_hooks = pytest.mark.skipif(HOOKS is None, reason=_ABSENT)
 
 
 def _run_hook(hook: str, stdin: str) -> subprocess.CompletedProcess:
-    """Run a hook script with the given stdin, return CompletedProcess."""
+    """Run a hook script with the given stdin, return CompletedProcess.
+
+    The one spawn in this file, and the reason the line below carries a
+    directive. What is launched is THIS project's own hook script, under
+    `sys.executable` -- an absolute interpreter path, so S607 is answered
+    by construction and no program planted earlier on PATH can run in its
+    place. The only variable in the argv is the resolved TARGET path, and
+    that is what S603 reads.
+
+    No compliant form exists. Measured for this repository and written
+    down at dev_harness/harness/coding_archetype.py:47 with ruff 0.16
+    over six argv forms: an all-literal argv draws no S603, and every
+    argv carrying a variable draws one. A pin that drives a hook must
+    name the hook, so the variable cannot be removed.
+
+    The operator granted this directive on 2026-08-25, on that evidence
+    and on the fifteen files in the tree that already carry it. It is
+    LINE-level on purpose. A file-level `# ruff: noqa: S603` would cover
+    every spawn anyone adds here later, which is how a real finding gets
+    hidden, so a second spawn in this file must argue for itself.
+    """
     assert HOOKS is not None, _ABSENT
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603
         [sys.executable, str(HOOKS / hook)],
         input=stdin,
         capture_output=True,

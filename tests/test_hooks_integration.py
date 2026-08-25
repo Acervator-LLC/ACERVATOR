@@ -63,9 +63,26 @@ def _run_python(argv: list[str], stdin: str) -> subprocess.CompletedProcess:
     them once.
 
     The executable is `sys.executable`, an absolute path, so a program
-    planted earlier on PATH cannot be run in its place.
+    planted earlier on PATH cannot be run in its place. That answers
+    S607 by construction rather than by suppression.
+
+    S603 is a different question and the line below carries a directive
+    for it. What is launched is THIS project's own hook scripts and
+    archetype modules; the only variable in the argv is the target being
+    driven. No compliant form exists: measured for this repository and
+    written down at dev_harness/harness/coding_archetype.py:47 with ruff
+    0.16 over six argv forms, an all-literal argv draws no S603 and every
+    argv carrying a variable draws one. A test that drives a named hook
+    cannot hold an all-literal argv.
+
+    The operator granted this directive on 2026-08-25, on that evidence
+    and on the fifteen files in the tree that already carry it. It is
+    LINE-level on purpose, and the consolidation described above is what
+    makes one line enough: a file-level `# ruff: noqa: S603` would cover
+    every spawn anyone adds here later, which is how a real finding gets
+    hidden. Route a new spawn through this helper, or argue for its own.
     """
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603
         [sys.executable, *argv],
         input=stdin, capture_output=True, text=True,
         encoding="utf-8", errors="replace",
