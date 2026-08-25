@@ -201,6 +201,13 @@ def _build(tranches, monkeypatch, cur_price=31000.0):
         def _on_clear_wire_credits(self):
             return None
 
+        # issue #133 unit 3 - the tab's THIRD clear button. This stub
+        # stands in for the whole dialog, so a button the builder
+        # connects and the stub does not answer raises out of the
+        # builder before one row is read.
+        def _on_clear_lifetime_counters(self):
+            return None
+
         def _on_fire_tranche_clicked(self, tranche):
             return None
 

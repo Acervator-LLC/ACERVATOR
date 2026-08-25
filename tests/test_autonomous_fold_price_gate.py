@@ -251,6 +251,56 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 #
 # ``_pre_change_source`` returns zero orphans.
 #
+# RE-BASED AN EIGHTH TIME 2026-08-25, issue #133 unit 3, same tripwire,
+# same reason. One change landed in ``scrumming_bot.py`` outside every
+# span this file reverses, so it reaches the digest:
+#
+#   8. the four fold-tranche lifetime counters had no reset. The
+#      operator's CHIP bot carried opened 4925, closed 4813 and
+#      discarded 91 under rules that no longer apply, and the panel
+#      offered Clear Fold Tranches and Clear Wire Credits and nothing
+#      for these. The change adds ONE method,
+#      ``clear_lifetime_tranche_counters``, beside those two clears;
+#      ONE field, ``_tranches_counters_reset_ts``, declared, exported
+#      and restored beside ``tranches_malformed_dropped``; and ONE
+#      conjunct on the init handshake's ``_never_scrummed``, which read
+#      a zeroed ``_tranches_created_lifetime`` as "no scrum has ever
+#      fired" and would have adopted the exchange balance as the bot's
+#      opening position at the next launch.
+#
+# WHAT THIS RE-BASE IS. +150 lines, PURE INSERTION -- 0 deletions in
+# ``git diff --numstat`` -- in SIX hunks and therefore SIX bands: +6
+# above :816, +14 from :5914, +24 from :6239, +30 across the two
+# predicate lines :7700-:7701, +32 from :7702 and +150 from :15834
+# down. No line was removed or rewritten, so every anchor moved by its
+# band and none was retired or created.
+#
+# THE READ-BACK IS THE PROOF, not the arithmetic. Every one of the
+# 18,374 pre-change lines was required to land byte-for-byte at
+# ``shift(n)`` in the post-change file: 0 mismatches.
+# ``CITATION_ANCHORS`` in ``tests/test_extractor_tranche_containment.py``
+# was re-anchored in the SAME change -- 42 anchors, each resolved BOTH
+# by its occurrence ordinal in the new file AND by the band table above,
+# with 0 disagreements between the two methods.
+#
+# 72 self-citation tokens inside ``scrumming_bot.py`` moved by the same
+# bands. ONE of them is the reason this note names a count that differs
+# from #98's: ``# dequeue at scrumming_bot.py:5479 region`` carries THIS
+# file's own name, so the cross-file rule that protects the other 18
+# would have frozen a self citation. It is a self citation and it moved.
+# ``:488-494`` and the ``[:180]`` slice were left alone for the reasons
+# #104 and #106 wrote down.
+#
+# THE DIGEST WAS DERIVED, NOT MEASURED. Blank every ``:NNNN`` in both
+# reconstructions and strip the six inserted runs from the new one,
+# and it is the old pre-change text exactly. Every citation number that
+# moved inside the pre-change text moved by the count of inserted lines
+# above the line it names -- 0 unexplained. The old shipping file still
+# hashes to the constant below it.
+#
+# ``_pre_change_source`` returns zero orphans, and the CRLF rendering
+# reconstructs the identical text.
+#
 # The prior digests, kept so the chain is auditable:
 #
 # RE-BASED A FIFTH TIME 2026-08-24, issue #104, same tripwire, same
@@ -393,6 +443,7 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 #   d4edd46f7ce7d04ef716255fc36976056f75a4d938351b3c0ff9388932cd5aef
 #   03d05460421d2c601a37dadc5cd97b6a77805a974ac29f6f3f2b5e75cf7f40f5
 #   ac3459c2b80406bf7c4e9698c186cb29c77fe32c17ef6d3a8a1f5cb56f3076aa
+#   b8b79a6a88c2f7bc2e6f34104712d9faa4ee67c86e53e7655429a6b632b6f5c2
 # Re-derived 2026-08-25. FOUR things moved under this digest and the
 # re-derivation enumerated every one: black's layout pass, the 42 re-anchored
 # citation numbers, the F541 f-prefix fix, and an autoflake pass that dropped
@@ -401,7 +452,7 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 # removals only. FLAGGED, not absorbed: one of them, `_intended_buy_asset =
 # buy_cost / ticker.last`, was an UNGUARDED division, so a zero last price
 # used to raise here and now does not.
-PRE_CHANGE_SHA256 = "b8b79a6a88c2f7bc2e6f34104712d9faa4ee67c86e53e7655429a6b632b6f5c2"
+PRE_CHANGE_SHA256 = "a01b0b512fa63c2d117b4d3fc24cbb5a251c8db65a30d06a7864c26a41396610"
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE."
