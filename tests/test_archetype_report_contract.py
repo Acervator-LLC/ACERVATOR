@@ -56,7 +56,6 @@ ARCHETYPE_MODULES = (
     "tools.harness.ta_archetype",
     "tools.harness.gui_archetype",
     "tools.harness.docs_archetype",
-    "tools.harness.watchdog_archetype",
 )
 
 CODING_FIX = (

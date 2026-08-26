@@ -841,31 +841,6 @@ class SimulatorTab(QWidget):
                 panel.set_sim_mode(key)
             except Exception as exc:  # noqa: BLE001
                 logger.debug("panel mode set failed: %s", exc)
-        try:
-            from src.core.signal_contract import emit as _md_emit
-
-            # 10.4 - READ THE TRANSITION BACK OFF THE WIDGET.
-            # `actual` and `expected` were both `key`, so `ok` derived
-            # True on every call whatever the stack did. The state this
-            # transition changes is the stack page, so `actual` is the
-            # index the stack IS on and `expected` is the index the
-            # requested mode demands. Qt treats an out-of-range
-            # `setCurrentIndex` as a silent no-op, and the mode hand-off
-            # above swallows its own exception, so a refused transition
-            # was invisible twice over. The mode key moves to context,
-            # where it is still recorded.
-            _md_emit(
-                "sim.06.013.state_transition.mode_selected",
-                actual=(stack.currentIndex() if stack is not None else None),
-                expected=(1 if key == "nuclear" else 0),
-                context={
-                    "mode": key,
-                    "page": ("nuclear" if key == "nuclear" else "fleet"),
-                    "stack": stack is not None,
-                },
-            )
-        except Exception:  # noqa: BLE001,S110 - advisory
-            pass
 
     def _on_fleet_loaded(self, configs) -> None:
         """Everything the fleet drives, from one signal.
@@ -966,7 +941,6 @@ class SimulatorTab(QWidget):
             if widget is not None:
                 widget.update_bots(statuses)
                 self._disable_fire_buttons()
-                panel.emit_bot_table(len(statuses))
             self.refresh_active_bot_roster(statuses)
         except Exception as exc:  # noqa: BLE001
             logger.warning("bot area refresh failed: %s", exc)
@@ -1015,69 +989,23 @@ class SimulatorTab(QWidget):
 
     # -- public log API (used by future phases) --------------------------
 
-    # v3.24.85 - EMITTERS FOR THE LOG STREAMS.
-    #
-    # Step 4 of the operator's emitter-first workflow. Before the two
-    # panes were merged there was NO emitter on either stream: the
-    # existing `feature_telemetry` hooks count calls and skips but carry
-    # no expected-vs-actual, so "both streams still arrive after the
-    # merge" was not a checkable claim.
-    #
-    # `sim.06.014.event.log.line` carries the STREAM IDENTITY,
-    # which is the property
-    # a merge can destroy. One widget receiving everything looks
-    # identical to one widget receiving one stream twice unless each
-    # line says which stream produced it.
-    #
-    # Costs nothing when no sink is installed - `emit` is a dict lookup
-    # and a return - so this is inert in normal operator runs.
-
-    @staticmethod
-    def _emit_log_line(stream: str, line: str, delivered: bool) -> None:
-        """Record one log line and the stream that produced it."""
-        try:
-            from ...core.signal_contract import emit as _emit
-
-            # 10.4 - A SAMPLE, NOT A CHECK. `actual` and `expected`
-            # were both `stream`, so `ok` derived True for ever. No
-            # independent expectation exists at this point and one must
-            # not be invented: `delivered` does vary, but only because
-            # the operator PAUSED the pane, so expecting it True would
-            # paint the pin red every time the pause button is used.
-            # This pin's job is to carry STREAM IDENTITY so a pane
-            # merge is detectable, and a merge is only decidable by
-            # grouping ACROSS records, never inside one. Dropping
-            # `expected` makes `kind` "sample", which is what this
-            # always was, and matches the `event` in its own name.
-            _emit(
-                "sim.06.014.event.log.line",
-                actual=stream,
-                context={"delivered": bool(delivered), "chars": len(line or "")},
-            )
-        except Exception:  # noqa: BLE001,S110 - instrumentation is advisory
-            pass
-
     def log_activity(self, line: str) -> None:
         """Append a line to the simulator log unless paused."""
         if self._activity_paused:
             self._tel_skip("sim.activity_log.write", "paused")
-            self._emit_log_line("activity", line, delivered=False)
             return
         self.activity_log.appendPlainText(line)
         self._tel_call("sim.activity_log.write")
-        self._emit_log_line("activity", line, delivered=True)
 
     def log_performance(self, line: str) -> None:
         """Append a line to the simulator log unless paused."""
         if self._perf_paused:
             self._tel_skip("sim.performance_log.write", "paused")
-            self._emit_log_line("performance", line, delivered=False)
             return
         # Tagged: once both streams share a pane, an untagged line is
         # indistinguishable from an activity line.
         self.performance_log.appendPlainText(f"[perf] {line}")
         self._tel_call("sim.performance_log.write")
-        self._emit_log_line("performance", line, delivered=True)
 
     # -- telemetry helpers (v3.24.8) -------------------------------------
     # Deliberately tiny + exception-swallowing: telemetry is advisory

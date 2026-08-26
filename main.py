@@ -859,25 +859,6 @@ def main() -> int:
 
     log_manager.info(f"Acervator v{_acervator_version} starting")
 
-    # v3.24.88 - START COLLECTING SIGNALS.
-    #
-    # Operator, 2026-08-08: "Emitters don't work unless program is
-    # running or a debug is performed." Until now the only caller of
-    # `set_sink` was a Fleet Replay run, so outside the Simulator every
-    # emit() in the platform was inert and the expected-vs-actual
-    # network reported nothing about live operation.
-    #
-    # Best-effort: a sink that cannot open its file returns None and the
-    # application starts normally. Instrumentation never blocks launch.
-    try:
-        from src.core.signal_contract import install_process_sink
-
-        _sig_sink = install_process_sink()
-        if _sig_sink is not None:
-            log_manager.info(f"Signal collection active -> {_sig_sink.path}")
-    except Exception as _sig_exc:  # noqa: BLE001 - advisory
-        log_manager.warning(f"Signal collection unavailable: {_sig_exc}")
-
     # --- Qt application -------------------------------------------------
     try:
         from PySide6.QtWidgets import QApplication

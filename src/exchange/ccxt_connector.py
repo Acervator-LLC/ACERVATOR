@@ -817,46 +817,17 @@ class CCXTConnector(ExchangeInterface):
         # fetches obey the same limit as every other call.
         with self._history_scan_lock:
             try:
-                # 10.3 phase 2 — BRACKET THE SCAN, NOT THE QUEUEING.
-                #
-                # The timer starts INSIDE `_history_scan_lock` on purpose.
-                # That lock makes concurrent scans queue rather than pile
-                # up, so a caller can wait a long time before its own scan
-                # begins. Starting the clock before the `with` would fold
-                # lock-wait and fetch time into one number, and a reader
-                # could no longer tell "the venue was slow" from "this
-                # scan waited its turn" -- two different causes behind one
-                # value, which is the disjunction defect this repo has
-                # been bitten by before.
-                #
-                # So this measures what `scan_complete` actually observes:
-                # the scan. Queue depth, if it is ever wanted, is a
-                # separate observation and would be its own emitter.
-                _dur_t0 = time.monotonic()
                 results = scan_on_connect(
                     exchange=self._ccxt_sync,
                     symbols=symbols,
                     on_result=self._on_history_result,
                     pace_s=float(getattr(self, "_min_request_interval", 0.1) or 0.0),
                 )
-                _dur_elapsed = time.monotonic() - _dur_t0
                 self._history_analyses.update(results)
                 logger.info(
                     "TradeHistorian: scan complete — %d symbol(s) analysed",
                     len(results),
                 )
-                try:
-                    from src.core.signal_contract import emit as _hs_emit
-
-                    _hs_emit(
-                        "history.05.001.postcondition.scan_complete",
-                        actual=len(results),
-                        expected=len(symbols),
-                        duration=_dur_elapsed,
-                        context={"symbols": len(symbols)},
-                    )
-                except Exception:  # noqa: BLE001,S110 - advisory
-                    pass
             except Exception as e:
                 # R28: fail loudly — log at ERROR, do not swallow
                 logger.error("TradeHistorian: scan failed: %s", e)

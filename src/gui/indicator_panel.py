@@ -1230,87 +1230,6 @@ if _HAS_QT:
             cl.addWidget(bars, stretch=1)
             return container, table, bars
 
-        def header_fit_report(self) -> dict:
-            """Does the table's content fit the width the user can see.
-
-            v3.24.87, step 4 of the emitter-first workflow. "The panel
-            fits inside its assigned space" was an eyeball judgement;
-            this makes it a number.
-
-            WHAT IT MEASURES, AND TWO EARLIER VERSIONS THAT DID NOT.
-
-            First it compared each label's QFontMetrics width plus an
-            invented 12px against the column width. Qt's own padding is
-            4px, so it reported EVERY column 8px short even after they
-            were correctly sized -- a miscalibrated zero point
-            condemning a good layout.
-
-            Then it compared `columnWidth` against `sectionSizeHint`.
-            Under `ResizeToContents` those are equal BY CONSTRUCTION,
-            so the check could never fail. It passed the panel and also
-            passed a table squeezed to 90px: tautological, and worse
-            than no instrument because it looked like evidence.
-
-            What actually determines whether the operator sees a
-            truncated header is the total width the columns want against
-            the width of the VIEWPORT. Exceed it and Qt clips or
-            scrolls, which is the "omp N" in the screenshot.
-            """
-            out: dict = {}
-            try:
-                from PySide6.QtWidgets import QTableWidget
-            except ImportError:  # pragma: no cover
-                return out
-            for t in self.findChildren(QTableWidget):
-                hdr = t.horizontalHeader()
-                wanted = sum(hdr.sectionSizeHint(c) for c in range(t.columnCount()))
-                have = t.viewport().width()
-                short: dict = {}
-                if wanted > have:
-                    # Name the columns past the visible edge, so the
-                    # report says WHICH headers the operator loses.
-                    x = 0
-                    for c in range(t.columnCount()):
-                        w = hdr.sectionSizeHint(c)
-                        it = t.horizontalHeaderItem(c)
-                        if x + w > have and it is not None:
-                            short[it.text()] = (x + w) - have
-                        x += w
-                out[f"cols{t.columnCount()}"] = {
-                    "allocated": have,
-                    "wanted": wanted,
-                    "columns": t.columnCount(),
-                    "truncated": short,
-                }
-            return out
-
-        def emit_fit(self, where: str = "") -> None:
-            """Emit `gui.04.001.postcondition.voting_panel.fit` for the
-            current geometry.
-
-            `expected` is the number of columns, `actual` the number
-            that fit their label, so `ok` is derived by equality and a
-            layout regression reports itself instead of waiting to be
-            noticed in a screenshot.
-            """
-            try:
-                from src.core.signal_contract import emit as _fit_emit
-
-                rep = self.header_fit_report()
-                cols = sum(v["columns"] for v in rep.values())
-                bad = sum(len(v["truncated"]) for v in rep.values())
-                _fit_emit(
-                    "gui.04.001.postcondition.voting_panel.fit",
-                    actual=cols - bad,
-                    expected=cols,
-                    context={
-                        "where": where or "unknown",
-                        "detail": {k: v["truncated"] for k, v in rep.items()},
-                    },
-                )
-            except Exception:  # noqa: BLE001,S110 - instrumentation is advisory
-                pass
-
         def update_currency_rates(self, snapshot) -> None:
             """v3.23.41 — accept a CurrencyRates snapshot from the
             main window and render it in the rate strip. Snapshot is
@@ -2211,35 +2130,6 @@ if _HAS_QT:
             panel width changes."""
             super().resizeEvent(event)
             QTimer.singleShot(50, self._sync_bar_columns)
-            QTimer.singleShot(50, self._emit_fit_resized)
-
-        def showEvent(self, event):
-            """10.4 — the fit pin had no caller anywhere in the tree.
-
-            `emit_fit` was written and never called. An AST walk over
-            520 files found 0 calls, 0 attribute references and 0
-            string references for it, against controls of 7, 7 and 2 on
-            neighbouring methods of this same class. The MEASUREMENT
-            was adopted — `header_fit_report` has six callers in the
-            tests — while the emitter that publishes it had none, so
-            `gui.04.001.postcondition.voting_panel.fit` could not fire
-            in the Simulator or in live.
-
-            Show and resize are the two events that change the answer.
-            Both defer by the same 50 ms the bar sync uses, because the
-            columns are not laid out yet at the instant the event
-            arrives.
-            """
-            super().showEvent(event)
-            QTimer.singleShot(50, self._emit_fit_shown)
-
-        def _emit_fit_resized(self) -> None:
-            """Publish the fit for the geometry a resize produced."""
-            self.emit_fit("resize")
-
-        def _emit_fit_shown(self) -> None:
-            """Publish the fit for the geometry a show produced."""
-            self.emit_fit("show")
 
         def get_data(self) -> dict:
             """Return the current voting data for external access."""

@@ -123,16 +123,6 @@ class TestTheCellContractIsUnchanged:
 
 
 class TestTheRenderPathReportsWhereItPainted:
-    def test_the_emitter_name_and_fields_exist(self):
-        """The contract this migration is verified against."""
-        src = (
-            REPO_ROOT / "src/gui/simulator_tab/fleet" / "fleet_replay_panel.py"
-        ).read_text(encoding="utf-8")
-        assert "sim.06.012.postcondition.gate_status.rendered" in src
-        assert "_gate_expected" in src
-        assert "_gate_actual" in src
-        assert '"host"' in src
-
     def test_the_render_path_reads_through_the_accessor(self):
         """`_gate_cell_for` is the single point that decides where a
         gate row comes from. If the loop went back to reading
