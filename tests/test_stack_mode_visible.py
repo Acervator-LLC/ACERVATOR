@@ -150,18 +150,42 @@ class TestStackTranchesTab:
         inspecting the feature, defeating the reason to have it.
         Now mirrors Fold Tranches behaviour: always visible for
         scrumming bots; the empty-state message inside the tab body
-        handles both 'stack_mode off' and 'no tranches yet' cases."""
-        # The registration block: `if cfg.mode.value == "scrumming":`
-        # followed by an addTab call with the Stack Tranches label.
+        handles both 'stack_mode off' and 'no tranches yet' cases.
+
+        RESTATED, issue #133 unit 7, and STRONGER. This was one regex
+        over a literal `tabs.addTab(... "Stack Tranches")` under the
+        scrumming gate. Registration now goes through
+        `_install_stack_tranches_tab`, the mirror of the Fold tab's own
+        installer, which also remembers the page so a clear can rebuild
+        it in place. One regex over the old shape pinned the SPELLING;
+        this follows the WIRING through both hops — the gate calls the
+        installer, the installer adds the labelled tab and stores the
+        handle — and `tests/test_fold_stack_ladder_symmetry.py` drives
+        that installer against a real QTabWidget and reads the tab back
+        off it. The invariant is unchanged: scrumming mode alone, no
+        `stack_mode` sub-gate."""
+        # Hop 1: the registration block is the scrumming gate calling
+        # the installer, and nothing else.
         m = re.search(
-            r'if\s+cfg\.mode\.value\s*==\s*"scrumming":\s*\n\s*tabs\.addTab\('
-            r'[^)]*_create_stack_tranches_tab\(\)\s*\),\s*"Stack Tranches"',
+            r'if\s+cfg\.mode\.value\s*==\s*"scrumming":\s*\n'
+            r"\s*self\._install_stack_tranches_tab\(tabs\)",
             source,
         )
         assert m, (
             "Stack Tranches tab must register on scrumming mode alone "
             "(no stack_mode sub-gate)"
         )
+        # Hop 2: the installer adds the labelled tab and keeps the page.
+        body = re.search(
+            r"def _install_stack_tranches_tab\([^)]*\)[^:]*:(.*?)"
+            r"(?=\n        def |\n        async def )",
+            source,
+            re.DOTALL,
+        )
+        assert body, "_install_stack_tranches_tab body not found"
+        assert "tabs.addTab(page, self.STACK_TRANCHES_TAB_LABEL)" in body.group(1)
+        assert "self._stack_tab_page = page" in body.group(1)
+        assert 'STACK_TRANCHES_TAB_LABEL = "Stack Tranches"' in source
         assert '"Stack Tranches"' in source
 
     def test_no_stack_mode_sub_gate_on_tab_registration(self, source):

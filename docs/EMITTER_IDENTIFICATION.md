@@ -1572,11 +1572,11 @@ One row per pin call site. 78 rows.
 
 | ID | subsystem | signal type | duration | current name | previous name | source | observes |
 |---|---|---|---|---|---|---|---|
-| `01-001` | `bot` | `postcondition` | none: the reservation guard evaluates a bound; nothing runs between two points here | `bot.01.001.postcondition.capital_reservation` | `bot.capital_reservation` | `src/trading/scrumming_bot.py:1613` | REFUSAL PATH: the reservation granted nothing against the requested quantity |
-| `01-002` | `bot` | `postcondition` | none: the reservation guard evaluates a bound; nothing runs between two points here | `bot.01.002.postcondition.capital_reservation` | `bot.capital_reservation` | `src/trading/scrumming_bot.py:1689` | GRANT PATH: the reservation the registry holds is inside the 1 % band the update path keeps it in, against the quantity this tick needs |
-| `01-003` | `bot` | `postcondition` | none: the cap is one arithmetic comparison | `bot.01.003.postcondition.adoption_capped` | `bot.adoption_capped` | `src/trading/scrumming_bot.py:7877` | the adopted amount equals the uncapped amount, or the cap bit |
-| `02-001` | `extractor` | `postcondition` | deferred: an arrival inside a 670-line method with no start marker | `extractor.02.001.postcondition.tranche_contained` | `extractor.tranche_contained` | `src/trading/scrumming_bot.py:3934` | the target tranche grew by exactly the arriving amount |
-| `02-002` | `extractor` | `invariant` | forbidden | `extractor.02.002.invariant.arrival_atomic` | `extractor.arrival_atomic` | `src/trading/scrumming_bot.py:3954` | an extractor arrival shifted no value outside the tranche |
+| `01-001` | `bot` | `postcondition` | none: the reservation guard evaluates a bound; nothing runs between two points here | `bot.01.001.postcondition.capital_reservation` | `bot.capital_reservation` | `src/trading/scrumming_bot.py:1620` | REFUSAL PATH: the reservation granted nothing against the requested quantity |
+| `01-002` | `bot` | `postcondition` | none: the reservation guard evaluates a bound; nothing runs between two points here | `bot.01.002.postcondition.capital_reservation` | `bot.capital_reservation` | `src/trading/scrumming_bot.py:1696` | GRANT PATH: the reservation the registry holds is inside the 1 % band the update path keeps it in, against the quantity this tick needs |
+| `01-003` | `bot` | `postcondition` | none: the cap is one arithmetic comparison | `bot.01.003.postcondition.adoption_capped` | `bot.adoption_capped` | `src/trading/scrumming_bot.py:7896` | the adopted amount equals the uncapped amount, or the cap bit |
+| `02-001` | `extractor` | `postcondition` | deferred: an arrival inside a 670-line method with no start marker | `extractor.02.001.postcondition.tranche_contained` | `extractor.tranche_contained` | `src/trading/scrumming_bot.py:3941` | the target tranche grew by exactly the arriving amount |
+| `02-002` | `extractor` | `invariant` | forbidden | `extractor.02.002.invariant.arrival_atomic` | `extractor.arrival_atomic` | `src/trading/scrumming_bot.py:3961` | an extractor arrival shifted no value outside the tranche |
 | `03-001` | `fleet` | `postcondition` | measured: the bot_state load | `fleet.03.001.postcondition.bots_loaded` | `fleet.bots_loaded` | `src/gui/simulator_tab/fleet/bot_state_loader.py:233` | the loader returned one config for every eligible bot |
 | `03-002` | `fleet` | `invariant` | forbidden | `fleet.03.002.invariant.bot_ids_mirror_live` | `fleet.bot_ids_mirror_live` | `src/gui/simulator_tab/fleet/bot_state_loader.py:242` | the loaded bot ids are the same set as the live bot ids |
 | `03-003` | `fleet` | `invariant` | forbidden | `fleet.03.003.invariant.sections_imported` | `fleet.sections_imported` | `src/gui/simulator_tab/fleet/bot_state_loader.py:295` | every section the loader carries, that an entry offered, reached the returned dict - counted over every eligible bot |
@@ -1586,7 +1586,7 @@ One row per pin call site. 78 rows.
 | `03-007` | `fleet` | `postcondition` | deferred: a phase inside `_build_sim`, span 377, with no start marker | `fleet.03.007.postcondition.positions_seeded_from_lots` | `fleet.positions_seeded_from_lots` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1270` | every spawned bot had its position seeded from lots |
 | `03-008` | `fleet` | `postcondition` | deferred: a phase inside `_build_sim`, span 377, with no start marker | `fleet.03.008.postcondition.lotless_opened_locked` | `fleet.lotless_opened_locked` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:1364` | every bot carrying no bot_state opened with a locked side |
 | `04-001` | `gui` | `postcondition` | deferred: `emit_fit` only reports; the fit runs in the caller's frame | `gui.04.001.postcondition.voting_panel.fit` | `gui.voting_panel.fit` | `src/gui/indicator_panel.py:1306` | every voting-panel column fitted its label at the geometry a show or a resize produced |
-| `04-002` | `gui` | `postcondition` | measured: the in-click fleet save and the Fold Tranches tab rebuild, bracketed around both | `gui.04.002.postcondition.clear_settled` | `gui.clear_settled` | `src/gui/bot_live_settings.py:3373` | after an accepted Clear, the rebuilt panel's own row count, count label and two button states agree with what the bot now holds, and the clear reached disk |
+| `04-002` | `gui` | `postcondition` | measured: the in-click fleet save and the Fold Tranches tab rebuild, bracketed around both | `gui.04.002.postcondition.clear_settled` | `gui.clear_settled` | `src/gui/bot_live_settings.py:3370` | after an accepted Clear, the rebuilt panel's own row count, count label and two button states agree with what the bot now holds, and the clear reached disk |
 | `04-003` | `gui` | `postcondition` | measured: the five `despawn_preview` passes over both ledgers, bracketed around them | `gui.04.003.postcondition.despawn_rows_match_ledger` | `gui.despawn_rows_match_ledger` | `src/gui/bot_live_settings.py:1241` | the two despawn rows the Fold Tranches tab just rendered say what this bot's own fold and stack ledgers hold, at the armed threshold and at every candidate window |
 | `05-001` | `history` | `postcondition` | measured: the venue history scan, clocked inside the scan lock | `history.05.001.postcondition.scan_complete` | `history.scan_complete` | `src/exchange/ccxt_connector.py:866` | every requested symbol came back from the history scan |
 | `05-002` | `history` | `postcondition` | measured: the async fetch, resolved to one 400 ms poll | `history.05.002.postcondition.trades_stored` | `history.trades_stored` | `src/gui/history_tab.py:521` | every row the fetch stored is inside the requested window and unique on (exchange, symbol, id) |
@@ -1613,9 +1613,9 @@ One row per pin call site. 78 rows.
 | `07-002` | `ta` | `invariant` | forbidden | `ta.07.002.invariant.invariants` | `ta.invariants` | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:2321` | no indicator broke its declared bound during the run |
 | `07-003` | `ta` | `postcondition` | measured: the indicator compute | `ta.07.003.postcondition.computed` | `ta.computed` | `src/trading/ta_engine.py:399` | one signal came back for every configured indicator |
 | `07-004` | `ta` | `postcondition` | none: a reporting loop after the compute, which 07-003 times | `ta.07.004.postcondition.raw.{}` | `ta.raw.{}` | `src/trading/ta_engine.py:459` | one indicator's raw reading against its declared bound; the leaf of the name is the indicator, built at run time |
-| `08-001` | `tick` | `event` | forbidden | `tick.08.001.event.throttled` | `tick.throttled` | `src/trading/scrumming_bot.py:7542` | the read-rate throttle skipped a tick |
-| `08-002` | `tick` | `event` | forbidden | `tick.08.002.event.worked` | `tick.worked` | `src/trading/scrumming_bot.py:7566` | a tick passed the throttle and did work |
-| `08-003` | `tick` | `event` | forbidden | `tick.08.003.event.exit_dust_band` | `tick.exit_dust_band` | `src/trading/scrumming_bot.py:8230` | an exit landed inside the dust band |
+| `08-001` | `tick` | `event` | forbidden | `tick.08.001.event.throttled` | `tick.throttled` | `src/trading/scrumming_bot.py:7561` | the read-rate throttle skipped a tick |
+| `08-002` | `tick` | `event` | forbidden | `tick.08.002.event.worked` | `tick.worked` | `src/trading/scrumming_bot.py:7585` | a tick passed the throttle and did work |
+| `08-003` | `tick` | `event` | forbidden | `tick.08.003.event.exit_dust_band` | `tick.exit_dust_band` | `src/trading/scrumming_bot.py:8249` | an exit landed inside the dust band |
 | `09-001` | `topology` | `state_transition` | forbidden | `topology.09.001.state_transition.bot_attached` | `topology.bot_attached` | `src/trading/smart_wire.py:276` | a bot joined the wire topology |
 | `09-002` | `topology` | `postcondition` | measured: the wire import | `topology.09.002.postcondition.wires_received` | `topology.wires_received` | `src/trading/smart_wire.py:957` | the topology took every wire it received |
 | `10-001` | `ytd` | `gauge` | forbidden | `ytd.10.001.gauge.trades_fetched` | `ytd.trades_fetched` | `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1152` | how many year-to-date trades the panel holds after the fetch |
@@ -1961,8 +1961,8 @@ both relied on the 60-second rolling save.
 
 The repair rebuilds the tab and saves the fleet inside the click. Both
 of those are claims about a surface, and a claim about a surface is
-exactly what an island test proves only on the island. So the pin ASKS
-THE REBUILT WIDGETS what they show - row count, count label, both
+exactly what an island test proves only on the island. The pin therefore
+ASKS THE REBUILT WIDGETS what they show - row count, count label, both
 button states - and compares that against the bot's own tranche list
 and parked credit, read separately. `actual` is a widget read and
 `expected` is a model read, so the two cannot agree by construction.

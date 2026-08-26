@@ -446,6 +446,7 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 #   b8b79a6a88c2f7bc2e6f34104712d9faa4ee67c86e53e7655429a6b632b6f5c2
 #   a01b0b512fa63c2d117b4d3fc24cbb5a251c8db65a30d06a7864c26a41396610
 #   7dbcdf491175a80aa186bb06cc7345c7491a7353e2570acc5bb0c2eb98ca55e1
+#   fa7252d547328e778721f1dad2f4155b023260236ddd0767e284bc2702e6fd58
 # Re-derived 2026-08-25. FOUR things moved under this digest and the
 # re-derivation enumerated every one: black's layout pass, the 42 re-anchored
 # citation numbers, the F541 f-prefix fix, and an autoflake pass that dropped
@@ -537,7 +538,57 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 #
 # ``_pre_change_source`` returns zero orphans on BOTH files, and the
 # reconstruction of ``HEAD`` still hashes to the digest below it.
-PRE_CHANGE_SHA256 = "fa7252d547328e778721f1dad2f4155b023260236ddd0767e284bc2702e6fd58"
+#
+# RE-BASED AGAIN 2026-08-25, issue #133 unit 7, same tripwire, same
+# reason. One change landed in ``scrumming_bot.py`` outside the gate
+# block and outside every span in ``SITE_B_SPANS``, so it reaches this
+# digest:
+#
+#   8. the Stack side of the ladder had no clear control and read a
+#      config field that does not exist. ``clear_fold_tranches`` and
+#      ``clear_lifetime_tranche_counters`` emptied and reset the fold
+#      ledger; the stack ledger had neither, so one side could be reset
+#      to the new standard and the other could not. And
+#      ``_open_stack_from_scrum`` read ``split_distance_pct`` while the
+#      field is ``split_distance`` (``bot_container.py:350``), so every
+#      ladder took the 1.0 fallback. All 38 live bots store 1.0, so no
+#      ladder moves; the setting starts working when one is changed.
+#
+# WHAT THIS RE-BASE IS. +228 lines in FOUR inserted runs and ONE line
+# replaced by seven, all read in RECONSTRUCTION coordinates: +7 after
+# :808, +7 after :5828, +5 after :6176 and +209 after :15798. The
+# replaced line is the ``split_distance_pct`` read above. No method is
+# removed and no anchor string gains or loses an occurrence.
+#
+# THE DERIVATION, NOT THE MEASUREMENT. Blank every ``:NNNN`` in both
+# reconstructions and the new one is the old one plus exactly those
+# four runs and that one replacement -- 4 pure-insertion hunks totalling
+# 228 lines, 50 rewrites that differ in a citation number and nothing
+# else, and 1 line replaced by 7. There is no other difference.
+#
+# The shipping file carries 95 ``:NNNN`` tokens. 69 name a line at or
+# below the first insertion point and were shifted by the derived map;
+# 18 name another file and 8 name a line above it -- six ``:771``, the
+# ``[:180]`` slice and ``:488-494`` -- and all 26 were left alone, for
+# the reasons #102, #104 and #106 wrote down. The token count rises by
+# one because the new comment cites ``bot_container.py:350``.
+#
+# ``CITATION_ANCHORS`` in ``tests/test_extractor_tranche_containment.py``
+# was re-anchored in the SAME change -- 42 anchors, 41 moved and
+# ``:771`` unchanged because it sits above the first insertion. Each
+# was resolved BOTH by the derived line map AND by its occurrence
+# ordinal in the new file: 0 disagreements. That file's 121 tests pass.
+#
+# NINE EMITTER ROWS MOVED, and none of them is a pin. Each was RE-READ
+# through ``tools.emitter_registry_check.collect_pins`` -- the same
+# reader that reports the drift -- rather than shifted by arithmetic.
+# 78 pins, 78 rows, no warning. One row moved UP by 3: the Stack tab
+# now installs through a helper, which is one line where four stood.
+#
+# ``_pre_change_source`` returns zero orphans on BOTH files, and the
+# reconstruction of ``HEAD`` still hashes to the digest this one
+# replaces, kept in the list above.
+PRE_CHANGE_SHA256 = "ea6c5fd4be5002a70429bdf9296c8e5d5e01772a6b58abb2dbf370338d421596"
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE."

@@ -1649,10 +1649,7 @@ if _HAS_QT:
             # 2026-07-25: the sub-gate hid the tab even while inspecting
             # the feature, defeating the reason for adding it.
             if cfg.mode.value == "scrumming":
-                tabs.addTab(
-                    self._wrap_scrollable(self._create_stack_tranches_tab()),
-                    "Stack Tranches",
-                )
+                self._install_stack_tranches_tab(tabs)
 
             # --- Tab 4: Bot Swarm (Scrumming only — v3.16.44 P2-VIS) ---
             # Operator directive 2026-05-08: pre-emptively surface Smart
@@ -3418,6 +3415,325 @@ if _HAS_QT:
                 )
             return lines
 
+        # --- issue #133 unit 7: the Stack side gets the Fold side's
+        # controls ---------------------------------------------------
+        #
+        # The Fold Tranches tab carries three clear buttons, a rebuild
+        # that runs inside the click and a save that reaches disk. The
+        # Stack Tranches tab carried none of the three, so one side of
+        # the ladder could be emptied and reset by the operator and the
+        # other could not. These four methods are that mirror.
+        STACK_TRANCHES_TAB_LABEL = "Stack Tranches"
+
+        def _install_stack_tranches_tab(self, tabs: QTabWidget) -> QWidget:
+            """Build the Stack Tranches tab, add it, and remember it.
+
+            ONE INSTALL SITE, so the handle a later refresh swaps is
+            never a second bookkeeping step somebody can forget.
+            """
+            page = self._wrap_scrollable(self._create_stack_tranches_tab())
+            tabs.addTab(page, self.STACK_TRANCHES_TAB_LABEL)
+            self._stack_tab_page = page
+            return page
+
+        def _refresh_stack_tranches_tab(self) -> str:
+            """Rebuild the Stack Tranches tab in place. Return a status.
+
+            Returns "refreshed", or a sentence naming why it did not.
+            THE STRING IS LOAD-BEARING: the message the operator reads
+            after a clear quotes it, so a rebuild that could not run
+            says so instead of the panel quietly lying twice.
+
+            THE TAB IS FOUND BY WIDGET IDENTITY, NOT BY A STORED INDEX,
+            and `removeTab` + `insertTab` land it at the same index, so
+            no other tab renumbers. `removeTab` reparents the old page
+            rather than deleting it, so the page is deleted here; without
+            that every clear leaks a whole tab's widget tree for the life
+            of the dialog. All three points are `_refresh_fold_tranches_
+            tab`'s, and this is that method pointed at the other ledger.
+            """
+            tabs = getattr(self, "_tabs", None)
+            page = getattr(self, "_stack_tab_page", None)
+            if tabs is None or page is None:
+                return (
+                    "not refreshed: this dialog has no Stack " "Tranches tab installed"
+                )
+            try:
+                index = tabs.indexOf(page)
+            except Exception as exc:  # R28-OK: display-only rebuild
+                logger.warning(
+                    "Stack Tranches refresh could not locate its tab (%s: %s)",
+                    type(exc).__name__,
+                    exc,
+                )
+                return (
+                    f"not refreshed: the tab could not be located "
+                    f"({type(exc).__name__})"
+                )
+            if index < 0:
+                return (
+                    "not refreshed: the Stack Tranches tab is no "
+                    "longer in this dialog"
+                )
+            label = tabs.tabText(index)
+            was_current = tabs.currentIndex() == index
+            try:
+                fresh = self._wrap_scrollable(self._create_stack_tranches_tab())
+            except Exception as exc:  # R28-OK: display-only rebuild
+                logger.exception("Stack Tranches refresh raised while rebuilding")
+                return (
+                    f"not refreshed: rebuilding the tab raised "
+                    f"{type(exc).__name__}: {exc}"
+                )
+            tabs.removeTab(index)
+            tabs.insertTab(index, fresh, label)
+            self._stack_tab_page = fresh
+            if was_current:
+                tabs.setCurrentIndex(index)
+            page.setParent(None)
+            page.deleteLater()
+            return "refreshed"
+
+        def _settle_after_stack_clear(self, what: str) -> list[str]:
+            """Save, rebuild the Stack tab, report the lines.
+
+            THE ORDER IS SAVE, THEN REFRESH, for `_settle_after_clear`'s
+            reason: the durable write is the one a crash can take away,
+            so a crash between the two costs a stale panel and not a
+            restored tranche.
+
+            IT EMITS NO PIN, AND THAT IS DELIBERATE.
+            `gui.04.002.postcondition.clear_settled` carries fold_rows,
+            open_tranches_label and two fold button states; firing it
+            from here would put stack numbers under a fold pin's name and
+            make its record mean two things. The emitter network is not
+            this unit's to extend, so this path stays unpinned and says
+            so.
+            """
+            saved, why = self._save_fleet_state_now(what)
+            refresh = self._refresh_stack_tranches_tab()
+            lines = []
+            if refresh == "refreshed":
+                lines.append(
+                    "The panel behind this message has been rebuilt "
+                    "and now shows the new state."
+                )
+            else:
+                lines.append(
+                    f"The panel was {refresh}. Close and reopen this "
+                    f"dialog to see the new state."
+                )
+            if saved:
+                lines.append("Saved to disk.")
+            else:
+                lines.append(
+                    f"NOT SAVED TO DISK - {why}. The change holds in "
+                    f"memory, and the platform's rolling save should "
+                    f"write it within 60 seconds; a restart before "
+                    f"that would bring it back."
+                )
+            return lines
+
+        def _on_clear_stack_tranches(self) -> None:
+            """Discard this bot's standing Stack tranches, after
+            confirming.
+
+            THE DIALOG STATES THE ONE REFUSAL. A Visible-mode tranche
+            holding a resting exchange order is KEPT, because delisting a
+            record that owns a live order would strand it. The operator
+            sees that count before deciding, so a clear that leaves rows
+            on screen is expected rather than a surprise.
+            """
+            from PySide6.QtWidgets import QMessageBox
+
+            bot = self._bot
+            tranches = list(getattr(bot, "_stack_tranches", []) or [])
+            _live = [
+                _t
+                for _t in tranches
+                if _t.get("status") == "pending" and _t.get("order_id")
+            ]
+            _droppable = len(tranches) - len(_live)
+            if not _droppable:
+                QMessageBox.information(
+                    self,
+                    "Clear stack tranches",
+                    "This bot has no stack tranche this clear may "
+                    "discard."
+                    + (
+                        f"\n\n{len(_live)} tranche(s) hold resting "
+                        f"exchange orders and are never delisted."
+                        if _live
+                        else ""
+                    ),
+                )
+                return
+            if not hasattr(bot, "clear_stack_tranches"):
+                QMessageBox.warning(
+                    self,
+                    "Clear stack tranches",
+                    "This bot type does not support clearing stack " "tranches.",
+                )
+                return
+
+            body = [
+                f"Discard {_droppable} stack tranche(s) for "
+                f"{getattr(bot.config, 'symbol', '')}?",
+                "",
+                "This places NO order and cancels NO order. Holdings, "
+                "cost basis and target balance are untouched - only the "
+                "queued intent to sell is discarded.",
+                "",
+                "This cannot be undone.",
+            ]
+            if _live:
+                body += [
+                    "",
+                    f"NOTE - {len(_live)} tranche(s) hold resting "
+                    f"exchange orders and are KEPT. Delisting a record "
+                    f"that owns a live order would leave that order on "
+                    f"the book with nothing tracking it.",
+                ]
+
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle("Clear stack tranches")
+            box.setText("\n".join(body))
+            box.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
+            box.setDefaultButton(QMessageBox.Cancel)
+            if box.exec() != QMessageBox.Yes:
+                return
+
+            try:
+                report = bot.clear_stack_tranches(reason="operator (GUI)")
+            except Exception as exc:  # noqa: BLE001 - operator surface
+                logger.exception("clear_stack_tranches failed: %s", exc)
+                QMessageBox.critical(
+                    self,
+                    "Clear stack tranches",
+                    f"Nothing was cleared - the call failed:\n\n{exc}",
+                )
+                return
+
+            _settled = self._settle_after_stack_clear("Clear stack tranches")
+            _kept = int(report.get("kept_live_order", 0))
+            QMessageBox.information(
+                self,
+                "Clear stack tranches",
+                "\n\n".join(
+                    [
+                        f"Discarded {int(report.get('count', 0))} stack "
+                        f"tranche(s) covering "
+                        f"{float(report.get('size', 0.0)):.8f} base "
+                        f"units.",
+                        "\n".join(_settled),
+                        f"No order was placed or cancelled. "
+                        f"{_kept} tranche(s) holding resting exchange "
+                        f"orders were kept, and every holding, cost "
+                        f"basis and target balance is unchanged.",
+                    ]
+                ),
+            )
+
+        def _on_clear_stack_lifetime_counters(self) -> None:
+            """Zero this bot's two stack lifetime counters, after
+            confirming.
+
+            TWO COUNTERS, NOT FOUR. The Stack ledger has no closed count
+            and no malformed count: filling a stack tranche sets its
+            status and leaves the record listed, so `opened - discarded`
+            against the standing ledger is the whole reconciliation this
+            clear breaks until the next stack opens.
+            """
+            from PySide6.QtWidgets import QMessageBox
+
+            bot = self._bot
+            _counts = {
+                "opened": int(getattr(bot, "_stack_created", 0) or 0),
+                "discarded": int(getattr(bot, "_stack_discarded", 0) or 0),
+            }
+            if not sum(_counts.values()):
+                QMessageBox.information(
+                    self,
+                    "Clear stack lifetime counters",
+                    "This bot's lifetime stack counters already read " "zero.",
+                )
+                return
+            if not hasattr(bot, "clear_stack_lifetime_counters"):
+                QMessageBox.warning(
+                    self,
+                    "Clear stack lifetime counters",
+                    "This bot type does not support clearing stack "
+                    "lifetime counters.",
+                )
+                return
+
+            open_now = len(getattr(bot, "_stack_tranches", []) or [])
+            body = [
+                f"Set the two lifetime stack counters for "
+                f"{getattr(bot.config, 'symbol', '')} to zero?",
+                "",
+                f"    opened    {_counts['opened']}",
+                f"    discarded {_counts['discarded']}",
+                "",
+                "This places NO order and removes NO tranche. Standing "
+                "stack tranches, holdings, cost basis and target balance "
+                "are all unchanged - this clears the record of what "
+                "happened, not what the bot holds.",
+                "",
+                "This cannot be undone.",
+            ]
+            if open_now:
+                body += [
+                    "",
+                    f"NOTE - this bot still holds {open_now} stack "
+                    f"tranche(s). The panel reconciles opened minus "
+                    f"discarded against that count, so it will read 0 "
+                    f"against {open_now} until the next stack opens. No "
+                    f"tranche is lost.",
+                ]
+
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle("Clear stack lifetime counters")
+            box.setText("\n".join(body))
+            box.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
+            box.setDefaultButton(QMessageBox.Cancel)
+            if box.exec() != QMessageBox.Yes:
+                return
+
+            try:
+                report = bot.clear_stack_lifetime_counters(reason="operator (GUI)")
+            except Exception as exc:  # noqa: BLE001 - operator surface
+                logger.exception("clear_stack_lifetime_counters failed: %s", exc)
+                QMessageBox.critical(
+                    self,
+                    "Clear stack lifetime counters",
+                    f"Nothing was cleared - the call failed:\n\n{exc}",
+                )
+                return
+
+            _settled = self._settle_after_stack_clear("Clear stack lifetime counters")
+            _before = report.get("before", {}) or {}
+            QMessageBox.information(
+                self,
+                "Clear stack lifetime counters",
+                "\n\n".join(
+                    [
+                        f"Cleared {int(report.get('cleared', 0))} counted "
+                        f"stack event(s): opened "
+                        f"{int(_before.get('created', 0))} and discarded "
+                        f"{int(_before.get('discarded', 0))}.",
+                        "Both now read 0 for this bot.",
+                        "\n".join(_settled),
+                        "No order was placed and no tranche was removed. "
+                        f"This bot still holds "
+                        f"{len(getattr(bot, '_stack_tranches', []) or [])} "
+                        f"stack tranche(s) and every holding it had.",
+                    ]
+                ),
+            )
+
         def _create_fold_tranches_tab(self) -> QWidget:
             import time as _time
 
@@ -5010,6 +5326,24 @@ if _HAS_QT:
             tranches = list(getattr(self._bot, "_stack_tranches", []) or [])
             now_ts = _time.time()
             created_lifetime = int(getattr(self._bot, "_stack_created", 0) or 0)
+            # HOISTED ABOVE THE SUMMARY ROWS because the clear
+            # buttons below read it too. Read through
+            # `as_finite_float` rather than the Fold panel's bare
+            # `int(... or 0)`: `int(float("nan"))` raises
+            # ValueError, and this runs while the tab is being
+            # built, so the operator would get a traceback
+            # instead of a panel.
+            discarded_lifetime = int(
+                _as_finite_float(getattr(self._bot, "_stack_discarded", 0)) or 0.0
+            )
+            # issue #133 unit 7 -- the epoch second an operator
+            # cleared the two counters, 0.0 when none has. It
+            # tells a bot that never opened a stack apart from
+            # one whose record was reset, which a bare 0 cannot.
+            reset_ts = (
+                _as_finite_float(getattr(self._bot, "_stack_counters_reset_ts", 0.0))
+                or 0.0
+            )
 
             # --- Summary ---
             summary = QGroupBox("Stack-Tranche Cycle Health")
@@ -5052,7 +5386,11 @@ if _HAS_QT:
                 f"{len(filled) / created_lifetime:.1%}  "
                 f"({len(filled)}/{created_lifetime})"
                 if created_lifetime > 0
-                else "—  (no stacks opened yet)"
+                else (
+                    "—  (counters cleared)"
+                    if reset_ts > 0
+                    else "—  (no stacks opened yet)"
+                )
             )
 
             sf.addRow("Pending tranches:", QLabel(str(len(pending))))
@@ -5124,9 +5462,6 @@ if _HAS_QT:
             # would get a traceback instead of a panel. The Fold panel's
             # line is unchanged — putting both on one rule is a separate
             # unit.
-            discarded_lifetime = int(
-                _as_finite_float(getattr(self._bot, "_stack_discarded", 0)) or 0.0
-            )
             if discarded_lifetime:
                 sf.addRow(
                     "Lifetime tranches discarded (delisted, not filled):",
@@ -5134,6 +5469,77 @@ if _HAS_QT:
                 )
 
             layout.addWidget(summary)
+
+            # --- issue #133 unit 7: the Fold tab's clear controls,
+            # mirrored ----------------------------------------------
+            # Same two verbs the Fold tab carries and the same order:
+            # the INVENTORY clear first, the RECORD clear second. A bot
+            # can want its ledger emptied with its history intact, or
+            # the reverse, so they stay two buttons.
+            #
+            # BUILT BEFORE THE EMPTY-LEDGER RETURN BELOW, so a bot with
+            # counters and no standing tranche can still reset its
+            # counters. The Fold tab's buttons sit in the same place for
+            # the same reason.
+            _droppable = len(
+                [
+                    _t
+                    for _t in tranches
+                    if not (_t.get("status") == "pending" and _t.get("order_id"))
+                ]
+            )
+            stack_clear_btn = QPushButton(
+                f"Clear {_droppable} Stack Tranche(s)"
+                if _droppable
+                else "Clear Stack Tranches"
+            )
+            stack_clear_btn.setEnabled(bool(_droppable))
+            stack_clear_btn.setToolTip(
+                "Discard this bot's standing stack tranches.\n\n"
+                "Places NO order and cancels NO order. Holdings, cost "
+                "basis and target balance are untouched. A tranche "
+                "holding a resting exchange order is KEPT - delisting "
+                "it would leave that order on the book with nothing "
+                "tracking it."
+            )
+            stack_clear_btn.setStyleSheet(
+                "QPushButton { background: #3a2020; color: #ff9900; "
+                "border: 1px solid #ff3366; padding: 6px 12px; } "
+                "QPushButton:disabled { color: #666666; "
+                "border-color: #444444; }"
+            )
+            stack_clear_btn.clicked.connect(self._on_clear_stack_tranches)
+            self._stack_clear_btn = stack_clear_btn
+
+            _stack_counter_total = created_lifetime + discarded_lifetime
+            stack_counters_btn = QPushButton(
+                f"Clear Lifetime Counters ({created_lifetime} opened)"
+                if _stack_counter_total
+                else "Clear Lifetime Counters"
+            )
+            stack_counters_btn.setEnabled(bool(_stack_counter_total))
+            stack_counters_btn.setToolTip(
+                "Set this bot's two stack lifetime counters to "
+                "zero.\n\n"
+                "Places NO order and removes NO tranche. Standing stack "
+                "tranches, holdings, cost basis and target balance are "
+                "all untouched - this clears the record of what "
+                "happened, not what the bot holds."
+            )
+            stack_counters_btn.setStyleSheet(
+                "QPushButton { background: #3a2020; color: #ff9900; "
+                "border: 1px solid #ff3366; padding: 6px 12px; } "
+                "QPushButton:disabled { color: #666666; "
+                "border-color: #444444; }"
+            )
+            stack_counters_btn.clicked.connect(self._on_clear_stack_lifetime_counters)
+            self._stack_counters_btn = stack_counters_btn
+
+            stack_btn_row = QHBoxLayout()
+            stack_btn_row.addWidget(stack_clear_btn)
+            stack_btn_row.addWidget(stack_counters_btn)
+            stack_btn_row.addStretch()
+            layout.addLayout(stack_btn_row)
 
             # --- Detail ---
             if not tranches:
