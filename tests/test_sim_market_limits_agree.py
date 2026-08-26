@@ -59,7 +59,7 @@ class _Src:
 
 
 def _nuclear():
-    from src.gui.simulator_tab.nuclear_sim_exchange import NuclearSimExchange
+    from src.simulator.nuclear_sim_exchange import NuclearSimExchange
 
     ex = object.__new__(NuclearSimExchange)
     ex._src = _Src()
@@ -76,8 +76,8 @@ def _nuclear():
 
 
 def _fleet():
-    from src.gui.simulator_tab.fleet.candle_series import CandleSeries
-    from src.gui.simulator_tab.fleet.sim_exchange import FleetSimExchange
+    from src.simulator.fleet.candle_series import CandleSeries
+    from src.simulator.fleet.sim_exchange import FleetSimExchange
 
     return FleetSimExchange(
         series_map={SYM: CandleSeries(symbol=SYM, rows=[list(CANDLE)])},
@@ -156,8 +156,8 @@ class TestTheApproximationIsLabelled:
         value that is not labelled as one is how the next reader
         concludes the sim honours venue limits."""
         for rel in (
-            "src/gui/simulator_tab/fleet/sim_exchange.py",
-            "src/gui/simulator_tab/nuclear_sim_exchange.py",
+            "src/simulator/fleet/sim_exchange.py",
+            "src/simulator/nuclear_sim_exchange.py",
         ):
             src = (REPO_ROOT / rel).read_text(encoding="utf-8")
             assert "SN-20" in src, (

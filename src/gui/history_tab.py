@@ -3,7 +3,7 @@ history_tab.py — Acervator History tab.
 
 v3.23.71 rebuild (2026-07-31) per operator directive: deprecate the
 hallucinated fetch + join logic from the v3.17.0-era file; import
-the sound pieces from ``src.gui.history_helpers`` instead. Fixes:
+the sound pieces from ``src.exchange.history_helpers`` instead. Fixes:
 
   * H1 — default From date pinned to 2026-04-01 (platform launch).
   * H2 — Gate column renamed "Gates"; per-row mouseover explains
@@ -87,7 +87,7 @@ logger = logging.getLogger("acervator.gui.history")
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Trade normalization + chunked fetch moved to src.gui.history_helpers
+# Trade normalization + chunked fetch moved to src.exchange.history_helpers
 # (v3.23.71 rebuild). This module holds only the widget + its callbacks.
 # ─────────────────────────────────────────────────────────────────────
 
@@ -95,7 +95,7 @@ logger = logging.getLogger("acervator.gui.history")
 # ─────────────────────────────────────────────────────────────────────
 # History fetcher — retired v3.23.71 (dropped trades > 500 per symbol
 # because it made a single get_my_trades() call). Replaced by
-# src.gui.history_helpers.fetch_all_history_chunked which walks in
+# src.exchange.history_helpers.fetch_all_history_chunked which walks in
 # 30-day windows with per-id dedupe. The old async _fetch_all_history
 # function and its inline _normalize_trade helper both move to that
 # module — this file no longer holds fetch logic.
@@ -162,7 +162,7 @@ if _HAS_QT:
         """v3.23.71 — exchange-truth trade history tab, rebuild-refactor.
 
         Fetch + gate/voting join + tooltip builders isolated into
-        ``src.gui.history_helpers`` (pure, testable). See module
+        ``src.exchange.history_helpers`` (pure, testable). See module
         docstring for the H1-H5 fix map.
 
         Public surface (used by main_window):
@@ -427,7 +427,7 @@ if _HAS_QT:
                 # v3.23.71 H5: chunked-window walk instead of the single
                 # limit=500 call that dropped trades for any bot with
                 # more than the exchange's per-time-range cap.
-                from .history_helpers import fetch_all_history_chunked
+                from src.exchange.history_helpers import fetch_all_history_chunked
 
                 future = asyncio.run_coroutine_threadsafe(
                     fetch_all_history_chunked(self._bot_manager, since_ts), loop
@@ -859,7 +859,7 @@ if _HAS_QT:
                     grade_item.setForeground(QColor("#ff5566"))
                 # v3.23.71 H3: Grade cell gets a tooltip explaining the
                 # letter's meaning.
-                from .history_helpers import grade_tooltip as _grade_tt
+                from src.exchange.history_helpers import grade_tooltip as _grade_tt
 
                 grade_item.setToolTip(_grade_tt(grade_str))
                 self._table.setItem(row_i, 10, grade_item)
@@ -868,7 +868,7 @@ if _HAS_QT:
                 # column (idx 12) now use the isolated helpers. Text is
                 # the compact cell marker; tooltip is the rich HTML view
                 # of the full state captured at trade time.
-                from .history_helpers import (
+                from src.exchange.history_helpers import (
                     resolve_bot_id_for_row as _resolve_bid,
                     lookup_gate_entry as _lookup_gate,
                     lookup_voting_entry as _lookup_vote,
@@ -1285,7 +1285,7 @@ if _HAS_QT:
                 return None
 
         # _resolve_bot_id_for_row + _lookup_gate_marker + _lookup_voting_marker
-        # removed v3.23.71. Their logic moved to src.gui.history_helpers where
+        # removed v3.23.71. Their logic moved to src.exchange.history_helpers where
         # it is pure/testable; the render path in _render_page now calls the
         # module-level helpers directly (see the v3.23.71 H2/H3 block above).
 

@@ -85,7 +85,7 @@ from src.core.signal_contract import (
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-REPLAY = REPO_ROOT / "src/gui/simulator_tab/fleet/fleet_replay_controller.py"
+REPLAY = REPO_ROOT / "src/simulator/fleet/fleet_replay_controller.py"
 MAIN_WINDOW = REPO_ROOT / "src/gui/main_window.py"
 
 # --------------------------------------------------------------------

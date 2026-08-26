@@ -47,11 +47,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.gui.simulator_tab.fleet.fleet_replay_controller import (  # noqa: E402
+from src.simulator.fleet.fleet_replay_controller import (  # noqa: E402
     build_anchor_indices,
     clock_timestamps_from_candles,
 )
-from src.gui.simulator_tab.fleet.master_clock import MasterClock  # noqa: E402
+from src.simulator.fleet.master_clock import MasterClock  # noqa: E402
 
 STEP = 300_000
 BASE = 1_700_000_000_000

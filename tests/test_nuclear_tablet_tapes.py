@@ -48,7 +48,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from src.gui.simulator_tab.nuclear_candle_source import (  # noqa: E402
+from src.simulator.nuclear_candle_source import (  # noqa: E402
     _NOISE_MAX_PCT,
     _NOISE_MIN_PCT,
     NuclearCandleSource,

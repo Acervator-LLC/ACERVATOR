@@ -45,7 +45,7 @@ import pytest  # noqa: E402
 from src.exchange import base as B  # noqa: E402
 
 LIVE = REPO_ROOT / "src/exchange/ccxt_connector.py"
-SIM = REPO_ROOT / "src/gui/simulator_tab/fleet/sim_exchange.py"
+SIM = REPO_ROOT / "src/simulator/fleet/sim_exchange.py"
 CONSUMER_DIRS = ("src/trading", "src/gui")
 
 DATACLASSES = ("Ticker", "Balance", "Order", "Trade", "OrderBook")
@@ -144,11 +144,31 @@ def test_the_exempt_fields_are_still_unread():
     )
 
 
+def _base_import_target(path: Path) -> str | None:
+    """Resolve the module a file imports ``ExchangeInterface`` from.
+
+    Reads the RESOLVED module, not the dot count. A relocation changes the
+    spelling of a relative import without changing what it names.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    pkg = path.resolve().relative_to(REPO_ROOT).with_suffix("").parts[:-1]
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if not any(a.name == "ExchangeInterface" for a in node.names):
+            continue
+        if node.level:
+            base = list(pkg[: len(pkg) - (node.level - 1)])
+            return ".".join(base + ([node.module] if node.module else []))
+        return node.module
+    return None
+
+
 def test_both_sides_use_the_same_dataclasses():
     """Not lookalikes. If the sim ever defines its own Ticker/Order,
     every field comparison above becomes meaningless."""
     src = SIM.read_text(encoding="utf-8")
-    assert "from ....exchange.base import (" in src
+    assert _base_import_target(SIM) == "src.exchange.base"
     for cls in DATACLASSES:
         assert f"class {cls}" not in src, (
             f"the Simulator defines its own {cls}; it must use the one " f"live returns"

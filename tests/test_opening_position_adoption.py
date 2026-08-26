@@ -46,7 +46,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.gui.simulator_tab.fleet import (  # noqa: E402
+from src.simulator.fleet import (  # noqa: E402
     fleet_replay_controller as frc,
 )
 

@@ -32,10 +32,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-NUCLEAR = REPO_ROOT / "src" / "gui" / "simulator_tab" / "nuclear_controller.py"
-REPLAY = (
-    REPO_ROOT / "src" / "gui" / "simulator_tab" / "fleet" / "fleet_replay_controller.py"
-)
+NUCLEAR = REPO_ROOT / "src" / "simulator" / "nuclear_controller.py"
+REPLAY = REPO_ROOT / "src" / "simulator" / "fleet" / "fleet_replay_controller.py"
 
 
 def _fn(path: Path, name: str):
@@ -123,7 +121,7 @@ class TestReplayAssertsIsolationBeforeRunning:
         assert calls, "_assert_capital_isolation is never called"
 
     def test_it_flags_a_bot_on_the_live_registry(self):
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+        from src.simulator.fleet.fleet_replay_controller import (
             FleetReplayController,
         )
         from src.trading.capital_reservation import get_registry
@@ -140,7 +138,7 @@ class TestReplayAssertsIsolationBeforeRunning:
         assert "leak" in str(ei.value), "the offending bot is not named"
 
     def test_it_flags_a_bot_with_no_registry_at_all(self):
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+        from src.simulator.fleet.fleet_replay_controller import (
             FleetReplayController,
         )
 
@@ -153,7 +151,7 @@ class TestReplayAssertsIsolationBeforeRunning:
     def test_it_passes_on_properly_isolated_bots(self):
         """NEGATIVE CONTROL: a guard that always fires blocks every
         replay and would be removed within a day."""
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+        from src.simulator.fleet.fleet_replay_controller import (
             FleetReplayController,
             _make_sim_capital_registry,
         )
@@ -175,7 +173,7 @@ class TestReplayAssertsIsolationBeforeRunning:
         ), "a clean run should say so; silence reads as 'not checked'"
 
     def test_an_empty_fleet_does_not_raise(self):
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+        from src.simulator.fleet.fleet_replay_controller import (
             FleetReplayController,
         )
 

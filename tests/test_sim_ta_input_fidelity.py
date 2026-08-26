@@ -50,7 +50,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-SIM_DIR = REPO_ROOT / "src" / "gui" / "simulator_tab"
+SIM_DIR = REPO_ROOT / "src" / "simulator"
 CONTROLLER = SIM_DIR / "fleet" / "fleet_replay_controller.py"
 SIM_EXCHANGE = SIM_DIR / "fleet" / "sim_exchange.py"
 PHANTOM = REPO_ROOT / "src" / "trading" / "phantom_balance.py"
@@ -156,7 +156,7 @@ class TestPhantomEnablementHonoursPersistedState:
                 )
 
     def test_the_default_comes_from_the_entry_level_flag(self):
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+        from src.simulator.fleet.fleet_replay_controller import (
             resolve_phantoms_enabled,
         )
 
@@ -165,7 +165,7 @@ class TestPhantomEnablementHonoursPersistedState:
 
     def test_a_missing_flag_defaults_off(self):
         """Faithful-to-live is the safe default: 35/35 are False."""
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+        from src.simulator.fleet.fleet_replay_controller import (
             resolve_phantoms_enabled,
         )
 
@@ -174,7 +174,7 @@ class TestPhantomEnablementHonoursPersistedState:
     def test_the_toggle_can_force_them_on(self):
         """Without this, C17 and C46's phantom changes would be
         'verified' by a replay in which _tick never ran."""
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+        from src.simulator.fleet.fleet_replay_controller import (
             resolve_phantoms_enabled,
         )
 
@@ -183,7 +183,7 @@ class TestPhantomEnablementHonoursPersistedState:
     def test_the_toggle_cannot_silently_force_them_off(self):
         """NEGATIVE CONTROL: an override that can disable is a second
         way to get a phantom-less replay that looks configured."""
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+        from src.simulator.fleet.fleet_replay_controller import (
             resolve_phantoms_enabled,
         )
 
@@ -229,7 +229,7 @@ class TestTheSimBotCarriesTheRealVenue:
     def test_the_real_venue_wins_over_the_sim_id(self):
         """Behavioural, not textual: given a config that names a venue,
         that venue must survive into the bot's config."""
-        from src.gui.simulator_tab.fleet import fleet_replay_controller as frc
+        from src.simulator.fleet import fleet_replay_controller as frc
 
         src = frc.__file__
         assert Path(src).exists()

@@ -27,7 +27,7 @@ import time
 import uuid
 from typing import Optional
 
-from ....exchange.base import (
+from ...exchange.base import (
     AssetInfo,
     Balance,
     ExchangeInterface,

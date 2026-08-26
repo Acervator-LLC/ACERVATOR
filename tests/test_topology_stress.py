@@ -179,7 +179,7 @@ def test_different_seeds_give_different_noise():
 
 
 def test_noise_amplitude_is_in_the_directed_band():
-    from src.gui.simulator_tab.nuclear_candle_source import (
+    from src.simulator.nuclear_candle_source import (
         _NOISE_MAX_PCT,
         _NOISE_MIN_PCT,
     )
@@ -376,7 +376,7 @@ def _stress_with_captured_controllers(
     is the shipped one, driving real `ScrummingBot`s against a real
     `CCXTConnector` served by a real `TabletBackend`.
     """
-    from src.gui.simulator_tab.fleet import fleet_replay_controller as frc
+    from src.simulator.fleet import fleet_replay_controller as frc
 
     real = frc.FleetReplayController
     built: list = []
@@ -598,7 +598,7 @@ def test_a_run_with_no_tape_fails_the_trial_instead_of_reporting_zeros() -> None
     hand, because `None` is the one value the property is allowed to
     return — before `_build_sim` has run.
     """
-    from src.gui.simulator_tab.fleet import fleet_replay_controller as frc
+    from src.simulator.fleet import fleet_replay_controller as frc
 
     class _NoTape(frc.FleetReplayController):
         @property

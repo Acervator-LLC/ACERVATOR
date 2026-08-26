@@ -70,7 +70,7 @@ _CALL_SITES: tuple[tuple[str, dict], ...] = (
     ("src/exchange/ccxt_connector.py:539", {"timeout": 15, "context": None}),
     ("src/exchange/crypto_assets.py:530", {"timeout": 10}),
     ("src/exchange/market_data.py:132", {"timeout": 15}),
-    ("src/gui/chart_data.py:281", {"timeout": 10}),
+    ("src/exchange/chart_data.py:281", {"timeout": 10}),
     # RE-ANCHORED 2026-08-21, from :3727 and :3825. THESE TWO CALLS
     # ARE INSIDE THE TAB THE CHANGE INSTRUMENTED, which is new: every
     # earlier move pushed them down from above. The API Tester emitter

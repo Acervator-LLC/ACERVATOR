@@ -47,7 +47,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.gui.simulator_tab.fleet.fleet_replay_controller import (  # noqa: E501
+from src.simulator.fleet.fleet_replay_controller import (  # noqa: E501
     live_bot_id,
     sim_bot_id,  # noqa: E402
     FleetReplayController,
@@ -224,7 +224,7 @@ class TestTheLoaderStillSuppliesTheKey:
         return p
 
     def test_the_loader_stamps_src_bot_id(self, tmp_path):
-        from src.gui.simulator_tab.fleet.bot_state_loader import (
+        from src.simulator.fleet.bot_state_loader import (
             load_bot_configs_from_state,
         )
 
@@ -241,7 +241,7 @@ class TestTheLoaderStillSuppliesTheKey:
     def test_the_loader_does_not_overwrite_an_existing_key(self, tmp_path):
         """`setdefault`, not `[...] =` — pinned because a caller may
         already have joined the id in."""
-        from src.gui.simulator_tab.fleet.bot_state_loader import (
+        from src.simulator.fleet.bot_state_loader import (
             load_bot_configs_from_state,
         )
 
@@ -267,7 +267,7 @@ class TestTheLoaderStillSuppliesTheKey:
         survives because `_build_sim` iterates the RAW dicts, not the
         typed configs. Pinned so a future tidy-up cannot quietly break it.
         """
-        from src.gui.simulator_tab.fleet.bot_state_loader import (
+        from src.simulator.fleet.bot_state_loader import (
             load_bot_configs_from_state,
         )
 

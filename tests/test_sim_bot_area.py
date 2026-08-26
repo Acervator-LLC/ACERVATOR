@@ -73,7 +73,7 @@ def _rows(n=300, px0=1.0):
 
 
 def _controller():
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+    from src.simulator.fleet.fleet_replay_controller import (
         FleetReplayController,
     )
 

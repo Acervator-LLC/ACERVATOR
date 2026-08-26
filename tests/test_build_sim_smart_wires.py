@@ -41,7 +41,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.core.event_bus import get_event_bus  # noqa: E402
-from src.gui.simulator_tab.fleet.fleet_replay_controller import (  # noqa: E501
+from src.simulator.fleet.fleet_replay_controller import (  # noqa: E501
     sim_bot_id,  # noqa: E402
     FleetReplayController,
 )
@@ -323,7 +323,7 @@ class TestTheFeatureReachesTheRealReadPath:
 
     def test_the_loader_reads_the_top_level_key(self, tmp_path):
         import json
-        from src.gui.simulator_tab.fleet.bot_state_loader import (
+        from src.simulator.fleet.bot_state_loader import (
             load_smart_wires_from_state,
         )
 
@@ -333,7 +333,7 @@ class TestTheFeatureReachesTheRealReadPath:
 
     def test_a_missing_key_is_empty_not_an_error(self, tmp_path):
         import json
-        from src.gui.simulator_tab.fleet.bot_state_loader import (
+        from src.simulator.fleet.bot_state_loader import (
             load_smart_wires_from_state,
         )
 
@@ -352,7 +352,7 @@ class TestNuclearDoesNotLeakEither:
     def test_it_constructs_the_manager_with_a_bus(self):
         import ast
 
-        p = REPO_ROOT / "src" / "gui" / "simulator_tab" / "nuclear_fleet_controller.py"
+        p = REPO_ROOT / "src" / "simulator" / "nuclear_fleet_controller.py"
         found = [
             n
             for n in ast.walk(ast.parse(p.read_text(encoding="utf-8")))

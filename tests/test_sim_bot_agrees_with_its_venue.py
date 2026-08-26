@@ -56,7 +56,7 @@ from ccxt.base.errors import InsufficientFunds  # noqa: E402
 
 from src.core.event_bus import Event  # noqa: E402
 from src.exchange.tablet_backend import TabletBackend  # noqa: E402
-from src.gui.simulator_tab.fleet.fleet_replay_controller import (  # noqa: E402
+from src.simulator.fleet.fleet_replay_controller import (  # noqa: E402
     FleetReplayController,
 )
 

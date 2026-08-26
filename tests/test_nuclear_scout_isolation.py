@@ -53,10 +53,10 @@ _LIVE_STATE = Path.home() / ".acervator" / "reservation_state.json"
 @pytest.fixture
 def scout():
     """A constructed Nuclear scout, or skip if no tapes exist."""
-    from src.gui.simulator_tab.nuclear_candle_source import (
+    from src.simulator.nuclear_candle_source import (
         NuclearCandleSource,
     )
-    from src.gui.simulator_tab.nuclear_controller import NuclearController
+    from src.simulator.nuclear_controller import NuclearController
 
     src = NuclearCandleSource()
     tapes = src.list_tapes()
@@ -115,7 +115,7 @@ def test_construct_scout_passes_the_isolation_arguments():
     """
     import inspect
 
-    from src.gui.simulator_tab.nuclear_controller import NuclearController
+    from src.simulator.nuclear_controller import NuclearController
 
     src = inspect.getsource(NuclearController._construct_scout)
     # Comments are stripped: the method carries an explanation of the

@@ -41,7 +41,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.gui.simulator_tab.fleet.sim_exchange import (  # noqa: E402
+from src.simulator.fleet.sim_exchange import (  # noqa: E402
     FleetSimExchange,
     make_symbol_series_map,
 )
@@ -138,7 +138,7 @@ class TestNoCandleIsServedFromTheFuture:
 class TestTheControllerRefusesToTickBeforeTheTape:
     def test_the_guard_is_wired_to_has_data(self):
         src = (
-            REPO_ROOT / "src/gui/simulator_tab/fleet" / "fleet_replay_controller.py"
+            REPO_ROOT / "src/simulator/fleet" / "fleet_replay_controller.py"
         ).read_text(encoding="utf-8")
         assert "self._tape.has_data(bot.config.symbol)" in src
         assert "bot_ticks_before_tape" in src
@@ -146,6 +146,6 @@ class TestTheControllerRefusesToTickBeforeTheTape:
     def test_skipped_ticks_are_counted_not_dropped(self):
         """A skip that leaves no trace is indistinguishable from a bot
         that never ran at all."""
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import ReplayProgress
+        from src.simulator.fleet.fleet_replay_controller import ReplayProgress
 
         assert hasattr(ReplayProgress(), "bot_ticks_before_tape")

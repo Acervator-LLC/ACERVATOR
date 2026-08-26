@@ -1511,7 +1511,7 @@ class SmartWireManager:
     # Safety: hard cap on bot count and system brake (RSS/regime) were
     # previously enforced upstream by MRSpawnController in the retired
     # nuclear_live.py engine (v3.18.3 deletion). The new Nuclear Mode
-    # under src/gui/simulator_tab/ will re-introduce these gates against
+    # under src/simulator/ will re-introduce these gates against
     # the real BotManager rather than a parallel implementation.
     # This module continues to handle the mature-profit check + the
     # actual capital transfer regardless of which upstream gate fires.

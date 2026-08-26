@@ -60,7 +60,7 @@ class TestTheFactoryFailsClosed:
     def test_it_returns_a_private_registry_normally(self):
         """POSITIVE CONTROL. If the factory cannot produce a registry at
         all, every abort assertion below passes for the wrong reason."""
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+        from src.simulator.fleet.fleet_replay_controller import (
             _make_sim_capital_registry,
         )
 
@@ -69,7 +69,7 @@ class TestTheFactoryFailsClosed:
 
     def test_the_private_registry_does_not_autosave(self):
         """Autosave is what would reach the operator's tree."""
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+        from src.simulator.fleet.fleet_replay_controller import (
             _make_sim_capital_registry,
         )
 
@@ -78,7 +78,7 @@ class TestTheFactoryFailsClosed:
 
     def test_the_private_registry_is_not_the_singleton(self):
         from src.trading.capital_reservation import get_registry
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+        from src.simulator.fleet.fleet_replay_controller import (
             _make_sim_capital_registry,
         )
 
@@ -88,7 +88,7 @@ class TestTheFactoryFailsClosed:
         """M10: abort with a reason rather than resolve the live one."""
         import tempfile
 
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+        from src.simulator.fleet.fleet_replay_controller import (
             _make_sim_capital_registry,
         )
 
@@ -105,7 +105,7 @@ class TestTheFactoryFailsClosed:
     def test_the_abort_leaves_the_live_file_untouched(self, monkeypatch):
         import tempfile
 
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+        from src.simulator.fleet.fleet_replay_controller import (
             _make_sim_capital_registry,
         )
 
@@ -131,7 +131,7 @@ class TestInstantiateBotRefusesWithoutARegistry:
         refusal is therefore pinned three ways: the return value here,
         the operator-visible reason below, and the structural check that
         the guard precedes the try block."""
-        from src.gui.simulator_tab.fleet.fleet_replay_controller import _instantiate_bot
+        from src.simulator.fleet.fleet_replay_controller import _instantiate_bot
 
         before = _live_fingerprint()
         bot = _instantiate_bot({"symbol": "BTC/USD", "bot_id": "x"}, object(), None)
@@ -149,7 +149,7 @@ class TestInstantiateBotRefusesWithoutARegistry:
         others."""
         import ast
 
-        import src.gui.simulator_tab.fleet.fleet_replay_controller as m
+        import src.simulator.fleet.fleet_replay_controller as m
 
         src = Path(m.__file__).read_text(encoding="utf-8")
         fn = next(
@@ -174,7 +174,7 @@ class TestInstantiateBotRefusesWithoutARegistry:
         Capture on the real logger instead."""
         import logging
 
-        import src.gui.simulator_tab.fleet.fleet_replay_controller as m
+        import src.simulator.fleet.fleet_replay_controller as m
 
         records = []
 

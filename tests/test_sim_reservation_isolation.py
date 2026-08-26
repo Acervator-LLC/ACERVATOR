@@ -50,7 +50,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from src.gui.simulator_tab.fleet.fleet_replay_controller import (  # noqa: E402
+from src.simulator.fleet.fleet_replay_controller import (  # noqa: E402
     _make_sim_capital_registry,
 )
 from src.trading.capital_reservation import (  # noqa: E402
@@ -241,7 +241,7 @@ def test_crr_falls_back_to_the_singleton_when_uninjected():
 
 
 def test_fleet_controller_builds_and_injects_a_private_registry():
-    from src.gui.simulator_tab.fleet import fleet_replay_controller as frc
+    from src.simulator.fleet import fleet_replay_controller as frc
 
     src = inspect.getsource(frc)
     assert "_make_sim_capital_registry" in src
@@ -273,7 +273,7 @@ def test_the_phantom_subsystem_stays_reachable_in_sim():
     defect, where phantoms were constructed and then advanced a handful
     of times at arbitrary replay positions.
     """
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+    from src.simulator.fleet.fleet_replay_controller import (
         resolve_phantoms_enabled,
     )
 

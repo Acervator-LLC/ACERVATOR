@@ -1,5 +1,5 @@
 """
-src/gui/simulator_tab/nuclear_sim_exchange.py — Sim exchange adapter.
+src/simulator/nuclear_sim_exchange.py — Sim exchange adapter.
 
 v3.18.8 (Phase B revision) — REWRITTEN per operator directive 2026-05-20:
 ticker associations dropped. The exchange now maps SYNTHETIC base
@@ -39,7 +39,7 @@ import time
 import uuid
 from typing import Optional
 
-from ...exchange.base import (
+from ..exchange.base import (
     AssetInfo,
     Balance,
     ExchangeInterface,
