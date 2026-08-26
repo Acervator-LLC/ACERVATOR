@@ -15,6 +15,10 @@ from .helpers import (
     _sma,
 )
 
+#: One entry per candle. ``None`` where the published formula has no
+#: value yet -- see ``StochasticRSI.lines``.
+_Line = list[float | None]
+
 
 # ---------------------------------------------------------------------------
 # 4. Stochastic RSI
@@ -39,20 +43,20 @@ class StochasticRSI:
         self.d_smooth = d_smooth
         self.weight = weight
 
-    def compute(self, candles: list[Candle], timeframe: str = "1h") -> Signal:
-        closes = [c.close for c in candles]
-        needed = self.rsi_period + self.stoch_period + self.d_smooth + 5
-        if len(closes) < needed:
-            return Signal(
-                "stochastic_rsi",
-                timeframe,
-                SignalDirection.NEUTRAL,
-                0.0,
-                self.weight,
-                abstained=True,
-            )
+    def rsi_values(self, closes: list[float]) -> tuple[list[float], bool]:
+        """Wilder RSI over ``closes``, and whether the LAST bar is 0/0.
 
-        # Compute RSI series
+        ONE SPELLING, TWO CALLERS. ``compute`` votes on the last few
+        entries; ``lines`` hands the whole series to a chart. The
+        candle chart carried its own copy of this loop until issue
+        #128 R2.
+
+        THE RETURNED LIST IS NOT CANDLE-ALIGNED. Entry ``j`` describes
+        candle ``rsi_period + j + 1``: the seed consumes the first
+        ``rsi_period`` changes and the first returned value is the bar
+        after it. ``lines`` below does the alignment; nothing here
+        pads, so no invented entry can reach a caller.
+        """
         deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
         # WILDER'S GAIN AND LOSS, ONE SPELLING.
         #
@@ -76,7 +80,11 @@ class StochasticRSI:
         gains = [max(0.0, d) for d in deltas]
         losses = [max(0.0, -d) for d in deltas]
 
-        rsi_values = []
+        values: list[float] = []
+        if len(deltas) < self.rsi_period:
+            # No seed exists, so there is no RSI at all. Returning an
+            # empty list says that; padding would invent one.
+            return values, False
         avg_gain = sum(gains[: self.rsi_period]) / self.rsi_period
         avg_loss = sum(losses[: self.rsi_period]) / self.rsi_period
 
@@ -95,7 +103,90 @@ class StochasticRSI:
             # of exact zeros stays exactly 0.0, so `<= 0.0` is sound.
             rs_indeterminate = avg_gain <= 0.0 and avg_loss <= 0.0
             rs = avg_gain / (avg_loss + 1e-9)
-            rsi_values.append(100 - 100 / (1 + rs))
+            values.append(100 - 100 / (1 + rs))
+        return values, rs_indeterminate
+
+    def stoch_ratios(
+        self, rsi_values: list[float], tail: int | None = None
+    ) -> tuple[int, list[float], bool]:
+        """StochRSI over an RSI series: ``(first index, ratios, flat?)``.
+
+        THE PUBLISHED DEFINITION. Chande and Kroll (1994), as
+        StockCharts reproduces it:
+
+            StochRSI = (RSI - lowest RSI) / (highest RSI - lowest RSI)
+
+        over ``stoch_period`` RSI values. The result is a POSITION
+        WITHIN A RANGE and is therefore a 0-to-1 ratio; the 0-to-100
+        presentation ``compute`` votes on is that ratio times 100, and
+        the chart draws the ratio itself. Neither is a second formula.
+
+        ``tail`` bounds the work to the last ``tail`` entries, which
+        is a range narrowing and not an arithmetic one: every value it
+        does compute comes from the same window in the same order.
+
+        ONE SPELLING, TWO CALLERS -- ``compute`` and ``lines``.
+        """
+        start = self.stoch_period - 1
+        if tail is not None:
+            start = max(start, len(rsi_values) - tail)
+        ratios: list[float] = []
+        flat = False
+        for i in range(start, len(rsi_values)):
+            window = rsi_values[i - self.stoch_period + 1 : i + 1]
+            low = min(window)
+            high = max(window)
+            # A stochastic is a position within a range. An RSI window
+            # with no range has no position in it, and every value this
+            # loop computes feeds the K and D lines the crossover votes
+            # on.
+            #
+            # `high` and `low` are the max and min of the window itself,
+            # so this IS the source-quantity test, applied to the series
+            # the stochastic is actually positioned in.
+            if high - low <= 0.0:
+                flat = True
+            ratios.append((rsi_values[i] - low) / (high - low + 1e-9))
+        return start, ratios, flat
+
+    def lines(self, candles: list[Candle]) -> _Line:
+        """StochRSI as a 0-to-1 ratio, ONE ENTRY PER CANDLE.
+
+        The chart's series. ``None`` before the RSI seed and the
+        stochastic window have both closed -- reading one is a
+        TypeError at the point of misuse rather than a plausible wrong
+        number, the contract ``helpers._ema`` already states.
+
+        A FLAT RSI WINDOW HAS NO POSITION IN IT, so those entries are
+        ``None`` too. ``compute`` abstains on the same condition.
+        """
+        closes = [c.close for c in candles]
+        out: _Line = [None] * len(closes)
+        rsi_values, _ = self.rsi_values(closes)
+        start, ratios, _ = self.stoch_ratios(rsi_values)
+        for offset, ratio in enumerate(ratios):
+            i = start + offset
+            window = rsi_values[i - self.stoch_period + 1 : i + 1]
+            if max(window) - min(window) <= 0.0:
+                continue
+            # rsi_values[j] describes candle rsi_period + j + 1.
+            out[self.rsi_period + i + 1] = ratio
+        return out
+
+    def compute(self, candles: list[Candle], timeframe: str = "1h") -> Signal:
+        closes = [c.close for c in candles]
+        needed = self.rsi_period + self.stoch_period + self.d_smooth + 5
+        if len(closes) < needed:
+            return Signal(
+                "stochastic_rsi",
+                timeframe,
+                SignalDirection.NEUTRAL,
+                0.0,
+                self.weight,
+                abstained=True,
+            )
+
+        rsi_values, rs_indeterminate = self.rsi_values(closes)
 
         if rs_indeterminate or len(rsi_values) < self.stoch_period:
             return Signal(
@@ -123,27 +214,14 @@ class StochasticRSI:
         #
         # Taking FEWER than k_smooth + d_smooth would silently alter
         # k_line[-2] / d_line[-2], which drive the crossover tests that
-        # emit confidence-0.8 SCRUM/FOLD signals. The max() keeps the
-        # original full-range behaviour on short inputs.
+        # emit confidence-0.8 SCRUM/FOLD signals. ``stoch_ratios``
+        # keeps the original full-range behaviour on short inputs.
         _stoch_need = self.k_smooth + self.d_smooth
-        _stoch_from = max(self.stoch_period - 1, len(rsi_values) - _stoch_need)
-        stoch_rsi = []
-        stoch_indeterminate = False
-        for i in range(_stoch_from, len(rsi_values)):
-            window = rsi_values[i - self.stoch_period + 1 : i + 1]
-            low = min(window)
-            high = max(window)
-            # A stochastic is a position within a range. An RSI window
-            # with no range has no position in it, and every value this
-            # loop computes feeds the K and D lines the crossover votes
-            # on -- the loop is already bounded to exactly that tail.
-            #
-            # `high` and `low` are the max and min of the window itself,
-            # so this IS the source-quantity test, applied to the series
-            # the stochastic is actually positioned in.
-            if high - low <= 0.0:
-                stoch_indeterminate = True
-            stoch_rsi.append((rsi_values[i] - low) / (high - low + 1e-9) * 100)
+        _, _ratios, stoch_indeterminate = self.stoch_ratios(
+            rsi_values, tail=_stoch_need
+        )
+        # The vote's presentation is the published ratio times 100.
+        stoch_rsi = [r * 100 for r in _ratios]
 
         if stoch_indeterminate:
             return Signal(

@@ -16,6 +16,13 @@ from .helpers import (
     _true_range,
 )
 
+#: One entry per candle. ``None`` where the published formula has no
+#: value yet -- see ``VortexIndicator.window_sums``.
+_Line = list[float | None]
+
+#: ``(sum VM+, sum VM-, sum TR)`` over one closed window, or ``None``.
+_Window = tuple[float, float, float] | None
+
 # ---------------------------------------------------------------------------
 # 2. Vortex Indicator
 # ---------------------------------------------------------------------------
@@ -54,6 +61,92 @@ class VortexIndicator:
         self.period = period
         self.weight = weight
 
+    def window_sums(self, candles: list[Candle]) -> list[_Window]:
+        """Per candle, the three window totals VI is built from.
+
+        THE PUBLISHED DEFINITION. Botes and Siepman (2010):
+
+            VM+ = |High_t - Low_(t-1)|
+            VM- = |Low_t  - High_(t-1)|
+            VI+ = sum(VM+, period) / sum(TR, period)
+            VI- = sum(VM-, period) / sum(TR, period)
+
+        This returns the three totals, candle-aligned, and NOTHING
+        divides them here. ``lines`` and ``compute`` each spell the
+        quotient at the point they use it, which is what keeps VI's
+        dimensionless units visible to the reader beside the
+        VX_CEILING / VX_FLOOR tests. The sums themselves -- the part
+        that can drift -- exist once.
+
+        WHERE THE SERIES STARTS. Both VM terms reach back one bar, so
+        neither exists at bar 0 and the first window closes at index
+        ``period``. Entries before it are ``None`` -- reading one is a
+        TypeError at the point of misuse rather than a plausible wrong
+        number, the contract ``helpers._ema`` already states.
+
+        A WINDOW WITH NO TRUE RANGE IS ``None`` TOO. VI is a ratio
+        over true range, so a halted window has no denominator at all.
+        ``compute`` records the trade inversion that came from letting
+        the epsilon be the whole of it.
+
+        ONE DEFINITION, TWO CALLERS. ``compute`` reads the last two
+        entries; the candle chart draws every one. The chart carried
+        its own copy of these sums until issue #128 R2.
+        """
+        n_c = len(candles)
+        out: list[_Window] = [None] * n_c
+        if n_c < self.period + 1:
+            return out
+
+        vm_plus = []
+        vm_minus = []
+        for i in range(1, n_c):
+            vm_plus.append(abs(candles[i].high - candles[i - 1].low))
+            vm_minus.append(abs(candles[i].low - candles[i - 1].high))
+
+        # True Range from the module's ONE definition, sliced to the
+        # window the Vortex formula sums over. VM+ and VM- both reach
+        # back one bar and neither exists at bar 0. VI+ and VI- divide
+        # a VM sum by a TR sum over THE SAME BARS, so the TR series
+        # must start where the VM series does. `[1:]` is that
+        # alignment -- not a discarded value.
+        tr = _true_range(candles)[1:]
+
+        n = self.period
+        for i in range(n, n_c):
+            # ``vm_plus[j]`` and ``tr[j]`` both describe candle j + 1,
+            # so the n-bar window ending AT candle i is ``[i - n : i]``
+            # in list space. At i = n_c - 1 that is the same slice, in
+            # the same order, that ``compute`` used to spell ``[-n:]``.
+            lo = i - n
+            sum_tr_window = sum(tr[lo:i])
+            # True range is a max of differences between equal prices
+            # on a halt, so the sum cancels to EXACTLY 0.0 and
+            # ``<= 0.0`` is sound.
+            if sum_tr_window <= 0.0:
+                continue
+            out[i] = (sum(vm_plus[lo:i]), sum(vm_minus[lo:i]), sum_tr_window)
+        return out
+
+    def lines(self, candles: list[Candle]) -> tuple[_Line, _Line]:
+        """VI+ and VI-, ONE ENTRY PER CANDLE, for a chart to draw.
+
+        A directional-movement sum OVER a true-range sum. Both carry
+        price units, so each quotient is DIMENSIONLESS and 1.0 is
+        parity. A window with no reading stays ``None``.
+        """
+        windows = self.window_sums(candles)
+        plus_series: _Line = [None] * len(windows)
+        minus_series: _Line = [None] * len(windows)
+        for i, window in enumerate(windows):
+            if window is None:
+                continue
+            sum_vp, sum_vm, sum_tr_window = window
+            sum_tr = sum_tr_window + 1e-9
+            plus_series[i] = sum_vp / sum_tr
+            minus_series[i] = sum_vm / sum_tr
+        return plus_series, minus_series
+
     def compute(self, candles: list[Candle], timeframe: str = "1h") -> Signal:
         if len(candles) < self.period + 1:
             return Signal(
@@ -65,36 +158,8 @@ class VortexIndicator:
                 abstained=True,
             )
 
-        vm_plus = []
-        vm_minus = []
-        for i in range(1, len(candles)):
-            vm_plus.append(abs(candles[i].high - candles[i - 1].low))
-            vm_minus.append(abs(candles[i].low - candles[i - 1].high))
-
-        # True Range from the module's ONE definition, sliced to the
-        # window the Vortex formula sums over. Botes and Siepman
-        # (2010) define VM+ = |High_t - Low_{t-1}| and
-        # VM- = |Low_t - High_{t-1}|, so both reach back one bar and
-        # neither exists at bar 0. VI+ and VI- divide a VM sum by a
-        # TR sum over THE SAME BARS, so the TR series must start
-        # where the VM series does. `[1:]` is that alignment -- not
-        # a discarded value.
-        tr = _true_range(candles)[1:]
-
-        n = self.period
-        if len(vm_plus) < n:
-            return Signal(
-                "vortex",
-                timeframe,
-                SignalDirection.NEUTRAL,
-                0.0,
-                self.weight,
-                abstained=True,
-            )
-
-        sum_vp = sum(vm_plus[-n:])
-        sum_vm = sum(vm_minus[-n:])
-        sum_tr_window = sum(tr[-n:])
+        windows = self.window_sums(candles)
+        current = windows[-1]
 
         # VI+ and VI- are directional movement OVER true range. With no
         # true range across the window there is no denominator at all,
@@ -112,8 +177,9 @@ class VortexIndicator:
         # not inflate a number here; it inverted a trade.
         #
         # True range is a max of differences between equal prices on a
-        # halt, so the sum cancels to EXACTLY 0.0 and `<= 0.0` is sound.
-        if sum_tr_window <= 0.0:
+        # halt, so the sum cancels to EXACTLY 0.0 and ``window_sums``
+        # leaves the entry ``None``.
+        if current is None:
             return Signal(
                 "vortex",
                 timeframe,
@@ -123,21 +189,23 @@ class VortexIndicator:
                 abstained=True,
             )
 
+        sum_vp, sum_vm, sum_tr_window = current
         sum_tr = sum_tr_window + 1e-9
 
         vi_plus = sum_vp / sum_tr
         vi_minus = sum_vm / sum_tr
 
         # Previous period values for crossover + acceleration detection.
-        # A previous window with no true range has no VI either, and this
-        # module's own fallback for that is the current reading.
+        # A previous window with no true range has no VI either -- it is
+        # ``None`` in the series -- and this module's own fallback for
+        # that is the current reading.
         prev_vp = vi_plus
         prev_vm = vi_minus
-        if len(vm_plus) >= n + 1:
-            prev_tr_window = sum(tr[-n - 1 : -1])
-            if prev_tr_window > 0.0:
-                prev_vp = sum(vm_plus[-n - 1 : -1]) / (prev_tr_window + 1e-9)
-                prev_vm = sum(vm_minus[-n - 1 : -1]) / (prev_tr_window + 1e-9)
+        previous = windows[-2] if len(windows) >= 2 else None
+        if previous is not None:
+            prev_sum_vp, prev_sum_vm, prev_tr_window = previous
+            prev_vp = prev_sum_vp / (prev_tr_window + 1e-9)
+            prev_vm = prev_sum_vm / (prev_tr_window + 1e-9)
 
         separation = vi_plus - vi_minus
         prev_sep = prev_vp - prev_vm

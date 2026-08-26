@@ -24,6 +24,16 @@ from ..core.privacy_mask_registry import (
 )  # v3.23.7 privacy-mask buttons arc
 from .. import __version__
 
+# THE ENGINE OWNS THE BANDS. The Ammo cell says what the tick and the
+# Fire button are about to do, so it reads their thresholds rather than
+# restating them. See ``_compose_ammo_cell``.
+from ..trading.target_bands import (
+    MANUAL_FIRE_PCT,
+    manual_fire_dust_band,
+    manual_fire_will_noop,
+    target_territory,
+)
+
 logger = logging.getLogger("acervator.gui")
 
 # v3.24.38 (C10 / NF-5) — appended to any dashboard figure that could
@@ -42,15 +52,18 @@ _AMMO_NEUTRAL = "#a8a8c5"
 # fetch instead.
 _PRICE_STALE_AFTER_S = 20.0
 
-# Manual Fire's own no-op band, mirrored from scrumming_bot.py:9248
-#     dust = max(self._target_balance * 0.01, 0.01)
-# The dashboard's actionable band is 0.1% (matching the TICK's park band
-# at scrumming_bot.py:5216), so there is a 10x window in which the cell
-# renders a confident signal colour and Manual Fire silently returns
-# "already within dust band ... No-op". Operator 2026-08-06: "strange,
-# intermittent and hard to explain amounts". Zero is one of those
-# amounts. Naming the constant here lets the cell warn instead.
-_MANUAL_FIRE_DUST_PCT = 0.01
+# Manual Fire's own no-op band, RE-EXPORTED from the engine rather than
+# mirrored. The dashboard's actionable band is 0.1% and this one is 1%,
+# so there is a 10x window in which the cell renders a confident signal
+# colour and Manual Fire silently returns "already within dust band ...
+# No-op". Operator 2026-08-06: "strange, intermittent and hard to
+# explain amounts". Zero is one of those amounts, and the cell warns.
+#
+# It used to be a literal copy of ``scrumming_bot.py``'s, kept honest by
+# a test that read the engine's SOURCE TEXT for "* 0.01". Issue #128 R2
+# made both sides call ``src/trading/target_bands.py``, so there is now
+# one number and nothing to keep in step.
+_MANUAL_FIRE_DUST_PCT = MANUAL_FIRE_PCT
 
 
 def _ammo_price_pool():
@@ -192,13 +205,14 @@ def _compose_ammo_cell(
         }
 
     delta = position_val - target_val
-    # Dust band: max(target x 0.001, $0.01). Below this the bot is
-    # effectively on-target and no action is pending.
-    dust_band = max(target_val * 0.001, 0.01)
-    if delta > dust_band:
+    # THE ENGINE'S OWN TEST, not a copy of it. ``target_territory``
+    # applies the same band ``tick()`` parks inside, so the colour on
+    # this cell cannot say SCRUM while the tick sits at target.
+    territory = target_territory(position_val, target_val)
+    if territory == "scrum":
         color = _AMMO_SCRUM
         tip = "Scrum territory — sell surplus on bullish"
-    elif delta < -dust_band:
+    elif territory == "fold":
         color = _AMMO_FOLD
         tip = "Fold territory — buy deficit on bearish"
     else:
@@ -210,8 +224,13 @@ def _compose_ammo_cell(
     # otherwise render a confident signal colour for an order that
     # silently never happens. Say so on the cell rather than letting the
     # operator discover it by firing.
-    mf_dust = max(target_val * _MANUAL_FIRE_DUST_PCT, 0.01)
-    manual_fire_noop = 0 < abs(delta) <= mf_dust
+    mf_dust = manual_fire_dust_band(target_val)
+    # ``0 < abs(delta)`` is the DISPLAY half and is not the engine's
+    # rule: a bot sitting exactly on target has nothing to fire, so
+    # warning about a refusal there would be noise.
+    manual_fire_noop = 0 < abs(delta) and manual_fire_will_noop(
+        position_val, target_val
+    )
     if manual_fire_noop and not stale:
         tip = (
             f"{tip}\n\nMANUAL FIRE WILL NOT ACT: |delta| "

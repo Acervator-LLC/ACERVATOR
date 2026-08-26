@@ -17,6 +17,10 @@ from .helpers import (
     _window_has_no_range,
 )
 
+#: ``(upper, middle, lower)`` for one candle, or ``None`` before the
+#: window closes -- see ``BollingerBands.bands``.
+_Band = tuple[float, float, float] | None
+
 
 # ---------------------------------------------------------------------------
 # 1. Bollinger Bands
@@ -35,6 +39,42 @@ class BollingerBands:
         self.period = period
         self.std_dev = std_dev
         self.weight = weight
+
+    def bands(self, candles: list[Candle]) -> list[_Band]:
+        """Upper, middle and lower band, ONE ENTRY PER CANDLE.
+
+        THE PUBLISHED DEFINITION. Bollinger, and StockCharts
+        reproducing him:
+
+            Middle Band = SMA(period)
+            Upper Band  = Middle + std_dev * sigma(period)
+            Lower Band  = Middle - std_dev * sigma(period)
+
+        with sigma the POPULATION deviation over the same window --
+        ``helpers._stdev_tail``, the one this package already uses.
+
+        NO BAND BEFORE THE WINDOW CLOSES. A 20-period band needs 20
+        closes, so entries below ``period - 1`` are ``None``. The
+        helper below fills those with a SHORTER-window average, which
+        is a warm-up convenience ``compute``'s squeeze history reads
+        and a chart must never draw as a band.
+
+        THE CANDLE CHART'S SERIES. It carried its own copy of this
+        composition, over its own inline SMA and deviation, until
+        issue #128 R2.
+        """
+        closes = [c.close for c in candles]
+        sma = _sma_tail(closes, self.period, tail=None)
+        std = _stdev_tail(closes, self.period, tail=None)
+        out: list[_Band] = [None] * len(closes)
+        for i in range(self.period - 1, len(closes)):
+            mid = sma[i]
+            out[i] = (
+                mid + self.std_dev * std[i],
+                mid,
+                mid - self.std_dev * std[i],
+            )
+        return out
 
     def compute(self, candles: list[Candle], timeframe: str = "1h") -> Signal:
         closes = [c.close for c in candles]

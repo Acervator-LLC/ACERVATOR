@@ -11,6 +11,11 @@ from .types import (
     Signal,
 )
 
+#: ``(tenkan, kijun, senkou_a, senkou_b, chikou)`` for one candle, each
+#: term ``None`` before its own window closes -- see
+#: ``IchimokuCloud.lines``.
+_Five = tuple[float | None, float | None, float | None, float | None, float]
+
 
 # ---------------------------------------------------------------------------
 # 5. Ichimoku Cloud
@@ -57,6 +62,52 @@ class IchimokuCloud:
         self.kijun = kijun
         self.senkou_b = senkou_b
         self.weight = weight
+
+    def lines(self, candles: list) -> list[_Five]:
+        """Tenkan, Kijun, Senkou A, Senkou B and Chikou, per candle.
+
+        THE PUBLISHED DEFINITION, Hosoda (1969), each line INCLUSIVE
+        of the current candle and all five built from the one ``_mid``
+        below:
+
+            Tenkan   = (9-period high + 9-period low) / 2
+            Kijun    = (26-period high + 26-period low) / 2
+            Senkou A = (Tenkan + Kijun) / 2
+            Senkou B = (52-period high + 52-period low) / 2
+            Chikou   = the close
+
+        AT THEIR NATIVE INDEX, NOT DISPLACED. Senkou A and B plot 26
+        bars FORWARD and Chikou 26 bars BACK; that shift belongs to
+        whatever draws them, and ``compute`` reads the displaced
+        windows itself. Displacing here would shift them twice.
+
+        A LINE WHOSE WINDOW HAS NOT CLOSED IS ``None``, so nothing can
+        draw a 52-period span over 9 bars of data. The candle chart
+        carried its own copy of these midpoints until issue #128 R2.
+        """
+        out: list[_Five] = []
+        for i in range(len(candles)):
+            tenkan = self._span_mid(candles, i, self.tenkan)
+            kijun = self._span_mid(candles, i, self.kijun)
+            senkou_b = self._span_mid(candles, i, self.senkou_b)
+            senkou_a = (
+                (tenkan + kijun) / 2.0
+                if (tenkan is not None and kijun is not None)
+                else None
+            )
+            out.append((tenkan, kijun, senkou_a, senkou_b, candles[i].close))
+        return out
+
+    def _span_mid(self, candles: list, end: int, period: int) -> float | None:
+        """``_mid`` over the ``period`` candles ENDING at ``end``.
+
+        ``None`` before the window closes. ``_mid`` answers 0.0 for a
+        window running off the front of the tape, and 0.0 is a price a
+        chart would happily draw.
+        """
+        if end < period - 1:
+            return None
+        return self._mid(candles, end - period + 1, period)
 
     @staticmethod
     def _mid(candles: list, start: int, period: int) -> float:
