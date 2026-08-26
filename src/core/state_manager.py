@@ -23,6 +23,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from .io_utils import atomic_write_json
+
 logger = logging.getLogger("acervator.state")
 
 _DEFAULT_DIR = Path.home() / ".acervator"
@@ -147,11 +149,7 @@ class StateManager:
         # a non-empty report now means an explicit delete or a bug.
         self.detect_prune(set(state["bots"].keys()))
 
-        # Atomic write: write to temp file, then rename
-        tmp_path = self._path.with_suffix(".tmp")
         try:
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(state, f, indent=2, default=str)
             # Backup existing state before overwriting.
             #
             # v3.24.35 (C01 PR-0) — but NEVER with an unparseable
@@ -193,12 +191,10 @@ class StateManager:
                         _bk_exc,
                         self._path.name,
                     )
-            tmp_path.replace(self._path)
+            atomic_write_json(self._path, state, default=str)
             logger.info("Bot state saved: %d bots", len(bots))
         except Exception as exc:
             logger.error("Failed to save bot state: %s", exc)
-            if tmp_path.exists():
-                tmp_path.unlink(missing_ok=True)
 
     def delete_bot(self, bot_id: str) -> bool:
         """Remove one bot's record from disk. The ONLY removal path.
@@ -260,15 +256,12 @@ class StateManager:
                 and str(w.get("target_id", "")) != str(bot_id)
             ]
 
-            tmp_path = self._path.with_suffix(".tmp")
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(state, f, indent=2, default=str)
             if self._path.exists():
                 try:
                     self._backup_path.write_bytes(self._path.read_bytes())
                 except OSError as exc:
                     logger.warning("delete_bot: backup refresh failed: %s", exc)
-            tmp_path.replace(self._path)
+            atomic_write_json(self._path, state, default=str)
 
             # ERROR level on purpose. This is irreversible and destroys
             # data the exchange cannot reproduce; it should be findable
