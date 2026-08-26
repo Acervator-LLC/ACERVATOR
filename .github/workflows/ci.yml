@@ -20,6 +20,13 @@
 #                  minutes of CPU and/or need semgrep/opencv/vale, none of
 #                  which the fast lane pays for.
 #
+# Early bail on non-functional changes: a `changes` job diffs the push/PR and
+# decides whether anything that can affect the build or tests actually changed.
+# When only non-functional files did (docs, *.md, .claude/, license/ignore
+# metadata), the lint and test lanes are skipped entirely so no runner wall time
+# is spent on them. The `ci-gate` job still reports a green status in that case,
+# so a docs-only change is never blocked by a "skipped" required check.
+#
 # Python version: ONE version, pinned in `.python-version` at the repo root and
 # read from there by every job (`python-version-file`). Acervator targets a
 # single interpreter — the app is headed for a SaaS deployment where local
@@ -30,8 +37,12 @@
 # To finish the pre-push→CI conversion, enable in the repo settings:
 #   Settings → Branches → Branch protection for `main`:
 #     - Require a pull request before merging
-#     - Require status checks to pass: select "lint" and "test"
-#       (the fast lane; "test-full" runs post-merge on main and on demand).
+#     - Require status checks to pass: select "ci-gate".
+#       ci-gate is the single stable check that aggregates the lint and test
+#       lanes: it passes when they succeed OR when they were skipped because the
+#       change was non-functional. Requiring the lanes ("lint"/"test") directly
+#       would instead wedge every docs-only PR, whose lanes report "skipped"
+#       rather than "success". ("test-full" runs post-merge on main and on demand.)
 name: CI
 
 on:
@@ -47,8 +58,67 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    # Decides whether this push/PR touches anything that can affect the build or
+    # the test suite. `code=false` means every changed file is non-functional
+    # (docs, *.md, .claude/, license/ignore metadata), and the lint/test lanes
+    # below are skipped so no runner time is spent on them.
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.detect.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the base commit of the diff is present locally.
+          fetch-depth: 0
+      - name: Detect functional changes
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # Paths that never affect the build or the test suite. If EVERY changed
+          # file matches one of these, the code lanes are skipped. Anything not
+          # matched here is treated as functional and runs the full suite, so the
+          # list is deliberately conservative — add to it, don't broaden it.
+          IGNORE='^\.claude/|^docs/|\.md$|^LICENSE$|^\.gitignore$|^\.gitattributes$|^\.editorconfig$'
+
+          case "$EVENT_NAME" in
+            pull_request) BASE="$PR_BASE_SHA"; HEAD="$PR_HEAD_SHA" ;;
+            push)         BASE="$PUSH_BEFORE"; HEAD="$PUSH_AFTER" ;;
+            *)
+              # workflow_dispatch or anything else: no reliable diff — run all.
+              echo "code=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+          esac
+
+          # A zeroed base (first push to a ref, or a force-push) has no comparable
+          # history — fall back to running the full suite.
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
+          CHANGED="$(git diff --name-only "$BASE" "$HEAD")"
+          echo "Changed files:"; echo "$CHANGED"
+
+          CODE_FILES="$(printf '%s\n' "$CHANGED" | grep -vE "$IGNORE" || true)"
+          if [ -n "$CODE_FILES" ]; then
+            echo "Functional changes detected — running code lanes."
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only non-functional files changed — skipping code lanes."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
     name: lint
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,6 +137,8 @@ jobs:
 
   test:
     name: test
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     env:
       # PySide6 widgets are constructed in the suite; run them without a
@@ -115,8 +187,12 @@ jobs:
   test-full:
     name: test-full
     # Post-merge on main, and on-demand. NOT on pull_request — that is what
-    # keeps PR feedback fast.
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # keeps PR feedback fast. Also skipped when the push changed only
+    # non-functional files (workflow_dispatch always reports code=true).
+    needs: changes
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     env:
       QT_QPA_PLATFORM: offscreen
@@ -158,3 +234,42 @@ jobs:
           vale --version
       - name: Run full (slow + archetype) test suite
         run: pytest -n auto -m "slow or archetype" -q
+
+  ci-gate:
+    # Single stable status for branch protection. It always runs — even when the
+    # code lanes were skipped for a non-functional change — and passes iff no
+    # required lane actually failed. Require THIS check instead of lint/test, so
+    # a docs-only PR whose lanes were skipped still reports a green required
+    # status and can merge.
+    name: ci-gate
+    if: always()
+    needs: [changes, lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required lanes
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          LINT: ${{ needs.lint.result }}
+          TEST: ${{ needs.test.result }}
+        run: |
+          set -euo pipefail
+          fail=0
+
+          # `changes` always runs, so only success is acceptable there.
+          if [ "$CHANGES" != "success" ]; then
+            echo "changes: $CHANGES — FAILED"; fail=1
+          else
+            echo "changes: success — ok"
+          fi
+
+          # A lane is acceptable when it succeeded or was skipped; skipped means
+          # the change was non-functional. Any other result fails the gate.
+          for name in LINT TEST; do
+            result="$(eval "echo \$$name")"
+            case "$result" in
+              success|skipped) echo "$name: $result — ok" ;;
+              *)               echo "$name: $result — FAILED"; fail=1 ;;
+            esac
+          done
+
+          exit "$fail"
