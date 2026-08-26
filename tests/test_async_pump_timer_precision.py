@@ -44,6 +44,19 @@ WHAT EACH TEST WOULD MEAN IF IT FAILED
     The factory became dead code and main() went back to building its
     own timer. Every assertion above would still pass while the running
     application kept the defect.
+
+`test_the_factory_timer_really_advances_the_loop`
+    The timer this factory returns fires and the loop does not move.
+    Nothing reaches bot.tick(), and the application is silent rather
+    than crashed.
+
+    This replaces an AST check that required `loop.call_soon`,
+    `loop.stop` and `loop.run_forever` to appear textually inside the
+    factory. Issue #128 R5 moved that body to src/core/tick_driver.py so
+    a Qt-free scheduler could call it, which retired the textual form.
+    The invariant is the same and is now read at the surface that
+    matters: the returned timer is driven, and a queued callback must
+    have run.
 """
 
 from __future__ import annotations
@@ -194,19 +207,6 @@ def test_main_wires_the_factory_in():
         factory is not None
     ), "main.py no longer defines _make_async_pump_timer at module level"
 
-    # The pump body must live INSIDE the factory, not beside it.
-    body_names = {
-        n.attr
-        for n in ast.walk(factory)
-        if isinstance(n, ast.Attribute)
-        and isinstance(n.value, ast.Name)
-        and n.value.id == "loop"
-    }
-    assert {"call_soon", "stop", "run_forever"} <= body_names, (
-        f"_make_async_pump_timer no longer drives the asyncio loop; it "
-        f"touches only {sorted(body_names)}"
-    )
-
     entry = next(
         n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main"
     )
@@ -218,4 +218,23 @@ def test_main_wires_the_factory_in():
     assert "_make_async_pump_timer" in called, (
         "main() does not call _make_async_pump_timer; the factory is dead "
         "code and the running application builds its own pump timer"
+    )
+
+
+def test_the_factory_timer_really_advances_the_loop(qt_app, asyncio_loop):
+    """Fire the returned timer once and read the loop, not the source.
+
+    An AST scan passes on a body that names the right attributes and
+    does nothing. Driving it cannot.
+    """
+    ran = {"n": 0}
+    asyncio_loop.call_soon(lambda: ran.__setitem__("n", ran["n"] + 1))
+    assert ran["n"] == 0, "the callback ran before anything advanced the loop"
+
+    timer = main._make_async_pump_timer(asyncio_loop)
+    timer.timeout.emit()
+
+    assert ran["n"] == 1, (
+        "the timer main() installs fired and the asyncio loop did not "
+        "advance. Nothing reaches bot.tick(); every bot is silent."
     )
