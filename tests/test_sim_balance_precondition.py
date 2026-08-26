@@ -58,7 +58,7 @@ class _Src:
 
 
 def _nuclear(balances):
-    from src.gui.simulator_tab.nuclear_sim_exchange import NuclearSimExchange
+    from src.simulator.nuclear_sim_exchange import NuclearSimExchange
 
     ex = object.__new__(NuclearSimExchange)
     ex._src = _Src()
@@ -73,8 +73,8 @@ def _nuclear(balances):
 
 
 def _fleet(balances):
-    from src.gui.simulator_tab.fleet.sim_exchange import FleetSimExchange
-    from src.gui.simulator_tab.fleet.candle_series import CandleSeries
+    from src.simulator.fleet.sim_exchange import FleetSimExchange
+    from src.simulator.fleet.candle_series import CandleSeries
 
     series = CandleSeries(symbol=SYM, rows=[list(CANDLE)])
     ex = FleetSimExchange(series_map={SYM: series}, starting_balances=dict(balances))

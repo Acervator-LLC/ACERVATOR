@@ -333,7 +333,7 @@ def _run_fetch(
     date edit, so a test can place a row deliberately outside the window
     without hard-coding the launch date.
     """
-    import src.gui.history_helpers as helpers
+    import src.exchange.history_helpers as helpers
 
     captured: dict = {}
 

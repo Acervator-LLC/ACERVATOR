@@ -88,7 +88,7 @@ def _panel_with_run():
     """A panel wired to a controller mid-replay, as the GUI has it."""
     _qapp()
     from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+    from src.simulator.fleet.fleet_replay_controller import (
         FleetReplayController,
     )
 

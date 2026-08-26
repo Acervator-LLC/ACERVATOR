@@ -46,7 +46,7 @@ if str(REPO) not in sys.path:
 from src.core.system_load_oscillator import (  # noqa: E402
     SystemLoadOscillator,
 )
-from src.gui.simulator_tab.nuclear_fleet_controller import (  # noqa: E402
+from src.simulator.nuclear_fleet_controller import (  # noqa: E402
     UNSENSED_LOAD_CAP,
     NuclearCycle,
     NuclearFleetController,
@@ -183,7 +183,7 @@ def test_cycle_with_error_is_not_ok():
 
 def test_start_refuses_without_a_fleet(monkeypatch):
     """A run that cannot start must say why, not raise."""
-    import src.gui.simulator_tab.fleet.bot_state_loader as bsl
+    import src.simulator.fleet.bot_state_loader as bsl
 
     monkeypatch.setattr(bsl, "load_bot_configs_from_state", lambda *_args, **_kw: [])
     msgs: list = []

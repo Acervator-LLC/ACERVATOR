@@ -30,12 +30,12 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from src.gui.simulator_tab.fleet.fleet_replay_controller import (  # noqa: E402
+from src.simulator.fleet.fleet_replay_controller import (  # noqa: E402
     FleetReplayController,
     ReplayProgress,
     _instantiate_bot,
 )
-from src.gui.simulator_tab.fleet.sim_exchange import (  # noqa: E402
+from src.simulator.fleet.sim_exchange import (  # noqa: E402
     FleetSimExchange,
     make_symbol_series_map,
 )
@@ -359,7 +359,7 @@ def _ts_at(idx: int) -> float:
 
 
 def test_anchor_includes_trade_candle_and_warmup():
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import build_anchor_indices
+    from src.simulator.fleet.fleet_replay_controller import build_anchor_indices
 
     a = build_anchor_indices([_ts_at(500)], _ANCHOR_BASE, 1000, warmup=100)
     # 100 warm-up candles PLUS the trade's own candle
@@ -367,28 +367,28 @@ def test_anchor_includes_trade_candle_and_warmup():
 
 
 def test_anchor_overlapping_clusters_collapse():
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import build_anchor_indices
+    from src.simulator.fleet.fleet_replay_controller import build_anchor_indices
 
     a = build_anchor_indices([_ts_at(500), _ts_at(510)], _ANCHOR_BASE, 1000, warmup=100)
     assert len(a) == 111, "clustered trades must not cost 2x warm-up"
 
 
 def test_anchor_drops_trades_outside_window():
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import build_anchor_indices
+    from src.simulator.fleet.fleet_replay_controller import build_anchor_indices
 
     assert not build_anchor_indices([_ts_at(-50)], _ANCHOR_BASE, 1000, warmup=100)
     assert not build_anchor_indices([_ts_at(5000)], _ANCHOR_BASE, 1000, warmup=100)
 
 
 def test_anchor_warmup_clamps_at_zero():
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import build_anchor_indices
+    from src.simulator.fleet.fleet_replay_controller import build_anchor_indices
 
     a = build_anchor_indices([_ts_at(10)], _ANCHOR_BASE, 1000, warmup=100)
     assert min(a) == 0
 
 
 def test_anchor_empty_when_no_trades():
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import build_anchor_indices
+    from src.simulator.fleet.fleet_replay_controller import build_anchor_indices
 
     assert build_anchor_indices([], _ANCHOR_BASE, 1000) == set()
 

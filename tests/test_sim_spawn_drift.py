@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from src.gui.simulator_tab.fleet.simulator_bot_state import (
+from src.simulator.fleet.simulator_bot_state import (
     SIM_STATE_PATH,
     SIM_STATE_ROOT_ENV,
     bot_state_path,
@@ -163,7 +163,7 @@ def test_save_refuses_the_live_bot_state_path(tmp_path, monkeypatch):
     module constant: the constant is no longer what `save_sim_state`
     reads, so patching it would test nothing and still pass.
     """
-    import src.gui.simulator_tab.fleet.simulator_bot_state as sbs
+    import src.simulator.fleet.simulator_bot_state as sbs
 
     monkeypatch.setenv(sbs.SIM_STATE_ROOT_ENV, str(tmp_path))
     decoy = tmp_path / "bot_state.json"
@@ -178,7 +178,7 @@ def test_save_refuses_the_live_bot_state_path(tmp_path, monkeypatch):
 
 def test_save_allows_a_normal_path(tmp_path, monkeypatch):
     """POSITIVE CONTROL: the guard must not refuse everything."""
-    import src.gui.simulator_tab.fleet.simulator_bot_state as sbs
+    import src.simulator.fleet.simulator_bot_state as sbs
 
     monkeypatch.setenv(sbs.SIM_STATE_ROOT_ENV, str(tmp_path))
     out = sbs.save_sim_state(
@@ -305,7 +305,7 @@ def test_the_guard_still_refuses_the_live_fleet_file_under_a_redirect(
     at ~/.acervator/bot_state.json would destroy the operator's fleet to
     prove a point. Nothing here reads or writes that file.
     """
-    import src.gui.simulator_tab.fleet.simulator_bot_state as sbs
+    import src.simulator.fleet.simulator_bot_state as sbs
 
     monkeypatch.setenv(SIM_STATE_ROOT_ENV, str(tmp_path))
     refused = sbs._refused_write_targets()

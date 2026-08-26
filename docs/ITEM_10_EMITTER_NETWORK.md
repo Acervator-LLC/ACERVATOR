@@ -52,10 +52,10 @@ is lying and every number after it is void.
 
 | file | emitters |
 |---|---|
-| `src/gui/simulator_tab/fleet/fleet_replay_controller.py` | 11 |
+| `src/simulator/fleet/fleet_replay_controller.py` | 11 |
 | `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | 9 |
 | `src/trading/scrumming_bot.py` | 8 |
-| `src/gui/simulator_tab/fleet/bot_state_loader.py` | 4 |
+| `src/simulator/fleet/bot_state_loader.py` | 4 |
 | `src/gui/simulator_tab/simulator_tab.py` | 2 |
 | `src/trading/smart_wire.py` | 2 |
 | `src/trading/ta_engine.py` | 2 |

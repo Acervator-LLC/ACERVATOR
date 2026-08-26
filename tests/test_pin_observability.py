@@ -130,7 +130,7 @@ def _controller(
 ):
     """A built fleet, exactly as tests/test_price_chart_feed.py builds it."""
     _qapp()
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+    from src.simulator.fleet.fleet_replay_controller import (
         FleetReplayController,
     )
 
@@ -170,7 +170,7 @@ def _controller_with_a_late_tablet(
     read as a causality break.
     """
     _qapp()
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+    from src.simulator.fleet.fleet_replay_controller import (
         FleetReplayController,
     )
 
@@ -217,7 +217,7 @@ def _play(ctl, total_candles: int | None = None, stop_after: int | None = None) 
     own `step` reproduces a stop arriving mid-run without touching the
     controller.
     """
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import ReplayProgress
+    from src.simulator.fleet.fleet_replay_controller import ReplayProgress
 
     ctl.progress = ReplayProgress(
         total_candles=(
@@ -489,7 +489,7 @@ class TestSectionsImportedReportsWhatWasSeen:
         FAILURE MEANS: the pin cannot go green on his own file, so
         "Load live bots" paints red for ever and the record is noise.
         """
-        from src.gui.simulator_tab.fleet.bot_state_loader import (
+        from src.simulator.fleet.bot_state_loader import (
             load_bot_configs_from_state,
         )
 
@@ -510,7 +510,7 @@ class TestSectionsImportedReportsWhatWasSeen:
         the loader's own `isinstance` guard and vanishes. That silent
         drop is what this pin exists to expose.
         """
-        from src.gui.simulator_tab.fleet.bot_state_loader import (
+        from src.simulator.fleet.bot_state_loader import (
             load_bot_configs_from_state,
         )
 
@@ -527,7 +527,7 @@ class TestSectionsImportedReportsWhatWasSeen:
         """`_src_bot_id` is stamped with `setdefault`, so a config that
         already carries one keeps the stale value and every downstream
         join addresses the wrong bot."""
-        from src.gui.simulator_tab.fleet.bot_state_loader import (
+        from src.simulator.fleet.bot_state_loader import (
             load_bot_configs_from_state,
         )
 
@@ -547,7 +547,7 @@ class TestSectionsImportedReportsWhatWasSeen:
         `Signal.message` printed the pair backwards on the one line
         anybody reads during a failure.
         """
-        from src.gui.simulator_tab.fleet.bot_state_loader import (
+        from src.simulator.fleet.bot_state_loader import (
             load_bot_configs_from_state,
         )
 
@@ -571,7 +571,7 @@ class TestSectionsImportedReportsWhatWasSeen:
         `_src_scrumming_state` and `_src_stats`, and have been since
         v3.24.81 - so a reader chased an import bug that was not there.
         """
-        from src.gui.simulator_tab.fleet.bot_state_loader import (
+        from src.simulator.fleet.bot_state_loader import (
             CARRIED_SECTIONS,
             load_bot_configs_from_state,
         )
@@ -595,7 +595,7 @@ class TestSectionsImportedReportsWhatWasSeen:
     def test_it_reports_a_total_import_failure(self, sink, tmp_path):
         """The old guard was `if out and _eligible`, which silenced the
         pin exactly when nothing loaded at all."""
-        from src.gui.simulator_tab.fleet import bot_state_loader as _loader
+        from src.simulator.fleet import bot_state_loader as _loader
 
         original = _loader._sections_carried
 

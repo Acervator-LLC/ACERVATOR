@@ -1,4 +1,4 @@
-"""src/gui/start_balance_check.py — pre-start wallet sufficiency check.
+"""src/trading/start_balance_check.py — pre-start wallet sufficiency check.
 
 Extracted v3.20.66 from main_window.py:_connect_exchange_for_bot per
 operator escalation 2026-06-05: the inline check at line ~4495 was

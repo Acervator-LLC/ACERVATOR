@@ -450,7 +450,7 @@ if _HAS_QT:
         # ── Slots ────────────────────────────────────────────────
         def _on_load_clicked(self) -> None:
             try:
-                from .bot_state_loader import (
+                from src.simulator.fleet.bot_state_loader import (
                     load_bot_configs_from_state,
                     load_smart_wires_from_state,
                     summarize_loaded_configs,
@@ -553,7 +553,9 @@ if _HAS_QT:
             # BOTH EARLY RETURNS BELOW EMIT NOTHING (no configs, no candles),
             # so neither needs a duration: there is no record to carry one.
             from src.trading.stone_tablets.registry import get_registry
-            from .fleet_replay_controller import FleetReplayController
+            from src.simulator.fleet.fleet_replay_controller import (
+                FleetReplayController,
+            )
 
             _dur_t0 = time.monotonic()
             reg = get_registry()
@@ -656,7 +658,7 @@ if _HAS_QT:
             # lot counts. Green here means the import was faithful;
             # divergence later is the simulation doing its job.
             try:
-                from .simulator_bot_state import (
+                from src.simulator.fleet.simulator_bot_state import (
                     build_sim_state,
                     compare_to_bot_state,
                     diff_spawns,
@@ -1080,7 +1082,7 @@ if _HAS_QT:
                 "(same call History Tab uses)…"
             )
 
-            from src.gui.history_helpers import (
+            from src.exchange.history_helpers import (
                 fetch_all_history_chunked,
                 DEFAULT_START_DATE,
             )
@@ -1351,7 +1353,9 @@ if _HAS_QT:
             if loop is None:
                 self._status_lbl.setText("Cannot start: async loop unavailable.")
                 return
-            from .fleet_replay_controller import FleetReplayController
+            from src.simulator.fleet.fleet_replay_controller import (
+                FleetReplayController,
+            )
 
             # v3.23.80 — prefer real YTD candles if the operator has
             # fetched them; fall back to synthetic sine waves so the
@@ -1612,7 +1616,7 @@ if _HAS_QT:
             # marker in an FE run would paint red for want of a
             # reference set.
             try:
-                from .fleet_replay_controller import (
+                from src.simulator.fleet.fleet_replay_controller import (
                     build_anchor_indices as _bai,
                     clock_timestamps_from_candles as _cts,
                 )
@@ -1648,7 +1652,7 @@ if _HAS_QT:
                 )
             else:
                 try:
-                    from .fleet_replay_controller import (
+                    from src.simulator.fleet.fleet_replay_controller import (
                         build_anchor_indices,
                         clock_timestamps_from_candles as _cts_a,
                     )

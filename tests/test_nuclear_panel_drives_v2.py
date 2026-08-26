@@ -128,7 +128,7 @@ class TestTheAsyncLifecycleIsHonoured:
     def test_v2_start_is_a_coroutine(self):
         """POSITIVE CONTROL — if v2's start ever became sync, the scheduling
         pin below would be enforcing a stale contract."""
-        from src.gui.simulator_tab.nuclear_fleet_controller import (
+        from src.simulator.nuclear_fleet_controller import (
             NuclearFleetController,
         )
 
@@ -137,7 +137,7 @@ class TestTheAsyncLifecycleIsHonoured:
     def test_v1_start_is_not(self):
         """The asymmetry that makes the repoint dangerous, pinned so the
         reason for the scheduling code stays legible."""
-        from src.gui.simulator_tab.nuclear_controller import NuclearController
+        from src.simulator.nuclear_controller import NuclearController
 
         assert not inspect.iscoroutinefunction(NuclearController.start)
 
@@ -193,7 +193,7 @@ class TestTheStatusReadoutSpeaksV2:
 
     @staticmethod
     def _v2_snapshot_keys():
-        from src.gui.simulator_tab.nuclear_fleet_controller import (
+        from src.simulator.nuclear_fleet_controller import (
             NuclearFleetController,
         )
 
@@ -290,7 +290,7 @@ class TestTheStatusRowsActuallyGetFilled:
 
     @staticmethod
     def _driven(parent):
-        from src.gui.simulator_tab.nuclear_fleet_controller import (
+        from src.simulator.nuclear_fleet_controller import (
             NuclearFleetController,
         )
 

@@ -131,7 +131,7 @@ class TestTheNuclearControllerInjects:
         so the fix must be visible as an argument at the call site."""
         import ast
 
-        nc = REPO_ROOT / "src" / "gui" / "simulator_tab" / "nuclear_controller.py"
+        nc = REPO_ROOT / "src" / "simulator" / "nuclear_controller.py"
         tree = ast.parse(nc.read_text(encoding="utf-8"))
         calls = [
             n
@@ -149,7 +149,7 @@ class TestTheNuclearControllerInjects:
     def test_teardown_detaches(self):
         import ast
 
-        nc = REPO_ROOT / "src" / "gui" / "simulator_tab" / "nuclear_controller.py"
+        nc = REPO_ROOT / "src" / "simulator" / "nuclear_controller.py"
         tree = ast.parse(nc.read_text(encoding="utf-8"))
         calls = [
             n

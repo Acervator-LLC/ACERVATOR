@@ -191,7 +191,7 @@ def _drive(
     monkeypatch: pytest.MonkeyPatch, made: asyncio.AbstractEventLoop, wait_s: float
 ) -> SignalSink:
     """Run the real method once against a slow venue; return the sink."""
-    import src.gui.history_helpers as helpers
+    import src.exchange.history_helpers as helpers
     import src.gui.simulator_tab.fleet.fleet_replay_panel as panel_mod
 
     async def _slow_fetch(_bot_manager: Any, _since_ts: float) -> list:

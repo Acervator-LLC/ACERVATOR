@@ -41,7 +41,7 @@ if str(REPO_ROOT) not in sys.path:
 
 import pytest  # noqa: E402
 
-from src.gui.simulator_tab.fleet.sim_exchange import (  # noqa: E402
+from src.simulator.fleet.sim_exchange import (  # noqa: E402
     LIVE_EFFECTIVE_PAGE_SIZE,
     FleetSimExchange,
     make_symbol_series_map,

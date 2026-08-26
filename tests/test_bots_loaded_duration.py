@@ -34,7 +34,7 @@ import pytest
 
 from src.core import signal_contract as sc
 from src.core.signal_contract import SignalSink
-from src.gui.simulator_tab.fleet import bot_state_loader as bsl
+from src.simulator.fleet import bot_state_loader as bsl
 
 OWNER = "fleet.03.001.postcondition.bots_loaded"
 SIBLINGS = (

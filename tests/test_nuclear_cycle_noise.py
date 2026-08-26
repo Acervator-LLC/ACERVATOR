@@ -37,7 +37,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.gui.simulator_tab.nuclear_candle_source import (  # noqa: E402
+from src.simulator.nuclear_candle_source import (  # noqa: E402
     _NOISE_MAX_PCT,
     _NOISE_MIN_PCT,
     noised_series,
@@ -149,7 +149,7 @@ class TestTheControllerVariesStructurePerCycle:
 
     @staticmethod
     def _ctl():
-        from src.gui.simulator_tab.nuclear_fleet_controller import (
+        from src.simulator.nuclear_fleet_controller import (
             NuclearFleetController,
         )
 
@@ -208,7 +208,7 @@ class TestNoiseCanBeDisabled:
     def test_disabling_returns_the_tablets_unchanged(self):
         """Needed to isolate a defect: if a soak fails, the first question
         is whether it fails on the unperturbed tape too."""
-        from src.gui.simulator_tab.nuclear_fleet_controller import (
+        from src.simulator.nuclear_fleet_controller import (
             NuclearFleetController,
         )
 

@@ -10,7 +10,7 @@ ARCHITECTURAL POSITION — this module is NEW, additive, and does not
 modify the existing src/competition/* stack. The legacy integration
 hook in nuclear_live.py::_run_poa_round was removed when nuclear_live
 was retired in v3.18.3. PoA integration with the new Nuclear Mode
-(under src/gui/simulator_tab/) will use this engine directly.
+(under src/simulator/) will use this engine directly.
 
 TOURNAMENT TYPES (v1)
 ─────────────────────

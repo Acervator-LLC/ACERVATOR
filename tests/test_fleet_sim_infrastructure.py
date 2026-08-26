@@ -25,14 +25,14 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from src.gui.simulator_tab.fleet.candle_series import (  # noqa: E402
+from src.simulator.fleet.candle_series import (  # noqa: E402
     build_candle_series_from_rows,
 )
-from src.gui.simulator_tab.fleet.sim_exchange import (  # noqa: E402
+from src.simulator.fleet.sim_exchange import (  # noqa: E402
     FleetSimExchange,
     make_symbol_series_map,
 )
-from src.gui.simulator_tab.fleet.bot_state_loader import (  # noqa: E402
+from src.simulator.fleet.bot_state_loader import (  # noqa: E402
     load_bot_configs_from_state,
     summarize_loaded_configs,
 )
@@ -333,7 +333,7 @@ def test_fleet_replay_panel_mounts(tmp_path, monkeypatch):
     }
     p = tmp_path / "bs.json"
     p.write_text(json.dumps(payload), encoding="utf-8")
-    from src.gui.simulator_tab.fleet import bot_state_loader as bsl
+    from src.simulator.fleet import bot_state_loader as bsl
 
     monkeypatch.setattr(bsl, "BOT_STATE_PATH", p)
 
@@ -358,8 +358,8 @@ def test_get_my_trades_accepts_params_kwarg():
     TypeError on every bot on every sync, so counts never populated
     and each run emitted 35 identical failures."""
     import asyncio as _a
-    from src.gui.simulator_tab.fleet.sim_exchange import FleetSimExchange
-    from src.gui.simulator_tab.fleet.candle_series import build_candle_series_from_rows
+    from src.simulator.fleet.sim_exchange import FleetSimExchange
+    from src.simulator.fleet.candle_series import build_candle_series_from_rows
 
     rows = [
         [1_774_915_200_000 + i * 300_000, 10.0, 11.0, 9.0, 10.5, 1.0] for i in range(5)
@@ -381,8 +381,8 @@ def test_fill_carries_candle_address():
     fired on, so parity work can trace a trade to its source row."""
     import asyncio as _a
     from src.exchange.base import OrderSide, OrderType
-    from src.gui.simulator_tab.fleet.sim_exchange import FleetSimExchange
-    from src.gui.simulator_tab.fleet.candle_series import build_candle_series_from_rows
+    from src.simulator.fleet.sim_exchange import FleetSimExchange
+    from src.simulator.fleet.candle_series import build_candle_series_from_rows
 
     rows = [
         [1_774_915_200_000 + i * 300_000, 10.0, 11.0, 9.0, 10.5, 1.0] for i in range(10)

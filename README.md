@@ -78,7 +78,7 @@ The per-simulation tables behind these figures were published in a product-manua
 
 ## Nuclear Mode — Continuous Stress Demo
 
-Nuclear Mode lives under `src/gui/simulator_tab/` (`nuclear_controller.py`, `nuclear_fleet_controller.py`, `nuclear_mode_panel.py`, `nuclear_sim_exchange.py`, `nuclear_candle_source.py`) with its verification helpers in `src/trading/nuclear_verification.py`. It runs the platform in a self-exercising burn-in mode: each bot is assigned a random asset, base currency, and 2-year historical period from the battery, and executes real Scrum/Fold ticks visibly through the GUI. Its job is to confirm the engine, Smart Wire, MR Inspector, PoA TestNet, and TokenLedger all function under realistic load for extended periods without operator intervention.
+Nuclear Mode's engine lives under `src/simulator/` (`nuclear_controller.py`, `nuclear_fleet_controller.py`, `nuclear_sim_exchange.py`, `nuclear_candle_source.py`) and its panel under `src/gui/simulator_tab/nuclear_mode_panel.py` with its verification helpers in `src/trading/nuclear_verification.py`. It runs the platform in a self-exercising burn-in mode: each bot is assigned a random asset, base currency, and 2-year historical period from the battery, and executes real Scrum/Fold ticks visibly through the GUI. Its job is to confirm the engine, Smart Wire, MR Inspector, PoA TestNet, and TokenLedger all function under realistic load for extended periods without operator intervention.
 
 **Speed oscillator (v3.13.7):** tick rate and per-tick workload co-oscillate on a 120-second cycle — 45s cosine ramp up, 30s sustain at 4× base (0.2s tick, 4× candles/tick → 16× combined throughput), 45s cosine ramp down, repeat. A 5Hz `SystemLoadMR` sampler runs on a background daemon; CPU ≥ 60% triggers a COOLING regime that caps the multiplier at 1.5× until three consecutive CALM samples restore normal cycling. Workload is deterministic (fractional accumulator preserved across ticks) so expected throughput matches the multiplier exactly.
 
@@ -221,14 +221,22 @@ acervator/
 │   │   ├── broker_base.py · alpaca_connector.py
 │   │   ├── stock_bot.py · stock_accumulation_bot.py
 │   │   └── tradingview_bridge.py · market_hours.py
+│   ├── simulator/                            # Simulator engine, no Qt
+│   │   ├── nuclear_controller.py
+│   │   ├── nuclear_fleet_controller.py
+│   │   ├── nuclear_sim_exchange.py
+│   │   ├── nuclear_candle_source.py
+│   │   └── fleet/                            # Fleet Replay engine
+│   │       ├── fleet_replay_controller.py
+│   │       ├── sim_exchange.py · bot_state_loader.py
+│   │       └── candle_series.py · master_clock.py
 │   └── gui/                                  # PySide6 UI
 │       ├── main_window.py · stock_main_window.py
-│       ├── simulator_tab/                    # Simulator + Nuclear Mode
+│       ├── simulator_tab/                    # Simulator + Nuclear Mode panels
 │       │   ├── simulator_tab.py
-│       │   ├── nuclear_controller.py
-│       │   ├── nuclear_fleet_controller.py
 │       │   ├── nuclear_mode_panel.py
-│       │   └── nuclear_sim_exchange.py
+│       │   └── fleet/                       # Fleet Replay panel + charts
+│       │       └── fleet_replay_panel.py · sim_visuals.py
 │       ├── testnet_tab.py · competition_tab.py
 │       ├── bot_visualizer.py · bot_wizard.py
 │       ├── market_inspector.py · indicator_panel.py

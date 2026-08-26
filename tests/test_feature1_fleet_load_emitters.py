@@ -32,7 +32,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.core.signal_contract import SignalSink, set_sink  # noqa: E402
-from src.gui.simulator_tab.fleet.bot_state_loader import (  # noqa: E402
+from src.simulator.fleet.bot_state_loader import (  # noqa: E402
     load_bot_configs_from_state,
     load_smart_wires_from_state,
 )

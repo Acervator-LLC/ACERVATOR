@@ -213,7 +213,7 @@ def _noised_rows(
 
     The source rows are never mutated.
     """
-    from src.gui.simulator_tab.nuclear_candle_source import noised_series
+    from src.simulator.nuclear_candle_source import noised_series
 
     return noised_series(rows, seed)
 
@@ -291,7 +291,7 @@ def _run_one_trial(
     candle_cap: int,
     seed: int,
 ) -> None:
-    from src.gui.simulator_tab.fleet.fleet_replay_controller import (
+    from src.simulator.fleet.fleet_replay_controller import (
         FleetReplayController,
     )
 

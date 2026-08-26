@@ -1263,7 +1263,7 @@ if _HAS_QT:
             self._chart_panels: dict[str, dict] = {}
             self._trade_log: list[dict] = []
 
-            from .chart_data import ChartDataFetcher
+            from src.exchange.chart_data import ChartDataFetcher
 
             self._fetcher = ChartDataFetcher()
 
@@ -5871,7 +5871,7 @@ if _HAS_QT:
             # v3.18.3 — Phase A: Simulator tab skeleton lands.
             # Operator-approved 2026-05-19 design (see
             # docs/audits/2026-05-19_simulator_paper_trader_design.md).
-            # Fully-isolated codebase at src/gui/simulator_tab/;
+            # Fully-isolated codebase at src/gui/simulator_tab/ + src/simulator/;
             # near-identical chrome to Trading tab; Basic Modes panel
             # launches RAIntSimBat batteries via subprocess; Nuclear
             # Mode is placeholder until Phase B lands NuclearSimExchange
@@ -9545,7 +9545,7 @@ if _HAS_QT:
                 # operator at start time, AND show pool semantics
                 # for Extractor / spend-and-target for Scrumming.
                 from ..trading.bot_container import BotMode as _BM
-                from .start_balance_check import check_start_balance
+                from src.trading.start_balance_check import check_start_balance
 
                 _is_extractor_mode = bot.config.mode == _BM.EXTRACTOR
 

@@ -39,7 +39,7 @@ from src.trading.ta_engine import TA_RAW_PREFIX
 # test module is imported, so these two imports need no path juggling
 # above them and this file carries no suppression to excuse one.
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CONSUMER = REPO_ROOT / "src/gui/simulator_tab/fleet/fleet_replay_controller.py"
+CONSUMER = REPO_ROOT / "src/simulator/fleet/fleet_replay_controller.py"
 ENGINE = REPO_ROOT / "src/trading/ta_engine.py"
 
 

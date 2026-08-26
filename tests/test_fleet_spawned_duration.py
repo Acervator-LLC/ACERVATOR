@@ -46,9 +46,9 @@ import pytest
 
 from src.core import signal_contract as sc
 from src.core.signal_contract import SignalSink
-from src.gui.simulator_tab.fleet import fleet_replay_controller as frc
+from src.simulator.fleet import fleet_replay_controller as frc
 from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
-from src.gui.simulator_tab.fleet import simulator_bot_state as sbs
+from src.simulator.fleet import simulator_bot_state as sbs
 from src.trading.stone_tablets import registry as tablet_registry
 
 OWNER = "sim.06.007.postcondition.fleet_spawned"
@@ -112,7 +112,7 @@ LONG_FLOOR_S = LONG_S / 2.0
 # the pin below into a no-op that still passes.
 LAZY_IMPORTS = (
     "src.trading.stone_tablets.registry",
-    "src.gui.simulator_tab.fleet.fleet_replay_controller",
+    "src.simulator.fleet.fleet_replay_controller",
 )
 
 # The cost this test INSTALLS on each of those imports. Chosen, not measured:

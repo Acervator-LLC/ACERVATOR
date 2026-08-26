@@ -48,7 +48,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.gui.simulator_tab.nuclear_fleet_controller import (  # noqa: E402
+from src.simulator.nuclear_fleet_controller import (  # noqa: E402
     NuclearFleetController,
 )
 
@@ -82,7 +82,7 @@ class TestTheInventedTopologyIsGone:
 
     @staticmethod
     def _topology_pairs_src():
-        p = REPO_ROOT / "src/gui/simulator_tab/nuclear_fleet_controller.py"
+        p = REPO_ROOT / "src/simulator/nuclear_fleet_controller.py"
         tree = ast.parse(p.read_text(encoding="utf-8"))
         for n in ast.walk(tree):
             if isinstance(n, ast.FunctionDef) and n.name == "_topology_pairs":
@@ -121,7 +121,7 @@ class TestTheInventedTopologyIsGone:
 class TestPersistedWiresImportWithTheFleet:
     @staticmethod
     def _prepared(monkeypatch, wires, configs=None):
-        import src.gui.simulator_tab.fleet.bot_state_loader as loader
+        import src.simulator.fleet.bot_state_loader as loader
 
         monkeypatch.setattr(
             loader,
@@ -169,7 +169,7 @@ class TestPersistedWiresImportWithTheFleet:
             def request_stop(self):
                 pass
 
-        import src.gui.simulator_tab.fleet.fleet_replay_controller as frc
+        import src.simulator.fleet.fleet_replay_controller as frc
 
         monkeypatch.setattr(frc, "FleetReplayController", _Spy)
 

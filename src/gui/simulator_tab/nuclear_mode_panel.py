@@ -53,7 +53,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .nuclear_fleet_controller import (
+from src.simulator.nuclear_fleet_controller import (
     DEFAULT_CYCLE_CANDLES,
     NuclearFleetController,
 )
@@ -395,7 +395,7 @@ class NuclearModePanel(QWidget):
         """
         self._empty_label.hide()
         try:
-            from .fleet import bot_state_loader as _loader
+            from src.simulator.fleet import bot_state_loader as _loader
 
             cfgs = _loader.load_bot_configs_from_state()
             wires = _loader.load_smart_wires_from_state()

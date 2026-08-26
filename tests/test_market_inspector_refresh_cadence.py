@@ -31,7 +31,7 @@ import sys
 
 import pytest
 
-from src.gui import market_inspector_fetcher as f
+from src.exchange import market_inspector_fetcher as f
 
 
 class _Conn:

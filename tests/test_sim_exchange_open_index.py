@@ -28,7 +28,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from src.exchange.base import OrderSide, OrderStatus, OrderType  # noqa: E402
-from src.gui.simulator_tab.fleet.sim_exchange import (  # noqa: E402
+from src.simulator.fleet.sim_exchange import (  # noqa: E402
     FleetSimExchange,
     make_symbol_series_map,
 )

@@ -1,5 +1,5 @@
 """
-src/gui/simulator_tab/nuclear_controller.py — Nuclear-mode orchestrator.
+src/simulator/nuclear_controller.py — Nuclear-mode orchestrator.
 
 v3.18.8 (Phase B revision) — REWRITTEN for tape-based selection.
 
@@ -31,13 +31,13 @@ import time
 import traceback
 from typing import Callable, Optional
 
-from ...core.event_bus import EventBus
-from ...trading.bot_container import (
+from ..core.event_bus import EventBus
+from ..trading.bot_container import (
     BotManager,
     BotMode,
     make_bot_config,
 )  # noqa: F401  (BotConfig retained for type hints; construction goes through make_bot_config per v3.20.35 fitness rule)
-from ...trading.scrumming_bot import ScrummingBot
+from ..trading.scrumming_bot import ScrummingBot
 from .fleet.fleet_replay_controller import _make_sim_capital_registry
 
 from .nuclear_candle_source import NuclearCandleSource

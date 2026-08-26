@@ -1,4 +1,4 @@
-"""v3.23.71 — pin tests for src/gui/history_helpers.py.
+"""v3.23.71 — pin tests for src/exchange/history_helpers.py.
 
 Covers the five operator objectives on the History tab:
   H1 — default From date pinned to 2026-04-01
@@ -21,7 +21,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from src.gui import history_helpers as h  # noqa: E402
+from src.exchange import history_helpers as h  # noqa: E402
 
 # ---- H1 default start date --------------------------------------------- #
 

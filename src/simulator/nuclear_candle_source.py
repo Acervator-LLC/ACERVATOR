@@ -1,5 +1,5 @@
 """
-src/gui/simulator_tab/nuclear_candle_source.py — Tape-based candle feed.
+src/simulator/nuclear_candle_source.py — Tape-based candle feed.
 
 v3.18.8 (Phase B revision) — REWRITTEN per operator directive 2026-05-20:
 
@@ -92,8 +92,8 @@ limit has no reason to exist. Kept as a parameter so tests can bound it.
 
 def _default_cache_dir() -> Path:
     here = Path(__file__).resolve()
-    # src/gui/simulator_tab/ → repo root is 3 parents up
-    repo_root = here.parents[3]
+    # src/simulator/ → repo root is 2 parents up
+    repo_root = here.parents[2]
     return repo_root / "sadp" / "RAIntSimBat" / "data" / "cache"
 
 

@@ -42,7 +42,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from src.gui.simulator_tab.fleet.fleet_replay_controller import (  # noqa: E402
+from src.simulator.fleet.fleet_replay_controller import (  # noqa: E402
     _YIELD_BUDGET_S,
     FleetReplayController,
 )
@@ -143,7 +143,7 @@ def test_old_constant_is_gone():
     """_YIELD_EVERY_N_BOTS bought GUI responsiveness at 5x the replay's
     throughput. It must not come back."""
     src = (
-        REPO / "src" / "gui" / "simulator_tab" / "fleet" / "fleet_replay_controller.py"
+        REPO / "src" / "simulator" / "fleet" / "fleet_replay_controller.py"
     ).read_text(encoding="utf-8")
     assert "_YIELD_EVERY_N_BOTS = " not in src
 
@@ -152,7 +152,7 @@ def test_counter_is_persisted_to_the_run_log():
     """Diagnosing this cost a hand-derivation across 62 run directories
     because the rate was never recorded. It is recorded now."""
     src = (
-        REPO / "src" / "gui" / "simulator_tab" / "fleet" / "fleet_replay_controller.py"
+        REPO / "src" / "simulator" / "fleet" / "fleet_replay_controller.py"
     ).read_text(encoding="utf-8")
     assert '"yields_per_candle"' in src
     assert '"yields_emitted"' in src

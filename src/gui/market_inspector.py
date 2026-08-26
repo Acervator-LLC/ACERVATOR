@@ -337,7 +337,7 @@ if _HAS_QT:
             self, connectors: dict, force: bool = False
         ) -> None:
             try:
-                from .market_inspector_fetcher import fetch_htf_universe
+                from src.exchange.market_inspector_fetcher import fetch_htf_universe
 
                 res = await fetch_htf_universe(
                     connectors,

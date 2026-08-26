@@ -20,7 +20,7 @@ import pytest
 
 from src.core import signal_contract as sc
 from src.core.signal_contract import SignalSink
-from src.gui.simulator_tab.fleet import bot_state_loader as bsl
+from src.simulator.fleet import bot_state_loader as bsl
 
 EMITTER = "fleet.03.004.postcondition.wires_loaded"
 

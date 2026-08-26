@@ -66,7 +66,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from src.exchange.base import OrderSide, Trade  # noqa: E402
-from src.gui.simulator_tab.fleet.fleet_replay_controller import (  # noqa: E402
+from src.simulator.fleet.fleet_replay_controller import (  # noqa: E402
     FleetReplayController,
 )
 from src.trading.stone_tablets.addressing import parse_address  # noqa: E402

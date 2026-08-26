@@ -39,7 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.gui.simulator_tab.nuclear_fleet_controller import (  # noqa: E402
+from src.simulator.nuclear_fleet_controller import (  # noqa: E402
     NuclearFleetController,
 )
 
@@ -114,7 +114,7 @@ class TestTheLifecycleApiThePanelCalls:
         swap and nothing catches it until the operator clicks."""
         import ast
 
-        v1 = REPO_ROOT / "src/gui/simulator_tab/nuclear_controller.py"
+        v1 = REPO_ROOT / "src/simulator/nuclear_controller.py"
         tree = ast.parse(v1.read_text(encoding="utf-8"))
         v1_methods = {
             n.name
@@ -133,7 +133,7 @@ class TestTheLifecycleApiThePanelCalls:
 class TestStopReachesTheRunningFleets:
     @staticmethod
     def _controller(monkeypatch):
-        import src.gui.simulator_tab.fleet.fleet_replay_controller as frc
+        import src.simulator.fleet.fleet_replay_controller as frc
 
         monkeypatch.setattr(frc, "FleetReplayController", _StubFleet)
         ctl = NuclearFleetController(cycle_candles=120, max_cycles=1)

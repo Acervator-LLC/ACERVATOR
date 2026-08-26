@@ -157,7 +157,7 @@ class TestTheSeamReachesNuclear:
 
 class TestTheInjectionRoutesTheProposalsWires:
     def test_an_injected_proposal_supplies_the_pairs(self):
-        from src.gui.simulator_tab.nuclear_fleet_controller import (
+        from src.simulator.nuclear_fleet_controller import (
             NuclearFleetController,
         )
 
@@ -220,12 +220,12 @@ class TestTheStressPathNeverAdoptsLiveBots:
         """`_topology_pairs` may consume `wires`. It must not consume
         `bots` — that key is the adopt path's instruction to CREATE bots,
         and a stress run instantiates only the fleet from bot_state."""
-        from src.gui.simulator_tab.nuclear_fleet_controller import (
+        from src.simulator.nuclear_fleet_controller import (
             NuclearFleetController,
         )
 
         src = ast.parse(
-            (REPO_ROOT / "src/gui/simulator_tab/nuclear_fleet_controller.py").read_text(
+            (REPO_ROOT / "src/simulator/nuclear_fleet_controller.py").read_text(
                 encoding="utf-8"
             )
         )

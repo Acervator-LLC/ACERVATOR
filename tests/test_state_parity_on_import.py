@@ -35,10 +35,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.core.signal_contract import SignalSink, emit, set_sink  # noqa: E402
-from src.gui.simulator_tab.fleet import (  # noqa: E402
+from src.simulator.fleet import (  # noqa: E402
     fleet_replay_controller as frc,
 )
-from src.gui.simulator_tab.fleet.sim_exchange import (  # noqa: E402
+from src.simulator.fleet.sim_exchange import (  # noqa: E402
     FleetSimExchange,
     make_symbol_series_map,
 )
@@ -197,9 +197,9 @@ class TestNoSecondSourceOfInitiatingState:
     def test_build_sim_does_not_synthesise_a_position(self):
         import ast
 
-        src = (
-            REPO_ROOT / "src/gui/simulator_tab/fleet/fleet_replay_controller.py"
-        ).read_text(encoding="utf-8")
+        src = (REPO_ROOT / "src/simulator/fleet/fleet_replay_controller.py").read_text(
+            encoding="utf-8"
+        )
         fn = next(
             n
             for n in ast.walk(ast.parse(src))
@@ -215,7 +215,7 @@ class TestNoSecondSourceOfInitiatingState:
         ), f"a synthesised opening position remains: {exprs}"
 
     def test_the_loader_carries_the_whole_entry(self, tmp_path):
-        from src.gui.simulator_tab.fleet.bot_state_loader import (
+        from src.simulator.fleet.bot_state_loader import (
             load_bot_configs_from_state,
         )
 

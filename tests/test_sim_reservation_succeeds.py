@@ -101,14 +101,7 @@ class TestTheMarginIsNotAnInventoryTarget:
         """C16 step 2: sim holdings stay at exactly target/open_px so
         sim and live start from identical inventory. Asserted against
         the seeding site, not against a number I chose."""
-        fc = (
-            REPO_ROOT
-            / "src"
-            / "gui"
-            / "simulator_tab"
-            / "fleet"
-            / "fleet_replay_controller.py"
-        )
+        fc = REPO_ROOT / "src" / "simulator" / "fleet" / "fleet_replay_controller.py"
         src = fc.read_text(encoding="utf-8")
         assert "1.10" not in src, (
             "the reservation ceiling leaked into the sim seeding path; "

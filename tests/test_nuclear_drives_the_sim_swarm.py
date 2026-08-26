@@ -42,7 +42,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.gui.simulator_tab.nuclear_fleet_controller import (  # noqa: E402
+from src.simulator.nuclear_fleet_controller import (  # noqa: E402
     NuclearFleetController,
 )
 
@@ -84,9 +84,9 @@ class TestTheHookShapesMatchTheRealApi:
         what `_run_cycle` ACTUALLY passes — read as AST, because counting
         source text has produced a false reading three times on this project.
         """
-        src = (
-            REPO_ROOT / "src/gui/simulator_tab/nuclear_fleet_controller.py"
-        ).read_text(encoding="utf-8")
+        src = (REPO_ROOT / "src/simulator/nuclear_fleet_controller.py").read_text(
+            encoding="utf-8"
+        )
         calls = [
             n
             for n in ast.walk(ast.parse(src))
@@ -114,9 +114,9 @@ class TestPnlIsNotATradeCount:
     def test_no_call_site_passes_trades_fired_as_pnl(self):
         """Nuclear does not measure P&L. A trade count rendered as
         "PnL +37.00" is an invented number in a currency field."""
-        src = (
-            REPO_ROOT / "src/gui/simulator_tab/nuclear_fleet_controller.py"
-        ).read_text(encoding="utf-8")
+        src = (REPO_ROOT / "src/simulator/nuclear_fleet_controller.py").read_text(
+            encoding="utf-8"
+        )
         for n in ast.walk(ast.parse(src)):
             if not isinstance(n, ast.Call):
                 continue

@@ -52,7 +52,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.exchange.base import OrderSide, OrderType  # noqa: E402
-from src.gui.simulator_tab.nuclear_sim_exchange import (  # noqa: E402
+from src.simulator.nuclear_sim_exchange import (  # noqa: E402
     NuclearSimExchange,
 )
 
@@ -190,7 +190,7 @@ class TestTheDocstringGuaranteeIsTrue:
         That is the point of having pinned it: the documented guarantee
         and the behaviour move together or the suite fails.
         """
-        import src.gui.simulator_tab.nuclear_sim_exchange as m
+        import src.simulator.nuclear_sim_exchange as m
 
         doc = m.__doc__ or ""
         # Behavioural in spirit, scoped to the R28 FL guarantee line

@@ -1,5 +1,5 @@
 """
-src/gui/simulator_tab/populate_nuclear_cache.py — one-shot cache filler.
+src/simulator/populate_nuclear_cache.py — one-shot cache filler.
 
 Run this once when the RAIntSimBat cache is empty so Nuclear Mode has
 tapes to play. Fetches a default set of (symbol, year) pairs from
@@ -8,10 +8,10 @@ CoinGecko + Yahoo Finance and writes them into
 
 Usage::
 
-    python -m src.gui.simulator_tab.populate_nuclear_cache
+    python -m src.simulator.populate_nuclear_cache
 
     # Custom set:
-    python -m src.gui.simulator_tab.populate_nuclear_cache \
+    python -m src.simulator.populate_nuclear_cache \
         --crypto BTC,ETH,SOL --years 2023,2024 --equity GLD
 
 Default set covers the main majors across the 3 most recent periods.
@@ -63,7 +63,7 @@ DEFAULT_EQUITY_SYMBOLS = ("GLD",)
 def _load_raintsimbat():
     """Import RAIntSimBat module from its on-disk path."""
     here = Path(__file__).resolve()
-    repo_root = here.parents[3]
+    repo_root = here.parents[2]
     ri_path = repo_root / "sadp" / "RAIntSimBat" / "RAIntSimBat.py"
     if not ri_path.is_file():
         raise RuntimeError(
