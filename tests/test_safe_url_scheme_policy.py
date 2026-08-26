@@ -53,16 +53,24 @@ from src.core.safe_url import (  # noqa: E402
     safe_urlopen,
 )
 
-# The distinct keyword shapes safe_urlopen is called with across the
-# tree. safe_urlopen no longer accepts *args/**kwargs, so the binding
-# tests below prove the narrowed signature still accepts every real shape.
+# The distinct keyword shapes real callers pass to safe_urlopen. The
+# module narrowed its signature away from *args/**kwargs, so these bind
+# each shape against the current signature — a narrowing that broke a
+# caller shows up here rather than in production. No source location is
+# pinned: a test that knew where a caller lived would break on any
+# refactor that moved it, proving nothing about the contract.
 _CALL_KWARGS: tuple[dict, ...] = (
     {"timeout": 10},
     {"timeout": 15},
     {"timeout": 10, "context": None},
     {"timeout": 15, "context": None},
 )
-_CALL_IDS = ["-".join(f"{k}={v}" for k, v in kw.items()) for kw in _CALL_KWARGS]
+_CALL_IDS = [
+    "timeout-only",
+    "timeout-only-longer",
+    "timeout+context",
+    "timeout+context-longer",
+]
 
 _MODULE_SOURCE = (REPO / "src" / "core" / "safe_url.py").read_text(encoding="utf-8")
 
@@ -408,11 +416,11 @@ class TestTransportRestriction:
 
 
 class TestExistingCallersStillBind:
-    """Every safe_urlopen call site in the tree, by exact shape.
+    """Every distinct safe_urlopen call shape binds and runs.
 
-    safe_urlopen no longer takes *args/**kwargs. These bind the eight
-    real call shapes against the new signature so a narrowing that
-    broke a caller would fail here rather than in production.
+    safe_urlopen no longer takes *args/**kwargs. These exercise each
+    keyword shape a caller passes against the current signature, so a
+    narrowing that broke a caller fails here rather than in production.
     """
 
     @pytest.mark.parametrize("kwargs", _CALL_KWARGS, ids=_CALL_IDS)

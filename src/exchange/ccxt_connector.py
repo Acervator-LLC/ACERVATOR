@@ -15,6 +15,7 @@ Features:
 
 from __future__ import annotations
 
+from ..core.fmt import fmt_price_raw
 from ..core.safe_url import SafeRequest, safe_urlopen
 import asyncio
 import logging
@@ -92,22 +93,6 @@ class CCXTQueueFullError(RuntimeError):
     preferable to the alternative (native access violation from
     concurrent CCXT access).
     """
-
-
-def _fmt_p(value) -> str:
-    """Format price with adaptive precision for dust coins."""
-    v = float(value or 0)
-    if v == 0:
-        return "0"
-    av = abs(v)
-    if av >= 1000:
-        return f"{v:,.2f}"
-    elif av >= 1:
-        return f"{v:.4f}"
-    elif av >= 0.01:
-        return f"{v:.6f}"
-    else:
-        return f"{v:.8f}"
 
 
 from .base import (
@@ -1148,7 +1133,7 @@ class CCXTConnector(ExchangeInterface):
             reason=f"Get current price for {symbol}",
             endpoint="fetch_ticker",
             params={"symbol": symbol},
-            result=f"last={_fmt_p(ticker.last)} bid={_fmt_p(ticker.bid)} ask={_fmt_p(ticker.ask)} vol24h={ticker.volume_24h:.0f}",
+            result=f"last={fmt_price_raw(ticker.last or 0)} bid={fmt_price_raw(ticker.bid or 0)} ask={fmt_price_raw(ticker.ask or 0)} vol24h={ticker.volume_24h:.0f}",
             elapsed_ms=elapsed,
             level="success",
             data_usage="Used by bots for delta calculation, grid level checks, and P/L computation",
@@ -1247,7 +1232,7 @@ class CCXTConnector(ExchangeInterface):
             endpoint="fetch_ohlcv",
             params={"symbol": symbol, "timeframe": timeframe, "limit": limit},
             result=(
-                f"{len(data)} candles received, latest close={_fmt_p(data[-1][4])}"
+                f"{len(data)} candles received, latest close={fmt_price_raw(data[-1][4] or 0)}"
                 if data
                 else "No data"
             ),
