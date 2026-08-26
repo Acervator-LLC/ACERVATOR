@@ -109,12 +109,24 @@ class _TradeStubBot:
         self._hyst_ref_fold_side = 0.0
         self._memorised_trades = []
         self.placed_orders = []
+        # issue #133 unit 9b -- the venue's fee for the last settled
+        # sell. `_execute_sell` clears it and writes it.
+        self._last_sell_venue_fee = None
 
     def _crr(self):
         return None
 
     def _emit_trade_notification(self, kind, state, detail):
         pass
+
+    def _record_venue_fee(self, order, units, price):
+        """Delegate to the REAL ScrummingBot._record_venue_fee.
+
+        issue #133 unit 9b. ``_execute_sell`` records the venue's fee
+        off the settled order. A no-op here would let this stub drift
+        from the collaborator it doubles.
+        """
+        return ScrummingBot._record_venue_fee(self, order, units, price)
 
     async def _verify_buy_safe_or_refuse(self, path=""):
         return 0.0, None
