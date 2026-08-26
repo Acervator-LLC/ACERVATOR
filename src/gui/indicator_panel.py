@@ -36,6 +36,7 @@ from pathlib import Path
 # (BB/VTX/MACD/SRsi/Ichi/Vol/Sling/ADX/STrd/ZSc/KER/RSI/Net/Conf) get
 # NO privacy wiring — they're anonymous in isolation. The TA-leak-guard
 # test in tests/test_privacy_mask_v3_23_7.py pins this constraint.
+from ..core.io_utils import atomic_write_json
 from ..core.privacy_mask_registry import (
     get_privacy_mask_registry,
     mask_or,
@@ -207,12 +208,7 @@ def save_ta_snapshot(
             "timeframes": _json_safe(dict(multi_tf_summary)),
         }
         dest = directory / f"{_safe_snapshot_stem(bot_id)}.json"
-        tmp = dest.with_suffix(".json.tmp")
-        with tmp.open("w", encoding="utf-8", newline="\n") as handle:
-            json.dump(payload, handle)
-        # Path.replace is atomic on Windows as well as POSIX, so a reader
-        # never sees a half-written file.
-        tmp.replace(dest)
+        atomic_write_json(dest, payload, indent=None)
         _prune_snapshots(directory)
     except (OSError, TypeError, ValueError) as exc:
         logger.warning(

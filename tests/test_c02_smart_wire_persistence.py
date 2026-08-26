@@ -20,23 +20,28 @@ mechanism sends the next reader debugging a lost wire to a field that is
 empty for all but a minute of every hour.
 
 THE SHARED STAGING FILE — the reason this is a safety fix, not tidying
-`bot_visualizer._save_bot_state_dict` staged through
+`bot_visualizer._save_bot_state_dict` once staged through
 `p.with_suffix(".tmp")` — byte-for-byte the same `bot_state.tmp` that
-`StateManager.save_state` uses. Two independent writers, one temp name:
-either can rename the other's partial write over the live position file
-holding 1,949 lots. No interleaving was demonstrated (asyncio is pumped
-on the Qt main thread), but the collision is structural, and it becomes
-corruption the moment either writer moves off that thread.
+`StateManager.save_state` used. Two independent writers, one temp name:
+either could rename the other's partial write over the live position
+file holding 1,949 lots. Both writers now route through
+`core.io_utils.atomic_write_json`, whose staging file is unique per call,
+so the collision is structurally impossible. `TestStagingFilesDoNotCollide`
+pins that property behaviorally rather than by inspecting either writer's
+source.
 
-NOTHING HERE CONSTRUCTS A StateManager OR WRITES ANYTHING. Its default
-config_dir is the operator's live tree.
+NOTHING HERE CONSTRUCTS A StateManager OR WRITES INTO THE LIVE TREE — the
+staging tests write only under pytest's `tmp_path`.
 """
 
 from __future__ import annotations
 
 import ast
+import json
 import sys
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -54,48 +59,64 @@ def _fn(path: Path, name: str) -> ast.FunctionDef:
     )
 
 
-def _suffix_args(fn: ast.FunctionDef) -> list[str]:
-    """Literal arguments passed to `.with_suffix(...)` inside `fn`."""
-    out = []
-    for n in ast.walk(fn):
-        if (
-            isinstance(n, ast.Call)
-            and getattr(n.func, "attr", "") == "with_suffix"
-            and n.args
-        ):
-            a = n.args[0]
-            if isinstance(a, ast.Constant) and isinstance(a.value, str):
-                out.append(a.value)
-            elif isinstance(a, ast.JoinedStr):
-                out.append("<f-string>")
-    return out
-
-
 class TestStagingFilesDoNotCollide:
-    def test_the_extractor_sees_both_writers(self):
-        """Positive control. If either walk found nothing, the collision
-        test below would pass by finding no evidence of a collision."""
-        assert _suffix_args(
-            _fn(STATE_MGR, "save_state")
-        ), "no with_suffix() found in StateManager.save_state"
-        assert _suffix_args(
-            _fn(VIZ, "_save_bot_state_dict")
-        ), "no with_suffix() found in _save_bot_state_dict"
+    """The collision-safety property, exercised through the real helper
+    both writers now route through. A second writer's in-flight staging
+    file must never be clobbered, and a completed write must leave nothing
+    behind — regardless of how either writer's source is shaped."""
 
-    def test_gui_writer_does_not_stage_through_bot_state_tmp(self):
-        """The collision itself. `.tmp` here means the GUI stages
-        through the same file StateManager does."""
-        gui = _suffix_args(_fn(VIZ, "_save_bot_state_dict"))
-        assert ".tmp" not in gui, (
-            f"bot_visualizer stages through {gui} — the same temp path "
-            f"StateManager.save_state uses. Either writer can rename "
-            f"the other's partial write over the live position file."
+    def test_a_second_writers_staging_file_is_never_clobbered(self, tmp_path):
+        """The old collision made concrete: both writers staged through
+        ``dest.with_suffix('.tmp')``. A file already sitting at that
+        predictable path — standing in for the other writer's partial
+        write — must survive the write untouched, proving the helper does
+        not stage through it."""
+        from src.core.io_utils import atomic_write_json
+
+        dest = tmp_path / "bot_state.json"
+        other_writers_partial = dest.with_suffix(".tmp")
+        sentinel = "OTHER WRITER'S HALF-WRITTEN POSITION FILE"
+        other_writers_partial.write_text(sentinel, encoding="utf-8")
+
+        atomic_write_json(dest, {"bots": {"a": 1}})
+
+        assert other_writers_partial.read_text(encoding="utf-8") == sentinel, (
+            "the write reused the predictable shared staging path and "
+            "clobbered a concurrent writer's in-flight file"
         )
+        assert json.loads(dest.read_text(encoding="utf-8")) == {"bots": {"a": 1}}
 
-    def test_state_manager_still_uses_its_own(self):
-        """Negative control: the fix must move the GUI writer, not
-        StateManager, whose path is the long-standing one."""
-        assert ".tmp" in _suffix_args(_fn(STATE_MGR, "save_state"))
+    def test_a_completed_write_leaves_no_staging_file_behind(self, tmp_path):
+        from src.core.io_utils import atomic_write_json
+
+        dest = tmp_path / "bot_state.json"
+        atomic_write_json(dest, {"bots": {}})
+
+        leftovers = [p.name for p in tmp_path.iterdir() if p != dest]
+        assert leftovers == [], f"staging files left behind: {leftovers}"
+
+    def test_a_failed_write_leaves_target_and_dir_intact(self, tmp_path):
+        """Positive control for the two assertions above: force the write
+        to fail mid-flight and prove the destination is unchanged and no
+        staging file survives. Without this, the green above could mean
+        the writer simply never stages anything."""
+        from src.core.io_utils import atomic_write_json
+
+        dest = tmp_path / "bot_state.json"
+        atomic_write_json(dest, {"bots": {"a": 1}})
+        original = dest.read_text(encoding="utf-8")
+
+        class Unserializable:
+            pass
+
+        with pytest.raises(TypeError):
+            atomic_write_json(dest, {"bad": Unserializable()}, default=None)
+
+        assert dest.read_text(encoding="utf-8") == original, (
+            "a failed write corrupted or truncated the existing file"
+        )
+        leftovers = [p.name for p in tmp_path.iterdir() if p != dest]
+        assert leftovers == [], f"staging file left behind after failure: {leftovers}"
 
 
 class TestChannelOneCannotSurviveASave:
