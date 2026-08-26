@@ -246,8 +246,10 @@ class TestTheMergeCannotBreakSaving:
         """Better to keep a record that should have gone than to lose
         one that should have stayed."""
         sm.save_state([_rec("a"), _rec("b")])
-        monkeypatch.setattr(
-            json, "dump", lambda *_a, **_kw: (_ for _ in ()).throw(OSError("simulated"))
-        )
+
+        def boom(*_a, **_kw):
+            raise OSError("simulated")
+
+        monkeypatch.setattr("src.core.state_manager.atomic_write_json", boom)
         assert sm.delete_bot("b") is False
         assert set(_bots(sm)) == {"a", "b"}

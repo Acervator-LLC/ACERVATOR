@@ -167,9 +167,10 @@ def test_rollup_5m_to_1d():
 def test_atomic_write_leaves_no_tempfile(tmp_path, reg):
     rows = _synth_5m_range(_YTD_START_MS, 12)
     reg.ingest_candles("BTC", NATIVE_TIMEFRAME, rows, source="test")
-    # No .tmp_ file should remain in the tablets dir
-    leftovers = list(tmp_path.glob(".tmp_*.json"))
-    assert leftovers == []
+    # The tmp-then-rename write must leave no staging file behind anywhere
+    # under the tablets tree.
+    leftovers = [str(p) for p in tmp_path.rglob("*.tmp")]
+    assert leftovers == [], f"staging files left behind: {leftovers}"
 
 
 # ── R10 ───────────────────────────────────────────────────────────

@@ -17,16 +17,16 @@ sadp: R28 SSS + R70 RCN
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import json
 import logging
 import os
-import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+from ...core.io_utils import atomic_write_json
 
 logger = logging.getLogger("acervator.stone_tablets.storage")
 
@@ -189,21 +189,6 @@ def ensure_root(root: Optional[Path] = None) -> Path:
     return r
 
 
-def _atomic_write_text(path: Path, text: str) -> None:
-    """Write via tempfile + rename so a crash mid-write doesn't
-    leave a half-written tablet."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp_", suffix=".json")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp, path)
-    except Exception:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
-        raise
-
-
 def read_tablet(path: Path) -> Optional[Tablet]:
     if not path.exists():
         return None
@@ -242,8 +227,7 @@ def write_tablet(tab: Tablet, root: Optional[Path] = None) -> Path:
     path = tablet_path(
         tab.asset, tab.timeframe, tab.year, root=r, exchange_id=tab.exchange_id
     )
-    text = json.dumps(tab.to_dict(), separators=(",", ":"))
-    _atomic_write_text(path, text)
+    atomic_write_json(path, tab.to_dict(), indent=None, separators=(",", ":"))
     return path
 
 
@@ -308,7 +292,7 @@ def write_manifest(
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "tablets": [asdict(e) for e in entries],
     }
-    _atomic_write_text(p, json.dumps(payload, indent=2))
+    atomic_write_json(p, payload, indent=2)
     return p
 
 
