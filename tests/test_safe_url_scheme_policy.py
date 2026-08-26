@@ -196,8 +196,45 @@ _CALL_SITES: tuple[tuple[str, dict], ...] = (
     # which is above both calls. The new numbers were READ from
     # `grep -n "safe_urlopen(" src/gui/main_window.py` after the
     # insertion was final, not computed from an offset.
-    ("src/gui/main_window.py:4621", {"timeout": 10, "context": None}),
-    ("src/gui/main_window.py:4787", {"timeout": 10}),
+    #
+    # RE-ANCHORED 2026-08-26, from :4621 and :4787, by issue #128 R2 --
+    # the unit that moved the duplicated trading logic out of the GUI.
+    # Its `main_window.py` edits are a nine-line import of
+    # `src/trading/target_bands.py` at :30 and ten lines inside
+    # `_compose_ammo_cell`, which replaced two restated dust bands with
+    # calls to that module. Both sit ABOVE both calls, so one shared
+    # offset of nineteen lines happens to cover both. That is a fact
+    # about where the change landed and not a rule -- the 2026-08-21
+    # API Tester note above records two calls in this same class moving
+    # by 191 and 238 because the inserts straddled the first one.
+    #
+    # Both numbers were READ, from an AST walk of `main_window.py` that
+    # reports every `safe_urlopen` CALL with its enclosing method and
+    # its keyword names. It returns exactly two, and
+    # `grep -n "safe_urlopen(" src/gui/main_window.py` returns exactly
+    # the same two lines and nothing else. Each was matched to its pin
+    # by method and kwarg shape rather than by grep order: :4640 is
+    # `APITesterTab._raw_http_probe` and carries `context=ssl_ctx`,
+    # :4806 is `APITesterTab._check_exchange_status` and carries no
+    # context. The grep alone is still not enough -- `ccxt_connector.py`
+    # holds a DOCSTRING naming `safe_urlopen(..., timeout=15)`, now at
+    # :378, which answers that grep while calling nothing.
+    #
+    # Neither call moved in the source: both lines are byte-identical
+    # to their pre-R2 form at git 125382b, and neither kwarg shape
+    # changed.
+    #
+    # BOTH PINS WERE PROVED TO STILL BIND AGAIN, INDEPENDENTLY, by
+    # shifting each call one line with a net-zero edit and watching
+    # only that row fail.
+    #
+    # THIS FILE WAS NOT IN THE ISSUE #128 R2 BRIEF EITHER. That brief
+    # named the two `scrumming_bot.py` guards, the same omission the
+    # issue #106 note above records. A unit that edits `main_window.py`
+    # has to check this table; nothing in the two named guards reaches
+    # it, and the release gate is what found it both times.
+    ("src/gui/main_window.py:4640", {"timeout": 10, "context": None}),
+    ("src/gui/main_window.py:4806", {"timeout": 10}),
 )
 _CALL_IDS = [site for site, _ in _CALL_SITES]
 _CALL_KWARGS = [kwargs for _, kwargs in _CALL_SITES]
