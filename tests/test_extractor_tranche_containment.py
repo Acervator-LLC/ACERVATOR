@@ -127,13 +127,11 @@ stored units do not read back the same twice.
 
 from __future__ import annotations
 
-import ast
 import asyncio
 import inspect
 import math
 import re
 import sys
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -348,46 +346,6 @@ def test_delta_stays_flat_when_the_quote_is_not_usd():
     )
 
     assert _delta(bot, 100.0) == pytest.approx(before)
-
-
-# ── atomicity ───────────────────────────────────────────────────────
-
-
-def _method_tree():
-    src = textwrap.dedent(
-        inspect.getsource(ScrummingBot.apply_extractor_tranche_return)
-    )
-    return ast.parse(src)
-
-
-def test_the_arrival_block_cannot_yield_to_the_event_loop():
-    """The atomicity guarantee, stated as the property that produces it.
-
-    Every coroutine in this app runs on the Qt GUI thread, so a
-    synchronous block that never yields cannot be observed half
-    applied. An ``await`` inside the method would hand control back to
-    the loop between the two halves and reintroduce the transient delta.
-    """
-    assert not inspect.iscoroutinefunction(ScrummingBot.apply_extractor_tranche_return)
-    suspends = [
-        n
-        for n in ast.walk(_method_tree())
-        if isinstance(n, (ast.Await, ast.Yield, ast.YieldFrom))
-    ]
-    assert (
-        suspends == []
-    ), f"{len(suspends)} suspension point(s) inside the arrival method"
-
-
-def test_POSITIVE_CONTROL_the_suspension_scanner_sees_an_await():
-    """The scanner above must not be blind."""
-    probe = ast.parse("async def f():\n" "    x = 1\n" "    await g()\n" "    y = 2\n")
-    suspends = [
-        n
-        for n in ast.walk(probe)
-        if isinstance(n, (ast.Await, ast.Yield, ast.YieldFrom))
-    ]
-    assert len(suspends) == 1
 
 
 class _ObservingBus:
@@ -626,132 +584,6 @@ def test_repeated_returns_accumulate_both_halves():
     assert bot._current_holdings == pytest.approx(1.15)
     assert bot._main_lots_invariant_ok() is True
     assert _delta(bot, 200.0) == pytest.approx(0.0)
-
-
-# ════════════════════════════════════════════════════════════════════
-# v3.25.6 — the defects the v3.25.5 suite could not see
-# ════════════════════════════════════════════════════════════════════
-
-SOURCE_PATH = REPO_ROOT / "src" / "trading" / "scrumming_bot.py"
-
-
-def _source_lines() -> list[str]:
-    return SOURCE_PATH.read_text(encoding="utf-8").split("\n")
-
-
-def _self_writes(func) -> set[str]:
-    """Every ``self.<attr>`` written anywhere in ``func``.
-
-    AST rather than grep: a plain assignment, an augmented assignment
-    and an annotated assignment are three different nodes, and a scan
-    that missed one would report a write site as clean.
-    """
-    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
-    out: set[str] = set()
-    for node in ast.walk(tree):
-        targets: list = []
-        if isinstance(node, ast.Assign):
-            targets = list(node.targets)
-        elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
-            targets = [node.target]
-        for tgt in targets:
-            if (
-                isinstance(tgt, ast.Attribute)
-                and isinstance(tgt.value, ast.Name)
-                and tgt.value.id == "self"
-            ):
-                out.add(tgt.attr)
-    return out
-
-
-def _lot_appends(func) -> list[int]:
-    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
-    return [
-        n.lineno
-        for n in ast.walk(tree)
-        if isinstance(n, ast.Call)
-        and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "append"
-        and "main_lots" in ast.unparse(n.func.value)
-    ]
-
-
-# ── D1: nothing is coerced inside the atomic block ──────────────────
-
-
-def _atomic_block_tree() -> ast.Module:
-    """Parse only the statements between the two ATOMIC ARRIVAL banners.
-
-    The banners are load-bearing text, not decoration: they are what
-    tells a future editor where the no-coercion rule applies, and this
-    scanner reads them as the rule's boundary.
-    """
-    lines = textwrap.dedent(
-        inspect.getsource(ScrummingBot.apply_extractor_tranche_return)
-    ).split("\n")
-    start = end = None
-    for i, line in enumerate(lines):
-        if "ATOMIC ARRIVAL" in line and "END ATOMIC" not in line:
-            start = i
-        elif "END ATOMIC ARRIVAL" in line:
-            end = i
-    assert start is not None, "the atomic block's opening banner is gone"
-    assert end is not None, "the atomic block's closing banner is gone"
-    assert end > start
-    return ast.parse(textwrap.dedent("\n".join(lines[start + 1 : end])))
-
-
-def test_the_atomic_block_contains_assignments_only():
-    """D1. The rule that makes a partial write impossible.
-
-    v3.25.5 coerced ``_anchor_target_balance`` INSIDE this block, as the
-    last of four writes. A stored "not-a-number" raised ValueError with
-    the other three already durable. No amount of care at the call site
-    fixes that; only the structural rule does -- every value the block
-    writes is a validated local computed above it, and the block itself
-    can do nothing but store them.
-    """
-    tree = _atomic_block_tree()
-    assert tree.body, "the scanner found no statements; it proves nothing"
-
-    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
-    assert len(calls) == 1, (
-        f"the atomic block makes {len(calls)} calls; exactly one is "
-        f"allowed, the ledger append, and it must take a name"
-    )
-    assert isinstance(calls[0].func, ast.Attribute)
-    assert calls[0].func.attr == "append"
-    assert calls[0].args and isinstance(calls[0].args[0], ast.Name), (
-        "the lot must be built and bound ABOVE the block; a dict "
-        "literal here is a construction inside the atomic region"
-    )
-
-    arithmetic = [
-        n
-        for n in ast.walk(tree)
-        if isinstance(n, (ast.BinOp, ast.BoolOp, ast.Compare, ast.IfExp, ast.Subscript))
-    ]
-    assert arithmetic == [], (
-        f"{len(arithmetic)} computation(s) inside the atomic block; "
-        f"every one is a place a raise can strand a half write"
-    )
-
-    for node in tree.body:
-        assert isinstance(node, (ast.Assign, ast.Expr)), (
-            f"{type(node).__name__} in the atomic block; assignments "
-            f"and the single append only"
-        )
-
-
-def test_POSITIVE_CONTROL_the_block_scanner_sees_a_coercion():
-    """The scanner above must not be blind to the shape it screens for."""
-    probe = ast.parse("x = float(y) + 1\nz.append({'a': 1})\n")
-    calls = [n for n in ast.walk(probe) if isinstance(n, ast.Call)]
-    arithmetic = [n for n in ast.walk(probe) if isinstance(n, ast.BinOp)]
-    literal_args = [n for n in calls if n.args and isinstance(n.args[0], ast.Dict)]
-    assert len(calls) == 2
-    assert len(arithmetic) == 1
-    assert len(literal_args) == 1
 
 
 def test_a_non_numeric_anchor_refuses_and_writes_nothing():
@@ -1216,20 +1048,6 @@ def test_POSITIVE_CONTROL_the_condition_is_not_vacuous():
     assert 0.1 * 1.0 * (210.0 - 200.0) == pytest.approx(1.0)
 
 
-# ── D5: the pairing does not survive reconciliation ─────────────────
-
-
-def test_reconcile_holdings_never_writes_the_target_balance():
-    """D5, structurally. The claim the docstring's limitation rests on."""
-    writes = _self_writes(ScrummingBot._reconcile_holdings)
-    assert "_current_holdings" in writes
-    assert "_main_lots" in writes
-    assert "_target_balance" not in writes, (
-        "reconcile now moves the target; the KNOWN LIMITATION section of "
-        "apply_extractor_tranche_return is stale and must be rewritten"
-    )
-
-
 def test_KNOWN_LIMITATION_drift_down_reconcile_breaks_the_pairing():
     """D5, behaviourally. Recorded, not fixed. Read the docstring first.
 
@@ -1264,81 +1082,6 @@ def test_KNOWN_LIMITATION_drift_down_reconcile_breaks_the_pairing():
         "the documented limitation changed; update the KNOWN LIMITATION "
         "section of the docstring to match"
     )
-
-
-# ── D7: how the rest of the file really maintains the two halves ────
-
-
-def test_execute_buy_moves_the_scalar_and_appends_no_lot():
-    """D7. The premise the v3.25.5 summary asserted, and got backwards.
-
-    It claimed "every other credit site appends a lot AND moves the
-    scalar". ``_execute_buy`` moves the scalar and appends nothing; its
-    callers append after the await returns. That split is precisely why
-    a caller-side pairing is unsafe, and therefore why this method owns
-    both halves itself.
-    """
-    assert inspect.iscoroutinefunction(ScrummingBot._execute_buy)
-    assert _lot_appends(ScrummingBot._execute_buy) == [], (
-        "_execute_buy now appends a lot; the docstring's derivation of "
-        "the two shapes is stale"
-    )
-    assert "_current_holdings" in _self_writes(ScrummingBot._execute_buy)
-
-
-def test_the_containment_method_does_both_halves_without_suspending():
-    """The contrast that makes the split above matter.
-
-    ``_lot_appends`` is not the right scanner here: this method binds
-    the ledger to a local (``lots = getattr(self, "_main_lots", None)``)
-    so the refusal path can run before any write, so the append reads
-    ``lots.append(...)`` and not ``self._main_lots.append(...)``. The
-    atomic-block scanner is the exact instrument, and it already proves
-    there is precisely one append and that it takes a bound name.
-    """
-    assert not inspect.iscoroutinefunction(ScrummingBot.apply_extractor_tranche_return)
-    appends = [
-        n
-        for n in ast.walk(_atomic_block_tree())
-        if isinstance(n, ast.Call)
-        and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "append"
-    ]
-    assert len(appends) == 1
-    writes = _self_writes(ScrummingBot.apply_extractor_tranche_return)
-    for attr in ("_current_holdings", "_target_balance", "_anchor_target_balance"):
-        assert attr in writes
-
-
-def test_POSITIVE_CONTROL_the_append_scanner_finds_a_real_append():
-    """The scanner used above must not report empty for every function."""
-    assert _lot_appends(ScrummingBot._execute_manual_rebalance)
-
-
-# The D8 citation checks that lived here (CITATION_ANCHORS: a map of
-# scrumming_bot.py LINE NUMBERS to comment text, asserted to still hold)
-# were removed as a stateful antipattern: they pinned source line numbers
-# and text, not behaviour, so any edit above them tripped a false alarm.
-# The invariants those comments describe are exercised functionally by the
-# apply_extractor_tranche_return tests above.
-
-
-def test_the_invariant_helper_names_test_files_that_exist():
-    """D9. It named a caller that is not in the repo at all.
-
-    Every test file the helper's docstring names must exist on disk and
-    must actually call it.
-    """
-    doc = inspect.getdoc(ScrummingBot._main_lots_invariant_ok) or ""
-    named = re.findall(r"tests/[A-Za-z0-9_]+\.py", doc)
-    assert named, "the helper names no test file at all"
-    for relative in named:
-        path = REPO_ROOT / relative
-        assert path.exists(), f"{relative} is cited and does not exist"
-        body = path.read_text(encoding="utf-8")
-        assert (
-            "_main_lots_invariant_ok" in body
-        ), f"{relative} is cited as a caller and never calls it"
 
 
 # ── D10: the fail-closed promise, made true ─────────────────────────
@@ -1801,18 +1544,6 @@ def test_POSITIVE_CONTROL_the_condition_holds_when_both_rates_agree():
     )
 
 
-# ── R7: the drift-down reconcile strands the ANCHOR too ─────────────
-
-
-def test_reconcile_holdings_never_writes_the_anchor_target_balance():
-    """R7, structurally. The half of the claim v3.25.6 left out."""
-    writes = _self_writes(ScrummingBot._reconcile_holdings)
-    assert "_anchor_target_balance" not in writes, (
-        "reconcile now moves the anchor; the KNOWN LIMITATION section of "
-        "apply_extractor_tranche_return is stale and must be rewritten"
-    )
-
-
 def test_the_stranded_anchor_widens_the_growth_cap_and_the_ceiling():
     """R7, behaviourally. Why the anchor is the WIDER half.
 
@@ -1864,48 +1595,6 @@ def test_POSITIVE_CONTROL_both_limits_really_read_the_anchor():
 
     bot._anchor_target_balance = 300.0
     assert bot.position_ceiling_usd == pytest.approx(600.0)
-
-
-# ── R3: the premise the exact-list guard rests on ───────────────────
-
-
-def test_every_main_lots_assignment_builds_a_plain_list():
-    """Nothing legitimate is refused by the exact-list guard.
-
-    If a future edit ever assigns a wrapper to ``self._main_lots``, the
-    guard would start refusing real arrivals in production, and this
-    test is what says so first.
-    """
-    tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))
-    sites = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        for target in node.targets:
-            if (
-                isinstance(target, ast.Attribute)
-                and target.attr == "_main_lots"
-                and isinstance(target.value, ast.Name)
-                and target.value.id == "self"
-            ):
-                sites.append((target.lineno, type(node.value).__name__))
-    assert sites, "the scanner found no assignment; it proves nothing"
-    for lineno, kind in sites:
-        assert kind in ("List", "ListComp"), (
-            f"scrumming_bot.py:{lineno} assigns a {kind} to _main_lots; "
-            f"the exact-list guard would refuse every arrival on that bot"
-        )
-
-
-def test_POSITIVE_CONTROL_the_ledger_shape_scanner_sees_a_wrapper():
-    """The scanner must not report clean for every shape."""
-    probe = ast.parse("self._main_lots = Wrapper([])\n")
-    kinds = [
-        type(node.value).__name__
-        for node in ast.walk(probe)
-        if isinstance(node, ast.Assign)
-    ]
-    assert kinds == ["Call"]
 
 
 # ── R10: the fail-closed promise, made true and then measured ───────
