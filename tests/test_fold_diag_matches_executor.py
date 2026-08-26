@@ -1,156 +1,133 @@
-"""Phase 1 Step 2 — the fold instrument must measure the executor.
+"""The FOLD_DIAG counter must measure the same eligibility the executor fires on.
 
-THE DEFECT
-The FOLD_DIAG counters used
+The autonomous fold-back and its FOLD_DIAG diagnostic both call
+``ScrummingBot._fold_eligible_tranches`` — one definition of fold
+eligibility, so the counter can never report a different set than the
+one that fires. These tests drive that shared method on a real
+ScrummingBot and pin the predicate:
 
-    ticker.last < ref AND ticker.last <= initial_buy_price
+    ticker.last <= ref * fold_rebuy_factor(interval, fee)
 
-while the executor that actually fires uses
-
-    ticker.last <= ref * _otd_factor
-
-Three differences, each wrong in some regime: strict `<` versus `<=`; an
-`initial_buy_price` term the executor does not have; and no OTD factor at
-all, so the counter reported tranches eligible at prices the executor
-would refuse and ignored the OTD margin entirely.
-
-WHY IT MATTERS MORE THAN A WRONG NUMBER
-These counters are the instrument used to verify Phase 3. An instrument
-measuring a different predicate than the thing it reports on cannot
-confirm or refute a change to that thing. Every "N of M strict-eligible"
-figure ever read out of this log was computed on the wrong criterion --
-including the 62.6% figure in
-`2026-08-06_analysis_why_folds_do_not_fire.md`, which is corrected there.
-
-THE PREREQUISITE THE PLAN SET, AND WHAT IT FOUND
-The repair plan required verifying that `_per_tranche_eligible` and
-`_patent_only_eligible` are not read by control flow, and to STOP if
-either is. Both ARE read by control flow -- so the check was honoured
-rather than waved through, and the branches were read: both gate only
-`self._bus.emit("bot.log", ...)`. Neither touches trading. The block sits
-inside a `try` and is marked "temporary instrumentation, not
-load-bearing". The gate's letter failed, its intent held, and the
-deviation is recorded here rather than in a commit nobody re-reads.
-
-SINGLE BINDING
-`_otd_pct_for_gate` / `_otd_factor` are hoisted above the diagnostic
-block and read by both it and the executor. Two copies of that
-arithmetic is precisely how they drifted apart, so the pins below assert
-there is exactly one assignment.
+including the two regimes the original defect got wrong: a strict ``<``
+that disagreed at the boundary, and an ``initial_buy_price`` term the
+executor never had.
 """
 
 from __future__ import annotations
 
-import ast
+import math
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+import pytest
 
-SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(encoding="utf-8")
-TREE = ast.parse(SRC)
+REPO = Path(__file__).resolve().parent.parent
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
-
-def _tick():
-    ticks = [
-        n
-        for n in ast.walk(TREE)
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "tick"
-    ]
-    assert ticks, "no tick() found -- extractor broken, not the code"
-    return max(ticks, key=lambda n: (n.end_lineno or 0) - n.lineno)
+from src.trading.otd_math import (  # noqa: E402
+    fold_rebuy_factor_from_pct,
+    minimum_opposing_trade_distance_pct,
+)
+from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
 
-def _comparisons_against(varname: str) -> list[str]:
-    """Every comparison in tick() whose source mentions `varname`."""
-    out = []
-    for n in ast.walk(_tick()):
-        if isinstance(n, ast.Compare):
-            s = ast.unparse(n)
-            if varname in s:
-                out.append(s)
-    return out
+def _factor(interval=1.0, fee=0.6) -> float:
+    """The OTD factor exactly as tick() derives it."""
+    return fold_rebuy_factor_from_pct(
+        minimum_opposing_trade_distance_pct(interval, fee)
+    )
 
 
-class TestTheExtractorWorks:
-    def test_it_finds_eligibility_comparisons(self):
-        """POSITIVE CONTROL: if this found none, every assertion below
-        would pass against any implementation."""
-        assert _comparisons_against("_otd_factor")
+def _bot(tranches):
+    bot = object.__new__(ScrummingBot)
+    bot._fold_tranches = [dict(t) for t in tranches]
+    return bot
 
 
-class TestOnePredicate:
-    def test_every_eligibility_test_uses_the_otd_factor(self):
-        """Both the diagnostic counter and the executor filter must
-        compare against ref * _otd_factor."""
-        cmps = _comparisons_against("_otd_factor")
-        assert len(cmps) >= 2, (
-            f"expected the diagnostic AND the executor to share the "
-            f"predicate; found {len(cmps)}: {cmps}"
-        )
-        for c in cmps:
-            assert "ticker.last <=" in c, c
-            assert "_otd_factor" in c
-
-    def test_no_eligibility_test_uses_initial_buy_price_as_a_gate(self):
-        """The executor has no such term. A counter that applies one is
-        measuring a gate that does not run."""
-        for c in _comparisons_against("_otd_factor"):
-            assert "initial_buy_price" not in c, (
-                f"an eligibility predicate still mixes in " f"initial_buy_price: {c}"
-            )
-
-    def test_the_strict_less_than_form_is_gone(self):
-        """`ticker.last < ref` (strict) disagrees with the executor's
-        `<=` exactly at the boundary.
-
-        Scoped to comparisons that actually involve a TRANCHE ref. The
-        first draft matched any strict `<` against ticker.last and
-        caught `ticker.last < _required_min`, which is SCRUM-side
-        hysteresis against `_hyst_ref_scrum_side` and has nothing to do
-        with fold eligibility -- the test was wrong, not the code.
-        """
-        bad = [
-            c
-            for c in _comparisons_against("ticker.last")
-            if "ticker.last <" in c
-            and "ticker.last <=" not in c
-            and ("ref" in c or "_t.get" in c or "t.get" in c)
-        ]
-        assert not bad, f"strict-< eligibility comparison survives: {bad}"
+def _tranche(ref, initial_buy_price=None):
+    t = {"ref": ref, "units": 1.0, "usd": ref}
+    if initial_buy_price is not None:
+        t["initial_buy_price"] = initial_buy_price
+    return t
 
 
-class TestSingleBinding:
-    def test_otd_factor_is_assigned_exactly_once(self):
-        """Two copies of the arithmetic is how the instrument and the
-        executor drifted apart. One binding makes that impossible."""
-        assigns = [
-            n
-            for n in ast.walk(_tick())
-            if isinstance(n, ast.Assign)
-            and any(getattr(t, "id", "") == "_otd_factor" for t in n.targets)
-        ]
-        assert len(assigns) == 1, (
-            f"_otd_factor is assigned {len(assigns)} times; it must be "
-            f"computed once and shared"
-        )
-
-    def test_it_is_bound_before_the_diagnostic_block(self):
-        seg = ast.get_source_segment(SRC, _tick()) or ""
-        assert seg.index("_otd_factor = ") < seg.index("_fold_diag_tick")
+def test_a_tranche_is_eligible_when_price_is_at_or_below_ref_times_factor():
+    factor = _factor()
+    ref = 1.0
+    edge = ref * factor
+    bot = _bot([_tranche(ref)])
+    assert (
+        len(bot._fold_eligible_tranches(edge, factor)) == 1
+    ), "price AT the edge is eligible (<=)"
+    assert (
+        len(bot._fold_eligible_tranches(edge * 0.5, factor)) == 1
+    ), "a deep drop is eligible"
 
 
-class TestTheSecondaryReadingIsLabelled:
-    def test_patent_only_is_kept_but_not_called_a_gate(self):
-        """NEGATIVE CONTROL on the fix: the initial_buy_price reading is
-        still WORTH observing for MEM-171 provenance. It must survive --
-        just not as an eligibility criterion."""
-        seg = ast.get_source_segment(SRC, _tick()) or ""
-        assert "_patent_only_eligible" in seg
-        i = seg.index("_patent_only_eligible")
-        assert "not a gate" in seg[max(0, i - 700) : i].lower(), (
-            "the secondary reading is unlabelled and will be mistaken "
-            "for an eligibility criterion again"
-        )
+def test_one_float_above_the_edge_is_not_eligible():
+    factor = _factor()
+    ref = 1.0
+    edge = ref * factor
+    bot = _bot([_tranche(ref)])
+    above = math.nextafter(edge, math.inf)
+    assert bot._fold_eligible_tranches(above, factor) == []
+
+
+def test_the_boundary_is_inclusive_where_the_old_strict_less_than_excluded():
+    """At exactly ref*factor the tranche IS eligible; the retired strict
+    ``<`` form would have excluded it."""
+    factor = _factor()
+    ref = 2.0
+    edge = ref * factor
+    bot = _bot([_tranche(ref)])
+    eligible = bot._fold_eligible_tranches(edge, factor)
+    assert len(eligible) == 1
+    assert eligible[0]["ref"] == ref
+
+
+def test_initial_buy_price_is_not_a_gate():
+    """A tranche the executor would refuse (price > ref*factor) must be
+    excluded even when price <= initial_buy_price. The retired predicate
+    mixed initial_buy_price in and reported it eligible."""
+    factor = _factor()
+    ref = 1.0
+    price = math.nextafter(ref * factor, math.inf)  # just above the real edge
+    # initial_buy_price well above the price: the old term would admit it
+    bot = _bot([_tranche(ref, initial_buy_price=price * 10.0)])
+    assert bot._fold_eligible_tranches(price, factor) == [], (
+        "a tranche past its ref*factor edge was admitted on the "
+        "strength of initial_buy_price — the retired gate is back"
+    )
+
+
+def test_the_eligible_set_is_exactly_the_predicate_over_a_ladder():
+    factor = _factor()
+    refs = [2.00, 1.50, 1.00, 0.50, 0.10]
+    ladder = [_tranche(r) for r in refs]
+    bot = _bot(ladder)
+    price = 1.00
+    got = {t["ref"] for t in bot._fold_eligible_tranches(price, factor)}
+    expected = {r for r in refs if price <= r * factor}
+    assert got == expected
+    assert (
+        expected
+    ), "pick a price that leaves at least one eligible, or the test is vacuous"
+
+
+def test_a_malformed_ref_is_never_eligible_at_a_positive_price():
+    factor = _factor()
+    bot = _bot([{"units": 1.0}, {"ref": 0.0}, {"ref": -1.0}])
+    assert bot._fold_eligible_tranches(0.5, factor) == []
+
+
+@pytest.mark.parametrize(
+    "interval, fee", [(1.0, 0.6), (5.0, 1.6), (15.0, 0.6), (2.0, 0.0)]
+)
+def test_the_edge_tracks_otd_math_across_configs(interval, fee):
+    factor = _factor(interval, fee)
+    ref = 1.0
+    edge = ref * factor
+    bot = _bot([_tranche(ref)])
+    assert len(bot._fold_eligible_tranches(edge, factor)) == 1
+    assert bot._fold_eligible_tranches(math.nextafter(edge, math.inf), factor) == []

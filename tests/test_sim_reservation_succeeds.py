@@ -44,7 +44,7 @@ from src.trading.capital_reservation import (  # noqa: E402
     CapitalReservationRegistry,
 )
 
-SB = REPO_ROOT / "src" / "trading" / "scrumming_bot.py"
+SB = REPO_ROOT / "src" / "trading" / "scrumming" / "capital_reservation_mixin.py"
 
 
 def _registry(tmp_path):
@@ -199,4 +199,7 @@ class TestTheSimPathPassesNone:
             and "_ensure_capital_reservation" in n.name
         )
         seg = ast.get_source_segment(src, fn) or ""
-        assert "C16" in seg
+        # The guard that must not be "fixed" away: a sim bot's first reserve
+        # passes holdings=None so the 110% claim can't fail over-commit.
+        assert 'getattr(self, "_sim_mode", False) and self._crr_token is None' in seg
+        assert "_total_holdings = None" in seg

@@ -182,8 +182,10 @@ class TestTheOrphanedToken:
         )
 
     def test_the_handler_releases_before_forgetting(self):
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
-        blk = src[src.index("RELEASE BEFORE FORGETTING") :][:4000]
+        src = (
+            REPO_ROOT / "src/trading/scrumming/capital_reservation_mixin.py"
+        ).read_text(encoding="utf-8")
+        blk = src[src.index("_stale = self._crr_token") :][:4000]
         i_rel = blk.index("_reg.release(_stale, self.bot_id)")
         i_none = blk.index("self._crr_token = None")
         assert i_rel < i_none, "release must precede forgetting the token"
@@ -191,6 +193,8 @@ class TestTheOrphanedToken:
     def test_a_failing_release_does_not_break_the_tick(self):
         """The registry is best-effort; a release that raises must not
         take the tick down with it."""
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
-        blk = src[src.index("RELEASE BEFORE FORGETTING") :][:4000]
+        src = (
+            REPO_ROOT / "src/trading/scrumming/capital_reservation_mixin.py"
+        ).read_text(encoding="utf-8")
+        blk = src[src.index("_stale = self._crr_token") :][:4000]
         assert "could not release stale reservation" in blk
