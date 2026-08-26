@@ -420,6 +420,44 @@ def dialog_content_size_px(
     )
 
 
+# ── A whole tranche row, not a size hint (issue #133 unit 12) ────────
+# QTableWidget is a QScrollArea. QAbstractScrollArea::sizeHint returns
+# a fixed default and does not sum columns, so the tab holding the
+# tranche table can hint narrower than one row.
+#
+# Operator display 1536x960 logical (1920x1200 at 125%), real font
+# database, cyberpunk_dark, his CHIP/USD tranche: dialog 859, tab
+# viewport 825, row right edge 963 - 138px cut. BTC-scale prices 170px,
+# seven-figure USD parked 228px.
+
+
+def fold_table_natural_width_px(table: QTableWidget) -> int:
+    """Table width that leaves the viewport as wide as the columns.
+
+    `horizontalHeader().length()` is the summed column width, the one
+    number `sizeHint` omits. Added to it, all outside the viewport:
+    the vertical header, both frame edges, and the vertical scroll bar.
+
+    THE VERTICAL SCROLL BAR IS RESERVED WHETHER OR NOT IT APPEARS.
+    `fold_table_max_height_px` caps the table at 18 rows, and a longer
+    queue draws one; its width is not knowable until the table is laid
+    out. `fold_table_chrome_px` reserves the horizontal bar for the
+    same reason.
+
+    `ensurePolished` before the read. Unpolished `frameWidth()` is 1;
+    polished under this theme it is 13.
+    """
+    table.ensurePolished()
+    header = table.verticalHeader()
+    scroll_bar = table.verticalScrollBar()
+    return (
+        int(table.horizontalHeader().length())
+        + (0 if header is None or header.isHidden() else int(header.width()))
+        + 2 * int(table.frameWidth())
+        + (0 if scroll_bar is None else int(scroll_bar.sizeHint().width()))
+    )
+
+
 def dialog_open_size_px(
     needed_w: int,
     needed_h: int,
@@ -1784,6 +1822,10 @@ if _HAS_QT:
             display smaller than the content, one he cannot fully see
             either. This sets the size it OPENS at; the 640x720 floor
             MEM-240 put there is untouched.
+
+            issue #133 unit 12 - the tab's hint now carries a whole
+            tranche row: the table declares its column width as a
+            minimum, and `QWidgetItem.sizeHint` expands to it.
             """
             tabs = getattr(self, "_tabs", None)
             layout = self.layout()
@@ -4760,6 +4802,12 @@ if _HAS_QT:
                         _cells.append("" if _item is None else _item.text())
                     _harvested.append(_cells)
                 self._fold_row_texts = _harvested
+
+                # issue #133 unit 12 - the table declares the width of
+                # a whole row. Set before the layout first activates;
+                # QWidgetItem.sizeHint expands to minimumSize, so the
+                # tab's hint carries the columns from here up.
+                table.setMinimumWidth(fold_table_natural_width_px(table))
 
                 dl.addLayout(build_fold_row_controls(self))
                 dl.addWidget(table)
