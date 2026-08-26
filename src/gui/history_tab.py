@@ -30,7 +30,6 @@ sadp: R28 (fail-loud display), R44 (exchange truth), R70 RCN
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import csv
 import logging
 import time
@@ -460,75 +459,6 @@ if _HAS_QT:
                             logger.warning("history fetch raised: %s", rx)
                             return
                         self._all_trades = list(result or [])
-                        # The rows are stored and the fetch is over.
-                        # Stop the clock HERE, above the admissibility
-                        # count and above the emitter block, so
-                        # instrumentation is not billed to the fetch.
-                        _dur_elapsed = time.monotonic() - start_ts
-                        # 05.002 -- WHAT LANDED IN `_all_trades`, NEVER
-                        # WHAT THE FETCH SAID IT RETURNED.
-                        #
-                        # `fetch_all_history_chunked` admits a row on two
-                        # rules and drops it on either
-                        # (history_helpers.py:282-288): the row is at or
-                        # after `since_ts`, and its
-                        # (exchange, symbol, id) key has not been seen on
-                        # an earlier (exchange, symbol) pair. Both are
-                        # enforced inside the helper's own loop and
-                        # NOTHING downstream re-checks them, so a row that
-                        # breaks either one is displayed, graded,
-                        # exported, and handed to the Simulator through
-                        # `history_refreshed` exactly like a good one.
-                        #
-                        # `actual` counts the rows in the STORED list that
-                        # still satisfy both rules. `expected` is how many
-                        # rows that list holds. Two different expressions,
-                        # so a duplicate that survived the per-pair dedupe
-                        # or a row older than the From date drives them
-                        # apart and `ok` goes False. Reporting
-                        # `len(result)` back would echo the request as
-                        # though it were the result and could never fail.
-                        #
-                        # THE DURATION IS THE OPERATOR-VISIBLE FETCH
-                        # LATENCY, and it is honest about its own
-                        # resolution: the future is observed by a 400 ms
-                        # poll, so a reading is the true fetch time plus
-                        # up to one poll interval. `poll_interval_s` rides
-                        # in the context so a reader of item 17 sees the
-                        # quantum rather than infers it. The bracket opens
-                        # at `start_ts`, one line below the schedule, and
-                        # closes above -- it spans the fetch and nothing
-                        # else.
-                        _seen_keys: set = set()
-                        _admissible = 0
-                        for _row in self._all_trades:
-                            _key = (
-                                _row.get("exchange"),
-                                _row.get("symbol"),
-                                _row.get("id"),
-                            )
-                            _dupe = _key in _seen_keys
-                            _seen_keys.add(_key)
-                            _row_ts = float(_row.get("timestamp", 0) or 0)
-                            if _dupe or not _row.get("id"):
-                                continue
-                            if 0 < _row_ts < since_ts:
-                                continue
-                            _admissible += 1
-                        with contextlib.suppress(Exception):
-                            from src.core.signal_contract import emit as _hist_emit
-
-                            _hist_emit(
-                                "history.05.002.postcondition.trades_stored",
-                                actual=_admissible,
-                                expected=len(self._all_trades),
-                                duration=_dur_elapsed,
-                                context={
-                                    "since_ts": float(since_ts),
-                                    "distinct_keys": len(_seen_keys),
-                                    "poll_interval_s": 0.4,
-                                },
-                            )
                         self._last_fetched_ts = time.time()
                         # v3.23.71 H4: emit for Simulator's front-load.
                         if self.history_refreshed is not None:
@@ -590,54 +520,6 @@ if _HAS_QT:
                 self._sym_combo.setCurrentIndex(idx)
             self._sym_combo.blockSignals(False)
 
-            # 05.003 -- READ BOTH COMBOS BACK OUT, ENTRY BY ENTRY.
-            #
-            # Not `count()`. A count agrees with a set of the right SIZE
-            # holding the wrong members, and both lists are rebuilt from
-            # scratch on every fetch behind `blockSignals`, which is the
-            # state where a wrong member is least visible: the operator
-            # sees a plausible dropdown and filters against a symbol the
-            # fetch never returned.
-            #
-            # `actual` is the symmetric difference, summed over the two
-            # lists, between what the widget now offers and the distinct
-            # values `_all_trades` actually holds. `expected` is zero --
-            # the declared intent that the dropdown offers every loaded
-            # value and invents none. Both terms are non-negative so they
-            # cannot cancel: an exchange list short by one is not hidden
-            # by a symbol list long by one.
-            #
-            # The `(all)` sentinel is discounted on the widget side
-            # because it is chrome, not data. An exchange or a symbol
-            # literally spelled `(all)` would be discounted with it; no
-            # venue names one that way, and the alternative -- trusting
-            # index 0 to be the sentinel -- would silently pass a list
-            # that had lost it.
-            _want_exch = {r["exchange"] for r in self._all_trades if r.get("exchange")}
-            _want_sym = {r["symbol"] for r in self._all_trades if r.get("symbol")}
-            _have_exch = {
-                self._exch_combo.itemText(i) for i in range(self._exch_combo.count())
-            } - {"(all)"}
-            _have_sym = {
-                self._sym_combo.itemText(i) for i in range(self._sym_combo.count())
-            } - {"(all)"}
-            _mismatched = len(_want_exch ^ _have_exch) + len(_want_sym ^ _have_sym)
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _hist_emit
-
-                _hist_emit(
-                    "history.05.003.postcondition.filter_options_built",
-                    actual=_mismatched,
-                    expected=0,
-                    context={
-                        "exchanges_offered": len(_have_exch),
-                        "exchanges_loaded": len(_want_exch),
-                        "symbols_offered": len(_have_sym),
-                        "symbols_loaded": len(_want_sym),
-                        "trades_loaded": len(self._all_trades),
-                    },
-                )
-
         def _apply_filters(self) -> None:
             # v3.20.36 — operator-reported 2026-05-31: pressing Apply with
             # a valid filter range produced "0 of 0 trades · no fetch yet"
@@ -688,58 +570,6 @@ if _HAS_QT:
                     continue
                 out.append(r)
             self._filtered = out
-            # 05.004 -- RE-READ THE RETAINED SET AGAINST THE WIDGETS.
-            #
-            # The predicates below are read back from the COMBOS, not
-            # from the `exch_f` / `sym_f` / `side_f` locals the loop
-            # above used. That is the whole difference between a check
-            # and an echo: a block that compared against the wrong
-            # widget, or that was skipped entirely, agrees with those
-            # locals and disagrees with the operator's actual selection.
-            # Five filters read from three combos and two date edits is
-            # exactly the shape where one gets wired to its neighbour.
-            #
-            # `actual` is how many RETAINED rows break at least one
-            # active filter. `expected` is zero. A row that should have
-            # been excluded and was not makes the two differ, and `ok`
-            # goes False.
-            #
-            # An inactive filter -- `(all)`, or a date edit that yielded
-            # nothing -- excludes nothing and is not checked, so widening
-            # a filter is never read as a violation.
-            _v_exch = self._exch_combo.currentText()
-            _v_sym = self._sym_combo.currentText()
-            _v_side = self._side_combo.currentText()
-            _violations = 0
-            for _r in self._filtered:
-                _rts = float(_r.get("timestamp", 0) or 0)
-                if from_ts > 0 and _rts < from_ts:
-                    _violations += 1
-                elif to_ts > 0 and _rts > to_ts:
-                    _violations += 1
-                elif _v_exch != "(all)" and _r.get("exchange") != _v_exch:
-                    _violations += 1
-                elif _v_sym != "(all)" and _r.get("symbol") != _v_sym:
-                    _violations += 1
-                elif _v_side != "(all)" and _r.get("side") != _v_side:
-                    _violations += 1
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _hist_emit
-
-                _hist_emit(
-                    "history.05.004.postcondition.filters_applied",
-                    actual=_violations,
-                    expected=0,
-                    context={
-                        "kept": len(self._filtered),
-                        "loaded": len(self._all_trades),
-                        "exchange": _v_exch,
-                        "symbol": _v_sym,
-                        "side": _v_side,
-                        "from_ts": float(from_ts),
-                        "to_ts": float(to_ts),
-                    },
-                )
             self._page = 0
             self._render_page()
 
@@ -918,51 +748,6 @@ if _HAS_QT:
                     voting_item.setForeground(QColor("#ff5566"))
                 voting_item.setToolTip(_vote_tt(vote_entry))
                 self._table.setItem(row_i, 12, voting_item)
-
-            # 05.005 -- COUNT THE ROWS THE TABLE ITSELF DREW.
-            #
-            # Not `rowCount()` on its own. `setRowCount(n)` makes
-            # `rowCount()` return `n` whether or not a single cell was
-            # ever filled, so a loop that stopped early -- the Gates
-            # column builds a `GateLightsCell` widget per row, and the
-            # grader plus both joiner lookups run per row -- leaves a
-            # table that reports a full page and shows blank lines. This
-            # walks the table and counts the rows whose timestamp cell
-            # actually exists.
-            #
-            # `expected` is the pagination arithmetic recomputed from
-            # `total` and the CLAMPED page, independently of the `rows`
-            # slice that fed the loop. So a clamp that disagrees with the
-            # slice, an off-by-one in `end`, or a page left beyond the
-            # last one shows up here rather than as an empty table the
-            # operator has to interpret.
-            #
-            # NO DURATION. The bracket would have to span the joiner
-            # build, which has its own pin below and its own log I/O, and
-            # one number covering both would be attributable to neither.
-            _drawn = sum(
-                1
-                for _i in range(self._table.rowCount())
-                if self._table.item(_i, 0) is not None
-            )
-            _want_rows = min(
-                self.PAGE_SIZE, max(0, total - self._page * self.PAGE_SIZE)
-            )
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _hist_emit
-
-                _hist_emit(
-                    "history.05.005.postcondition.page_rendered",
-                    actual=_drawn,
-                    expected=_want_rows,
-                    context={
-                        "page": self._page,
-                        "pages": max_page + 1,
-                        "filtered": total,
-                        "row_count": self._table.rowCount(),
-                        "page_size": self.PAGE_SIZE,
-                    },
-                )
 
             # Page label
             if total == 0:
@@ -1178,48 +963,6 @@ if _HAS_QT:
             except Exception:
                 self._page_voting_index = {}
 
-            # 05.006 -- THE FAIL-SOFT COLLAPSE, MADE VISIBLE.
-            #
-            # Both blocks above discard the WHOLE index on any reader
-            # exception. That is the right behaviour for the GUI and it
-            # is invisible to the operator: every Gates and Voting cell
-            # then renders the same em dash it renders when no log entry
-            # exists, so "the reader threw on line 90,000" and "this bot
-            # never traded" look identical on screen. Two joined columns
-            # can go dark without one symptom.
-            #
-            # `actual` is what the two indexes NOW HOLD, summed over
-            # their buckets and read back out of the dicts the per-row
-            # joiner will use next. `expected` is how many entries the
-            # two loops accepted. They agree exactly while the build
-            # completes; a mid-iteration exception empties an index and
-            # leaves its counter standing, so `actual` collapses,
-            # `expected` does not, and `ok` goes False with the two
-            # halves named in the context.
-            #
-            # THE TWO EARLY RETURNS ABOVE EMIT NOTHING, and neither is a
-            # gap: an empty page has no window to read for, and a failed
-            # `live_log_reader` import means the join was never attempted
-            # rather than attempted and lost.
-            _bucketed = sum(len(v) for v in self._page_gate_index.values()) + sum(
-                len(v) for v in self._page_voting_index.values()
-            )
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _hist_emit
-
-                _hist_emit(
-                    "history.05.006.postcondition.joiner_indexes_built",
-                    actual=_bucketed,
-                    expected=_gate_accepted + _voting_accepted,
-                    context={
-                        "gate_accepted": _gate_accepted,
-                        "voting_accepted": _voting_accepted,
-                        "gate_buckets": len(self._page_gate_index),
-                        "voting_buckets": len(self._page_voting_index),
-                        "page_rows": len(page_rows),
-                    },
-                )
-
         @staticmethod
         def _parse_entry_ts(s: str) -> Optional[float]:
             """Parse an ISO-8601 log-entry timestamp into unix seconds.
@@ -1306,46 +1049,6 @@ if _HAS_QT:
                                 r.get("id", ""),
                             ]
                         )
-                # 05.007 -- COUNT THE FILE'S OWN ROWS, NOT THE ROWS
-                # THAT WERE HANDED TO THE WRITER.
-                #
-                # The message box below already reports
-                # `len(self._filtered)`, which is the ASK. Nothing has
-                # ever read the artifact. A row whose formatting raised,
-                # a short write, a full disk, a path that resolved
-                # somewhere else -- each of those leaves the operator
-                # with a confident "Wrote N rows" and a file holding
-                # fewer.
-                #
-                # Read back through `csv.reader`, the same module and
-                # dialect that wrote it, so a quoted field carrying a
-                # comma or a newline counts as one record and not as
-                # two. Minus one for the header row.
-                #
-                # A read-back that itself fails records -1, which equals
-                # no row count and therefore reports `ok` False. That is
-                # deliberate: UNVERIFIED IS NOT VERIFIED, and `readback`
-                # in the context says which of the two happened. It is
-                # caught separately from the write so an unreadable file
-                # is never reported to the operator as a failed export.
-                _written = -1
-                try:
-                    with open(path, "r", newline="", encoding="utf-8") as _rf:
-                        _written = sum(1 for _ in csv.reader(_rf)) - 1
-                except (OSError, csv.Error) as _rb_exc:
-                    logger.debug("history csv read-back failed: %s", _rb_exc)
-                with contextlib.suppress(Exception):
-                    from src.core.signal_contract import emit as _hist_emit
-
-                    _hist_emit(
-                        "history.05.007.postcondition.csv_exported",
-                        actual=_written,
-                        expected=len(self._filtered),
-                        context={
-                            "readback": _written >= 0,
-                            "loaded": len(self._all_trades),
-                        },
-                    )
                 QMessageBox.information(
                     self,
                     "Export complete",

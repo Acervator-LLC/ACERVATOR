@@ -45,6 +45,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
+from ..core.io_utils import atomic_write_json
+
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 logger = logging.getLogger("acervator.shared_testnet")
@@ -266,10 +268,7 @@ class SharedTestnetBridge(QObject):
             logger.warning("failed to serialize chain state: %s", e)
             return
         try:
-            self._persist_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self._persist_path.with_suffix(self._persist_path.suffix + ".tmp")
-            tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-            tmp.replace(self._persist_path)
+            atomic_write_json(self._persist_path, payload, indent=2)
             logger.debug(
                 "chain persisted (block=%d, txs=%d)",
                 payload.get("block_number", 0),

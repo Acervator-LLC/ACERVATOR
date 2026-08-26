@@ -64,11 +64,7 @@ scope forbids.
 
 The gate's rule routes `.py` to coding, plus gui when the source defines
 a Qt-based class, plus ta when the file looks like indicator maths; and
-`.md` to docs. It routes NOTHING to `watchdog_archetype`. That is a real
-gap: the emitter-pin checker grades Python but no path reaches it. This
-module adds watchdog for Python files and LABELS that addition in the
-pin under `provenance`, so a reader can always tell the gate's authority
-from this module's. See PROPOSED RULE in the report.
+`.md` to docs.
 
 Reusing the gate's rule has a KNOWN COST, stated because hiding it would
 defeat the purpose: the gate's `_QT_BASES` set omits `QWizard` and
@@ -183,15 +179,11 @@ ARCHETYPE_CLASSES: dict[str, str] = {
     "tools.harness.gui_archetype": "GUIArchetype",
     "tools.harness.ta_archetype": "TAArchetype",
     "tools.harness.docs_archetype": "DocsArchetype",
-    "tools.harness.watchdog_archetype": "WatchdogArchetype",
 }
-
-WATCHDOG_MODULE = "tools.harness.watchdog_archetype"
 
 # Provenance labels. A pin must always say which authority put a module
 # in the set, so this module never borrows the gate's standing.
 FROM_GATE = ROUTING_CITATION
-FROM_TOUCHSET = "touchset: watchdog on every Python file (gate routes none)"
 
 SEVERE = ("critical", "high")
 
@@ -377,16 +369,12 @@ class Routing:
     def modules_for(self, path: Path, source: str) -> dict[str, str]:
         """Return {archetype module: provenance} for one path.
 
-        The gate's own rule supplies the set. Watchdog is added for
-        Python because the gate routes no path to it, and the addition
-        is labelled so the pin never presents it as the gate's decision.
+        The gate's own rule supplies the set.
         """
         modules: dict[str, str] = {}
         for module in self.picker(path, source):
             if module in ARCHETYPE_CLASSES:
                 modules[module] = FROM_GATE
-        if path.suffix.lower() in self.py_suffixes:
-            modules.setdefault(WATCHDOG_MODULE, FROM_TOUCHSET)
         return modules
 
 

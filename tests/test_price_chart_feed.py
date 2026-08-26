@@ -173,13 +173,3 @@ class TestTheFeedDoesNotServeTheFuture:
         clock = ctl._tape.current_ts_ms()
         for sym, e in per.items():
             assert e["ts"] <= clock, f"{sym} served a future candle"
-
-
-class TestTheEmitterExistsForRuntime:
-    def test_the_feed_emitter_is_declared(self):
-        """The runtime complement. It only reports when a sink is
-        installed, which is why the tests above are the real guard."""
-        src = (
-            REPO_ROOT / "src/gui/simulator_tab/fleet" / "fleet_replay_panel.py"
-        ).read_text(encoding="utf-8")
-        assert "sim.06.011.postcondition.price_chart.fed" in src

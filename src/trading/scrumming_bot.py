@@ -1365,64 +1365,10 @@ class ScrummingBot(
         except Exception as _log_exc:
             logger.debug("Bot %s containment log line failed: %s", _bot_id, _log_exc)
 
-        try:
-            from src.core.signal_contract import emit as _et_emit
-
-            _et_emit(
-                "extractor.02.001.postcondition.tranche_contained",
-                actual=_target_usd_added,
-                expected=u,
-                context={
-                    "bot_id": _bot_id,
-                    "source": src,
-                    "base_units": b,
-                    "target_before": _t_before,
-                    "target_after": _t_seen,
-                    "ref": ref,
-                },
-            )
-            _et_emit(
-                "extractor.02.002.invariant.arrival_atomic",
-                actual=_delta_shift_usd,
-                expected=0.0,
-                ok=_atomic_ok,
-                context={
-                    "bot_id": _bot_id,
-                    "source": src,
-                    "lot_units_booked": _lot_units_booked,
-                    "lot_units_expected": b,
-                    "ledger_units_before": _units_before,
-                    "ledger_units_after": _units_seen,
-                    "ledger_readable": _ledger_readable,
-                    "ledger_read_error": _read_why,
-                    "state_readable": _state_readable,
-                    "state_read_error": _state_read_why,
-                    "arrival_usd": u,
-                    "lot_gap_usd": _lot_gap_usd,
-                    "holdings_gap_usd": _holdings_gap_usd,
-                    "target_gap_usd": _target_gap_usd,
-                    "anchor_gap_usd": _anchor_gap_usd,
-                    "ledger_gap_usd": _ledger_gap_usd,
-                    "tolerance_usd": _tol,
-                    "lot_usd_booked": _lot_usd_booked,
-                    "holdings_usd_added": _holdings_usd_added,
-                    "target_usd_added": _target_usd_added,
-                    "anchor_usd_added": _anchor_usd_added,
-                    "holdings_before": _h_before,
-                    "holdings_after": _h_seen,
-                    "arrival_price": arrival_price,
-                    "quote_to_usd": qrate,
-                    "ref": ref,
-                },
-            )
-        except Exception as _sup:  # noqa: BLE001,S110
-            logger.debug(
-                "suppressed in %s: %s: %s",
-                "apply_extractor_tranche_return",
-                type(_sup).__name__,
-                _sup,
-            )
-
+        # EVERY REPORTED BALANCE IS THE READ-BACK, NOT THE VALUE THIS
+        # METHOD MEANT TO WRITE. Returning `_h_after` here would restate
+        # the intention and hide the one failure the read-back exists to
+        # expose; `_h_seen` is what the object actually holds now.
         return {
             "applied": True,
             "mode": "contained",
@@ -2938,37 +2884,10 @@ class ScrummingBot(
                 self._tick_skip = _base_skip
             self._tick_counter += 1
             if self._tick_counter < self._tick_skip and self._initialised:
-                try:
-                    from src.core.signal_contract import emit as _tk
-
-                    _tk(
-                        "tick.08.001.event.throttled",
-                        actual=True,
-                        context={
-                            "bot_id": self.bot_id,
-                            "counter": self._tick_counter,
-                            "skip": self._tick_skip,
-                            "read_rate_min": self.config.scrum_read_rate_min,
-                        },
-                    )
-                except Exception as _sup:  # noqa: BLE001,S110
-                    logger.debug(
-                        "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
-                    )
+                # Still polling — but init tick always runs so we don't
+                # defer exchange connection + phantom setup.
                 return
             self._tick_counter = 0
-            try:
-                from src.core.signal_contract import emit as _tk2
-
-                _tk2(
-                    "tick.08.002.event.worked",
-                    actual=True,
-                    context={"bot_id": self.bot_id, "skip": self._tick_skip},
-                )
-            except Exception as _sup:  # noqa: BLE001,S110
-                logger.debug(
-                    "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
-                )
         elif self._manual_fire_pending:
             self._tick_counter = 0
 
@@ -3131,28 +3050,6 @@ class ScrummingBot(
                             f"this."
                         ),
                     )
-                    try:
-                        from src.core.signal_contract import emit as _cap_emit
-
-                        _cap_emit(
-                            "bot.01.003.postcondition.adoption_capped",
-                            actual=round(_own, 10),
-                            expected=round(_uncapped, 10),
-                            context={
-                                "bot_id": str(self.bot_id),
-                                "asset": str(self.config.target_asset),
-                                "cap_usd": _cap_usd,
-                                "withheld_units": round(_uncapped - _own, 10),
-                            },
-                        )
-                    except Exception as _sup:  # noqa: BLE001,S110
-                        logger.debug(
-                            "suppressed in %s: %s: %s",
-                            "tick",
-                            type(_sup).__name__,
-                            _sup,
-                        )
-
                 _held = sum(float(lot.get("units", 0) or 0) for lot in self._main_lots)
                 if _own > 0.0 and abs(_own - _held) > 1e-12:
                     _px = float(getattr(ticker, "last", 0.0) or 0.0)
@@ -3356,23 +3253,6 @@ class ScrummingBot(
                         f"early. No TA, no signals, no buys or sells "
                         f"evaluated until price moves position off target."
                     ),
-                )
-            try:
-                from src.core.signal_contract import emit as _dz
-
-                _dz(
-                    "tick.08.003.event.exit_dust_band",
-                    actual=True,
-                    context={
-                        "bot_id": self.bot_id,
-                        "position": round(float(current_value), 6),
-                        "target": round(float(self._target_balance), 6),
-                        "band": round(float(_dust_band_usd), 6),
-                    },
-                )
-            except Exception as _sup:  # noqa: BLE001,S110
-                logger.debug(
-                    "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
                 )
             return
         self._at_target_counter = 0

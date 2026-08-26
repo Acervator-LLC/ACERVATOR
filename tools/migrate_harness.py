@@ -36,7 +36,6 @@ LOOSE_TOOLS = (
     "queue_state.py",
     "island.py",
     "touchset.py",
-    "emitter_registry_check.py",
     "migrate_harness.py",
 )
 

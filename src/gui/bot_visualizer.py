@@ -2384,8 +2384,6 @@ if _HAS_QT:
             invariant: 'data feeds differentiate; not visuals.'
             sadp: R60
             """
-            # 10.5 — the registration starts here.
-            _dur_t0 = time.monotonic()
             self._remove_live_sim(sim_id)
 
             # Translate sim-specific cfg into the unified schema
@@ -2403,39 +2401,7 @@ if _HAS_QT:
 
             insert_pos = self._sim_swarm_layout.count() - 1
             self._sim_swarm_layout.insertWidget(insert_pos, handle["widget"])
-
-            # The row exists and is in this layer's layout; stop
-            # before the emitter block so instrumentation is not
-            # billed to the registration.
-            _dur_elapsed = time.monotonic() - _dur_t0
             self._live_sim_rows[sim_id] = handle
-            # 10.5 — SWARM SIM REGISTRATION.
-            #
-            # Reads the row back OUT of this layer's store and reports its
-            # `kind`, not the argument that went in. A registration that
-            # lands in the wrong layer returns just as cleanly as a correct
-            # one, and with three symmetric entry points taking the same
-            # shape of argument that is an easy mistake to write.
-            #
-            # `actual` is what the store now holds; `expected` is the layer
-            # this function is for. They are different expressions, so the
-            # check can fail (S9).
-            try:
-                from src.core.signal_contract import emit as _sw_emit
-
-                _sw_emit(
-                    "swarm.11.001.postcondition.sim_run_registered",
-                    actual=(self._live_sim_rows.get(sim_id, {}) or {}).get("kind"),
-                    expected="sim",
-                    duration=_dur_elapsed,
-                    context={
-                        "layer": "sim",
-                        "id": str(sim_id),
-                        "rows_in_layer": len(self._live_sim_rows),
-                    },
-                )
-            except Exception:  # noqa: BLE001,S110 - advisory
-                pass
             self._update_sim_summary()
             return handle
 
@@ -2482,7 +2448,6 @@ if _HAS_QT:
             sadp: R60
             """
             # 10.5 — the registration starts here.
-            _dur_t0 = time.monotonic()
             self._remove_live_paper(paper_id)
 
             unified_cfg = {
@@ -2498,39 +2463,7 @@ if _HAS_QT:
 
             insert_pos = self._paper_swarm_layout.count() - 1
             self._paper_swarm_layout.insertWidget(insert_pos, handle["widget"])
-
-            # The row exists and is in this layer's layout; stop
-            # before the emitter block so instrumentation is not
-            # billed to the registration.
-            _dur_elapsed = time.monotonic() - _dur_t0
             self._live_paper_rows[paper_id] = handle
-            # 10.5 — SWARM PAPER REGISTRATION.
-            #
-            # Reads the row back OUT of this layer's store and reports its
-            # `kind`, not the argument that went in. A registration that
-            # lands in the wrong layer returns just as cleanly as a correct
-            # one, and with three symmetric entry points taking the same
-            # shape of argument that is an easy mistake to write.
-            #
-            # `actual` is what the store now holds; `expected` is the layer
-            # this function is for. They are different expressions, so the
-            # check can fail (S9).
-            try:
-                from src.core.signal_contract import emit as _sw_emit
-
-                _sw_emit(
-                    "swarm.11.002.postcondition.paper_run_registered",
-                    actual=(self._live_paper_rows.get(paper_id, {}) or {}).get("kind"),
-                    expected="paper",
-                    duration=_dur_elapsed,
-                    context={
-                        "layer": "paper",
-                        "id": str(paper_id),
-                        "rows_in_layer": len(self._live_paper_rows),
-                    },
-                )
-            except Exception:  # noqa: BLE001,S110 - advisory
-                pass
             self._update_paper_summary()
             return handle
 
@@ -3085,49 +3018,31 @@ if _HAS_QT:
         def _save_bot_state_dict(self, state: dict) -> None:
             """Atomic write back to bot_state.json.
 
-            SECOND WRITER WARNING (v3.24.36, C02). This is not the
-            primary persistence path — ``StateManager.save_state`` is —
-            and the two have never been reconciled:
+            SECOND WRITER WARNING. This is not the primary persistence
+            path — ``StateManager.save_state`` is — and the two write the
+            same file. The write goes through ``atomic_write_json``, whose
+            unique per-call staging file makes it impossible for either
+            writer to rename its partial write over the other's live
+            position file.
 
-            * **Shared staging file.** Both stage through
-              ``bot_state.tmp`` (``self._path.with_suffix(".tmp")`` in
-              StateManager, ``p.with_suffix(".tmp")`` here). Two writers,
-              one temp name. No interleaving has been demonstrated today
-              (asyncio is pumped on the Qt main thread and no nested loop
-              opens between load and write), but the collision is
-              structural, and it becomes corruption of the live position
-              file the moment either writer moves off the GUI thread.
-            * **What it exists for does not survive.** Its only purpose
-              is maintaining ``scrumming_state.smart_wire_routes``, and
-              ``export_scrumming_state`` does not emit that key — so the
-              next 60-second save rebuilds scrumming_state without it.
-              Measured on the live file 2026-08-06: 0 of 35 bots carry
-              the key, while the durable channel (top-level
-              ``smart_wires``) holds all 40 wires.
+            Its only purpose is maintaining
+            ``scrumming_state.smart_wire_routes``, and
+            ``export_scrumming_state`` does not emit that key — so the
+            next 60-second save rebuilds scrumming_state without it. The
+            durable Smart Wire channel is the top-level ``smart_wires``
+            key written through StateManager.
 
-            The silent ``except: pass`` is gone: a failed write to the
-            operator's position file is not a cosmetic miss, and this
-            one could fail for weeks with no signal.
+            A failed write is logged, never swallowed: this is the
+            operator's position file, and a silent failure could persist
+            for weeks with no signal.
             """
             try:
                 from pathlib import Path
-                import json
-                import os
+
+                from ..core.io_utils import atomic_write_json
 
                 p = Path.home() / ".acervator" / "bot_state.json"
-                p.parent.mkdir(parents=True, exist_ok=True)
-                # v3.24.36 (C02) — DISTINCT staging file. This used to
-                # be p.with_suffix(".tmp"), i.e. bot_state.tmp, which is
-                # byte-for-byte the same path StateManager.save_state
-                # stages through. Two independent writers sharing one
-                # temp name means either can rename the other's partial
-                # write over the live position file. The pid suffix
-                # makes that impossible without changing any behaviour.
-                tmp = p.with_suffix(f".gui.{os.getpid()}.tmp")
-                tmp.write_text(
-                    json.dumps(state, indent=2, default=str), encoding="utf-8"
-                )
-                tmp.replace(p)
+                atomic_write_json(p, state, default=str)
             except Exception as exc:  # noqa: BLE001 - GUI must not die
                 logger.error(
                     "bot_visualizer: direct write to bot_state.json "
