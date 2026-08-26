@@ -911,6 +911,15 @@ def test_the_contract_writes_nothing_to_a_real_bot() -> None:
 
     A failure means the read contract mutated trading state, which is the
     single property that put History first in the migration order.
+
+    WHAT THIS CONTROL CANNOT SEE, measured rather than assumed. It is a
+    VALUE control, not a write-access control. A planted
+    ``row["cost"] = row["cost"]`` -- a real assignment that stores the
+    value already there -- was driven through it and did NOT go red,
+    because no state moved. Catching that would need a recording proxy
+    around every dict and every bot, and it would be proving something
+    the contract does not claim: the claim is that trading state is
+    unchanged, not that no ``__setitem__`` runs.
     """
     from src.trading.bot_container import BotManager
 
@@ -959,10 +968,13 @@ def test_the_digest_notices_a_change() -> None:
     """The other half of the write control.
 
     A digest that returns the same string for two different object graphs
-    would report "nothing was written" about any mutation at all. Four
-    mutations are driven -- a rebound scalar, a list mutated in place, a
-    bot's state moving beneath the manager, and a row edited -- and each
-    must move the digest.
+    would report "nothing was written" about a mutation that really
+    happened. Four are driven -- a rebound scalar, a list mutated in
+    place, a bot's state moving beneath the manager, and a row edited --
+    and each must move the digest.
+
+    It moves on a CHANGED value. A write that stores the value already
+    there does not move it, and the write test above says so.
     """
     from src.trading.bot_container import BotManager
 
