@@ -230,6 +230,36 @@ def _qt_or_skip():
     return QApplication.instance() or QApplication([])
 
 
+class _DialogRest:
+    """Whatever a stub does not define, taken off the real dialog.
+
+    THE STUBS BELOW SUBSTITUTE THREE THINGS AND INHERIT THE REST. A tab
+    builder that grows a collaborator -- a clear handler it connects a
+    button to -- otherwise fails every test in this file for a reason
+    none of them is about, which is how 228 of them went red on a change
+    to neither the pending-size total nor the summary/row agreement they
+    exist to guard.
+
+    A NAME THE REAL DIALOG ALSO LACKS STILL RAISES, so this widens the
+    fixture and not the assertion.
+    """
+
+    def __getattr__(self, name):
+        from src.gui.bot_live_settings import BotLiveSettingsDialog
+
+        # THROUGH `__dict__` AND THE DESCRIPTOR PROTOCOL, not through
+        # `getattr(cls, name)`. That call has already run `__get__`, so a
+        # plain function and a `staticmethod` come back looking alike and
+        # binding either one passes `self` as the first argument -- the
+        # exact hazard `_format_age` above is re-wrapped to avoid.
+        for klass in BotLiveSettingsDialog.__mro__:
+            if name in klass.__dict__:
+                raw = klass.__dict__[name]
+                getter = getattr(raw, "__get__", None)
+                return getter(self, type(self)) if getter else raw
+        raise AttributeError(name)
+
+
 def _build_tab(opened_ts, monkeypatch):
     """Build the real Stack Tranches tab for one pending tranche.
 
@@ -263,7 +293,7 @@ def _build_tab(opened_ts, monkeypatch):
         _stack_created = 4
         _stack_discarded = 0
 
-    class _StubDlg:
+    class _StubDlg(_DialogRest):
         # `_format_age` is a @staticmethod; re-wrap it or binding it
         # here would silently make it an instance method and pass
         # `self` as `seconds`.
@@ -458,7 +488,7 @@ def _build_rows(tranches, monkeypatch):
         _stack_created = 4
         _stack_discarded = 0
 
-    class _StubDlg:
+    class _StubDlg(_DialogRest):
         _format_age = staticmethod(_Dlg._format_age)
         _bot = _StubBot()
 
