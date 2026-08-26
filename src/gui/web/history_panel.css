@@ -1,0 +1,150 @@
+/* React History panel chrome. Issue #128 unit R4.
+ *
+ * Chrome only. Every cell colour arrives on the cell's own `style`
+ * attribute from the Python contract, so no rule here may set a `color`
+ * on `td` -- that would overrule the contract's grading and side colours.
+ */
+:root {
+  --bg: #0a0a0f;
+  --text: #e0e0f0;
+  --grid: #1a1a28;
+  --border: #2a2a44;
+  --accent: #00ffcc;
+  --btn-bg: #12121a;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.4 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.summary {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--accent);
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.filters {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.filter {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.filter-name {
+  opacity: 0.7;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+
+.filters select,
+.pager button {
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font: inherit;
+}
+
+.filters select:disabled,
+.pager button:disabled {
+  opacity: 0.55;
+}
+
+.filter-dates {
+  opacity: 0.7;
+}
+
+/* The table scrolls inside this box so the pager stays on screen. */
+.panel > table {
+  display: block;
+  flex: 1 1 auto;
+  overflow: auto;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+table.history thead th {
+  position: sticky;
+  top: 0;
+  background: var(--btn-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 5px 8px;
+  text-align: left;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+table.history td {
+  border-bottom: 1px solid var(--grid);
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+table.history tbody tr:hover td {
+  background: var(--grid);
+}
+
+.gate-lights {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.gate-lights .light {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.pager {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.pager-label {
+  color: var(--accent);
+}
+
+#pager-counts {
+  opacity: 0.7;
+}
+
+.panel-error {
+  margin: 16px;
+  padding: 12px 14px;
+  border: 1px solid #ff5566;
+  border-radius: 4px;
+  color: #ff5566;
+  background: rgba(255, 85, 102, 0.08);
+}
