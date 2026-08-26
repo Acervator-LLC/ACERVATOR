@@ -826,8 +826,17 @@ def _fire_manual(bot, price=1.0, intent="manual_button"):
 def _reference_for_the_same_sale(fold_pct, sale_usd, sale_units, lots):
     """What the autonomous path would leave, for the same sale.
 
-    Built by running the shipping build-and-scale sequence: the same
-    highest-price-first split, then the same helper.
+    Built by running the shipping build-bound-and-scale sequence: the
+    same highest-price-first split, then the same two helpers, in the
+    order ``tick`` calls them.
+
+    issue #133 unit 2 -- ``_bound_new_fold_tranches`` joined that
+    sequence and this reference had to join it too. Without the call
+    the reference is no longer "what the autonomous path would leave":
+    it is what the autonomous path left BEFORE the bound, and the
+    comparison would report a difference between the manual fire and a
+    path that no longer exists. The claim under test is unchanged and
+    is now checked across one more shared step.
     """
     lots = [dict(lot) for lot in lots]
     lots.sort(key=lambda lot: lot["initial_buy_price"], reverse=True)
@@ -847,8 +856,13 @@ def _reference_for_the_same_sale(fold_pct, sale_usd, sale_units, lots):
         )
         remaining -= take
     bot = _bare_bot(fold_pct, tranches)
+    bot._bound_new_fold_tranches(0)
     bot._apply_scrum_fold_pct(0, sale_usd, sale_units)
-    return [(t["usd"], t["units"]) for t in tranches]
+    # READ AT THE BOT, not at the list handed in. The bound REBINDS
+    # `_fold_tranches`, so the local goes stale the moment it merges,
+    # and a stale read would report the pre-bound records as the
+    # reference.
+    return [(t["usd"], t["units"]) for t in bot._fold_tranches]
 
 
 def _check_manual_matches_the_reference(bot_factory, fold_pct) -> None:
