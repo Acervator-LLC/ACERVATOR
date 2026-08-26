@@ -559,10 +559,10 @@ DOMAIN = [
     ("negative", _row(-5.0), "ALLOWED"),
     ("huge int 10**400", _row(10**400), "REFUSED"),
     ("None", _row(None), "REFUSED"),
-    ("numeric string", _row("2.0"), "RAISED TypeError"),
+    ("numeric string", _row("2.0"), "ALLOWED"),
     ("bool True", _row(True), "ALLOWED"),
     ("bool False", _row(False), "ALLOWED"),
-    ("missing key", _row(None, present=False), "RAISED KeyError"),
+    ("missing key", _row(None, present=False), "ALLOWED"),
 ]
 
 
@@ -574,17 +574,17 @@ def test_the_ref_domain_answers_the_same_in_either_position(label, bad, expected
     and ``-inf`` are all exactly ``float``. Each row is driven beside a
     good ``ref=1.0`` in BOTH orders and both answers must match.
 
-    TWO ROWS ARE NOT THIS UNIT'S AND ARE PINNED AS-IS, so a later reader
-    does not credit them here:
-      * "numeric string" raises TypeError and "missing key" raises
-        KeyError, both from the DISCHARGE loop's
-        ``sort(key=lambda t: t["ref"])`` (:12403), which runs after the
-        buy has already been placed. Both raise on every permutation, so
-        neither is order-dependent. They are recorded in the unit's
-        report as pre-existing defects of the discharge, not the gate.
-      * a numeric STRING is still accepted by the gate itself, because
-        ``float("2.0")`` parses. Nothing here writes a coerced value
-        back, so tightening that would be a second change.
+    TWO ROWS CHANGED ANSWER, issue #133 unit 13. "numeric string" read
+    RAISED TypeError and "missing key" read RAISED KeyError, both from
+    the DISCHARGE loop's ``sort(key=lambda t: t["ref"])``, which runs
+    after the buy is placed. The sort is now
+    ``_fold_discharge_order``, which ranks a row by a finite ``ref`` or
+    last, so both rows discharge and read ALLOWED. The assertion this
+    test makes -- one answer in either position -- is unchanged and now
+    holds on a non-raising answer.
+
+    A numeric STRING is still accepted by the gate itself, because
+    ``float("2.0")`` parses. Nothing here writes a coerced ``ref`` back.
 
     IF THIS FAILS: a value class that reaches the gate from a corrupt
     or hand-edited state file is answered by position rather than by
