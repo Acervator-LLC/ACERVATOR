@@ -445,6 +445,7 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 #   ac3459c2b80406bf7c4e9698c186cb29c77fe32c17ef6d3a8a1f5cb56f3076aa
 #   b8b79a6a88c2f7bc2e6f34104712d9faa4ee67c86e53e7655429a6b632b6f5c2
 #   a01b0b512fa63c2d117b4d3fc24cbb5a251c8db65a30d06a7864c26a41396610
+#   7dbcdf491175a80aa186bb06cc7345c7491a7353e2570acc5bb0c2eb98ca55e1
 # Re-derived 2026-08-25. FOUR things moved under this digest and the
 # re-derivation enumerated every one: black's layout pass, the 42 re-anchored
 # citation numbers, the F541 f-prefix fix, and an autoflake pass that dropped
@@ -478,7 +479,65 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 # All 42 anchors resolve and that file's 121 tests pass.
 #
 # ``_pre_change_source`` returns zero orphans.
-PRE_CHANGE_SHA256 = "7dbcdf491175a80aa186bb06cc7345c7491a7353e2570acc5bb0c2eb98ca55e1"
+#
+# RE-BASED AGAIN 2026-08-25, issue #133 unit 2, same tripwire, same
+# reason. One change landed in ``scrumming_bot.py`` outside the gate
+# block and outside every span in ``SITE_B_SPANS``, so it reaches this
+# digest:
+#
+#   7. one sell opened one fold tranche PER ``_main_lots`` entry it
+#      consumed, on all three build loops -- the SCRUM, the DIST sell
+#      and ``_execute_manual_rebalance``. ``_main_lots`` gains an entry
+#      on every buy, so the count grew with the lot book and not with
+#      the sells. Measured read-only on the operator's saved state the
+#      same day: 16,042 tranches opened against 445 recorded sells
+#      across 38 bots, 37 of the 38 above 1.0. The change collapses one
+#      sell's records into ONE, conserving ``usd``, ``units``,
+#      ``usd / ref`` and ``units x initial_buy_price``, and lifts the
+#      bound when ``_last_trend_bull_candles`` clears
+#      ``_STRONG_TREND_MIN_BULL_CANDLES``.
+#
+# WHAT THIS RE-BASE IS. +285 lines and ONE line rewritten in place, in
+# NINE inserted runs: +35 after :204, +20 after :821, +5 after :5693,
+# +5 after :6149, +11 after :9293, +8 after :10676, +6 after :12629,
+# +187 after :13221 and +8 after :14549, all read in RECONSTRUCTION
+# coordinates. The rewritten line is ``if trend_strength > 0.65:``,
+# which now reads a module constant spelled as the two candle counts it
+# means -- 13 of 20, bit-identical to the literal it replaces, both
+# 0x1.4cccccccccccdp-1 -- and it is the ONLY non-insertion difference
+# between the two reconstructions.
+#
+# THE DERIVATION, NOT THE MEASUREMENT. Blank every ``:NNNN`` in both
+# reconstructions and the new one is the old one plus those nine runs
+# and that single replacement -- nothing else. Of the 87 citation
+# tokens the reconstruction carries, 26 are unchanged and 72 moved by
+# exactly the count of lines inserted above the line each names: 0
+# unexplained. Every one of the 18,546 pre-change lines was required to
+# land byte-for-byte at its mapped line in the post-change file, and 1
+# did not -- the rewritten line above, at shipping :9477 before and
+# :9542 after.
+#
+# ``CITATION_ANCHORS`` in ``tests/test_extractor_tranche_containment.py``
+# was re-anchored in the SAME change -- 42 anchors, each resolved BOTH
+# by the derived line map AND by its occurrence ordinal in the new
+# file, 0 disagreements, all 42 moved. The unit adds no occurrence of
+# any anchor string, so none was created or retired.
+#
+# 75 self-citation tokens inside ``scrumming_bot.py`` moved by the same
+# map. The 17 cross-file tokens, ``:488-494`` and the ``[:180]`` slice
+# were left alone for the reasons #102, #104 and #106 wrote down.
+#
+# THE EIGHT EMITTER ROWS MOVED TOO, and none of them is a pin. The
+# ``src/trading/scrumming_bot.py:NNNN`` column of the registry in
+# ``docs/EMITTER_IDENTIFICATION.md`` records where each pin sits, so
+# eight rows drifted. Each was RE-READ through
+# ``tools.emitter_registry_check.collect_pins`` -- the same reader that
+# reports the drift -- rather than shifted by arithmetic. 78 pins, 78
+# rows, no warning.
+#
+# ``_pre_change_source`` returns zero orphans on BOTH files, and the
+# reconstruction of ``HEAD`` still hashes to the digest below it.
+PRE_CHANGE_SHA256 = "fa7252d547328e778721f1dad2f4155b023260236ddd0767e284bc2702e6fd58"
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE."
