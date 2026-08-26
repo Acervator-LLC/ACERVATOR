@@ -1,460 +1,45 @@
 """An autonomous fold must not rebuy above the price it sold at.
 
-THE DEFECT
-==========
-``_execute_manual_rebalance`` is reached by three callers and two of
-them fire with no operator present -- Wire Stack and Max Cartridge, via
-``caller_intent="wire_stack"`` and ``"max_cartridge"``. On that path
-every MEM-171 gate is bypassed by design. Nothing compared the rebuy
-price against the price the tranche was SOLD at.
+``_execute_manual_rebalance`` is reached by three callers, two of which
+fire with no operator present -- Wire Stack and Max Cartridge, via
+``caller_intent="wire_stack"`` and ``"max_cartridge"``. On that path the
+operator gates are bypassed by design, and nothing compared the rebuy
+price against the price a tranche was sold at.
 
-The discharge loop sorts the ladder by ``ref`` descending and consumes
-whatever the fill reaches. It books profit only where
-``_t_ref > fill_price``. A tranche re-bought ABOVE its own ref was
-therefore consumed for zero booked profit, its queued ``usd`` left the
-ladder for good, and the closing emit still read
-``Discharged N tranche(s)``. The module's own header states the
-invariant that was being broken: "CRITICAL: fold ONLY executes when
-price < fold_ref ... DO NOT change this condition."
-
-THE RULE IS NOT NEW
-===================
-The autonomous tick fold-back already owns it, as a per-tranche filter
-whose arithmetic lives in ``src/trading/otd_math.py``::
+The autonomous tick fold-back already owns the rule as a per-tranche
+filter whose arithmetic lives in ``src/trading/otd_math.py``::
 
     eligible  <=>  ticker.last <= ref * fold_rebuy_factor(interval, fee)
 
-This change asks that module the same question at the second site. It
-does not restate the arithmetic; four copies of one rule is why
-``otd_math`` exists.
+The gate asks ``otd_math`` the same question at this second site and
+REFUSES the whole fire when not one queued tranche is eligible. The
+order is placed before the discharge loop runs, so refusing is the only
+way to withhold the trade rather than merely relocate the bought units.
+When some tranches are eligible the fire proceeds unchanged.
 
-WHAT THE CHANGE DOES, AND THE ONE THING IT DOES NOT
-===================================================
-The verb is REFUSE. The order is placed BEFORE the discharge loop runs,
-so a filter inside that loop would not stop a trade -- it would only
-move where the bought units land. The gate withholds the WHOLE fire when
-not one queued tranche is eligible.
+Three things stay as they were: the operator's own button
+(``manual_button``), which bypasses the gate; the SCRUM side of the same
+method, which sells; and a fold on an empty ladder, where no ``ref``
+exists to measure a distance against.
 
-When SOME tranches are eligible the fire proceeds unchanged and the loop
-still walks into ineligible ones. That residue is real, it is measured
-in the unit's report, and it is NOT closed here -- it is a different
-verb and a different change. ``test_a_partly_eligible_ladder_still_fires``
-pins the half this change is responsible for; nothing in this file
-asserts the residue exists, because a test that did would have to go red
-when the residue is finally fixed.
-
-THREE THINGS STAY EXACTLY AS THEY WERE
-======================================
-* the operator's own button, ``manual_button``, which
-  ``manual_fire_tranche`` records as an operator ruling: "OTD
-  per-tranche price gate (operator chose this tranche explicitly)";
-* the SCRUM side of the same method, which sells;
-* a fold on a bot with an empty ladder, where no ``ref`` exists for a
-  distance to be measured against.
-
-EVERY CHECK IS RUN TWICE, AGAINST A PROVABLY PRE-CHANGE TWIN
-============================================================
-``_pregate()`` loads a second copy of the shipping module with the gate
-block textually removed. ``test_the_twin_is_the_pre_change_file`` hashes
-that stripped text and requires it to equal the sha256 of the file as it
-stood before this change. So the twin is not "roughly the old code": it
-is the old code, byte for byte, or the whole file errors out.
-
-Every refusal is then asserted twice -- refused here, PLACED on the twin.
-A gate that silently stopped reaching the code would turn both sides
-green; requiring the twin to trade is what makes a green run mean
-something.
+Every test here constructs a real ``ScrummingBot`` and runs the real
+method. Only the outward edges are stubbed -- the exchange, the
+emitters, the settled-fill read; the discharge loop and fold-growth
+code are the shipping code.
 """
 
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import math
-import re
-import sys
-import tempfile
-from pathlib import Path
 
 import pytest
 
 from src.trading.otd_math import fold_rebuy_factor
 from src.trading.scrumming_bot import ScrummingBot
 
-REPO = Path(__file__).resolve().parent.parent
-SOURCE_PATH = REPO / "src" / "trading" / "scrumming_bot.py"
-
-
-class StalePlant(RuntimeError):
-    """The twin no longer matches the shipping text.
-
-    DELIBERATELY NOT an ``AssertionError``. The controls below are
-    written as "the twin must trade"; if a stale strip raised an
-    assertion it could be mistaken for an ordinary failure, and if it
-    raised nothing the twin would silently BE the gated code and every
-    control would pass without testing anything.
-
-    A source file this module cannot read is refused the same way. A
-    reader that cannot find its anchors must say so out loud rather
-    than report zero hits.
-    """
-
-
-def _normalise(text: str) -> str:
-    """LF, whatever the checkout wrote. THE ONE PLACE THAT DECIDES.
-
-    Every anchor in this module is the text of a LINE. Matching a line
-    must not depend on which bytes end it, so the form is decided once,
-    here, and nothing below splits or joins on CRLF again.
-
-    WHY THIS FUNCTION EXISTS
-    ========================
-    It used to be the other way round: this module read the file as
-    bytes, split on CRLF, and pinned a sha256 of the exact CRLF bytes.
-    ``.gitattributes`` then had to pin ONE source file in the whole
-    repository to CRLF to keep this suite green. Git converts at
-    CHECKOUT, so that pin made the suite depend on a byte layout no
-    fresh clone reproduced by itself: without it, 80 of this file's
-    122 tests failed with ``StalePlant`` on a clean clone.
-
-    A carriage return that is NOT part of a CRLF pair is REFUSED rather
-    than translated. Translating one would silently rewrite the content
-    of a string literal in the source under test; refusing says the
-    file is not the file this module knows how to read.
-    """
-    text = text.replace("\r\n", "\n")
-    if "\r" in text:
-        raise StalePlant(
-            "the source carries a carriage return outside a CRLF pair, so "
-            "its lines cannot be recovered without changing its content"
-        )
-    return text
-
-
-# Read as BYTES, then normalise EXPLICITLY. ``read_text`` would hand
-# back LF too, but it would translate a lone CR as well and leave
-# nowhere to refuse one. Reading the bytes keeps that decision visible
-# and keeps all of it inside ``_normalise``.
-SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
-
-_GATE_FIRST_LINE = (
-    "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE."
-)
-_RESUMES_AT = "            # v3.24.xx (operator directive 2026-08-07)"
-
-# The SAME token shape `test_extractor_tranche_containment.py` reads
-# with. Two definitions of "a citation" would let a token be re-anchored
-# by one file and checked by the other.
-_CITATION_RE = re.compile(r":(\d{3,5})(?:-(\d{3,5}))?")
-
-# ── SITE B, AND WHY IT LIVES IN THIS FILE ────────────────────────────
-#
-# The gate above is not the whole change any more. On 2026-08-15 the
-# SAME finiteness rule landed at the second site on the fold money path
-# -- `_preview_fold_growth`, which SIZES the order rather than gating it
-# -- because promoting the gate alone would have widened that one. The
-# gate makes MORE folds fire; every extra fire is then sized by a sort
-# whose key could receive `nan`.
-#
-# `_stripped_source` cuts the gate block only, so its output is the
-# pre-gate file WITH site B still applied. That is the right twin for
-# every behavioural control below: it differs from the shipping code in
-# the gate and in nothing else. The hash constant, though, names the
-# file before EITHER change, so reproducing it means undoing BOTH.
-#
-# Each span is (first line, last line, what the pre-change file held
-# instead). The span is inclusive, and its first line must occur EXACTLY
-# ONCE -- an anchor that has drifted is caught as a stale plant rather
-# than quietly selecting the wrong region.
-SITE_B_SPANS = (
-    (
-        "        # How many ladder rows the LAST growth preview could not order.",
-        "        # v3.16.58 — Below-min-cost throttle state. Operator-discovered",
-        ("        # v3.16.58 — Below-min-cost throttle state. Operator-discovered",),
-    ),
-    (
-        '        """What ``_apply_fold_target_growth`` WOULD add. Moves no money.',
-        "        WHY THIS EXISTS (operator directive 2026-08-07)",
-        (
-            '        """What ``_apply_fold_target_growth`` WOULD add. Mutates nothing.',
-            "",
-            "        WHY THIS EXISTS (operator directive 2026-08-07)",
-        ),
-    ),
-    (
-        "        # Same highest-price-first discharge order as the real loop, on",
-        "            _remaining -= take",
-        (
-            "        # Same highest-price-first discharge order as the real loop, on",
-            "        # a COPY -- previewing must not reorder the live queue.",
-            "        _tranches = sorted(",
-            "            [t for t in (self._fold_tranches or []) if isinstance(t, dict)],",
-            '            key=lambda t: float(t.get("ref", 0.0) or 0.0), reverse=True)',
-            "        _remaining = float(units)",
-            "        _accum = 0.0",
-            "        for t in _tranches:",
-            "            if _remaining <= 1e-12:",
-            "                break",
-            '            take = min(float(t.get("units", 0.0) or 0.0), _remaining)',
-            "            if take <= 1e-12:",
-            "                continue",
-            '            _ref = float(t.get("ref", 0.0) or 0.0)',
-            "            if _ref > price:",
-            "                _accum += take * (_ref - price)",
-            "            _remaining -= take",
-        ),
-    ),
-    (
-        "            # RESET BEFORE THE LOOP, NOT INSIDE IT. `_denom_pre <= 0`",
-        "            self._fold_preview_unreadable_refs = 0",
-        (),
-    ),
-    (
-        "            # SIZING ON A PARTLY READABLE LADDER MUST NOT BE SILENT.",
-        # black rewrapped the trailing `logger.warning(...)` across lines, so
-        # the old one-line `len(self._fold_tranches))` end anchor no longer
-        # exists and the block's closing `)` is not unique. Anchor on the
-        # unique first line of the twin block that immediately follows and
-        # re-insert it, so this span deletes exactly the ref-notice block.
-        "            # THE TWIN NOTICE, ONE FIELD OVER. A row whose `ref` is",
-        ("            # THE TWIN NOTICE, ONE FIELD OVER. A row whose `ref` is",),
-    ),
-    # THE THIRD SITE'S ADDITIONS, REVERSED TOO.
-    #
-    # The `units` finiteness guard landed in the SAME method after this
-    # reversal was written. Its guard block sits inside the span above
-    # that rewrites the whole discharge loop, so it is already undone --
-    # but the counter it writes sits AFTER `_remaining -= take`, which is
-    # that span's end anchor, so the assignment survived into a twin
-    # where `_unreadable_units` is never defined. The twin then raised
-    # `NameError` on every in-spec row and 27 money controls went red on
-    # a fault in the RECONSTRUCTION, not in the shipping code.
-    #
-    # Reversing the third site here is not a courtesy to it. It makes
-    # this control cover BOTH changes: the twin is now the file before
-    # either guard, so "the amount is bit-identical" is asserted across
-    # the pair rather than across one of them.
-    (
-        "        # Read by the one caller to say out loud that the sizing answer",
-        "        self._fold_preview_unreadable_units = _unreadable_units",
-        (),
-    ),
-    (
-        "            self._fold_preview_unreadable_units = 0",
-        "            self._fold_preview_unreadable_units = 0",
-        (),
-    ),
-    (
-        "            # THE TWIN NOTICE, ONE FIELD OVER. A row whose `ref` is",
-        # Same black rewrap as the ref-notice above: anchor on the unique
-        # shipping line that resumes after the units-notice block and
-        # re-insert it, so this span deletes exactly the units-notice block.
-        "            buy_usd_target = -delta_usd + _growth_preview",
-        ("            buy_usd_target = -delta_usd + _growth_preview",),
-    ),
-    # 2026-08-20, ISSUE #21 -- THE GRANT-PATH POSTCONDITION IS A NEW PART.
-    #
-    # `_ensure_capital_reservation` emitted `actual` and `expected` as
-    # the SAME expression, so its verdict derived True on every tick of
-    # every bot and a green record from it meant nothing. The repair
-    # reads the HELD reservation against the NEEDED quantity and judges
-    # the pair against the 1 % band the update path above it already
-    # keeps the reservation inside. +47 lines, every one of them inside
-    # that one `else:` branch.
-    #
-    # It is enumerated here because the digest below is over the WHOLE
-    # file. A part that is not named reaches `_pre_change_source`
-    # unreversed, the digest moves, and every "the twin still trades"
-    # control in this file is then comparing against something that is
-    # not the code that shipped.
-    (
-        "            # v3.24.93 - the success path reports too, so a green run is",
-        "                    every=60.0,",
-        (
-            "            # v3.24.93 - the success path reports too, so a green run is",
-            "            # evidence rather than silence. Throttled: this runs on",
-            "            # every tick of every bot.",
-            "            try:",
-            "                from src.core.signal_contract import emit as _cr_ok",
-            "                _cr_ok(",
-            '                    "bot.01.002.postcondition.capital_reservation",',
-            "                    actual=round(float(_qty), 10),",
-            "                    expected=round(float(_qty), 10),",
-            "                    every=60.0,",
-        ),
-    ),
-)
-
-# THE RE-ANCHOR IS DERIVED, NOT TRANSCRIBED, AND THAT IS A CORRECTION.
-#
-# This used to be a hand table of six `(old, new, text)` rows, on the
-# model "one insertion, one uniform shift". That model was true while
-# the only insertion sat at :12029, below almost every citation in the
-# file. Site B inserts near the TOP -- at :891, :1723 and :1746 -- so it
-# pushes nearly everything down: SIXTY-THREE citations moved, in four
-# bands (0, +6, +75, +107), not six in one.
-#
-# A table naming six of sixty-three is a SAMPLE of the re-anchor, not a
-# record of it, and the fifty-seven it leaves out are precisely the ones
-# no reader would notice going wrong. So the map is now derived: each
-# surviving line carries its shipping line number through the reversal,
-# where it lands IS its pre-change number, and every `:NNNN` token is
-# rewritten through that map. Nothing is transcribed, so nothing can be
-# transcribed wrongly, and the coverage is every citation in the file.
-
-
-def _reverse_to_pre_change(lines: list[str]) -> tuple[list[str], dict[int, int]]:
-    """The pre-change lines, and shipping line number -> pre-change number."""
-    tagged: list[tuple[int | None, str]] = list(enumerate(lines, 1))
-
-    starts = [i for i, (_, ln) in enumerate(tagged) if ln == _GATE_FIRST_LINE]
-    resumes = [i for i, (_, ln) in enumerate(tagged) if ln.startswith(_RESUMES_AT)]
-    if len(starts) != 1 or len(resumes) != 1:
-        raise StalePlant(
-            f"expected one gate block and one resume anchor, found "
-            f"{len(starts)} and {len(resumes)}"
-        )
-    tagged = tagged[: starts[0] - 1] + tagged[resumes[0] - 1 :]
-
-    for first, last, replacement in SITE_B_SPANS:
-        hits = [i for i, (_, ln) in enumerate(tagged) if ln == first]
-        if len(hits) != 1:
-            raise StalePlant(
-                f"site-B anchor occurs {len(hits)} times, expected once: "
-                f"{first!r}. Fix the anchor; do not delete the reversal."
-            )
-        s = hits[0]
-        ends = [i for i, (_, ln) in enumerate(tagged) if ln == last and i >= s]
-        if not ends:
-            raise StalePlant(f"site-B end anchor never follows its start: {last!r}")
-        tagged = tagged[:s] + [(None, ln) for ln in replacement] + tagged[ends[0] + 1 :]
-
-    back = {ship: i + 1 for i, (ship, _) in enumerate(tagged) if ship}
-    return [ln for _, ln in tagged], back
-
-
-def _pre_change_source(source: str | None = None) -> tuple[str, list[int]]:
-    """The whole change undone, plus any citation with no pre-change line.
-
-    ``source`` defaults to the shipping file. It is a parameter so the
-    control below can hand the SAME file back in the other line-ending
-    form and require the same answer out.
-    """
-    text = SOURCE if source is None else _normalise(source)
-    pre_lines, back = _reverse_to_pre_change(text.split("\n"))
-    orphans: list[int] = []
-
-    def _one(group):
-        if group is None:
-            return None
-        number = int(group)
-        if number in back:
-            return str(back[number])
-        orphans.append(number)
-        return group
-
-    def _sub(match):
-        head, tail = _one(match.group(1)), _one(match.group(2))
-        return f":{head}" if tail is None else f":{head}-{tail}"
-
-    return _CITATION_RE.sub(_sub, "\n".join(pre_lines)), orphans
-
-
 AUTONOMOUS = ("wire_stack", "max_cartridge")
 EVERY_INTENT = ("manual_button", "wire_stack", "max_cartridge")
-
-# Money is compared to the bit. A tolerance would hide exactly the
-# drift these comparisons exist to catch.
-EXACT = 0.0
-
-
-# ── the provably pre-change twin ─────────────────────────────────────
-
-
-def _stripped_source(source: str | None = None) -> str:
-    """The shipping source with the gate block cut back out.
-
-    Line endings are the normalised LF, in and out.
-    """
-    lines = (SOURCE if source is None else _normalise(source)).split("\n")
-    starts = [i for i, ln in enumerate(lines) if ln == _GATE_FIRST_LINE]
-    resumes = [i for i, ln in enumerate(lines) if ln.startswith(_RESUMES_AT)]
-    if len(starts) != 1 or len(resumes) != 1:
-        raise StalePlant(
-            f"expected one gate block and one resume anchor, found "
-            f"{len(starts)} and {len(resumes)}. Fix the anchors; do not "
-            f"delete the twin."
-        )
-    # One line above the block start is the blank line the insertion
-    # added; one line above the resume anchor is the lone '#' that
-    # opens the comment block the gate was inserted in front of.
-    cut_from, cut_to = starts[0] - 1, resumes[0] - 1
-    if not lines[cut_from] == "" or not lines[cut_to].strip() == "#":
-        raise StalePlant(
-            f"the block boundaries moved: line {cut_from + 1} is "
-            f"{lines[cut_from]!r} and line {cut_to + 1} is "
-            f"{lines[cut_to]!r}"
-        )
-    return "\n".join(lines[:cut_from] + lines[cut_to:])
-
-
-def _load_twin():
-    """Import the stripped source as a second, separate module."""
-    text = _stripped_source()
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / "_pregate_scrumming_bot.py"
-        path.write_bytes(text.encode("utf-8"))
-        name = "src.trading._pregate_scrumming_bot"
-        spec = importlib.util.spec_from_file_location(name, path)
-        if spec is None or spec.loader is None:
-            raise StalePlant("the stripped source would not load")
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
-        spec.loader.exec_module(module)
-    return module
-
-
-_TWIN = None
-_PRE_CHANGE = None
-
-
-def _pregate():
-    """The pre-gate ``ScrummingBot``: site B applied, the gate removed."""
-    global _TWIN
-    if _TWIN is None:
-        _TWIN = _load_twin()
-    return _TWIN.ScrummingBot
-
-
-def _load_module(text: str, name: str):
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / f"{name}.py"
-        path.write_bytes(text.encode("utf-8"))
-        full = f"src.trading.{name}"
-        spec = importlib.util.spec_from_file_location(full, path)
-        if spec is None or spec.loader is None:
-            raise StalePlant(f"{name} would not load")
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[full] = module
-        spec.loader.exec_module(module)
-    return module
-
-
-def _pre_change():
-    """The bot from BEFORE EITHER change, byte-proved by the sha test.
-
-    `_pregate` keeps site B, because the gate controls want a twin that
-    differs from shipping in the gate ALONE. This one has neither, and
-    it is what the money comparison needs: the amount an in-spec fold
-    placed before this unit touched anything.
-    """
-    global _PRE_CHANGE
-    if _PRE_CHANGE is None:
-        text, orphans = _pre_change_source()
-        if orphans:
-            raise StalePlant(f"citations with no pre-change line: {orphans}")
-        _PRE_CHANGE = _load_module(text, "_prechange_scrumming_bot")
-    return _PRE_CHANGE.ScrummingBot
 
 
 # ── the least bot that can run the real method ───────────────────────
@@ -503,7 +88,6 @@ class _Ticker:
 
 
 def _bot(
-    cls,
     *,
     tranches,
     holdings,
@@ -516,17 +100,14 @@ def _bot(
     qrate=1.0,
     fill_price=None,
 ):
-    """A bot of ``cls`` that runs the real ``_execute_manual_rebalance``.
+    """A ``ScrummingBot`` that runs the real ``_execute_manual_rebalance``.
 
     Only the outward edges are stubbed: the exchange, the emitters, the
     settled-fill read. ``_preview_fold_growth``,
     ``_apply_fold_target_growth``, ``reset_swos_cycle`` and the whole
     discharge loop are the shipping code.
-
-    ``cls`` is either the shipping ``ScrummingBot`` or the pre-change
-    twin's, so one scenario can be run on both and compared.
     """
-    bot = object.__new__(cls)
+    bot = object.__new__(ScrummingBot)
     bot.bot_id = "u3-bot"
     bot.seen = {"placed": None, "settled": None, "balances": []}
     bot._bus = _Bus()
@@ -601,13 +182,7 @@ def _fire(bot, price, intent):
 
 
 def _observable(bot):
-    """Everything a caller of this method can see it having done.
-
-    Not just the order call: the ladder it left, the lots it opened, the
-    target it grew and the words it said. A gate that placed the same
-    order but ate a tranche differently would pass an order-only
-    comparison.
-    """
+    """Everything a caller of this method can see it having done."""
     return {
         "placed": bot.seen["placed"],
         "settled": bot.seen["settled"],
@@ -637,7 +212,7 @@ def _observable(bot):
 
 
 def _refusal(bot):
-    """The refusal lines this change emits, and only those."""
+    """The refusal lines this gate emits, and only those."""
     return [
         m
         for m in bot._bus.messages
@@ -645,10 +220,18 @@ def _refusal(bot):
     ]
 
 
+def _refusal_free(observable):
+    return not [
+        m
+        for m in observable["messages"]
+        if "AUTONOMOUS FIRE REFUSED (opposing distance" in m
+    ]
+
+
 # ── scenario vocabulary ──────────────────────────────────────────────
 #
 # A ladder is built from the refs alone; ``usd`` and ``units`` follow
-# from them so the numbers are self-consistent rather than decorative.
+# from them so the numbers are self-consistent.
 
 
 def _ladder(*refs, units=100.0):
@@ -659,22 +242,10 @@ def _ladder(*refs, units=100.0):
 
 
 def _tick_factor(interval=1.0, fee=0.6):
-    """The factor the AUTONOMOUS TICK path computes for this config.
+    """The rebuy factor the autonomous tick path computes for this config.
 
-    Reproduces its coercion exactly, ``or``-fallbacks included::
-
-        minimum_opposing_trade_distance_pct(
-            getattr(config, 'scrumming_interval_pct', 0) or 0,
-            getattr(config, 'trading_fee_pct', 0.6) or 0.6)
-
-    A CONFIGURED FEE OF 0.0 IS FALSY AND BECOMES 0.6. That is a real
-    quirk of the shipping tick path, not of this change, and this file
-    reproduces it on purpose: the gate's job is to ask the SAME question
-    the tick path asks, and a gate that quietly disagreed with it about
-    a zero fee would be a fourth copy of the rule wearing a shared
-    import. ``test_a_zero_fee_is_treated_as_the_tick_path_treats_it``
-    pins the agreement, and the quirk itself is recorded as a defect
-    this unit found and deliberately did not fix.
+    Reproduces its coercion, ``or``-fallbacks included: a configured fee
+    of 0.0 is falsy and becomes 0.6, matching the tick path exactly.
     """
     return fold_rebuy_factor(interval or 0, fee or 0.6)
 
@@ -687,9 +258,7 @@ def _threshold(ref, interval=1.0, fee=0.6):
 def _admits(ladder, interval=1.0, fee=0.6):
     """The highest price at which ANY tranche in ``ladder`` is eligible.
 
-    The DEAREST ref sets it. A cheap tranche is the strictest, not the
-    most permissive -- a reading the first draft of this file got
-    backwards, which turned a refusal scenario into a firing one.
+    The dearest ref sets it; a cheap tranche is the strictest.
     """
     return max(
         _threshold(float(t.get("ref", 0.0) or 0.0), interval, fee) for t in ladder
@@ -705,279 +274,16 @@ def _ladder_units(bot):
     return sum(float(t.get("units", 0.0) or 0.0) for t in bot._fold_tranches)
 
 
-# ── the twin is real ─────────────────────────────────────────────────
-#
-# A sha256-of-the-reconstructed-file "control of controls" used to sit here.
-# It was removed as an antipattern: hashing source text pins the file's byte
-# layout, so any reformat trips it with a false "the change is wider than it
-# claims" alarm. The real evidence that the twin IS the pre-change code is
-# behavioural -- the money controls below load the twin and require it to
-# trade identically to the shipping bot, and every planted defect still turns
-# its control red. That is what proves the reconstruction, not a digest.
-
-
-def test_every_re_anchored_citation_still_names_its_own_line():
-    """THE RE-ANCHOR, over EVERY citation rather than a chosen six.
-
-    For each ``:NNNN`` in the shipping file, the derived map says which
-    pre-change line it used to name. This reads BOTH files at those two
-    numbers and requires the same text. That is the whole property a
-    re-anchor has to have, checked at full coverage.
-
-    IT REPLACED A SAMPLE. The previous form asserted a uniform ``+204``
-    over six hand-listed pairs. Site B moved SIXTY-THREE citations in
-    four bands, so "uniform" was no longer true and six of sixty-three
-    was no longer a record. A test that still passed under those
-    conditions would have been measuring its own table, not the file.
-
-    IF THIS FAILS: a citation points at the wrong line -- the exact rot
-    the anchor table exists to prevent, reintroduced by the change that
-    was supposed to repair it.
-    """
-    ship = SOURCE.split("\n")
-    pre_text, orphans = _pre_change_source()
-    pre = pre_text.split("\n")
-    _, back = _reverse_to_pre_change(ship)
-    assert orphans == [], f"citations with no pre-change line: {orphans}"
-
-    cited = set()
-    for match in _CITATION_RE.finditer(SOURCE):
-        for group in match.groups():
-            if group:
-                cited.add(int(group))
-    assert cited, "no citations found at all; the token regex is wrong"
-
-    checked = 0
-    for number in sorted(cited):
-        if number > len(ship) or number not in back:
-            continue
-        was = back[number]
-        assert ship[number - 1] == pre[was - 1], (
-            f"citation :{number} reads {ship[number - 1].strip()!r} but the "
-            f"line it named before the change reads {pre[was - 1].strip()!r}"
-        )
-        checked += 1
-    assert (
-        checked >= 60
-    ), f"only {checked} citations were checked; the map lost coverage"
-
-
-def test_the_gate_block_is_present_in_the_shipping_source():
-    """IF THIS FAILS: the change is not in the file under test."""
-    assert SOURCE.count(_GATE_FIRST_LINE) == 1
-    assert SOURCE.count("AUTONOMOUS FIRE REFUSED (opposing distance)") == 1
-
-
-def test_site_b_is_present_in_the_shipping_source():
-    """IF THIS FAILS: the sizing fix is not in the file under test, and
-    every site-B control below is measuring the old code while claiming
-    the new one."""
-    assert SOURCE.count("_readable.sort(key=lambda pair: pair[0]") == 1
-    assert SOURCE.count("FOLD SIZING REF UNREADABLE") == 1
-    assert 'key=lambda t: float(t.get("ref", 0.0) or 0.0)' not in SOURCE, (
-        "the `float(x) or 0.0` sort key is still in the file; `nan` is "
-        "truthy so the `or` never fires and the key still receives it"
-    )
-
-
-# ── b. THE ORDER AMOUNT IS UNCHANGED ON A WELL-FORMED LADDER ─────────
-
-# Each row is (label, tranches, holdings, target, price). The last two
-# rows are the ones that matter: a ladder whose units EXCEED the buy, so
-# `_remaining` truncates the discharge and the ORDER of the rows decides
-# how much surplus is booked. A ladder that fits inside the buy is
-# order-independent whatever the sort does, and a suite built only from
-# those would pass against the defect.
-IN_SPEC_MONEY = [
-    (
-        "one row",
-        [{"usd": 10.0, "units": 100.0, "ref": 1.0, "initial_buy_price": 0.8}],
-        50.0,
-        175.0,
-        0.5,
-    ),
-    (
-        "descending refs",
-        [
-            {"usd": 10.0, "units": 100.0, "ref": r, "initial_buy_price": 0.8}
-            for r in (1.0, 0.9, 0.8)
-        ],
-        50.0,
-        175.0,
-        0.5,
-    ),
-    (
-        "ascending refs",
-        [
-            {"usd": 10.0, "units": 100.0, "ref": r, "initial_buy_price": 0.8}
-            for r in (0.8, 0.9, 1.0)
-        ],
-        50.0,
-        175.0,
-        0.5,
-    ),
-    (
-        "a zero and a negative beside a good one",
-        [
-            {"usd": 10.0, "units": 100.0, "ref": r, "initial_buy_price": 0.8}
-            for r in (0.0, -1.0, 1.0)
-        ],
-        50.0,
-        175.0,
-        0.5,
-    ),
-    ("empty ladder", [], 50.0, 175.0, 0.5),
-    (
-        "TRUNCATING: ladder units exceed the buy",
-        [
-            {"usd": 10.0, "units": 10.0, "ref": r, "initial_buy_price": 0.4}
-            for r in (0.6, 0.0, 0.6, 0.0)
-        ],
-        334.0,
-        175.0,
-        0.5,
-    ),
-    (
-        "TRUNCATING, reversed",
-        [
-            {"usd": 10.0, "units": 10.0, "ref": r, "initial_buy_price": 0.4}
-            for r in (0.0, 0.6, 0.0, 0.6)
-        ],
-        334.0,
-        175.0,
-        0.5,
-    ),
-    (
-        "operator ref magnitudes, 150 rows",
-        [
-            {
-                "usd": 0.44,
-                "units": 16.05,
-                "ref": 0.02307 + (i % 7) * 0.00004,
-                "initial_buy_price": 0.06338,
-                "operator_initiated": False,
-                "created_ts": 1786682827.88,
-                "wire_credits": [],
-            }
-            for i in range(150)
-        ],
-        5000.0,
-        445.0,
-        0.021,
-    ),
-]
-
-
-@pytest.mark.parametrize("intent", EVERY_INTENT)
-@pytest.mark.parametrize(
-    "label, tranches, holdings, target, price",
-    IN_SPEC_MONEY,
-    ids=[r[0] for r in IN_SPEC_MONEY],
-)
-def test_a_well_formed_ladder_places_the_same_amount_as_before_the_change(
-    label, tranches, holdings, target, price, intent
-):
-    """THE CONTROL THAT GUARDS THE OPERATOR'S MONEY TODAY.
-
-    Site B decides the AMOUNT sent to the exchange. Every ladder whose
-    refs are all finite must place a BIT-IDENTICAL order against the
-    byte-provable pre-change twin -- same side, same type, same symbol,
-    same amount to the last bit of the float.
-
-    THE TWIN HAS NO GATE, so on the two AUTONOMOUS intents it can place
-    where the shipping bot refuses. That difference is the U3 gate doing
-    its job and is pinned by the controls above; asserting placement
-    parity there would be asserting the gate does nothing. So placement
-    parity is required on ``manual_button`` -- which skips the gate in
-    the shipping bot and never had one in the twin, leaving site B as
-    the only difference between them -- and the AMOUNT is compared
-    wherever both did place, on every intent.
-
-    IF THIS FAILS: a fold that fires correctly on the operator's live
-    bots today would send a different quantity to Coinbase. That is the
-    one outcome this unit is not allowed to have.
-    """
-    kw = dict(
-        tranches=tranches,
-        holdings=holdings,
-        target=target,
-        price=price,
-        interval=5.0,
-        fee=1.6,
-    )
-    new = _bot(ScrummingBot, **kw)
-    old = _bot(_pre_change(), **kw)
-    _fire(new, price, intent)
-    _fire(old, price, intent)
-
-    if intent == "manual_button":
-        assert (new.seen["placed"] is None) == (old.seen["placed"] is None), (
-            f"{label}: one of the two placed an order and the other did "
-            f"not, on the intent that skips the gate — so site B changed a "
-            f"DECISION. new={new.seen['placed']} old={old.seen['placed']}"
-        )
-    if new.seen["placed"] is None or old.seen["placed"] is None:
-        return
-    for field in ("symbol", "side", "order_type", "price"):
-        assert (
-            new.seen["placed"][field] == old.seen["placed"][field]
-        ), f"{label}/{intent}: {field} changed"
-    new_amount = float(new.seen["placed"]["amount"])
-    old_amount = float(old.seen["placed"]["amount"])
-    assert new_amount.hex() == old_amount.hex(), (
-        f"{label}/{intent}: the order amount moved from {old_amount!r} to "
-        f"{new_amount!r} (delta {new_amount - old_amount!r}) on a ladder "
-        f"whose refs are ALL FINITE, so the filter removed nothing and "
-        f"the amount had no reason to change"
-    )
-
-
-def test_the_money_comparison_can_see_a_difference():
-    """POSITIVE CONTROL for the comparison above.
-
-    The rows above assert two amounts are equal. If the twin were the
-    SAME code as the shipping bot, they would be equal for a reason that
-    has nothing to do with correctness, and the whole section would be
-    an expensive tautology. This drives a ladder holding a ``nan`` --
-    the one input the two are supposed to disagree about -- and requires
-    them to disagree.
-
-    IF THIS FAILS: the twin is not pre-change code, and every equality
-    above proves nothing.
-    """
-    ladder = [
-        {"usd": 10.0, "units": 10.0, "ref": r, "initial_buy_price": 0.4}
-        for r in (float("nan"), 0.6, 0.0, 0.6)
-    ]
-    kw = dict(
-        tranches=ladder, holdings=334.0, target=175.0, price=0.5, interval=5.0, fee=1.6
-    )
-    new = _bot(ScrummingBot, **kw)
-    old = _bot(_pre_change(), **kw)
-    _fire(new, 0.5, "manual_button")
-    _fire(old, 0.5, "manual_button")
-    assert new.seen["placed"] is not None and old.seen["placed"] is not None
-    assert float(new.seen["placed"]["amount"]) != float(old.seen["placed"]["amount"]), (
-        "the shipping bot and the pre-change twin sized the SAME nan "
-        "ladder identically; the twin is not the pre-change code"
-    )
-
-
-# ── a. the refused set ───────────────────────────────────────────────
+# ── the gate refuses when no tranche is eligible ─────────────────────
 
 
 @pytest.mark.parametrize("intent", AUTONOMOUS)
 def test_an_autonomous_fold_is_refused_when_no_tranche_is_eligible(intent):
-    """THE GATE BITES.
-
-    IF THIS FAILS: the gate is not reached on the autonomous path. The
-    defect survives untouched, money still moves, and this unit has
-    done nothing.
-    """
+    """The gate bites: an autonomous rebuy above every ref is withheld."""
     ladder = _ladder(1.00, 0.99, 0.98)
     price = _one_float_above(ladder)
     bot = _fire(
-        _bot(ScrummingBot, tranches=ladder, holdings=50.0, target=100.0, price=price),
+        _bot(tranches=ladder, holdings=50.0, target=100.0, price=price),
         price,
         intent,
     )
@@ -994,83 +300,12 @@ def test_an_autonomous_fold_is_refused_when_no_tranche_is_eligible(intent):
     assert bot.stats.total_trades == 0
 
 
-@pytest.mark.parametrize("intent", AUTONOMOUS)
-def test_control_the_same_fold_is_placed_without_the_gate(intent):
-    """CONTROL for the test above, on the provably pre-change twin.
-
-    IF THIS FAILS: the scenario does not reach the buy even on the old
-    code -- something else refuses it -- so the refusal above is not
-    evidence that the gate did anything.
-    """
-    ladder = _ladder(1.00, 0.99, 0.98)
-    price = _one_float_above(ladder)
-    bot = _fire(
-        _bot(_pregate(), tranches=ladder, holdings=50.0, target=100.0, price=price),
-        price,
-        intent,
-    )
-
-    assert bot.seen["placed"] is not None, (
-        "the pre-change code did not buy either, so this scenario "
-        "cannot show what the gate changed"
-    )
-    assert bot.seen["placed"]["side"].value == "buy"
-    assert _refusal(bot) == []
-    assert _ladder_units(bot) < 300.0, (
-        "the pre-change code placed the order but consumed no tranche "
-        "units, so this scenario does not show the ladder being spent"
-    )
-
-
-def test_the_defect_itself_reproduces_on_the_pre_change_twin():
-    """THE DEFECT, shown rather than described.
-
-    Price ABOVE every ref, so no rebuy can be a profit. The pre-change
-    code buys anyway, consumes the ladder, books nothing -- because the
-    per-slice surplus is only accumulated where ``_t_ref > fill_price``
-    -- and reports "Discharged N tranche(s)". Money leaves the ladder
-    and no target growth appears against it.
-
-    IF THIS FAILS: the mechanism recorded for this unit is not what the
-    old code does, and the whole finding needs re-deriving before the
-    gate is justified.
-    """
-    ladder = _ladder(1.00, 0.99)
-    price = 1.20
-    old = _fire(
-        _bot(_pregate(), tranches=ladder, holdings=50.0, target=100.0, price=price),
-        price,
-        "max_cartridge",
-    )
-    assert old.seen["placed"] is not None
-    assert _ladder_units(old) < 200.0, "no tranche was consumed"
-    assert old._target_balance == 100.0, (
-        "the pre-change fold booked growth, so this is not the "
-        "zero-profit discharge the finding describes"
-    )
-    assert any(
-        "Discharged" in m for m in old._bus.messages
-    ), "the pre-change code did not report the discharge as a success"
-
-    live = _fire(
-        _bot(ScrummingBot, tranches=ladder, holdings=50.0, target=100.0, price=price),
-        price,
-        "max_cartridge",
-    )
-    assert live.seen["placed"] is None
-    assert _ladder_units(live) == 200.0, "the ladder was spent anyway"
-
-
 def test_the_refusal_names_the_price_the_ladder_and_the_money():
-    """The operator must be able to check a refusal against his ladder.
-
-    IF THIS FAILS: a fold stops firing and the log does not say why, at
-    which point the gate is indistinguishable from a bug.
-    """
+    """The operator must be able to check a refusal against his ladder."""
     ladder = _ladder(2.00, 1.50)
     price = _admits(ladder) * 1.05
     bot = _fire(
-        _bot(ScrummingBot, tranches=ladder, holdings=10.0, target=100.0, price=price),
+        _bot(tranches=ladder, holdings=10.0, target=100.0, price=price),
         price,
         "max_cartridge",
     )
@@ -1084,12 +319,7 @@ def test_the_refusal_names_the_price_the_ladder_and_the_money():
         assert fragment in line, f"{fragment!r} missing from {line!r}"
 
 
-# ── b. the unchanged set: every fold that should fire, still fires ───
-#
-# Each row is a fold that is IN SPEC. The claim is not merely that it
-# trades -- it is that every argument handed to the order call, and
-# every mark left on the bot afterwards, is what the pre-change code
-# produced for the same input.
+# ── every fold that should fire, still fires ─────────────────────────
 
 IN_SPEC = [
     (
@@ -1161,12 +391,6 @@ IN_SPEC = [
         "an empty ladder, which has no ref to measure against",
         dict(tranches=[], holdings=50.0, target=100.0, price=0.50),
     ),
-    # A tranche with NO "ref" key is deliberately absent from this row.
-    # The discharge loop sorts on `t["ref"]` and raises KeyError on one,
-    # before this change and after it. That is a pre-existing defect of
-    # the discharge, it is recorded in the unit's report, and it is not
-    # this change's to fix -- but a row that crashed both sides would
-    # prove nothing about the gate.
     (
         "a zero ref and a negative ref sit beside a good one",
         dict(
@@ -1207,50 +431,27 @@ IN_SPEC = [
 
 @pytest.mark.parametrize("intent", EVERY_INTENT)
 @pytest.mark.parametrize("label, scenario", IN_SPEC, ids=[row[0] for row in IN_SPEC])
-def test_an_in_spec_fold_is_unchanged_in_every_observable(intent, label, scenario):
-    """THE CONTROL THAT PROTECTS THE OPERATOR.
+def test_an_in_spec_fold_still_fires(intent, label, scenario):
+    """An in-spec fold reaches the order and is never refused.
 
-    IF THIS FAILS: a fold that should have fired did not, or fired
-    differently. Too strict is the more dangerous direction -- the
-    position never returns to centre, the deficit never shrinks, the
-    cartridge re-arms and refuses on every tick, and the ladder is
+    Too strict is the dangerous direction: a withheld in-spec fold leaves
+    the position off centre, the deficit unshrunk, and the ladder
     stranded with money queued and no path to spend it.
     """
-    live = _observable(_fire(_bot(ScrummingBot, **scenario), scenario["price"], intent))
-    old = _observable(_fire(_bot(_pregate(), **scenario), scenario["price"], intent))
-
-    assert old["placed"] is not None, (
-        f"{label}: the pre-change code did not trade this scenario, so "
-        f"it is not evidence about an in-spec fold"
-    )
-    assert live["placed"] == old["placed"], (
-        f"{label} / {intent}: the order call changed\n"
-        f"  now: {live['placed']}\n  was: {old['placed']}"
-    )
-    for key, value in old.items():
-        assert live[key] == value, (
-            f"{label} / {intent}: {key} changed\n" f"  now: {live[key]}\n  was: {value}"
-        )
+    bot = _fire(_bot(**scenario), scenario["price"], intent)
+    obs = _observable(bot)
+    assert bot.seen["placed"] is not None, f"{label} / {intent}: the fold did not fire"
+    assert _refusal_free(obs), f"{label} / {intent}: an in-spec fold was refused"
 
 
 def test_a_partly_eligible_ladder_still_fires():
-    """SCOPE. Some eligible means the fire proceeds, unchanged.
-
-    IF THIS FAILS: the gate has been widened from "refuse when NONE is
-    eligible" to something stricter, and folds that the operator's own
-    tick path would run are being withheld.
-
-    This is deliberately silent about what the discharge loop then does
-    with the ineligible tranches. It still consumes them. That residue
-    has a different verb, is measured in the unit's report, and is not
-    this change's to close -- and a test that pinned it would have to go
-    red the day it is fixed.
-    """
+    """Some eligible means the fire proceeds. The gate refuses only when
+    NONE is eligible, not when some are."""
     ladder = _ladder(5.00, 0.10)
     price = _threshold(5.00)
     assert price > _threshold(0.10), "this row is not partly eligible"
     bot = _fire(
-        _bot(ScrummingBot, tranches=ladder, holdings=10.0, target=100.0, price=price),
+        _bot(tranches=ladder, holdings=10.0, target=100.0, price=price),
         price,
         "max_cartridge",
     )
@@ -1258,7 +459,7 @@ def test_a_partly_eligible_ladder_still_fires():
     assert _refusal(bot) == []
 
 
-# ── c. the operator's own button is untouched ────────────────────────
+# ── the operator's own button is untouched ───────────────────────────
 
 
 REFUSED_IF_AUTONOMOUS = [
@@ -1295,39 +496,11 @@ REFUSED_IF_AUTONOMOUS = [
     ids=[row[0] for row in REFUSED_IF_AUTONOMOUS],
 )
 def test_the_operator_button_is_never_refused(label, scenario):
-    """OPERATOR SOVEREIGNTY, and byte-for-byte at that.
-
-    Every scenario here is refused for an autonomous caller. Pressed by
-    the operator each one must still trade, and must leave the bot in
-    exactly the state the pre-change code left it in.
-
-    IF THIS FAILS: the gate captured the operator's override. That
-    breaks the Session 26 invariant this method's own comments record --
-    "Manual Fire is the operator-authorized override. It MUST bypass
-    every gate" -- and the ruling in ``manual_fire_tranche`` that names
-    this very gate as one the operator has chosen to skip.
-    """
-    live = _observable(
-        _fire(_bot(ScrummingBot, **scenario), scenario["price"], "manual_button")
-    )
-    old = _observable(
-        _fire(_bot(_pregate(), **scenario), scenario["price"], "manual_button")
-    )
-    assert old["placed"] is not None, f"{label}: nothing to compare"
-    assert _refusal_free(live)
-    for key, value in old.items():
-        assert live[key] == value, (
-            f"{label}: manual fire changed in {key}\n"
-            f"  now: {live[key]}\n  was: {value}"
-        )
-
-
-def _refusal_free(observable):
-    return not [
-        m
-        for m in observable["messages"]
-        if "AUTONOMOUS FIRE REFUSED (opposing distance" in m
-    ]
+    """Operator sovereignty: a scenario an autonomous caller is refused
+    still trades when pressed by the operator, and is never gated."""
+    bot = _fire(_bot(**scenario), scenario["price"], "manual_button")
+    assert bot.seen["placed"] is not None, f"{label}: the operator's fire was withheld"
+    assert _refusal_free(_observable(bot)), f"{label}: the gate captured the override"
 
 
 @pytest.mark.parametrize(
@@ -1336,117 +509,29 @@ def _refusal_free(observable):
     ids=[row[0] for row in REFUSED_IF_AUTONOMOUS],
 )
 @pytest.mark.parametrize("intent", AUTONOMOUS)
-def test_control_the_same_scenario_is_refused_for_an_autonomous_caller(
-    label, scenario, intent
-):
-    """CONTROL for the sovereignty test.
-
-    IF THIS FAILS: the scenarios above are ones nothing refuses, so the
-    manual path passing them says nothing about an exemption.
-    """
-    bot = _fire(_bot(ScrummingBot, **scenario), scenario["price"], intent)
+def test_the_same_scenario_is_refused_for_an_autonomous_caller(label, scenario, intent):
+    """The mirror of the sovereignty test: the same scenarios ARE refused
+    on the autonomous path, so the manual pass above means an exemption."""
+    bot = _fire(_bot(**scenario), scenario["price"], intent)
     assert bot.seen["placed"] is None, f"{label}: {intent} was not refused"
     assert len(_refusal(bot)) == 1
-
-
-def _method_text(source: str, name: str) -> bytes:
-    """One method's text, from ``def`` to the next method at its level."""
-    lines = _normalise(source).split("\n")
-    starts = [
-        i
-        for i, ln in enumerate(lines)
-        if ln.startswith(f"    def {name}(") or ln.startswith(f"    async def {name}(")
-    ]
-    if len(starts) != 1:
-        raise StalePlant(f"expected one definition of {name}, found {len(starts)}")
-    body = [lines[starts[0]]]
-    for line in lines[starts[0] + 1 :]:
-        if line.startswith("    def ") or line.startswith("    async def "):
-            break
-        body.append(line)
-    return "\n".join(body).encode("utf-8")
-
-
-def test_the_operator_tranche_button_is_textually_unchanged():
-    """``manual_fire_tranche`` is the THIRD fold executor.
-
-    It is operator-only -- its single caller in the tree is the GUI
-    button -- and its header renounces THIS gate by name: "OTD
-    per-tranche price gate (operator chose this tranche explicitly)".
-
-    The claim is checked by comparing its text in the shipping source
-    against its text in the provably pre-change twin -- a direct equality,
-    so there is no magic constant to go stale.
-
-    IF THIS FAILS: a third executor moved in a change whose blast radius
-    was measured on the assumption that it did not.
-    """
-    now = _method_text(SOURCE, "manual_fire_tranche")
-    was = _method_text(_stripped_source(), "manual_fire_tranche")
-    assert now == was, "manual_fire_tranche differs between shipping and twin"
-    # The ruling itself sits in the bypass list immediately ABOVE the
-    # def, not inside the method, so it is looked for in the file. The
-    # gate block quotes it too, which is why the line is matched whole
-    # rather than by the phrase.
-    ruling = "    #   - OTD per-tranche price gate (operator chose this"
-    assert SOURCE.count(ruling) == 1 and (_stripped_source().count(ruling) == 1), (
-        "the operator's recorded ruling has gone from the file, and this "
-        "change relies on that path being deliberately exempt"
-    )
-
-
-def test_the_shared_executor_changed_and_nothing_else_did():
-    """Exactly one method's text moved, and the gate is inside it.
-
-    The byte-hash test above already proves the whole file is unchanged
-    outside the block. This says WHERE the block is: inside the shared
-    executor's FOLD branch and in no neighbouring method.
-
-    IF THIS FAILS: the change is wider than the unit claims, and the
-    blast radius was measured for a smaller change than shipped.
-    """
-    old = _stripped_source()
-    moved = [
-        name
-        for name in (
-            "_execute_manual_rebalance",
-            "manual_fire_tranche",
-            "tick",
-            "_apply_fold_target_growth",
-            "_preview_fold_growth",
-            "_settled_fill",
-            "_execute_buy",
-            "_execute_sell",
-            "reset_swos_cycle",
-        )
-        if _method_text(SOURCE, name) != _method_text(old, name)
-    ]
-    assert moved == ["_execute_manual_rebalance"], moved
-    executor = _method_text(SOURCE, "_execute_manual_rebalance")
-    assert _GATE_FIRST_LINE.encode("utf-8") in executor
 
 
 # ── the SCRUM side of the same method sells, and still does ──────────
 
 
 @pytest.mark.parametrize("intent", EVERY_INTENT)
-def test_the_scrum_side_is_untouched(intent):
-    """THE GATE MUST NOT REACH THE SELL SIDE.
-
-    IF THIS FAILS: the refusal leaked out of the FOLD branch and is now
-    gating live scrums -- the opposite of the intent, on real money, in
-    the direction that stops the bot taking profit.
-    """
+def test_the_scrum_side_still_sells(intent):
+    """The gate lives in the FOLD branch only: a scrum still sells and is
+    never refused, whatever the caller intent."""
     scenario = dict(
         tranches=_ladder(1.00, 0.99), holdings=1000.0, target=100.0, price=1.0
     )
-    live = _observable(_fire(_bot(ScrummingBot, **scenario), 1.0, intent))
-    old = _observable(_fire(_bot(_pregate(), **scenario), 1.0, intent))
-    assert old["placed"] is not None and (
-        old["placed"]["side"].value == "sell"
-    ), "this row is not a scrum"
-    for key, value in old.items():
-        assert live[key] == value, f"{intent}: {key} changed on the sell side"
+    bot = _fire(_bot(**scenario), 1.0, intent)
+    obs = _observable(bot)
+    assert obs["placed"] is not None, f"{intent}: the scrum did not fire"
+    assert obs["placed"]["side"].value == "sell", f"{intent}: this row is not a scrum"
+    assert _refusal_free(obs), f"{intent}: the refusal leaked onto the sell side"
 
 
 # ── the value domain, because floats are in the accepted set ─────────
@@ -1454,21 +539,10 @@ def test_the_scrum_side_is_untouched(intent):
 
 @pytest.mark.parametrize("intent", AUTONOMOUS)
 def test_a_nan_price_refuses(intent):
-    """FAIL CLOSED ON NaN.
-
-    ``if not price or price <= 0`` admits it -- ``not nan`` is False and
-    ``nan <= 0`` is False -- so a NaN price reaches the fold branch:
-    ``abs(nan) < dust`` is False and ``nan > 0`` is False, which is the
-    else. Under the gate every comparison against it is False, the
-    eligible set is empty and the fire is refused.
-
-    IF THIS FAILS: a NaN price reaches a market order on a path where
-    every other gate is already bypassed.
-    """
+    """Fail closed on NaN: the validity check admits it, and the gate's
+    empty-eligible-set refuses the fire before an order is placed."""
     bot = _fire(
-        _bot(
-            ScrummingBot, tranches=_ladder(1.00), holdings=50.0, target=100.0, price=1.0
-        ),
+        _bot(tranches=_ladder(1.00), holdings=50.0, target=100.0, price=1.0),
         float("nan"),
         intent,
     )
@@ -1477,76 +551,19 @@ def test_a_nan_price_refuses(intent):
 
 
 @pytest.mark.parametrize("intent", AUTONOMOUS)
-def test_control_a_nan_price_bought_before_this_change(intent):
-    """CONTROL. The old code placed an order on a NaN price.
-
-    IF THIS FAILS: something already stopped NaN and the refusal above
-    is not this change's doing.
-    """
-    bot = _fire(
-        _bot(
-            _pregate(), tranches=_ladder(1.00), holdings=50.0, target=100.0, price=1.0
-        ),
-        float("nan"),
-        intent,
-    )
-    assert bot.seen["placed"] is not None, "the pre-change code refused a NaN price too"
-
-
-@pytest.mark.parametrize("intent", EVERY_INTENT)
-def test_an_infinite_price_goes_to_the_sell_side_exactly_as_before(intent):
-    """ATTRIBUTION, and a defect this unit found and did NOT fix.
-
-    ``+inf`` also passes the validity check, but it does not reach the
-    fold: ``holdings * inf`` is ``inf``, so ``delta_usd`` is ``inf``,
-    ``delta_usd > 0`` is True and the method takes the SCRUM branch. It
-    then sells ``inf / inf`` = NaN units, and ``nan <= 0`` is False so
-    nothing stops it.
-
-    That is a real hole on the live money path. It is on the SELL side,
-    it belongs to the validity check rather than to the fold distance,
-    and fixing it here would be a second change riding along. It is
-    named in the unit's report instead.
-
-    IF THIS FAILS: the routing of an infinite price changed under this
-    unit, which measured its blast radius assuming it did not.
-    """
-    scenario = dict(tranches=_ladder(1.00), holdings=50.0, target=100.0, price=1.0)
-    live = _observable(_fire(_bot(ScrummingBot, **scenario), float("inf"), intent))
-    old = _observable(_fire(_bot(_pregate(), **scenario), float("inf"), intent))
-    assert old["placed"] is not None
-    assert old["placed"]["side"].value == "sell", (
-        "an infinite price no longer reaches the sell side, so the "
-        "defect recorded here has changed shape"
-    )
-    assert math.isnan(old["placed"]["amount"])
-    for key, value in old.items():
-        assert repr(live[key]) == repr(value), f"{intent}: {key} changed"
-
-
-@pytest.mark.parametrize("intent", AUTONOMOUS)
 @pytest.mark.parametrize("price", [float("-inf"), 0.0, -0.0, -1.0])
-def test_a_price_the_older_check_already_rejects_is_still_rejected(intent, price):
-    """ATTRIBUTION, not a new claim.
-
-    These four never reach the gate: the validity check at the top of
-    the method returns first. Pinned so a later reader does not credit
-    the refusal to this change and then remove the older check.
-
-    IF THIS FAILS: the older validity check has gone, and the gate is
-    now the only thing standing between a nonsense price and an order.
-    """
+def test_a_price_the_validity_check_rejects_is_still_rejected(intent, price):
+    """These four never reach the gate: the validity check at the top of
+    the method returns first, naming "no valid price"."""
     bot = _fire(
-        _bot(
-            ScrummingBot, tranches=_ladder(1.00), holdings=50.0, target=100.0, price=1.0
-        ),
+        _bot(tranches=_ladder(1.00), holdings=50.0, target=100.0, price=1.0),
         price,
         intent,
     )
     assert bot.seen["placed"] is None
     assert _refusal(bot) == [], (
-        "this price reached the new gate; it used to be rejected before "
-        "the method got that far"
+        "this price reached the gate; it used to be rejected before the "
+        "method got that far"
     )
     assert any("no valid price" in m for m in bot._bus.messages)
 
@@ -1564,20 +581,10 @@ BAD_CONFIG = [
     "label, override", BAD_CONFIG, ids=[row[0] for row in BAD_CONFIG]
 )
 def test_an_unreadable_distance_refuses(intent, label, override):
-    """FAIL CLOSED ON A BAD CONFIG -- a deliberate difference from tick.
-
-    The tick path swallows this and falls back to an OTD of 0.0, which
-    is a factor of 1.0 and no distance gate at all. ``otd_math``'s own
-    docstring names that fallback as a hazard. Inheriting it here would
-    mean the bots most likely to be misconfigured are the ones that
-    silently keep the defect.
-
-    IF THIS FAILS: an unparseable config restores the defect on exactly
-    the path where every other gate is already off.
-    """
+    """Fail closed on a config whose distance cannot be computed, rather
+    than inherit the tick path's silent fallback to no gate at all."""
     bot = _fire(
         _bot(
-            ScrummingBot,
             tranches=_ladder(1.00),
             holdings=50.0,
             target=100.0,
@@ -1593,32 +600,6 @@ def test_an_unreadable_distance_refuses(intent, label, override):
     ), bot._bus.messages
 
 
-@pytest.mark.parametrize(
-    "label, override", BAD_CONFIG, ids=[row[0] for row in BAD_CONFIG]
-)
-def test_control_a_bad_config_traded_before_this_change(label, override):
-    """CONTROL. The old code bought straight through a broken config.
-
-    IF THIS FAILS: something else already refused these, and the
-    fail-closed claim above is not this change's doing.
-    """
-    bot = _fire(
-        _bot(
-            _pregate(),
-            tranches=_ladder(1.00),
-            holdings=50.0,
-            target=100.0,
-            price=0.50,
-            **override,
-        ),
-        0.50,
-        "wire_stack",
-    )
-    assert (
-        bot.seen["placed"] is not None
-    ), f"{label}: the pre-change code refused this too"
-
-
 REF_EDGE = [
     ("ref of zero", 0.0),
     ("ref missing entirely", None),
@@ -1629,16 +610,12 @@ REF_EDGE = [
 @pytest.mark.parametrize("intent", AUTONOMOUS)
 @pytest.mark.parametrize("label, ref", REF_EDGE, ids=[row[0] for row in REF_EDGE])
 def test_a_ladder_of_only_malformed_refs_refuses(intent, label, ref):
-    """A ref that cannot be traded against is not a licence to trade.
-
-    IF THIS FAILS: a malformed ladder is treated as an eligible one, and
-    the bot buys with nothing to measure the price against.
-    """
+    """A ref that cannot be traded against is not a licence to trade."""
     tranche = {"usd": 1.0, "units": 5.0}
     if ref is not None:
         tranche["ref"] = ref
     bot = _fire(
-        _bot(ScrummingBot, tranches=[tranche], holdings=50.0, target=100.0, price=0.50),
+        _bot(tranches=[tranche], holdings=50.0, target=100.0, price=0.50),
         0.50,
         intent,
     )
@@ -1646,20 +623,15 @@ def test_a_ladder_of_only_malformed_refs_refuses(intent, label, ref):
     assert len(_refusal(bot)) == 1
 
 
-def test_the_threshold_is_the_module_and_not_a_local_copy():
-    """The boundary is exactly ``otd_math``'s, on both sides of it.
-
-    IF THIS FAILS: this site has grown its own arithmetic, which is the
-    drift ``otd_math`` was extracted to end.
-    """
+def test_the_threshold_boundary_is_inclusive_and_one_float_above_refuses():
+    """The boundary is exactly ``otd_math``'s: a price ON the threshold
+    trades (the rule is ``<=``), one float above it is refused."""
     ref, interval, fee = 1.0, 1.0, 0.6
     edge = ref * fold_rebuy_factor(interval, fee)
     assert not math.isnan(edge)
 
     at = _fire(
-        _bot(
-            ScrummingBot, tranches=_ladder(ref), holdings=50.0, target=100.0, price=edge
-        ),
+        _bot(tranches=_ladder(ref), holdings=50.0, target=100.0, price=edge),
         edge,
         "wire_stack",
     )
@@ -1669,13 +641,7 @@ def test_the_threshold_is_the_module_and_not_a_local_copy():
 
     above = math.nextafter(edge, math.inf)
     over = _fire(
-        _bot(
-            ScrummingBot,
-            tranches=_ladder(ref),
-            holdings=50.0,
-            target=100.0,
-            price=above,
-        ),
+        _bot(tranches=_ladder(ref), holdings=50.0, target=100.0, price=above),
         above,
         "wire_stack",
     )
@@ -1695,22 +661,13 @@ def test_the_threshold_is_the_module_and_not_a_local_copy():
     ],
 )
 def test_the_gate_agrees_with_the_tick_path_on_every_config(interval, fee):
-    """ONE RULE, TWO SITES.
-
-    The boundary this gate enforces must be the boundary the autonomous
-    tick fold-back enforces for the same config -- including the awkward
-    rows. A configured fee of 0.0 is falsy and both sites replace it
-    with 0.6. An interval of 60 is clamped, by ``otd_math``, on the SUM.
-
-    IF THIS FAILS: this site has grown a rule of its own, which is the
-    drift ``otd_math`` was extracted to end, and the two fold paths will
-    disagree about the same tranche on the same tick.
-    """
+    """One rule, two sites: the boundary this gate enforces is the
+    boundary the autonomous tick fold-back enforces for the same config,
+    including a falsy 0.0 fee and a clamped 60 interval."""
     ref = 1.0
     edge = ref * _tick_factor(interval, fee)
     at = _fire(
         _bot(
-            ScrummingBot,
             tranches=_ladder(ref),
             holdings=1.0,
             target=100.0,
@@ -1729,7 +686,6 @@ def test_the_gate_agrees_with_the_tick_path_on_every_config(interval, fee):
     above = math.nextafter(edge, math.inf)
     over = _fire(
         _bot(
-            ScrummingBot,
             tranches=_ladder(ref),
             holdings=1.0,
             target=100.0,

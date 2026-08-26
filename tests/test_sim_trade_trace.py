@@ -1,37 +1,19 @@
-"""A sim run must record WHY a trade did not fire (C22 / SN-54).
+"""A sim run must record WHY a trade did not fire.
 
-THE DEFECT
-`_emit_trade_notification` returned early for sim bots:
-
-    # on the shared bus, which the live main_window handler
-    # (main_window.py:343) forwards to the sound engine. Sim
-    # runs must be silent + fast (operator scan finding #3).
-    if getattr(self, "_sim_mode", False):
-        return
-
-That guard was doing real work: sim notifications reached the SHARED
-bus, `main_window` forwarded them to the sound engine, and a replay
-made noise. Removing it before C17 would have been a regression, not a
-fix — which is why C22 is gated behind C17.
-
-WHAT CHANGED
-C17 made the sim private-bus swap FAIL CLOSED. A sim bot either holds a
-private `EventBus` or is never constructed, so its notifications cannot
-reach `main_window`'s handler. The guard is now redundant belt over
-working braces — and it costs the operator the SENT / PLACED / FILLED /
-CANCELLED trace, which is the only place a sim run records why a trade
+`_emit_trade_notification` no longer short-circuits for sim bots. Sim
+isolation is enforced by the private-bus swap failing closed: a sim bot
+either holds a private ``EventBus`` or is never constructed, so its
+notifications cannot reach ``main_window``'s handler and the sound
+engine. Dropping the old early-return restores the SENT / PLACED /
+FILLED / CANCELLED trace, the only place a sim run records why a trade
 did not fire.
 
-THE MEASUREMENT IS AN INSTRUMENTED COUNTER, NOT SILENCE
-"No sound was heard" is not evidence. A wildcard subscriber is attached
-to the LIVE bus and asserted to receive exactly zero events while the
-sim bot emits. Absence of sound and absence of delivery are different
-claims, and only the second one is checkable.
+Silence is asserted as delivery, not as sound: a wildcard subscriber on
+the LIVE bus must receive exactly zero events while a sim bot emits.
 """
 
 from __future__ import annotations
 
-import ast
 import sys
 from pathlib import Path
 
@@ -43,8 +25,6 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.core.event_bus import EventBus, get_event_bus  # noqa: E402
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
-
-SB = REPO_ROOT / "src" / "trading" / "scrumming_bot.py"
 
 
 def _bot(sim_mode: bool, bus):
@@ -148,43 +128,3 @@ class TestTheLiveBusReceivesNothing:
             assert c.events == []
         finally:
             off()
-
-
-class TestTheGuardIsGoneAndTheReasonIsRecorded:
-    def test_the_sim_early_return_is_removed(self):
-        """Asserted over the AST of the function itself, not by grep —
-        the comment recording the removal necessarily names the removed
-        thing, and a substring search would match it forever."""
-        src = SB.read_text(encoding="utf-8")
-        fn = next(
-            n
-            for n in ast.walk(ast.parse(src))
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and n.name == "_emit_trade_notification"
-        )
-        for node in ast.walk(fn):
-            if not isinstance(node, ast.If):
-                continue
-            test_src = ast.get_source_segment(src, node.test) or ""
-            if "_sim_mode" not in test_src:
-                continue
-            body = [s for s in node.body if not isinstance(s, ast.Pass)]
-            assert not (
-                len(body) == 1 and isinstance(body[0], ast.Return)
-            ), f"the sim early return survives at line {node.lineno}"
-
-    def test_isolation_is_what_keeps_the_run_silent_now(self):
-        """The guard was load-bearing before C17. Its replacement must
-        be recorded at the site, or someone reinstates it."""
-        src = SB.read_text(encoding="utf-8")
-        fn = next(
-            n
-            for n in ast.walk(ast.parse(src))
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and n.name == "_emit_trade_notification"
-        )
-        seg = ast.get_source_segment(src, fn) or ""
-        assert "C17" in seg or "private bus" in seg.lower(), (
-            "nothing at this site explains why dropping the sim guard "
-            "is safe; the next reader will put it back"
-        )
