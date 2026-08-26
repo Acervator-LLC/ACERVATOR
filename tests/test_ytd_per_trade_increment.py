@@ -60,7 +60,14 @@ class _Stats:
 
 
 class _Exchange:
+    """Nothing is ever open. Records what it was asked about, because a
+    stub that discards its arguments cannot be asserted against."""
+
+    def __init__(self):
+        self.open_order_queries = []
+
     async def get_open_orders(self, symbol):
+        self.open_order_queries.append(symbol)
         return []
 
 
@@ -109,31 +116,62 @@ class _TradeStubBot:
         self._hyst_ref_fold_side = 0.0
         self._memorised_trades = []
         self.placed_orders = []
+        self.notifications = []
+        self.reconciles = []
+        self.stack_spawns = []
+        self.wire_routings = []
+        self.retentions = []
+        # issue #133 unit 9b -- the venue's fee for the last settled
+        # sell. `_execute_sell` clears it and writes it.
+        self._last_sell_venue_fee = None
 
     def _crr(self):
         return None
 
     def _emit_trade_notification(self, kind, state, detail):
-        pass
+        self.notifications.append((kind, state, detail))
+
+    def _record_venue_fee(self, order, units, price):
+        """Delegate to the REAL ScrummingBot._record_venue_fee.
+
+        issue #133 unit 9b. ``_execute_sell`` records the venue's fee
+        off the settled order. A no-op here would let this stub drift
+        from the collaborator it doubles.
+        """
+        return ScrummingBot._record_venue_fee(self, order, units, price)
 
     async def _verify_buy_safe_or_refuse(self, path=""):
         return 0.0, None
 
     async def _reconcile_holdings(self, reason=""):
+        self.reconciles.append(reason)
         return None
 
     async def _spawn_stack_from_fold(self, fold_price, fold_size, summary, path):
+        self.stack_spawns.append((fold_price, fold_size, summary, path))
         return None
 
     def _route_scrum_proceeds_via_wires(self, scrum_usd, sell_fill, label):
+        """Routes nothing. Records the sale it was offered, so a test
+        can tell "no wire took a cut" from "the call never happened"."""
+        self.wire_routings.append((scrum_usd, sell_fill, label))
         return 0.0
 
     def note_scrum_retention_usd(self, retained_usd):
-        pass
+        self.retentions.append(retained_usd)
 
     async def guarded_place_order(self, symbol, side, order_type, amount, price):
         fill = float(price) if price else self._market_fill
-        self.placed_orders.append({"side": side, "amount": amount, "fill": fill})
+        self.placed_orders.append(
+            {
+                "symbol": symbol,
+                "side": side,
+                "type": order_type,
+                "amount": amount,
+                "price": price,
+                "fill": fill,
+            }
+        )
         return _Order(fill)
 
     def log(self):

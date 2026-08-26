@@ -352,6 +352,37 @@ class MemorisedTrade:
     voting_summary: Optional[VotingSummary] = None
 
 
+@dataclass(frozen=True)
+class SettledSellFee:
+    """The fee the VENUE reported for one settled sell.
+
+    issue #133 unit 9b. A sell is credited NET: the venue keeps its
+    fee out of the proceeds. The fold-tranche loops valued a sell at
+    ``units x fill_price``, which is the GROSS notional, so every
+    tranche was booked richer than the wallet actually got.
+
+    This record carries the venue's own number from the point an
+    order settles to the point a tranche is valued. It NEVER carries
+    a fee derived from ``config.trading_fee_pct``: that is the bot's
+    configured estimate, the venue charges what it charges, and
+    synthesising one in place of the other books a number the
+    exchange never charged.
+
+    ``units`` and ``price`` identify the fill this fee belongs to. A
+    consumer that cannot match both books the gross, because a fee
+    from some other order is not this order's fee.
+
+    ``reported`` is False when the venue gave no fee. That case books
+    the gross and says so; it does not fall back to a rate.
+    """
+
+    units: float
+    price: float
+    fee_amount: float
+    currency: str
+    reported: bool
+
+
 @dataclass
 class StackTrancheSummary:
     """A minimal stand-in summary carrying a Stack's opening vote.
@@ -486,6 +517,12 @@ class ScrummingBot(
 
         self._fold_tranches: list[dict] = []
         self._main_lots: list[dict] = []
+
+        # issue #133 unit 9b -- the fee the VENUE reported for the most
+        # recent settled SELL, cleared as soon as a valuation consumes
+        # it. Written only by `_record_venue_fee`, read only by
+        # `_take_venue_fee`. Never derived from `trading_fee_pct`.
+        self._last_sell_venue_fee: Optional[SettledSellFee] = None
 
         self._stack_tranches: list[dict] = []
         self._stack_created: int = 0
@@ -5614,7 +5651,14 @@ class ScrummingBot(
                         ),
                     )
             else:
-                scrum_usd = scrum_asset * sell_fill
+                # issue #133 unit 9b -- the venue credits the NET.
+                # `scrum_asset * sell_fill` is the GROSS notional,
+                # so every tranche built below was booked richer
+                # than the wallet. The wire routing reads this too,
+                # and the bot cannot route money it never received.
+                scrum_usd = self._settled_sale_proceeds(
+                    scrum_asset, sell_fill, label="SCRUM"
+                )
 
                 if self._fold_cycle_cap_consumed > 1e-9:
                     _prev_cap_consumed = self._fold_cycle_cap_consumed
@@ -6924,7 +6968,11 @@ class ScrummingBot(
                         ),
                     )
                 else:
-                    dist_usd = dist_asset * dist_fill
+                    # issue #133 unit 9b -- the venue credits the
+                    # NET, exactly as on the SCRUM path above.
+                    dist_usd = self._settled_sale_proceeds(
+                        dist_asset, dist_fill, label="DIST"
+                    )
                     self.stats.trade_volume += dist_usd
 
                     self._bus.emit(
@@ -8052,6 +8100,13 @@ class ScrummingBot(
                     )
         return True
 
+    # issue #133 unit 9b -- a CLASS-LEVEL default, not only an
+    # `__init__` one. A sell must never raise `AttributeError` on a bot
+    # built without `__init__`, and both the suite and the restore
+    # paths build them that way. `None` is immutable and every write
+    # goes to the instance, so no bot can read another bot's fee.
+    _last_sell_venue_fee: Optional["SettledSellFee"] = None
+
     _SETTLED_FILL_DEFAULT_LABEL = "MANUAL FIRE"
     _SETTLED_FILL_LABELS = frozenset(
         (
@@ -8104,7 +8159,14 @@ class ScrummingBot(
         operator has always read there.
 
         Returns ``(fill_amount, fill_price, is_real)``.
+
+        issue #133 unit 9b -- also records the venue's fee, taken from
+        the SAME order object the accepted fill came from. That is the
+        re-read order when a re-read is what settled, not the object
+        the caller passed in. An ESTIMATE clears the record: the venue
+        confirmed nothing, so there is no fee to book.
         """
+        self._last_sell_venue_fee = None
 
         def _extract(o):
             if o is None:
@@ -8121,6 +8183,7 @@ class ScrummingBot(
 
         amt, px = _extract(order)
         if amt > 0 and px > 0:
+            self._record_venue_fee(order, amt, px)
             return amt, px, True
 
         order_id = str(getattr(order, "id", "") or "")
@@ -8136,12 +8199,14 @@ class ScrummingBot(
                     break
                 f_amt, f_px = _extract(fetched)
                 if f_amt > 0 and f_px > 0:
+                    self._record_venue_fee(fetched, f_amt, f_px)
                     return f_amt, f_px, True
                 amt = f_amt or amt
                 px = f_px or px
 
         est_amt = amt if amt > 0 else float(requested_amount or 0.0)
         est_px = px if px > 0 else float(quoted_price or 0.0)
+        self._last_sell_venue_fee = None
         _label = self._settled_fill_label(label)
         self._bus.emit(
             "bot.log",
@@ -8155,6 +8220,169 @@ class ScrummingBot(
             ),
         )
         return est_amt, est_px, False
+
+    def _venue_quote_currency(self) -> str:
+        """The currency a sale is credited in, taken from the symbol."""
+        _sym = str(getattr(self.config, "symbol", "") or "")
+        _, _, _quote = _sym.partition("/")
+        return _quote.strip().upper()
+
+    def _record_venue_fee(self, order, units: float, price: float) -> None:
+        """Store the fee the VENUE reported for a just-settled sell.
+
+        issue #133 unit 9b. Called from the two places that hold a
+        settled order object: `_execute_sell`, which serves SCRUM and
+        DIST, and `_settled_fill`, which serves the manual paths. It
+        reads `order.fee` and `order.fee_currency` only. The connector
+        fills both from the venue's own `fee.cost` / `fee.currency`
+        (`ccxt_connector.py:1661`), so nothing here is computed.
+
+        A BUY clears the record instead of writing it. Sale proceeds
+        are the only consumer and a buy fee is not a sale fee.
+
+        WHAT REACHES THIS METHOD ON COINBASE, ESTABLISHED FROM SOURCE
+        rather than from a live call. `ccxt.coinbase.create_order`
+        returns `parse_order(response["success_response"])`, and that
+        body carries four keys -- `order_id`, `product_id`, `side`,
+        `client_order_id`. There is no `total_fees` in it, so
+        `fee.cost` parses to None and `Order.fee` is 0.0 on EVERY
+        just-placed Coinbase order. `fetch_order` is a different
+        endpoint and its documented body does carry `total_fees`;
+        whether Coinbase has settled a NON-ZERO value into it seconds
+        after a market fill is unobserved and is not assumed here.
+
+        So on live Coinbase the SCRUM and DIST paths, which read the
+        placed order and never re-read it, record no fee and book the
+        gross -- and say so, every time, in the operator's log. That
+        is the specified no-fee behaviour, not a silent one. The
+        manual paths re-read through `_settled_fill` and are the only
+        ones a Coinbase fee can currently reach.
+
+        Never raises. The order already executed, and losing the
+        accounting for a real trade is worse than losing a fee.
+        """
+        _side = getattr(order, "side", None)
+        _side_txt = str(getattr(_side, "value", _side) or "").lower()
+        if _side_txt != "sell":
+            self._last_sell_venue_fee = None
+            return
+        try:
+            _units = float(units)
+            _price = float(price)
+        except (TypeError, ValueError):
+            self._last_sell_venue_fee = None
+            return
+        try:
+            _amount = float(getattr(order, "fee", 0) or 0)
+            _currency = str(getattr(order, "fee_currency", "") or "")
+        except (TypeError, ValueError):
+            _amount = 0.0
+            _currency = ""
+        self._last_sell_venue_fee = SettledSellFee(
+            units=_units,
+            price=_price,
+            fee_amount=_amount,
+            currency=_currency.strip().upper(),
+            reported=_amount > 0.0,
+        )
+
+    def _take_venue_fee(self, units: float, price: float) -> Optional[SettledSellFee]:
+        """Consume the stored fee, and only for the fill it belongs to.
+
+        Single use: the record is cleared whether or not it matched, so
+        one venue fee can never be subtracted from two valuations. A
+        record whose units or price disagree with the fill being valued
+        belongs to some other order, so it is discarded rather than
+        applied.
+        """
+        _rec = self._last_sell_venue_fee
+        self._last_sell_venue_fee = None
+        if _rec is None:
+            return None
+        try:
+            _units = float(units)
+            _price = float(price)
+        except (TypeError, ValueError):
+            return None
+        if not math.isclose(_rec.units, _units, rel_tol=1e-9, abs_tol=1e-12):
+            return None
+        if not math.isclose(_rec.price, _price, rel_tol=1e-9, abs_tol=1e-12):
+            return None
+        return _rec
+
+    def _settled_sale_proceeds(
+        self, units: float, price: float, *, label: str
+    ) -> float:
+        """Value a settled sell at what the venue actually credited.
+
+        issue #133 unit 9b. The three fold-tranche loops booked
+        `units x fill_price`, the GROSS notional. A venue credits the
+        NET: it keeps its fee out of the proceeds.
+
+        THE NUMBERS, EACH WITH ITS PROVENANCE. Bot c8e5c5db,
+        2026-08-26 21:50:57, 473 CHIP at $0.03376:
+
+        * $15.96848 booked gross -- LOGGED, `trade.log` and
+          `pnl/daily/2026-08-26.ndjson`, both carrying no fee field;
+        * 1.2% -- the venue's own rate, read off Coinbase's CSV export
+          of CHIP fills, 92 of 92 August 2026 fills at exactly 1.2000%
+          of subtotal, both sides;
+        * $15.77686 net -- INFERRED from those two. The export ends
+          2026-08-20, so the credited amount for this trade itself is
+          recorded nowhere and is not claimed as measured.
+
+        Returns the gross MINUS the fee the venue reported. Books the
+        gross, and emits the reason, when that fee cannot be used. It
+        never falls back to `config.trading_fee_pct`: that value was
+        1.6 on the measured trade and the venue charged 1.2, so a
+        synthesised fee books a number the exchange never charged.
+        """
+        _units = float(units)
+        _price = float(price)
+        _gross = _units * _price
+        _fee = self._take_venue_fee(_units, _price)
+        _refusal = ""
+        if _fee is None or not _fee.reported:
+            _refusal = "the venue reported no fee"
+        elif not _fee.currency:
+            _refusal = "the venue named no fee currency"
+        elif self._venue_quote_currency() and _fee.currency != (
+            self._venue_quote_currency()
+        ):
+            _refusal = (
+                f"the venue charged the fee in {_fee.currency}, not the "
+                f"{self._venue_quote_currency()} this sale is credited in"
+            )
+        elif _fee.fee_amount >= _gross:
+            _refusal = (
+                f"the reported fee ${_fee.fee_amount:.5f} is not smaller "
+                f"than the gross ${_gross:.5f}"
+            )
+        if _refusal:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"{label} PROCEEDS BOOKED GROSS ${_gross:.5f} for "
+                    f"{_units:.6f} @ ${_price:.8f}: {_refusal}. No fee "
+                    f"was subtracted and none was estimated. Tranches "
+                    f"read richer than the wallet if the venue did "
+                    f"charge one."
+                ),
+            )
+            return _gross
+        _net = _gross - _fee.fee_amount
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"{label} PROCEEDS BOOKED NET ${_net:.5f} for "
+                f"{_units:.6f} @ ${_price:.8f}: gross ${_gross:.5f} "
+                f"minus the ${_fee.fee_amount:.5f} {_fee.currency} fee "
+                f"the venue reported."
+            ),
+        )
+        return _net
 
     async def _execute_manual_rebalance(
         self, ticker, caller_intent: str = "manual_button"
@@ -8395,7 +8623,12 @@ class ScrummingBot(
             if fill_price <= 0:
                 fill_price = price
 
-            fill_usd = fill_price * fill_amount
+            # issue #133 unit 9b -- the venue credits the NET,
+            # exactly as on the SCRUM and DIST paths. `_settled_fill`
+            # carried the fee from whichever order object settled.
+            fill_usd = self._settled_sale_proceeds(
+                fill_amount, fill_price, label=_scrum_label
+            )
             self._current_holdings = max(0.0, self._current_holdings - fill_amount)
 
             _manual_routed_total = self._route_scrum_proceeds_via_wires(
@@ -10282,7 +10515,15 @@ class ScrummingBot(
         bypass_stack: bool = False,
     ) -> Optional[float]:
         """Execute a sell order. Returns actual fill price captured from
-        original semantics."""
+        original semantics.
+
+        issue #133 unit 9b -- also records the fee the venue reported
+        for the settled order, so the SCRUM and DIST fold loops can
+        value the sale at what the wallet was credited. The record is
+        cleared on entry: a sell that never reaches the exchange must
+        not leave the previous sell's fee readable.
+        """
+        self._last_sell_venue_fee = None
 
         if (
             not bypass_stack
@@ -10517,6 +10758,10 @@ class ScrummingBot(
             )
             if not actual_fill or actual_fill <= 0:
                 actual_fill = price
+            # issue #133 unit 9b -- the only point on the SCRUM and
+            # DIST paths that holds the settled order, so the venue's
+            # fee is carried from here.
+            self._record_venue_fee(order, amount, actual_fill)
             slippage_pct = ((actual_fill - price) / price * 100.0) if price > 0 else 0.0
 
             self.stats.trade_volume += amount * actual_fill

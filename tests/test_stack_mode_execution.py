@@ -226,6 +226,9 @@ class _SellStubBot:
         self.placed_orders: list[dict] = []
         self.notifications: list[tuple] = []
         self.reconcile_reasons: list[str] = []
+        # issue #133 unit 9b -- the venue's fee for the last settled
+        # sell. `_execute_sell` clears it and writes it.
+        self._last_sell_venue_fee = None
 
     def _crr(self):
         """No capital-reservation registry. _execute_sell raises inside its
@@ -234,6 +237,18 @@ class _SellStubBot:
 
     def _emit_trade_notification(self, kind, state, detail):
         self.notifications.append((kind, state, detail))
+
+    def _record_venue_fee(self, order, units, price):
+        """Delegate to the REAL ScrummingBot._record_venue_fee.
+
+        issue #133 unit 9b. ``_execute_sell`` records the venue's fee
+        off the settled order. A no-op here would let this stub drift
+        from the collaborator it doubles, which is the same reason
+        ``_execute_sell`` below delegates rather than fakes.
+        """
+        from src.trading.scrumming_bot import ScrummingBot
+
+        return ScrummingBot._record_venue_fee(self, order, units, price)
 
     async def _execute_sell(self, amount, price, summary, bypass_stack=False):
         """Delegate to the REAL ScrummingBot._execute_sell. The reconciler
