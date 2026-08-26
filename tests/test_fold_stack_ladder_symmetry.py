@@ -148,6 +148,11 @@ def _bot(**overrides):
         base_currency="USD",
         target_asset="CHIP",
         target_balance=100.0,
+        # Every assertion in this file was written against a
+        # dormant Stack side. Pinned here because the field's
+        # default is now ON (issue #133 unit 8); pass
+        # stack_mode=True to drive the other case.
+        stack_mode=False,
     )
     for key, value in overrides.items():
         setattr(cfg, key, value)
@@ -731,7 +736,7 @@ class _Panel:
         return None if record is None else record.get("scrumming_state", {})
 
 
-def _build_panel(tmp_path) -> _Panel:
+def _build_panel(tmp_path, **overrides) -> _Panel:
     _qt_or_skip()
     from PySide6.QtWidgets import QDialog, QTabWidget, QWidget
 
@@ -740,7 +745,7 @@ def _build_panel(tmp_path) -> _Panel:
     from src.gui.bot_live_settings import BotLiveSettingsDialog
     from src.trading.bot_container import BotManager
 
-    bot = _bot()
+    bot = _bot(**overrides)
     manager = BotManager(bus=EventBus())
     manager._bots[bot.bot_id] = bot
     state_manager = StateManager(config_dir=tmp_path)
@@ -780,21 +785,29 @@ def panel(tmp_path):
         _destroy(built)
 
 
-def test_the_installer_puts_a_stack_tranches_tab_on_the_dialog(panel):
+@pytest.mark.parametrize("gate", [False, True])
+def test_the_installer_puts_a_stack_tranches_tab_on_the_dialog(tmp_path, gate):
     """The Stack Tranches tab is missing from a scrumming bot's dialog:
     FAILURE means the operator cannot see that half of the ladder.
 
     This is the behavioural half of
     ``test_stack_mode_visible.py::test_tab_registered_for_all_scrumming
     _bots``, which reads the wiring off the source.
+
+    Driven on BOTH sides of the gate. The tab used to be reached
+    only with Stack Mode OFF, which the field's default supplied
+    for free; issue #133 unit 8 moved that default, so the OFF
+    case is now set here and the ON case is added beside it.
     """
-    assert "Stack Tranches" in panel.labels()
-    assert "Fold Tranches" in panel.labels()
-    assert panel.dialog._stack_tab_page is not None
-    assert panel.tabs.indexOf(panel.dialog._stack_tab_page) >= 0
-    assert not bool(
-        getattr(panel.bot.config, "stack_mode", False)
-    ), "the tab must render with Stack Mode OFF, which is its whole point"
+    panel = _build_panel(tmp_path, stack_mode=gate)
+    try:
+        assert bool(getattr(panel.bot.config, "stack_mode", None)) is gate
+        assert "Stack Tranches" in panel.labels()
+        assert "Fold Tranches" in panel.labels()
+        assert panel.dialog._stack_tab_page is not None
+        assert panel.tabs.indexOf(panel.dialog._stack_tab_page) >= 0
+    finally:
+        _destroy(panel)
 
 
 def _buttons_on(page) -> dict[str, object]:

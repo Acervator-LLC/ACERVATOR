@@ -103,6 +103,16 @@ class BotMode(str, Enum):
 # ---------------------------------------------------------------------------
 # Bot configuration
 # ---------------------------------------------------------------------------
+#: The Stack Mode value a bot takes when NOTHING is stored for it.
+#: Issue #133 unit 8: ON. Every read of an absent `stack_mode`
+#: resolves here, so the declared default and the value a bot gets
+#: cannot drift. `get_full_state` persists `asdict(self.config)`,
+#: so a bot that has been saved once carries its own value and
+#: never reaches this line again -- all 38 bots in the operator's
+#: bot_state.json store False and keep it.
+STACK_MODE_DEFAULT: bool = True
+
+
 @dataclass
 class BotConfig:
     """Immutable configuration snapshot for a bot instance."""
@@ -343,7 +353,7 @@ class BotConfig:
     #   - `visibility="internal"`   → Stack tranches tracked in the
     #     bot's internal ledger only; the bot fires a MARKET SELL for
     #     each tranche when price crosses that level. No book presence.
-    stack_mode: bool = False
+    stack_mode: bool = STACK_MODE_DEFAULT
     # v3.23.25 — Split Distance. Percent spacing between successive Stack
     # tranches, applied via `stack_spacing_mode`. Range mirrors
     # `scrumming_interval_pct`.
@@ -763,9 +773,10 @@ _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS: frozenset = frozenset(
 # files. `_sanitize_deprecated_kwargs()` silently drops these before
 # they reach BotConfig.__init__ so restore paths don't TypeError.
 # Operator directive 2026-07-25: bulk_trading was always-False in
-# practice; we can drop the key without behaviour loss because the
-# new stack_mode replacement defaults to False (same effective
-# behaviour). bulk_partial_on_return was declared but never read.
+# practice, so dropping the key loses no setting -- there was only
+# ever one value to carry. A file that carried it takes
+# STACK_MODE_DEFAULT like any other file with no stored value.
+# bulk_partial_on_return was declared but never read.
 _DEPRECATED_KWARGS: frozenset = frozenset(
     {
         "bulk_trading",  # renamed to stack_mode; historically always False
@@ -4094,11 +4105,12 @@ class BotManager:
                 "ta_timeframe": cfg.get("ta_timeframe", "1h"),
                 "visibility": cfg.get("visibility", "orderbook"),
                 "aggressive_trading": cfg.get("aggressive_trading", False),
-                # v3.23.25 — Stack Mode (renamed from bulk_trading).
-                # Older bot_state.json files with `bulk_trading: false`
-                # are handled by _sanitize_deprecated_kwargs() at the
-                # top of make_bot_config; the new field defaults False.
-                "stack_mode": cfg.get("stack_mode", cfg.get("bulk_trading", False)),
+                # An absent key resolves to STACK_MODE_DEFAULT, not to
+                # the retired `bulk_trading`. That key was always False,
+                # so reading it here resolved a pre-rename state file to
+                # a stale False instead of the current default; it is
+                # dropped by _sanitize_deprecated_kwargs() either way.
+                "stack_mode": cfg.get("stack_mode", STACK_MODE_DEFAULT),
                 "split_distance": cfg.get("split_distance", 1.0),
                 "stack_tranche_count_target": cfg.get("stack_tranche_count_target", 3),
                 "stack_spacing_mode": cfg.get("stack_spacing_mode", "linear"),

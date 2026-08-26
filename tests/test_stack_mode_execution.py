@@ -791,16 +791,19 @@ class TestTheTrancheSurvivesARefusal:
         )
 
 
-class TestShipsDormant:
-    """stack_mode is False on all 37 live bots and this change does not
-    turn it on anywhere."""
+class TestBothStagesRespectTheGate:
+    """Issue #133 unit 8 turned the DEFAULT on; the GATE is what
+    these two stages read, and a bot whose stored value is False
+    must still do nothing. The 38 bots in the operator's
+    bot_state.json each store False and keep it."""
 
-    def test_the_config_default_is_off(self):
-        from src.trading.bot_container import BotConfig
+    def test_the_config_default_is_the_one_declaration(self):
         import dataclasses
 
+        from src.trading.bot_container import STACK_MODE_DEFAULT, BotConfig
+
         field = {f.name: f for f in dataclasses.fields(BotConfig)}["stack_mode"]
-        assert field.default is False
+        assert field.default is STACK_MODE_DEFAULT
 
     def test_both_stages_are_no_ops_when_stack_mode_is_off(self):
         bot = _opened_bot()

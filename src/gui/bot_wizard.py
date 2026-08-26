@@ -770,10 +770,14 @@ if _HAS_QT:
             )
             mf.addRow(self._aggressive)
 
+            from ..trading.bot_container import STACK_MODE_DEFAULT
+
             self._stack_mode = QCheckBox(
                 "Stack Mode (split SCRUM across upward tranches)"
             )
-            self._stack_mode.setChecked(False)
+            # The new-bot surface reads the one declaration, so the box
+            # and a config the wizard never touches cannot disagree.
+            self._stack_mode.setChecked(STACK_MODE_DEFAULT)
             self._stack_mode.setToolTip(
                 "When ON, a SCRUM fires as N Stack Tranches at "
                 "ascending price levels instead of a single sell. "

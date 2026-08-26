@@ -10,7 +10,8 @@ Locks the v3.23.25 schema changes:
     NOT raise TypeError against the new schema (backwards-compat).
   - Settings widget renames + new widgets present in the tab source.
   - Restore paths in main_window.py + bot_container.py emit stack_mode
-    (with bulk_trading fallback) and no longer emit the retired keys.
+    and no longer emit the retired keys. bot_container resolves an
+    absent key through STACK_MODE_DEFAULT (issue #133 unit 8).
 """
 
 from __future__ import annotations
@@ -40,11 +41,18 @@ class TestBotConfigSchema:
         return {f.name: f for f in dataclasses.fields(BotConfig)}
 
     def test_stack_mode_field_present(self):
+        """Issue #133 unit 8 moved the default to ON. The field must
+        carry the ONE declaration, not a second copy of the value --
+        a literal here would drift from every fallback that reads
+        STACK_MODE_DEFAULT."""
+        from src.trading.bot_container import STACK_MODE_DEFAULT
+
         f = self._fields().get("stack_mode")
         assert f is not None, "stack_mode field missing"
         assert (
-            f.default is False
-        ), f"stack_mode default should be False, got {f.default!r}"
+            f.default is STACK_MODE_DEFAULT
+        ), f"stack_mode default should be {STACK_MODE_DEFAULT!r}, got {f.default!r}"
+        assert f.default is True
 
     def test_bulk_trading_field_absent(self):
         assert "bulk_trading" not in self._fields(), (
@@ -132,8 +140,13 @@ class TestOlderBotStateCompatibility:
     }
 
     def test_bulk_trading_in_kwargs_no_typeerror(self):
-        """A bot_state.json saved before v3.23.25 will pass
-        bulk_trading=False to make_bot_config. Must not TypeError."""
+        """A bot_state.json saved before the rename passes
+        bulk_trading=False to make_bot_config. Must not TypeError,
+        and must not be read as the Stack Mode setting: the key is
+        dropped and the bot takes the current default (issue #133
+        unit 8, ON). A stale False here is the old default."""
+        from src.trading.bot_container import STACK_MODE_DEFAULT
+
         cfg = make_bot_config(
             BotMode.SCRUMMING,
             **self._REQ,
@@ -141,7 +154,7 @@ class TestOlderBotStateCompatibility:
             bulk_partial_on_return=True,  # deprecated kwarg
         )
         assert cfg.mode == BotMode.SCRUMMING
-        assert cfg.stack_mode is False  # default kept
+        assert cfg.stack_mode is STACK_MODE_DEFAULT
 
     def test_grid_legacy_kwargs_no_typeerror(self):
         cfg = make_bot_config(
