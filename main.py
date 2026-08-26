@@ -648,7 +648,15 @@ def _write_heartbeat():
 # Built here rather than inline in main() so the timer's configuration is
 # reachable from a test. Asserting on the text of main() would pin the
 # source, not the object Qt actually schedules.
+#
+# The QTimer is the SCHEDULER. The call it makes lives in
+# src/core/tick_driver.py, which imports no Qt, so the same call runs
+# headless through AsyncioTickDriver at the same cadence.
 # ---------------------------------------------------------------------------
+# Must equal src.core.tick_driver.PUMP_INTERVAL_MS. Restated here rather
+# than imported: every src import in this file is inside a function,
+# because the bootstrap above runs before src/ is guaranteed importable.
+# tests/test_tick_driver_is_qt_free.py fails when the two differ.
 ASYNC_PUMP_INTERVAL_MS = 50
 
 
@@ -673,13 +681,17 @@ def _make_async_pump_timer(
     Scope, so this is not mistaken for the freeze fix: it recovers
     about 12.6 ms per pump cycle. It does not explain a multi-second
     button delay, and it is not offered as an explanation of one.
+
+    The pump body is src.core.tick_driver.pump_once, which holds no Qt.
+    This function supplies only the schedule.
     """
     from PySide6.QtCore import Qt, QTimer
 
+    from src.core.tick_driver import pump_once
+
     def pump_async():
         """Run pending async callbacks."""
-        loop.call_soon(loop.stop)
-        loop.run_forever()
+        pump_once(loop)
 
     timer = QTimer()
     timer.setTimerType(Qt.TimerType.PreciseTimer)
