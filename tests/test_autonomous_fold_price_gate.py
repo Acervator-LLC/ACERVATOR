@@ -447,6 +447,7 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 #   a01b0b512fa63c2d117b4d3fc24cbb5a251c8db65a30d06a7864c26a41396610
 #   7dbcdf491175a80aa186bb06cc7345c7491a7353e2570acc5bb0c2eb98ca55e1
 #   fa7252d547328e778721f1dad2f4155b023260236ddd0767e284bc2702e6fd58
+#   ea6c5fd4be5002a70429bdf9296c8e5d5e01772a6b58abb2dbf370338d421596
 # Re-derived 2026-08-25. FOUR things moved under this digest and the
 # re-derivation enumerated every one: black's layout pass, the 42 re-anchored
 # citation numbers, the F541 f-prefix fix, and an autoflake pass that dropped
@@ -588,7 +589,64 @@ SOURCE = _normalise(SOURCE_PATH.read_bytes().decode("utf-8"))
 # ``_pre_change_source`` returns zero orphans on BOTH files, and the
 # reconstruction of ``HEAD`` still hashes to the digest this one
 # replaces, kept in the list above.
-PRE_CHANGE_SHA256 = "ea6c5fd4be5002a70429bdf9296c8e5d5e01772a6b58abb2dbf370338d421596"
+#
+# RE-BASED AGAIN 2026-08-26, issue #128 R2, same tripwire, same reason.
+# One change landed in ``scrumming_bot.py`` outside every span this
+# file reverses, so it reaches the digest:
+#
+#   the two AT-TARGET BANDS were written out FIVE times between the
+#   two files. ``tick()`` held
+#   ``max(float(self._target_balance) * 0.001, 0.01)`` at the park
+#   decision AND a third copy 200 lines above it, labelling the
+#   init log line "on-target"; ``_execute_manual_rebalance`` held
+#   ``max(self._target_balance * 0.01, 0.01)``, and
+#   ``src/gui/main_window.py`` held BOTH again inside
+#   ``_compose_ammo_cell``, which predicts on the dashboard what the
+#   tick and the Fire button are about to do. A display that computes
+#   a trading threshold itself can disagree with the engine, and the
+#   operator finds that out by pressing the button. All three engine
+#   sites now call ``src/trading/target_bands.py``, and so does the
+#   cell.
+#
+#   THE THIRD COPY IS DE-DUPLICATED, NOT REPAIRED. It compares with
+#   ``<`` where the park decision compares with ``<=``, so at EXACTLY
+#   the band the tick parks and the log line still reads "above target
+#   by $0.00". That is a label, not a trade, and moving the comparator
+#   is a behaviour change this unit did not ask for. Named, not fixed.
+#
+# WHAT THIS RE-BASE IS. +1 line, ONE insertion, at :52 -- the import.
+# The three band expressions are REPLACED IN PLACE, four lines for
+# four and one for one twice, so the line count moves only by that
+# import, and every line at or below :52 shifts by exactly +1. No
+# method is added or removed; no anchor string gains or loses an
+# occurrence.
+#
+# THE DERIVATION, NOT THE MEASUREMENT. Diffing the two reconstructions
+# gives 48 hunks and every one is accounted for: 1 pure insertion of
+# the import, 3 replaced band expressions, and 44 hunks that differ in
+# a citation number and nothing else.
+#
+# The shipping file carries 95 ``:NNNN`` tokens. 75 are self citations
+# and every one names a line at or below :52, so all 75 moved -- 79
+# numbers once the four ranges are counted at both ends. 19 name
+# another file, ``:488-494`` names a spec document and the ``[:180]``
+# slice is not a citation at all; all 20 were left alone, for the
+# reasons #102, #104 and #106 wrote down. ``scrumming_bot.py:5547``
+# carries THIS file's own name and IS a self citation, so it moved --
+# the same exception #98 recorded.
+#
+# THE READ-BACK IS THE PROOF. Each shifted citation was required to
+# name the SAME TEXT in the post-change file that it named in the
+# pre-change one: 79 numbers, 0 mismatches. ``CITATION_ANCHORS`` in
+# ``tests/test_extractor_tranche_containment.py`` was re-anchored in
+# the SAME change -- 42 anchors, all above :52 and so all moved by +1,
+# each read back out of the post-change file: 0 mismatches. That
+# file's 121 tests pass.
+#
+# ``_pre_change_source`` returns zero orphans on BOTH files, and the
+# reconstruction of the pre-change file still hashes to the digest
+# this one replaces, kept in the list above.
+PRE_CHANGE_SHA256 = "79e0a9e1a5ef6e323c4c88d3ef7b151e0ab4db38d759a75ee9d547e835f1d9df"
 
 _GATE_FIRST_LINE = (
     "            # v3.25.x (U3) -- THE AUTONOMOUS FOLD IS GATED ON PRICE."

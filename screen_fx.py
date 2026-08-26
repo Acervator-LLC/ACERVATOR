@@ -140,6 +140,54 @@ def tag_font(size: int = 9, base: QFont | None = None) -> QFont:
     return f
 
 
+def harvest_fold_curve(prices: list[float]) -> list[float]:
+    """The equity curve the two marketing screens draw. ONE spelling.
+
+    AN ILLUSTRATION, NOT THE ENGINE. It caricatures harvest-fold on a
+    synthetic price series so a viewer can see the shape: sell the
+    surplus above +2%, buy it back 0.6% lower, top up below -3%, at a
+    0.999 fee factor. The real decision reads Bollinger bands, a TA
+    vote and a tranche ladder, and lives in ``src/trading``. Nothing
+    here reaches a venue and no bot reads it.
+
+    IT IS HERE BECAUSE IT WAS WRITTEN TWICE. ``investor_screen`` and
+    ``cartoon_screen`` each carried this loop, character for
+    character, and neither had a test. Issue #128 R2 moved it beside
+    the animation helpers those two screens already share.
+
+    Returns one equity reading per price: coin at the current price,
+    plus cash, plus the folded quantity still held back.
+    """
+    curve = []
+    hold = 1.0 / prices[0]
+    usd = 0.0
+    st = 1.0
+    fq = 0.0
+    fr = 0.0
+    for p in prices:
+        v = hold * p
+        d = v - st
+        if d > st * 0.02 and fq < 0.005:
+            sq = d * 0.9 / p
+            net = sq * p * 0.999
+            hold -= sq
+            usd += net
+            fq = net
+            fr = p
+        elif fq > 0.005 and p < fr * 0.994 and usd >= fq:
+            qty = fq * 0.999 / p
+            hold += qty
+            usd -= fq
+            fq = 0.0
+            st += max(0.0, (qty - fq / fr if fr else 0) * p * 0.8)
+        elif v < st * 0.97 and usd > 0.04:
+            use = min(usd * 0.3, (st - v) * 0.5)
+            hold += use * 0.999 / p
+            usd -= use
+        curve.append(hold * p + usd + fq)
+    return curve
+
+
 # ---------------------------------------------------------------------------
 # The widget base
 # ---------------------------------------------------------------------------

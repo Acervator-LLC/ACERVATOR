@@ -118,6 +118,23 @@ class MACD:
         ]
         return macd_line, signal_line, histogram
 
+    def lines(self, candles: list[Candle]) -> tuple[_Line, _Line, _Line]:
+        """``_lines`` over a candle list. The chart's series.
+
+        The same three series ``compute`` votes on and
+        ``compute_histogram_series`` trims, taken from the same
+        method, so a chart cannot draw a MACD the engine did not
+        compute.
+
+        THE CANDLE CHART'S OLD COPY SEEDED EVERY EMA AT ``closes[0]``
+        and back-filled from index 0, so its MACD line existed 25 bars
+        before the published one and its signal line 33. Measured over
+        an 80-bar tape: 47 indices carried a value in both, and NONE
+        of the 47 matched; peak histogram divergence 237%. Issue #128
+        R2 removed that copy.
+        """
+        return self._lines([c.close for c in candles])
+
     def compute(self, candles: list[Candle], timeframe: str = "1h") -> Signal:
         closes = [c.close for c in candles]
         # THE PUBLISHED WARM-UP, EXACTLY. The signal line's first value

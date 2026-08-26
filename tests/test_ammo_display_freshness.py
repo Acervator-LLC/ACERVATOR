@@ -167,12 +167,32 @@ class TestTheManualFireBandSplit:
         assert out["manual_fire_noop"] is False
         assert "MANUAL FIRE WILL NOT ACT" not in out["tip"]
 
-    def test_the_band_matches_the_engine_constant(self):
-        """If the engine's 1% ever moves, this must move with it or the
-        warning starts lying."""
+    def test_the_engine_spells_no_band_of_its_own_to_drift_from(self):
+        """THE SAME INVARIANT, ASSERTED HARDER. Issue #128 R2.
+
+        This used to read ``_execute_manual_rebalance``'s SOURCE TEXT
+        for ``"* 0.01"`` and require the cell's constant to match it.
+        That was the best available check while the number was written
+        out twice: it could only catch the two copies disagreeing, and
+        only through a substring.
+
+        Both sites now call ``src/trading/target_bands.py``, so the
+        property to assert is stronger -- there is no second spelling
+        to drift. That is checked two ways: the engine method carries
+        no band literal, and the two bands come out EQUAL AS NUMBERS
+        over a swept domain rather than as matching text.
+
+        IF THIS FAILS: a band literal came back into the engine, and
+        the cell's "MANUAL FIRE WILL NOT ACT" warning can start lying
+        again.
+        """
         import ast
 
         import src.trading.scrumming_bot as sb
+        from src.trading.target_bands import (
+            MANUAL_FIRE_PCT,
+            manual_fire_dust_band,
+        )
 
         src = Path(sb.__file__).read_text(encoding="utf-8")
         fn = next(
@@ -182,9 +202,13 @@ class TestTheManualFireBandSplit:
             and n.name == "_execute_manual_rebalance"
         )
         seg = ast.get_source_segment(src, fn) or ""
-        assert (
-            f"* {_MANUAL_FIRE_DUST_PCT}" in seg
-        ), "engine dust band no longer matches _MANUAL_FIRE_DUST_PCT"
+        assert "manual_fire_dust_band(" in seg, "the engine stopped calling the band"
+        assert "* 0.01" not in seg, "a band literal is back in the engine"
+
+        assert _MANUAL_FIRE_DUST_PCT is MANUAL_FIRE_PCT
+        for target in (0.0, 0.001, 0.5, 1.0, 1.0000001, 47.13, 100.0, 1e6):
+            engine = max(target * MANUAL_FIRE_PCT, 0.01)
+            assert manual_fire_dust_band(target) == engine, target
 
     def test_an_exactly_zero_delta_is_not_flagged(self):
         """A bot sitting precisely on target is not a surprising no-op."""

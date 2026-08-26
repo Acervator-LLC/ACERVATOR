@@ -111,41 +111,13 @@ def _cached_prices(n=80):
     return pts
 
 
-def _cached_hf(prices):
-    hf = []
-    hold = 1.0 / prices[0]
-    usd = 0.0
-    st = 1.0
-    fq = 0.0
-    fr = 0.0
-    for p in prices:
-        v = hold * p
-        d = v - st
-        if d > st * 0.02 and fq < 0.005:
-            sq = d * 0.9 / p
-            net = sq * p * 0.999
-            hold -= sq
-            usd += net
-            fq = net
-            fr = p
-        elif fq > 0.005 and p < fr * 0.994 and usd >= fq:
-            qty = fq * 0.999 / p
-            hold += qty
-            usd -= fq
-            fq = 0.0
-            st += max(0.0, (qty - fq / fr if fr else 0) * p * 0.8)
-        elif v < st * 0.97 and usd > 0.04:
-            use = min(usd * 0.3, (st - v) * 0.5)
-            hold += use * 0.999 / p
-            usd -= use
-        hf.append(hold * p + usd + fq)
-    return hf
-
-
 _PROOF_PRICES = _cached_prices()
 _PROOF_BH_QTY = 1.0 / _PROOF_PRICES[0]
 _PROOF_BH = [_PROOF_BH_QTY * p for p in _PROOF_PRICES]
-_PROOF_HF = _cached_hf(_PROOF_PRICES)
+# The illustration is computed ONCE, by the shared helper. This module
+# held its own copy of that loop, byte for byte identical to
+# cartoon_screen's.
+_PROOF_HF = screen_fx.harvest_fold_curve(_PROOF_PRICES)
 
 
 class InvestorScreen(AnimatedScreenBase):
@@ -277,11 +249,18 @@ class InvestorScreen(AnimatedScreenBase):
     # ── Equity chart for proof section ───────────────────────────────────────
 
     def _draw_proof_chart(self, p, x, y, w, h, alpha, progress):
-        """Animated equity curves: BH=red, HF=green."""
-        prices = self._gen_prices("bull")
-        hf = self._sim_hf(prices)
-        bh_qty = 1.0 / prices[0]
-        bh = [bh_qty * pr for pr in prices]
+        """Animated equity curves: BH=red, HF=green.
+
+        READS THE MODULE-LEVEL CACHE. It used to call
+        ``self._gen_prices`` and ``self._sim_hf``, and neither exists
+        on this class or on ``AnimatedScreenBase``, so every call
+        raised AttributeError and the Proof scene drew no chart. The
+        three constants above were built for exactly this and nothing
+        read them.
+        """
+        prices = _PROOF_PRICES
+        hf = _PROOF_HF
+        bh = _PROOF_BH
         n = len(prices)
         pts = max(2, int(progress * n))
 

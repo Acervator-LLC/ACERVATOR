@@ -20,6 +20,16 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
+# THE ENGINE OWNS EVERY INDICATOR. This chart asks for the series; it
+# never computes one. See ``_compute_indicators``.
+from src.trading.ta_engine import (
+    BollingerBands,
+    IchimokuCloud,
+    MACD,
+    StochasticRSI,
+    VortexIndicator,
+)
+
 logger = logging.getLogger("acervator.gui")
 
 try:
@@ -164,10 +174,6 @@ if _HAS_QT:
             self._show_slingshot = False
             self._show_bbullseye = False
             self._bb_data: list[tuple] = []  # [(upper, middle, lower), ...]
-            # MACD's compute uses EMA12/EMA26 internally; these are
-            # private intermediates, not user-facing toggles.
-            self._ema12_internal: list[float] = []
-            self._ema26_internal: list[float] = []
             self._vortex_data: list[tuple] = []  # [(vi_plus, vi_minus), ...]
             self._macd_data: list[tuple] = []  # [(macd, signal, hist), ...]
             self._stochrsi_data: list[float] = []
@@ -274,153 +280,36 @@ if _HAS_QT:
             self.update()
 
         def _compute_indicators(self):
-            """Compute BB + the 4 sub-pane oscillators + Ichimoku."""
-            closes = [c.close for c in self._candles]
-            n = len(closes)
-            # Bollinger Bands (20, 2)
-            self._bb_data = []
-            for i in range(n):
-                if i >= 19:
-                    window = closes[i - 19 : i + 1]
-                    sma = sum(window) / 20
-                    std = (sum((x - sma) ** 2 for x in window) / 20) ** 0.5
-                    self._bb_data.append((sma + 2 * std, sma, sma - 2 * std))
-                else:
-                    self._bb_data.append(None)
-            # EMA 12 / EMA 26 — private intermediates for MACD only
-            # (not user-facing — see __init__ comment).
-            self._ema12_internal = []
-            self._ema26_internal = []
-            if n > 0:
-                ema = closes[0]
-                k12 = 2 / 13
-                for c in closes:
-                    ema = c * k12 + ema * (1 - k12)
-                    self._ema12_internal.append(ema)
-                ema = closes[0]
-                k26 = 2 / 27
-                for c in closes:
-                    ema = c * k26 + ema * (1 - k26)
-                    self._ema26_internal.append(ema)
+            """Ask the engine for every overlay this chart draws.
 
-            # Session 26 P1f — voting-engine indicators 5-8 (Vortex, MACD,
-            # StochRSI, Ichimoku). Implemented as per-candle time series for
-            # charting. Semantics match the corresponding ta_engine classes
-            # (VortexIndicator, MACD, StochasticRSI, IchimokuCloud) — this
-            # is chart display only; trading logic uses ta_engine which is
-            # the canonical source. Do NOT let chart computations diverge.
-            highs = [c.high for c in self._candles]
-            lows = [c.low for c in self._candles]
+            NOT A SECOND INDICATOR SUITE. Each series comes from the
+            class in ``src/trading/indicators`` that owns that
+            indicator's published formula, so the chart cannot draw a
+            number the trading engine did not compute. Issue #128 R2
+            removed the 148-line copy that used to live here; its MACD
+            seeded every EMA at ``closes[0]`` and so disagreed with
+            the engine on every bar it drew.
 
-            # Vortex (14): VM+ = |H[i] - L[i-1]|, VM- = |L[i] - H[i-1]|
-            # TR = max(H-L, |H-prev_close|, |L-prev_close|)
-            self._vortex_data = []
-            vm_plus, vm_minus, trs = [], [], []
-            for i in range(n):
-                if i == 0:
-                    vm_plus.append(0.0)
-                    vm_minus.append(0.0)
-                    trs.append(highs[0] - lows[0])
-                else:
-                    vm_plus.append(abs(highs[i] - lows[i - 1]))
-                    vm_minus.append(abs(lows[i] - highs[i - 1]))
-                    trs.append(
-                        max(
-                            highs[i] - lows[i],
-                            abs(highs[i] - closes[i - 1]),
-                            abs(lows[i] - closes[i - 1]),
-                        )
-                    )
-            period = 14
-            for i in range(n):
-                if i < period:
-                    self._vortex_data.append(None)
-                else:
-                    s_plus = sum(vm_plus[i - period + 1 : i + 1])
-                    s_minus = sum(vm_minus[i - period + 1 : i + 1])
-                    s_tr = sum(trs[i - period + 1 : i + 1]) or 1e-9
-                    self._vortex_data.append((s_plus / s_tr, s_minus / s_tr))
-
-            # MACD (12, 26, 9): line = EMA12 - EMA26; signal = EMA9(line)
-            self._macd_data = []
-            if n > 0:
-                macd_line = [
-                    self._ema12_internal[i] - self._ema26_internal[i] for i in range(n)
-                ]
-                signal = []
-                if macd_line:
-                    s = macd_line[0]
-                    k9 = 2 / 10
-                    for v in macd_line:
-                        s = v * k9 + s * (1 - k9)
-                        signal.append(s)
-                for i in range(n):
-                    hist = macd_line[i] - signal[i]
-                    self._macd_data.append((macd_line[i], signal[i], hist))
-
-            # StochRSI (14/14/3/3): RSI(14), then stoch over 14-period RSI
-            self._stochrsi_data = []
-            # RSI first
-            rsi_period = 14
-            gains, losses = [0.0], [0.0]
-            for i in range(1, n):
-                chg = closes[i] - closes[i - 1]
-                gains.append(max(chg, 0.0))
-                losses.append(max(-chg, 0.0))
-            avg_gain, avg_loss = 0.0, 0.0
-            rsi_series = []
-            for i in range(n):
-                if i < rsi_period:
-                    rsi_series.append(None)
-                    continue
-                if i == rsi_period:
-                    avg_gain = sum(gains[1 : rsi_period + 1]) / rsi_period
-                    avg_loss = sum(losses[1 : rsi_period + 1]) / rsi_period
-                else:
-                    avg_gain = (avg_gain * (rsi_period - 1) + gains[i]) / rsi_period
-                    avg_loss = (avg_loss * (rsi_period - 1) + losses[i]) / rsi_period
-                rs = avg_gain / avg_loss if avg_loss > 0 else 100.0
-                rsi_series.append(100.0 - (100.0 / (1.0 + rs)))
-            # Stoch over RSI window
-            for i in range(n):
-                if i < rsi_period * 2 or rsi_series[i] is None:
-                    self._stochrsi_data.append(None)
-                    continue
-                window = [
-                    r for r in rsi_series[i - rsi_period + 1 : i + 1] if r is not None
-                ]
-                if not window:
-                    self._stochrsi_data.append(None)
-                    continue
-                hi, lo = max(window), min(window)
-                denom = (hi - lo) or 1e-9
-                self._stochrsi_data.append((rsi_series[i] - lo) / denom)
-
-            # Ichimoku (9, 26, 52): Tenkan, Kijun, Span A, Span B, Chikou
-            def _mid(lo_series, hi_series, i, period):
-                if i < period - 1:
-                    return None
-                return (
-                    max(hi_series[i - period + 1 : i + 1])
-                    + min(lo_series[i - period + 1 : i + 1])
-                ) / 2
-
-            self._ichimoku_data = []
-            for i in range(n):
-                tenkan = _mid(lows, highs, i, 9)
-                kijun = _mid(lows, highs, i, 26)
-                # Span A / B are shifted FORWARD 26 in canonical Ichimoku;
-                # for chart overlay we compute them at their native index
-                # and the paint layer handles the shift.
-                span_a = (
-                    ((tenkan + kijun) / 2)
-                    if (tenkan is not None and kijun is not None)
-                    else None
-                )
-                span_b = _mid(lows, highs, i, 52)
-                # Chikou is close shifted BACKWARD 26 (displayed 26 ago).
-                chikou = closes[i]
-                self._ichimoku_data.append((tenkan, kijun, span_a, span_b, chikou))
+            A ``None`` entry means the published formula has no value
+            at that candle. The paint layer already skips those.
+            """
+            candles = self._candles
+            self._bb_data = BollingerBands(20, 2.0).bands(candles)
+            vi_plus, vi_minus = VortexIndicator(14).lines(candles)
+            self._vortex_data = [
+                None if (p is None or m is None) else (p, m)
+                for p, m in zip(vi_plus, vi_minus)
+            ]
+            macd_line, signal_line, histogram = MACD(12, 26, 9).lines(candles)
+            self._macd_data = [
+                None if (ln is None or sg is None or hi is None) else (ln, sg, hi)
+                for ln, sg, hi in zip(macd_line, signal_line, histogram)
+            ]
+            self._stochrsi_data = StochasticRSI().lines(candles)
+            # Senkou A and B are drawn 26 bars forward and Chikou 26
+            # back; the paint layer owns that shift, so the series
+            # arrives at its native index.
+            self._ichimoku_data = IchimokuCloud(9, 26, 52).lines(candles)
 
         def add_marker(self, marker: TradeMarker) -> None:
             self._markers.append(marker)

@@ -135,33 +135,10 @@ def sim_strategies(prices, mode):
             gb.append(1.0 - t * 0.40)
         else:
             gb.append(1.0 - t * 0.04)
-    hf = []
-    hold = 1.0 / prices[0]
-    usd = 0.0
-    st = 1.0
-    fq = 0.0
-    fr = 0.0
-    for pr in prices:
-        v = hold * pr
-        d = v - st
-        if d > st * 0.02 and fq < 0.005:
-            sq = d * 0.9 / pr
-            net = sq * pr * 0.999
-            hold -= sq
-            usd += net
-            fq = net
-            fr = pr
-        elif fq > 0.005 and pr < fr * 0.994 and usd >= fq:
-            qty = fq * 0.999 / pr
-            hold += qty
-            usd -= fq
-            fq = 0.0
-            st += max(0.0, (qty - fq / fr if fr else 0) * pr * 0.8)
-        elif v < st * 0.97 and usd > 0.04:
-            use = min(usd * 0.3, (st - v) * 0.5)
-            hold += use * 0.999 / pr
-            usd -= use
-        hf.append(hold * pr + usd + fq)
+    # The harvest-fold illustration comes from the shared helper. This
+    # module held its own copy of that loop, byte for byte identical to
+    # investor_screen's, and neither had a test.
+    hf = screen_fx.harvest_fold_curve(prices)
     return {"bh": bh, "gb": gb, "hf": hf}
 
 
