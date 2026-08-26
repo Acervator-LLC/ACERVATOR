@@ -123,18 +123,31 @@ class TestANewBotComesUpOn:
         assert cfg.stack_mode is True
 
     def test_the_wizard_checkbox_starts_checked(self):
-        """The operator's own new-bot surface. A dataclass default the
-        wizard then overwrites with an unchecked box is not a default."""
-        from src.gui import bot_wizard as bw
+        """The operator's own new-bot surface, DRIVEN. A dataclass
+        default the wizard then overwrites with an unchecked box is not
+        a default, and a text scan cannot tell a laid-out box from an
+        orphan. Read off the real widget and off the payload the
+        wizard hands `_create_bot`, which is what a bot is built from.
+        """
+        pytest.importorskip("PySide6.QtWidgets")
+        from PySide6.QtWidgets import QApplication
 
-        src = Path(bw.__file__).read_text(encoding="utf-8", errors="replace")
-        i = src.find("self._stack_mode = QCheckBox")
-        assert i > 0, "wizard Stack Mode checkbox not found"
-        window = src[i : i + 400]
-        assert "setChecked(STACK_MODE_DEFAULT)" in window, (
-            "the wizard seeds Stack Mode from a literal, not from the "
-            f"one declaration: {window[:200]!r}"
-        )
+        QApplication.instance() or QApplication([])
+        from src.gui.bot_wizard import BotCreationWizard
+
+        wizard = BotCreationWizard([], {}, None)
+        try:
+            pages = [wizard.page(i) for i in wizard.pageIds()]
+            boxes = [p for p in pages if getattr(p, "_stack_mode", None)]
+            assert len(boxes) == 1, f"{len(boxes)} pages carry a Stack Mode box"
+            page = boxes[0]
+            assert (
+                page._stack_mode.parentWidget() is not None
+            ), "the Stack Mode box was constructed but never laid out"
+            assert page._stack_mode.isChecked() is True
+            assert page.get_config()["stack_mode"] is True
+        finally:
+            wizard.deleteLater()
 
     def test_the_new_value_round_trips_through_the_save_shape(self):
         """``get_full_state`` persists ``asdict(self.config)``. A
