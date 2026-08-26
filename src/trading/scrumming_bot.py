@@ -1408,112 +1408,6 @@ class ScrummingBot(BotContainer):
                     )
             self._crr_token = None
             self._crr_last_reserved_qty = 0.0
-            try:
-                from src.core.signal_contract import emit as _cr_emit
-
-                _cr_emit(
-                    "bot.01.001.postcondition.capital_reservation",
-                    actual=0.0,
-                    expected=round(float(_qty), 10),
-                    every=30.0,
-                    context={
-                        "bot_id": str(self.bot_id),
-                        "asset": _asset,
-                        "holdings": (
-                            round(float(_total_holdings), 10)
-                            if _total_holdings is not None
-                            else None
-                        ),
-                        "error": f"{type(_crr_exc).__name__}: {_crr_exc}"[:180],
-                        "released_stale": bool(_stale),
-                    },
-                )
-            except Exception as _sup:  # noqa: BLE001,S110 - advisory
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "_ensure_capital_reservation",
-                    type(_sup).__name__,
-                    _sup,
-                )
-        else:
-            # v3.24.93 - the success path reports too, so a green run is
-            # evidence rather than silence. Throttled: this runs on
-            # every tick of every bot.
-            #
-            # v3.25.x (issue #21) - IT COMPARED THE REQUEST WITH ITSELF.
-            #
-            # `actual` and `expected` were both
-            # `round(float(_qty), 10)`. `ok` therefore derived True on
-            # every call of every bot for the whole life of the pin, and
-            # a green record from it was evidence of nothing.
-            #
-            # THE TWO HALVES ARE DIFFERENT STATE AND THEY DIVERGE FOR A
-            # STATED REASON. `_qty` is what THIS tick computed as
-            # needed. `self._crr_last_reserved_qty` is the quantity the
-            # registry was last told to hold - it is written where a
-            # reservation lands and where an update lands, and nowhere
-            # else. The update path above pushes only when the drift
-            # exceeds 1 %, so the held quantity is allowed to sit
-            # anywhere inside that band and nowhere outside it.
-            #
-            # THE BAND IS READ FROM THAT UPDATE PATH, NOT CHOSEN HERE.
-            # `ok` is False exactly when the held reservation has left
-            # the band that path is supposed to keep it inside - an
-            # update that did not land, or a mirror that stopped
-            # agreeing with the registry. That is the postcondition this
-            # pin was written to carry and could not carry before.
-            #
-            # JUDGED ON THE ROUNDED PAIR THE RECORD ITSELF CARRIES, so a
-            # reader of the JSONL can recompute the verdict from
-            # `actual` and `expected` alone rather than take it on
-            # trust. The round is 1e-10 against a band of 1 % of the
-            # quantity, so it cannot change a verdict for any
-            # reservation above about 1e-8 units, and it cannot
-            # manufacture an agreement that is not there.
-            #
-            # A HELD QUANTITY OF ZERO OR LESS IS NOT A PASS. There is no
-            # reservation for a band to be measured against, and no
-            # divisor to measure one with. The update path above already
-            # reads that state this way - it sets `_drift = 1.0`, "out
-            # of band, push an update" - so False here is the reading
-            # that path already encodes. True would put back the
-            # unconditional green this repair exists to remove.
-            #
-            # `ok` IS PASSED EXPLICITLY. `emit` derives it by equality
-            # when it is not, and these two numbers are legitimately
-            # unequal on every tick that sits inside the band.
-            try:
-                from src.core.signal_contract import emit as _cr_ok
-
-                _held = round(float(self._crr_last_reserved_qty), 10)
-                _need = round(float(_qty), 10)
-                _cr_ok(
-                    "bot.01.002.postcondition.capital_reservation",
-                    actual=_held,
-                    expected=_need,
-                    ok=bool(_held > 0.0 and abs(_need - _held) / _held <= 0.01),
-                    every=60.0,
-                    context={
-                        "bot_id": str(self.bot_id),
-                        "asset": _asset,
-                        "holdings": (
-                            round(float(_total_holdings), 10)
-                            if _total_holdings is not None
-                            else None
-                        ),
-                        "capped": bool(
-                            _total_holdings is not None
-                            and abs(_qty - float(_total_holdings)) < 1e-12
-                        ),
-                    },
-                )
-            except Exception as _sup:  # noqa: BLE001,S110 - advisory
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "_ensure_capital_reservation",
-                    type(_sup).__name__,
-                    _sup,
-                )
 
     def _release_capital_reservation(self) -> None:
         """Release the registry token in stop() / destroy paths.
@@ -3590,73 +3484,6 @@ class ScrummingBot(BotContainer):
             )
         except Exception as _log_exc:  # R28-OK: diagnostic best-effort
             logger.debug("Bot %s containment log line failed: %s", _bot_id, _log_exc)
-
-        try:
-            from src.core.signal_contract import emit as _et_emit
-
-            # Expectation 1: the target moved by EXACTLY the arrival. A
-            # cap or a partial write breaks it.
-            _et_emit(
-                "extractor.02.001.postcondition.tranche_contained",
-                actual=_target_usd_added,
-                expected=u,
-                context={
-                    "bot_id": _bot_id,
-                    "source": src,
-                    "base_units": b,
-                    "target_before": _t_before,
-                    "target_after": _t_seen,
-                    "ref": ref,
-                },
-            )
-            # Expectation 2: all four writes landed, each measured
-            # against the arrival. `actual` is the delta residual an
-            # operator reads; `ok` carries the four per-write terms and
-            # the two readability flags, so this record fails when ANY
-            # write is missing -- including the run where they are ALL
-            # missing, which every difference-based term reported as
-            # zero.
-            _et_emit(
-                "extractor.02.002.invariant.arrival_atomic",
-                actual=_delta_shift_usd,
-                expected=0.0,
-                ok=_atomic_ok,
-                context={
-                    "bot_id": _bot_id,
-                    "source": src,
-                    "lot_units_booked": _lot_units_booked,
-                    "lot_units_expected": b,
-                    "ledger_units_before": _units_before,
-                    "ledger_units_after": _units_seen,
-                    "ledger_readable": _ledger_readable,
-                    "ledger_read_error": _read_why,
-                    "state_readable": _state_readable,
-                    "state_read_error": _state_read_why,
-                    "arrival_usd": u,
-                    "lot_gap_usd": _lot_gap_usd,
-                    "holdings_gap_usd": _holdings_gap_usd,
-                    "target_gap_usd": _target_gap_usd,
-                    "anchor_gap_usd": _anchor_gap_usd,
-                    "ledger_gap_usd": _ledger_gap_usd,
-                    "tolerance_usd": _tol,
-                    "lot_usd_booked": _lot_usd_booked,
-                    "holdings_usd_added": _holdings_usd_added,
-                    "target_usd_added": _target_usd_added,
-                    "anchor_usd_added": _anchor_usd_added,
-                    "holdings_before": _h_before,
-                    "holdings_after": _h_seen,
-                    "arrival_price": arrival_price,
-                    "quote_to_usd": qrate,
-                    "ref": ref,
-                },
-            )
-        except Exception as _sup:  # noqa: BLE001,S110 - advisory
-            logger.debug(
-                "suppressed in %s: %s: %s",
-                "apply_extractor_tranche_return",
-                type(_sup).__name__,
-                _sup,
-            )
 
         # EVERY REPORTED BALANCE IS THE READ-BACK, NOT THE VALUE THIS
         # METHOD MEANT TO WRITE. Returning `_h_after` here would restate
@@ -7109,55 +6936,9 @@ class ScrummingBot(BotContainer):
             if self._tick_counter < self._tick_skip and self._initialised:
                 # Still polling — but init tick always runs so we don't
                 # defer exchange connection + phantom setup.
-                #
-                # ── DIRECTIVE 2 EMITTER — the throttle, at its site ──
-                # This return is why "per-candle TA every tick" is false:
-                # measured on the live fleet, scrum_read_rate_min is 1 on
-                # 29 bots and 5 on 6, against a hardcoded tick_interval
-                # of 5.0, so _tick_skip is 12 for most of the fleet and
-                # 60 for the rest. Roughly 91% of ticks exit HERE.
-                #
-                # `bots_ticked` in the replay controller increments after
-                # tick() returns regardless, so it counted this exit
-                # identically to a full evaluation. Recording the exit
-                # where it happens makes the two separable without
-                # inferring anything.
-                try:
-                    from src.core.signal_contract import emit as _tk
-
-                    _tk(
-                        "tick.08.001.event.throttled",
-                        actual=True,
-                        context={
-                            "bot_id": self.bot_id,
-                            "counter": self._tick_counter,
-                            "skip": self._tick_skip,
-                            "read_rate_min": self.config.scrum_read_rate_min,
-                        },
-                    )
-                except Exception as _sup:  # noqa: BLE001,S110 - advisory
-                    logger.debug(
-                        "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
-                    )
                 return
             # Reset counter on action tick
             self._tick_counter = 0
-            # The satisfied path. Emitted so silence is never ambiguous:
-            # a run with zero `tick.08.002.event.worked` records did
-            # not work, and a run with no records at all was not
-            # collected. Those must not look the same.
-            try:
-                from src.core.signal_contract import emit as _tk2
-
-                _tk2(
-                    "tick.08.002.event.worked",
-                    actual=True,
-                    context={"bot_id": self.bot_id, "skip": self._tick_skip},
-                )
-            except Exception as _sup:  # noqa: BLE001,S110 - advisory
-                logger.debug(
-                    "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
-                )
         elif self._manual_fire_pending:
             # Manual fire bypass: reset counter so the next real poll
             # cycle starts fresh after we handle the override.
@@ -7449,28 +7230,6 @@ class ScrummingBot(BotContainer):
                             f"this."
                         ),
                     )
-                    try:
-                        from src.core.signal_contract import emit as _cap_emit
-
-                        _cap_emit(
-                            "bot.01.003.postcondition.adoption_capped",
-                            actual=round(_own, 10),
-                            expected=round(_uncapped, 10),
-                            context={
-                                "bot_id": str(self.bot_id),
-                                "asset": str(self.config.target_asset),
-                                "cap_usd": _cap_usd,
-                                "withheld_units": round(_uncapped - _own, 10),
-                            },
-                        )
-                    except Exception as _sup:  # noqa: BLE001,S110 - advisory
-                        logger.debug(
-                            "suppressed in %s: %s: %s",
-                            "tick",
-                            type(_sup).__name__,
-                            _sup,
-                        )
-
                 _held = sum(float(lot.get("units", 0) or 0) for lot in self._main_lots)
                 if _own > 0.0 and abs(_own - _held) > 1e-12:
                     _px = float(getattr(ticker, "last", 0.0) or 0.0)
@@ -7801,23 +7560,6 @@ class ScrummingBot(BotContainer):
                         f"early. No TA, no signals, no buys or sells "
                         f"evaluated until price moves position off target."
                     ),
-                )
-            try:
-                from src.core.signal_contract import emit as _dz
-
-                _dz(
-                    "tick.08.003.event.exit_dust_band",
-                    actual=True,
-                    context={
-                        "bot_id": self.bot_id,
-                        "position": round(float(current_value), 6),
-                        "target": round(float(self._target_balance), 6),
-                        "band": round(float(_dust_band_usd), 6),
-                    },
-                )
-            except Exception as _sup:  # noqa: BLE001,S110 - advisory
-                logger.debug(
-                    "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
                 )
             return
         # Out of dust band — clear the counter so the next at-target emit

@@ -36,7 +36,6 @@ v3.1.71 — Initial implementation
 from __future__ import annotations
 import logging
 import math
-import time
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -266,20 +265,6 @@ class SmartWireManager:
         creation alongside bot.set_smart_wire(self).
         """
         self._bot_refs[bot_id] = bot_ref
-        # DIRECTIVE 4 — "DEPLOYS". A wire is only deployable if BOTH
-        # endpoints resolve to a bot in this run. Recording each
-        # attachment lets the active count be computed instead of
-        # assumed.
-        try:
-            from src.core.signal_contract import emit as _wb
-
-            _wb(
-                "topology.09.001.state_transition.bot_attached",
-                actual=str(bot_id),
-                context={"attached_total": len(self._bot_refs)},
-            )
-        except Exception:  # noqa: BLE001,S110 - advisory
-            pass
 
     def detach_bot(self, bot_id: str) -> None:
         """Remove a bot instance + all wires that reference it on
@@ -680,18 +665,13 @@ class SmartWireManager:
         if not isinstance(wires, list):
             return 0
 
-        # 10.3 phase 2 — the import starts HERE, after the type guard.
-        # That guard returns WITHOUT emitting, so it needs no duration:
-        # there is no record to carry one.
-        _dur_t0 = time.monotonic()
         n = 0
         offered = 0
         # 2026-08-15 - THE SIBLING DEFECT, OPPOSITE SHAPE. import_ledgers
         # (above) was repaired for a wrong NUMBER. Here the number is
-        # right and the operator-visible REPORT was missing. The
-        # topology.09.002 emitter below already sends
-        # `expected=len(wires)`, the true offered count, so the emitted
-        # pair reconciles and that pin can genuinely fail. But the three
+        # right and the operator-visible REPORT was missing. `offered`
+        # is the true count of rows the caller handed in, so the
+        # lost-row tally below reconciles against it. But the three
         # guards below dropped rows with no counter and no log line, so
         # a six-row topology losing four rows wrote exactly one line:
         # "SmartWire: imported 2 wire(s) from saved state" - true,
@@ -766,9 +746,7 @@ class SmartWireManager:
             # THE ESCAPE COST THE WHOLE RESTORE, NOT THIS ROW. The raise
             # left `self._wires` PARTIALLY applied, ran neither the
             # per-row line nor the reconciling headline below (both live
-            # after the loop), and never reached the emitter - so
-            # topology.09.002 produced NO RECORD AT ALL rather than a
-            # disagreeing pair. BotManager.restore_smart_wires_from_state
+            # after the loop). BotManager.restore_smart_wires_from_state
             # then caught it (bot_container.py:3404-3407) and returned
             # 0, which additionally skipped the ledger import at
             # :3412-3421 and the wire.created re-emit at :3426. Measured
@@ -885,19 +863,12 @@ class SmartWireManager:
         # The headline must RECONCILE: accepted + lost == offered, and
         # `offered` is every element of the list because it is counted
         # ABOVE the first guard - the exact ordering import_ledgers was
-        # repaired for. It is also the SAME number topology.09.002 sends
-        # as `expected`; if those two can ever disagree, one is wrong.
+        # repaired for.
         #
         # `if lost:` is what keeps a clean restore silent. The operator
         # restores on every launch and carries a guard-clean topology,
         # so a line he sees every time is noise he learns to ignore -
         # which is the same defect as silence.
-        # 10.3 phase 2 — STOP HERE. `n` and `offered` are final, so the
-        # import is over. What follows is REPORTING: the lost-row tally
-        # and the operator warning. Timing those would bill the report
-        # to the import, and making the log cheaper would read as a
-        # faster import. Same boundary as fleet.03.001 and 03.004.
-        _dur_elapsed = time.monotonic() - _dur_t0
 
         lost = malformed + unreadable + unroutable
         if lost:
@@ -916,25 +887,6 @@ class SmartWireManager:
                 unreadable,
                 unroutable,
             )
-        # ── DIRECTIVE 4 EMITTER — "RECEIVES ... topologies" ──────────
-        # import_wires does NO existence check against _bot_refs: it
-        # setdefaults every well-formed row and returns the count. So a
-        # topology can import cleanly and reference bots that do not
-        # exist in this run. Reporting the return value as though it
-        # were the ACTIVE count is the "40 wires, $0.00 routed" failure.
-        # expected = rows offered, actual = rows accepted.
-        try:
-            from src.core.signal_contract import emit as _w
-
-            _w(
-                "topology.09.002.postcondition.wires_received",
-                actual=n,
-                expected=len(wires) if isinstance(wires, list) else 0,
-                duration=_dur_elapsed,
-                context={"sources": len(self._wires)},
-            )
-        except Exception:  # noqa: BLE001,S110 - advisory
-            pass
         return n
 
     def distribute_fold_profit(

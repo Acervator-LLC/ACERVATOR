@@ -1448,116 +1448,10 @@ if _HAS_QT:
                     info["panel"].setParent(None)
                     info["panel"].deleteLater()
 
-            # 10.6 -- charts.13.001 and charts.13.002. Both read the
-            # state the NEXT caller uses: the widgets the operator
-            # really sees, and the symbol `fetch_chart_data` really
-            # hands the exchange. Neither reads `bot_statuses` back
-            # out as though the argument were the result.
-            #
-            # THE IMPORTS ARE FUNCTION-LOCAL, like every other emitter
-            # site in this repo. `tests/test_safe_url_scheme_policy.py`
-            # pins two `safe_urlopen` call sites in this file BY LINE
-            # NUMBER, and a module-level import here would move them
-            # for a reason that has nothing to do with either call.
-            #
-            # NO DURATION ON EITHER. Both are a dict walk and a layout
-            # walk with no bounded operation behind them, so a number
-            # would be fabricated (E8).
-            #
-            # BOTH CARRY `every=30.0`, AND THAT IS THE DIFFERENCE FROM
-            # THE HISTORY AND TRADING TABS. Those two are toggle pins.
-            # THIS TAB IS DRIVEN ON A CADENCE: `_setup_refresh_timer`
-            # starts a 2000 ms QTimer on `_refresh_dashboard`, which
-            # calls `update_charts` on every tick that has at least one
-            # bot. Un-throttled that is 1800 records an hour from each
-            # of these two lines, which would push the rest of the
-            # network out of `RETAIN_ROWS` inside one session. 30 s is
-            # the panel fetch window below, so one admitted record
-            # stands for one window and `count` says how many passes it
-            # covers. A FAILING check is never suppressed.
-            _mounted = 0
-            for _slot in range(self._scroll_layout.count()):
-                _item = self._scroll_layout.itemAt(_slot)
-                if _item is not None and _item.widget() is not None:
-                    _mounted += 1
-            _drift = 0
-            for _st in bot_statuses:
-                _held = self._chart_panels.get(_st.get("bot_id", ""))
-                if _held is not None and _held.get("symbol") != _st.get("symbol", ""):
-                    _drift += 1
-            import contextlib
-
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _ch_emit
-
-                _ch_emit(
-                    "charts.13.001.invariant.panels_mounted",
-                    actual=_mounted,
-                    expected=len(self._chart_panels),
-                    every=30.0,
-                    context={
-                        "layout_items": self._scroll_layout.count(),
-                        "statuses": len(bot_statuses),
-                        "kept": len(seen),
-                    },
-                )
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _ch_emit
-
-                _ch_emit(
-                    "charts.13.002.postcondition.panel_symbols_current",
-                    actual=_drift,
-                    expected=0,
-                    every=30.0,
-                    context={
-                        "panels": len(self._chart_panels),
-                        "statuses": len(bot_statuses),
-                        "mounted": _mounted,
-                    },
-                )
-
         def _on_tf_changed(self, bot_id: str, tf: str):
-            """Re-arm this panel's fetch after a timeframe change.
-
-            10.6 -- charts.13.003. THE PIN FIRES WHETHER OR NOT THE
-            BOT STILL HAS A PANEL, which is the whole point: the guard
-            below is a silent no-op for a signal arriving from a panel
-            this tab has already dropped, and `last_fetch` then stays
-            where it was while the chart relabels itself. The operator
-            reads a new timeframe over candles the fetch never asked
-            for. `ChartPanel.timeframe` is the combo `fetch_chart_data`
-            reads, so the check is against the widget rather than `tf`
-            going straight back out.
-
-            NO DURATION: a dict write follows no bounded operation
-            (E8). NO `every=`: this one is a toggle, driven by the
-            operator moving the timeframe combo and by nothing else.
-            """
+            """Re-arm this panel's fetch after a timeframe change."""
             if bot_id in self._chart_panels:
                 self._chart_panels[bot_id]["last_fetch"] = 0
-            _info = self._chart_panels.get(bot_id) or {}
-            _panel = _info.get("panel")
-            _rearmed = bool(
-                _panel is not None
-                and _info.get("last_fetch", -1) == 0
-                and _panel.timeframe == tf
-            )
-            import contextlib
-
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _ch_emit
-
-                _ch_emit(
-                    "charts.13.003.postcondition.timeframe_rearmed",
-                    actual=_rearmed,
-                    expected=True,
-                    context={
-                        "requested_tf": tf,
-                        "panel_tf": (_panel.timeframe if _panel is not None else ""),
-                        "known_bot": _panel is not None,
-                        "panels": len(self._chart_panels),
-                    },
-                )
 
         async def fetch_chart_data(self, exchange_connectors: dict = None) -> None:
             """Fetch OHLCV data for all chart panels.
@@ -1585,7 +1479,6 @@ if _HAS_QT:
             the panel dict instead and counts the panels no pass has
             touched.
             """
-            import contextlib
             import time as _time
             from .native_chart import Candle
 
@@ -1614,26 +1507,10 @@ if _HAS_QT:
                     eid = info.get("exchange_id", "")
                     exchange = exchange_connectors.get(eid)
 
-                # 10.6 -- THE DURATION BRACKET OPENS HERE AND CLOSES ON
-                # THE LINE AFTER THE AWAIT. It spans the network fetch
-                # and nothing else: not the Candle conversion, not
-                # `set_candles`, and not the emitter's own bookkeeping.
-                # The second reading, in the handler, is taken only if
-                # the await itself raised -- if it returned and a later
-                # line raised, the measurement already taken stands.
-                _t0 = _time.monotonic()
-                _elapsed = None
-                _outcome = "raised"
-                _raw_n = 0
-                _src = ""
                 try:
                     candles_raw, source = await self._fetcher.fetch(
                         symbol, tf, exchange=exchange, limit=100
                     )
-                    _elapsed = _time.monotonic() - _t0
-                    _raw_n = len(candles_raw or [])
-                    _src = str(source)
-
                     if candles_raw:
                         candles = [
                             Candle(
@@ -1648,96 +1525,13 @@ if _HAS_QT:
                         ]
                         info["panel"].chart.set_candles(candles)
                         info["panel"].set_source(source)
-                        _outcome = "candles"
                     else:
                         info["panel"].chart.set_error(source)
-                        _outcome = "empty"
 
                     info["last_fetch"] = now
                 except Exception as exc:
-                    if _elapsed is None:
-                        _elapsed = _time.monotonic() - _t0
                     info["panel"].chart.set_error(str(exc)[:60])
-                    _src = type(exc).__name__
                     info["last_fetch"] = now
-
-                # 10.6 -- charts.13.004. `_shown` is the chart's own
-                # candle list, read after the widget was written; the
-                # declared expectation is what THIS fetch returned. On
-                # the empty and raised paths the two differ by exactly
-                # the candles left standing from an earlier pass, which
-                # is the failure the operator cannot see.
-                #
-                # NO `every=` HERE, DELIBERATELY. The synchroniser keys
-                # on (name, site) plus whatever `instance` the call
-                # site declares, and this single site serves every
-                # panel, so a throttle declaring no instance would
-                # admit one panel per window and drop the rest --
-                # hiding which panel went stale, which is the only
-                # thing this pin is for. It stays un-throttled rather
-                # than instanced because it is bounded already: the
-                # 30 s check at the top of the loop lets each panel
-                # past at most once per window.
-                _shown = len(getattr(info["panel"].chart, "_candles", None) or [])
-                with contextlib.suppress(Exception):
-                    from src.core.signal_contract import emit as _ch_emit
-
-                    _ch_emit(
-                        "charts.13.004.postcondition.panel_refreshed",
-                        actual=_shown,
-                        expected=_raw_n,
-                        duration=_elapsed,
-                        context={
-                            "outcome": _outcome,
-                            "source": _src,
-                            "symbol": symbol,
-                            "timeframe": tf,
-                            "exchange_id": info.get("exchange_id", ""),
-                            "throttle_s": 30,
-                        },
-                    )
-
-            # 10.6 -- charts.13.005. A panel is STALE when no pass has
-            # written its `last_fetch` for three throttle windows, and
-            # NEVER-FETCHED when no pass ever has. Three windows so a
-            # single throttled pass can never be counted; the age is
-            # reported beside the verdict rather than left to be
-            # inferred, because "the chart is old" and "the chart
-            # stopped" are different faults.
-            #
-            # NO DURATION: an invariant follows no operation (E8), and
-            # this one is a dict walk.
-            _stale_after = 90.0
-            _stale = 0
-            _never = 0
-            _oldest = 0.0
-            for _held in self._chart_panels.values():
-                _last = float(_held.get("last_fetch", 0) or 0)
-                if _last <= 0:
-                    _never += 1
-                    _stale += 1
-                    continue
-                _age = now - _last
-                _oldest = max(_oldest, _age)
-                if _age > _stale_after:
-                    _stale += 1
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _ch_emit
-
-                _ch_emit(
-                    "charts.13.005.invariant.panels_fresh",
-                    actual=_stale,
-                    expected=0,
-                    every=30.0,
-                    context={
-                        "panels": len(self._chart_panels),
-                        "never_fetched": _never,
-                        "oldest_age_s": round(_oldest, 3),
-                        "stale_after_s": _stale_after,
-                        "throttle_s": 30,
-                        "connectors": len(exchange_connectors or {}),
-                    },
-                )
 
         def log_trade(self, trade_data: dict) -> None:
             """Record a trade for chart markup."""
@@ -3301,91 +3095,10 @@ if _HAS_QT:
                 if self._status_log:
                     self._status_log.log("Select a bot first.", "warning")
                 return
-            # 10.8 -- exchange.15.001, AND IT IS THE HIGHEST-STAKES SITE
-            # IN THE TAB. A command that lands on the wrong bot is a
-            # real-money action on the wrong asset, and it has already
-            # happened in this function: MEM-408, recorded in the
-            # comment above.
-            #
-            # THE v3.20.62 FIX REVERSED THE PREFERENCE AND KEPT THE
-            # FALLBACK. When the preferred table holds no selection the
-            # branches above take the OTHER table's, so a stale
-            # selection still supplies the target. The reachable path,
-            # driven in tests rather than argued: the operator selects
-            # a Scrumming row, then clicks an Extractor row's Detail
-            # button. A click on a cell WIDGET changes no row
-            # selection, so `_extractor_clicked` flips
-            # `_last_clicked_table` to "extractor" while the Scrumming
-            # selection stands untouched. Start / Pause / Stop /
-            # Restart / Delete then falls back and hijacks that
-            # Scrumming bot -- MEM-408 again, in the direction the fix
-            # opened.
-            #
-            # `expected` IS THE TABLE THE OPERATOR CHOSE. `actual` IS
-            # READ BACK OUT OF THE TABLES: the id about to be
-            # dispatched is matched against each table's CURRENT
-            # selection, so the record says which table really supplied
-            # it. The `command` argument is never echoed as a result --
-            # it rides in `context`, because a misrouted `delete` is
-            # not a misrouted `pause`.
-            #
-            # NO BOT ID ANYWHERE. A bot id is operator-chosen text that
-            # the privacy registry masks in this very table, and a
-            # context is written to disk. Table names, a fixed command
-            # vocabulary and booleans only.
-            #
-            # NO DURATION (E8): nothing has run yet. The record is
-            # written BEFORE the dispatch, so a command that raises
-            # still leaves its routing on the record.
-            #
-            # NO `every=`: the operator's finger is the cadence, so
-            # silence here says nothing about the tab's health. Only
-            # 15-002 and 15-003 may be read that way.
-            _chosen = self._last_clicked_table
-            _scrum_sel = self._bot_table.get_selected_bot_id()
-            _ext_sel = self._extractor_table.get_selected_bot_id()
-            if _chosen == "extractor":
-                _from = (
-                    "extractor"
-                    if bot_id == _ext_sel
-                    else "scrumming" if bot_id == _scrum_sel else "neither"
-                )
-            else:
-                _from = (
-                    "scrumming"
-                    if bot_id == _scrum_sel
-                    else "extractor" if bot_id == _ext_sel else "neither"
-                )
-            import contextlib
-
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _ex_emit
-
-                _ex_emit(
-                    "exchange.15.001.postcondition.command_routed_to_chosen_table",
-                    actual=_from,
-                    expected=_chosen,
-                    context={
-                        "exchange": self.exchange_id,
-                        "command": command,
-                        "scrumming_selected": bool(_scrum_sel),
-                        "extractor_selected": bool(_ext_sel),
-                        "fell_back": _from != _chosen,
-                    },
-                )
             if self._on_bot_cmd:
                 self._on_bot_cmd(bot_id, command)
 
         def update_bots(self, statuses: list[dict]) -> None:
-            # 10.8 -- READ BEFORE THE RE-RENDER, for exchange.15.003.
-            # Once `setRowCount` and `setItem` have run there is no way
-            # back to which bot the operator's highlight was on, so the
-            # two ids are taken here, off the widgets, before anything
-            # touches them.
-            _sel_before = (
-                self._bot_table.get_selected_bot_id(),
-                self._extractor_table.get_selected_bot_id(),
-            )
             # v3.20.5 — pre-filter by mode and route to the correct
             # table. Hide a section if its list is empty so the
             # dashboard doesn't show an empty-table header.
@@ -3399,169 +3112,6 @@ if _HAS_QT:
             self._bot_table.setVisible(bool(scrum_statuses))
             self._extractor_label.setVisible(bool(extractor_statuses))
             self._extractor_table.setVisible(bool(extractor_statuses))
-            # 10.8 -- exchange.15.002 and exchange.15.003. THIS IS THE
-            # TAB'S ONLY CADENCE SITE. `_setup_refresh_timer` starts a
-            # 2000 ms QTimer on `_refresh_dashboard`, which calls this
-            # method once for EVERY exchange tab on every tick;
-            # `refresh_all_privacy_widgets` calls it once more per tab
-            # on a privacy toggle. Item #14 may read silence from
-            # either of these two as a stopped emitter. The three
-            # operator-driven pins in this tab carry no such promise.
-            #
-            # THE THROTTLE IS PER EXCHANGE, AND THAT IS LOAD-BEARING.
-            # `signal_contract._throttle_admit` keys its window on
-            # (name, site) plus the `instance` a call site declares,
-            # and `site` is `file:line`. One ExchangeTab exists per
-            # configured exchange and all of them run THESE lines, so
-            # the pair ALONE put every tab in ONE 30 s fold window:
-            # the first tab's pass was admitted and the rest
-            # folded into it. A green then named one exchange and stood
-            # for `count` passes across all of them, and a tab whose
-            # emitter had STOPPED was invisible -- two healthy tabs and
-            # one dead tab produced the same single record naming
-            # `coinbase` with `count` 1. Issue #57.
-            #
-            # `instance=self.exchange_id` PUTS THE EXCHANGE IN THE KEY.
-            # Each tab now holds its own window, so each admitted green
-            # is about the exchange it names and `count` is that
-            # exchange's own passes. Silence from one exchange is now a
-            # readable fact rather than another exchange's record
-            # covering for it, which is what item #14 reads.
-            #
-            # THE ID, NOT THE OBJECT. `id(self)` would leave a dead
-            # entry in a process-lifetime dict for every tab Qt
-            # destroys; the exchange id is the configuration, so a tab
-            # rebuilt for the same exchange reuses its window and the
-            # key space is bounded by the exchange count.
-            #
-            # A FAILING check is still never folded, so every
-            # exchange's own red arrives on its own record whatever the
-            # key is. The exchange id stays in context, where a reader
-            # sees it: the key is not written to the record.
-            #
-            # 15-002 ASKS THE WIDGETS, NOT THE LISTS. A status whose
-            # `mode` is neither "scrumming" nor "extractor" is dropped
-            # by BOTH comprehensions above and reaches no table at all,
-            # and a status that does reach `BotStatusTable.update_bots`
-            # with the wrong mode is `continue`d after `setRowCount`
-            # has already made its row -- leaving a blank row that
-            # `rowCount()` counts and the operator cannot read. Both
-            # losses are silent. Counting rows that really carry a
-            # column-0 item sees both; counting the argument would see
-            # neither. Today only the first is reachable THROUGH this
-            # tab, because the comprehensions above are the filter; the
-            # measure is held against the second by a direct control on
-            # `BotStatusTable` in the tests.
-            #
-            # THE SECTION-VISIBILITY COMPARISON WAS REFUSED. The four
-            # `setVisible` calls above take `bool(...)` of the same two
-            # lists the rows are rendered from, so a pin asking whether
-            # a section is shown exactly when it has rows can only vary
-            # through the blank-row path 15-002 already reports -- one
-            # defect counted twice, and a second green that moves only
-            # when the first one does. The visible state is carried in
-            # 15-003's context as a pair of row counts instead, where a
-            # reader can see it without a verdict resting on it.
-            #
-            # 15-003 IS THE SECOND MISROUTE, AND THIS TICK USED TO
-            # CAUSE IT. A Qt selection is anchored to a ROW INDEX, not
-            # to a row's contents. `setRowCount` + `setItem` rewrite
-            # the rows in place, so a fleet list that arrives in a
-            # different order -- one bot deleted, every row below it
-            # shifted up -- left the operator's highlight sitting
-            # exactly where it was while a DIFFERENT bot was now
-            # underneath it. Measured on the unrepaired tree: select
-            # `bot-AAA`, re-render with the two scrumming statuses
-            # swapped, `get_selected_bot_id()` answered `bot-BBB`, and
-            # `_cmd("stop")` dispatched `('bot-BBB', 'stop')` -- on a
-            # 2000 ms timer, with no operator action in between and
-            # nothing on screen that changed.
-            #
-            # ISSUE #51 REPAIRED IT IN THE TABLES, NOT HERE. Both
-            # tables now read the bot under the highlight before the
-            # rewrite and put the highlight back on THAT BOT after it
-            # (`_reanchor_bot_selection`). The repair sits on the
-            # table classes because this tab is not their only mount:
-            # `SimulatorTab.mount_bot_status_table` mounts THIS
-            # `BotStatusTable` in the fleet-replay bot area, so a
-            # repair written here would have left that copy defective.
-            #
-            # THIS PIN IS STILL THE MEASURE AND IS STILL FALSIFIABLE.
-            # It is read from the WIDGETS on either side of the
-            # rewrite, so it reports the drift whatever causes it --
-            # including a re-anchor that stops working. That is how the
-            # falsifier in `tests/test_exchange_tab_emitters.py` still
-            # drives this pin red after the repair.
-            #
-            # A SELECTION THAT DISAPPEARS IS NOT COUNTED. When the
-            # selected bot leaves the fleet its row goes with it and
-            # the table is visibly empty; that is by design, and
-            # counting it would paint this red on every ordinary bot
-            # deletion -- the 06-014 defect in a new place. Only a
-            # SILENT SUBSTITUTION is counted: a selection present both
-            # before and after, pointing at a different bot.
-            #
-            # NO BOT ID IS WRITTEN. The two ids are compared here and
-            # only the verdict travels; the record carries booleans and
-            # counts.
-            #
-            # NO DURATION ON EITHER (E8): both walk rows already in
-            # memory, so a number would be fabricated.
-            _scrum_drawn = 0
-            for _row in range(self._bot_table.rowCount()):
-                if self._bot_table.item(_row, 0) is not None:
-                    _scrum_drawn += 1
-            _ext_drawn = 0
-            for _row in range(self._extractor_table.rowCount()):
-                if self._extractor_table.item(_row, 0) is not None:
-                    _ext_drawn += 1
-            _sel_after = (
-                self._bot_table.get_selected_bot_id(),
-                self._extractor_table.get_selected_bot_id(),
-            )
-            _moved = [
-                bool(_was and _now and _was != _now)
-                for _was, _now in zip(_sel_before, _sel_after, strict=True)
-            ]
-            import contextlib
-
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _ex_emit
-
-                _ex_emit(
-                    "exchange.15.002.invariant.every_bot_reaches_a_table",
-                    actual=_scrum_drawn + _ext_drawn,
-                    expected=len(statuses),
-                    every=30.0,
-                    instance=self.exchange_id,
-                    context={
-                        "exchange": self.exchange_id,
-                        "scrumming_rows": _scrum_drawn,
-                        "extractor_rows": _ext_drawn,
-                        "routed_scrumming": len(scrum_statuses),
-                        "routed_extractor": len(extractor_statuses),
-                    },
-                )
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _ex_emit
-
-                _ex_emit(
-                    "exchange.15.003.invariant.selection_survives_refresh",
-                    actual=sum(_moved),
-                    expected=0,
-                    every=30.0,
-                    instance=self.exchange_id,
-                    context={
-                        "exchange": self.exchange_id,
-                        "scrumming_selection_moved": _moved[0],
-                        "extractor_selection_moved": _moved[1],
-                        "selections_before": sum(1 for _s in _sel_before if _s),
-                        "selections_after": sum(1 for _s in _sel_after if _s),
-                        "preferred_table": self._last_clicked_table,
-                        "scrumming_rows": _scrum_drawn,
-                        "extractor_rows": _ext_drawn,
-                    },
-                )
 
         # v3.23.7 — global Privacy Mode handlers
         def _on_global_privacy_clicked(self) -> None:
@@ -3585,101 +3135,7 @@ if _HAS_QT:
                 reg.set_all(any_revealed)
             except Exception:  # R28-OK
                 return
-            # 10.8 -- exchange.15.004. THE BUTTON CLAIMS TO FLIP EVERY
-            # REGISTERED MASK IN ONE SHOT, and a partial apply leaves
-            # some values on screen while the button says masked.
-            # `set_all` writes under a lock and then persists, and its
-            # persist swallows every exception by design, so a
-            # half-applied flip raises nothing at all.
-            #
-            # THE REGISTRY IS ASKED AGAIN, from a fresh accessor call,
-            # for every field it declares -- not for the snapshot taken
-            # above, and not for `any_revealed`, which is the request.
-            # `expected` is how many fields the registry says it has;
-            # `actual` is how many really read back at the requested
-            # state. The tooltip on this button still says 18 while
-            # `known_field_ids()` returns 19, so the count rides in
-            # context as a number rather than being assumed.
-            #
-            # NO DURATION (E8) and NO `every=`: an operator press, and
-            # a walk over a dict already in memory.
-            import contextlib
-
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _ex_emit
-
-                _reg = get_privacy_mask_registry()
-                _ids = _reg.known_field_ids()
-                _state = _reg.to_dict()
-                _applied = sum(
-                    1
-                    for _fid in _ids
-                    if bool(_state.get(_fid, False)) is bool(any_revealed)
-                )
-                _ex_emit(
-                    "exchange.15.004.postcondition.privacy_applied_to_every_field",
-                    actual=_applied,
-                    expected=len(_ids),
-                    context={
-                        "exchange": self.exchange_id,
-                        "masking": bool(any_revealed),
-                        "fields_declared": len(_ids),
-                        "fields_left_behind": len(_ids) - _applied,
-                    },
-                )
             self._refresh_privacy_mode_btn_style()
-            # 10.8 -- exchange.15.005. THE LABEL THE OPERATOR READS
-            # AGAINST THE STATE THE RENDERERS READ. 15-004 asks whether
-            # the flip reached every field; this asks whether the
-            # button then told the truth about it, which is a different
-            # question with a different failure. The restyle above
-            # computes its own `all_masked` inside a bare `except` that
-            # falls back to False, so a registry that answers
-            # `is_masked` badly relabels the button OFF while every
-            # field is masked -- the operator un-masks nothing, sees
-            # "OFF", and shares a screen believing the values are
-            # already revealed when the reverse is true.
-            #
-            # `actual` IS READ OFF THE WIDGET, from the text Qt now
-            # holds, never from the flag that set it. `expected` is a
-            # fresh read of the registry. Same fixed two-state
-            # vocabulary the button uses.
-            #
-            # THE EXPECTATION IS READ THROUGH `to_dict()`, NOT THROUGH
-            # `is_masked()`, AND THAT IS NOT A STYLE CHOICE. The restyle
-            # above reads `is_masked`, so `is_masked` is part of what
-            # this pin is judging. Measured while building this unit:
-            # with `is_masked` raising -- the exact fault that sends the
-            # restyle down its `except` and relabels the button OFF over
-            # a fully masked screen -- a pin reading the same accessor
-            # raised inside its own `contextlib.suppress` and wrote NO
-            # RECORD AT ALL. The instrument went silent on the one fault
-            # it exists to report. `to_dict()` is an independent
-            # accessor over the same locked state, so a divergence
-            # between the two is now reported instead of swallowed.
-            #
-            # It sits BEFORE `refresh_all_privacy_widgets`, which
-            # restyles every OTHER tab's button and re-renders their
-            # tables; this pin is about this tab's own button, one line
-            # after its own restyle, with nothing in between.
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _ex_emit
-
-                _reg = get_privacy_mask_registry()
-                _shown_on = "ON" in self._privacy_mode_btn.text()
-                _ids = _reg.known_field_ids()
-                _state = _reg.to_dict()
-                _all_masked = all(bool(_state.get(_fid, False)) for _fid in _ids)
-                _ex_emit(
-                    "exchange.15.005.postcondition.privacy_button_matches_registry",
-                    actual=_shown_on,
-                    expected=_all_masked,
-                    context={
-                        "exchange": self.exchange_id,
-                        "masking": bool(any_revealed),
-                        "fields_declared": len(_ids),
-                    },
-                )
             try:
                 root = self.window()
                 if hasattr(root, "refresh_all_privacy_widgets"):
@@ -3915,20 +3371,6 @@ if _HAS_QT:
             import time as _t
 
             eid = self._exchange.currentData()
-            # 10.9 -- the two values apitest.16.001 reads, bound
-            # BEFORE the try so the `finally` can read them on every
-            # exit path, including the two early returns inside the
-            # try. `_call_s` stays None until `sync_connect` returns,
-            # so a path that never reached the network carries no
-            # duration rather than a fabricated one.
-            #
-            # `_supplied` IS A PRESENCE BOOLEAN AND NOTHING ELSE. It
-            # says a non-empty key and a non-empty secret were
-            # resolved. No length, no prefix, no hash: this record is
-            # serialised to ~/.acervator_logs/signals/ and the
-            # operator trades real money on those keys.
-            _supplied = False
-            _call_s = None
             self._conn_status.setText(f"Connecting to {eid.capitalize()}...")
             self._conn_status.setStyleSheet("color: #00aaff;")
             self._connect_btn.setEnabled(False)
@@ -3975,12 +3417,10 @@ if _HAS_QT:
                         self._log("ERROR", "Enter API key and secret", level="error")
                         return
 
-                _supplied = bool(key) and bool(secret)
                 conn = CCXTConnector(eid)
                 start = _t.monotonic()
                 conn.sync_connect(key, secret, pp)
                 elapsed = (_t.monotonic() - start) * 1000
-                _call_s = elapsed / 1000.0
                 mcount = (
                     len(conn._ccxt.markets) if conn._ccxt and conn._ccxt.markets else 0
                 )
@@ -4025,99 +3465,8 @@ if _HAS_QT:
             finally:
                 if not self._connected:
                     self._connect_btn.setEnabled(True)
-                # 10.9 -- apitest.16.001. THE LABEL IS ALL THE
-                # OPERATOR HAS. A connect that paints "Connected"
-                # while holding no session leaves every later button
-                # failing against a tab that says the link is up.
-                #
-                # `expected` IS WHAT THE OPERATOR WAS TOLD, read back
-                # off `_conn_status` after the handler wrote it.
-                # `actual` IS WHETHER A SESSION EXISTS: the connector
-                # reference, the tab's own flag, and the connector's
-                # `_ex` -- the property every later call resolves
-                # through. `sync_connect` returning without an
-                # exchange instance is the false green this pin is
-                # for. No argument to this method is read back as a
-                # result.
-                #
-                # IN THE `finally` SO EVERY EXIT IS ON THE RECORD.
-                # Both early returns inside the try leave the label on
-                # "Connecting to ...", which does not start with
-                # "Connected", so they report an honest green rather
-                # than nothing at all.
-                #
-                # NO CREDENTIAL REACHES THIS RECORD. `key`, `secret`
-                # and `pp` are not read here in any form -- not the
-                # value, not a length, not a hash. A length leaks and
-                # a hash of a short secret is brute-forceable. One
-                # PRESENCE BOOLEAN rides in the context:
-                # `credentials_supplied` says a key AND a secret were
-                # resolved and says nothing else, and it is what tells
-                # a refusal for missing credentials apart from a
-                # refusal by the venue.
-                #
-                # THE DURATION IS THE `sync_connect` BRACKET ONLY
-                # (E8), and it is None on every path that never
-                # reached the call.
-                #
-                # NO `every=`: the Connect button is the cadence, so
-                # silence from this pin says nothing about the tab.
-                _session = getattr(self._connector, "_ex", None)
-                _usable = (
-                    self._connector is not None
-                    and self._connected
-                    and _session is not None
-                )
-                _claims = self._conn_status.text().startswith("Connected")
-                import contextlib
-
-                with contextlib.suppress(Exception):
-                    from src.core.signal_contract import emit as _api_emit
-
-                    _api_emit(
-                        "apitest.16.001.postcondition.label_matches_session",
-                        actual=_usable,
-                        expected=_claims,
-                        context={
-                            "exchange": eid,
-                            "used_stored_credentials": bool(
-                                self._use_stored.isChecked()
-                            ),
-                            "credentials_supplied": _supplied,
-                            "connector_held": self._connector is not None,
-                            "disconnect_enabled": self._disconnect_btn.isEnabled(),
-                        },
-                        duration=_call_s,
-                    )
 
         def _do_disconnect(self):
-            # 10.9 -- the state apitest.16.002 reads on every exit
-            # path, bound before the branch that fills it. `failure`
-            # MOVED UP from inside the branch and nothing else about
-            # it changed: it was already initialised to None there,
-            # and the pin below has to be able to read it when there
-            # was no connector to close.
-            #
-            # THE CONTEXT READ IS GUARDED AND THE VERDICT IS NOT.
-            # `_exchange` is the ONE attribute this pin needs that the
-            # method did not need before it, so reading it bare turned
-            # instrumentation into a PRECONDITION ON THE HOST: a caller
-            # that binds this method onto an object without that widget
-            # used to run and would now raise AttributeError. A pin may
-            # never make its host need more than it did -- the same
-            # rule `emit` itself follows. The guard covers the whole
-            # read, a missing attribute and a deleted C++ widget alike,
-            # and the cost of a miss is ONE CONTEXT FIELD falling to
-            # None. `actual`, `expected`, `ok` and the duration do not
-            # read it, so on a real tab -- which has the widget -- the
-            # record is byte for byte the one it was.
-            import contextlib
-
-            _eid = None
-            with contextlib.suppress(Exception):
-                _eid = self._exchange.currentData()
-            _held = self._connector is not None
-            _close_s = None
             failure = None
             if self._connector:
                 # Suppression audit 2026-08-13, H3. Two layers
@@ -4132,14 +3481,8 @@ if _HAS_QT:
                 try:
                     import concurrent.futures
 
-                    _close_at = time.monotonic()
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                         fut = pool.submit(asyncio.run, self._connector.disconnect())
-                    # The executor's __exit__ waits for the worker, so
-                    # this reading spans the whole close attempt and
-                    # not the submit. It stays None if the executor
-                    # itself could not be built.
-                    _close_s = time.monotonic() - _close_at
                     failure = fut.exception()
                 except Exception as exc:
                     logger.exception("API tester: disconnect call failed")
@@ -4160,49 +3503,6 @@ if _HAS_QT:
             self._conn_status.setText("Disconnected")
             self._conn_status.setStyleSheet("color: #888;")
             self._log("DISCONNECTED", "Connection closed", level="info")
-            # 10.9 -- apitest.16.002, AND IT IS THE ONE THAT MATTERS
-            # MOST IN THIS TAB. The label two lines above reads
-            # "Disconnected" whatever happened and the connector
-            # reference is dropped either way, so a close that failed
-            # leaves an AUTHENTICATED SESSION open that nothing can
-            # reach and a display that asserts the opposite. The
-            # method's own comment above says exactly that; nothing
-            # recorded it.
-            #
-            # `expected` IS THE CLAIM ON SCREEN, read off the label.
-            # `actual` IS WHETHER THE SESSION WAS RELEASED: the close
-            # raised nothing, the reference is gone and the flag is
-            # down. A failed close therefore reports red while the
-            # screen reads "Disconnected", which is the whole point.
-            #
-            # THE CONTEXT CARRIES THE ERROR'S CLASS NAME AND NEVER ITS
-            # MESSAGE. A venue error message quotes request parameters
-            # and some echo the key, and this record goes to disk.
-            #
-            # THE DURATION SPANS THE CLOSE ATTEMPT (E8) and is None
-            # when there was no connector to close.
-            #
-            # NO `every=`: the Disconnect button is the cadence.
-            _released = (
-                failure is None and self._connector is None and not self._connected
-            )
-            _claims_closed = self._conn_status.text().startswith("Disconnected")
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _api_emit
-
-                _api_emit(
-                    "apitest.16.002.postcondition.session_released",
-                    actual=_released,
-                    expected=_claims_closed,
-                    context={
-                        "exchange": _eid,
-                        "connector_held": _held,
-                        "failure_class": (
-                            type(failure).__name__ if failure is not None else ""
-                        ),
-                    },
-                    duration=_close_s,
-                )
 
         def _run_test(self, test: str):
             if not self._connected or not self._connector:
@@ -4299,50 +3599,6 @@ if _HAS_QT:
                 else:
                     display = str(result)
                 self._log(f"{test} OK", display, elapsed, "success")
-                # 10.9 -- apitest.16.003. A GREEN HEADLINE OVER A CALL
-                # THAT NEVER RAN is the failure shape this tab has:
-                # the chain above answers an unrecognised name with an
-                # empty dict and falls straight through to the success
-                # log.
-                #
-                # `expected` IS THE HEADLINE THE OPERATOR READS, taken
-                # back off `_result_info` after `_log` painted it, not
-                # from the string handed to `_log`. `actual` IS
-                # WHETHER AN ARM RAN, read off the result object's own
-                # identity.
-                #
-                # NO OPERATOR FREE TEXT IN THE CONTEXT. `test` is the
-                # fixed vocabulary the seven buttons pass. The symbol
-                # box is NOT recorded: this tab has three password
-                # fields one row above it, and free text typed in this
-                # tab is exactly what must never reach a file.
-                #
-                # THE DURATION IS THE CALL BRACKET (E8), and it is
-                # None on the arm that ran nothing.
-                #
-                # NO `every=`: each test button press is one record.
-                _ran = result is not _nothing
-                _headline = self._result_info.text()
-                _claimed_ok = _headline.split(" (")[0].endswith(" OK")
-                _entries = len(result) if isinstance(result, (dict, list)) else 1
-                import contextlib
-
-                with contextlib.suppress(Exception):
-                    from src.core.signal_contract import emit as _api_emit
-
-                    _api_emit(
-                        "apitest.16.003.postcondition.reported_ok_ran_a_test",
-                        actual=_ran,
-                        expected=_claimed_ok,
-                        context={
-                            "exchange": self._exchange.currentData(),
-                            "test": test,
-                            "result_kind": type(result).__name__,
-                            "result_entries": _entries,
-                            "truncated": "(truncated)" in display,
-                        },
-                        duration=(elapsed / 1000.0 if _ran else None),
-                    )
             except Exception as exc:
                 elapsed = (_t.monotonic() - start) * 1000
                 from ..exchange.ccxt_connector import CCXTConnector as CC
@@ -4528,7 +3784,6 @@ if _HAS_QT:
             _green_with_body = 0
             _attempted = 0
             _statuses: list = []
-            _sweep_at = _t.monotonic()
             for method, url, desc in endpoints:
                 _attempted += 1
                 try:
@@ -4622,46 +3877,6 @@ if _HAS_QT:
 
                 safe_process_events("legacy P4.1 site")
 
-            # 10.9 -- apitest.16.004. A GREEN PROBE THAT READ NOTHING.
-            # The success branch reports `HTTP <status>` from the
-            # response object and then prints whatever `read()`
-            # returned, so an endpoint that answers 200 with an empty
-            # body paints the same green line as one that returned the
-            # product list -- and the operator uses this button
-            # precisely when nothing else works.
-            #
-            # `expected` IS THE NUMBER OF GREENS SHOWN.  `actual` IS
-            # HOW MANY OF THEM CARRIED BYTES. Neither side is the
-            # endpoint table read back: a probe that raised is in
-            # neither count, and `attempted` rides in the context so a
-            # reader sees the sweep's own size.
-            #
-            # THE DURATION IS THE SWEEP (E8) -- the loop above and
-            # nothing else. The SSL and TCP diagnostics before it are
-            # separate operations with their own log lines.
-            #
-            # NO `every=`: the Raw HTTP Probe button is the cadence.
-            _sweep_s = _t.monotonic() - _sweep_at
-            import contextlib
-
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _api_emit
-
-                _api_emit(
-                    "apitest.16.004.postcondition.green_probe_read_a_body",
-                    actual=_green_with_body,
-                    expected=_green,
-                    context={
-                        "exchange": eid,
-                        "host": host,
-                        "endpoints": len(endpoints),
-                        "attempted": _attempted,
-                        "http_statuses": _statuses,
-                        "not_green": _attempted - _green,
-                    },
-                    duration=_sweep_s,
-                )
-
         def _check_exchange_status(self):
             """Check exchange status pages for known outages."""
             import time as _t, json
@@ -4673,14 +3888,6 @@ if _HAS_QT:
                 "binance": "https://www.binance.com/bapi/composite/v1/public/cms/article/list/query?type=1&pageNo=1&pageSize=1",
                 "kraken": "https://status.kraken.com/api/v2/status.json",
             }
-
-            # 10.9 -- the vocabulary apitest.16.005 judges the
-            # fetched document against. Statuspage publishes
-            # `status.indicator` as one of none / minor / major /
-            # critical; `maintenance` is carried too because some
-            # pages report it, and a value the venue never sends costs
-            # nothing while a missing one would paint a false red.
-            _mappable = ("none", "minor", "major", "critical", "maintenance")
 
             url = status_urls.get(eid)
             if not url:
@@ -4727,48 +3934,6 @@ if _HAS_QT:
                         )
                         level = "success" if indicator in ("none", "minor") else "error"
                         self._log(f"STATUS: {desc}", detail, elapsed, level)
-                        # 10.9 -- apitest.16.005. THE VERDICT IS
-                        # DERIVED FROM A WORD THE TAB MAY NOT KNOW.
-                        # The line above maps `none` and `minor` to
-                        # green and EVERYTHING ELSE to red, so a
-                        # missing field (which `get` answers with
-                        # "unknown") or a renamed one paints an outage
-                        # the venue never declared, and the operator
-                        # stops trading on it.
-                        #
-                        # `actual` IS THE WORD THE DOCUMENT CARRIED,
-                        # read back out of the parsed body and capped
-                        # at 32 characters because it is untrusted
-                        # venue text. `expected` is the vocabulary,
-                        # and `ok` is membership -- the two sides are
-                        # not the same expression.
-                        #
-                        # THE DURATION SPANS THE FETCH AND THE PARSE
-                        # (E8). It is this pin's own reading and does
-                        # not touch the `elapsed` the log line shows.
-                        #
-                        # NO `every=`: the Exchange Status Page button
-                        # is the cadence.
-                        _ind_seen = str(s.get("indicator", ""))[:32]
-                        _fetch_s = _t.monotonic() - start
-                        import contextlib
-
-                        with contextlib.suppress(Exception):
-                            from src.core.signal_contract import emit as _api_emit
-
-                            _api_emit(
-                                "apitest.16.005.postcondition.indicator_is_mappable",
-                                actual=_ind_seen,
-                                expected=_mappable,
-                                ok=_ind_seen in _mappable,
-                                context={
-                                    "exchange": eid,
-                                    "http_status": getattr(resp, "status", None),
-                                    "body_bytes": len(body),
-                                    "level_shown": level,
-                                },
-                                duration=_fetch_s,
-                            )
                     else:
                         self._log(
                             "STATUS", json.dumps(data, indent=2)[:800], elapsed, "info"
@@ -4778,141 +3943,6 @@ if _HAS_QT:
                 self._log(
                     "STATUS CHECK FAILED", f"{type(exc).__name__}: {exc}", level="error"
                 )
-
-    # ---------------------------------------------------------------
-    # The Console Pause flag
-    # ---------------------------------------------------------------
-    def _set_console_paused(window: MainWindow, *, paused: bool) -> None:
-        """Set the flag the signals pane's drain is gated on.
-
-        issue #49. `_drain_signals` has always read
-        `getattr(self, "_console_paused", False)`, and its docstring has
-        always said it "honours the same Pause the log pane uses, so one
-        control quiets both". NOTHING IN THE TREE EVER ASSIGNED THAT
-        ATTRIBUTE, so the `False` default won every read: the operator
-        pressed Pause, `_QtLogHandler.set_paused` stopped the log pane,
-        and the signals pane under it went on scrolling. Driven on the
-        real widgets before this repair -- 10 blocks on the signals pane
-        at the press, 51 four drain ticks later, while the log pane held
-        at 10.
-
-        THE DOCSTRING IS THE SPECIFICATION AND THE CODE DISAGREED WITH
-        IT. The repair makes the code do what the prose says. Rewriting
-        the prose to describe the broken behaviour would have deleted
-        the only record of what the button is for.
-
-        IT IS A MODULE-LEVEL FUNCTION, resolved through globals on every
-        call, for the same reason `_reanchor_bot_selection` (issue #51)
-        and `_select_row_for_bot` (issue #52) are. The falsifier for
-        `console.14.004` has to be able to put the pre-repair tree back
-        for the length of one drive. Written inline as
-        `self._console_paused = paused` the assignment is unreachable
-        from a test, the pin's red condition becomes unreachable with
-        it, and a pin that cannot be driven to red is a pin nobody can
-        read when it is green.
-
-        `bool()` because `console.14.004` reads this value back and
-        compares it against the button's own `isChecked()`, which is a
-        bool. A truthy int here would report green about a different
-        type.
-
-        KEYWORD-ONLY, because the argument is a bare bool.
-        `paused=paused` at the one call site says what the value means;
-        a positional `True` would say only which function it belongs
-        to. The falsifier's stand-in carries the same signature, so a
-        call that went back to positional raises there rather than
-        patching a function nobody calls.
-        """
-        window._console_paused = bool(paused)
-
-    # ---------------------------------------------------------------
-    # The signals-pane gap marker
-    # ---------------------------------------------------------------
-    def _signal_gap_marker_text(skipped: int) -> str:
-        """Return the line the signals pane draws over a skipped stretch.
-
-        issue #48, and it is the operator's requirement in his own
-        words: "The Emitter Network just needs to work. No part should
-        get back logged or clogged or fall out of sync."
-
-        THE PANE IS ONE CONSUMER FALLING BEHIND AND IT IS NOT DATA
-        LOSS, AND THE WORDING SAYS SO. `SignalSink` appends and flushes
-        on every emit, so every record this pass steps over is already
-        on disk in `~/.acervator_logs/signals/session.jsonl`. A marker
-        reading "not shown" alone would send the operator hunting a
-        defect that is not there; this one names the file, so the next
-        move is `Get-Content`, not a bug report.
-
-        "SKIPPED TO STAY CURRENT" IS THE OTHER HALF OF THE SENTENCE.
-        The alternative design -- advance the watermark only as far as
-        the render reached -- would leave the pane falling further
-        behind under sustained load, showing older and older records
-        while the sink races ahead, with nothing on the screen to say
-        whether it is a live monitor or a historical one. The pane
-        stays current and draws the gap instead, and the marker states
-        which of the two it chose.
-
-        `NOT LOST` IS UPPER CASE ON PURPOSE. It is the one clause a
-        reader scanning a scrolling pane has to catch.
-
-        The count is the FIRST number in the line so the eye finds it
-        without reading the sentence, and it is the same quantity
-        `console.14.001` reports as `lost_to_slice`.
-
-        Split out from `_draw_signal_gap_marker` so a test can assert
-        the WORDING without a widget, and so the drawing test and the
-        wording test fail separately when they fail.
-        """
-        return (
-            f"──── [SIGNALS GAP] {skipped} earlier records skipped "
-            f"to stay current · NOT LOST · on disk in "
-            f"~/.acervator_logs/signals/session.jsonl ────"
-        )
-
-    def _draw_signal_gap_marker(view: QPlainTextEdit, *, skipped: int) -> int:
-        """Draw one gap marker into the signals pane. Returns blocks added.
-
-        issue #48. The return value is the number of BLOCKS this call
-        put on the pane, and `_drain_signals` adds it to
-        `_signal_markers`, which `console.14.002` then counts as part
-        of what the drain wrote. A marker line IS a block, so leaving
-        it out of that ledger would paint `14-002` red for drawing the
-        very thing that makes the skip visible.
-
-        `skipped <= 0` DRAWS NOTHING AND RETURNS ZERO. A pass that kept
-        every record must leave no trace at all, or the marker becomes
-        pane furniture the operator learns to read past.
-
-        IT IS A MODULE-LEVEL FUNCTION, resolved through globals on
-        every call, for the same reason `_set_console_paused` (issue
-        #49), `_reanchor_bot_selection` (issue #51) and
-        `_select_row_for_bot` (issue #52) are: `_without_the_gap_marker`
-        has to be able to put the pre-repair tree back for the length
-        of one drive. Written inline in the drain, the pre-repair
-        behaviour is unreachable from a test and the tests below would
-        be asserting about arithmetic rather than about this code.
-
-        ESCAPED, like every other line the drain appends. `appendHtml`
-        parses its input and the count is interpolated into it; the
-        escape is here so this line can never become the one place a
-        payload reaches the parser.
-
-        AMBER ON A DARK GROUND, and the only line in the pane that
-        carries a background colour. `OK`/`FAIL`/`--` records are green,
-        red and grey text on `#05050a`; nothing else paints its own
-        ground, so the marker cannot be misread as a record even at the
-        10 px this pane renders at. The rules on both ends do the same
-        work in a plain-text copy, where the colour is gone.
-        """
-        if skipped <= 0:
-            return 0
-        from html import escape as _esc
-
-        view.appendHtml(
-            '<span style="color:#ffb000;background-color:#33220a">'
-            f"{_esc(_signal_gap_marker_text(skipped))}</span>"
-        )
-        return 1
 
     # ---------------------------------------------------------------
     # Main Window
@@ -4927,16 +3957,6 @@ if _HAS_QT:
         # tells the type checker what the value will be without
         # bringing it into existence.
         _last_equity_snap: float
-
-        # DECLARED, NOT ASSIGNED, for the same reason and with the same
-        # consequence. `_drain_signals` reads this through
-        # `getattr(self, "_console_paused", False)` and must keep
-        # reading the default until the operator's first press, so a
-        # value here would create the attribute and change which branch
-        # a fresh window takes. The annotation exists so the type
-        # checkers know `_set_console_paused` is writing a real member
-        # of this class rather than inventing one.
-        _console_paused: bool
 
         def __init__(self, bot_manager=None, settings_manager=None, parent=None):
             super().__init__(parent)
@@ -5322,90 +4342,6 @@ if _HAS_QT:
 
             top_splitter.setSizes([600, 500])
 
-            # 10.5 -- TRADING TAB ASSEMBLY.
-            #
-            # This tab computes nothing. It builds a structure and
-            # then makes claims about that structure in its own
-            # comments: two layer pages in one QStackedWidget,
-            # Crypto first and Stock second, the indicator panel to
-            # the right of the stack, and a legacy alias pointing at
-            # the layer the operator can actually see. Every claim
-            # is READ BACK OUT of the widget that now holds it. Not
-            # one of them echoes the call that made it: indexOf asks
-            # the stack and the splitter where a widget really sits,
-            # and currentIndex asks the stack what it really shows.
-            #
-            # _faults counts the claims that came back wrong, so the
-            # verdict is one number and the context names which
-            # claim produced it. actual is that count and expected
-            # is 0 -- different expressions, so the check can fail
-            # (E9).
-            #
-            # NO DURATION. Assembly is widget construction on the
-            # GUI thread with no bounded operation behind it, and a
-            # number here would be fabricated (E8).
-            _crypto_host = (
-                self._crypto_tab_widget.parentWidget()
-                if self._crypto_tab_widget
-                else None
-            )
-            _stock_host = (
-                self._stock_tab_widget.parentWidget()
-                if self._stock_tab_widget
-                else None
-            )
-            _alias_host = self._tab_widget.parentWidget() if self._tab_widget else None
-            _crypto_page = (
-                self._trading_stack.indexOf(_crypto_host)
-                if _crypto_host is not None
-                else -1
-            )
-            _stock_page = (
-                self._trading_stack.indexOf(_stock_host)
-                if _stock_host is not None
-                else -1
-            )
-            _alias_page = (
-                self._trading_stack.indexOf(_alias_host)
-                if _alias_host is not None
-                else -1
-            )
-            _visible_page = self._trading_stack.currentIndex()
-            _stack_slot = top_splitter.indexOf(self._trading_stack)
-            _panel_slot = top_splitter.indexOf(self._indicator_panel)
-            _faults = sum(
-                (
-                    self._trading_stack.count() != 2,
-                    _crypto_page != 0,
-                    _stock_page != 1,
-                    _stack_slot != 0,
-                    _panel_slot != 1,
-                    _alias_page != _visible_page,
-                )
-            )
-            import contextlib
-
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _tr_emit
-
-                _tr_emit(
-                    "trading.12.001.postcondition.tab_assembled",
-                    actual=_faults,
-                    expected=0,
-                    context={
-                        "stack_pages": self._trading_stack.count(),
-                        "crypto_page": _crypto_page,
-                        "stock_page": _stock_page,
-                        "stack_slot": _stack_slot,
-                        "panel_slot": _panel_slot,
-                        "splitter_slots": top_splitter.count(),
-                        "alias_page": _alias_page,
-                        "visible_page": _visible_page,
-                        "chart_removed": self._chart is None,
-                        "equity_ids": len(self._equity_exchange_ids),
-                    },
-                )
-
             main_splitter.addWidget(top_splitter)
 
             # Bottom section: spool + two symmetrical log panels
@@ -5446,42 +4382,7 @@ if _HAS_QT:
                         ]
                         msg = " | ".join(parts) if parts else ""
                         if msg and self._log is not None:
-                            # 10.5 -- trading.12.006. The stub is
-                            # kept only for its signature, so the
-                            # one thing worth checking is that a
-                            # legacy notify still REACHES the
-                            # Activity Log instead of vanishing.
-                            # The document's own revision counter
-                            # answers that; the text does not.
-                            # Measured 2026-08-21: QTextEdit.append
-                            # renders a message holding a tag-like
-                            # fragment as rich text and drops it, so
-                            # a text comparison reports a healthy
-                            # append as lost. The 5000-block cap
-                            # breaks a block count the same way.
-                            # NO MESSAGE TEXT ENTERS THE CONTEXT --
-                            # a context is written to disk and a
-                            # notification carries operator data.
-                            _doc = self._log.document()
-                            _rev = _doc.revision()
                             self._log.append(f"[notification] {msg}")
-                            import contextlib
-
-                            with contextlib.suppress(Exception):
-                                from src.core.signal_contract import emit as _tr_emit
-
-                                _tr_emit(
-                                    "trading.12.006.postcondition"
-                                    ".notification_relayed",
-                                    actual=_doc.revision() != _rev,
-                                    expected=True,
-                                    context={
-                                        "parts": len(parts),
-                                        "chars": len(msg),
-                                        "blocks": _doc.blockCount(),
-                                        "revision": _doc.revision(),
-                                    },
-                                )
                     except Exception:  # noqa: S110
                         pass  # sadp: R61 ACCEPT — notify stub must never raise
 
@@ -5531,30 +4432,6 @@ if _HAS_QT:
                 else:
                     self._status_log.resume()
                     self._activity_pause_btn.setText("⏸  Pause Console")
-                # 10.5 -- trading.12.005. The handler's whole job is
-                # to turn a button state into a log state, so the
-                # log's own state is what gets read back. A pause
-                # that never took returns as cleanly as one that
-                # did, and the operator only learns the difference
-                # when the errors he paused for scroll away.
-                # NO DURATION: a flag flip has no operation (E8).
-                import contextlib
-
-                with contextlib.suppress(Exception):
-                    from src.core.signal_contract import emit as _tr_emit
-
-                    _stats = self._status_log.health_stats()
-                    _tr_emit(
-                        "trading.12.005.postcondition" ".activity_log_paused",
-                        actual=_stats["paused"],
-                        expected=checked,
-                        context={
-                            "buffered": _stats["pause_buffer_size"],
-                            "renders": _stats["total_renders"],
-                            "render_errors": _stats["render_errors"],
-                            "blocks": _stats["document_blocks"],
-                        },
-                    )
 
             self._activity_pause_btn.toggled.connect(_on_activity_pause_toggled)
             activity_header_row.addWidget(self._activity_pause_btn)
@@ -6321,109 +5198,7 @@ if _HAS_QT:
 
             console_layout.addWidget(control_bar)
 
-            # ── SIGNALS PANE ──────────────────────────────────────
-            # v3.24.81 — operator directive 2026-08-08: "As soon as the
-            # emitters are built, wire them into the console for later
-            # refinement when upgrading the Watchdog."
-            #
-            # The pane above this one is a RAW LOG TAIL: _QtLogHandler
-            # appends every logging record from every module, which is
-            # why the operator's read is that it "is very spammy and its
-            # messages generally do not add value". This pane is the
-            # opposite — only records that carry a declared expectation
-            # and an observation, in the standardized format.
-            #
-            # POLLED, NOT PUSHED. `signal_contract.emit` must stay free
-            # of I/O and callbacks because it runs on the tick path, and
-            # a push would arrive on whatever thread emitted — a
-            # cross-thread touch for a Qt widget. A timer poll sidesteps
-            # both and batches naturally. `since(seq)` is the
-            # incremental read.
-            #
-            # This is the seam the Watchdog arc takes over later: the
-            # sink is the single source, the Console is one consumer of
-            # it, and an out-of-process collector reading the same
-            # append-only JSONL is another.
-            from PySide6.QtWidgets import QSplitter as _Splitter
-
-            _sig_box = QWidget()
-            _sig_lay = QVBoxLayout(_sig_box)
-            _sig_lay.setContentsMargins(0, 0, 0, 0)
-            _sig_lay.setSpacing(0)
-
-            _sig_hdr = QLabel("  SIGNALS — name · expected · actual")
-            _sig_hdr.setStyleSheet(
-                "background:#0a0a14;color:#00ffcc;font-family:Consolas;"
-                "font-size:10px;padding:3px;border-top:1px solid #2a2a44;"
-            )
-            _sig_lay.addWidget(_sig_hdr)
-
-            self._signal_view = QPlainTextEdit()
-            self._signal_view.setReadOnly(True)
-            self._signal_view.setMaximumBlockCount(2000)
-            self._signal_view.setStyleSheet(
-                "QPlainTextEdit{background:#05050a;color:#c0ffe0;"
-                "font-family:Consolas;font-size:10px;border:none;}"
-            )
-            _sig_lay.addWidget(self._signal_view, 1)
-
-            _split = _Splitter(Qt.Vertical)
-            _split.addWidget(self._console)
-            _split.addWidget(_sig_box)
-            _split.setStretchFactor(0, 3)
-            _split.setStretchFactor(1, 2)
-            console_layout.addWidget(_split, 1)
-
-            self._signal_seq = 0
-            # 10.7 -- THE DRAIN LEDGER, AND WHY THE DRAIN ONLY COUNTS.
-            #
-            # This tab is a CONSUMER of the sink every pin writes to.
-            # An `emit` anywhere on the drain path writes a record into
-            # the collection the drain is draining: the next tick reads
-            # that record, renders it, and emits again, so the pin's own
-            # RATE becomes a function of the quantity it measures.
-            # `every=` slows that loop without breaking it, and the
-            # synchroniser never folds a FAILING check at all -- so the
-            # one state worth reporting would be the one state that ran
-            # un-throttled.
-            #
-            # So `_drain_signals` writes these six integers and emits
-            # NOTHING, and `_emit_console_health` -- driven by the timer
-            # below, at a rate that is a function of the clock and of
-            # nothing in the sink -- is the only thing that reads them
-            # back out.
-            self._signal_drain_ticks = 0
-            self._signal_read = 0
-            self._signal_rendered = 0
-            self._signal_slice_dropped = 0
-            # issue #48. GAP MARKERS ARE COUNTED SEPARATELY FROM
-            # RECORDS AND THE TWO MUST NEVER BE ADDED INTO ONE NUMBER.
-            # `console.14.001` asks whether every record the watermark
-            # consumed reached the pane, so a marker must not inflate
-            # `_signal_rendered` and turn a real skip green.
-            # `console.14.002` asks whether the pane holds what the
-            # drain drew, and a marker IS a block, so it must be in
-            # that sum. One counter each is the only shape that
-            # answers both questions honestly.
-            self._signal_markers = 0
-            self._signal_health_ticks_seen = 0
-            self._signal_timer = QTimer(self)
-            self._signal_timer.setInterval(500)
-            self._signal_timer.timeout.connect(self._drain_signals)
-            self._signal_timer.start()
-
-            # 10.7 -- the console health cadence. LOOKING OFTEN AND
-            # WRITING RARELY ARE DIFFERENT DECISIONS AND ARE MADE
-            # SEPARATELY HERE. 5000 ms so a stopped drain is visible
-            # inside two of the drain's own 500 ms windows; `every=30.0`
-            # on the three pins so the WRITE rate stays at one record
-            # per pin per 30 s, the same window the Asset Charts pins
-            # fold to. A failing check is never folded, so a drain that
-            # has stopped reports every 5 s until it starts again.
-            self._console_health_timer = QTimer(self)
-            self._console_health_timer.setInterval(5000)
-            self._console_health_timer.timeout.connect(self._emit_console_health)
-            self._console_health_timer.start()
+            console_layout.addWidget(self._console, 1)
 
             # Refresh the buffered-count label every 500ms while paused
             # v3.16.10 — QTimer is already imported at module top (line 31);
@@ -6536,205 +5311,13 @@ if _HAS_QT:
         # v3.16.7 — Console Tab pause function (operator directive
         # 2026-04-28: "the Console Tab needs its own pause function.
         # Capturing the above error properly was very difficult.").
-        def _drain_signals(self) -> None:
-            """Poll the signal sink and render new records.
-
-            v3.24.81. Reads only records NEWER than the last watermark, so
-            the cost is proportional to what arrived, not to the run.
-
-            Never raises: instrumentation display must not be able to take
-            down the window it is displayed in. Honours the same Pause the
-            log pane uses, so one control quiets both.
-
-            The flag that Pause is spelled with is `_console_paused`, and
-            `_set_console_paused` -- called by `_toggle_console_pause` --
-            is the only thing that writes it (issue #49). A paused drain
-            advances NO watermark, so the sink keeps every record for the
-            resume: see the note on `_signal_read` below for what the
-            resume pass then does with a backlog.
-
-            THE PANE STAYS CURRENT AND DRAWS THE GAP (issue #48). Two
-            paths reach the same slice: a long pause and then a resume,
-            and a live burst of more than 200 records inside one 500 ms
-            window with no pause at all. On both, the watermark moves to
-            `new[-1].seq` and the render keeps the newest 200 -- so this
-            consumer steps over the rest. It is NOT data loss: the sink
-            appends and flushes on every emit, and every stepped-over
-            record is on disk in
-            `~/.acervator_logs/signals/session.jsonl`. What was missing
-            was any sign of it ON THE SCREEN, and
-            `_draw_signal_gap_marker` is that sign.
-            """
-            try:
-                # 10.7 -- THE TICK COUNTER IS THE FIRST STATEMENT AND NO
-                # RETURN BELOW IT CAN SKIP IT. It counts INVOCATIONS of
-                # this slot, which is what `console.14.003` reads to
-                # tell a live timer from a dead one. Counted further
-                # down it would count RECORDS ARRIVING instead, and a
-                # quiet sink would then read exactly like a stopped
-                # timer -- the one fault the pin exists to separate from
-                # ordinary silence.
-                #
-                # `getattr` rather than `+= 1`:
-                # `tests/test_signal_timing.py` drives this method off a
-                # stub that owns three attributes, and an AttributeError
-                # here would be swallowed by the `except` below and take
-                # the whole drain down with it.
-                self._signal_drain_ticks = getattr(self, "_signal_drain_ticks", 0) + 1
-                if getattr(self, "_console_paused", False):
-                    return
-                view = getattr(self, "_signal_view", None)
-                if view is None:
-                    return
-                from html import escape as _esc
-
-                from src.core.signal_contract import get_sink, render
-
-                sink = get_sink()
-                if sink is None:
-                    return
-                new = sink.since(getattr(self, "_signal_seq", 0))
-                if not new:
-                    return
-                self._signal_seq = new[-1].seq
-                # 10.7 -- THE WATERMARK HAS ALREADY MOVED PAST EVERY
-                # RECORD IN `new`, INCLUDING THE ONES THE SLICE BELOW
-                # THROWS AWAY. `_signal_read` counts what the watermark
-                # consumed; `_signal_rendered` counts what reached the
-                # pane. The gap between them is the permanent, silent
-                # loss `console.14.001` reports, and `_signal_slice_
-                # dropped` says which mechanism took it. Nothing here
-                # emits: see the ledger comment beside the timer.
-                _shown = new[-200:]
-                _skipped = len(new) - len(_shown)
-                self._signal_read = getattr(self, "_signal_read", 0) + len(new)
-                self._signal_slice_dropped = (
-                    getattr(self, "_signal_slice_dropped", 0) + _skipped
-                )
-                self._signal_rendered = getattr(self, "_signal_rendered", 0)
-                # issue #48. THE GAP IS DRAWN, NOT ONLY COUNTED. A
-                # number that lives in the emitter stream helps whoever
-                # reads `session.jsonl`; it does nothing at all for the
-                # operator watching the pane, who until now saw the
-                # newest 200 records appear with no sign that 4800
-                # older ones had been stepped over.
-                #
-                # ABOVE THE SLICE, NOT BELOW IT, and that is the whole
-                # of the placement argument. The skipped records are
-                # OLDER than the 200 about to be drawn, so the marker
-                # that describes them belongs above them. Below, on a
-                # pane that then goes quiet, the marker would sit at
-                # the bottom as the newest thing on the screen and read
-                # as a gap at the live edge -- a lie about a pane that
-                # is in fact fully current.
-                #
-                # AND IT CANNOT BE EVICTED BY ITS OWN PASS. One pass
-                # appends at most 1 marker + 200 records against a
-                # 2000-block cap, so a marker drawn first still has
-                # about 1800 blocks of headroom when its own pass ends.
-                # The 200-line slice and the 2000-block cap both stay:
-                # an unbounded render would stall the Qt GUI thread,
-                # and that is an arc of its own.
-                self._signal_markers = getattr(
-                    self, "_signal_markers", 0
-                ) + _draw_signal_gap_marker(view, skipped=_skipped)
-                for r in _shown:
-                    if r.ok is True:
-                        mark, colour = "OK  ", "#00ff88"
-                    elif r.ok is False:
-                        mark, colour = "FAIL", "#ff3366"
-                    else:
-                        mark, colour = "--  ", "#8899aa"
-                    # ESCAPE EVERYTHING. appendHtml parses its input, so
-                    # an unescaped payload containing < or > is silently
-                    # SWALLOWED — and repr() of most objects looks like
-                    # "<Foo at 0x...>". Observed: a site of "<stdin>"
-                    # vanished, leaving a bare ":23". That is data loss in
-                    # the one pane whose job is to show data faithfully.
-                    exp = (
-                        ""
-                        if r.expected is None
-                        else f"  exp={_esc(render(r.expected))}"
-                    )
-                    view.appendHtml(
-                        f'<span style="color:{colour}">{mark}</span> '
-                        f'<span style="color:#88c0ff">{_esc(r.name)}</span>'
-                        f'<span style="color:#667788"> {_esc(r.site)}</span>'
-                        f'<span style="color:#c0ffe0">  '
-                        f"got={_esc(render(r.actual))}{exp}</span>"
-                    )
-                    # AFTER the append, never before. A raise inside
-                    # `appendHtml` leaves the count truthful about what
-                    # is really on the pane rather than about what this
-                    # loop intended to put there.
-                    self._signal_rendered += 1
-            except Exception as exc:  # noqa: BLE001 - display is best-effort
-                logger.debug("signal drain failed: %s", exc)
-
         def _toggle_console_pause(self) -> None:
-            """Toggle the Console log handler's pause state.
-
-            10.7 -- `console.14.004` and `console.14.005`. BOTH ARE
-            TOGGLE PINS. They fire when the operator presses this
-            button and at no other time, so silence from either says
-            nothing about the tab's health; only the three cadence pins
-            in `_emit_console_health` may be read that way.
-
-            Neither reads `paused` back out as though the argument were
-            the result. 004 asks the flag the SIGNAL drain consults;
-            005 asks the console widget how many blocks it now holds.
-            """
+            """Toggle the Console log handler's pause state."""
             paused = self._console_pause_btn.isChecked()
-            # issue #49 -- THE SIGNALS HALF OF THE BUTTON, AND IT IS SET
-            # BEFORE THE HANDLER GUARD ON PURPOSE. `_drain_signals`
-            # gates the signals pane on this flag; `set_paused` below
-            # stops the log pane. Two panes, two mechanisms, one press.
-            # A missing `_console_log_handler` returns two lines down,
-            # and quieting one pane must not be conditional on the other
-            # pane's plumbing existing.
-            #
-            # NO DRAIN CAN INTERLEAVE with what follows. `_drain_signals`
-            # is a `QTimer` slot and this is a `clicked` slot; both run
-            # on the Qt GUI thread, so the order of the statements here
-            # is a readability decision and not a race.
-            _set_console_paused(self, paused=paused)
             handler = getattr(self, "_console_log_handler", None)
             if handler is None:
                 return
-            import contextlib
-            import time as _pause_clock
-
-            # READ BEFORE THE DRAIN RUNS. Once `set_paused(False)`
-            # returns, the buffer is empty and the drop counter is
-            # zeroed, so the size of the debt is unrecoverable. The
-            # empty document counts as ZERO lines, not one: an empty
-            # QPlainTextEdit reports `blockCount() == 1`, and the first
-            # line lands IN that block rather than after it.
-            _console = getattr(self, "_console", None)
-            _held = 0
-            _dropped = 0
-            _before = 0
-            try:
-                _held = int(handler.buffered_count())
-                _dropped = int(getattr(handler, "_buffer_dropped", 0))
-                if _console is not None:
-                    _before = (
-                        0
-                        if _console.document().isEmpty()
-                        else int(_console.blockCount())
-                    )
-            except Exception:  # noqa: BLE001 - observation only
-                _console = None
-            _t0 = _pause_clock.monotonic()
             handler.set_paused(paused)
-            _elapsed = _pause_clock.monotonic() - _t0
-            # Read the widget back out HERE, before the button text and
-            # the indicator label are touched, so nothing between the
-            # operation and its observation can add a line.
-            _after = -1
-            if _console is not None:
-                with contextlib.suppress(Exception):
-                    _after = int(_console.blockCount())
             if paused:
                 self._console_pause_btn.setText("▶  Resume")
                 self._console_pause_indicator.setText("PAUSED · 0 buffered")
@@ -6743,65 +5326,6 @@ if _HAS_QT:
                 self._console_pause_btn.setText("⏸  Pause")
                 self._console_pause_indicator.setText("")
                 self._console_pause_refresh.stop()
-            # 10.7 -- console.14.004. THE BUTTON QUIETS BOTH PANES,
-            # and since issue #49 it really does: `_drain_signals`
-            # gates on `self._console_paused`, `_set_console_paused`
-            # above assigns it, and `set_paused` stopped the log pane.
-            # This asks the flag the drain actually reads, after the
-            # toggle has run, against the button the operator just
-            # pressed -- so a repair that is reverted, renamed away or
-            # skipped by an early return reports red here instead of
-            # going quiet.
-            #
-            # NO DURATION (E8): reading a flag follows no operation, so
-            # a number here would be fabricated.
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _co_emit
-
-                _co_emit(
-                    "console.14.004.postcondition.pause_quiets_both_panes",
-                    actual=bool(getattr(self, "_console_paused", False)),
-                    expected=paused,
-                    context={
-                        "log_pane_paused": bool(getattr(handler, "_paused", False)),
-                        "button_checked": paused,
-                        "buffered": _held,
-                    },
-                )
-            # 10.7 -- console.14.005, THE RESUME ONLY. On the pause
-            # press `set_paused` delivers nothing, so there is no
-            # delivery to judge and the pin stays quiet rather than
-            # asserting a vacuous zero.
-            #
-            # `expected` is what the resume OWED: the lines the buffer
-            # was holding, plus the one notice line `set_paused` adds
-            # when it dropped any. `actual` is the widget's own block
-            # count afterwards. They part company when the pane's block
-            # cap eats the delivery -- the operator paused precisely to
-            # keep those lines, and the cap throws them away silently.
-            #
-            # THE DURATION IS THE ONLY ONE IN THIS TAB and it is the
-            # only site that may carry one (E8): the drain paints up to
-            # `_buffer_max` lines into a widget on the GUI thread, which
-            # is a real bounded operation. The bracket opens one line
-            # above `set_paused` and closes one line below it.
-            if not paused and _after >= 0 and _console is not None:
-                with contextlib.suppress(Exception):
-                    from src.core.signal_contract import emit as _co_emit
-
-                    _co_emit(
-                        "console.14.005.postcondition.pause_buffer_delivered",
-                        actual=_after,
-                        expected=max(_before + _held + (1 if _dropped else 0), 1),
-                        duration=_elapsed,
-                        context={
-                            "held": _held,
-                            "dropped_at_cap": _dropped,
-                            "buffer_cap": int(getattr(handler, "_buffer_max", 0)),
-                            "blocks_before": _before,
-                            "max_blocks": int(_console.maximumBlockCount()),
-                        },
-                    )
 
         def _refresh_console_pause_indicator(self) -> None:
             """While paused, update the buffered-count display every 500ms."""
@@ -6816,149 +5340,6 @@ if _HAS_QT:
             else:
                 msg = f"PAUSED · {n} buffered (cap {cap})"
             self._console_pause_indicator.setText(msg)
-
-        def _emit_console_health(self) -> None:
-            """Report the signal drain FROM OUTSIDE THE DRAIN.
-
-            10.7 -- `console.14.001`, `console.14.002` and
-            `console.14.003`.
-
-            WHY THIS METHOD EXISTS AT ALL, rather than three pins inside
-            `_drain_signals`. The Console is a CONSUMER of the sink the
-            emitter network writes to. A pin on the drain path writes a
-            record into the collection it is draining; the next tick
-            reads that record, renders it and emits again, so the pin's
-            own rate becomes a function of the quantity it measures.
-            `every=` reduces that rate and does not break the coupling,
-            and the synchroniser never folds a FAILING check -- so the
-            one state worth reporting is the one state that would run
-            un-throttled.
-
-            THE COUPLING IS BROKEN BY MAKING THE EMISSION RATE
-            INDEPENDENT OF THE SINK. This method is driven by its own
-            5000 ms QTimer, so it writes at most three records per
-            interval whatever the sink holds: a constant slope, exactly
-            like every other cadence pin in the tree. `_drain_signals`
-            only counts.
-
-            THE THREE QUANTITIES ARE ALSO CHOSEN SO A CONSOLE RECORD
-            MOVES BOTH SIDES OF EVERY COMPARISON BY THE SAME AMOUNT. A
-            record written here is read once and rendered once, so
-            `read - rendered` is unchanged by it; it adds one block and
-            one rendered line, so the pane's count and the ledger's
-            count move together. No verdict here can be driven by this
-            method's own traffic. `evicted` is the one quantity that
-            does grow with it, which is why it rides in `context` as a
-            number and is not part of any expectation.
-
-            WHAT ISSUE #48 CHANGED ABOUT `14-002`, STATED AND NOT LEFT
-            TO DRIFT. The drain now draws two kinds of line: records,
-            and a gap marker over a stretch the slice stepped over. The
-            pin still asks whether the pane holds what the drain drew,
-            but "what the drain drew" is now `_signal_rendered +
-            _signal_markers` rather than `_signal_rendered` alone, and
-            `gap_markers` rides in `context` so a reader of
-            `session.jsonl` can take the two apart. `14-001` is
-            UNCHANGED: it asks whether every record the watermark
-            consumed reached the pane, a marker is not a record, and a
-            Console that quietly keeps up must stay distinguishable in
-            the record stream from one that quietly skips.
-
-            THE ONE THING IT CANNOT REPORT IS ITS OWN SILENCE. If the
-            GUI thread wedges, this timer stops with the drain and
-            nothing is written at all. That is the seam the Watchdog arc
-            takes: the sink's JSONL is append-only, and a cadence pin
-            that stops writing is readable from outside the process when
-            nothing inside it can still speak.
-
-            Never raises, for the reason `_drain_signals` never does.
-            """
-            try:
-                view = getattr(self, "_signal_view", None)
-                if view is None:
-                    return
-                import contextlib
-
-                from src.core.signal_contract import emit as _co_emit
-
-                _ticks = getattr(self, "_signal_drain_ticks", 0)
-                _seen = getattr(self, "_signal_health_ticks_seen", 0)
-                # Advanced on EVERY invocation, admitted or folded. The
-                # window an admitted record reports is therefore the
-                # last look's window, not the throttle's -- and a look
-                # that found nothing is a FAIL, which is never folded.
-                self._signal_health_ticks_seen = _ticks
-                _read = getattr(self, "_signal_read", 0)
-                _rendered = getattr(self, "_signal_rendered", 0)
-                _markers = getattr(self, "_signal_markers", 0)
-                _blocks = int(view.blockCount())
-                _cap = int(view.maximumBlockCount())
-                _timer = getattr(self, "_signal_timer", None)
-                _look = getattr(self, "_console_health_timer", None)
-                # An empty QPlainTextEdit reports one block, so the
-                # floor is 1 rather than 0. Above the cap the pane keeps
-                # exactly `_cap` blocks -- measured, not assumed.
-                #
-                # issue #48. `+ _markers` IS THE RESTATEMENT, WRITTEN
-                # DOWN RATHER THAN LEFT TO DRIFT. Before the gap marker
-                # this pin compared the pane's block count against
-                # `_signal_rendered` alone, because records were the
-                # only thing the drain drew. A gap marker is a block
-                # too, so the drain now draws two kinds of line and
-                # `14-002` counts both. Left as `_rendered` alone the
-                # pin would go red by exactly the number of markers --
-                # red for drawing the notice that makes a skip visible,
-                # which is the `06-014` defect wearing a new hat.
-                _want = max(_rendered + _markers, 1)
-                if _cap > 0:
-                    _want = min(_want, _cap)
-                with contextlib.suppress(Exception):
-                    _co_emit(
-                        "console.14.001.invariant.records_rendered",
-                        actual=_rendered,
-                        expected=_read,
-                        every=30.0,
-                        context={
-                            "lost_to_slice": getattr(self, "_signal_slice_dropped", 0),
-                            "slice_cap": 200,
-                            "watermark": getattr(self, "_signal_seq", 0),
-                            "drain_ticks": _ticks,
-                        },
-                    )
-                with contextlib.suppress(Exception):
-                    _co_emit(
-                        "console.14.002.invariant.view_holds_rendered",
-                        actual=_blocks,
-                        expected=_want,
-                        every=30.0,
-                        context={
-                            "evicted": max(0, _rendered + _markers - _blocks),
-                            "max_blocks": _cap,
-                            "rendered": _rendered,
-                            "gap_markers": _markers,
-                        },
-                    )
-                with contextlib.suppress(Exception):
-                    _co_emit(
-                        "console.14.003.invariant.drain_alive",
-                        actual=bool(_ticks - _seen > 0),
-                        expected=True,
-                        every=30.0,
-                        context={
-                            "ticks_since_last_look": _ticks - _seen,
-                            "drain_timer_active": bool(
-                                _timer is not None and _timer.isActive()
-                            ),
-                            "drain_interval_ms": (
-                                int(_timer.interval()) if _timer is not None else 0
-                            ),
-                            "look_interval_ms": (
-                                int(_look.interval()) if _look is not None else 0
-                            ),
-                        },
-                    )
-            except Exception as exc:  # noqa: BLE001 - display is best-effort
-                logger.debug("console health emit failed: %s", exc)
 
         def _setup_status_bar(self) -> None:
             status = QStatusBar()
@@ -7973,43 +6354,6 @@ if _HAS_QT:
             # Keep legacy alias in sync if this is the active layer
             if target_tabs is self._exchange_tabs:
                 self._exchange_tabs[exchange_id] = tab
-
-            # 10.5 -- EXCHANGE TAB ROUTING.
-            #
-            # This is the Bot Swarm misroute in another building.
-            # Two layers take the same shape of argument, the
-            # routing decision is one boolean, and a tab added to
-            # the wrong layer returns exactly as cleanly as a tab
-            # added to the right one -- the operator finds out when
-            # a broker he configured is simply not on screen.
-            #
-            # So actual ASKS THE TWO LAYER WIDGETS which of them is
-            # holding the new tab, and reports none when neither is.
-            # expected is the layer this call was routed to. Neither
-            # reads target_widget, which is the argument that went
-            # in.
-            _landed = "none"
-            if self._stock_tab_widget.indexOf(tab) >= 0:
-                _landed = "stock"
-            elif self._crypto_tab_widget.indexOf(tab) >= 0:
-                _landed = "crypto"
-            import contextlib
-
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _tr_emit
-
-                _tr_emit(
-                    "trading.12.002.postcondition.exchange_tab_routed",
-                    actual=_landed,
-                    expected="stock" if is_equity else "crypto",
-                    context={
-                        "exchange": exchange_id,
-                        "stock_tabs": self._stock_tab_widget.count(),
-                        "crypto_tabs": self._crypto_tab_widget.count(),
-                        "in_layer_store": target_tabs.get(exchange_id) is tab,
-                        "placeholder_dropped": ph is not None,
-                    },
-                )
 
         # --- v3.16.52 — Error-log capture + click-to-open dialog ----
         def _on_bot_error_for_log(self, event) -> None:
@@ -10088,56 +8432,6 @@ if _HAS_QT:
                 )
             self._update_mode_btn_style()
 
-            # 10.5 -- THE LEGACY ALIAS TRACKS THE VISIBLE LAYER.
-            #
-            # _tab_widget, _exchange_tabs and _empty_placeholder are
-            # aliases repointed BY HAND in the two branches above.
-            # Nothing binds them to the stack. A branch that flips
-            # the stack and forgets an alias leaves the operator
-            # looking at one layer while every caller of the alias
-            # works on the other, and both sides return success.
-            #
-            # actual is the stack page that OWNS the alias widget,
-            # found with indexOf on the widget's real parent.
-            # expected is the page the stack really shows. The two
-            # branches assign neither, so this cannot echo them.
-            # The other two aliases ride in the context, checked by
-            # identity against the layer stores.
-            _alias_host = self._tab_widget.parentWidget() if self._tab_widget else None
-            _alias_page = (
-                self._trading_stack.indexOf(_alias_host)
-                if _alias_host is not None
-                else -1
-            )
-            _stock_wing = self._trading_mode == "stock"
-            import contextlib
-
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _tr_emit
-
-                _tr_emit(
-                    "trading.12.004.postcondition.active_layer_alias",
-                    actual=_alias_page,
-                    expected=self._trading_stack.currentIndex(),
-                    context={
-                        "mode": self._trading_mode,
-                        "tabs_alias_ok": self._exchange_tabs
-                        is (
-                            self._stock_exchange_tabs
-                            if _stock_wing
-                            else self._crypto_exchange_tabs
-                        ),
-                        "placeholder_alias_ok": self._empty_placeholder
-                        is (
-                            self._stock_placeholder
-                            if _stock_wing
-                            else self._crypto_placeholder
-                        ),
-                        "tabs_in_alias": self._tab_widget.count(),
-                        "stack_pages": self._trading_stack.count(),
-                    },
-                )
-
         def _update_mode_btn_style(self):
             """Update mode button and layer tab headers to reflect the active layer.
             Tab widget tinting is skipped if the stack hasn't been built yet
@@ -10224,44 +8518,6 @@ if _HAS_QT:
                         f"({'stock' if self._is_equity_exchange(eid) else 'crypto'} layer)",
                         "success",
                     )
-
-            # 10.5 -- EVERY CONFIGURED EXCHANGE REACHED A TAB BAR.
-            #
-            # The loop above adds a tab when the layer STORE lacks
-            # the id, so the store agreeing with the settings is the
-            # loop's own bookkeeping and proves nothing about what
-            # the operator sees. This walks the configured ids again
-            # and asks the LAYER TAB BAR whether it is really
-            # holding that exchange's tab. A store entry whose
-            # widget never reached the bar counts as missing.
-            _missing = 0
-            for _eid in _wanted:
-                if self._is_equity_exchange(_eid):
-                    _store = self._stock_exchange_tabs
-                    _bar = self._stock_tab_widget
-                else:
-                    _store = self._crypto_exchange_tabs
-                    _bar = self._crypto_tab_widget
-                _tab = _store.get(_eid)
-                if _tab is None or _bar.indexOf(_tab) < 0:
-                    _missing += 1
-            import contextlib
-
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _tr_emit
-
-                _tr_emit(
-                    "trading.12.003.postcondition" ".exchange_tabs_synced",
-                    actual=_missing,
-                    expected=0,
-                    context={
-                        "configured": len(_wanted),
-                        "crypto_bar": self._crypto_tab_widget.count(),
-                        "stock_bar": self._stock_tab_widget.count(),
-                        "crypto_store": len(self._crypto_exchange_tabs),
-                        "stock_store": len(self._stock_exchange_tabs),
-                    },
-                )
 
         def _refuse_extractor_without_parent(
             self,

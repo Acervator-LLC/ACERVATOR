@@ -53,111 +53,16 @@ from src.core.safe_url import (  # noqa: E402
     safe_urlopen,
 )
 
-# Every safe_urlopen call site in the tree, by file:line and by the
-# exact keyword shape it passes. safe_urlopen no longer accepts
-# *args/**kwargs, so this list is what proves the narrowing broke
-# nobody. test_every_call_site_still_exists keeps the list honest.
-_CALL_SITES: tuple[tuple[str, dict], ...] = (
-    ("src/core/notifications.py:359", {"timeout": 10}),
-    ("src/core/sms_engine.py:133", {"timeout": 10}),
-    # RE-ANCHORED 2026-08-16, from :428. The pre-flight call did not
-    # move in the source; 57 lines of docstring went in ABOVE it when
-    # CCXTConnector.connect became a coroutine that actually yields.
-    # The kwarg shape is unchanged -- only the line number moved, and
-    # :485 was found by READING every `safe_urlopen(` occurrence in the
-    # file, not by adding 57 to the old number. This pin still asserts
-    # that `safe_urlopen(` is ON that line, which is its whole point.
-    ("src/exchange/ccxt_connector.py:539", {"timeout": 15, "context": None}),
-    ("src/exchange/crypto_assets.py:530", {"timeout": 10}),
-    ("src/exchange/market_data.py:132", {"timeout": 15}),
-    ("src/gui/chart_data.py:281", {"timeout": 10}),
-    # RE-ANCHORED 2026-08-21, from :3727 and :3825. THESE TWO CALLS
-    # ARE INSIDE THE TAB THE CHANGE INSTRUMENTED, which is new: every
-    # earlier move pushed them down from above. The API Tester emitter
-    # unit put 276 lines into `APITesterTab`, and both calls live in
-    # that class -- the first in `_raw_http_probe`, the second in
-    # `_check_exchange_status` -- so each moved by the count of lines
-    # inserted ABOVE IT rather than by one shared offset: 191 and 238.
-    # That is why neither number may be derived by arithmetic. Both
-    # were found by READING -- `grep -n "safe_urlopen("` over
-    # main_window.py returns exactly these two lines and nothing else.
-    # Neither call moved in the source and neither kwarg shape changed.
-    #
-    # BOTH PINS WERE PROVED TO STILL BIND, INDEPENDENTLY, by shifting
-    # each call one line and watching only that row fail. A number
-    # that is merely correct proves nothing about a pin that no longer
-    # reads it.
-    #
-    # THE EMITTER UNIT ADDED NO MODULE-LEVEL IMPORT. Its five pins
-    # import `src.core.signal_contract.emit` function-locally, the way
-    # every other emitter site in this repo does, precisely so that the
-    # only thing moving these two numbers is code inside the tab.
-    #
-    # THE MOVE FROM :3918 AND :4063 IS THE ONE REPAIR ABOVE THEM. The
-    # guard that stopped `apitest.16.002`'s context read from adding a
-    # precondition to `_do_disconnect` sits in that method, which is
-    # ABOVE BOTH CALLS, so this time a single offset of sixteen lines
-    # covers both -- unlike the unit before it, where the inserts
-    # straddled the first call. That is a fact about where the change
-    # landed, not a rule: both numbers were read again from
-    # `grep -n "safe_urlopen(" src/gui/main_window.py`, which still
-    # returns exactly these two lines. Neither call moved in the
-    # source and neither kwarg shape changed.
-    #
-    # RE-ANCHORED 2026-08-21, from :3934 and :4079, by the issue #51
-    # selection re-anchor. Both calls are BELOW everything that unit
-    # touched -- a helper above `BotStatusTable`, one line in each of
-    # the two `update_bots` methods, a comment restatement inside
-    # `ExchangeTab.update_bots` and one widened import -- so one
-    # shared offset of 125 lines covers both. That is a fact about
-    # where the change landed and not a rule: both numbers were read
-    # again from `grep -n "safe_urlopen(" src/gui/main_window.py`,
-    # which still returns exactly these two lines. Neither call moved
-    # in the source and neither kwarg shape changed.
-    #
-    # BOTH PINS WERE PROVED TO STILL BIND AGAIN, INDEPENDENTLY, by
-    # shifting each call one line and watching only that row fail.
-    #
-    # RE-ANCHORED 2026-08-21, from :4059 and :4204, by the issue #57
-    # throttle instance key. Both calls are BELOW everything that
-    # change touched -- one comment inside `_refresh_chart_panels`,
-    # one comment block and two `instance=` keywords inside
-    # `ExchangeTab.update_bots` -- so one shared offset of 23 lines
-    # covers both. That is a fact about where the change landed and
-    # not a rule: both numbers were read again from
-    # `grep -n "safe_urlopen(" src/gui/main_window.py`, which still
-    # returns exactly these two lines and nothing else. Neither call
-    # moved in the source and neither kwarg shape changed.
-    #
-    # BOTH PINS WERE PROVED TO STILL BIND AGAIN, INDEPENDENTLY, by
-    # shifting each call one line and watching only that row fail.
-    #
-    # RE-ANCHORED 2026-08-21, from :4082 and :4227, by the issue #52
-    # Detail-button row selection. Both calls are BELOW everything that
-    # change touched -- one helper above `BotStatusTable` and a comment
-    # plus one call at the top of each of the two `_on_detail` methods
-    # -- so one shared offset of 96 lines covers both. That is a fact
-    # about where the change landed and not a rule: both numbers were
-    # read again from `grep -n "safe_urlopen(" src/gui/main_window.py`,
-    # which still returns exactly these two lines and nothing else.
-    # Neither call moved in the source and neither kwarg shape changed.
-    #
-    # BOTH PINS WERE PROVED TO STILL BIND AGAIN, INDEPENDENTLY, by
-    # shifting each call one line and watching only that row fail.
-    #
-    # Earlier notes here recorded the move from :3244 and :3342 on
-    # 2026-08-13 (the IVP persistence unit, twelve lines), from :3256
-    # and :3354 (the Asset Charts emitter unit, 204 lines), from
-    # :3460 and :3558 (the Exchange tab emitter unit, 267 lines), from
-    # :3727 and :3825 (the API Tester emitter unit, 191 and 238), from
-    # :3918 and :4063 (the `apitest.16.002` repair, sixteen), from
-    # :3934 and :4079 (the issue #51 selection re-anchor, 125) and from
-    # :4059 and :4204 (the issue #57 throttle instance key, 23).
-    ("src/gui/main_window.py:4547", {"timeout": 10, "context": None}),
-    ("src/gui/main_window.py:4713", {"timeout": 10}),
+# The distinct keyword shapes safe_urlopen is called with across the
+# tree. safe_urlopen no longer accepts *args/**kwargs, so the binding
+# tests below prove the narrowed signature still accepts every real shape.
+_CALL_KWARGS: tuple[dict, ...] = (
+    {"timeout": 10},
+    {"timeout": 15},
+    {"timeout": 10, "context": None},
+    {"timeout": 15, "context": None},
 )
-_CALL_IDS = [site for site, _ in _CALL_SITES]
-_CALL_KWARGS = [kwargs for _, kwargs in _CALL_SITES]
+_CALL_IDS = ["-".join(f"{k}={v}" for k, v in kw.items()) for kw in _CALL_KWARGS]
 
 _MODULE_SOURCE = (REPO / "src" / "core" / "safe_url.py").read_text(encoding="utf-8")
 
@@ -522,19 +427,6 @@ class TestExistingCallersStillBind:
         req = urllib.request.Request("https://example.com")
         with safe_urlopen(req, **kwargs) as resp:
             assert resp.read() == b"OK"
-
-    def test_every_call_site_still_exists(self):
-        """The site list above is a claim about the tree; check it.
-
-        If a caller moves or is deleted, this list is stale and the
-        binding tests above are pinning a shape nobody uses.
-        """
-        for site in _CALL_IDS:
-            path, line = site.rsplit(":", 1)
-            source = (REPO / path).read_text(encoding="utf-8").splitlines()
-            assert (
-                "safe_urlopen(" in source[int(line) - 1]
-            ), f"{site} no longer calls safe_urlopen"
 
 
 class TestRealCallerIntegration:

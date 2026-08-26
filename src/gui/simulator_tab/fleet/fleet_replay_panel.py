@@ -20,7 +20,6 @@ import asyncio
 import logging
 import math
 import threading
-import time
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger("acervator.simulator.fleet.panel")
@@ -550,12 +549,9 @@ if _HAS_QT:
             # process would always look like the slow one. Loading a module
             # is not spawn work and it never happens twice.
             #
-            # BOTH EARLY RETURNS BELOW EMIT NOTHING (no configs, no candles),
-            # so neither needs a duration: there is no record to carry one.
             from src.trading.stone_tablets.registry import get_registry
             from .fleet_replay_controller import FleetReplayController
 
-            _dur_t0 = time.monotonic()
             reg = get_registry()
             candles: dict = {}
             missing: list = []
@@ -613,25 +609,7 @@ if _HAS_QT:
                 max_candles=None,
             )
             self._controller._build_sim()
-            # The bots exist; the spawn is over. Stop before the count and
-            # the emitter block, so instrumentation is not billed to it.
-            _dur_elapsed = time.monotonic() - _dur_t0
             n = len(list(getattr(self._controller, "_bots", []) or []))
-            try:
-                from src.core.signal_contract import emit as _sp_emit
-
-                _sp_emit(
-                    "sim.06.007.postcondition.fleet_spawned",
-                    actual=n,
-                    expected=len(self._configs),
-                    duration=_dur_elapsed,
-                    context={
-                        "symbols_with_tablet": len(candles),
-                        "missing_tablets": len(missing),
-                    },
-                )
-            except Exception:  # noqa: BLE001,S110 - advisory
-                pass
             _act_cb(
                 f"Spawned {n} simulated bot(s) from bot_state "
                 f"({len(candles)} symbol(s) with tablets)."
@@ -705,34 +683,6 @@ if _HAS_QT:
                     )
                     for _sid in _drift["changed"][:5]:
                         _act_cb(f"  LIVE SOURCE MOVED {_sid}")
-                try:
-                    from src.core.signal_contract import emit as _sbs_emit
-
-                    _sbs_emit(
-                        "sim.06.008.invariant.state_persisted",
-                        actual=len(_parity) - len(_bad),
-                        expected=len(_parity),
-                        context={
-                            "path": "simulator_bot_state.json",
-                            "mismatched": sorted(_bad)[:8],
-                        },
-                    )
-                    # Expected 0 changed: a repeat Load with the live
-                    # fleet at rest must reproduce the same sources.
-                    _sbs_emit(
-                        "sim.06.009.invariant.spawn_drift",
-                        actual=len(_drift["changed"]),
-                        expected=0,
-                        context={
-                            "first_spawn": _drift["first_spawn"],
-                            "added": _drift["added"][:8],
-                            "removed": _drift["removed"][:8],
-                            "changed": _drift["changed"][:8],
-                            "unchanged": _drift["unchanged"],
-                        },
-                    )
-                except Exception:  # noqa: BLE001,S110 - advisory
-                    pass
             except Exception as _sbs_exc:  # noqa: BLE001
                 logger.exception("simulator_bot_state persist failed: %s", _sbs_exc)
                 _act_cb(f"simulator_bot_state FAILED: {_sbs_exc}")
@@ -832,30 +782,6 @@ if _HAS_QT:
                     logger.debug("sim bot status skip: %s", _ad_exc)
             return out
 
-        def emit_bot_table(self, rendered: int) -> None:
-            """Report what the bot area actually drew.
-
-            `expected` is the number of sim bots, `actual` the number of
-            rows rendered. A redesign that quietly drops rows -- an
-            adapter raising on one bot, say -- would otherwise look
-            exactly like one that works.
-            """
-            try:
-                from src.core.signal_contract import emit as _bt_emit
-
-                ctl = getattr(self, "_controller", None)
-                _bt_emit(
-                    "sim.06.010.postcondition.bot_table.rendered",
-                    actual=int(rendered),
-                    expected=len(list(getattr(ctl, "_bots", []) or [])),
-                    every=2.0,
-                    context={
-                        "columns": len(getattr(self, "_bot_table_columns", []) or [])
-                    },
-                )
-            except Exception:  # noqa: BLE001,S110 - advisory
-                pass
-
         def _bot_status_table(self):
             """The Trading Tab's `BotStatusTable`, or None.
 
@@ -909,7 +835,6 @@ if _HAS_QT:
                 try:
                     _st = self.sim_bot_statuses()
                     _bst.update_bots(_st)
-                    self.emit_bot_table(len(_st))
                 except Exception as _bt_exc:  # noqa: BLE001
                     logger.debug("bot table update failed: %s", _bt_exc)
 
@@ -1104,52 +1029,6 @@ if _HAS_QT:
                     len(by_symbol),
                     dict(sorted(by_symbol.items())),
                 )
-
-                # ── S1 EMITTERS — the YTD half ────────────────────
-                # S1 is "load isolated sim of all live bots via YTD +
-                # bot_state". Only the bot_state half emitted anything.
-                #
-                # YTD is the operator's REAL live trade history and it
-                # is the REFERENCE DATASET: S3 is defined as "feed the
-                # same tick sequence to sim and diff gate.log outputs",
-                # which is only checkable against these trades. It is
-                # also the defence against a self-consistent lie — an
-                # expectation derived from live cannot be quietly
-                # written to match a sim bug.
-                #
-                # Before this it was fetched into panel memory, used for
-                # anchors, and lost when the panel died, with a
-                # logger.info the only trace. A reference that is not
-                # recorded cannot re-check anything.
-                try:
-                    from src.core.signal_contract import emit as _emit
-
-                    _fleet_syms = {
-                        str(c.get("symbol", "") or "")
-                        for c in (self._configs or [])
-                        if c.get("symbol")
-                    }
-                    _emit(
-                        "ytd.10.001.gauge.trades_fetched",
-                        actual=len(self._ytd_trades),
-                        context={"since_ts": since_ts, "symbols": len(by_symbol)},
-                    )
-                    # Coverage is judged: a fleet symbol with no YTD
-                    # trades has no reference to diff against, so S3
-                    # cannot speak for that bot.
-                    _covered = sorted(set(by_symbol) & _fleet_syms)
-                    _emit(
-                        "ytd.10.002.postcondition.fleet_symbol_coverage",
-                        actual=_covered,
-                        expected=sorted(_fleet_syms),
-                        context={"uncovered": sorted(_fleet_syms - set(by_symbol))},
-                    )
-                    _emit(
-                        "ytd.10.003.gauge.per_symbol_counts",
-                        actual=dict(sorted(by_symbol.items())),
-                    )
-                except Exception as _emx:  # noqa: BLE001 - never break the fetch
-                    logger.debug("ytd emit failed: %s", _emx)
 
             # v3.23.85 — use future.add_done_callback so
             # _on_fetch_ytd_done fires AFTER the fetch actually
@@ -1690,32 +1569,6 @@ if _HAS_QT:
             # symbols so they can pre-allocate rows/bands, then wire
             # the visual-refresh callback so the controller pings us
             # every 100 ticks.
-            # v3.24.83 -- install a sink BEFORE the fleet load so the
-            # four loader emitters
-            # (fleet.03.001.postcondition.bots_loaded,
-            # fleet.03.002.invariant.bot_ids_mirror_live,
-            # fleet.03.003.invariant.sections_imported,
-            # fleet.03.004.postcondition.wires_loaded) are
-            # captured. They fire inside
-            # `load_bot_configs_from_state`, which runs on "Load live
-            # fleet" -- long before Start Replay builds a controller. A
-            # run-scoped sink can never see them, and they were missing
-            # from every signals.jsonl written so far.
-            #
-            # If the controller later installs its own, these records
-            # are already buffered in THIS sink; the controller's sink
-            # replaces it for the run and both flush to their own file.
-            try:
-                from src.core.signal_contract import (
-                    SignalSink as _SS,
-                    get_sink as _gs,
-                    set_sink as _ss,
-                )
-
-                if _gs() is None:
-                    _ss(_SS())
-            except Exception as _sx:  # noqa: BLE001 - advisory
-                logger.debug("load-time sink install failed: %s", _sx)
             _sim_syms = sorted(candles.keys())
             if self._sim_price_chart is not None:
                 self._sim_price_chart.clear_data()
@@ -2099,12 +1952,6 @@ if _HAS_QT:
             # with gate state still gets a rendered row" was not a
             # checkable claim -- a migration that silently rendered
             # FEWER rows would look identical to one that worked.
-            _gate_expected = sum(
-                1
-                for _e in (snap.get("per_symbol") or {}).values()
-                if _e.get("has_gate_state")
-            )
-            _gate_actual = 0
             for sym, e in (snap.get("per_symbol") or {}).items():
                 try:
                     cell = self._gate_cell_for(sym)
@@ -2115,7 +1962,6 @@ if _HAS_QT:
                             "sim.gate_lights.update", "bot has no _last_gate_state"
                         )
                     else:
-                        _gate_actual += 1
                         cell.update_gates(
                             scrum_armed=e["scrum_armed"],
                             fold_armed=e["fold_armed"],
@@ -2181,67 +2027,6 @@ if _HAS_QT:
                         _tel_call("sim.voting_readout.update")
                 except Exception as _d_exc:  # noqa: BLE001
                     logger.debug("snapshot drain skip (%s): %s", sym, _d_exc)
-            # Emitted once per visual refresh, after every symbol has
-            # had its chance to paint. `expected` is the number of bots
-            # reporting gate state, `actual` the number of rows painted,
-            # and `host` records WHERE they painted -- the property this
-            # task changes. `ok` is derived by equality, so a migration
-            # that drops rows reports ok=False on the next refresh.
-            # v3.24.88 - CHART FEED ACCOUNTING.
-            #
-            # `expected` is the number of symbols the tape can supply a
-            # candle for; `actual` is the number that arrived with one.
-            # The regression above -- a feed reading a field that no
-            # longer existed -- would have reported ok=False on the
-            # first refresh instead of going unnoticed.
-            #
-            # 10.4 - THE CODE NOW DOES WHAT THE PARAGRAPH ABOVE SAYS.
-            # It computed `len(per_symbol)`, which is the number of
-            # BOTS, not the number of symbols the tape can feed. A bot
-            # whose tablet begins after the master clock has no candle
-            # to give and was counted as a miss, so the pin read FAIL
-            # on 154 of 154 records: expected 37, actual 32. `expected`
-            # is now the tape's own `has_data` count. The regression
-            # this exists to catch - a feed reading a field that no
-            # longer exists - drives actual to 0 against an unchanged
-            # expected. `open` is NOT the expectation: it is written in
-            # the same block as `close`, so it can only ever equal
-            # `actual` and would make the verdict vacuous.
-            try:
-                from src.core.signal_contract import emit as _pc_emit
-
-                _pc_per = snap.get("per_symbol") or {}
-                _pc_fed = sum(
-                    1 for _e in _pc_per.values() if _e.get("close") is not None
-                )
-                _pc_emit(
-                    "sim.06.011.postcondition.price_chart.fed",
-                    actual=_pc_fed,
-                    expected=sum(
-                        1 for _e in _pc_per.values() if _e.get("tape_has_data")
-                    ),
-                    context={
-                        "symbols": len(_pc_per),
-                        "with_ohlc": sum(
-                            1 for _e in _pc_per.values() if _e.get("open") is not None
-                        ),
-                    },
-                )
-            except Exception:  # noqa: BLE001,S110 - instrumentation is advisory
-                pass
-
-            try:
-                from src.core.signal_contract import emit as _gs_emit
-
-                _gs_emit(
-                    "sim.06.012.postcondition.gate_status.rendered",
-                    actual=_gate_actual,
-                    expected=_gate_expected,
-                    context={"host": getattr(self, "_gate_host_kind", "table")},
-                )
-            except Exception:  # noqa: BLE001,S110 - instrumentation is advisory
-                pass
-
             # v3.24.60 (C29 / SN-15) — markers AFTER the appends above.
             # `mark_trade` pins the candle currently at the end of the
             # series, so this must follow the tick it belongs to.
