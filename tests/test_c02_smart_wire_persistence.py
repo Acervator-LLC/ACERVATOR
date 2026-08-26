@@ -112,9 +112,9 @@ class TestStagingFilesDoNotCollide:
         with pytest.raises(TypeError):
             atomic_write_json(dest, {"bad": Unserializable()}, default=None)
 
-        assert dest.read_text(encoding="utf-8") == original, (
-            "a failed write corrupted or truncated the existing file"
-        )
+        assert (
+            dest.read_text(encoding="utf-8") == original
+        ), "a failed write corrupted or truncated the existing file"
         leftovers = [p.name for p in tmp_path.iterdir() if p != dest]
         assert leftovers == [], f"staging file left behind after failure: {leftovers}"
 
