@@ -182,8 +182,10 @@ class TestTheOrphanedToken:
         )
 
     def test_the_handler_releases_before_forgetting(self):
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
-        blk = src[src.index("RELEASE BEFORE FORGETTING") :][:4000]
+        src = (
+            REPO_ROOT / "src/trading/scrumming/capital_reservation_mixin.py"
+        ).read_text(encoding="utf-8")
+        blk = src[src.index("_stale = self._crr_token") :][:4000]
         i_rel = blk.index("_reg.release(_stale, self.bot_id)")
         i_none = blk.index("self._crr_token = None")
         assert i_rel < i_none, "release must precede forgetting the token"
@@ -191,8 +193,10 @@ class TestTheOrphanedToken:
     def test_a_failing_release_does_not_break_the_tick(self):
         """The registry is best-effort; a release that raises must not
         take the tick down with it."""
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
-        blk = src[src.index("RELEASE BEFORE FORGETTING") :][:4000]
+        src = (
+            REPO_ROOT / "src/trading/scrumming/capital_reservation_mixin.py"
+        ).read_text(encoding="utf-8")
+        blk = src[src.index("_stale = self._crr_token") :][:4000]
         assert "could not release stale reservation" in blk
 
 
@@ -208,12 +212,16 @@ class TestItIsReported:
         that lets `SignalSink.stats`, which groups by name alone, tell
         the refusal row from the grant row.
         """
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        src = (
+            REPO_ROOT / "src/trading/scrumming/capital_reservation_mixin.py"
+        ).read_text(encoding="utf-8")
         assert src.count('"bot.01.001.postcondition.capital_reservation"') == 1
         assert src.count('"bot.01.002.postcondition.capital_reservation"') == 1
 
     def test_the_failure_record_carries_the_error_and_holdings(self):
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        src = (
+            REPO_ROOT / "src/trading/scrumming/capital_reservation_mixin.py"
+        ).read_text(encoding="utf-8")
         blk = src[src.index("_cr_emit(") :][:700]
         assert '"error"' in blk
         assert '"holdings"' in blk
@@ -222,13 +230,16 @@ class TestItIsReported:
     def test_the_success_record_says_whether_it_was_capped(self):
         """A green run should still show that the ceiling bound, or the
         cap would be invisible until it stopped working."""
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        src = (
+            REPO_ROOT / "src/trading/scrumming/capital_reservation_mixin.py"
+        ).read_text(encoding="utf-8")
         blk = src[src.index("_cr_ok(") :][:700]
         assert '"capped"' in blk
 
     def test_both_are_throttled(self):
         """This runs on every tick of every bot; unthrottled it is the
         spam the synchroniser exists to prevent."""
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
-        blk = src[src.index("RELEASE BEFORE FORGETTING") :][:9000]
-        assert blk.count("every=") == 2
+        src = (
+            REPO_ROOT / "src/trading/scrumming/capital_reservation_mixin.py"
+        ).read_text(encoding="utf-8")
+        assert src.count("every=") == 2

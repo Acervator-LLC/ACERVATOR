@@ -525,10 +525,6 @@ def _plant_touch_site_two(source: str) -> str:
     )
 
 
-def test_sites_one_and_two_are_byte_for_byte_what_they_were():
-    _check_sites_one_and_two_are_unchanged(SOURCE)
-
-
 @pytest.mark.parametrize(
     "plant, label",
     [

@@ -130,6 +130,17 @@ def _tick() -> ast.AST:
     return max(ticks, key=lambda n: (n.end_lineno or 0) - n.lineno)
 
 
+def _method(name: str) -> ast.AST:
+    """The named ScrummingBot method, as AST."""
+    found = [
+        n
+        for n in ast.walk(TREE)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
+    ]
+    assert found, f"no {name}() found -- extractor broken, not the code"
+    return max(found, key=lambda n: (n.end_lineno or 0) - n.lineno)
+
+
 class TestTheFeeIsRequired:
     def test_a_tranche_at_interval_only_distance_is_no_longer_eligible(self):
         """THE DEFECT, stated as a test. A price exactly one interval
@@ -253,26 +264,49 @@ class TestTheDiagnosticAndTheExecutorAgree:
         assert "scrumming_interval_pct" in src, src
 
     def test_both_the_counter_and_the_executor_read_that_factor(self):
-        cmps = [
-            ast.unparse(n)
+        """Both sites must take their eligible set from one predicate.
+
+        They used to hold two look-alike comparisons and this test
+        counted them. They now call one shared helper, which is the
+        same invariant held more tightly: two callers of one method
+        cannot drift, where two copies of one comparison can.
+        """
+        calls = [
+            n
             for n in ast.walk(_tick())
-            if isinstance(n, ast.Compare) and "_otd_factor" in ast.unparse(n)
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "attr", "") == "_fold_eligible_tranches"
         ]
-        assert len(cmps) >= 2, (
+        assert len(calls) >= 2, (
             f"expected the diagnostic AND the executor to share the "
-            f"predicate; found {len(cmps)}: {cmps}"
+            f"predicate; found {len(calls)} call(s) to "
+            f"_fold_eligible_tranches in tick()"
         )
-        for c in cmps:
-            assert "ticker.last <=" in c, c
+        for c in calls:
+            src = ast.unparse(c)
+            assert "_otd_factor" in src, src
+            assert "ticker.last" in src, src
+
+    def test_the_shared_predicate_is_the_executors_comparison(self):
+        """The helper must hold the comparison the executor used inline."""
+        helper = _method("_fold_eligible_tranches")
+        cmps = [
+            ast.unparse(n) for n in ast.walk(helper) if isinstance(n, ast.Compare)
+        ]
+        assert len(cmps) == 1, f"expected one comparison, found {cmps}"
+        assert "ticker_last <= float(t.get('ref', 0)) * otd_factor" in cmps[0], (
+            cmps[0]
+        )
 
     def test_the_fee_is_not_re_added_at_the_comparison_sites(self):
         """The factor already carries the fee. A comparison that adds it
         again would double-charge."""
-        for n in ast.walk(_tick()):
-            if isinstance(n, ast.Compare):
-                s = ast.unparse(n)
-                if "_otd_factor" in s:
-                    assert "trading_fee_pct" not in s, s
+        for node in (_tick(), _method("_fold_eligible_tranches")):
+            for n in ast.walk(node):
+                if isinstance(n, ast.Compare):
+                    s = ast.unparse(n)
+                    if "_otd_factor" in s or "otd_factor" in s:
+                        assert "trading_fee_pct" not in s, s
 
 
 class TestMonotonicity:
@@ -307,3 +341,83 @@ class TestMonotonicity:
                     f"fee made ref={ref} price={price} eligible when the "
                     f"interval-only rule did not"
                 )
+
+
+class TestTheCallSiteCarriesTheFeeIntoTheArithmetic:
+    """tick()'s own call site is EVALUATED here, not just read.
+
+    A name check passes on a call that mentions ``trading_fee_pct`` but
+    passes it somewhere it cannot change the result -- a swapped
+    argument, a shadowed name, a value read from the wrong object.
+    Running the real expression against two configs that differ only in
+    the fee closes that gap.
+
+    IF THIS GOES RED: the fee no longer reaches the fold gate. Every
+    fold rebuy then fires at a price that does not clear its own round
+    trip. 24 of the 38 live bots run a 1.6 % fee.
+    """
+
+    @staticmethod
+    def _call_src() -> str:
+        """tick()'s single OTD call, as source."""
+        calls = [
+            n
+            for n in ast.walk(_tick())
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "id", "") == "minimum_opposing_trade_distance_pct"
+        ]
+        assert len(calls) == 1, f"expected one OTD call, found {len(calls)}"
+        return ast.unparse(calls[0])
+
+    @classmethod
+    def _threshold(cls, interval: float, fee: float) -> float:
+        """Evaluate tick()'s call site, then price the $100 reference."""
+
+        class _Config:
+            scrumming_interval_pct = interval
+            trading_fee_pct = fee
+
+        class _Self:
+            config = _Config()
+
+        pct = eval(  # noqa: S307 - our own source, closed namespace
+            cls._call_src(),
+            {
+                "minimum_opposing_trade_distance_pct": (
+                    minimum_opposing_trade_distance_pct
+                ),
+                "getattr": getattr,
+                "__builtins__": {},
+            },
+            {"self": _Self()},
+        )
+        return REF * fold_rebuy_factor_from_pct(pct)
+
+    def test_the_gate_demands_the_interval_AND_the_fee(self):
+        assert self._threshold(1.0, 0.6) == pytest.approx(98.4)
+
+    def test_the_interval_alone_would_put_the_gate_higher(self):
+        """What the gate demands when the fee does not reach it.
+
+        This is the number a fee-less call site produces, and it is the
+        number this class exists to keep the gate away from.
+        """
+        assert REF * fold_rebuy_factor_from_pct(
+            minimum_opposing_trade_distance_pct(1.0, 0.0)
+        ) == pytest.approx(99.0)
+
+    def test_the_gate_is_not_at_the_interval_only_number(self):
+        """The discrimination this class rests on."""
+        interval_only = REF * fold_rebuy_factor_from_pct(
+            minimum_opposing_trade_distance_pct(1.0, 0.0)
+        )
+        assert self._threshold(1.0, 0.6) != pytest.approx(interval_only)
+
+    def test_the_live_fee_moves_the_gate_further_still(self):
+        """24 of the operator's 38 bots run a 1.6 % fee."""
+        assert self._threshold(1.0, 1.6) < self._threshold(1.0, 0.6)
+
+    def test_the_call_site_reads_both_fields_off_the_config(self):
+        src = self._call_src()
+        assert "scrumming_interval_pct" in src, src
+        assert "trading_fee_pct" in src, src

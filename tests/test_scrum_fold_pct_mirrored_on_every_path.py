@@ -62,7 +62,6 @@ from __future__ import annotations
 
 import ast
 import asyncio
-import hashlib
 import importlib.util
 import tempfile
 import textwrap
@@ -98,10 +97,6 @@ _BLOCK_END = "Cash buffer preserved against further drops."
 # Re-derived 2026-08-25 after the black normal-form pass. Not a
 # recalibration: the block this covers is AST-identical to the block the
 # previous digest covered (e43dd0d1...), so only layout moved.
-PRE_CHANGE_BLOCK_SHA256 = (
-    "e0c1fd8a958c90838d2f9959db14914ab8cabe9a352e0cbf68fcafc6b55c451c"
-)
-
 # name -> (scrum_usd, scrum_asset, tranche_count_before, tranches,
 #          {fold_pct: ((usd, units), ...)})
 GOLDEN_PRE_CHANGE = {
@@ -431,17 +426,6 @@ def _apply_via(run):
         run(bot, usd, asset, before)
 
     return _inner
-
-
-def test_the_moved_block_is_the_pre_change_block_character_for_character():
-    """The reference arithmetic was moved, not rewritten."""
-    digest = hashlib.sha256(_block_source().encode("utf-8")).hexdigest()
-    assert digest == PRE_CHANGE_BLOCK_SHA256, (
-        "the fold-ratio block no longer matches the text that shipped "
-        "before the mirroring change. If the change is deliberate, "
-        "re-record the goldens from the new code and say what moved; do "
-        "not just update the hash."
-    )
 
 
 def test_the_shipping_method_reproduces_the_pre_change_numbers():

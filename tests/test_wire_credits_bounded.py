@@ -41,7 +41,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from src.trading.scrumming_bot import (  # noqa: E402
+from src.trading.scrumming.wire_routing import (  # noqa: E402
     _WIRE_CREDIT_CAP,
     _roll_wire_credit_overflow,
 )

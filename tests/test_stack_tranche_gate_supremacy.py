@@ -210,9 +210,7 @@ def _plant_hoisted_spend(source: str) -> str:
 
 def _plant_ungated_fold_buy(source: str) -> str:
     """A fold-side buy issued outside the fold chain's verdict."""
-    old = (
-        "        # current_value is in USD: base_units " "× quote_price × quote→USD.\n"
-    )
+    old = "        _delta_early = current_value - self._target_balance\n"
     assert source.count(old) == 1, "fold plant anchor moved"
     return source.replace(
         old, "        await self._execute_buy(1.0, 1.0, None)\n" + old

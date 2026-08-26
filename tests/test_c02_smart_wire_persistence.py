@@ -44,7 +44,16 @@ if str(REPO_ROOT) not in sys.path:
 
 VIZ = REPO_ROOT / "src" / "gui" / "bot_visualizer.py"
 STATE_MGR = REPO_ROOT / "src" / "core" / "state_manager.py"
-SCRUM = REPO_ROOT / "src" / "trading" / "scrumming_bot.py"
+
+
+def _source_file_of(qualname_owner, method_name: str) -> Path:
+    """Path to the file that actually defines ``method_name``, following
+    the method wherever it has been extracted to."""
+    import inspect
+
+    sf = inspect.getsourcefile(getattr(qualname_owner, method_name))
+    assert sf is not None
+    return Path(sf)
 
 
 def _fn(path: Path, name: str) -> ast.FunctionDef:
@@ -102,7 +111,12 @@ class TestChannelOneCannotSurviveASave:
     def test_export_does_not_emit_smart_wire_routes(self):
         """Why channel 1 is empty on all 35 live bots: the exporter
         that rebuilds scrumming_state every 60s does not carry it."""
-        fn = _fn(SCRUM, "export_scrumming_state")
+        from src.trading.scrumming_bot import ScrummingBot
+
+        fn = _fn(
+            _source_file_of(ScrummingBot, "export_scrumming_state"),
+            "export_scrumming_state",
+        )
         keys = {
             k.value
             for n in ast.walk(fn)

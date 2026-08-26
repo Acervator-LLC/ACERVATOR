@@ -59,6 +59,22 @@ def _tick_source() -> str:
     )
 
 
+def _method_source(name: str) -> str:
+    """A named ScrummingBot method, selected as the largest match."""
+    found = [
+        n
+        for n in ast.walk(ast.parse(SRC))
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
+    ]
+    assert found, f"no {name}() found -- the extractor is broken, not the code"
+    return (
+        ast.get_source_segment(
+            SRC, max(found, key=lambda n: (n.end_lineno or 0) - n.lineno)
+        )
+        or ""
+    )
+
+
 def _emitted_text(marker: str) -> str:
     """The literal text of the f-string containing `marker`.
 
@@ -106,11 +122,9 @@ class TestTheExtractorWorks:
         having no initial_buy_price term. If that ever changes, these
         pins are wrong and should fail loudly rather than enforce a
         stale claim."""
-        seg = _tick_source()
-        i = seg.index("_eligible = [")
-        window = seg[i : i + 260]
-        assert "_otd_factor" in window
-        assert "initial_buy_price" not in window
+        seg = _method_source("_fold_eligible_tranches")
+        assert "otd_factor" in seg
+        assert "initial_buy_price" not in seg
 
 
 class TestTheBoughtMessageNamesRealGates:

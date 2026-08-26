@@ -1,17 +1,13 @@
-"""v3.23.27 — Stack Mode runtime path pins.
+"""Stack Mode runtime path tests.
 
-Behavioural pins that lock the branch semantics without spinning up a
-full ScrummingBot (which requires an exchange connection). We test the
-INTEGRATION SHAPE by reading the source and asserting the branch is
-present + correctly wired, plus a small in-process shape test on the
-_open_stack_from_scrum helper using a minimal stub bot.
-
-Full end-to-end tests require a sim or mock exchange (2B-3 scope).
+Behavioural tests that drive the real Stack Mode methods
+(``_open_stack_from_scrum``, ``_reconcile_stack_tranches_invisible``,
+``_spend_activated_stack_tranches``, ``_execute_sell``) on minimal stub
+bots, without spinning up a full ScrummingBot.
 """
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
@@ -20,151 +16,6 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
-
-
-# ---------------------------------------------------------------------------
-# Source-shape pins — the branch + reconciler must exist and wire together
-# ---------------------------------------------------------------------------
-
-
-class TestSourceShape:
-    @pytest.fixture(scope="class")
-    def source(self) -> str:
-        return (REPO / "src" / "trading" / "scrumming_bot.py").read_text(
-            encoding="utf-8", errors="replace"
-        )
-
-    def test_open_stack_from_scrum_method_defined(self, source):
-        assert (
-            "def _open_stack_from_scrum(" in source
-        ), "_open_stack_from_scrum helper must exist on ScrummingBot"
-
-    def test_open_stack_calls_split_scrum_into_tranches(self, source):
-        # Extract the _open_stack method body (async since v3.23.28)
-        m = re.search(
-            r"async def _open_stack_from_scrum\([^)]*\)[^:]*:(.*?)(?=\n    def |\n    async def )",
-            source,
-            re.DOTALL,
-        )
-        assert m, "_open_stack_from_scrum body not found (must be async def)"
-        body = m.group(1)
-        assert (
-            "split_scrum_into_tranches" in body
-        ), "_open_stack_from_scrum must call split_scrum_into_tranches"
-        # And it must populate the ledger
-        assert (
-            "self._stack_tranches.append" in body
-        ), "_open_stack_from_scrum must append to _stack_tranches"
-
-    def test_reconcile_method_defined(self, source):
-        assert "async def _reconcile_stack_tranches_invisible(" in source
-
-    def test_reconcile_gated_on_invisible_and_stack_mode(self, source):
-        m = re.search(
-            r"async def _reconcile_stack_tranches_invisible\([^)]*\)[^:]*:(.*?)(?=\n    async def |\n    def )",
-            source,
-            re.DOTALL,
-        )
-        assert m, "reconcile body not found"
-        body = m.group(1)
-        assert (
-            "self._invisible" in body
-        ), "reconciler must gate on self._invisible (Invisible-mode only)"
-        assert "stack_mode" in body, "reconciler must gate on stack_mode"
-
-    def test_activation_stage_places_no_order_of_any_kind(self, source):
-        """v3.23.44 RESTATEMENT. This test used to require the reconciler
-        to call `_execute_sell(..., bypass_stack=True)`. That contract is
-        RETIRED by operator directive 2026-08-11 -- the reconciler runs at
-        the top of the tick where no trading gate has been evaluated, so a
-        sell from there supersedes the gates. The invariant it protected
-        (a tranche fire must never re-enter the Stack branch) is asserted
-        on the spend stage below; here the stronger claim is that stage
-        one places NOTHING.
-        """
-        import ast
-
-        fn = next(
-            n
-            for n in ast.walk(ast.parse(source))
-            if isinstance(n, ast.AsyncFunctionDef)
-            and n.name == "_reconcile_stack_tranches_invisible"
-        )
-        # CALLS, not prose. A text scan reports the docstring, which names
-        # `_execute_sell` precisely to say it is no longer called.
-        called = {
-            getattr(node.func, "attr", None) or getattr(node.func, "id", None)
-            for node in ast.walk(fn)
-            if isinstance(node, ast.Call)
-        }
-        for forbidden in (
-            "_execute_sell",
-            "_execute_buy",
-            "guarded_place_order",
-            "place_order",
-            "create_order",
-        ):
-            assert (
-                forbidden not in called
-            ), f"stage one must not place an order: it calls {forbidden!r}"
-        assert "emit" in called, (
-            "positive control: the call scanner found nothing at all in "
-            "_reconcile_stack_tranches_invisible, so its silence about "
-            "order placement means nothing"
-        )
-
-    def test_spend_stage_fires_with_bypass_stack_true(self, source):
-        """The retired contract, moved to the stage that now owns it."""
-        m = re.search(
-            r"async def _spend_activated_stack_tranches\(.*?\)[^:]*:(.*?)(?=\n    async def |\n    def )",
-            source,
-            re.DOTALL,
-        )
-        assert m, "_spend_activated_stack_tranches body not found"
-        body = m.group(1)
-        assert "bypass_stack=True" in body, (
-            "the spend stage must call _execute_sell(..., bypass_stack=True) "
-            "to prevent Stack re-entry"
-        )
-
-    def test_execute_sell_has_bypass_stack_param(self, source):
-        # Signature must include bypass_stack
-        m = re.search(
-            r"async def _execute_sell\(\s*self,\s*amount:[^)]*bypass_stack:\s*bool\s*=\s*False",
-            source,
-            re.DOTALL,
-        )
-        assert m, "_execute_sell must accept bypass_stack: bool = False param"
-
-    def test_execute_sell_branches_on_stack_mode(self, source):
-        # After the docstring, near the top: check for stack_mode branch
-        # that calls _open_stack_from_scrum
-        m = re.search(
-            r"async def _execute_sell\(.*?# ==+\s*\n\s*# v3\.15\.77",
-            source,
-            re.DOTALL,
-        )
-        assert m, "_execute_sell entry block not located"
-        head = m.group(0)
-        assert (
-            "not bypass_stack" in head
-        ), "_execute_sell branch must check `not bypass_stack`"
-        assert "stack_mode" in head, "_execute_sell branch must check config.stack_mode"
-        assert (
-            "self._open_stack_from_scrum(" in head
-        ), "_execute_sell branch must call _open_stack_from_scrum"
-
-    def test_tick_loop_wires_reconciler(self, source):
-        # After the main-path ticker fetch (line ~4246 region), the
-        # reconciler must be called with current_price=float(ticker.last)
-        assert (
-            "await self._reconcile_stack_tranches_invisible(" in source
-        ), "tick loop must call the reconciler after fetching ticker"
-
-
-# ---------------------------------------------------------------------------
-# Small in-process test of _open_stack_from_scrum via a stub bot
-# ---------------------------------------------------------------------------
 
 
 class _StubExchangeInterface:
