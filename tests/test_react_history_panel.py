@@ -174,6 +174,30 @@ def qapp():
 _JS_TIMEOUT_MS = 30_000
 
 
+def _eval_in(view: Any, script: str) -> Any:
+    """Evaluate ``script`` in ``view`` and return its value.
+
+    ``runJavaScript`` answers through a callback, so this spins a nested
+    ``QEventLoop`` with a ceiling. A read that times out raises rather
+    than returning the previous answer, so a stalled browser cannot be
+    mistaken for agreement.
+    """
+    from PySide6.QtCore import QEventLoop, QTimer
+
+    loop = QEventLoop()
+    box: dict = {}
+
+    def _catch(value: Any) -> None:
+        box.setdefault("v", value)
+        loop.quit()
+
+    view.page().runJavaScript(script, _catch)
+    QTimer.singleShot(_JS_TIMEOUT_MS, loop.quit)
+    loop.exec()
+    assert "v" in box, f"the browser never answered: {script[:80]}"
+    return box["v"]
+
+
 class _Page:
     """A loaded QWebEngineView whose DOM can be read synchronously.
 
@@ -209,20 +233,7 @@ class _Page:
 
     def js(self, script: str) -> Any:
         """Evaluate ``script`` and return its value."""
-        from PySide6.QtCore import QEventLoop, QTimer
-
-        loop = QEventLoop()
-        box: dict = {}
-
-        def _catch(value: Any) -> None:
-            box.setdefault("v", value)
-            loop.quit()
-
-        self._view.page().runJavaScript(script, _catch)
-        QTimer.singleShot(_JS_TIMEOUT_MS, loop.quit)
-        loop.exec()
-        assert "v" in box, f"the browser never answered: {script[:80]}"
-        return box["v"]
+        return _eval_in(self._view, script)
 
     def push(self, model: dict) -> None:
         """Send one view model over the same statement the panel sends."""
@@ -963,3 +974,40 @@ def test_the_two_safe_urlopen_pins_did_not_move() -> None:
     )
     found = [i + 1 for i, line in enumerate(lines) if "safe_urlopen(" in line]
     assert found == [4640, 4806], f"safe_urlopen moved to {found}"
+
+
+def test_the_shipped_widget_renders_into_its_own_view(qapp) -> None:
+    """The DOM of the WIDGET, not of a page the test built for itself.
+
+    Every other browser test drives a ``_Page`` this file constructs. This
+    one reads ``ReactHistoryPanel._web`` -- the view the application puts
+    on screen -- so the whole path from ``on_history_refreshed`` through
+    ``render_now`` and ``runJavaScript`` into the DOM is covered once,
+    end to end.
+    """
+    import time
+
+    panel = rhp.ReactHistoryPanel()
+    try:
+        panel.set_bot_manager(_bot_manager())
+        deadline = time.time() + 30.0
+        while not panel._page_ready and time.time() < deadline:
+            qapp.processEvents()
+        assert panel._page_ready, "the panel's own document never loaded"
+
+        trades = _mixed_rows()
+        panel.on_history_refreshed(trades)
+        dom = json.loads(_eval_in(panel._web, _DOM_DUMP_JS))
+        _assert_not_vacuous(dom)
+
+        expected = hrc.build_page(
+            hrc.apply_filters(trades, hrc.HistoryFilters()), 0, _bot_manager()
+        )
+        assert len(dom["rows"]) == len(expected.rows) == len(trades)
+        assert [r["trade_id"] for r in dom["rows"]] == [
+            r.trade_id for r in expected.rows
+        ]
+        assert dom["pager"]["total"] == len(trades)
+        assert dom["summary"] == panel.view_model()["summary"]
+    finally:
+        panel.deleteLater()
