@@ -8384,6 +8384,41 @@ class ScrummingBot(
         )
         return _net
 
+    def _fold_discharge_order(self) -> list[dict]:
+        """Queued tranches in discharge order; unreadable rows omitted.
+
+        Sorts ``_fold_tranches`` in place by ``ref`` descending, rows
+        whose ``ref`` is not a finite number last. Returns only the rows
+        whose ``ref`` and ``units`` are both finite numbers -- the same
+        rows in the same order as ``_preview_fold_growth``, which sizes
+        the buy. Runs after the fill, so it raises on no row.
+        """
+
+        def _rank(t) -> float:
+            # Total order. A row that cannot yield a finite ref sorts last.
+            if not isinstance(t, dict):
+                return float("-inf")
+            try:
+                _ref = float(t.get("ref", 0.0) or 0.0)
+            except (TypeError, ValueError, OverflowError):
+                return float("-inf")
+            return _ref if math.isfinite(_ref) else float("-inf")
+
+        self._fold_tranches.sort(key=_rank, reverse=True)
+
+        _readable: list[dict] = []
+        for _t in self._fold_tranches:
+            if not isinstance(_t, dict):
+                continue
+            try:
+                _ref = float(_t.get("ref", 0.0) or 0.0)
+                _units = float(_t.get("units", 0.0) or 0.0)
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if math.isfinite(_ref) and math.isfinite(_units):
+                _readable.append(_t)
+        return _readable
+
     async def _execute_manual_rebalance(
         self, ticker, caller_intent: str = "manual_button"
     ) -> None:
@@ -9033,13 +9068,14 @@ class ScrummingBot(
 
             _manual_fold_accum_profit = 0.0
             if self._fold_tranches:
-                self._fold_tranches.sort(key=lambda t: t["ref"], reverse=True)
                 remaining = fill_amount
                 consumed = []
-                for t in list(self._fold_tranches):
+                for t in self._fold_discharge_order():
                     if remaining <= 1e-12:
                         break
-                    t_units = t.get("units", 0.0)
+                    # Finite, per _fold_discharge_order. Coerced so the
+                    # write-back below is float arithmetic.
+                    t_units = float(t.get("units", 0.0) or 0.0)
                     take = min(t_units, remaining)
                     if take <= 1e-12:
                         continue
@@ -9053,7 +9089,7 @@ class ScrummingBot(
                             "operator_initiated": _operator_initiated,
                         }
                     )
-                    t["units"] -= take
+                    t["units"] = t_units - take
                     if t_units > 0:
                         t["usd"] *= t["units"] / t_units
                     remaining -= take
