@@ -75,9 +75,7 @@ class CircuitBreakerMixin(_Host):
             self._cb_hard_trip_pct = move_pct
             try:
                 self.state = BotState.PAUSED
-            except (
-                Exception
-            ) as _sup:
+            except Exception as _sup:
                 logger.debug(
                     "suppressed in %s: %s: %s",
                     "_check_circuit_breakers",
@@ -101,9 +99,7 @@ class CircuitBreakerMixin(_Host):
                     "CANCELLED",
                     f"HARD breaker @ {move_pct:.2f}% (≥ {hard_pct:.2f}%)",
                 )
-            except (
-                Exception
-            ) as _sup:
+            except Exception as _sup:
                 logger.debug(
                     "suppressed in %s: %s: %s",
                     "_check_circuit_breakers",
@@ -170,9 +166,7 @@ class CircuitBreakerMixin(_Host):
                     "CANCELLED",
                     f"SOFT breaker @ {move_pct:.2f}% on {side.upper()} side",
                 )
-            except (
-                Exception
-            ) as _sup:
+            except Exception as _sup:
                 logger.debug(
                     "suppressed in %s: %s: %s",
                     "_check_circuit_breakers",
@@ -217,9 +211,7 @@ class CircuitBreakerMixin(_Host):
                 if self.state == BotState.PAUSED:
                     self.state = BotState.RUNNING
                     applied.append("bot resumed from PAUSED → RUNNING")
-            except (
-                Exception
-            ) as _sup:
+            except Exception as _sup:
                 logger.debug(
                     "suppressed in %s: %s: %s",
                     "reset_circuit_breaker",

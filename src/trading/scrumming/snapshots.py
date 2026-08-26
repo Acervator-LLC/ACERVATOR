@@ -84,9 +84,7 @@ class SnapshotEmitterMixin(_Host):
             if extra:
                 msg += f" — {extra}"
             self._bus.emit("bot.log", bot_id=self.bot_id, message=msg)
-        except (
-            Exception
-        ) as _sup:
+        except Exception as _sup:
             logger.debug(
                 "suppressed in %s: %s: %s",
                 "_emit_trade_notification",
@@ -133,9 +131,7 @@ class SnapshotEmitterMixin(_Host):
                 bot_id=self.bot_id,
                 message=msg,
             )
-        except (
-            Exception
-        ) as exc:
+        except Exception as exc:
             # Don't disrupt the tick if the forensic emit itself fails.
             # Log at debug for diagnostics but do not propagate.
             try:
@@ -145,9 +141,7 @@ class SnapshotEmitterMixin(_Host):
                     type(exc).__name__,
                     exc,
                 )
-            except (
-                Exception
-            ) as _sup:
+            except Exception as _sup:
                 logger.debug(
                     "suppressed in %s: %s: %s",
                     "_emit_risk_gate_snapshot",
@@ -186,9 +180,7 @@ class SnapshotEmitterMixin(_Host):
                 bot_id=self.bot_id,
                 message=msg,
             )
-        except (
-            Exception
-        ) as exc:
+        except Exception as exc:
             try:
                 logger.debug(
                     "Bot %s trade-fire snapshot emit failed: %s: %s",
