@@ -191,6 +191,10 @@ TARGET_MIN = 24  # WCAG floor — use only for dense admin tables
 TARGET_COMFORTABLE = 32  # Default for most interactive controls
 TARGET_LARGE = 44  # Primary CTAs, important toggles
 
+# Bot-table action columns. Fixed width; every other column stretches.
+TABLE_COL_FIRE_W = 70  # Fire button column
+TABLE_COL_DETAIL_W = 60  # Detail button column
+
 # =============================================================================
 # FOCUS INDICATOR (SC 2.4.7)
 # =============================================================================
@@ -321,6 +325,8 @@ __all__ = [
     "TARGET_MIN",
     "TARGET_COMFORTABLE",
     "TARGET_LARGE",
+    "TABLE_COL_FIRE_W",
+    "TABLE_COL_DETAIL_W",
     # Focus
     "FOCUS_RING_WIDTH",
     "FOCUS_RING_OFFSET",

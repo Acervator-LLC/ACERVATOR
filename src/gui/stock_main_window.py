@@ -38,7 +38,7 @@ try:
     from PySide6.QtCore import Qt, QTimer, Slot, Signal, QObject
     from PySide6.QtGui import QColor, QFont  # v3.19.12 removed unused QAction, QIcon
 
-    from .widgets import STOCK_CARD, StatCard
+    from .widgets import ColumnarTableWidget, ColumnSpec, STOCK_CARD, StatCard
 
     _HAS_QT = True
 except ImportError:
@@ -59,8 +59,8 @@ if _HAS_QT:
     # ---------------------------------------------------------------
     # Stock Bot Table
     # ---------------------------------------------------------------
-    class StockBotTable(QTableWidget):
-        COLUMNS = [
+    STOCK_COLUMNS = ColumnSpec(
+        labels=(
             "Bot ID",
             "Symbol",
             "Mode",
@@ -71,18 +71,16 @@ if _HAS_QT:
             "P/L",
             "Trades",
             "Signals",
-        ]
+        ),
+        accessible_name="Stock Bot Table",
+    )
+
+    class StockBotTable(ColumnarTableWidget):
+        COLUMN_SPEC = STOCK_COLUMNS
+        COLUMNS = STOCK_COLUMNS.labels
 
         def __init__(self, parent=None):
-            super().__init__(parent)
-            self.setAccessibleName("Stock Bot Table")
-            self.setColumnCount(len(self.COLUMNS))
-            self.setHorizontalHeaderLabels(self.COLUMNS)
-            self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-            self.setAlternatingRowColors(True)
-            self.setSelectionBehavior(QTableWidget.SelectRows)
-            self.setEditTriggers(QTableWidget.NoEditTriggers)
-            self.verticalHeader().setVisible(False)
+            super().__init__(parent=parent)
 
         def update_bots(self, bot_statuses: list[dict]):
             self.setRowCount(len(bot_statuses))

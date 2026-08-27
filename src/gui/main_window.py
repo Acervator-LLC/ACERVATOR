@@ -289,7 +289,6 @@ try:
         QFrame,
         QTableWidget,
         QTableWidgetItem,
-        QHeaderView,
         QStatusBar,
         QSplitter,
         QGroupBox,
@@ -304,6 +303,9 @@ try:
     )  # v3.19.12 removed unused QToolTip
     from PySide6.QtCore import Qt, QTimer, Slot, Signal, QObject, QSignalBlocker
     from PySide6.QtGui import QColor, QIcon, QFont, QMouseEvent, QTextCharFormat
+
+    from . import design_system as ds
+    from .widgets import ColumnarTableWidget, ColumnSpec
 
     # v3.19.12 removed unused QPropertyAnimation, QEasingCurve, QAction
     _HAS_QT = True
@@ -2106,23 +2108,23 @@ if _HAS_QT:
     # ---------------------------------------------------------------
     # Bot Status Table - clickable rows
     # ---------------------------------------------------------------
-    class BotStatusTable(QTableWidget):
-        # MEM-236 — columns after operator redesign:
-        #   Removed: "State" (redundant with color-coded Mode)
-        #   Removed: "Extended" (grid-bot only, always 0 for scrumming)
-        #   Added:   "Fire" (Manual Fire button per row)
-        # MEM-247 — column swap (Session 26 operator directive):
-        #   "P/L" replaced with "Target" (shows configured Target Balance)
-        #   "Price" replaced with "Ammo" (abs of target delta; green when
-        #   delta>0 meaning Scrum territory / sell surplus, red when delta<0
-        #   meaning Fold territory / buy deficit).
-        # v3.18.6 — Removed: "Exchange" column. Every row in a given
-        #   ExchangeTab is, by construction, on that tab's exchange — the
-        #   column was repeating the same value on every row. The tab
-        #   label at the top of the QTabWidget already disambiguates.
-        # v3.23.49 — Target BTC / Target ETH inserted after Target USD
-        # (operator directive 2026-07-28). Fire moved 6→8; Detail 7→9.
-        COLUMNS = [
+    # MEM-236 — columns after operator redesign:
+    #   Removed: "State" (redundant with color-coded Mode)
+    #   Removed: "Extended" (grid-bot only, always 0 for scrumming)
+    #   Added:   "Fire" (Manual Fire button per row)
+    # MEM-247 — column swap (Session 26 operator directive):
+    #   "P/L" replaced with "Target" (shows configured Target Balance)
+    #   "Price" replaced with "Ammo" (abs of target delta; green when
+    #   delta>0 meaning Scrum territory / sell surplus, red when delta<0
+    #   meaning Fold territory / buy deficit).
+    # v3.18.6 — Removed: "Exchange" column. Every row in a given
+    #   ExchangeTab is, by construction, on that tab's exchange — the
+    #   column was repeating the same value on every row. The tab
+    #   label at the top of the QTabWidget already disambiguates.
+    # v3.23.49 — Target BTC / Target ETH inserted after Target USD
+    # (operator directive 2026-07-28). Fire moved 6→8; Detail 7→9.
+    SCRUMMING_COLUMNS = ColumnSpec(
+        labels=(
             "Bot ID",
             "Symbol",
             "Mode",
@@ -2133,8 +2135,8 @@ if _HAS_QT:
             "Ammo",
             "Fire",
             "",
-        ]
-        COLUMN_TOOLTIPS = {
+        ),
+        tooltips={
             0: "Unique identifier for this bot instance",
             1: "Trading pair (Target Asset / Base Currency)",
             2: (
@@ -2167,7 +2169,17 @@ if _HAS_QT:
             ),
             8: "Manual Fire — force immediate scrum/fold evaluation on next tick",
             9: "Click for full bot detail and status explanation",
-        }
+        },
+        fixed_widths={
+            8: ds.TABLE_COL_FIRE_W,
+            9: ds.TABLE_COL_DETAIL_W,
+        },
+    )
+
+    class BotStatusTable(ColumnarTableWidget):
+        COLUMN_SPEC = SCRUMMING_COLUMNS
+        COLUMNS = SCRUMMING_COLUMNS.labels
+        COLUMN_TOOLTIPS = SCRUMMING_COLUMNS.tooltips
 
         # MEM-236 — Mode cell color mapping. Mirrors the state_colors dict
         # that used to live in the State column. Readable on dark background.
@@ -2198,48 +2210,26 @@ if _HAS_QT:
         }
 
         def __init__(self, on_bot_clicked=None, on_fire_clicked=None, parent=None):
-            super().__init__(parent)
+            super().__init__(parent=parent)
             self._on_bot_clicked = on_bot_clicked
-            self._on_fire_clicked = on_fire_clicked  # MEM-236
-            self.setColumnCount(len(self.COLUMNS))
-            self.setHorizontalHeaderLabels(self.COLUMNS)
-            self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-            # v3.23.49 — Fire button column (idx 8) and Detail column (idx 9)
-            # both fixed width. Shifted from 6/7 after Target BTC + Target ETH
-            # columns inserted after Target (idx 5, 6).
-            self.horizontalHeader().setSectionResizeMode(8, QHeaderView.Fixed)
-            self.setColumnWidth(8, 70)
-            self.horizontalHeader().setSectionResizeMode(9, QHeaderView.Fixed)
-            self.setColumnWidth(9, 60)
-            self.setAlternatingRowColors(True)
-            self.setSelectionBehavior(QTableWidget.SelectRows)
-            self.setEditTriggers(QTableWidget.NoEditTriggers)
-            self.verticalHeader().setVisible(False)
+            self._on_fire_clicked = on_fire_clicked
             self._bot_ids = []
 
-            # v3.23.7 — last seen bot_statuses so a header-dot toggle
-            # can re-populate the table immediately. Empty until the
-            # first update_bots() call.
+            # Last payload seen, so a header-dot toggle repopulates
+            # without refetching from the bot manager.
             self._last_statuses: list = []
 
-            # v3.23.7 — wire the header's sectionClicked signal so the
-            # operator can toggle a column's mask by clicking its
-            # header. Only the 7 maskable columns (0..6) respond; the
-            # Detail column (7) keeps its sort-only behavior.
+            # Clicking a maskable column header toggles that column's
+            # privacy mask. The Detail column has none and keeps its
+            # sort-only behaviour.
             self.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
 
-            # v3.23.54 — Symbol cell (col 1) is a hyperlink: click
-            # opens the pair's chart on the bot's exchange in the
-            # operator's default browser. Non-clickable when the
-            # exchange isn't in the exchange_chart_urls registry.
+            # Symbol cell (col 1) is a hyperlink to the pair's chart on
+            # the bot's exchange.
             self.cellClicked.connect(self._on_cell_clicked)
 
-            # Apply tooltips to header items
-            for col, tip in self.COLUMN_TOOLTIPS.items():
-                item = self.horizontalHeaderItem(col)
-                if item:
-                    item.setToolTip(tip)
-            # v3.23.7 — paint dot prefixes onto header labels.
+            # Replaces every header item, so it must follow the base's
+            # tooltip pass.
             self._refresh_header_dots()
 
         # ----- v3.23.7 -----
@@ -2883,10 +2873,10 @@ if _HAS_QT:
     #     multiple times already." Same widget shape achieves that.
     #
     # sadp: R28 FL  R55 GOV  R62 FRG  R68 DPA  R76 DMW
-    class ExtractorBotTable(QTableWidget):
-        # 8 columns, indexed identically to BotStatusTable for any
-        # shared selection/render helpers — only the labels differ.
-        COLUMNS = [
+    # 8 columns, indexed identically to BotStatusTable for any
+    # shared selection/render helpers — only the labels differ.
+    EXTRACTOR_COLUMNS = ColumnSpec(
+        labels=(
             "Bot ID",
             "Symbol",
             "Mode",
@@ -2895,8 +2885,8 @@ if _HAS_QT:
             "Liquid",
             "Fire",
             "",
-        ]
-        COLUMN_TOOLTIPS = {
+        ),
+        tooltips={
             0: "Unique identifier for this Extractor instance",
             1: "Base currency this Extractor accumulates",
             2: (
@@ -2925,7 +2915,17 @@ if _HAS_QT:
                 "Use the Detail dialog's Positions Held tab."
             ),
             7: "Click for full bot detail and status explanation",
-        }
+        },
+        fixed_widths={
+            6: ds.TABLE_COL_FIRE_W,
+            7: ds.TABLE_COL_DETAIL_W,
+        },
+    )
+
+    class ExtractorBotTable(ColumnarTableWidget):
+        COLUMN_SPEC = EXTRACTOR_COLUMNS
+        COLUMNS = EXTRACTOR_COLUMNS.labels
+        COLUMN_TOOLTIPS = EXTRACTOR_COLUMNS.tooltips
 
         # Same state→color mapping as BotStatusTable so the Mode cell
         # color scheme matches across both tables.
@@ -2948,24 +2948,9 @@ if _HAS_QT:
         }
 
         def __init__(self, on_bot_clicked=None, parent=None):
-            super().__init__(parent)
+            super().__init__(parent=parent)
             self._on_bot_clicked = on_bot_clicked
-            self.setColumnCount(len(self.COLUMNS))
-            self.setHorizontalHeaderLabels(self.COLUMNS)
-            self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-            self.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
-            self.setColumnWidth(6, 70)
-            self.horizontalHeader().setSectionResizeMode(7, QHeaderView.Fixed)
-            self.setColumnWidth(7, 60)
-            self.setAlternatingRowColors(True)
-            self.setSelectionBehavior(QTableWidget.SelectRows)
-            self.setEditTriggers(QTableWidget.NoEditTriggers)
-            self.verticalHeader().setVisible(False)
             self._bot_ids = []
-            for col, tip in self.COLUMN_TOOLTIPS.items():
-                item = self.horizontalHeaderItem(col)
-                if item:
-                    item.setToolTip(tip)
 
         def update_bots(self, bot_statuses: list[dict]) -> None:
             # issue #51 -- READ THE BOT UNDER THE HIGHLIGHT BEFORE THE
