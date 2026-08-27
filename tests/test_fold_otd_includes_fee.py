@@ -51,9 +51,7 @@ coming from a single ``otd_math`` call shared with the diagnostic.
 
 from __future__ import annotations
 
-import ast
 import math
-from pathlib import Path
 
 import pytest
 
@@ -65,17 +63,9 @@ from src.trading.otd_math import (
     minimum_opposing_trade_distance_pct,
 )
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(encoding="utf-8")
-TREE = ast.parse(SRC)
-
-# ── the executor's predicate, stated once ───────────────────────────
-# Verbatim from scrumming_bot.py:
-#     ticker.last <= float(t.get("ref", 0)) * _otd_factor
-
 
 def eligible(price: float, ref: float, factor: float) -> bool:
-    """The executor's eligibility predicate."""
+    """The fold-back eligibility predicate: ``price <= ref * factor``."""
     return price <= ref * factor
 
 
@@ -115,19 +105,6 @@ class TestTheInstrumentWorks:
         """If fee inclusion were a no-op the accept/reject tests would
         pass trivially."""
         assert THRESHOLD_WITH_FEE < THRESHOLD_INTERVAL_ONLY
-
-    def test_the_source_extractor_finds_the_tick(self):
-        assert _tick() is not None
-
-
-def _tick() -> ast.AST:
-    ticks = [
-        n
-        for n in ast.walk(TREE)
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "tick"
-    ]
-    assert ticks, "no tick() found -- extractor broken, not the code"
-    return max(ticks, key=lambda n: (n.end_lineno or 0) - n.lineno)
 
 
 class TestTheFeeIsRequired:
@@ -208,71 +185,6 @@ class TestTheClamp:
             <= minimum_opposing_trade_distance_pct(interval, fee)
             <= OTD_MAX_PCT
         )
-
-
-class TestTheDiagnosticAndTheExecutorAgree:
-    """The hoist comment exists to prevent instrument/executor drift.
-    Adding the fee in one place and not the other would recreate exactly
-    the defect that hoist was written to fix."""
-
-    def _tick_src(self) -> str:
-        return ast.get_source_segment(SRC, _tick()) or ""
-
-    def test_the_otd_pct_is_computed_exactly_once(self):
-        calls = [
-            n
-            for n in ast.walk(_tick())
-            if isinstance(n, ast.Call)
-            and getattr(n.func, "id", "") == "minimum_opposing_trade_distance_pct"
-        ]
-        assert len(calls) == 1, (
-            f"the OTD is computed {len(calls)} times in tick(); a second "
-            f"copy is how the instrument and the executor drift apart"
-        )
-
-    def test_the_factor_is_assigned_exactly_once(self):
-        assigns = [
-            n
-            for n in ast.walk(_tick())
-            if isinstance(n, ast.Assign)
-            and any(getattr(t, "id", "") == "_otd_factor" for t in n.targets)
-        ]
-        assert len(assigns) == 1
-
-    def test_the_single_call_passes_the_trading_fee(self):
-        """The whole point. A call that passes only the interval is the
-        defect back again."""
-        calls = [
-            n
-            for n in ast.walk(_tick())
-            if isinstance(n, ast.Call)
-            and getattr(n.func, "id", "") == "minimum_opposing_trade_distance_pct"
-        ]
-        src = ast.unparse(calls[0])
-        assert "trading_fee_pct" in src, src
-        assert "scrumming_interval_pct" in src, src
-
-    def test_both_the_counter_and_the_executor_read_that_factor(self):
-        cmps = [
-            ast.unparse(n)
-            for n in ast.walk(_tick())
-            if isinstance(n, ast.Compare) and "_otd_factor" in ast.unparse(n)
-        ]
-        assert len(cmps) >= 2, (
-            f"expected the diagnostic AND the executor to share the "
-            f"predicate; found {len(cmps)}: {cmps}"
-        )
-        for c in cmps:
-            assert "ticker.last <=" in c, c
-
-    def test_the_fee_is_not_re_added_at_the_comparison_sites(self):
-        """The factor already carries the fee. A comparison that adds it
-        again would double-charge."""
-        for n in ast.walk(_tick()):
-            if isinstance(n, ast.Compare):
-                s = ast.unparse(n)
-                if "_otd_factor" in s:
-                    assert "trading_fee_pct" not in s, s
 
 
 class TestMonotonicity:

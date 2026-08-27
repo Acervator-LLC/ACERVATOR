@@ -176,10 +176,11 @@ class TestBothSidesExist:
     @pytest.mark.parametrize("field", FIELDS)
     def test_the_key_is_on_both_sides(self, field):
         import ast
+        import inspect
 
-        import src.trading.scrumming_bot as sbm
-
-        src = Path(sbm.__file__).read_text(encoding="utf-8")
+        _sf = inspect.getsourcefile(ScrummingBot.export_scrumming_state)
+        assert _sf is not None
+        src = Path(_sf).read_text(encoding="utf-8")
         key = field.lstrip("_")
         tree = ast.parse(src)
         exp = next(
