@@ -386,7 +386,7 @@ class TestHoleOneTheRestoreDownstreamNowRuns:
     def _drive(rows):
         from src.trading.bot_container import BotManager
 
-        restore = BotManager.__dict__["restore_smart_wires_from_state"]
+        restore = BotManager.restore_smart_wires_from_state
 
         class Bus:
             def __init__(self):

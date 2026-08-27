@@ -266,7 +266,7 @@ class TestPreFieldStateGetsTheDefault:
 
 class TestOneDeclarationSite:
     def test_the_restore_path_reads_the_declaration(self):
-        src = (REPO / "src" / "trading" / "bot_container.py").read_text(
+        src = (REPO / "src" / "trading" / "container" / "restore.py").read_text(
             encoding="utf-8", errors="replace"
         )
         assert '"stack_mode": cfg.get("stack_mode", STACK_MODE_DEFAULT)' in src, (
@@ -275,7 +275,7 @@ class TestOneDeclarationSite:
         )
 
     def test_the_restore_path_no_longer_consults_the_retired_key(self):
-        src = (REPO / "src" / "trading" / "bot_container.py").read_text(
+        src = (REPO / "src" / "trading" / "container" / "restore.py").read_text(
             encoding="utf-8", errors="replace"
         )
         assert 'cfg.get("bulk_trading"' not in src, (

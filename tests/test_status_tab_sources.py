@@ -23,6 +23,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent
 SCRUMMING = REPO / "src" / "trading" / "scrumming_bot.py"
 CONTAINER = REPO / "src" / "trading" / "bot_container.py"
+CONTAINER_PKG = REPO / "src" / "trading" / "container"
 
 
 @pytest.fixture(scope="module")
@@ -32,7 +33,12 @@ def scrumming_source() -> str:
 
 @pytest.fixture(scope="module")
 def container_source() -> str:
-    return CONTAINER.read_text(encoding="utf-8", errors="replace")
+    parts = [CONTAINER.read_text(encoding="utf-8", errors="replace")]
+    parts += [
+        p.read_text(encoding="utf-8", errors="replace")
+        for p in sorted(CONTAINER_PKG.glob("*.py"))
+    ]
+    return "\n".join(parts)
 
 
 # ---------------------------------------------------------------------------

@@ -252,14 +252,14 @@ class TestEveryDeclarationSiteAgrees:
     bot with the field present, so the literal is never read."""
 
     def test_the_restore_fallback_carries_the_default(self):
-        src = _src("src", "trading", "bot_container.py")
+        src = _src("src", "trading", "container", "restore.py")
         needle = f'"scrum_fold_pct": cfg.get("scrum_fold_pct", {FOLD_PCT_DEFAULT})'
         assert (
             needle in src
         ), "the SCRUMMING restore path no longer falls back to the default"
 
     def test_the_dataclass_declaration_carries_the_default(self):
-        src = _src("src", "trading", "bot_container.py")
+        src = _src("src", "trading", "container", "config.py")
         assert re.search(
             rf"^\s*scrum_fold_pct: int = {FOLD_PCT_DEFAULT}\b", src, re.MULTILINE
         ), "the BotConfig field declaration no longer reads the default"
