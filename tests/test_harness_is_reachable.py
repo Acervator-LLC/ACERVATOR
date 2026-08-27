@@ -117,6 +117,11 @@ ARCHETYPES: tuple[tuple[str, str], ...] = (
 # The list is split by WHERE the file lives, not by what it does. The hook
 # scripts left the repository on 2026-08-25 and are resolved at run time;
 # the rest are tracked files and are read straight from the tree.
+#
+# "tools/emitter_registry_check.py" left this list with the pin system. It
+# named `watchdog_archetype` to resolve a pin through the syntax tree; the
+# file is deleted, and a caller entry that outlives its file names a path
+# this module reads unconditionally.
 HOOK_CALLERS: tuple[str, ...] = (
     "archetype_gate.py",
     "prompt_router.py",
@@ -125,7 +130,6 @@ HOOK_CALLERS: tuple[str, ...] = (
 
 REPO_CALLERS: tuple[str, ...] = (
     "tools/gate.py",
-    "tools/emitter_registry_check.py",
     "dev_harness/touchset.py",
     "dev_harness/harness/check_release_readiness.py",
 )

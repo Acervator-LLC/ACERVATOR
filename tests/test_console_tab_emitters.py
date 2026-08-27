@@ -575,9 +575,9 @@ def _without_the_gap_marker(monkeypatch: pytest.MonkeyPatch) -> None:
 def _console_emit_calls() -> list[ast.Call]:
     """Every `_co_emit(...)` call node in `main_window.py`.
 
-    Read from the syntax tree, the way `tools/emitter_registry_check.py`
-    reads them. A regex over the source would answer a different
-    question.
+    Read from the syntax tree, so an aliased import or a renamed local
+    cannot slip one past. A regex over the source would answer a
+    different question.
     """
     tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
     return [
@@ -617,30 +617,14 @@ def _span(function: str) -> tuple[int, int]:
 
 
 # ── THE RECURSION. Settled first, because nothing else is safe. ────────
-
-
-def test_the_drain_emits_nothing_on_any_path() -> None:
-    """No pin sits inside `_drain_signals`, by the harness's own rule.
-
-    Asked of `tools/emitter_registry_check.collect_pins`, which resolves
-    a pin through the syntax tree rather than by matching text, so an
-    aliased import or a renamed local cannot slip one past this. A
-    keyword search for `emit` would answer a different, weaker question.
-    """
-    from tools.emitter_registry_check import collect_pins
-
-    low, high = _span("_drain_signals")
-    inside = [pin for pin in collect_pins(MAIN_WINDOW, REPO) if low <= pin.line <= high]
-    assert inside == [], (
-        "a pin inside the drain writes into the sink it is draining: "
-        f"{[(p.name, p.line) for p in inside]}"
-    )
-
-    # The sentinel. If the span ever silently resolved to the wrong
-    # function this test would pass over nothing at all.
-    all_pins = collect_pins(MAIN_WINDOW, REPO)
-    assert len([p for p in all_pins if p.name.startswith("console.")]) == 5
-    assert high > low
+#
+# The static half of this section read every pin in `main_window.py`
+# through `tools/emitter_registry_check.collect_pins` and required that
+# none of them fell inside the `_drain_signals` span. That collector went
+# with the pin system. The invariant is still driven, dynamically, by
+# `test_two_hundred_drains_do_not_grow_the_sink` below: a pin on the drain
+# path makes each drain add at least one record, and that test requires
+# the count to hold at three over two hundred drains.
 
 
 def test_two_hundred_drains_do_not_grow_the_sink(qapp: QApplication) -> None:

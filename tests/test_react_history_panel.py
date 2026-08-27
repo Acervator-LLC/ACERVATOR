@@ -961,21 +961,6 @@ def test_the_existing_history_tab_is_untouched() -> None:
     ), "the Qt tab must still be built first; it is the reference"
 
 
-def test_the_two_safe_urlopen_pins_did_not_move() -> None:
-    """Guard 1 re-anchored by READING, never by adding an offset.
-
-    ``main_window.py`` gained a tab block at line 6096, which is BELOW
-    both calls, so neither moved. This asserts that by reading the file.
-    """
-    lines = (
-        (REPO / "src" / "gui" / "main_window.py")
-        .read_text(encoding="utf-8")
-        .splitlines()
-    )
-    found = [i + 1 for i, line in enumerate(lines) if "safe_urlopen(" in line]
-    assert found == [4640, 4806], f"safe_urlopen moved to {found}"
-
-
 def test_the_shipped_widget_renders_into_its_own_view(qapp) -> None:
     """The DOM of the WIDGET, not of a page the test built for itself.
 

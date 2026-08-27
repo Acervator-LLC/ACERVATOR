@@ -491,10 +491,10 @@ def _statuspage(
 def _apitest_emit_calls() -> list[ast.Call]:
     """Every `_api_emit(...)` call node in `main_window.py`.
 
-    Read from the syntax tree, the way `tools/emitter_registry_check.py`
-    reads them. A regex over the source would answer a different
-    question. The alias is this tab's own, so the Exchange tab's
-    `_ex_emit` calls cannot land in this set.
+    Read from the syntax tree, so an aliased import or a renamed local
+    cannot slip one past. A regex over the source would answer a
+    different question. The alias is this tab's own, so the Exchange
+    tab's `_ex_emit` calls cannot land in this set.
     """
     tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
     return [
@@ -1467,20 +1467,6 @@ def test_no_two_pins_share_a_line() -> None:
     assert len(lines) == len(set(lines)) == 5
 
 
-def test_no_pin_compares_an_expression_with_itself() -> None:
-    """E9, asked of this tab by the checker's own rule."""
-    from tools.emitter_registry_check import collect_pins
-
-    pins = [
-        pin
-        for pin in collect_pins(MAIN_WINDOW, REPO)
-        if pin.name.startswith("apitest.")
-    ]
-    assert len(pins) == 5
-    assert [pin.name for pin in pins if pin.vacuous_check] == []
-    assert [pin.name for pin in pins if not pin.carries_duration] == []
-
-
 def test_every_context_names_its_exchange() -> None:
     """Without it a reader cannot tell which venue a record is about."""
     for call in _apitest_emit_calls():
@@ -1488,36 +1474,6 @@ def test_every_context_names_its_exchange() -> None:
         assert isinstance(node, ast.Dict), _pin_name(call)
         keys = [key.value for key in node.keys if isinstance(key, ast.Constant)]
         assert "exchange" in keys, _pin_name(call)
-
-
-def test_the_register_row_for_every_pin_points_at_its_real_line() -> None:
-    """The register is the join, and a stale line makes it a guess.
-
-    The checker reports line drift as a WARNING and does not fail on
-    it, which is a stated blind spot. This closes it for this tab's
-    five rows.
-    """
-    from tools.emitter_registry_check import (
-        REGISTRY_PATH,
-        collect_pins,
-        parse_registry,
-    )
-
-    registry = parse_registry((REPO / REGISTRY_PATH).read_text(encoding="utf-8"))
-    assert registry.parse_errors == []
-    rows = {row.name: row for row in registry.rows if row.subsystem == "apitest"}
-    assert set(rows) == set(APITEST_PINS)
-
-    pins = {
-        pin.name: pin
-        for pin in collect_pins(MAIN_WINDOW, REPO)
-        if pin.name.startswith("apitest.")
-    }
-    for name, row in rows.items():
-        assert row.file == "src/gui/main_window.py", name
-        assert row.line == pins[name].line, (
-            f"{name}: register says {row.line}, the pin is at " f"{pins[name].line}"
-        )
 
 
 # ── the tab still behaves exactly as it did ────────────────────────────
