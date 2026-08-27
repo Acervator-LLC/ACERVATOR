@@ -8,6 +8,8 @@ customizable effects (detune, LFO, harmonic richness).
 from __future__ import annotations
 import math, struct, wave, os, tempfile, logging
 
+from . import design_system as ds
+
 logger = logging.getLogger("acervator.audio")
 
 try:
@@ -262,7 +264,10 @@ if _HAS_QT:
             self._player = None
             self._audio_out = None
             self.setFrameShape(QFrame.StyledPanel)
-            self.setStyleSheet("QFrame{border:1px solid #333;border-radius:3px;}")
+            self.setStyleSheet(
+                f"QFrame{{border:1px solid {ds.SETTINGS_DISABLED_DEEP};"
+                f"border-radius:3px;}}"
+            )
             layout = QVBoxLayout(self)
             layout.setContentsMargins(4, 2, 4, 2)
             layout.setSpacing(2)
@@ -409,7 +414,7 @@ if _HAS_QT:
             vr.addWidget(self._vol)
             layout.addLayout(vr)
             self._now = QLabel("Nothing playing")
-            self._now.setStyleSheet("color:#00ccff;font-size:10px;")
+            self._now.setStyleSheet(f"color:{ds.FOLD_SOURCE_MANUAL};font-size:10px;")
             layout.addWidget(self._now)
             self._playing = False
             self._files = []
@@ -542,7 +547,7 @@ if _HAS_QT:
             gb.clicked.connect(self._gen_all)
             br.addWidget(gb)
             pb = QPushButton("Play All")
-            pb.setStyleSheet("font-weight:bold;color:#00ccff;")
+            pb.setStyleSheet(f"font-weight:bold;color:{ds.FOLD_SOURCE_MANUAL};")
             pb.clicked.connect(self._gen_all)
             br.addWidget(pb)
             sb = QPushButton("Stop All")
@@ -554,7 +559,7 @@ if _HAS_QT:
             br.addWidget(ks)
             layout.addLayout(br)
             self._st = QLabel("Select presets per layer, then Generate All")
-            self._st.setStyleSheet("color:#888;font-size:10px;")
+            self._st.setStyleSheet(f"color:{ds.CARD_METRIC_LABEL};font-size:10px;")
             self._st.setWordWrap(True)
             layout.addWidget(self._st)
 

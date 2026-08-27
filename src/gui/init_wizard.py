@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import logging
 
+from . import design_system as ds
+
 logger = logging.getLogger("acervator.gui")
 
 try:
@@ -89,7 +91,7 @@ if _HAS_QT:
                 "Skip the setup wizard entirely. No exchanges will be configured."
             )
             skip_btn.clicked.connect(self._on_skip)
-            skip_btn.setStyleSheet("color: #888; padding: 8px;")
+            skip_btn.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL}; padding: 8px;")
             p1_layout.addWidget(skip_btn)
 
             # --- Page 2: Exchange ---
@@ -220,11 +222,11 @@ if _HAS_QT:
 
             if not key or not secret:
                 self._feedback.setText("Enter API key and secret first.")
-                self._feedback.setStyleSheet("color: #ff3366;")
+                self._feedback.setStyleSheet(f"color: {ds.ERROR};")
                 return
 
             self._feedback.setText(f"Testing connection to {eid.capitalize()}...")
-            self._feedback.setStyleSheet("color: #00aaff;")
+            self._feedback.setStyleSheet(f"color: {ds.STATUS_INFO};")
             self._test_btn.setEnabled(False)
 
             safe_process_events("legacy P4.1 site")
@@ -235,13 +237,13 @@ if _HAS_QT:
                 result = validate_credentials(eid, key, secret, passphrase)
                 if result.success:
                     self._feedback.setText(result.message)
-                    self._feedback.setStyleSheet("color: #00ff88;")
+                    self._feedback.setStyleSheet(f"color: {ds.SUCCESS};")
                 else:
                     self._feedback.setText(result.message)
-                    self._feedback.setStyleSheet("color: #ff3366;")
+                    self._feedback.setStyleSheet(f"color: {ds.ERROR};")
             except Exception as exc:
                 self._feedback.setText(f"Test failed: {exc}")
-                self._feedback.setStyleSheet("color: #ff3366;")
+                self._feedback.setStyleSheet(f"color: {ds.ERROR};")
             finally:
                 self._test_btn.setEnabled(True)
 

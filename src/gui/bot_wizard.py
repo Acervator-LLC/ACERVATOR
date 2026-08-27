@@ -13,6 +13,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from . import design_system as ds
+
 logger = logging.getLogger("acervator.gui")
 
 try:
@@ -167,7 +169,8 @@ if _HAS_QT:
             target_row.addWidget(self._target, stretch=1)
             self._info_btn = QPushButton(" ℹ ")
             self._info_btn.setStyleSheet(
-                "color: #00ccff; font-weight: bold; border: 1px solid #00ccff; "
+                f"color: {ds.FOLD_SOURCE_MANUAL}; font-weight: bold; "
+                f"border: 1px solid {ds.FOLD_SOURCE_MANUAL}; "
                 "border-radius: 10px; padding: 2px 6px; margin-left: 4px; "
                 "max-width: 28px;"
             )
