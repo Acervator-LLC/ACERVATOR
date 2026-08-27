@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from src.core.log_paths import get_reports_dir
+
 logger = logging.getLogger("acervator.version_sweep")
 
 # ── Project root ─────────────────────────────────────────────────────────────
@@ -220,12 +222,27 @@ class VersionSweep:
         return list(self._skipped)
 
     def _get_version(self) -> str:
+        """Read ``__version__`` from ``src/__init__.py``, or ``"unknown"``.
+
+        That file holds box-drawing characters, so the read names UTF-8; a
+        locale-default read raises UnicodeDecodeError on a cp1252 host.
+        Only OSError degrades to ``"unknown"``. A decode failure on the
+        canonical version file propagates rather than letting the sweep
+        run blind.
+        """
+        path = self.root / "src" / "__init__.py"
         try:
-            init = (self.root / "src" / "__init__.py").read_text()
-            m = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', init)
-            return m.group(1) if m else "unknown"
-        except Exception:
+            init = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.warning(
+                "version_sweep: cannot read %s (%s) — version is 'unknown' "
+                "and check_version_consistency reports that as a finding",
+                path,
+                exc,
+            )
             return "unknown"
+        m = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', init)
+        return m.group(1) if m else "unknown"
 
     def _py_files(self):
         for dirpath, dirs, files in os.walk(self.root):
@@ -283,22 +300,25 @@ class VersionSweep:
     def check_version_consistency(self):
         """No file may restate a version that differs from src/__init__.py.
 
-        Issue #70 rewrote the rule this check enforces. It used to DEMAND a
-        version literal in each listed file and raise MEDIUM when one was
-        absent. That is backwards: a file that carries no literal cannot
-        drift, so absence is the correct end state, not a finding.
+        A file carrying no version literal cannot drift, so absence is the
+        correct end state and scores nothing. A restatement that is present
+        must equal the canonical value.
 
-        Two of the four paths it listed (render_trailer.py and
-        sadp/RAIntSimBat/RAIntSimBat.py) do not exist in the tree and were
-        skipped every run. main.py stopped matching its pattern when it
-        moved to `from src import __version__`, so it had been scoring a
-        MEDIUM for doing the right thing.
-
-        What remains: if one of these files DOES restate a version, that
-        restatement must equal the canonical value.
+        An unreadable ``src/__init__.py`` scores HIGH rather than
+        returning. A skipped check that prints nothing is indistinguishable
+        from a check that found nothing.
         """
         canonical = self.result.version
         if canonical == "unknown":
+            self._add(
+                Severity.HIGH,
+                "CONSISTENCY",
+                self.root / "src" / "__init__.py",
+                0,
+                "Canonical __version__ unreadable — no version check ran",
+                "Restore src/__init__.py; until then this sweep verifies "
+                "no version anywhere in the tree.",
+            )
             return
 
         version_sources = {
@@ -312,7 +332,7 @@ class VersionSweep:
         for fpath, pattern in version_sources.items():
             if not fpath.exists():
                 continue
-            text = fpath.read_text(errors="replace")
+            text = fpath.read_text(encoding="utf-8", errors="replace")
             m = re.search(pattern, text)
             # No match == the file imports __version__ == nothing can drift.
             if m and m.group(1) != canonical:
@@ -333,7 +353,7 @@ class VersionSweep:
         for dpath in doc_files:
             if not dpath.exists():
                 continue
-            text = dpath.read_text(errors="replace")
+            text = dpath.read_text(encoding="utf-8", errors="replace")
             old_vers = re.findall(r"\b3\.\d+\.\d+\b", text)
             old_refs = [v for v in old_vers if v != canonical]
             if old_refs:
@@ -581,8 +601,8 @@ class VersionSweep:
         if not sim_path.exists() or not bat_path.exists():
             return
 
-        sim_text = sim_path.read_text(errors="replace")
-        bat_text = bat_path.read_text(errors="replace")
+        sim_text = sim_path.read_text(encoding="utf-8", errors="replace")
+        bat_text = bat_path.read_text(encoding="utf-8", errors="replace")
 
         gate_pairs = [
             ("MACD TAPER", r"MACD.*taper|macd.*taper", r"macd_taper|MACD TAPER"),
@@ -625,9 +645,9 @@ class VersionSweep:
         req_opt = self.root / "requirements-optional.txt"
         reqs_text = ""
         if req_file.exists():
-            reqs_text += req_file.read_text().lower()
+            reqs_text += req_file.read_text(encoding="utf-8").lower()
         if req_opt.exists():
-            reqs_text += req_opt.read_text().lower()
+            reqs_text += req_opt.read_text(encoding="utf-8").lower()
 
         # Core dependencies that must be declared
         required_packages = {
@@ -707,7 +727,7 @@ class VersionSweep:
 
         import re
 
-        text = sim_path.read_text(errors="replace")
+        text = sim_path.read_text(encoding="utf-8", errors="replace")
 
         # Keys SET in the snapshot dict
         snap_pat = r"snapshot\s*=\s*\{(.+?)\}\s*\n\s*# Landing"
@@ -833,7 +853,7 @@ class VersionSweep:
         try:
             import json as _json
 
-            data = _json.loads(registry_path.read_text())
+            data = _json.loads(registry_path.read_text(encoding="utf-8"))
         except Exception as e:
             self._add(
                 Severity.MEDIUM,
@@ -998,7 +1018,9 @@ class VersionSweep:
         registry_path = self.root / "sadp" / "RULE_REGISTRY.json"
         try:
             registry = (
-                _json.loads(registry_path.read_text()) if registry_path.exists() else {}
+                _json.loads(registry_path.read_text(encoding="utf-8"))
+                if registry_path.exists()
+                else {}
             )
         except Exception:
             registry = {}
@@ -1235,7 +1257,7 @@ class VersionSweep:
         if not registry_path.exists():
             return
         try:
-            registry = _json.loads(registry_path.read_text())
+            registry = _json.loads(registry_path.read_text(encoding="utf-8"))
         except Exception:
             return
         suspended = {
@@ -1315,9 +1337,17 @@ class VersionSweep:
 
         print()
 
-    def save_json_report(self, result: SweepResult) -> Path:
-        """Save machine-readable results to sadp/RAIntSimBat/reports/."""
-        reports_dir = ROOT / "sadp" / "RAIntSimBat" / "reports"
+    def save_json_report(
+        self, result: SweepResult, reports_dir: Optional[Path] = None
+    ) -> Path:
+        """Write machine-readable results and return the file written.
+
+        ``reports_dir`` defaults to ``log_paths.get_reports_dir()``
+        (``~/.acervator_logs/reports/``). Sweep output is generated, so it
+        never lands under the repo root. Callers pass an explicit
+        directory to write elsewhere.
+        """
+        reports_dir = reports_dir or get_reports_dir()
         reports_dir.mkdir(parents=True, exist_ok=True)
         fname = f"sweep_v{result.version}_{time.strftime('%Y%m%d_%H%M%S')}.json"
         out = reports_dir / fname
@@ -1346,11 +1376,17 @@ class VersionSweep:
                 for f in result.findings
             ],
         }
-        out.write_text(json.dumps(data, indent=2))
+        out.write_text(json.dumps(data, indent=2), encoding="utf-8")
         return out
 
-    def save_pdf_report(self, result: SweepResult) -> Optional[Path]:
-        """Generate a PDF sweep report (R24: human-readable doc → PDF)."""
+    def save_pdf_report(
+        self, result: SweepResult, reports_dir: Optional[Path] = None
+    ) -> Optional[Path]:
+        """Render a PDF sweep report, or None when reportlab is absent.
+
+        Same destination rule as ``save_json_report``: generated output
+        defaults to ``log_paths.get_reports_dir()``, never the repo tree.
+        """
         try:
             from reportlab.lib.pagesizes import A4
             from reportlab.lib.styles import ParagraphStyle
@@ -1368,7 +1404,7 @@ class VersionSweep:
         except ImportError:
             return None
 
-        reports_dir = ROOT / "docs" / "pdf"
+        reports_dir = reports_dir or get_reports_dir()
         reports_dir.mkdir(parents=True, exist_ok=True)
         fname = f"acervator_sweep_v{result.version}_{time.strftime('%Y%m%d')}.pdf"
         out = reports_dir / fname
@@ -1557,6 +1593,19 @@ class VersionSweep:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _force_utf8_stdio() -> None:
+    """Set stdout/stderr to UTF-8 for the CLI run.
+
+    ``print_report`` writes U+2713 and box-drawing characters. On a cp1252
+    console those raise UnicodeEncodeError mid-sweep, so the run aborts
+    before any report is written.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def main():
     import argparse
 
@@ -1570,23 +1619,29 @@ def main():
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Save JSON report to sadp/RAIntSimBat/reports/",
+        help="Accepted for compatibility; the JSON report is always written",
+    )
+    parser.add_argument(
+        "--reports-dir",
+        type=Path,
+        default=None,
+        help="Report destination (default: ~/.acervator_logs/reports/)",
     )
     args = parser.parse_args()
+
+    _force_utf8_stdio()
 
     sweep = VersionSweep(root=ROOT, fix=args.fix)
     result = sweep.run()
     sweep.print_report(result)
 
-    # v3.19.12 — always save JSON (removed redundant `if args.json or True`
-    # — vulture-flagged; the `or True` made args.json a no-op).
-    json_path = sweep.save_json_report(result)
-    print(f"  JSON report: {json_path.relative_to(ROOT)}")
+    json_path = sweep.save_json_report(result, reports_dir=args.reports_dir)
+    print(f"  JSON report: {json_path}")
 
     if args.report:
-        pdf_path = sweep.save_pdf_report(result)
+        pdf_path = sweep.save_pdf_report(result, reports_dir=args.reports_dir)
         if pdf_path:
-            print(f"  PDF report:  {pdf_path.relative_to(ROOT)}")
+            print(f"  PDF report:  {pdf_path}")
         else:
             print("  PDF report:  reportlab not available")
 

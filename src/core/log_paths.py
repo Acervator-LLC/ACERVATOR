@@ -145,12 +145,25 @@ def get_meta_dir() -> Path:
     return p
 
 
+def get_reports_dir() -> Path:
+    """``reports/`` bucket — machine-readable output of operator-run tools.
+
+    Destination for ``src/core/version_sweep.py``'s JSON and PDF sweep
+    reports. Generated output may not land in a tracked tree, so the
+    sweep resolves its default through here instead of composing a path
+    under the repo root.
+    """
+    p = _LOG_ROOT / "reports"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def layout_map() -> dict[str, Path]:
     """Return a ``{bucket_name -> Path}`` dict for diagnostics + audit tools.
 
-    Used by ``sadp/_tools/log_subsystem_audit.py`` to render the
-    inventory and by future ``index.json`` writers (Step 7) to expose
-    the layout to operator dashboards.
+    Every bucket this module exposes, for inventory renderers and for
+    future ``index.json`` writers that surface the layout to operator
+    dashboards.
     """
     return {
         "root": get_log_root(),
@@ -160,5 +173,6 @@ def layout_map() -> dict[str, Path]:
         "trade": get_trade_dir(),
         "pnl": get_pnl_dir(),
         "exchange_history": get_exchange_history_dir(),
+        "reports": get_reports_dir(),
         "_meta": get_meta_dir(),
     }
