@@ -15,7 +15,7 @@ Public API — the only names external callers should import:
         SUPPORTED_TIMEFRAMES, NATIVE_TIMEFRAME,
     )
 
-Design: `docs/audits/2026-08-01_stone_tablets_rebuild_design.md`.
+Design: `docs/engineering-notes/2026-08-01_stone_tablets_rebuild_design.md`.
 
 sadp: R28 SSS + R70 RCN
 """

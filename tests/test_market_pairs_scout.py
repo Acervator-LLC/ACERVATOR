@@ -2,7 +2,7 @@
 
 Locks the read-only cross-pair awareness surface introduced in the
 multi-base coordination cascade
-(docs/audits/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md
+(docs/engineering-notes/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md
 § 6, cascade #2). This module does NOT rank or route — the tests
 enforce that discipline by exercising the public API and asserting
 what it does and does not expose.

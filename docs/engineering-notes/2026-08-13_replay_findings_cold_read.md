@@ -2,7 +2,7 @@
 
 Mode: Explanation, with a Reference table of sized work units. This
 document re-verifies the five findings of
-`docs/audits/2026-08-12_tranche_replay_validator.md` against the code as
+`docs/engineering-notes/2026-08-12_tranche_replay_validator.md` against the code as
 it stands on 2026-08-13, sizes the surviving repairs, and records the
 archetype baseline of every file those repairs would land in. It changes
 no code.

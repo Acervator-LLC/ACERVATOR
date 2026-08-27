@@ -168,7 +168,7 @@ class TestTheSimPathPassesNone:
         # `"_sim_mode" in seg` and PASSED against unfixed code, because
         # the method carries a comment at :1138 recording a DIFFERENT
         # `if _sim_mode: return` removed in v3.24.31. That is trap #5 in
-        # docs/audits/2026-08-07_traps_that_pass_a_naive_test.md, sprung
+        # docs/engineering-notes/2026-08-07_traps_that_pass_a_naive_test.md, sprung
         # inside the test written to verify the fix for it.
         sim_branches = [
             n

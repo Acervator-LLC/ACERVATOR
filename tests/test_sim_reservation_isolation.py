@@ -132,7 +132,7 @@ def test_a_sim_bot_actually_obtains_a_reservation():
 
     REPLACES test_ensure_reservation_has_no_sim_mode_skip (C16,
     v3.24.63, operator acknowledgement recorded 2026-08-07 — see
-    docs/audits/2026-08-07_C16_pin_replacement_record.md).
+    docs/engineering-notes/2026-08-07_C16_pin_replacement_record.md).
 
     The original requirement was right and is preserved: the v3.24.14
     `if _sim_mode: return` meant a sim bot never reserved at all, which
@@ -255,7 +255,7 @@ def test_the_phantom_subsystem_stays_reachable_in_sim():
 
     REPLACES test_sim_bots_are_constructed_with_phantoms_enabled (C18,
     v3.24.64, operator acknowledgement recorded 2026-08-07 — see
-    docs/audits/2026-08-07_C18_pin_replacement_record.md).
+    docs/engineering-notes/2026-08-07_C18_pin_replacement_record.md).
 
     The original requirement is preserved: switching a feature off is
     not simulating it. What changed is that it is now asserted

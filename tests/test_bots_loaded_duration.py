@@ -1,7 +1,7 @@
 """Pins the duration on `fleet.03.001.postcondition.bots_loaded`.
 
 Third of the six clean owners
-(docs/audits/2026-08-19_emitter_duration_classification.md).
+(docs/engineering-notes/2026-08-19_emitter_duration_classification.md).
 
 THIS FUNCTION HOLDS THREE EMITTERS, AND ONLY ONE MAY CLAIM THE INTERVAL.
 `fleet.03.001` owns the load; `fleet.03.002` and `fleet.03.003` fire afterwards

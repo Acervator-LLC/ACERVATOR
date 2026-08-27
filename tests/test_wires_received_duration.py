@@ -1,7 +1,7 @@
 """Pins the duration on `topology.09.002.postcondition.wires_received`.
 
 Last of the six clean owners
-(docs/audits/2026-08-19_emitter_duration_classification.md). Sole emitter in
+(docs/engineering-notes/2026-08-19_emitter_duration_classification.md). Sole emitter in
 `import_wires`; `topology.09.001` lives in `attach_bot`, is a dict insert, and
 is classified instantaneous -- it carries nothing.
 

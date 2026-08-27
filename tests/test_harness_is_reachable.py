@@ -180,8 +180,19 @@ _MODULE_RE = re.compile(r"\bdev_harness\.harness\.[A-Za-z_][A-Za-z0-9_.]*")
 # the entry named nothing. It also never earned its place: the ledger held
 # ZERO occurrences of the old path, measured before the deletion, so
 # removing the allowance changes no verdict here.
+#
+# Issue #81 added "docs/engineering-notes". It is not a new allowance: the
+# entry follows files that "docs/audits" already covered. 122 files left
+# docs/audits/ in that issue, and this test named exactly the 24 of them
+# that carry the old harness path before the entry was added. "docs/audits"
+# stays because 46 files remain there, pinned by dev_harness path constants.
 _OLD_PATH_RE = re.compile(r"tools[./]harness")
-_HISTORY = ("docs/audits", "docs/harness_archive", "CHANGELOG.md")
+_HISTORY = (
+    "docs/audits",
+    "docs/engineering-notes",
+    "docs/harness_archive",
+    "CHANGELOG.md",
+)
 
 # Two sets name the old path on purpose and stay green.
 #   1. The harness's own prose. Operator law forbids editing an archetype's

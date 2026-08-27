@@ -44,7 +44,7 @@ logger = logging.getLogger("acervator.smart_wire")
 
 
 # v3.23.64 — Smart Wire Outflow Safety (SWOS) arithmetic.
-# Full spec: docs/audits/2026-07-31_smart_wire_outflow_safety_arithmetic.md
+# Full spec: docs/engineering-notes/2026-07-31_smart_wire_outflow_safety_arithmetic.md
 #
 # Pure function; no I/O, no bot references, no logging. Returns the
 # maximum safe outflow % for a single scrum event based on the bot's

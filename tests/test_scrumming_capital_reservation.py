@@ -1,10 +1,10 @@
 """v3.23.42 — ScrummingBot self-reservation + personal_hold_qty pins.
 
 Covers the F62 + F65 fixes documented at
-docs/audits/2026-07-27_interop_usd_denom_settlement_audit_and_design.md,
+docs/engineering-notes/2026-07-27_interop_usd_denom_settlement_audit_and_design.md,
 plus v3.23.46 correctness fixes for over-commit enforcement + USD-
 denominated reservation qty
-(docs/audits/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md).
+(docs/engineering-notes/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md).
 
 We test the four ScrummingBot helpers directly (unbound-method style)
 against a lightweight stub — instantiating a full ScrummingBot drags

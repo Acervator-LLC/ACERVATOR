@@ -3,7 +3,7 @@
 WHAT THIS FILE COVERS, AND WHAT IT DOES NOT
 ===========================================
 Five defects from the 2026-08-23 evaluation
-(``docs/audits/2026-08-23_fold_tranche_panel_evaluation.md``). Defects
+(``docs/engineering-notes/2026-08-23_fold_tranche_panel_evaluation.md``). Defects
 1, 2, 3 and 5 are already repaired and are pinned elsewhere; defect 4 —
 the counters that do not reconcile — belongs to another unit and is not
 touched here, which is why the four counter rows on the health form are

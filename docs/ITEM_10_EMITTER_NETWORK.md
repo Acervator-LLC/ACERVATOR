@@ -15,7 +15,7 @@ his word.
 | 10.0 | COUNT | **shipped** — 40 emitters, counter proven four ways |
 | 10.1 | IDENTIFY | **shipped** — naming convention, `docs/EMITTER_IDENTIFICATION.md`, `tools/emitter_registry_check.py` |
 | 10.2 | RENAME | **shipped** — every emitter has a register row and every row an emitter |
-| **10.3** | **TIME** | **PHASE 1 SHIPPED** (`Signal.dt`, cadence, ~34 tests). **PHASE 2 NOT DONE** — operation duration. 0 of 40 carry one; 6 can, 23 must not, 11 need a start marker. See `docs/audits/2026-08-19_emitter_duration_classification.md` |
+| **10.3** | **TIME** | **PHASE 1 SHIPPED** (`Signal.dt`, cadence, ~34 tests). **PHASE 2 NOT DONE** — operation duration. 0 of 40 carry one; 6 can, 23 must not, 11 need a start marker. See `docs/engineering-notes/2026-08-19_emitter_duration_classification.md` |
 | **10.4** | **PROVE** | **NOT DONE.** Verify each emitter against the spec below |
 | **10.5+** | **EMIT** | **NOT STARTED.** Six tabs have zero emitters |
 
@@ -195,7 +195,7 @@ field will lose an hour. It has one. It measures something else.
   `src/core/emit_contracts.py`, distinct from `dt`.
 - **CLASSIFY ALL 40 FIRST — DONE 2026-08-19.** Full evidence and the
   per-emitter table:
-  `docs/audits/2026-08-19_emitter_duration_classification.md`. **A fabricated
+  `docs/engineering-notes/2026-08-19_emitter_duration_classification.md`. **A fabricated
   duration is worse than a missing one**, because item 17 computes health from
   it. `None` is legitimate and is already distinguishable from a real zero.
 - **Monotonic** clock, never the wall clock. Pre-mortemed: the Windows

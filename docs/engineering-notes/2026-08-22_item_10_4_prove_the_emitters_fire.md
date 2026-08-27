@@ -436,7 +436,7 @@ writes all held their hash:
 
 ## Evidence on disk
 
-`docs/audits/2026-08-22_item_10_4_evidence/` holds the raw output.
+`docs/engineering-notes/2026-08-22_item_10_4_evidence/` holds the raw output.
 
 | file | what it holds |
 |---|---|

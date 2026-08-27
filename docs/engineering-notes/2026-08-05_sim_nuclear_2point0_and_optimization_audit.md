@@ -308,7 +308,7 @@ v3.24.16 fixed this for anchoring: `_live_trade_timestamps` (`fleet_replay_panel
 **Fix:** (a) mirror the fallback in `_run_parity_comparison`, normalising to the dict shape `compare_trades` expects; (b) regardless, warn in the Activity Log at Start time when `not self._ytd_trades` — the panel knows before it schedules the controller.
 
 ### W5 — `clear_markers()` has zero callers **[V]**
-`sim_visuals.py:510`, shipped with the v3.24.29 marker feature, is not called anywhere in `src/` or `tests/` and is not in `__all__`. It is precisely the API that would make D-below (`clear_data` leaving stale markers) and the unbounded-marker item fixable from the caller side. Same class as `GateLightsCell.clear_gates`, already recorded as zero-caller scaffolding in `docs/audits/2026-08-04_full_codebase_defect_scan.md` row 48.
+`sim_visuals.py:510`, shipped with the v3.24.29 marker feature, is not called anywhere in `src/` or `tests/` and is not in `__all__`. It is precisely the API that would make D-below (`clear_data` leaving stale markers) and the unbounded-marker item fixable from the caller side. Same class as `GateLightsCell.clear_gates`, already recorded as zero-caller scaffolding in `docs/engineering-notes/2026-08-04_full_codebase_defect_scan.md` row 48.
 
 Related latent invariant: `clear_data()` (`sim_visuals.py:549-553`) resets `_series` and `_vwap_window` but leaves `_markers` populated. **[V]** Safe today only because its single caller (`fleet_replay_panel.py:973`) immediately calls `set_symbols`, which does reset markers (`:482`). Add `self._markers[s] = []` to the loop.
 

@@ -1503,7 +1503,7 @@ Four corrections to the naive ordering, each forced by evidence:
 | **Goal** | The api_logger, the docstrings and the `ExchangeInterface` ABC describe what the code now does, and the sim exchanges refuse a `since` they cannot honour. |
 | **Why here** | Record-only companion to C31, written after it so the honest params dict and the `BB_LOOKBACK` docstring state the window actually settled. |
 | **Findings** | DOCKET-OHLCV-2, -3, -4, -5, -9, TABLET-3 |
-| **Files** | `ccxt_connector.py`, `src/exchange/base.py`, `gate_healer.py`, `fleet/sim_exchange.py`, `nuclear_sim_exchange.py`, `docs/audits/2026-08-05_docket_ohlcv_limit_since_defect.md` |
+| **Files** | `ccxt_connector.py`, `src/exchange/base.py`, `gate_healer.py`, `fleet/sim_exchange.py`, `nuclear_sim_exchange.py`, `docs/engineering-notes/2026-08-05_docket_ohlcv_limit_since_defect.md` |
 | **Risk tier** | record-only |
 
 **Steps**
@@ -2043,7 +2043,7 @@ Four corrections to the naive ordering, each forced by evidence:
 | **Goal** | The 95 verified-open anchors and their named companions are each dispositioned, with nothing silently removed from a live path and nothing left broken behind a "keep" verdict. |
 | **Why here** | Last by doctrine, and `single_edit_pass` is **false** — a disposition pass, not one edit. **HAZARD:** eight of the twelve modules have zero test coverage and `main_window`/`bot_visualizer` import optional subsystems inside bare `except Exception:` blocks, so deleting one produces no failure, no import error and no log line — just a platform that silently stopped notifying. |
 | **Findings** | NF-155, NF-101, NF-49, NF-55, NF-56, NF-57, NF-60, NF-63, NF-164, NF-98, NF-99, NF-39 |
-| **Files** | `usb_auth.py`, `shared_testnet.py`, `market_hours.py`, `capital_arbiter_bridge.py`, `capital_registry.py`, `poa_tournament.py`, `triangular_swarm.py`, `live_monitor.py`, `notifications.py`, `sound_engine.py`, `docs/audits/2026-08-04_needed_fixes_list.md` |
+| **Files** | `usb_auth.py`, `shared_testnet.py`, `market_hours.py`, `capital_arbiter_bridge.py`, `capital_registry.py`, `poa_tournament.py`, `triangular_swarm.py`, `live_monitor.py`, `notifications.py`, `sound_engine.py`, `docs/engineering-notes/2026-08-04_needed_fixes_list.md` |
 | **Risk tier** | record-only |
 
 **Steps**

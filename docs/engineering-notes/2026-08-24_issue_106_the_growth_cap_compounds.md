@@ -2,7 +2,7 @@
 
 Date: 2026-08-24
 Unit: `fix-106-growth-cap-compounds`
-Evidence: `docs/audits/2026-08-24_issue_106_evidence/`
+Evidence: `docs/engineering-notes/2026-08-24_issue_106_evidence/`
 
 Operator report, 2026-08-21: "the compounding rate appears to stay frozen
 as a calculation based on the starting value of the bot but this should

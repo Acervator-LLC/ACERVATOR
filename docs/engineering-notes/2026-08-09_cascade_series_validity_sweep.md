@@ -21,7 +21,7 @@ Second live-money defect, still open in committed code: **C01 leaves the extract
 
 ## 2. Roster reconciliation
 
-The series is **70 numbered sequence positions (0-69)** in `docs/audits/2026-08-05_remediation_methodology.md:55-2487`. That is 68 C-entries plus 2 non-C instrument cascades (CV1, CV2). The 68 entries carry only **67 distinct C-ids**, because C60 is assigned twice.
+The series is **70 numbered sequence positions (0-69)** in `docs/engineering-notes/2026-08-05_remediation_methodology.md:55-2487`. That is 68 C-entries plus 2 non-C instrument cascades (CV1, CV2). The 68 entries carry only **67 distinct C-ids**, because C60 is assigned twice.
 
 The doc header "66 cascades" is stale. It counts positions 0-65 as of 2026-08-05, before C57, C58, C59 and C60-DESIGN were appended on 08-07 and 08-08.
 
@@ -120,9 +120,9 @@ Steps 1, 2, 5 and 6 never shipped. Step 7 was struck as dead.
 **True:**
 - **SN-1 not fixed.** `src/gui/simulator_tab/fleet/sim_exchange.py:101` initialises `self._tf_series = {}`. A repo-wide grep returns only `:101` (init), `:341` (a comment claiming it "is populated per (symbol, timeframe) when the run is built") and `:347` (the read). Nothing writes it. Every `get_ohlcv` misses and falls through to the single native per-symbol series at `:349`. Six phantoms still read one series.
 - **Cadence not fixed.** `PhantomBalanceBot.__init__` takes `sim_mode` at `src/trading/phantom_balance.py:141`. The only production construction, `:650-664`, does not pass it. `_sim_mode` is therefore always False, the sim branch at `:257-259` never runs, and the wall-clock `asyncio.sleep` at `:261` is what executes. `tick_for_cursor` (`:199`) has zero production callers and vulture flags it unused.
-- **Toggle does not exist.** The `force` parameter at `src/gui/simulator_tab/fleet/fleet_replay_controller.py:189` is never passed True. With every persisted bot at `phantoms_enabled=False`, phantoms are off for the whole replay fleet with no way to turn them on. `docs/audits/2026-08-05_remediation_methodology.md:906` explicitly forbids that state.
+- **Toggle does not exist.** The `force` parameter at `src/gui/simulator_tab/fleet/fleet_replay_controller.py:189` is never passed True. With every persisted bot at `phantoms_enabled=False`, phantoms are off for the whole replay fleet with no way to turn them on. `docs/engineering-notes/2026-08-05_remediation_methodology.md:906` explicitly forbids that state.
 - SN-58 (real venue id) holds at `fleet_replay_controller.py:337-338`.
-- The record `docs/audits/2026-08-07_C18_pin_replacement_record.md:57` asserts "with the per-run toggle forced on, phantoms **are** constructed". No such toggle was ever built.
+- The record `docs/engineering-notes/2026-08-07_C18_pin_replacement_record.md:57` asserts "with the per-run toggle forced on, phantoms **are** constructed". No such toggle was ever built.
 **To make it real:** populate `_tf_series` at run build; pass `sim_mode=True` at `phantom_balance.py:650-664`; give `force` a caller or delete it. Test the methodology's own gate: the six phantoms return six different series.
 
 #### C29 — sim chart markers freeze the price series
@@ -148,7 +148,7 @@ Verified today at `src/trading/bot_container.py:3236-3244` against the twin at `
 
 #### C12 — settings: the cascade fixed a defect it found and not the one it was named for
 
-`docs/audits/2026-08-05_remediation_methodology.md:294` gives the goal: "Opening Settings and pressing Save cannot change any value the operator did not touch." `src/gui/settings_dialog.py:979-1021` `_load_current` still reads 9 keys while `_save` writes 16. Four font keys now persist and reach no consumer — `src/gui/theme_engine.py:80,82` carries its own literals and `src/gui/main_window.py:4167` hardcodes `QFont("Consolas", 9)`. 1 of the 5 keys landed.
+`docs/engineering-notes/2026-08-05_remediation_methodology.md:294` gives the goal: "Opening Settings and pressing Save cannot change any value the operator did not touch." `src/gui/settings_dialog.py:979-1021` `_load_current` still reads 9 keys while `_save` writes 16. Four font keys now persist and reach no consumer — `src/gui/theme_engine.py:80,82` carries its own literals and `src/gui/main_window.py:4167` hardcodes `QFont("Consolas", 9)`. 1 of the 5 keys landed.
 NF-78 is untouched: `_ta_weight_sliders` (`:444`), `_phantom_tf_checks` (`:471`) and the ten SMS widgets (`:751-811`) appear in neither `_save` nor `_load_current`. Three tabs still discard everything the operator types.
 Neither the commit body nor `CHANGELOG.md:2694-2702` discloses that steps 3, 4 and 5 were skipped. **This is the pattern the operator's standing rule targets: the harness cannot catch it, because the code that is present is correct.**
 **Overturned:** the verdict said 25 tests. `--collect-only` reports **15** (8 functions, parametrized).
@@ -176,7 +176,7 @@ The read side is still swallowed at `:1461-1463` (`try: _hydrate_smart_wire_rout
 
 - **C03.** SWARM-4.4 and 4.7 hold. SWARM-4.11's mask is computed only inside `update_bots`, so the privacy toggle at `src/gui/bot_visualizer.py:2449-2484` does not refresh the list. Plan step 5 never shipped: `set_bots` constructs 420 `QTableWidgetItem`s on identical input, twice, measured. Four of eight findings have no disposition anywhere.
 - **C04.** Fixes 1 and 3 hold and are pinned. Fix 2 is untested — restoring the pre-C04 `resizeEvent` body leaves the file green, because fix 3 repairs the geometry before the assertion reads it. Plan step 3 never shipped: `src/gui/bot_visualizer.py:1662` still sets `WA_TransparentForMouseEvents` False unconditionally.
-- **C10.** Both substantive findings shipped and the tests are the strongest in the series. Step 3's four cosmetic findings were deferred to `docs/audits/2026-08-06_docket_c10_step3_cosmetics.md` — disclosed correctly.
+- **C10.** Both substantive findings shipped and the tests are the strongest in the series. Step 3's four cosmetic findings were deferred to `docs/engineering-notes/2026-08-06_docket_c10_step3_cosmetics.md` — disclosed correctly.
 - **C15.** Steps 1, 4 and 5 hold and reach the app path. Step 2's guard lives in `src/gui/simulator_tab/nuclear_controller.py`, which no `src/` module imports since the v3.24.78 repoint. C15 **blinded** two pre-existing tests: `tests/test_fleet_replay_controller.py:57-63` and `:66-78` now return at the new guard before the check they exist to make.
 - **C17.** `EventBus.unsubscribe` reaches production at `src/core/logging_engine.py:607-631`. `BotManager(bus=...)` and `detach_bus()` have one production call site each, both inside the orphaned v1 controller. `tests/test_bus_injection_isolation.py:128-154` pins a file the app no longer loads.
 - **C22.** Three of the verdict's own citations were **overturned** — see section 8. The conclusion survives for a reason the verdict never states: `NuclearController` v1 has no production caller at all.
@@ -259,7 +259,7 @@ Exit: after a failed import plus one save cycle, the on-disk `extractor_state` s
 
 **3. C18 — wire what the record says shipped.**
 Files: `src/gui/simulator_tab/fleet/sim_exchange.py:101/:341/:347` (populate `_tf_series` at run build), `src/trading/phantom_balance.py:650-664` (pass `sim_mode=True`), `src/gui/simulator_tab/fleet/fleet_replay_controller.py:189` (give `force` a caller or delete it).
-Test: the methodology's own gate at `docs/audits/2026-08-05_remediation_methodology.md` — the six phantoms return six **different** series. **Positive control:** assert the six are non-empty first, then assert at least two differ on a known-divergent bar.
+Test: the methodology's own gate at `docs/engineering-notes/2026-08-05_remediation_methodology.md` — the six phantoms return six **different** series. **Positive control:** assert the six are non-empty first, then assert at least two differ on a known-divergent bar.
 Emitter: a per-replay count of phantom ticks driven by the replay clock. Zero ticks must fail the run, not pass it silently.
 Exit: a replay in which `tick_for_cursor` has a non-zero call count and vulture no longer flags it.
 
@@ -291,7 +291,7 @@ Test: run a replay and assert `~/.acervator/feature_telemetry.json` mtime and si
 
 **10. C05 — replace the three blind pins** with widget-driving tests, or state in the record that the confirmation gate is unmeasured. Also strip the four U+FFFD characters at `src/gui/bot_visualizer.py:894, :898, :932, :936`.
 
-**11. C60 — fix the id collision** in `docs/audits/2026-08-05_remediation_methodology.md:1687` and `:2354` before any further re-validation. Anyone validating C60 from git validates the design item, not the P0.
+**11. C60 — fix the id collision** in `docs/engineering-notes/2026-08-05_remediation_methodology.md:1687` and `:2354` before any further re-validation. Anyone validating C60 from git validates the design item, not the P0.
 
 ---
 

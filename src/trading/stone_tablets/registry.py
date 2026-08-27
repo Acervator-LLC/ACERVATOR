@@ -2,7 +2,7 @@
 
 Public API — the surface v3.23.98 fetcher + v3.23.99 sim replay
 consume. Design:
-`docs/audits/2026-08-01_stone_tablets_rebuild_design.md`.
+`docs/engineering-notes/2026-08-01_stone_tablets_rebuild_design.md`.
 
 Runtime state lives at `~/.acervator/stone_tablets/`. This module
 NEVER fetches — that's the fetcher's job. This module reads MANIFEST

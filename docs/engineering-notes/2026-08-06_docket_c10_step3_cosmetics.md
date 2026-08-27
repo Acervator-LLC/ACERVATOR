@@ -66,4 +66,4 @@ Stated plainly so nobody inherits an unearned conclusion:
 
 - `src/gui/main_window.py` — all four sites
 - Commit `0f6e652` — C10 steps 1 and 2
-- `docs/audits/2026-08-05_remediation_methodology.md` §15 — the spec
+- `docs/engineering-notes/2026-08-05_remediation_methodology.md` §15 — the spec

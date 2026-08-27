@@ -166,7 +166,7 @@ class RSIIndicator:
         #
         # SCOPE. This marks the vote as not cast. It does not touch the
         # 50.0 -- that substitution is item A2 of
-        # docs/audits/2026-08-23_manufactured_values_sweep.md, and it is
+        # docs/engineering-notes/2026-08-23_manufactured_values_sweep.md, and it is
         # named there, not repaired here. Every number this method
         # returns is unchanged; only `abstained` moves.
         warming_up = len(candles) < self.period + 1

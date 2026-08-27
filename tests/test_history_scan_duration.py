@@ -1,7 +1,7 @@
 """Pins the duration on `history.05.001.postcondition.scan_complete`.
 
 Second of the six emitters classified as clean owners of a bounded operation
-(docs/audits/2026-08-19_emitter_duration_classification.md). It is the sole
+(docs/engineering-notes/2026-08-19_emitter_duration_classification.md). It is the sole
 emitter in `_scan_trade_history`, so no start marker and no double-count risk.
 
 WHAT THE TIMER DELIBERATELY EXCLUDES, and why a test says so. The scan runs

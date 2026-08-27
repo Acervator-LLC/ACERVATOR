@@ -3,7 +3,7 @@
 Reference specification (Diataxis: reference). Pure runtime — no Qt,
 no exchange I/O. Consumer: v3.23.68 right-pane GUI in
 `src/gui/market_inspector_topologies.py`. Design doc:
-`docs/audits/2026-07-31_market_inspector_topology_proposals_design.md`.
+`docs/engineering-notes/2026-07-31_market_inspector_topology_proposals_design.md`.
 
 Introduced 2026-07-31 as v3.23.67 (Piece 3 of the Market Inspector
 build-out). Four archetype detectors + a top-level orchestrator that

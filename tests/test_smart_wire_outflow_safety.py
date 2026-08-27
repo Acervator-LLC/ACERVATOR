@@ -2,7 +2,7 @@
 Arithmetic (SWOS) function.
 
 Full spec:
-docs/audits/2026-07-31_smart_wire_outflow_safety_arithmetic.md
+docs/engineering-notes/2026-07-31_smart_wire_outflow_safety_arithmetic.md
 
 Ten explicit tests locked per §7 of the spec plus one extra to
 pin the operator-answered §8 decisions (steeper 0.2/2.0 endpoints

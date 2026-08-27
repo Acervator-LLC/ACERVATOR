@@ -8,7 +8,7 @@ Reference specification (Diataxis: reference). Introduced v3.23.71
      within the old code."
 
 Design doc:
-`docs/audits/2026-07-31_history_and_simulator_objectives_plan.md`.
+`docs/engineering-notes/2026-07-31_history_and_simulator_objectives_plan.md`.
 
 Isolated pieces (all pure, all testable without Qt):
 

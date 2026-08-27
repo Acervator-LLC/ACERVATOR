@@ -669,6 +669,6 @@ All four were run with `python -m pytest <file> -p no:randomly -q -s`, so
 | Bot TA asks for 100 candles | `src/trading/scrumming_bot.py:7771-7772, 7965-7966` |
 | Dead venue 1 | `src/gui/simulator_tab/fleet/sim_exchange.py:58` |
 | Dead venue 2 | `src/gui/simulator_tab/nuclear_sim_exchange.py:85` |
-| Paper: the concept doc | `docs/audits/2026-08-05_paper_trader_concept_spec.md` |
+| Paper: the concept doc | `docs/engineering-notes/2026-08-05_paper_trader_concept_spec.md` |
 | Paper: permanently-None attributes | `src/gui/main_window.py:5395-5401` |
 | Paper: import of a file that does not exist | `src/gui/stock_main_window.py:363` |

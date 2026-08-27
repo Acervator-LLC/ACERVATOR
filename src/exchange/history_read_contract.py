@@ -49,7 +49,7 @@ venue's own cost field; the header says "Cost USD" and the cell carries a
 dollar sign whatever the quote currency is. This contract serves that
 number unchanged, because a contract that disagreed with the screen would
 be a second implementation. Repairing it is its own unit -- see
-``docs/audits/2026-08-26_qt_to_react_boundary.md`` section 6.2.
+``docs/engineering-notes/2026-08-26_qt_to_react_boundary.md`` section 6.2.
 """
 
 from __future__ import annotations

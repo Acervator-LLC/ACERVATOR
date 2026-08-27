@@ -122,4 +122,4 @@ mine to fix.
 - `src/gui/main_window.py:5055` — the real feed, and `:7228` force_refresh
 - `src/trading/scrumming_bot.py:5841`, `:6076` — the only writers of `_last_summary`
 - Commit `b24f350` — C51
-- `docs/audits/2026-08-06_defect_severity_triage.md` — the ADG rubric used above
+- `docs/engineering-notes/2026-08-06_defect_severity_triage.md` — the ADG rubric used above

@@ -108,7 +108,7 @@ suspect already in mind.
 
 - Trading Tab audit — not yet scheduled; this entry is one of its
   inputs.
-- `docs/audits/2026-08-05_remediation_methodology.md` — the 66-cascade
+- `docs/engineering-notes/2026-08-05_remediation_methodology.md` — the 66-cascade
   sequence. This is not currently in it and should be added to the
   Trading Tab cascade when that is scoped.
 - `anchor_target_balance` persistence is touched by C01 only insofar as

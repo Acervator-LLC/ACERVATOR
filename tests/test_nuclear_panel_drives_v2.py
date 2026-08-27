@@ -1,6 +1,6 @@
 """The Nuclear panel drives the fleet controller, not the tape prototype (W3).
 
-W3 in `docs/audits/2026-08-05_sim_nuclear_2point0_and_optimization_audit.md`:
+W3 in `docs/engineering-notes/2026-08-05_sim_nuclear_2point0_and_optimization_audit.md`:
 "the tab labelled Nuclear Mode still drives the Phase-B single-tape prototype
 the v2 module was written to replace." `simulator_tab.py` said the same in-tree:
 "Nuclear panel still hosts the old tape-based prototype."
