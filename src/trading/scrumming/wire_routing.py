@@ -302,10 +302,11 @@ class WireRoutingMixin:
            naming the source bot + ref.
 
         2. `_fold_tranches` empty: park the USD in `_pending_wire_credits`
-           with a ledger entry. The pending bucket is absorbed into the
-           next tranche created by `_execute_sell`; at that moment the
-           new tranche's initial `usd` = scrum_usd + pending, and the
-           bucket clears.
+           with a ledger entry. The bucket drains at the next fold-tranche
+           build on any of the three build loops, and on state restore --
+           see `_land_pending_wire_credits`. On the SCRUM loop with a queue
+           that was empty, the whole pool goes to the first new tranche and
+           its initial `usd` = scrum_usd + pending.
 
         A stack-at-entry fast path bumps the target and queues an
         aggressive buy when the bot is at its center line and at its
@@ -444,15 +445,7 @@ class WireRoutingMixin:
 
         if self._fold_tranches:
             # Case 1 — even distribution across existing tranches
-            share = u / len(self._fold_tranches)
-            for t in self._fold_tranches:
-                t["usd"] = float(t.get("usd", 0) or 0) + share
-                self._add_wire_credits(
-                    t, [{"source": src, "usd": share, "ref": rf, "ts": credit["ts"]}]
-                )
-            self._fold_queue_usd = sum(
-                float(t.get("usd", 0) or 0) for t in self._fold_tranches
-            )
+            share = self._spread_wire_usd_over_fold_queue(u, [credit])
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
@@ -487,8 +480,8 @@ class WireRoutingMixin:
             message=(
                 f"WIRE INCOME PENDING: +${u:.4f} from {src} parked "
                 f"(no open tranches). Pending total "
-                f"${self._pending_wire_credits:.4f}. Will absorb "
-                f"into next scrum tranche."
+                f"${self._pending_wire_credits:.4f}. Lands in the "
+                f"fold queue when the next sell opens a tranche."
             ),
         )
         logger.info(
@@ -503,6 +496,108 @@ class WireRoutingMixin:
             "pending_total": self._pending_wire_credits,
             "ledger_size": len(self._pending_wire_ledger),
         }
+
+    def _spread_wire_usd_over_fold_queue(self, usd: float, entries: list) -> float:
+        """Add `usd` evenly to every standing fold tranche.
+
+        Each tranche's `usd` grows by `usd / len(tranches)` and gains one
+        `wire_credits` entry per element of `entries`, each entry's own
+        `usd` divided by the same count. Recomputes `_fold_queue_usd`
+        from the per-tranche sums.
+
+        Returns the per-tranche share, or 0.0 when the fold queue holds
+        no tranche.
+        """
+        tranches = self._fold_tranches
+        if not tranches:
+            return 0.0
+        n = len(tranches)
+        share = float(usd) / n
+        for t in tranches:
+            t["usd"] = float(t.get("usd", 0) or 0) + share
+            self._add_wire_credits(
+                t,
+                [
+                    {
+                        "ts": e.get("ts"),
+                        "source": e.get("source", "?"),
+                        "usd": float(e.get("usd", 0.0) or 0.0) / n,
+                        "ref": e.get("ref", ""),
+                    }
+                    for e in entries
+                ],
+            )
+        self._refresh_fold_queue_total()
+        return share
+
+    def _refresh_fold_queue_total(self) -> float:
+        """Set `_fold_queue_usd` to the total the tranche rows hold.
+
+        `_fold_queue_usd` is the scalar the Fold Tranches panel prints
+        and the fold gate reads. Every write to a tranche's `usd` moves
+        it. Returns the new total.
+        """
+        total = 0.0
+        for t in getattr(self, "_fold_tranches", None) or []:
+            total += float(t.get("usd", 0) or 0)
+        self._fold_queue_usd = total
+        return total
+
+    def _land_pending_wire_credits(self) -> float:
+        """Move the parked pool into a fold queue that now holds tranches.
+
+        issue #133 unit 11. `_pending_wire_credits` is the bucket
+        `apply_wire_income` case 2 fills when the fold queue is empty.
+        Case 1 distributes evenly the moment a tranche exists, so a
+        parked pool standing beside an open tranche is money that missed
+        its destination.
+
+        Three build loops create fold tranches -- the SCRUM sell, the
+        DIST sell and `_execute_manual_rebalance`. Only the SCRUM loop
+        drained the bucket, and only when the queue was empty before it,
+        so a DIST or manual sell that opened the first tranche stranded
+        the pool until the queue emptied again and a SCRUM fired.
+
+        Called after every build loop and on state restore. Distribution
+        is `_spread_wire_usd_over_fold_queue`, the same routine case 1
+        uses, so wire USD reaches the same place whether it arrives with
+        tranches standing or lands afterwards.
+
+        Returns the landed amount. Returns 0.0 when the pool is empty or
+        the fold queue holds no tranche.
+        """
+        pending = float(getattr(self, "_pending_wire_credits", 0.0) or 0.0)
+        tranches = getattr(self, "_fold_tranches", None) or []
+        if pending <= 0.0 or not tranches:
+            return 0.0
+
+        n = len(tranches)
+        ledger = list(getattr(self, "_pending_wire_ledger", []) or [])
+        share = self._spread_wire_usd_over_fold_queue(pending, ledger)
+        self._pending_wire_credits = 0.0
+        self._pending_wire_ledger = []
+
+        try:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"WIRE LANDED: ${pending:.4f} of parked credit spread "
+                    f"across {n} standing tranche(s) "
+                    f"(${share:.4f}/tranche). Fold queue now "
+                    f"${self._fold_queue_usd:.4f}. Pending cleared."
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - operator log only
+            logger.debug("_land_pending_wire_credits: log emit failed: %s", exc)
+
+        logger.info(
+            "Bot %s landed %.4f pending wire credits across %d tranches",
+            self.bot_id,
+            pending,
+            n,
+        )
+        return pending
 
     def _add_wire_credits(self, tranche: dict, entries: list) -> None:
         """Append wire-credit provenance to a tranche, bounded.
