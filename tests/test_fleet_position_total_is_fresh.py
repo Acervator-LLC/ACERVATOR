@@ -41,7 +41,9 @@ if str(REPO_ROOT) not in sys.path:
 import src.trading.bot_container as bc  # noqa: E402
 from src.trading.bot_container import BotManager, BotState  # noqa: E402
 
-BC_SRC = Path(bc.__file__).read_text(encoding="utf-8")
+AGG_SRC = (Path(bc.__file__).parent / "container" / "aggregation.py").read_text(
+    encoding="utf-8"
+)
 
 
 class _Stats:
@@ -164,6 +166,6 @@ class TestTheOtherConsumersAlreadyAgree:
         assert "self._current_holdings * price" in seg
 
     def test_the_aggregate_no_longer_only_reads_the_cached_field(self):
-        i = BC_SRC.index("crypto_position_value_usd +=")
-        window = BC_SRC[max(0, i - 1800) : i]
+        i = AGG_SRC.index("crypto_position_value_usd +=")
+        window = AGG_SRC[max(0, i - 1800) : i]
         assert "_current_holdings" in window

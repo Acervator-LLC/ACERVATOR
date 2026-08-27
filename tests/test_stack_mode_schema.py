@@ -174,7 +174,7 @@ class TestOlderBotStateCompatibility:
 
 class TestRestorePaths:
     def test_bot_container_restore_emits_stack_mode(self):
-        src = (REPO / "src" / "trading" / "bot_container.py").read_text(
+        src = (REPO / "src" / "trading" / "container" / "restore.py").read_text(
             encoding="utf-8", errors="replace"
         )
         assert (
@@ -185,7 +185,7 @@ class TestRestorePaths:
         assert '"stack_spacing_mode": cfg.get(' in src
 
     def test_bot_container_restore_no_retired_kwargs(self):
-        src = (REPO / "src" / "trading" / "bot_container.py").read_text(
+        src = (REPO / "src" / "trading" / "container" / "restore.py").read_text(
             encoding="utf-8", errors="replace"
         )
         # allow the string inside _DEPRECATED_KWARGS set but reject the

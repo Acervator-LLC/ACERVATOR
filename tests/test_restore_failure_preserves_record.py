@@ -48,7 +48,9 @@ if str(REPO_ROOT) not in sys.path:
 import src.trading.bot_container as bc  # noqa: E402
 import src.core.state_manager as sm  # noqa: E402
 
-BC_SRC = Path(bc.__file__).read_text(encoding="utf-8")
+BC_SRC = (Path(bc.__file__).parent / "container" / "restore.py").read_text(
+    encoding="utf-8"
+)
 SM_SRC = Path(sm.__file__).read_text(encoding="utf-8")
 
 

@@ -40,6 +40,9 @@ import src.trading.bot_container as bc  # noqa: E402
 
 GUI_SRC = Path(bls.__file__).read_text(encoding="utf-8")
 BC_SRC = Path(bc.__file__).read_text(encoding="utf-8")
+CONFIG_SRC = (Path(bc.__file__).parent / "container" / "config.py").read_text(
+    encoding="utf-8"
+)
 
 NEW_KEYS = (
     "live_target_balance",
@@ -151,16 +154,16 @@ class TestTheStaleClaimWasCorrected:
         """It said "Surfaced for visibility (Status tab + diagnostics)"
         while a grep of src/gui/ for `standing_surplus` returned zero
         matches."""
-        i = BC_SRC.index("standing_surplus_usd: float = 0.0")
-        block = BC_SRC[max(0, i - 1400) : i]
+        i = CONFIG_SRC.index("standing_surplus_usd: float = 0.0")
+        block = CONFIG_SRC[max(0, i - 1400) : i]
         assert "Surfaced for visibility (Status tab + diagnostics)." not in block
 
     def test_the_comment_no_longer_claims_a_drain_exists(self):
         """It said the growth budget "drains it into target_balance over
         time". `_standing_surplus_usd` has no decrement anywhere in
         src/; that drain is Phase 2 Step 7 and has not landed."""
-        i = BC_SRC.index("standing_surplus_usd: float = 0.0")
-        block = BC_SRC[max(0, i - 1400) : i]
+        i = CONFIG_SRC.index("standing_surplus_usd: float = 0.0")
+        block = CONFIG_SRC[max(0, i - 1400) : i]
         assert "one-way sink" in block
 
     def test_it_is_now_actually_surfaced(self):
