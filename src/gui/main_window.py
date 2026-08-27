@@ -6116,35 +6116,11 @@ if _HAS_QT:
                 self._history_tab = None
                 self._trade_history_tab = None
 
-            # --- Tab 13: History (React) — issue #128 unit R4 ---
-            # A SECOND renderer for the SAME data, drawn by React inside
-            # the Chromium PySide6 already ships. The Qt tab above is not
-            # altered: it stays the reference this one is judged against.
-            #
-            # It runs no fetch of its own. It subscribes to the Qt tab's
-            # `history_refreshed` signal, so both panels draw one fetch
-            # and cannot disagree for a reason that is not the renderer.
-            # Imported here, not at module scope: the panel needs
-            # QtWebEngineWidgets, and a top-level import would make this
-            # whole window unimportable on a box without it.
-            self._react_history: Optional[QWidget] = None
-            try:
-                from .react_history_panel import ReactHistoryPanel
-
-                panel = ReactHistoryPanel()
-                panel.set_bot_manager(self._bot_manager)
-                self._main_tabs.addTab(panel, "History (React)")
-                if self._history_tab is not None:
-                    self._history_tab.history_refreshed.connect(
-                        panel.on_history_refreshed,
-                    )
-                self._react_history = panel
-            except Exception as exc:
-                logger.warning(
-                    "React History panel not built: %s: %s",
-                    type(exc).__name__,
-                    exc,
-                )
+            # --- No second History tab ---
+            # Issue #128 R6 folded the React renderer INTO the History
+            # tab above: HistoryTab holds a HistoryWebTable where its
+            # QTableWidget used to be. A separate "History (React)" tab
+            # would put the same rows on screen twice.
 
             # --- Console / Terminal Tab ---
             # MEM-204 — QPlainTextEdit instead of QTextEdit. QTextEdit is a

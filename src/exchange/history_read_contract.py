@@ -59,6 +59,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
 
+from src.trading.gate_vocabulary import gate_light_row
 from src.exchange.history_helpers import (
     build_page_gate_index,
     build_page_voting_index,
@@ -599,21 +600,39 @@ def _gate_color(text: str) -> Optional[str]:
 
 
 def _gate_lights(entry: Optional[dict]) -> Optional[dict]:
-    """The five inputs the Simulator's gate-light cell draws from.
+    """The five inputs the Simulator's gate-light cell draws from, plus
+    the nineteen resolved lights.
 
-    Present only when a gate record joined. A client that drew ten grey
-    lights for a row with no record would say "evaluated, nothing fired"
-    about a row nothing was recorded for.
+    Present only when a gate record joined. A client that drew nineteen
+    grey lights for a row with no record would say "evaluated, nothing
+    fired" about a row nothing was recorded for.
+
+    ``lights`` is ``src.trading.gate_vocabulary.gate_light_row``, the
+    same rule the Simulator's ``GateLightsCell`` paints from. A client
+    that re-derived a light colour from the four raw fields would be a
+    second implementation of the gate map.
     """
     if not entry:
         return None
     data = entry.get("data") or {}
+    scrum_armed = bool(data.get("scrum_armed"))
+    fold_armed = bool(data.get("fold_armed"))
+    scrum_blockers = list(data.get("scrum_blockers") or [])
+    fold_blockers = list(data.get("fold_blockers") or [])
+    landing_strip_side = data.get("landing_strip_side")
     return {
-        "scrum_armed": bool(data.get("scrum_armed")),
-        "fold_armed": bool(data.get("fold_armed")),
-        "scrum_blockers": list(data.get("scrum_blockers") or []),
-        "fold_blockers": list(data.get("fold_blockers") or []),
-        "landing_strip_side": data.get("landing_strip_side"),
+        "scrum_armed": scrum_armed,
+        "fold_armed": fold_armed,
+        "scrum_blockers": scrum_blockers,
+        "fold_blockers": fold_blockers,
+        "landing_strip_side": landing_strip_side,
+        "lights": gate_light_row(
+            scrum_armed,
+            fold_armed,
+            scrum_blockers,
+            fold_blockers,
+            str(landing_strip_side or ""),
+        ),
     }
 
 

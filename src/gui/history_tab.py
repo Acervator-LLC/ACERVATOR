@@ -24,6 +24,12 @@ the sound pieces from ``src.exchange.history_helpers`` instead. Fixes:
 
 Chrome (filter bar, table, pagination, CSV export) preserved.
 
+Issue #128 R6 (2026-08-26): the ``QTableWidget`` is a ``HistoryWebTable``
+-- React inside the Chromium PySide6 ships. Every cell string, colour,
+tooltip and gate light comes from ``src.exchange.history_read_contract``.
+The controls around it stay Qt: the bridge is one-way, so the page cannot
+deliver a click back to Python.
+
 sadp: R28 (fail-loud display), R44 (exchange truth), R70 RCN
 """
 
@@ -39,48 +45,31 @@ from typing import Optional
 
 try:
     from PySide6.QtCore import QDateTime, Qt, QTimer, Signal
-    from PySide6.QtGui import QColor
     from PySide6.QtWidgets import (
-        QAbstractItemView,
         QComboBox,
         QDateTimeEdit,
         QFileDialog,
         QGroupBox,
         QHBoxLayout,
-        QHeaderView,
         QLabel,
         QMessageBox,
         QProgressBar,
         QPushButton,
-        QTableWidget,
-        QTableWidgetItem,
         QVBoxLayout,
         QWidget,
     )  # v3.19.12 removed unused QSpacerItem
 
     _HAS_QT = True
 except ImportError:
-    # THE FALLBACK THIS REPLACES DID NOT DO WHAT ITS COMMENT PROMISED.
+    # The form bot_visualizer.py and nine other src/gui modules use:
+    # without PySide6 there is no Qt name and no widget class, so
+    # importing this module still succeeds and the module-level helpers
+    # below stay usable. Asking for the widget then fails by name, as an
+    # ImportError at the import site, which main_window.py catches and
+    # logs as "History tab unavailable".
     #
-    # It bound ``Qt = QTimer = Signal = QColor = None`` and
-    # ``QWidget = object`` under the note "methods still importable".
-    # Both halves were false:
-    #
-    #   * ``QColor(...)`` and ``QTimer(...)`` are called unguarded at 13
-    #     sites in the render and fetch paths. With PySide6 absent every
-    #     one raised ``TypeError: 'NoneType' object is not callable``,
-    #     which is what the module imported ONLY to do.
-    #   * The fallback never bound QTableWidgetItem, QLabel, QMessageBox,
-    #     QHeaderView or the rest at all, so those sites raised
-    #     NameError. The fallback was partial as well as wrong.
-    #
-    # The form below is the one this repo already uses in
-    # bot_visualizer.py and nine other src/gui modules: when Qt is
-    # missing there is no Qt and no widget class, so importing this
-    # module still succeeds (the module-level helper below stays
-    # usable) and asking for the widget fails by name, as an
-    # ImportError, at the import site. main_window.py:5079-5117 already
-    # catches exactly that and logs "History tab unavailable".
+    # Binding the missing names to None instead would defer the failure
+    # to the first call and raise TypeError from inside a render.
     _HAS_QT = False
 
 logger = logging.getLogger("acervator.gui.history")
@@ -301,65 +290,17 @@ if _HAS_QT:
             outer.addWidget(self._summary)
 
             # ── Trades table ─────────────────────────────────────────────
-            # v3.20.78 — added "Grade" column at index 10 backed by
-            # sadp._tools.trade_grader. Grading is on-demand and operator-
-            # visible; never feeds back into trading decisions.
-            # v3.23.10 D-01 — added "Gate" (idx 11) + "Voting" (idx 12)
-            # columns wired via the read-time joiner against live's
-            # gate.log + voting.log streams (sadp._tools.live_log_reader).
-            # The join is per-page, indexed by (bot_id, ts-bucket), with a
-            # ±60s tolerance per operator's 2026-06-13 pin. Pre-v3.23.6
-            # rows where no gate/voting entry exists render as '—'.
-            self._table = QTableWidget()
-            self._table.setColumnCount(13)
-            self._table.setHorizontalHeaderLabels(
-                [
-                    "Timestamp (UTC)",
-                    "Exchange",
-                    "Symbol",
-                    "Bot",
-                    "Side",
-                    "Amount",
-                    "Price",
-                    "Cost USD",
-                    "Fee",
-                    "Trade ID",
-                    "Grade",
-                    "Gates",
-                    "Voting",
-                ]
-            )
-            # v3.23.71 H2: column renamed Gate → Gates. Header tooltip
-            # walks the operator through the join contract.
-            _hdr = self._table.horizontalHeaderItem(11)
-            if _hdr is not None:
-                _hdr.setToolTip(
-                    "Join against ~/.acervator_logs/trade/gate.log entries "
-                    "within ±60s of the trade. Hover any cell for the full "
-                    "scrum/fold arm state + blocker list at trade time."
-                )
-            _hdr = self._table.horizontalHeaderItem(12)
-            if _hdr is not None:
-                _hdr.setToolTip(
-                    "Join against ~/.acervator_logs/trade/voting.log "
-                    "snapshots. Hover any cell for the per-indicator "
-                    "direction / confidence / timeframe / weight roll-up "
-                    "the panel saw at trade time."
-                )
-            _hdr = self._table.horizontalHeaderItem(10)
-            if _hdr is not None:
-                _hdr.setToolTip(
-                    "On-demand grade (A–F) computed by "
-                    "src.trading.trade_grader from surrounding same-asset "
-                    "trades on this page. Hover for the letter meaning."
-                )
-            self._table.horizontalHeader().setSectionResizeMode(
-                QHeaderView.ResizeToContents
-            )
-            self._table.horizontalHeader().setStretchLastSection(False)
-            self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-            self._table.setAlternatingRowColors(True)
-            self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
+            # Issue #128 R6 — the thirteen-column list is drawn by React
+            # inside QWebEngineView. The column set, every cell string,
+            # every colour, every tooltip and the nineteen gate lights
+            # come from src.exchange.history_read_contract; this tab
+            # chooses the rows and pushes them.
+            #
+            # The controls around it stay Qt because the bridge is
+            # one-way: the page cannot deliver a click back to Python.
+            from .react_history_panel import HistoryWebTable
+
+            self._table = HistoryWebTable(self)
             outer.addWidget(self._table, stretch=1)
 
             # ── Footer bar (pagination + export) ─────────────────────────
@@ -782,7 +723,27 @@ if _HAS_QT:
             self._apply_filters()
 
         # ── Pagination + rendering ───────────────────────────────────────
+        def _current_filters(self):
+            """The five filter values, read off the two date edits and
+            the three combos, as the contract's filter record."""
+            from src.exchange import history_read_contract as hrc
+
+            try:
+                from_ts = self._from_dt.dateTime().toSecsSinceEpoch()
+                to_ts = self._to_dt.dateTime().toSecsSinceEpoch()
+            except Exception:  # R28-OK: a torn-down date edit
+                from_ts, to_ts = 0, 0
+            return hrc.HistoryFilters(
+                from_ts=int(from_ts),
+                to_ts=int(to_ts),
+                exchange=self._exch_combo.currentText(),
+                symbol=self._sym_combo.currentText(),
+                side=self._side_combo.currentText(),
+            )
+
         def _render_page(self) -> None:
+            from .react_history_panel import TABLE_ONLY_CHROME, build_view_model
+
             total = len(self._filtered)
             max_page = max(0, (total - 1) // self.PAGE_SIZE)
             if self._page > max_page:
@@ -799,197 +760,80 @@ if _HAS_QT:
             # absent log dir / unwritable env doesn't break the GUI render.
             self._build_joiner_indexes_for_page(rows)
 
-            self._table.setRowCount(len(rows))
-            for row_i, r in enumerate(rows):
-                dt = r.get("datetime")
-                ts_str = dt.strftime("%Y-%m-%d %H:%M:%S") if dt is not None else "—"
-                self._table.setItem(row_i, 0, QTableWidgetItem(ts_str))
-                self._table.setItem(
-                    row_i, 1, QTableWidgetItem(str(r.get("exchange", "")))
-                )
-                self._table.setItem(
-                    row_i, 2, QTableWidgetItem(str(r.get("symbol", "")))
-                )
-                bot_label = _resolve_bot_label(
-                    self._bot_manager, r.get("exchange", ""), r.get("symbol", "")
-                )
-                self._table.setItem(row_i, 3, QTableWidgetItem(bot_label))
-                side_item = QTableWidgetItem(str(r.get("side", "")))
-                if r.get("side") == "BUY":
-                    side_item.setForeground(QColor("#00ff88"))
-                elif r.get("side") == "SELL":
-                    side_item.setForeground(QColor("#ff5566"))
-                self._table.setItem(row_i, 4, side_item)
-                self._table.setItem(
-                    row_i, 5, QTableWidgetItem(f"{r.get('amount', 0):,.8f}")
-                )
-                self._table.setItem(
-                    row_i, 6, QTableWidgetItem(f"${r.get('price', 0):,.8f}")
-                )
-                self._table.setItem(
-                    row_i, 7, QTableWidgetItem(f"${r.get('cost', 0):,.4f}")
-                )
-                fee_str = (
-                    f"{r.get('fee', 0):,.6f} {r.get('fee_currency', '')}"
-                    if r.get("fee", 0) > 0
-                    else "—"
-                )
-                self._table.setItem(row_i, 8, QTableWidgetItem(fee_str))
-                tid = str(r.get("id", ""))
-                self._table.setItem(
-                    row_i, 9, QTableWidgetItem(tid[:16] + "…" if len(tid) > 16 else tid)
-                )
-                # v3.20.78 — Grade column (idx 10). On-demand grading via
-                # sadp._tools.trade_grader using context from the
-                # surrounding filtered trades (same asset/exchange) on
-                # this page. Read-only display; never feeds back into
-                # trading decisions.
-                grade_str = self._grade_row(row_i, rows, r)
-                grade_item = QTableWidgetItem(grade_str)
-                # Color by letter
-                if grade_str.startswith("A"):
-                    grade_item.setForeground(QColor("#00ff88"))
-                elif grade_str.startswith("B"):
-                    grade_item.setForeground(QColor("#88dd44"))
-                elif grade_str.startswith("C"):
-                    grade_item.setForeground(QColor("#dddd44"))
-                elif grade_str.startswith("D"):
-                    grade_item.setForeground(QColor("#ff9944"))
-                elif grade_str.startswith("F"):
-                    grade_item.setForeground(QColor("#ff5566"))
-                # v3.23.71 H3: Grade cell gets a tooltip explaining the
-                # letter's meaning.
-                from src.exchange.history_helpers import grade_tooltip as _grade_tt
+            # The indexes are handed in, so build_page reads no log of its
+            # own and the pin above still measures the only read there is.
+            model = build_view_model(
+                self._all_trades,
+                self._current_filters(),
+                self._page,
+                self._bot_manager,
+                last_fetched_ts=self._last_fetched_ts,
+                filtered=self._filtered,
+                gate_index=self._page_gate_index,
+                voting_index=self._page_voting_index,
+                chrome=TABLE_ONLY_CHROME,
+            )
+            self._table.set_model(model)
 
-                grade_item.setToolTip(_grade_tt(grade_str))
-                self._table.setItem(row_i, 10, grade_item)
-
-                # v3.23.71 H2 + H3: Gates column (idx 11) and Voting
-                # column (idx 12) now use the isolated helpers. Text is
-                # the compact cell marker; tooltip is the rich HTML view
-                # of the full state captured at trade time.
-                from src.exchange.history_helpers import (
-                    resolve_bot_id_for_row as _resolve_bid,
-                    lookup_gate_entry as _lookup_gate,
-                    lookup_voting_entry as _lookup_vote,
-                    gate_cell_text as _gate_txt,
-                    gate_cell_tooltip as _gate_tt,
-                    voting_cell_text as _vote_txt,
-                    voting_cell_tooltip as _vote_tt,
-                )
-
-                bid_for_join = _resolve_bid(self._bot_manager, r)
-                ts_for_join = float(r.get("timestamp", 0) or 0)
-                gate_entry = _lookup_gate(
-                    self._page_gate_index, bid_for_join, ts_for_join
-                )
-                gate_str = _gate_txt(gate_entry)
-                gate_item = QTableWidgetItem(gate_str)
-                if "S" in gate_str and "F" not in gate_str:
-                    gate_item.setForeground(QColor("#00ff88"))
-                elif "F" in gate_str and "S" not in gate_str:
-                    gate_item.setForeground(QColor("#ff5566"))
-                elif "S" in gate_str and "F" in gate_str:
-                    gate_item.setForeground(QColor("#ffaa33"))
-                gate_item.setToolTip(_gate_tt(gate_entry))
-                self._table.setItem(row_i, 11, gate_item)
-                # v3.24.98 — THE SIMULATOR'S OWN GATE ROW, in this column.
-                #
-                # Operator, 2026-08-08: the Gates column "should align with
-                # gate row indicators found in the Simulator and show gate
-                # latching status for each trade... This will keeps styling
-                # and readability consistent."
-                #
-                # `GateLightsCell` is the widget the Simulator draws, so
-                # this is the same ten labelled LEDs with the same colour
-                # semantics -- grey not evaluated, green passed, red
-                # blocked, amber not-the-blocker -- rather than a second
-                # rendering that could drift from it.
-                #
-                # Only when a record exists: a widget on a row with no gate
-                # data would paint ten grey lights, which reads as
-                # "evaluated, nothing fired" and is exactly the confusion
-                # being removed. Those rows keep the text cell.
-                if gate_entry:
-                    try:
-                        from .simulator_tab.fleet.sim_visuals import (
-                            GateLightsCell as _GLC,
-                        )
-
-                        _gd = gate_entry.get("data") or {}
-                        _cell = _GLC()
-                        _cell.update_gates(
-                            scrum_armed=bool(_gd.get("scrum_armed")),
-                            fold_armed=bool(_gd.get("fold_armed")),
-                            scrum_blockers=list(_gd.get("scrum_blockers") or []),
-                            fold_blockers=list(_gd.get("fold_blockers") or []),
-                            landing_strip_side=_gd.get("landing_strip_side"),
-                        )
-                        _cell.setToolTip(_gate_tt(gate_entry))
-                        self._table.setCellWidget(row_i, 11, _cell)
-                    except Exception as _glc_exc:  # noqa: BLE001 - GUI guard
-                        logger.debug("gate lights cell unavailable: %s", _glc_exc)
-
-                vote_entry = _lookup_vote(
-                    self._page_voting_index,
-                    bid_for_join,
-                    ts_for_join,
-                    str(r.get("side", "") or ""),
-                )
-                voting_str = _vote_txt(vote_entry)
-                voting_item = QTableWidgetItem(voting_str)
-                up = voting_str.upper()
-                if "BUY" in up or up.startswith("B "):
-                    voting_item.setForeground(QColor("#00ff88"))
-                elif "SELL" in up or up.startswith("S "):
-                    voting_item.setForeground(QColor("#ff5566"))
-                voting_item.setToolTip(_vote_tt(vote_entry))
-                self._table.setItem(row_i, 12, voting_item)
-
-            # 05.005 -- COUNT THE ROWS THE TABLE ITSELF DREW.
+            # 05.005 -- COUNT THE ROWS THE BROWSER ITSELF DREW.
             #
-            # Not `rowCount()` on its own. `setRowCount(n)` makes
-            # `rowCount()` return `n` whether or not a single cell was
-            # ever filled, so a loop that stopped early -- the Gates
-            # column builds a `GateLightsCell` widget per row, and the
-            # grader plus both joiner lookups run per row -- leaves a
-            # table that reports a full page and shows blank lines. This
-            # walks the table and counts the rows whose timestamp cell
-            # actually exists.
+            # It counts `#panel-rows tr` in the live DOM, read back
+            # through the same one-way bridge the push travels. Not the
+            # length of the pushed page: a payload that was built and
+            # never rendered -- a page that failed to load, a push that
+            # raised inside React -- agrees with itself and could never
+            # fail. The predecessor counted the rows a QTableWidget had
+            # cells in, for the same reason.
+            #
+            # THE READ IS ASYNCHRONOUS and the pin fires from its
+            # callback. `runJavaScript` answers through a callback, and
+            # the synchronous alternative is a nested event loop on the
+            # GUI thread, which would re-enter this render.
             #
             # `expected` is the pagination arithmetic recomputed from
             # `total` and the CLAMPED page, independently of the `rows`
-            # slice that fed the loop. So a clamp that disagrees with the
+            # slice that fed the push. So a clamp that disagrees with the
             # slice, an off-by-one in `end`, or a page left beyond the
-            # last one shows up here rather than as an empty table the
-            # operator has to interpret.
+            # last one shows up here rather than as an empty table.
+            #
+            # A count that cannot be read records -1, which equals no row
+            # count and therefore reports `ok` False. UNVERIFIED IS NOT
+            # VERIFIED, and `readback` in the context says which of the
+            # two happened. The CSV pin at 05.007 records an unread
+            # artifact the same way.
             #
             # NO DURATION. The bracket would have to span the joiner
             # build, which has its own pin below and its own log I/O, and
             # one number covering both would be attributable to neither.
-            _drawn = sum(
-                1
-                for _i in range(self._table.rowCount())
-                if self._table.item(_i, 0) is not None
-            )
             _want_rows = min(
                 self.PAGE_SIZE, max(0, total - self._page * self.PAGE_SIZE)
             )
-            with contextlib.suppress(Exception):
-                from src.core.signal_contract import emit as _hist_emit
+            _page_now = self._page
 
-                _hist_emit(
-                    "history.05.005.postcondition.page_rendered",
-                    actual=_drawn,
-                    expected=_want_rows,
-                    context={
-                        "page": self._page,
-                        "pages": max_page + 1,
-                        "filtered": total,
-                        "row_count": self._table.rowCount(),
-                        "page_size": self.PAGE_SIZE,
-                    },
-                )
+            def _emit_drawn(drawn) -> None:
+                try:
+                    _actual = int(drawn)
+                except (TypeError, ValueError):
+                    _actual = -1
+                with contextlib.suppress(Exception):
+                    from src.core.signal_contract import emit as _hist_emit
+
+                    _hist_emit(
+                        "history.05.005.postcondition.page_rendered",
+                        actual=_actual,
+                        expected=_want_rows,
+                        context={
+                            "page": _page_now,
+                            "pages": max_page + 1,
+                            "filtered": total,
+                            "pushed_rows": len(model["page"]["rows"]),
+                            "readback": _actual >= 0,
+                            "page_size": self.PAGE_SIZE,
+                        },
+                    )
+
+            if not self._table.row_count(_emit_drawn):
+                _emit_drawn(-1)
 
             # Page label
             if total == 0:
@@ -1025,95 +869,23 @@ if _HAS_QT:
 
         # ── Trade grading (v3.20.78) ─────────────────────────────────────
         def _grade_row(self, row_i: int, page_rows: list, r: dict) -> str:
-            """Grade a single trade row.
+            """Grade one trade row. Delegates to the read contract.
 
-            Uses the surrounding page-context for ref-price + future-price
-            proxies (this page's filtered rows of the same symbol). On-
-            demand, read-only — grade NEVER feeds back into trading
-            decisions. Returns the letter grade string or "—" on insufficient
-            context."""
-            try:
-                from src.trading.trade_grader import (
-                    TradeRecord,
-                    PriceContext,
-                    grade_trade,
-                )
-            except Exception:
-                return "—"
-            symbol = str(r.get("symbol", ""))
-            side = str(r.get("side", "")).lower()  # BUY → buy / SELL → sell
-            price = float(r.get("price", 0) or 0)
-            qty = float(r.get("amount", 0) or 0)
-            if price <= 0 or qty <= 0 or side not in ("buy", "sell"):
-                return "—"
-            # Surrounding same-symbol rows on this page (before/after).
-            #
-            # v3.24.56 (C52 / NF-16) — THE PAGE IS NEWEST-FIRST.
-            # `history_helpers.py:295` sorts the fetch with
-            # `reverse=True`, and nothing re-sorts between there and here:
-            # `_all_trades` is assigned verbatim, `_filtered` preserves that
-            # order, and `_render_page` slices it. So a LOWER index is a
-            # LATER trade.
-            #
-            # This loop previously read `j < row_i` as "before", which put
-            # post-trade prices into the ref price and pre-trade prices into
-            # the MFE/MAE window. Every letter grade and grade tooltip was
-            # computed with the time axis running backwards.
-            #
-            # The two errors do not cancel: on a buy immediately followed by
-            # a fall, the inverted reading returns A+ where the correct one
-            # returns D — the best available grade for one of the worst
-            # available trades.
-            same_sym_prior_prices = []
-            same_sym_future_prices = []
-            for j, other in enumerate(page_rows):
-                if str(other.get("symbol", "")) != symbol:
-                    continue
-                op = float(other.get("price", 0) or 0)
-                if op <= 0:
-                    continue
-                if j < row_i:
-                    # Lower index = more recent = AFTER this trade.
-                    same_sym_future_prices.append(op)
-                elif j > row_i:
-                    # Higher index = older = BEFORE this trade.
-                    same_sym_prior_prices.append(op)
-            # Ref price = median of the 5 NEAREST prior same-symbol prices
-            # on this page; require at least 3 for sensible context.
-            #
-            # The slice direction flips with the axis. Iteration runs
-            # newest-first, so `same_sym_prior_prices` comes out
-            # nearest-first — `[:5]` are the five immediately preceding
-            # trades. The old `[-5:]` would now reach for the five OLDEST
-            # rows on the page, which is a different (and worse) reference
-            # than the one the docstring describes.
-            ref = None
-            if len(same_sym_prior_prices) >= 3:
-                import statistics
+            ``history_read_contract.grade_row`` holds the whole rule: the
+            page is newest-first, so a LOWER index is a LATER trade, the
+            reference price is the median of the five nearest prior
+            same-symbol prices on this page, and the MFE/MAE window is the
+            ten nearest following ones. Read-only -- a grade never feeds
+            back into trading decisions.
 
-                ref = statistics.median(same_sym_prior_prices[:5])
-            rec = TradeRecord(
-                trade_id=str(r.get("id", "")),
-                timestamp=r.get("datetime"),
-                asset=symbol.split("/")[0] if "/" in symbol else symbol,
-                side=side,
-                price=price,
-                quantity=qty,
-                fee=float(r.get("fee", 0) or 0),
-            )
-            ctx = PriceContext(
-                ref_price_at_decision=ref,
-                # Nearest 10 post-trade prices. Same slice-direction flip as
-                # the ref price: iteration is newest-first, so this list
-                # comes out newest-first and the trades immediately
-                # FOLLOWING this one are at the end. `[:10]` would take the
-                # ten most distant, which on a full page is a different
-                # MFE/MAE window than the one being described.
-                future_prices=same_sym_future_prices[-10:],
-                regime_tag="LIVE",
-            )
-            g = grade_trade(rec, ctx)
-            return g.overall
+            The page render reaches the same rule through
+            ``build_row``; this method is the tab's named entry to it, and
+            it delegates rather than repeating the rule so the two cannot
+            drift.
+            """
+            from src.exchange.history_read_contract import grade_row
+
+            return grade_row(row_i, page_rows, r)
 
         # ── Read-time joiner (v3.23.10 D-01) ─────────────────────────────
         def _build_joiner_indexes_for_page(self, page_rows: list) -> None:
