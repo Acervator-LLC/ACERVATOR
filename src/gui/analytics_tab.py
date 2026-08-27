@@ -16,8 +16,6 @@ try:
         QWidget,
         QVBoxLayout,
         QHBoxLayout,
-        QLabel,
-        QFrame,
         QTableWidget,
         QTableWidgetItem,
         QHeaderView,
@@ -27,40 +25,19 @@ try:
     from PySide6.QtCore import Qt, QPointF
     from PySide6.QtGui import QPainter, QColor, QPen, QLinearGradient, QFont, QPolygonF
 
+    from .widgets import METRIC_CARD, StatCard
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
 
 if _HAS_QT:
 
-    class MetricCard(QFrame):
-        """Small card showing a single metric."""
+    class MetricCard(StatCard):
+        """Small card showing a single metric. Skin: METRIC_CARD."""
 
         def __init__(self, label: str, value: str = "---", parent=None):
-            super().__init__(parent)
-            self.setAccessibleName("Metric Card")
-            self.setFrameShape(QFrame.StyledPanel)
-            self.setStyleSheet(
-                "MetricCard { background: #12121f; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; }"
-            )
-            layout = QVBoxLayout(self)
-            layout.setContentsMargins(10, 8, 10, 8)
-            layout.setSpacing(2)
-            self._label = QLabel(label)
-            self._label.setStyleSheet("color: #888; font-size: 10px;")
-            self._value = QLabel(value)
-            self._value.setStyleSheet(
-                "color: #e0e0f0; font-size: 16px; font-weight: bold;"
-            )
-            layout.addWidget(self._label)
-            layout.addWidget(self._value)
-
-        def set_value(self, value: str, color: str = "#e0e0f0"):
-            self._value.setText(value)
-            self._value.setStyleSheet(
-                f"color: {color}; font-size: 16px; font-weight: bold;"
-            )
+            super().__init__(label, value, parent=parent, style=METRIC_CARD)
 
     class MiniEquityChart(QWidget):
         """Simple painted equity curve chart."""
