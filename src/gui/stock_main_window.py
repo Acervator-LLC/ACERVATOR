@@ -38,6 +38,7 @@ try:
     from PySide6.QtCore import Qt, QTimer, Slot, Signal, QObject
     from PySide6.QtGui import QColor, QFont  # v3.19.12 removed unused QAction, QIcon
 
+    from . import design_system as ds
     from .widgets import ColumnarTableWidget, ColumnSpec, STOCK_CARD, StatCard
 
     _HAS_QT = True
@@ -103,7 +104,11 @@ if _HAS_QT:
                     item = QTableWidgetItem(text)
                     item.setTextAlignment(Qt.AlignCenter)
                     if col == 7:  # P/L
-                        color = QColor("#00cc66") if pnl >= 0 else QColor("#ff4466")
+                        color = (
+                            QColor(ds.STOCK_POSITIVE)
+                            if pnl >= 0
+                            else QColor(ds.STOCK_NEGATIVE)
+                        )
                         item.setForeground(color)
                     self.setItem(row, col, item)
 
@@ -170,16 +175,16 @@ if _HAS_QT:
             market_bar = QHBoxLayout()
             self._market_status = QLabel("Market Status: Loading...")
             self._market_status.setStyleSheet(
-                "color: #00aaff; font-size: 13px; font-weight: bold; "
-                "padding: 4px 12px; background: #0a1020; "
-                "border-radius: 4px; border: 1px solid #1a2a4f;"
+                f"color: {ds.STATUS_INFO}; font-size: 13px; font-weight: bold; "
+                f"padding: 4px 12px; background: {ds.CARD_STOCK_PANEL}; "
+                f"border-radius: 4px; border: 1px solid {ds.CARD_STOCK_BORDER};"
             )
             market_bar.addWidget(self._market_status)
             market_bar.addStretch()
 
             self._webhook_status = QLabel("Webhook: Inactive")
             self._webhook_status.setStyleSheet(
-                "color: #888; font-size: 11px; padding: 4px 8px;"
+                f"color: {ds.CARD_METRIC_LABEL}; font-size: 11px; padding: 4px 8px;"
             )
             market_bar.addWidget(self._webhook_status)
             main_layout.addLayout(market_bar)
@@ -225,10 +230,11 @@ if _HAS_QT:
             btn_row = QHBoxLayout()
             self._btn_new_bot = QPushButton("＋ New Accumulation Bot")
             self._btn_new_bot.setStyleSheet(
-                "QPushButton { background: #00aaff; color: #0a0a12; "
+                f"QPushButton {{ background: {ds.STATUS_INFO}; "
+                f"color: {ds.SURFACE_CHART}; "
                 "border: none; border-radius: 6px; padding: 8px 16px; "
                 "font-weight: bold; }"
-                "QPushButton:hover { background: #0088dd; }"
+                f"QPushButton:hover {{ background: {ds.STOCK_BUTTON_HOVER}; }}"
             )
             self._btn_new_bot.clicked.connect(self._create_bot)
             btn_row.addWidget(self._btn_new_bot)
@@ -240,9 +246,11 @@ if _HAS_QT:
             ]:
                 btn = QPushButton(label)
                 btn.setStyleSheet(
-                    "QPushButton { background: #1a2a4f; color: #aabbcc; "
-                    "border: 1px solid #2a3a5f; border-radius: 4px; padding: 6px 12px; }"
-                    "QPushButton:hover { background: #2a3a6f; }"
+                    f"QPushButton {{ background: {ds.CARD_STOCK_BORDER}; "
+                    f"color: {ds.CARD_STOCK_BODY}; "
+                    f"border: 1px solid {ds.CARD_STOCK_BUTTON_BORDER}; "
+                    f"border-radius: 4px; padding: 6px 12px; }}"
+                    f"QPushButton:hover {{ background: {ds.CARD_STOCK_BUTTON_HOVER}; }}"
                 )
                 btn.clicked.connect(slot)
                 btn_row.addWidget(btn)
@@ -260,8 +268,9 @@ if _HAS_QT:
 
             chart_group = QGroupBox("TradingView Chart")
             chart_group.setStyleSheet(
-                "QGroupBox { background: #0a1020; border: 1px solid #1a2a4f; "
-                "border-radius: 6px; color: #00aaff; }"
+                f"QGroupBox {{ background: {ds.CARD_STOCK_PANEL}; "
+                f"border: 1px solid {ds.CARD_STOCK_BORDER}; "
+                f"border-radius: 6px; color: {ds.STATUS_INFO}; }}"
             )
             chart_layout = QVBoxLayout(chart_group)
             try:
@@ -293,15 +302,17 @@ if _HAS_QT:
             # Activity log
             log_group = QGroupBox("Activity Log")
             log_group.setStyleSheet(
-                "QGroupBox { background: #0a1020; border: 1px solid #1a2a4f; "
-                "border-radius: 6px; color: #00aaff; }"
+                f"QGroupBox {{ background: {ds.CARD_STOCK_PANEL}; "
+                f"border: 1px solid {ds.CARD_STOCK_BORDER}; "
+                f"border-radius: 6px; color: {ds.STATUS_INFO}; }}"
             )
             log_layout = QVBoxLayout(log_group)
             self._status_log = QTextEdit()
             self._status_log.setReadOnly(True)
             self._status_log.setMaximumHeight(150)
             self._status_log.setStyleSheet(
-                "QTextEdit { background: #080c18; color: #aabbcc; border: none; }"
+                f"QTextEdit {{ background: {ds.CARD_STOCK_LOG_SURFACE}; "
+                f"color: {ds.CARD_STOCK_BODY}; border: none; }}"
             )
             log_layout.addWidget(self._status_log)
             trading_layout.addWidget(log_group)
@@ -314,8 +325,9 @@ if _HAS_QT:
 
             wh_config = QGroupBox("TradingView Webhook Configuration")
             wh_config.setStyleSheet(
-                "QGroupBox { background: #0a1020; border: 1px solid #1a2a4f; "
-                "border-radius: 6px; color: #00aaff; }"
+                f"QGroupBox {{ background: {ds.CARD_STOCK_PANEL}; "
+                f"border: 1px solid {ds.CARD_STOCK_BORDER}; "
+                f"border-radius: 6px; color: {ds.STATUS_INFO}; }}"
             )
             wh_form = QFormLayout(wh_config)
 
@@ -332,7 +344,8 @@ if _HAS_QT:
             wh_btn_row = QHBoxLayout()
             self._btn_start_wh = QPushButton("Start Webhook Server")
             self._btn_start_wh.setStyleSheet(
-                "QPushButton { background: #00aaff; color: #0a0a12; "
+                f"QPushButton {{ background: {ds.STATUS_INFO}; "
+                f"color: {ds.SURFACE_CHART}; "
                 "border: none; border-radius: 4px; padding: 8px 16px; font-weight: bold; }"
             )
             self._btn_start_wh.clicked.connect(self._toggle_webhook)
@@ -340,7 +353,9 @@ if _HAS_QT:
             wh_form.addRow(wh_btn_row)
 
             self._wh_url_label = QLabel("URL: Not started")
-            self._wh_url_label.setStyleSheet("color: #888; font-family: Consolas;")
+            self._wh_url_label.setStyleSheet(
+                f"color: {ds.CARD_METRIC_LABEL}; font-family: Consolas;"
+            )
             wh_form.addRow(self._wh_url_label)
 
             wh_layout.addWidget(wh_config)
@@ -348,29 +363,31 @@ if _HAS_QT:
             # Alert format guide
             guide = QGroupBox("TradingView Alert Format")
             guide.setStyleSheet(
-                "QGroupBox { background: #0a1020; border: 1px solid #1a2a4f; "
-                "border-radius: 6px; color: #00aaff; }"
+                f"QGroupBox {{ background: {ds.CARD_STOCK_PANEL}; "
+                f"border: 1px solid {ds.CARD_STOCK_BORDER}; "
+                f"border-radius: 6px; color: {ds.STATUS_INFO}; }}"
             )
             guide_layout = QVBoxLayout(guide)
             guide_text = QTextEdit()
             guide_text.setReadOnly(True)
             guide_text.setMaximumHeight(200)
             guide_text.setStyleSheet(
-                "QTextEdit { background: #080c18; color: #aabbcc; "
+                f"QTextEdit {{ background: {ds.CARD_STOCK_LOG_SURFACE}; "
+                f"color: {ds.CARD_STOCK_BODY}; "
                 "border: none; font-family: Consolas; font-size: 11px; }"
             )
             guide_text.setHtml(
-                '<span style="color:#00aaff">TradingView Alert Message Format (JSON):</span><br><br>'
-                '<span style="color:#888">Set your alert webhook URL to:</span><br>'
-                '<span style="color:#00cc66">http://YOUR_IP:8742/webhook</span><br><br>'
-                '<span style="color:#888">Alert message body:</span><br>'
-                '<span style="color:#e0e0f0">{</span><br>'
-                '<span style="color:#e0e0f0">&nbsp;&nbsp;"symbol": "{{ticker}}",</span><br>'
-                '<span style="color:#e0e0f0">&nbsp;&nbsp;"action": "buy",</span><br>'
-                '<span style="color:#e0e0f0">&nbsp;&nbsp;"price": {{close}},</span><br>'
-                '<span style="color:#e0e0f0">&nbsp;&nbsp;"strategy": "My Strategy"</span><br>'
-                '<span style="color:#e0e0f0">}</span><br><br>'
-                '<span style="color:#888">Supported actions: buy, sell, close</span>'
+                f'<span style="color:{ds.STATUS_INFO}">TradingView Alert Message Format (JSON):</span><br><br>'
+                f'<span style="color:{ds.CARD_METRIC_LABEL}">Set your alert webhook URL to:</span><br>'
+                f'<span style="color:{ds.STOCK_POSITIVE}">http://YOUR_IP:8742/webhook</span><br><br>'
+                f'<span style="color:{ds.CARD_METRIC_LABEL}">Alert message body:</span><br>'
+                f'<span style="color:{ds.TEXT_HIGH}">{{</span><br>'
+                f'<span style="color:{ds.TEXT_HIGH}">&nbsp;&nbsp;"symbol": "{{{{ticker}}}}",</span><br>'
+                f'<span style="color:{ds.TEXT_HIGH}">&nbsp;&nbsp;"action": "buy",</span><br>'
+                f'<span style="color:{ds.TEXT_HIGH}">&nbsp;&nbsp;"price": {{{{close}}}},</span><br>'
+                f'<span style="color:{ds.TEXT_HIGH}">&nbsp;&nbsp;"strategy": "My Strategy"</span><br>'
+                f'<span style="color:{ds.TEXT_HIGH}">}}</span><br><br>'
+                f'<span style="color:{ds.CARD_METRIC_LABEL}">Supported actions: buy, sell, close</span>'
             )
             guide_layout.addWidget(guide_text)
             wh_layout.addWidget(guide)
@@ -378,8 +395,9 @@ if _HAS_QT:
             # Alert history
             alerts_group = QGroupBox("Recent Alerts")
             alerts_group.setStyleSheet(
-                "QGroupBox { background: #0a1020; border: 1px solid #1a2a4f; "
-                "border-radius: 6px; color: #00aaff; }"
+                f"QGroupBox {{ background: {ds.CARD_STOCK_PANEL}; "
+                f"border: 1px solid {ds.CARD_STOCK_BORDER}; "
+                f"border-radius: 6px; color: {ds.STATUS_INFO}; }}"
             )
             alerts_layout = QVBoxLayout(alerts_group)
             self._alert_table = QTableWidget()
@@ -425,7 +443,8 @@ if _HAS_QT:
             self._console.setReadOnly(True)
             self._console.setFont(QFont("Consolas", 9))
             self._console.setStyleSheet(
-                "QTextEdit { background: #080c18; color: #aabbcc; "
+                f"QTextEdit {{ background: {ds.CARD_STOCK_LOG_SURFACE}; "
+                f"color: {ds.CARD_STOCK_BODY}; "
                 "border: none; padding: 4px; }"
             )
             self._console.setLineWrapMode(QTextEdit.NoWrap)
@@ -435,11 +454,11 @@ if _HAS_QT:
             # the widget update is queued to the main thread via Signal.
             class _StockLogHandler(QObject, logging.Handler):
                 COLORS = {
-                    "DEBUG": "#445",
-                    "INFO": "#8899aa",
-                    "WARNING": "#ddaa00",
-                    "ERROR": "#ff4466",
-                    "CRITICAL": "#ff0033",
+                    "DEBUG": ds.STOCK_LOG_DEBUG,
+                    "INFO": ds.STATUS_NEUTRAL,
+                    "WARNING": ds.STOCK_WARNING,
+                    "ERROR": ds.STOCK_NEGATIVE,
+                    "CRITICAL": ds.STOCK_LOG_CRITICAL,
                 }
                 _append_signal = Signal(str)
 
@@ -454,7 +473,7 @@ if _HAS_QT:
                 def emit(self, record):
                     try:
                         msg = self.format(record)
-                        c = self.COLORS.get(record.levelname, "#8899aa")
+                        c = self.COLORS.get(record.levelname, ds.STATUS_NEUTRAL)
                         self._append_signal.emit(
                             f'<span style="color:{c}">{msg}</span>'
                         )
@@ -502,15 +521,15 @@ if _HAS_QT:
                 from ..stocks.market_hours import MarketSession
 
                 if session == MarketSession.REGULAR:
-                    color = "#00cc66"
+                    color = ds.STOCK_POSITIVE
                 elif session in (MarketSession.PRE_MARKET, MarketSession.AFTER_HOURS):
-                    color = "#ddaa00"
+                    color = ds.STOCK_WARNING
                 else:
-                    color = "#ff4466"
+                    color = ds.STOCK_NEGATIVE
                 self._market_status.setText(f"Market: {status_str}")
                 self._market_status.setStyleSheet(
                     f"color: {color}; font-size: 13px; font-weight: bold; "
-                    f"padding: 4px 12px; background: #0a1020; "
+                    f"padding: 4px 12px; background: {ds.CARD_STOCK_PANEL}; "
                     f"border-radius: 4px; border: 1px solid {color}44;"
                 )
 
@@ -522,7 +541,7 @@ if _HAS_QT:
                         f"Alerts: {summary['total_alerts']}"
                     )
                     self._webhook_status.setStyleSheet(
-                        "color: #00cc66; font-size: 11px;"
+                        f"color: {ds.STOCK_POSITIVE}; font-size: 11px;"
                     )
 
                 # Bot stats
@@ -530,7 +549,8 @@ if _HAS_QT:
                     agg = self._bot_manager.get_aggregate_stats()
                     pnl = agg.get("total_realised_pnl", 0)
                     self._stat_pnl.set_value(
-                        f"${pnl:+,.2f}", "#00cc66" if pnl >= 0 else "#ff4466"
+                        f"${pnl:+,.2f}",
+                        ds.STOCK_POSITIVE if pnl >= 0 else ds.STOCK_NEGATIVE,
                     )
                     self._stat_trades.set_value(str(agg.get("total_trades", 0)))
                     self._stat_bots.set_value(str(agg.get("running", 0)))
@@ -619,14 +639,14 @@ if _HAS_QT:
             """Log to activity panel."""
             ts = datetime.now().strftime("%H:%M:%S")
             colors = {
-                "info": "#8899aa",
-                "success": "#00cc66",
-                "warning": "#ddaa00",
-                "error": "#ff4466",
+                "info": ds.STATUS_NEUTRAL,
+                "success": ds.STOCK_POSITIVE,
+                "warning": ds.STOCK_WARNING,
+                "error": ds.STOCK_NEGATIVE,
             }
-            color = colors.get(level, "#8899aa")
+            color = colors.get(level, ds.STATUS_NEUTRAL)
             self._status_log.append(
-                f'<span style="color:#556">[{ts}]</span> '
+                f'<span style="color:{ds.STOCK_LOG_TIMESTAMP}">[{ts}]</span> '
                 f'<span style="color:{color}">{message}</span>'
             )
 
