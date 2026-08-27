@@ -39,7 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-VIZ = REPO_ROOT / "src" / "gui" / "bot_visualizer.py"
+VIZ = REPO_ROOT / "src" / "gui" / "visualizer" / "quick_routing.py"
 
 
 def _fn(name: str) -> ast.FunctionDef:

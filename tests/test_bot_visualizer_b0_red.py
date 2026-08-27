@@ -230,7 +230,7 @@ class TestUnusedQtImportsStayRemoved:
         """Fail means an unused import returned and the high is re-armed."""
         assert not _binds_name(bv, name)
 
-    @pytest.mark.parametrize("name", ["QMenu", "QLineEdit", "QWidget"])
+    @pytest.mark.parametrize("name", ["QMenu", "QComboBox", "QWidget"])
     def test_the_binding_probe_is_not_blind(self, name: str) -> None:
         """CONTROL. Fail means the probe cannot see a name that IS bound."""
         assert _binds_name(bv, name)
