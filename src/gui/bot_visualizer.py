@@ -92,6 +92,8 @@ try:
         QPolygonF,
     )  # v3.19.12 removed unused QConicalGradient
 
+    from . import design_system as ds
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -848,11 +850,11 @@ if _HAS_QT:
             # per single-rectangle spec, so the dark theme must be
             # applied directly to the list).
             _list_style = (
-                "QListWidget{background:#0a0a18;color:#aaccff;"
-                "border:1px solid #1a2a4a;font-family:Consolas;"
+                f"QListWidget{{background:{ds.VIZ_LIST_SURFACE};color:{ds.VIZ_LIST_TEXT};"
+                f"border:1px solid {ds.VIZ_LIST_BORDER};font-family:Consolas;"
                 "font-size:11px;}"
                 "QListWidget::item{padding:3px 4px;}"
-                "QListWidget::item:hover{background:#142244;}"
+                f"QListWidget::item:hover{{background:{ds.VIZ_INPUT_SURFACE};}}"
             )
 
             # ── Source zone — single-rectangle QListWidget ────────────
@@ -874,22 +876,22 @@ if _HAS_QT:
             rate_zone.setFrameShape(QFrame.Box)
             rate_zone.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             rate_zone.setStyleSheet(
-                "QFrame{background:#0a0a18;border:1px solid #1a2a4a;}"
+                f"QFrame{{background:{ds.VIZ_LIST_SURFACE};border:1px solid {ds.VIZ_LIST_BORDER};}}"
             )
             rate_lay = QVBoxLayout(rate_zone)
             rate_lay.setContentsMargins(8, 8, 8, 8)
             self._rate_label = QLabel("Rate")
             self._rate_label.setAlignment(Qt.AlignCenter)
             self._rate_label.setStyleSheet(
-                "color:#aaccff;font-family:Consolas;font-size:11px;"
+                f"color:{ds.VIZ_LIST_TEXT};font-family:Consolas;font-size:11px;"
                 "font-weight:bold;border:none;"
             )
             rate_lay.addWidget(self._rate_label)
             self._rate_input = QLineEdit("25")
             self._rate_input.setAlignment(Qt.AlignCenter)
             self._rate_input.setStyleSheet(
-                "QLineEdit{background:#142244;color:#aaccff;"
-                "border:1px solid #2244aa;padding:3px 6px;"
+                f"QLineEdit{{background:{ds.VIZ_INPUT_SURFACE};color:{ds.VIZ_LIST_TEXT};"
+                f"border:1px solid {ds.VIZ_INPUT_BORDER};padding:3px 6px;"
                 "font-family:Consolas;font-size:11px;}"
             )
             self._rate_input.setToolTip(
@@ -1338,12 +1340,12 @@ if _HAS_QT:
             # ── Tab container ──────────────────────────────────────
             self._tabs = QTabWidget()
             self._tabs.setStyleSheet(
-                "QTabWidget::pane{border:1px solid #1a1a3f;background:#070710;}"
-                "QTabBar::tab{background:#0c0c1a;color:#667;border:1px solid #1a1a3f;"
+                f"QTabWidget::pane{{border:1px solid {ds.VIZ_PANEL_BORDER};background:{ds.VIZ_SWARM_SURFACE};}}"
+                f"QTabBar::tab{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.VIZ_TAB_TEXT};border:1px solid {ds.VIZ_PANEL_BORDER};"
                 "padding:4px 12px;font-size:9px;}"
-                "QTabBar::tab:selected{background:#0a0a20;color:#00FFEE;"
-                "border-bottom:2px solid #00FFEE;}"
-                "QTabBar::tab:hover{color:#aaa;}"
+                f"QTabBar::tab:selected{{background:{ds.VIZ_TAB_SELECTED};color:{ds.PRIMARY_BRIGHT};"
+                f"border-bottom:2px solid {ds.PRIMARY_BRIGHT};}}"
+                f"QTabBar::tab:hover{{color:{ds.TEXT_INACTIVE};}}"
             )
 
             # ── TAB 1: Bot Swarm visualization ────────────────────
@@ -1486,7 +1488,9 @@ if _HAS_QT:
             self._empty_label = QLabel(
                 "No active bots. Start bots to see visualizations."
             )
-            self._empty_label.setStyleSheet("color:#555;padding:40px;")
+            self._empty_label.setStyleSheet(
+                f"color:{ds.TEXT_PLACEHOLDER};padding:40px;"
+            )
             self._empty_label.setAlignment(Qt.AlignCenter)
             self._grid_layout.addWidget(self._empty_label, 0, 0, 1, self._grid_cols)
 
@@ -1585,32 +1589,32 @@ if _HAS_QT:
             sim_hdr = QHBoxLayout()
             sim_hdr_lbl = QLabel("SIMULATOR SWARM")
             sim_hdr_lbl.setStyleSheet(
-                "color:#00FFEE;font-weight:bold;font-size:10px;font-family:Consolas;"
+                f"color:{ds.PRIMARY_BRIGHT};font-weight:bold;font-size:10px;font-family:Consolas;"
             )
             sim_hdr.addWidget(sim_hdr_lbl)
             sim_hdr.addStretch()
 
             sim_add_btn = QPushButton("+ Add Sim Bot")
             sim_add_btn.setStyleSheet(
-                "QPushButton{background:#0c0c1a;color:#00ff88;border:1px solid #00ff88;"
+                f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.SUCCESS};border:1px solid {ds.SUCCESS};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#001a0a;}"
+                f"QPushButton:hover{{background:{ds.VIZ_GO_HOVER};}}"
             )
             sim_hdr.addWidget(sim_add_btn)
 
             sim_run_all = QPushButton("▶ Run All")
             sim_run_all.setStyleSheet(
-                "QPushButton{background:#0c0c1a;color:#00ffee;border:1px solid #00ffee;"
+                f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.PRIMARY_BRIGHT};border:1px solid {ds.PRIMARY_BRIGHT};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#001a18;}"
+                f"QPushButton:hover{{background:{ds.VIZ_SIM_HOVER};}}"
             )
             sim_hdr.addWidget(sim_run_all)
 
             sim_stop_all = QPushButton("■ Stop All")
             sim_stop_all.setStyleSheet(
-                "QPushButton{background:#0c0c1a;color:#ff3366;border:1px solid #ff3366;"
+                f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.ERROR};border:1px solid {ds.ERROR};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#1a0011;}"
+                f"QPushButton:hover{{background:{ds.VIZ_STOP_HOVER};}}"
             )
             sim_hdr.addWidget(sim_stop_all)
             sim_lay.addLayout(sim_hdr)
@@ -1619,7 +1623,7 @@ if _HAS_QT:
                 "Run multiple simultaneous simulators. Each bot runs independently "
                 "on its own asset/timeframe. Results aggregate in the summary row."
             )
-            sim_desc.setStyleSheet("color:#445566;font-size:8px;")
+            sim_desc.setStyleSheet(f"color:{ds.VIZ_CAPTION};font-size:8px;")
             sim_desc.setWordWrap(True)
             sim_lay.addWidget(sim_desc)
 
@@ -1627,10 +1631,10 @@ if _HAS_QT:
             sim_scroll = QScrollArea()
             sim_scroll.setWidgetResizable(True)
             sim_scroll.setStyleSheet(
-                "QScrollArea{border:1px solid #1a1a3f;background:#070710;}"
+                f"QScrollArea{{border:1px solid {ds.VIZ_PANEL_BORDER};background:{ds.VIZ_SWARM_SURFACE};}}"
             )
             self._sim_swarm_widget = QWidget()
-            self._sim_swarm_widget.setStyleSheet("background:#070710;")
+            self._sim_swarm_widget.setStyleSheet(f"background:{ds.VIZ_SWARM_SURFACE};")
             self._sim_swarm_layout = QVBoxLayout(self._sim_swarm_widget)
             self._sim_swarm_layout.setSpacing(4)
             self._sim_swarm_layout.setContentsMargins(4, 4, 4, 4)
@@ -1641,7 +1645,7 @@ if _HAS_QT:
             # Summary bar
             sim_summary = QGroupBox("SWARM SUMMARY")
             sim_summary.setStyleSheet(
-                "QGroupBox{border:1px solid #1a1a3f;color:#00FFEE;"
+                f"QGroupBox{{border:1px solid {ds.VIZ_PANEL_BORDER};color:{ds.PRIMARY_BRIGHT};"
                 "font-size:8px;font-weight:bold;margin-top:6px;padding-top:6px;}"
                 "QGroupBox::title{subcontrol-origin:margin;left:8px;}"
             )
@@ -1656,7 +1660,7 @@ if _HAS_QT:
                 self._sim_swarm_trades,
             ):
                 lbl.setStyleSheet(
-                    "color:#C8D8F0;font-size:9px;font-family:Consolas;font-weight:bold;"
+                    f"color:{ds.VIZ_HEADING};font-size:9px;font-family:Consolas;font-weight:bold;"
                 )
                 sim_sum_lay.addWidget(lbl)
             sim_sum_lay.addStretch()
@@ -1698,32 +1702,32 @@ if _HAS_QT:
             paper_hdr = QHBoxLayout()
             paper_hdr_lbl = QLabel("PAPER TRADER SWARM")
             paper_hdr_lbl.setStyleSheet(
-                "color:#FFD700;font-weight:bold;font-size:10px;font-family:Consolas;"
+                f"color:{ds.ACCENT_GOLD};font-weight:bold;font-size:10px;font-family:Consolas;"
             )
             paper_hdr.addWidget(paper_hdr_lbl)
             paper_hdr.addStretch()
 
             paper_add_btn = QPushButton("+ Add Paper Bot")
             paper_add_btn.setStyleSheet(
-                "QPushButton{background:#0c0c1a;color:#FFD700;border:1px solid #FFD700;"
+                f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.ACCENT_GOLD};border:1px solid {ds.ACCENT_GOLD};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#1a1400;}"
+                f"QPushButton:hover{{background:{ds.VIZ_GOLD_HOVER};}}"
             )
             paper_hdr.addWidget(paper_add_btn)
 
             paper_start_all = QPushButton("▶ Start All")
             paper_start_all.setStyleSheet(
-                "QPushButton{background:#0c0c1a;color:#00ff88;border:1px solid #00ff88;"
+                f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.SUCCESS};border:1px solid {ds.SUCCESS};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#001a0a;}"
+                f"QPushButton:hover{{background:{ds.VIZ_GO_HOVER};}}"
             )
             paper_hdr.addWidget(paper_start_all)
 
             paper_stop_all = QPushButton("■ Stop All")
             paper_stop_all.setStyleSheet(
-                "QPushButton{background:#0c0c1a;color:#ff3366;border:1px solid #ff3366;"
+                f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.ERROR};border:1px solid {ds.ERROR};"
                 "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#1a0011;}"
+                f"QPushButton:hover{{background:{ds.VIZ_STOP_HOVER};}}"
             )
             paper_hdr.addWidget(paper_stop_all)
             paper_lay.addLayout(paper_hdr)
@@ -1733,17 +1737,19 @@ if _HAS_QT:
                 "Each bot trades a different asset with virtual capital against real market data. "
                 "Source: CoinGecko (crypto) or Yahoo Finance (equities). No geographic restrictions."
             )
-            paper_desc.setStyleSheet("color:#445566;font-size:8px;")
+            paper_desc.setStyleSheet(f"color:{ds.VIZ_CAPTION};font-size:8px;")
             paper_desc.setWordWrap(True)
             paper_lay.addWidget(paper_desc)
 
             paper_scroll = QScrollArea()
             paper_scroll.setWidgetResizable(True)
             paper_scroll.setStyleSheet(
-                "QScrollArea{border:1px solid #1a1a3f;background:#070710;}"
+                f"QScrollArea{{border:1px solid {ds.VIZ_PANEL_BORDER};background:{ds.VIZ_SWARM_SURFACE};}}"
             )
             self._paper_swarm_widget = QWidget()
-            self._paper_swarm_widget.setStyleSheet("background:#070710;")
+            self._paper_swarm_widget.setStyleSheet(
+                f"background:{ds.VIZ_SWARM_SURFACE};"
+            )
             self._paper_swarm_layout = QVBoxLayout(self._paper_swarm_widget)
             self._paper_swarm_layout.setSpacing(4)
             self._paper_swarm_layout.setContentsMargins(4, 4, 4, 4)
@@ -1754,7 +1760,7 @@ if _HAS_QT:
             # Portfolio summary
             paper_summary = QGroupBox("PORTFOLIO SUMMARY")
             paper_summary.setStyleSheet(
-                "QGroupBox{border:1px solid #1a1a3f;color:#FFD700;"
+                f"QGroupBox{{border:1px solid {ds.VIZ_PANEL_BORDER};color:{ds.ACCENT_GOLD};"
                 "font-size:8px;font-weight:bold;margin-top:6px;padding-top:6px;}"
                 "QGroupBox::title{subcontrol-origin:margin;left:8px;}"
             )
@@ -1769,7 +1775,7 @@ if _HAS_QT:
                 self._paper_swarm_active,
             ):
                 lbl.setStyleSheet(
-                    "color:#C8D8F0;font-size:9px;font-family:Consolas;font-weight:bold;"
+                    f"color:{ds.VIZ_HEADING};font-size:9px;font-family:Consolas;font-weight:bold;"
                 )
                 paper_sum_lay.addWidget(lbl)
             paper_sum_lay.addStretch()
@@ -1861,7 +1867,7 @@ if _HAS_QT:
             idx = len(self._sim_bots) + 1
             row = QFrame()
             row.setStyleSheet(
-                "QFrame{background:#0c0c1a;border:1px solid #1a1a3f;"
+                f"QFrame{{background:{ds.VIZ_PANEL_SURFACE};border:1px solid {ds.VIZ_PANEL_BORDER};"
                 "border-radius:4px;padding:2px;}"
             )
             rl = QHBoxLayout(row)
@@ -1872,7 +1878,7 @@ if _HAS_QT:
             id_lbl = QLabel(f"SIM-{idx:02d}")
             id_lbl.setFixedWidth(48)
             id_lbl.setStyleSheet(
-                "color:#00FFEE;font-size:9px;font-weight:bold;font-family:Consolas;"
+                f"color:{ds.PRIMARY_BRIGHT};font-size:9px;font-weight:bold;font-family:Consolas;"
             )
             rl.addWidget(id_lbl)
 
@@ -1922,13 +1928,15 @@ if _HAS_QT:
             status_lbl = QLabel("IDLE")
             status_lbl.setFixedWidth(90)
             status_lbl.setStyleSheet(
-                "color:#445566;font-size:8px;font-family:Consolas;font-weight:bold;"
+                f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;font-weight:bold;"
             )
             rl.addWidget(status_lbl)
 
             pnl_lbl = QLabel("PnL: —")
             pnl_lbl.setFixedWidth(80)
-            pnl_lbl.setStyleSheet("color:#445566;font-size:8px;font-family:Consolas;")
+            pnl_lbl.setStyleSheet(
+                f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;"
+            )
             rl.addWidget(pnl_lbl)
 
             rl.addStretch()
@@ -1937,9 +1945,9 @@ if _HAS_QT:
             run_btn = QPushButton("▶ Run")
             run_btn.setFixedSize(58, 22)
             run_btn.setStyleSheet(
-                "QPushButton{background:#001a0a;color:#00ff88;border:1px solid #00ff88;"
+                f"QPushButton{{background:{ds.VIZ_GO_HOVER};color:{ds.SUCCESS};border:1px solid {ds.SUCCESS};"
                 "border-radius:3px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#00290f;}"
+                f"QPushButton:hover{{background:{ds.VIZ_GO_HOVER_DEEP};}}"
             )
             rl.addWidget(run_btn)
 
@@ -1947,9 +1955,9 @@ if _HAS_QT:
             rem_btn = QPushButton("✕")
             rem_btn.setFixedSize(22, 22)
             rem_btn.setStyleSheet(
-                "QPushButton{background:#1a0011;color:#ff3366;border:1px solid #ff3366;"
+                f"QPushButton{{background:{ds.VIZ_STOP_HOVER};color:{ds.ERROR};border:1px solid {ds.ERROR};"
                 "border-radius:3px;font-size:9px;}"
-                "QPushButton:hover{background:#2a0018;}"
+                f"QPushButton:hover{{background:{ds.VIZ_STOP_HOVER_DEEP};}}"
             )
             rl.addWidget(rem_btn)
 
@@ -1975,25 +1983,25 @@ if _HAS_QT:
                     bot_data["running"] = False
                     run_btn.setText("▶ Run")
                     run_btn.setStyleSheet(
-                        "QPushButton{background:#001a0a;color:#00ff88;border:1px solid #00ff88;"
+                        f"QPushButton{{background:{ds.VIZ_GO_HOVER};color:{ds.SUCCESS};border:1px solid {ds.SUCCESS};"
                         "border-radius:3px;font-size:9px;font-weight:bold;}"
-                        "QPushButton:hover{background:#00290f;}"
+                        f"QPushButton:hover{{background:{ds.VIZ_GO_HOVER_DEEP};}}"
                     )
                     status_lbl.setText("STOPPED")
                     status_lbl.setStyleSheet(
-                        "color:#445566;font-size:8px;font-family:Consolas;font-weight:bold;"
+                        f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;font-weight:bold;"
                     )
                 else:
                     bot_data["running"] = True
                     run_btn.setText("■ Stop")
                     run_btn.setStyleSheet(
-                        "QPushButton{background:#1a0011;color:#ff3366;border:1px solid #ff3366;"
+                        f"QPushButton{{background:{ds.VIZ_STOP_HOVER};color:{ds.ERROR};border:1px solid {ds.ERROR};"
                         "border-radius:3px;font-size:9px;font-weight:bold;}"
-                        "QPushButton:hover{background:#2a0018;}"
+                        f"QPushButton:hover{{background:{ds.VIZ_STOP_HOVER_DEEP};}}"
                     )
                     status_lbl.setText("RUNNING")
                     status_lbl.setStyleSheet(
-                        "color:#00ff88;font-size:8px;font-family:Consolas;font-weight:bold;"
+                        f"color:{ds.SUCCESS};font-size:8px;font-family:Consolas;font-weight:bold;"
                     )
                 self._update_sim_summary()
 
@@ -2012,7 +2020,7 @@ if _HAS_QT:
             idx = len(self._paper_bots) + 1
             row = QFrame()
             row.setStyleSheet(
-                "QFrame{background:#0c0c1a;border:1px solid #1a1a2f;"
+                f"QFrame{{background:{ds.VIZ_PANEL_SURFACE};border:1px solid {ds.MENU_SURFACE};"
                 "border-radius:4px;padding:2px;}"
             )
             rl = QHBoxLayout(row)
@@ -2023,7 +2031,7 @@ if _HAS_QT:
             id_lbl = QLabel(f"PAP-{idx:02d}")
             id_lbl.setFixedWidth(48)
             id_lbl.setStyleSheet(
-                "color:#FFD700;font-size:9px;font-weight:bold;font-family:Consolas;"
+                f"color:{ds.ACCENT_GOLD};font-size:9px;font-weight:bold;font-family:Consolas;"
             )
             rl.addWidget(id_lbl)
 
@@ -2067,19 +2075,21 @@ if _HAS_QT:
             price_lbl = QLabel("—")
             price_lbl.setFixedWidth(72)
             price_lbl.setStyleSheet(
-                "color:#00FFEE;font-size:8px;font-family:Consolas;font-weight:bold;"
+                f"color:{ds.PRIMARY_BRIGHT};font-size:8px;font-family:Consolas;font-weight:bold;"
             )
             rl.addWidget(price_lbl)
 
             pnl_lbl = QLabel("PnL: —")
             pnl_lbl.setFixedWidth(80)
-            pnl_lbl.setStyleSheet("color:#445566;font-size:8px;font-family:Consolas;")
+            pnl_lbl.setStyleSheet(
+                f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;"
+            )
             rl.addWidget(pnl_lbl)
 
             status_lbl = QLabel("IDLE")
             status_lbl.setFixedWidth(56)
             status_lbl.setStyleSheet(
-                "color:#445566;font-size:8px;font-family:Consolas;font-weight:bold;"
+                f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;font-weight:bold;"
             )
             rl.addWidget(status_lbl)
 
@@ -2088,18 +2098,18 @@ if _HAS_QT:
             start_btn = QPushButton("▶ Start")
             start_btn.setFixedSize(62, 22)
             start_btn.setStyleSheet(
-                "QPushButton{background:#001a0a;color:#00ff88;border:1px solid #00ff88;"
+                f"QPushButton{{background:{ds.VIZ_GO_HOVER};color:{ds.SUCCESS};border:1px solid {ds.SUCCESS};"
                 "border-radius:3px;font-size:9px;font-weight:bold;}"
-                "QPushButton:hover{background:#00290f;}"
+                f"QPushButton:hover{{background:{ds.VIZ_GO_HOVER_DEEP};}}"
             )
             rl.addWidget(start_btn)
 
             rem_btn = QPushButton("✕")
             rem_btn.setFixedSize(22, 22)
             rem_btn.setStyleSheet(
-                "QPushButton{background:#1a0011;color:#ff3366;border:1px solid #ff3366;"
+                f"QPushButton{{background:{ds.VIZ_STOP_HOVER};color:{ds.ERROR};border:1px solid {ds.ERROR};"
                 "border-radius:3px;font-size:9px;}"
-                "QPushButton:hover{background:#2a0018;}"
+                f"QPushButton:hover{{background:{ds.VIZ_STOP_HOVER_DEEP};}}"
             )
             rl.addWidget(rem_btn)
 
@@ -2126,25 +2136,25 @@ if _HAS_QT:
                     bot_data["running"] = False
                     start_btn.setText("▶ Start")
                     start_btn.setStyleSheet(
-                        "QPushButton{background:#001a0a;color:#00ff88;border:1px solid #00ff88;"
+                        f"QPushButton{{background:{ds.VIZ_GO_HOVER};color:{ds.SUCCESS};border:1px solid {ds.SUCCESS};"
                         "border-radius:3px;font-size:9px;font-weight:bold;}"
-                        "QPushButton:hover{background:#00290f;}"
+                        f"QPushButton:hover{{background:{ds.VIZ_GO_HOVER_DEEP};}}"
                     )
                     status_lbl.setText("STOPPED")
                     status_lbl.setStyleSheet(
-                        "color:#445566;font-size:8px;font-family:Consolas;font-weight:bold;"
+                        f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;font-weight:bold;"
                     )
                 else:
                     bot_data["running"] = True
                     start_btn.setText("■ Stop")
                     start_btn.setStyleSheet(
-                        "QPushButton{background:#1a0011;color:#ff3366;border:1px solid #ff3366;"
+                        f"QPushButton{{background:{ds.VIZ_STOP_HOVER};color:{ds.ERROR};border:1px solid {ds.ERROR};"
                         "border-radius:3px;font-size:9px;font-weight:bold;}"
-                        "QPushButton:hover{background:#2a0018;}"
+                        f"QPushButton:hover{{background:{ds.VIZ_STOP_HOVER_DEEP};}}"
                     )
                     status_lbl.setText("LIVE")
                     status_lbl.setStyleSheet(
-                        "color:#FFD700;font-size:8px;font-family:Consolas;font-weight:bold;"
+                        f"color:{ds.ACCENT_GOLD};font-size:8px;font-family:Consolas;font-weight:bold;"
                     )
                 self._update_paper_summary()
 
@@ -2199,9 +2209,9 @@ if _HAS_QT:
 
         # Tab-type accent colors: (border, label, dot)
         _SWARM_ACCENTS = {
-            "live": ("#00ff88", "#00ff88", "#00ff88"),
-            "sim": ("#00ff88", "#00FFEE", "#00ff88"),
-            "paper": ("#FFD700", "#FFD700", "#FFD700"),
+            "live": (ds.SUCCESS, ds.SUCCESS, ds.SUCCESS),
+            "sim": (ds.SUCCESS, ds.PRIMARY_BRIGHT, ds.SUCCESS),
+            "paper": (ds.ACCENT_GOLD, ds.ACCENT_GOLD, ds.ACCENT_GOLD),
         }
 
         def _create_swarm_row(self, kind: str, label: str, cfg: dict):
@@ -2220,10 +2230,10 @@ if _HAS_QT:
 
             # Background tint matches accent family but dark
             bg_tint = {
-                "live": "#091a0e",
-                "sim": "#091a0e",
-                "paper": "#0e0e09",
-            }.get(kind, "#0c0c1a")
+                "live": ds.VIZ_LANE_LIVE,
+                "sim": ds.VIZ_LANE_LIVE,
+                "paper": ds.VIZ_LANE_PAPER,
+            }.get(kind, ds.VIZ_PANEL_SURFACE)
 
             row = QFrame()
             row.setStyleSheet(
@@ -2258,7 +2268,7 @@ if _HAS_QT:
             )
             context_lbl.setFixedWidth(88)
             context_lbl.setStyleSheet(
-                "color:#00FFEE;font-size:9px;font-weight:bold;"
+                f"color:{ds.PRIMARY_BRIGHT};font-size:9px;font-weight:bold;"
                 "font-family:Consolas;background:transparent;"
             )
             rl.addWidget(context_lbl)
@@ -2267,7 +2277,7 @@ if _HAS_QT:
             mode_lbl = QLabel(cfg.get("mode", "—"))
             mode_lbl.setFixedWidth(72)
             mode_lbl.setStyleSheet(
-                "color:#888;font-size:8px;font-family:Consolas;"
+                f"color:{ds.CARD_METRIC_LABEL};font-size:8px;font-family:Consolas;"
                 "background:transparent;"
             )
             rl.addWidget(mode_lbl)
@@ -2278,7 +2288,7 @@ if _HAS_QT:
             )
             feed_lbl.setFixedWidth(60)
             feed_lbl.setStyleSheet(
-                "color:#556677;font-size:8px;font-family:Consolas;"
+                f"color:{ds.VIZ_CAPTION_DIM};font-size:8px;font-family:Consolas;"
                 "background:transparent;"
             )
             rl.addWidget(feed_lbl)
@@ -2287,7 +2297,7 @@ if _HAS_QT:
             cap_lbl = QLabel(f"${cfg.get('capital', 0):,.0f}")
             cap_lbl.setFixedWidth(58)
             cap_lbl.setStyleSheet(
-                "color:#556677;font-size:8px;font-family:Consolas;"
+                f"color:{ds.VIZ_CAPTION_DIM};font-size:8px;font-family:Consolas;"
                 "background:transparent;"
             )
             rl.addWidget(cap_lbl)
@@ -2306,7 +2316,7 @@ if _HAS_QT:
             metric_lbl = QLabel(cfg.get("metric_init", "—"))
             metric_lbl.setFixedWidth(58)
             metric_lbl.setStyleSheet(
-                "color:#445566;font-size:8px;font-family:Consolas;"
+                f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;"
                 "background:transparent;"
             )
             rl.addWidget(metric_lbl)
@@ -2315,7 +2325,7 @@ if _HAS_QT:
             pnl_lbl = QLabel("PnL —")
             pnl_lbl.setFixedWidth(88)
             pnl_lbl.setStyleSheet(
-                "color:#445566;font-size:8px;font-family:Consolas;"
+                f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;"
                 "background:transparent;"
             )
             rl.addWidget(pnl_lbl)
@@ -2324,7 +2334,7 @@ if _HAS_QT:
             trades_lbl = QLabel("0 trades")
             trades_lbl.setFixedWidth(68)
             trades_lbl.setStyleSheet(
-                "color:#445566;font-size:8px;font-family:Consolas;"
+                f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;"
                 "background:transparent;"
             )
             rl.addWidget(trades_lbl)
@@ -2354,21 +2364,21 @@ if _HAS_QT:
             """Apply stopped/done visual state. Shared across kinds."""
             handle["running"] = False
             handle["dot"].setStyleSheet(
-                "color:#445566;font-size:10px;font-weight:bold;"
+                f"color:{ds.VIZ_CAPTION};font-size:10px;font-weight:bold;"
                 "background:transparent;"
             )
             handle["widget"].setStyleSheet(
-                "QFrame{background:#0c0c1a;border:1px solid #1a1a3f;"
+                f"QFrame{{background:{ds.VIZ_PANEL_SURFACE};border:1px solid {ds.VIZ_PANEL_BORDER};"
                 "border-radius:4px;}"
             )
             handle["status_lbl"].setStyleSheet(
-                "color:#445566;font-size:8px;font-family:Consolas;"
+                f"color:{ds.VIZ_CAPTION};font-size:8px;font-family:Consolas;"
                 "font-weight:bold;background:transparent;"
             )
 
         def _apply_pnl_color(self, handle: dict, pnl: float):
             """PnL coloring is identical across all three kinds."""
-            col = "#00ff88" if pnl >= 0 else "#ff3366"
+            col = ds.SUCCESS if pnl >= 0 else ds.ERROR
             handle["pnl_lbl"].setText(f"PnL {pnl:+,.2f}")
             handle["pnl_lbl"].setStyleSheet(
                 f"color:{col};font-size:8px;font-family:Consolas;"
@@ -2544,7 +2554,7 @@ if _HAS_QT:
             p_str = f"${price:,.4f}" if price < 1000 else f"${price:,.2f}"
             h["metric_lbl"].setText(p_str)
             h["metric_lbl"].setStyleSheet(
-                "color:#00FFEE;font-size:8px;font-family:Consolas;"
+                f"color:{ds.PRIMARY_BRIGHT};font-size:8px;font-family:Consolas;"
                 "background:transparent;"
             )
             self._apply_pnl_color(h, pnl)
@@ -2620,7 +2630,7 @@ if _HAS_QT:
                 p_str = f"${price:,.4f}" if price < 1000 else f"${price:,.2f}"
                 h["metric_lbl"].setText(p_str)
                 h["metric_lbl"].setStyleSheet(
-                    "color:#00FFEE;font-size:8px;font-family:Consolas;"
+                    f"color:{ds.PRIMARY_BRIGHT};font-size:8px;font-family:Consolas;"
                     "background:transparent;"
                 )
             self._apply_pnl_color(h, pnl)
@@ -2737,7 +2747,7 @@ if _HAS_QT:
             glyph = "○" if masked else "●"
             self._bot_swarm_privacy_dot.setText(glyph)
             self._bot_swarm_privacy_dot.setStyleSheet(
-                "QLabel{color:#00FFEE;background:transparent;"
+                f"QLabel{{color:{ds.PRIMARY_BRIGHT};background:transparent;"
                 "padding:0 4px;font-size:14px;}"
             )
 
@@ -2756,8 +2766,8 @@ if _HAS_QT:
                         "import unavailable — click NO-OP\n"
                     )
                     self._bot_swarm_privacy_dot.setStyleSheet(
-                        "QFrame{background:#ff0000;border:1px solid "
-                        "#cc0000;border-radius:3px;}"
+                        f"QFrame{{background:{ds.VIZ_NUCLEAR_SURFACE};border:1px solid "
+                        f"{ds.VIZ_NUCLEAR_BORDER};border-radius:3px;}}"
                         "/* wiring-broken indicator (v3.23.12) */"
                     )
                     return
@@ -2770,8 +2780,8 @@ if _HAS_QT:
                     f"failed: {type(exc).__name__}: {exc}\n"
                 )
                 self._bot_swarm_privacy_dot.setStyleSheet(
-                    "QFrame{background:#ff0000;border:1px solid "
-                    "#cc0000;border-radius:3px;}"
+                    f"QFrame{{background:{ds.VIZ_NUCLEAR_SURFACE};border:1px solid "
+                    f"{ds.VIZ_NUCLEAR_BORDER};border-radius:3px;}}"
                     "/* wiring-broken indicator (v3.23.12) */"
                 )
                 return
@@ -2797,15 +2807,15 @@ if _HAS_QT:
             if any_on:
                 self._privacy_mode_btn.setText("Privacy Mode: ON")
                 self._privacy_mode_btn.setStyleSheet(
-                    "QPushButton{background:#003822;color:#00ff88;"
-                    "border:1px solid #00ff88;border-radius:3px;"
+                    f"QPushButton{{background:{ds.VIZ_CONFIRM_SURFACE};color:{ds.SUCCESS};"
+                    f"border:1px solid {ds.SUCCESS};border-radius:3px;"
                     "padding:3px 12px;font-weight:bold;}"
                 )
             else:
                 self._privacy_mode_btn.setText("Privacy Mode: OFF")
                 self._privacy_mode_btn.setStyleSheet(
-                    "QPushButton{background:#0c0c1a;color:#aaa;"
-                    "border:1px solid #2a2a3f;border-radius:3px;"
+                    f"QPushButton{{background:{ds.VIZ_PANEL_SURFACE};color:{ds.TEXT_INACTIVE};"
+                    f"border:1px solid {ds.CARD_METRIC_BORDER};border-radius:3px;"
                     "padding:3px 12px;}"
                 )
 
@@ -2826,8 +2836,8 @@ if _HAS_QT:
                         "NO-OP\n"
                     )
                     self._privacy_mode_btn.setStyleSheet(
-                        "QPushButton{background:#ff0000;color:white;"
-                        "border:1px solid #cc0000;padding:3px 12px;}"
+                        f"QPushButton{{background:{ds.VIZ_NUCLEAR_SURFACE};color:white;"
+                        f"border:1px solid {ds.VIZ_NUCLEAR_BORDER};padding:3px 12px;}}"
                         "/* wiring-broken (v3.23.18) */"
                     )
                     return
@@ -2841,8 +2851,8 @@ if _HAS_QT:
                     f"failed: {type(exc).__name__}: {exc}\n"
                 )
                 self._privacy_mode_btn.setStyleSheet(
-                    "QPushButton{background:#ff0000;color:white;"
-                    "border:1px solid #cc0000;padding:3px 12px;}"
+                    f"QPushButton{{background:{ds.VIZ_NUCLEAR_SURFACE};color:white;"
+                    f"border:1px solid {ds.VIZ_NUCLEAR_BORDER};padding:3px 12px;}}"
                     "/* wiring-broken (v3.23.18) */"
                 )
                 return
@@ -3492,8 +3502,8 @@ if _HAS_QT:
             """Show menu to pick which wire to disconnect when bot has multiple."""
             menu = QMenu(self)
             menu.setStyleSheet(
-                "QMenu { background: #1a1a2f; color: #e0e0f0; border: 1px solid #3a3a5f; }"
-                "QMenu::item:selected { background: #2a2a4f; }"
+                f"QMenu {{ background: {ds.MENU_SURFACE}; color: {ds.TEXT_HIGH}; border: 1px solid {ds.MENU_BORDER}; }}"
+                f"QMenu::item:selected {{ background: {ds.MENU_ITEM_SELECTED}; }}"
             )
 
             outgoing = [w for w in self._wires if w["source_id"] == bot_id]
@@ -3716,9 +3726,9 @@ if _HAS_QT:
             """Show right-click context menu to disconnect a wire."""
             menu = QMenu(self)
             menu.setStyleSheet(
-                "QMenu { background: #1a1a2f; color: #e0e0f0; border: 1px solid #3a3a5f; }"
-                "QMenu::item:selected { background: #2a2a4f; }"
-                "QMenu::separator { background: #3a3a5f; height: 1px; }"
+                f"QMenu {{ background: {ds.MENU_SURFACE}; color: {ds.TEXT_HIGH}; border: 1px solid {ds.MENU_BORDER}; }}"
+                f"QMenu::item:selected {{ background: {ds.MENU_ITEM_SELECTED}; }}"
+                f"QMenu::separator {{ background: {ds.MENU_BORDER}; height: 1px; }}"
             )
 
             src_short = wire["source_id"][:8]
