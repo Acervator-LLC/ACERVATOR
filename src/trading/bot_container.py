@@ -1878,11 +1878,12 @@ class BotContainer:
         ceiling_ratio = getattr(self, "ceiling_ratio", None)
         fold_taper = getattr(self, "fold_rate_taper", 1.0)
 
-        # v3.24.50 (Phase 1 Step 3) — how much queued tranche capital the
-        # per-cycle filter can never admit. The filter takes a tranche
-        # only if it fits ENTIRELY inside the remaining budget and
-        # explicitly refuses to deploy part of one, so any single tranche
-        # larger than the whole budget is skipped on every cycle forever.
+        # v3.24.50 (Phase 1 Step 3) — how much queued tranche capital
+        # exceeds one whole cycle's budget. issue #133 unit 10: a
+        # tranche that does not fit is PART-CONSUMED, not skipped.
+        # `_plan_fold_consumption` takes `take_usd = room` from it and
+        # leaves the remainder queued, so this counts tranches needing
+        # more than one cycle to fold back in full.
         # Computed defensively: a status call must never raise.
         # Issue #106 - the budget below reads `cycle_growth_cap_usd`
         # rather than respelling `anchor * pct/100`: the cap compounds
