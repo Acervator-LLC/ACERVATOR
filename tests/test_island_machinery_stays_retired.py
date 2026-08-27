@@ -28,8 +28,10 @@ WHY DELETION LOSES NOTHING
 ==========================
 All three were committed, so git holds them for ever. The ledger is
 recoverable with `git show 905c9b0:tools/.island_ledger.jsonl`. The lists
-it uniquely carried are already transcribed into CHANGELOG.md, which
-names it as their source at four places and keeps the entries inline.
+it uniquely carried are already transcribed into
+`docs-archive/llm-session-history/CHANGELOG-narrative-2026-08-04-to-2026-08-25.md`,
+which names it as their source at four places and keeps the entries
+inline. Issue #80 moved that transcript there out of the root changelog.
 
 The ledger is the tool's STATE FILE, not a narrative record. `island.py`
 line 84 named it `LEDGER_RELPATH` and appended to it on every promotion.

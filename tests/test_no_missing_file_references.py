@@ -130,6 +130,9 @@ SHIPPED = (
     "README.md",
     "CONTRIBUTING.md",
     "DISCLAIMER.md",
+    # The root changelog is a live document, not a transcript. Its one
+    # path claim is the link to the archived narrative changelog.
+    "CHANGELOG.md",
 )
 
 # Extensions that make a token a path claim rather than prose.
@@ -409,7 +412,6 @@ _SCAN_SKIP_DIRS = (
     "docs-archive",  # historical record, kept as written
 )
 _SCAN_SKIP_FILES = {
-    "CHANGELOG.md",  # historical record, kept as written
     Path(__file__).name,  # this file carries the record of the removal
 }
 # Suffixes that make a file source rather than data or an image.

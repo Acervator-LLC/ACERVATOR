@@ -187,16 +187,16 @@ _MODULE_RE = re.compile(r"\bdev_harness\.harness\.[A-Za-z_][A-Za-z0-9_.]*")
 # that carry the old harness path before the entry was added. "docs/audits"
 # stays because 46 files remain there, pinned by dev_harness path constants.
 #
-# Issue #80 dropped "docs/harness_archive". Its two files moved to
-# docs-archive/llm-session-history/ and the directory is gone. The
-# replacement path is NOT listed: both files were measured at ZERO
-# occurrences of the old harness path before the move, so they are
-# scanned now and the verdict is unchanged.
+# Issue #80 dropped "docs/harness_archive" and bare "CHANGELOG.md". The
+# directory is gone and its two files measured ZERO occurrences of the old
+# path, so they are scanned now. The narrative changelog carries 4, so its
+# allowance follows it to docs-archive/; the new root file carries none.
 _OLD_PATH_RE = re.compile(r"tools[./]harness")
 _HISTORY = (
     "docs/audits",
     "docs/engineering-notes",
-    "CHANGELOG.md",
+    "docs-archive/llm-session-history/"
+    "CHANGELOG-narrative-2026-08-04-to-2026-08-25.md",
 )
 
 # Two sets name the old path on purpose and stay green.
