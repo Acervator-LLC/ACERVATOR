@@ -87,6 +87,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
+from src.core.io_utils import atomic_write_json
+
 logger = logging.getLogger("acervator.instance")
 
 CLAIM_FILENAME = "instance_claim.json"
@@ -433,9 +435,7 @@ def write_claim(
         "claimed_at_human": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "app_version": app_version,
     }
-    tmp = directory / f"{CLAIM_FILENAME}.tmp"
-    tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    atomic_write_json(path, payload, indent=2)
     return path
 
 

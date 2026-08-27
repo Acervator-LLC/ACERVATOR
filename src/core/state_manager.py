@@ -23,6 +23,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from src.core.io_utils import atomic_write_json
+
 logger = logging.getLogger("acervator.state")
 
 _DEFAULT_DIR = Path.home() / ".acervator"
@@ -160,25 +162,20 @@ class StateManager:
         # a non-empty report now means an explicit delete or a bug.
         self.detect_prune(set(state["bots"].keys()))
 
-        # Atomic write: write to temp file, then rename
-        tmp_path = self._path.with_suffix(".tmp")
-        try:
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(state, f, indent=2, default=str)
-            # Backup existing state before overwriting.
-            #
-            # v3.24.35 (C01 PR-0) — but NEVER with an unparseable
-            # primary. This step copies the current primary over
-            # bot_state.backup.json, so if the primary is corrupt it
-            # destroys the last good copy — and since has_saved_state()
-            # answers "no saved state" for an unreadable file, the
-            # platform will already have launched with zero bots and be
-            # about to write an empty primary. That sequence loses the
-            # fleet record and its only recovery path in one 60s cycle.
-            #
-            # A backup that is one cycle stale is worth incomparably
-            # more than a backup that is a copy of garbage.
-            if self._path.exists() and self._read_bot_ids(self._path) is None:
+        def _refresh_backup() -> None:
+            """Copy the outgoing primary over the backup, unless it is
+            unparseable. Runs while the staged replacement is already
+            durable and the primary is still the old contents.
+
+            A corrupt primary must not reach the backup: has_saved_state()
+            answers "no saved state" for an unreadable file, so the
+            platform launches with zero bots and writes an empty primary
+            on the next cycle. Copying the corrupt file first would take
+            the only recovery path with it.
+            """
+            if not self._path.exists():
+                return
+            if self._read_bot_ids(self._path) is None:
                 logger.error(
                     "REFUSING to refresh %s: the current %s does not parse, "
                     "and copying it would destroy the last good backup. "
@@ -186,32 +183,32 @@ class StateManager:
                     self._backup_path.name,
                     self._path.name,
                 )
-            elif self._path.exists():
-                try:
-                    self._backup_path.write_bytes(self._path.read_bytes())
-                except OSError as _bk_exc:
-                    # v3.24.21 — was `except Exception: pass`.
-                    # The backup is the ONLY recovery path when a save
-                    # produces a corrupt state file (load_state falls
-                    # back to it). Silently skipping it meant the safety
-                    # net could be gone for weeks with no signal, and the
-                    # operator would only discover it at the moment they
-                    # needed it. Warning, not debug: this is a degraded
-                    # durability guarantee, not a cosmetic miss.
-                    logger.warning(
-                        "Bot state backup FAILED (%s): %s — proceeding "
-                        "with save, but %s will not be recoverable from "
-                        "backup if this write corrupts it",
-                        type(_bk_exc).__name__,
-                        _bk_exc,
-                        self._path.name,
-                    )
-            tmp_path.replace(self._path)
+                return
+            try:
+                self._backup_path.write_bytes(self._path.read_bytes())
+            except OSError as _bk_exc:
+                # A missing backup is a degraded durability guarantee, not
+                # a cosmetic miss: load_state falls back to it.
+                logger.warning(
+                    "Bot state backup FAILED (%s): %s — proceeding "
+                    "with save, but %s will not be recoverable from "
+                    "backup if this write corrupts it",
+                    type(_bk_exc).__name__,
+                    _bk_exc,
+                    self._path.name,
+                )
+
+        try:
+            atomic_write_json(
+                self._path,
+                state,
+                indent=2,
+                default=str,
+                before_replace=_refresh_backup,
+            )
             logger.info("Bot state saved: %d bots", len(bots))
         except Exception as exc:
             logger.error("Failed to save bot state: %s", exc)
-            if tmp_path.exists():
-                tmp_path.unlink(missing_ok=True)
 
     def delete_bot(self, bot_id: str) -> bool:
         """Remove one bot's record from disk. The ONLY removal path.
@@ -273,15 +270,22 @@ class StateManager:
                 and str(w.get("target_id", "")) != str(bot_id)
             ]
 
-            tmp_path = self._path.with_suffix(".tmp")
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(state, f, indent=2, default=str)
-            if self._path.exists():
+            def _refresh_backup() -> None:
+                """Copy the outgoing primary over the backup."""
+                if not self._path.exists():
+                    return
                 try:
                     self._backup_path.write_bytes(self._path.read_bytes())
                 except OSError as exc:
                     logger.warning("delete_bot: backup refresh failed: %s", exc)
-            tmp_path.replace(self._path)
+
+            atomic_write_json(
+                self._path,
+                state,
+                indent=2,
+                default=str,
+                before_replace=_refresh_backup,
+            )
 
             # ERROR level on purpose. This is irreversible and destroys
             # data the exchange cannot reproduce; it should be findable

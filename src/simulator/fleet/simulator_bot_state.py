@@ -41,6 +41,8 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from src.core.io_utils import atomic_write_json
+
 logger = logging.getLogger("acervator.simulator_bot_state")
 
 __all__ = [
@@ -304,9 +306,7 @@ def save_sim_state(state: dict, path: Optional[Path] = None) -> Path:
     if any(resolved == t.resolve() for t in _refused_write_targets()):
         raise ValueError("refusing to write simulator state over bot_state.json")
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(state, indent=2, default=repr), encoding="utf-8")
-    os.replace(tmp, p)
+    atomic_write_json(p, state, indent=2, default=repr)
     logger.info(
         "simulator_bot_state saved: %d bot(s) -> %s", state.get("bot_count", 0), p
     )
