@@ -14,7 +14,7 @@ The commit history is squashed, so `git blame` says nothing. The record
 is in three places and it is complete.
 
 **The operator's directive, 2026-04-26, verbatim, recorded at
-`docs/harness_archive/DEVELOPMENT_CHRONICLE.md:15064-15068`:**
+`docs-archive/llm-session-history/DEVELOPMENT_CHRONICLE.md:15064-15068`:**
 
 > Original: "Need to have logic gate prioritization. BB proximity and /
 > or contact should immediately trigger or heavily favor a trade if

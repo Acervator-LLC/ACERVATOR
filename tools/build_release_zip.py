@@ -137,8 +137,9 @@ ADDITIONAL_DIRS = {
     "_archive",  # 2026-07-25 audit: all migrated content
 }
 
-# Top-level files that go to ADDITIONAL (exact-match by repo-relative
-# string).
+# Files that go to ADDITIONAL, matched on BASENAME at any depth. Issue
+# #80 moved five of them into docs-archive/llm-session-history/ and the
+# routing held.
 ADDITIONAL_FILES_EXACT = {
     # Cat 1 — conversation backup (62.9 MB)
     "ACERVATOR_DEV_1_BACKUP_2026-05-20.jsonl",
@@ -246,9 +247,7 @@ def _is_additional(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
     # Top-level directory match (e.g. .session26_backups/)
     if rel_path.parts and rel_path.parts[0] in ADDITIONAL_DIRS:
         return True
-    # Exact filename match at any depth (these are all root-level
-    # files but we don't constrain the depth in case a future
-    # reorg moves them)
+    # Basename match at any depth, so an archived file keeps its route.
     if rel_path.name in ADDITIONAL_FILES_EXACT:
         return True
     # Historical product manual

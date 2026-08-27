@@ -406,7 +406,7 @@ _SCAN_SKIP_PARTS = {
 }
 _SCAN_SKIP_DIRS = (
     "docs/audits",  # historical record, kept as written
-    "docs/harness_archive",  # historical record, kept as written
+    "docs-archive",  # historical record, kept as written
 )
 _SCAN_SKIP_FILES = {
     "CHANGELOG.md",  # historical record, kept as written

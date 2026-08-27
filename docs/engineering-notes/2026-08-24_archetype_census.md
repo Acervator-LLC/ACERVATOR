@@ -228,16 +228,16 @@ account for **512**, and every one of them lives in a Markdown file.
 
 | high | file |
 |---|---|
-| 265 | `docs/harness_archive/ACERVATOR_HOP5.md` |
+| 265 | `docs-archive/llm-session-history/ACERVATOR_HOP5.md` |
 | 62 | `docs/engineering-notes/2026-08-04_needed_fixes_list.md` |
 | 47 | `src/core/mini_display.py` |
 | 30 | `src/trading/profit_fold.py` |
-| 29 | `ACERVATOR_HOP2.md` |
-| 29 | `ACERVATOR_HOP3.md` |
-| 29 | `ACERVATOR_HOP4.md` |
+| 29 | `docs-archive/llm-session-history/ACERVATOR_HOP2.md` |
+| 29 | `docs-archive/llm-session-history/ACERVATOR_HOP3.md` |
+| 29 | `docs-archive/llm-session-history/ACERVATOR_HOP4.md` |
 | 26 | `src/exchange/base.py` |
 | 25 | `acervator_watchdog.py` |
-| 20 | `docs/harness_archive/DEVELOPMENT_CHRONICLE.md` |
+| 20 | `docs-archive/llm-session-history/DEVELOPMENT_CHRONICLE.md` |
 | 18 | `src/stocks/broker_base.py` |
 | 17 | `tests/test_topology_proposals_gui.py` |
 | 16 | `tests/test_scrumming_capital_reservation.py` |
@@ -607,10 +607,10 @@ PRE-EXISTING means every offending line dates to the initial upload.
 
 | file | high | rules that fired | oldest blame | newest blame | verdict |
 |---|---|---|---|---|---|
-| `ACERVATOR_HOP2.md` | 29 | structure:DOC005 x25, vale:write-good-so x4 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `ACERVATOR_HOP3.md` | 29 | structure:DOC005 x25, vale:write-good-so x4 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `ACERVATOR_HOP4.md` | 29 | structure:DOC005 x25, vale:write-good-so x4 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `TESTNET_POA_VERIFY_REPORT.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs-archive/llm-session-history/ACERVATOR_HOP2.md` | 29 | structure:DOC005 x25, vale:write-good-so x4 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs-archive/llm-session-history/ACERVATOR_HOP3.md` | 29 | structure:DOC005 x25, vale:write-good-so x4 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs-archive/llm-session-history/ACERVATOR_HOP4.md` | 29 | structure:DOC005 x25, vale:write-good-so x4 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs-archive/llm-session-history/TESTNET_POA_VERIFY_REPORT.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
 | `docs/EMITTER_IDENTIFICATION.md` | 1 | vale:write-good-so x1 | 2026-08-24 | 2026-08-24 | RECENT |
 | `docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md` | 1 | structure:DOC005 x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
 | `docs/engineering-notes/2026-07-25_bot_details_status_tab/REPORT.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
@@ -646,8 +646,8 @@ PRE-EXISTING means every offending line dates to the initial upload.
 | `docs/engineering-notes/2026-08-23_issue_100_abstention_leaves_the_denominator.md` | 3 | vale:write-good-so x3 | 2026-08-24 | 2026-08-24 | RECENT |
 | `docs/engineering-notes/2026-08-24_issue_104_the_remaining_boosts_can_refuse.md` | 1 | vale:write-good-so x1 | 2026-08-24 | 2026-08-24 | RECENT |
 | `docs/engineering-notes/2026-08-24_issue_106_the_growth_cap_compounds.md` | 1 | vale:write-good-so x1 | 2026-08-24 | 2026-08-24 | RECENT |
-| `docs/harness_archive/ACERVATOR_HOP5.md` | 265 | structure:DOC005 x257, vale:write-good-so x8 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/harness_archive/DEVELOPMENT_CHRONICLE.md` | 20 | vale:write-good-so x16, vale:write-good-thereis x4 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs-archive/llm-session-history/ACERVATOR_HOP5.md` | 265 | structure:DOC005 x257, vale:write-good-so x8 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs-archive/llm-session-history/DEVELOPMENT_CHRONICLE.md` | 20 | vale:write-good-so x16, vale:write-good-thereis x4 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
 
 ## Appendix — this document audited itself
 

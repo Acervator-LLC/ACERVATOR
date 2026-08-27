@@ -327,7 +327,6 @@ class VersionSweep:
 
         # Docs must also reference the right version
         doc_files = [
-            self.root / "ACERVATOR_HOP2.md",
             self.root / "AI_DEVELOPER_GUIDE.md",
             self.root / "CHANGELOG.md",
         ]

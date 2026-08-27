@@ -164,8 +164,8 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 
 # HISTORICAL RECORDS. These hold what was true when they were written and
 # they may not be edited to satisfy a rule. `docs/audits/` and
-# `docs/harness_archive/` are the session record; `CHANGELOG.md` is the
-# release record. `requirements/` is excluded because a lock file lists
+# `docs-archive/llm-session-history/` are the session record;
+# `CHANGELOG.md` is the release record. `requirements/` is excluded because a lock file lists
 # every resolved package by design; that is what a lock file is.
 #
 # This file excludes ITSELF, and nothing else. The controls below hold
@@ -174,8 +174,8 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 # excluded: it describes the eight removed lists by file and count and
 # never writes a `pip install` line, and it was measured at zero hits.
 EXCLUDED_PREFIXES: tuple[str, ...] = (
+    "docs-archive/llm-session-history/",
     "docs/audits/",
-    "docs/harness_archive/",
     "requirements/",
 )
 EXCLUDED_FILES: tuple[str, ...] = (

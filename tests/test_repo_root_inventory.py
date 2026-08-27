@@ -114,12 +114,6 @@ INVENTORY: dict[str, str] = {
     '`self.root / "CHANGELOG.md"`',
     "ACERVATOR_HOP7.md": "the live orientation document. It is meant to be the first "
     "thing found at the root",
-    "ACERVATOR_HOP2.md": "April archive. src/core/version_sweep.py reads it at "
-    '`self.root / "ACERVATOR_HOP2.md"` for stale version strings',
-    "ACERVATOR_HOP3.md": "April archive, kept beside HOP2 and HOP4",
-    "ACERVATOR_HOP4.md": "April archive, kept beside HOP2 and HOP3",
-    "ACERVATOR_DEPT_LEAD_REVIEW_v3_12_0.md": "April review record, kept beside the HOP archives",
-    "TESTNET_POA_VERIFY_REPORT.md": "April verification record, kept beside the HOP archives",
     # -- the animation core the three screens share ----------------------
     "screen_fx.py": "issue #74. splash_screen.py, cartoon_screen.py and "
     "investor_screen.py all say `import screen_fx`, a top-level "

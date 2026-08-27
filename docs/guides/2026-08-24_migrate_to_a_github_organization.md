@@ -292,7 +292,7 @@ reports nothing.
       |---|---|---|
       | `README.md` | 107 | the clone URL |
       | `ACERVATOR_HOP7.md` | 282 | prose |
-      | `docs/harness_archive/DEVELOPMENT_CHRONICLE.md` | 18587 | a **different** repository (SADP). Leave it alone. |
+      | `docs-archive/llm-session-history/DEVELOPMENT_CHRONICLE.md` | 18587 | a **different** repository (SADP). Leave it alone. |
 
 ---
 
