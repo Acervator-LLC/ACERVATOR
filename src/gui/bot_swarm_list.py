@@ -32,6 +32,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from . import design_system as ds
+
 try:
     from PySide6.QtCore import Qt, QPointF
     from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QLinearGradient
@@ -174,11 +176,11 @@ if _HAS_QT:
                 self.setItem(i, COL_TICKER, sym_item)
                 in_item = QTableWidgetItem(f"${_in:,.2f}")
                 in_item.setTextAlignment(Qt.AlignCenter)
-                in_item.setForeground(QBrush(QColor("#00ff88")))
+                in_item.setForeground(QBrush(QColor(ds.SUCCESS)))
                 self.setItem(i, COL_INFLOW, in_item)
                 out_item = QTableWidgetItem(f"${_out:,.2f}")
                 out_item.setTextAlignment(Qt.AlignCenter)
-                out_item.setForeground(QBrush(QColor("#ff3366")))
+                out_item.setForeground(QBrush(QColor(ds.ERROR)))
                 self.setItem(i, COL_OUTFLOW, out_item)
                 # v3.23.62 — % Out: how much profit is being exported
                 # via outbound smart wires. Colour ramp:
@@ -190,13 +192,13 @@ if _HAS_QT:
                 pct_item = QTableWidgetItem(f"{_pct:.0f}%")
                 pct_item.setTextAlignment(Qt.AlignCenter)
                 if _pct <= 0:
-                    pct_item.setForeground(QBrush(QColor("#666666")))
+                    pct_item.setForeground(QBrush(QColor(ds.TEXT_MUTED)))
                 elif _pct < 81:
-                    pct_item.setForeground(QBrush(QColor("#00ffee")))
+                    pct_item.setForeground(QBrush(QColor(ds.PRIMARY_BRIGHT)))
                 elif _pct < 100:
-                    pct_item.setForeground(QBrush(QColor("#ffaa00")))
+                    pct_item.setForeground(QBrush(QColor(ds.WARNING)))
                 else:
-                    pct_item.setForeground(QBrush(QColor("#ff3366")))
+                    pct_item.setForeground(QBrush(QColor(ds.ERROR)))
                 self.setItem(i, COL_OUTFLOW_PCT, pct_item)
                 # Lane columns hold no text; wire overlay paints dots.
                 for j in range(LANE_COUNT):

@@ -23,6 +23,7 @@ import logging
 from typing import Optional
 
 from PySide6 import QtCore, QtWidgets
+from . import design_system as ds
 
 logger = logging.getLogger("acervator.gui.start_all")
 
@@ -39,15 +40,16 @@ class StartAllProgressDialog(QtWidgets.QDialog):
         self.setMinimumWidth(420)
         self.resize(520, 360)
         self.setStyleSheet(
-            "QDialog { background: #14141e; color: #c0c0c0; }"
-            "QLabel { color: #c0c0c0; font-family: Consolas; font-size: 11px; }"
-            "QListWidget { background: #0a0a12; color: #c0c0c0; "
-            "border: 1px solid #2a2a3a; font-family: Consolas; font-size: 10px; }"
-            "QPushButton { background: #1a1a26; color: #c0c0c0; "
-            "border: 1px solid #3a3a4a; padding: 6px 18px; "
+            f"QDialog {{ background: {ds.MAIN_TOOLBAR_SURFACE}; color: {ds.TEXT_CONSOLE}; }}"
+            f"QLabel {{ color: {ds.TEXT_CONSOLE}; font-family: Consolas; font-size: 11px; }}"
+            f"QListWidget {{ background: {ds.SURFACE_CHART}; color: {ds.TEXT_CONSOLE}; "
+            f"border: 1px solid {ds.MAIN_SEPARATOR}; font-family: Consolas; font-size: 10px; }}"
+            f"QPushButton {{ background: {ds.MAIN_BUTTON_SURFACE}; color: {ds.TEXT_CONSOLE}; "
+            f"border: 1px solid {ds.MAIN_BUTTON_BORDER}; padding: 6px 18px; "
             "font-family: Consolas; font-size: 10px; }"
-            "QPushButton:hover { background: #22222e; }"
-            "QPushButton:disabled { color: #555; border-color: #2a2a3a; }"
+            f"QPushButton:hover {{ background: {ds.MAIN_BUTTON_HOVER}; }}"
+            f"QPushButton:disabled {{ color: {ds.TEXT_PLACEHOLDER}; "
+            f"border-color: {ds.MAIN_SEPARATOR}; }}"
         )
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -69,7 +71,7 @@ class StartAllProgressDialog(QtWidgets.QDialog):
             "will keep running."
         )
         self._subline.setWordWrap(True)
-        self._subline.setStyleSheet("color: #888888;")
+        self._subline.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL};")
         layout.addWidget(self._subline)
 
         self._list = QtWidgets.QListWidget()

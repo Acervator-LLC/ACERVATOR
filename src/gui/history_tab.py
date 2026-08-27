@@ -43,6 +43,8 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
+from . import design_system as ds
+
 try:
     from PySide6.QtCore import QDateTime, Qt, QTimer, Signal
     from PySide6.QtWidgets import (
@@ -286,7 +288,7 @@ if _HAS_QT:
 
             # ── Summary line ─────────────────────────────────────────────
             self._summary = QLabel("No history loaded yet — click Refresh.")
-            self._summary.setStyleSheet("color: #aaa; padding: 2px 6px;")
+            self._summary.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; padding: 2px 6px;")
             outer.addWidget(self._summary)
 
             # ── Trades table ─────────────────────────────────────────────
