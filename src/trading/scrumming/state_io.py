@@ -32,6 +32,8 @@ class StateSerializerMixin:
     _cb_soft_cooldown_remaining: int
     _cb_soft_trip_pct: float
     _current_holdings: float
+    _detonation_last_check_ts: float
+    _detonation_last_signal_bullish: bool
     _dist_accumulator: float
     _fold_accumulator: float
     _fold_cycle_cap_consumed: float
@@ -95,6 +97,16 @@ class StateSerializerMixin:
             "quote_to_usd": float(self._quote_to_usd or 1.0),
             "pending_stack_buy_usd": float(
                 getattr(self, "_pending_stack_buy_usd", 0.0) or 0.0
+            ),
+            # issue #107 -- the detonation edge latch and the date of
+            # the last completed check. Written verbatim; the trigger
+            # decides when the latch has aged out, because only it knows
+            # the detonation timeframe and the elapsed time.
+            "detonation_last_signal_bullish": bool(
+                getattr(self, "_detonation_last_signal_bullish", False)
+            ),
+            "detonation_last_check_ts": float(
+                as_finite_float(getattr(self, "_detonation_last_check_ts", 0.0)) or 0.0
             ),
             "cb_hard_tripped": bool(getattr(self, "_cb_hard_tripped", False)),
             "cb_hard_tripped_at": float(
@@ -167,7 +179,7 @@ class StateSerializerMixin:
                 if getattr(self, "_target_grow_last_side", None) in ("lower", "upper")
                 else None
             ),
-            "_format_version": 7,
+            "_format_version": 8,
         }
 
     def import_scrumming_state(self, data: dict) -> None:
@@ -293,6 +305,22 @@ class StateSerializerMixin:
             self._hyst_armed_fold_side = False
         if self._hyst_armed_scrum_side and self._hyst_ref_scrum_side <= 0:
             self._hyst_armed_scrum_side = False
+        # issue #107 -- a detonation that already fired on a bull run
+        # must not fire again on the same run after a restart, so the
+        # edge latch persists like a tripped breaker does. Restored
+        # verbatim: this method is the export's inverse, and the trigger
+        # holds the expiry rule. `as_finite_float` because JSON admits
+        # NaN and Infinity, and a non-finite timestamp makes every
+        # elapsed comparison in the trigger False, which would hold the
+        # latch for the life of the bot. A negative timestamp predates
+        # the epoch and is not a check that happened.
+        self._detonation_last_signal_bullish = bool(
+            data.get("detonation_last_signal_bullish", False)
+        )
+        _det_ts = as_finite_float(data.get("detonation_last_check_ts", 0.0))
+        self._detonation_last_check_ts = (
+            float(_det_ts) if _det_ts is not None and _det_ts > 0.0 else 0.0
+        )
         # A hard-tripped breaker must persist across restart.
         self._cb_hard_tripped = bool(data.get("cb_hard_tripped", False))
         try:

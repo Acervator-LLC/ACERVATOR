@@ -58,6 +58,7 @@ from .ta_engine import (
     detect_landing_strip_v2,
 )
 from .phantom_balance import (
+    TIMEFRAME_SECONDS,
     PhantomBalanceManager,
     TimeframeCoordinator,
 )
@@ -76,6 +77,17 @@ from .scrumming import (
 )
 
 logger = logging.getLogger("acervator.scrumming")
+
+#: Seconds between detonation trigger checks. The detonation timeframe
+#: is a higher TF whose candles close slowly, so a faster cadence costs
+#: API quota and returns the same answer.
+_DETONATION_CHECK_INTERVAL_S: float = 3600.0
+
+#: Floor on how long the detonation bullish latch survives without a
+#: completed check. One skipped check at the interval above. A
+#: detonation timeframe shorter than this floor would otherwise expire
+#: the latch on the normal cadence and re-detonate every hour.
+_DETONATION_LATCH_MIN_TTL_S: float = 2.0 * _DETONATION_CHECK_INTERVAL_S
 
 
 _TA_CONFIDENCE_FLOOR = 0.25
@@ -572,6 +584,15 @@ class ScrummingBot(
 
         self._anchor_target_balance: float = float(config.target_balance)
 
+        # Detonation edge state. Both are persisted by
+        # `export_scrumming_state` and restored by
+        # `import_scrumming_state`; these are the never-checked
+        # defaults for a bot with no saved state.
+        # `_detonation_last_check_ts` dates the last COMPLETED check and
+        # carries both the rate limit and the latch's age.
+        # `_detonation_last_signal_bullish` is the edge latch: True
+        # means the last check saw the bull run this bot already
+        # detonated on.
         self._detonation_last_check_ts: float = 0.0
         self._detonation_last_signal_bullish: bool = False
 
@@ -9239,11 +9260,20 @@ class ScrummingBot(
         """Check higher-TF signal for detonation trigger.
 
         Edge-triggered: fires only on transition from not-bullish-or-
-        low-conf to BULLISH+>=0.75. A sustained bull run that stays
-        above threshold will detonate ONCE, not every hour.
+        low-conf to BULLISH+>=`detonation_confidence_min`. A sustained
+        bull run that stays above threshold detonates ONCE, not every
+        hour.
 
-        Rate-limited to 1 check per hour (higher TF candles close
-        slowly; no reason to burn API quota faster).
+        The edge latch is persisted state, so the rule holds across a
+        restart as well as within one process. It expires when a whole
+        detonation-timeframe candle closed with no completed check: that
+        gap left the run unobserved, so the next check evaluates fresh.
+        The floor is `_DETONATION_LATCH_MIN_TTL_S`.
+
+        Rate-limited to one check per `_DETONATION_CHECK_INTERVAL_S`
+        (higher TF candles close slowly; no reason to burn API quota
+        faster). The rate limit also survives a restart, so a relaunch
+        loop re-reads the tape at the same cadence a running bot does.
 
         Additional gates:
           - detonation_enabled must be True
@@ -9268,11 +9298,25 @@ class ScrummingBot(
             return False
 
         now = time.time()
-        if now - self._detonation_last_check_ts < 3600:
+        elapsed = now - self._detonation_last_check_ts
+        if elapsed < _DETONATION_CHECK_INTERVAL_S:
             return False
         self._detonation_last_check_ts = now
 
         tf = getattr(self.config, "detonation_timeframe", "1d") or "1d"
+        # An unobserved gap of one whole detonation candle retires the
+        # latch. `elapsed >= latch_ttl` is sufficient for at least one
+        # full candle having closed unseen, whatever the candle
+        # boundary. A shorter gap keeps the latch, including across a
+        # candle boundary: a bull run is continuous bullishness and does
+        # not restart when the candle does.
+        latch_ttl = max(
+            float(TIMEFRAME_SECONDS.get(tf, TIMEFRAME_SECONDS["1d"])),
+            _DETONATION_LATCH_MIN_TTL_S,
+        )
+        if elapsed >= latch_ttl:
+            self._detonation_last_signal_bullish = False
+
         try:
             candles = await self.exchange.get_ohlcv(self.config.symbol, tf, limit=100)
         except Exception as exc:
