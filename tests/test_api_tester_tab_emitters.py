@@ -102,7 +102,7 @@ INDICATOR = "apitest.16.005.postcondition.indicator_is_mappable"
 
 APITEST_PINS = (CONNECTED, RELEASED, RAN, PROBED, INDICATOR)
 
-MAIN_WINDOW = REPO / "src" / "gui" / "main_window.py"
+API_TESTER = REPO / "src" / "gui" / "widgets" / "api_tester_tab.py"
 
 # The production geometry, restated so the tests drive the real thing.
 COINBASE_PROBES = 3
@@ -419,7 +419,7 @@ def _tab(qapp: QApplication, *, exchange_id: str = "coinbase") -> Iterator[Any]:
     path -- the one that reads the three password boxes -- because that
     is the path a credential can escape from.
     """
-    from src.gui import main_window as mw
+    from src.gui.widgets import api_tester_tab as mw
 
     tab = mw.APITesterTab()
     index = tab._exchange.findData(exchange_id)
@@ -489,14 +489,14 @@ def _statuspage(
 
 
 def _apitest_emit_calls() -> list[ast.Call]:
-    """Every `_api_emit(...)` call node in `main_window.py`.
+    """Every `_api_emit(...)` call node in `api_tester_tab.py`.
 
     Read from the syntax tree, so an aliased import or a renamed local
     cannot slip one past. A regex over the source would answer a
     different question. The alias is this tab's own, so the Exchange
     tab's `_ex_emit` calls cannot land in this set.
     """
-    tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
+    tree = ast.parse(API_TESTER.read_text(encoding="utf-8"))
     return [
         node
         for node in ast.walk(tree)
@@ -526,11 +526,11 @@ def _class_node() -> ast.ClassDef:
     are defined on several classes in this file and a tree-wide search
     would return whichever one `ast.walk` reached first.
     """
-    tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
+    tree = ast.parse(API_TESTER.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.name == "APITesterTab":
             return node
-    message = f"APITesterTab not found in {MAIN_WINDOW}"
+    message = f"APITesterTab not found in {API_TESTER}"
     raise AssertionError(message)
 
 
@@ -543,7 +543,7 @@ def _span(function: str) -> tuple[int, int]:
             and node.end_lineno is not None
         ):
             return (node.lineno, node.end_lineno)
-    message = f"APITesterTab.{function} not found in {MAIN_WINDOW}"
+    message = f"APITesterTab.{function} not found in {API_TESTER}"
     raise AssertionError(message)
 
 
@@ -742,7 +742,7 @@ def _host_without_the_exchange_widget(connector: Any) -> Any:
     """
     from PySide6.QtWidgets import QLabel, QPushButton, QTextEdit
 
-    from src.gui import main_window as mw
+    from src.gui.widgets import api_tester_tab as mw
 
     names = ("_do_disconnect", "_log")
     host = type(
@@ -938,7 +938,7 @@ def _probe(
     refuses it, and the tab logs the refusal -- which is the honest
     outcome and reaches no venue.
     """
-    from src.gui import main_window as mw
+    from src.gui.widgets import api_tester_tab as mw
 
     dialler = _Dialler()
     opener = _Opener(responses)
@@ -1051,7 +1051,7 @@ def test_a_probe_that_never_reached_tcp_writes_no_record(
     Nothing was probed, so there is nothing to report and the pin is
     silent rather than green on an empty sweep.
     """
-    from src.gui import main_window as mw
+    from src.gui.widgets import api_tester_tab as mw
 
     def _refuse(address: Any, *args: Any, **kwargs: Any) -> Any:
         message = f"no route to {address!r} {args!r} {kwargs!r}"
@@ -1071,7 +1071,7 @@ def test_a_probe_that_never_reached_tcp_writes_no_record(
 
 
 def _status(qapp: QApplication, monkeypatch: pytest.MonkeyPatch, body: bytes) -> Any:
-    from src.gui import main_window as mw
+    from src.gui.widgets import api_tester_tab as mw
 
     opener = _Opener([_Response(body)])
     monkeypatch.setattr(mw, "safe_urlopen", opener, raising=True)
@@ -1155,7 +1155,7 @@ def test_an_exchange_with_no_status_page_writes_no_record(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The method returns before any fetch, and claims nothing."""
-    from src.gui import main_window as mw
+    from src.gui.widgets import api_tester_tab as mw
 
     opener = _Opener([])
     monkeypatch.setattr(mw, "safe_urlopen", opener, raising=True)
@@ -1206,7 +1206,7 @@ def test_the_presence_boolean_is_the_only_credential_derived_value() -> None:
     and asserts it is exactly `bool(key) and bool(secret)` -- so a
     later edit that made it a length, a prefix or a hash fails here.
     """
-    source = MAIN_WINDOW.read_text(encoding="utf-8")
+    source = API_TESTER.read_text(encoding="utf-8")
     tree = ast.parse(source)
     bindings = [
         node
@@ -1238,7 +1238,7 @@ def test_no_sentinel_credential_reaches_the_serialised_records(
     five pin names before the sentinel is looked for, because an
     absence proved against an empty file is an absence of evidence.
     """
-    from src.gui import main_window as mw
+    from src.gui.widgets import api_tester_tab as mw
 
     path = tmp_path / "signals" / "session.jsonl"
     opener = _Opener(
@@ -1342,7 +1342,7 @@ def test_no_record_from_this_tab_carries_a_forbidden_key(
     dictionaries the sink really received, so a key built at run time
     would be caught too.
     """
-    from src.gui import main_window as mw
+    from src.gui.widgets import api_tester_tab as mw
 
     monkeypatch.setattr(socket, "create_connection", _Dialler(), raising=True)
     monkeypatch.setattr(
@@ -1510,7 +1510,7 @@ def _script(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch, connector_class: type
 ) -> tuple:
     """One fixed operator script, run against whatever sink is installed."""
-    from src.gui import main_window as mw
+    from src.gui.widgets import api_tester_tab as mw
 
     connector_class.raise_on_connect = None
     connector_class.raise_on_disconnect = None

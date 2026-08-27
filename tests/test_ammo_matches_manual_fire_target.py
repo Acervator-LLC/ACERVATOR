@@ -53,7 +53,17 @@ if str(REPO_ROOT) not in sys.path:
 import src.gui.main_window as mw  # noqa: E402
 import src.trading.scrumming_bot as sbm  # noqa: E402
 
-GUI_SRC = Path(mw.__file__).read_text(encoding="utf-8")
+
+def _owning_source(owner, method_name: str) -> str:
+    """Source of the file that really defines ``method_name``."""
+    import inspect
+
+    path = inspect.getsourcefile(getattr(owner, method_name))
+    assert path is not None, method_name
+    return Path(path).read_text(encoding="utf-8")
+
+
+GUI_SRC = _owning_source(mw.BotStatusTable, "update_bots")
 BOT_SRC = Path(sbm.__file__).read_text(encoding="utf-8")
 
 
@@ -116,7 +126,7 @@ class TestTheArithmeticAgrees:
         ],
     )
     def test_display_delta_equals_engine_delta(self, cfg, live, pos):
-        from src.gui.main_window import _compose_ammo_cell
+        from src.gui.table_cells import _compose_ammo_cell
 
         # The display, post-fix, resolves target_val to the live value.
         cell = _compose_ammo_cell(
@@ -131,7 +141,7 @@ class TestTheArithmeticAgrees:
     def test_the_old_behaviour_disagreed(self):
         """POSITIVE CONTROL on the whole premise: using the config value
         must produce a DIFFERENT delta, or there was never a bug."""
-        from src.gui.main_window import _compose_ammo_cell
+        from src.gui.table_cells import _compose_ammo_cell
 
         cfg, live, pos = 50.00, 55.41, 60.00
         old = _compose_ammo_cell(pos, 1.0, pos, 1.0, cfg)["delta"]
@@ -142,7 +152,7 @@ class TestTheArithmeticAgrees:
     def test_a_bot_at_its_live_target_reads_as_dust(self):
         """The operator's actual requirement: Manual Fire re-zeroes the
         bot, so a re-zeroed bot must then read as at-target."""
-        from src.gui.main_window import _compose_ammo_cell
+        from src.gui.table_cells import _compose_ammo_cell
 
         cell = _compose_ammo_cell(102.61, 1.0, 102.61, 1.0, 102.61)
         assert abs(cell["delta"]) < 0.01

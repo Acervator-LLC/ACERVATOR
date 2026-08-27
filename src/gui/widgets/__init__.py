@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import design_system as ds
+from .. import design_system as ds
 
 _NO_COLUMN_MAP: Mapping[int, str] = MappingProxyType({})
 _NO_WIDTH_MAP: Mapping[int, int] = MappingProxyType({})

@@ -71,6 +71,13 @@ BC_SRC = (REPO_ROOT / "src" / "trading" / "bot_container.py").read_text(
     encoding="utf-8"
 )
 MW_SRC = (REPO_ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
+# Every widget carved out of the main window, so the scan below cannot go
+# blind on a class that moved.
+WIDGET_SRC = {
+    q.name: q.read_text(encoding="utf-8")
+    for q in sorted((REPO_ROOT / "src" / "gui" / "widgets").glob("*.py"))
+}
+CHART_SRC = WIDGET_SRC["trade_charts_tab.py"]
 
 
 def _live_settings_source(gui_dir):
@@ -442,6 +449,7 @@ class TestOneDefinitionOnly:
             ("scrumming_bot.py", SB_SRC),
             ("bot_container.py", BC_SRC),
             ("main_window.py", MW_SRC),
+            *sorted(WIDGET_SRC.items()),
             ("bot_live_settings.py", BLS_SRC),
         ):
             hits = _FROZEN_RE.findall(_code_only(src))
@@ -500,14 +508,14 @@ class TestTheCoupledConsumers:
         """It drew ``anchor_px * (1 + cap_pct/100)`` and the bot
         enforces against ``_target_balance``. On IMU the chart said
         $50.50 where the bot enforced $64.17."""
-        i = MW_SRC.index("set_target_balance_lines")
-        seg = MW_SRC[max(0, i - 4000) : i + 400]
+        i = CHART_SRC.index("set_target_balance_lines")
+        seg = CHART_SRC[max(0, i - 4000) : i + 400]
         assert "cycle_growth_cap_usd" in seg, (
             "the chart ceiling no longer reads the property the bot "
             "enforces with, so the drawn line and the enforced line can "
             "disagree again -- issue #106"
         )
-        assert "ceiling_px = anchor_px * (1.0 + cap_pct / 100.0)" not in MW_SRC
+        assert "ceiling_px = anchor_px * (1.0 + cap_pct / 100.0)" not in CHART_SRC
 
     def test_the_enforced_ceiling_on_the_live_IMU_numbers(self):
         b = _Bot(anchor=IMU_ANCHOR, target=IMU_TARGET, pct=IMU_PCT)
