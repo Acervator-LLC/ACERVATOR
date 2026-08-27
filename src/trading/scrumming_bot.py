@@ -5751,6 +5751,12 @@ class ScrummingBot(
                     float(getattr(bb_result, "upper", 0.0) or 0.0),
                 )
 
+                # issue #133 unit 11 -- the parked pool exists only while the
+                # fold queue is empty. This sell has just filled it, so the
+                # pool lands here. After the top-up: the merge blends `ref`
+                # from `usd / ref` per record, and wire USD carries no units.
+                self._land_pending_wire_credits()
+
                 self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
                 self._fold_queue_ref_price = sell_fill
                 self.stats.trade_volume += scrum_usd
@@ -7060,6 +7066,11 @@ class ScrummingBot(
                             float(getattr(bb_result, "lower", 0.0) or 0.0),
                             float(getattr(bb_result, "upper", 0.0) or 0.0),
                         )
+                        # issue #133 unit 11 -- the parked pool exists only while the
+                        # fold queue is empty. This sell has just filled it, so the
+                        # pool lands here. After the top-up: the merge blends `ref`
+                        # from `usd / ref` per record, and wire USD carries no units.
+                        self._land_pending_wire_credits()
                         self._fold_queue_usd = sum(
                             t["usd"] for t in self._fold_tranches
                         )
@@ -8734,6 +8745,12 @@ class ScrummingBot(
                 float(getattr(_bb_last, "upper", 0.0) or 0.0),
             )
             new_tranches_count -= _merged_n
+
+            # issue #133 unit 11 -- the parked pool exists only while the
+            # fold queue is empty. This sell has just filled it, so the
+            # pool lands here. After the top-up: the merge blends `ref`
+            # from `usd / ref` per record, and wire USD carries no units.
+            self._land_pending_wire_credits()
 
             self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
             self.stats.total_trades += 1

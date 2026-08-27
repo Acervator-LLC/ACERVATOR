@@ -48,6 +48,7 @@ class StateSerializerMixin:
     _last_trade_side: Optional[str]
     _main_lots: list[dict]
     _compact_wire_credits: Callable[..., int]
+    _land_pending_wire_credits: Callable[..., float]
     _pending_stack_buy_usd: float
     _pending_wire_credits: float
     _pending_wire_ledger: list[dict]
@@ -468,6 +469,13 @@ class StateSerializerMixin:
                 self._target_grow_last_side = None
         except Exception:
             self._target_grow_last_side = None
+
+        # issue #133 unit 11 -- a state file written before the build
+        # loops landed the pool can carry `pending_wire_credits` beside
+        # standing `fold_tranches`. Both are restored above, so the
+        # invariant is re-asserted here rather than waiting for the next
+        # sell.
+        self._land_pending_wire_credits()
 
         # Recompute the aggregate from per-tranche sums so a drifted saved
         # value self-heals.

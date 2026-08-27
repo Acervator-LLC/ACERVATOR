@@ -40,6 +40,7 @@ value would corrupt the very counters these exist to make trustworthy.
 from __future__ import annotations
 
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -90,6 +91,23 @@ class _Bot:
         self._hedge_trades = 0
         self._cb_hard_tripped = False
         self._compact_wire_credits = lambda *_a, **_k: None
+        # issue #133 unit 11 -- the restore lands a parked wire
+        # credit into a standing fold queue. Bound as the REAL
+        # methods, so the stub runs the shipping code rather
+        # than a stand-in that cannot fail.
+        self._fold_tranches = []
+        self._pending_wire_ledger = []
+        self._fold_queue_usd = 0.0
+        self._add_wire_credits = types.MethodType(ScrummingBot._add_wire_credits, self)
+        self._spread_wire_usd_over_fold_queue = types.MethodType(
+            ScrummingBot._spread_wire_usd_over_fold_queue, self
+        )
+        self._refresh_fold_queue_total = types.MethodType(
+            ScrummingBot._refresh_fold_queue_total, self
+        )
+        self._land_pending_wire_credits = types.MethodType(
+            ScrummingBot._land_pending_wire_credits, self
+        )
 
 
 POPULATED = {
