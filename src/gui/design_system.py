@@ -114,6 +114,136 @@ CARD_METRIC_SURFACE = "#12121f"  # Analytics tab card background
 CARD_METRIC_BORDER = "#2a2a3f"
 CARD_METRIC_LABEL = "#888"
 
+# ---- Widget colors promoted from hex literals -----------------------------
+# Values copied verbatim from the callsites they replace. A migration is a
+# rename: no value here may be snapped to a near neighbour.
+
+# Semantic roles the widgets actually render
+ERROR = "#ff3366"  # Negative P&L, destructive controls, error text
+WARNING_STRONG = "#ff6600"  # Cooldown state, warning-action button
+STATUS_INFO = "#00aaff"  # Info log level, connection status
+STATUS_NEUTRAL = "#8899aa"  # Neutral log level, no-data mark
+STATUS_AUTHENTICATED = "#00ddff"  # Authenticated / armed indicator text
+PRIMARY_BRIGHT = "#00ffee"  # Brighter cyan accent: privacy dot, Sim tab
+ACCENT_GOLD = "#ffd700"  # Paper lane accent in the visualizer
+LAYER_CRYPTO = "#00ccaa"  # Crypto layer accent
+LAYER_STOCK = "#6699ff"  # Stock layer accent
+
+# Text roles beyond TEXT_HIGH / MED / LOW
+TEXT_MAX = "#ffffff"  # Maximum-contrast emphasis
+TEXT_NEUTRAL = "#cccccc"  # Default value text
+TEXT_CONSOLE = "#c0c0c0"  # Console body text
+TEXT_INACTIVE = "#aaaaaa"  # Idle control text
+TEXT_EMPTY_STATE = "#8a8aab"  # Empty-list and footer text
+TEXT_MUTED = "#666666"  # Stopped state, disabled foreground
+TEXT_PLACEHOLDER = "#555555"  # Empty-state and disabled-button text
+TEXT_INFO_SOFT = "#66ccff"  # Soft info text
+TEXT_LOG_MINT = "#c0ffe0"  # Gate-log console text
+TEXT_ON_LIGHT = "#000000"  # Text on a light control
+
+# Surfaces beyond SURFACE_0..4
+SURFACE_CHART = "#0a0a12"  # Chart, console and group-box ground
+SURFACE_CONTROL = "#1a1a2e"  # Chart gridline and control ground
+SURFACE_CONSOLE = "#05050a"  # Console ground
+SURFACE_CONSOLE_HEADER = "#0a0a14"  # Console header ground
+BORDER_DISABLED = "#444444"  # Disabled control border
+
+# Context menu
+MENU_SURFACE = "#1a1a2f"  # Context-menu ground
+MENU_BORDER = "#3a3a5f"  # Context-menu border and hover ground
+MENU_ITEM_SELECTED = "#2a2a4f"  # Selected menu-item ground
+
+# Control states
+STATE_ARMED = "#3ed080"  # Armed control border and text
+STATE_ENGAGED = "#2d9d5f"  # Engaged control ground
+STATE_ENGAGED_DIM = "#2d5f48"  # Dimmed engaged ground
+STATE_ENGAGED_GLOW = "#557766"  # Glow on the engaged control
+STATE_PENDING = "#ffcc44"  # Pending-attention border and glow
+STATE_STARTING = "#00e6ff"  # Starting state
+STATE_MARKET = "#88ccff"  # Market state
+
+# Tranche row skins - bot_live_settings
+FOLD_RATIO_AMBER = "#ff9900"  # Fold-ratio amber foreground
+FOLD_SOURCE_MANUAL = "#00ccff"  # Manual fold-source foreground
+FOLD_TRANCHE_SURFACE = "#123a63"  # Fold tranche row ground
+FOLD_TRANCHE_BORDER = "#6ea6e6"  # Fold tranche row border
+EXTRACTOR_TRANCHE_SURFACE = "#b3261e"  # Extractor tranche row ground
+EXTRACTOR_TRANCHE_BORDER = "#ffb0a6"  # Extractor tranche row border
+
+# Settings dialog controls - bot_live_settings
+SETTINGS_PRIMARY_HOVER = "#00ddaa"  # Primary button hover ground
+SETTINGS_ON_INFO = "#001122"  # Text on the cyan hover fill
+SETTINGS_DANGER_SURFACE = "#3a2020"  # Amber/danger button ground
+SETTINGS_WARNING_HOVER = "#ff8833"  # Warning button hover ground
+SETTINGS_DESTRUCTIVE_SURFACE = "#440011"  # Destructive button ground
+SETTINGS_DESTRUCTIVE_HOVER = "#660022"  # Destructive button hover ground
+SETTINGS_DISABLED_SURFACE = "#1a1a1a"  # Disabled button ground
+SETTINGS_DISABLED_DEEP = "#333333"  # Disabled button ground, deeper variant
+GLOW_PRIMARY_EDGE = "#00ffcc55"  # PRIMARY tint on a border, 8-digit QSS form
+GLOW_PRIMARY_FAINT = "#00ffcc22"  # PRIMARY tint on a hover fill, 8-digit QSS form
+
+# Bot visualizer
+VIZ_PANEL_SURFACE = "#0c0c1a"  # Tab and button ground
+VIZ_PANEL_BORDER = "#1a1a3f"  # Pane and group-box border
+VIZ_SWARM_SURFACE = "#070710"  # Swarm scroll-area ground
+VIZ_TAB_SELECTED = "#0a0a20"  # Selected tab ground
+VIZ_TAB_TEXT = "#666677"  # Unselected tab text
+VIZ_HEADING = "#c8d8f0"  # 9px heading text
+VIZ_CAPTION = "#445566"  # 8px caption text
+VIZ_CAPTION_DIM = "#556677"  # 8px caption text, dimmer variant
+VIZ_LIST_SURFACE = "#0a0a18"  # List and frame ground
+VIZ_LIST_BORDER = "#1a2a4a"  # List and frame border
+VIZ_LIST_TEXT = "#aaccff"  # List and line-edit text
+VIZ_INPUT_SURFACE = "#142244"  # Line-edit ground and list hover
+VIZ_INPUT_BORDER = "#2244aa"  # Line-edit border
+VIZ_GO_HOVER = "#001a0a"  # Green button hover ground
+VIZ_GO_HOVER_DEEP = "#00290f"  # Green button hover ground, deeper variant
+VIZ_STOP_HOVER = "#1a0011"  # Red button hover ground
+VIZ_STOP_HOVER_DEEP = "#2a0018"  # Red button hover ground, deeper variant
+VIZ_SIM_HOVER = "#001a18"  # Sim button hover ground
+VIZ_GOLD_HOVER = "#1a1400"  # Gold button hover ground
+VIZ_CONFIRM_SURFACE = "#003822"  # Confirm button ground
+VIZ_NUCLEAR_SURFACE = "#ff0000"  # Nuclear control ground
+VIZ_NUCLEAR_BORDER = "#cc0000"  # Nuclear control border
+VIZ_LANE_LIVE = "#091a0e"  # Live and sim lane row tint
+VIZ_LANE_PAPER = "#0e0e09"  # Paper lane row tint
+
+# Main window chrome
+MAIN_TOOLBAR_SURFACE = "#14141e"  # Toolbar strip ground
+MAIN_SEPARATOR = "#2a2a3a"  # Header separator and toolbar rule
+MAIN_BUTTON_SURFACE = "#1a1a26"  # Toolbar button ground
+MAIN_BUTTON_BORDER = "#3a3a4a"  # Toolbar button border
+MAIN_BUTTON_HOVER = "#22222e"  # Toolbar button hover ground
+MAIN_TOGGLE_SURFACE = "#1a1a3a"  # Toggle button ground
+MAIN_TOGGLE_HOVER = "#222250"  # Toggle button hover ground
+MAIN_TOGGLE_CHECKED = "#3a1a1a"  # Checked toggle ground
+MAIN_TOGGLE_CHECKED_AMBER = "#663300"  # Checked amber toggle ground
+MAIN_TOOLTIP_BORDER = "#00cccc"  # Tooltip border
+MAIN_TABLE_HEADER = "#c0c4d8"  # Table header text
+MAIN_CAPTION = "#7a7d99"  # 10px caption text
+MAIN_BADGE_TEXT = "#7fb3ff"  # Badge text
+MAIN_BADGE_MAGENTA = "#ff66dd"  # Magenta badge text
+MAIN_ALERT_SURFACE = "#d61a3d"  # Alert banner ground
+MAIN_HIGHLIGHT_AMBER = "#33220a"  # Amber text-highlight ground
+MAIN_HIGHLIGHT_AMBER_TEXT = "#ffb000"  # Amber text-highlight foreground
+MAIN_LOG_NAME = "#88c0ff"  # Log name field
+MAIN_LOG_SITE = "#667788"  # Log site field
+MAIN_LOG_CRITICAL = "#ff0044"  # Critical log level
+
+# Stock window
+CARD_STOCK_PANEL = "#0a1020"  # Panel and group-box ground
+CARD_STOCK_BODY = "#aabbcc"  # Body text
+CARD_STOCK_LOG_SURFACE = "#080c18"  # Log view ground
+CARD_STOCK_BUTTON_BORDER = "#2a3a5f"  # Button border
+CARD_STOCK_BUTTON_HOVER = "#2a3a6f"  # Button hover ground
+STOCK_POSITIVE = "#00cc66"  # Gain
+STOCK_NEGATIVE = "#ff4466"  # Loss
+STOCK_WARNING = "#ddaa00"  # Warning log level
+STOCK_BUTTON_HOVER = "#0088dd"  # Primary button hover ground
+STOCK_LOG_DEBUG = "#444455"  # Debug log level
+STOCK_LOG_TIMESTAMP = "#555566"  # Log timestamp
+STOCK_LOG_CRITICAL = "#ff0033"  # Critical log level
+
 # =============================================================================
 # TYPOGRAPHY — Butterick 1.25× geometric ramp
 # =============================================================================
@@ -279,6 +409,113 @@ __all__ = [
     "CARD_METRIC_SURFACE",
     "CARD_METRIC_BORDER",
     "CARD_METRIC_LABEL",
+    # Widget colors promoted from hex literals
+    "ERROR",
+    "WARNING_STRONG",
+    "STATUS_INFO",
+    "STATUS_NEUTRAL",
+    "STATUS_AUTHENTICATED",
+    "PRIMARY_BRIGHT",
+    "ACCENT_GOLD",
+    "LAYER_CRYPTO",
+    "LAYER_STOCK",
+    "TEXT_MAX",
+    "TEXT_NEUTRAL",
+    "TEXT_CONSOLE",
+    "TEXT_INACTIVE",
+    "TEXT_EMPTY_STATE",
+    "TEXT_MUTED",
+    "TEXT_PLACEHOLDER",
+    "TEXT_INFO_SOFT",
+    "TEXT_LOG_MINT",
+    "TEXT_ON_LIGHT",
+    "SURFACE_CHART",
+    "SURFACE_CONTROL",
+    "SURFACE_CONSOLE",
+    "SURFACE_CONSOLE_HEADER",
+    "BORDER_DISABLED",
+    "MENU_SURFACE",
+    "MENU_BORDER",
+    "MENU_ITEM_SELECTED",
+    "STATE_ARMED",
+    "STATE_ENGAGED",
+    "STATE_ENGAGED_DIM",
+    "STATE_ENGAGED_GLOW",
+    "STATE_PENDING",
+    "STATE_STARTING",
+    "STATE_MARKET",
+    "FOLD_RATIO_AMBER",
+    "FOLD_SOURCE_MANUAL",
+    "FOLD_TRANCHE_SURFACE",
+    "FOLD_TRANCHE_BORDER",
+    "EXTRACTOR_TRANCHE_SURFACE",
+    "EXTRACTOR_TRANCHE_BORDER",
+    "SETTINGS_PRIMARY_HOVER",
+    "SETTINGS_ON_INFO",
+    "SETTINGS_DANGER_SURFACE",
+    "SETTINGS_WARNING_HOVER",
+    "SETTINGS_DESTRUCTIVE_SURFACE",
+    "SETTINGS_DESTRUCTIVE_HOVER",
+    "SETTINGS_DISABLED_SURFACE",
+    "SETTINGS_DISABLED_DEEP",
+    "GLOW_PRIMARY_EDGE",
+    "GLOW_PRIMARY_FAINT",
+    "VIZ_PANEL_SURFACE",
+    "VIZ_PANEL_BORDER",
+    "VIZ_SWARM_SURFACE",
+    "VIZ_TAB_SELECTED",
+    "VIZ_TAB_TEXT",
+    "VIZ_HEADING",
+    "VIZ_CAPTION",
+    "VIZ_CAPTION_DIM",
+    "VIZ_LIST_SURFACE",
+    "VIZ_LIST_BORDER",
+    "VIZ_LIST_TEXT",
+    "VIZ_INPUT_SURFACE",
+    "VIZ_INPUT_BORDER",
+    "VIZ_GO_HOVER",
+    "VIZ_GO_HOVER_DEEP",
+    "VIZ_STOP_HOVER",
+    "VIZ_STOP_HOVER_DEEP",
+    "VIZ_SIM_HOVER",
+    "VIZ_GOLD_HOVER",
+    "VIZ_CONFIRM_SURFACE",
+    "VIZ_NUCLEAR_SURFACE",
+    "VIZ_NUCLEAR_BORDER",
+    "VIZ_LANE_LIVE",
+    "VIZ_LANE_PAPER",
+    "MAIN_TOOLBAR_SURFACE",
+    "MAIN_SEPARATOR",
+    "MAIN_BUTTON_SURFACE",
+    "MAIN_BUTTON_BORDER",
+    "MAIN_BUTTON_HOVER",
+    "MAIN_TOGGLE_SURFACE",
+    "MAIN_TOGGLE_HOVER",
+    "MAIN_TOGGLE_CHECKED",
+    "MAIN_TOGGLE_CHECKED_AMBER",
+    "MAIN_TOOLTIP_BORDER",
+    "MAIN_TABLE_HEADER",
+    "MAIN_CAPTION",
+    "MAIN_BADGE_TEXT",
+    "MAIN_BADGE_MAGENTA",
+    "MAIN_ALERT_SURFACE",
+    "MAIN_HIGHLIGHT_AMBER",
+    "MAIN_HIGHLIGHT_AMBER_TEXT",
+    "MAIN_LOG_NAME",
+    "MAIN_LOG_SITE",
+    "MAIN_LOG_CRITICAL",
+    "CARD_STOCK_PANEL",
+    "CARD_STOCK_BODY",
+    "CARD_STOCK_LOG_SURFACE",
+    "CARD_STOCK_BUTTON_BORDER",
+    "CARD_STOCK_BUTTON_HOVER",
+    "STOCK_POSITIVE",
+    "STOCK_NEGATIVE",
+    "STOCK_WARNING",
+    "STOCK_BUTTON_HOVER",
+    "STOCK_LOG_DEBUG",
+    "STOCK_LOG_TIMESTAMP",
+    "STOCK_LOG_CRITICAL",
     # Type
     "TYPE_DISPLAY",
     "TYPE_H1",
