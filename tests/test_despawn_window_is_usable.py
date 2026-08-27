@@ -664,9 +664,9 @@ def test_without_the_despawn_rows_the_panel_names_nothing(monkeypatch) -> None:
     2026-08-13: a tranche count, a parked total, an oldest age, and no
     mention anywhere that a setting exists which would act on them.
     """
-    import src.gui.bot_live_settings as bls
+    import src.gui.live_settings.fold_tranches_tab as tab
 
-    monkeypatch.setattr(bls, "install_despawn_rows", lambda *_a, **_k: {}, raising=True)
+    monkeypatch.setattr(tab, "install_despawn_rows", lambda *_a, **_k: {}, raising=True)
 
     built = _panel_for(_bot(days=0))
     try:
@@ -692,9 +692,9 @@ def test_the_pin_goes_not_ok_against_a_lying_preview(monkeypatch) -> None:
     compares a widget against the bot and must report it.
     """
     import src.core.signal_contract as sc
-    import src.gui.bot_live_settings as bls
+    import src.gui.live_settings.fold_chrome as chrome
 
-    real = bls.despawn_preview_text
+    real = chrome.despawn_preview_text
     calls = {"n": 0}
 
     def _lies(days, armed, windows):
@@ -710,7 +710,7 @@ def test_the_pin_goes_not_ok_against_a_lying_preview(monkeypatch) -> None:
             return "if armed at  7d: 999 ($0.0000)"
         return real(days, armed, windows)
 
-    monkeypatch.setattr(bls, "despawn_preview_text", _lies, raising=True)
+    monkeypatch.setattr(chrome, "despawn_preview_text", _lies, raising=True)
 
     previous = sc.get_sink()
     collector = sc.SignalSink(path=None)

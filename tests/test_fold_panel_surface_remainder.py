@@ -428,7 +428,7 @@ def _without_the_click_time_capture(tranche, panel, monkeypatch):
 
 def _without_the_header_tooltips(monkeypatch):
     """Restore the measured BEFORE: no per-column documentation."""
-    import src.gui.bot_live_settings as mod
+    import src.gui.live_settings.fold_tranches_tab as mod
 
     assert len(mod.FOLD_COLUMN_TOOLTIPS) == 11, (
         "the control must patch a name that carries the repair; "
@@ -439,7 +439,7 @@ def _without_the_header_tooltips(monkeypatch):
 
 def _without_the_row_order(monkeypatch):
     """Restore the measured BEFORE: insertion order, always."""
-    import src.gui.bot_live_settings as mod
+    import src.gui.live_settings.fold_tranches_tab as mod
 
     assert callable(mod.fold_display_order)
     monkeypatch.setattr(

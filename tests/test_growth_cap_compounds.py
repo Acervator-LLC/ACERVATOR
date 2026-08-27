@@ -71,9 +71,17 @@ BC_SRC = (REPO_ROOT / "src" / "trading" / "bot_container.py").read_text(
     encoding="utf-8"
 )
 MW_SRC = (REPO_ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-BLS_SRC = (REPO_ROOT / "src" / "gui" / "bot_live_settings.py").read_text(
-    encoding="utf-8"
-)
+
+
+def _live_settings_source(gui_dir):
+    """The Live Bot Settings dialog's whole source: the module and its
+    per-tab package, concatenated in a fixed order."""
+    parts = [gui_dir / "bot_live_settings.py"]
+    parts += sorted((gui_dir / "live_settings").glob("*.py"))
+    return "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in parts)
+
+
+BLS_SRC = _live_settings_source(REPO_ROOT / "src" / "gui")
 
 # The live IMU bot, read-only from ~/.acervator/bot_state.json on
 # 2026-08-24 and pinned here so the arithmetic below is the operator's

@@ -406,10 +406,13 @@ class TestTheControlsReproduceTheDefect:
     def test_the_old_chrome_constant_paints_no_whole_row(self, monkeypatch):
         """FAILURE MEANS: the 4px chrome constant was never short, and
         measuring the widget bought nothing."""
-        import src.gui.bot_live_settings as bls
+        import src.gui.live_settings.fold_tokens as tokens
+        import src.gui.live_settings.fold_tranches_tab as tab
 
         monkeypatch.setattr(
-            bls, "fold_table_chrome_px", lambda table: bls.TRANCHE_TABLE_FRAME_PX
+            tab,
+            "fold_table_chrome_px",
+            lambda table: tokens.TRANCHE_TABLE_FRAME_PX,
         )
         built = _build([dict(LIVE_TRANCHE)], monkeypatch)
         try:

@@ -265,7 +265,7 @@ class TestEveryDeclarationSiteAgrees:
         ), "the BotConfig field declaration no longer reads the default"
 
     def test_the_live_settings_panel_falls_back_to_the_default(self):
-        src = _src("src", "gui", "bot_live_settings.py")
+        src = _src("src", "gui", "live_settings", "settings_tab.py")
         needle = f'getattr(cfg, "scrum_fold_pct", {FOLD_PCT_DEFAULT})'
         assert needle in src, (
             "the live-settings spinbox shows a different value for a "

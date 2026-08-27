@@ -186,7 +186,7 @@ class TestMarketCheckIntervalRetired:
     def test_no_widget_in_settings_tab(self):
         """The Check Interval QSpinBox must not exist in the Settings tab
         _create_settings_tab method."""
-        p = REPO / "src" / "gui" / "bot_live_settings.py"
+        p = REPO / "src" / "gui" / "live_settings" / "settings_tab.py"
         src = p.read_text(encoding="utf-8", errors="replace")
         # Grab _create_settings_tab body
         i = src.find("def _create_settings_tab")

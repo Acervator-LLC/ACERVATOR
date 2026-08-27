@@ -38,7 +38,16 @@ if str(REPO_ROOT) not in sys.path:
 import src.gui.bot_live_settings as bls  # noqa: E402
 import src.trading.bot_container as bc  # noqa: E402
 
-GUI_SRC = Path(bls.__file__).read_text(encoding="utf-8")
+
+def _live_settings_source(gui_dir):
+    """The Live Bot Settings dialog's whole source: the module and its
+    per-tab package, concatenated in a fixed order."""
+    parts = [gui_dir / "bot_live_settings.py"]
+    parts += sorted((gui_dir / "live_settings").glob("*.py"))
+    return "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in parts)
+
+
+GUI_SRC = _live_settings_source(Path(bls.__file__).parent)
 BC_SRC = Path(bc.__file__).read_text(encoding="utf-8")
 
 NEW_KEYS = (
