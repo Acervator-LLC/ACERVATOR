@@ -439,7 +439,7 @@ The same banner marks five more tabs in the same block: Audio Suite (`:5506`), A
 (`:5509`), Risk (`:5514`), Journal (`:5518`), Alerts (`:5523`).
 
 **P1.7 — the capture, 2026-04-21 15:30 UTC.**
-`docs/harness_archive/DEVELOPMENT_CHRONICLE.md:5491`. The operator sent a screenshot of
+`docs-archive/llm-session-history/DEVELOPMENT_CHRONICLE.md:5491`. The operator sent a screenshot of
 v3.13.7 with seven tabs struck through in red: PoA Network, Testnet, Audio, Analytics,
 Risk, Journal, Alerts. His directive: "Keep in memory for completion later."
 The capture flagged its own risk:
@@ -603,9 +603,9 @@ the emitter to go red.
 | `TRADING/bot-controls/new-bot-button` | "+ New Bot" on each exchange panel | BUILT | WORKING | `main_window.py:2955-2959`, handler `:9631` | `main_window.py:2913-2919` | `tests/test_extractor_requires_parent.py` | [S] |
 | `TRADING/bot-controls/creation-wizard` | The window that walks you through making a bot | BUILT | WORKING | `bot_wizard.py:1780`, pages `:96`, `:261`, `:325`, `:541`, `:1599`, `:1662` | `docs/engineering-notes/2026-07-26_wizard_3rd_panel_parity_plan.md:1` | `tests/test_bot_wizard_accessibility.py::TestBotCreationWizard::test_wizard_builds_every_page` | [T] |
 | `TRADING/bot-controls/command-bar` | Start, Pause, Stop, Restart and Delete, with a confirmation | BUILT | WORKING | `main_window.py:3084-3093`, `:3156`, pin `:3234`, `:9013`, confirm `:9161-9199` | `main_window.py:3179-3243` | `tests/test_exchange_tab_emitters.py::test_a_command_reaches_the_table_the_operator_chose` | [M] |
-| `TRADING/bot-controls/fire-button` | The per-row Fire button, and its glow when armed | BUILT | UNVERIFIED | `main_window.py:2366-2396`, `:2615`, `:8898`, glow `:6654`, `:6677` | `docs/harness_archive/ACERVATOR_HOP5.md:6350` | **NO TEST** | [S] |
+| `TRADING/bot-controls/fire-button` | The per-row Fire button, and its glow when armed | BUILT | UNVERIFIED | `main_window.py:2366-2396`, `:2615`, `:8898`, glow `:6654`, `:6677` | `docs-archive/llm-session-history/ACERVATOR_HOP5.md:6350` | **NO TEST** | [S] |
 | `TRADING/bot-controls/buy-confirmation-prompt` | The Yes / No / Skip box before an overshooting buy | PARTIAL | **BROKEN** — zero call sites | `buy_confirmation_dialog.py:49`, `:92`, `:259`, `:176`; constructed `main_window.py:4629-4630`; **caller: none** | `buy_confirmation_dialog.py:8-14` | NO TEST | [S] |
-| `TRADING/bot-controls/start-all-bots` | Start All, Pause All and Stop All for the whole fleet | **ABSENT** | **BROKEN** — dead code, zero callers | `main_window.py:9200`; `start_all_progress_dialog.py:29` | removal recorded at `docs/harness_archive/ACERVATOR_HOP5.md:6732`; a later doc still describes clicking it at `docs/engineering-notes/2026-08-04_needed_fixes_list.md:1750` | `tests/test_start_all_progress_events.py::test_begin_event_reaches_the_signal` (dialog only) | [S] |
+| `TRADING/bot-controls/start-all-bots` | Start All, Pause All and Stop All for the whole fleet | **ABSENT** | **BROKEN** — dead code, zero callers | `main_window.py:9200`; `start_all_progress_dialog.py:29` | removal recorded at `docs-archive/llm-session-history/ACERVATOR_HOP5.md:6732`; a later doc still describes clicking it at `docs/engineering-notes/2026-08-04_needed_fixes_list.md:1750` | `tests/test_start_all_progress_events.py::test_begin_event_reaches_the_signal` (dialog only) | [S] |
 | `TRADING/bot-controls/trade-sound-cues` | Fire on a fill, coins on profit, a drip on a fold, beeps near firing | BUILT | UNVERIFIED | `main_window.py:8930`, `:8968`, dispatched `:7128` | `main_window.py:7110-7130` | NO TEST | [S] |
 
 #### `TRADING/bot-details`
@@ -636,8 +636,8 @@ the emitter to go red.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `TRADING/header-stat-strip/spendable-strip` | Spendable, Realised, Locked, Mature and Exch | PARTIAL | UNVERIFIED — Realised and Mature always read blank | `main_window.py:962`, `:1101`, fed `:7017-7032` | `main_window.py:7000-7012` ("No P/L calculation. Realised / Mature pass as None") | NO TEST | [S] |
 | `TRADING/header-stat-strip/scrummed-total` | The Scrummed high-score card | BUILT | WORKING | `main_window.py:4741`, update `:6980` | `docs/engineering-notes/2026-08-06_docket_scrummed_folded_card_reliability.md:11-16` | `tests/test_ytd_scrum_fold_and_errors_reset.py::TestYtdScrumFoldAccumulation::test_sells_land_in_scrummed_buys_in_folded` | [T] |
-| `TRADING/header-stat-strip/folded-total` | The Folded high-score card | BUILT | WORKING | `main_window.py:4746`, update `:6981` | `docs/harness_archive/DEVELOPMENT_CHRONICLE.md:13783-13787` | `tests/test_ytd_scrum_fold_and_errors_reset.py::TestYtdScrumFoldAccumulation::test_quote_to_usd_multiplier_applied` | [T] |
-| `TRADING/header-stat-strip/trades-and-bots` | The Trades and Bots cards | BUILT | UNVERIFIED | `main_window.py:4762`, `:4764`, update `:6987-6988` | `docs/harness_archive/DEVELOPMENT_CHRONICLE.md:14080-14081` | NO TEST | [S] |
+| `TRADING/header-stat-strip/folded-total` | The Folded high-score card | BUILT | WORKING | `main_window.py:4746`, update `:6981` | `docs-archive/llm-session-history/DEVELOPMENT_CHRONICLE.md:13783-13787` | `tests/test_ytd_scrum_fold_and_errors_reset.py::TestYtdScrumFoldAccumulation::test_quote_to_usd_multiplier_applied` | [T] |
+| `TRADING/header-stat-strip/trades-and-bots` | The Trades and Bots cards | BUILT | UNVERIFIED | `main_window.py:4762`, `:4764`, update `:6987-6988` | `docs-archive/llm-session-history/DEVELOPMENT_CHRONICLE.md:14080-14081` | NO TEST | [S] |
 | `TRADING/header-stat-strip/errors-card` | The Errors card, and the log it opens | BUILT | UNVERIFIED | `main_window.py:4776`, `:4784-4787`, `:7482`, `:8209`, reset `:8303` | `main_window.py:4771-4777` | `tests/test_ytd_scrum_fold_and_errors_reset.py::TestErrorsCardAndResetSourceDiscipline::test_lifetime_qualifier_dropped_from_card_label` | [T] |
 | `TRADING/header-stat-strip/profit-loss-card` | The old P/L card | **ABSENT from the screen** | WORKING as a backing value | `main_window.py:4758-4759` (hidden), still updated `:6985` | `main_window.py:4756-4760` (operator: "strange numbers I do not understand") | NO TEST | [S] |
 | `TRADING/header-stat-strip/hides-on-simulator` | The strip disappears on Simulator and Paper Trader | BUILT | UNVERIFIED | `main_window.py:4820-4822`, `:6032-6056` | `main_window.py:4814-4819` | NO TEST | [S] |

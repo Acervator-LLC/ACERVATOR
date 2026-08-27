@@ -94,7 +94,7 @@ Acervator is built with an AI co-developer under a harness that refuses work rat
 | **Rules** | `dev_harness/harness/rules/` — hallucination, numeric-guard, scaffolding and slop detectors that run inside the archetypes. |
 | **Release gate** | `python -m dev_harness.harness.check_release_readiness` runs the suite and prints `[OK] Release-ready (vX.Y.Z, N tests)`. No version banner and no CHANGELOG entry moves before that line appears. |
 
-An earlier governance harness, SADP, was retired. Documents under `docs/engineering-notes/`, `docs/harness_archive/` and `CHANGELOG.md` still describe it. They are historical records and were true when written.
+An earlier governance harness, SADP, was retired. Documents under `docs/engineering-notes/`, `docs-archive/llm-session-history/` and `CHANGELOG.md` still describe it. They are historical records and were true when written.
 
 ---
 
@@ -178,9 +178,11 @@ acervator/
 │
 ├── docs/
 │   ├── audits/                               # Session audits (historical)
-│   ├── harness_archive/                      # Retired-harness records
 │   ├── ITEM_10_EMITTER_NETWORK.md
 │   └── TOUCHSET.md
+│
+├── docs-archive/
+│   └── llm-session-history/                  # LLM session handoffs (historical)
 │
 ├── src/
 │   ├── core/                                 # Cross-cutting services

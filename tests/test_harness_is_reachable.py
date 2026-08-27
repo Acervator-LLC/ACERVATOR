@@ -186,11 +186,16 @@ _MODULE_RE = re.compile(r"\bdev_harness\.harness\.[A-Za-z_][A-Za-z0-9_.]*")
 # docs/audits/ in that issue, and this test named exactly the 24 of them
 # that carry the old harness path before the entry was added. "docs/audits"
 # stays because 46 files remain there, pinned by dev_harness path constants.
+#
+# Issue #80 dropped "docs/harness_archive". Its two files moved to
+# docs-archive/llm-session-history/ and the directory is gone. The
+# replacement path is NOT listed: both files were measured at ZERO
+# occurrences of the old harness path before the move, so they are
+# scanned now and the verdict is unchanged.
 _OLD_PATH_RE = re.compile(r"tools[./]harness")
 _HISTORY = (
     "docs/audits",
     "docs/engineering-notes",
-    "docs/harness_archive",
     "CHANGELOG.md",
 )
 
