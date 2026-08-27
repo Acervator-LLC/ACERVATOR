@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 
+from . import design_system as ds
+
 logger = logging.getLogger("acervator.gui")
 
 try:
@@ -48,12 +50,9 @@ except ImportError:
 # "It will be denoted in with a red background and white text since
 # existing tranches are blue."
 #
-# Hex literals, because that is what this file already uses. There is a
-# theme system in `theme_engine.py` and a token module in
-# `design_system.py`, and this module imports neither; every colour in
-# here is a literal (`#00ccff`, `#00ff88`, `#ff9900`, `#ff3366`). A
-# theme import for two values would be a second mechanism beside the one
-# already in place.
+# The values come from `design_system.py`, the GUI token module. The
+# legacy `theme_engine.py` is not imported: it disagrees with the token
+# module on eight roles.
 #
 # The blue stays blue. Nothing below touches the existing per-cell
 # foregrounds on ordinary tranche rows.
@@ -70,8 +69,8 @@ except ImportError:
 # An explicit item background beats the stylesheet's
 # `alternate-background-color`, so this row reads the same in all five
 # themes, the two light ones included.
-EXTRACTOR_TRANCHE_BG_HEX = "#b3261e"
-EXTRACTOR_TRANCHE_FG_HEX = "#ffffff"
+EXTRACTOR_TRANCHE_BG_HEX = ds.EXTRACTOR_TRANCHE_SURFACE
+EXTRACTOR_TRANCHE_FG_HEX = ds.TEXT_MAX
 
 
 # ── Fold Tranche row colours (operator spec 2026-08-11) ──────────────
@@ -103,8 +102,8 @@ EXTRACTOR_TRANCHE_FG_HEX = "#ffffff"
 # themes — measured 1.47:1. `#e0e0f0` is already the dark theme's
 # `text_primary`, so the default theme's text does not visibly change;
 # only the background does.
-FOLD_TRANCHE_BG_HEX = "#123a63"
-FOLD_TRANCHE_FG_HEX = "#e0e0f0"
+FOLD_TRANCHE_BG_HEX = ds.FOLD_TRANCHE_SURFACE
+FOLD_TRANCHE_FG_HEX = ds.TEXT_HIGH
 
 
 # ── Row border colours — the "proper containers" half of the spec ────
@@ -123,8 +122,8 @@ FOLD_TRANCHE_FG_HEX = "#e0e0f0"
 # stylesheet cannot vary a border by row, and a `QTableWidget::item`
 # rule additionally destroys every per-cell background — measured, see
 # `_TrancheRowBorderDelegate`.
-FOLD_TRANCHE_BORDER_HEX = "#6ea6e6"
-EXTRACTOR_TRANCHE_BORDER_HEX = "#ffb0a6"
+FOLD_TRANCHE_BORDER_HEX = ds.FOLD_TRANCHE_BORDER
+EXTRACTOR_TRANCHE_BORDER_HEX = ds.EXTRACTOR_TRANCHE_BORDER
 
 # The delegate keys the border off the cell's OWN background brush, not
 # off its row index. Row index would be wrong the moment anything
@@ -231,7 +230,7 @@ FOLD_SOURCE_AUTO_SCRUM = "auto scrum"
 #: manual-scrum row only: `_paint_fold_tranche_row` measured it at
 #: 6.12:1 against the fold fill, and this unit renames a label rather
 #: than re-tuning a colour.
-FOLD_SOURCE_MANUAL_FG_HEX = "#00ccff"
+FOLD_SOURCE_MANUAL_FG_HEX = ds.FOLD_SOURCE_MANUAL
 
 FOLD_SOURCE_TOOLTIPS = {
     FOLD_SOURCE_MANUAL_SCRUM: (
@@ -689,15 +688,15 @@ def install_health_row(
 #: is not a taste: above 1.00x the queue claims more asset than the bot
 #: owns, which is a statement about the ledger rather than a level
 #: somebody picked.
-FOLD_OVER_ALLOTMENT_FG_HEX = "#ff3366"
+FOLD_OVER_ALLOTMENT_FG_HEX = ds.ERROR
 
 #: The three colours the cycle-close-ratio verdict has always used,
 #: lifted out of the widget so the pure composer below can return one
 #: and a test can name it. Red is the SAME red as the row above, by
 #: reference rather than by a second copy of the literal.
 FOLD_RATIO_RED_FG_HEX = FOLD_OVER_ALLOTMENT_FG_HEX
-FOLD_RATIO_AMBER_FG_HEX = "#ff9900"
-FOLD_RATIO_GREEN_FG_HEX = "#00ff88"
+FOLD_RATIO_AMBER_FG_HEX = ds.FOLD_RATIO_AMBER
+FOLD_RATIO_GREEN_FG_HEX = ds.SUCCESS
 
 
 def compose_units_marked_row(
@@ -1030,17 +1029,17 @@ def _compose_denom_row_text(
     (`#ff3366`) for < -0.1 %, grey (`#a8a8c5`) otherwise.
     """
     if quote_usd <= 0:
-        return ("pending…", "#a8a8c5")
+        return ("pending…", ds.TEXT_MED)
     _units = target_usd / quote_usd
     _delta = pair_pct_24h - usd_pair_pct_24h
     if abs(_delta) < 0.1:
-        _color = "#a8a8c5"
+        _color = ds.TEXT_MED
         _sign = ""
     elif _delta > 0:
-        _color = "#00ff88"
+        _color = ds.SUCCESS
         _sign = "+"
     else:
-        _color = "#ff3366"
+        _color = ds.ERROR
         _sign = ""
     if _units >= 1:
         _units_txt = f"{_units:.4f}"
@@ -1389,7 +1388,7 @@ if _HAS_QT:
         # for, and it is the only one marked.
         _widest = windows[-1][1] if windows else armed
         if _days <= 0 and (_widest["fold_removed"] + _widest["stack_removed"]):
-            timer_lbl.setStyleSheet("color: #ff9900;")
+            timer_lbl.setStyleSheet(f"color: {ds.FOLD_RATIO_AMBER};")
         dialog._fold_despawn_timer_lbl = timer_lbl
         # issue #98 defect 6 - BOTH HALVES OF THE ROW. These two rows
         # already carried `DESPAWN_ROW_TOOLTIP` on the value; the words
@@ -1585,22 +1584,29 @@ if _HAS_QT:
             # Header
             hdr_row = QHBoxLayout()
             hdr = QLabel(f"{cfg.symbol}  •  {cfg.mode.value.upper()}")
-            hdr.setStyleSheet("font-size: 18px; font-weight: bold; color: #00ffcc;")
+            hdr.setStyleSheet(
+                f"font-size: 18px; font-weight: bold; color: {ds.PRIMARY};"
+            )
             hdr_row.addWidget(hdr)
 
             state = bot.state.value
+            # The background rule below appends an alpha pair, so a
+            # value used there has to keep its digit count: `#666` and
+            # `#ccc` widened to six digits would make Qt read a valid
+            # 8-digit #AARRGGBB where it now reads an invalid 5-digit
+            # string and drops the fill.
             state_colors = {
-                "running": "#00ff88",
-                "idle": "#888",
-                "paused": "#ffaa00",
-                "error": "#ff3366",
+                "running": ds.SUCCESS,
+                "idle": ds.CARD_METRIC_LABEL,
+                "paused": ds.WARNING,
+                "error": ds.ERROR,
                 "stopped": "#666",
-                "cooldown": "#ffaa00",
+                "cooldown": ds.WARNING,
             }
             state_lbl = QLabel(f"  {state.upper()}")
             state_lbl.setStyleSheet(
                 f"font-size: 14px; font-weight: bold; "
-                f"color: {state_colors.get(state, '#ccc')}; "
+                f"color: {state_colors.get(state, ds.TEXT_NEUTRAL)}; "
                 f"background: {state_colors.get(state, '#ccc')}22; "
                 f"padding: 2px 8px; border-radius: 4px;"
             )
@@ -1613,14 +1619,14 @@ if _HAS_QT:
             # follows BotManager._bots insertion order, with wrap-around
             # at both ends. Buttons are hidden if there's only one bot.
             nav_btn_qss = (
-                "QPushButton { background: #1a1a2e; color: #00ffcc; "
-                "border: 1px solid #00ffcc55; border-radius: 4px; "
+                f"QPushButton {{ background: {ds.SURFACE_CONTROL}; color: {ds.PRIMARY}; "
+                f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: 4px; "
                 "padding: 4px 10px; font-weight: bold; font-size: 12px; "
                 "min-width: 70px; }"
-                "QPushButton:hover { background: #00ffcc22; "
-                "border: 1px solid #00ffcc; }"
-                "QPushButton:disabled { background: #2a2a3f; "
-                "color: #555; border: 1px solid #2a2a3f; }"
+                f"QPushButton:hover {{ background: {ds.GLOW_PRIMARY_FAINT}; "
+                f"border: 1px solid {ds.PRIMARY}; }}"
+                f"QPushButton:disabled {{ background: {ds.CARD_METRIC_BORDER}; "
+                f"color: {ds.TEXT_PLACEHOLDER}; border: 1px solid {ds.CARD_METRIC_BORDER}; }}"
             )
             self._prev_btn = QPushButton("◀ Prev")
             self._prev_btn.setStyleSheet(nav_btn_qss)
@@ -1752,11 +1758,11 @@ if _HAS_QT:
 
             self._apply_btn = QPushButton("Apply Changes")
             self._apply_btn.setStyleSheet(
-                "QPushButton { background: #00ffcc; color: #0a0a12; "
+                f"QPushButton {{ background: {ds.PRIMARY}; color: {ds.SURFACE_CHART}; "
                 "border: none; border-radius: 6px; padding: 8px 20px; "
                 "font-weight: bold; font-size: 12px; }"
-                "QPushButton:hover { background: #00ddaa; }"
-                "QPushButton:disabled { background: #333; color: #666; }"
+                f"QPushButton:hover {{ background: {ds.SETTINGS_PRIMARY_HOVER}; }}"
+                f"QPushButton:disabled {{ background: {ds.SETTINGS_DISABLED_DEEP}; color: {ds.TEXT_MUTED}; }}"
             )
             self._apply_btn.setEnabled(False)
             self._apply_btn.clicked.connect(self._apply_changes)
@@ -1764,10 +1770,10 @@ if _HAS_QT:
 
             close_btn = QPushButton("Close")
             close_btn.setStyleSheet(
-                "QPushButton { background: #2a2a3f; color: #aaa; "
-                "border: 1px solid #3a3a5f; border-radius: 6px; "
+                f"QPushButton {{ background: {ds.CARD_METRIC_BORDER}; color: {ds.TEXT_INACTIVE}; "
+                f"border: 1px solid {ds.MENU_BORDER}; border-radius: 6px; "
                 "padding: 8px 20px; }"
-                "QPushButton:hover { background: #3a3a5f; }"
+                f"QPushButton:hover {{ background: {ds.MENU_BORDER}; }}"
             )
             close_btn.clicked.connect(self.accept)
             btn_row.addWidget(close_btn)
@@ -1775,7 +1781,7 @@ if _HAS_QT:
 
             # Change indicator
             self._change_lbl = QLabel("")
-            self._change_lbl.setStyleSheet("color: #ffaa00; font-size: 11px;")
+            self._change_lbl.setStyleSheet(f"color: {ds.WARNING}; font-size: 11px;")
             layout.addWidget(self._change_lbl)
 
             # v3.16.18 — Ctrl+Left / Ctrl+Right keyboard shortcuts
@@ -2000,7 +2006,7 @@ if _HAS_QT:
                     )
                     if _btc_pair is None:
                         _btc_lbl.setText("(not listed on exchange)")
-                        _btc_lbl.setStyleSheet("color: #888;")
+                        _btc_lbl.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL};")
                     else:
                         _txt, _color = _compose_denom_row_text(
                             "BTC",
@@ -2023,7 +2029,7 @@ if _HAS_QT:
                     )
                     if _eth_pair is None:
                         _eth_lbl.setText("(not listed on exchange)")
-                        _eth_lbl.setStyleSheet("color: #888;")
+                        _eth_lbl.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL};")
                     else:
                         _txt, _color = _compose_denom_row_text(
                             "ETH",
@@ -2172,7 +2178,7 @@ if _HAS_QT:
             self._change_lbl.setText(
                 f"Applied {len(applied)} change(s) — active immediately"
             )
-            self._change_lbl.setStyleSheet("color: #00ff88; font-size: 11px;")
+            self._change_lbl.setStyleSheet(f"color: {ds.SUCCESS}; font-size: 11px;")
 
             self.settings_changed.emit(
                 self._bot.bot_id,
@@ -2312,7 +2318,7 @@ if _HAS_QT:
                     rep_lbl = QLabel(f"${_re:+,.4f}")
                     rep_lbl.setStyleSheet(
                         f"font-weight: bold; font-size: 13px; "
-                        f"color: {'#00ff88' if _re >= 0 else '#ff3366'};"
+                        f"color: {ds.SUCCESS if _re >= 0 else ds.ERROR};"
                     )
                     rep_lbl.setToolTip(
                         f"Realized P/L pulled from the exchange "
@@ -2326,7 +2332,7 @@ if _HAS_QT:
                     if _ue != 0:
                         ue_lbl = QLabel(f"${_ue:+,.4f}")
                         ue_lbl.setStyleSheet(
-                            f"color: {'#00ff88' if _ue >= 0 else '#ff3366'};"
+                            f"color: {ds.SUCCESS if _ue >= 0 else ds.ERROR};"
                         )
                         sf.addRow("Unrealised P/L:", ue_lbl)
 
@@ -2337,7 +2343,7 @@ if _HAS_QT:
                         sf.addRow("Fees Paid:", QLabel(f"${_fee:,.4f}"))
                 else:
                     pending_lbl = QLabel("— (refresh pending)")
-                    pending_lbl.setStyleSheet("color: #888;")
+                    pending_lbl.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL};")
                     pending_lbl.setToolTip(
                         "Exchange position health refresh has not yet "
                         "completed. First refresh fires on bot bootstrap; "
@@ -2358,7 +2364,7 @@ if _HAS_QT:
 
             if stats.get("last_error"):
                 err = QLabel(stats["last_error"][:80])
-                err.setStyleSheet("color: #ff3366;")
+                err.setStyleSheet(f"color: {ds.ERROR};")
                 err.setWordWrap(True)
                 sf.addRow("Last Error:", err)
             layout.addWidget(stats_group)
@@ -2438,9 +2444,11 @@ if _HAS_QT:
                 pool_color = self._bot.pool_color()
             except Exception:  # R28-OK: snapshot read; UI doesn't crash on bot lookup
                 pool_color = "green"
-            color_hex = {"green": "#00ff88", "yellow": "#ffaa00", "red": "#ff3366"}.get(
-                pool_color, "#a8a8c5"
-            )
+            color_hex = {
+                "green": ds.SUCCESS,
+                "yellow": ds.WARNING,
+                "red": ds.ERROR,
+            }.get(pool_color, ds.TEXT_MED)
             pool_lbl = QLabel(f"<b>{pool_color.upper()}</b>")
             pool_lbl.setStyleSheet(f"color: {color_hex}; font-size: 14px;")
             sf.addRow("Pool color:", pool_lbl)
@@ -2470,7 +2478,7 @@ if _HAS_QT:
                     "<b>GREEN</b> (fully in base currency).</i>"
                 )
                 empty_lbl.setWordWrap(True)
-                empty_lbl.setStyleSheet("color: #8a8aab; padding: 16px;")
+                empty_lbl.setStyleSheet(f"color: {ds.TEXT_EMPTY_STATE}; padding: 16px;")
                 layout.addWidget(empty_lbl)
                 layout.addStretch()
                 return w
@@ -2540,10 +2548,10 @@ if _HAS_QT:
                 fire_btn = QPushButton("Fire")
                 fire_btn.setFixedHeight(24)
                 fire_btn.setStyleSheet(
-                    "QPushButton { background: #ff6600; color: white; "
+                    f"QPushButton {{ background: {ds.WARNING_STRONG}; color: white; "
                     "border: none; border-radius: 4px; padding: 4px 12px; "
                     "font-weight: bold; }"
-                    "QPushButton:hover { background: #ff8833; }"
+                    f"QPushButton:hover {{ background: {ds.SETTINGS_WARNING_HOVER}; }}"
                 )
 
                 def _make_fire_handler(pair_to_fire: str):
@@ -2624,7 +2632,9 @@ if _HAS_QT:
                 "behalf of the pool."
             )
             footer.setWordWrap(True)
-            footer.setStyleSheet("color: #8a8aab; padding: 8px; " "font-size: 11px;")
+            footer.setStyleSheet(
+                f"color: {ds.TEXT_EMPTY_STATE}; padding: 8px; " "font-size: 11px;"
+            )
             layout.addWidget(footer)
             return w
 
@@ -3961,7 +3971,7 @@ if _HAS_QT:
                 parked_str += f"  (+{parked_unreadable} unreadable)"
             parked_lbl = QLabel(parked_str)
             parked_lbl.setStyleSheet(
-                "font-weight: bold; font-size: 13px; " "color: #ff9900;"
+                "font-weight: bold; font-size: 13px; " f"color: {ds.FOLD_RATIO_AMBER};"
             )
             install_health_row(
                 sf, "Parked USD (in fold queue):", parked_lbl, FOLD_PARKED_USD_TOOLTIP
@@ -4170,10 +4180,10 @@ if _HAS_QT:
                 "discarded. New tranches are created by the next SCRUM."
             )
             clear_btn.setStyleSheet(
-                "QPushButton { background: #3a2020; color: #ff9900; "
-                "border: 1px solid #ff3366; padding: 6px 12px; } "
-                "QPushButton:disabled { color: #666666; "
-                "border-color: #444444; }"
+                f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
+                f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
+                f"QPushButton:disabled {{ color: {ds.TEXT_MUTED}; "
+                f"border-color: {ds.BORDER_DISABLED}; }}"
             )
             clear_btn.clicked.connect(self._on_clear_fold_tranches)
             self._fold_clear_btn = clear_btn
@@ -4201,10 +4211,10 @@ if _HAS_QT:
                 "cash simply returns to ordinary spendable balance."
             )
             wire_btn.setStyleSheet(
-                "QPushButton { background: #3a2020; color: #ff9900; "
-                "border: 1px solid #ff3366; padding: 6px 12px; } "
-                "QPushButton:disabled { color: #666666; "
-                "border-color: #444444; }"
+                f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
+                f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
+                f"QPushButton:disabled {{ color: {ds.TEXT_MUTED}; "
+                f"border-color: {ds.BORDER_DISABLED}; }}"
             )
             wire_btn.clicked.connect(self._on_clear_wire_credits)
             self._fold_wire_btn = wire_btn
@@ -4243,10 +4253,10 @@ if _HAS_QT:
                 "what happened, not what the bot holds."
             )
             counters_btn.setStyleSheet(
-                "QPushButton { background: #3a2020; color: #ff9900; "
-                "border: 1px solid #ff3366; padding: 6px 12px; } "
-                "QPushButton:disabled { color: #666666; "
-                "border-color: #444444; }"
+                f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
+                f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
+                f"QPushButton:disabled {{ color: {ds.TEXT_MUTED}; "
+                f"border-color: {ds.BORDER_DISABLED}; }}"
             )
             counters_btn.clicked.connect(self._on_clear_lifetime_counters)
             self._fold_counters_btn = counters_btn
@@ -4614,12 +4624,12 @@ if _HAS_QT:
                             status_str = (
                                 f"Price-OK ({otd_factor_diff_pct:+.2f}% vs OTD)"
                             )
-                            status_color = "#00ff88"
+                            status_color = ds.SUCCESS
                         else:
                             status_str = (
                                 f"Need price ≤ OTD ({otd_factor_diff_pct:+.2f}%)"
                             )
-                            status_color = "#ff9900"
+                            status_color = ds.FOLD_RATIO_AMBER
                         si_status = QTableWidgetItem(status_str)
                         si_status.setForeground(QColor(status_color))
                         si_status.setToolTip(
@@ -4645,7 +4655,7 @@ if _HAS_QT:
                         )
                         si_status = QTableWidgetItem(status_str)
                         si_status.setForeground(
-                            QColor("#00ff88" if below_ref else "#ff9900")
+                            QColor(ds.SUCCESS if below_ref else ds.FOLD_RATIO_AMBER)
                         )
                         table.setItem(row, 7, si_status)
                     else:
@@ -4707,12 +4717,12 @@ if _HAS_QT:
                     fire_btn.setStyleSheet(
                         f"QPushButton {{ background: "
                         f"{FOLD_TRANCHE_BG_HEX}; color: "
-                        f"#00ccff; border: 1px solid #00ccff; padding: "
+                        f"{ds.FOLD_SOURCE_MANUAL}; border: 1px solid {ds.FOLD_SOURCE_MANUAL}; padding: "
                         f"2px 8px; margin: {_inset}px 0px; }} "
-                        f"QPushButton:hover {{ background: #00ccff; "
-                        f"color: #001122; }} "
-                        f"QPushButton:disabled {{ background: #1a1a1a; "
-                        f"color: #555; border-color: #555; }}"
+                        f"QPushButton:hover {{ background: {ds.FOLD_SOURCE_MANUAL}; "
+                        f"color: {ds.SETTINGS_ON_INFO}; }} "
+                        f"QPushButton:disabled {{ background: {ds.SETTINGS_DISABLED_SURFACE}; "
+                        f"color: {ds.TEXT_PLACEHOLDER}; border-color: {ds.TEXT_PLACEHOLDER}; }}"
                     )
                     # Capture tranche IDENTITY (not row index) so we
                     # can resolve the current index at click time.
@@ -4819,7 +4829,8 @@ if _HAS_QT:
                     "previous SCRUM has been closed by a FOLD-BACK."
                 )
                 empty.setStyleSheet(
-                    "color: #888; font-style: italic; " "padding: 10px;"
+                    f"color: {ds.CARD_METRIC_LABEL}; font-style: italic; "
+                    "padding: 10px;"
                 )
                 empty.setWordWrap(True)
                 layout.addWidget(empty)
@@ -5450,7 +5461,7 @@ if _HAS_QT:
                 pending_size_str += f"  (+{pending_size_unreadable} unreadable)"
             pending_lbl = QLabel(pending_size_str)
             pending_lbl.setStyleSheet(
-                "font-weight: bold; font-size: 13px; color: #ff9900;"
+                f"font-weight: bold; font-size: 13px; color: {ds.FOLD_RATIO_AMBER};"
             )
             sf.addRow("Pending size (unfilled):", pending_lbl)
 
@@ -5486,11 +5497,11 @@ if _HAS_QT:
             if created_lifetime >= 3 and len(pending) > 0:
                 _ratio = len(filled) / created_lifetime
                 if _ratio < 0.3:
-                    ratio_lbl.setStyleSheet("color: #ff3366;")
+                    ratio_lbl.setStyleSheet(f"color: {ds.ERROR};")
                 elif _ratio < 0.7:
-                    ratio_lbl.setStyleSheet("color: #ff9900;")
+                    ratio_lbl.setStyleSheet(f"color: {ds.FOLD_RATIO_AMBER};")
                 else:
-                    ratio_lbl.setStyleSheet("color: #00ff88;")
+                    ratio_lbl.setStyleSheet(f"color: {ds.SUCCESS};")
             sf.addRow("Fill ratio (filled/opened):", ratio_lbl)
 
             # Item 9 (2026-08-13) — the mirror of the Fold panel's own
@@ -5551,10 +5562,10 @@ if _HAS_QT:
                 "tracking it."
             )
             stack_clear_btn.setStyleSheet(
-                "QPushButton { background: #3a2020; color: #ff9900; "
-                "border: 1px solid #ff3366; padding: 6px 12px; } "
-                "QPushButton:disabled { color: #666666; "
-                "border-color: #444444; }"
+                f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
+                f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
+                f"QPushButton:disabled {{ color: {ds.TEXT_MUTED}; "
+                f"border-color: {ds.BORDER_DISABLED}; }}"
             )
             stack_clear_btn.clicked.connect(self._on_clear_stack_tranches)
             self._stack_clear_btn = stack_clear_btn
@@ -5575,10 +5586,10 @@ if _HAS_QT:
                 "happened, not what the bot holds."
             )
             stack_counters_btn.setStyleSheet(
-                "QPushButton { background: #3a2020; color: #ff9900; "
-                "border: 1px solid #ff3366; padding: 6px 12px; } "
-                "QPushButton:disabled { color: #666666; "
-                "border-color: #444444; }"
+                f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
+                f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
+                f"QPushButton:disabled {{ color: {ds.TEXT_MUTED}; "
+                f"border-color: {ds.BORDER_DISABLED}; }}"
             )
             stack_counters_btn.clicked.connect(self._on_clear_stack_lifetime_counters)
             self._stack_counters_btn = stack_counters_btn
@@ -5595,7 +5606,9 @@ if _HAS_QT:
                     "No stack tranches yet. When Stack Mode is enabled "
                     "and a SCRUM fires, tranches will appear here."
                 )
-                empty_lbl.setStyleSheet("color: #888; padding: 12px;")
+                empty_lbl.setStyleSheet(
+                    f"color: {ds.CARD_METRIC_LABEL}; padding: 12px;"
+                )
                 empty_lbl.setWordWrap(True)
                 layout.addWidget(empty_lbl)
                 layout.addStretch()
@@ -5611,7 +5624,7 @@ if _HAS_QT:
             )
             header.setStyleSheet(
                 "font-family: monospace; font-weight: bold; "
-                "color: #66ccff; padding: 2px;"
+                f"color: {ds.TEXT_INFO_SOFT}; padding: 2px;"
             )
             dg.addWidget(header)
 
@@ -5688,9 +5701,9 @@ if _HAS_QT:
                 row.setStyleSheet(
                     "font-family: monospace; padding: 1px;"
                     + (
-                        " color: #00ff88;"
+                        f" color: {ds.SUCCESS};"
                         if status == "filled"
-                        else " color: #ff3366;" if status == "cancelled" else ""
+                        else f" color: {ds.ERROR};" if status == "cancelled" else ""
                     )
                 )
                 dg.addWidget(row)
@@ -5747,7 +5760,7 @@ if _HAS_QT:
                     "automatic for scrumming bots created via the "
                     "Bot Wizard with Smart Wire enabled)."
                 )
-                msg.setStyleSheet("color: #aaa; padding: 12px;")
+                msg.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; padding: 12px;")
                 msg.setWordWrap(True)
                 layout.addWidget(msg)
                 layout.addStretch()
@@ -5791,14 +5804,22 @@ if _HAS_QT:
             in_lbl = QLabel("—" if wired_in is None else f"${wired_in:,.4f}")
             in_lbl.setStyleSheet(
                 "font-weight: bold; color: "
-                + ("#00ff88" if wired_in is not None and wired_in > 0 else "#aaa")
+                + (
+                    ds.SUCCESS
+                    if wired_in is not None and wired_in > 0
+                    else ds.TEXT_INACTIVE
+                )
             )
             sf.addRow("Lifetime wired-in (received):", in_lbl)
 
             out_lbl = QLabel("—" if wired_out is None else f"${wired_out:,.4f}")
             out_lbl.setStyleSheet(
                 "font-weight: bold; color: "
-                + ("#ff9900" if wired_out is not None and wired_out > 0 else "#aaa")
+                + (
+                    ds.FOLD_RATIO_AMBER
+                    if wired_out is not None and wired_out > 0
+                    else ds.TEXT_INACTIVE
+                )
             )
             sf.addRow("Lifetime wired-out (sent):", out_lbl)
 
@@ -5809,13 +5830,13 @@ if _HAS_QT:
             # never supported.
             if wired_in is None or wired_out is None:
                 net_lbl = QLabel("—")
-                net_lbl.setStyleSheet("font-weight: bold; color: #aaa;")
+                net_lbl.setStyleSheet(f"font-weight: bold; color: {ds.TEXT_INACTIVE};")
             else:
                 net_flow = wired_in - wired_out
                 net_lbl = QLabel(f"${net_flow:+,.4f}")
                 net_lbl.setStyleSheet(
                     "font-weight: bold; color: "
-                    + ("#00ff88" if net_flow >= 0 else "#ff3366")
+                    + (ds.SUCCESS if net_flow >= 0 else ds.ERROR)
                 )
             sf.addRow("Net flow (in − out):", net_lbl)
 
@@ -5827,7 +5848,9 @@ if _HAS_QT:
             )
             pending_lbl = QLabel("—" if pending_usd is None else f"${pending_usd:,.4f}")
             if pending_usd is not None and pending_usd > 0:
-                pending_lbl.setStyleSheet("font-weight: bold; color: #00ccff;")
+                pending_lbl.setStyleSheet(
+                    f"font-weight: bold; color: {ds.FOLD_SOURCE_MANUAL};"
+                )
             sf.addRow("Pending wire credits:", pending_lbl)
 
             layout.addWidget(summary)
@@ -5890,9 +5913,9 @@ if _HAS_QT:
 
                 avail_lbl = QLabel(f"${mature_avail:,.4f}")
                 if mature_avail > 0:
-                    avail_lbl.setStyleSheet("color: #00ff88;")
+                    avail_lbl.setStyleSheet(f"color: {ds.SUCCESS};")
                 else:
-                    avail_lbl.setStyleSheet("color: #aaa;")
+                    avail_lbl.setStyleSheet(f"color: {ds.TEXT_INACTIVE};")
                 pf.addRow("Mature profit available (spawn-eligible):", avail_lbl)
 
                 # Provenance breakdown — which bots funded this one
@@ -5904,7 +5927,9 @@ if _HAS_QT:
                     )
                     prov_label = QLabel(prov_str)
                     prov_label.setWordWrap(True)
-                    prov_label.setStyleSheet("color: #ccc; font-size: 11px;")
+                    prov_label.setStyleSheet(
+                        f"color: {ds.TEXT_NEUTRAL}; font-size: 11px;"
+                    )
                     pf.addRow("Provenance breakdown:", prov_label)
 
                 layout.addWidget(prov_group)
@@ -6170,11 +6195,11 @@ if _HAS_QT:
                     if src == bot_id:
                         direction_str = "OUT →"
                         other = tgt
-                        dir_color = "#ff9900"
+                        dir_color = ds.FOLD_RATIO_AMBER
                     else:
                         direction_str = "← IN"
                         other = src
-                        dir_color = "#00ff88"
+                        dir_color = ds.SUCCESS
                     di = QTableWidgetItem(direction_str)
                     di.setForeground(QColor(dir_color))
                     tx_tbl.setItem(row, 1, di)
@@ -6219,7 +6244,8 @@ if _HAS_QT:
                     "swarm activity occurs."
                 )
                 empty.setStyleSheet(
-                    "color: #888; font-style: italic; " "padding: 10px;"
+                    f"color: {ds.CARD_METRIC_LABEL}; font-style: italic; "
+                    "padding: 10px;"
                 )
                 empty.setWordWrap(True)
                 layout.addWidget(empty)
@@ -6249,7 +6275,7 @@ if _HAS_QT:
                     "<b>Market Inspector unavailable.</b><br><br>"
                     f"{type(exc).__name__}: {exc}"
                 )
-                msg.setStyleSheet("color: #ff9900; padding: 12px;")
+                msg.setStyleSheet(f"color: {ds.FOLD_RATIO_AMBER}; padding: 12px;")
                 msg.setWordWrap(True)
                 lay.addWidget(msg)
                 lay.addStretch()
@@ -6272,7 +6298,9 @@ if _HAS_QT:
                 "Changes take effect immediately when Apply is clicked. "
                 "The bot does not need to be restarted."
             )
-            info.setStyleSheet("color: #888; font-size: 11px; margin-bottom: 4px;")
+            info.setStyleSheet(
+                f"color: {ds.CARD_METRIC_LABEL}; font-size: 11px; margin-bottom: 4px;"
+            )
             info.setWordWrap(True)
             layout.addWidget(info)
 
@@ -6572,9 +6600,9 @@ if _HAS_QT:
                     f"${_live_tb:,.4f}   (anchor ${_anchor_tb:,.2f} — "
                     f"never compounded)"
                 )
-                _live_lbl.setStyleSheet("color: #ff9900;")
+                _live_lbl.setStyleSheet(f"color: {ds.FOLD_RATIO_AMBER};")
             else:
-                _live_lbl.setStyleSheet("color: #00ff88;")
+                _live_lbl.setStyleSheet(f"color: {ds.SUCCESS};")
             _live_lbl.setToolTip(
                 "The target the bot actually trades against.\n\n"
                 "The spinbox above is your input value and does not "
@@ -6586,7 +6614,7 @@ if _HAS_QT:
             _surplus = float(getattr(self._bot, "_standing_surplus_usd", 0.0) or 0.0)
             _surplus_lbl = QLabel(f"${_surplus:,.4f}")
             if _surplus > 1e-9:
-                _surplus_lbl.setStyleSheet("color: #ff9900;")
+                _surplus_lbl.setStyleSheet(f"color: {ds.FOLD_RATIO_AMBER};")
                 _surplus_lbl.setToolTip(
                     "Surplus parked above the per-cycle growth cap.\n\n"
                     "There is currently NO drain from this pool — it "
@@ -6633,7 +6661,7 @@ if _HAS_QT:
                 _over_lbl = QLabel(
                     f"{len(_over)} of {len(_tranches)} " f"(${sum(_over):,.4f})"
                 )
-                _over_lbl.setStyleSheet("color: #ff3366;")
+                _over_lbl.setStyleSheet(f"color: {ds.ERROR};")
                 _over_lbl.setToolTip(
                     "Tranches larger than the entire per-cycle budget.\n\n"
                     "The fold takes what the budget allows from the "
@@ -7204,8 +7232,8 @@ if _HAS_QT:
             # literally before the action fires.
             sd_group = QGroupBox("DANGER ZONE — Self-Destruct (v3.15.62)")
             sd_group.setStyleSheet(
-                "QGroupBox{border:1px solid #ff3366;color:#ff3366;}"
-                "QGroupBox::title{color:#ff3366;font-weight:bold;}"
+                f"QGroupBox{{border:1px solid {ds.ERROR};color:{ds.ERROR};}}"
+                f"QGroupBox::title{{color:{ds.ERROR};font-weight:bold;}}"
             )
             sdv = QVBoxLayout(sd_group)
             sd_hint = QLabel(
@@ -7216,14 +7244,14 @@ if _HAS_QT:
                 "Confirmation required."
             )
             sd_hint.setWordWrap(True)
-            sd_hint.setStyleSheet("color:#aaa;font-size:10px;")
+            sd_hint.setStyleSheet(f"color:{ds.TEXT_INACTIVE};font-size:10px;")
             sdv.addWidget(sd_hint)
             self._self_destruct_btn = QPushButton("💥  SELF-DESTRUCT  💥")
             self._self_destruct_btn.setStyleSheet(
-                "QPushButton{background:#440011;color:#ff3366;"
-                "border:2px solid #ff3366;border-radius:4px;"
+                f"QPushButton{{background:{ds.SETTINGS_DESTRUCTIVE_SURFACE};color:{ds.ERROR};"
+                f"border:2px solid {ds.ERROR};border-radius:4px;"
                 "padding:8px 12px;font-weight:bold;}"
-                "QPushButton:hover{background:#660022;color:#ffffff;}"
+                f"QPushButton:hover{{background:{ds.SETTINGS_DESTRUCTIVE_HOVER};color:{ds.TEXT_MAX};}}"
             )
             self._self_destruct_btn.setToolTip(
                 "Aggressively exit the entire position. " "Confirmation required."
@@ -7636,12 +7664,15 @@ if _HAS_QT:
                 alts = list(getattr(cfg, "extractor_alt_targets", []) or [])
                 if alts:
                     info_lbl = QLabel(f"Manual override active — {len(alts)} pair(s):")
-                    info_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
+                    info_lbl.setStyleSheet(
+                        f"color: {ds.TEXT_INACTIVE}; font-size: 11px;"
+                    )
                     af.addWidget(info_lbl)
                     alts_lbl = QLabel(", ".join(alts))
                     alts_lbl.setWordWrap(True)
                     alts_lbl.setStyleSheet(
-                        "color: #00ffcc; font-family: monospace; " "font-size: 11px;"
+                        f"color: {ds.PRIMARY}; font-family: monospace; "
+                        "font-size: 11px;"
                     )
                     af.addWidget(alts_lbl)
                 else:
@@ -7650,7 +7681,7 @@ if _HAS_QT:
                         "rotates top-N by 24h volume each refresh."
                     )
                     info_lbl.setStyleSheet(
-                        "color: #aaa; font-size: 11px; font-style: italic;"
+                        f"color: {ds.TEXT_INACTIVE}; font-size: 11px; font-style: italic;"
                     )
                     af.addWidget(info_lbl)
                 layout.addWidget(alts_group)
@@ -7688,7 +7719,7 @@ if _HAS_QT:
                 "NEW phantoms. Already-started phantoms keep their "
                 "original configuration until the next bot restart."
             )
-            info.setStyleSheet("color: #888; font-size: 11px;")
+            info.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL}; font-size: 11px;")
             info.setWordWrap(True)
             layout.addWidget(info)
 
@@ -7713,7 +7744,7 @@ if _HAS_QT:
                 "are disabled (greyed). Coinbase: 1m/5m/15m/30m/1h/2h/6h/1d. "
                 "Binance: full set. Others vary."
             )
-            tf_hint.setStyleSheet("color: #888; font-size: 10px;")
+            tf_hint.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px;")
             tf_hint.setWordWrap(True)
             tf_layout.addWidget(tf_hint)
 
@@ -7803,7 +7834,7 @@ if _HAS_QT:
 
             en_lbl = QLabel("YES" if phantoms_enabled else "NO")
             en_lbl.setStyleSheet(
-                "color: " + ("#00ff88" if phantoms_enabled else "#aaa")
+                "color: " + (ds.SUCCESS if phantoms_enabled else ds.TEXT_INACTIVE)
             )
             sf.addRow("Phantoms enabled:", en_lbl)
 
@@ -7811,9 +7842,9 @@ if _HAS_QT:
             started_lbl.setStyleSheet(
                 "color: "
                 + (
-                    "#00ff88"
+                    ds.SUCCESS
                     if phantoms_started
-                    else "#ff9900" if phantoms_enabled else "#aaa"
+                    else ds.FOLD_RATIO_AMBER if phantoms_enabled else ds.TEXT_INACTIVE
                 )
             )
             sf.addRow("Phantoms started:", started_lbl)
@@ -7828,10 +7859,12 @@ if _HAS_QT:
                     f"LOCKED — SCRUM suppressed by {phantom_lock_tf} TF "
                     f"phantom (downside protection active)"
                 )
-                lock_lbl.setStyleSheet("color: #ff9900; font-weight: bold;")
+                lock_lbl.setStyleSheet(
+                    f"color: {ds.FOLD_RATIO_AMBER}; font-weight: bold;"
+                )
             else:
                 lock_lbl = QLabel("UNLOCKED — SCRUM allowed")
-                lock_lbl.setStyleSheet("color: #00ff88;")
+                lock_lbl.setStyleSheet(f"color: {ds.SUCCESS};")
             sf.addRow("SCRUM lock state:", lock_lbl)
             layout.addWidget(summary)
 
@@ -7893,7 +7926,9 @@ if _HAS_QT:
                     pi = QTableWidgetItem(f"${pnl:+,.4f}")
                     pi.setForeground(
                         QColor(
-                            "#00ff88" if pnl > 0 else "#ff3366" if pnl < 0 else "#aaa"
+                            ds.SUCCESS
+                            if pnl > 0
+                            else ds.ERROR if pnl < 0 else ds.TEXT_INACTIVE
                         )
                     )
                     tbl.setItem(row, 4, pi)
@@ -7906,9 +7941,9 @@ if _HAS_QT:
                     conf = float(summary_d.get("confidence", 0) or 0)
                     ci = QTableWidgetItem(f"{conf:.2%}")
                     if conf >= 0.50:
-                        ci.setForeground(QColor("#00ff88"))
+                        ci.setForeground(QColor(ds.SUCCESS))
                     elif conf >= 0.25:
-                        ci.setForeground(QColor("#ff9900"))
+                        ci.setForeground(QColor(ds.FOLD_RATIO_AMBER))
                     tbl.setItem(row, 6, ci)
 
                 pl.addWidget(tbl)
@@ -7947,16 +7982,16 @@ if _HAS_QT:
                     src_bot = str(lk.get("source_bot", "?"))
                     src_item = QTableWidgetItem(src_bot)
                     if src_bot == bot_id:
-                        src_item.setForeground(QColor("#00ccff"))
+                        src_item.setForeground(QColor(ds.FOLD_SOURCE_MANUAL))
                         src_item.setText(f"{src_bot} (this bot)")
                     lock_tbl.setItem(row, 1, src_item)
 
                     dir_str = str(lk.get("locked_direction", "?"))
                     di = QTableWidgetItem(dir_str)
                     if "BULLISH" in dir_str:
-                        di.setForeground(QColor("#00ff88"))
+                        di.setForeground(QColor(ds.SUCCESS))
                     elif "BEARISH" in dir_str:
-                        di.setForeground(QColor("#ff3366"))
+                        di.setForeground(QColor(ds.ERROR))
                     lock_tbl.setItem(row, 2, di)
 
                     cr = int(lk.get("candles_remaining", 0) or 0)
@@ -7987,7 +8022,10 @@ if _HAS_QT:
                         "State populates after each phantom completes "
                         "its first signal cycle."
                     )
-                msg.setStyleSheet("color: #888; font-style: italic; " "padding: 10px;")
+                msg.setStyleSheet(
+                    f"color: {ds.CARD_METRIC_LABEL}; font-style: italic; "
+                    "padding: 10px;"
+                )
                 msg.setWordWrap(True)
                 layout.addWidget(msg)
 
