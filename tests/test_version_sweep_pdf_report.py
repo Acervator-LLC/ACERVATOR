@@ -64,13 +64,12 @@ def _result() -> SweepResult:
     )
 
 
-def test_save_pdf_report_writes_a_readable_pdf(tmp_path, monkeypatch):
+def test_save_pdf_report_writes_a_readable_pdf(tmp_path):
     """The method returns a path, and that path holds a real PDF."""
     reportlab = pytest.importorskip("reportlab")
     assert reportlab is not None
 
-    monkeypatch.setattr("src.core.version_sweep.ROOT", tmp_path)
-    out = VersionSweep().save_pdf_report(_result())
+    out = VersionSweep().save_pdf_report(_result(), reports_dir=tmp_path / "reports")
 
     assert out is not None, (
         "save_pdf_report returned None. Its reportlab import block failed, "
@@ -81,24 +80,25 @@ def test_save_pdf_report_writes_a_readable_pdf(tmp_path, monkeypatch):
     assert data.startswith(b"%PDF-"), data[:16]
     assert data.rstrip().endswith(b"%%EOF")
     assert len(data) > 1500, len(data)
-    assert out.parent == tmp_path / "docs" / "pdf"
+    assert out.parent == tmp_path / "reports"
 
 
-def test_save_pdf_report_covers_every_severity_section(tmp_path, monkeypatch):
+def test_save_pdf_report_covers_every_severity_section(tmp_path):
     """A severity with no finding draws no section; one finding draws one.
 
     This walks the ``sev_order`` loop that builds ``rows``, which is the
     list the archetype reported on.
     """
     pytest.importorskip("reportlab")
-    monkeypatch.setattr("src.core.version_sweep.ROOT", tmp_path)
 
-    full = VersionSweep().save_pdf_report(_result())
+    full = VersionSweep().save_pdf_report(_result(), reports_dir=tmp_path / "reports")
     assert full is not None
     big = full.stat().st_size
 
     empty_result = SweepResult(version="9.9.8", timestamp="t", findings=[])
-    empty = VersionSweep().save_pdf_report(empty_result)
+    empty = VersionSweep().save_pdf_report(
+        empty_result, reports_dir=tmp_path / "reports"
+    )
     assert empty is not None
     small = empty.stat().st_size
 
