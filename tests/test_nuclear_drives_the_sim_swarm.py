@@ -42,6 +42,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# The mixin that builds the Simulator tab, composed into MainWindow.
+SIM_TAB_BUILDER = REPO_ROOT / "src/gui/main_tabs/simulator_tab.py"
+
 from src.simulator.nuclear_fleet_controller import (  # noqa: E402
     NuclearFleetController,
 )
@@ -143,7 +146,7 @@ class TestTheSeamIsActuallyWired:
         """AST pin on the production caller. Without this the method exists
         and is never called — the exact class of defect C58 is being queued
         to catch."""
-        src = (REPO_ROOT / "src/gui/main_window.py").read_text(encoding="utf-8")
+        src = SIM_TAB_BUILDER.read_text(encoding="utf-8")
         names = {
             getattr(n.func, "attr", None)
             for n in ast.walk(ast.parse(src))

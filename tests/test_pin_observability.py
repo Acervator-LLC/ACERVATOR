@@ -1368,7 +1368,7 @@ class TestTheYtdPinsAreReachableInTheSimulator:
 
     That was a property of the HARNESS, not of the Simulator. The
     operator's own application injects the manager through a plain
-    setter at src/gui/main_window.py, and this test performs the same
+    setter at src/gui/main_tabs/simulator_tab.py, and this test performs the same
     injection. A "cannot fire here" verdict has to be a measurement.
     """
 
@@ -1376,7 +1376,7 @@ class TestTheYtdPinsAreReachableInTheSimulator:
         tab = _tab()
         assert hasattr(
             tab, "set_bot_manager"
-        ), "main_window.py calls set_bot_manager on the Simulator tab"
+        ), "the main-window builder calls set_bot_manager on the Simulator tab"
         tab.set_bot_manager(_StubBotManager())
         assert tab.fleet_replay._bot_manager is not None
         assert tab.fleet_replay._fetch_ytd_btn.isEnabled()

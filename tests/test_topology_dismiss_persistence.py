@@ -191,11 +191,11 @@ class TestItNeverTouchesTheOperatorsDisk:
         """
         import ast
 
-        import src.gui.main_window as mw
+        import src.gui.main_tabs.market_inspector_tab as mw
         import src.gui.market_inspector as mi
 
         for mod, why in (
-            (mw, "main_window never wires the dismiss store"),
+            (mw, "the main-window builder never wires the dismiss store"),
             (mi, "the tab never forwards it to the pane"),
         ):
             src = Path(mod.__file__).read_text(encoding="utf-8")
