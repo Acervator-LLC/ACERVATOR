@@ -29,6 +29,8 @@ try:
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor
 
+    from . import design_system as ds
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -61,19 +63,20 @@ if _HAS_QT:
             # Status
             self._lbl_status = QLabel("Notifications: Active")
             self._lbl_status.setStyleSheet(
-                "color: #00ffcc; font-size: 14px; font-weight: bold;"
+                f"color: {ds.PRIMARY}; font-size: 14px; font-weight: bold;"
             )
             left_layout.addWidget(self._lbl_status)
 
             self._lbl_unread = QLabel("Unread: 0")
-            self._lbl_unread.setStyleSheet("color: #ffaa00; font-size: 12px;")
+            self._lbl_unread.setStyleSheet(f"color: {ds.WARNING}; font-size: 12px;")
             left_layout.addWidget(self._lbl_unread)
 
             # Telegram config
             tg_group = QGroupBox("Telegram Bot")
             tg_group.setStyleSheet(
-                "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }"
+                f"QGroupBox {{ background: {ds.SURFACE_CHART}; "
+                f"border: 1px solid {ds.CARD_METRIC_BORDER}; "
+                f"border-radius: 6px; color: {ds.PRIMARY}; }}"
             )
             tg_form = QFormLayout(tg_group)
 
@@ -88,8 +91,10 @@ if _HAS_QT:
 
             self._tg_test = QPushButton("Test Telegram")
             self._tg_test.setStyleSheet(
-                "QPushButton { background: #1a1a3f; color: #00aaff; "
-                "border: 1px solid #00aaff; border-radius: 4px; padding: 6px; }"
+                f"QPushButton {{ background: {ds.VIZ_PANEL_BORDER}; "
+                f"color: {ds.STATUS_INFO}; "
+                f"border: 1px solid {ds.STATUS_INFO}; "
+                f"border-radius: 4px; padding: 6px; }}"
             )
             self._tg_test.clicked.connect(self._test_telegram)
             tg_form.addRow(self._tg_test)
@@ -101,8 +106,9 @@ if _HAS_QT:
             # SMS config
             sms_group = QGroupBox("SMS Alerts")
             sms_group.setStyleSheet(
-                "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }"
+                f"QGroupBox {{ background: {ds.SURFACE_CHART}; "
+                f"border: 1px solid {ds.CARD_METRIC_BORDER}; "
+                f"border-radius: 6px; color: {ds.PRIMARY}; }}"
             )
             sms_form = QFormLayout(sms_group)
 
@@ -111,17 +117,18 @@ if _HAS_QT:
             sms_form.addRow("Phone:", self._sms_phone)
 
             self._sms_status = QLabel("Not configured")
-            self._sms_status.setStyleSheet("color: #888;")
+            self._sms_status.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL};")
             sms_form.addRow(self._sms_status)
             left_layout.addWidget(sms_group)
 
             # Save button
             self._btn_save = QPushButton("Save Configuration")
             self._btn_save.setStyleSheet(
-                "QPushButton { background: #00ffcc; color: #0a0a12; "
+                f"QPushButton {{ background: {ds.PRIMARY}; "
+                f"color: {ds.SURFACE_CHART}; "
                 "border: none; border-radius: 4px; padding: 8px; "
                 "font-weight: bold; }"
-                "QPushButton:hover { background: #00ddaa; }"
+                f"QPushButton:hover {{ background: {ds.SETTINGS_PRIMARY_HOVER}; }}"
             )
             self._btn_save.clicked.connect(self._save_config)
             left_layout.addWidget(self._btn_save)
@@ -137,8 +144,9 @@ if _HAS_QT:
             # Event routing table
             rules_group = QGroupBox("Event Routing")
             rules_group.setStyleSheet(
-                "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }"
+                f"QGroupBox {{ background: {ds.SURFACE_CHART}; "
+                f"border: 1px solid {ds.CARD_METRIC_BORDER}; "
+                f"border-radius: 6px; color: {ds.PRIMARY}; }}"
             )
             rules_layout = QVBoxLayout(rules_group)
 
@@ -158,8 +166,9 @@ if _HAS_QT:
             # Notification history
             history_group = QGroupBox("Notification History")
             history_group.setStyleSheet(
-                "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }"
+                f"QGroupBox {{ background: {ds.SURFACE_CHART}; "
+                f"border: 1px solid {ds.CARD_METRIC_BORDER}; "
+                f"border-radius: 6px; color: {ds.PRIMARY}; }}"
             )
             history_layout = QVBoxLayout(history_group)
 
@@ -167,8 +176,10 @@ if _HAS_QT:
             ack_row.addStretch()
             self._btn_ack = QPushButton("Acknowledge All")
             self._btn_ack.setStyleSheet(
-                "QPushButton { background: #1a1a3f; color: #ffaa00; "
-                "border: 1px solid #ffaa00; border-radius: 4px; padding: 4px 10px; }"
+                f"QPushButton {{ background: {ds.VIZ_PANEL_BORDER}; "
+                f"color: {ds.WARNING}; "
+                f"border: 1px solid {ds.WARNING}; "
+                f"border-radius: 4px; padding: 4px 10px; }}"
             )
             self._btn_ack.clicked.connect(self._acknowledge_all)
             ack_row.addWidget(self._btn_ack)
@@ -200,7 +211,7 @@ if _HAS_QT:
             chat_id = self._tg_chat.text().strip()
             if not token or not chat_id:
                 self._tg_status.setText("Enter bot token and chat ID first")
-                self._tg_status.setStyleSheet("color: #ff3366;")
+                self._tg_status.setStyleSheet(f"color: {ds.ERROR};")
                 return
 
             self._notif.configure_telegram(token, chat_id)
@@ -211,10 +222,10 @@ if _HAS_QT:
                     None,
                 )
                 self._tg_status.setText("Test sent successfully!")
-                self._tg_status.setStyleSheet("color: #00ff88;")
+                self._tg_status.setStyleSheet(f"color: {ds.SUCCESS};")
             except Exception as e:
                 self._tg_status.setText(f"Failed: {e}")
-                self._tg_status.setStyleSheet("color: #ff3366;")
+                self._tg_status.setStyleSheet(f"color: {ds.ERROR};")
 
         def _save_config(self):
             """Save notification configuration."""
@@ -250,9 +261,11 @@ if _HAS_QT:
             unread = nm.unacknowledged_count
             self._lbl_unread.setText(f"Unread: {unread}")
             if unread > 0:
-                self._lbl_unread.setStyleSheet("color: #ffaa00; font-size: 12px;")
+                self._lbl_unread.setStyleSheet(f"color: {ds.WARNING}; font-size: 12px;")
             else:
-                self._lbl_unread.setStyleSheet("color: #888; font-size: 12px;")
+                self._lbl_unread.setStyleSheet(
+                    f"color: {ds.CARD_METRIC_LABEL}; font-size: 12px;"
+                )
 
             tg_ok = config.get("telegram_configured", False)
             sms_ok = config.get("sms_configured", False)
@@ -279,7 +292,11 @@ if _HAS_QT:
                     item = QTableWidgetItem(text)
                     item.setTextAlignment(Qt.AlignCenter)
                     if col >= 2:
-                        color = QColor("#00ff88") if text == "Yes" else QColor("#555")
+                        color = (
+                            QColor(ds.SUCCESS)
+                            if text == "Yes"
+                            else QColor(ds.TEXT_PLACEHOLDER)
+                        )
                         item.setForeground(color)
                     self._rules_table.setItem(row, col, item)
 
@@ -301,12 +318,14 @@ if _HAS_QT:
                     item.setTextAlignment(Qt.AlignCenter)
                     if col == 1:
                         pcolors = {
-                            "low": "#888",
-                            "medium": "#00aaff",
-                            "high": "#ffaa00",
-                            "critical": "#ff3366",
+                            "low": ds.CARD_METRIC_LABEL,
+                            "medium": ds.STATUS_INFO,
+                            "high": ds.WARNING,
+                            "critical": ds.ERROR,
                         }
-                        item.setForeground(QColor(pcolors.get(text, "#888")))
+                        item.setForeground(
+                            QColor(pcolors.get(text, ds.CARD_METRIC_LABEL))
+                        )
                     if not notif.acknowledged:
-                        item.setForeground(QColor("#e0e0f0"))
+                        item.setForeground(QColor(ds.TEXT_HIGH))
                     self._history_table.setItem(row, col, item)

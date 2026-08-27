@@ -34,6 +34,8 @@ try:
         QFont,
     )  # v3.19.12 removed unused QConicalGradient
 
+    from . import design_system as ds
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -64,29 +66,29 @@ if _HAS_QT:
             rect_size = size - 2 * margin
 
             # Background arc
-            p.setPen(QPen(QColor("#1a1a2e"), 8))
+            p.setPen(QPen(QColor(ds.SURFACE_CONTROL), 8))
             p.drawArc(margin, margin, rect_size, rect_size, 225 * 16, -270 * 16)
 
             # Value arc
             ratio = min(self._value / self._max, 1.0)
             if ratio < 0.4:
-                color = QColor("#00ff88")
+                color = QColor(ds.SUCCESS)
             elif ratio < 0.7:
-                color = QColor("#ffaa00")
+                color = QColor(ds.WARNING)
             else:
-                color = QColor("#ff3366")
+                color = QColor(ds.ERROR)
 
             p.setPen(QPen(color, 8))
             span = int(-270 * ratio * 16)
             p.drawArc(margin, margin, rect_size, rect_size, 225 * 16, span)
 
             # Center text
-            p.setPen(QColor("#e0e0f0"))
+            p.setPen(QColor(ds.TEXT_HIGH))
             p.setFont(QFont("Consolas", 18, QFont.Bold))
             p.drawText(self.rect(), Qt.AlignCenter, f"{self._value:.1f}%")
 
             # Label
-            p.setPen(QColor("#888"))
+            p.setPen(QColor(ds.CARD_METRIC_LABEL))
             p.setFont(QFont("Consolas", 9))
             label_rect = self.rect().adjusted(0, size // 2 + 10, 0, 0)
             p.drawText(label_rect, Qt.AlignHCenter | Qt.AlignTop, "Drawdown")
@@ -103,30 +105,35 @@ if _HAS_QT:
             layout.setContentsMargins(4, 2, 4, 2)
             self._label = QLabel(label)
             self._label.setMinimumWidth(80)
-            self._label.setStyleSheet("color: #aaa; font-size: 11px;")
+            self._label.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; font-size: 11px;")
             self._bar = QProgressBar()
             self._bar.setRange(0, 100)
             self._bar.setTextVisible(True)
             self._bar.setStyleSheet(
-                "QProgressBar { background: #1a1a2e; border: 1px solid #2a2a3f; "
-                "border-radius: 3px; height: 18px; color: #e0e0f0; font-size: 10px; }"
-                "QProgressBar::chunk { background: #00aaff; border-radius: 2px; }"
+                f"QProgressBar {{ background: {ds.SURFACE_CONTROL}; "
+                f"border: 1px solid {ds.CARD_METRIC_BORDER}; "
+                f"border-radius: 3px; height: 18px; color: {ds.TEXT_HIGH}; "
+                f"font-size: 10px; }}"
+                f"QProgressBar::chunk {{ background: {ds.STATUS_INFO}; "
+                f"border-radius: 2px; }}"
             )
             self._value_label = QLabel("$0")
             self._value_label.setMinimumWidth(70)
             self._value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self._value_label.setStyleSheet("color: #e0e0f0; font-size: 11px;")
+            self._value_label.setStyleSheet(f"color: {ds.TEXT_HIGH}; font-size: 11px;")
             layout.addWidget(self._label)
             layout.addWidget(self._bar, stretch=1)
             layout.addWidget(self._value_label)
 
-        def set_value(self, pct: float, amount: float, color: str = "#00aaff"):
+        def set_value(self, pct: float, amount: float, color: str = ds.STATUS_INFO):
             self._bar.setValue(int(min(pct, 100)))
             self._bar.setFormat(f"{pct:.1f}%")
             self._value_label.setText(f"${amount:,.0f}")
             self._bar.setStyleSheet(
-                f"QProgressBar {{ background: #1a1a2e; border: 1px solid #2a2a3f; "
-                f"border-radius: 3px; height: 18px; color: #e0e0f0; font-size: 10px; }}"
+                f"QProgressBar {{ background: {ds.SURFACE_CONTROL}; "
+                f"border: 1px solid {ds.CARD_METRIC_BORDER}; "
+                f"border-radius: 3px; height: 18px; color: {ds.TEXT_HIGH}; "
+                f"font-size: 10px; }}"
                 f"QProgressBar::chunk {{ background: {color}; border-radius: 2px; }}"
             )
 
@@ -160,14 +167,14 @@ if _HAS_QT:
 
             metrics = QVBoxLayout()
             self._lbl_peak = QLabel("Peak P/L: $0.00")
-            self._lbl_peak.setStyleSheet("color: #00ff88; font-size: 13px;")
+            self._lbl_peak.setStyleSheet(f"color: {ds.SUCCESS}; font-size: 13px;")
             self._lbl_exposure = QLabel("Total Exposure: $0.00")
-            self._lbl_exposure.setStyleSheet("color: #e0e0f0; font-size: 13px;")
+            self._lbl_exposure.setStyleSheet(f"color: {ds.TEXT_HIGH}; font-size: 13px;")
             self._lbl_bots = QLabel("Running Bots: 0")
-            self._lbl_bots.setStyleSheet("color: #aaa; font-size: 12px;")
+            self._lbl_bots.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; font-size: 12px;")
             self._lbl_status = QLabel("STATUS: MONITORING")
             self._lbl_status.setStyleSheet(
-                "color: #00ffcc; font-size: 14px; font-weight: bold;"
+                f"color: {ds.PRIMARY}; font-size: 14px; font-weight: bold;"
             )
             metrics.addWidget(self._lbl_status)
             metrics.addWidget(self._lbl_peak)
@@ -180,8 +187,9 @@ if _HAS_QT:
             # Asset exposure bars
             asset_group = QGroupBox("Asset Exposure")
             asset_group.setStyleSheet(
-                "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }"
+                f"QGroupBox {{ background: {ds.SURFACE_CHART}; "
+                f"border: 1px solid {ds.CARD_METRIC_BORDER}; "
+                f"border-radius: 6px; color: {ds.PRIMARY}; }}"
             )
             self._asset_layout = QVBoxLayout(asset_group)
             self._asset_bars: dict[str, ExposureBar] = {}
@@ -190,8 +198,9 @@ if _HAS_QT:
             # Exchange exposure bars
             exch_group = QGroupBox("Exchange Exposure")
             exch_group.setStyleSheet(
-                "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }"
+                f"QGroupBox {{ background: {ds.SURFACE_CHART}; "
+                f"border: 1px solid {ds.CARD_METRIC_BORDER}; "
+                f"border-radius: 6px; color: {ds.PRIMARY}; }}"
             )
             self._exch_layout = QVBoxLayout(exch_group)
             self._exch_bars: dict[str, ExposureBar] = {}
@@ -208,8 +217,9 @@ if _HAS_QT:
             # Risk alerts table
             alerts_group = QGroupBox("Risk Alerts")
             alerts_group.setStyleSheet(
-                "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }"
+                f"QGroupBox {{ background: {ds.SURFACE_CHART}; "
+                f"border: 1px solid {ds.CARD_METRIC_BORDER}; "
+                f"border-radius: 6px; color: {ds.PRIMARY}; }}"
             )
             alerts_layout = QVBoxLayout(alerts_group)
 
@@ -230,8 +240,9 @@ if _HAS_QT:
             # Rules configuration
             rules_group = QGroupBox("Risk Rules")
             rules_group.setStyleSheet(
-                "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }"
+                f"QGroupBox {{ background: {ds.SURFACE_CHART}; "
+                f"border: 1px solid {ds.CARD_METRIC_BORDER}; "
+                f"border-radius: 6px; color: {ds.PRIMARY}; }}"
             )
             rules_layout = QVBoxLayout(rules_group)
 
@@ -274,17 +285,17 @@ if _HAS_QT:
             if critical > 0:
                 self._lbl_status.setText("STATUS: CRITICAL")
                 self._lbl_status.setStyleSheet(
-                    "color: #ff3366; font-size: 14px; font-weight: bold;"
+                    f"color: {ds.ERROR}; font-size: 14px; font-weight: bold;"
                 )
             elif status.get("alerts_1h", 0) > 0:
                 self._lbl_status.setText("STATUS: WARNING")
                 self._lbl_status.setStyleSheet(
-                    "color: #ffaa00; font-size: 14px; font-weight: bold;"
+                    f"color: {ds.WARNING}; font-size: 14px; font-weight: bold;"
                 )
             else:
                 self._lbl_status.setText("STATUS: MONITORING")
                 self._lbl_status.setStyleSheet(
-                    "color: #00ffcc; font-size: 14px; font-weight: bold;"
+                    f"color: {ds.PRIMARY}; font-size: 14px; font-weight: bold;"
                 )
 
             # Update exposure bars from snapshots
@@ -302,7 +313,9 @@ if _HAS_QT:
                         self._asset_bars[asset] = bar
                         self._asset_layout.addWidget(bar)
                     color = (
-                        "#ff3366" if pct > 40 else "#ffaa00" if pct > 25 else "#00aaff"
+                        ds.ERROR
+                        if pct > 40
+                        else ds.WARNING if pct > 25 else ds.STATUS_INFO
                     )
                     self._asset_bars[asset].set_value(pct, amount, color)
 
@@ -314,7 +327,9 @@ if _HAS_QT:
                         self._exch_bars[exch] = bar
                         self._exch_layout.addWidget(bar)
                     color = (
-                        "#ff3366" if pct > 60 else "#ffaa00" if pct > 40 else "#00aaff"
+                        ds.ERROR
+                        if pct > 60
+                        else ds.WARNING if pct > 40 else ds.STATUS_INFO
                     )
                     self._exch_bars[exch].set_value(pct, amount, color)
 
@@ -336,9 +351,9 @@ if _HAS_QT:
                     item.setTextAlignment(Qt.AlignCenter)
                     if col == 1:
                         color = (
-                            QColor("#ff3366")
+                            QColor(ds.ERROR)
                             if alert.severity == "critical"
-                            else QColor("#ffaa00")
+                            else QColor(ds.WARNING)
                         )
                         item.setForeground(color)
                     self._alerts_table.setItem(row, col, item)
@@ -358,7 +373,7 @@ if _HAS_QT:
                     item.setTextAlignment(Qt.AlignCenter)
                     if col == 3:
                         color = (
-                            QColor("#00ff88") if rule["enabled"] else QColor("#ff3366")
+                            QColor(ds.SUCCESS) if rule["enabled"] else QColor(ds.ERROR)
                         )
                         item.setForeground(color)
                     self._rules_table.setItem(row, col, item)
