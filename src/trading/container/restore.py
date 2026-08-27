@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, Callable
 
 from .config import STACK_MODE_DEFAULT, BotState, make_bot_config
 
@@ -14,6 +15,18 @@ class StateRestoreMixin:
 
     Composed into ``BotManager``; ``self`` is the manager instance.
     """
+
+    # Supplied by BotManager at runtime; declared so a type checker
+    # can resolve them. Annotations only: no attribute is created and
+    # the runtime base stays `object`.
+    _boot_state_records: dict
+    _bots: dict
+    _bus: Any
+    _restore_completed: bool
+    _restore_ledger: dict
+    _smart_wire_mgr: Any
+    _state_manager: Any
+    register: Callable[..., tuple]
 
     # -- State persistence -----------------------------------------------
     def save_all_state(self) -> None:

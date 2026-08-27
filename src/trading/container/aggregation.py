@@ -17,6 +17,11 @@ class FleetAggregationMixin:
     Composed into ``BotManager``; ``self`` is the manager instance.
     """
 
+    # Supplied by BotManager at runtime; declared so a type checker
+    # can resolve them. Annotations only: no attribute is created and
+    # the runtime base stays `object`.
+    _bots: dict
+
     # ------------------------------------------------------------------
     # v3.15.56 — multi-base attribution support
     # ------------------------------------------------------------------
@@ -131,7 +136,7 @@ class FleetAggregationMixin:
         other_bot: Any,
         other_cfg: Any,
         dollar_pegged: bool,
-    ) -> "tuple[Optional[float], str]":
+    ) -> tuple[Optional[float], str]:
         """What one other bot has claimed from the shared pool.
 
         The answer is in units of the pool's currency. Returns the
@@ -181,7 +186,7 @@ class FleetAggregationMixin:
         self,
         other_bot: Any,
         dollar_pegged: bool,
-    ) -> "tuple[Optional[float], str]":
+    ) -> tuple[Optional[float], str]:
         """How many dollars one unit of the pool currency is worth,
         taken from the other bot's own cached rate.
 
@@ -195,7 +200,7 @@ class FleetAggregationMixin:
         Bitcoin.
         """
         raw: Any = None
-        rate: "Optional[float]" = None
+        rate: Optional[float] = None
         try:
             # Inside the guard on purpose. A missing rate is not the
             # only way this read fails: reading it can raise, and a
@@ -221,7 +226,7 @@ class FleetAggregationMixin:
         bot_id: str,
         exchange_id: str,
         currency: str,
-    ) -> "Optional[float]":
+    ) -> Optional[float]:
         """Sum of base-currency (quote-currency) claims by OTHER bots
         on the same exchange.
 

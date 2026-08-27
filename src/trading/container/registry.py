@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 if TYPE_CHECKING:
     from ..bot_container import BotContainer
@@ -16,6 +16,23 @@ class BotRegistryMixin:
 
     Composed into ``BotManager``; ``self`` is the manager instance.
     """
+
+    # Supplied by BotManager at runtime; declared so a type checker
+    # can resolve them. Annotations only: no attribute is created and
+    # the runtime base stays `object`.
+    _boot_state_records: dict
+    _bots: dict
+    _bus: Any
+    _capital_registry: Any
+    _connector: Any
+    _data_pool: Any
+    _dispatch_bootstrap: Callable[..., None]
+    _reservation_usd_and_mode: Callable[..., tuple]
+    _restore_ledger: dict
+    _smart_wire_mgr: Any
+    _state_manager: Any
+    _usd_per_base_for: Callable[..., Any]
+    _volume_guard: Any
 
     def register(self, bot: BotContainer) -> tuple[bool, "Optional[str]"]:
         """Add a bot to the manager's registry.
