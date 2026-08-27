@@ -6,7 +6,7 @@
     charts.13.004.postcondition.panel_refreshed
     charts.13.005.invariant.panels_fresh
 
-THE TAB IS `TradeChartsTab`, built inline in `src/gui/main_window.py`. It
+THE TAB IS `TradeChartsTab`, in `src/gui/widgets/trade_charts_tab.py`. It
 holds one `ChartPanel` per qualifying bot and feeds each one from
 `ChartDataFetcher`. Every pin reads the state the NEXT caller uses -- the
 widgets really in the scroll layout, the symbol the fetch really hands
@@ -113,7 +113,7 @@ CHARTS_PINS = (MOUNTED, SYMBOLS, REARMED, REFRESHED, FRESH)
 # every panel from one site, so folding it would drop panels.
 UNTHROTTLED = (REARMED, REFRESHED)
 
-MAIN_WINDOW = REPO / "src" / "gui" / "main_window.py"
+TRADE_CHARTS = REPO / "src" / "gui" / "widgets" / "trade_charts_tab.py"
 
 # Substrings that must never appear in a record this tab writes. A
 # context is written to disk, and a bot id is operator-chosen text the
@@ -270,13 +270,13 @@ def _collect() -> Iterator[SignalSink]:
 
 
 def _chart_emit_calls() -> list[ast.Call]:
-    """Every `_ch_emit(...)` call node in `main_window.py`.
+    """Every `_ch_emit(...)` call node in `trade_charts_tab.py`.
 
     Read from the syntax tree, the way `tools/emitter_registry_check.py`
     reads them. A regex over the source would answer a different
     question.
     """
-    tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
+    tree = ast.parse(TRADE_CHARTS.read_text(encoding="utf-8"))
     return [
         node
         for node in ast.walk(tree)

@@ -86,9 +86,11 @@ def _app():
 
 @pytest.fixture()
 def revealed(monkeypatch):
-    from src.gui import main_window as mw
+    from src.gui.widgets import bot_status_table
 
-    monkeypatch.setattr(mw, "get_privacy_mask_registry", lambda: _AllRevealed())
+    monkeypatch.setattr(
+        bot_status_table, "get_privacy_mask_registry", lambda: _AllRevealed()
+    )
 
 
 def _reference(headers, fixed, accessible_name=""):

@@ -15,6 +15,7 @@ text and each owning child widget is rendered on its own.
 """
 
 import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -64,6 +65,14 @@ API_DEFAULT = "#cccccc"
 
 EXCHANGE_BADGE = "#7fb3ff"
 EXCHANGE_DIM = "#a8a8c5"
+
+# TradeChartsTab and CapitalRegistryPanel read no design_system token;
+# these are the Qt palette colours they ship with.
+CHARTS_GROUND = "#efefef"
+CHARTS_FRAME = "#b8b8b8"
+REGISTRY_ROW = "#ffffff"
+REGISTRY_ALT_ROW = "#f7f7f7"
+REGISTRY_TEXT = "#000000"
 
 TOOLBAR_GROUND = "#14141e"
 TOOLBAR_RULE = "#2a2a3a"
@@ -225,6 +234,31 @@ def build_exchange_tab(module):
     return module.ExchangeTab("coinbase", "Coinbase"), (1200, 800)
 
 
+def build_trade_charts(module):
+    return module.TradeChartsTab(), (900, 600)
+
+
+def _reservation(index):
+    """One row for `CapitalRegistryPanel.update_from_registry`."""
+    return SimpleNamespace(
+        bot_id=f"bot-{index}",
+        exchange_id="coinbase",
+        base_currency="USD",
+        reserved_usd=100.0 + index,
+        reserved_base=0.5 + index,
+        bot_mode="scrumming",
+        last_rate_usd_per_base=1000.0 + index,
+    )
+
+
+def build_capital_registry(module):
+    widget = module.CapitalRegistryPanel()
+    widget.update_from_registry(
+        SimpleNamespace(get_reservations=lambda: [_reservation(i) for i in range(3)])
+    )
+    return widget, (900, 240)
+
+
 BUILDERS = {
     "StatusLog": build_status_log,
     "NotificationSpool": build_notification_spool,
@@ -235,6 +269,8 @@ BUILDERS = {
     "ExtractorBotTable": build_extractor_table,
     "APITesterTab": build_api_tester,
     "ExchangeTab": build_exchange_tab,
+    "TradeChartsTab": build_trade_charts,
+    "CapitalRegistryPanel": build_capital_registry,
 }
 
 
@@ -369,6 +405,20 @@ def test_exchange_tab_paints_its_badge_and_dim_text() -> None:
     image = _render("ExchangeTab")
     assert _count_colour(image, EXCHANGE_BADGE) > 0
     assert _count_colour(image, EXCHANGE_DIM) > 0
+
+
+def test_trade_charts_tab_paints_its_scroll_chrome() -> None:
+    """A failure means the Asset Charts backdrop changed colour."""
+    image = _render("TradeChartsTab")
+    assert _count_colour(image, CHARTS_GROUND) > 0
+    assert _count_colour(image, CHARTS_FRAME) > 0
+
+
+def test_capital_registry_panel_paints_its_rows() -> None:
+    """A failure means the capital-reservation table changed colour."""
+    image = _render("CapitalRegistryPanel")
+    for colour in (REGISTRY_ROW, REGISTRY_ALT_ROW, REGISTRY_TEXT):
+        assert _count_colour(image, colour) > 0, colour
 
 
 def test_main_window_chrome_paints_its_shipped_colours() -> None:

@@ -45,7 +45,9 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
-MW_SRC = (REPO_ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
+CHART_SRC = (REPO_ROOT / "src" / "gui" / "widgets" / "trade_charts_tab.py").read_text(
+    encoding="utf-8"
+)
 
 
 def _live_settings_source(gui_dir):
@@ -534,14 +536,15 @@ class TestAnOverCapTrancheIsPartConsumed:
 def _chart_ceiling_segment() -> str:
     """The shipping bytes of the chart's Target-Balance block.
 
-    Sliced out of ``main_window.py`` and executed, so this reads the
+    Sliced out of ``trade_charts_tab.py`` and executed, so this reads
+    the
     expression that ships rather than a copy of it.
     """
-    i = MW_SRC.index("anchor_usd = float(")
-    i = MW_SRC.rindex("\n", 0, i) + 1
-    j = MW_SRC.index("set_target_balance_lines(None, None)", i)
-    j = MW_SRC.index("\n", j) + 1
-    return textwrap.dedent(MW_SRC[i:j])
+    i = CHART_SRC.index("anchor_usd = float(")
+    i = CHART_SRC.rindex("\n", 0, i) + 1
+    j = CHART_SRC.index("set_target_balance_lines(None, None)", i)
+    j = CHART_SRC.index("\n", j) + 1
+    return textwrap.dedent(CHART_SRC[i:j])
 
 
 class _Chart:

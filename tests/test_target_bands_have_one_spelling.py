@@ -75,9 +75,9 @@ def test_manual_fire_calls_the_band_and_spells_none_of_its_own():
 
 
 def test_the_ammo_cell_calls_the_band_and_spells_none_of_its_own():
-    import src.gui.main_window as mw
+    import src.gui.table_cells as cells
 
-    text = Path(mw.__file__).read_text(encoding="utf-8")
+    text = Path(cells.__file__).read_text(encoding="utf-8")
     node = next(
         n
         for n in ast.walk(ast.parse(text))
@@ -105,7 +105,7 @@ def test_the_bands_are_the_published_percentages_at_every_scale():
 
 
 def _cell_colour(position_value: float, target: float) -> str:
-    from src.gui.main_window import _compose_ammo_cell
+    from src.gui.table_cells import _compose_ammo_cell
 
     # holdings x price x qrate == position_value, so the cell computes
     # the same exposure the tick does.
@@ -119,7 +119,7 @@ def test_the_cell_colour_matches_the_tick_territory_across_the_band_edge():
     rendered cell colour -- read on the same numbers, walked across
     both sides of the park band in cents and in ULPs.
     """
-    from src.gui.main_window import _AMMO_FOLD, _AMMO_NEUTRAL, _AMMO_SCRUM
+    from src.gui.table_cells import _AMMO_FOLD, _AMMO_NEUTRAL, _AMMO_SCRUM
 
     expected = {"scrum": _AMMO_SCRUM, "fold": _AMMO_FOLD, "at_target": _AMMO_NEUTRAL}
     checked = 0
@@ -156,7 +156,7 @@ def test_the_cell_no_op_warning_matches_the_engine_refusal():
     ``0 < abs(delta)`` because a bot exactly on target has nothing to
     fire, so a warning there would be noise rather than a surprise.
     """
-    from src.gui.main_window import _compose_ammo_cell
+    from src.gui.table_cells import _compose_ammo_cell
 
     checked = 0
     for target in TARGETS:

@@ -34,7 +34,7 @@ with the two statuses swapped, and `_cmd("stop")` dispatched
 
 ISSUE #51 REPAIRED THAT, AND THE PIN KEPT ITS FALSIFIER. The two bot
 tables now re-anchor the highlight by BOT ID across the rewrite
-(`main_window._reanchor_bot_selection`), so the ordinary reordered
+(`bot_selection._reanchor_bot_selection`), so the ordinary reordered
 refresh is green and
 `test_a_reordered_refresh_keeps_the_highlight_on_the_chosen_bot` reads
 the same bot back out of the widget.
@@ -142,6 +142,8 @@ EXCHANGE_PINS = (ROUTED, REACHED, SELECTION, APPLIED, BUTTON)
 # The two cadence pins. `_refresh_dashboard` is their clock.
 THROTTLED = (REACHED, SELECTION)
 
+EXCHANGE_TAB = REPO / "src" / "gui" / "widgets" / "exchange_tab.py"
+# The 2000 ms dashboard timer is a MainWindow method, not a tab method.
 MAIN_WINDOW = REPO / "src" / "gui" / "main_window.py"
 
 # The production values, restated so the tests drive the real geometry.
@@ -237,7 +239,7 @@ def _tab(
     from PySide6.QtWidgets import QWidget
 
     from src.gui import crypto_news_ticker as ticker_module
-    from src.gui import main_window as mw
+    from src.gui.widgets import exchange_tab as mw
 
     class _InertTicker(QWidget):
         """No thread, no feed, no timer. Holds the header slot only."""
@@ -323,7 +325,7 @@ def _without_the_reanchor(monkeypatch: pytest.MonkeyPatch) -> None:
     """Put the tree back the way it was before the issue #51 repair.
 
     `BotStatusTable.update_bots` and `ExtractorBotTable.update_bots`
-    both end by calling the module-level `_reanchor_bot_selection`,
+    both end by calling `bot_selection._reanchor_bot_selection`,
     resolved through globals on every call. Replacing it with a no-op
     restores the exact pre-repair behaviour -- rows rewritten in place,
     the selection left on its old ROW INDEX -- which is the condition
@@ -336,22 +338,23 @@ def _without_the_reanchor(monkeypatch: pytest.MonkeyPatch) -> None:
     therefore also the positive control for the repair: delete the
     re-anchor and the tests below fail.
     """
-    from src.gui import main_window as mw
+    from src.gui.widgets import bot_status_table, extractor_bot_table
 
-    assert callable(mw._reanchor_bot_selection)
-    monkeypatch.setattr(
-        mw,
-        "_reanchor_bot_selection",
-        lambda _table, _previous_bot_id, _bot_ids: None,
-        raising=True,
-    )
+    for owner in (bot_status_table, extractor_bot_table):
+        assert callable(owner._reanchor_bot_selection)
+        monkeypatch.setattr(
+            owner,
+            "_reanchor_bot_selection",
+            lambda _table, _previous_bot_id, _bot_ids: None,
+            raising=True,
+        )
 
 
 def _without_the_detail_row_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     """Put the tree back the way it was before the issue #52 repair.
 
     `BotStatusTable._on_detail` and `ExtractorBotTable._on_detail` both
-    now begin by calling the module-level `_select_row_for_bot`,
+    now begin by calling `bot_selection._select_row_for_bot`,
     resolved through globals on every call, so the Detail button selects
     its own row and the `itemSelectionChanged` handler ALREADY wired in
     `ExchangeTab.__init__` clears the sibling. Replacing that function
@@ -376,12 +379,16 @@ def _without_the_detail_row_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     therefore also the positive control for the repair -- rename or
     delete `_select_row_for_bot` and the tests that call this fail.
     """
-    from src.gui import main_window as mw
+    from src.gui.widgets import bot_status_table, extractor_bot_table
 
-    assert callable(mw._select_row_for_bot)
-    monkeypatch.setattr(
-        mw, "_select_row_for_bot", lambda _table, _bot_id, _bot_ids: None, raising=True
-    )
+    for owner in (bot_status_table, extractor_bot_table):
+        assert callable(owner._select_row_for_bot)
+        monkeypatch.setattr(
+            owner,
+            "_select_row_for_bot",
+            lambda _table, _bot_id, _bot_ids: None,
+            raising=True,
+        )
 
 
 def _stop_the_emitter(tab: Any) -> None:
@@ -422,13 +429,13 @@ def _tick(tab: Any, statuses: list[dict]) -> None:
 
 
 def _exchange_emit_calls() -> list[ast.Call]:
-    """Every `_ex_emit(...)` call node in `main_window.py`.
+    """Every `_ex_emit(...)` call node in `exchange_tab.py`.
 
     Read from the syntax tree, so an aliased import or a renamed local
     cannot slip one past. A regex over the source would answer a
     different question.
     """
-    tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
+    tree = ast.parse(EXCHANGE_TAB.read_text(encoding="utf-8"))
     return [
         node
         for node in ast.walk(tree)
@@ -454,11 +461,10 @@ def _keyword(call: ast.Call, name: str) -> ast.expr | None:
 def _span(function: str) -> tuple[int, int]:
     """The first and last line of one method of `ExchangeTab`.
 
-    Scoped to the class, because `update_bots` is defined on three
-    classes in this file and a tree-wide search would return whichever
-    one `ast.walk` reached first.
+    Scoped to the class, so a tree-wide search cannot return a
+    same-named method from anywhere else in the file.
     """
-    tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
+    tree = ast.parse(EXCHANGE_TAB.read_text(encoding="utf-8"))
     for klass in ast.walk(tree):
         if not (isinstance(klass, ast.ClassDef) and klass.name == "ExchangeTab"):
             continue
@@ -469,7 +475,7 @@ def _span(function: str) -> tuple[int, int]:
                 and node.end_lineno is not None
             ):
                 return (node.lineno, node.end_lineno)
-    missing = f"ExchangeTab.{function} not found in {MAIN_WINDOW}"
+    missing = f"ExchangeTab.{function} not found in {EXCHANGE_TAB}"
     raise AssertionError(missing)
 
 
