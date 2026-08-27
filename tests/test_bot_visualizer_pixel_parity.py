@@ -322,3 +322,228 @@ def test_hover_rules_carry_their_shipped_literals() -> None:
             assert f"background:{base};" in button.styleSheet(), token
             image = render_widget(button, size=(160, 30))
             assert _contains(image, base), f"{token} button does not paint {base}"
+
+
+# The renders above never enter `BotNodeWidget.paintEvent` or
+# `_WireCanvas.paintEvent`: the grid view is empty and the canvas has no
+# wires. Both are now separate modules, so both need their own render.
+# Values are the `THEMES` literals, written out rather than read from the
+# dict, so a changed palette entry fails instead of moving with the test.
+THEME_SHIPPED = {
+    "QUANTUM_BG": "#0a0f19",
+    "QUANTUM_ACCENT": "#00c8ff",
+    "QUANTUM_ACCENT2": "#00ffc8",
+    "QUANTUM_SUCCESS": "#00ff88",
+    "QUANTUM_WARNING": "#ffb400",
+    "QUANTUM_ERROR": "#ff3250",
+    "QUANTUM_TEXT": "#b4dcff",
+    "NEBULA_BG": "#080414",
+    "NEBULA_ACCENT": "#7850ff",
+    "MATRIX_BG": "#000800",
+    "MATRIX_ACCENT": "#00ff41",
+    "OCEAN_BG": "#050a1e",
+    "OCEAN_ACCENT": "#0096ff",
+    "IDLE_GREY": "#646464",
+    "STOPPED_GREY": "#505050",
+}
+
+NODE = (112, 98)
+CANVAS = (900, 600)
+
+SWARM = [
+    {
+        "symbol": f"SYM{i}-USD",
+        "bot_id": f"botid{i:04d}",
+        "state": "running" if i % 2 else "paused",
+        "mode": "scrumming",
+        "stats": {
+            "realised_pnl": 10.0 * i - 15,
+            "total_trades": i,
+            "current_price": 100.0 + i,
+            "trade_volume": 1000.0 * i,
+        },
+    }
+    for i in range(6)
+]
+
+
+def _node_data(state, pnl):
+    return {
+        "symbol": "BTC-USD",
+        "bot_id": "abcdef123456",
+        "state": state,
+        "mode": "scrumming",
+        "stats": {
+            "realised_pnl": pnl,
+            "total_trades": 7,
+            "current_price": 68000.0,
+            "trade_volume": 12345.0,
+        },
+    }
+
+
+def _contains_rgb(image, expected_hex: str) -> bool:
+    """True when a pixel in `image` carries `expected_hex` at any alpha.
+
+    `_contains` requires alpha 0xFF. The wire overlay is a transparent
+    widget, so most of what it paints never reaches full opacity.
+    """
+    from PySide6.QtGui import QColor, QImage
+
+    want = QColor(expected_hex).rgb() & 0xFFFFFF
+    converted = image.convertToFormat(QImage.Format.Format_ARGB32)
+    for y in range(converted.height()):
+        for x in range(converted.width()):
+            if converted.pixel(x, y) & 0xFFFFFF == want:
+                return True
+    return False
+
+
+def _steady(node):
+    """Pin the draws the widget seeds from system entropy and from elapsed
+    time, so one render is reproducible."""
+    node._phase = 0.7
+    node._particles = []
+    node._trade_pulses = []
+    node._antenna_drive = 0.0
+    return node
+
+
+@pytest.fixture(scope="module")
+def widget_renders():
+    """One render per paint branch inside the extracted widget modules."""
+    from PySide6.QtCore import QPointF
+
+    from src.core.privacy_mask_registry import get_privacy_mask_registry
+    from tests.qt_pixel import ensure_app, render_widget
+
+    mod = _visualizer()
+
+    ensure_app()
+    get_privacy_mask_registry().set_all(False)
+    out = {}
+
+    for state, pnl in (
+        ("running", 250.0),
+        ("idle", 0.0),
+        ("paused", -12.5),
+        ("error", -9999.0),
+        ("stopped", 3.0),
+        ("cooldown", 0.25),
+    ):
+        node = _steady(mod.BotNodeWidget())
+        node.set_bot_data(_node_data(state, pnl))
+        out[f"node_{state}"] = render_widget(_steady(node), size=NODE)
+
+    for theme in ("nebula", "matrix", "ocean"):
+        node = _steady(mod.BotNodeWidget())
+        node.set_theme(theme)
+        node.set_bot_data(_node_data("running", 42.0))
+        out[f"node_theme_{theme}"] = render_widget(_steady(node), size=NODE)
+
+    out["node_no_data"] = render_widget(mod.BotNodeWidget(), size=NODE)
+
+    tab = mod.BotVisualizationTab()
+    tab._anim_timer.stop()
+    tab.resize(1400, 900)
+    tab._view_stack.setCurrentIndex(1)
+    tab.update_bots(SWARM)
+    for widget in tab._bot_widgets.values():
+        _steady(widget)
+    wires = [
+        {"source_id": "botid0000", "target_id": "botid0001", "pct": 25, "phase": 0.0},
+        {"source_id": "botid0001", "target_id": "botid0000", "pct": 40, "phase": 1.2},
+        {"source_id": "botid0002", "target_id": "botid0005", "pct": 100, "phase": 2.4},
+    ]
+    tab._wires = list(wires)
+    out["wire_wires"] = render_widget(tab._wire_canvas, size=CANVAS)
+    tab._wires = []
+    out["wire_none"] = render_widget(tab._wire_canvas, size=CANVAS)
+    tab._wires = list(wires)
+
+    tab._dragging_wire = True
+    tab._wire_start_id = "botid0000"
+    tab._wire_mouse_pos = QPointF(500.0, 400.0)
+    out["wire_drag_free"] = render_widget(tab._wire_canvas, size=CANVAS)
+    tab._wire_mouse_pos = tab._get_bot_center("botid0003")
+    out["wire_drag_connect"] = render_widget(tab._wire_canvas, size=CANVAS)
+    tab._dragging_wire = False
+    tab._wire_mouse_pos = None
+    tab._wire_start_id = None
+
+    for theme in ("nebula", "matrix", "ocean"):
+        tab._theme_key = theme
+        out[f"wire_theme_{theme}"] = render_widget(tab._wire_canvas, size=CANVAS)
+    tab._theme_key = "quantum"
+
+    return out
+
+
+NODE_EXPECTED = [
+    ("node_running", "QUANTUM_BG"),
+    ("node_running", "QUANTUM_SUCCESS"),
+    ("node_running", "QUANTUM_TEXT"),
+    ("node_idle", "IDLE_GREY"),
+    ("node_idle", "STOPPED_GREY"),
+    ("node_paused", "QUANTUM_WARNING"),
+    ("node_paused", "QUANTUM_ERROR"),
+    ("node_error", "QUANTUM_ERROR"),
+    ("node_stopped", "STOPPED_GREY"),
+    ("node_cooldown", "QUANTUM_WARNING"),
+    ("node_theme_nebula", "NEBULA_BG"),
+    ("node_theme_matrix", "MATRIX_BG"),
+    ("node_theme_ocean", "OCEAN_BG"),
+]
+
+WIRE_EXPECTED = [
+    ("wire_wires", "QUANTUM_ACCENT"),
+    ("wire_wires", "QUANTUM_ACCENT2"),
+    ("wire_drag_free", "QUANTUM_WARNING"),
+    ("wire_drag_connect", "QUANTUM_SUCCESS"),
+    ("wire_theme_nebula", "NEBULA_ACCENT"),
+    ("wire_theme_matrix", "MATRIX_ACCENT"),
+    ("wire_theme_ocean", "OCEAN_ACCENT"),
+]
+
+
+@pytest.mark.parametrize("scenario,token", NODE_EXPECTED)
+def test_bot_node_paints_its_shipped_colour(widget_renders, scenario, token):
+    """A failure means the bot node stopped painting the colour it shipped,
+    or stopped being reached at all."""
+    expected = THEME_SHIPPED[token]
+    assert _contains(
+        widget_renders[scenario], expected
+    ), f"{scenario} does not paint {expected} ({token})"
+
+
+@pytest.mark.parametrize("scenario,token", WIRE_EXPECTED)
+def test_wire_canvas_paints_its_shipped_colour(widget_renders, scenario, token):
+    """A failure means the wire overlay stopped painting the colour it
+    shipped, or stopped being reached at all."""
+    expected = THEME_SHIPPED[token]
+    assert _contains_rgb(
+        widget_renders[scenario], expected
+    ), f"{scenario} does not paint {expected} ({token})"
+
+
+def test_an_unfed_bot_node_paints_none_of_them(widget_renders):
+    """CONTROL. `paintEvent` returns before the first draw with no bot data,
+    so a checker that reports a hit here cannot tell painted from unpainted."""
+    hits = [
+        token
+        for token, value in THEME_SHIPPED.items()
+        if _contains(widget_renders["node_no_data"], value)
+    ]
+    assert not hits, hits
+
+
+def test_a_wireless_canvas_paints_none_of_them(widget_renders):
+    """CONTROL for the alpha-blind checker. `paintEvent` returns before the
+    first draw with no wires, so a hit here means `_contains_rgb` reports a
+    colour the overlay never painted."""
+    hits = [
+        token
+        for token, value in THEME_SHIPPED.items()
+        if _contains_rgb(widget_renders["wire_none"], value)
+    ]
+    assert not hits, hits
