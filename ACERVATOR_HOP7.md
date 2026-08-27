@@ -357,7 +357,8 @@ run is history, not a tool.
 
    **The live defect was on the way OUT, not in.** `autocrlf=true` converts at
    CHECKOUT. Measured in a fresh worktree, which is a real checkout:
-   `run_acervator.sh`, `build_mac.sh` and `os/install.sh` all arrived **CRLF**,
+   `run_acervator.sh`, `build_mac.sh` and `deploy/kiosk/install.sh` all arrived
+   **CRLF**,
    so every fresh clone on Windows got broken shell scripts. This working tree
    escaped only because it was never checked out — it is the original folder
    that was `git init`-ed.

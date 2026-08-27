@@ -19,8 +19,8 @@ requires-python = ">=3.13,<3.14"
 # Before this issue the pip install list was hand-copied into eight
 # places and no two of them agreed. `tools/deps.py` now READS this
 # block, and `build_windows.ps1`, `build_mac.sh`, `BUILD.py`,
-# `os/install.sh` and `os/update.sh` call that tool instead of holding
-# a list. `tests/test_one_dependency_source.py` fails if a new
+# `deploy/kiosk/install.sh` and `deploy/kiosk/update.sh` call that tool
+# instead of holding a list. `tests/test_one_dependency_source.py` fails if a new
 # hand-copied list appears anywhere in the tree.
 #
 # A requirement belongs in `dependencies` when the code imports it and
@@ -99,7 +99,7 @@ dependencies = [
 #            ST7789 (:362), RPLCD (:442) and smbus2 (:577), each inside
 #            `try:` with an `except` that returns False, so a machine
 #            with no panel reports "not connected". Raspberry Pi only.
-#            ST7789 and waveshare_epd stay out: `os/install.sh` says
+#            ST7789 and waveshare_epd stay out: `deploy/kiosk/install.sh` says
 #            they are hardware-specific and installs neither.
 #   build    PyInstaller host only. The TARGET never needs it.
 #   dev      the tools `dev_harness/harness/coding_archetype.py` and

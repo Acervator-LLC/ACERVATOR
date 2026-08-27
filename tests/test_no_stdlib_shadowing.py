@@ -1,83 +1,73 @@
-"""Issue #86 — the top-level ``os/`` directory does NOT shadow the stdlib.
+"""Issue #86 — no top-level directory is named after a stdlib module.
 
-WHY THIS FILE EXISTS
-====================
-Issue #86 says the top-level ``os/`` directory "shadows the stdlib".
-Measured on 2026-08-23, it does not, and the rename the issue proposes
-was refused on that evidence. This file pins the reason, so the refusal
-is enforced by the suite instead of remembered by a reader.
-
+WHAT THIS FILE GUARDS
+=====================
 ``tests/conftest.py`` inserts the repository root at ``sys.path[0]`` for
-the whole session, and a directory named ``os`` sits at that root. That
-looks like a collision. Two independent mechanisms prevent it, and
-either one alone is sufficient.
+the whole session. A top-level directory whose name equals a stdlib
+top-level module name therefore sits on the import path beside the
+standard library.
 
-PROTECTION 1 — ``os/`` is not an importable package
----------------------------------------------------
-``os/`` holds no ``__init__.py``. A directory without ``__init__.py`` is
-only a *namespace portion*. When ``PathFinder`` walks ``sys.path`` it
-records a portion and KEEPS WALKING; it only builds a namespace package
-if no path entry yields a module with a real loader. The stdlib
-``Lib/os.py`` has a real loader, so it wins even though it is later on
-the path.
+Issue #86 reported that the top-level ``os/`` directory shadowed the
+stdlib ``os`` module. Measured 2026-08-23 and again 2026-08-27: it did
+not. Three independent protections stood, and each was sufficient alone.
+The directory was renamed to ``deploy/kiosk/`` anyway, because the name
+mislabelled the contents: the suite is AcervatorOS, the Raspberry Pi OS
+and Debian deployment, and ``os`` reads as operating-system helpers.
+
+The collision set is now EMPTY, so the guard below is strictly stronger
+than it was: it no longer carries an exception.
+
+PROTECTION 1 — a stdlib-named directory must not be an importable package
+--------------------------------------------------------------------------
+A directory without ``__init__.py`` is only a *namespace portion*. When
+``PathFinder`` walks ``sys.path`` it records a portion and KEEPS WALKING;
+it builds a namespace package only if no path entry yields a module with
+a real loader. The stdlib ``Lib/os.py`` has a real loader, so it wins
+even though it is later on the path.
 
 This protection belongs to this repository. It is the one the guard
-below enforces.
+below enforces, and the one a single new file could remove.
 
-PROTECTION 2 — ``os`` is frozen into the interpreter
------------------------------------------------------
+PROTECTION 2 — the module is frozen into the interpreter
+---------------------------------------------------------
 Since CPython 3.11, ``os`` and ``os.path`` are frozen for startup.
 ``sys.meta_path`` runs ``FrozenImporter`` BEFORE ``PathFinder``, and
 ``PathFinder`` is the only finder that reads ``sys.path``. So no
 ``sys.path`` entry can reach ``os`` at all. ``pyproject.toml`` declares
-``requires-python = ">=3.11"``, so this holds on every supported
-interpreter.
+``requires-python``, so this holds on every supported interpreter.
 
-This protection belongs to CPython, not to us, and it LAPSES under
-``python -X frozen_modules=off`` — a flag debuggers do set. That is
-exactly why protection 1 is the one worth guarding: it is the one that
-survives the debugger, and it is the one a future commit could remove
-by adding a single file.
+This protection belongs to CPython, and it LAPSES under
+``python -X frozen_modules=off`` — a flag debuggers set.
+``PYTHONFROZENMODULES=off`` does NOT defeat it. It also covers only the
+frozen modules, not the rest of the standard library.
 
-PROTECTION 3 — ``os`` is already imported before user code runs
-----------------------------------------------------------------
+PROTECTION 3 — the module is already imported before user code runs
+--------------------------------------------------------------------
 ``site.py`` imports ``os`` while the interpreter starts, so ``os`` is in
 ``sys.modules`` before any application module, any conftest, or any
 ``-c`` string executes. A cached module is returned without consulting
-``sys.meta_path`` at all. Reaching the shadow therefore also needs
-somebody to purge ``sys.modules['os']`` and import it again.
+``sys.meta_path``. Reaching a shadow therefore also needs somebody to
+purge ``sys.modules`` and import again.
 
-MEASURED EVIDENCE (2026-08-23, CPython 3.14.4, Windows)
+MEASURED EVIDENCE (2026-08-27, CPython 3.14.4, Windows)
 --------------------------------------------------------
-Shadowing needs all three protections defeated at once:
-
-    os/__init__.py  frozen  how `os` is imported     resolves to
-    --------------  ------  -----------------------  -----------
-    absent          on      any                      stdlib   <- tree today
-    absent          off     any                      stdlib   <- prot. 1
-    present         on      any                      stdlib   <- prot. 2
-    present         off     normal startup           stdlib   <- prot. 3
-    present         off     purged, then re-imported os/      <- ONLY failure
-
-Only the last row shadows. It needs a new file that is not in the tree,
-a non-default interpreter flag, AND a deliberate re-import. That is why
-issue #86's rename was refused: the collision it reports is not
-reachable.
-
-Note that ``PYTHONFROZENMODULES=off`` does NOT defeat protection 2 on
-this interpreter; only the ``-X frozen_modules=off`` flag does. Measured
-the same day.
+Re-measured before the rename, with the repository root on
+``sys.path[0]``. ``import os`` resolved to ``Lib/os.py`` in all four
+cases: default, ``sys.modules`` purged, ``-X frozen_modules=off``, and
+both together. Planting ``os/__init__.py`` and repeating the last case
+resolved to the planted file, so the measurement could observe a shadow
+and did not.
 
 SCOPE
 -----
-This file does not defend the NAME. "os" reads as "operating-system
-helpers" when the directory is really AcervatorOS, the Raspberry Pi OS
-and Debian deployment. That is a real mislabelling and issue #86 keeps
-it. This file only settles the import question.
+This file settles the import question for every stdlib name, not only
+``os``. ``KNOWN_STDLIB_NAMED_ROOT_DIRS`` is empty and a new entry is a
+review, not a silent addition.
 """
 
 from __future__ import annotations
 
+import importlib
 import sys
 from importlib.machinery import PathFinder
 from pathlib import Path
@@ -86,14 +76,13 @@ REPO = Path(__file__).resolve().parent.parent
 
 # Top-level directories whose name equals a stdlib top-level module name.
 #
-# Measured 2026-08-23: exactly one, `os`. It is AcervatorOS, the
-# Raspberry Pi deployment suite. It is safe because it is not an
-# importable package, which `test_no_stdlib_named_root_directory_is_a_package`
-# enforces.
+# Measured 2026-08-27: none. Issue #86 renamed the one entry, `os`, to
+# `deploy/kiosk/`.
 #
 # A NEW name landing here is not automatically a defect, but it is
-# automatically a review: it must satisfy the same guard.
-KNOWN_STDLIB_NAMED_ROOT_DIRS: frozenset[str] = frozenset({"os"})
+# automatically a review: it must satisfy
+# `test_no_stdlib_named_root_directory_is_a_package` as well.
+KNOWN_STDLIB_NAMED_ROOT_DIRS: frozenset[str] = frozenset()
 
 # A directory becomes importable as a real package when it holds one of
 # these. Source, bytecode and extension forms all give PathFinder a
@@ -227,34 +216,60 @@ def test_the_path_finder_finds_no_importable_os_in_the_repository() -> None:
       and protection 2 cannot mask the result.
     * ``find_spec`` consults no cache, so protection 3 cannot mask it
       either.
-    * the search path is restricted to the repository root alone, so a
-      stdlib hit cannot be mistaken for safety.
+    * the search path is the repository root alone, so a stdlib hit
+      cannot be mistaken for safety.
 
-    The result today is NOT ``None``. ``PathFinder`` reports the
-    directory as a namespace portion::
+    Before issue #86 renamed the directory this returned a LOADERLESS
+    ``ModuleSpec`` — a namespace portion, harmless because ``PathFinder``
+    records a portion and keeps walking. It now returns ``None``.
 
-        ModuleSpec(name='os', loader=None,
-                   submodule_search_locations=_NamespacePath([...os]))
-
-    A LOADER is what matters, and this spec has none. When ``PathFinder``
-    walks the real ``sys.path`` it records a loaderless portion and keeps
-    walking, so the stdlib ``Lib/os.py`` — which does have a loader —
-    still wins. Adding ``os/__init__.py`` is what fills in the loader,
-    and that is the moment the shadow becomes real.
-
-    So the assertion is on the loader, not on the spec. Asserting
-    ``spec is None`` would fail on a tree that is perfectly safe, and
-    would be a test of the wrong mechanism.
-
-    Verified 2026-08-23 that the loader IS populated when an
-    ``os/__init__.py`` is planted, so this is a control and not a
-    tautology. A probe that cannot fail would prove nothing.
+    The assertion is on the LOADER and not on the spec, because a
+    loaderless portion is safe and a loader is not. Asserting ``spec is
+    None`` would report a safe tree as broken, and would be a test of the
+    wrong mechanism. ``test_the_path_finder_reports_a_loader_for_a_real_
+    package`` drives the same call to a non-None loader, so this
+    assertion is a control and not a tautology.
     """
     spec = PathFinder.find_spec("os", [str(REPO)])
     loader = None if spec is None else spec.loader
     assert loader is None, (
         f"The repository root offers an importable `os` with a real "
         f"loader: {spec}. A loaderless namespace portion is harmless, but "
-        "a loader beats the standard library. The top-level os/ directory "
+        "a loader beats the standard library. A top-level os/ directory "
         "can now shadow it (issue #86)."
+    )
+
+
+def test_the_path_finder_reports_a_loader_for_a_real_package(
+    tmp_path: Path,
+) -> None:
+    """Positive control for the call above, on a synthetic tree.
+
+    Three states of one directory, through the same ``PathFinder`` call:
+    absent, a namespace portion, and a package. Only the third yields a
+    loader. Without this, an assertion of ``loader is None`` would pass
+    on a ``find_spec`` that had stopped working.
+
+    ``importlib.invalidate_caches`` runs after every mutation.
+    ``FileFinder`` caches a directory listing and keys the cache on the
+    directory mtime, whose resolution is coarser than the interval
+    between these three writes. Without the invalidation this test reads
+    a stale listing and fails intermittently.
+    """
+    assert PathFinder.find_spec("os", [str(tmp_path)]) is None
+
+    planted = tmp_path / "os"
+    planted.mkdir()
+    (planted / "install.sh").write_text("echo hi", encoding="utf-8")
+    importlib.invalidate_caches()
+    portion = PathFinder.find_spec("os", [str(tmp_path)])
+    assert portion is not None and portion.loader is None, portion
+
+    (planted / "__init__.py").write_text("", encoding="utf-8")
+    importlib.invalidate_caches()
+    package = PathFinder.find_spec("os", [str(tmp_path)])
+    assert package is not None, "PathFinder found no spec for a real package"
+    assert package.loader is not None, (
+        "PathFinder reported no loader for a directory holding "
+        "__init__.py; the call this file relies on is not working"
     )

@@ -364,7 +364,13 @@ class VersionSweep:
             # Skip documentation — prose can contain 40-char sequences
             # contracts/ = Solidity address constants; *.md = prose documentation;
             # sadp/ = SADP files that may contain hex in examples
-            skip_dirs_secret = {"docs", "os", "contracts", "sadp", ".session26_backups"}
+            skip_dirs_secret = {
+                "docs",
+                "deploy/kiosk",
+                "contracts",
+                "sadp",
+                ".session26_backups",
+            }
             # v3.16.14 — added .jsonl (SADP append-only logs containing
             # descriptive text, occasionally false-flagged for 40-char
             # base64 patterns). Logs never contain real credentials; the

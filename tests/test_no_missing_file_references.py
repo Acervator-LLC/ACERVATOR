@@ -81,7 +81,7 @@ own sufficient:
               two lines in the harness archive. There is no CI (issue
               #91). Nothing ever built the image.
 
-The deployment this repository does maintain is ``os/`` - AcervatorOS
+The deployment this repository does maintain is ``deploy/kiosk/`` - AcervatorOS
 on Raspberry Pi OS or Debian. It installs a systemd unit that sets
 DISPLAY and QT_QPA_PLATFORM=xcb, because the program needs a display. A
 container and that unit are two answers to one question, and only one

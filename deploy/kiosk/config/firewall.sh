@@ -20,7 +20,7 @@
 #
 #  PORT 5901 STAYS SHUT. ON PURPOSE.
 #  ---------------------------------
-#  `os/install.sh --headless` starts a VNC server on :1, which is port
+#  `deploy/kiosk/install.sh --headless` starts a VNC server on :1, which is port
 #  5901. Issue #95 read the closed port as defect four. It is not one.
 #  The firewall is right and the printed advice was wrong. A VNC port
 #  open to the internet draws continuous scanning, so the route in is

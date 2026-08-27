@@ -10,7 +10,7 @@
 #         bash update.sh --dry-run              # Print actions, change nothing
 #
 #  The exclude set, the service calls and the dependency derivation all
-#  live in os/lib/common.sh, which os/install.sh reads as well. Issue
+#  live in deploy/kiosk/lib/common.sh, which deploy/kiosk/install.sh reads as well. Issue
 #  #88: this script and the installer used to hold their own copies,
 #  and the two exclude sets had already drifted apart.
 # =============================================================================
@@ -68,8 +68,8 @@ if [[ -n "$ZIP_SOURCE" && -f "$ZIP_SOURCE" ]]; then
     [[ -n "$SRC_DIR" ]] || fail "Could not find main.py in zip archive"
     info "Source directory: ${SRC_DIR}"
 else
-    # Update from the repository root that holds this script
-    SRC_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+    # The repository root: two levels up, the suite sits at deploy/kiosk/
+    SRC_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
     info "Updating from: ${SRC_DIR}"
 fi
 
@@ -81,7 +81,7 @@ ok "Source updated"
 # ── Update Python dependencies ────────────────────────────────────────────────
 #
 # Issue #94 - this list used to be hand-copied and it disagreed with
-# os/install.sh, which is the script that created this venv. The names
+# deploy/kiosk/install.sh, which is the script that created this venv. The names
 # now come from pyproject.toml through tools/deps.py, so the update
 # installs the same set the install did.
 info "Updating Python packages..."

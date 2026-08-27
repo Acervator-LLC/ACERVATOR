@@ -142,8 +142,8 @@ pip install -e ".[video]"      # direct MP4 via opencv-python, no temp files
 ```
 
 **Where the package names live.** `pyproject.toml` is the only place.
-`build_windows.ps1`, `build_mac.sh`, `BUILD.py`, `os/install.sh` and
-`os/update.sh` each call `python -m tools.deps requirements <consumer>`
+`build_windows.ps1`, `build_mac.sh`, `BUILD.py`, `deploy/kiosk/install.sh` and
+`deploy/kiosk/update.sh` each call `python -m tools.deps requirements <consumer>`
 and install what it prints. `requirements/` holds the resolved
 transitive set that `python -m tools.deps lock` produced, one file per
 platform and interpreter.

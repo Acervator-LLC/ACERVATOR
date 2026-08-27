@@ -11,8 +11,8 @@ of them agreed with `pyproject.toml`.
     Acervator_win.spec:8     14 names, in a docstring
     Acervator_mac.spec:8     14 names, in a docstring
     BUILD.py:79              12 names, as (import name, pip name) pairs
-    os/install.sh:177        11 names, plus 4 more at :192
-    os/update.sh:71          11 names
+    deploy/kiosk/install.sh:177        11 names, plus 4 more at :192
+    deploy/kiosk/update.sh:71          11 names
     README.md:123             6 names
     pyproject.toml           11 names
 
@@ -27,7 +27,7 @@ Two of the disagreements were defects and not merely drift.
 
     `requests` was installed by four of the eight lists. No file in the
     repository imports it. Measured with an AST walk over every `*.py`
-    at the repo root and under `src/`, `tools/` and `os/`: 83 top-level
+    at the repo root and under `src/`, `tools/` and `deploy/kiosk/`: 83 top-level
     module names, and `requests` was not among them. It reaches the
     machine anyway, as a dependency of ccxt:
     `requirements/build-win32-py3.14.txt` pins `requests==2.34.2` and
@@ -255,7 +255,7 @@ FIRST_PARTY: frozenset[str] = frozenset(
         "dev_harness",
         "acervator_watchdog",
         "contracts",
-        "os",
+        "deploy",
         # Issue #74. The animation core the three presentation screens
         # share. It is a root .py, so it is a TOP-LEVEL import name, and
         # this set is what tells contract 3 that `import screen_fx` is ours
@@ -289,7 +289,7 @@ IMPORT_TO_DISTRIBUTION: dict[str, str] = {
 #           is ">=3.11" and tomllib is stdlib from 3.11, so that arm is
 #           unreachable on every interpreter this project supports.
 #   ST7789  src/core/mini_display.py:362, inside a try that returns
-#           False. os/install.sh has always said it is hardware-specific
+#           False. deploy/kiosk/install.sh has always said it is hardware-specific
 #           and has never installed it.
 UNDECLARED_ON_PURPOSE: frozenset[str] = frozenset({"tomli", "ST7789"})
 
@@ -319,7 +319,7 @@ UNDECLARED_ON_PURPOSE: frozenset[str] = frozenset({"tomli", "ST7789"})
 # is a directory in the tree is walked. `tests` and `dev_harness` stay
 # out because neither ships, and `acervator_watchdog` is a file at the
 # root, already covered by the `*.py` glob below.
-PRODUCT_ROOTS: tuple[str, ...] = ("src", "tools", "os", "contracts")
+PRODUCT_ROOTS: tuple[str, ...] = ("src", "tools", "deploy", "contracts")
 
 
 # ---------------------------------------------------------------------------
@@ -396,7 +396,7 @@ def hand_copied_list(line: str, words: set[str]) -> tuple[str, ...]:
     A first attempt deduplicated tokens and reported four false hits:
     `src/exchange/ccxt_connector.py:930` says "CCXT version mismatch.
     Try: pip install ccxt", and `CCXT` and `ccxt` are two tokens and one
-    package. `os/install.sh:205` and two more files pair `ST7789` with
+    package. `deploy/kiosk/install.sh:205` and two more files pair `ST7789` with
     `st7789` the same way.
 
     Only the text INSIDE the install command is counted. A second
@@ -581,8 +581,8 @@ class TestNoFileHoldsAList:
             "build_mac.sh": "tools.deps",
             "build_windows.ps1": "tools.deps",
             "BUILD.py": "tools.deps",
-            "os/install.sh": "tools/deps.py",
-            "os/update.sh": "tools/deps.py",
+            "deploy/kiosk/install.sh": "tools/deps.py",
+            "deploy/kiosk/update.sh": "tools/deps.py",
         }
         missing = []
         for path, needle in expected.items():
@@ -635,7 +635,7 @@ class TestEveryConsumerNamesARealExtra:
     def test_the_build_consumer_is_not_the_target_consumer(self) -> None:
         """A build HOST compiles; an AcervatorOS TARGET does not.
 
-        This is the distinction the eight lists lost. `os/install.sh`
+        This is the distinction the eight lists lost. `deploy/kiosk/install.sh`
         never installed pyinstaller and must not start.
         """
         from tools.deps import CONSUMER_EXTRAS, requirements_for

@@ -26,7 +26,7 @@ software trades real money on real exchanges — correctness is not optional.**
 | `tools/`           | dev / build tooling |
 | `dev_harness/`     | the review archetypes (issue #84 moved them off the product path) |
 | `docs/`            | human-written documentation ONLY — design, ADRs, audits, plans |
-| `os/`              | deployment units — systemd, install scripts (use `__USER__` placeholders) |
+| `deploy/kiosk/`    | deployment units — systemd, install scripts (use `__USER__` placeholders) |
 | `.github/`         | CI/CD, linting, templates — see [`.github/CLAUDE.md`](.github/CLAUDE.md) |
 
 ---
@@ -67,7 +67,7 @@ A portable generic is used instead — always:
 - **tests:** pytest `tmp_path` / `tempfile` — never the real tree. `tests/conftest.py`
   runs a live-tree guard that fails the run on any write into the runtime tree.
 - **deployment templates:** `__USER__` / `__INSTALL_DIR__` placeholders
-  (see `os/systemd/acervator.service`)
+  (see `deploy/kiosk/systemd/acervator.service`)
 
-There is never an acceptable reason to hardcode a personal path. If you need a
+Never hardcode a personal path. If you need a
 location, **derive it** — from `Path.home()`, the repo root, or a temp dir.
