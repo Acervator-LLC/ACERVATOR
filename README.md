@@ -53,7 +53,7 @@ The 23 non-wins are concentrated in extreme single-asset bear conditions (2022-c
 | SMA 50/200 Cross | 37/39 (94.9%) |
 | RSI Mean-Reversion | 35/39 (89.7%) |
 
-The per-simulation tables behind these figures were published in a product-manual PDF that is not in this repository. Nothing in the tree reproduces them, so treat the table above as the summary of record and read `CHANGELOG.md` and `docs/engineering-notes/` for how each number was reached.
+The per-simulation tables behind these figures were published in a product-manual PDF that is not in this repository. Nothing in the tree reproduces them, so treat the table above as the summary of record and read `docs-archive/llm-session-history/` and `docs/engineering-notes/` for how each number was reached.
 
 ---
 
@@ -94,7 +94,7 @@ Acervator is built with an AI co-developer under a harness that refuses work rat
 | **Rules** | `dev_harness/harness/rules/` — hallucination, numeric-guard, scaffolding and slop detectors that run inside the archetypes. |
 | **Release gate** | `python -m dev_harness.harness.check_release_readiness` runs the suite and prints `[OK] Release-ready (vX.Y.Z, N tests)`. No version banner and no CHANGELOG entry moves before that line appears. |
 
-An earlier governance harness, SADP, was retired. Documents under `docs/engineering-notes/`, `docs/harness_archive/` and `CHANGELOG.md` still describe it. They are historical records and were true when written.
+An earlier governance harness, SADP, was retired. Documents under `docs/engineering-notes/`, `docs/harness_archive/` and `docs-archive/llm-session-history/` still describe it. They are historical records and were true when written.
 
 ---
 

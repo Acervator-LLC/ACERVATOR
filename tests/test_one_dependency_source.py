@@ -164,9 +164,14 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 
 # HISTORICAL RECORDS. These hold what was true when they were written and
 # they may not be edited to satisfy a rule. `docs/audits/` and
-# `docs/harness_archive/` are the session record; `CHANGELOG.md` is the
-# release record. `requirements/` is excluded because a lock file lists
-# every resolved package by design; that is what a lock file is.
+# `docs/harness_archive/` are the session record. `requirements/` is
+# excluded because a lock file lists every resolved package by design;
+# that is what a lock file is.
+#
+# `CHANGELOG.md` was excluded here as a third historical record. It is now
+# a Keep a Changelog file holding no entries, and the narrative it held was
+# measured at ZERO lines matching `_PIP_INSTALL` before it moved, so the
+# allowance earned nothing and was dropped rather than repointed.
 #
 # This file excludes ITSELF, and nothing else. The controls below hold
 # the exact pre-fix lines as string literals and must trip the rule, so
@@ -178,10 +183,7 @@ EXCLUDED_PREFIXES: tuple[str, ...] = (
     "docs/harness_archive/",
     "requirements/",
 )
-EXCLUDED_FILES: tuple[str, ...] = (
-    "CHANGELOG.md",
-    "tests/test_one_dependency_source.py",
-)
+EXCLUDED_FILES: tuple[str, ...] = ("tests/test_one_dependency_source.py",)
 
 # Extensions worth reading. A dependency list is written in a script, a
 # spec, a manifest or a document. A `.png` cannot hold one.

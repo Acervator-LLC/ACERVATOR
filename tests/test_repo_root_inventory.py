@@ -110,8 +110,10 @@ INVENTORY: dict[str, str] = {
     "README.md": "front page, read at the root by GitHub",
     "CONTRIBUTING.md": "read at the root by GitHub",
     "DISCLAIMER.md": "product disclaimer, shipped beside the licence",
-    "CHANGELOG.md": "historical record. src/core/version_sweep.py reads it at "
-    '`self.root / "CHANGELOG.md"`',
+    "CHANGELOG.md": "Keep a Changelog release notes, read at the root by GitHub "
+    "and named by CONTRIBUTING.md. src/core/version_sweep.py reads it "
+    'at `self.root / "CHANGELOG.md"` and requires every version string '
+    "in it to equal the canonical one",
     "ACERVATOR_HOP7.md": "the live orientation document. It is meant to be the first "
     "thing found at the root",
     "ACERVATOR_HOP2.md": "April archive. src/core/version_sweep.py reads it at "

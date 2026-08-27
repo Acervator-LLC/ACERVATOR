@@ -335,10 +335,9 @@ class VersionSweep:
             if not dpath.exists():
                 continue
             text = dpath.read_text(errors="replace")
-            # Check if ANY previous version (not canonical) appears without being in a historical block
             old_vers = re.findall(r"\b3\.\d+\.\d+\b", text)
             old_refs = [v for v in old_vers if v != canonical]
-            if old_refs and dpath.name != "CHANGELOG.md":
+            if old_refs:
                 unique_old = list(set(old_refs))
                 self._add(
                     Severity.MEDIUM,
