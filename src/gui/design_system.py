@@ -103,6 +103,17 @@ GLOW_PRIMARY = "#00ffcc33"  # PRIMARY with 20% alpha
 GLOW_SECONDARY = "#ff00aa33"
 SCRIM = "#00000088"  # Dialog backdrop
 
+# ---- Stat-card skins (existing per-card values, promoted to tokens) --------
+# The stock window and the analytics tab ship different card colors. They stay
+# separate tokens: collapsing them would change what the operator sees.
+CARD_STOCK_SURFACE = "#0e1428"  # Stock window card background
+CARD_STOCK_BORDER = "#1a2a4f"
+CARD_STOCK_LABEL = "#6688aa"
+CARD_STOCK_VALUE = "#e0e8f0"
+CARD_METRIC_SURFACE = "#12121f"  # Analytics tab card background
+CARD_METRIC_BORDER = "#2a2a3f"
+CARD_METRIC_LABEL = "#888"
+
 # =============================================================================
 # TYPOGRAPHY — Butterick 1.25× geometric ramp
 # =============================================================================
@@ -117,6 +128,8 @@ TYPE_H4 = 15  # 13 * 1.15  — card titles
 TYPE_BODY = 13  # base size
 TYPE_SMALL = 11  # labels, metadata
 TYPE_CAPTION = 10  # dense captions only — avoid for primary info
+
+TYPE_CARD_VALUE = 16  # stat-card value text
 
 # Line heights (multiplier of size — Qt accepts via setLineHeight(..., fixed))
 LINE_HEIGHT_TIGHT = 1.2  # display / headings
@@ -138,6 +151,9 @@ WEIGHT_BOLD = 700
 # All layout spacing must be a multiple of 4. Prefer multiples of 8.
 
 SPACE_XS = 4  # Intra-control spacing (icon-to-label gap)
+SPACE_XXS = 2  # Label-to-value gap inside a stat card
+SPACE_CARD_TIGHT = 10  # Stat-card padding, short edge
+SPACE_CARD_PAD = 12  # Stat-card padding, long edge
 SPACE_S = 8  # Default control padding
 SPACE_M = 16  # Between related controls
 SPACE_L = 24  # Between groups
@@ -149,6 +165,7 @@ SPACE_XXL = 48  # Between major regions
 # =============================================================================
 RADIUS_NONE = 0
 RADIUS_XS = 4  # Chips, tight inputs
+RADIUS_CARD = 6  # Analytics metric cards
 RADIUS_SM = 8  # Default — buttons, inputs, cards
 RADIUS_MD = 12  # Elevated cards, dialogs
 RADIUS_LG = 16  # Large surfaces, bottom sheets (rare in desktop)
@@ -250,6 +267,14 @@ __all__ = [
     "GLOW_PRIMARY",
     "GLOW_SECONDARY",
     "SCRIM",
+    # Stat-card skins
+    "CARD_STOCK_SURFACE",
+    "CARD_STOCK_BORDER",
+    "CARD_STOCK_LABEL",
+    "CARD_STOCK_VALUE",
+    "CARD_METRIC_SURFACE",
+    "CARD_METRIC_BORDER",
+    "CARD_METRIC_LABEL",
     # Type
     "TYPE_DISPLAY",
     "TYPE_H1",
@@ -259,6 +284,7 @@ __all__ = [
     "TYPE_BODY",
     "TYPE_SMALL",
     "TYPE_CAPTION",
+    "TYPE_CARD_VALUE",
     "LINE_HEIGHT_TIGHT",
     "LINE_HEIGHT_BODY",
     "LINE_HEIGHT_LOOSE",
@@ -269,6 +295,9 @@ __all__ = [
     "WEIGHT_BOLD",
     # Spacing
     "SPACE_XS",
+    "SPACE_XXS",
+    "SPACE_CARD_TIGHT",
+    "SPACE_CARD_PAD",
     "SPACE_S",
     "SPACE_M",
     "SPACE_L",
@@ -277,6 +306,7 @@ __all__ = [
     # Shape
     "RADIUS_NONE",
     "RADIUS_XS",
+    "RADIUS_CARD",
     "RADIUS_SM",
     "RADIUS_MD",
     "RADIUS_LG",

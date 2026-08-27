@@ -23,7 +23,6 @@ try:
         QHBoxLayout,
         QLabel,
         QPushButton,
-        QFrame,
         QTableWidget,
         QTableWidgetItem,
         QHeaderView,
@@ -39,6 +38,8 @@ try:
     from PySide6.QtCore import Qt, QTimer, Slot, Signal, QObject
     from PySide6.QtGui import QColor, QFont  # v3.19.12 removed unused QAction, QIcon
 
+    from .widgets import STOCK_CARD, StatCard
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -49,32 +50,11 @@ if _HAS_QT:
     # ---------------------------------------------------------------
     # Stat Card (reused from crypto window)
     # ---------------------------------------------------------------
-    class StockStatCard(QFrame):
-        def __init__(self, label: str, value: str = "---", parent=None):
-            super().__init__(parent)
-            self.setAccessibleName("Stock Stat Card")
-            self.setFrameShape(QFrame.StyledPanel)
-            self.setStyleSheet(
-                "StockStatCard { background: #0e1428; border: 1px solid #1a2a4f; "
-                "border-radius: 8px; }"
-            )
-            layout = QVBoxLayout(self)
-            layout.setContentsMargins(12, 10, 12, 10)
-            layout.setSpacing(2)
-            self._label = QLabel(label)
-            self._label.setStyleSheet("color: #6688aa; font-size: 10px;")
-            self._value = QLabel(value)
-            self._value.setStyleSheet(
-                "color: #e0e8f0; font-size: 16px; font-weight: bold;"
-            )
-            layout.addWidget(self._label)
-            layout.addWidget(self._value)
+    class StockStatCard(StatCard):
+        """The stock window stat strip card. Skin: STOCK_CARD."""
 
-        def set_value(self, value: str, color: str = "#e0e8f0"):
-            self._value.setText(value)
-            self._value.setStyleSheet(
-                f"color: {color}; font-size: 16px; font-weight: bold;"
-            )
+        def __init__(self, label: str, value: str = "---", parent=None):
+            super().__init__(label, value, parent=parent, style=STOCK_CARD)
 
     # ---------------------------------------------------------------
     # Stock Bot Table
