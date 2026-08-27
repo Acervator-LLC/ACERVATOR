@@ -15,6 +15,7 @@ Features:
 
 from __future__ import annotations
 
+from ..core.retry import linear_delay, retry_any, retry_sync, with_retry
 from ..core.safe_url import SafeRequest, safe_urlopen
 import asyncio
 import logging
@@ -56,6 +57,10 @@ HistoryCallback = Callable[[str, HistoryAnalysis], object]
 # Queue cap chosen for ~5 calls per 2-second cycle + 3x safety margin.
 # If exceeded, network or exchange is degraded; fail fast is correct.
 MEM_220_QUEUE_CAP: int = 8
+
+# sync_connect market-load budget: 3 tries, waiting 2s then 4s.
+CONNECT_ATTEMPTS: int = 3
+CONNECT_BACKOFF_STEP_S: float = 2.0
 
 # Slightly above CCXT's 20-second default so CCXT's own timeout
 # aborts the request before our outer wait_for cancels the awaiter.
@@ -237,39 +242,11 @@ _LOGO_FALLBACK = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
 # Retry decorator for transient failures
 # ---------------------------------------------------------------------------
 def _with_retry(max_retries: int = 3, base_delay: float = 1.0):
-    """Decorator: retry async methods on transient exchange errors."""
+    """Bind :func:`src.core.retry.with_retry` to this module's logger.
 
-    def decorator(func):
-        async def wrapper(self, *args, **kwargs):
-            last_exc = None
-            for attempt in range(max_retries):
-                try:
-                    return await func(self, *args, **kwargs)
-                except Exception as exc:
-                    last_exc = exc
-                    exc_name = type(exc).__name__
-                    # Retry on rate limits and network errors
-                    retryable = any(
-                        kw in exc_name.lower()
-                        for kw in ("ratelimit", "timeout", "network", "request")
-                    )
-                    if not retryable or attempt == max_retries - 1:
-                        raise
-                    delay = base_delay * (2**attempt)
-                    logger.warning(
-                        "%s on %s (attempt %d/%d), retrying in %.1fs",
-                        exc_name,
-                        func.__name__,
-                        attempt + 1,
-                        max_retries,
-                        delay,
-                    )
-                    await asyncio.sleep(delay)
-            raise last_exc  # Should not reach here
-
-        return wrapper
-
-    return decorator
+    Keeps the retry warning on the ``acervator.exchange`` logger.
+    """
+    return with_retry(max_retries=max_retries, base_delay=base_delay, log=logger)
 
 
 # ---------------------------------------------------------------------------
@@ -580,88 +557,89 @@ class CCXTConnector(ExchangeInterface):
         if self._exchange_id in DISABLE_FETCH_CURRENCIES:
             sync_exchange.has["fetchCurrencies"] = False
 
-        last_error = None
-        for attempt in range(3):
+        attempt_count = 0
+
+        def _load_markets_once() -> None:
+            nonlocal attempt_count
+            attempt_count += 1
+            start = time.monotonic()
+            sync_exchange.load_markets()
+            elapsed = (time.monotonic() - start) * 1000
+            market_count = len(sync_exchange.markets) if sync_exchange.markets else 0
+            self._connected = True
+            self._ccxt_sync = sync_exchange
+
+            # Prepare async exchange for trading loop (shares loaded markets)
             try:
-                start = time.monotonic()
-                sync_exchange.load_markets()
-                elapsed = (time.monotonic() - start) * 1000
-                market_count = (
-                    len(sync_exchange.markets) if sync_exchange.markets else 0
-                )
-                self._connected = True
-                self._ccxt_sync = sync_exchange
+                import ccxt.async_support as ccxt_async
 
-                # Prepare async exchange for trading loop (shares loaded markets)
-                try:
-                    import ccxt.async_support as ccxt_async
+                async_class = resolve_ccxt_class(ccxt_async, self._ccxt_id)
+                if async_class is None:
+                    raise RuntimeError(f"CCXT async has no class for '{self._ccxt_id}'")
+                self._ccxt = async_class(config)
+                if self._exchange_id in DISABLE_FETCH_CURRENCIES:
+                    self._ccxt.has["fetchCurrencies"] = False
+                self._ccxt.markets = sync_exchange.markets
+                self._ccxt.markets_by_id = sync_exchange.markets_by_id
+                self._ccxt.currencies = sync_exchange.currencies
+                self._ccxt.symbols = sync_exchange.symbols
+            except (
+                Exception
+            ):  # R28-OK: field-copy fallback; whole exchange swap is the recovery
+                self._ccxt = sync_exchange
 
-                    async_class = resolve_ccxt_class(ccxt_async, self._ccxt_id)
-                    if async_class is None:
-                        raise RuntimeError(
-                            f"CCXT async has no class for '{self._ccxt_id}'"
-                        )
-                    self._ccxt = async_class(config)
-                    if self._exchange_id in DISABLE_FETCH_CURRENCIES:
-                        self._ccxt.has["fetchCurrencies"] = False
-                    self._ccxt.markets = sync_exchange.markets
-                    self._ccxt.markets_by_id = sync_exchange.markets_by_id
-                    self._ccxt.currencies = sync_exchange.currencies
-                    self._ccxt.symbols = sync_exchange.symbols
-                except (
-                    Exception
-                ):  # R28-OK: field-copy fallback; whole exchange swap is the recovery
-                    self._ccxt = sync_exchange
+            _log.record(
+                exchange=self._exchange_id,
+                action="CONNECTED",
+                reason="Markets loaded successfully",
+                endpoint="load_markets",
+                params={"attempt": attempt_count},
+                result=f"Connected to {self.display_name}. {market_count} trading pairs.",
+                elapsed_ms=elapsed,
+                level="success",
+                data_usage="Market metadata cached for trading.",
+            )
+            logger.info("Connected to %s (%d markets)", self.display_name, market_count)
 
-                _log.record(
-                    exchange=self._exchange_id,
-                    action="CONNECTED",
-                    reason="Markets loaded successfully",
-                    endpoint="load_markets",
-                    params={"attempt": attempt + 1},
-                    result=f"Connected to {self.display_name}. {market_count} trading pairs.",
-                    elapsed_ms=elapsed,
-                    level="success",
-                    data_usage="Market metadata cached for trading.",
-                )
-                logger.info(
-                    "Connected to %s (%d markets)", self.display_name, market_count
-                )
+            # ── Trade history scan on connect (R29 — idempotent) ──────
+            # Runs in a background thread so it never delays GUI startup.
+            # Results are stored in self._history_analyses and reported
+            # via self._on_history_ready callback if set.
+            import threading
 
-                # ── Trade history scan on connect (R29 — idempotent) ──────
-                # Runs in a background thread so it never delays GUI startup.
-                # Results are stored in self._history_analyses and reported
-                # via self._on_history_ready callback if set.
-                import threading
+            threading.Thread(
+                target=self._scan_trade_history,
+                daemon=True,
+                name="trade-historian",
+            ).start()
 
-                threading.Thread(
-                    target=self._scan_trade_history,
-                    daemon=True,
-                    name="trade-historian",
-                ).start()
+        def _note_load_failure(
+            exc: BaseException, attempt: int, will_retry: bool, delay: float
+        ) -> None:
+            del delay
+            _log.record(
+                exchange=self._exchange_id,
+                action="CONNECT_RETRY",
+                reason=f"Attempt {attempt + 1}/{CONNECT_ATTEMPTS} failed",
+                endpoint="load_markets",
+                params={"attempt": attempt + 1},
+                result=self._format_exchange_error(exc),
+                level="warning" if will_retry else "error",
+                data_usage=("Retrying..." if will_retry else "All attempts exhausted"),
+            )
 
-                return
-
-            except Exception as exc:
-                last_error = exc
-                detail = self._format_exchange_error(exc)
-                _log.record(
-                    exchange=self._exchange_id,
-                    action="CONNECT_RETRY",
-                    reason=f"Attempt {attempt + 1}/3 failed",
-                    endpoint="load_markets",
-                    params={"attempt": attempt + 1},
-                    result=detail,
-                    level="warning" if attempt < 2 else "error",
-                    data_usage=(
-                        "Retrying..." if attempt < 2 else "All attempts exhausted"
-                    ),
-                )
-                if attempt < 2:
-                    time.sleep(2 * (attempt + 1))
-
-        detail = self._format_exchange_error(last_error)
-        raise ConnectionError(detail)
+        try:
+            retry_sync(
+                _load_markets_once,
+                attempts=CONNECT_ATTEMPTS,
+                delay_for=linear_delay(CONNECT_BACKOFF_STEP_S),
+                is_retryable=retry_any,
+                on_failure=_note_load_failure,
+            )
+        except Exception as exc:
+            # `from None` keeps the operator-facing traceback single-frame,
+            # as it was when the loop fell through to this raise.
+            raise ConnectionError(self._format_exchange_error(exc)) from None
 
     # ── MEM-220: Sync CCXT serialization ────────────────────────────────────
 

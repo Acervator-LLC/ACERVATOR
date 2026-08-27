@@ -42,6 +42,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from src.core.retry import exponential_delay, retry_any, retry_async
+
 from .registry import (
     NATIVE_TIMEFRAME,
     StoneTabletsRegistry,
@@ -129,72 +131,80 @@ class CoinbaseAdapter(ExchangeAdapter):
         timeframe: str = NATIVE_TIMEFRAME,
     ) -> FetchAttempt:
         symbol = f"{asset.upper()}/{quote.upper()}"
-        last_err: Optional[str] = None
-        for attempt in range(self.retry_max):
-            try:
-                # ccxt get_ohlcv accepts (symbol, timeframe, since,
-                # limit). We ignore until_ms — ccxt returns up to
-                # `limit` candles from `since`.
-                # v3.24.33 — `since` is EPOCH MILLISECONDS.
-                #
-                # This passed `since_ms / 1000.0` (seconds, as a float)
-                # into a connector that did not accept `since` at all,
-                # so every call raised TypeError before reaching the
-                # exchange. The Stone Tablet fetcher has therefore never
-                # run — which is why the archive sits ~97 h stale with
-                # zero production callers.
-                #
-                # ccxt's fetch_ohlcv takes milliseconds.
-                rows = await self._connector.get_ohlcv(
-                    symbol, timeframe, limit=self.chunk_limit, since=int(since_ms)
-                )
-                # Normalize: rows are [[ts_ms, o, h, l, c, v], ...]
-                # per ccxt convention (already ms).
-                cleaned: list[list[float]] = []
-                for r in rows or []:
-                    try:
-                        ts = int(r[0])
-                        if ts < 1e12:
-                            ts *= 1000  # defensive: convert sec→ms
-                        # Clip to requested until_ms
-                        if ts > until_ms:
-                            continue
-                        cleaned.append(
-                            [
-                                ts,
-                                float(r[1]),
-                                float(r[2]),
-                                float(r[3]),
-                                float(r[4]),
-                                float(r[5]),
-                            ]
-                        )
-                    except (TypeError, ValueError, IndexError):
+
+        async def _fetch_once() -> FetchAttempt:
+            # `since` is epoch MILLISECONDS, as ccxt's fetch_ohlcv takes
+            # it. `until_ms` is not sent: ccxt returns up to `limit`
+            # candles from `since`, so the tail is clipped below.
+            rows = await self._connector.get_ohlcv(
+                symbol, timeframe, limit=self.chunk_limit, since=int(since_ms)
+            )
+            # rows are [[ts_ms, o, h, l, c, v], ...] per ccxt convention.
+            cleaned: list[list[float]] = []
+            for r in rows or []:
+                try:
+                    ts = int(r[0])
+                    if ts < 1e12:
+                        ts *= 1000  # defensive: convert sec→ms
+                    if ts > until_ms:
                         continue
-                return FetchAttempt(
-                    since_ms=since_ms, until_ms=until_ms, candles=cleaned
-                )
-            except Exception as exc:  # noqa: BLE001 - retry all fetch errors
-                last_err = f"{type(exc).__name__}: {exc}"
-                wait = self.retry_base_s * (2**attempt)
-                logger.warning(
-                    "coinbase fetch %s [%d..%d] attempt %d/%d failed: "
-                    "%s — sleeping %.1fs before retry",
-                    symbol,
-                    since_ms,
-                    until_ms,
-                    attempt + 1,
-                    self.retry_max,
-                    last_err,
-                    wait,
-                )
-                await asyncio.sleep(wait)
-        return FetchAttempt(
-            since_ms=since_ms,
-            until_ms=until_ms,
-            candles=[],
-            error=last_err or "all retries exhausted",
-        )
+                    cleaned.append(
+                        [
+                            ts,
+                            float(r[1]),
+                            float(r[2]),
+                            float(r[3]),
+                            float(r[4]),
+                            float(r[5]),
+                        ]
+                    )
+                except (TypeError, ValueError, IndexError):
+                    continue
+            return FetchAttempt(since_ms=since_ms, until_ms=until_ms, candles=cleaned)
+
+        def _note_fetch_failure(
+            exc: BaseException, attempt: int, will_retry: bool, delay: float
+        ) -> None:
+            tail = (
+                f"— sleeping {delay:.1f}s before retry"
+                if will_retry
+                else "— no attempts left"
+            )
+            logger.warning(
+                "coinbase fetch %s [%d..%d] attempt %d/%d failed: %s %s",
+                symbol,
+                since_ms,
+                until_ms,
+                attempt + 1,
+                self.retry_max,
+                f"{type(exc).__name__}: {exc}",
+                tail,
+            )
+
+        if self.retry_max < 1:
+            return FetchAttempt(
+                since_ms=since_ms,
+                until_ms=until_ms,
+                candles=[],
+                error="all retries exhausted",
+            )
+        try:
+            return await retry_async(
+                _fetch_once,
+                attempts=self.retry_max,
+                delay_for=exponential_delay(self.retry_base_s),
+                is_retryable=retry_any,
+                on_failure=_note_fetch_failure,
+            )
+        except Exception as exc:
+            # Every fetch error is reported, never raised: GapFiller
+            # counts a failed chunk and walks on to the next gap.
+            return FetchAttempt(
+                since_ms=since_ms,
+                until_ms=until_ms,
+                candles=[],
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
 
 class CoinGeckoAdapter(ExchangeAdapter):
