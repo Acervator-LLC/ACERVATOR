@@ -34,6 +34,7 @@ from typing import Any
 
 import pytest
 
+from src.core import retry as R
 from src.core.safe_url import SafeRequest
 from src.exchange import ccxt_connector as M
 from src.exchange.base import OrderSide, OrderType
@@ -185,7 +186,11 @@ def fake_ccxt(monkeypatch: pytest.MonkeyPatch) -> type[FakeSyncExchange]:
 
 @pytest.fixture
 def sleeps(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[float]]:
-    """Record every delay the connector asks for; never actually wait."""
+    """Record every delay the connector asks for; never actually wait.
+
+    Both waits are issued from ``src.core.retry``, so that module is
+    shimmed alongside the connector.
+    """
     record: dict[str, list[float]] = {"blocking": [], "awaited": []}
     # Bind the REAL modules before patching. Delegating to `M.time`
     # after the patch lands resolves to the shim itself and recurses.
@@ -208,6 +213,8 @@ def sleeps(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[float]]:
 
     monkeypatch.setattr(M, "time", TimeShim(), raising=True)
     monkeypatch.setattr(M, "asyncio", AsyncioShim(), raising=True)
+    monkeypatch.setattr(R, "time", TimeShim(), raising=True)
+    monkeypatch.setattr(R, "asyncio", AsyncioShim(), raising=True)
     return record
 
 
