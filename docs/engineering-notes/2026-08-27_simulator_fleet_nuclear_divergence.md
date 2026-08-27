@@ -64,8 +64,8 @@ module has no `NuclearController` attribute at all.
 
 | subject | verdict | entry point |
 |---|---|---|
-| `FleetReplayController` | reachable from GUI | `main.py` -> `main_window.py:5929` -> `simulator_tab.py:230` -> `fleet_replay_panel.py:348` `_start_btn.clicked` -> `_on_start_clicked` -> `fleet_replay_panel.py:608` |
-| `NuclearFleetController` | reachable from GUI | `main.py` -> `main_window.py:5929` -> `simulator_tab.py:283` -> `nuclear_mode_panel.py:298` `_start_btn.clicked` -> `_on_start_clicked` -> `nuclear_mode_panel.py:465` |
+| `FleetReplayController` | reachable from GUI | `main.py` -> `main_window.py:5929` -> `simulator_tab.py:221` -> `fleet_replay_panel.py:348` `_start_btn.clicked` -> `_on_start_clicked` -> `fleet_replay_panel.py:608` |
+| `NuclearFleetController` | reachable from GUI | `main.py` -> `main_window.py:5929` -> `simulator_tab.py:283` -> `nuclear_mode_panel.py:287` `_start_btn.clicked` -> `_on_start_clicked` -> `nuclear_mode_panel.py:465` |
 | `NuclearController` | **unreachable** | zero importers in `src/`, `tools/`, repo root; zero construction sites |
 | `FleetSimExchange` | **unreachable as a class** | module reachable (`fleet_replay_controller.py:58` imports `make_symbol_series_map`); class constructed nowhere outside `tests/` |
 | `NuclearSimExchange` | **unreachable** | one construction site, `nuclear_controller.py:278`, inside an unreachable module |
@@ -113,7 +113,7 @@ one feature**, not two features:
 - both are the orchestrator behind the one GUI page, `simulator_tab.py:320`
   stack index 1, selected by mode key `nuclear` at `simulator_tab.py:825`
 - `nuclear_mode_panel.py:6` records the replacement explicitly
-- `_STATUS_FIELDS` at `nuclear_mode_panel.py:71-91` carries v1's two
+- `_STATUS_FIELDS` at `nuclear_mode_panel.py:64-91` carries v1's two
   surviving keys, `running` and `uptime_seconds`
 
 They share no implementation. 5 members appear in both classes; 0 are
@@ -142,7 +142,7 @@ over a class no user can run.
 | `src.simulator.nuclear_candle_source` | yes | via `nuclear_fleet_controller.py:553` `noised_series` |
 | `src.simulator.fleet` | yes | via `nuclear_mode_panel.py:398` |
 | `src.gui.simulator_tab.nuclear_mode_panel` | yes | `simulator_tab.py:53` |
-| `src.gui.simulator_tab.fleet.fleet_replay_panel` | yes | `simulator_tab.py:220` |
+| `src.gui.simulator_tab.fleet.fleet_replay_panel` | yes | `simulator_tab.py:61` |
 | `src.trading.topology_stress` | **no** | zero importers in `src/`; test-only |
 
 ## 2. The two `ExchangeInterface` implementations
@@ -586,7 +586,7 @@ them. The nearest key is `symbols`, an integer count.
 
 Consequence: the price chart, the voting readout and the stat strip receive
 nothing for the whole soak. This is the same failure the method's own
-docstring (`:684-694`) says v3.24.28 repaired; the v3.24.78 repoint from v1
+docstring (`:683-692`) says v3.24.28 repaired; the v3.24.78 repoint from v1
 to v2 reintroduced it, because v1's snapshot carried all four keys
 (`nuclear_controller.py:249-252`).
 
@@ -613,15 +613,15 @@ by `place_order` is still `OPEN` after `cancel_order` returns it.
 `src/simulator/nuclear_sim_exchange.py:462-464`
 
 `get_open_orders` returns `[]` unconditionally, while `place_order` at
-`:333-355` stores a non-crossing `LIMIT` with `status=OrderStatus.OPEN`
+`:333-356` stores a non-crossing `LIMIT` with `status=OrderStatus.OPEN`
 in `self._orders`. The order exists, is reachable through `get_order`, and
 is invisible to `get_open_orders`. No live venue behaves this way.
 
 ### D4 — `NuclearSimExchange.get_ohlcv` discards `timeframe` silently
 
-`src/simulator/nuclear_sim_exchange.py:219`
+`src/simulator/nuclear_sim_exchange.py:227`
 
-`del timeframe` on the first line. Every timeframe request gets the
+`del timeframe` on the first statement. Every timeframe request gets the
 native tape, with no warning. `FleetSimExchange.get_ohlcv`
 (`sim_exchange.py:344-427`) also falls back, but warns once per
 `(symbol, timeframe)`.
@@ -661,21 +661,21 @@ symbol that is not there hides whatever the directive was covering.
 
 ### D9 — the panel discards `start()`'s refusal
 
-`src/gui/simulator_tab/nuclear_mode_panel.py:521`
+`src/gui/simulator_tab/nuclear_mode_panel.py:527`
 
 `asyncio.run_coroutine_threadsafe(self._controller.start(), loop)` — the
 call drops the returned `Future`, so `start()` returning `False`
-(`nuclear_fleet_controller.py:417`, already running; `:421`, `prepare()`
-refused) leaves the buttons latched into the running state at `:528-534`
-over a soak that is not running. Narrowed by the panel's own `prepare()`
-gate at `:487`, which catches the common case first.
+(`nuclear_fleet_controller.py:417`, already running; `:420`, `prepare()`
+refused) leaves the buttons latched into the running state at `:534-540`
+over a soak that is not running. The panel's own `prepare()` gate at
+`:486` narrows it, which catches the common case first.
 
 ### D10 — v1 vocabulary on a v2 panel
 
 `src/gui/simulator_tab/nuclear_mode_panel.py:278` — the Start button reads
 `"Start Scout"`. v2 has no scout; it loops the whole fleet. `:171`
 labels the section "Tape selector" and `:172` names the widget
-`_tape_card`, both v1 terms for what `:186-190` documents as a fleet
+`_tape_card`, both v1 terms for what `:187-192` documents as a fleet
 readout that is not a selector.
 
 ### D11 — stale module documentation
