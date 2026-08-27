@@ -4,8 +4,9 @@ widgets.py — shared themed widgets for src/gui/
 ===============================================
 
 Holds `StatCard`, the label-above-value card the stock window and the
-analytics tab render. Each caller passes a `CardStyle` built from
-`design_system` tokens, so one class carries both skins and no widget
+analytics tab render, and `ColumnarTableWidget`, the column setup the
+three bot tables share. Each caller passes a frozen preset built from
+`design_system` tokens, so one class carries every skin and no widget
 repeats a hex literal.
 
 The frame stylesheet is keyed on the runtime class name, so a Qt type
@@ -15,16 +16,33 @@ selector written against a subclass still matches its instances.
 subclass this one: it adds methods that reach inherited Qt attributes,
 and the scaffolding rule resolves a base class only within one module,
 so a cross-module base costs 7 S003 findings on that file.
+
+The cost is specific to a subclass sharing its base's name. S003 skips
+a class whose base it cannot resolve, and resolves an aliased base back
+to the real name, which then matches the same-named local class. The
+tables below subclass `ColumnarTableWidget` under their own names and
+draw no findings.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from types import MappingProxyType
+from typing import Mapping, Optional
 
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHeaderView,
+    QLabel,
+    QTableWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from . import design_system as ds
+
+_NO_COLUMN_MAP: Mapping[int, str] = MappingProxyType({})
+_NO_WIDTH_MAP: Mapping[int, int] = MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -142,4 +160,62 @@ class StatCard(QFrame):
         self._apply_value_style(color or self._style.value_color)
 
 
-__all__ = ["CardStyle", "METRIC_CARD", "STOCK_CARD", "StatCard"]
+@dataclass(frozen=True)
+class ColumnSpec:
+    """Header labels, header tooltips and fixed widths for one table.
+
+    A column absent from `fixed_widths` stretches. An empty
+    `accessible_name` leaves the widget's name unset.
+    """
+
+    labels: tuple[str, ...]
+    tooltips: Mapping[int, str] = _NO_COLUMN_MAP
+    fixed_widths: Mapping[int, int] = _NO_WIDTH_MAP
+    accessible_name: str = ""
+
+
+class ColumnarTableWidget(QTableWidget):
+    """A read-only, row-selecting table whose columns come from a `ColumnSpec`.
+
+    Subclasses set `COLUMN_SPEC` or pass `spec=`, then add their own
+    `update_bots` and signal wiring. The vertical header is hidden and
+    rows alternate colour.
+    """
+
+    COLUMN_SPEC = ColumnSpec(labels=())
+
+    def __init__(
+        self,
+        spec: Optional[ColumnSpec] = None,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        columns = spec or self.COLUMN_SPEC
+        self._column_spec = columns
+        if columns.accessible_name:
+            self.setAccessibleName(columns.accessible_name)
+        self.setColumnCount(len(columns.labels))
+        self.setHorizontalHeaderLabels(list(columns.labels))
+        header = self.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        for col, width in columns.fixed_widths.items():
+            header.setSectionResizeMode(col, QHeaderView.Fixed)
+            self.setColumnWidth(col, width)
+        self.setAlternatingRowColors(True)
+        self.setSelectionBehavior(QTableWidget.SelectRows)
+        self.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.verticalHeader().setVisible(False)
+        for col, tip in columns.tooltips.items():
+            item = self.horizontalHeaderItem(col)
+            if item:
+                item.setToolTip(tip)
+
+
+__all__ = [
+    "CardStyle",
+    "ColumnSpec",
+    "ColumnarTableWidget",
+    "METRIC_CARD",
+    "STOCK_CARD",
+    "StatCard",
+]
