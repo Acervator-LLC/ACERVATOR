@@ -162,127 +162,15 @@ def _show_expanded(widget, title: str) -> None:
 # GateLightsCell — compact double-stacked LED grid                       #
 # --------------------------------------------------------------------- #
 
-# v3.24.18 — gate sets rebuilt from the bot's ACTUAL blocker
-# vocabulary, recovered by enumerating every
-# {scrum,fold}_blockers.append() site in scrumming_bot.py.
-#
-# The prior 5-gate symmetric model was wrong three ways:
-#   * "VOL" was a phantom — volume guard is disabled (MEM-259) and
-#     no blocker string mentions volume, so that LED could never
-#     illuminate no matter what the bot did.
-#   * "TGT" was shown on the fold side, which has no delta blocker.
-#   * Nine real gates had no representation at all, including the
-#     opposing-trade-distance hysteresis (OTD).
-#
-# Scrum and fold are deliberately ASYMMETRIC because the bot checks
-# genuinely different things on each side.
-_GATE_ORDER_SCRUM = (
-    "TGT",  # delta<=0
-    "INT",  # below_interval(delta% < scrumming_interval_pct)
-    "BB",  # BB-below-upper-detect / scrum_ok=False
-    "FIRE",  # target_fires=False (detect/fire state machine)
-    "TA",  # TA-not-bullish
-    "LS",  # landing-strip override (not a blocker — see below)
-    "TRND",  # trend_hold(strength)
-    "HTF",  # HTF-bullish
-    "CB",  # CB-soft-trip
-    "OTD",  # OTD-hyst / OTD-hyst-armed  (opposing trade distance)
+# The gate labels, the blocker map and the light-state rules live in
+# src/trading/gate_vocabulary.py, which is Qt-free. The History table
+# renders the same nineteen lights from the same module.
+from src.trading.gate_vocabulary import (  # noqa: E402
+    _GATE_ORDER_FOLD,
+    _GATE_ORDER_SCRUM,
+    _blocked_labels,
+    gate_light_color,
 )
-_GATE_ORDER_FOLD = (
-    "BB",  # BB-above-lower-detect
-    "MID",  # fold_ok_midline=False
-    "TA",  # TA-not-bearish
-    "LS",  # landing-strip override
-    "TRNQ",  # no-tranches-queued (tranche queue empty)
-    "CEIL",  # MEM-253-position-ceiling
-    "HTF",  # HTF-bearish
-    "CB",  # CB-soft-trip
-    "OTD",  # OTD-hyst / OTD-hyst-armed
-)
-
-# LS is an OVERRIDE, not a blocker. At scrumming_bot.py:6212-6215 a
-# detected landing strip forces is_bullish/is_bearish True, which can
-# make a trade fire that TA alone would have refused. It never appears
-# in a blocker list, so it is rendered from its own fixture field and
-# painted cyan when active — a distinct state from pass/block, because
-# "this gate was overridden" is not the same claim as "this gate
-# passed".
-_GATE_OVERRIDE = "LS"
-# Map free-form blocker phrases (as ScrummingBot writes them into
-# _last_gate_state.{scrum,fold}_blockers) to our compact gate labels.
-# v3.24.18 — exact prefixes taken from the bot's blocker strings,
-# ORDERED most-specific-first. The prior fuzzy keyword map was
-# unsound: "target_fires=False(...)" contains "target", so it lit
-# TGT (delta) instead of FIRE (detect/fire state machine) — the LED
-# pointed at the wrong gate. Order matters here; do not sort.
-_BLOCKER_PREFIXES: tuple[tuple[str, str], ...] = (
-    # scrum — specific before general
-    ("target_fires", "FIRE"),
-    ("below_interval", "INT"),
-    ("BB-below-upper", "BB"),
-    ("scrum_ok=False", "BB"),
-    ("TA-not-bullish", "TA"),
-    ("trend_hold", "TRND"),
-    ("HTF-bullish", "HTF"),
-    ("delta", "TGT"),
-    # fold
-    ("BB-above-lower", "BB"),
-    ("fold_ok_midline", "MID"),
-    ("TA-not-bearish", "TA"),
-    ("no-tranches-queued", "TRNQ"),
-    ("MEM-253", "CEIL"),
-    ("HTF-bearish", "HTF"),
-    # shared
-    ("CB-soft-trip", "CB"),
-    ("CB-hard", "CB"),
-    ("OTD-hyst", "OTD"),
-)
-
-
-def gate_for_blocker(blocker: str) -> str:
-    """Map one blocker string to its gate label, or "" if unknown.
-
-    An unknown blocker is a real signal: it means the bot grew a
-    condition the panel does not represent. Callers surface it
-    rather than discarding it.
-    """
-    text = str(blocker or "")
-    for prefix, gate in _BLOCKER_PREFIXES:
-        if text.startswith(prefix):
-            return gate
-    # Fall back to a contains-check before giving up, since a few
-    # sites prepend context to the blocker text.
-    low = text.lower()
-    for prefix, gate in _BLOCKER_PREFIXES:
-        if prefix.lower() in low:
-            return gate
-    return ""
-
-
-def _blocked_labels(blockers: list) -> set[str]:
-    """Fold blocker phrases into the set of gates that blocked.
-
-    v3.24.18 — routes through ``gate_for_blocker`` so the mapping is
-    exact-prefix rather than fuzzy-keyword. Unrecognised blockers are
-    returned via ``unknown_blockers`` instead of being dropped, so a
-    condition the bot grows later shows up as a gap rather than
-    silently vanishing.
-    """
-    hits: set[str] = set()
-    for b in blockers or []:
-        gate = gate_for_blocker(b)
-        if gate:
-            hits.add(gate)
-    return hits
-
-
-def unknown_blockers(blockers: list) -> list[str]:
-    """Blocker phrases that map to no gate — i.e. conditions the
-    panel does not yet represent. Surfacing these is how we notice
-    the bot grew a gate the display never learned about, which is
-    exactly how "VOL" survived as a phantom for so long."""
-    return [str(b) for b in (blockers or []) if not gate_for_blocker(b)]
-
 
 if _HAS_QT:
 
@@ -549,19 +437,13 @@ if _HAS_QT:
             """
             led_y = self._PAD + self._LABEL_H
             for label in gates:
-                # LS is an override, not a pass/fail gate — see the
-                # _GATE_OVERRIDE note. Cyan when the landing strip
-                # forced direction this candle; otherwise inert.
-                if label == _GATE_OVERRIDE:
-                    color = QColor("#22d3ee") if ls_active else QColor("#333340")
-                elif not self._evaluated:
-                    color = QColor("#333340")  # never looked
-                elif label in blocked:
-                    color = QColor("#ff3366")  # this gate blocked
-                elif armed:
-                    color = QColor("#00cc55")  # passed
-                else:
-                    color = QColor("#c8901e")  # not armed, other reason
+                # gate_light_color applies the shared state rules:
+                # LS paints cyan on an active landing strip, grey
+                # otherwise; every other label is pass, block or
+                # not-the-blocker.
+                color = QColor(
+                    gate_light_color(label, self._evaluated, armed, blocked, ls_active)
+                )
                 # label above
                 painter.setPen(QColor("#9aa0b5"))
                 painter.drawText(

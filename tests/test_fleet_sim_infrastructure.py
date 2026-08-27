@@ -411,7 +411,7 @@ def test_fill_carries_candle_address():
 
 def test_no_phantom_volume_gate():
     """VOL could never illuminate: no blocker string mentions volume."""
-    from src.gui.simulator_tab.fleet.sim_visuals import (
+    from src.trading.gate_vocabulary import (
         _GATE_ORDER_FOLD,
         _GATE_ORDER_SCRUM,
     )
@@ -422,14 +422,14 @@ def test_no_phantom_volume_gate():
 def test_fold_has_no_delta_gate():
     """Fold gates on tranche availability, not delta — see
     scrumming_bot.py: the fold path has no `delta` blocker."""
-    from src.gui.simulator_tab.fleet.sim_visuals import _GATE_ORDER_FOLD
+    from src.trading.gate_vocabulary import _GATE_ORDER_FOLD
 
     assert "TGT" not in _GATE_ORDER_FOLD
     assert "TRNQ" in _GATE_ORDER_FOLD
 
 
 def test_opposing_trade_distance_is_represented():
-    from src.gui.simulator_tab.fleet.sim_visuals import (
+    from src.trading.gate_vocabulary import (
         _GATE_ORDER_FOLD,
         _GATE_ORDER_SCRUM,
     )
@@ -442,7 +442,7 @@ def test_every_real_blocker_maps_to_a_gate():
     """Pinned against the ACTUAL strings emitted by ScrummingBot.
     A miss here means the panel would show a blocked side with no
     red LED explaining which gate stopped it."""
-    from src.gui.simulator_tab.fleet.sim_visuals import gate_for_blocker
+    from src.trading.gate_vocabulary import gate_for_blocker
 
     real = {
         "delta\u22640": "TGT",
@@ -472,13 +472,13 @@ def test_every_real_blocker_maps_to_a_gate():
 def test_target_fires_does_not_map_to_tgt():
     """Regression: the old fuzzy keyword map matched "target" inside
     "target_fires=False", lighting TGT (delta) instead of FIRE."""
-    from src.gui.simulator_tab.fleet.sim_visuals import gate_for_blocker
+    from src.trading.gate_vocabulary import gate_for_blocker
 
     assert gate_for_blocker("target_fires=False(detect/fire)") == "FIRE"
 
 
 def test_unknown_blocker_is_surfaced_not_dropped():
-    from src.gui.simulator_tab.fleet.sim_visuals import unknown_blockers
+    from src.trading.gate_vocabulary import unknown_blockers
 
     out = unknown_blockers(["some-gate-added-later", "CB-soft-trip"])
     assert out == ["some-gate-added-later"]
@@ -495,8 +495,8 @@ def test_gate_labels_do_not_clip():
     import sys as _s
 
     QApplication.instance() or QApplication(_s.argv)
-    from src.gui.simulator_tab.fleet.sim_visuals import (
-        GateLightsCell,
+    from src.gui.simulator_tab.fleet.sim_visuals import GateLightsCell
+    from src.trading.gate_vocabulary import (
         _GATE_ORDER_FOLD,
         _GATE_ORDER_SCRUM,
     )

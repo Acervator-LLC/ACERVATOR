@@ -1,4 +1,4 @@
-/* React History panel chrome. Issue #128 unit R4.
+/* React History panel chrome. Issue #128 units R4 and R6.
  *
  * Chrome only. Every cell colour arrives on the cell's own `style`
  * attribute from the Python contract, so no rule here may set a `color`
@@ -110,18 +110,70 @@ table.history tbody tr:hover td {
   background: var(--grid);
 }
 
+/* Nineteen labelled lights: ten scrum, nine fold, label above the dot.
+ * The dot's background is set per light from the contract's resolved
+ * colour, so no rule here may set one. */
 .gate-lights {
   display: inline-flex;
-  gap: 3px;
-  margin-left: 6px;
+  gap: 10px;
+  margin-left: 8px;
   vertical-align: middle;
 }
 
-.gate-lights .light {
-  width: 6px;
-  height: 6px;
+.light-bank {
+  display: inline-flex;
+  gap: 3px;
+  align-items: flex-end;
+}
+
+.light {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.light-label {
+  font-size: 7px;
+  line-height: 1;
+  color: #9aa0b5;
+  letter-spacing: 0.2px;
+}
+
+.light-dot {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  display: inline-block;
+  display: block;
+}
+
+.bank-marker {
+  font-size: 8px;
+  color: #6b7280;
+  align-self: flex-end;
+}
+
+/* The tooltip Qt would have drawn. Rich text is sanitized into it, so a
+ * `color` on a nested span comes from the tooltip's own markup. */
+.tooltip {
+  position: fixed;
+  display: none;
+  z-index: 50;
+  max-width: 560px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--btn-bg);
+  color: var(--text);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55);
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+
+.tooltip pre {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
 }
 
 .pager {

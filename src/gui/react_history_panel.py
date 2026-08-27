@@ -1,18 +1,19 @@
-"""react_history_panel.py — the React History panel. Issue #128 unit R4.
+"""react_history_panel.py — the React History table. Issue #128 units R4, R6.
 
 WHAT THIS IS
 ============
-A second renderer for the SAME History data the Qt tab shows, drawn by
-React inside the Chromium that PySide6 already ships. The Qt tab is not
-touched and both tabs exist after this unit: the old one is the reference
-the new one is judged against.
+The History tab's table, drawn by React inside the Chromium that PySide6
+already ships. ``HistoryTab`` in ``src/gui/history_tab.py`` embeds it in
+place of the ``QTableWidget`` it used to hold. There is ONE History tab
+and one renderer.
 
 WHAT IT MAY NOT DO
 ==================
-It computes nothing. Every string and every colour on screen is a field
-``src.exchange.history_read_contract`` already produced. A panel that
-re-derived a cost, a grade or a colour would be the third implementation
-of History, which is the defect this migration order exists to prevent.
+It computes nothing. Every string, every colour and every gate-light
+state on screen is a field ``src.exchange.history_read_contract`` already
+produced. A table that re-derived a cost, a grade, a colour or a light
+would be the second implementation of History, which is the defect this
+migration order exists to prevent.
 
 THE HOSTING MECHANISM, AS MEASURED
 ==================================
@@ -27,12 +28,17 @@ THE BRIDGE IS ONE-WAY, AND THAT IS THE WRITE PROOF
 ==================================================
 Python pushes JSON with ``QWebEnginePage.runJavaScript``. That is the
 only bridge ``tradingview_chart.py`` uses and the only one used here.
-The page has NO path back into Python, so "the panel writes nothing" is
+The page has NO path back into Python, so "the table writes nothing" is
 a property of the wiring rather than a claim a test has to keep proving.
-The cost is that the page cannot raise its own events, so the Qt control
-bar above it owns the filters and the pager. Electron or ``QWebChannel``
-would move those controls into the page; neither is in this unit, and
-``PySide6.QtWebChannel`` is NOT in the frozen build's hidden imports.
+The cost is that the page cannot raise its own events, so the Qt controls
+in ``HistoryTab`` -- Refresh, Apply, Reset, the two date edits, the three
+combos, Prev, Next and Export CSV -- stay Qt widgets. Electron or
+``QWebChannel`` would move those into the page; neither is in this unit,
+and ``PySide6.QtWebChannel`` is NOT in the frozen build's hidden imports.
+
+Reads run the same way and are therefore ASYNCHRONOUS: ``row_count``
+answers through a callback. Nothing here spins a nested event loop, which
+on the GUI thread would re-enter the render it was called from.
 
 NOT THE ``tradingview_chart.py`` INJECTION SHAPE
 ================================================
@@ -51,27 +57,19 @@ import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from src.exchange import history_read_contract as hrc
 
 try:
-    from PySide6.QtCore import Qt
     from PySide6.QtWebEngineWidgets import QWebEngineView
-    from PySide6.QtWidgets import (
-        QComboBox,
-        QHBoxLayout,
-        QLabel,
-        QPushButton,
-        QVBoxLayout,
-        QWidget,
-    )
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
 
     _HAS_WEBENGINE = True
 except ImportError:
     # Same form as history_tab.py: no Qt means no widget class, the
     # module still imports, and asking for the widget fails by name at
-    # the import site. main_window.py catches that and logs.
+    # the import site. history_tab.py catches that and logs.
     _HAS_WEBENGINE = False
 
 logger = logging.getLogger("acervator.gui.react_history")
@@ -89,6 +87,13 @@ ASSET_NAMES: tuple[str, ...] = (
 )
 
 STYLE_ASSET = "history_panel.css"
+
+#: The chrome the page draws for a client that asks for none of it.
+#: ``HistoryTab`` owns its own summary line, filter bar and pager.
+TABLE_ONLY_CHROME = {"summary": False, "filters": False, "pager": False}
+
+#: The JS expression that counts the rows the browser actually drew.
+ROW_COUNT_JS = 'document.querySelectorAll("#panel-rows tr").length'
 
 
 class HistoryPanelAssetMissing(RuntimeError):
@@ -193,15 +198,27 @@ def build_view_model(
     bot_manager: Any = None,
     last_fetched_ts: float = 0.0,
     now_ts: Optional[float] = None,
+    filtered: Optional[list] = None,
+    gate_index: Optional[dict] = None,
+    voting_index: Optional[dict] = None,
+    chrome: Optional[dict] = None,
 ) -> dict:
     """Everything the page draws, as one JSON-serialisable dict.
 
     Every field is the contract's answer. This function chooses which of
     the contract's functions to call and in what order; it decides no
     value of its own.
+
+    ``filtered`` is the retained set when the caller has already applied
+    the filters and counted the result. Supplying it skips a second
+    filter pass over the same rows; the contract's own pass runs when it
+    is omitted.
+
+    ``gate_index`` and ``voting_index`` are the caller's per-page join
+    indexes. Supplying them keeps the log read to one per page.
     """
-    filtered = hrc.apply_filters(trades, filters)
-    rendered = hrc.build_page(filtered, page, bot_manager)
+    retained = hrc.apply_filters(trades, filters) if filtered is None else filtered
+    rendered = hrc.build_page(retained, page, bot_manager, gate_index, voting_index)
     return {
         "columns": [
             {
@@ -213,12 +230,13 @@ def build_view_model(
             for c in hrc.COLUMNS
         ],
         "page": rendered.as_dict(),
-        "summary": hrc.summary_line(filtered, len(trades), last_fetched_ts, now_ts),
+        "summary": hrc.summary_line(retained, len(trades), last_fetched_ts, now_ts),
         "filters": filters.as_dict(),
         "filter_options": hrc.filter_options(trades),
         "loaded": len(trades),
         "from_text": _date_text(filters.from_ts),
         "to_text": _date_text(filters.to_ts),
+        "chrome": dict(chrome) if chrome else {},
     }
 
 
@@ -239,174 +257,70 @@ def state_push_script(payload: dict) -> str:
 
 if _HAS_WEBENGINE:
 
-    class ReactHistoryPanel(QWidget):
-        """React History, hosted in QWebEngineView.
+    class HistoryWebTable(QWidget):
+        """The History table, hosted in QWebEngineView.
 
         Public surface, all of it read-only:
-          * set_bot_manager(bot_manager)
-          * on_history_refreshed(trades)  -- the HistoryTab signal's slot
-          * view_model()                  -- what the last push carried
+          * set_model(model)      -- push one view model to the page
+          * page_ready            -- True once the document has loaded
+          * model()               -- what the last push carried
+          * row_count(callback)   -- the DOM's own row count, async
         """
 
         def __init__(self, parent=None, theme: str = "cyberpunk_dark") -> None:
             super().__init__(parent)
-            self.setAccessibleName("React History Panel")
-            self._theme = theme
-            self._bot_manager = None
-            self._trades: list = []
-            # NO DATE FLOOR. `default_filters()` starts at 2026-04-01,
-            # which is the Qt tab's date edit and is applied to the FETCH.
-            # This panel is handed the result of that fetch, so a second
-            # floor here would hide rows the tab shows and make the two
-            # renderers disagree for a reason that is not the renderer.
-            self._filters = hrc.HistoryFilters()
-            self._page = 0
-            self._last_fetched_ts: float = 0.0
+            self.setAccessibleName("React History Table")
             self._last_model: dict = {}
             self._page_ready = False
-            self._build_ui()
-
-        # -- public ---------------------------------------------------
-        def set_bot_manager(self, bot_manager) -> None:
-            self._bot_manager = bot_manager
-
-        def on_history_refreshed(self, trades: list) -> None:
-            """Take the trade list the Qt HistoryTab just fetched.
-
-            One fetcher for both panels. A second fetch here would double
-            the exchange calls and could disagree with the tab this panel
-            is measured against.
-            """
-            self._trades = list(trades or [])
-            self._last_fetched_ts = _now()
-            self._page = 0
-            self._repopulate_combos()
-            self.render_now()
-
-        def view_model(self) -> dict:
-            """The payload of the most recent push. Empty before the first."""
-            return dict(self._last_model)
-
-        # -- construction ---------------------------------------------
-        def _build_ui(self) -> None:
             layout = QVBoxLayout(self)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(0)
-            layout.addWidget(self._build_controls())
-
             self._web = QWebEngineView()
             self._web.loadFinished.connect(self._on_load_finished)
-            self._web.setHtml(panel_html(self._theme))
+            self._web.setHtml(panel_html(theme))
             layout.addWidget(self._web, 1)
 
-        def _build_controls(self) -> QWidget:
-            """The filter and pager bar.
+        # -- public ---------------------------------------------------
+        @property
+        def page_ready(self) -> bool:
+            """True once the document exists and can be pushed to."""
+            return self._page_ready
 
-            These live in Qt, not in the page: the bridge is one-way, so
-            the page cannot deliver a click back to Python.
+        def model(self) -> dict:
+            """The payload of the most recent push. Empty before the first."""
+            return dict(self._last_model)
+
+        def set_model(self, model: dict) -> None:
+            """Hold the model and push it if the document is up.
+
+            A model handed over before ``loadFinished`` is pushed by the
+            load handler instead, so nothing is dropped on the way in.
             """
-            bar = QWidget(self)
-            row = QHBoxLayout(bar)
-            row.setContentsMargins(8, 6, 8, 6)
-            row.setSpacing(8)
-
-            self._combos: dict = {}
-            for key in ("exchange", "symbol", "side"):
-                label = QLabel(key.capitalize(), bar)
-                combo = QComboBox(bar)
-                combo.addItem(hrc.ALL)
-                combo.setAccessibleName(f"React History {key} filter")
-                combo.currentTextChanged.connect(self._on_filter_changed)
-                self._combos[key] = combo
-                row.addWidget(label)
-                row.addWidget(combo)
-
-            row.addStretch(1)
-
-            self._prev_btn = QPushButton("Prev", bar)
-            self._prev_btn.setAccessibleName("React History previous page")
-            self._prev_btn.clicked.connect(self._on_prev)
-            self._next_btn = QPushButton("Next", bar)
-            self._next_btn.setAccessibleName("React History next page")
-            self._next_btn.clicked.connect(self._on_next)
-            self._page_lbl = QLabel(hrc.page_label(0, 0), bar)
-            self._page_lbl.setAlignment(Qt.AlignCenter)
-            self._page_lbl.setAccessibleName("React History page label")
-
-            row.addWidget(self._prev_btn)
-            row.addWidget(self._page_lbl)
-            row.addWidget(self._next_btn)
-            return bar
-
-        # -- control-bar handlers -------------------------------------
-        def _on_filter_changed(self, _text: str) -> None:
-            self._filters = hrc.HistoryFilters(
-                from_ts=self._filters.from_ts,
-                to_ts=self._filters.to_ts,
-                exchange=self._combos["exchange"].currentText(),
-                symbol=self._combos["symbol"].currentText(),
-                side=self._combos["side"].currentText(),
-            )
-            self._page = 0
-            self.render_now()
-
-        def _on_prev(self) -> None:
-            self._page = max(0, self._page - 1)
-            self.render_now()
-
-        def _on_next(self) -> None:
-            self._page += 1
-            self.render_now()
-
-        def _repopulate_combos(self) -> None:
-            """Refill the three combos from the contract's option lists."""
-            options = hrc.filter_options(self._trades)
-            for key, combo in self._combos.items():
-                keep = combo.currentText()
-                combo.blockSignals(True)
-                combo.clear()
-                combo.addItems(options[key])
-                index = combo.findText(keep)
-                combo.setCurrentIndex(index if index >= 0 else 0)
-                combo.blockSignals(False)
-
-        # -- render ---------------------------------------------------
-        def render_now(self) -> None:
-            """Rebuild the view model and push it. Never writes anything."""
-            model = build_view_model(
-                self._trades,
-                self._filters,
-                self._page,
-                self._bot_manager,
-                self._last_fetched_ts,
-            )
-            page = model["page"]
-            self._page = page["page"]
             self._last_model = model
-            self._page_lbl.setText(page["page_label"])
-            self._prev_btn.setEnabled(page["prev_enabled"])
-            self._next_btn.setEnabled(page["next_enabled"])
             if self._page_ready:
                 self._push(model)
 
+        def row_count(self, callback: Callable[[Any], None]) -> bool:
+            """Ask the DOM how many rows it drew. Answers through
+            ``callback``.
+
+            Returns False and calls nothing when the document is not up:
+            no rows are on screen and there is nothing to count. The
+            caller decides what an unread count means.
+            """
+            if not self._page_ready:
+                return False
+            self._web.page().runJavaScript(ROW_COUNT_JS, callback)
+            return True
+
+        # -- internals ------------------------------------------------
         def _push(self, model: dict) -> None:
             self._web.page().runJavaScript(state_push_script(model))
 
         def _on_load_finished(self, ok: bool) -> None:
-            """Push once the document exists; before that there is no
-            ``acervatorSetState`` to call."""
             self._page_ready = bool(ok)
             if not ok:
                 logger.warning("React History page failed to load")
                 return
             if self._last_model:
                 self._push(self._last_model)
-            else:
-                self.render_now()
-
-
-def _now() -> float:
-    """Wall clock, one call site, so a test can patch one name."""
-    import time
-
-    return time.time()

@@ -569,35 +569,79 @@ def test_a_row_that_beat_the_filter_is_reported(
 # ── 05.005 page_rendered ───────────────────────────────────────────────
 
 
-def _paged_tab(n_rows: int) -> HistoryTab:
+def _rows_in_dom(tab: HistoryTab) -> int:
+    """The row count the browser reports, read synchronously for a test.
+
+    ``HistoryTab`` never does this: a nested event loop on the GUI thread
+    would re-enter the render that called it.
+    """
+    from PySide6.QtCore import QEventLoop, QTimer
+
+    loop = QEventLoop()
+    box: dict = {}
+
+    def _catch(value: object) -> None:
+        box.setdefault("v", value)
+        loop.quit()
+
+    assert tab._table.row_count(_catch), "the page is not up"
+    QTimer.singleShot(30_000, loop.quit)
+    loop.exec()
+    assert "v" in box, "the browser never answered"
+    return int(box["v"])
+
+
+def _paged_tab(app: QApplication, n_rows: int) -> HistoryTab:
+    """A tab whose page has loaded, holding ``n_rows`` filtered rows.
+
+    The load matters now: the row count is read back out of the browser,
+    and a document that is not up yet has drawn nothing to count.
+    """
     tab = _tab()
+    assert _pump(app, lambda: tab._table.page_ready, 30.0), "the page never loaded"
     tab._all_trades = [_row(f"p{i}", ts=1_000 + i) for i in range(n_rows)]
     tab._filtered = list(tab._all_trades)
     return tab
 
 
+def _render_and_wait(app: QApplication, tab: HistoryTab, sink: SignalSink) -> int:
+    """Render one page and wait for its row-count record to arrive.
+
+    The read is asynchronous: ``runJavaScript`` answers through a
+    callback, so the pin fires after ``_render_page`` returns. Returning
+    without pumping would score the render on nothing.
+    """
+    before = len(_records(sink, PAGE))
+    tab._render_page()
+    assert _pump(
+        app, lambda: len(_records(sink, PAGE)) > before, 30.0
+    ), "the row-count record never arrived"
+    return before
+
+
 def test_the_table_draws_a_full_page_and_a_short_last_page(qapp: QApplication) -> None:
-    tab = _paged_tab(250)
+    tab = _paged_tab(qapp, 250)
     with _collect() as sink:
         tab._page = 0
-        tab._render_page()
+        _render_and_wait(qapp, tab, sink)
         tab._page = 2
-        tab._render_page()
+        _render_and_wait(qapp, tab, sink)
     first, last = _records(sink, PAGE)[0], _records(sink, PAGE)[1]
     assert (first.actual, first.expected, first.ok) == (100, 100, True)
     assert (last.actual, last.expected, last.ok) == (50, 50, True)
     assert last.context["page"] == 2
     assert last.context["pages"] == 3
-    # The table itself, not the record.
-    assert tab._table.rowCount() == 50
+    assert last.context["readback"] is True
+    # The browser itself, not the record.
+    assert _rows_in_dom(tab) == 50
 
 
 def test_a_page_beyond_the_last_is_clamped_and_still_agrees(qapp: QApplication) -> None:
     """The clamp and the arithmetic are the two sides of this pin."""
-    tab = _paged_tab(120)
+    tab = _paged_tab(qapp, 120)
     tab._page = 9
     with _collect() as sink:
-        tab._render_page()
+        _render_and_wait(qapp, tab, sink)
     rec = _records(sink, PAGE)[0]
     assert rec.context["page"] == 1  # clamped from 9
     assert (rec.actual, rec.expected, rec.ok) == (20, 20, True)
@@ -608,28 +652,57 @@ def test_a_half_drawn_table_is_reported(
 ) -> None:
     """THE PARTIAL-RENDER CONTROL.
 
-    `setRowCount(n)` makes `rowCount()` return `n` whether or not one
-    cell was written, and the per-row work in this loop -- a grade, two
-    log lookups, a `GateLightsCell` -- is where a render stops early.
-    Staged here: the table stops taking timestamp cells at row 60. The
-    row count still says 100.
+    A payload that was built and pushed says nothing about what reached
+    the screen. Staged here: the push is trimmed on its way through the
+    bridge, so the browser draws 60 rows while the pagination arithmetic
+    still says 100 and ``pushed_rows`` still says 100.
     """
-    tab = _paged_tab(250)
-    real_set = tab._table.setItem
+    import src.gui.react_history_panel as rhp
 
-    def _stops(row: int, col: int, item: object) -> None:
-        if col == 0 and row >= 60:
-            return None
-        return real_set(row, col, item)
+    tab = _paged_tab(qapp, 250)
+    real_script = rhp.state_push_script
 
-    monkeypatch.setattr(tab._table, "setItem", _stops)
+    def _trimmed(payload: dict) -> str:
+        cut = dict(payload)
+        page = dict(payload["page"])
+        page["rows"] = page["rows"][:60]
+        cut["page"] = page
+        return real_script(cut)
+
+    monkeypatch.setattr(rhp, "state_push_script", _trimmed)
     with _collect() as sink:
-        tab._render_page()
+        _render_and_wait(qapp, tab, sink)
     rec = _records(sink, PAGE)[0]
     assert rec.actual == 60
     assert rec.expected == 100
     assert rec.ok is False
-    assert rec.context["row_count"] == 100  # the table still claims 100
+    assert rec.context["pushed_rows"] == 100  # the payload still claims 100
+    assert rec.context["readback"] is True
+    assert _rows_in_dom(tab) == 60
+
+
+def test_a_count_that_cannot_be_read_is_reported_unverified(
+    qapp: QApplication,
+) -> None:
+    """THE UNREAD-COUNT CONTROL.
+
+    A render into a document that never came up has drawn nothing. The
+    pin records -1 rather than the number of rows it pushed, so an
+    unrendered page cannot report agreement. ``readback`` names which of
+    the two happened.
+    """
+    tab = _tab()
+    tab._all_trades = [_row(f"p{i}", ts=1_000 + i) for i in range(30)]
+    tab._filtered = list(tab._all_trades)
+    tab._table._page_ready = False
+    with _collect() as sink:
+        tab._render_page()
+    rec = _records(sink, PAGE)[0]
+    assert rec.actual == -1
+    assert rec.expected == 30
+    assert rec.ok is False
+    assert rec.context["readback"] is False
+    assert rec.context["pushed_rows"] == 30
 
 
 # ── 05.006 joiner_indexes_built ────────────────────────────────────────
@@ -744,7 +817,7 @@ def _export(tab: HistoryTab, monkeypatch: pytest.MonkeyPatch, target: Path) -> N
 def test_the_csv_holds_every_row_that_was_exported(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    tab = _paged_tab(5)
+    tab = _paged_tab(qapp, 5)
     target = tmp_path / "history.csv"
     with _collect() as sink:
         _export(tab, monkeypatch, target)
@@ -771,7 +844,7 @@ def test_a_short_write_is_reported(
     flush or a row that failed to format looks like from the outside. The
     operator still sees "Wrote 6 rows".
     """
-    tab = _paged_tab(6)
+    tab = _paged_tab(qapp, 6)
     target = tmp_path / "short.csv"
 
     real_writer = csv.writer
@@ -1115,7 +1188,7 @@ def test_the_csv_duration_tracks_the_write(
                 return original(stream, *a, **kw)
 
             monkeypatch.setattr(hist.csv, "writer", _slow_writer)
-            tab = _paged_tab(5)
+            tab = _paged_tab(qapp, 5)
             _export(tab, monkeypatch, tmp_path / f"h_{tag}.csv")
             monkeypatch.undo()
 
@@ -1157,7 +1230,7 @@ def test_the_csv_duration_excludes_the_file_dialog(
 
     monkeypatch.setattr(hist, "QFileDialog", _SlowDialog)
     monkeypatch.setattr(hist, "QMessageBox", _Box)
-    tab = _paged_tab(5)
+    tab = _paged_tab(qapp, 5)
     with _collect() as sink:
         tab._export_csv()
     rec = _records(sink, CSV)[0]

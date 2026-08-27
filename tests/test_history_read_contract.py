@@ -342,54 +342,104 @@ def _voting_entry(bot_id: str, ts: float, direction: str, net: float) -> dict:
 # ── reading each side ──────────────────────────────────────────────────
 
 
-def _tab(bot_manager: Any) -> HistoryTab:
+_JS_TIMEOUT_MS = 30_000
+
+# Reads what the SCREEN shows: the cell's own text with the gate-light
+# strip removed, the colour and tooltip attributes the contract set, and
+# every light the strip drew. One round trip carries the whole table.
+_DOM_DUMP_JS = r"""
+JSON.stringify((function () {
+  var out = {rows: [], lights: [], error: null};
+  var err = document.getElementById("panel-error");
+  if (err) { out.error = err.textContent; }
+  document.querySelectorAll("#panel-rows tr").forEach(function (tr) {
+    var cells = [];
+    tr.querySelectorAll("td").forEach(function (td) {
+      var shown = td.cloneNode(true);
+      var strip = shown.querySelector(".gate-lights");
+      if (strip) { strip.remove(); }
+      cells.push({
+        key: td.getAttribute("data-col-key"),
+        text: shown.textContent,
+        color: td.getAttribute("data-cell-color") || null,
+        tooltip: td.getAttribute("data-cell-tooltip") || null
+      });
+    });
+    out.rows.push(cells);
+    var lit = tr.querySelectorAll(".gate-lights .light");
+    if (lit.length === 0) {
+      out.lights.push(null);
+    } else {
+      out.lights.push(Array.prototype.map.call(lit, function (el) {
+        return {
+          bank: el.getAttribute("data-light-bank"),
+          label: el.getAttribute("data-light-label"),
+          state: el.getAttribute("data-light-state"),
+          color: el.getAttribute("data-light-color")
+        };
+      }));
+    }
+  });
+  return out;
+})())
+"""
+
+
+def _eval_in(view: Any, script: str) -> Any:
+    """Evaluate ``script`` in ``view`` and return its value.
+
+    ``runJavaScript`` answers through a callback, so this spins a nested
+    ``QEventLoop`` with a ceiling. A read that times out raises rather
+    than returning the previous answer, so a stalled browser cannot be
+    mistaken for agreement.
+    """
+    from PySide6.QtCore import QEventLoop, QTimer
+
+    loop = QEventLoop()
+    box: dict = {}
+
+    def _catch(value: Any) -> None:
+        box.setdefault("v", value)
+        loop.quit()
+
+    view.page().runJavaScript(script, _catch)
+    QTimer.singleShot(_JS_TIMEOUT_MS, loop.quit)
+    loop.exec()
+    assert "v" in box, f"the browser never answered: {script[:80]}"
+    return box["v"]
+
+
+def _tab(qapp: Any, bot_manager: Any) -> HistoryTab:
+    """A HistoryTab whose page has finished loading."""
     from src.gui.history_tab import HistoryTab as _HistoryTab
 
     tab = _HistoryTab()
     tab.set_bot_manager(bot_manager)
+    deadline = time.time() + 30.0
+    while not tab._table.page_ready and time.time() < deadline:
+        qapp.processEvents()
+    assert tab._table.page_ready, "the tab's own document never loaded"
     return tab
 
 
 def _tab_render(tab: HistoryTab, rows: list[dict], page: int = 0) -> dict:
-    """Drive the real ``_render_page`` and read the widget back out."""
-    from PySide6.QtCore import Qt
+    """Drive the real ``_render_page`` and read the BROWSER back out.
 
+    The tab now renders through the contract, so comparing its payload
+    against the contract would be the instrument agreeing with itself.
+    What is read here is the DOM the page drew, which is the far side of
+    a JSON round trip through the one-way bridge.
+    """
     tab._all_trades = list(rows)
     tab._filtered = list(rows)
     tab._page = page
     tab._render_page()
 
-    table = tab._table
-    out_rows: list[list[dict]] = []
-    for row_i in range(table.rowCount()):
-        cells: list[dict] = []
-        for col in range(13):
-            item = table.item(row_i, col)
-            if item is None:
-                cells.append({"text": None, "color": None, "tooltip": None})
-                continue
-            brush = item.foreground()
-            colour = brush.color().name() if brush.style() != Qt.NoBrush else None
-            tip = item.toolTip()
-            cells.append({"text": item.text(), "color": colour, "tooltip": tip or None})
-        out_rows.append(cells)
-
-    widgets = []
-    for row_i in range(table.rowCount()):
-        cell_widget = table.cellWidget(row_i, 11)
-        if cell_widget is None:
-            widgets.append(None)
-        else:
-            widgets.append(
-                {
-                    "scrum_armed": cell_widget._scrum_armed,
-                    "fold_armed": cell_widget._fold_armed,
-                }
-            )
-
+    dom = json.loads(_eval_in(tab._table._web, _DOM_DUMP_JS))
+    assert dom["error"] is None, dom["error"]
     return {
-        "rows": out_rows,
-        "widgets": widgets,
+        "rows": dom["rows"],
+        "lights": dom["lights"],
         "page_label": tab._page_label.text(),
         "prev_enabled": tab._prev_btn.isEnabled(),
         "next_enabled": tab._next_btn.isEnabled(),
@@ -402,30 +452,27 @@ def _contract_render(rows: list[dict], page: int, bot_manager: Any) -> dict:
     built = hrc.build_page(rows, page, bot_manager)
     out_rows = [
         [
-            {"text": c.text, "color": c.color, "tooltip": c.tooltip or None}
+            {
+                "key": c.key,
+                "text": c.text,
+                "color": c.color or None,
+                "tooltip": c.tooltip or None,
+            }
             for c in row.cells
         ]
         for row in built.rows
     ]
-    widgets = [
-        (
-            None
-            if row.gate_lights is None
-            else {
-                "scrum_armed": row.gate_lights["scrum_armed"],
-                "fold_armed": row.gate_lights["fold_armed"],
-            }
-        )
+    lights = [
+        None if row.gate_lights is None else list(row.gate_lights["lights"])
         for row in built.rows
     ]
     return {
         "rows": out_rows,
-        "widgets": widgets,
+        "lights": lights,
         "page_label": built.page_label,
         "prev_enabled": built.prev_enabled,
         "next_enabled": built.next_enabled,
         "page": built.page,
-        "built": built,
     }
 
 
@@ -438,8 +485,10 @@ def _assert_same(tab_side: dict, contract_side: dict) -> None:
     for row_i, (tab_row, con_row) in enumerate(
         zip(tab_side["rows"], contract_side["rows"])
     ):
+        assert len(tab_row) == len(con_row) == len(hrc.COLUMNS)
         for col, (tab_cell, con_cell) in enumerate(zip(tab_row, con_row)):
             key = hrc.COLUMNS[col].key
+            assert tab_cell["key"] == key == con_cell["key"]
             assert con_cell["text"] == tab_cell["text"], (
                 f"row {row_i} column {col} ({key}) text: "
                 f"tab {tab_cell['text']!r}, contract {con_cell['text']!r}"
@@ -453,7 +502,7 @@ def _assert_same(tab_side: dict, contract_side: dict) -> None:
                 f"tab {str(tab_cell['tooltip'])[:120]!r}, "
                 f"contract {str(con_cell['tooltip'])[:120]!r}"
             )
-    assert contract_side["widgets"] == tab_side["widgets"]
+    assert contract_side["lights"] == tab_side["lights"]
     assert contract_side["page_label"] == tab_side["page_label"]
     assert contract_side["prev_enabled"] == tab_side["prev_enabled"]
     assert contract_side["next_enabled"] == tab_side["next_enabled"]
@@ -463,8 +512,7 @@ def _assert_same(tab_side: dict, contract_side: dict) -> None:
 # ── the vacuous-pass control, run before the agreement ─────────────────
 
 
-@pytest.mark.usefixtures("qapp")
-def test_the_agreement_fixture_is_not_vacuous() -> None:
+def test_the_agreement_fixture_is_not_vacuous(qapp) -> None:
     """Both sides must render something before "they match" means anything.
 
     A contract returning nothing agrees with an empty tab. A contract
@@ -476,7 +524,7 @@ def test_the_agreement_fixture_is_not_vacuous() -> None:
     assert len(rows) == 17
 
     manager = _bot_manager()
-    tab_side = _tab_render(_tab(manager), rows)
+    tab_side = _tab_render(_tab(qapp, manager), rows)
     con_side = _contract_render(rows, 0, manager)
 
     assert len(tab_side["rows"]) == 17
@@ -509,19 +557,18 @@ def test_the_agreement_fixture_is_not_vacuous() -> None:
 # ── the agreement ──────────────────────────────────────────────────────
 
 
-@pytest.mark.usefixtures("qapp")
-def test_the_contract_agrees_with_the_tab_cell_for_cell() -> None:
+def test_the_contract_agrees_with_the_tab_cell_for_cell(qapp) -> None:
     """17 rows, 13 columns, text and colour and tooltip, plus the footer."""
     rows = _mixed_rows()
     manager = _bot_manager()
-    tab_side = _tab_render(_tab(manager), rows)
+    tab_side = _tab_render(_tab(qapp, manager), rows)
     con_side = _contract_render(rows, 0, manager)
     assert len(tab_side["rows"]) == 17
     _assert_same(tab_side, con_side)
 
 
-@pytest.mark.usefixtures("qapp")
 def test_the_contract_agrees_when_the_gate_and_voting_logs_have_entries(
+    qapp,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The join, driven with real entries rather than an empty reader.
@@ -556,7 +603,7 @@ def test_the_contract_agrees_when_the_gate_and_voting_logs_have_entries(
     monkeypatch.setattr(llr, "live_voting_panel_snapshots", _reader_of(voting_entries))
 
     manager = _bot_manager()
-    tab_side = _tab_render(_tab(manager), rows)
+    tab_side = _tab_render(_tab(qapp, manager), rows)
     con_side = _contract_render(rows, 0, manager)
 
     # The control for this test: the join must have landed on something.
@@ -564,7 +611,11 @@ def test_the_contract_agrees_when_the_gate_and_voting_logs_have_entries(
     assert any(t != "no record" for t in gates_texts), gates_texts
     voting_texts = [r[12]["text"] for r in tab_side["rows"]]
     assert any(t != "—" for t in voting_texts), voting_texts
-    assert any(w is not None for w in tab_side["widgets"])
+    lit = [w for w in tab_side["lights"] if w is not None]
+    assert lit, "no gate record joined; the light comparison would be vacuous"
+    assert all(len(w) == 19 for w in lit), [len(w) for w in lit]
+    states = {light["state"] for row in lit for light in row}
+    assert len(states) >= 3, f"the fixture lights one state only: {states}"
 
     _assert_same(tab_side, con_side)
 
@@ -589,8 +640,8 @@ def test_the_contract_agrees_when_the_gate_and_voting_logs_have_entries(
         ),
     ],
 )
-@pytest.mark.usefixtures("qapp")
 def test_the_filters_retain_the_rows_the_tab_retains(
+    qapp,
     filters: hrc.HistoryFilters,
 ) -> None:
     """Drive the tab's real ``_apply_filters`` through its real widgets."""
@@ -598,7 +649,7 @@ def test_the_filters_retain_the_rows_the_tab_retains(
 
     rows = _mixed_rows()
     manager = _bot_manager()
-    tab = _tab(manager)
+    tab = _tab(qapp, manager)
     tab._all_trades = list(rows)
     tab._last_fetched_ts = time.time()
     tab._populate_filter_options()
@@ -640,11 +691,10 @@ def test_the_filters_retain_the_rows_the_tab_retains(
         assert len(kept) < len(rows), "this filter narrowed nothing"
 
 
-@pytest.mark.usefixtures("qapp")
-def test_the_filter_options_match_the_two_dropdowns() -> None:
+def test_the_filter_options_match_the_two_dropdowns(qapp) -> None:
     """Entry for entry, in order, sentinel included."""
     rows = _mixed_rows()
-    tab = _tab(_bot_manager())
+    tab = _tab(qapp, _bot_manager())
     tab._all_trades = list(rows)
     tab._populate_filter_options()
 
@@ -661,15 +711,14 @@ def test_the_filter_options_match_the_two_dropdowns() -> None:
     assert options["side"] == tab_sides
 
 
-@pytest.mark.usefixtures("qapp")
-def test_the_default_from_date_matches_the_tab_to_the_second() -> None:
+def test_the_default_from_date_matches_the_tab_to_the_second(qapp) -> None:
     """LOCAL midnight on 2026-04-01, which is not UTC midnight.
 
     A failure here means the contract would fetch from a different
     instant than the tab does, and the operator would see a different
     number of trades on the two surfaces.
     """
-    tab = _tab(_bot_manager())
+    tab = _tab(qapp, _bot_manager())
     defaults = hrc.default_filters()
     assert defaults.from_ts == tab._from_dt.dateTime().toSecsSinceEpoch()
 
@@ -684,12 +733,11 @@ def test_the_default_from_date_matches_the_tab_to_the_second() -> None:
 
 
 @pytest.mark.parametrize("count", [1, hrc.PAGE_SIZE, hrc.PAGE_SIZE + 1])
-@pytest.mark.usefixtures("qapp")
-def test_paging_agrees_at_the_boundary(count: int) -> None:
+def test_paging_agrees_at_the_boundary(qapp, count: int) -> None:
     """One row, exactly a full page, and one row past a full page."""
     rows = _uniform_rows(count)
     manager = _bot_manager()
-    tab = _tab(manager)
+    tab = _tab(qapp, manager)
 
     expected_pages = 1 if count <= hrc.PAGE_SIZE else 2
     assert hrc.page_count(count) == expected_pages
@@ -701,19 +749,17 @@ def test_paging_agrees_at_the_boundary(count: int) -> None:
         _assert_same(tab_side, con_side)
 
 
-@pytest.mark.usefixtures("qapp")
-def test_a_page_past_the_last_is_clamped_the_way_the_tab_clamps() -> None:
+def test_a_page_past_the_last_is_clamped_the_way_the_tab_clamps(qapp) -> None:
     rows = _uniform_rows(hrc.PAGE_SIZE + 1)
     manager = _bot_manager()
-    tab_side = _tab_render(_tab(manager), rows, page=7)
+    tab_side = _tab_render(_tab(qapp, manager), rows, page=7)
     con_side = _contract_render(rows, 7, manager)
     assert tab_side["page"] == 1
     assert len(tab_side["rows"]) == 1
     _assert_same(tab_side, con_side)
 
 
-@pytest.mark.usefixtures("qapp")
-def test_an_empty_filtered_set_reads_the_same_on_both_sides() -> None:
+def test_an_empty_filtered_set_reads_the_same_on_both_sides(qapp) -> None:
     """The one case where agreeing on nothing is the correct answer.
 
     It is asserted explicitly so the vacuous case is covered by a test
@@ -721,7 +767,7 @@ def test_an_empty_filtered_set_reads_the_same_on_both_sides() -> None:
     quietly passing on it.
     """
     manager = _bot_manager()
-    tab_side = _tab_render(_tab(manager), [])
+    tab_side = _tab_render(_tab(qapp, manager), [])
     con_side = _contract_render([], 0, manager)
     assert tab_side["rows"] == []
     assert tab_side["page_label"] == "No matches"
@@ -731,12 +777,11 @@ def test_an_empty_filtered_set_reads_the_same_on_both_sides() -> None:
 # ── the summary line ───────────────────────────────────────────────────
 
 
-@pytest.mark.usefixtures("qapp")
-def test_the_summary_line_matches_the_tab() -> None:
+def test_the_summary_line_matches_the_tab(qapp) -> None:
     """Both branches: no fetch yet, and a fetch some seconds ago."""
     rows = _mixed_rows()
     manager = _bot_manager()
-    tab = _tab(manager)
+    tab = _tab(qapp, manager)
 
     _tab_render(tab, rows)
     assert tab._summary.text() == hrc.summary_line(rows, len(rows), 0.0)
@@ -757,9 +802,8 @@ def test_the_summary_line_matches_the_tab() -> None:
 # ── the CSV export ─────────────────────────────────────────────────────
 
 
-@pytest.mark.usefixtures("qapp")
 def test_the_csv_rows_match_the_file_the_tab_writes(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    qapp, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Read the tab's own artifact back through ``csv.reader``.
 
@@ -771,7 +815,7 @@ def test_the_csv_rows_match_the_file_the_tab_writes(
 
     rows = _mixed_rows()
     manager = _bot_manager()
-    tab = _tab(manager)
+    tab = _tab(qapp, manager)
     tab._all_trades = list(rows)
     tab._filtered = list(rows)
 
@@ -795,25 +839,38 @@ def test_the_csv_rows_match_the_file_the_tab_writes(
 # ── the column specification ───────────────────────────────────────────
 
 
-@pytest.mark.usefixtures("qapp")
-def test_the_column_spec_matches_the_tab_header() -> None:
-    """Thirteen headers, in order, plus the three header tooltips."""
-    tab = _tab(_bot_manager())
-    table = tab._table
-    assert table.columnCount() == len(hrc.COLUMNS) == 13
-    for column in hrc.COLUMNS:
-        header = table.horizontalHeaderItem(column.index)
-        assert header is not None
-        assert header.text() == column.header, (
-            f"column {column.index}: tab {header.text()!r}, "
+def test_the_column_spec_matches_the_tab_header(qapp) -> None:
+    """Thirteen headers, in order, plus the three header tooltips.
+
+    Read out of the rendered ``thead``, so this measures the header row
+    the operator sees rather than the column list that was pushed.
+    """
+    tab = _tab(qapp, _bot_manager())
+    _tab_render(tab, _mixed_rows())
+    headers = json.loads(
+        _eval_in(
+            tab._table._web,
+            "JSON.stringify(Array.prototype.map.call("
+            'document.querySelectorAll("#panel-table thead th"),'
+            "function (th) { return {"
+            'key: th.getAttribute("data-col-key"),'
+            "header: th.textContent,"
+            'tooltip: th.getAttribute("title") || ""'
+            "}; }))",
+        )
+    )
+    assert len(headers) == len(hrc.COLUMNS) == 13
+    for column, shown in zip(hrc.COLUMNS, headers):
+        assert shown["key"] == column.key
+        assert shown["header"] == column.header, (
+            f"column {column.index}: tab {shown['header']!r}, "
             f"contract {column.header!r}"
         )
-        assert (header.toolTip() or "") == column.header_tooltip
+        assert shown["tooltip"] == column.header_tooltip
     assert tab.PAGE_SIZE == hrc.PAGE_SIZE
 
 
-@pytest.mark.usefixtures("qapp")
-def test_the_status_strings_are_the_ones_the_tab_shows() -> None:
+def test_the_status_strings_are_the_ones_the_tab_shows(qapp) -> None:
     """Three states driven for real; two pinned against the source.
 
     ``idle``, ``no_bot_manager`` and ``no_async_loop`` are reachable
@@ -822,7 +879,7 @@ def test_the_status_strings_are_the_ones_the_tab_shows() -> None:
     wait respectively; they are pinned as literals in the tab's source,
     which is the surface that would change if someone reworded them.
     """
-    tab = _tab(_bot_manager())
+    tab = _tab(qapp, _bot_manager())
     assert tab._summary.text() == hrc.STATUS_TEXT["idle"]
 
     tab.set_bot_manager(None)

@@ -157,6 +157,81 @@ def _mixed_rows(count: int = 13) -> list[dict]:
     return rows
 
 
+def _uniform_rows(count: int) -> list[dict]:
+    """``count`` newest-first CHIP rows, one minute apart."""
+    return [
+        _row(f"p-{i:04d}", ts=BASE_TS - i * 60, price=10.0 + (i % 17))
+        for i in range(count)
+    ]
+
+
+def _iso(ts: float) -> str:
+    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
+
+def _gate_entry(
+    bot_id: str,
+    ts: float,
+    *,
+    scrum_armed: bool = False,
+    fold_armed: bool = False,
+    scrum_blockers: Optional[list] = None,
+    fold_blockers: Optional[list] = None,
+) -> dict:
+    """One gate.log entry carrying every field the validator requires."""
+    return {
+        "timestamp": _iso(ts),
+        "category": "gate_decision",
+        "bot_id": bot_id,
+        "data": {
+            "symbol": "CHIP/USD",
+            "state": "TRACK",
+            "scrum_armed": scrum_armed,
+            "fold_armed": fold_armed,
+            "scrum_blockers": list(scrum_blockers or []),
+            "fold_blockers": list(fold_blockers or []),
+            "landing_strip_side": "upper" if scrum_armed else "",
+        },
+    }
+
+
+def _voting_entry(bot_id: str, ts: float, direction: str, net: float) -> dict:
+    """One voting.log entry carrying a VotingSummary-shaped panel."""
+    return {
+        "timestamp": _iso(ts),
+        "category": "voting_panel_snapshot",
+        "bot_id": bot_id,
+        "data": {
+            "side": direction,
+            "panel": {
+                "direction": direction,
+                "net_score": net,
+                "timeframe": "1h",
+                "bullish_count": 4,
+                "bearish_count": 1,
+                "neutral_count": 2,
+                "consensus_confidence": 0.72,
+                "signals": [
+                    {
+                        "indicator": "rsi",
+                        "direction": 1,
+                        "confidence": 0.8,
+                        "weight": 1.0,
+                        "timeframe": "1h",
+                    },
+                    {
+                        "indicator": "macd",
+                        "direction": -1,
+                        "confidence": 0.4,
+                        "weight": 0.5,
+                        "timeframe": "4h",
+                    },
+                ],
+            },
+        },
+    }
+
+
 @pytest.fixture(scope="module")
 def qapp():
     """The QApplication every browser test runs against."""
@@ -418,14 +493,20 @@ def _code_of(path: Path) -> str:
     return " ".join(kept)
 
 
-def test_no_back_channel_exists_so_the_page_cannot_write() -> None:
+@pytest.mark.parametrize("module", ["react_history_panel.py", "history_tab.py"])
+def test_no_back_channel_exists_so_the_page_cannot_write(module: str) -> None:
     """The write proof is structural: there is no path page -> Python.
 
-    A ``QWebChannel`` or a ``setWebChannel`` here would give the page a
+    A ``QWebChannel`` or a ``setWebChannel`` would give the page a
     callable Python object, and "read-only" would stop being a property
-    of the wiring.
+    of the wiring. Both the host module and the tab that embeds it are
+    scanned, because either could open the channel.
+
+    ``row_count`` is not a back channel. Python asks and JavaScript
+    answers one number; the page can raise nothing of its own and holds
+    no Python object.
     """
-    code = _code_of(REPO / "src" / "gui" / "react_history_panel.py")
+    code = _code_of(REPO / "src" / "gui" / module)
     for forbidden in ("QWebChannel", "setWebChannel", "setUrlRequestInterceptor"):
         assert forbidden not in code, f"{forbidden} opens a path back into Python"
 
@@ -894,105 +975,442 @@ def test_the_module_opens_no_file_for_writing() -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 8. The Qt host
+# 8. The Qt host -- the shipped History tab
 # ═══════════════════════════════════════════════════════════════════════
 
 
-def test_the_panel_widget_renders_the_contract_end_to_end(qapp) -> None:
-    """Drive the real widget: hand it trades the way main_window does."""
-    del qapp
-    panel = rhp.ReactHistoryPanel()
-    try:
-        panel.set_bot_manager(_bot_manager())
-        trades = _mixed_rows()
-        panel.on_history_refreshed(trades)
-        model = panel.view_model()
-        assert model["page"]["total"] == len(trades)
-        assert len(model["page"]["rows"]) == len(trades)
-        assert [c["key"] for c in model["columns"]] == list(hrc.COLUMN_KEYS)
-        assert model["filter_options"] == hrc.filter_options(trades)
-    finally:
-        panel.deleteLater()
+def _history_tab(qapp, trades: list, from_ts: float = BASE_TS - 86_400):
+    """A real ``HistoryTab``, loaded, driven through its own controls.
 
-
-def test_the_panel_pager_walks_pages(qapp) -> None:
-    del qapp
-    panel = rhp.ReactHistoryPanel()
-    try:
-        panel.set_bot_manager(_bot_manager())
-        panel.on_history_refreshed(_mixed_rows(hrc.PAGE_SIZE + 1))
-        assert panel.view_model()["page"]["page"] == 0
-        panel._on_next()
-        assert panel.view_model()["page"]["page"] == 1
-        assert len(panel.view_model()["page"]["rows"]) == 1
-        panel._on_next()
-        assert panel.view_model()["page"]["page"] == 1, "clamped at the last page"
-        panel._on_prev()
-        assert panel.view_model()["page"]["page"] == 0
-    finally:
-        panel.deleteLater()
-
-
-def test_the_panel_combos_carry_the_contract_options(qapp) -> None:
-    del qapp
-    panel = rhp.ReactHistoryPanel()
-    try:
-        trades = _mixed_rows()
-        panel.set_bot_manager(_bot_manager())
-        panel.on_history_refreshed(trades)
-        want = hrc.filter_options(trades)
-        for key, combo in panel._combos.items():
-            shown = [combo.itemText(i) for i in range(combo.count())]
-            assert shown == want[key], key
-    finally:
-        panel.deleteLater()
-
-
-def test_the_existing_history_tab_is_untouched() -> None:
-    """Both panels exist after this unit. The Qt tab is the reference."""
-    from src.gui.history_tab import HistoryTab
-
-    assert HistoryTab.PAGE_SIZE == hrc.PAGE_SIZE
-    wiring = (REPO / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-    assert 'addTab(self._history_tab, "History")' in wiring
-    assert 'addTab(panel, "History (React)")' in wiring
-    assert wiring.index('addTab(self._history_tab, "History")') < wiring.index(
-        'addTab(panel, "History (React)")'
-    ), "the Qt tab must still be built first; it is the reference"
-
-
-def test_the_shipped_widget_renders_into_its_own_view(qapp) -> None:
-    """The DOM of the WIDGET, not of a page the test built for itself.
-
-    Every other browser test drives a ``_Page`` this file constructs. This
-    one reads ``ReactHistoryPanel._web`` -- the view the application puts
-    on screen -- so the whole path from ``on_history_refreshed`` through
-    ``render_now`` and ``runJavaScript`` into the DOM is covered once,
-    end to end.
+    Rows are placed where a completed fetch places them and the tab's own
+    ``_populate_filter_options`` and ``_apply_filters`` run, so the render
+    reached here is the one the operator's Apply reaches.
     """
     import time
 
-    panel = rhp.ReactHistoryPanel()
+    from PySide6.QtCore import QDateTime
+    from src.gui.history_tab import HistoryTab
+
+    tab = HistoryTab()
+    tab.set_bot_manager(_bot_manager())
+    deadline = time.time() + 30.0
+    while not tab._table.page_ready and time.time() < deadline:
+        qapp.processEvents()
+    assert tab._table.page_ready, "the tab's own document never loaded"
+
+    # The From edit defaults to the 2026-04-01 launch date, which is after
+    # the fixture's instants. Driving the date control is the point.
+    tab._from_dt.setDateTime(QDateTime.fromSecsSinceEpoch(int(from_ts)))
+    tab._last_fetched_ts = BASE_TS
+    tab._all_trades = list(trades)
+    tab._populate_filter_options()
+    tab._apply_filters()
+    qapp.processEvents()
+    return tab
+
+
+def _tab_dom(tab) -> dict:
+    return json.loads(_eval_in(tab._table._web, _DOM_DUMP_JS))
+
+
+def test_the_history_tab_holds_no_qtablewidget() -> None:
+    """The Qt table is gone and the web table stands in its place.
+
+    Scanned as CODE. A class named in a comment is not a table, and the
+    module explains its own import fallback in prose.
+    """
+    code = _code_of(REPO / "src" / "gui" / "history_tab.py")
+    for gone in ("QTableWidget", "QTableWidgetItem", "setRowCount", "setCellWidget"):
+        assert gone not in code, f"{gone} survives in the History tab"
+    assert "HistoryWebTable" in code
+
+
+def test_the_qtablewidget_scan_can_see_a_real_table() -> None:
+    """The control: the same scan DOES find a QTableWidget in real code.
+
+    Without it, a scan that stripped everything would report the History
+    tab clean whatever it held.
+    """
+    code = _code_of(REPO / "src" / "gui" / "alerts_tab.py")
+    assert "QTableWidget" in code, "the scan stripped the code, not the prose"
+
+
+def test_there_is_exactly_one_history_tab() -> None:
+    """One tab named History, and no second renderer beside it."""
+    wiring = (REPO / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
+    added = re.findall(r'addTab\([^,]+,\s*"([^"]*[Hh]istory[^"]*)"\)', wiring)
+    assert added == ["History"], added
+    assert "ReactHistoryPanel" not in wiring
+    from src.gui.history_tab import HistoryTab
+
+    assert HistoryTab.PAGE_SIZE == hrc.PAGE_SIZE
+
+
+def test_the_canonical_tab_order_still_holds() -> None:
+    """History keeps its place in the seven-tab order."""
+    wiring = (REPO / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
+    block = wiring[wiring.index("CANONICAL_TAB_ORDER = [") :]
+    block = block[: block.index("]")]
+    names = re.findall(r'"([^"]+)"', block)
+    assert names == [
+        "Trading",
+        "Market Inspector",
+        "Bot Swarm",
+        "Asset Charts",
+        "History",
+        "Simulator",
+        "Console",
+    ], names
+
+
+def test_the_shipped_tab_renders_the_contract_into_its_own_view(qapp) -> None:
+    """The DOM of the TAB, not of a page the test built for itself.
+
+    Every other browser test drives a ``_Page`` this file constructs. This
+    one reads ``HistoryTab._table._web`` -- the view the application puts
+    on screen -- so the whole path from the trade rows through
+    ``_apply_filters``, ``_render_page`` and ``runJavaScript`` into the
+    DOM is covered once, end to end.
+    """
+    trades = _mixed_rows()
+    tab = _history_tab(qapp, trades)
     try:
-        panel.set_bot_manager(_bot_manager())
-        deadline = time.time() + 30.0
-        while not panel._page_ready and time.time() < deadline:
-            qapp.processEvents()
-        assert panel._page_ready, "the panel's own document never loaded"
-
-        trades = _mixed_rows()
-        panel.on_history_refreshed(trades)
-        dom = json.loads(_eval_in(panel._web, _DOM_DUMP_JS))
+        dom = _tab_dom(tab)
         _assert_not_vacuous(dom)
-
         expected = hrc.build_page(
-            hrc.apply_filters(trades, hrc.HistoryFilters()), 0, _bot_manager()
+            hrc.apply_filters(trades, tab._current_filters()), 0, _bot_manager()
         )
         assert len(dom["rows"]) == len(expected.rows) == len(trades)
-        assert [r["trade_id"] for r in dom["rows"]] == [
-            r.trade_id for r in expected.rows
-        ]
-        assert dom["pager"]["total"] == len(trades)
-        assert dom["summary"] == panel.view_model()["summary"]
+        compared = 0
+        for shown, want in zip(dom["rows"], expected.rows):
+            assert shown["trade_id"] == want.trade_id
+            for cell_dom, cell in zip(shown["cells"], want.cells):
+                assert cell_dom["key"] == cell.key
+                assert cell_dom["text"] == cell.text, cell.key
+                assert cell_dom["color"] == (cell.color or ""), cell.key
+                assert cell_dom["tooltip"] == (cell.tooltip or ""), cell.key
+                compared += 3
+        assert compared == len(expected.rows) * len(hrc.COLUMNS) * 3
+        print(
+            f"R6 SHIPPED-TAB AGREEMENT rows={len(dom['rows'])} "
+            f"cells={len(dom['rows']) * len(hrc.COLUMNS)} comparisons={compared}"
+        )
     finally:
-        panel.deleteLater()
+        tab.deleteLater()
+
+
+def test_the_tab_draws_no_duplicate_chrome(qapp) -> None:
+    """The page draws the table only; the tab keeps its own controls.
+
+    Two summary lines or two pagers on one tab would be the migration
+    leaving a second copy of the chrome behind.
+    """
+    tab = _history_tab(qapp, _mixed_rows())
+    try:
+        dom = _tab_dom(tab)
+        _assert_not_vacuous(dom)
+        assert dom["summary"] is None, "the page drew a second summary line"
+        assert dom["pager"] is None, "the page drew a second pager"
+        assert dom["filters"] == {}, "the page drew a second filter bar"
+        # And the Qt controls that own those jobs are populated.
+        assert "trades shown" in tab._summary.text()
+        assert tab._page_label.text().startswith("Page 1 /")
+        assert tab._exch_combo.count() > 1
+    finally:
+        tab.deleteLater()
+
+
+def test_the_chrome_flag_control_the_page_draws_it_when_asked(page) -> None:
+    """The control for the test above: the same page CAN draw chrome.
+
+    Without this, a page that had lost its summary, filters and pager
+    entirely would pass ``test_the_tab_draws_no_duplicate_chrome``.
+    """
+    page.push(_model(_mixed_rows()))
+    dom = page.dom()
+    _assert_not_vacuous(dom)
+    assert dom["summary"], "the default chrome draws no summary"
+    assert dom["pager"] is not None
+    assert set(dom["filters"]) == {"exchange", "symbol", "side"}
+
+
+def test_the_tab_pager_walks_pages_in_the_dom(qapp) -> None:
+    """Prev and Next move the rows the browser shows."""
+    trades = _uniform_rows(hrc.PAGE_SIZE + 3)
+    tab = _history_tab(qapp, trades)
+    try:
+        first = [r["trade_id"] for r in _tab_dom(tab)["rows"]]
+        assert len(first) == hrc.PAGE_SIZE
+        tab._next_page()
+        qapp.processEvents()
+        second = [r["trade_id"] for r in _tab_dom(tab)["rows"]]
+        assert len(second) == 3
+        assert set(first).isdisjoint(second)
+        assert tab._page_label.text().startswith("Page 2 /")
+        tab._prev_page()
+        qapp.processEvents()
+        assert [r["trade_id"] for r in _tab_dom(tab)["rows"]] == first
+    finally:
+        tab.deleteLater()
+
+
+def test_a_filter_narrows_the_rows_the_tab_shows(qapp) -> None:
+    """Driving the Side combo changes what the browser draws."""
+    trades = _mixed_rows()
+    tab = _history_tab(qapp, trades)
+    try:
+        before = len(_tab_dom(tab)["rows"])
+        assert before == len(trades)
+        tab._side_combo.setCurrentText("SELL")
+        tab._apply_filters()
+        qapp.processEvents()
+        dom = _tab_dom(tab)
+        wanted = [t for t in trades if t["side"] == "SELL"]
+        assert 0 < len(wanted) < before, "the fixture cannot show a narrowing"
+        assert len(dom["rows"]) == len(wanted)
+        for row in dom["rows"]:
+            side = [c for c in row["cells"] if c["key"] == "side"][0]
+            assert side["text"] == "SELL"
+    finally:
+        tab.deleteLater()
+
+
+def test_reset_puts_every_filter_back(qapp) -> None:
+    """Reset returns the five controls to their opening values."""
+    tab = _history_tab(qapp, _mixed_rows())
+    try:
+        tab._side_combo.setCurrentText("SELL")
+        tab._exch_combo.setCurrentIndex(1)
+        tab._reset_filters()
+        qapp.processEvents()
+        assert tab._side_combo.currentIndex() == 0
+        assert tab._exch_combo.currentIndex() == 0
+        assert tab._sym_combo.currentIndex() == 0
+        assert tab._from_dt.dateTime().toString("yyyy-MM-dd HH:mm") == (
+            "2026-04-01 00:00"
+        )
+    finally:
+        tab.deleteLater()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 9. The gate lights, and the tooltips that carry markup
+# ═══════════════════════════════════════════════════════════════════════
+
+
+_LIGHT_DUMP_JS = r"""
+JSON.stringify(Array.prototype.map.call(
+  document.querySelectorAll(
+    "#panel-rows tr td[data-col-key=gates] .gate-lights .light"),
+  function (el) {
+    return {
+      bank: el.getAttribute("data-light-bank"),
+      label: el.getAttribute("data-light-label"),
+      state: el.getAttribute("data-light-state"),
+      color: el.getAttribute("data-light-color"),
+      painted: window.getComputedStyle(
+        el.querySelector(".light-dot")).backgroundColor,
+      shown: el.querySelector(".light-label").textContent
+    };
+  }))
+"""
+
+
+def test_the_gate_lights_are_the_simulators_nineteen(qapp, monkeypatch) -> None:
+    """Nineteen labelled lights, the Simulator's own order and colours.
+
+    The Qt cell this replaces was ``sim_visuals.GateLightsCell``. What is
+    compared here is the vocabulary module both surfaces now paint from,
+    so a light that disagrees is a rendering fault and not a second map.
+    """
+    import src.trading.live_log_reader as llr
+    from src.trading.gate_vocabulary import gate_light_row
+
+    trades = _mixed_rows()
+    manager = _bot_manager()
+    entries = [
+        _gate_entry(
+            hrc.resolve_bot_id_for_row(manager, t),
+            t["timestamp"],
+            scrum_blockers=["delta<=0"],
+        )
+        for t in trades
+    ]
+    assert all(e["bot_id"] for e in entries), "no row resolved to a bot"
+    monkeypatch.setattr(llr, "live_gate_decisions", _reader_of(entries))
+
+    tab = _history_tab(qapp, trades)
+    try:
+        lights = json.loads(_eval_in(tab._table._web, _LIGHT_DUMP_JS))
+        want_per_row = gate_light_row(False, False, ["delta<=0"], [], "")
+        assert len(want_per_row) == 19
+        assert lights, "no gate light reached the DOM"
+        assert len(lights) % 19 == 0, len(lights)
+        assert any(
+            w["state"] == "blocked" for w in want_per_row
+        ), "the fixture lights no red gate; agreement would be vacuous"
+        for i, light in enumerate(lights):
+            want = want_per_row[i % 19]
+            assert light["bank"] == want["bank"]
+            assert light["label"] == want["label"] == light["shown"]
+            assert light["state"] == want["state"]
+            assert light["color"] == want["color"]
+            rgb = want["color"].lstrip("#")
+            triple = tuple(int(rgb[j : j + 2], 16) for j in (0, 2, 4))
+            assert (
+                light["painted"] == f"rgb({triple[0]}, {triple[1]}, {triple[2]})"
+            ), light
+        print(f"R6 GATE LIGHTS drawn={len(lights)} per_row=19")
+    finally:
+        tab.deleteLater()
+
+
+def test_the_gate_lights_control_no_record_draws_none(qapp) -> None:
+    """The control: a row with no gate record draws no lights at all.
+
+    Nineteen grey lights on an unrecorded row would say "evaluated,
+    nothing fired". The empty-log fixture is the default here, so this
+    also proves the test above was not passing on leftover state.
+    """
+    tab = _history_tab(qapp, _mixed_rows())
+    try:
+        count = _eval_in(
+            tab._table._web,
+            'document.querySelectorAll("#panel-rows .gate-lights .light").length',
+        )
+        assert count == 0, count
+    finally:
+        tab.deleteLater()
+
+
+_RICH_TOOLTIP = "<b>Grade: A</b>\nExcellent \u2014 traded near a local extreme"
+_PLAIN_TOOLTIP = "BB-below-upper-detect(bb_pos=0.50<0.88)\n  blocked by  delta"
+
+
+def _probe_tooltip(page, text: str) -> dict:
+    """Render ``text`` the way a hovered cell renders it, and read it."""
+    return json.loads(
+        page.js(
+            "JSON.stringify((function () {"
+            "var n = window.acervatorRenderTooltip(" + json.dumps(text) + ");"
+            "return {mode: n.getAttribute('data-tooltip-mode'),"
+            " text: n.textContent,"
+            " bold: n.querySelectorAll('b').length,"
+            " tags: n.querySelectorAll('*').length,"
+            " html: n.innerHTML,"
+            " pwned: String(window.__pwned)};"
+            "})())"
+        )
+    )
+
+
+def test_a_rich_tooltip_renders_as_markup_not_as_source(page) -> None:
+    """Qt renders a tooltip's HTML. A ``title=`` attribute would not.
+
+    The page draws its own tooltip so the markup reaches the operator
+    rendered, the way ``setToolTip`` rendered it.
+    """
+    shown = _probe_tooltip(page, _RICH_TOOLTIP)
+    assert shown["mode"] == "rich"
+    assert shown["bold"] == 1, shown
+    assert "<b>" not in shown["text"], "the markup reached the screen as source"
+    assert "Grade: A" in shown["text"]
+    assert "Excellent" in shown["text"]
+
+
+def test_the_real_voting_tooltip_renders_its_spans(page) -> None:
+    """The builder's own output, not a literal written for the test."""
+    from src.exchange.history_helpers import voting_cell_tooltip
+
+    entry = _voting_entry("bot-aaaa1111", BASE_TS, "BULLISH", 0.42)
+    tip = voting_cell_tooltip(entry)
+    assert "<span" in tip, "the builder emits no markup; the test is vacuous"
+    shown = _probe_tooltip(page, tip)
+    assert shown["mode"] == "rich"
+    assert "<span" not in shown["text"]
+    assert "bull" in shown["text"]
+    assert shown["tags"] >= 3, shown
+
+
+def test_a_plain_tooltip_keeps_its_newlines(page) -> None:
+    """A tooltip with no markup is drawn as text, line breaks intact."""
+    shown = _probe_tooltip(page, _PLAIN_TOOLTIP)
+    assert shown["mode"] == "plain"
+    assert shown["tags"] == 0
+    assert shown["text"] == _PLAIN_TOOLTIP
+
+
+def test_the_tooltip_control_source_text_would_be_visible(page) -> None:
+    """The control: a tooltip drawn as a ``title`` shows its own markup.
+
+    Without this, a renderer that stripped every tag would also pass the
+    rich-text test, and the operator would see nothing at all.
+    """
+    literal = json.loads(
+        page.js(
+            "JSON.stringify((function () {"
+            "var n = document.createElement('div');"
+            "n.setAttribute('title', " + json.dumps(_RICH_TOOLTIP) + ");"
+            "return {title: n.getAttribute('title'),"
+            " bold: n.querySelectorAll('b').length};"
+            "})())"
+        )
+    )
+    assert literal["bold"] == 0
+    assert "<b>" in literal["title"], "the control cannot show the defect"
+
+
+def test_a_tooltip_carrying_a_handler_cannot_run_it(page) -> None:
+    """Markup is sanitized into the tooltip; an event handler is dropped.
+
+    Tooltip text is built from gate and voting log records, so it is not
+    a literal the author controls.
+    """
+    hostile = "<b>ok</b><img src=x onerror='window.__pwned=1'>tail"
+    shown = _probe_tooltip(page, hostile)
+    assert shown["pwned"] == "undefined"
+    assert "onerror" not in shown["html"]
+    assert "<img" not in shown["html"]
+    assert shown["text"] == "oktail"
+    assert "<b>ok</b>" in shown["html"], "the allowed markup was stripped too"
+
+
+def test_a_cell_tooltip_shows_after_the_hover_delay(page) -> None:
+    """Hovering a cell puts its tooltip on screen, rendered.
+
+    The delay matches QToolTip's wake time, so the read below polls
+    rather than assuming the tooltip is already up.
+    """
+    import time
+
+    page.push(_model(_mixed_rows()))
+    _assert_not_vacuous(page.dom())
+    carried = page.js(
+        "(function () {"
+        "var td = document.querySelector("
+        '"#panel-rows tr td[data-col-key=grade]");'
+        'td.dispatchEvent(new MouseEvent("mouseover", '
+        "{bubbles: true, clientX: 20, clientY: 20}));"
+        'return td.getAttribute("data-cell-tooltip");'
+        "})()"
+    )
+    assert carried and "<b>" in carried, "the hovered cell carries no markup"
+    deadline = time.time() + 10.0
+    state = "hidden"
+    while state != "shown" and time.time() < deadline:
+        state = page.js(
+            'document.getElementById("panel-tooltip").getAttribute("data-state")'
+        )
+    assert state == "shown", "the tooltip never appeared on hover"
+    body = json.loads(
+        page.js(
+            "JSON.stringify((function () {"
+            "var n = document.getElementById('panel-tooltip');"
+            "return {mode: n.getAttribute('data-tooltip-mode'),"
+            " text: n.textContent, bold: n.querySelectorAll('b').length};"
+            "})())"
+        )
+    )
+    assert body["mode"] == "rich", body
+    assert body["bold"] >= 1, body
+    assert "<b>" not in body["text"]
