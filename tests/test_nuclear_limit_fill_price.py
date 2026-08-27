@@ -197,7 +197,7 @@ class TestTheDocstringGuaranteeIsTrue:
         # rather than the whole docstring. An earlier version forbade
         # the PHRASE "zero balances" anywhere, which a docstring
         # EXPLAINING them necessarily trips. Trap #5 in
-        # docs/audits/2026-08-07_traps_that_pass_a_naive_test.md.
+        # docs/engineering-notes/2026-08-07_traps_that_pass_a_naive_test.md.
         _blank = chr(10) + chr(10)
         _guarantee = doc.split("R28 FL", 1)[-1].split(_blank, 1)[0]
         assert "zero balances" in _guarantee, (

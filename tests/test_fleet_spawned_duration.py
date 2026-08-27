@@ -1,7 +1,7 @@
 """Pins the duration on `sim.06.007.postcondition.fleet_spawned`.
 
 Fifth of the six clean owners
-(docs/audits/2026-08-19_emitter_duration_classification.md).
+(docs/engineering-notes/2026-08-19_emitter_duration_classification.md).
 
 `_spawn_sim_fleet` holds THREE emitters and only `sim.06.007` claims the
 interval. `sim.06.008` and `sim.06.009` are invariants over persisted state and

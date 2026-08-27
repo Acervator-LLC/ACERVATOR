@@ -346,7 +346,7 @@ operator sign-off.
 ## 8.5  Prior-art research findings (added 2026-07-28 post-research)
 
 Full report at
-[docs/audits/2026-07-28_prior_art_multibase_coordination_research.md](docs/audits/2026-07-28_prior_art_multibase_coordination_research.md).
+[docs/engineering-notes/2026-07-28_prior_art_multibase_coordination_research.md](docs/engineering-notes/2026-07-28_prior_art_multibase_coordination_research.md).
 Bottom line: **Approach C is confirmed by external prior art.** Six
 concrete findings the design must fold in:
 

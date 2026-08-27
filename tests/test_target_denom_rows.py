@@ -1,7 +1,7 @@
 """v3.23.48 — pin tests for the Target-BTC / Target-ETH row
 composer helper introduced under Cascade #3 of the multi-base
 coordination plan
-(docs/audits/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md
+(docs/engineering-notes/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md
 § 6 cascade #3 + § 4 UI design).
 
 We exercise the pure formatting helper directly — a full Qt render

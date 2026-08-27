@@ -21,7 +21,7 @@ sidecar deleted -- the exact case the pin existed to catch:
 So its 7 green assertions were all `assert rc == 0` against a function
 returning 0 unconditionally for their input; they would have stayed
 green with the hook body deleted. Full classification:
-docs/audits/2026-08-05_C43_archived_pin_classification.md.
+docs/engineering-notes/2026-08-05_C43_archived_pin_classification.md.
 
 These tests import the hook as a module and redirect SIDECAR_PATH onto
 tmp_path. The archived pin mutated the real sidecar and restored it

@@ -4,7 +4,7 @@ Replaces the pre-2026-07-25 archived pin, which could not run: it
 imported six helpers from `tools.check_release_readiness`, and the tool
 now lives at `dev_harness.harness.check_release_readiness` and defines only
 one of them. Full classification of every archived failure is at
-docs/audits/2026-08-05_C43_archived_pin_classification.md.
+docs/engineering-notes/2026-08-05_C43_archived_pin_classification.md.
 
 What these pin, and why each exists:
 

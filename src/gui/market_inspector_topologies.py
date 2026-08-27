@@ -3,7 +3,7 @@ topology proposals + the preview modal.
 
 Reference specification (Diataxis: reference). Consumes proposals from
 `src/trading/topology_proposals.py`. Design doc:
-`docs/audits/2026-07-31_market_inspector_topology_proposals_design.md`.
+`docs/engineering-notes/2026-07-31_market_inspector_topology_proposals_design.md`.
 
 v3.23.68 — GUI cascade 2 of 3 for Market Inspector Piece 3.
 The Adopt button in the preview modal is **disabled** in this cascade

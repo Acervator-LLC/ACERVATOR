@@ -21,7 +21,7 @@ Sound pieces isolated from the retired sim engine:
     * ``_candle_to_ohlcv_row`` (ts→ms conversion) — inlined.
 
 Design doc:
-`docs/audits/2026-07-31_history_and_simulator_objectives_plan.md`.
+`docs/engineering-notes/2026-07-31_history_and_simulator_objectives_plan.md`.
 
 sadp: R28 SSS + R70 RCN
 """

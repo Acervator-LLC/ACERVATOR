@@ -1185,7 +1185,7 @@ class Signal:
     # fabricated duration is worse than a missing one because item 17
     # computes health from it. For those, None is the correct answer
     # and no call site should pass anything. See
-    # docs/audits/2026-08-19_emitter_duration_classification.md.
+    # docs/engineering-notes/2026-08-19_emitter_duration_classification.md.
     duration: Optional[float] = None
 
     def to_json(self, extra: Optional[dict] = None) -> str:

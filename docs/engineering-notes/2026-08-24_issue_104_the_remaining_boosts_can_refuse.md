@@ -3,7 +3,7 @@
 Date: 2026-08-24. Branch `issue-104-the-remaining-boosts-can-refuse`,
 from `040fc8e` (v3.26.0, gate green, 7,862 tests).
 
-Evidence: `docs/audits/2026-08-24_issue_104_evidence/`.
+Evidence: `docs/engineering-notes/2026-08-24_issue_104_evidence/`.
 The worked example this unit follows is issue #102, commit `6adbb0b`.
 
 ---

@@ -174,7 +174,7 @@ class BotConfig:
     # invites the next reader to trust it.
     #
     # Researched 2026-08-09, see
-    # docs/audits/2026-08-09_position_attribution_shared_account_research.md
+    # docs/engineering-notes/2026-08-09_position_attribution_shared_account_research.md
     max_adoptable_usd: float = 0.0
     scrumming_interval_pct: float = 1.0  # % market move between actions
 
@@ -447,7 +447,7 @@ class BotConfig:
     detonation_confidence_min: float = 0.75  # Fixed per operator Q4
 
     # v3.23.42 — Interoperability: capital reservation + operator hold-out
-    # (per docs/audits/2026-07-27_interop_usd_denom_settlement_audit_and_design.md
+    # (per docs/engineering-notes/2026-07-27_interop_usd_denom_settlement_audit_and_design.md
     # § 3.1 and § 3.4). ScrummingBot registers its target-balance-worth
     # of the target asset in the CapitalReservationRegistry so sibling
     # bots on the same base don't fight for the same coins.

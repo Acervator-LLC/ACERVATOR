@@ -12,7 +12,7 @@ This is v1 — built by one person. The battery is 39/39 but one person's perspe
 
 4. **Nothing is written to the repo by a test.** Tests verify behaviour in memory and route any file output to a temp dir (`tmp_path`/`tempfile`). Never write into the working tree, `~/.acervator`, or `~/.acervator_logs` from a test — `tests/conftest.py` guards this.
 
-5. **The changelog is the record.** Significant changes — new mechanisms, new battery results, new strategy comparisons — go in `CHANGELOG.md`, with the supporting measurement written up under `docs/audits/`.
+5. **The changelog is the record.** Significant changes — new mechanisms, new battery results, new strategy comparisons — go in `CHANGELOG.md`, with the supporting measurement written up under `docs/engineering-notes/`.
 
 ## What We're Looking For
 

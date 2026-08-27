@@ -2,7 +2,7 @@
 
 Also derives satoshi- and wei-denominated equivalents used across the
 GUI to give operators granular price awareness (per operator directive
-2026-07-27, see docs/audits/2026-07-27_interop_usd_denom_settlement_audit_and_design.md
+2026-07-27, see docs/engineering-notes/2026-07-27_interop_usd_denom_settlement_audit_and_design.md
 § 3.3).
 
 Sourcing:

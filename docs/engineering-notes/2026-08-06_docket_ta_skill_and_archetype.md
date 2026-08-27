@@ -164,5 +164,5 @@ series.
 ## 8. Reference
 
 - Commit `446084b` — the `_TA_CONFIDENCE_FLOOR` finding that prompted this
-- `docs/audits/2026-08-06_analysis_why_folds_do_not_fire.md` — the fold-gate measurement
-- `docs/audits/2026-08-06_defect_severity_triage.md` — C39d, C18, C44, C47 grades
+- `docs/engineering-notes/2026-08-06_analysis_why_folds_do_not_fire.md` — the fold-gate measurement
+- `docs/engineering-notes/2026-08-06_defect_severity_triage.md` — C39d, C18, C44, C47 grades

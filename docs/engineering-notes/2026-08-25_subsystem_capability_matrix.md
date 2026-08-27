@@ -164,9 +164,9 @@ actually recorded in this repository. No rule here is invented.
 
 | Key | The rule | Where it is recorded |
 | --- | --- | --- |
-| **R-VENUE** | "Simulator, Paper, and Live Scrumming bots are and must be the same with the exception of their data source. Live is the only one with bidirectional API access since it trades on the exchange." | `docs/audits/2026-08-25_the_venue_seam.md:10-14` (operator verbatim). Restated in code at `src/gui/simulator_tab/fleet/fleet_replay_controller.py:454`: "Live, Paper and Sim may differ only in where market data comes from." |
-| **R-VENUE-2** | "If the bot is not acting like a live trading bot with a different data feed, I do not want to hear about it, because any variation is a violation of the design spec." | `docs/audits/2026-08-25_the_venue_seam.md:16-18` |
-| **R-EXCHANGE** | Operator, 2026-08-22, verbatim: "ANYTHING that induces disagreement with exchange values is broken." Internal ledgers reconcile TO the venue and never override it. | `tests/test_drift_up_adopts_the_exchange.py:9` (operator verbatim). Also `tests/test_sim_bot_agrees_with_its_venue.py:9-11`, `src/trading/scrumming_bot.py:5085` and `:5350`, `src/core/instance_guard.py:5`, and `docs/audits/2026-07-25_bot_details_status_tab/REPORT.md:6-8` (operator, 2026-05-10). |
+| **R-VENUE** | "Simulator, Paper, and Live Scrumming bots are and must be the same with the exception of their data source. Live is the only one with bidirectional API access since it trades on the exchange." | `docs/engineering-notes/2026-08-25_the_venue_seam.md:10-14` (operator verbatim). Restated in code at `src/gui/simulator_tab/fleet/fleet_replay_controller.py:454`: "Live, Paper and Sim may differ only in where market data comes from." |
+| **R-VENUE-2** | "If the bot is not acting like a live trading bot with a different data feed, I do not want to hear about it, because any variation is a violation of the design spec." | `docs/engineering-notes/2026-08-25_the_venue_seam.md:16-18` |
+| **R-EXCHANGE** | Operator, 2026-08-22, verbatim: "ANYTHING that induces disagreement with exchange values is broken." Internal ledgers reconcile TO the venue and never override it. | `tests/test_drift_up_adopts_the_exchange.py:9` (operator verbatim). Also `tests/test_sim_bot_agrees_with_its_venue.py:9-11`, `src/trading/scrumming_bot.py:5085` and `:5350`, `src/core/instance_guard.py:5`, and `docs/engineering-notes/2026-07-25_bot_details_status_tab/REPORT.md:6-8` (operator, 2026-05-10). |
 | **R-TRANCHE** | "MERGE, DESPAWN and CLEAR are the only three things that collapse or remove a tranche." Despawn REMOVES; it does not delist. | `src/gui/bot_live_settings.py:977` and `:5677` (operator-facing text). Reasoning at `src/gui/bot_live_settings.py:1127` — "the operator's model has exactly three verbs - merge, despawn, clear". |
 | **R-INDICATOR** | "Indicator formulae are PUBLISHED. Each indicator has its own discrete maths and is never blended with another's." | `src/trading/ta_engine.py:14-16`, `src/trading/indicators/__init__.py:3-5`, `src/trading/ta_invariants.py:16`. Enforced by `tests/test_one_indicator_per_module.py`. |
 | **R-EMITTER** | Every emitter is tracked and declared. A key-name mismatch between producer and consumer is invisible to both sides; only a declared contract makes the gap visible. | `src/core/emit_contracts.py:1-45`. Register and work order at `docs/ITEM_10_EMITTER_NETWORK.md`, `docs/EMITTER_IDENTIFICATION.md`. |
@@ -174,8 +174,8 @@ actually recorded in this repository. No rule here is invented.
 | **R-TABS** | The default tab order is Trading, Market Inspector, Bot Swarm, Asset Charts, History, Simulator, Console. | `src/gui/main_window.py:5999-6002` (`CANONICAL_TAB_ORDER`), pinned by `tests/test_canonical_tab_order.py::test_reorder_produces_canonical_order`. |
 | **R-TOOLTIP** | Mouse-over descriptions need a uniform size, Simplified Technical English, a ten-word limit, no missing tooltips, and a three-second delay. | Issue #53 (operator, 2026-08-21). Not yet recorded in code or docs. |
 | **R-ONE-INDICATOR-PER-MODULE** | One indicator per module; a module that grows a second indicator or reaches into another's maths fails. | `src/trading/ta_engine.py:18-19`, enforced by `tests/test_one_indicator_per_module.py`. |
-| **R-PRIVACY** | The privacy-mask registry covers exactly 19 fields in 5 groups. "Update spec + tests before changing this count." A privacy control must never fail open. | `src/core/privacy_mask_registry.py:5-28` and `:103-105`. Consequence stated at `docs/audits/2026-08-04_needed_fixes_list.md:1613`. |
-| **R-PAPER-7** | Paper Trader has seven stated requirements, beginning "Identical to the Trading tab in every way, bar a slightly different colour scheme". | `docs/audits/2026-08-05_paper_trader_concept_spec.md:15-25` |
+| **R-PRIVACY** | The privacy-mask registry covers exactly 19 fields in 5 groups. "Update spec + tests before changing this count." A privacy control must never fail open. | `src/core/privacy_mask_registry.py:5-28` and `:103-105`. Consequence stated at `docs/engineering-notes/2026-08-04_needed_fixes_list.md:1613`. |
+| **R-PAPER-7** | Paper Trader has seven stated requirements, beginning "Identical to the Trading tab in every way, bar a slightly different colour scheme". | `docs/engineering-notes/2026-08-05_paper_trader_concept_spec.md:15-25` |
 | **R-NO-PIN-NO-RESULT** | A site with no readable result is deliberately NOT an emitter. The absence of an emitter is therefore not automatically a violation. | `docs/EMITTER_IDENTIFICATION.md:819-825` |
 
 ---
@@ -242,11 +242,11 @@ is not.
 
 4. **The `ExtractorBot` seam is not enumerated.** It is recorded as not release-ready and
    its rows are absent from the Trading subsystem, as they were absent from the venue-seam
-   audit (`docs/audits/2026-08-25_the_venue_seam.md:578-580`).
+   audit (`docs/engineering-notes/2026-08-25_the_venue_seam.md:578-580`).
 
 5. **`src/stocks/` is out of scope.** It is a separate `BrokerBase` hierarchy, never
    imported, with its own unrelated meaning of the word "paper"
-   (`docs/audits/2026-08-25_the_venue_seam.md:585-586`).
+   (`docs/engineering-notes/2026-08-25_the_venue_seam.md:585-586`).
 
 6. **Timing, ordering and concurrency were not compared** between venues beyond what the
    venue-seam audit already recorded.
@@ -297,7 +297,7 @@ report a failure — it is not a reader stuck on green. It also produced 8,409 p
 is not a reader stuck on red. Both directions are demonstrated by the same run.
 
 **A caution the suite does not remove.** A green suite is not a clean codebase.
-`docs/audits/2026-08-24_archetype_census.md` measured **165 of 651 source files failing
+`docs/engineering-notes/2026-08-24_archetype_census.md` measured **165 of 651 source files failing
 their archetype with 1,075 high-severity findings**, while the release gate reported
 `[OK] Release-ready`. The gate runs the test suite and then points the audit tool at three
 tiny sample files, never at `src/`. "The suite passes" and "the code is sound" are
@@ -601,22 +601,22 @@ the emitter to go red.
 | ID | Function | Built | Works | Code | Spec | Tests | Ev |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `TRADING/bot-controls/new-bot-button` | "+ New Bot" on each exchange panel | BUILT | WORKING | `main_window.py:2955-2959`, handler `:9631` | `main_window.py:2913-2919` | `tests/test_extractor_requires_parent.py` | [S] |
-| `TRADING/bot-controls/creation-wizard` | The window that walks you through making a bot | BUILT | WORKING | `bot_wizard.py:1780`, pages `:96`, `:261`, `:325`, `:541`, `:1599`, `:1662` | `docs/audits/2026-07-26_wizard_3rd_panel_parity_plan.md:1` | `tests/test_bot_wizard_accessibility.py::TestBotCreationWizard::test_wizard_builds_every_page` | [T] |
+| `TRADING/bot-controls/creation-wizard` | The window that walks you through making a bot | BUILT | WORKING | `bot_wizard.py:1780`, pages `:96`, `:261`, `:325`, `:541`, `:1599`, `:1662` | `docs/engineering-notes/2026-07-26_wizard_3rd_panel_parity_plan.md:1` | `tests/test_bot_wizard_accessibility.py::TestBotCreationWizard::test_wizard_builds_every_page` | [T] |
 | `TRADING/bot-controls/command-bar` | Start, Pause, Stop, Restart and Delete, with a confirmation | BUILT | WORKING | `main_window.py:3084-3093`, `:3156`, pin `:3234`, `:9013`, confirm `:9161-9199` | `main_window.py:3179-3243` | `tests/test_exchange_tab_emitters.py::test_a_command_reaches_the_table_the_operator_chose` | [M] |
 | `TRADING/bot-controls/fire-button` | The per-row Fire button, and its glow when armed | BUILT | UNVERIFIED | `main_window.py:2366-2396`, `:2615`, `:8898`, glow `:6654`, `:6677` | `docs/harness_archive/ACERVATOR_HOP5.md:6350` | **NO TEST** | [S] |
 | `TRADING/bot-controls/buy-confirmation-prompt` | The Yes / No / Skip box before an overshooting buy | PARTIAL | **BROKEN** — zero call sites | `buy_confirmation_dialog.py:49`, `:92`, `:259`, `:176`; constructed `main_window.py:4629-4630`; **caller: none** | `buy_confirmation_dialog.py:8-14` | NO TEST | [S] |
-| `TRADING/bot-controls/start-all-bots` | Start All, Pause All and Stop All for the whole fleet | **ABSENT** | **BROKEN** — dead code, zero callers | `main_window.py:9200`; `start_all_progress_dialog.py:29` | removal recorded at `docs/harness_archive/ACERVATOR_HOP5.md:6732`; a later doc still describes clicking it at `docs/audits/2026-08-04_needed_fixes_list.md:1750` | `tests/test_start_all_progress_events.py::test_begin_event_reaches_the_signal` (dialog only) | [S] |
+| `TRADING/bot-controls/start-all-bots` | Start All, Pause All and Stop All for the whole fleet | **ABSENT** | **BROKEN** — dead code, zero callers | `main_window.py:9200`; `start_all_progress_dialog.py:29` | removal recorded at `docs/harness_archive/ACERVATOR_HOP5.md:6732`; a later doc still describes clicking it at `docs/engineering-notes/2026-08-04_needed_fixes_list.md:1750` | `tests/test_start_all_progress_events.py::test_begin_event_reaches_the_signal` (dialog only) | [S] |
 | `TRADING/bot-controls/trade-sound-cues` | Fire on a fill, coins on profit, a drip on a fold, beeps near firing | BUILT | UNVERIFIED | `main_window.py:8930`, `:8968`, dispatched `:7128` | `main_window.py:7110-7130` | NO TEST | [S] |
 
 #### `TRADING/bot-details`
 
 | ID | Function | Built | Works | Code | Spec | Tests | Ev |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `TRADING/bot-details/the-window` | The Detail button, Prev and Next, and Apply Changes | BUILT | WORKING | `main_window.py:8536`, `:2582`, `:2876`; `bot_live_settings.py:1366`, nav `:1606`, apply `:1798` | `docs/audits/2026-07-25_bot_details_status_tab/REPORT.md:3-8` | `tests/test_bot_live_settings_fold_row_admission.py::TestTheDialogOpens::test_no_exception_escapes_the_tab_builder` | [T] |
+| `TRADING/bot-details/the-window` | The Detail button, Prev and Next, and Apply Changes | BUILT | WORKING | `main_window.py:8536`, `:2582`, `:2876`; `bot_live_settings.py:1366`, nav `:1606`, apply `:1798` | `docs/engineering-notes/2026-07-25_bot_details_status_tab/REPORT.md:3-8` | `tests/test_bot_live_settings_fold_row_admission.py::TestTheDialogOpens::test_no_exception_escapes_the_tab_builder` | [T] |
 | `TRADING/bot-details/the-eight-pages` | Status, Settings, Fold Tranches, Stack Tranches, Bot Swarm, Market Inspector, Phantom Bots, Positions Held | BUILT | WORKING | `bot_live_settings.py:1461-1543` and the eight builders | `bot_live_settings.py:1468-1543` | `tests/test_stack_mode_visible.py::TestStackTranchesTab::test_tab_registered_for_all_scrumming_bots` | [T] |
 | `TRADING/bot-details/clear-fold-tranches` | Clear discards queued fold tranches after naming the consequence | BUILT | WORKING | `bot_live_settings.py:2298`, `:2407`, settle `:2873` | R-TRANCHE at `bot_live_settings.py:949-953`, `:977-978` | `tests/test_clear_fold_tranches.py::TestItDiscardsTheQueue::test_the_report_states_what_was_discarded` | [T] |
 | `TRADING/bot-details/despawn-timer-rows` | What the despawn timer would remove, before you arm it | BUILT | WORKING | `bot_live_settings.py:980`, `:994`, `:1034`, `:1107` | R-TRANCHE at `bot_live_settings.py:1123-1130` | `tests/test_despawn_window_is_usable.py::test_the_panel_adds_no_removal_button` | [T] |
-| `TRADING/bot-details/self-destruct` | The Danger Zone button that makes you type the word | BUILT | UNVERIFIED | `bot_live_settings.py:1895` | `docs/audits/2026-07-26_section6_danger_zone_self_destruct.md:1` | NO TEST | [S] |
+| `TRADING/bot-details/self-destruct` | The Danger Zone button that makes you type the word | BUILT | UNVERIFIED | `bot_live_settings.py:1895` | `docs/engineering-notes/2026-07-26_section6_danger_zone_self_destruct.md:1` | NO TEST | [S] |
 
 #### `TRADING/exchange-panels`
 
@@ -635,7 +635,7 @@ the emitter to go red.
 | ID | Function | Built | Works | Code | Spec | Tests | Ev |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `TRADING/header-stat-strip/spendable-strip` | Spendable, Realised, Locked, Mature and Exch | PARTIAL | UNVERIFIED — Realised and Mature always read blank | `main_window.py:962`, `:1101`, fed `:7017-7032` | `main_window.py:7000-7012` ("No P/L calculation. Realised / Mature pass as None") | NO TEST | [S] |
-| `TRADING/header-stat-strip/scrummed-total` | The Scrummed high-score card | BUILT | WORKING | `main_window.py:4741`, update `:6980` | `docs/audits/2026-08-06_docket_scrummed_folded_card_reliability.md:11-16` | `tests/test_ytd_scrum_fold_and_errors_reset.py::TestYtdScrumFoldAccumulation::test_sells_land_in_scrummed_buys_in_folded` | [T] |
+| `TRADING/header-stat-strip/scrummed-total` | The Scrummed high-score card | BUILT | WORKING | `main_window.py:4741`, update `:6980` | `docs/engineering-notes/2026-08-06_docket_scrummed_folded_card_reliability.md:11-16` | `tests/test_ytd_scrum_fold_and_errors_reset.py::TestYtdScrumFoldAccumulation::test_sells_land_in_scrummed_buys_in_folded` | [T] |
 | `TRADING/header-stat-strip/folded-total` | The Folded high-score card | BUILT | WORKING | `main_window.py:4746`, update `:6981` | `docs/harness_archive/DEVELOPMENT_CHRONICLE.md:13783-13787` | `tests/test_ytd_scrum_fold_and_errors_reset.py::TestYtdScrumFoldAccumulation::test_quote_to_usd_multiplier_applied` | [T] |
 | `TRADING/header-stat-strip/trades-and-bots` | The Trades and Bots cards | BUILT | UNVERIFIED | `main_window.py:4762`, `:4764`, update `:6987-6988` | `docs/harness_archive/DEVELOPMENT_CHRONICLE.md:14080-14081` | NO TEST | [S] |
 | `TRADING/header-stat-strip/errors-card` | The Errors card, and the log it opens | BUILT | UNVERIFIED | `main_window.py:4776`, `:4784-4787`, `:7482`, `:8209`, reset `:8303` | `main_window.py:4771-4777` | `tests/test_ytd_scrum_fold_and_errors_reset.py::TestErrorsCardAndResetSourceDiscipline::test_lifetime_qualifier_dropped_from_card_label` | [T] |
@@ -702,11 +702,11 @@ in the application with no tracked emitters at all**.
 
 | ID | Framing feature | Built | Works | Rule | Spec | Ev |
 | --- | --- | --- | --- | --- | --- | --- |
-| `MKT-INSPECTOR/market-scan` | The scan that pulls candidate markets from your exchanges | BUILT | **BROKEN** — the freshness line reports "No data yet" after a successful scan | **NON-COMPLIANT** | `docs/audits/2026-07-27_market_inspector_audit_and_design_proposal.md:205-211`, `:310` | [M] |
+| `MKT-INSPECTOR/market-scan` | The scan that pulls candidate markets from your exchanges | BUILT | **BROKEN** — the freshness line reports "No data yet" after a successful scan | **NON-COMPLIANT** | `docs/engineering-notes/2026-07-27_market_inspector_audit_and_design_proposal.md:205-211`, `:310` | [M] |
 | `MKT-INSPECTOR/htf-signals-table` | The table of candidate markets and how strong each entry is | PARTIAL | **BROKEN** — the top two strength rungs cannot be reached | **NON-COMPLIANT** | same doc, `:213-232`, `:306-307` | [M] |
 | `MKT-INSPECTOR/opposing-pairs-table` | The table of pairs that move against each other | BUILT | WORKING | COMPLIANT | same doc, `:234-247` | [T] |
 | `MKT-INSPECTOR/market-picture-panel` | The coloured picture of the market universe on the left | **ABSENT** | **BROKEN** | **NON-COMPLIANT** | same doc, `:302-305` ("retained, operators liked it") | [S] |
-| `MKT-INSPECTOR/topology-proposals` | The suggested multi-bot setups on the right | BUILT | WORKING | **NON-COMPLIANT** — the momentum-funnel type is dead and two controls are missing | `docs/audits/2026-07-31_market_inspector_topology_proposals_design.md:194-226` | [T] |
+| `MKT-INSPECTOR/topology-proposals` | The suggested multi-bot setups on the right | BUILT | WORKING | **NON-COMPLIANT** — the momentum-funnel type is dead and two controls are missing | `docs/engineering-notes/2026-07-31_market_inspector_topology_proposals_design.md:194-226` | [T] |
 | `MKT-INSPECTOR/adopt-and-push` | Turning a proposal into real bots, or pushing it into the Simulator | BUILT | WORKING | **NON-COMPLIANT** — Bot Swarm is never told an adoption happened | same doc, `:175-186`, `:334-336` | [T] |
 | `MKT-INSPECTOR/emitter-network` | The tab's tracked emitters | **ABSENT** | **BROKEN** | **NON-COMPLIANT** | issue #18 ("+ emitters") | [M] |
 
@@ -787,7 +787,7 @@ name. **Of the tree's 78 emitters, this tab owns 0.**
 | `MKT-INSPECTOR/adopt-and-push/warns-about-existing-wires` | Adopt lists the wire rates it will change first | BUILT | WORKING | `main_window.py:7884-7919` | operator directive quoted at `main_window.py:7845-7861` | `tests/test_c06c_topology_adopt_transaction.py::TestAdoptAppliesTheWholeTopology::test_the_change_is_disclosed_before_it_is_applied` | [T] |
 | `MKT-INSPECTOR/adopt-and-push/undo-snapshot` | Adopt saves the old wiring to a file first | BUILT | WORKING | `main_window.py::_snapshot_wires_for_adopt:7930-7935` | `main_window.py:7926-7929` | `tests/test_c06c_topology_adopt_transaction.py::TestSnapshotAndOrphans::test_the_snapshot_captures_the_pre_adopt_wires` | [T] |
 | `MKT-INSPECTOR/adopt-and-push/adoption-announcement` | Bot Swarm is told an adoption happened | **ABSENT** | **BROKEN** — specified three times, emitted nowhere | no site; the handler emits only one wire topic per wire at `main_window.py:8051-8053` | topology design `:184-186`, `:270-272`, `:317` | NO TEST | [M] |
-| `MKT-INSPECTOR/adopt-and-push/push-into-simulator` | A proposal's shape can be pushed into a Simulator run | BUILT | WORKING | `market_inspector.py::current_topology_proposals:261-286`; wiring `main_window.py:5435-5441` | `docs/audits/2026-08-08_nuclear_signal_verification_plan.md:134` | `tests/test_nuclear_receives_topology_injections.py` | [T] |
+| `MKT-INSPECTOR/adopt-and-push/push-into-simulator` | A proposal's shape can be pushed into a Simulator run | BUILT | WORKING | `market_inspector.py::current_topology_proposals:261-286`; wiring `main_window.py:5435-5441` | `docs/engineering-notes/2026-08-08_nuclear_signal_verification_plan.md:134` | `tests/test_nuclear_receives_topology_injections.py` | [T] |
 | `MKT-INSPECTOR/adopt-and-push/push-into-paper` | The same push into a Paper run | **ABSENT** | **BROKEN** | no site — `main_window.py:5442-5448` | issue #18 | NO TEST | [S] |
 | `MKT-INSPECTOR/adopt-and-push/per-bot-view` | The Market Inspector page inside a single bot's window | BUILT | UNVERIFIED | `market_inspector.py::build_per_bot_view:451-557` | design doc `:313-320` | NO TEST | [S] |
 
@@ -815,7 +815,7 @@ first call and has no caller at all.
 | `BOT-SWARM/wires-by-hand` | Drag to connect, right-click to disconnect, set the rate | PARTIAL | **BROKEN** in the default view | **NON-COMPLIANT** | header prompt `bot_visualizer.py:1283-1285` | [T] |
 | `BOT-SWARM/quick-connect` | Tick sources, tick destinations, Connect or Disconnect | BUILT | WORKING | COMPLIANT | `tests/test_c05_quick_routing_mass_ops.py:59` | [T] |
 | `BOT-SWARM/wire-persistence` | Wires drawn last session come back, and a shortfall is reported | BUILT | WORKING | COMPLIANT | `bot_visualizer.py:1466-1472`, `:2976-2980` | [T] |
-| `BOT-SWARM/live-swarm-layer` | Status rows for your real running bots | **ABSENT** | **BROKEN** — raises on its first call | **NON-COMPLIANT** | `docs/audits/2026-08-08_nuclear_signal_verification_plan.md:127` | [M] |
+| `BOT-SWARM/live-swarm-layer` | Status rows for your real running bots | **ABSENT** | **BROKEN** — raises on its first call | **NON-COMPLIANT** | `docs/engineering-notes/2026-08-08_nuclear_signal_verification_plan.md:127` | [M] |
 | `BOT-SWARM/simulator-swarm-layer` | Status rows while a Simulator run is going | PARTIAL | **BROKEN** — rows never clear, Stop All misses them | **NON-COMPLIANT** | same plan, `:123-126` | [T] |
 | `BOT-SWARM/paper-swarm-layer` | Status rows for Paper bots | BUILT | **BROKEN** — Start says LIVE and trades nothing | **NON-COMPLIANT** | `main_window.py:5442-5448` | [M] |
 | `BOT-SWARM/emitter-network` | The tab's tracked emitters | PARTIAL | WORKING | **NON-COMPLIANT** — the Live layer has none | `docs/EMITTER_IDENTIFICATION.md:1624-1625` | [M] |
@@ -907,14 +907,14 @@ landing in the wrong layer is caught.
 
 | ID | Function | Built | Works | Code | Spec | Tests | Ev |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `BOT-SWARM/live-swarm-layer/status-rows` | A status row per running real-money bot | **ABSENT** | **BROKEN** — raises on the first call; zero callers | `bot_visualizer.py::register_live_run:2368-2393` raises at `:2389`; container removed at `:1371-1379` | `docs/audits/2026-08-08_nuclear_signal_verification_plan.md:127`; `bot_visualizer.py:2363-2366` | NO TEST | [M] |
+| `BOT-SWARM/live-swarm-layer/status-rows` | A status row per running real-money bot | **ABSENT** | **BROKEN** — raises on the first call; zero callers | `bot_visualizer.py::register_live_run:2368-2393` raises at `:2389`; container removed at `:1371-1379` | `docs/engineering-notes/2026-08-08_nuclear_signal_verification_plan.md:127`; `bot_visualizer.py:2363-2366` | NO TEST | [M] |
 | `BOT-SWARM/live-swarm-layer/registration-pin` | A tracked emitter for the live row, as Sim and Paper have | **ABSENT** | **BROKEN** | no site — the sim and paper registrations do emit, at `:2224` and `:2315` | register `docs/EMITTER_IDENTIFICATION.md:1624-1625` records no third | NO TEST | [M] |
 
 #### `BOT-SWARM/simulator-swarm-layer`
 
 | ID | Function | Built | Works | Code | Spec | Tests | Ev |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `BOT-SWARM/simulator-swarm-layer/rows-appear` | Rows appear while a run is going | BUILT | WORKING | `bot_visualizer.py::register_sim_run:2177-2236`, `::update_sim_run:2238-2250`; driver `simulator_tab/nuclear_mode_panel.py:636` | `docs/audits/2026-08-08_nuclear_signal_verification_plan.md:123-124` | `tests/test_swarm_registration_emitters.py::test_each_layer_registration_emits_once` | [T] |
+| `BOT-SWARM/simulator-swarm-layer/rows-appear` | Rows appear while a run is going | BUILT | WORKING | `bot_visualizer.py::register_sim_run:2177-2236`, `::update_sim_run:2238-2250`; driver `simulator_tab/nuclear_mode_panel.py:636` | `docs/engineering-notes/2026-08-08_nuclear_signal_verification_plan.md:123-124` | `tests/test_swarm_registration_emitters.py::test_each_layer_registration_emits_once` | [T] |
 | `BOT-SWARM/simulator-swarm-layer/rows-clear-on-stop` | Rows go away when the run stops | **ABSENT** | **BROKEN** — stop only restyles and writes "DONE" | `bot_visualizer.py::stop_sim_run:2252-2262`; the only remover is called from re-registration at `:2188` | same plan, `:125` (recorded as failing) | NO TEST | [S] |
 | `BOT-SWARM/simulator-swarm-layer/stop-all-button` | The Stop All button | BUILT | **BROKEN** — misses the run-driven rows | `bot_visualizer.py:1573-1578` | same plan, `:126` (recorded as failing) | NO TEST | [S] |
 | `BOT-SWARM/simulator-swarm-layer/add-sim-bot-row` | The "+ Add Sim Bot" button and its Run control | BUILT | **BROKEN** — starts no engine | `bot_visualizer.py::_create_sim_bot_row:1729-1849`, `::_toggle_run:1819-1842` | same plan, `:128` | NO TEST | [S] |
@@ -1251,7 +1251,7 @@ The operator named these eight himself. They are the subsystem.
 | `SIM/tablet-candle-playback` | Stone Tablet Candle PlayBack Window | BUILT | WORKING | **NON-COMPLIANT** — shares one widget with the VWAP window; no thirty-frame playback | issue #59 zone 3 | [M] |
 | `SIM/validation-mode` | Validation Mode | BUILT | WORKING | **NON-COMPLIANT** — 22 seam violations sit inside it | `simulator_tab.py:155-180`; issues #117-#127 | [M] |
 | `SIM/backtest-mode` | Backtest Mode | **ABSENT** | **BROKEN** | **NON-COMPLIANT** | `simulator_tab.py:163-171` | [M] |
-| `SIM/nuclear-mode` | Nuclear Mode | BUILT | WORKING | COMPLIANT | `docs/audits/2026-07-31_history_and_simulator_objectives_plan.md:76-94` | [M] |
+| `SIM/nuclear-mode` | Nuclear Mode | BUILT | WORKING | COMPLIANT | `docs/engineering-notes/2026-07-31_history_and_simulator_objectives_plan.md:76-94` | [M] |
 | `SIM/emitter-network` | Emitter Network — 40 emitters, standardized build, initial implementation | PARTIAL | WORKING | **NON-COMPLIANT** — 22 of 40 | `docs/ITEM_10_EMITTER_NETWORK.md` | [M] |
 
 **Eight framing features. 6 BUILT, 1 PARTIAL, 1 ABSENT. 6 WORKING, 1 BROKEN. 7
@@ -1326,7 +1326,7 @@ This is the level a work brief is written from. The operator does not need to re
 | `SIM/bot-list/bot-detail-dialog` | Clicking a row opens that bot's settings | BUILT | UNVERIFIED | `simulator_tab.py::_on_sim_bot_detail:676` | issue #59 zone 1 | NO TEST | [S] |
 | `SIM/bot-list/live-bots-unreachable` | A Simulator screen can never open a live bot | BUILT | WORKING | `simulator_tab.py:676-694` | `simulator_tab.py:679-682` | NO TEST | [S] |
 | `SIM/bot-list/fire-button-disabled` | Fire is greyed out on every Simulator row | BUILT | WORKING | `simulator_tab.py::_disable_fire_buttons:700`, called `:924` | `simulator_tab.py:653-663` | NO TEST | [S] |
-| `SIM/bot-list/load-live-fleet` | The "Load live fleet" button | BUILT | WORKING | `fleet_replay_panel.py:231-239`, `::_on_load_clicked:425` | `docs/audits/2026-07-31_history_and_simulator_objectives_plan.md:72` | `tests/test_feature1_fleet_load_emitters.py` | [M] |
+| `SIM/bot-list/load-live-fleet` | The "Load live fleet" button | BUILT | WORKING | `fleet_replay_panel.py:231-239`, `::_on_load_clicked:425` | `docs/engineering-notes/2026-07-31_history_and_simulator_objectives_plan.md:72` | `tests/test_feature1_fleet_load_emitters.py` | [M] |
 | `SIM/bot-list/fleet-is-bot-state-only` | Bots come only from the saved bot state, never invented | BUILT | WORKING | `fleet/bot_state_loader.py`; fallback `simulator_tab.py:872-921` | `simulator_tab.py:851-864` (operator: "claims its the live one but it does not match. Its fake.") | `tests/test_build_sim_bot_id_remap.py::TestTheIdIsThePersistedOne::test_every_sim_bot_carries_its_persisted_id` | [M] |
 | `SIM/bot-list/smart-wires-import` | The fleet's Smart Wires load with the bots | BUILT | WORKING | `fleet_replay_panel.py:151-153` | `nuclear_mode_panel.py:375-378` | `tests/test_build_sim_smart_wires.py::TestTheWiresActuallyRoute::test_a_source_bot_resolves_its_outgoing_wire` | [M] |
 | `SIM/bot-list/spawn-drift-report` | The log says what changed since the last Load | BUILT | WORKING | `fleet_replay_panel.py:616-640` | `fleet_replay_panel.py:600-604` | `tests/test_sim_spawn_drift.py::test_changed_live_source_is_detected` | [M] |
@@ -1340,7 +1340,7 @@ This is the level a work brief is written from. The operator does not need to re
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `SIM/ta-voting-panel/is-the-trading-tabs-panel` | It is the Trading tab's panel, not a copy | BUILT | WORKING | `simulator_tab.py:376` mounts `indicator_panel.py::IndicatorVotingPanel` | `simulator_tab.py:363-375` | NO TEST | [S] |
 | `SIM/ta-voting-panel/candle-count-matches-live` | It sees the same history Live sees | **BROKEN** | **BROKEN** — 300 candles against Live's 100 | `indicator_panel.py:898`, `:1406` | issue #119 (seam H1) | NO TEST | [S] |
-| `SIM/ta-voting-panel/gate-lights` | Ten labelled gate lights per bot | BUILT | WORKING | `fleet/sim_visuals.py:360`, orders `:168-199`, paint `:498-552` | `docs/audits/2026-07-31_history_and_simulator_objectives_plan.md:74` | `tests/test_sim_chart_marker_anchoring.py::test_clear_gates_still_clears_the_blockers` | [M] |
+| `SIM/ta-voting-panel/gate-lights` | Ten labelled gate lights per bot | BUILT | WORKING | `fleet/sim_visuals.py:360`, orders `:168-199`, paint `:498-552` | `docs/engineering-notes/2026-07-31_history_and_simulator_objectives_plan.md:74` | `tests/test_sim_chart_marker_anchoring.py::test_clear_gates_still_clears_the_blockers` | [M] |
 | `SIM/ta-voting-panel/gate-status-pane` | The Gate Status pane, bottom right | BUILT | WORKING | `simulator_tab.py:596-618`; owner `fleet_replay_panel.py:129-146` | `fleet_replay_panel.py:117-121` | `tests/test_sim_chart_marker_anchoring.py::test_ls_led_is_cleared` | [M] |
 | `SIM/ta-voting-panel/expand-button` | The Expand button on each half of the panel | BUILT | WORKING | `simulator_tab.py:426-437`; `sim_visuals.py:43` | `NO RECORDED SPEC` | `tests/test_sim_visuals_expand_reentrancy.py` | [M] |
 
@@ -1369,7 +1369,7 @@ This is the level a work brief is written from. The operator does not need to re
 
 | ID | Function | Built | Works | Code | Spec | Tests | Ev |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `SIM/validation-mode/start-replay` | The "Start Replay" button | BUILT | WORKING | `fleet_replay_panel.py:321-327`, `::_on_start_clicked:1229` | `docs/audits/2026-07-31_history_and_simulator_objectives_plan.md:73` | `tests/test_a_simulator_replay_fires_a_trade.py::TestASimulatorReplayFiresATrade::test_the_replay_actually_played_candles` | [M] |
+| `SIM/validation-mode/start-replay` | The "Start Replay" button | BUILT | WORKING | `fleet_replay_panel.py:321-327`, `::_on_start_clicked:1229` | `docs/engineering-notes/2026-07-31_history_and_simulator_objectives_plan.md:73` | `tests/test_a_simulator_replay_fires_a_trade.py::TestASimulatorReplayFiresATrade::test_the_replay_actually_played_candles` | [M] |
 | `SIM/validation-mode/stop-replay` | The Stop button | BUILT | WORKING | `fleet_replay_panel.py:328-336`, `::_on_stop_clicked:2165` | `fleet_replay_panel.py:330-333` | `tests/test_fleet_replay_panel_state_machine.py::TestStopReportsFailure::test_the_happy_path_still_requests_stop` | [M] |
 | `SIM/validation-mode/reset` | The Reset button, which asks before discarding a run | BUILT | WORKING | `fleet_replay_panel.py:252-256`, `::_confirm_reset:902` | `fleet_replay_panel.py:196-201` | `tests/test_fleet_replay_panel_state_machine.py::TestResetConfirmsWhenARunIsInFlight::test_it_asks_before_discarding_a_running_replay` | [M] |
 | `SIM/validation-mode/start-refuses-a-second-run` | Start refuses while a replay is running, and says why | BUILT | WORKING | `fleet_replay_panel.py:1234-1247`, `:860`, `::_status_error:847` | `fleet_replay_panel.py:1230-1243` | `tests/test_fleet_replay_panel_state_machine.py::TestStartIsNotReentrant::test_a_second_start_while_running_is_refused` | [M] |
@@ -1381,7 +1381,7 @@ This is the level a work brief is written from. The operator does not need to re
 | `SIM/validation-mode/wallet-seed` | The wallet is seeded from the fleet's own targets | BUILT | WORKING | `fleet_replay_controller.py:878-936`, `:995` | seam group H | `tests/test_lotless_sim_bots_open_with_a_locked_side.py::TestFleetSizeStopsMattering::test_the_wallet_does_not_leave_the_last_bot_short` | [M] |
 | `SIM/validation-mode/fee-matches-the-venue` | A market order is charged the taker rate | **BROKEN** | **BROKEN** — charged the maker rate | `tablet_backend.py` fee path | issue #121 (seam F1) | NO TEST | [S] |
 | `SIM/validation-mode/replay-progress` | Candles, percent, trades, exceptions, rate and time left | BUILT | WORKING | `fleet_replay_panel.py:311-316`, `::_refresh_progress:2196` | `fleet_replay_panel.py:2205-2213` | `tests/test_a_simulator_replay_fires_a_trade.py::TestASimulatorReplayFiresATrade::test_the_replay_actually_played_candles` | [M] |
-| `SIM/validation-mode/parity-report` | The simulator-against-live trade comparison | BUILT | WORKING | `fleet_replay_panel.py::_run_parity_comparison:2286`; `src/trading/stone_tablets/parity_harness.py::compare_trades` | `docs/audits/2026-07-31_history_and_simulator_objectives_plan.md:74` | `tests/test_fleet_replay_panel_state_machine.py::test_the_panel_measures_parity_against_the_tape_s_own_fills` | [M] |
+| `SIM/validation-mode/parity-report` | The simulator-against-live trade comparison | BUILT | WORKING | `fleet_replay_panel.py::_run_parity_comparison:2286`; `src/trading/stone_tablets/parity_harness.py::compare_trades` | `docs/engineering-notes/2026-07-31_history_and_simulator_objectives_plan.md:74` | `tests/test_fleet_replay_panel_state_machine.py::test_the_panel_measures_parity_against_the_tape_s_own_fills` | [M] |
 | `SIM/validation-mode/parity-skipped-warning` | "This run is synthetic and is NOT comparable to live" | BUILT | WORKING | `fleet_replay_panel.py::_note_parity_state:2179` | `fleet_replay_panel.py:2180-2185` | `tests/test_fleet_replay_panel_state_machine.py::TestParitySkipIsReported::test_the_status_names_it_when_ytd_is_empty` | [M] |
 | `SIM/validation-mode/soft-start-cap` | The soft-start date cap announced in the log | BUILT | WORKING | `fleet_replay_panel.py::_compute_soft_start:1166`, applied `:1305-1315` | `fleet_replay_panel.py:1303-1309` | NO TEST | [S] |
 | `SIM/validation-mode/full-evaluation-toggle` | The "Full evaluation" checkbox | BUILT | UNVERIFIED | `fleet_replay_panel.py:271-283` | `fleet_replay_panel.py:258-269` | NO TEST | [S] |
@@ -1403,20 +1403,20 @@ This is the level a work brief is written from. The operator does not need to re
 
 | ID | Function | Built | Works | Code | Spec | Tests | Ev |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `SIM/nuclear-mode/panel` | The Nuclear Mode page | BUILT | WORKING | `nuclear_mode_panel.py:99`; page 1 of `simulator_tab.py:307` | `docs/audits/2026-07-31_history_and_simulator_objectives_plan.md:76-94` | `tests/test_nuclear_panel_drives_v2.py::TestThePanelStillBuilds::test_it_constructs_headlessly` | [M] |
+| `SIM/nuclear-mode/panel` | The Nuclear Mode page | BUILT | WORKING | `nuclear_mode_panel.py:99`; page 1 of `simulator_tab.py:307` | `docs/engineering-notes/2026-07-31_history_and_simulator_objectives_plan.md:76-94` | `tests/test_nuclear_panel_drives_v2.py::TestThePanelStillBuilds::test_it_constructs_headlessly` | [M] |
 | `SIM/nuclear-mode/runs-the-looped-controller` | It runs the looped fleet controller, not the old scout | BUILT | WORKING | `nuclear_mode_panel.py:48-50`, `:449`; `nuclear_fleet_controller.py:233` | `nuclear_mode_panel.py:4-8` | `tests/test_nuclear_panel_drives_v2.py::TestItConstructsTheFleetController::test_it_constructs_v2_not_v1` | [M] |
 | `SIM/nuclear-mode/old-scout-retired` | The old one-tape scout is gone from the live path | ABSENT | WORKING (retired on purpose) | `nuclear_controller.py:52` — zero importers outside the test tree | `nuclear_mode_panel.py:4-8`; seam row A3 | `tests/test_nuclear_panel_drives_v2.py::TestTheAsyncLifecycleIsHonoured::test_v1_start_is_not` | [M] |
 | `SIM/nuclear-mode/fleet-preview` | The fleet preview line and "Reload fleet" | BUILT | WORKING | `nuclear_mode_panel.py:185-198`, `::_rescan_cache:369` | `nuclear_mode_panel.py:375-378` | `tests/test_nuclear_panel_drives_v2.py::TestThePanelStillBuilds::test_it_reads_the_real_fleet` | [M] |
-| `SIM/nuclear-mode/cycle-controls` | The cycle-length and max-cycles spinners | BUILT | WORKING | `nuclear_mode_panel.py:223-240` | `docs/audits/2026-07-31_history_and_simulator_objectives_plan.md:87-89`; cycle length has `NO RECORDED SPEC` | NO TEST | [S] |
+| `SIM/nuclear-mode/cycle-controls` | The cycle-length and max-cycles spinners | BUILT | WORKING | `nuclear_mode_panel.py:223-240` | `docs/engineering-notes/2026-07-31_history_and_simulator_objectives_plan.md:87-89`; cycle length has `NO RECORDED SPEC` | NO TEST | [S] |
 | `SIM/nuclear-mode/market-noise` | "Vary market structure per cycle" | BUILT | WORKING | `nuclear_mode_panel.py:242-251`; `nuclear_fleet_controller.py:548` | `simulator_tab.py:176-180` | `tests/test_nuclear_cycle_noise.py::TestTheInstrumentWorks::test_the_amplitude_is_in_the_declared_band` | [M] |
 | `SIM/nuclear-mode/never-writes-the-tablets` | Nuclear never modifies the Stone Tablets | BUILT | WORKING | `nuclear_fleet_controller.py:548` (noise applied to a copy) | `nuclear_mode_panel.py:246-250` | `tests/test_nuclear_cycle_noise.py::TestTheStoneTabletsAreNeverWrittenOver` | [M] |
-| `SIM/nuclear-mode/load-oscillation` | "Oscillate system load" | BUILT | WORKING | `nuclear_mode_panel.py:252-263`; `nuclear_fleet_controller.py:418-420` | `docs/audits/2026-07-31_history_and_simulator_objectives_plan.md:88-89` | `tests/test_nuclear_fleet_controller.py::test_sensor_matches_what_the_oscillator_actually_calls` | [M] |
+| `SIM/nuclear-mode/load-oscillation` | "Oscillate system load" | BUILT | WORKING | `nuclear_mode_panel.py:252-263`; `nuclear_fleet_controller.py:418-420` | `docs/engineering-notes/2026-07-31_history_and_simulator_objectives_plan.md:88-89` | `tests/test_nuclear_fleet_controller.py::test_sensor_matches_what_the_oscillator_actually_calls` | [M] |
 | `SIM/nuclear-mode/start-and-stop` | The Start Scout and Stop buttons | BUILT | WORKING | `nuclear_mode_panel.py:266-289`, `::_on_start_clicked:419`, `::_on_stop_clicked:526` | `nuclear_mode_panel.py:422-425`; `nuclear_fleet_controller.py:447` | `tests/test_nuclear_stop_is_responsive.py::TestTheLifecycleApiThePanelCalls::test_stop_and_request_stop_agree` | [M] |
 | `SIM/nuclear-mode/live-status` | The sixteen-field live status readout | BUILT | WORKING | `nuclear_mode_panel.py:56-83`, `::_refresh_status:715` | `nuclear_mode_panel.py:296-305` | `tests/test_nuclear_panel_drives_v2.py::TestTheStatusRowsActuallyGetFilled::test_every_declared_row_is_populated` | [M] |
 | `SIM/nuclear-mode/drives-the-swarm` | Nuclear drives the Simulator Bot Swarm rows | BUILT | WORKING | `simulator_tab.py::set_swarm_getter:1079`; wired `main_window.py:5417-5418` | `simulator_tab.py:1082-1084` | `tests/test_nuclear_drives_the_sim_swarm.py::TestTheSeamIsActuallyWired` | [M] |
 | `SIM/nuclear-mode/topology-injection` | Nuclear stresses the Market Inspector's proposals | BUILT | WORKING | `simulator_tab.py::set_topology_getter:1106`; wired `main_window.py:5435` | `simulator_tab.py:1109-1112` | `tests/test_nuclear_receives_topology_injections.py::TestTheStressPathNeverAdoptsLiveBots` | [M] |
 | `SIM/nuclear-mode/coverage-report` | The feature-coverage report at the end of a soak | BUILT | WORKING | `nuclear_fleet_controller.py:422-427`, `:1123-1133`; `src/trading/nuclear_verification.py` | `nuclear_verification.py:3-8` | NO TEST | [S] |
-| `SIM/nuclear-mode/cache-helper` | The helper the panel told you to run when the cache was empty | **ABSENT** | **BROKEN** — resolves a path that does not exist; zero importers | `populate_nuclear_cache.py:57-63` | `docs/audits/2026-08-04_needed_fixes_list.md:910-917` | NO TEST | [M] |
+| `SIM/nuclear-mode/cache-helper` | The helper the panel told you to run when the cache was empty | **ABSENT** | **BROKEN** — resolves a path that does not exist; zero importers | `populate_nuclear_cache.py:57-63` | `docs/engineering-notes/2026-08-04_needed_fixes_list.md:910-917` | NO TEST | [M] |
 
 #### `SIM/emitter-network` — Emitter Network
 
@@ -1427,7 +1427,7 @@ This is the level a work brief is written from. The operator does not need to re
 | `SIM/emitter-network/count-matches-the-spec` | The network holds the number the spec names | **PARTIAL** | **BROKEN** — 22 against a specified 40 | measured across `src/` | `docs/ITEM_10_EMITTER_NETWORK.md` | `tools/emitter_registry_check.py` (whole-tree, not per-subsystem) | [M] |
 | `SIM/emitter-network/every-pin-has-a-row` | Every emitter is in the register and every register row has an emitter | BUILT | WORKING | `tools/emitter_registry_check.py:137` | `docs/EMITTER_IDENTIFICATION.md:11-18` | `python -m tools.emitter_registry_check` — 78 and 78, controls OK, exit 0 | [M] |
 | `SIM/emitter-network/pins-carry-a-prediction` | Each emitter reports its prediction beside what it observed | BUILT | WORKING | `src/core/signal_contract.py:2218` | R-PREDICTION | `tests/test_emitter_eviction_and_digest.py` | [T] |
-| `SIM/emitter-network/operation-duration` | Each emitter records how long its operation took | **PARTIAL** | **BROKEN** — 0 of 40 carry one | item 10.3 phase 2, not done | `docs/audits/2026-08-19_emitter_duration_classification.md` | NO TEST | [S] |
+| `SIM/emitter-network/operation-duration` | Each emitter records how long its operation took | **PARTIAL** | **BROKEN** — 0 of 40 carry one | item 10.3 phase 2, not done | `docs/engineering-notes/2026-08-19_emitter_duration_classification.md` | NO TEST | [S] |
 | `SIM/emitter-network/every-emitter-proved` | Each emitter is verified against the spec | **ABSENT** | **BROKEN** — item 10.4 not done | no site | `docs/ITEM_10_EMITTER_NETWORK.md` row 10.4 | NO TEST | [S] |
 
 ### Simulator measurements and controls
@@ -1688,7 +1688,7 @@ before any code is written.
 | ID | Feature | Built | Works | Rule | Code | Spec | Tests | Ev |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `PROOF-OF-ACCUMULATION/bot-identity` | A bot proves which bot it is before it competes | ABSENT | ABSENT | UNKNOWN | none | `NO RECORDED SPEC` | NO TEST | [M] |
-| `PROOF-OF-ACCUMULATION/tamper-proof-trade-log` | A trade record nobody can alter after the fact | ABSENT | ABSENT | UNKNOWN | none | `docs/audits/2026-08-04_needed_fixes_list.md:430` | NO TEST | [S] |
+| `PROOF-OF-ACCUMULATION/tamper-proof-trade-log` | A trade record nobody can alter after the fact | ABSENT | ABSENT | UNKNOWN | none | `docs/engineering-notes/2026-08-04_needed_fixes_list.md:430` | NO TEST | [S] |
 | `PROOF-OF-ACCUMULATION/head-to-head-match` | Bots compete on accumulation and one is ranked first | ABSENT | ABSENT | UNKNOWN | none | `NO RECORDED SPEC` | NO TEST | [M] |
 | `PROOF-OF-ACCUMULATION/season-schedule` | Competition runs in numbered seasons | ABSENT | ABSENT | UNKNOWN | none | `NO RECORDED SPEC` | NO TEST | [M] |
 | `PROOF-OF-ACCUMULATION/token-award` | A competition earns a token, against a supply cap | ABSENT | ABSENT | UNKNOWN | none | `NO RECORDED SPEC` | NO TEST | [M] |

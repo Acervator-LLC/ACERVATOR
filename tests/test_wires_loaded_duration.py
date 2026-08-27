@@ -1,7 +1,7 @@
 """Pins the duration on `fleet.03.004.postcondition.wires_loaded`.
 
 Fourth of the six clean owners
-(docs/audits/2026-08-19_emitter_duration_classification.md). Sole emitter in
+(docs/engineering-notes/2026-08-19_emitter_duration_classification.md). Sole emitter in
 `load_smart_wires_from_state`, so no start marker and no sibling to fence off.
 
 THE MALFORMED BRANCH IS NOT AN OMISSION. When `smart_wires` is not a list the

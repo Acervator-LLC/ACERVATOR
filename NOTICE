@@ -94,7 +94,8 @@ The SADP layer comprises (and is freely usable for any purpose):
   * SKILL.md packaging at sadp/SKILL.md (Anthropic Agent Skills
     open standard).
   * All tooling and supporting code in: tools/, .claude/hooks/,
-    sadp/, tests/, dev_harness/, docs/audits/, docs/tools/.
+    sadp/, tests/, dev_harness/, docs/audits/,
+    docs/engineering-notes/, docs/harness_fixtures/, docs/tools/.
 
 NOT a license to the patent-flagged Acervator trading inventions
 -----------------------------------------------------------------

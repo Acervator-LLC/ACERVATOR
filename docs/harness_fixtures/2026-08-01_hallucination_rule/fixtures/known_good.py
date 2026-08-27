@@ -8,7 +8,7 @@ Only references paths / modules that actually exist:
 from __future__ import annotations
 
 # Real paths — see src/trading/topology_proposals.py for the schema.
-# Docs live at docs/audits/2026-07-31_market_inspector_topology_proposals_design.md.
+# Docs live at docs/engineering-notes/2026-07-31_market_inspector_topology_proposals_design.md.
 
 from src.trading.topology_proposals import make_proposal
 

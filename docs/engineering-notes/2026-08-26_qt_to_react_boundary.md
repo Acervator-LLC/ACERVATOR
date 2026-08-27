@@ -152,7 +152,7 @@ This audit did not re-do that census. It checked whether the census still holds.
 
 > **Note — that file does not exist in this repository.** It is **untracked in git**. The only
 > copy sits in the operator's working tree, at the absolute path
-> `C:/Users/brown/OneDrive/Documents/acervator_session27_CLOSE_hop5_v3_25_8/docs/audits/2026-08-25_subsystem_capability_matrix.md`.
+> `C:/Users/brown/OneDrive/Documents/acervator_session27_CLOSE_hop5_v3_25_8/docs/engineering-notes/2026-08-25_subsystem_capability_matrix.md`.
 > It is in no commit, so it did not arrive in this clone, and it was read in place. This
 > report deliberately avoids writing it as a repository-relative path, because such a path
 > would not resolve for any other reader. **It should be committed.** An uncommitted

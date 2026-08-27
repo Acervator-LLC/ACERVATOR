@@ -18,7 +18,7 @@ WHY `None` AND NOT `0.0`. Measured 2026-08-19: 23 of the 40 emitters are
 instantaneous observations where a duration would be FABRICATED, and a
 fabricated duration is worse than a missing one because item 17 computes health
 from it. Zero reads as "instantaneous", which is a measurement; there was none.
-See docs/audits/2026-08-19_emitter_duration_classification.md.
+See docs/engineering-notes/2026-08-19_emitter_duration_classification.md.
 """
 
 from __future__ import annotations

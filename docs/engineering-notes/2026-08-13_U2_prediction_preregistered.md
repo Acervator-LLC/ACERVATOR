@@ -98,5 +98,5 @@ claimed them and the exchange did not hold them. The correction moves the
 record toward the venue, which is the truth. What it costs is the recorded
 cost basis attached to units that did not exist.
 
-Related: `docs/audits/2026-08-13_replay_findings_cold_read.md` for how the
+Related: `docs/engineering-notes/2026-08-13_replay_findings_cold_read.md` for how the
 ratchet was found, and the four instruments that failed to find it.

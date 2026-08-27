@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-28
 **Author:** Deep-research agent (Opus 4.7 1M context)
-**Consumer:** `docs/audits/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md`
+**Consumer:** `docs/engineering-notes/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md`
 **Question:** Does external prior art support Approach C (fix asset-keyed reservation + read-only cross-pair scout, defer dynamic routing) over Approach B (per-tick dynamic pair routing) for the Acervator scrumming bot?
 
 **Bottom line up front:** Approach C is well-supported. No prior art we found treats the specific Acervator problem (multiple persistent-inventory scrumming bots on the same base asset across different quote currencies on one exchange, with a USD-value invariant) — the closest academic analogue (Barzykin/Bergault/Guéant FX market-making) treats a related-but-not-identical problem. All DEX-pathfinder analogues (1inch, Paraswap, Uniswap Auto Router, CoW Swap) solve a **one-shot swap** problem, not a persistent-inventory routing problem, and rely on much heavier infrastructure than the user should build in one hop. Cross-margin/portfolio-margin systems (Coinbase Prime, Kraken, FTX) validate the asset-keyed reservation shape but operate at exchange-account level, not bot-process level.

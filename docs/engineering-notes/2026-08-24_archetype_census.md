@@ -151,7 +151,7 @@ tool.
 
 ### One control that came back yellow
 
-`docs/audits/2026-08-01_slop_rule/fixtures/known_bad.py` is named `known_bad`, and
+`tests/harness_fixtures/2026-08-01_slop_rule/fixtures/known_bad.py` is named `known_bad`, and
 it reports **`passed=True`**. I read it before reporting it. The slop rule does
 detect both defects the fixture's docstring declares (`SL001` at line 15, `SL002`
 at line 35), but it emits them at `medium` and `low`, and neither severity blocks.
@@ -229,7 +229,7 @@ account for **512**, and every one of them lives in a Markdown file.
 | high | file |
 |---|---|
 | 265 | `docs/harness_archive/ACERVATOR_HOP5.md` |
-| 62 | `docs/audits/2026-08-04_needed_fixes_list.md` |
+| 62 | `docs/engineering-notes/2026-08-04_needed_fixes_list.md` |
 | 47 | `src/core/mini_display.py` |
 | 30 | `src/trading/profit_fold.py` |
 | 29 | `ACERVATOR_HOP2.md` |
@@ -241,7 +241,7 @@ account for **512**, and every one of them lives in a Markdown file.
 | 18 | `src/stocks/broker_base.py` |
 | 17 | `tests/test_topology_proposals_gui.py` |
 | 16 | `tests/test_scrumming_capital_reservation.py` |
-| 16 | `docs/audits/2026-08-05_sim_nuclear_2point0_and_optimization_audit.md` |
+| 16 | `docs/engineering-notes/2026-08-05_sim_nuclear_2point0_and_optimization_audit.md` |
 | 14 | `src/gui/competition_tab.py` |
 
 ## Age of each finding
@@ -259,11 +259,11 @@ read the author date of the commit that last touched it.
 | file and line | rule | commit | date |
 |---|---|---|---|
 | `docs/EMITTER_IDENTIFICATION.md:1772` | `vale:write-good-so` | `3f2a76c` | 2026-08-24 |
-| `docs/audits/2026-08-23_issue_100_abstention_leaves_the_denominator.md:193` | `vale:write-good-so` | `8d37ca8` | 2026-08-24 |
-| `docs/audits/2026-08-23_issue_100_abstention_leaves_the_denominator.md:248` | `vale:write-good-so` | `8d37ca8` | 2026-08-24 |
-| `docs/audits/2026-08-23_issue_100_abstention_leaves_the_denominator.md:296` | `vale:write-good-so` | `8d37ca8` | 2026-08-24 |
-| `docs/audits/2026-08-24_issue_106_the_growth_cap_compounds.md:19` | `vale:write-good-so` | `d297206` | 2026-08-24 |
-| `docs/audits/2026-08-24_issue_104_the_remaining_boosts_can_refuse.md:85` | `vale:write-good-so` | `eb90f77` | 2026-08-24 |
+| `docs/engineering-notes/2026-08-23_issue_100_abstention_leaves_the_denominator.md:193` | `vale:write-good-so` | `8d37ca8` | 2026-08-24 |
+| `docs/engineering-notes/2026-08-23_issue_100_abstention_leaves_the_denominator.md:248` | `vale:write-good-so` | `8d37ca8` | 2026-08-24 |
+| `docs/engineering-notes/2026-08-23_issue_100_abstention_leaves_the_denominator.md:296` | `vale:write-good-so` | `8d37ca8` | 2026-08-24 |
+| `docs/engineering-notes/2026-08-24_issue_106_the_growth_cap_compounds.md:19` | `vale:write-good-so` | `d297206` | 2026-08-24 |
+| `docs/engineering-notes/2026-08-24_issue_104_the_remaining_boosts_can_refuse.md:85` | `vale:write-good-so` | `eb90f77` | 2026-08-24 |
 
 Zero of the six touch executable code. Zero affect behaviour.
 
@@ -613,39 +613,39 @@ PRE-EXISTING means every offending line dates to the initial upload.
 | `TESTNET_POA_VERIFY_REPORT.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
 | `docs/EMITTER_IDENTIFICATION.md` | 1 | vale:write-good-so x1 | 2026-08-24 | 2026-08-24 | RECENT |
 | `docs/audits/2026-07-24_gui_docs_archetypes/docs_fixtures/known_bad.md` | 1 | structure:DOC005 x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-07-25_bot_details_status_tab/REPORT.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-07-26_section4_hedge_rebalance.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-07-26_section8_extractor_pool_artillery.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-07-27_interop_usd_denom_settlement_audit_and_design.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-07-27_market_inspector_audit_and_design_proposal.md` | 3 | vale:write-good-thereis x2, vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-07-28_prior_art_multibase_coordination_research.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-04_full_codebase_defect_scan.md` | 7 | vale:write-good-so x6, vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-04_gate_log_stall_resolved.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-04_needed_fixes_list.md` | 62 | vale:write-good-so x41, vale:write-good-thereis x21 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-04_time_space_complexity_audit.md` | 3 | vale:write-good-thereis x2, vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-05_C01_save_state_merge_design.md` | 6 | vale:write-good-thereis x6 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-05_C01_simple_rule_design.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-05_C43_archived_pin_classification.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-05_docket_ohlcv_limit_since_defect.md` | 2 | vale:write-good-so x1, vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-05_paper_trader_concept_spec.md` | 3 | vale:write-good-so x2, vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-05_remediation_methodology.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-05_sim_nuclear_2point0_and_optimization_audit.md` | 16 | vale:write-good-so x13, vale:write-good-thereis x3 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-06_analysis_why_folds_do_not_fire.md` | 2 | vale:write-good-so x1, vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-06_defect_severity_triage.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-06_docket_ivp_regression_3_24_35_to_50.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-06_docket_scrummed_folded_card_reliability.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-06_docket_symbol_for_state_reload.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-06_docket_ta_skill_and_archetype.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-06_docket_target_balance_write_paths.md` | 2 | vale:write-good-so x2 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-06_investigation_ivp_blank_panel_verdict.md` | 2 | vale:write-good-thereis x2 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-06_measurement_tranche_compounding_fleet.md` | 2 | vale:write-good-so x2 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-06_tranche_lifecycle_audit_and_repair_plan.md` | 5 | vale:write-good-thereis x3, vale:write-good-so x2 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-09_cascade_series_validity_sweep.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-09_position_attribution_shared_account_research.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
-| `docs/audits/2026-08-23_issue_100_abstention_leaves_the_denominator.md` | 3 | vale:write-good-so x3 | 2026-08-24 | 2026-08-24 | RECENT |
-| `docs/audits/2026-08-24_issue_104_the_remaining_boosts_can_refuse.md` | 1 | vale:write-good-so x1 | 2026-08-24 | 2026-08-24 | RECENT |
-| `docs/audits/2026-08-24_issue_106_the_growth_cap_compounds.md` | 1 | vale:write-good-so x1 | 2026-08-24 | 2026-08-24 | RECENT |
+| `docs/engineering-notes/2026-07-25_bot_details_status_tab/REPORT.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-07-26_section4_hedge_rebalance.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-07-26_section8_extractor_pool_artillery.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-07-27_interop_usd_denom_settlement_audit_and_design.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-07-27_market_inspector_audit_and_design_proposal.md` | 3 | vale:write-good-thereis x2, vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-07-28_prior_art_multibase_coordination_research.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-04_full_codebase_defect_scan.md` | 7 | vale:write-good-so x6, vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-04_gate_log_stall_resolved.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-04_needed_fixes_list.md` | 62 | vale:write-good-so x41, vale:write-good-thereis x21 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-04_time_space_complexity_audit.md` | 3 | vale:write-good-thereis x2, vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-05_C01_save_state_merge_design.md` | 6 | vale:write-good-thereis x6 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-05_C01_simple_rule_design.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-05_C43_archived_pin_classification.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-05_docket_ohlcv_limit_since_defect.md` | 2 | vale:write-good-so x1, vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-05_paper_trader_concept_spec.md` | 3 | vale:write-good-so x2, vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-05_remediation_methodology.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-05_sim_nuclear_2point0_and_optimization_audit.md` | 16 | vale:write-good-so x13, vale:write-good-thereis x3 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-06_analysis_why_folds_do_not_fire.md` | 2 | vale:write-good-so x1, vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-06_defect_severity_triage.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-06_docket_ivp_regression_3_24_35_to_50.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-06_docket_scrummed_folded_card_reliability.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-06_docket_symbol_for_state_reload.md` | 1 | vale:write-good-so x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-06_docket_ta_skill_and_archetype.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-06_docket_target_balance_write_paths.md` | 2 | vale:write-good-so x2 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-06_investigation_ivp_blank_panel_verdict.md` | 2 | vale:write-good-thereis x2 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-06_measurement_tranche_compounding_fleet.md` | 2 | vale:write-good-so x2 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-06_tranche_lifecycle_audit_and_repair_plan.md` | 5 | vale:write-good-thereis x3, vale:write-good-so x2 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-09_cascade_series_validity_sweep.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-09_position_attribution_shared_account_research.md` | 1 | vale:write-good-thereis x1 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
+| `docs/engineering-notes/2026-08-23_issue_100_abstention_leaves_the_denominator.md` | 3 | vale:write-good-so x3 | 2026-08-24 | 2026-08-24 | RECENT |
+| `docs/engineering-notes/2026-08-24_issue_104_the_remaining_boosts_can_refuse.md` | 1 | vale:write-good-so x1 | 2026-08-24 | 2026-08-24 | RECENT |
+| `docs/engineering-notes/2026-08-24_issue_106_the_growth_cap_compounds.md` | 1 | vale:write-good-so x1 | 2026-08-24 | 2026-08-24 | RECENT |
 | `docs/harness_archive/ACERVATOR_HOP5.md` | 265 | structure:DOC005 x257, vale:write-good-so x8 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
 | `docs/harness_archive/DEVELOPMENT_CHRONICLE.md` | 20 | vale:write-good-so x16, vale:write-good-thereis x4 | 2026-08-18 | 2026-08-18 | PRE-EXISTING |
 

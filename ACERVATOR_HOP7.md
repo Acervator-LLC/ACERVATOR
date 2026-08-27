@@ -401,7 +401,8 @@ resolved.
 | every decision verbatim | the session transcripts, ~23 MB of grep-able JSONL, under `~/.claude/projects/<session>/` |
 | durable rulings, 55 entries | this repo's project `memory/`, indexed by `MEMORY.md` |
 | the law, 11 skills | `.claude/skills/` |
-| audits and raw evidence | `docs/audits/` |
+| engineering notes and raw evidence | `docs/engineering-notes/` |
+| archetype calibration fixtures | `docs/harness_fixtures/`, and the four `docs/audits/` directories that `dev_harness` path constants pin |
 | emitter register | `docs/EMITTER_IDENTIFICATION.md` + `tools/emitter_registry_check.py` |
 | promotion history, 56 entries | **deleted** under issue #67. Recover it from git: `git show 905c9b0:tools/.island_ledger.jsonl`. Git history is the record from here |
 

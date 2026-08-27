@@ -5,7 +5,7 @@ WHAT IS BEING PROVED
 ``HistoryTab``'s ``QTableWidget`` is now a ``HistoryWebTable``: React
 inside the Chromium PySide6 ships. Everything else in the tab is
 unchanged. This module drives the twenty-one History functions named in
-``docs/audits/2026-08-25_subsystem_capability_matrix.md`` (level two,
+``docs/engineering-notes/2026-08-25_subsystem_capability_matrix.md`` (level two,
 ``HISTORY/*``) and asserts each one still does what it did.
 
 DRIVEN, NOT INSPECTED. A control that exists is not a control that works.

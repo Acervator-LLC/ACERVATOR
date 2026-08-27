@@ -305,7 +305,7 @@ class TestHeadlessRender:
 
         Replacement, not relaxation, per M7 with operator acknowledgement
         recorded 2026-08-07 (see
-        docs/audits/2026-08-07_C09_pin_replacement_record.md). This
+        docs/engineering-notes/2026-08-07_C09_pin_replacement_record.md). This
         asserts STRICTLY MORE than the old pin: the original invariant
         survives verbatim as the first assertion, and the silence is
         withdrawn.

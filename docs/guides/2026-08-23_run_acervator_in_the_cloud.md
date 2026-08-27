@@ -79,7 +79,7 @@ product code holds no matches.
 Three findings deserve your attention.
 
 **You already know the problem, and nobody built the fix.** Your own design
-note at `docs/audits/2026-08-05_C01_save_state_merge_design.md:339`
+note at `docs/engineering-notes/2026-08-05_C01_save_state_merge_design.md:339`
 records the risk in plain words: "No single-instance guard." Line 381
 proposes the repair (an exclusive lock on `bot_state.lock`, and a modal
 warning in `main.py`). That repair does not exist anywhere in the code.
@@ -101,7 +101,7 @@ launch therefore erases the first copy's only sign of life.
 Each write replaces the file. The last writer wins.
 
 This matches what other trading platforms do. Your own research note at
-`docs/audits/2026-08-09_position_attribution_shared_account_research.md:76`
+`docs/engineering-notes/2026-08-09_position_attribution_shared_account_research.md:76`
 records that Freqtrade's answer to multiple instances is to partition
 the money, not to prevent the second instance. No framework surveyed
 prevents it.

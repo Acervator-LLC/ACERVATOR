@@ -18,7 +18,7 @@ does not modify the connector's rate limit. Purely advisory.
 
 sadp: R28 SSS + R70 RCN
 v3.23.40 — Initial implementation (per phantom-bot design proposal
-docs/audits/2026-07-27_phantom_bots_audit_and_design_proposal.md § 3.3).
+docs/engineering-notes/2026-07-27_phantom_bots_audit_and_design_proposal.md § 3.3).
 """
 
 from __future__ import annotations

@@ -19,7 +19,7 @@ Pure-Python BB + z-score math (no numpy).
 
 sadp: R28 SSS + R70 RCN
 v3.23.37 — Initial implementation (see design proposal
-docs/audits/2026-07-27_market_inspector_audit_and_design_proposal.md).
+docs/engineering-notes/2026-07-27_market_inspector_audit_and_design_proposal.md).
 """
 
 from __future__ import annotations

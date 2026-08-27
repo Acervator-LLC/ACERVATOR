@@ -2,7 +2,7 @@
 
 Operator approved 2026-08-09, after research into how the field solves
 shared-account attribution:
-docs/audits/2026-08-09_position_attribution_shared_account_research.md
+docs/engineering-notes/2026-08-09_position_attribution_shared_account_research.md
 
 THE GAP THIS CLOSES. The never-scrummed rule (v3.24.85) lets a bot with
 no earned history adopt an operator-placed position as its opening lot.

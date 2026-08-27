@@ -7,11 +7,11 @@ ask "what pairs trade ETH on this exchange right now, and how are they
 moving?".
 
 Introduced 2026-07-28 as v3.23.47 in the multi-base coordination
-cascade (see docs/audits/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md
+cascade (see docs/engineering-notes/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md
 § 6, Cascade #2). Delivers the **read-only** cross-pair awareness that
 the ScrummingBot needs before any smart-routing conversation can start.
 The prior-art research
-(docs/audits/2026-07-28_prior_art_multibase_coordination_research.md
+(docs/engineering-notes/2026-07-28_prior_art_multibase_coordination_research.md
 § 3) explicitly warned that DEX-pathfinder patterns are a category
 error for a persistent-inventory scrumming bot — this module deliberately
 does **not** rank / pick / route. It observes.
