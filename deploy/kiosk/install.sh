@@ -24,7 +24,7 @@
 #  --dry-run needs no root and touches nothing. It prints each command
 #  it would run. `tests/test_os_installer_suite.py` uses it to prove
 #  that this script reaches its last line, which it did not do before
-#  issue #95. Read os/lib/common.sh for how the dry run works.
+#  issue #95. Read deploy/kiosk/lib/common.sh for how the dry run works.
 # =============================================================================
 
 set -euo pipefail
@@ -43,7 +43,7 @@ set -euo pipefail
 # `tests/test_os_installer_suite.py` fails if any variable in this
 # suite is ever read above its first assignment again.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SOURCE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SOURCE_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"  # repo root, two levels up
 
 # shellcheck source=lib/common.sh
 source "${SCRIPT_DIR}/lib/common.sh"
@@ -210,7 +210,7 @@ ok "Directories created"
 section "3 / 8  Python virtual environment"
 # ─────────────────────────────────────────────────────────────────────────────
 
-# The floor comes from `pyproject.toml`, through os/lib/common.sh.
+# The floor comes from `pyproject.toml`, through deploy/kiosk/lib/common.sh.
 SYSTEM_PYTHON="$(acervator_find_python)" || error \
     "Acervator needs Python ${ACERVATOR_PYTHON_MIN_MAJOR}.${ACERVATOR_PYTHON_MIN_MINOR} or later, and this machine has none. Ubuntu 24.04 LTS ships 3.12. Debian 12 and Raspberry Pi OS Bookworm ship 3.11. Ubuntu 22.04 ships 3.10 and does not meet the floor."
 info "Using system interpreter: ${SYSTEM_PYTHON}"
@@ -282,7 +282,7 @@ section "4 / 8  Install Acervator source"
 
 info "Copying source from ${SOURCE_DIR}..."
 
-# The exclude set lives in os/lib/common.sh, and `os/update.sh` reads
+# The exclude set lives in deploy/kiosk/lib/common.sh, and `deploy/kiosk/update.sh` reads
 # the same one. Issue #88: the two sets used to disagree, and the
 # install side still excluded `sadp/RAIntSimBat/reports/*.json` from a
 # subsystem that has never existed in this repository.
@@ -361,7 +361,7 @@ XSTARTUP
     acervator_run chown -R "${ACERVATOR_USER}:" "/home/${ACERVATOR_USER}/.vnc"
 
     # ISSUE #95, DEFECT FOUR. This script used to print
-    # "connect to <public address>:5901". `os/config/firewall.sh` has
+    # "connect to <public address>:5901". `deploy/kiosk/config/firewall.sh` has
     # never opened 5901 inbound, and it must not. A VNC port open to
     # the internet draws continuous scanning. The firewall was right
     # and this advice was wrong. The route in is an SSH tunnel over

@@ -67,10 +67,10 @@ unzip acervator_v3_4_0.zip
 cd acervator
 
 # See what the installer would do, without changing anything:
-bash os/install.sh --dry-run
+bash deploy/kiosk/install.sh --dry-run
 
 # Then install for real:
-sudo bash os/install.sh
+sudo bash deploy/kiosk/install.sh
 ```
 
 `--dry-run` needs no root and touches nothing. It prints every command
@@ -121,11 +121,11 @@ Total: ~65–90 seconds from power-on to trading-ready
 Run the installer with `--headless`:
 
 ```bash
-sudo bash os/install.sh --headless
+sudo bash deploy/kiosk/install.sh --headless
 ```
 
 Then reach Acervator through an SSH tunnel. **Do not open port 5901.**
-`os/config/firewall.sh` sets a deny-by-default policy and permits
+`deploy/kiosk/config/firewall.sh` sets a deny-by-default policy and permits
 inbound SSH only, so a viewer pointed straight at `acervator.local:5901`
 cannot connect. A VNC port reachable from a network also draws
 continuous scanning, which is why the port stays shut.

@@ -147,17 +147,17 @@ anywhere" but not "run it in the cloud".
 ## What your tree already contains for Linux
 
 You may not know this, but a working Linux deployment already exists in
-your own repository, in the `os/` folder. Its name is AcervatorOS. It
+your own repository, in the `deploy/kiosk/` folder. Its name is AcervatorOS. It
 targets Raspberry Pi OS and Debian. It is much closer to the answer than
 anything else you have, and the cloud plan should start from it rather
 than from nothing. [TREE]
 
-It contains an installer (`os/install.sh`), an updater
-(`os/update.sh`), an uninstaller, a systemd service unit
-(`os/systemd/acervator.service`), a pre-flight check script, firewall
+It contains an installer (`deploy/kiosk/install.sh`), an updater
+(`deploy/kiosk/update.sh`), an uninstaller, a systemd service unit
+(`deploy/kiosk/systemd/acervator.service`), a pre-flight check script, firewall
 rules, and display configuration.
 
-`os/install.sh` already accepts a `--headless` flag. On that path it
+`deploy/kiosk/install.sh` already accepts a `--headless` flag. On that path it
 installs TigerVNC and writes a VNC startup file. Somebody has already
 thought about a machine with no monitor.
 
@@ -167,7 +167,7 @@ I was told that `ExecStart` in the service unit points at a `main.py`
 inside a `src` folder, that no such file exists in your tree, and that
 this is a defect. I checked, and **that claim is wrong**. [TREE]
 
-`os/install.sh:289` copies the whole repository into
+`deploy/kiosk/install.sh:289` copies the whole repository into
 `/opt/acervator/src/`. The repository root, which holds `main.py`,
 therefore lands at `/opt/acervator/src/`. The unit's
 `ExecStart=__VENV_DIR__/bin/python3 __INSTALL_DIR__/src/main.py`
@@ -186,7 +186,7 @@ Every line number in this section describes the tree BEFORE the issue
 #88/#95 repair, at commit d3cfe99. The repair moved the assignment, so
 the numbers no longer point at what they describe.
 
-`os/install.sh` set `set -euo pipefail` at line 24. The `-u` option
+`deploy/kiosk/install.sh` set `set -euo pipefail` at line 24. The `-u` option
 makes the shell exit when it expands a variable that has no value.
 
 The script used `SCRIPT_DIR` at lines 249, 252 and 253. It assigned
@@ -194,7 +194,7 @@ The script used `SCRIPT_DIR` at lines 249, 252 and 253. It assigned
 
 I tested the exact shell behaviour rather than assume it. Under
 `set -u`, an unset variable ends the script immediately, and a trailing
-`|| true` does **not** rescue it. `os/install.sh` therefore exited at
+`|| true` does **not** rescue it. `deploy/kiosk/install.sh` therefore exited at
 line 249.
 
 Everything after line 249 never ran. That included the systemd
@@ -205,12 +205,12 @@ finish.
 **REPAIRED.** Issue #88/#95 moved the `SCRIPT_DIR` assignment to the
 top of the file, above every use.
 `tests/test_os_installer_suite.py` now fails when ANY variable in the
-`os/` suite appears above its first assignment. That guards the defect
+`deploy/kiosk/` suite appears above its first assignment. That guards the defect
 class, and not only this one instance.
 
 ### Defect two: the installer demands a Python that Debian does not ship
 
-At commit d3cfe99, `os/install.sh:163` ran `python3.12 -m venv`, and
+At commit d3cfe99, `deploy/kiosk/install.sh:163` ran `python3.12 -m venv`, and
 line 105 asked apt for a `python3.12` package. The file header names Debian 12, Raspberry Pi OS
 Bookworm and Ubuntu 22.04 as targets. [TREE]
 
@@ -238,7 +238,7 @@ is no longer excluded.
 
 ### Defect three: the firewall does not open the viewer port
 
-`os/config/firewall.sh` sets a deny-by-default policy. It permits
+`deploy/kiosk/config/firewall.sh` sets a deny-by-default policy. It permits
 outbound HTTPS, DNS and time, and inbound SSH on port 22. It never
 permits inbound port 5901, which is the port its own `--headless` path
 tells you to connect to. [TREE]
@@ -253,9 +253,9 @@ solves a security problem you would otherwise have, because a VNC port
 open to the internet draws continuous scanning and attack. [WEB]
 
 **REPAIRED.** Issue #88/#95 left the firewall alone and changed the
-advice. `os/install.sh --headless` now prints the tunnel command and
+advice. `deploy/kiosk/install.sh --headless` now prints the tunnel command and
 tells you to bind the VNC server to the loopback interface with
-`-localhost yes`. `os/config/firewall.sh` says in its own header why
+`-localhost yes`. `deploy/kiosk/config/firewall.sh` says in its own header why
 5901 stays shut, and `tests/test_os_installer_suite.py` fails if any
 rule in that file ever opens it.
 
@@ -264,9 +264,9 @@ rule in that file ever opens it.
 This is the failure you would find hardest to diagnose, so read it
 carefully.
 
-At commit d3cfe99, `os/install.sh:100-109` listed the Qt support
+At commit d3cfe99, `deploy/kiosk/install.sh:100-109` listed the Qt support
 libraries to install. It named ten of them. It did **not** name
-`libxcb-cursor0`. [TREE] The list is now at `os/install.sh:130-152`.
+`libxcb-cursor0`. [TREE] The list is now at `deploy/kiosk/install.sh:130-152`.
 
 From Qt 6.5.0 onward, the `xcb` platform plugin refuses to load without
 that library. The error message is misleading on purpose:
@@ -298,7 +298,7 @@ reason each one failed. [WEB]
 
 ### What the service unit gets right
 
-The rest of `os/systemd/acervator.service` is sound and you should keep
+The rest of `deploy/kiosk/systemd/acervator.service` is sound and you should keep
 it. [TREE] It waits for the network and for the clock to synchronise
 before it starts, which matters because exchange APIs reject requests
 signed with a wrong clock. It restarts the application after a crash,
@@ -531,13 +531,13 @@ Four reasons, in order of weight.
 
 1. **It keeps your bots alive.** Persistence is the default, not a
    setting you might forget. This is the property you cannot compromise.
-2. **Your own repository already chose it.** `os/install.sh:160`
+2. **Your own repository already chose it.** `deploy/kiosk/install.sh:160`
    installs `tigervnc-standalone-server` on the `--headless` path, and
-   `os/install.sh:354-361` writes a startup file that launches Openbox
+   `deploy/kiosk/install.sh:354-361` writes a startup file that launches Openbox
    and then the application. [TREE] You are repairing something that
    exists rather than building something new. That is a much smaller
    job, and a much smaller thing to maintain.
-3. **Your firewall already fits it.** `os/config/firewall.sh` permits
+3. **Your firewall already fits it.** `deploy/kiosk/config/firewall.sh` permits
    inbound SSH and nothing else. [TREE] The tunnel needs exactly that
    and nothing more. The firewall was right all along, and only the
    printed advice about port 5901 was wrong.
@@ -636,7 +636,7 @@ Confirm that those repairs reached the machine you will install on, and
 see what the installer would do, with one command:
 
 ```
-bash os/install.sh --dry-run --headless
+bash deploy/kiosk/install.sh --dry-run --headless
 ```
 
 **Why:** `--dry-run` needs no root and changes nothing. It prints every
@@ -784,7 +784,7 @@ A cloud machine costs about ten to fifty dollars each month, forever. A
 small computer at your home costs money once and then costs
 electricity. It gives you the same Linux, the same window, and the same
 remote viewing, without renting anything and without putting your
-trading keys on somebody else's hardware. Your `os/` folder was
+trading keys on somebody else's hardware. Your `deploy/kiosk/` folder was
 originally written for exactly that machine.
 
 I mention it because you asked for the cloud and I should still tell
@@ -799,7 +799,7 @@ value.
 
 | Symptom | Most likely cause | What to do |
 |---|---|---|
-| The installer stops early and prints "unbound variable" | You are running a copy from before the issue #88/#95 repair | Update the tree, then prove it with `bash os/install.sh --dry-run` |
+| The installer stops early and prints "unbound variable" | You are running a copy from before the issue #88/#95 repair | Update the tree, then prove it with `bash deploy/kiosk/install.sh --dry-run` |
 | The installer stops and says it needs Python 3.11 or later | Your machine is Ubuntu 22.04, which ships 3.10 | Rebuild the machine on Ubuntu 24.04 LTS, or on Debian 12 |
 | "Could not load the Qt platform plugin xcb ... even though it was found" | `libxcb-cursor0` is missing | Install it, then run again with `QT_DEBUG_PLUGINS=1` if it persists |
 | The service restarts five times and then stops | `DISPLAY` names a screen that does not exist | Point `DISPLAY` at your virtual screen number |
@@ -847,7 +847,7 @@ I list these so you do not mistake my silence for confidence.
 6. **I could not read the Oracle and Akamai policy documents.** Their
    servers refused my requests. What I report about Oracle's policy is
    second-hand.
-7. **Nobody has run `os/install.sh` on a real machine.** The issue
+7. **Nobody has run `deploy/kiosk/install.sh` on a real machine.** The issue
    #88/#95 repair added a `--dry-run` mode, and the dry run does reach
    the last line of the script on a machine that is not Debian. That
    proves the CONTROL FLOW completes. It does not prove that

@@ -10,8 +10,8 @@ two of them agreed. Measured on 2026-08-23 at commit 4965bab:
     Acervator_win.spec:8     14 names, in a docstring
     Acervator_mac.spec:8     14 names, in a docstring
     BUILD.py:79              12 names, as (import name, pip name) pairs
-    os/install.sh:177        11 names, plus 4 more at :192
-    os/update.sh:71          11 names
+    deploy/kiosk/install.sh:177        11 names, plus 4 more at :192
+    deploy/kiosk/update.sh:71          11 names
     README.md:123             6 names
     pyproject.toml           11 names
 
@@ -63,7 +63,7 @@ REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 #   os      an AcervatorOS TARGET, a Raspberry Pi. It runs from source
 #           in a venv and never compiles, so it must NOT get pyinstaller.
 #   display the mini-panel libraries. Separate from `os` because
-#           `os/install.sh` installs them with failure tolerated: a Pi
+#           `deploy/kiosk/install.sh` installs them with failure tolerated: a Pi
 #           with no panel is a supported machine.
 #   dev     the checkers the archetypes spawn, and the type stubs.
 #   contracts

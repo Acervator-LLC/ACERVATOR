@@ -36,7 +36,7 @@ the repository root on ``sys.path``.
 
 WHAT IS NOT HERE
 ================
-``os/splash/generate_splash.py`` is named by issue #74 as a fourth copy
+``deploy/kiosk/splash/generate_splash.py`` is named by issue #74 as a fourth copy
 of the palette. It is not. It is a Pillow and ReportLab boot-image
 generator for the AcervatorOS appliance, it imports no Qt, and its two
 colours are ``#00CCAA`` and ``#FFB800``, which are NOT the ``#00FFEE``

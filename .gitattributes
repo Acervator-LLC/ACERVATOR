@@ -20,8 +20,9 @@
 # THE LIVE DEFECT IT CLOSES
 #
 # `autocrlf=true` converts on the way OUT. Measured in a fresh worktree, which
-# is a real checkout: `run_acervator.sh`, `build_mac.sh` and `os/install.sh` all
-# arrived CRLF. So every fresh clone on Windows got broken shell scripts. This
+# is a real checkout: `run_acervator.sh`, `build_mac.sh` and
+# `deploy/kiosk/install.sh` all arrived CRLF. So every fresh clone on Windows
+# got broken shell scripts. This
 # working tree escaped only because it was never checked out -- it is the
 # original folder that was `git init`-ed, so its files kept whatever endings
 # they already had.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  AcervatorOS — shared shell library for the os/ suite
+#  AcervatorOS — shared shell library for the deploy/kiosk/ suite
 #
 #  SOURCE this file. Do not execute it.
 #
@@ -8,7 +8,7 @@
 #
 #  WHY THIS FILE EXISTS
 #  ====================
-#  Issue #88. `os/install.sh` and `os/update.sh` each hand-copied three
+#  Issue #88. `deploy/kiosk/install.sh` and `deploy/kiosk/update.sh` each hand-copied three
 #  things, and two of the three had already drifted apart.
 #
 #    1. THE PIP LIST. Issue #94 repaired this one before this file
@@ -17,10 +17,10 @@
 #       that call, so the two callers cannot drift again.
 #
 #    2. THE RSYNC EXCLUDE SET. Measured on 2026-08-23:
-#         os/install.sh excluded  sadp/RAIntSimBat/reports/*.json
+#         deploy/kiosk/install.sh excluded  sadp/RAIntSimBat/reports/*.json
 #                                 logs/real_market/*
 #                                 logs/paper/*
-#         os/update.sh  excluded  RULE_REGISTRY.json
+#         deploy/kiosk/update.sh  excluded  RULE_REGISTRY.json
 #                                 logs/
 #       Neither set held the other, so an install and an update built
 #       two different trees in /opt/acervator/src. `sadp/` has never
@@ -40,7 +40,7 @@
 #  systemd and the firewall. So nobody could test them at all. Every
 #  command that changes the machine now goes through `acervator_run`,
 #  which prints instead of acts when the caller gives `--dry-run`.
-#  That makes the control flow of `os/install.sh` testable on any
+#  That makes the control flow of `deploy/kiosk/install.sh` testable on any
 #  machine, and `tests/test_os_installer_suite.py` uses it to prove the
 #  script reaches its last line. Issue #95 defect one is why that
 #  matters: the script did not reach its last line.
@@ -63,7 +63,7 @@ warn()    { echo -e "${GOLD}  ⚠  $*${NC}"; }
 error()   { echo -e "${RED}  ✗  $*${NC}" >&2; exit 1; }
 section() { echo -e "\n${BOLD}${CYAN}═══ $* ═══${NC}\n"; }
 
-# `os/update.sh` called this one `fail`. Both names stay, so a reader
+# `deploy/kiosk/update.sh` called this one `fail`. Both names stay, so a reader
 # of either script finds the word that script always used.
 fail() { error "$@"; }
 
@@ -102,7 +102,7 @@ acervator_write_file() {
 }
 
 # ── Python ───────────────────────────────────────────────────────────────────
-# Issue #95 defect three. `os/install.sh` demanded `python3.12` by
+# Issue #95 defect three. `deploy/kiosk/install.sh` demanded `python3.12` by
 # name. Debian 12 and Raspberry Pi OS Bookworm ship 3.11 and carry no
 # `python3.12` package, so the installer failed on two of the three
 # systems its own header named. `pyproject.toml` asks for `>=3.13`, so
@@ -143,7 +143,7 @@ acervator_deps() {
 # that the TARGET owns. `rsync --delete` is what makes the second class
 # matter: a path that is not excluded is deleted at the destination.
 #
-#   RULE_REGISTRY.json  `os/install.sh` GENERATES this at the
+#   RULE_REGISTRY.json  `deploy/kiosk/install.sh` GENERATES this at the
 #                       destination after the copy. It is untracked in
 #                       this repository, so without the exclude every
 #                       update deleted the installed copy.
@@ -217,7 +217,7 @@ acervator_service_is_active() {
 }
 
 # ── Version ──────────────────────────────────────────────────────────────────
-# `os/install.sh` and `os/update.sh` each held their own copy of this
+# `deploy/kiosk/install.sh` and `deploy/kiosk/update.sh` each held their own copy of this
 # snippet, with different fallback strings.
 acervator_read_version() {
     local python="$1" tree="$2"

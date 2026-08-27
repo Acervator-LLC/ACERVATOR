@@ -1,10 +1,10 @@
-"""The `os/` installer suite must be able to finish, and must be testable.
+"""The `deploy/kiosk/` installer suite must be able to finish, and must be testable.
 
 WHAT WAS MEASURED
 =================
 Issues #95 and #88, on 2026-08-23, in a clone at commit d3cfe99.
 
-    DEFECT 1, BLOCKING. `os/install.sh` set `-euo pipefail` at line 24,
+    DEFECT 1, BLOCKING. `deploy/kiosk/install.sh` set `-euo pipefail` at line 24,
     read `SCRIPT_DIR` at lines 249, 252 and 253, and assigned it at
     line 260. Under `set -u` the shell ends the script the moment it
     expands a variable that has no value. A trailing `|| true` does not
@@ -30,7 +30,7 @@ Issues #95 and #88, on 2026-08-23, in a clone at commit d3cfe99.
     Pi OS Bookworm ship 3.11 and carry no such package, and the file
     header named both as targets. `pyproject.toml` asks for `>=3.11`.
 
-    DEFECT 4. `os/config/firewall.sh` never opened 5901, and the
+    DEFECT 4. `deploy/kiosk/config/firewall.sh` never opened 5901, and the
     `--headless` path printed "connect to <address>:5901". The
     firewall was right. The advice was wrong. The route is an SSH
     tunnel over port 22.
@@ -46,7 +46,7 @@ Six contracts, each able to fail on its own.
 
     1. NO VARIABLE IS READ ABOVE ITS FIRST ASSIGNMENT.
        That is the CLASS, not the one instance. The rule reads every
-       script in `os/` that sets `-u`, and it would catch a NEW
+       script in `deploy/kiosk/` that sets `-u`, and it would catch a NEW
        ordering fault as readily as the old one. A guard that only
        looked for the word `SCRIPT_DIR` would pass the day a second
        variable moved.
@@ -68,7 +68,7 @@ Six contracts, each able to fail on its own.
        The firewall and the printed instruction must agree.
 
     6. THE PYTHON FLOOR COMES FROM `pyproject.toml`.
-       A shell script cannot read TOML, so `os/lib/common.sh` repeats
+       A shell script cannot read TOML, so `deploy/kiosk/lib/common.sh` repeats
        the floor. This fails when the two disagree.
 
 WHAT THIS FILE CANNOT DO
@@ -93,7 +93,9 @@ from typing import NamedTuple
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-OS_DIR = REPO_ROOT / "os"
+# The AcervatorOS suite. Issue #86 renamed the directory from `os/`,
+# which collided with the stdlib module name.
+OS_DIR = REPO_ROOT / "deploy" / "kiosk"
 INSTALL_SH = OS_DIR / "install.sh"
 UPDATE_SH = OS_DIR / "update.sh"
 UNINSTALL_SH = OS_DIR / "uninstall.sh"
@@ -356,7 +358,7 @@ def ordering_faults(path: Path, library: dict[str, int] | None = None) -> list[s
 
 
 def scripts_under_set_u() -> list[Path]:
-    """Every script in os/ that turns on `set -u`, sorted."""
+    """Every script in deploy/kiosk/ that turns on `set -u`, sorted."""
     return [
         path
         for path in sorted(OS_DIR.rglob("*.sh"))
@@ -478,7 +480,7 @@ class TestTheReaderWorks:
 
 
 class TestNoOrderingFault:
-    """No variable in the `os/` suite is read above its assignment."""
+    """No variable in the `deploy/kiosk/` suite is read above its assignment."""
 
     def test_the_suite_has_scripts_to_read(self) -> None:
         """The rule has input. An empty sweep is not a clean one."""
@@ -538,7 +540,7 @@ class TestQtCanOpenAWindow:
         """One package Qt needs, still named by the installer."""
         names = base_package_names()
         assert package in names, (
-            f"os/install.sh no longer installs {package}. Qt needs it to "
+            f"deploy/kiosk/install.sh no longer installs {package}. Qt needs it to "
             f"load the xcb platform plugin, so no window would open. "
             f"The list holds: {names}"
         )
@@ -651,7 +653,7 @@ class TestOneExcludeSet:
         ]
         assert offending == [], (
             f"{offending} spells an rsync exclude. The one set lives in "
-            "os/lib/common.sh, which is what issue #88 asked for"
+            "deploy/kiosk/lib/common.sh, which is what issue #88 asked for"
         )
 
     @pytest.mark.parametrize(
@@ -736,13 +738,13 @@ class TestTheViewerPortStaysShut:
     def test_the_hardware_guide_agrees(self) -> None:
         """The suite's own guide must not send a viewer at the shut port.
 
-        `os/HARDWARE_GUIDE.md` used to say "Connect to:
+        `deploy/kiosk/HARDWARE_GUIDE.md` used to say "Connect to:
         acervator.local:5901". The firewall has never permitted that,
         so the instruction could not work. Two files gave one reader
         two answers, which is what issue #88 is about.
         """
         guide = OS_DIR / "HARDWARE_GUIDE.md"
-        assert guide.is_file(), "os/HARDWARE_GUIDE.md is gone"
+        assert guide.is_file(), "deploy/kiosk/HARDWARE_GUIDE.md is gone"
         text = guide.read_text(encoding="utf-8")
         assert (
             "ssh -L 5901:localhost:5901" in text
@@ -785,11 +787,11 @@ class TestThePythonFloor:
         text = COMMON_SH.read_text(encoding="utf-8")
         major = re.search(r"^ACERVATOR_PYTHON_MIN_MAJOR=(\d+)", text, re.MULTILINE)
         minor = re.search(r"^ACERVATOR_PYTHON_MIN_MINOR=(\d+)", text, re.MULTILINE)
-        assert major is not None, "os/lib/common.sh states no major floor"
-        assert minor is not None, "os/lib/common.sh states no minor floor"
+        assert major is not None, "deploy/kiosk/lib/common.sh states no major floor"
+        assert minor is not None, "deploy/kiosk/lib/common.sh states no minor floor"
         found = (int(major.group(1)), int(minor.group(1)))
         assert found == expected, (
-            f"pyproject.toml asks for {expected} and os/lib/common.sh "
+            f"pyproject.toml asks for {expected} and deploy/kiosk/lib/common.sh "
             f"asks for {found}"
         )
 
@@ -806,7 +808,7 @@ class TestThePythonFloor:
             name for name in base_package_names() if re.match(r"^python3\.\d+", name)
         ]
         assert offending == [], (
-            f"os/install.sh asks apt for {offending}. Debian 12 and "
+            f"deploy/kiosk/install.sh asks apt for {offending}. Debian 12 and "
             "Raspberry Pi OS Bookworm carry no such package. Ask for the "
             "unversioned python3 set and check the floor at run time"
         )
