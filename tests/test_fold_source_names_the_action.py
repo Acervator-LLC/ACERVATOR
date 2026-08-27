@@ -270,7 +270,7 @@ def _with_the_old_two_way_label(monkeypatch) -> None:
     that quietly patched nothing would print the repair's own labels
     and call them the defect's.
     """
-    from src.gui import bot_live_settings as mod
+    from src.gui.live_settings import fold_tranches_tab as mod
 
     assert callable(mod._fold_tranche_source_label)
     monkeypatch.setattr(

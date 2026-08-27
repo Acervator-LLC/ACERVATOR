@@ -17,6 +17,7 @@ Locks the v3.23.25 schema changes:
 from __future__ import annotations
 
 import dataclasses
+import re
 import sys
 from pathlib import Path
 
@@ -215,7 +216,7 @@ class TestRestorePaths:
 
 class TestSettingsWidgets:
     def _settings_body(self) -> str:
-        src = (REPO / "src" / "gui" / "bot_live_settings.py").read_text(
+        src = (REPO / "src" / "gui" / "live_settings" / "settings_tab.py").read_text(
             encoding="utf-8", errors="replace"
         )
         i = src.find("def _create_settings_tab")
@@ -246,10 +247,9 @@ class TestSettingsWidgets:
     def test_spacing_mode_combobox_present(self):
         b = self._settings_body()
         assert "self._stack_spacing = QComboBox" in b
-        assert (
-            '_mark_changed(\n                    "stack_spacing_mode"' in b
-            or '_mark_changed("stack_spacing_mode"' in b
-        )
+        assert re.search(
+            r'_mark_changed\(\s*"stack_spacing_mode"', b
+        ), "the spacing combo no longer writes stack_spacing_mode"
 
     def test_aggressive_widget_updated_label(self):
         b = self._settings_body()

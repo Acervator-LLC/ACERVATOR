@@ -136,9 +136,10 @@ class TestVisibleModeSourceShape:
 class TestStackTranchesTab:
     @pytest.fixture(scope="class")
     def source(self) -> str:
-        return (REPO / "src" / "gui" / "bot_live_settings.py").read_text(
-            encoding="utf-8", errors="replace"
-        )
+        gui = REPO / "src" / "gui"
+        parts = [gui / "bot_live_settings.py"]
+        parts += sorted((gui / "live_settings").glob("*.py"))
+        return "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in parts)
 
     def test_create_stack_tranches_tab_defined(self, source):
         assert "def _create_stack_tranches_tab(" in source
@@ -178,7 +179,7 @@ class TestStackTranchesTab:
         # Hop 2: the installer adds the labelled tab and keeps the page.
         body = re.search(
             r"def _install_stack_tranches_tab\([^)]*\)[^:]*:(.*?)"
-            r"(?=\n        def |\n        async def )",
+            r"(?=\n    def |\n    async def )",
             source,
             re.DOTALL,
         )
@@ -206,7 +207,7 @@ class TestStackTranchesTab:
 
     def test_tab_reads_stack_tranches_ledger(self, source):
         m = re.search(
-            r"def _create_stack_tranches_tab\(self\)[^:]*:(.*?)(?=\n        def )",
+            r"def _create_stack_tranches_tab\(self\)[^:]*:(.*?)(?=\n    def )",
             source,
             re.DOTALL,
         )
@@ -217,7 +218,7 @@ class TestStackTranchesTab:
 
     def test_tab_surfaces_pending_filled_cancelled(self, source):
         m = re.search(
-            r"def _create_stack_tranches_tab\(self\)[^:]*:(.*?)(?=\n        def )",
+            r"def _create_stack_tranches_tab\(self\)[^:]*:(.*?)(?=\n    def )",
             source,
             re.DOTALL,
         )
@@ -228,7 +229,7 @@ class TestStackTranchesTab:
 
     def test_tab_shows_visible_vs_invisible_mode_per_tranche(self, source):
         m = re.search(
-            r"def _create_stack_tranches_tab\(self\)[^:]*:(.*?)(?=\n        def )",
+            r"def _create_stack_tranches_tab\(self\)[^:]*:(.*?)(?=\n    def )",
             source,
             re.DOTALL,
         )
