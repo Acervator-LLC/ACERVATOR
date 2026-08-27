@@ -52,11 +52,14 @@ CLAUDE_PROJECTS = pathlib.Path.home() / claude_home.CLAUDE_DIR_NAME / "projects"
 # `tools/claude_home.py` joined on 2026-08-25. It is what the hook tests and
 # step 1 below use to FIND the harness, so a tree without it cannot resolve
 # the harness at all.
+#
+# `tools/emitter_registry_check.py` left this list with the pin system, which
+# deleted the file. The same refusal below applies: a stale entry here stops
+# every migration outright.
 LOOSE_TOOLS = (
     "tools/queue_state.py",
     "dev_harness/touchset.py",
     "tools/claude_home.py",
-    "tools/emitter_registry_check.py",
     "tools/migrate_harness.py",
 )
 

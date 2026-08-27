@@ -100,10 +100,15 @@ TOOLS = REPO / "tools"
 # `deps` entered this list under issue #94. It reads the dependency set
 # out of pyproject.toml so that no script has to hold one. It carries an
 # argument parser and three subcommands, so it is True.
+#
+# `emitter_registry_check` left this list with the pin system. It held the
+# emitter register in `docs/EMITTER_IDENTIFICATION.md` against the pins in
+# `src/` by file, name and line, and the line half of that key moved on
+# every edit above a pin. `test_every_tool_on_disk_is_declared` below
+# fails if the file returns undeclared.
 INVENTORY: tuple[tuple[str, bool], ...] = (
     ("build_release_zip", True),
     ("deps", True),
-    ("emitter_registry_check", True),
     # Moved in from the repository root as EXCHANGE_DIAGNOSTIC.py. The move
     # also gave it the `main()` and `__main__` guard it never had: importing
     # the root file opened 15 sockets and then blocked on input().

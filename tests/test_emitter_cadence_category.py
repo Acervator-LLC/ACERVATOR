@@ -69,9 +69,7 @@ from src.core.signal_contract import (
     set_sink,
 )
 
-REGISTRY = Path(__file__).resolve().parents[1] / "docs" / "EMITTER_IDENTIFICATION.md"
-
-# Two real identities out of the register, used as the two arms of every
+# Two real identities out of the roster, used as the two arms of every
 # control below. Named rather than invented: a control driven on a
 # fabricated pin proves the code runs, not that it runs on this tree.
 AN_ALWAYS_ON_PIN = "tick.08.002.event.worked"
@@ -104,38 +102,21 @@ def _one_row(report: dict, name: str) -> dict:
     return rows[0]
 
 
-def _registry_cadence() -> dict:
-    """`{ID: cell}` read out of the register's own cadence table."""
-    text = REGISTRY.read_text(encoding="utf-8")
-    out = {}
-    inside = False
-    for line in text.splitlines():
-        if not line.lstrip().startswith("|"):
-            inside = False
-            continue
-        cells = [
-            c.strip().strip("`").strip() for c in line.strip().strip("|").split("|")
-        ]
-        if len(cells) == 2 and cells[0] == "ID" and cells[1] == "cadence":
-            inside = True
-            continue
-        if not inside or len(cells) != 2:
-            continue
-        if all(c and set(c) <= {"-", ":"} for c in cells):
-            continue
-        out[cells[0]] = cells[1]
-    return out
-
-
 class TestEveryPinCarriesACategory:
-    """The roster and the register both cover all 78 pins.
+    """The roster covers all 78 pins.
 
     THE COUNT IS A CENSUS, NOT A CONSTANT TO KEEP QUIET. It moved from
     77 to 78 when issue #111 violation B added
     `fleet.03.008.postcondition.lotless_opened_locked`. A pin that
-    arrives without the roster, the register and this census all moving
-    together is the drift these checks exist to catch, so the number is
-    written out rather than derived from either side.
+    arrives without the roster and this census both moving together is
+    the drift these checks exist to catch, so the number is written out
+    rather than derived from the roster.
+
+    The register half of this class went with the pin system: the
+    cadence table in `docs/EMITTER_IDENTIFICATION.md` was a second,
+    hand-kept copy of `CADENCE_BY_NAME`, and the two tests that read it
+    asked whether the copy agreed with the original. `CADENCE_BY_NAME`
+    is what the sink reads, so it is the one the checks below hold.
     """
 
     def test_the_roster_holds_seventy_eight_pins(self):
@@ -150,24 +131,6 @@ class TestEveryPinCarriesACategory:
 
     def test_every_category_is_in_the_vocabulary(self):
         assert set(CADENCE_BY_NAME.values()) == set(CADENCE_CATEGORIES)
-
-    def test_the_register_declares_a_category_for_every_id(self):
-        cells = _registry_cadence()
-        assert len(cells) == 78
-        for emitter_id, cell in cells.items():
-            term = cell.partition(":")[0].strip()
-            assert term in CADENCE_CATEGORIES, f"{emitter_id}: {cell!r}"
-
-    def test_every_register_cell_carries_a_reason(self):
-        """A term with no reason is a category nobody can review.
-
-        The reason is what makes the call falsifiable by a reader: it
-        names what drives the pin, so a reader can go to the call site
-        and disagree.
-        """
-        for emitter_id, cell in _registry_cadence().items():
-            reason = cell.partition(":")[2].strip()
-            assert reason, f"{emitter_id} declares {cell!r} with no reason"
 
 
 class TestTheTemplatedPinIsCovered:

@@ -93,7 +93,6 @@ Acervator is built with an AI co-developer under a harness that refuses work rat
 | **Archetypes** | `dev_harness/harness/coding_archetype.py`, `docs_archetype.py`, `gui_archetype.py`, `ta_archetype.py` and `watchdog_archetype.py`. Each one reads a single file and returns `passed` with its findings. `passed=false` is invalid work, and fewer findings than last time is not a pass. |
 | **Rules** | `dev_harness/harness/rules/` — hallucination, numeric-guard, scaffolding and slop detectors that run inside the archetypes. |
 | **Release gate** | `python -m dev_harness.harness.check_release_readiness` runs the suite and prints `[OK] Release-ready (vX.Y.Z, N tests)`. No version banner and no CHANGELOG entry moves before that line appears. |
-| **Emitter registry** | `python -m tools.emitter_registry_check` — every runtime pin in `src/` must have a row, and every row must have a pin. A claim with no emitter behind it is not evidence. |
 
 An earlier governance harness, SADP, was retired. Documents under `docs/audits/`, `docs/harness_archive/` and `CHANGELOG.md` still describe it. They are historical records and were true when written.
 
@@ -180,7 +179,6 @@ acervator/
 ├── docs/
 │   ├── audits/                               # Session audits (historical)
 │   ├── harness_archive/                      # Retired-harness records
-│   ├── EMITTER_IDENTIFICATION.md
 │   ├── ITEM_10_EMITTER_NETWORK.md
 │   └── TOUCHSET.md
 │
@@ -245,7 +243,6 @@ acervator/
 │
 ├── tests/                                    # 7382 tests
 └── tools/                                    # Repo utilities
-    ├── emitter_registry_check.py
     ├── build_release_zip.py
     └── gate.py · queue_state.py · migrate_harness.py
 ```

@@ -84,9 +84,6 @@ python -m pytest tests/test_your_file.py -q
 
 # One file through its archetype (one file per invocation)
 python -m dev_harness.harness.coding_archetype src/your_file.py
-
-# Every runtime pin still has a registry row
-python -m tools.emitter_registry_check
 ```
 
 Do not run pytest with a friendlier invocation than the gate uses. A pass the gate cannot reproduce is not a pass.
