@@ -1204,13 +1204,23 @@ class ScrummingBot(
         the growth BEFORE placing the order. The growth depends on the
         fill price, which is not knowable in advance -- so this uses the
         current quote as the proxy and the caller applies the REAL
-        growth after the fill. The difference between the two is
-        slippage on one order, not the whole growth.
+        growth after the fill.
 
-        Mirrors the cap arithmetic of ``_apply_fold_target_growth``
-        exactly (cycle cap off the ANCHOR, standing pool as an input,
-        drawn down to the remaining cap). If that formula changes, this
-        must change with it -- pinned by test.
+        THE CAP ARITHMETIC IS THE APPLIER'S: the same
+        ``cycle_growth_cap_usd`` property, whose base is the cycle-open
+        target and NOT the anchor; the standing pool as an input; the
+        result drawn down to the remaining cap.
+
+        THE PROFIT ARITHMETIC IS NOT THE APPLIER'S, and the divergence
+        is the venue fee. This accrues ``take x (ref - price)`` off
+        each tranche's ``units``. The applier accrues the same quantity
+        off ``usd / ref``. Since issue #133 unit 9b ``usd`` holds the
+        NET proceeds and ``ref`` holds the gross fill price, so
+        ``usd / ref`` equals ``units x (1 - venue_fee)`` and this
+        preview returns ``1 / (1 - venue_fee)`` times what the applier
+        books. Measured at a 1.2% Coinbase fee: 1.012146x. The
+        overshoot sizes one order and is bounded by the cap; the
+        applier still books the fill-derived figure.
 
         Args:
           units: base units the prospective buy would acquire.

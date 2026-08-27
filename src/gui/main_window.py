@@ -1454,11 +1454,27 @@ if _HAS_QT:
                         # $63.53) the chart drew $50.50 where the bot
                         # enforced $64.17 — a chart and a bot telling
                         # the operator different stories about the same
-                        # number. The ceiling is now what the bot can
-                        # actually reach on this cycle: the live target
-                        # plus this cycle's cap, taken from the SAME
+                        # number. The ceiling is the highest target this
+                        # cycle can reach, from the SAME
                         # `cycle_growth_cap_usd` property the four
                         # enforcement sites read.
+                        #
+                        # issue #133 unit 10 - THE CONSUMPTION IS
+                        # SUBTRACTED. `cycle_growth_cap_usd` returns the
+                        # WHOLE cycle's cap and its base is the
+                        # cycle-open target, so `target + cap` counts
+                        # growth already applied twice: once inside
+                        # `_target_balance` and once as unspent cap. The
+                        # reachable target is
+                        # `cycle_open_target + cap`, and
+                        # `cycle_open_target` is
+                        # `_target_balance - _fold_cycle_cap_consumed`,
+                        # the same subtraction the four enforcement
+                        # sites make. Measured on the live fleet
+                        # 2026-08-26: CAP/USD target $55.4148, consumed
+                        # $0.5000, cap $0.549148 - the line was drawn at
+                        # $55.9639 where $55.4639 is reachable. Three of
+                        # 38 bots carried a non-zero consumption.
                         #
                         # The ANCHOR line is unchanged and still comes
                         # from `_anchor_target_balance`. Its badge says
@@ -1480,11 +1496,17 @@ if _HAS_QT:
                             cap_usd = float(
                                 getattr(bot, "cycle_growth_cap_usd", 0.0) or 0.0
                             )
+                            consumed_usd = float(
+                                getattr(bot, "_fold_cycle_cap_consumed", 0.0) or 0.0
+                            )
+                            cycle_open_usd = max(0.0, target_usd - consumed_usd)
                             holdings = float(getattr(bot, "_current_holdings", 0) or 0)
                             qrate = float(getattr(bot, "_quote_to_usd", 1.0) or 1.0)
                             if anchor_usd > 0 and holdings > 0 and qrate > 0:
                                 anchor_px = anchor_usd / holdings / qrate
-                                ceiling_px = (target_usd + cap_usd) / holdings / qrate
+                                ceiling_px = (
+                                    (cycle_open_usd + cap_usd) / holdings / qrate
+                                )
                                 panel.chart.set_target_balance_lines(
                                     anchor_px, ceiling_px
                                 )

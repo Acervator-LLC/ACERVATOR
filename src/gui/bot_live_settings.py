@@ -6612,8 +6612,15 @@ if _HAS_QT:
                 QLabel(f"${_budget:,.4f} — consumed ${_consumed:,.4f}"),
             )
 
-            # Tranches larger than the whole budget can never be admitted:
-            # the filter takes a tranche only if it fits ENTIRELY.
+            # issue #133 unit 10 - A TRANCHE LARGER THAN THE BUDGET IS
+            # PART-CONSUMED, NOT SKIPPED. `_plan_fold_consumption` takes
+            # `take_usd = room` from the first tranche that does not fit
+            # and leaves the remainder queued with its `ref` and
+            # `initial_buy_price` untouched. This row counts tranches
+            # that need more than one cycle to fold back in full, not
+            # tranches the filter refuses. Measured 2026-08-26: a
+            # $16.0523 tranche against a $1.0103 cap gives up $1.0103
+            # and 31.469011 units and stays queued holding $15.0420.
             _tranches = list(getattr(self._bot, "_fold_tranches", []) or [])
             _over = [
                 float(t.get("usd", 0) or 0)
@@ -6629,9 +6636,10 @@ if _HAS_QT:
                 _over_lbl.setStyleSheet("color: #ff3366;")
                 _over_lbl.setToolTip(
                     "Tranches larger than the entire per-cycle budget.\n\n"
-                    "The fold filter admits a tranche only if it fits "
-                    "whole and refuses to deploy part of one, so these "
-                    "are skipped on every cycle regardless of price."
+                    "The fold takes what the budget allows from the "
+                    "first of these that does not fit and leaves the "
+                    "remainder queued, so each needs more than one "
+                    "cycle to fold back in full."
                 )
                 sf.addRow("Over-cap tranches:", _over_lbl)
             # v3.24.86 - DE-INDENTED OUT OF `if _over:`.
