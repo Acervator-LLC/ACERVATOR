@@ -25,6 +25,7 @@ try:
     from PySide6.QtCore import Qt, QPointF
     from PySide6.QtGui import QPainter, QColor, QPen, QLinearGradient, QFont, QPolygonF
 
+    from . import design_system as ds
     from .widgets import METRIC_CARD, StatCard
 
     _HAS_QT = True
@@ -55,8 +56,8 @@ if _HAS_QT:
         def paintEvent(self, event):
             if not self._data or len(self._data) < 2:
                 p = QPainter(self)
-                p.fillRect(self.rect(), QColor("#0a0a12"))
-                p.setPen(QColor("#555"))
+                p.fillRect(self.rect(), QColor(ds.SURFACE_CHART))
+                p.setPen(QColor(ds.TEXT_PLACEHOLDER))
                 p.drawText(self.rect(), Qt.AlignCenter, "Collecting equity data...")
                 p.end()
                 return
@@ -67,7 +68,7 @@ if _HAS_QT:
             margin = 40
 
             # Background
-            p.fillRect(self.rect(), QColor("#0a0a12"))
+            p.fillRect(self.rect(), QColor(ds.SURFACE_CHART))
 
             equities = [d["equity"] for d in self._data]
             times = [d["timestamp"] for d in self._data]
@@ -77,7 +78,7 @@ if _HAS_QT:
             t_range = times[-1] - times[0] or 1
 
             # Grid lines
-            p.setPen(QPen(QColor("#1a1a2e"), 1))
+            p.setPen(QPen(QColor(ds.SURFACE_CONTROL), 1))
             for i in range(5):
                 y = margin + (h - 2 * margin) * i / 4
                 p.drawLine(margin, int(y), w - margin, int(y))
@@ -95,11 +96,11 @@ if _HAS_QT:
                 if equities[-1] >= equities[0]:
                     grad.setColorAt(0, QColor(0, 255, 136, 40))
                     grad.setColorAt(1, QColor(0, 255, 136, 5))
-                    line_color = QColor("#00ff88")
+                    line_color = QColor(ds.SUCCESS)
                 else:
                     grad.setColorAt(0, QColor(255, 51, 102, 40))
                     grad.setColorAt(1, QColor(255, 51, 102, 5))
-                    line_color = QColor("#ff3366")
+                    line_color = QColor(ds.ERROR)
 
                 poly = QPolygonF()
                 for x, y in points:
@@ -119,10 +120,10 @@ if _HAS_QT:
 
             # Current value label
             if equities:
-                p.setPen(QColor("#e0e0f0"))
+                p.setPen(QColor(ds.TEXT_HIGH))
                 p.setFont(QFont("Consolas", 9))
                 p.drawText(margin + 5, margin + 15, f"${equities[-1]:,.2f}")
-                p.setPen(QColor("#666"))
+                p.setPen(QColor(ds.TEXT_MUTED))
                 p.drawText(margin + 5, h - margin - 5, f"${min_eq:,.2f}")
 
             p.end()
@@ -173,8 +174,9 @@ if _HAS_QT:
             # Equity curve
             chart_group = QGroupBox("Equity Curve")
             chart_group.setStyleSheet(
-                "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; font-weight: bold; }"
+                f"QGroupBox {{ background: {ds.SURFACE_CHART}; "
+                f"border: 1px solid {ds.CARD_METRIC_BORDER}; "
+                f"border-radius: 6px; color: {ds.PRIMARY}; font-weight: bold; }}"
             )
             chart_layout = QVBoxLayout(chart_group)
             self._equity_chart = MiniEquityChart()
@@ -189,8 +191,9 @@ if _HAS_QT:
             # Per-bot performance table
             bot_group = QGroupBox("Bot Performance")
             bot_group.setStyleSheet(
-                "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }"
+                f"QGroupBox {{ background: {ds.SURFACE_CHART}; "
+                f"border: 1px solid {ds.CARD_METRIC_BORDER}; "
+                f"border-radius: 6px; color: {ds.PRIMARY}; }}"
             )
             bot_layout = QVBoxLayout(bot_group)
 
@@ -221,8 +224,9 @@ if _HAS_QT:
             # Timeframe comparison
             tf_group = QGroupBox("Timeframe Performance")
             tf_group.setStyleSheet(
-                "QGroupBox { background: #0a0a12; border: 1px solid #2a2a3f; "
-                "border-radius: 6px; color: #00ffcc; }"
+                f"QGroupBox {{ background: {ds.SURFACE_CHART}; "
+                f"border: 1px solid {ds.CARD_METRIC_BORDER}; "
+                f"border-radius: 6px; color: {ds.PRIMARY}; }}"
             )
             tf_layout = QVBoxLayout(tf_group)
 
@@ -252,7 +256,7 @@ if _HAS_QT:
             # Summary cards
             summary = eng.get_portfolio_summary()
             pnl = summary.get("total_pnl", 0)
-            pnl_color = "#00ff88" if pnl >= 0 else "#ff3366"
+            pnl_color = ds.SUCCESS if pnl >= 0 else ds.ERROR
             self._card_pnl.set_value(f"${pnl:+,.4f}", pnl_color)
             self._card_winrate.set_value(f"{summary.get('win_rate', 0):.1f}%")
             self._card_sharpe.set_value(f"{summary.get('sharpe_ratio', 0):.2f}")
@@ -260,7 +264,9 @@ if _HAS_QT:
             pf_str = f"{pf:.2f}" if pf != float("inf") else "∞"
             self._card_pf.set_value(pf_str)
             self._card_trades.set_value(str(summary.get("total_trades", 0)))
-            self._card_dd.set_value(f"{summary.get('max_drawdown', 0):.1f}%", "#ffaa00")
+            self._card_dd.set_value(
+                f"{summary.get('max_drawdown', 0):.1f}%", ds.WARNING
+            )
             self._card_expect.set_value(f"${summary.get('expectancy', 0):+,.4f}")
             self._card_today.set_value(str(summary.get("trades_today", 0)))
 
@@ -293,9 +299,9 @@ if _HAS_QT:
                     item.setTextAlignment(Qt.AlignCenter)
                     if col == 4:  # P/L column
                         color = (
-                            QColor("#00ff88")
+                            QColor(ds.SUCCESS)
                             if perf.total_pnl >= 0
-                            else QColor("#ff3366")
+                            else QColor(ds.ERROR)
                         )
                         item.setForeground(color)
                     self._bot_table.setItem(row, col, item)
