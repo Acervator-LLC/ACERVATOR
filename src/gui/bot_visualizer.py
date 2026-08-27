@@ -3093,51 +3093,30 @@ if _HAS_QT:
                 return {}
 
         def _save_bot_state_dict(self, state: dict) -> None:
-            """Atomic write back to bot_state.json.
+            """Write back to bot_state.json. The SECOND writer of that file.
 
-            SECOND WRITER WARNING (v3.24.36, C02). This is not the
-            primary persistence path — ``StateManager.save_state`` is —
-            and the two have never been reconciled:
+            ``StateManager.save_state`` is the primary path and the two
+            have never been reconciled. What this one maintains does not
+            survive: its only purpose is
+            ``scrumming_state.smart_wire_routes``, which
+            ``export_scrumming_state`` does not emit, so the next
+            60-second save rebuilds scrumming_state without it. Measured
+            on the live file 2026-08-06: 0 of 35 bots carry the key,
+            while the durable channel (top-level ``smart_wires``) holds
+            all 40 wires.
 
-            * **Shared staging file.** Both stage through
-              ``bot_state.tmp`` (``self._path.with_suffix(".tmp")`` in
-              StateManager, ``p.with_suffix(".tmp")`` here). Two writers,
-              one temp name. No interleaving has been demonstrated today
-              (asyncio is pumped on the Qt main thread and no nested loop
-              opens between load and write), but the collision is
-              structural, and it becomes corruption of the live position
-              file the moment either writer moves off the GUI thread.
-            * **What it exists for does not survive.** Its only purpose
-              is maintaining ``scrumming_state.smart_wire_routes``, and
-              ``export_scrumming_state`` does not emit that key — so the
-              next 60-second save rebuilds scrumming_state without it.
-              Measured on the live file 2026-08-06: 0 of 35 bots carry
-              the key, while the durable channel (top-level
-              ``smart_wires``) holds all 40 wires.
-
-            The silent ``except: pass`` is gone: a failed write to the
-            operator's position file is not a cosmetic miss, and this
-            one could fail for weeks with no signal.
+            Staging paths come from ``tempfile.mkstemp`` inside
+            ``atomic_write_json``, so this writer and StateManager cannot
+            collide on one temp name.
             """
             try:
                 from pathlib import Path
-                import json
-                import os
+
+                from src.core.io_utils import atomic_write_json
 
                 p = Path.home() / ".acervator" / "bot_state.json"
                 p.parent.mkdir(parents=True, exist_ok=True)
-                # v3.24.36 (C02) — DISTINCT staging file. This used to
-                # be p.with_suffix(".tmp"), i.e. bot_state.tmp, which is
-                # byte-for-byte the same path StateManager.save_state
-                # stages through. Two independent writers sharing one
-                # temp name means either can rename the other's partial
-                # write over the live position file. The pid suffix
-                # makes that impossible without changing any behaviour.
-                tmp = p.with_suffix(f".gui.{os.getpid()}.tmp")
-                tmp.write_text(
-                    json.dumps(state, indent=2, default=str), encoding="utf-8"
-                )
-                tmp.replace(p)
+                atomic_write_json(p, state, indent=2, default=str)
             except Exception as exc:  # noqa: BLE001 - GUI must not die
                 logger.error(
                     "bot_visualizer: direct write to bot_state.json "

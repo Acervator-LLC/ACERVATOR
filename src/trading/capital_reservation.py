@@ -75,6 +75,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
+from src.core.io_utils import atomic_write_json
+
 logger = logging.getLogger("acervator.capital_reservation")
 
 # ─────────────────────────────────────────────────────────────────
@@ -248,15 +250,13 @@ class CapitalReservationRegistry:
             return
         try:
             self._state_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self._state_path.with_suffix(".tmp")
             payload = {
                 "version": "1.0",
                 "saved_at": time.time(),
                 "reservations": [r.to_dict() for r in self._reservations.values()],
                 "heartbeats": self._heartbeats,
             }
-            tmp.write_text(json.dumps(payload, indent=2))
-            tmp.replace(self._state_path)
+            atomic_write_json(self._state_path, payload, indent=2)
         except Exception as e:
             logger.error("CapitalReservationRegistry persist failed: %s", e)
             # Don't raise — persistence failure should not break trading.

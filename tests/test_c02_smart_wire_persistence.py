@@ -22,11 +22,19 @@ empty for all but a minute of every hour.
 THE SHARED STAGING FILE — the reason this is a safety fix, not tidying
 `bot_visualizer._save_bot_state_dict` staged through
 `p.with_suffix(".tmp")` — byte-for-byte the same `bot_state.tmp` that
-`StateManager.save_state` uses. Two independent writers, one temp name:
+`StateManager.save_state` used. Two independent writers, one temp name:
 either can rename the other's partial write over the live position file
 holding 1,949 lots. No interleaving was demonstrated (asyncio is pumped
 on the Qt main thread), but the collision is structural, and it becomes
 corruption the moment either writer moves off that thread.
+
+Neither writer names a staging path now. Both call
+`src.core.io_utils.atomic_write_json`, which stages through
+`tempfile.mkstemp` — created O_EXCL, so the name is unique against every
+other process and thread. The collision is closed by the operating
+system rather than by two conventions happening to differ, and the
+runtime demonstration of that is in
+`tests/test_atomic_write_site_equivalence.py`.
 
 NOTHING HERE CONSTRUCTS A StateManager OR WRITES ANYTHING. Its default
 config_dir is the operator's live tree.
@@ -80,31 +88,51 @@ def _suffix_args(fn: ast.FunctionDef) -> list[str]:
     return out
 
 
+IO_UTILS = REPO_ROOT / "src" / "core" / "io_utils.py"
+
+
+def _called_names(fn: ast.FunctionDef) -> set[str]:
+    """Names of every function called directly inside `fn`."""
+    return {
+        n.func.id
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+    } | {
+        n.func.attr
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+    }
+
+
 class TestStagingFilesDoNotCollide:
     def test_the_extractor_sees_both_writers(self):
         """Positive control. If either walk found nothing, the collision
-        test below would pass by finding no evidence of a collision."""
-        assert _suffix_args(
+        tests below would pass by finding no evidence of a collision."""
+        assert "atomic_write_json" in _called_names(
             _fn(STATE_MGR, "save_state")
-        ), "no with_suffix() found in StateManager.save_state"
-        assert _suffix_args(
+        ), "StateManager.save_state does not reach the shared writer"
+        assert "atomic_write_json" in _called_names(
             _fn(VIZ, "_save_bot_state_dict")
-        ), "no with_suffix() found in _save_bot_state_dict"
+        ), "bot_visualizer does not reach the shared writer"
 
-    def test_gui_writer_does_not_stage_through_bot_state_tmp(self):
-        """The collision itself. `.tmp` here means the GUI stages
-        through the same file StateManager does."""
-        gui = _suffix_args(_fn(VIZ, "_save_bot_state_dict"))
-        assert ".tmp" not in gui, (
-            f"bot_visualizer stages through {gui} — the same temp path "
-            f"StateManager.save_state uses. Either writer can rename "
-            f"the other's partial write over the live position file."
-        )
+    def test_neither_writer_names_a_staging_path(self):
+        """The collision itself. A literal staging name here is a name
+        the other writer can also produce."""
+        for path, name in ((STATE_MGR, "save_state"), (VIZ, "_save_bot_state_dict")):
+            fn = _fn(path, name)
+            assert _suffix_args(fn) == [], (
+                f"{name} names its own staging path {_suffix_args(fn)}; "
+                f"either writer can rename the other's partial write over "
+                f"the live position file."
+            )
+            assert "mkstemp" not in _called_names(fn)
 
-    def test_state_manager_still_uses_its_own(self):
-        """Negative control: the fix must move the GUI writer, not
-        StateManager, whose path is the long-standing one."""
-        assert ".tmp" in _suffix_args(_fn(STATE_MGR, "save_state"))
+    def test_the_shared_writer_stages_through_mkstemp(self):
+        """What makes the name unique. mkstemp creates with O_EXCL, so
+        no second writer can be handed the same staging path."""
+        fn = _fn(IO_UTILS, "atomic_write_bytes")
+        assert "mkstemp" in _called_names(fn)
+        assert "replace" in _called_names(fn)
 
 
 class TestChannelOneCannotSurviveASave:

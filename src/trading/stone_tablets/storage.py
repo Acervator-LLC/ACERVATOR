@@ -17,16 +17,16 @@ sadp: R28 SSS + R70 RCN
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import json
 import logging
 import os
-import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+from src.core.io_utils import atomic_write_text
 
 logger = logging.getLogger("acervator.stone_tablets.storage")
 
@@ -190,18 +190,9 @@ def ensure_root(root: Optional[Path] = None) -> Path:
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
-    """Write via tempfile + rename so a crash mid-write doesn't
-    leave a half-written tablet."""
+    """Write a tablet or the manifest durably, creating the root first."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp_", suffix=".json")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp, path)
-    except Exception:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
-        raise
+    atomic_write_text(path, text)
 
 
 def read_tablet(path: Path) -> Optional[Tablet]:

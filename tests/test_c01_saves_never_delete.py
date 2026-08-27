@@ -46,6 +46,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from src.core import state_manager  # noqa: E402
 from src.core.state_manager import StateManager  # noqa: E402
 
 
@@ -250,10 +251,31 @@ class TestTheMergeCannotBreakSaving:
 
     def test_delete_failure_leaves_the_record_intact(self, sm, monkeypatch):
         """Better to keep a record that should have gone than to lose
-        one that should have stayed."""
+        one that should have stayed.
+
+        The failure is injected at the write boundary the module calls,
+        not at a serialiser it happens to use, so this stays honest
+        whichever serialiser sits behind it.
+        """
         sm.save_state([_rec("a"), _rec("b")])
-        monkeypatch.setattr(
-            json, "dump", lambda *_a, **_kw: (_ for _ in ()).throw(OSError("simulated"))
-        )
+
+        def boom(*_a, **_kw):
+            raise OSError("simulated")
+
+        monkeypatch.setattr(state_manager, "atomic_write_json", boom)
         assert sm.delete_bot("b") is False
         assert set(_bots(sm)) == {"a", "b"}
+
+    def test_the_delete_injection_reaches_the_write(self, sm, monkeypatch):
+        """Positive control for the test above. Without it, a delete that
+        never reached the write would read as a preserved record."""
+        sm.save_state([_rec("a"), _rec("b")])
+        seen: list[str] = []
+
+        def spy(path, *_a, **_kw):
+            seen.append(str(path))
+            raise OSError("simulated")
+
+        monkeypatch.setattr(state_manager, "atomic_write_json", spy)
+        sm.delete_bot("b")
+        assert seen == [str(sm._path)]
