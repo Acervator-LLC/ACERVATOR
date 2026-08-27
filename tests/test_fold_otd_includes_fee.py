@@ -290,13 +290,9 @@ class TestTheDiagnosticAndTheExecutorAgree:
     def test_the_shared_predicate_is_the_executors_comparison(self):
         """The helper must hold the comparison the executor used inline."""
         helper = _method("_fold_eligible_tranches")
-        cmps = [
-            ast.unparse(n) for n in ast.walk(helper) if isinstance(n, ast.Compare)
-        ]
+        cmps = [ast.unparse(n) for n in ast.walk(helper) if isinstance(n, ast.Compare)]
         assert len(cmps) == 1, f"expected one comparison, found {cmps}"
-        assert "ticker_last <= float(t.get('ref', 0)) * otd_factor" in cmps[0], (
-            cmps[0]
-        )
+        assert "ticker_last <= float(t.get('ref', 0)) * otd_factor" in cmps[0], cmps[0]
 
     def test_the_fee_is_not_re_added_at_the_comparison_sites(self):
         """The factor already carries the fee. A comparison that adds it
