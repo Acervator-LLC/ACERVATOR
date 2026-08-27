@@ -23,6 +23,7 @@ from ..core.privacy_mask_registry import (
     mask_or,
 )  # v3.23.7 privacy-mask buttons arc
 from .. import __version__
+from . import design_system as ds
 
 # THE ENGINE OWNS THE BANDS. The Ammo cell says what the tick and the
 # Fire button are about to do, so it reads their thresholds rather than
@@ -41,9 +42,9 @@ logger = logging.getLogger("acervator.gui")
 # the same string the renderer uses rather than a copy that can drift.
 _STALE_MARKER = "(stale)"
 
-_AMMO_SCRUM = "#00ff88"
-_AMMO_FOLD = "#ff3366"
-_AMMO_NEUTRAL = "#a8a8c5"
+_AMMO_SCRUM = ds.SUCCESS
+_AMMO_FOLD = ds.ERROR
+_AMMO_NEUTRAL = ds.TEXT_MED
 
 # v3.24.xx — the age past which a displayed price is called out as old.
 # The bulk refresher (BotManager._ticker_refresh_loop) rewarms the shared
@@ -304,7 +305,6 @@ try:
     from PySide6.QtCore import Qt, QTimer, Slot, Signal, QObject, QSignalBlocker
     from PySide6.QtGui import QColor, QIcon, QFont, QMouseEvent, QTextCharFormat
 
-    from . import design_system as ds
     from .widgets import ColumnarTableWidget, ColumnSpec
 
     # v3.19.12 removed unused QPropertyAnimation, QEasingCurve, QAction
@@ -333,7 +333,7 @@ def _compose_table_target_denom_cell(
 ) -> tuple[str, str]:
     _quote = (quote_currency or "").upper()
     _base = (base_asset or "").upper()
-    _neutral = "#a8a8c5"
+    _neutral = ds.TEXT_MED
     if not _quote or not _base:
         return ("", _neutral)
     if _base == _quote:
@@ -370,10 +370,10 @@ def _compose_table_target_denom_cell(
             _color = _neutral
             _sign = ""
         elif _delta > 0:
-            _color = "#00ff88"
+            _color = ds.SUCCESS
             _sign = "+"
         else:
-            _color = "#ff3366"
+            _color = ds.ERROR
             _sign = ""
         # Compact units — 5 sig figures below 1, 4 decimals above.
         if _units >= 1:
@@ -517,8 +517,8 @@ if _HAS_QT:
             if buffered:
                 # Mark resume point so operator knows what was buffered.
                 self.append(
-                    f'<span style="color:#888">[—]</span> '
-                    f'<span style="color:#00ffcc;font-style:italic;">'
+                    f'<span style="color:{ds.CARD_METRIC_LABEL}">[—]</span> '
+                    f'<span style="color:{ds.PRIMARY};font-style:italic;">'
                     f"(resumed — {len(buffered)} buffered message(s) above)"
                     f"</span>"
                 )
@@ -628,15 +628,15 @@ if _HAS_QT:
             if message.startswith("TRADE NOTIFICATION:"):
                 # Extract the stage if present so we can color by stage
                 # (FILLED green, CANCELLED red, SENT/PLACED amber).
-                stage_color = "#ff3366"  # red default (CANCELLED / generic)
+                stage_color = ds.ERROR  # red default (CANCELLED / generic)
                 if "FILLED" in message:
-                    stage_color = "#00ff88"
+                    stage_color = ds.SUCCESS
                 elif "PLACED" in message:
-                    stage_color = "#ffaa00"
+                    stage_color = ds.WARNING
                 elif "SENT" in message:
-                    stage_color = "#00ffcc"
+                    stage_color = ds.PRIMARY
                 self.append(
-                    f'<span style="color:#888">[{ts}]</span> '
+                    f'<span style="color:{ds.CARD_METRIC_LABEL}">[{ts}]</span> '
                     f'<span style="color:{stage_color};font-size:14px;'
                     f'font-weight:bold;">{message}</span>'
                 )
@@ -654,8 +654,8 @@ if _HAS_QT:
             # target flow uniformly.
             if message.startswith("WIRE FLOW") or message.startswith("WIRE INCOME"):
                 self.append(
-                    f'<span style="color:#888">[{ts}]</span> '
-                    f'<span style="color:#ff66dd;font-size:12px;'
+                    f'<span style="color:{ds.CARD_METRIC_LABEL}">[{ts}]</span> '
+                    f'<span style="color:{ds.MAIN_BADGE_MAGENTA};font-size:12px;'
                     f'font-weight:bold;">⚡ {message}</span>'
                 )
                 self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
@@ -667,21 +667,21 @@ if _HAS_QT:
                 "WIRE STACK FIRE"
             ):
                 self.append(
-                    f'<span style="color:#888">[{ts}]</span> '
-                    f'<span style="color:#ffcc44;font-size:12px;'
+                    f'<span style="color:{ds.CARD_METRIC_LABEL}">[{ts}]</span> '
+                    f'<span style="color:{ds.STATE_PENDING};font-size:12px;'
                     f'font-weight:bold;">⚡ {message}</span>'
                 )
                 self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
                 return
             colors = {
-                "info": "#00ffcc",
-                "success": "#00ff88",
-                "warning": "#ffaa00",
-                "error": "#ff3366",
+                "info": ds.PRIMARY,
+                "success": ds.SUCCESS,
+                "warning": ds.WARNING,
+                "error": ds.ERROR,
             }
-            color = colors.get(level, "#e0e0f0")
+            color = colors.get(level, ds.TEXT_HIGH)
             self.append(
-                f'<span style="color:#888">[{ts}]</span> '
+                f'<span style="color:{ds.CARD_METRIC_LABEL}">[{ts}]</span> '
                 f'<span style="color:{color}">{message}</span>'
             )
             self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
@@ -721,7 +721,7 @@ if _HAS_QT:
             self._label = QLabel(label)
             self._label.setProperty("muted", True)
             self._label.setAlignment(Qt.AlignHCenter | Qt.AlignBottom)
-            self._label.setStyleSheet("font-size: 10px; color: #7a7d99;")
+            self._label.setStyleSheet(f"font-size: 10px; color: {ds.MAIN_CAPTION};")
             self._label_row.addStretch()
             self._label_row.addWidget(self._label)
             # v3.23.7 — privacy dot slot, populated by attach_privacy_dot.
@@ -737,7 +737,7 @@ if _HAS_QT:
             # the parent QHBoxLayout `stretch=1` on each card, but we
             # keep the typography readable.
             self._value.setStyleSheet(
-                "font-size: 14px; font-weight: bold; color: #00ffcc;"
+                f"font-size: 14px; font-weight: bold; color: {ds.PRIMARY};"
             )
             layout.addLayout(self._label_row)
             layout.addWidget(self._value)
@@ -854,15 +854,15 @@ if _HAS_QT:
         def notify(self, message: str, level: str = "info") -> None:
             ts = datetime.now().strftime("%H:%M:%S")
             colors = {
-                "info": "#00ffcc",
-                "success": "#00ff88",
-                "warning": "#ffaa00",
-                "error": "#ff3366",
-                "market": "#88ccff",
+                "info": ds.PRIMARY,
+                "success": ds.SUCCESS,
+                "warning": ds.WARNING,
+                "error": ds.ERROR,
+                "market": ds.STATE_MARKET,
             }
-            color = colors.get(level, "#e0e0f0")
+            color = colors.get(level, ds.TEXT_HIGH)
             self.append(
-                f'<span style="color:#555">{ts}</span> '
+                f'<span style="color:{ds.TEXT_PLACEHOLDER}">{ts}</span> '
                 f'<span style="color:{color}">{message}</span>'
             )
             self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
@@ -955,13 +955,13 @@ if _HAS_QT:
             self.setText(glyph)
             self.setStyleSheet(
                 "PrivacyDot { "
-                "  color: #00FFEE; "
+                f"  color: {ds.PRIMARY_BRIGHT}; "
                 "  background: transparent; "
                 "  border: none; "
                 "  padding: 0 4px; "
                 "  font-size: 14px; "
                 "} "
-                "PrivacyDot:hover { color: #FFFFFF; }"
+                f"PrivacyDot:hover {{ color: {ds.TEXT_MAX}; }}"
             )
             self.setToolTip(tip)
 
@@ -1078,13 +1078,24 @@ if _HAS_QT:
         # introspect the styling intent without re-parsing the literal
         # stylesheet strings each refactor.
         _LABEL_STYLE = (
-            "color: #888; font-size: 10px; " "letter-spacing: 1px; font-weight: 600;"
+            f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; "
+            "letter-spacing: 1px; font-weight: 600;"
         )
-        _VALUE_STYLE_DEFAULT = "color: #ccc; font-size: 16px; font-weight: bold;"
-        _VALUE_STYLE_HIGHLIGHT = "color: #00ff88; font-size: 16px; font-weight: bold;"
-        _VALUE_STYLE_NEGATIVE = "color: #ff3366; font-size: 16px; font-weight: bold;"
-        _VALUE_STYLE_MUTED = "color: #888; font-size: 16px; font-weight: bold;"
-        _SEPARATOR_STYLE = "color: #2a2a3a; font-size: 24px; margin: 0 2px;"
+        _VALUE_STYLE_DEFAULT = (
+            f"color: {ds.TEXT_NEUTRAL}; font-size: 16px; font-weight: bold;"
+        )
+        _VALUE_STYLE_HIGHLIGHT = (
+            f"color: {ds.SUCCESS}; font-size: 16px; font-weight: bold;"
+        )
+        _VALUE_STYLE_NEGATIVE = (
+            f"color: {ds.ERROR}; font-size: 16px; font-weight: bold;"
+        )
+        _VALUE_STYLE_MUTED = (
+            f"color: {ds.CARD_METRIC_LABEL}; font-size: 16px; font-weight: bold;"
+        )
+        _SEPARATOR_STYLE = (
+            f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
+        )
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -1116,7 +1127,7 @@ if _HAS_QT:
             spend_col.setContentsMargins(0, 0, 0, 0)
             self._spend_label = QLabel("SPENDABLE")
             self._spend_label.setStyleSheet(
-                "color: #00ffcc; font-size: 10px; letter-spacing: 1px; "
+                f"color: {ds.PRIMARY}; font-size: 10px; letter-spacing: 1px; "
                 "font-weight: 700;"
             )
             self._spend_label.setToolTip(
@@ -2184,13 +2195,13 @@ if _HAS_QT:
         # MEM-236 — Mode cell color mapping. Mirrors the state_colors dict
         # that used to live in the State column. Readable on dark background.
         STATE_COLORS = {
-            "running": QColor("#00ff88"),
-            "idle": QColor("#888888"),
-            "paused": QColor("#ffaa00"),
-            "error": QColor("#ff3366"),
-            "cooldown": QColor("#ff6600"),
-            "stopped": QColor("#666666"),
-            "starting": QColor("#00e6ff"),
+            "running": QColor(ds.SUCCESS),
+            "idle": QColor(ds.CARD_METRIC_LABEL),
+            "paused": QColor(ds.WARNING),
+            "error": QColor(ds.ERROR),
+            "cooldown": QColor(ds.WARNING_STRONG),
+            "stopped": QColor(ds.TEXT_MUTED),
+            "starting": QColor(ds.STATE_STARTING),
         }
 
         # v3.23.7 — Privacy field id per column. Maps the 7 maskable
@@ -2470,7 +2481,7 @@ if _HAS_QT:
                                 from PySide6.QtCore import Qt as _Qt
 
                                 item.setData(_Qt.UserRole, _url)
-                                item.setForeground(QColor("#66ccff"))
+                                item.setForeground(QColor(ds.TEXT_INFO_SOFT))
                                 _f = item.font()
                                 _f.setUnderline(True)
                                 item.setFont(_f)
@@ -2495,7 +2506,7 @@ if _HAS_QT:
                     # v3.18.6 — color-code Mode cell (col 2 after Exchange
                     # removal) based on bot state.
                     if col == 2:
-                        color = self.STATE_COLORS.get(state, QColor("#e0e0f0"))
+                        color = self.STATE_COLORS.get(state, QColor(ds.TEXT_HIGH))
                         item.setForeground(color)
                         # Tooltip on the cell shows the actual state text
                         item.setToolTip(
@@ -2629,11 +2640,11 @@ if _HAS_QT:
                             # Solid red fill — auto-fire would fire NOW.
                             fire_btn.setStyleSheet(
                                 "font-size: 10px; padding: 1px 6px; "
-                                "color: #ffffff; font-weight: bold; "
-                                "background-color: #d61a3d; "
-                                "border: 1px solid #ff3366;"
+                                f"color: {ds.TEXT_MAX}; font-weight: bold; "
+                                f"background-color: {ds.MAIN_ALERT_SURFACE}; "
+                                f"border: 1px solid {ds.ERROR};"
                             )
-                            _apply_glow("#ff3366")
+                            _apply_glow(ds.ERROR)
                             fire_btn.setToolTip(
                                 "ARMED for SCRUM (auto would fire). "
                                 "Holdings above target; all gates clear. "
@@ -2645,9 +2656,9 @@ if _HAS_QT:
                             # but auto-fire is blocked by ≥1 gate.
                             fire_btn.setStyleSheet(
                                 "font-size: 10px; padding: 1px 6px; "
-                                "color: #ff3366; font-weight: bold; "
+                                f"color: {ds.ERROR}; font-weight: bold; "
                                 "background-color: transparent; "
-                                "border: 1px dashed #ff3366;"
+                                f"border: 1px dashed {ds.ERROR};"
                             )
                             # No glow — visually quieter so operator
                             # sees the difference at a glance.
@@ -2676,11 +2687,11 @@ if _HAS_QT:
                             # Keep the existing muted-green dashed style.
                             fire_btn.setStyleSheet(
                                 "font-size: 10px; padding: 1px 6px; "
-                                "color: #cccccc; font-weight: bold; "
-                                "background-color: #2d5f48; "
-                                "border: 1px dashed #888888;"
+                                f"color: {ds.TEXT_NEUTRAL}; font-weight: bold; "
+                                f"background-color: {ds.STATE_ENGAGED_DIM}; "
+                                f"border: 1px dashed {ds.CARD_METRIC_LABEL};"
                             )
-                            _apply_glow("#557766")
+                            _apply_glow(ds.STATE_ENGAGED_GLOW)
                             fire_btn.setToolTip(
                                 "Fold would be armed, but POSITION "
                                 "CEILING has been reached. Fold is "
@@ -2692,11 +2703,11 @@ if _HAS_QT:
                             # Solid green — auto-fire FOLD would fire NOW.
                             fire_btn.setStyleSheet(
                                 "font-size: 10px; padding: 1px 6px; "
-                                "color: #ffffff; font-weight: bold; "
-                                "background-color: #2d9d5f; "
-                                "border: 1px solid #3ed080;"
+                                f"color: {ds.TEXT_MAX}; font-weight: bold; "
+                                f"background-color: {ds.STATE_ENGAGED}; "
+                                f"border: 1px solid {ds.STATE_ARMED};"
                             )
-                            _apply_glow("#3ed080")
+                            _apply_glow(ds.STATE_ARMED)
                             fire_btn.setToolTip(
                                 "ARMED for FOLD (auto would fire). "
                                 "Holdings below target; all gates clear. "
@@ -2708,9 +2719,9 @@ if _HAS_QT:
                             # but auto-fire is blocked.
                             fire_btn.setStyleSheet(
                                 "font-size: 10px; padding: 1px 6px; "
-                                "color: #3ed080; font-weight: bold; "
+                                f"color: {ds.STATE_ARMED}; font-weight: bold; "
                                 "background-color: transparent; "
-                                "border: 1px dashed #3ed080;"
+                                f"border: 1px dashed {ds.STATE_ARMED};"
                             )
                             _blockers_text = (
                                 "\nBlocked by: " + ", ".join(_fold_blockers)
@@ -2733,11 +2744,11 @@ if _HAS_QT:
                         # rebalance-armed.
                         fire_btn.setStyleSheet(
                             "font-size: 10px; padding: 1px 6px; "
-                            "color: #000000; font-weight: bold; "
-                            "background-color: #ffaa00; "
-                            "border: 1px solid #ffcc44;"
+                            f"color: {ds.TEXT_ON_LIGHT}; font-weight: bold; "
+                            f"background-color: {ds.WARNING}; "
+                            f"border: 1px solid {ds.STATE_PENDING};"
                         )
-                        _apply_glow("#ffcc44")
+                        _apply_glow(ds.STATE_PENDING)
                         fire_btn.setToolTip(
                             "Organic FIRE phase — bot at band but "
                             "holdings within dust band of target. "
@@ -2746,7 +2757,7 @@ if _HAS_QT:
                     elif scrum_phase == "track":
                         fire_btn.setStyleSheet(
                             "font-size: 10px; padding: 1px 6px; "
-                            "color: #ffaa00; font-weight: bold;"
+                            f"color: {ds.WARNING}; font-weight: bold;"
                         )
                         fire_btn.setToolTip(
                             "TRACKING — bot detected band approach. "
@@ -2757,7 +2768,7 @@ if _HAS_QT:
                         # SEARCH / idle — subdued red
                         fire_btn.setStyleSheet(
                             "font-size: 10px; padding: 1px 6px; "
-                            "color: #ff3366; font-weight: bold;"
+                            f"color: {ds.ERROR}; font-weight: bold;"
                         )
                         fire_btn.setToolTip(
                             "Bot within dust band of target. "
@@ -2765,7 +2776,8 @@ if _HAS_QT:
                         )
                 else:
                     fire_btn.setStyleSheet(
-                        "font-size: 10px; padding: 1px 6px; color: #555;"
+                        "font-size: 10px; padding: 1px 6px; color: "
+                        f"{ds.TEXT_PLACEHOLDER};"
                     )
                     if not is_scrumming:
                         fire_btn.setToolTip("Manual Fire is scrumming-only.")
@@ -2930,21 +2942,21 @@ if _HAS_QT:
         # Same state→color mapping as BotStatusTable so the Mode cell
         # color scheme matches across both tables.
         STATE_COLORS = {
-            "running": QColor("#00ff88"),
-            "idle": QColor("#888888"),
-            "paused": QColor("#ffaa00"),
-            "error": QColor("#ff3366"),
-            "cooldown": QColor("#ff6600"),
-            "stopped": QColor("#666666"),
-            "starting": QColor("#00e6ff"),
+            "running": QColor(ds.SUCCESS),
+            "idle": QColor(ds.CARD_METRIC_LABEL),
+            "paused": QColor(ds.WARNING),
+            "error": QColor(ds.ERROR),
+            "cooldown": QColor(ds.WARNING_STRONG),
+            "stopped": QColor(ds.TEXT_MUTED),
+            "starting": QColor(ds.STATE_STARTING),
         }
 
         # Pool color mapping for the Liquid cell foreground —
         # moved verbatim from BotStatusTable.EXTRACTOR_POOL_COLORS.
         POOL_COLORS = {
-            "green": QColor("#00ff88"),
-            "yellow": QColor("#ffaa00"),
-            "red": QColor("#ff3366"),
+            "green": QColor(ds.SUCCESS),
+            "yellow": QColor(ds.WARNING),
+            "red": QColor(ds.ERROR),
         }
 
         def __init__(self, on_bot_clicked=None, parent=None):
@@ -2993,7 +3005,9 @@ if _HAS_QT:
                 # the number.
                 pool_text = f"${chunk_size_usd:,.2f}" if chunk_size_usd > 0 else "---"
                 liquid_text = f"${free_usd:,.2f}" if chunk_size_usd > 0 else "---"
-                liquid_color = self.POOL_COLORS.get(pool_color_name, QColor("#a8a8c5"))
+                liquid_color = self.POOL_COLORS.get(
+                    pool_color_name, QColor(ds.TEXT_MED)
+                )
                 liquid_tip = (
                     f"Extractor pool: {pool_color_name.upper()}\n"
                     f"  • {n_positions} position(s) open\n"
@@ -3030,7 +3044,7 @@ if _HAS_QT:
                         except Exception:  # noqa: S110
                             pass
                     if col == 2:  # Mode cell
-                        color = self.STATE_COLORS.get(state, QColor("#e0e0f0"))
+                        color = self.STATE_COLORS.get(state, QColor(ds.TEXT_HIGH))
                         item.setForeground(color)
                         item.setToolTip(
                             f"Mode: extractor (Base Currency "
@@ -3057,7 +3071,7 @@ if _HAS_QT:
                 fire_btn.setFocusPolicy(Qt.NoFocus)
                 fire_btn.setEnabled(False)
                 fire_btn.setStyleSheet(
-                    "font-size: 10px; padding: 1px 6px; color: #555;"
+                    f"font-size: 10px; padding: 1px 6px; color: {ds.TEXT_PLACEHOLDER};"
                 )
                 fire_btn.setToolTip(
                     "Manual Fire is per-position for Extractor bots. "
@@ -3184,7 +3198,7 @@ if _HAS_QT:
             # operator can see the pool cadence at a glance.
             self._pull_rate_lbl = QLabel("Next data pull: — ")
             self._pull_rate_lbl.setStyleSheet(
-                "color:#7fb3ff; font-size:11px; padding:2px 6px;"
+                f"color:{ds.MAIN_BADGE_TEXT}; font-size:11px; padding:2px 6px;"
             )
             self._pull_rate_lbl.setToolTip(
                 "MarketDataPool freshness diagnostic. Slots = number "
@@ -3214,7 +3228,7 @@ if _HAS_QT:
             # Scrumming Bots section
             self._scrum_label = QLabel("Scrumming Bots")
             self._scrum_label.setStyleSheet(
-                "font-size: 11px; color: #a8a8c5; "
+                f"font-size: 11px; color: {ds.TEXT_MED}; "
                 "font-weight: bold; padding: 6px 2px 2px 2px;"
             )
             layout.addWidget(self._scrum_label)
@@ -3258,7 +3272,7 @@ if _HAS_QT:
             # Extractor Bots section
             self._extractor_label = QLabel("Extractor Bots")
             self._extractor_label.setStyleSheet(
-                "font-size: 11px; color: #a8a8c5; "
+                f"font-size: 11px; color: {ds.TEXT_MED}; "
                 "font-weight: bold; padding: 10px 2px 2px 2px;"
             )
             layout.addWidget(self._extractor_label)
@@ -3799,18 +3813,18 @@ if _HAS_QT:
                 self._privacy_mode_btn.setText("Privacy Mode: ON")
                 self._privacy_mode_btn.setStyleSheet(
                     "QPushButton { "
-                    "  background-color: #2d9d5f; color: #ffffff; "
+                    f"  background-color: {ds.STATE_ENGAGED}; color: {ds.TEXT_MAX}; "
                     "  font-weight: bold; padding: 4px 12px; "
-                    "  border: 1px solid #3ed080; border-radius: 4px; "
+                    f"  border: 1px solid {ds.STATE_ARMED}; border-radius: 4px; "
                     "}"
                 )
             else:
                 self._privacy_mode_btn.setText("Privacy Mode: OFF")
                 self._privacy_mode_btn.setStyleSheet(
                     "QPushButton { "
-                    "  background-color: transparent; color: #a8a8c5; "
+                    f"  background-color: transparent; color: {ds.TEXT_MED}; "
                     "  font-weight: bold; padding: 4px 12px; "
-                    "  border: 1px solid #555; border-radius: 4px; "
+                    f"  border: 1px solid {ds.TEXT_PLACEHOLDER}; border-radius: 4px; "
                     "}"
                 )
 
@@ -3896,7 +3910,7 @@ if _HAS_QT:
             self._disconnect_btn.setEnabled(False)
             row2.addWidget(self._disconnect_btn)
             self._conn_status = QLabel("Not connected")
-            self._conn_status.setStyleSheet("color: #888;")
+            self._conn_status.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL};")
             row2.addWidget(self._conn_status)
             conn_layout.addLayout(row2)
             layout.addWidget(conn_group)
@@ -3938,7 +3952,7 @@ if _HAS_QT:
 
             # Diagnostic tools (bypass CCXT)
             sep = QLabel("--- Diagnostics ---")
-            sep.setStyleSheet("color: #555; margin-top: 6px;")
+            sep.setStyleSheet(f"color: {ds.TEXT_PLACEHOLDER}; margin-top: 6px;")
             sep.setAlignment(Qt.AlignCenter)
             btn_layout.addWidget(sep)
 
@@ -3982,12 +3996,12 @@ if _HAS_QT:
             self, title: str, detail: str, elapsed: float = 0, level: str = "info"
         ):
             colors = {
-                "info": "#00aaff",
-                "success": "#00ff88",
-                "warning": "#ffaa00",
-                "error": "#ff3366",
+                "info": ds.STATUS_INFO,
+                "success": ds.SUCCESS,
+                "warning": ds.WARNING,
+                "error": ds.ERROR,
             }
-            color = colors.get(level, "#ccc")
+            color = colors.get(level, ds.TEXT_NEUTRAL)
             timing = f" ({elapsed:.0f}ms)" if elapsed > 0 else ""
             self._result_info.setText(f"{title}{timing}")
             self._result_info.setStyleSheet(f"color: {color}; font-weight: bold;")
@@ -3995,9 +4009,10 @@ if _HAS_QT:
 
             ts = _t.strftime("%H:%M:%S")
             self._result_view.append(
-                f'<span style="color:#888">[{ts}]</span> '
+                f'<span style="color:{ds.CARD_METRIC_LABEL}">[{ts}]</span> '
                 f'<span style="color:{color}"><b>{title}</b>{timing}</span><br>'
-                f'<pre style="color:#ccc; margin:0; white-space:pre-wrap;">{detail}</pre><br>'
+                f'<pre style="color:{ds.TEXT_NEUTRAL}; margin:0; '
+                f'white-space:pre-wrap;">{detail}</pre><br>'
             )
             self._result_view.verticalScrollBar().setValue(
                 self._result_view.verticalScrollBar().maximum()
@@ -4030,7 +4045,7 @@ if _HAS_QT:
             _supplied = False
             _call_s = None
             self._conn_status.setText(f"Connecting to {eid.capitalize()}...")
-            self._conn_status.setStyleSheet("color: #00aaff;")
+            self._conn_status.setStyleSheet(f"color: {ds.STATUS_INFO};")
             self._connect_btn.setEnabled(False)
 
             safe_process_events("legacy P4.1 site")
@@ -4092,7 +4107,7 @@ if _HAS_QT:
                 self._conn_status.setText(
                     f"Connected: {eid.capitalize()} ({mcount} markets)"
                 )
-                self._conn_status.setStyleSheet("color: #00ff88;")
+                self._conn_status.setStyleSheet(f"color: {ds.SUCCESS};")
                 self._log(
                     f"CONNECTED to {eid.capitalize()}",
                     f"Markets: {mcount}\nAuth: OK\nThis connection is isolated from bots.",
@@ -4118,7 +4133,7 @@ if _HAS_QT:
                 from ..exchange.ccxt_connector import CCXTConnector as CC
 
                 self._conn_status.setText("Failed")
-                self._conn_status.setStyleSheet("color: #ff3366;")
+                self._conn_status.setStyleSheet(f"color: {ds.ERROR};")
                 self._log(
                     "CONNECTION FAILED", CC._format_exchange_error(exc), level="error"
                 )
@@ -4258,7 +4273,7 @@ if _HAS_QT:
             self._connect_btn.setEnabled(True)
             self._disconnect_btn.setEnabled(False)
             self._conn_status.setText("Disconnected")
-            self._conn_status.setStyleSheet("color: #888;")
+            self._conn_status.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL};")
             self._log("DISCONNECTED", "Connection closed", level="info")
             # 10.9 -- apitest.16.002, AND IT IS THE ONE THAT MATTERS
             # MOST IN THIS TAB. The label two lines above reads
@@ -5009,7 +5024,8 @@ if _HAS_QT:
         from html import escape as _esc
 
         view.appendHtml(
-            '<span style="color:#ffb000;background-color:#33220a">'
+            "<span "
+            f'style="color:{ds.MAIN_HIGHLIGHT_AMBER_TEXT};background-color:{ds.MAIN_HIGHLIGHT_AMBER}">'
             f"{_esc(_signal_gap_marker_text(skipped))}</span>"
         )
         return 1
@@ -5363,7 +5379,7 @@ if _HAS_QT:
                 ph_layout.setAlignment(Qt.AlignCenter)
                 ph_layout.setSpacing(12)
                 ph_title = QLabel(f"No {label_text} Exchanges Configured")
-                ph_title.setStyleSheet("color: #aaa; border: none;")
+                ph_title.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; border: none;")
                 ph_title.setAlignment(Qt.AlignCenter)
                 ph_layout.addWidget(ph_title)
                 ph_add = QPushButton(f"＋ Add {label_text} Exchange")
@@ -5375,7 +5391,9 @@ if _HAS_QT:
                 ph_add.clicked.connect(self._add_exchange)
                 ph_layout.addWidget(ph_add, alignment=Qt.AlignCenter)
                 ph_hint = QLabel(f"Add a {label_text} exchange to begin trading")
-                ph_hint.setStyleSheet("color: #555; font-size: 10px; border: none;")
+                ph_hint.setStyleSheet(
+                    f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; border: none;"
+                )
                 ph_hint.setAlignment(Qt.AlignCenter)
                 ph_layout.addWidget(ph_hint)
                 ph_outer.addWidget(ph_card, alignment=Qt.AlignCenter)
@@ -5390,13 +5408,13 @@ if _HAS_QT:
                 self._crypto_tab_widget,
                 _crypto_tabs,
                 self._crypto_placeholder,
-            ) = _make_layer("Crypto", "#00ccaa")
+            ) = _make_layer("Crypto", ds.LAYER_CRYPTO)
             (
                 stock_page,
                 self._stock_tab_widget,
                 _stock_tabs,
                 self._stock_placeholder,
-            ) = _make_layer("Stock", "#6699ff")
+            ) = _make_layer("Stock", ds.LAYER_STOCK)
 
             self._crypto_exchange_tabs: dict = _crypto_tabs
             self._stock_exchange_tabs: dict = _stock_tabs
@@ -5604,17 +5622,17 @@ if _HAS_QT:
             # operator can freeze the spool to capture errors.
             activity_header_row = QHBoxLayout()
             activity_label = QLabel("Activity Log")
-            activity_label.setStyleSheet("color: #00ffcc; font-weight: bold;")
+            activity_label.setStyleSheet(f"color: {ds.PRIMARY}; font-weight: bold;")
             activity_header_row.addWidget(activity_label)
             activity_header_row.addStretch()
             self._activity_pause_btn = QPushButton("⏸  Pause Console")
             self._activity_pause_btn.setStyleSheet(
-                "QPushButton{background:#1a1a3a;color:#ffaa00;"
-                "border:1px solid #ffaa00;border-radius:3px;"
+                f"QPushButton{{background:{ds.MAIN_TOGGLE_SURFACE};color:{ds.WARNING};"
+                f"border:1px solid {ds.WARNING};border-radius:3px;"
                 "padding:3px 10px;font-size:11px;}"
-                "QPushButton:hover{background:#222250;}"
-                "QPushButton:checked{background:#3a1a1a;color:#ff3366;"
-                "border:1px solid #ff3366;}"
+                f"QPushButton:hover{{background:{ds.MAIN_TOGGLE_HOVER};}}"
+                f"QPushButton:checked{{background:{ds.MAIN_TOGGLE_CHECKED};color:{ds.ERROR};"
+                f"border:1px solid {ds.ERROR};}}"
             )
             self._activity_pause_btn.setCheckable(True)
             self._activity_pause_btn.setToolTip(
@@ -5756,15 +5774,15 @@ if _HAS_QT:
             # v3.15.67 — header row with pause toggle for the API log.
             api_header_row = QHBoxLayout()
             api_label = QLabel("API Interaction Log")
-            api_label.setStyleSheet("color: #00ffcc; font-weight: bold;")
+            api_label.setStyleSheet(f"color: {ds.PRIMARY}; font-weight: bold;")
             api_header_row.addWidget(api_label)
             api_header_row.addStretch()
             self._api_pause_btn = QPushButton("⏸  Pause API Log")
             self._api_pause_btn.setStyleSheet(
-                "QPushButton{background:#1a1a3a;color:#ffaa00;"
-                "border:1px solid #ffaa00;border-radius:3px;"
+                f"QPushButton{{background:{ds.MAIN_TOGGLE_SURFACE};color:{ds.WARNING};"
+                f"border:1px solid {ds.WARNING};border-radius:3px;"
                 "padding:3px 10px;font-size:11px;}"
-                "QPushButton:hover{background:#222250;}"
+                f"QPushButton:hover{{background:{ds.MAIN_TOGGLE_HOVER};}}"
             )
             self._api_pause_btn.setCheckable(True)
             self._api_pause_btn.setToolTip(
@@ -6118,7 +6136,8 @@ if _HAS_QT:
             self._console.setReadOnly(True)
             self._console.setFont(QFont("Consolas", 9))
             self._console.setStyleSheet(
-                "QPlainTextEdit { background: #0a0a12; color: #c0c0c0; "
+                f"QPlainTextEdit {{ background: {ds.SURFACE_CHART}; color: "
+                f"{ds.TEXT_CONSOLE}; "
                 "border: none; padding: 4px; }"
             )
             self._console.setLineWrapMode(QPlainTextEdit.NoWrap)
@@ -6212,13 +6231,13 @@ if _HAS_QT:
 
             class _QtLogHandler(logging.Handler):
                 COLORS = {
-                    "DEBUG": QColor("#666"),
-                    "INFO": QColor("#aaa"),
-                    "WARNING": QColor("#ffaa00"),
-                    "ERROR": QColor("#ff3366"),
-                    "CRITICAL": QColor("#ff0044"),
+                    "DEBUG": QColor(ds.TEXT_MUTED),
+                    "INFO": QColor(ds.TEXT_INACTIVE),
+                    "WARNING": QColor(ds.WARNING),
+                    "ERROR": QColor(ds.ERROR),
+                    "CRITICAL": QColor(ds.MAIN_LOG_CRITICAL),
                 }
-                HIGHLIGHT = QColor("#00ffcc")  # indicator panel events
+                HIGHLIGHT = QColor(ds.PRIMARY)  # indicator panel events
 
                 def __init__(self, text_edit):
                     logging.Handler.__init__(self)
@@ -6384,7 +6403,8 @@ if _HAS_QT:
             # Control bar
             control_bar = QWidget()
             control_bar.setStyleSheet(
-                "QWidget { background: #14141e; border-bottom: 1px solid #2a2a3a; }"
+                f"QWidget {{ background: {ds.MAIN_TOOLBAR_SURFACE}; border-bottom: 1px "
+                f"solid {ds.MAIN_SEPARATOR}; }}"
             )
             control_layout = QHBoxLayout(control_bar)
             control_layout.setContentsMargins(6, 4, 6, 4)
@@ -6394,12 +6414,14 @@ if _HAS_QT:
             self._console_pause_btn = QPushButton("⏸  Pause")
             self._console_pause_btn.setCheckable(True)
             self._console_pause_btn.setStyleSheet(
-                "QPushButton { background: #1a1a26; color: #c0c0c0; "
-                "border: 1px solid #3a3a4a; padding: 4px 12px; "
+                f"QPushButton {{ background: {ds.MAIN_BUTTON_SURFACE}; color: "
+                f"{ds.TEXT_CONSOLE}; "
+                f"border: 1px solid {ds.MAIN_BUTTON_BORDER}; padding: 4px 12px; "
                 "font-family: Consolas; font-size: 10px; }"
-                "QPushButton:checked { background: #663300; color: #ffaa00; "
-                "border-color: #ffaa00; }"
-                "QPushButton:hover { background: #22222e; }"
+                f"QPushButton:checked {{ background: {ds.MAIN_TOGGLE_CHECKED_AMBER}; "
+                f"color: {ds.WARNING}; "
+                f"border-color: {ds.WARNING}; }}"
+                f"QPushButton:hover {{ background: {ds.MAIN_BUTTON_HOVER}; }}"
             )
             self._console_pause_btn.clicked.connect(self._toggle_console_pause)
             control_layout.addWidget(self._console_pause_btn)
@@ -6407,7 +6429,7 @@ if _HAS_QT:
             # Buffered-message indicator (visible while paused)
             self._console_pause_indicator = QLabel("")
             self._console_pause_indicator.setStyleSheet(
-                "color: #ffaa00; font-family: Consolas; font-size: 10px; "
+                f"color: {ds.WARNING}; font-family: Consolas; font-size: 10px; "
                 "padding: 0 8px;"
             )
             control_layout.addWidget(self._console_pause_indicator)
@@ -6417,10 +6439,11 @@ if _HAS_QT:
             # Clear button (since we're already adding a control bar)
             clear_btn = QPushButton("Clear")
             clear_btn.setStyleSheet(
-                "QPushButton { background: #1a1a26; color: #c0c0c0; "
-                "border: 1px solid #3a3a4a; padding: 4px 12px; "
+                f"QPushButton {{ background: {ds.MAIN_BUTTON_SURFACE}; color: "
+                f"{ds.TEXT_CONSOLE}; "
+                f"border: 1px solid {ds.MAIN_BUTTON_BORDER}; padding: 4px 12px; "
                 "font-family: Consolas; font-size: 10px; }"
-                "QPushButton:hover { background: #22222e; }"
+                f"QPushButton:hover {{ background: {ds.MAIN_BUTTON_HOVER}; }}"
             )
             clear_btn.clicked.connect(self._console.clear)
             control_layout.addWidget(clear_btn)
@@ -6459,8 +6482,8 @@ if _HAS_QT:
 
             _sig_hdr = QLabel("  SIGNALS — name · expected · actual")
             _sig_hdr.setStyleSheet(
-                "background:#0a0a14;color:#00ffcc;font-family:Consolas;"
-                "font-size:10px;padding:3px;border-top:1px solid #2a2a44;"
+                f"background:{ds.SURFACE_CONSOLE_HEADER};color:{ds.PRIMARY};font-family:Consolas;"
+                f"font-size:10px;padding:3px;border-top:1px solid {ds.SURFACE_4};"
             )
             _sig_lay.addWidget(_sig_hdr)
 
@@ -6468,7 +6491,7 @@ if _HAS_QT:
             self._signal_view.setReadOnly(True)
             self._signal_view.setMaximumBlockCount(2000)
             self._signal_view.setStyleSheet(
-                "QPlainTextEdit{background:#05050a;color:#c0ffe0;"
+                f"QPlainTextEdit{{background:{ds.SURFACE_CONSOLE};color:{ds.TEXT_LOG_MINT};"
                 "font-family:Consolas;font-size:10px;border:none;}"
             )
             _sig_lay.addWidget(self._signal_view, 1)
@@ -6746,11 +6769,11 @@ if _HAS_QT:
                 ) + _draw_signal_gap_marker(view, skipped=_skipped)
                 for r in _shown:
                     if r.ok is True:
-                        mark, colour = "OK  ", "#00ff88"
+                        mark, colour = "OK  ", ds.SUCCESS
                     elif r.ok is False:
-                        mark, colour = "FAIL", "#ff3366"
+                        mark, colour = "FAIL", ds.ERROR
                     else:
-                        mark, colour = "--  ", "#8899aa"
+                        mark, colour = "--  ", ds.STATUS_NEUTRAL
                     # ESCAPE EVERYTHING. appendHtml parses its input, so
                     # an unescaped payload containing < or > is silently
                     # SWALLOWED — and repr() of most objects looks like
@@ -6764,9 +6787,9 @@ if _HAS_QT:
                     )
                     view.appendHtml(
                         f'<span style="color:{colour}">{mark}</span> '
-                        f'<span style="color:#88c0ff">{_esc(r.name)}</span>'
-                        f'<span style="color:#667788"> {_esc(r.site)}</span>'
-                        f'<span style="color:#c0ffe0">  '
+                        f'<span style="color:{ds.MAIN_LOG_NAME}">{_esc(r.name)}</span>'
+                        f'<span style="color:{ds.MAIN_LOG_SITE}"> {_esc(r.site)}</span>'
+                        f'<span style="color:{ds.TEXT_LOG_MINT}">  '
                         f"got={_esc(render(r.actual))}{exp}</span>"
                     )
                     # AFTER the append, never before. A raise inside
@@ -7076,7 +7099,7 @@ if _HAS_QT:
             # driven via _refresh_api_load_pill().
             self._api_load_label = QLabel("API: —")
             self._api_load_label.setStyleSheet(
-                "color: #888; font-size: 10px; padding: 0 8px; "
+                f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; padding: 0 8px; "
                 "font-family: Consolas;"
             )
             self._api_load_label.setToolTip(
@@ -7089,7 +7112,8 @@ if _HAS_QT:
             # AI Monitor indicator
             self._ai_monitor_label = QLabel("AI: OFF")
             self._ai_monitor_label.setStyleSheet(
-                "color: #555; font-size: 10px; padding: 0 8px; font-family: Consolas;"
+                f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; padding: 0 8px; "
+                "font-family: Consolas;"
             )
             status.addPermanentWidget(self._ai_monitor_label)
 
@@ -7099,7 +7123,8 @@ if _HAS_QT:
                 if ai_cfg.get("enabled") and ai_cfg.get("api_key"):
                     self._ai_monitor_label.setText("AI: READY")
                     self._ai_monitor_label.setStyleSheet(
-                        "color: #00ddff; font-size: 10px; padding: 0 8px; font-family: Consolas;"
+                        f"color: {ds.STATUS_AUTHENTICATED}; font-size: 10px; padding: 0 "
+                        "8px; font-family: Consolas;"
                     )
 
             self.setStatusBar(status)
@@ -7185,7 +7210,8 @@ if _HAS_QT:
                 if not connectors:
                     self._api_load_label.setText("API: —")
                     self._api_load_label.setStyleSheet(
-                        "color: #888; font-size: 10px; padding: 0 8px; "
+                        f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; padding: 0 "
+                        "8px; "
                         "font-family: Consolas;"
                     )
                     return
@@ -7203,11 +7229,11 @@ if _HAS_QT:
                     f"{worst.ceiling_cpm:.0f} CPM ({pct} %)"
                 )
                 if worst.load_score > mon.safety_pct:
-                    colour = "#ff3366"
+                    colour = ds.ERROR
                 elif worst.load_score > 0.5:
-                    colour = "#ff9900"
+                    colour = ds.FOLD_RATIO_AMBER
                 else:
-                    colour = "#00ff88"
+                    colour = ds.SUCCESS
                 self._api_load_label.setText(text)
                 self._api_load_label.setStyleSheet(
                     f"color: {colour}; font-size: 10px; padding: 0 8px; "
@@ -7384,7 +7410,8 @@ if _HAS_QT:
                 current = app.styleSheet() or ""
                 app.setStyleSheet(
                     current + "\nQToolTip { font-size: 12px; padding: 8px; "
-                    "background: #1a1a2e; color: #e0e0f0; border: 1px solid #00cccc; }"
+                    f"background: {ds.SURFACE_CONTROL}; color: {ds.TEXT_HIGH}; border: "
+                    f"1px solid {ds.MAIN_TOOLTIP_BORDER}; }}"
                 )
 
             self._abbreviation_tooltips = {
@@ -8964,7 +8991,7 @@ if _HAS_QT:
                 f"<b>Buffered events:</b> "
                 f"{len(self._error_log_buffer)} (capped at 200)"
             )
-            hdr.setStyleSheet("padding: 6px 4px; color: #c0c4d8;")
+            hdr.setStyleSheet(f"padding: 6px 4px; color: {ds.MAIN_TABLE_HEADER};")
             v.addWidget(hdr)
 
             tabs = QTabWidget()
@@ -9236,7 +9263,8 @@ if _HAS_QT:
                 )
             else:
                 self._status_log.log(
-                    "AI Monitor: disabled (configure in Settings → AI Monitor)", "#666"
+                    "AI Monitor: disabled (configure in Settings → AI Monitor)",
+                    ds.TEXT_MUTED,
                 )
 
         def _on_ai_feedback(self, event) -> None:
@@ -9250,13 +9278,13 @@ if _HAS_QT:
                 if authenticated:
                     self._ai_monitor_label.setText("AI: ✓ AUTH")
                     self._ai_monitor_label.setStyleSheet(
-                        "color: #00ff88; font-size: 10px; padding: 0 8px; "
+                        f"color: {ds.SUCCESS}; font-size: 10px; padding: 0 8px; "
                         "font-family: Consolas; font-weight: bold;"
                     )
                 else:
                     self._ai_monitor_label.setText("AI: ⚠ UNAUTH")
                     self._ai_monitor_label.setStyleSheet(
-                        "color: #ffaa00; font-size: 10px; padding: 0 8px; "
+                        f"color: {ds.WARNING}; font-size: 10px; padding: 0 8px; "
                         "font-family: Consolas; font-weight: bold;"
                     )
             if feedback:
@@ -9264,7 +9292,7 @@ if _HAS_QT:
                 tag = "✓ AUTH" if authenticated else "⚠ UNAUTH"
                 self._status_log.log(
                     f"[AI MONITOR {tag}] {feedback[:200]}",
-                    "#00ddff" if authenticated else "#ffaa00",
+                    ds.STATUS_AUTHENTICATED if authenticated else ds.WARNING,
                 )
                 # Log to journal if configured
                 ai_cfg = self._settings.get("ai_monitor", {}) if self._settings else {}
@@ -10123,7 +10151,8 @@ if _HAS_QT:
                 if ai_cfg.get("enabled") and ai_cfg.get("api_key"):
                     self._ai_monitor_label.setText("AI: READY")
                     self._ai_monitor_label.setStyleSheet(
-                        "color: #00ddff; font-size: 10px; padding: 0 8px; font-family: Consolas;"
+                        f"color: {ds.STATUS_AUTHENTICATED}; font-size: 10px; padding: 0 "
+                        "8px; font-family: Consolas;"
                     )
                     self._status_log.log(
                         f"AI Monitor reconfigured (phrase: '{ai_cfg.get('connect_phrase', '')[:20]}...')",
@@ -10132,7 +10161,8 @@ if _HAS_QT:
                 else:
                     self._ai_monitor_label.setText("AI: OFF")
                     self._ai_monitor_label.setStyleSheet(
-                        "color: #555; font-size: 10px; padding: 0 8px; font-family: Consolas;"
+                        f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; padding: 0 "
+                        "8px; font-family: Consolas;"
                     )
 
             self._status_log.log("Settings saved.", "success")
@@ -10279,27 +10309,31 @@ if _HAS_QT:
             if self._trading_mode == "crypto":
                 self._mode_btn.setStyleSheet(
                     "QPushButton { background: rgba(0, 200, 160, 40); "
-                    "color: #00ccaa; border: 1px solid rgba(0, 200, 160, 100); "
+                    f"color: {ds.LAYER_CRYPTO}; border: 1px solid rgba(0, 200, 160, "
+                    "100); "
                     "border-radius: 4px; font-weight: bold; font-size: 11px; }"
                     "QPushButton:hover { background: rgba(0, 200, 160, 70); }"
                 )
                 if tabs_ready:
                     self._crypto_tab_widget.setStyleSheet(
-                        "QTabBar::tab:selected { border-bottom: 2px solid #00ccaa; "
-                        "color: #00ccaa; }"
+                        "QTabBar::tab:selected { border-bottom: 2px solid "
+                        f"{ds.LAYER_CRYPTO}; "
+                        f"color: {ds.LAYER_CRYPTO}; }}"
                     )
                     self._stock_tab_widget.setStyleSheet("")
             else:
                 self._mode_btn.setStyleSheet(
                     "QPushButton { background: rgba(80, 140, 255, 40); "
-                    "color: #6699ff; border: 1px solid rgba(80, 140, 255, 100); "
+                    f"color: {ds.LAYER_STOCK}; border: 1px solid rgba(80, 140, 255, "
+                    "100); "
                     "border-radius: 4px; font-weight: bold; font-size: 11px; }"
                     "QPushButton:hover { background: rgba(80, 140, 255, 70); }"
                 )
                 if tabs_ready:
                     self._stock_tab_widget.setStyleSheet(
-                        "QTabBar::tab:selected { border-bottom: 2px solid #6699ff; "
-                        "color: #6699ff; }"
+                        "QTabBar::tab:selected { border-bottom: 2px solid "
+                        f"{ds.LAYER_STOCK}; "
+                        f"color: {ds.LAYER_STOCK}; }}"
                     )
                     self._crypto_tab_widget.setStyleSheet("")
 
