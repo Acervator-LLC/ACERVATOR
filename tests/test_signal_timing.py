@@ -295,7 +295,7 @@ def _attrs_read_off(path: Path, variable: str, function: str) -> set:
     anybody remembering to update a list.
 
     SCOPED TO ONE FUNCTION DELIBERATELY. A whole-module walk of
-    `main_window.py` collects every `r.<attr>` across 8,243 lines --
+    `main_window.py` collects every `r.<attr>` across 4,956 lines --
     `r.bot_id` among them -- and would demand fields of a signal record
     that no consumer of one ever asked for.
 

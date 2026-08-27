@@ -77,6 +77,11 @@ WIDGET_SRC = {
     q.name: q.read_text(encoding="utf-8")
     for q in sorted((REPO_ROOT / "src" / "gui" / "widgets").glob("*.py"))
 }
+# Every per-tab builder carved out of `_setup_ui`, for the same reason.
+TAB_BUILDER_SRC = {
+    q.name: q.read_text(encoding="utf-8")
+    for q in sorted((REPO_ROOT / "src" / "gui" / "main_tabs").glob("*.py"))
+}
 CHART_SRC = WIDGET_SRC["trade_charts_tab.py"]
 
 
@@ -450,6 +455,7 @@ class TestOneDefinitionOnly:
             ("bot_container.py", BC_SRC),
             ("main_window.py", MW_SRC),
             *sorted(WIDGET_SRC.items()),
+            *sorted(TAB_BUILDER_SRC.items()),
             ("bot_live_settings.py", BLS_SRC),
         ):
             hits = _FROZEN_RE.findall(_code_only(src))

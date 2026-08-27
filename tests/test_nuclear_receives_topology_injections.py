@@ -37,7 +37,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 PANEL = REPO_ROOT / "src/gui/simulator_tab/nuclear_mode_panel.py"
-MAIN = REPO_ROOT / "src/gui/main_window.py"
+# The two MainWindow mixins that hold the wiring pinned below.
+SIM_TAB_BUILDER = REPO_ROOT / "src/gui/main_tabs/simulator_tab.py"
+INSPECTOR_BUILDER = REPO_ROOT / "src/gui/main_tabs/market_inspector_tab.py"
 
 PROPOSAL = {
     "id": "ring:BTC-ETH",
@@ -147,7 +149,7 @@ class TestTheSeamReachesNuclear:
     def test_main_window_supplies_the_getter(self):
         names = {
             getattr(n.func, "attr", None)
-            for n in ast.walk(ast.parse(MAIN.read_text(encoding="utf-8")))
+            for n in ast.walk(ast.parse(SIM_TAB_BUILDER.read_text(encoding="utf-8")))
             if isinstance(n, ast.Call)
         }
         assert "set_topology_getter" in names, (
@@ -207,7 +209,7 @@ class TestTheStressPathNeverAdoptsLiveBots:
         """NEGATIVE CONTROL — the live adopt journey must remain intact and
         separate. If this breaks, the separation was achieved by removing
         adoption rather than by keeping the two apart."""
-        src = MAIN.read_text(encoding="utf-8")
+        src = INSPECTOR_BUILDER.read_text(encoding="utf-8")
         found = [
             n
             for n in ast.walk(ast.parse(src))

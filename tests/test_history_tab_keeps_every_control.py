@@ -972,7 +972,9 @@ def test_hands_over_ytd(
     from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
 
     assert hasattr(FleetReplayPanel, "on_history_refreshed")
-    wiring = (REPO / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
+    wiring = (REPO / "src" / "gui" / "main_tabs" / "history_tab.py").read_text(
+        encoding="utf-8"
+    )
     assert "self._history_tab.history_refreshed.connect(" in wiring
     assert "fleet_panel.on_history_refreshed" in wiring
 

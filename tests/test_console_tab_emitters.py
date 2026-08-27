@@ -126,12 +126,12 @@ WHAT THE TAB HIDES.
 WHAT IS REAL HERE AND WHAT IS A STAND-IN. The `QPlainTextEdit`s and
 their real 2000-block caps, the `QPushButton`, the `QLabel`, the
 `QTimer`s, the four `MainWindow` methods themselves and the `SignalSink`
-are all real. `_QtLogHandler` is declared INSIDE
-`MainWindow._setup_ui`, so reaching it means constructing a
-`MainWindow`, which builds every tab and reads the operator's own state
-off disk. `14-005` therefore uses a stand-in for the handler alone, the
-way `tests/test_asset_charts_emitters.py` stands in for
-`ChartDataFetcher`. The failure that pin exists to catch -- a delivery
+are all real. `_QtLogHandler` lives in
+`src/gui/main_tabs/console_log_handler.py`. `14-005` still uses a
+stand-in for the handler alone, the way
+`tests/test_asset_charts_emitters.py` stands in for `ChartDataFetcher`:
+the pin brackets a drain duration, and the real handler offers no way to
+lengthen one. The failure that pin exists to catch -- a delivery
 the pane's own block cap eats -- is a property of the REAL widget and is
 driven through it.
 
@@ -225,7 +225,7 @@ def qapp() -> QApplication:
 
 
 class _Handler:
-    """A stand-in for `_QtLogHandler`, which is a local of `_setup_ui`.
+    """A stand-in for `_QtLogHandler`, which takes no injectable delay.
 
     It carries the four members `_toggle_console_pause` reads --
     `buffered_count()`, `_buffer_dropped`, `_buffer_max`, `_paused` --

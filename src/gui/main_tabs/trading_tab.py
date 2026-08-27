@@ -1,0 +1,499 @@
+"""Trading tab of the main window."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Callable
+
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QPushButton,
+    QSplitter,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+from .. import design_system as ds
+from ..widgets.status_log import StatusLog
+from .notify_stub import _NotifyStub
+
+logger = logging.getLogger("acervator.gui")
+
+
+class TradingTabMixin:
+    """Exchange layers, the indicator panel and the two log panes."""
+
+    # Supplied by MainWindow at runtime; declared so a type checker
+    # can resolve them. Annotations only: no attribute is created and
+    # the runtime base stays `object`.
+    _add_exchange: Callable[..., Any]
+    _bot_manager: Any
+    _main_tabs: Any
+    _on_api_event: Callable[..., Any]
+
+    def _build_trading_tab(self) -> None:
+        """Build the Trading tab and add it to the main tab widget."""
+        # --- Tab 1: Trading ---
+        trading_tab = QWidget()
+        trading_layout = QVBoxLayout(trading_tab)
+        trading_layout.setContentsMargins(2, 2, 2, 2)
+        trading_layout.setSpacing(2)
+
+        # Full-height splitter: exchange tabs + indicators on top, logs on bottom
+        main_splitter = QSplitter(Qt.Vertical)
+        main_splitter.setHandleWidth(5)
+        main_splitter.setChildrenCollapsible(False)
+
+        # Top section: exchange tabs + indicator panel side by side
+        top_splitter = QSplitter(Qt.Horizontal)
+        top_splitter.setHandleWidth(5)
+        top_splitter.setChildrenCollapsible(False)
+
+        # ── Equity exchange IDs (routes to Stock layer) ────────────
+        self._equity_exchange_ids = {
+            "alpaca",
+            "ibkr",
+            "schwab",
+            "tdameritrade",
+            "webull",
+            "tastytrade",
+            "fidelity",
+            "etrade",
+            "interactivebrokers",
+        }
+
+        # ── QStackedWidget: page 0 = Crypto, page 1 = Stock ────────
+        from PySide6.QtWidgets import QStackedWidget
+
+        self._trading_stack = QStackedWidget()
+
+        def _make_layer(label_text: str, accent: str) -> tuple:
+            """Build one trading layer — returns (page_widget, tab_widget,
+            exchange_tabs_dict, placeholder_widget)."""
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(0, 0, 0, 0)
+
+            tab_w = QTabWidget()
+            add_btn = QPushButton(f"＋ Add {label_text} Exchange")
+            add_btn.setMinimumWidth(140)
+            add_btn.setToolTip(f"Add a {label_text} exchange connection")
+            add_btn.clicked.connect(self._add_exchange)
+            tab_w.setCornerWidget(add_btn)
+
+            # Empty state placeholder
+            placeholder = QWidget()
+            ph_outer = QVBoxLayout(placeholder)
+            ph_outer.setAlignment(Qt.AlignCenter)
+            ph_card = QFrame()
+            ph_card.setMinimumSize(280, 140)
+            ph_card.setStyleSheet(
+                f"QFrame {{ background: rgba(0,255,204,8); "
+                f"border: 1px solid {accent}44; border-radius: 6px; }}"
+            )
+            ph_layout = QVBoxLayout(ph_card)
+            ph_layout.setAlignment(Qt.AlignCenter)
+            ph_layout.setSpacing(12)
+            ph_title = QLabel(f"No {label_text} Exchanges Configured")
+            ph_title.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; border: none;")
+            ph_title.setAlignment(Qt.AlignCenter)
+            ph_layout.addWidget(ph_title)
+            ph_add = QPushButton(f"＋ Add {label_text} Exchange")
+            ph_add.setMinimumSize(180, 36)
+            ph_add.setStyleSheet(
+                f"QPushButton {{ border: 1px solid {accent}; "
+                f"color: {accent}; border-radius: 4px; }}"
+            )
+            ph_add.clicked.connect(self._add_exchange)
+            ph_layout.addWidget(ph_add, alignment=Qt.AlignCenter)
+            ph_hint = QLabel(f"Add a {label_text} exchange to begin trading")
+            ph_hint.setStyleSheet(
+                f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; border: none;"
+            )
+            ph_hint.setAlignment(Qt.AlignCenter)
+            ph_layout.addWidget(ph_hint)
+            ph_outer.addWidget(ph_card, alignment=Qt.AlignCenter)
+            tab_w.addTab(placeholder, "Get Started")
+
+            page_layout.addWidget(tab_w)
+            return page, tab_w, {}, placeholder
+
+        # Build both layers
+        (
+            crypto_page,
+            self._crypto_tab_widget,
+            _crypto_tabs,
+            self._crypto_placeholder,
+        ) = _make_layer("Crypto", ds.LAYER_CRYPTO)
+        (
+            stock_page,
+            self._stock_tab_widget,
+            _stock_tabs,
+            self._stock_placeholder,
+        ) = _make_layer("Stock", ds.LAYER_STOCK)
+
+        self._crypto_exchange_tabs: dict = _crypto_tabs
+        self._stock_exchange_tabs: dict = _stock_tabs
+
+        self._trading_stack.addWidget(crypto_page)  # index 0
+        self._trading_stack.addWidget(stock_page)  # index 1
+        self._trading_stack.setCurrentIndex(0)  # start in crypto
+
+        # Legacy alias: points to whichever layer is active
+        # Updated by _toggle_trading_mode()
+        self._tab_widget = self._crypto_tab_widget
+        self._exchange_tabs = self._crypto_exchange_tabs
+        self._empty_placeholder = self._crypto_placeholder
+
+        top_splitter.addWidget(self._trading_stack)
+
+        # Right panel: indicator voting only (Price Chart removed per request)
+        from ..indicator_panel import IndicatorVotingPanel
+
+        self._indicator_panel = IndicatorVotingPanel()
+        self._chart = None  # No chart in trading tab
+        top_splitter.addWidget(self._indicator_panel)
+
+        top_splitter.setSizes([600, 500])
+
+        # 10.5 -- TRADING TAB ASSEMBLY.
+        #
+        # This tab computes nothing. It builds a structure and
+        # then makes claims about that structure in its own
+        # comments: two layer pages in one QStackedWidget,
+        # Crypto first and Stock second, the indicator panel to
+        # the right of the stack, and a legacy alias pointing at
+        # the layer the operator can actually see. Every claim
+        # is READ BACK OUT of the widget that now holds it. Not
+        # one of them echoes the call that made it: indexOf asks
+        # the stack and the splitter where a widget really sits,
+        # and currentIndex asks the stack what it really shows.
+        #
+        # _faults counts the claims that came back wrong, so the
+        # verdict is one number and the context names which
+        # claim produced it. actual is that count and expected
+        # is 0 -- different expressions, so the check can fail
+        # (E9).
+        #
+        # NO DURATION. Assembly is widget construction on the
+        # GUI thread with no bounded operation behind it, and a
+        # number here would be fabricated (E8).
+        _crypto_host = (
+            self._crypto_tab_widget.parentWidget() if self._crypto_tab_widget else None
+        )
+        _stock_host = (
+            self._stock_tab_widget.parentWidget() if self._stock_tab_widget else None
+        )
+        _alias_host = self._tab_widget.parentWidget() if self._tab_widget else None
+        _crypto_page = (
+            self._trading_stack.indexOf(_crypto_host)
+            if _crypto_host is not None
+            else -1
+        )
+        _stock_page = (
+            self._trading_stack.indexOf(_stock_host) if _stock_host is not None else -1
+        )
+        _alias_page = (
+            self._trading_stack.indexOf(_alias_host) if _alias_host is not None else -1
+        )
+        _visible_page = self._trading_stack.currentIndex()
+        _stack_slot = top_splitter.indexOf(self._trading_stack)
+        _panel_slot = top_splitter.indexOf(self._indicator_panel)
+        _faults = sum(
+            (
+                self._trading_stack.count() != 2,
+                _crypto_page != 0,
+                _stock_page != 1,
+                _stack_slot != 0,
+                _panel_slot != 1,
+                _alias_page != _visible_page,
+            )
+        )
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            from src.core.signal_contract import emit as _tr_emit
+
+            _tr_emit(
+                "trading.12.001.postcondition.tab_assembled",
+                actual=_faults,
+                expected=0,
+                context={
+                    "stack_pages": self._trading_stack.count(),
+                    "crypto_page": _crypto_page,
+                    "stock_page": _stock_page,
+                    "stack_slot": _stack_slot,
+                    "panel_slot": _panel_slot,
+                    "splitter_slots": top_splitter.count(),
+                    "alias_page": _alias_page,
+                    "visible_page": _visible_page,
+                    "chart_removed": self._chart is None,
+                    "equity_ids": len(self._equity_exchange_ids),
+                },
+            )
+
+        main_splitter.addWidget(top_splitter)
+
+        # Bottom section: spool + two symmetrical log panels
+        bottom_splitter = QSplitter(Qt.Vertical)
+        bottom_splitter.setHandleWidth(5)
+        bottom_splitter.setChildrenCollapsible(False)
+
+        # MEM-247 — Notifications spool REMOVED per Session 26 operator
+        # directive ("The Notification section can be ripped out").
+        # `self._spool.notify(level, msg)` was called from ~6 sites (exchange
+        # credential status, bot startup errors, etc.). Rather than
+        # audit+delete every callsite, we route notifications into the
+        # Activity Log (status_log) so operator still sees them. The
+        # `_NotifyStub` import above preserves the .notify() signature.
+        # Also REMOVED: global Start All / Pause All / Stop All buttons.
+        # Per-bot Start / Pause / Stop controls remain accessible via the
+        # bot detail dialog + Fire button in the row.
+
+        # status_log is created a few lines below; defer _spool assignment
+        # until after it exists. See "self._spool = self._NotifyStub(...)"
+        # immediately after self._status_log = StatusLog().
+        self._NotifyStub = _NotifyStub
+        # Notifications block intentionally not added to bottom_splitter.
+
+        # Two symmetrical log panels side by side
+        log_splitter = QSplitter(Qt.Horizontal)
+        log_splitter.setHandleWidth(5)
+        log_splitter.setChildrenCollapsible(False)
+
+        activity_widget = QWidget()
+        activity_layout = QVBoxLayout(activity_widget)
+        activity_layout.setContentsMargins(2, 2, 2, 2)
+        activity_layout.setSpacing(2)
+        # v3.15.67 — header row with title + pause toggle so the
+        # operator can freeze the spool to capture errors.
+        activity_header_row = QHBoxLayout()
+        activity_label = QLabel("Activity Log")
+        activity_label.setStyleSheet(f"color: {ds.PRIMARY}; font-weight: bold;")
+        activity_header_row.addWidget(activity_label)
+        activity_header_row.addStretch()
+        self._activity_pause_btn = QPushButton("⏸  Pause Console")
+        self._activity_pause_btn.setStyleSheet(
+            f"QPushButton{{background:{ds.MAIN_TOGGLE_SURFACE};color:{ds.WARNING};"
+            f"border:1px solid {ds.WARNING};border-radius:3px;"
+            "padding:3px 10px;font-size:11px;}"
+            f"QPushButton:hover{{background:{ds.MAIN_TOGGLE_HOVER};}}"
+            f"QPushButton:checked{{background:{ds.MAIN_TOGGLE_CHECKED};color:{ds.ERROR};"
+            f"border:1px solid {ds.ERROR};}}"
+        )
+        self._activity_pause_btn.setCheckable(True)
+        self._activity_pause_btn.setToolTip(
+            "Pause the Activity Log spool so errors don't scroll "
+            "off-screen. Messages received while paused are "
+            "buffered (cap 2000) and flushed on resume in "
+            "chronological order. v3.15.67."
+        )
+
+        def _on_activity_pause_toggled(checked: bool):
+            if checked:
+                self._status_log.pause()
+                self._activity_pause_btn.setText("▶  Resume Console")
+            else:
+                self._status_log.resume()
+                self._activity_pause_btn.setText("⏸  Pause Console")
+            # 10.5 -- trading.12.005. The handler's whole job is
+            # to turn a button state into a log state, so the
+            # log's own state is what gets read back. A pause
+            # that never took returns as cleanly as one that
+            # did, and the operator only learns the difference
+            # when the errors he paused for scroll away.
+            # NO DURATION: a flag flip has no operation (E8).
+            import contextlib
+
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _tr_emit
+
+                _stats = self._status_log.health_stats()
+                _tr_emit(
+                    "trading.12.005.postcondition" ".activity_log_paused",
+                    actual=_stats["paused"],
+                    expected=checked,
+                    context={
+                        "buffered": _stats["pause_buffer_size"],
+                        "renders": _stats["total_renders"],
+                        "render_errors": _stats["render_errors"],
+                        "blocks": _stats["document_blocks"],
+                    },
+                )
+
+        self._activity_pause_btn.toggled.connect(_on_activity_pause_toggled)
+        activity_header_row.addWidget(self._activity_pause_btn)
+        activity_layout.addLayout(activity_header_row)
+        self._status_log = StatusLog()
+        self._status_log.setMaximumHeight(16777215)  # Remove height limit
+        activity_layout.addWidget(self._status_log)
+        # MEM-247 — wire notify-stub now that status_log exists. See the
+        # _NotifyStub class defined in the notifications-removal block above.
+        self._spool = self._NotifyStub(self._status_log)
+        log_splitter.addWidget(activity_widget)
+
+        # v3.16.35 — Activity-Log throughput watchdog (operator
+        # 2026-05-06: "Activity Log has stopped spooling around
+        # 5 to 6 AM but am not seeing any explicit errors").
+        # Polls StatusLog.health_stats() every 60s. When it
+        # detects:
+        #   • render_errors went up since last check → write a
+        #     bypass-paused warning into the log itself + file
+        #     logger
+        #   • last_render_age_sec > 600 (10 min) → write a
+        #     visible bypass-paused warning + file logger
+        #   • last_render_age_sec > 1800 (30 min) → escalate
+        #     to a CRITICAL log entry + repeat every 30 min
+        # Watchdog itself is in the GUI thread so it can safely
+        # call force_log() without cross-thread issues.
+        self._activity_log_last_errors = 0
+        self._activity_log_alert_sent_at = 0.0
+        self._activity_log_critical_sent_at = 0.0
+
+        def _activity_log_watchdog():
+            try:
+                stats = self._status_log.health_stats()
+            except (
+                Exception
+            ) as _wd_exc:  # R28-OK: defensive — never let watchdog itself crash
+                logger.warning("Activity-Log watchdog stat fetch failed: %s", _wd_exc)
+                return
+            import time as _t
+
+            now = _t.time()
+            # New render errors since last check?
+            cur_errs = stats["render_errors"]
+            if cur_errs > self._activity_log_last_errors:
+                delta = cur_errs - self._activity_log_last_errors
+                self._activity_log_last_errors = cur_errs
+                msg = (
+                    f"⚠ ACTIVITY-LOG WATCHDOG: {delta} new render "
+                    f"error(s) since last check (total {cur_errs}). "
+                    f"Last: {stats['last_render_error']}. "
+                    f"Output messages may be missing — see "
+                    f"acervator.log for raw exception detail."
+                )
+                self._status_log.force_log(msg, "error")
+                logger.error(msg)
+            # No-activity windows
+            age = stats["last_render_age_sec"]
+            # Only alert if bots are active — quiet idle is fine
+            bots_active = self._bot_manager and any(
+                b.state.value == "running"
+                for b in getattr(self._bot_manager, "_bots", {}).values()
+            )
+            if bots_active and age > 600:
+                # Throttle: re-alert every 10 min while silent
+                if now - self._activity_log_alert_sent_at > 600:
+                    msg = (
+                        f"⚠ ACTIVITY-LOG WATCHDOG: no new log "
+                        f"messages for {age:.0f}s while {sum(1 for b in self._bot_manager._bots.values() if b.state.value == 'running')} "
+                        f"bot(s) running. paused={stats['paused']}, "
+                        f"buffered={stats['pause_buffer_size']}, "
+                        f"document_blocks={stats['document_blocks']}."
+                    )
+                    self._status_log.force_log(msg, "warning")
+                    logger.warning(msg)
+                    self._activity_log_alert_sent_at = now
+            if bots_active and age > 1800:
+                # Critical: 30+ min silence with bots running
+                if now - self._activity_log_critical_sent_at > 1800:
+                    msg = (
+                        f"🚨 ACTIVITY-LOG WATCHDOG CRITICAL: no "
+                        f"new log messages for {age:.0f}s. Likely "
+                        f"silent failure — check acervator.log "
+                        f"and bot status panels directly."
+                    )
+                    self._status_log.force_log(msg, "error")
+                    logger.error(msg)
+                    self._activity_log_critical_sent_at = now
+
+        self._activity_log_watchdog_timer = QTimer(self)
+        self._activity_log_watchdog_timer.timeout.connect(_activity_log_watchdog)
+        self._activity_log_watchdog_timer.start(60_000)  # 60s
+
+        api_widget = QWidget()
+        api_layout = QVBoxLayout(api_widget)
+        api_layout.setContentsMargins(2, 2, 2, 2)
+        api_layout.setSpacing(2)
+        # v3.15.67 — header row with pause toggle for the API log.
+        api_header_row = QHBoxLayout()
+        api_label = QLabel("API Interaction Log")
+        api_label.setStyleSheet(f"color: {ds.PRIMARY}; font-weight: bold;")
+        api_header_row.addWidget(api_label)
+        api_header_row.addStretch()
+        self._api_pause_btn = QPushButton("⏸  Pause API Log")
+        self._api_pause_btn.setStyleSheet(
+            f"QPushButton{{background:{ds.MAIN_TOGGLE_SURFACE};color:{ds.WARNING};"
+            f"border:1px solid {ds.WARNING};border-radius:3px;"
+            "padding:3px 10px;font-size:11px;}"
+            f"QPushButton:hover{{background:{ds.MAIN_TOGGLE_HOVER};}}"
+        )
+        self._api_pause_btn.setCheckable(True)
+        self._api_pause_btn.setToolTip(
+            "Freeze the API Interaction Log so you can capture an "
+            "error without it scrolling away. Internal events keep "
+            "happening; the buffer just stops appending to the view. "
+            "v3.15.67."
+        )
+        # Pause state lives on the main_window since QPlainTextEdit
+        # doesn't have a custom subclass like StatusLog. The
+        # _on_api_event handler checks this flag.
+        self._api_log_paused: bool = False
+        self._api_log_pause_buffer: list[str] = []
+        self._api_log_pause_buffer_cap: int = 2000
+
+        def _on_api_pause_toggled(checked: bool):
+            self._api_log_paused = checked
+            if checked:
+                self._api_pause_btn.setText("▶  Resume API Log")
+            else:
+                # Flush the buffer
+                buf = list(self._api_log_pause_buffer)
+                self._api_log_pause_buffer.clear()
+                for line in buf:
+                    self._api_log_view.appendPlainText(line)
+                if buf:
+                    self._api_log_view.appendPlainText(
+                        f"--- (resumed; {len(buf)} buffered line(s) above) ---"
+                    )
+                self._api_pause_btn.setText("⏸  Pause API Log")
+
+        self._api_pause_btn.toggled.connect(_on_api_pause_toggled)
+        api_header_row.addWidget(self._api_pause_btn)
+        api_layout.addLayout(api_header_row)
+        # MEM-204 — QPlainTextEdit (same reason as the main Console).
+        self._api_log_view = QPlainTextEdit()
+        self._api_log_view.setReadOnly(True)
+        self._api_log_view.setPlaceholderText(
+            "API calls, responses, timing, data usage..."
+        )
+        self._api_log_view.setToolTip(
+            "Every API call: endpoint, reason, result, timing, data usage"
+        )
+        self._api_log_view.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self._api_log_view.setMaximumBlockCount(2000)
+        api_layout.addWidget(self._api_log_view)
+        log_splitter.addWidget(api_widget)
+
+        # Equal sizes for symmetry
+        log_splitter.setSizes([500, 500])
+        bottom_splitter.addWidget(log_splitter)
+
+        bottom_splitter.setSizes([120, 300])
+        main_splitter.addWidget(bottom_splitter)
+
+        main_splitter.setSizes([500, 350])
+        trading_layout.addWidget(main_splitter)
+
+        from ...exchange.api_logger import get_api_log
+
+        self._api_logger = get_api_log()
+        self._api_logger.add_listener(self._on_api_event)
+
+        self._main_tabs.addTab(trading_tab, "Trading")

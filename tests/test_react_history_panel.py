@@ -1035,9 +1035,20 @@ def test_the_qtablewidget_scan_can_see_a_real_table() -> None:
     assert "QTableWidget" in code, "the scan stripped the code, not the prose"
 
 
+def _window_wiring() -> str:
+    """The window module and every per-tab builder, concatenated.
+
+    Each ``addTab`` call now sits in the mixin that builds that tab.
+    """
+    gui = REPO / "src" / "gui"
+    parts = [gui / "main_window.py"]
+    parts += sorted((gui / "main_tabs").glob("*.py"))
+    return "\n".join(p.read_text(encoding="utf-8") for p in parts)
+
+
 def test_there_is_exactly_one_history_tab() -> None:
     """One tab named History, and no second renderer beside it."""
-    wiring = (REPO / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
+    wiring = _window_wiring()
     added = re.findall(r'addTab\([^,]+,\s*"([^"]*[Hh]istory[^"]*)"\)', wiring)
     assert added == ["History"], added
     assert "ReactHistoryPanel" not in wiring

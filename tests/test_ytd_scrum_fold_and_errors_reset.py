@@ -164,7 +164,15 @@ class TestAggregatorPrefersYtd:
 
 class TestErrorsCardAndResetSourceDiscipline:
     def _src(self) -> str:
-        return (REPO / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
+        """The window module plus the header-strip mixin that owns the card."""
+        gui = REPO / "src" / "gui"
+        return "\n".join(
+            p.read_text(encoding="utf-8")
+            for p in (
+                gui / "main_window.py",
+                gui / "main_tabs" / "header_strip.py",
+            )
+        )
 
     def test_lifetime_qualifier_dropped_from_card_label(self):
         src = self._src()

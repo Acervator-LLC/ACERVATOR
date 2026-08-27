@@ -124,7 +124,13 @@ RELAYED = "trading.12.006.postcondition.notification_relayed"
 
 TRADING_PINS = (ASSEMBLED, ROUTED, SYNCED, ALIAS, PAUSED, RELAYED)
 
-MAIN_WINDOW = REPO / "src" / "gui" / "main_window.py"
+# The six Trading pins sit in three files now: four in the window
+# module and two in the mixins that build the tab.
+TRADING_PIN_SOURCES = (
+    REPO / "src" / "gui" / "main_window.py",
+    REPO / "src" / "gui" / "main_tabs" / "trading_tab.py",
+    REPO / "src" / "gui" / "main_tabs" / "notify_stub.py",
+)
 
 # The topics `MainWindow.__init__` subscribes to. It discards every
 # unsubscribe closure the bus hands back, so a window that is closed is
@@ -284,16 +290,16 @@ def _do_nothing(*args: Any, **kwargs: Any) -> None:
 
 
 def _trading_emit_calls() -> list[ast.Call]:
-    """Every `_tr_emit(...)` call node in `main_window.py`.
+    """Every `_tr_emit(...)` call node behind the Trading tab.
 
     Read from the syntax tree, the way `tools/emitter_registry_check.py`
     reads them. A regex over the source would answer a different
     question.
     """
-    tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
     return [
         node
-        for node in ast.walk(tree)
+        for path in TRADING_PIN_SOURCES
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id == "_tr_emit"
