@@ -25,6 +25,8 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+from ..exchange.ccxt_connector import CCXT_DECIMAL_PLACES, precision_to_decimals
+
 logger = logging.getLogger("acervator.preflight")
 
 
@@ -151,8 +153,13 @@ def check_symbol(
         min_amt = float(amt_limits.get("min", 0.0) or 0.0)
         min_cost = float(cost_limits.get("min", 0.0) or 0.0)
         precision = market.get("precision", {}) or {}
-        price_prec = int(precision.get("price", 0) or 0)
-        amt_prec = int(precision.get("amount", 0) or 0)
+        precision_mode = getattr(exch, "precisionMode", CCXT_DECIMAL_PLACES)
+        price_prec = precision_to_decimals(
+            precision.get("price"), precision_mode, default=0
+        )
+        amt_prec = precision_to_decimals(
+            precision.get("amount"), precision_mode, default=0
+        )
 
         # Step 3: fetch ticker to confirm market is live and get current price
         try:

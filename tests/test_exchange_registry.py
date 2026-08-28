@@ -23,12 +23,21 @@ from __future__ import annotations
 import pytest
 
 from src.exchange.ccxt_connector import (
+    CCXT_DECIMAL_PLACES,
+    CCXT_SIGNIFICANT_DIGITS,
+    CCXT_TICK_SIZE,
     PASSPHRASE_EXCHANGES,
     PREFLIGHT_URLS,
     SUPPORTED_EXCHANGES,
+    US_ACCOUNT_RESTRICTED_EXCHANGES,
+    US_IP_BLOCKED_EXCHANGES,
     US_RESTRICTED_EXCHANGES,
+    VERIFIED_EXCHANGES,
+    exchange_label,
+    list_supported_exchanges,
     resolve_ccxt_class,
 )
+from src.exchange.timeframes import ALL_TIMEFRAMES, available_timeframes
 
 ccxt = pytest.importorskip("ccxt", reason="ccxt is a runtime dependency")
 
@@ -105,3 +114,79 @@ def test_passphrase_and_restricted_sets_reference_known_exchanges():
     known = set(SUPPORTED_EXCHANGES)
     assert PASSPHRASE_EXCHANGES <= known, PASSPHRASE_EXCHANGES - known
     assert US_RESTRICTED_EXCHANGES <= known, US_RESTRICTED_EXCHANGES - known
+
+
+def test_ccxt_precision_mode_constants_match_the_installed_ccxt():
+    """The mirrored precisionMode integers must equal ccxt's own.
+
+    ``precision_to_decimals`` branches on these. If ccxt renumbers them
+    the connector would read every tick size under the wrong rule and
+    report a wrong decimal-place count for every market, silently.
+    """
+    assert CCXT_DECIMAL_PLACES == ccxt.DECIMAL_PLACES
+    assert CCXT_SIGNIFICANT_DIGITS == ccxt.SIGNIFICANT_DIGITS
+    assert CCXT_TICK_SIZE == ccxt.TICK_SIZE
+
+
+def test_us_restricted_is_the_union_of_its_two_causes():
+    """A geo-IP refusal and an account-eligibility refusal are different
+    facts established by different methods. The connect path warns on
+    both, so the union must stay exact and the causes must not overlap."""
+    assert US_RESTRICTED_EXCHANGES == (
+        US_IP_BLOCKED_EXCHANGES | US_ACCOUNT_RESTRICTED_EXCHANGES
+    )
+    assert not (US_IP_BLOCKED_EXCHANGES & US_ACCOUNT_RESTRICTED_EXCHANGES)
+
+
+def test_verified_exchanges_names_only_venues_that_have_traded():
+    """Coinbase is the only venue Acervator has ever traded on. Adding an
+    id here asserts real order placement, fills and balance reads on that
+    venue; this test is the place that claim has to be defended."""
+    assert VERIFIED_EXCHANGES == {"coinbase"}
+    assert VERIFIED_EXCHANGES <= set(SUPPORTED_EXCHANGES)
+    assert US_IP_BLOCKED_EXCHANGES <= set(SUPPORTED_EXCHANGES)
+    assert US_ACCOUNT_RESTRICTED_EXCHANGES <= set(SUPPORTED_EXCHANGES)
+
+
+@pytest.mark.parametrize("exchange_id", sorted(SUPPORTED_EXCHANGES))
+def test_every_unverified_or_blocked_venue_says_so_in_its_label(exchange_id):
+    """A venue that cannot be reached, or has never been traded on, must
+    not appear in a picker looking like the one that has."""
+    label = exchange_label(exchange_id)
+    if exchange_id in US_IP_BLOCKED_EXCHANGES:
+        assert "blocked from US" in label
+    elif exchange_id not in VERIFIED_EXCHANGES:
+        assert "untested" in label
+    else:
+        assert "untested" not in label and "blocked" not in label
+    assert ("passphrase required" in label) == (exchange_id in PASSPHRASE_EXCHANGES)
+
+
+def test_listing_carries_the_status_of_every_registry_entry():
+    """``list_supported_exchanges`` is the data surface for the pickers;
+    each row must carry the verification and reachability facts."""
+    rows = {r["id"]: r for r in list_supported_exchanges()}
+    assert set(rows) == set(SUPPORTED_EXCHANGES)
+    for eid, row in rows.items():
+        assert row["verified"] == (eid in VERIFIED_EXCHANGES)
+        assert row["us_ip_blocked"] == (eid in US_IP_BLOCKED_EXCHANGES)
+        assert row["label"] == exchange_label(eid)
+
+
+@pytest.mark.parametrize("exchange_id", sorted(SUPPORTED_EXCHANGES))
+def test_no_supported_venue_falls_through_the_permissive_timeframe_default(
+    exchange_id,
+):
+    """An exchange absent from the timeframe map is handed all eleven
+    timeframes. Six declared venues offer fewer than that, and requesting
+    one they lack returns an empty candle array — the TA engine then sees
+    too few candles and holds, with no error anywhere."""
+    offered = available_timeframes(exchange_id)
+    assert offered, exchange_id
+    if set(offered) == set(ALL_TIMEFRAMES):
+        from src.exchange import timeframes as tf_module
+
+        assert exchange_id in tf_module._AVAILABILITY, (
+            f"{exchange_id} returns the full set only because it is missing "
+            f"from _AVAILABILITY, not because it was measured to offer it"
+        )

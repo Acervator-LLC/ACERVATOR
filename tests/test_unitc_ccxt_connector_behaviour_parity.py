@@ -695,10 +695,32 @@ def test_history_callback_roundtrip() -> None:
 
 
 def test_supported_exchange_listing_shape() -> None:
-    """The listing's passphrase flag is a bool, as the annotation says."""
+    """Every listing row matches the annotated ``dict[str, str | bool]``.
+
+    The flags say whether a venue needs a passphrase, whether Acervator has
+    ever traded on it, and whether its public endpoints refused a US IP at
+    the recorded measurement date. Each must be a real bool agreeing with
+    the set it is derived from — a truthy string here would read as True at
+    every call site while carrying no fact.
+    """
     rows = M.list_supported_exchanges()
     assert len(rows) == len(M.SUPPORTED_EXCHANGES)
+    flags = {
+        "requires_passphrase": M.PASSPHRASE_EXCHANGES,
+        "verified": M.VERIFIED_EXCHANGES,
+        "us_ip_blocked": M.US_IP_BLOCKED_EXCHANGES,
+    }
     for row in rows:
-        assert sorted(row) == ["id", "name", "requires_passphrase"]
-        assert isinstance(row["requires_passphrase"], bool)
-        assert row["requires_passphrase"] == (row["id"] in M.PASSPHRASE_EXCHANGES)
+        assert sorted(row) == [
+            "id",
+            "label",
+            "name",
+            "requires_passphrase",
+            "us_ip_blocked",
+            "verified",
+        ]
+        for key in ("id", "name", "label"):
+            assert isinstance(row[key], str) and row[key]
+        for key, source in flags.items():
+            assert isinstance(row[key], bool)
+            assert row[key] == (row["id"] in source)
