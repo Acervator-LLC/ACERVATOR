@@ -47,11 +47,13 @@ from pathlib import Path
 
 import pytest
 
+from src._version import BAKED_FILENAME, baked_path
 from tools.spec_common import (
     COMMON_HIDDENIMPORTS,
     EXCLUDES,
     FALLBACK_VERSION,
     KEYRING_BACKENDS,
+    bake_version_datas,
     build_graceful_datas,
     datas_candidates,
     hiddenimports_for,
@@ -63,10 +65,11 @@ WIN_SPEC = REPO / "Acervator_win.spec"
 MAC_SPEC = REPO / "Acervator_mac.spec"
 SHARED_MODULE = REPO / "tools" / "spec_common.py"
 
-# The four names both specs must take from the shared module. Losing any
-# one of them means that spec has grown a private copy again.
+# The names both specs must take from the shared module. Losing any one of
+# them means that spec has grown a private copy again.
 SHARED_NAMES = (
     "EXCLUDES",
+    "bake_version_datas",
     "build_graceful_datas",
     "hiddenimports_for",
     "read_acervator_version",
@@ -200,10 +203,14 @@ class TestSpecsUseTheSharedModule:
                 "collect_submodules('src')" in src
             ), f"{label} spec must still call collect_submodules('src')"
 
-    def test_the_shared_module_imports_only_stdlib(self):
+    def test_the_shared_module_does_not_import_pyinstaller(self):
         """If it grows a PyInstaller import, this test file stops running
-        on a machine that has no PyInstaller, and the cheap pin is gone."""
-        assert top_level_imports(SHARED_MODULE) == {"__future__", "os"}
+        on a machine that has no PyInstaller, and the cheap pin is gone.
+        `src` is allowed: `src._version` owns the version and imports
+        stdlib only."""
+        imported = top_level_imports(SHARED_MODULE)
+        assert "PyInstaller" not in imported
+        assert imported == {"__future__", "os", "src"}
 
 
 # ---------------------------------------------------------------------------
@@ -274,15 +281,23 @@ class TestVersionHelper:
 
         assert read_acervator_version(str(REPO)) == src.__version__
 
-    def test_it_falls_back_when_the_file_is_absent(self, tmp_path):
+    def test_it_falls_back_when_nothing_resolves(self, tmp_path):
+        """No repository and no baked file means no version to report."""
         assert read_acervator_version(str(tmp_path)) == FALLBACK_VERSION
 
-    def test_it_reads_a_planted_version(self, tmp_path):
+    def test_it_reads_a_baked_version(self, tmp_path):
+        """A tree carrying a build-time stamp reports that stamp."""
+        baked_path(tmp_path).parent.mkdir()
+        baked_path(tmp_path).write_text("9.9.9\n", encoding="utf-8")
+        assert read_acervator_version(str(tmp_path)) == "9.9.9"
+
+    def test_a_version_literal_is_no_longer_read(self, tmp_path):
+        """A planted literal must not resurrect the retired reader."""
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "__init__.py").write_text(
             '__version__ = "9.9.9"\n', encoding="utf-8"
         )
-        assert read_acervator_version(str(tmp_path)) == "9.9.9"
+        assert read_acervator_version(str(tmp_path)) == FALLBACK_VERSION
 
     def test_mac_bundle_version_comes_from_the_reader(self, mac_src):
         """BUNDLE(version=...) and both plist keys must be
@@ -319,6 +334,23 @@ class TestGracefulDatas:
         (tmp_path / "src").mkdir()
         kept = build_graceful_datas(str(tmp_path))
         assert [dest for _, dest in kept] == ["src"]
+
+    def test_the_baked_version_is_a_separate_pair(self, tmp_path):
+        """The bake must not ride inside build_graceful_datas: that builder
+        answers [] for an empty tree, and a version file hidden in it would
+        make the empty answer non-empty."""
+        assert build_graceful_datas(str(tmp_path)) == []
+        pairs = bake_version_datas(str(tmp_path))
+        assert [dest for _, dest in pairs] == ["src"]
+        assert Path(pairs[0][0]).name == BAKED_FILENAME
+
+    def test_both_specs_ship_the_baked_version(self, win_src, mac_src):
+        """A spec that dropped the pair would build a bundle with no version."""
+        for label, src in (("win", win_src), ("mac", mac_src)):
+            assert (
+                "build_graceful_datas(PROJECT_ROOT) + "
+                "bake_version_datas(PROJECT_ROOT)" in src
+            ), f"{label} spec does not add the baked version to datas"
 
 
 # ---------------------------------------------------------------------------

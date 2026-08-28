@@ -3,12 +3,13 @@
 WHAT A FAILURE MEANS
 ====================
 ``test_get_version_reads_a_utf8_init_under_a_cp1252_locale`` red: an
-unencoded text read is back in ``_get_version``. On a cp1252 default the
+unencoded text read is back on the version path. On a cp1252 default the
 box-drawing characters in ``src/__init__.py`` raise ``UnicodeDecodeError``,
-``_get_version`` degrades to ``"unknown"``, and
-``check_version_consistency`` returns at its ``canonical == "unknown"``
-guard without running one check -- reporting nothing in language
-identical to a clean run.
+the sweep loses its canonical version, and ``check_version_consistency``
+returns at its ``canonical == "unknown"`` guard without running one check
+-- reporting nothing in language identical to a clean run. The version
+itself now comes from ``src/_version.py``, so the fixture tree carries the
+build-time stamp a bundle carries as well as the non-ASCII package file.
 
 ``test_check_version_consistency_still_checks_under_a_cp1252_locale``
 red: the consistency check is dead. It found no mismatch in a tree built
@@ -27,9 +28,9 @@ sweep aborts on UnicodeEncodeError before writing any report.
 
 TWO-SIDED
 =========
-Drop ``encoding="utf-8"`` from ``_get_version``'s ``read_text`` and the
-first two tests fail. Point ``get_reports_dir`` back into the repo tree
-and the destination test fails.
+Drop ``encoding="utf-8"`` from ``read_baked_version`` and the first two
+tests fail. Point ``get_reports_dir`` back into the repo tree and the
+destination test fails.
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ from pathlib import Path
 
 import pytest
 
+from src._version import baked_path
 from src.core import log_paths
 from src.core.version_sweep import (
     ROOT,
@@ -69,23 +71,25 @@ def cp1252_locale(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def utf8_tree(tmp_path: Path) -> Path:
-    """A miniature repo whose ``src/__init__.py`` holds non-ASCII text.
+    """A miniature bundle whose ``src/__init__.py`` holds non-ASCII text.
 
-    ``main.py`` restates 4.4.4 against a canonical 9.9.9, so a live
+    The version comes from the build-time stamp, as it does in a real
+    bundle. ``main.py`` restates 4.4.4 against a canonical 9.9.9, so a live
     consistency check must produce exactly one HIGH finding.
     """
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text(
-        '"""┌─ box drawing ─┐"""\n__version__ = "9.9.9"\n',
+        '"""┌─ box drawing ─┐"""\nfrom ._version import resolve_version\n',
         encoding="utf-8",
     )
+    baked_path(tmp_path).write_text("9.9.9\n", encoding="utf-8")
     (tmp_path / "main.py").write_text('current_version = "4.4.4"\n', encoding="utf-8")
     return tmp_path
 
 
 @pytest.mark.usefixtures("cp1252_locale")
 def test_get_version_reads_a_utf8_init_under_a_cp1252_locale(utf8_tree: Path) -> None:
-    """A non-ASCII ``__init__.py`` must still yield its version literal."""
+    """A tree holding non-ASCII text must still yield its version."""
     sweep = VersionSweep(root=utf8_tree)
     assert sweep.result.version == "9.9.9"
 

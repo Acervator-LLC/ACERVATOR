@@ -15,11 +15,21 @@ test explicitly xfails with the reason so the gap is visible.
 from __future__ import annotations
 
 import importlib
+import re
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
+
+# MAJOR.MINOR.PATCH with an optional PEP 440 local segment. The version is
+# derived from the git tag, so a tree that is not exactly on a clean tag
+# reports the release plus a `+` segment.
+VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(\+[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$")
+
+# Every word a local segment may open with. Anything else means the resolver
+# invented a shape nothing documents.
+LOCAL_LEADERS = frozenset({"dev", "dirty", "unknown"})
 
 
 # ---------------------------------------------------------------------------
@@ -32,16 +42,21 @@ class TestSrcImports:
         m = importlib.import_module("src")
         assert hasattr(m, "__version__")
         assert isinstance(m.__version__, str)
-        assert len(m.__version__.split(".")) == 3, "SemVer expected"
+        assert VERSION_RE.match(m.__version__), f"malformed version: {m.__version__}"
 
     def test_src_version_matches_pyproject_or_at_least_looks_sane(self):
         import src
 
-        # Must be a non-empty semver-looking string
-        parts = src.__version__.split(".")
+        release, _, local = src.__version__.partition("+")
+        parts = release.split(".")
+        assert len(parts) == 3, f"release segment is not MAJOR.MINOR.PATCH: {release}"
         assert all(
             p.isdigit() for p in parts
         ), f"non-numeric version parts: {src.__version__}"
+        if local:
+            assert (
+                local.split(".")[0] in LOCAL_LEADERS
+            ), f"undocumented local segment: {local}"
 
     @pytest.mark.parametrize(
         "subpkg",

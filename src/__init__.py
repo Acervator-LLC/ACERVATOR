@@ -3,9 +3,10 @@
 # ┌─────────────────────────────────────────────────────────────┐
 # │ AI DEVELOPER NOTE                                           │
 # │                                                             │
-# │ BUMP __version__ ON EVERY CHANGE. This line is the ONLY     │
-# │ statement of the version. main.py, the packaging spec and   │
-# │ the screens all import it. Do not add a second copy.        │
+# │ THE VERSION IS DERIVED, NEVER WRITTEN. It comes from the    │
+# │ git tag in a source checkout, and from the value the build  │
+# │ baked in for a frozen bundle. Do not restate it here or     │
+# │ anywhere else — see src/_version.py.                        │
 # │                                                             │
 # │ Acervator is an accumulation trading platform.              │
 # │ NOT a grid bot. NOT a DCA bot. NOT portfolio rebalancing.   │
@@ -13,5 +14,7 @@
 # └─────────────────────────────────────────────────────────────┘
 """
 
-__version__ = "3.27.0"
+from ._version import resolve_version
+
+__version__ = resolve_version()
 __app_name__ = "Acervator"

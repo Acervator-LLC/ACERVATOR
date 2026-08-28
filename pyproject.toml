@@ -171,9 +171,10 @@ target-version = ["py313"]
 extend-exclude = "tests/obsolete"
 
 [tool.setuptools.dynamic]
-# Read by setuptools' static AST reader — src/__init__.py assigns
-# __version__ as a plain string literal, so this resolves without
-# importing the package (no PySide6 needed at build time).
+# src/__init__.py derives __version__ from src/_version.py, so the static
+# AST reader finds no literal and setuptools imports the package instead.
+# That import stays cheap: src/__init__.py pulls in stdlib only, never
+# PySide6.
 version = {attr = "src.__version__"}
 
 [tool.setuptools.packages.find]

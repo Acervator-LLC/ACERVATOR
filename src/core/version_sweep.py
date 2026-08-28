@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from src._version import resolve_version
 from src.core.log_paths import get_reports_dir
 
 logger = logging.getLogger("acervator.version_sweep")
@@ -222,27 +223,13 @@ class VersionSweep:
         return list(self._skipped)
 
     def _get_version(self) -> str:
-        """Read ``__version__`` from ``src/__init__.py``, or ``"unknown"``.
+        """Return the version resolved for the tree under sweep.
 
-        That file holds box-drawing characters, so the read names UTF-8; a
-        locale-default read raises UnicodeDecodeError on a cp1252 host.
-        Only OSError degrades to ``"unknown"``. A decode failure on the
-        canonical version file propagates rather than letting the sweep
-        run blind.
+        Derived from the git tag, or from the value a build baked in. There
+        is no literal left to scan for, so no parse can fail and leave
+        ``check_version_consistency`` with nothing to compare against.
         """
-        path = self.root / "src" / "__init__.py"
-        try:
-            init = path.read_text(encoding="utf-8")
-        except OSError as exc:
-            logger.warning(
-                "version_sweep: cannot read %s (%s) — version is 'unknown' "
-                "and check_version_consistency reports that as a finding",
-                path,
-                exc,
-            )
-            return "unknown"
-        m = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', init)
-        return m.group(1) if m else "unknown"
+        return resolve_version(self.root)
 
     def _py_files(self):
         for dirpath, dirs, files in os.walk(self.root):

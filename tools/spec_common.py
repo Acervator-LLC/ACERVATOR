@@ -12,13 +12,14 @@ The two lists now exist once, here. The spec files hold only what is
 genuinely per-platform: the keyring backend, the icon, UPX, the Windows
 ``version_info`` resource, and the macOS ``BUNDLE``.
 
-WHY THIS MODULE IMPORTS NOTHING BUT ``os``
-==========================================
-It does not import PyInstaller. ``collect_submodules('src')`` stays in
-each spec file, where PyInstaller is guaranteed to be present. This
-module is therefore importable by the test suite on a machine with no
-PyInstaller installed, and the parity test that reads it costs
-milliseconds instead of parsing spec text with regular expressions.
+WHY THIS MODULE DOES NOT IMPORT PyInstaller
+===========================================
+``collect_submodules('src')`` stays in each spec file, where PyInstaller
+is guaranteed to be present. This module is therefore importable by the
+test suite on a machine with no PyInstaller installed, and the parity
+test that reads it costs milliseconds instead of parsing spec text with
+regular expressions. Its only non-stdlib import is ``src._version``,
+which is stdlib-only itself.
 
 WHY THE PACKAGE NAMES HERE ARE NOT A DEPENDENCY LIST
 ====================================================
@@ -34,31 +35,39 @@ from __future__ import annotations
 
 import os
 
-# Used only when src/__init__.py cannot be read. It is deliberately an
-# old version: a build that silently claims to be current is worse than
-# one that obviously claims to be stale.
-FALLBACK_VERSION = "3.13.7"
+from src._version import BAKED_FILENAME, UNKNOWN_VERSION, resolve_version
+
+# What a tree that answers nothing resolves to. One constant, shared with
+# the package, so the build and the application cannot disagree about what
+# "no version" looks like.
+FALLBACK_VERSION = UNKNOWN_VERSION
+
+# Where the resolved version is written before it is handed to PyInstaller.
+# build/ is regenerable and gitignored; nothing is written into src/.
+BAKE_SUBDIR = os.path.join("build", "version")
 
 
 def read_acervator_version(project_root: str) -> str:
-    """Return ``__version__`` from ``src/__init__.py``, or FALLBACK_VERSION.
+    """Return the version resolved for the tree at ``project_root``.
 
-    ``src/__init__.py`` is the one source for the version. Neither spec
-    reads ``pyproject.toml``, which declares the version ``dynamic`` and
-    points setuptools at this same file.
+    Derived from the git tag, not from any literal. Neither spec reads
+    ``pyproject.toml``, which declares the version ``dynamic``.
     """
-    try:
-        path = os.path.join(project_root, "src", "__init__.py")
-        with open(path, encoding="utf-8") as handle:
-            for line in handle:
-                if line.strip().startswith("__version__"):
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
-    except OSError:
-        # A missing or unreadable src/__init__.py is not fatal to the
-        # build; it costs an accurate version banner and nothing else.
-        # Caught narrowly, so a genuine coding error here still raises.
-        pass
-    return FALLBACK_VERSION
+    return resolve_version(project_root)
+
+
+def bake_version_datas(project_root: str) -> list[tuple[str, str]]:
+    """Write the resolved version to disk and return its PyInstaller pair.
+
+    A bundle carries no ``.git``, so the version has to travel as a file.
+    The destination is ``src``, where ``src/_version.py`` looks for it.
+    """
+    out_dir = os.path.join(project_root, BAKE_SUBDIR)
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, BAKED_FILENAME)
+    with open(out_path, "w", encoding="utf-8") as handle:
+        handle.write(read_acervator_version(project_root) + "\n")
+    return [(out_path, "src")]
 
 
 def datas_candidates(project_root: str) -> list[tuple[str, str]]:
