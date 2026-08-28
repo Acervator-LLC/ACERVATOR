@@ -183,10 +183,17 @@ def _raise():
 
 
 def _raw(image) -> bytes:
-    """Pixel bytes of `image` in a fixed 32-bit layout, four bytes each."""
+    """Pixel bytes of `image` in a fixed 32-bit layout, four bytes each.
+
+    The converted image is bound to a local because `constBits()` returns
+    a view into it. A temporary is freed when that call returns, and the
+    read then copies out 32 bytes of allocator reuse, or segfaults once
+    the buffer is large enough to be unmapped.
+    """
     from PySide6.QtGui import QImage
 
-    return bytes(image.convertToFormat(QImage.Format_RGB32).constBits())
+    converted = image.convertToFormat(QImage.Format_RGB32)
+    return bytes(converted.constBits())
 
 
 def _diff_pixels(first, second) -> int:
