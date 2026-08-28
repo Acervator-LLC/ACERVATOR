@@ -23,10 +23,10 @@ line:
        reaches module level, and kills the process before the GUI starts
 
 The happy path is unaffected, which is why this has never fired: the
-guard returns early at :77 unless BOTH src/__init__.py and
-dist/Acervator/_internal/src/__init__.py exist with differing versions.
-It is armed only for the operator running a source tree next to a stale
-build - exactly when the warning is supposed to help.
+guard returns early unless a source tree and a bundle both state a
+version and the two differ. It is armed only for the operator running a
+source tree next to a stale build - exactly when the warning is
+supposed to help.
 """
 
 from __future__ import annotations
@@ -58,13 +58,18 @@ def test_guard_survives_an_exception_in_its_own_body(monkeypatch):
 
 
 def test_guard_survives_a_version_parse_failure(monkeypatch):
-    """Drive the inner _read_version except branch (main.py:89)."""
+    """Drive both version readers' failure branches at once.
+
+    `builtins.open` covers the bundle literal reader; `Path.read_text`
+    covers the baked-file reader `src._version` uses.
+    """
     monkeypatch.setattr(os.path, "isfile", lambda _p: True)
 
     def bad_open(*_a, **_kw):
         raise OSError("simulated unreadable file")
 
     monkeypatch.setattr("builtins.open", bad_open)
+    monkeypatch.setattr(Path, "read_text", bad_open)
     main._check_stale_dist_binary()
 
 

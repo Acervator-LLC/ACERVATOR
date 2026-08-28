@@ -271,14 +271,18 @@ def classify_path(rel_path: Path, latest_manual_name: Optional[str]) -> str:
 
 
 def read_version() -> Optional[str]:
-    """Read src/__init__.py.__version__. Used to name the zip."""
-    init = _REPO / "src" / "__init__.py"
-    if not init.exists():
-        return None
-    m = re.search(
-        r'__version__\s*=\s*"(\d+\.\d+\.\d+)"', init.read_text(encoding="utf-8")
-    )
-    return m.group(1) if m else None
+    """Version this tree resolves to, or None when nothing can answer.
+
+    Derived from the git tag, never from a literal. A tree that is not on
+    a version tag names its package after the commit it was built from,
+    so a package can never claim a release number it does not hold.
+    """
+    if str(_REPO) not in sys.path:
+        sys.path.insert(0, str(_REPO))
+    from src._version import UNKNOWN_VERSION, resolve_version
+
+    version = resolve_version(_REPO)
+    return None if version == UNKNOWN_VERSION else version
 
 
 PACKAGE_RE = re.compile(r"^acervator_session(\d+)_CLOSE_hop5_v(\d+)_(\d+)_(\d+)\.zip$")
@@ -382,7 +386,11 @@ def build(
 ) -> int:
     version = read_version()
     if version is None:
-        print("ERROR: could not read version from src/__init__.py", file=sys.stderr)
+        print(
+            "ERROR: this tree resolves no version - no reachable v* git tag "
+            "and no baked version file. Cannot name the package.",
+            file=sys.stderr,
+        )
         return 1
 
     if session is not None:

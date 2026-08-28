@@ -7,9 +7,9 @@ main.py — Acervator entry point
 # │                                                             │
 # │ This is the application entry point. Run: python main.py    │
 # │                                                             │
-# │ IMPORTANT: this file DECLARES no version. It imports        │
-# │ __version__ from src/__init__.py, the one place that        │
-# │ states it. Bump it there. Do not add a copy here.           │
+# │ IMPORTANT: this file DECLARES no version. THE VERSION IS    │
+# │ DERIVED, NEVER WRITTEN — see src/_version.py. Do not add a  │
+# │ literal here or anywhere else.                              │
 # │                                                             │
 # │ The app has TWO modes:                                      │
 # │   - Crypto mode: main_window.py (CCXT exchanges)           │
@@ -68,8 +68,8 @@ if TYPE_CHECKING:
 # but the running binary was v3.15.43. Three sessions of doc-sweep + code
 # fixes had no effect on what they were actually executing.
 #
-# Detection: read dist/Acervator/_internal/src/__init__.py's __version__
-# string and compare to the live src/__init__.py __version__. If they differ,
+# Detection: compare the version the live tree resolves from git against the
+# version the build baked into dist/Acervator/_internal/. If they differ,
 # emit a LOUD warning to stderr AND to a marker file in ~/.acervator_logs/
 # so the operator sees the mismatch before the GUI hides the stderr stream.
 # ---------------------------------------------------------------------------
@@ -164,20 +164,21 @@ def _check_stale_dist_binary() -> None:
     a rebuild that fixed the mismatch left a file behind still naming
     the old pair. Everything the guard DETECTS, and every condition
     under which it WARNS, is unchanged.
+
+    The source tree states no version literal, so the live side is the
+    version src/_version.py resolves from git and the dist side is the
+    value the build baked into the bundle. A bundle built before the
+    bake still carries a __version__ literal, and is read that way.
     """
     try:
-        live_init = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "src", "__init__.py"
-        )
-        dist_init = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "dist",
-            "Acervator",
-            "_internal",
-            "src",
-            "__init__.py",
-        )
-        if not os.path.isfile(live_init) or not os.path.isfile(dist_init):
+        here = os.path.dirname(os.path.abspath(__file__))
+        live_init = os.path.join(here, "src", "__init__.py")
+        bundle_root = os.path.join(here, "dist", "Acervator", "_internal")
+        dist_init = os.path.join(bundle_root, "src", "__init__.py")
+        dist_baked = os.path.join(bundle_root, "src", "_baked_version.txt")
+        if not os.path.isfile(live_init):
+            return
+        if not os.path.isfile(dist_baked) and not os.path.isfile(dist_init):
             return
 
         def _read_version(p):
@@ -193,6 +194,28 @@ def _check_stale_dist_binary() -> None:
             except Exception as _ver_exc:  # noqa: BLE001 - version parse best-effort
                 _early_debug("stale-binary version parse skipped %s: %s", p, _ver_exc)
             return None
+
+        def _live_version():
+            """Resolve the source tree's version, or None when it cannot be."""
+            try:
+                from src._version import UNKNOWN_VERSION, resolve_version
+
+                resolved = resolve_version(here)
+            except Exception as _live_exc:  # noqa: BLE001 - best-effort
+                _early_debug("stale-binary live version skipped: %s", _live_exc)
+                return None
+            return None if resolved == UNKNOWN_VERSION else resolved
+
+        def _baked_or_literal_version():
+            """Read the bundle's baked version, falling back to its literal."""
+            try:
+                from src._version import read_baked_version
+
+                baked = read_baked_version(bundle_root)
+            except Exception as _baked_exc:  # noqa: BLE001 - best-effort
+                _early_debug("stale-binary baked version skipped: %s", _baked_exc)
+                baked = ""
+            return baked or _read_version(dist_init)
 
         # ONE resolution of the marker directory, used by BOTH the write
         # and the clear.
@@ -238,8 +261,8 @@ def _check_stale_dist_binary() -> None:
             except (OSError, ValueError, AttributeError) as _rep_exc:
                 _early_debug("stale-binary clear notice failed: %s", _rep_exc)
 
-        live_ver = _read_version(live_init)
-        dist_ver = _read_version(dist_init)
+        live_ver = _live_version()
+        dist_ver = _baked_or_literal_version()
         if live_ver and dist_ver and live_ver != dist_ver:
             msg = (
                 "\n"

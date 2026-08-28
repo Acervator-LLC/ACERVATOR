@@ -102,6 +102,30 @@ def tree_is_dirty() -> bool:
     return bool(_git("status", "--porcelain", "--untracked-files=no"))
 
 
+def describe_tags(root: str | Path, match: str, dirty_suffix: str) -> str:
+    """Return `git describe` output for the repository at `root`, or ''.
+
+    `src/_version.py` builds the application version out of this. It lives
+    here because every git subprocess in this repository lives here, behind
+    the one narrowed S603 directive at the top of the file.
+
+    `-C` targets the repository, so the answer does not depend on where the
+    caller was invoked from. `match` limits which tags are eligible, and a
+    tree with no matching tag falls back to a bare commit id.
+    """
+    return _git(
+        "-C",
+        str(root),
+        "describe",
+        "--tags",
+        "--match",
+        match,
+        "--long",
+        f"--dirty={dirty_suffix}",
+        "--always",
+    )
+
+
 def clear_stamp(reason: str) -> None:
     """Remove a stamp so a later push cannot inherit an older proof."""
     if STAMP_PATH.exists():

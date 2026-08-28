@@ -43,6 +43,7 @@ from PyInstaller.utils.hooks import collect_submodules  # noqa: E402
 
 from tools.spec_common import (  # noqa: E402
     EXCLUDES,
+    bake_version_datas,
     build_graceful_datas,
     hiddenimports_for,
     read_acervator_version,
@@ -63,7 +64,7 @@ a = Analysis(
     [os.path.join(PROJECT_ROOT, 'main.py')],
     pathex=[PROJECT_ROOT],
     binaries=[],
-    datas=build_graceful_datas(PROJECT_ROOT),
+    datas=build_graceful_datas(PROJECT_ROOT) + bake_version_datas(PROJECT_ROOT),
     hiddenimports=collect_submodules('src') + hiddenimports_for('macos'),
     hookspath=[],
     hooksconfig={},
