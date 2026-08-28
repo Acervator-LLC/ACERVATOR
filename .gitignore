@@ -20,6 +20,11 @@ build/
 dist/
 *.manifest
 
+# The version the build resolves and stamps into the bundle. It is written
+# under build/ and reaches the bundle through the spec's datas, never the
+# source tree; this line is the backstop if a copy is ever made here.
+src/_baked_version.txt
+
 # ── Tool caches ─────────────────────────────────────────────────
 .mypy_cache/
 .pytest_cache/
