@@ -239,6 +239,9 @@ def _fit_on_screen(table) -> None:
     rows = sum(table.rowHeight(r) for r in range(table.rowCount()))
     table.setMaximumHeight(16_777_215)
     table.resize(width, rows + table.horizontalHeader().sizeHint().height() + 40)
+    from tests.qt_pixel import pin_text_rendering
+
+    pin_text_rendering(table)
     table.show()
     from PySide6.QtWidgets import QApplication
 

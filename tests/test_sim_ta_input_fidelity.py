@@ -46,6 +46,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -123,10 +125,15 @@ class TestPhantomEnablementHonoursPersistedState:
     def test_the_persisted_flag_is_entry_level_and_false(self):
         """POSITIVE CONTROL for the whole SN-57 group, read from the
         operator's real state. If this ever becomes True somewhere, the
-        default below changes meaning."""
-        state = json.loads(
-            (Path.home() / ".acervator" / "bot_state.json").read_text(encoding="utf-8")
-        )
+        default below changes meaning.
+
+        The live fleet is the subject, so a machine without one has
+        nothing to read and the control cannot be driven there.
+        """
+        live = Path.home() / ".acervator" / "bot_state.json"
+        if not live.is_file():
+            pytest.skip("no ~/.acervator/bot_state.json on this machine")
+        state = json.loads(live.read_text(encoding="utf-8"))
         bots = state.get("bots", {})
         assert bots, "no bots in live state; cannot ground this test"
         entry = {r.get("phantoms_enabled") for r in bots.values()}

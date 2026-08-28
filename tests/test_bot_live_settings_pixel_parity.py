@@ -47,7 +47,7 @@ PALETTE = {
     "#00ccff": "manual fold source, Fire button",
     "#00ff88": "gain, open price gate",
     "#00ffcc": "dialog header, Apply button",
-    "#0a0a12": "group-box ground",
+    "#0a0a12": "enabled Apply text",
     "#123a63": "fold tranche row fill",
     "#1a1a2e": "nav button ground",
     "#2a2a3f": "card border, Close button",
@@ -354,6 +354,14 @@ def _empty_positions_tab(themed):
     return dlg, widget
 
 
+def _render(widget):
+    """Grab `widget` with glyph antialiasing pinned to grayscale."""
+    from tests.qt_pixel import pin_text_rendering
+
+    pin_text_rendering(widget)
+    return widget.grab().toImage()
+
+
 def _tab_images(dialog, app):
     """One render per tab, plus the dialog chrome around them."""
     from PySide6.QtWidgets import QScrollArea
@@ -367,8 +375,8 @@ def _tab_images(dialog, app):
         content = page.widget() if isinstance(page, QScrollArea) else page
         content.ensurePolished()
         app.processEvents()
-        images[tabs.tabText(index)] = content.grab().toImage()
-    images["chrome"] = dialog.grab().toImage()
+        images[tabs.tabText(index)] = _render(content)
+    images["chrome"] = _render(dialog)
     return images
 
 
@@ -382,16 +390,25 @@ def _sheet_text(*roots):
     return "\n".join(parts)
 
 
+def _with_a_pending_change(dialog, app):
+    """The dialog with Apply enabled, which is the only state that
+    paints the enabled Apply button's ground and text."""
+    dialog._mark_changed("target_balance", dialog._bot.config.target_balance + 25.0)
+    app.processEvents()
+    assert dialog._apply_btn.isEnabled(), "Apply stayed disabled with a pending change"
+    return dialog
+
+
 def test_every_shipped_colour_is_still_painted(dialog, positions_tab, themed) -> None:
     """A failure names a colour that left the operator's screen."""
     painted = set()
     for image in _tab_images(dialog, themed).values():
         painted |= _colours(image)
     _tab_dlg, tab_widget = positions_tab
-    painted |= _colours(tab_widget.grab().toImage())
+    painted |= _colours(_render(tab_widget))
     empty_dlg, empty_widget = _empty_positions_tab(themed)
     try:
-        painted |= _colours(empty_widget.grab().toImage())
+        painted |= _colours(_render(empty_widget))
     finally:
         empty_dlg.close()
     quiet = _quiet_dialog(themed)
@@ -400,6 +417,7 @@ def test_every_shipped_colour_is_still_painted(dialog, positions_tab, themed) ->
             painted |= _colours(image)
     finally:
         quiet.close()
+    painted |= _colours(_render(_with_a_pending_change(dialog, themed)))
 
     missing = {value: where for value, where in PALETTE.items() if value not in painted}
     assert not missing, missing

@@ -82,11 +82,18 @@ if str(REPO) not in sys.path:
 SHIPPED_MIN_W = 640
 SHIPPED_MIN_H = 720
 
-#: `QScrollArea::sizeHint` bounds itself to 36x24 character cells. The
-#: font is 13px tall under `cyberpunk_dark`, so no tab wrapper can ever
-#: report more than this however big the tab behind it is.
-SCROLLAREA_CAP_W = 468
-SCROLLAREA_CAP_H = 312
+#: `QScrollArea::sizeHint` bounds itself to 36x24 character cells, so
+#: no tab wrapper can report more than this however big the tab behind
+#: it is. The cell is the font height, which is 13px under
+#: `cyberpunk_dark` on the operator's display and is read off the
+#: wrapper rather than assumed.
+SCROLLAREA_CAP_CELLS_W = 36
+SCROLLAREA_CAP_CELLS_H = 24
+
+#: Font height the pixel numbers in this file were measured against.
+#: Section B, D and G state exact pixel counts, and a font of another
+#: height gives different ones.
+MEASURED_FONT_HEIGHT_PX = 13
 
 #: A display no tab can exhaust, used to measure what the dialog asks
 #: for when nothing constrains it.
@@ -100,6 +107,14 @@ CONTENT_H = 2789
 #: Fold tranches in the fixture. 58 is a long queue that still fits the
 #: 18-row table cap unit 1 installed, so the Fold tab is at its tallest.
 FIXTURE_TRANCHES = 58
+
+#: Said when the host measures a different character cell, so the exact
+#: pixel counts below describe a layout this machine does not produce.
+_OTHER_FONT = (
+    "the character cell is {height}px, not the "
+    f"{MEASURED_FONT_HEIGHT_PX}px these pixel counts were measured "
+    "against"
+)
 
 
 def _qt_or_skip():
@@ -158,6 +173,21 @@ class _Dialog:
             hint = page.sizeHint()
             out[self.tabs.tabText(i)] = (hint.width(), hint.height())
         return out
+
+    def wrapper_cap(self) -> tuple[int, int]:
+        """The 36x24 character cells every wrapper is bounded to.
+
+        Read off the wrapper's own font, because the cell is the font
+        height and that is a property of the machine.
+        """
+        page, _content = self._content(0)
+        cell = page.fontMetrics().height()
+        return SCROLLAREA_CAP_CELLS_W * cell, SCROLLAREA_CAP_CELLS_H * cell
+
+    def font_height(self) -> int:
+        """The character cell the wrapper cap is built from."""
+        page, _content = self._content(0)
+        return page.fontMetrics().height()
 
     def cutoff(self) -> dict:
         """Pixels of each tab the operator cannot see without scrolling.
@@ -259,25 +289,39 @@ class TestTheWrapperHidesTheTab:
         this file describes a different Qt."""
         panel = _build(themed)
         try:
+            cap_w, cap_h = panel.wrapper_cap()
             hints = panel.wrapper_hint()
             assert hints, "the dialog built no tabs"
             for label, (width, height) in hints.items():
-                assert width <= SCROLLAREA_CAP_W, (label, width)
-                assert height <= SCROLLAREA_CAP_H, (label, height)
+                assert width <= cap_w, (label, width, cap_w)
+                assert height <= cap_h, (label, height, cap_h)
         finally:
             panel.destroy()
 
     def test_the_cap_understates_the_biggest_tabs(self, themed):
-        """FAILURE MEANS: the tabs now fit inside 468x312, so there was
-        never anything for the dialog to be too small for."""
+        """FAILURE MEANS: the tabs now fit inside the wrapper cap, so
+        there was never anything for the dialog to be too small for."""
         panel = _build(themed)
         try:
+            cap_w, cap_h = panel.wrapper_cap()
             demand = panel.demand()
             wrapper = panel.wrapper_hint()
-            assert demand["Settings"][1] > SCROLLAREA_CAP_H
-            assert demand["Fold Tranches"][0] > SCROLLAREA_CAP_W
-            assert wrapper["Settings"][1] <= SCROLLAREA_CAP_H
-            assert wrapper["Fold Tranches"][0] <= SCROLLAREA_CAP_W
+            assert demand["Settings"][1] > cap_h
+            assert demand["Fold Tranches"][0] > cap_w
+            assert wrapper["Settings"][1] <= cap_h
+            assert wrapper["Fold Tranches"][0] <= cap_w
+        finally:
+            panel.destroy()
+
+    def test_the_cap_is_the_measured_one_on_the_operators_display(self, themed):
+        """FAILURE MEANS: the 13px character cell every exact pixel
+        count in this file was measured against has moved, and the
+        guarded sections below are recording a different machine."""
+        panel = _build(themed)
+        try:
+            if panel.font_height() != MEASURED_FONT_HEIGHT_PX:
+                pytest.skip(_OTHER_FONT.format(height=panel.font_height()))
+            assert panel.wrapper_cap() == (468, 312)
         finally:
             panel.destroy()
 
@@ -292,6 +336,8 @@ class TestTheShippedSizeCutsTabsOff:
         operator reported, so nothing below is measuring his defect."""
         panel = _build(themed, screen=None)
         try:
+            if panel.font_height() != MEASURED_FONT_HEIGHT_PX:
+                pytest.skip(_OTHER_FONT.format(height=panel.font_height()))
             panel.dialog.resize(SHIPPED_MIN_W, SHIPPED_MIN_H)
             themed.processEvents()
             cut = panel.cutoff()
@@ -346,12 +392,14 @@ class TestTheScreenIsNotTheTarget:
         every containment check above."""
         panel = _build(themed)
         try:
+            assert panel.dialog.width() < UNBOUNDED_SCREEN[0]
+            assert panel.dialog.height() < UNBOUNDED_SCREEN[1]
+            if panel.font_height() != MEASURED_FONT_HEIGHT_PX:
+                pytest.skip(_OTHER_FONT.format(height=panel.font_height()))
             assert (panel.dialog.width(), panel.dialog.height()) == (
                 CONTENT_W,
                 CONTENT_H,
             )
-            assert panel.dialog.width() < UNBOUNDED_SCREEN[0]
-            assert panel.dialog.height() < UNBOUNDED_SCREEN[1]
         finally:
             panel.destroy()
 
@@ -536,7 +584,12 @@ class TestWhatStillDoesNotFit:
         """
         panel = _build(themed, screen=screen)
         try:
-            assert panel.cutoff()["Settings"] == (0, short_by)
+            across, down = panel.cutoff()["Settings"]
+            assert across == 0, across
+            assert down > 0, down
+            if panel.font_height() != MEASURED_FONT_HEIGHT_PX:
+                pytest.skip(_OTHER_FONT.format(height=panel.font_height()))
+            assert (across, down) == (0, short_by)
         finally:
             panel.destroy()
 

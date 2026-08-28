@@ -508,6 +508,9 @@ def render_widget(table):
     sizes the pixmap from the widget itself, so the two always
     agree.
     """
+    from tests.qt_pixel import pin_text_rendering
+
+    pin_text_rendering(table)
     return table.viewport().grab().toImage()
 
 

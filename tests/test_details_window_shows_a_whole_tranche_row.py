@@ -28,13 +28,18 @@ cyberpunk_dark, 58 tranches, three real tranche shapes::
 Table viewport after: 893, 925 and 983 - equal to the columns in every
 case. Display headroom at 1536: 412px at the widest.
 
-OFFSCREEN CANNOT DISCRIMINATE
-=============================
-QFontDatabase.families() is empty under QT_QPA_PLATFORM=offscreen.
-Every family resolves to a box font advancing one em per character.
-The Cycle Health block inflates further than the table, its 1907px
-demand stays ahead of the row's 1656px, and max() keeps the old
-number. Section E drives the arithmetic directly for that reason.
+A HOST WITHOUT A FONT DATABASE CANNOT DISCRIMINATE
+=================================================
+The offscreen platform takes its font database from the host, so it
+has one where the host does and none where it does not: measured
+2026-08-28, QFontDatabase.families() is empty under
+QT_QPA_PLATFORM=offscreen on Windows and populated on a Linux host
+with fontconfig. With none, every family resolves to a box font
+advancing one em per character. The Cycle Health block then inflates
+further than the table, its 1907px demand stays ahead of the row's
+1656px, and max() keeps the old number. Section E drives the
+arithmetic directly for that reason, and `_has_real_fonts` guards the
+checks that need a measured string.
 
 FALSIFICATION: wrong if (a) the row demand stops reading the columns,
 (b) the dialog opens narrower than a whole row on a display with room
@@ -614,11 +619,21 @@ class TestWhatStillDoesNotFit:
         finally:
             panel.destroy()
 
-    def test_the_offscreen_platform_has_no_fonts(self, themed):
-        """FAILURE MEANS: offscreen grew a font database, and this
-        module's OFFSCREEN CANNOT DISCRIMINATE section is stale."""
-        from PySide6.QtWidgets import QApplication
+    def test_the_font_database_decides_what_a_string_measures(self, themed):
+        """FAILURE MEANS: the box-font premise this module's guarded
+        checks rest on is stale, or `_has_real_fonts` no longer tells
+        the two hosts apart.
 
-        if QApplication.platformName() != "offscreen":
-            pytest.skip("not the offscreen platform")
-        assert not _has_real_fonts()
+        Both halves are driven: a font database gives a proportional
+        advance, and none gives one em per character whatever the
+        characters are.
+        """
+        from PySide6.QtGui import QFontMetrics
+
+        metrics = QFontMetrics(themed.font())
+        narrow = metrics.horizontalAdvance("iiiiiiii")
+        wide = metrics.horizontalAdvance("WWWWWWWW")
+        if _has_real_fonts():
+            assert narrow < wide, (narrow, wide)
+        else:
+            assert narrow == wide, (narrow, wide)
