@@ -543,21 +543,46 @@ def test_init_wizard_feedback_branches_are_pixel_identical(
         assert _count_colour(head_pending, STATUS_INFO) > 0
 
 
-AUDIO_WIDGETS = [
-    ("DroneLayer", (0,), LAYER_SIZE, DISABLED_DEEP),
-    ("MusicPlayerPanel", (), PANEL_SIZE, SOURCE_MANUAL),
-    ("DroneEnginePanel", (), PANEL_SIZE, SOURCE_MANUAL),
+#: Each audio widget, the token colour it must reach a pixel with, and
+#: whether that colour needs `PySide6.QtMultimedia`. MusicPlayerPanel
+#: builds its now-playing label -- the only FOLD_SOURCE_MANUAL reference
+#: in that class -- inside the `_HAS_MEDIA` branch; without the import it
+#: paints a fallback label instead, measured at 14 distinct colours and
+#: no token value against 94 colours and 181 #00ccff pixels with it.
+AUDIO_COLOURS = [
+    ("DroneLayer", (0,), LAYER_SIZE, DISABLED_DEEP, False),
+    ("MusicPlayerPanel", (), PANEL_SIZE, SOURCE_MANUAL, True),
+    ("DroneEnginePanel", (), PANEL_SIZE, SOURCE_MANUAL, False),
 ]
 
+AUDIO_WIDGETS = [(name, args, size) for name, args, size, _, _ in AUDIO_COLOURS]
 
-@pytest.mark.parametrize("cls_name,args,size,colour", AUDIO_WIDGETS)
+
+@pytest.mark.parametrize("cls_name,args,size", AUDIO_WIDGETS)
 def test_audio_suite_widgets_are_pixel_identical(
-    cls_name: str, args: tuple, size: tuple, colour: str
+    cls_name: str, args: tuple, size: tuple
 ) -> None:
-    """A failure means an audio panel border or label colour moved."""
+    """A failure means an audio panel repainted."""
     head, base = _pair("audio_suite", lambda m: getattr(m, cls_name)(*args), size)
     assert _diff_pixels(head, base) == 0
-    assert _count_colour(head, colour) > 0
+
+
+@pytest.mark.parametrize("cls_name,args,size,colour,needs_media", AUDIO_COLOURS)
+def test_audio_suite_widgets_paint_their_declared_colour(
+    cls_name: str, args: tuple, size: tuple, colour: str, needs_media: bool
+) -> None:
+    """A failure means an audio panel border or label colour moved."""
+    from tests.qt_pixel import ensure_app, render_widget
+    from src.gui import audio_suite
+
+    if needs_media and not audio_suite._HAS_MEDIA:
+        pytest.skip(
+            f"PySide6.QtMultimedia absent ({audio_suite._MEDIA_ERROR}): "
+            f"{cls_name} builds no {colour} widget"
+        )
+    ensure_app()
+    image = render_widget(getattr(audio_suite, cls_name)(*args), size=size)
+    assert _count_colour(image, colour) > 0
 
 
 def test_drone_engine_panel_paints_its_status_grey() -> None:
