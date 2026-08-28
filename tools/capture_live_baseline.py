@@ -40,7 +40,6 @@ _PAIR = re.compile(r"\b[A-Z0-9]{2,10}/[A-Z]{2,6}\b")
 _BOT_ID = re.compile(r"\bBot [0-9a-f]{6,}\b")
 _HEX_ID = re.compile(r"(?<![\w.])(?=[0-9a-f]*[a-f])[0-9a-f]{8,}(?![\w.])")
 _WHITESPACE = re.compile(r"\s+")
-_VERSION_LITERAL = re.compile(r"^__version__\s*=\s*[\"']([^\"']+)[\"']", re.MULTILINE)
 _CONSOLE_LINE = re.compile(
     r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{1,6} \[([A-Z]+)\] (.*)$"
 )
@@ -232,14 +231,20 @@ def _read_lines(path: Path) -> Iterator[str]:
 # --------------------------------------------------------------------- #
 
 
-def read_version_literal(init_path: Path) -> str | None:
-    """Return the `__version__` string literal from a package init module."""
+def read_resolved_version(root: Path) -> str | None:
+    """Version the tree at `root` resolves to, or None when nothing answers.
+
+    Derived from the git tag by `src._version`, so a snapshot is attributed
+    to the commit it was captured on rather than to a literal.
+    """
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
     try:
-        source = init_path.read_text(encoding="utf-8")
-    except OSError:
+        from src._version import UNKNOWN_VERSION, resolve_version
+    except ImportError:
         return None
-    match = _VERSION_LITERAL.search(source)
-    return match.group(1) if match else None
+    version = resolve_version(root)
+    return None if version == UNKNOWN_VERSION else version
 
 
 def _git_identity() -> Json:
@@ -254,7 +259,7 @@ def _git_identity() -> Json:
 
 
 def capture_build(root: Path) -> Json:
-    """Version literal, git HEAD, tracked-dirty flag and the gate stamp."""
+    """Resolved version, git HEAD, tracked-dirty flag and the gate stamp."""
     stamp_path = root / ".gate_stamp.json"
     stamp: Any = None
     if stamp_path.is_file():
@@ -263,7 +268,7 @@ def capture_build(root: Path) -> Json:
         except (OSError, ValueError) as exc:
             stamp = {"unreadable": type(exc).__name__}
     return {
-        "version": read_version_literal(root / "src" / "__init__.py"),
+        "version": read_resolved_version(root),
         **_git_identity(),
         "gate_stamp": stamp,
     }

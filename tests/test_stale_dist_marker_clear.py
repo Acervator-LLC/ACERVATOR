@@ -41,10 +41,15 @@ banner text are all out of scope, and ``TestTheBannerIsUnchanged``
 holds them fixed against the byte-exact text measured above.
 
 The reset is armed by the SAME evidence as the warning, inverted: both
-version files present, both parsed, and equal. An unreadable version
-and a missing ``dist`` both mean "cannot tell", never "the mismatch is
+sides state a version, and the two are equal. An unreadable version and
+a missing ``dist`` both mean "cannot tell", never "the mismatch is
 gone" -- clearing on either would delete a true warning, and a rebuild
 in flight is exactly when ``dist`` is momentarily unreadable.
+
+The two sides are no longer two ``__version__`` literals. The live side
+is what ``src/_version.py`` resolves, and the dist side is what the
+build baked into the bundle. A version pair the tests state is a pair
+the guard resolves; "cannot tell" is a side that resolves to nothing.
 
 WHY IT IMPORTS ITS SIBLING
 ==========================
@@ -104,10 +109,13 @@ _SIB = _sibling()
 _build_tree = _SIB._build_tree
 _child_import = _SIB._child_import
 _function = _SIB._function
+_rebake_bundle = _SIB._rebake_bundle
 MAIN_SRC = _SIB.MAIN_SRC
 
 _OVERRIDE = "ACERVATOR_CRASH_LOG_ROOT"
 _MARKER_FILE = "STALE_DIST_WARNING.txt"
+_BAKED_FILE = _SIB._BAKED_FILE
+_BUNDLE_PARTS = _SIB._BUNDLE_PARTS
 
 # The banner, byte for byte, as the unpatched main.py produced it on
 # 2026-08-14: 807 bytes on disk with CRLF endings, sha256
@@ -176,29 +184,37 @@ class Latch:
         return self.home / ".acervator_logs" / _MARKER_FILE
 
     def versions(self, live: str | None, dist: str | None) -> None:
-        """Lay out (or remove) the two files the guard compares."""
+        """Lay out (or remove) the two version sources the guard compares."""
+        bundle = self.tree.joinpath(*_BUNDLE_PARTS)
         for path in (
             self.tree / "src" / "__init__.py",
-            self.tree / "dist" / "Acervator" / "_internal" / "src" / "__init__.py",
+            self.tree / "src" / _BAKED_FILE,
+            bundle / "__init__.py",
+            bundle / _BAKED_FILE,
         ):
             if path.exists():
                 path.unlink()
         _build_tree(self.tree, live, dist)
 
     def unparseable(self, *, live: bool = True) -> None:
-        """Give a version file no ``__version__`` line at all.
+        """Leave one side in place while it states no version at all.
 
-        This is the "cannot tell" input that must NOT clear: the file is
-        there and readable, and ``_read_version`` still returns None.
+        This is the "cannot tell" input that must NOT clear: the layout
+        is intact and readable, and the side still resolves to nothing.
+        The live side loses its baked file and has no repository to
+        answer from; the bundle side keeps an init module with no
+        ``__version__`` line, which is what a pre-bake build looks like
+        when the literal has been retired.
         """
-        rel = (
-            ("src", "__init__.py")
-            if live
-            else ("dist", "Acervator", "_internal", "src", "__init__.py")
+        if live:
+            (self.tree / "src" / _BAKED_FILE).unlink(missing_ok=True)
+            return
+        bundle = self.tree.joinpath(*_BUNDLE_PARTS)
+        bundle.mkdir(parents=True, exist_ok=True)
+        (bundle / _BAKED_FILE).unlink(missing_ok=True)
+        (bundle / "__init__.py").write_text(
+            'RELEASE = "3.25.7"\n', encoding="utf-8", newline="\n"
         )
-        path = self.tree.joinpath(*rel)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text('RELEASE = "3.25.7"\n', encoding="utf-8", newline="\n")
 
     def run(self, *, override: bool = True) -> None:
         """One call of the guard, contained before anything can write."""
@@ -252,9 +268,7 @@ class TestTheFullCycle:
         first = _child_import(tree, home, override)
         seen.append((override / _MARKER_FILE).is_file())
 
-        (tree / "dist" / "Acervator" / "_internal" / "src" / "__init__.py").write_text(
-            '__version__ = "3.25.7"\n', encoding="utf-8", newline="\n"
-        )
+        _rebake_bundle(tree, "3.25.7")
         second = _child_import(tree, home, override)  # 2: rebuilt
         seen.append((override / _MARKER_FILE).is_file())
 
@@ -285,9 +299,7 @@ class TestTheFullCycle:
         assert _child_import(tree, home, None).returncode == 0
         assert marker.is_file(), "the mismatch wrote no marker to fake home"
 
-        (tree / "dist" / "Acervator" / "_internal" / "src" / "__init__.py").write_text(
-            '__version__ = "3.25.7"\n', encoding="utf-8", newline="\n"
-        )
+        _rebake_bundle(tree, "3.25.7")
         result = _child_import(tree, home, None)
 
         assert result.returncode == 0, result.stderr
@@ -375,7 +387,7 @@ class TestAnUnknownVersionDoesNotClear:
     def test_an_unreadable_version_file_keeps_the_marker(
         self, latch: Latch, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Drive ``_read_version``'s own except branch, not a fake."""
+        """Drive the version readers' own OSError branches, not a fake."""
         latch.versions("3.25.7", "3.25.6")
         latch.run()
         body = latch.marker.read_text(encoding="utf-8")
@@ -383,13 +395,28 @@ class TestAnUnknownVersionDoesNotClear:
         def unreadable(*_a: object, **_kw: object) -> None:
             raise OSError("simulated unreadable version file")
 
-        monkeypatch.setattr("builtins.open", unreadable)
+        monkeypatch.setattr(Path, "read_text", unreadable)
         latch.run()
 
         assert (
             latch.marker.is_file()
         ), "an OSError while reading a version cleared the marker"
         monkeypatch.undo()
+        assert latch.marker.read_text(encoding="utf-8") == body
+
+    def test_an_unparseable_bundle_version_keeps_the_marker(self, latch: Latch) -> None:
+        """The same rule on the bundle side, where a literal can still live."""
+        latch.versions("3.25.7", "3.25.6")
+        latch.run()
+        body = latch.marker.read_text(encoding="utf-8")
+
+        latch.unparseable(live=False)
+        latch.run()
+
+        assert latch.marker.is_file(), (
+            "a bundle that states no version cleared the marker; an "
+            "unknown version was treated as agreement"
+        )
         assert latch.marker.read_text(encoding="utf-8") == body
 
     def test_the_same_driver_DOES_clear_on_a_readable_match(self, latch: Latch) -> None:
@@ -622,9 +649,7 @@ class TestTheGuardStillNeverRaises:
                 probe_removable = False
             assert probe_removable, "the override root is not writable"
 
-            (
-                tree / "dist" / "Acervator" / "_internal" / "src" / "__init__.py"
-            ).write_text('__version__ = "3.25.7"\n', encoding="utf-8", newline="\n")
+            _rebake_bundle(tree, "3.25.7")
             result = _child_import(tree, home, override)
 
             assert result.returncode == 0, result.stderr

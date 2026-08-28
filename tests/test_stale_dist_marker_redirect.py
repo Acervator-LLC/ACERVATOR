@@ -16,13 +16,23 @@ DIFFER. Measured 2026-08-14: ``src/__init__.py`` and
 ``dist/Acervator/_internal/src/__init__.py`` both read 3.25.6, so the
 guard returned early and wrote nothing.
 
-The operator's standard cascade bumps ``src/__init__.py`` and then runs
-the gate. From that bump until ``dist`` is rebuilt -- normally many runs
--- every gate run imports ``main`` at pytest COLLECTION time and drops
+The operator's standard cascade bumps the version and then runs the
+gate. From that bump until ``dist`` is rebuilt -- normally many runs --
+every gate run imports ``main`` at pytest COLLECTION time and drops
 this file into the live log tree. One fixed name, so it overwrites
 rather than accumulates, and ``conftest``'s live-tree guard degrades to
 a printed warning whenever the application is running, which for this
 operator is nearly always. Nothing fails; nothing even complains.
+
+WHAT THE TWO SIDES ARE NOW
+==========================
+There is no ``__version__`` literal left to read. The live side is what
+``src/_version.py`` resolves from the git tag; the dist side is what
+the build baked into the bundle, or the literal a bundle built before
+the bake still carries. The trees these tests build state their live
+version through the baked file, because a temp tree has no repository;
+``TestTheGuardComparesResolvedAgainstBaked`` drives the git path in a
+throwaway repository so the resolver is not taken on trust.
 
 THE CONSTRAINT THAT OUTRANKS THE REDIRECT
 =========================================
@@ -60,6 +70,7 @@ from pathlib import Path
 import pytest
 
 import main
+from tools.migration_verifier import default_runner
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MAIN_SRC = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
@@ -67,6 +78,8 @@ MAIN_TREE = ast.parse(MAIN_SRC)
 
 _OVERRIDE = "ACERVATOR_CRASH_LOG_ROOT"
 _MARKER_FILE = "STALE_DIST_WARNING.txt"
+_BAKED_FILE = "_baked_version.txt"
+_BUNDLE_PARTS = ("dist", "Acervator", "_internal", "src")
 
 # Given a temp tree, a fake home, an override root and a version pair,
 # drive the real guard and return the directory it was pointed at.
@@ -104,24 +117,43 @@ def _call_line(func_name: str) -> int:
     )
 
 
-def _build_tree(root: Path, live_ver: str | None, dist_ver: str | None) -> None:
-    """Lay out the two files the guard compares.
+def _plant_package(root: Path) -> None:
+    """Copy the real version machinery into a temp tree's ``src``.
 
-    ``None`` means "this file does not exist", which is how the no-dist
-    case -- most developers, and the operator before their first build
-    -- is expressed.
+    A child process resolves the live version out of the tree it imports,
+    so the tree has to hold the same two files the operator runs.
+    """
+    pkg = root / "src"
+    pkg.mkdir(parents=True, exist_ok=True)
+    for name in ("__init__.py", "_version.py"):
+        (pkg / name).write_bytes((REPO_ROOT / "src" / name).read_bytes())
+
+
+def _build_tree(root: Path, live_ver: str | None, dist_ver: str | None) -> None:
+    """Lay out the two version sources the guard compares.
+
+    A temp tree carries no repository, so ``resolve_version`` answers the
+    live side from the baked file beside the package. The dist side is
+    the bundle's own baked file. ``None`` means "this side states no
+    version", which is how the no-dist case -- most developers, and the
+    operator before their first build -- is expressed.
     """
     if live_ver is not None:
-        (root / "src").mkdir(parents=True, exist_ok=True)
-        (root / "src" / "__init__.py").write_text(
-            f'__version__ = "{live_ver}"\n', encoding="utf-8", newline="\n"
+        _plant_package(root)
+        (root / "src" / _BAKED_FILE).write_text(
+            f"{live_ver}\n", encoding="utf-8", newline="\n"
         )
     if dist_ver is not None:
-        dist = root / "dist" / "Acervator" / "_internal" / "src"
+        dist = root.joinpath(*_BUNDLE_PARTS)
         dist.mkdir(parents=True, exist_ok=True)
-        (dist / "__init__.py").write_text(
-            f'__version__ = "{dist_ver}"\n', encoding="utf-8", newline="\n"
-        )
+        (dist / _BAKED_FILE).write_text(f"{dist_ver}\n", encoding="utf-8", newline="\n")
+
+
+def _rebake_bundle(root: Path, version: str) -> None:
+    """Restate the version a built bundle carries, as a rebuild would."""
+    root.joinpath(*_BUNDLE_PARTS, _BAKED_FILE).write_text(
+        f"{version}\n", encoding="utf-8", newline="\n"
+    )
 
 
 def _child_import(
@@ -168,15 +200,62 @@ def _child_import(
     )
 
 
-@pytest.fixture
-def drive_guard(monkeypatch: pytest.MonkeyPatch) -> Driver:
-    """Call the REAL guard against a temp tree and a temp home.
+def _tag_repo(root: Path, tag: str) -> None:
+    """Commit everything under ``root`` and tag it, so git can describe it.
 
-    The guard derives both version paths from ``main.__file__``, so
+    Spawning is delegated to the migration verifier's absolute-path
+    runner, so no test spawns a process of its own.
+    """
+    for args in (
+        ("init", "-q", "-b", "current"),
+        ("config", "user.email", "fixture@example.invalid"),
+        ("config", "user.name", "Fixture"),
+        ("config", "commit.gpgsign", "false"),
+        ("add", "-A"),
+        ("commit", "-qm", "fixture"),
+        ("tag", tag),
+    ):
+        done = default_runner(["git", "-C", str(root), *args], None)
+        assert done.code == 0, f"git {args[0]} -> {done.code}: {done.err.strip()}"
+
+
+def _run_guard(
+    monkeypatch: pytest.MonkeyPatch,
+    tree: Path,
+    fake_home: Path,
+    override: Path | None,
+) -> Path:
+    """Drive the real guard against a prepared tree, and say where it aimed.
+
+    The guard derives every path it reads from ``main.__file__``, so
     pointing that at a temp directory is what makes a contained,
     two-sided experiment possible at all: the live ``src`` and ``dist``
     are never read and never need to disagree.
     """
+    fake_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(main, "__file__", str(tree / "main.py"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda _cls: fake_home))
+    # CONTAINMENT. Everything past this line can create a file, so
+    # nothing past this line runs unless home is already fake.
+    assert Path.home() == fake_home, (
+        "Path.home() was not redirected, so driving the real guard "
+        "here could write into the operator's tree. Refusing."
+    )
+    if override is None:
+        monkeypatch.delenv(_OVERRIDE, raising=False)
+    else:
+        override.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setenv(_OVERRIDE, str(override))
+
+    main._check_stale_dist_binary()
+    if override is not None:
+        return override
+    return fake_home / ".acervator_logs"
+
+
+@pytest.fixture
+def drive_guard(monkeypatch: pytest.MonkeyPatch) -> Driver:
+    """Build a temp tree from a version pair, then drive the real guard."""
 
     def _drive(
         tree: Path,
@@ -186,26 +265,8 @@ def drive_guard(monkeypatch: pytest.MonkeyPatch) -> Driver:
         dist_ver: str | None = "1.1.1",
     ) -> Path:
         tree.mkdir(parents=True, exist_ok=True)
-        fake_home.mkdir(parents=True, exist_ok=True)
         _build_tree(tree, live_ver, dist_ver)
-        monkeypatch.setattr(main, "__file__", str(tree / "main.py"))
-        monkeypatch.setattr(Path, "home", classmethod(lambda _cls: fake_home))
-        # CONTAINMENT. Everything past this line can create a file, so
-        # nothing past this line runs unless home is already fake.
-        assert Path.home() == fake_home, (
-            "Path.home() was not redirected, so driving the real guard "
-            "here could write into the operator's tree. Refusing."
-        )
-        if override is None:
-            monkeypatch.delenv(_OVERRIDE, raising=False)
-        else:
-            override.mkdir(parents=True, exist_ok=True)
-            monkeypatch.setenv(_OVERRIDE, str(override))
-
-        main._check_stale_dist_binary()
-        if override is not None:
-            return override
-        return fake_home / ".acervator_logs"
+        return _run_guard(monkeypatch, tree, fake_home, override)
 
     return _drive
 
@@ -447,6 +508,121 @@ class TestNoDistNoWrite:
 
         assert not (landed / _MARKER_FILE).exists()
         assert not (home / ".acervator_logs").exists()
+
+
+class TestTheGuardComparesResolvedAgainstBaked:
+    """CONTROL (f) -- the guard reads the mechanism that replaced the literal.
+
+    The literal is gone from both trees. A guard still line-parsing
+    ``__version__`` reads the same text on each side, always matches, and
+    never warns again: the operator loses the only thing that tells them
+    the .exe predates their source.
+    """
+
+    def test_a_bundle_built_before_the_bake_is_still_measured(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A bundle carrying a literal and no baked file must still warn.
+
+        Every bundle already on disk was built before the bake existed.
+        Reading only the baked file would go silent against exactly the
+        stale binary this guard was written for.
+        """
+        tree = tmp_path / "tree"
+        _build_tree(tree, "3.25.7", None)
+        bundle = tree.joinpath(*_BUNDLE_PARTS)
+        bundle.mkdir(parents=True, exist_ok=True)
+        (bundle / "__init__.py").write_text(
+            '__version__ = "3.15.43"\n', encoding="utf-8", newline="\n"
+        )
+
+        landed = _run_guard(monkeypatch, tree, tmp_path / "home", tmp_path / "override")
+
+        body = (landed / _MARKER_FILE).read_text(encoding="utf-8")
+        assert "Live source version : 3.25.7" in body
+        assert "dist/.exe version   : 3.15.43" in body
+
+    def test_a_baked_file_outranks_a_literal_left_beside_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """POSITIVE CONTROL on the fallback: the baked file wins.
+
+        The whole bundled ``src`` directory ships, so a bundle can carry
+        both files. Reading the literal first would report a version the
+        build did not resolve.
+        """
+        tree = tmp_path / "tree"
+        _build_tree(tree, "3.25.7", "3.25.6")
+        bundle = tree.joinpath(*_BUNDLE_PARTS)
+        (bundle / "__init__.py").write_text(
+            '__version__ = "3.15.43"\n', encoding="utf-8", newline="\n"
+        )
+
+        landed = _run_guard(monkeypatch, tree, tmp_path / "home", tmp_path / "override")
+
+        body = (landed / _MARKER_FILE).read_text(encoding="utf-8")
+        assert "dist/.exe version   : 3.25.6" in body
+        assert "3.15.43" not in body
+
+    def test_the_live_side_is_the_version_git_describes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A tagged checkout must be measured by its tag.
+
+        Driven against a real throwaway repository, because every other
+        tree here answers from a baked file and would look identical if
+        the git path had been dropped.
+        """
+        tree = tmp_path / "tree"
+        _plant_package(tree)
+        _tag_repo(tree, "v9.9.9")
+        bundle = tree.joinpath(*_BUNDLE_PARTS)
+        bundle.mkdir(parents=True, exist_ok=True)
+        (bundle / _BAKED_FILE).write_text("1.1.1\n", encoding="utf-8", newline="\n")
+
+        landed = _run_guard(monkeypatch, tree, tmp_path / "home", tmp_path / "override")
+
+        body = (landed / _MARKER_FILE).read_text(encoding="utf-8")
+        assert "Live source version : 9.9.9" in body, body
+        assert "dist/.exe version   : 1.1.1" in body, body
+
+    def test_a_bundle_baked_at_the_tag_is_silent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """THE NEGATIVE SIDE of the git-derived comparison.
+
+        Same repository, same tag, only the baked value differs. A guard
+        that warned here would fire on every launch after a fresh build.
+        """
+        tree = tmp_path / "tree"
+        _plant_package(tree)
+        _tag_repo(tree, "v9.9.9")
+        bundle = tree.joinpath(*_BUNDLE_PARTS)
+        bundle.mkdir(parents=True, exist_ok=True)
+        (bundle / _BAKED_FILE).write_text("9.9.9\n", encoding="utf-8", newline="\n")
+
+        landed = _run_guard(monkeypatch, tree, tmp_path / "home", tmp_path / "override")
+
+        assert not (landed / _MARKER_FILE).exists(), (
+            "the guard warned about a bundle baked at the tag the source "
+            "tree is standing on"
+        )
+
+    def test_a_tree_that_resolves_nothing_is_silent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No repository and no baked file is "cannot tell", not "stale"."""
+        tree = tmp_path / "tree"
+        _plant_package(tree)
+        bundle = tree.joinpath(*_BUNDLE_PARTS)
+        bundle.mkdir(parents=True, exist_ok=True)
+        (bundle / _BAKED_FILE).write_text("1.1.1\n", encoding="utf-8", newline="\n")
+
+        landed = _run_guard(monkeypatch, tree, tmp_path / "home", tmp_path / "override")
+
+        assert not (
+            landed / _MARKER_FILE
+        ).exists(), "an unresolvable source tree was reported as a stale binary"
 
 
 class TestTheImportOrderHolds:
