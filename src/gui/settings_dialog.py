@@ -171,6 +171,7 @@ if _HAS_QT:
             from src.exchange.ccxt_connector import (
                 SUPPORTED_EXCHANGES,
                 PASSPHRASE_EXCHANGES,
+                exchange_label,
             )
 
             self._passphrase_exchanges = PASSPHRASE_EXCHANGES
@@ -187,10 +188,7 @@ if _HAS_QT:
                     )
             else:
                 for eid in sorted(SUPPORTED_EXCHANGES.keys()):
-                    label = eid.capitalize()
-                    if eid in PASSPHRASE_EXCHANGES:
-                        label += " (passphrase required)"
-                    self._new_exchange.addItem(label, eid)
+                    self._new_exchange.addItem(exchange_label(eid), eid)
             self._new_exchange.currentIndexChanged.connect(self._on_exchange_changed)
             add_form.addRow("Exchange:", self._new_exchange)
 

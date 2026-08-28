@@ -19,7 +19,8 @@ cannot pick an unsupported TF in the first place.
 
 Default (unknown exchange) returns the union of all rooms in the
 codebase's ``TIMEFRAME_ORDER``; we are permissive when we don't have
-a confident allowlist.
+a confident allowlist. Every id in ``SUPPORTED_EXCHANGES`` now has one,
+so the fallback no longer covers a venue an operator can select.
 """
 
 from __future__ import annotations
@@ -68,6 +69,31 @@ _AVAILABILITY: dict[str, frozenset[str]] = {
         {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
     ),
     "okx": frozenset(
+        {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
+    ),
+    # The eight venues below reached this map through the permissive
+    # fallback, which claimed all eleven timeframes for each. Six of
+    # them offer fewer. Measured 2026-08-28 from ccxt 4.5.76 by reading
+    # `exchange.timeframes` after a public `load_markets()`; ccxt is the
+    # client Acervator uses, so a timeframe it will not send is one the
+    # bot cannot obtain.
+    "bitfinex": frozenset(
+        {"1m", "5m", "15m", "30m", "1h", "4h", "6h", "12h", "1d", "1w"}
+    ),
+    "bitget": frozenset(
+        {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
+    ),
+    "bitstamp": frozenset(
+        {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
+    ),
+    "cryptocom": frozenset(
+        {"1m", "5m", "15m", "30m", "1h", "4h", "6h", "12h", "1d", "1w"}
+    ),
+    "gateio": frozenset({"1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"}),
+    "gemini": frozenset({"1m", "5m", "15m", "30m", "1h", "6h", "1d"}),
+    "huobi": frozenset({"1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"}),
+    "mexc": frozenset({"1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"}),
+    "poloniex": frozenset(
         {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
     ),
 }

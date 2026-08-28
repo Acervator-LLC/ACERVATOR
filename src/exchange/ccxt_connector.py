@@ -22,6 +22,7 @@ import asyncio
 import logging
 import threading
 import time
+from decimal import Decimal, InvalidOperation
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
@@ -175,11 +176,37 @@ PASSPHRASE_EXCHANGES: set[str] = {
     "bitget",
 }
 
-# Exchanges NOT available to US residents (API blocked by geo-IP)
-US_RESTRICTED_EXCHANGES: set[str] = {
-    "poloniex",  # Exited US market Nov 2019
-    "huobi",  # HTX restricts US users
-    "bybit",  # 403 Forbidden via CloudFront for US IPs
+# Date of the last public-endpoint measurement behind the three venue
+# facts below: IP block, timeframe availability, market metadata.
+VENUE_MEASUREMENT_DATE: str = "2026-08-28"
+
+# Venues whose PUBLIC endpoints refuse a request from a US IP. Measured
+# by requesting each PREFLIGHT_URLS entry from Oregon, United States on
+# VENUE_MEASUREMENT_DATE: binance answered HTTP 451, bybit HTTP 403.
+# A venue here cannot be reached at all, with or without credentials.
+US_IP_BLOCKED_EXCHANGES: set[str] = {
+    "binance",
+    "bybit",
+}
+
+# Venues whose public endpoints answer from a US IP but whose own terms
+# refuse a US account. Not measurable without opening an account there,
+# so this set is sourced from venue documentation, not from a probe.
+US_ACCOUNT_RESTRICTED_EXCHANGES: set[str] = {
+    "poloniex",
+    "huobi",
+}
+
+# Union of both refusals — the set the connect path warns on.
+US_RESTRICTED_EXCHANGES: set[str] = (
+    US_IP_BLOCKED_EXCHANGES | US_ACCOUNT_RESTRICTED_EXCHANGES
+)
+
+# Venues Acervator has actually traded on. Every other entry in
+# SUPPORTED_EXCHANGES is a registry declaration whose order placement,
+# fills, balance reads and order lifecycle have never been exercised.
+VERIFIED_EXCHANGES: set[str] = {
+    "coinbase",
 }
 
 # Pre-flight test URLs — public endpoints requiring no auth
@@ -217,6 +244,56 @@ EXCHANGE_OPTIONS: dict[str, dict] = {
 DISABLE_FETCH_CURRENCIES: set[str] = {
     "coinbase",  # v2/currencies deprecated for CDP keys
 }
+
+# CCXT's precisionMode values. A market's `precision` dict means a
+# DIFFERENT THING under each, and CCXT publishes these as module-level
+# integers rather than an enum. Mirrored here because ccxt is imported
+# lazily inside the connect path; test_exchange_registry pins them
+# against the installed ccxt so a renumbering cannot pass silently.
+CCXT_DECIMAL_PLACES: int = 2
+CCXT_SIGNIFICANT_DIGITS: int = 3
+CCXT_TICK_SIZE: int = 4
+
+DEFAULT_PRECISION_DECIMALS: int = 8
+
+
+def precision_to_decimals(
+    value: Any,
+    precision_mode: int,
+    default: int = DEFAULT_PRECISION_DECIMALS,
+) -> int:
+    """Convert one CCXT market ``precision`` entry to a count of decimal places.
+
+    ``AssetInfo.price_precision`` and ``AssetInfo.amount_precision`` are
+    consumed as decimal places — ``BotContainer`` truncates an order size
+    to that many places before its minimum-size check — but CCXT only
+    reports decimal places under ``DECIMAL_PLACES`` mode. Under
+    ``TICK_SIZE``, which is what nearly every venue uses, the same field
+    carries a step size such as ``1e-06``, and reading it as a count is
+    wrong for every venue including Coinbase.
+
+    Returns ``default`` when the value is missing, unparseable, or in
+    ``SIGNIFICANT_DIGITS`` mode, where a decimal-place count does not
+    exist independently of the number being rounded.
+    """
+    if value is None:
+        return default
+    if precision_mode == CCXT_SIGNIFICANT_DIGITS:
+        return default
+    try:
+        dec = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return default
+    if not dec.is_finite():
+        return default
+    if precision_mode == CCXT_DECIMAL_PLACES:
+        return max(0, int(dec))
+    if precision_mode != CCXT_TICK_SIZE:
+        return default
+    if dec <= 0:
+        return default
+    return max(0, -dec.normalize().as_tuple().exponent)
+
 
 # Logo CDN fallback
 _LOGO_CDN = "https://assets.coingecko.com/coins/images/{id}/small/{symbol}.png"
@@ -1561,6 +1638,7 @@ class CCXTConnector(ExchangeInterface):
             return self._markets_cache
 
         markets = []
+        precision_mode = getattr(self._ex, "precisionMode", CCXT_DECIMAL_PLACES)
         for sym, info in self._ex.markets.items():
             if not info.get("active", True):
                 continue
@@ -1574,8 +1652,12 @@ class CCXTConnector(ExchangeInterface):
                     quote=info.get("quote", ""),
                     min_amount=float(limits.get("amount", {}).get("min", 0) or 0),
                     min_cost=float(limits.get("cost", {}).get("min", 0) or 0),
-                    price_precision=int(precision.get("price", 8) or 8),
-                    amount_precision=int(precision.get("amount", 8) or 8),
+                    price_precision=precision_to_decimals(
+                        precision.get("price"), precision_mode
+                    ),
+                    amount_precision=precision_to_decimals(
+                        precision.get("amount"), precision_mode
+                    ),
                     maker_fee=float(info.get("maker", 0.001) or 0.001),
                     taker_fee=float(info.get("taker", 0.001) or 0.001),
                     active=info.get("active", True),
@@ -1670,15 +1752,45 @@ def create_connector(exchange_id: str) -> CCXTConnector:
 
 
 def list_supported_exchanges() -> list[dict[str, str | bool]]:
-    """Return list of supported exchanges with id, name, and passphrase requirement."""
+    """Return every registry entry with its name, credential shape and status.
+
+    ``verified`` says whether Acervator has ever traded on the venue.
+    ``us_ip_blocked`` says whether its public endpoints refused a US IP at
+    ``VENUE_MEASUREMENT_DATE``. Both are False for most of the registry,
+    which is the point: the registry is a declaration, not a record of use.
+    """
     return [
         {
             "id": eid,
             "name": eid.capitalize(),
             "requires_passphrase": eid in PASSPHRASE_EXCHANGES,
+            "verified": eid in VERIFIED_EXCHANGES,
+            "us_ip_blocked": eid in US_IP_BLOCKED_EXCHANGES,
+            "label": exchange_label(eid),
         }
         for eid in SUPPORTED_EXCHANGES
     ]
+
+
+def exchange_label(exchange_id: str) -> str:
+    """Return the picker label for an exchange, carrying its status.
+
+    Follows the equity-broker wording already used in the settings
+    dialog: a venue that cannot be reached or has never been traded on
+    says so in the list, so it is not offered as the equal of one that
+    has.
+    """
+    label = exchange_id.capitalize()
+    notes: list[str] = []
+    if exchange_id in US_IP_BLOCKED_EXCHANGES:
+        notes.append("blocked from US")
+    elif exchange_id not in VERIFIED_EXCHANGES:
+        notes.append("untested")
+    if exchange_id in PASSPHRASE_EXCHANGES:
+        notes.append("passphrase required")
+    if notes:
+        label += f" ({', '.join(notes)})"
+    return label
 
 
 def requires_passphrase(exchange_id: str) -> bool:
