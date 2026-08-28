@@ -108,6 +108,9 @@ TOOLS = REPO / "tools"
 # fails if the file returns undeclared.
 INVENTORY: tuple[tuple[str, bool], ...] = (
     ("build_release_zip", True),
+    # Reads the runtime trees read-only and writes one snapshot under
+    # `_logs/`. Its parser carries a capture and a compare mode.
+    ("capture_live_baseline", True),
     ("deps", True),
     # Moved in from the repository root as EXCHANGE_DIAGNOSTIC.py. The move
     # also gave it the `main()` and `__main__` guard it never had: importing
