@@ -100,6 +100,18 @@ def _restore_one(bot_id: str, cfg: dict) -> BotConfig:
     return mgr._bots[bot_id].config
 
 
+#: Every module the ScrummingBot engine is spread across. A scan of one
+#: of them alone would pass over code that moved to another.
+ENGINE_PATHS = tuple(
+    [REPO / "src" / "trading" / "scrumming_bot.py"]
+    + [
+        REPO / "src" / "trading" / "scrumming" / _n
+        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+    ]
+)
+ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
+
+
 def _src(*parts: str) -> str:
     """Read one repository source file as text."""
     return (REPO.joinpath(*parts)).read_text(encoding="utf-8", errors="replace")
@@ -283,6 +295,6 @@ class TestEveryDeclarationSiteAgrees:
         fallback must not disagree with the construction sites, or a
         config missing the attribute folds a different fraction than
         the same bot rebuilt from disk."""
-        src = _src("src", "trading", "scrumming_bot.py")
+        src = ENGINE_SRC
         needle = f'getattr(self.config, "scrum_fold_pct", {FOLD_PCT_DEFAULT})'
         assert needle in src, "the fire-time read no longer falls back to the default"

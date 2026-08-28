@@ -634,6 +634,16 @@ def test_repeated_returns_accumulate_both_halves():
 
 SOURCE_PATH = REPO_ROOT / "src" / "trading" / "scrumming_bot.py"
 
+#: Every module the ScrummingBot engine is spread across. A sweep of
+#: one of them alone would pass over code that moved to another.
+ENGINE_PATHS = tuple(
+    [SOURCE_PATH]
+    + [
+        REPO_ROOT / "src" / "trading" / "scrumming" / _n
+        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+    ]
+)
+
 
 def _source_lines() -> list[str]:
     return SOURCE_PATH.read_text(encoding="utf-8").split("\n")
@@ -1862,9 +1872,11 @@ def test_every_main_lots_assignment_builds_a_plain_list():
     guard would start refusing real arrivals in production, and this
     test is what says so first.
     """
-    tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))
+    nodes = []
+    for _p in ENGINE_PATHS:
+        nodes.extend(ast.walk(ast.parse(_p.read_text(encoding="utf-8"))))
     sites = []
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, ast.Assign):
             continue
         for target in node.targets:
@@ -1878,7 +1890,8 @@ def test_every_main_lots_assignment_builds_a_plain_list():
     assert sites, "the scanner found no assignment; it proves nothing"
     for lineno, kind in sites:
         assert kind in ("List", "ListComp"), (
-            f"scrumming_bot.py:{lineno} assigns a {kind} to _main_lots; "
+            f"the engine assigns a {kind} to _main_lots at line "
+            f"{lineno}; "
             f"the exact-list guard would refuse every arrival on that bot"
         )
 

@@ -7,9 +7,9 @@ THE OPERATOR'S RULE, issue #133 unit 2, 2026-08-25
 
 WHERE THE COUNT CAME FROM
 =========================
-Three loops in ``scrumming_bot.py`` build fold tranches -- the
-autonomous SCRUM sell in ``tick``, the DIST re-fold sell in ``tick``,
-and ``_execute_manual_rebalance``, which serves Manual Fire, Wire Stack
+Three loops build fold tranches -- the autonomous SCRUM sell in
+``scrumming_bot.tick``, the DIST re-fold sell in the same method, and
+``scrumming.execution._execute_manual_rebalance``, which serves Manual Fire, Wire Stack
 and Max Cartridge. All three walk ``_main_lots`` and append ONE tranche
 per lot they consume, so that each lot's ``initial_buy_price`` travels
 with its own units. ``_main_lots`` gains an entry on every buy, so the
@@ -57,9 +57,11 @@ import textwrap
 
 import pytest
 
-from src.trading.scrumming_bot import (
+from src.trading.scrumming.fold_tranches import (
     _STRONG_TREND_CANDLES,
     _STRONG_TREND_MIN_BULL_CANDLES,
+)
+from src.trading.scrumming_bot import (
     _STRONG_TREND_MIN_BULL_SHARE,
     ScrummingBot,
 )

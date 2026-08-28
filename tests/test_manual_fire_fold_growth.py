@@ -31,6 +31,7 @@ so it converges in one or two passes.
 from __future__ import annotations
 
 import ast
+import inspect
 import sys
 from pathlib import Path
 
@@ -215,7 +216,9 @@ class TestTheSizingActuallyUsesIt:
     def _fold_branch(self):
         import src.trading.scrumming_bot as m
 
-        src = Path(m.__file__).read_text(encoding="utf-8")
+        src = Path(
+            inspect.getsourcefile(m.ScrummingBot._execute_manual_rebalance)
+        ).read_text(encoding="utf-8")
         fn = next(
             n
             for n in ast.walk(ast.parse(src))

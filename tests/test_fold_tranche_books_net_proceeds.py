@@ -599,8 +599,17 @@ def test_an_estimated_fill_carries_no_fee_at_all():
 # read the shipped source instead, so fixing one loop and leaving the
 # others cannot pass.
 
-_LOOP_SOURCE = Path(ScrummingBot.__module__.replace(".", "/") + ".py")
-_SOURCE = (REPO / _LOOP_SOURCE).read_text(encoding="utf-8")
+#: Every module the ScrummingBot engine is spread across. A scan of one
+#: of them alone would pass over code that moved to another.
+ENGINE_PATHS = tuple(
+    [REPO / "src" / "trading" / "scrumming_bot.py"]
+    + [
+        REPO / "src" / "trading" / "scrumming" / _n
+        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+    ]
+)
+ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
+_SOURCE = ENGINE_SRC
 _TREE = ast.parse(_SOURCE)
 
 

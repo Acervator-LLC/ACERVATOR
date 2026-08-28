@@ -77,8 +77,18 @@ from src.trading.scrumming_bot import ScrummingBot
 # lines that used to do the juggling here were what forced the E402
 # suppression that sat on the import; both are gone.
 REPO = Path(__file__).resolve().parent.parent
-SOURCE_PATH = REPO / "src" / "trading" / "scrumming_bot.py"
-SOURCE = SOURCE_PATH.read_text(encoding="utf-8")
+#: Every module the ScrummingBot engine is spread across. A scan of one
+#: of them alone would pass over code that moved to another.
+ENGINE_PATHS = tuple(
+    [REPO / "src" / "trading" / "scrumming_bot.py"]
+    + [
+        REPO / "src" / "trading" / "scrumming" / _n
+        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+    ]
+)
+ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
+SOURCE_PATH = ENGINE_PATHS[0]
+SOURCE = ENGINE_SRC
 
 # Money is compared to the bit. These vectors were produced by running
 # the pre-change code, so an exact comparison is the honest one; a

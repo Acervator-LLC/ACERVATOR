@@ -21,14 +21,24 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
-SCRUMMING = REPO / "src" / "trading" / "scrumming_bot.py"
+#: Every module the ScrummingBot engine is spread across. A scan of one
+#: of them alone would pass over code that moved to another.
+ENGINE_PATHS = tuple(
+    [REPO / "src" / "trading" / "scrumming_bot.py"]
+    + [
+        REPO / "src" / "trading" / "scrumming" / _n
+        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+    ]
+)
+ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
+SCRUMMING = ENGINE_PATHS[0]
 CONTAINER = REPO / "src" / "trading" / "bot_container.py"
 CONTAINER_PKG = REPO / "src" / "trading" / "container"
 
 
 @pytest.fixture(scope="module")
 def scrumming_source() -> str:
-    return SCRUMMING.read_text(encoding="utf-8", errors="replace")
+    return ENGINE_SRC
 
 
 @pytest.fixture(scope="module")

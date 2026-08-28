@@ -131,10 +131,17 @@ def _tick() -> ast.AST:
 
 
 def _method(name: str) -> ast.AST:
-    """The named ScrummingBot method, as AST."""
+    """The named ScrummingBot method, read from the module that owns it."""
+    import inspect
+
+    from src.trading.scrumming_bot import ScrummingBot
+
+    path = inspect.getsourcefile(getattr(ScrummingBot, name))
+    assert path is not None, name
+    tree = ast.parse(Path(path).read_text(encoding="utf-8"))
     found = [
         n
-        for n in ast.walk(TREE)
+        for n in ast.walk(tree)
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
     ]
     assert found, f"no {name}() found -- extractor broken, not the code"

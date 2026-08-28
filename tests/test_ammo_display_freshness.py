@@ -48,6 +48,15 @@ from src.gui.main_window import (  # noqa: E402
 )
 
 
+def _owning_source(owner, method_name: str) -> str:
+    """Source of the module that really defines ``method_name``."""
+    import inspect
+
+    path = inspect.getsourcefile(getattr(owner, method_name))
+    assert path is not None, method_name
+    return Path(path).read_text(encoding="utf-8")
+
+
 class _Entry:
     def __init__(self, last, age_s):
         self.last = last
@@ -194,7 +203,7 @@ class TestTheManualFireBandSplit:
             manual_fire_dust_band,
         )
 
-        src = Path(sb.__file__).read_text(encoding="utf-8")
+        src = _owning_source(sb.ScrummingBot, "_execute_manual_rebalance")
         fn = next(
             n
             for n in ast.walk(ast.parse(src))

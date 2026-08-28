@@ -41,6 +41,27 @@ if str(REPO_ROOT) not in sys.path:
 
 SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(encoding="utf-8")
 
+#: Every module holding part of the ScrummingBot engine.
+ENGINE_SRC = "\n".join(
+    [SRC]
+    + [
+        (REPO_ROOT / "src" / "trading" / "scrumming" / name).read_text(encoding="utf-8")
+        for name in ("execution.py", "fold_tranches.py", "reconciliation.py")
+    ]
+)
+
+
+def _owning_source(method_name: str) -> str:
+    """Source of the module that defines ``method_name``, wherever it
+    has been extracted to."""
+    import inspect
+
+    from src.trading.scrumming_bot import ScrummingBot
+
+    path = inspect.getsourcefile(getattr(ScrummingBot, method_name))
+    assert path is not None, method_name
+    return Path(path).read_text(encoding="utf-8")
+
 
 def _tick_source() -> str:
     """ScrummingBot.tick(), selected as the largest `tick` -- several
@@ -60,16 +81,17 @@ def _tick_source() -> str:
 
 
 def _method_source(name: str) -> str:
-    """A named ScrummingBot method, selected as the largest match."""
+    """A named ScrummingBot method, read from the module that owns it."""
+    src = _owning_source(name)
     found = [
         n
-        for n in ast.walk(ast.parse(SRC))
+        for n in ast.walk(ast.parse(src))
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
     ]
     assert found, f"no {name}() found -- the extractor is broken, not the code"
     return (
         ast.get_source_segment(
-            SRC, max(found, key=lambda n: (n.end_lineno or 0) - n.lineno)
+            src, max(found, key=lambda n: (n.end_lineno or 0) - n.lineno)
         )
         or ""
     )
@@ -181,7 +203,9 @@ class TestTheActivationPriceIsTheRealOne:
     def test_the_dead_variable_was_removed_not_orphaned(self):
         """It existed only to be printed. Leaving it computed would be
         dead work on every diagnostic tick."""
-        names = {n.id for n in ast.walk(ast.parse(SRC)) if isinstance(n, ast.Name)}
+        names = {
+            n.id for n in ast.walk(ast.parse(ENGINE_SRC)) if isinstance(n, ast.Name)
+        }
         assert "_min_initial" not in names, "_min_initial is still a live binding"
 
     def test_it_still_reports_the_lowest_ref(self):

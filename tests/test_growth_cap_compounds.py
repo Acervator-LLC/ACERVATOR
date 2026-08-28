@@ -67,6 +67,11 @@ from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 SB_SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(
     encoding="utf-8"
 )
+# Every mixin carved out of the engine, for the same reason.
+SCRUMMING_MIXIN_SRC = {
+    _n: (REPO_ROOT / "src" / "trading" / "scrumming" / _n).read_text(encoding="utf-8")
+    for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+}
 BC_SRC = (REPO_ROOT / "src" / "trading" / "bot_container.py").read_text(
     encoding="utf-8"
 )
@@ -452,6 +457,7 @@ class TestOneDefinitionOnly:
         """A second spelling is how the four sites drifted apart."""
         for name, src in (
             ("scrumming_bot.py", SB_SRC),
+            *sorted(SCRUMMING_MIXIN_SRC.items()),
             ("bot_container.py", BC_SRC),
             ("main_window.py", MW_SRC),
             *sorted(WIDGET_SRC.items()),

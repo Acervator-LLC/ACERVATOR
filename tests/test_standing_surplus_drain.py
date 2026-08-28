@@ -186,10 +186,13 @@ class TestDetonationHygiene:
         declines to use, and text matching cannot tell a mention from a
         write. This has now caught me five times in this cascade."""
         import ast
+        import inspect
 
         import src.trading.scrumming_bot as sbm
 
-        src = Path(sbm.__file__).read_text(encoding="utf-8")
+        src = Path(
+            inspect.getsourcefile(sbm.ScrummingBot._execute_detonation)
+        ).read_text(encoding="utf-8")
         fn = next(
             n
             for n in ast.walk(ast.parse(src))
@@ -211,10 +214,13 @@ class TestDetonationHygiene:
 
     def test_it_zeroes_the_standing_pool(self):
         import ast
+        import inspect
 
         import src.trading.scrumming_bot as sbm
 
-        src = Path(sbm.__file__).read_text(encoding="utf-8")
+        src = Path(
+            inspect.getsourcefile(sbm.ScrummingBot._execute_detonation)
+        ).read_text(encoding="utf-8")
         fn = next(
             n
             for n in ast.walk(ast.parse(src))
@@ -228,10 +234,13 @@ class TestDetonationHygiene:
         """NEGATIVE CONTROL. Zeroing _fold_cycle_cap_consumed unlatches
         folds, which is a buy-TIMING change and belongs in Phase 3."""
         import ast
+        import inspect
 
         import src.trading.scrumming_bot as sbm
 
-        src = Path(sbm.__file__).read_text(encoding="utf-8")
+        src = Path(
+            inspect.getsourcefile(sbm.ScrummingBot._execute_detonation)
+        ).read_text(encoding="utf-8")
         fn = next(
             n
             for n in ast.walk(ast.parse(src))
