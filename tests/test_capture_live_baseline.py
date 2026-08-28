@@ -531,3 +531,22 @@ def test_display_path_never_leaks_a_user_directory(tmp_path):
     rendered = clb.display_path(Path.home() / ".acervator" / "bot_state.json")
     assert rendered == "~/.acervator/bot_state.json"
     assert str(Path.home()) not in rendered
+
+
+def test_class_key_redacts_the_home_directory_but_the_example_stays_verbatim(tmp_path):
+    """Fails when a machine-specific path enters the diffable class vocabulary."""
+    home = str(Path.home())
+    tail = r"\\.acervator\\bot_state.tmp"
+    raw = f"Failed to save bot state: [WinError 5] denied: '{home}{tail}'"
+    log = _write(tmp_path / "system.log", ["2026-08-27 16:23:33,359 [ERROR] " + raw])
+    got = clb.capture_console([log])
+    key, entry = next(iter(got["classes"]["ERROR"].items()))
+    assert home not in key
+    assert "~" in key
+    assert entry["example"] == raw
+
+
+def test_home_directory_is_present_before_redaction():
+    """Control: fails if the fixture never carried a home path to redact."""
+    tail = r"\\.acervator\\bot_state.tmp"
+    assert str(Path.home()) in f"denied: '{Path.home()}{tail}'"

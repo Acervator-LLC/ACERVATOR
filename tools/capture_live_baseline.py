@@ -45,6 +45,12 @@ _CONSOLE_LINE = re.compile(
     r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{1,6} \[([A-Z]+)\] (.*)$"
 )
 
+_HOME_FORMS = (
+    str(Path.home()).replace("\\", "\\\\"),
+    str(Path.home()),
+    Path.home().as_posix(),
+)
+
 _PLACEHOLDER_TOKENS = frozenset({"SYM", "ID", "N"})
 _SECRET_MARKERS = ("credential", "secret", "apikey", "api_key", "passphrase")
 
@@ -103,10 +109,14 @@ def build_symbol_pattern(assets: Iterable[str]) -> re.Pattern[str] | None:
 def normalise_message(text: str, symbols: re.Pattern[str] | None = None) -> str:
     """Collapse a log message to its class key.
 
-    Trading pairs, bot ids and numbers become placeholders. `symbols`
-    additionally collapses bare tickers taken from the loaded fleet.
+    Trading pairs, bot ids, numbers and the user's home directory become
+    placeholders. `symbols` additionally collapses bare tickers taken from
+    the loaded fleet. The verbatim example held beside a class is untouched.
     """
-    out = _PAIR.sub("<SYM>", text)
+    out = text
+    for form in _HOME_FORMS:
+        out = out.replace(form, "~")
+    out = _PAIR.sub("<SYM>", out)
     out = _BOT_ID.sub("Bot <ID>", out)
     out = _HEX_ID.sub("<ID>", out)
     if symbols is not None:
