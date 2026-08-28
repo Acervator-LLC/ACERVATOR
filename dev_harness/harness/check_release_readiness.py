@@ -111,14 +111,17 @@ def _now_iso() -> str:
 
 
 def _read_version() -> str:
-    """Read __version__ from src/__init__.py."""
-    p = REPO / "src" / "__init__.py"
-    if not p.exists():
+    """Return the version `src` resolves for this checkout, or "unknown".
+
+    No literal is scanned for. `src/_version.py` derives the version from
+    the git tag, and from the value a build baked in for a bundle.
+    """
+    try:
+        from src._version import resolve_version
+    except ImportError:
         return "unknown"
-    m = re.search(
-        r'__version__\s*=\s*[\'"]([^\'"]+)[\'"]', p.read_text(encoding="utf-8")
-    )
-    return m.group(1) if m else "unknown"
+
+    return resolve_version(REPO)
 
 
 def _run_pytest() -> tuple[bool, int, str]:
