@@ -59,7 +59,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 import pytest
@@ -1320,15 +1320,28 @@ class TestGhIsFoundWhenItIsInstalledButOffPath:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """The other half. Widening discovery must not invent a `gh`."""
+        """The other half. Widening discovery must not invent a `gh`.
+
+        Driven over the rows a fixture can redirect. The three absolute
+        POSIX rows are constants, so a host carrying a real
+        `/usr/bin/gh` cannot be handed an empty one, and the `posix`
+        seam is what keeps the claim the same on every host.
+        """
         monkeypatch.setattr(
             migration_verifier.shutil,
             "which",
             lambda _name: None,
         )
         env = {variable: str(tmp_path) for variable, _ in GH_INSTALL_DIRS if variable}
-        present = [path for path in gh_candidates(env) if path.is_file()]
+        redirected = gh_candidates(env, posix=False)
+        assert redirected, "the fixture redirected no candidate"
+        present = [path for path in redirected if path.is_file()]
         assert present == [], f"the fixture is not clean: {present}"
+        monkeypatch.setattr(
+            migration_verifier,
+            "gh_candidates",
+            lambda mapping=None, **_kw: gh_candidates(mapping, posix=False),
+        )
         assert resolve_program("gh", env) is None
 
     def test_the_candidate_list_is_fixed_and_never_read_from_path(
@@ -1358,7 +1371,9 @@ class TestGhIsFoundWhenItIsInstalledButOffPath:
         )
         assert windows, "a set ProgramFiles must give candidates"
         for path in windows:
-            assert path.is_absolute(), f"{path} is not absolute"
+            assert PureWindowsPath(
+                path
+            ).is_absolute(), f"{path} is not absolute on Windows"
 
         on_posix = gh_candidates({}, posix=True)
         assert on_posix, "the POSIX rows must be searched on POSIX"
@@ -1369,7 +1384,12 @@ class TestGhIsFoundWhenItIsInstalledButOffPath:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """`gh is not installed` was the false half. It must be gone."""
+        """`gh is not installed` was the false half. It must be gone.
+
+        The absent state is driven through `gh_candidates`, because a
+        host with a real `gh` in a standard POSIX directory cannot be
+        emptied by moving an environment variable.
+        """
         monkeypatch.setattr(
             migration_verifier.shutil,
             "which",
@@ -1378,6 +1398,11 @@ class TestGhIsFoundWhenItIsInstalledButOffPath:
         for variable, _ in GH_INSTALL_DIRS:
             if variable:
                 monkeypatch.setenv(variable, str(tmp_path))
+        monkeypatch.setattr(
+            migration_verifier,
+            "gh_candidates",
+            lambda mapping=None, **_kw: (),
+        )
         done = default_runner(["gh", "--version"], None)
         assert done.code == 127
         assert "PATH" in done.err

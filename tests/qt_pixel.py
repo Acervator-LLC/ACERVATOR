@@ -43,7 +43,10 @@ every sample would read the same colour and the checker could not
 fail -- ``test_qt_pixel_control.py`` holds the control that proves it
 can; (b) the platform plugin is not ``offscreen`` and a real
 compositor alters the output; (c) a sampled point lands outside the
-rendered image, which raises rather than returning a wrong colour.
+rendered image, which raises rather than returning a wrong colour;
+(d) ``pin_text_rendering`` fails to reach a widget, whose glyphs then
+carry the host's antialiasing and whose declared colour may reach no
+pixel.
 """
 
 from __future__ import annotations
@@ -54,8 +57,8 @@ import os
 # assignment: a caller that has already chosen a platform keeps it.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QCoreApplication, QPoint  # noqa: E402
-from PySide6.QtGui import QColor, QImage  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QPoint, Qt  # noqa: E402
+from PySide6.QtGui import QColor, QFont, QImage  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QAbstractItemView,
     QApplication,
@@ -65,6 +68,7 @@ from PySide6.QtWidgets import (  # noqa: E402
 __all__ = [
     "assert_pixel_colour",
     "ensure_app",
+    "pin_text_rendering",
     "pixel_at",
     "render_widget",
     "sample_pixels",
@@ -86,6 +90,50 @@ def ensure_app() -> QCoreApplication:
     return app
 
 
+#: Widgets whose text is rasterised by Chromium rather than by Qt. A
+#: font set inside one changes no glyph and reaches into a foreign
+#: widget tree, so the walk stops at them.
+FOREIGN_RASTERISERS = ("QWebEngine", "RenderWidgetHostViewQtDelegate")
+
+
+def _qt_painted(widget: QWidget) -> list[QWidget]:
+    """`widget` and every descendant whose glyphs Qt itself rasterises."""
+    name = widget.metaObject().className()
+    if any(name.startswith(prefix) for prefix in FOREIGN_RASTERISERS):
+        return []
+    found = [widget]
+    for child in widget.findChildren(
+        QWidget, options=Qt.FindChildOption.FindDirectChildrenOnly
+    ):
+        found.extend(_qt_painted(child))
+    return found
+
+
+def pin_text_rendering(widget: QWidget) -> None:
+    """Pin `widget` and every Qt-painted child to unantialiased glyphs.
+
+    The host picks the glyph antialiasing filter, and the fonts it
+    installs decide how much of a pixel a stem covers. Measured
+    2026-08-28: under a subpixel filter every glyph pixel is fringed
+    across the three channels, and with DejaVu Sans at 9pt the densest
+    pixel of a table cell reaches 91% coverage. Either way no pixel
+    carries the declared text colour, and a colour-count check reads a
+    painted string as absent. Unantialiased glyphs carry it on every
+    host, so one render is the answer everywhere rather than a property
+    of the machine, and a near-miss blend can no longer satisfy a check
+    that a colour is ABSENT.
+
+    Only the style strategy is changed; family, size and weight are the
+    widget's own, so layout and geometry are untouched.
+    """
+    for target in _qt_painted(widget):
+        font = target.font()
+        font.setStyleStrategy(
+            QFont.StyleStrategy(font.styleStrategy() | QFont.NoAntialias)
+        )
+        target.setFont(font)
+
+
 def render_widget(widget: QWidget, size: tuple[int, int] | None = None) -> QImage:
     """Render `widget` offscreen and return the painted image.
 
@@ -93,10 +141,13 @@ def render_widget(widget: QWidget, size: tuple[int, int] | None = None) -> QImag
     flushes any pending layout. Without both, the grab can capture an
     unstyled or zero-sized widget and every sample reads the same
     default colour -- a checker that cannot fail.
+
+    Glyph antialiasing is turned off first; see `pin_text_rendering`.
     """
     ensure_app()
     if size is not None:
         widget.resize(size[0], size[1])
+    pin_text_rendering(widget)
     widget.ensurePolished()
     QApplication.processEvents()
     image = widget.grab().toImage()
