@@ -209,7 +209,7 @@ def save_ta_snapshot(
             "timeframes": _json_safe(dict(multi_tf_summary)),
         }
         dest = directory / f"{_safe_snapshot_stem(bot_id)}.json"
-        atomic_write_json(dest, payload)
+        atomic_write_json(dest, payload, indent=None)
         _prune_snapshots(directory)
     except (OSError, TypeError, ValueError) as exc:
         logger.warning(

@@ -262,7 +262,7 @@ class TestTheMergeCannotBreakSaving:
         def boom(*_a, **_kw):
             raise OSError("simulated")
 
-        monkeypatch.setattr(state_manager, "atomic_write_json", boom)
+        monkeypatch.setattr("src.core.state_manager.atomic_write_json", boom)
         assert sm.delete_bot("b") is False
         assert set(_bots(sm)) == {"a", "b"}
 

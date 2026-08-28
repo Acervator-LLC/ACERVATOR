@@ -45,7 +45,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from src.core.io_utils import atomic_write_json
+from .io_utils import atomic_write_json
 
 logger = logging.getLogger("acervator.privacy_mask")
 
@@ -234,7 +234,6 @@ class PrivacyMaskRegistry:
                 fid: bool(self._mask_state.get(fid, False)) for fid in self._mask_state
             }
             payload["privacy_mask"] = namespace
-            self._settings_path.parent.mkdir(parents=True, exist_ok=True)
             atomic_write_json(self._settings_path, payload, indent=2, sort_keys=True)
         except Exception as exc:  # R28-OK: persistence best-effort
             logger.warning("PrivacyMaskRegistry: persist failed: %s", exc)

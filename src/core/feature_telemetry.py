@@ -84,7 +84,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional
 
-from src.core.io_utils import atomic_write_json
+from .io_utils import atomic_write_json
 
 logger = logging.getLogger("acervator.feature_telemetry")
 
@@ -628,8 +628,7 @@ class FeatureTelemetry:
                 "features": [c.to_dict() for c in self._counters.values()],
             }
         try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            atomic_write_json(self._path, payload, separators=(",", ":"))
+            atomic_write_json(self._path, payload, indent=None, separators=(",", ":"))
             return True
         except OSError as exc:
             logger.warning("feature_telemetry: save failed: %s", exc)

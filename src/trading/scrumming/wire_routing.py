@@ -8,9 +8,14 @@ open), and keeps per-tranche wire-credit provenance bounded.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING
 
 logger = logging.getLogger("acervator.scrumming")
+
+if TYPE_CHECKING:
+    from ..scrumming_bot import ScrummingBot as _Host
+else:
+    _Host = object
 
 
 _WIRE_CREDIT_CAP = 20
@@ -64,33 +69,12 @@ def _roll_wire_credit_overflow(tranche: dict) -> int:
     return len(overflow)
 
 
-class WireRoutingMixin:
+class WireRoutingMixin(_Host):
     """Smart Wire outflow routing, inflow application, and provenance.
 
     Methods keep ``self``; composed into ``ScrummingBot``. Outflow
     routing is best-effort and never raises into the caller's sell path.
     """
-
-    # Supplied by ScrummingBot at runtime; declared so a type
-    # checker can resolve them. Annotations only: no attribute is
-    # created and the runtime base stays `object`.
-    _anchor_target_balance: float
-    _bus: Any
-    _current_holdings: float
-    _fold_queue_usd: float
-    _fold_tranches: list[dict]
-    _main_lots: list[dict]
-    _pending_stack_buy_usd: float
-    _pending_wire_credits: float
-    _pending_wire_ledger: list[dict]
-    _quote_to_usd: float
-    _smart_wire_mgr: Any
-    _target_balance: Any
-    _wire_credits_discarded_lifetime: Any
-    bot_id: Any
-    config: Any
-    stats: Any
-    get_swos_inputs: Callable[..., Optional[dict]]
 
     def set_smart_wire(self, manager) -> None:
         """Attach a Smart Wire manager for cross-compounding."""

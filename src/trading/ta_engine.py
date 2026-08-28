@@ -253,28 +253,11 @@ class _TAInstrumentationOff(Exception):
     """
 
 
+# Head of the per-indicator raw emitter name. Consumers recover the
+# indicator with `name[len(TA_RAW_PREFIX):]`. The emitter spells the
+# literal out itself, so tests/test_ta_raw_prefix_consumer.py fails when
+# this copy drifts from what the engine emits.
 TA_RAW_PREFIX = "ta.07.004.postcondition.raw."
-
-
-"""The literal head of the per-indicator raw pin, 07-004.
-
-Queue item 10.2. Every consumer that recovers the indicator from the
-record name reads the leaf as `name[len(TA_RAW_PREFIX):]`. Before this
-constant existed, `fleet_replay_controller` sliced with a hardcoded 7 —
-the length of the old `ta.raw.` prefix — so the rename would have made
-its filter match nothing and the `ta.invariants` rollup would have
-reported `actual=0` violations over `indicators=0` on every run. A
-passing record asserting that no indicator ever broke its bound,
-produced by a filter that saw no indicators at all.
-
-THE LITERAL IN THE PIN IS THE AUTHORITY, not this constant. The pin
-spells the prefix out inside its own f-string because
-`tools/emitter_registry_check.py` reads the name off the syntax tree: a
-name assembled from a variable renders as `{}{}`, loses its subsystem
-token and falls out of the register. So this is a copy, and
-`tests/test_ta_raw_prefix_consumer.py` fails when the copy drifts from
-the string the engine actually emits.
-"""
 
 
 class VotingEngine:

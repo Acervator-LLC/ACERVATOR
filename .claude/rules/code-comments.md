@@ -1,4 +1,4 @@
-Ode Comments
+Code Comments
 
 Applies to all code in this repo.
 

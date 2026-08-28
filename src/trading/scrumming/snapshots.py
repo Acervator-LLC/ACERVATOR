@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 logger = logging.getLogger("acervator.scrumming")
 
 if TYPE_CHECKING:
     from ..ta_engine import VotingSummary
+    from ..scrumming_bot import ScrummingBot as _Host
+else:
+    _Host = object
 
 # Gate-chain entries that count as risk gates for forensics; names match
 # Gate.name in src/trading/gate_chain.py.
@@ -29,7 +32,7 @@ _RISK_GATE_NAMES: frozenset = frozenset(
 )
 
 
-def _build_panel_snapshot(summary: Optional[VotingSummary]) -> dict:
+def _build_panel_snapshot(summary: Optional["VotingSummary"]) -> dict:
     """Capture a compact ``{indicator: {dir, conf, weight, detail}}`` dict
     from ``VotingSummary.signals``. NEUTRAL voters are kept (informative for
     forensics). Returns ``{}`` when ``summary`` is None (pre-TA tick).
@@ -61,16 +64,7 @@ def _build_panel_snapshot(summary: Optional[VotingSummary]) -> dict:
     return snap
 
 
-class SnapshotEmitterMixin:
-
-    # Supplied by ScrummingBot at runtime; declared so a type
-    # checker can resolve them. Annotations only: no attribute is
-    # created and the runtime base stays `object`.
-    _bus: Any
-    _last_gate_state: dict
-    bot_id: Any
-    config: Any
-
+class SnapshotEmitterMixin(_Host):
     def _emit_trade_notification(self, role: str, stage: str, extra: str = "") -> None:
         """Emit a uniformly-formatted trade lifecycle notification.
 
@@ -84,7 +78,6 @@ class SnapshotEmitterMixin:
         private bus, so emitting is safe and preserves the CANCELLED-reason
         trace that a replay needs.
         """
-
         try:
             sym = self.config.symbol or self.config.target_asset
             msg = f"TRADE NOTIFICATION: {role}: {sym}: {stage}"

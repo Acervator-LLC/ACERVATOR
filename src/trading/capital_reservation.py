@@ -76,9 +76,9 @@ import time
 import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
 
-from src.core.io_utils import atomic_write_json
+from ..core.io_utils import atomic_write_json
+from typing import Optional
 
 logger = logging.getLogger("acervator.capital_reservation")
 
@@ -252,7 +252,6 @@ class CapitalReservationRegistry:
         if not self._autosave:
             return
         try:
-            self._state_path.parent.mkdir(parents=True, exist_ok=True)
             payload = {
                 "version": "1.0",
                 "saved_at": time.time(),

@@ -29,6 +29,7 @@ from src.trading.ta_engine import (
     StochasticRSI,
     VortexIndicator,
 )
+from src.core.fmt import fmt_price_raw
 
 logger = logging.getLogger("acervator.gui")
 
@@ -592,19 +593,6 @@ if _HAS_QT:
             self._mouse_y = None
             self.update()
 
-        # --- Format price for display ---
-        def _fmt_price(self, price: float) -> str:
-            if price < 0.0001:
-                return f"{price:.8f}"
-            elif price < 0.01:
-                return f"{price:.6f}"
-            elif price < 1:
-                return f"{price:.4f}"
-            elif price < 1000:
-                return f"{price:.2f}"
-            else:
-                return f"{price:,.2f}"
-
         # =================================================================
         # PAINT — v3.16.21 Coinbase-Pro-style multi-pane layout
         # =================================================================
@@ -775,7 +763,7 @@ if _HAS_QT:
                         # too faint to read at distance per operator).
                         p.setPen(QPen(self.TEXT_LIGHT))
                         p.setFont(font_sm)
-                        p.drawText(w - MR + 6, y + 4, self._fmt_price(g))
+                        p.drawText(w - MR + 6, y + 4, fmt_price_raw(g))
                     g += grid_step
 
             # --- Vertical time-axis grid + labels ---
@@ -893,7 +881,7 @@ if _HAS_QT:
                 p.setPen(QPen(self.PRICE_LINE_COLOR, 1, Qt.DashLine))
                 p.drawLine(ML, int(yp), w - MR, int(yp))
                 # Price badge
-                ptxt = self._fmt_price(last_close)
+                ptxt = fmt_price_raw(last_close)
                 tw = fm.horizontalAdvance(ptxt) + 10
                 badge = QRectF(w - MR, yp - 9, tw, 18)
                 p.setBrush(QBrush(QColor(60, 50, 0)))
@@ -1261,7 +1249,7 @@ if _HAS_QT:
                         p.setPen(QPen(anchor_color, 1.4, Qt.DashLine))
                         p.drawLine(ML, int(ay), w - MR, int(ay))
                         # Badge
-                        txt = f"TB-Anchor {self._fmt_price(self._tb_anchor_price)}"
+                        txt = f"TB-Anchor {fmt_price_raw(self._tb_anchor_price)}"
                         tw = fm.horizontalAdvance(txt) + 10
                         badge = QRectF(ML + 4, ay - 8, tw, 14)
                         p.setBrush(QBrush(QColor(20, 32, 50)))
@@ -1277,7 +1265,7 @@ if _HAS_QT:
                         ceiling_color = QColor(255, 120, 80, 220)
                         p.setPen(QPen(ceiling_color, 1.4, Qt.DashLine))
                         p.drawLine(ML, int(cyl), w - MR, int(cyl))
-                        txt = f"TB-Ceiling {self._fmt_price(self._tb_ceiling_price)}"
+                        txt = f"TB-Ceiling {fmt_price_raw(self._tb_ceiling_price)}"
                         tw = fm.horizontalAdvance(txt) + 10
                         badge = QRectF(ML + 4, cyl - 8, tw, 14)
                         p.setBrush(QBrush(QColor(40, 22, 14)))
@@ -1626,7 +1614,7 @@ if _HAS_QT:
                     # Right-edge cursor-price badge — only in price pane
                     if price_top <= my <= price_bot:
                         cp = lo + pr * (1 - (my - price_top) / price_h)
-                        cp_txt = self._fmt_price(cp)
+                        cp_txt = fmt_price_raw(cp)
                         cp_w = fm.horizontalAdvance(cp_txt) + 12
                         badge = QRectF(w - MR, my - 9, cp_w, 18)
                         p.setBrush(QBrush(QColor(25, 32, 48)))
@@ -1661,10 +1649,10 @@ if _HAS_QT:
                         chg = c.close - c.open
                         chg_pct = (chg / c.open * 100) if c.open > 0 else 0
                         lines = [
-                            ("O", self._fmt_price(c.open), self.TEXT_LIGHT),
-                            ("H", self._fmt_price(c.high), self.TEXT_LIGHT),
-                            ("L", self._fmt_price(c.low), self.TEXT_LIGHT),
-                            ("C", self._fmt_price(c.close), tip_color),
+                            ("O", fmt_price_raw(c.open), self.TEXT_LIGHT),
+                            ("H", fmt_price_raw(c.high), self.TEXT_LIGHT),
+                            ("L", fmt_price_raw(c.low), self.TEXT_LIGHT),
+                            ("C", fmt_price_raw(c.close), tip_color),
                             ("Δ", f"{chg:+.6g} ({chg_pct:+.2f}%)", tip_color),
                             (
                                 "V",
@@ -1734,10 +1722,10 @@ if _HAS_QT:
                 ohlc_y = ohlc_top + 13
                 cur_x = ML + 4
                 ohlc_parts = [
-                    ("O", self._fmt_price(last.open), self.TEXT_LIGHT),
-                    ("H", self._fmt_price(last.high), self.TEXT_LIGHT),
-                    ("L", self._fmt_price(last.low), self.TEXT_LIGHT),
-                    ("C", self._fmt_price(last.close), acc),
+                    ("O", fmt_price_raw(last.open), self.TEXT_LIGHT),
+                    ("H", fmt_price_raw(last.high), self.TEXT_LIGHT),
+                    ("L", fmt_price_raw(last.low), self.TEXT_LIGHT),
+                    ("C", fmt_price_raw(last.close), acc),
                     ("", f"{chg:+.6g}", acc),
                     ("", f"({chg_pct:+.2f}%)", acc),
                     (
