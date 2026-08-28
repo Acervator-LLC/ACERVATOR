@@ -3,17 +3,19 @@
 
 Set-Location $PSScriptRoot
 
-# Read the live version from src/__init__.py so the banner is never stale
-# (v3.15.98 fix — was hardcoded "v3.7.0" causing operator confusion when
-# building newer source).
+# The version is derived, never written down, so there is no literal to parse.
+# src/_version.py resolves it from the git tag and answers through the package.
 $versionStr = "unknown"
 try {
-    $initText = Get-Content -Path "src\__init__.py" -Raw -ErrorAction Stop
-    if ($initText -match '__version__\s*=\s*"([0-9.]+)"') {
-        $versionStr = $Matches[1]
+    $resolved = & python -c "import src; print(src.__version__)" 2>$null
+    if ($LASTEXITCODE -eq 0 -and $resolved) {
+        $versionStr = ([string]($resolved | Select-Object -First 1)).Trim()
     }
 } catch {
-    # Fall through with "unknown"
+    # python absent or unimportable; the placeholder stands and the build runs
+}
+if (-not $versionStr) {
+    $versionStr = "unknown"
 }
 
 Write-Host ""

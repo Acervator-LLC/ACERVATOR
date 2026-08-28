@@ -13,9 +13,9 @@
 set -e
 
 APP_NAME="Acervator"
-# v3.15.98 fix: was hardcoded "3.7.0" for ages, causing operator confusion when
-# building newer source. Read live version from src/__init__.py.
-VERSION="$(grep -E '__version__' src/__init__.py | head -1 | sed -E 's/.*"([0-9.]+)".*/\1/')"
+# The version is derived, never written down, so there is no literal to parse.
+# src/_version.py resolves it from the git tag and answers through the package.
+VERSION="$(python3 -c 'import src; print(src.__version__)' 2>/dev/null || echo "unknown")"
 [ -z "$VERSION" ] && VERSION="unknown"
 SIGN_IDENTITY=""
 MAKE_DMG=false
