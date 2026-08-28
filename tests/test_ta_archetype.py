@@ -7,7 +7,7 @@ nobody could run, and the harness's own H001 rule reported the dead
 citation on every scan of it.
 
 Method. Each rule gets a known-bad body and a known-good body, in
-`docs/audits/2026-08-13_ta_archetype/fixtures/`. The bodies live in
+`tests/fixtures/ta_archetype/`. The bodies live in
 their own files rather than inline, because this archetype grades the
 literal source it is pointed at -- a test carrying a known-bad body in a
 string would be graded as one.
@@ -46,7 +46,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from dev_harness.harness.ta_archetype import TAArchetype
 
-FIX = REPO_ROOT / "docs" / "audits" / "2026-08-13_ta_archetype" / "fixtures"
+FIX = REPO_ROOT / "tests" / "fixtures" / "ta_archetype"
 
 # rule -> (blocks the gate?)
 BLOCKING_RULES = ("TA001", "TA002", "TA003", "TA004", "TA010")
