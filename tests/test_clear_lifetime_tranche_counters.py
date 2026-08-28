@@ -665,7 +665,7 @@ def test_the_predicate_here_is_the_predicate_in_tick():
 
     from src.trading.scrumming_bot import ScrummingBot
 
-    source = inspect.getsource(ScrummingBot.tick)
+    source = inspect.getsource(ScrummingBot._tick_initialise)
     assert "_never_scrummed = (" in source
     assert 'int(getattr(self, "_tranches_created_lifetime", 0) or 0) == 0' in source
     assert (

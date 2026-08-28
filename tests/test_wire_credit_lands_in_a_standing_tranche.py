@@ -88,7 +88,12 @@ ENGINE_PATHS = tuple(
     [REPO / "src" / "trading" / "scrumming_bot.py"]
     + [
         REPO / "src" / "trading" / "scrumming" / _n
-        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+        for _n in (
+            "execution.py",
+            "fold_tranches.py",
+            "reconciliation.py",
+            "tick_phases.py",
+        )
     ]
 )
 ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
@@ -599,7 +604,11 @@ class TestEveryBuildLoopLandsThePool:
 
     def test_the_three_build_loops_are_still_three(self):
         names = sorted({fn.name for fn in _build_sites(SCRUMMING_BOT_SRC)})
-        assert names == ["_execute_manual_rebalance", "tick"], names
+        assert names == [
+            "_execute_manual_rebalance",
+            "_tick_distribute",
+            "_tick_execute_scrum",
+        ], names
         appends = SCRUMMING_BOT_SRC.count("self._fold_tranches.append(")
         assert appends == 3, (
             f"{appends} fold-tranche append sites; the unit measured 3. A new "

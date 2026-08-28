@@ -605,7 +605,12 @@ ENGINE_PATHS = tuple(
     [REPO / "src" / "trading" / "scrumming_bot.py"]
     + [
         REPO / "src" / "trading" / "scrumming" / _n
-        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+        for _n in (
+            "execution.py",
+            "fold_tranches.py",
+            "reconciliation.py",
+            "tick_phases.py",
+        )
     ]
 )
 ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)

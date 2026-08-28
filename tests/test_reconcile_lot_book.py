@@ -861,7 +861,7 @@ def test_the_reconcile_reads_the_same_field_as_the_startup_handshake():
         "the read must be bare so it raises into the fetch handler"
     )
 
-    handshake = inspect.getsource(ScrummingBot.tick)
+    handshake = inspect.getsource(ScrummingBot._tick_initialise)
     assert 'getattr(_bal1, "total", 0)' in handshake
     bootstrap = inspect.getsource(ScrummingBot.bootstrap_exchange_state)
     assert 'getattr(_bal, "total", 0)' in bootstrap

@@ -640,7 +640,12 @@ ENGINE_PATHS = tuple(
     [SOURCE_PATH]
     + [
         REPO_ROOT / "src" / "trading" / "scrumming" / _n
-        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+        for _n in (
+            "execution.py",
+            "fold_tranches.py",
+            "reconciliation.py",
+            "tick_phases.py",
+        )
     ]
 )
 

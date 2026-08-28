@@ -46,7 +46,12 @@ ENGINE_SRC = "\n".join(
     [SRC]
     + [
         (REPO_ROOT / "src" / "trading" / "scrumming" / name).read_text(encoding="utf-8")
-        for name in ("execution.py", "fold_tranches.py", "reconciliation.py")
+        for name in (
+            "execution.py",
+            "fold_tranches.py",
+            "reconciliation.py",
+            "tick_phases.py",
+        )
     ]
 )
 
@@ -64,20 +69,28 @@ def _owning_source(method_name: str) -> str:
 
 
 def _tick_source() -> str:
-    """ScrummingBot.tick(), selected as the largest `tick` -- several
-    classes define one and ast.walk order does not favour the right."""
-    ticks = [
-        n
-        for n in ast.walk(ast.parse(SRC))
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "tick"
-    ]
-    assert ticks, "no tick() found -- the extractor is broken, not the code"
-    return (
-        ast.get_source_segment(
-            SRC, max(ticks, key=lambda n: (n.end_lineno or 0) - n.lineno)
-        )
-        or ""
-    )
+    """One tick pass: ``tick`` plus every ``_tick_*`` phase it calls.
+
+    ``tick`` is selected as the largest of that name -- several classes
+    define one and ast.walk order does not favour the right.
+    """
+    segs = []
+    for src in (SRC, _owning_source("_tick_execute_fold")):
+        found = [
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and (n.name == "tick" or n.name.startswith("_tick_"))
+        ]
+        by_name: dict[str, ast.AST] = {}
+        for n in found:
+            prev = by_name.get(n.name)
+            span = (n.end_lineno or 0) - n.lineno
+            if prev is None or span > (prev.end_lineno or 0) - prev.lineno:
+                by_name[n.name] = n
+        segs += [ast.get_source_segment(src, n) or "" for n in by_name.values()]
+    assert segs, "no tick pass found -- the extractor is broken, not the code"
+    return "\n".join(segs)
 
 
 def _method_source(name: str) -> str:
@@ -109,7 +122,7 @@ def _emitted_text(marker: str) -> str:
     Returns every constant part of the JoinedStr concatenated, plus the
     source of its interpolations so tests can assert on variable names.
     """
-    tree = ast.parse(SRC)
+    tree = ast.parse(ENGINE_SRC)
     for node in ast.walk(tree):
         if not isinstance(node, ast.JoinedStr):
             continue

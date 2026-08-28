@@ -936,6 +936,7 @@ _TRADING_STATE_FILES = (
     REPO / "src" / "trading" / "scrumming" / "execution.py",
     REPO / "src" / "trading" / "scrumming" / "fold_tranches.py",
     REPO / "src" / "trading" / "scrumming" / "reconciliation.py",
+    REPO / "src" / "trading" / "scrumming" / "tick_phases.py",
     REPO / "src" / "exchange" / "history_read_contract.py",
     REPO / "src" / "gui" / "history_tab.py",
 )

@@ -83,7 +83,12 @@ ENGINE_PATHS = tuple(
     [REPO / "src" / "trading" / "scrumming_bot.py"]
     + [
         REPO / "src" / "trading" / "scrumming" / _n
-        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+        for _n in (
+            "execution.py",
+            "fold_tranches.py",
+            "reconciliation.py",
+            "tick_phases.py",
+        )
     ]
 )
 ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
@@ -650,7 +655,7 @@ def _plant_reorder_against_the_topup(source: str) -> str:
     """Move the DIST scaling call to AFTER the top-up."""
     lines = source.split("\n")
     tree = ast.parse(source)
-    func = next(f for f in _functions(tree) if f.name == "tick")
+    func = next(f for f in _functions(tree) if f.name == "_tick_distribute")
     fold = max(_self_calls(func, FOLD_CALL), key=lambda c: c.lineno)
     top = max(_self_calls(func, TOPUP_CALL), key=lambda c: c.lineno)
     if not fold.lineno < top.lineno:
