@@ -13,8 +13,8 @@ finds nothing prints the pattern it searched for, so a zero can be told apart
 from a probe pointed at the wrong place.
 
 No subprocess and no shell: the scan is pure Python over the source tree, and
-the remote list is read from .git/config. That keeps the tool usable where grep
-is absent and leaves nothing for a shell to interpret.
+the remote list is read out of the repository's own config file. That keeps the
+tool usable where grep is absent and leaves nothing for a shell to interpret.
 
     python -m tools.queue_state          # every item
     python -m tools.queue_state 19 20    # named items
@@ -74,9 +74,44 @@ def hits(needle: str, sub: str = "src") -> list[str]:
     return found
 
 
+def _anchor(path: pathlib.Path, base: pathlib.Path) -> pathlib.Path:
+    """Resolve path against base when it is relative; both forms occur on disk."""
+    return (path if path.is_absolute() else base / path).resolve()
+
+
+def git_common_dir() -> pathlib.Path | None:
+    """The repository's common git directory, or None when ROOT is no checkout.
+
+    A linked worktree carries ``.git`` as a one-line ``gitdir:`` pointer file
+    rather than a directory. The directory it names holds a ``commondir`` file
+    naming the shared git directory, and that is where the remotes are declared.
+    A submodule checkout has the pointer file but no ``commondir``, so its own
+    git directory is the answer.
+    """
+    dot = ROOT / ".git"
+    if dot.is_dir():
+        return dot
+    try:
+        first = dot.read_text(encoding="utf-8", errors="replace").splitlines()[0]
+    except (OSError, IndexError):
+        return None
+    prefix = "gitdir:"
+    if not first.startswith(prefix):
+        return None
+    git_dir = _anchor(pathlib.Path(first[len(prefix) :].strip()), ROOT)
+    try:
+        shared = (git_dir / "commondir").read_text(encoding="utf-8").splitlines()[0]
+    except (OSError, IndexError):
+        return git_dir
+    return _anchor(pathlib.Path(shared.strip()), git_dir) if shared.strip() else git_dir
+
+
 def git_remotes() -> list[str]:
-    """Remote names from .git/config, read directly rather than shelled out."""
-    config = ROOT / ".git" / "config"
+    """Remote names from the repository config, read rather than shelled out."""
+    git_dir = git_common_dir()
+    if git_dir is None:
+        return []
+    config = git_dir / "config"
     if not config.is_file():
         return []
     names = []
@@ -220,7 +255,9 @@ def report(only: set[int]) -> int:
             for name in remotes:
                 print(f"   remote configured: {name}")
         else:
-            print("   remote     0 configured  (.git/config declares no [remote])")
+            git_dir = git_common_dir()
+            searched = git_dir / "config" if git_dir else ROOT / ".git"
+            print(f"   remote     0 configured  (searched: {searched})")
         print(
             "   READ AS: no remote means not uploaded from this tree. "
             "Operator's call, never push unasked.\n"
