@@ -116,6 +116,8 @@ class _Registry:
     def __init__(self) -> None:
         self.reserved: list[dict[str, Any]] = []
         self.updated: list[dict[str, Any]] = []
+        self.released_for: list[dict[str, Any]] = []
+        self.queried: list[dict[str, Any]] = []
         self.heartbeats: list[str] = []
         self.after_heartbeat: Callable[[], None] | None = None
 
@@ -146,7 +148,7 @@ class _Registry:
         bot_id: str,
         new_qty: float,
         total_holdings: float | None = None,
-    ) -> None:
+    ) -> bool:
         self.updated.append(
             {
                 "handle": handle,
@@ -155,6 +157,30 @@ class _Registry:
                 "total_holdings": total_holdings,
             }
         )
+        # The real registry returns True when the token resolved and False
+        # when it did not; the ensure path reads that verdict.
+        return True
+
+    def release_for(self, bot_id: str, asset: str | None = None) -> int:
+        """Ownership-addressed release. This stub holds no table, so it
+        reports nothing released while still recording the call."""
+        self.released_for.append({"bot_id": bot_id, "asset": asset})
+        return 0
+
+    def reservations_for(
+        self,
+        asset: str | None = None,
+        bot_id: str | None = None,
+        excluding_bot_id: str | None = None,
+    ) -> list:
+        self.queried.append(
+            {
+                "asset": asset,
+                "bot_id": bot_id,
+                "excluding_bot_id": excluding_bot_id,
+            }
+        )
+        return []
 
     def heartbeat(self, bot_id: str) -> None:
         self.heartbeats.append(bot_id)

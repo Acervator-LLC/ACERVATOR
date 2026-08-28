@@ -48,6 +48,8 @@ class _StubRegistry:
         self.reserved: list = []
         self.updated: list = []
         self.released: list = []
+        self.released_for: list = []
+        self.queried: list = []
         self.heartbeats: list = []
         self._next_token = 0
 
@@ -78,9 +80,29 @@ class _StubRegistry:
                 "total_holdings": total_holdings,
             }
         )
+        # The real registry returns True when the token resolved and False
+        # when it did not; the ensure path reads that verdict.
+        return True
 
     def release(self, token, bot_id):
         self.released.append({"token": token, "bot_id": bot_id})
+        return True
+
+    def release_for(self, bot_id, asset=None):
+        """Ownership-addressed release. This stub holds no table, so it
+        reports nothing released while still recording the call."""
+        self.released_for.append({"bot_id": bot_id, "asset": asset})
+        return 0
+
+    def reservations_for(self, asset=None, bot_id=None, excluding_bot_id=None):
+        self.queried.append(
+            {
+                "asset": asset,
+                "bot_id": bot_id,
+                "excluding_bot_id": excluding_bot_id,
+            }
+        )
+        return []
 
     def heartbeat(self, bot_id):
         self.heartbeats.append(bot_id)
