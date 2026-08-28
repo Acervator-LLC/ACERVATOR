@@ -723,7 +723,42 @@ class StateRestoreMixin:
                 "C01: restore completed, all %d persisted bot(s) loaded", len(bots_data)
             )
 
+        self._sweep_orphan_capital_reservations(bots_data)
         return restored
+
+    def _sweep_orphan_capital_reservations(self, bots_data: dict) -> int:
+        """Drop capital reservations whose bot id is not in the persisted
+        fleet. Returns the number dropped; never raises into restore.
+
+        The reservation table persists across restarts, so a reservation left
+        by a bot that no longer exists is inherited by every launch and no
+        owner can release it. Swept against every persisted record, including
+        the ones restore skipped, because a skipped bot is still a real bot.
+        """
+        if not bots_data:
+            return 0
+        try:
+            from src.trading.capital_reservation import get_registry
+
+            dropped = get_registry().sweep_unknown_bots(
+                bots_data.keys(), note="fleet restore"
+            )
+        except Exception as _sweep_exc:  # noqa: BLE001 - never block restore
+            logger.error(
+                "Capital-reservation orphan sweep raised %s: %s — the "
+                "reservation table is left exactly as it was on disk",
+                type(_sweep_exc).__name__,
+                _sweep_exc,
+            )
+            return 0
+        if dropped:
+            logger.warning(
+                "Dropped %d capital reservation(s) held by bot ids outside "
+                "the %d-bot persisted fleet",
+                len(dropped),
+                len(bots_data),
+            )
+        return len(dropped)
 
 
 class _PlaceholderExchangeForRestore:

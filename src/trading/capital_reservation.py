@@ -39,7 +39,10 @@ CRASH RECOVERY
 Each bot heartbeats to the registry periodically. If a bot stops
 heartbeating for HEARTBEAT_TTL seconds, its reservations are pruned
 automatically. Explicit per-reservation TTL is also supported (Extractor
-can declare "I'll be done within 45 min" up front).
+can declare "I'll be done within 45 min" up front). prune_expired() runs
+at the head of reserve(), so the over-commit sum never counts a dead
+bot's claim; sweep_unknown_bots() drops claims whose bot id is not in the
+fleet at all, which no heartbeat rule can express.
 
 PERSISTENCE
 ───────────
@@ -335,6 +338,11 @@ class CapitalReservationRegistry:
         if not bot_id:
             raise ValueError("reserve: bot_id required")
 
+        # The over-commit sum below counts every reservation on the asset,
+        # including those of bots that stopped heartbeating. Collect them
+        # first or a dead bot's claim refuses a live bot's forever.
+        self.prune_expired()
+
         with self._lock:
             # Over-commit check (R28 FL — fail loudly)
             if total_holdings is not None:
@@ -404,6 +412,37 @@ class CapitalReservationRegistry:
                 r.asset,
             )
             return True
+
+    def release_for(self, bot_id: str, asset: Optional[str] = None) -> int:
+        """Release every reservation held by ``bot_id``, optionally narrowed
+        to one asset, addressing them by ownership rather than by token.
+
+        ``reserve()`` raises before it returns a token, so a caller whose
+        reserve failed holds no handle to what it may have created. This is
+        the only way to reach such a reservation. Returns the count released.
+        """
+        if not bot_id:
+            return 0
+        with self._lock:
+            doomed = [
+                t
+                for t, r in self._reservations.items()
+                if r.bot_id == bot_id and (asset is None or r.asset == asset)
+            ]
+            if not doomed:
+                return 0
+            for t in doomed:
+                r = self._reservations.pop(t)
+                logger.info(
+                    "CRR.release_for: %s released %s (%.10g %s) by ownership",
+                    bot_id,
+                    t[:8],
+                    r.qty,
+                    r.asset,
+                )
+            self._heartbeats[bot_id] = time.time()
+            self._save()
+            return len(doomed)
 
     def update(
         self,
@@ -509,6 +548,50 @@ class CapitalReservationRegistry:
                     operator_note,
                 )
             return len(to_release)
+
+    def sweep_unknown_bots(self, known_bot_ids, note: str = "") -> list[Reservation]:
+        """Drop every reservation, and every heartbeat, whose ``bot_id`` is
+        absent from ``known_bot_ids``.
+
+        A bot id outside the fleet has no owner that can release it, and the
+        persisted table is inherited by every launch. An empty or non-iterable
+        fleet is refused with an empty result: sweeping against a fleet that
+        failed to load would drop live bots' claims. Returns what was dropped.
+        """
+        try:
+            known = {str(b) for b in known_bot_ids}
+        except TypeError:
+            logger.error(
+                "CRR.sweep_unknown_bots: known_bot_ids is not iterable (%s); "
+                "refusing to sweep.",
+                type(known_bot_ids).__name__,
+            )
+            return []
+        if not known:
+            logger.warning(
+                "CRR.sweep_unknown_bots: empty fleet supplied; refusing to "
+                "sweep so a failed fleet load cannot drop live claims."
+            )
+            return []
+        with self._lock:
+            dropped = [r for r in self._reservations.values() if r.bot_id not in known]
+            for r in dropped:
+                del self._reservations[r.token]
+            stale_beats = [b for b in self._heartbeats if b not in known]
+            for b in stale_beats:
+                del self._heartbeats[b]
+            if dropped or stale_beats:
+                self._save()
+                logger.warning(
+                    "CRR.sweep_unknown_bots: dropped %d reservation(s) and %d "
+                    "heartbeat(s) held by bot ids outside the %d-bot fleet. "
+                    "Note: %r",
+                    len(dropped),
+                    len(stale_beats),
+                    len(known),
+                    note,
+                )
+            return dropped
 
     # ─────────────────────────────────────────────────────────
     # Query API
