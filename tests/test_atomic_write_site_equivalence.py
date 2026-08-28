@@ -124,6 +124,11 @@ def _dump_kwargs(kwargs: dict) -> dict:
     }
 
 
+def _dumped(payload, kwargs: dict) -> str:
+    """The text the site's own json.dumps keywords produce."""
+    return json.dumps(payload, **_dump_kwargs(kwargs))
+
+
 # ------------------------------------------------------------------ #
 # Realistic payloads                                                  #
 # ------------------------------------------------------------------ #
@@ -203,7 +208,8 @@ def test_feature_telemetry_bytes(tmp_path, monkeypatch):
     assert tel.save() is True
 
     path, payload, kwargs = rec.only
-    assert _dump_kwargs(kwargs) == {"separators": (",", ":")}
+    assert len(_dumped(payload, kwargs).splitlines()) == 1
+    assert _dump_kwargs(kwargs)["separators"] == (",", ":")
     old = _old_write_text_utf8(tmp_path / "old.bytes", payload, separators=(",", ":"))
     assert old == path.read_bytes()
     assert b"\r" not in old
@@ -276,7 +282,7 @@ def test_indicator_panel_snapshot_bytes(tmp_path, monkeypatch):
     assert dest is not None
 
     path, payload, kwargs = rec.only
-    assert _dump_kwargs(kwargs) == {}
+    assert len(_dumped(payload, kwargs).splitlines()) == 1
     old = _old_open_w_newline_lf(tmp_path / "old.bytes", payload)
     assert old == path.read_bytes()
     assert b"\r" not in old
@@ -419,7 +425,7 @@ def test_helper_writes_lf_on_every_platform(tmp_path):
 def test_helper_writes_utf8_regardless_of_locale(tmp_path):
     """Red: a non-ASCII payload no longer lands as utf-8."""
     dest = tmp_path / "out.json"
-    IO.atomic_write_json(dest, {"note": "café — ¥"}, ensure_ascii=False)
+    IO.atomic_write_json(dest, {"note": "café — ¥"}, indent=None, ensure_ascii=False)
     assert dest.read_bytes() == '{"note": "café — ¥"}'.encode("utf-8")
 
 

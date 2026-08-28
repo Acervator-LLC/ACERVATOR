@@ -177,9 +177,7 @@ acervator/
 │   └── touchset.py
 │
 ├── docs/
-│   ├── audits/                               # Session audits (historical)
-│   ├── ITEM_10_EMITTER_NETWORK.md
-│   └── TOUCHSET.md
+│   └── engineering-notes/                     # Design notes and guides
 │
 ├── docs-archive/
 │   └── llm-session-history/                  # LLM session handoffs (historical)

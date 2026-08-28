@@ -358,12 +358,7 @@ class TestArchetypeGate:
 
         # A Qt widget is BOTH a GUI file and a Python file.
         gui_fixture = (
-            REPO
-            / "docs"
-            / "audits"
-            / "2026-07-24_gui_docs_archetypes"
-            / "gui_fixtures"
-            / "known_good_widget.py"
+            REPO / "harness_fixtures" / "gui_archetype" / "known_good_widget.py"
         )
         got = pick(gui_fixture, gui_fixture.read_text(encoding="utf-8"))
         assert CODING in got, f"coding must run on every .py file, got {got}"
@@ -373,26 +368,14 @@ class TestArchetypeGate:
         # negative half: without it, a router that returned every
         # archetype for every file would pass the assertion above.
         coding_fixture = (
-            REPO
-            / "docs"
-            / "audits"
-            / "2026-07-24_coding_archetype_multi_agent_test"
-            / "fixtures"
-            / "known_good.py"
+            REPO / "harness_fixtures" / "coding_archetype" / "known_good.py"
         )
         got = pick(coding_fixture, coding_fixture.read_text(encoding="utf-8"))
         assert CODING in got
         assert GUI not in got, f"plain .py must not get gui, got {got}"
 
         # Markdown → docs only.
-        md = (
-            REPO
-            / "docs"
-            / "audits"
-            / "2026-07-24_gui_docs_archetypes"
-            / "docs_fixtures"
-            / "known_good.md"
-        )
+        md = REPO / "harness_fixtures" / "docs_archetype" / "known_good.md"
         assert pick(md, md.read_text(encoding="utf-8")) == [DOCS]
 
         # v3.25.6 - routing must follow the PENDING source, not the

@@ -116,7 +116,9 @@ def atomic_write_json(
 
     The JSON formatting keywords (``indent``, ``default``, ``sort_keys``,
     ``separators``, ``ensure_ascii``) mirror :func:`json.dumps` so each call
-    site can preserve its exact on-disk format. Serialization happens before
+    site can preserve its exact on-disk format. ``indent`` defaults to 2
+    rather than to ``json.dumps``' ``None``; a site wanting compact output
+    states ``indent=None``. Serialization happens before
     the temp file is created: a payload ``json.dumps`` rejects leaves no temp
     file behind and the original ``path`` untouched. Returns the destination
     path.

@@ -26,7 +26,7 @@ from dev_harness.harness.gui_archetype import (
 )
 
 REPO = Path(__file__).resolve().parent.parent
-FIX = REPO / "docs" / "audits" / "2026-07-24_gui_docs_archetypes" / "gui_fixtures"
+FIX = REPO / "harness_fixtures" / "gui_archetype"
 
 
 class TestSurface:

@@ -46,7 +46,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from dev_harness.harness.ta_archetype import TAArchetype
 
-FIX = REPO_ROOT / "tests" / "fixtures" / "ta_archetype"
+FIX = REPO_ROOT / "harness_fixtures" / "ta_archetype"
 
 # rule -> (blocks the gate?)
 BLOCKING_RULES = ("TA001", "TA002", "TA003", "TA004", "TA010")

@@ -1909,7 +1909,7 @@ if _HAS_QT:
                 from ..core.io_utils import atomic_write_json
 
                 p = Path.home() / ".acervator" / "bot_state.json"
-                atomic_write_json(p, state, default=str)
+                atomic_write_json(p, state, indent=2, default=str)
             except Exception as exc:  # noqa: BLE001 - GUI must not die
                 logger.error(
                     "bot_visualizer: direct write to bot_state.json "

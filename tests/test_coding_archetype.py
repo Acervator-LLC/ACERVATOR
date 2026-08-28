@@ -27,13 +27,7 @@ from dev_harness.harness.coding_archetype import (
 )
 
 REPO = Path(__file__).resolve().parent.parent
-FIX = (
-    REPO
-    / "docs"
-    / "audits"
-    / "2026-07-24_coding_archetype_multi_agent_test"
-    / "fixtures"
-)
+FIX = REPO / "harness_fixtures" / "coding_archetype"
 
 
 class TestSurface:
