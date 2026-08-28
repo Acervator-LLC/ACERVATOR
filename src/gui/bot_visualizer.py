@@ -1885,27 +1885,30 @@ if _HAS_QT:
         def _save_bot_state_dict(self, state: dict) -> None:
             """Write back to bot_state.json. The SECOND writer of that file.
 
-            ``StateManager.save_state`` is the primary path and the two
-            have never been reconciled. What this one maintains does not
-            survive: its only purpose is
-            ``scrumming_state.smart_wire_routes``, which
-            ``export_scrumming_state`` does not emit, so the next
-            60-second save rebuilds scrumming_state without it. Measured
-            on the live file 2026-08-06: 0 of 35 bots carry the key,
-            while the durable channel (top-level ``smart_wires``) holds
-            all 40 wires.
+            SECOND WRITER WARNING. This is not the primary persistence
+            path — ``StateManager.save_state`` is — and the two write the
+            same file. The write goes through ``atomic_write_json``, whose
+            unique per-call staging file makes it impossible for either
+            writer to rename its partial write over the other's live
+            position file.
 
-            Staging paths come from ``tempfile.mkstemp`` inside
-            ``atomic_write_json``, so this writer and StateManager cannot
-            collide on one temp name.
+            Its only purpose is maintaining
+            ``scrumming_state.smart_wire_routes``, and
+            ``export_scrumming_state`` does not emit that key — so the
+            next 60-second save rebuilds scrumming_state without it. The
+            durable Smart Wire channel is the top-level ``smart_wires``
+            key written through StateManager.
+
+            A failed write is logged, never swallowed: this is the
+            operator's position file, and a silent failure could persist
+            for weeks with no signal.
             """
             try:
                 from pathlib import Path
 
-                from src.core.io_utils import atomic_write_json
+                from ..core.io_utils import atomic_write_json
 
                 p = Path.home() / ".acervator" / "bot_state.json"
-                p.parent.mkdir(parents=True, exist_ok=True)
                 atomic_write_json(p, state, indent=2, default=str)
             except Exception as exc:  # noqa: BLE001 - GUI must not die
                 logger.error(

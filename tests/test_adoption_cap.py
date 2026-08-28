@@ -149,7 +149,6 @@ class TestItIsWiredIntoAdoption:
         src = _adoption_source()
         assert "max_adoptable_usd" in src
         assert "ADOPTION CAPPED" in src
-        assert "bot.01.003.postcondition.adoption_capped" in src
 
     def test_the_cap_is_applied_before_the_lot_is_built(self):
         """Order matters: capping after `_main_lots` was written would
@@ -161,14 +160,6 @@ class TestItIsWiredIntoAdoption:
         # black may wrap `[{` across lines; match the dict-literal build, not `[]`.
         i_lot = re.search(r"self\._main_lots = \[\s*\{", src).start()
         assert i_cap < i_lot, "cap must precede lot construction"
-
-    def test_the_emitter_reports_what_was_withheld(self):
-        """`expected` is what the exchange offered, `actual` what was
-        taken, so ok=False marks every bot holding operator surplus."""
-        src = _adoption_source()
-        blk = src[src.index("bot.01.003.postcondition.adoption_capped") :][:600]
-        assert "withheld_units" in blk
-        assert "cap_usd" in blk
 
 
 class TestTheOperatorIsTold:

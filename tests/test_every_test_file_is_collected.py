@@ -51,11 +51,11 @@ The four, as issue #93 found them:
   on the refusal: put a test-function-free file under ``testpaths`` and
   it reports the file by name.
 
-  Three archetype fixtures under ``docs/audits/``. They are DELIBERATE,
+  Three archetype fixtures under ``harness_fixtures/``. They are DELIBERATE,
   they must never be collected, and each one says so in its own
   docstring. They are the known-good and known-bad halves the GUI and
   coding archetypes are calibrated against; a fixture built to fail
-  would turn the suite red on purpose. ``docs/audits/`` is a historical
+  would turn the suite red on purpose. ``harness_fixtures/`` is the fixture
   record and issue #93 did not edit it.
 
 WHY A NEW GUARD
@@ -113,16 +113,14 @@ WALK_SKIP_EXACT = {
 # ``test_every_excusal_names_a_file_that_is_in_the_tree`` deletes an
 # entry's cover the moment its file leaves.
 EXCUSED: dict[str, str] = {
-    # Issue #85 removed the one entry here that named a live script,
-    # `test_scrumming_v3.py`, by renaming it to
-    # `tools/scrumming_v3_sim.py`. Every entry left is a calibration
-    # fixture under `docs/audits/`, which is a historical record.
-    "docs/audits/2026-07-24_gui_docs_archetypes/gui_fixtures/tests/"
+    # Every entry is a GUI/coding archetype calibration body under
+    # `tests/fixtures/`, kept out of collection by `norecursedirs`.
+    "harness_fixtures/gui_archetype/tests/"
     "known_good_colour_test.py": "GUI006 calibration fixture; the archetype must exit 0 on it",
-    "docs/audits/2026-07-24_gui_docs_archetypes/gui_fixtures/tests/"
+    "harness_fixtures/gui_archetype/tests/"
     "known_bad_colour_test.py": "GUI006 calibration fixture built to FAIL the archetype; "
     "collecting it would turn the suite red on purpose",
-    "docs/audits/2026-07-24_gui_docs_archetypes/gui_fixtures/tests/"
+    "harness_fixtures/gui_archetype/tests/"
     "known_bad_real_defect_test.py": "coding-archetype calibration fixture carrying deliberate "
     "defects; collecting it would turn the suite red on purpose",
 }

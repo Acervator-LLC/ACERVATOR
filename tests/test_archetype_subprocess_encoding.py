@@ -125,14 +125,7 @@ class TestTheRealisticPayloadDecodes:
         This is the assertion that would have caught the original."""
         from dev_harness.harness.docs_archetype import DocsArchetype
 
-        fixture = (
-            REPO_ROOT
-            / "docs"
-            / "audits"
-            / "2026-07-24_gui_docs_archetypes"
-            / "docs_fixtures"
-            / "known_bad.md"
-        )
+        fixture = REPO_ROOT / "harness_fixtures" / "docs_archetype" / "known_bad.md"
         findings, status = DocsArchetype()._run_proselint([fixture])
         assert status == "ok"
         assert len(findings) >= 5, (

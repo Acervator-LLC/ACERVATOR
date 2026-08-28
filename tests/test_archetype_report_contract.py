@@ -59,13 +59,7 @@ ARCHETYPE_MODULES = (
     "dev_harness.harness.watchdog_archetype",
 )
 
-CODING_FIX = (
-    REPO_ROOT
-    / "docs"
-    / "audits"
-    / "2026-07-24_coding_archetype_multi_agent_test"
-    / "fixtures"
-)
+CODING_FIX = REPO_ROOT / "harness_fixtures" / "coding_archetype"
 
 
 def _high(line: int = 1) -> Finding:

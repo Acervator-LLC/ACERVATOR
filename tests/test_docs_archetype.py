@@ -20,7 +20,7 @@ import pytest
 from dev_harness.harness.docs_archetype import DocsArchetype
 
 REPO = Path(__file__).resolve().parent.parent
-FIX = REPO / "docs" / "audits" / "2026-07-24_gui_docs_archetypes" / "docs_fixtures"
+FIX = REPO / "harness_fixtures" / "docs_archetype"
 
 
 class TestSurface:

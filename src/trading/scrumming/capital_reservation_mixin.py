@@ -8,24 +8,17 @@ registry accessor; the ensure/release pair drive the reservation lifecycle.
 from __future__ import annotations
 
 import logging
-from typing import Any, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING
 
 logger = logging.getLogger("acervator.scrumming")
 
+if TYPE_CHECKING:
+    from ..scrumming_bot import ScrummingBot as _Host
+else:
+    _Host = object
 
-class CapitalReservationMixin:
 
-    # Supplied by ScrummingBot at runtime; declared so a type
-    # checker can resolve them. Annotations only: no attribute is
-    # created and the runtime base stays `object`.
-    _capital_registry: Any
-    _crr_last_reserved_qty: float
-    _crr_token: Optional[str]
-    _target_balance: Any
-    bot_id: Any
-    config: Any
-    _get_cached_exchange_balance: Callable[..., Awaitable[Optional[float]]]
-
+class CapitalReservationMixin(_Host):
     def _crr(self):
         """The capital-reservation registry this bot should use.
 

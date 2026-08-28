@@ -14,9 +14,7 @@ The core cycle:
 Fold ONLY executes when price < fold_ref, which guarantees more asset is
 bought back than was sold; do not change that condition.
 
-``src/gui/simulator.py::_sim_scrumming_tick`` once mirrored this
-logic. That file is deleted and no mirror exists. See ARCHITECTURE.md
-for the full invariants list.
+No mirrored copy of this logic exists; the Simulator drives this engine.
 
 Implements the strategy with a 7-indicator TA engine (confidence/voting),
 Phantom Balance multi-timeframe analysis, higher-timeframe

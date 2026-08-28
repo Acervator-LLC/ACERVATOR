@@ -114,8 +114,6 @@ INVENTORY: dict[str, str] = {
     "and named by CONTRIBUTING.md. src/core/version_sweep.py reads it "
     'at `self.root / "CHANGELOG.md"` and requires every version string '
     "in it to equal the canonical one",
-    "ACERVATOR_HOP7.md": "the live orientation document. It is meant to be the first "
-    "thing found at the root",
     # -- the animation core the three screens share ----------------------
     "screen_fx.py": "issue #74. splash_screen.py, cartoon_screen.py and "
     "investor_screen.py all say `import screen_fx`, a top-level "

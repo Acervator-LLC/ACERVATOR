@@ -8,32 +8,19 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING
 
 from ..bot_container import BotState
 
 logger = logging.getLogger("acervator.scrumming")
 
+if TYPE_CHECKING:
+    from ..scrumming_bot import ScrummingBot as _Host
+else:
+    _Host = object
 
-class CircuitBreakerMixin:
 
-    # Supplied by ScrummingBot at runtime; declared so a type
-    # checker can resolve them. Annotations only: no attribute is
-    # created and the runtime base stays `object`.
-    _bus: Any
-    _cb_hard_trip_pct: float
-    _cb_hard_tripped: bool
-    _cb_hard_tripped_at: float
-    _cb_last_candle_ts: float
-    _emit_trade_notification: Callable[..., None]
-    _cb_soft_active_side: Optional[str]
-    _cb_soft_cooldown_remaining: int
-    _cb_soft_trip_pct: float
-    _cb_soft_tripped_at: float
-    bot_id: Any
-    config: Any
-    state: Any
-
+class CircuitBreakerMixin(_Host):
     def _check_circuit_breakers(self, candles) -> bool:
         """Evaluate the most recent candle for circuit-breaker triggers.
 

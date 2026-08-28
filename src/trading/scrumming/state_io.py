@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING
 
 from ..bot_container import BotState, as_finite_float
 
 logger = logging.getLogger("acervator.scrumming")
 
+if TYPE_CHECKING:
+    # Mixins are only ever composed into ScrummingBot; typing the base as the
+    # host resolves the `self.*` attributes without any runtime coupling.
+    from ..scrumming_bot import ScrummingBot as _Host
+else:
+    _Host = object
 
-class StateSerializerMixin:
+
+class StateSerializerMixin(_Host):
     """Persist and restore the bot's compounding state as a plain dict.
 
     Exchange-derivable fields (unit holdings) are intentionally not
@@ -19,61 +26,6 @@ class StateSerializerMixin:
     cost-basis lots, fold tranches, operator set-points, internal counters,
     and the trade state machine.
     """
-
-    # Supplied by ScrummingBot at runtime; declared so a type
-    # checker can resolve them. Annotations only: no attribute is
-    # created and the runtime base stays `object`.
-    _anchor_target_balance: float
-    _bus: Any
-    _cb_hard_trip_pct: float
-    _cb_hard_tripped: bool
-    _cb_hard_tripped_at: float
-    _cb_soft_active_side: Optional[str]
-    _cb_soft_cooldown_remaining: int
-    _cb_soft_trip_pct: float
-    _current_holdings: float
-    _detonation_last_check_ts: float
-    _detonation_last_signal_bullish: bool
-    _dist_accumulator: float
-    _fold_accumulator: float
-    _fold_cycle_cap_consumed: float
-    _fold_queue_usd: float
-    _fold_tranches: list[dict]
-    _hedge_bal: float
-    _hedge_trades: int
-    _hyst_armed_fold_side: bool
-    _hyst_armed_scrum_side: bool
-    _hyst_ref_fold_side: float
-    _hyst_ref_scrum_side: float
-    _initialised: Any
-    _last_trade_price: float
-    _last_trade_side: Optional[str]
-    _main_lots: list[dict]
-    _compact_wire_credits: Callable[..., int]
-    _land_pending_wire_credits: Callable[..., float]
-    _pending_stack_buy_usd: float
-    _pending_wire_credits: float
-    _pending_wire_ledger: list[dict]
-    _quote_to_usd: float
-    _scrum_sells_lifetime: int
-    _scrum_target_mode: str
-    _scrum_target_side: Optional[str]
-    _stack_counters_reset_ts: float
-    _stack_created: int
-    _stack_discarded: int
-    _stack_tranches: list[dict]
-    _standing_surplus_usd: float
-    _target_balance: Any
-    _target_grow_last_side: Optional[str]
-    _tranches_closed_lifetime: int
-    _tranches_counters_reset_ts: float
-    _tranches_created_lifetime: int
-    _tranches_discarded_lifetime: Any
-    _tranches_malformed_dropped: int
-    _wire_credits_discarded_lifetime: Any
-    bot_id: Any
-    config: Any
-    state: Any
 
     def export_scrumming_state(self) -> dict:
         """Export compounding state as a JSON-serializable dict.

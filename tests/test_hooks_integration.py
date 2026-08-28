@@ -198,14 +198,7 @@ class TestArchetypeGateOnRealFile:
     def test_write_python_triggers_coding_archetype(self):
         """Feed a Write payload for a real Python file; hook should run
         coding_archetype and emit a summary line."""
-        target = (
-            REPO
-            / "docs"
-            / "audits"
-            / "2026-07-24_coding_archetype_multi_agent_test"
-            / "fixtures"
-            / "known_good.py"
-        )
+        target = REPO / "harness_fixtures" / "coding_archetype" / "known_good.py"
         assert target.exists()
         # Note: docs/audits/ is in the skip list, so the gate should skip
         r = _run_hook(
@@ -234,14 +227,7 @@ class TestArchetypeGateOnRealFile:
         runs the archetype."""
         import shutil
 
-        src = (
-            REPO
-            / "docs"
-            / "audits"
-            / "2026-07-24_coding_archetype_multi_agent_test"
-            / "fixtures"
-            / "known_good.py"
-        )
+        src = REPO / "harness_fixtures" / "coding_archetype" / "known_good.py"
         dst = tmp_path / "clean.py"
         shutil.copy(src, dst)
         r = _run_hook(

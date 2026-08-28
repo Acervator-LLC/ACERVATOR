@@ -305,7 +305,6 @@ def save_sim_state(state: dict, path: Optional[Path] = None) -> Path:
     resolved = p.resolve()
     if any(resolved == t.resolve() for t in _refused_write_targets()):
         raise ValueError("refusing to write simulator state over bot_state.json")
-    p.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(p, state, indent=2, default=repr)
     logger.info(
         "simulator_bot_state saved: %d bot(s) -> %s", state.get("bot_count", 0), p
