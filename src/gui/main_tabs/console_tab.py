@@ -62,14 +62,17 @@ class ConsoleTabMixin:
                 datefmt="%H:%M:%S",
             )
         )
-        # Attach to root logger to capture EVERYTHING
+        # Two attach points serving disjoint sets. `logging_engine` sets
+        # `acervator.propagate = False`, so `acervator` terminates its
+        # own subtree and root reaches only the third-party loggers
+        # (ccxt, urllib3, asyncio). A third attach inside the acervator
+        # subtree makes `callHandlers` fire this handler twice for one
+        # record: `acervator.gui` and `acervator.scrumming` each painted
+        # every record from their subtree a second time.
         root_logger = logging.getLogger()
         root_logger.addHandler(qt_handler)
         root_logger.setLevel(logging.DEBUG)
-        # Also attach to our specific logger
         logging.getLogger("acervator").addHandler(qt_handler)
-        logging.getLogger("acervator.gui").addHandler(qt_handler)
-        logging.getLogger("acervator.scrumming").addHandler(qt_handler)
         self._console_log_handler = qt_handler  # keep ref for pause toggle
 
         # v3.16.7 — operator directive 2026-04-28: Console Tab needs
