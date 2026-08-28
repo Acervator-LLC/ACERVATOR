@@ -150,26 +150,27 @@ def _ini() -> dict[str, Any]:
 
 @lru_cache(maxsize=1)
 def _walk() -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """One pass over the tree: directory names, and discovery-named files.
+    """One pass over the tree: entry basenames, and discovery-named files.
 
-    Returns the directory basenames, then the POSIX paths of the
-    matching files relative to the repository root.
+    Returns every directory and file basename, then the POSIX paths of
+    the matching files relative to the repository root.
     """
-    directories: list[str] = []
+    entries: list[str] = []
     files: list[str] = []
     for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
         kept = []
         for name in dirnames:
-            directories.append(name)
+            entries.append(name)
             if name in WALK_SKIP_EXACT or name.startswith("."):
                 continue
             kept.append(name)
         dirnames[:] = kept
         for name in filenames:
+            entries.append(name)
             if any(fnmatch(name, pattern) for pattern in PYTEST_DEFAULT_PYTHON_FILES):
                 rel = Path(dirpath, name).relative_to(REPO_ROOT)
                 files.append(rel.as_posix())
-    return tuple(sorted(set(directories))), tuple(sorted(files))
+    return tuple(sorted(set(entries))), tuple(sorted(files))
 
 
 def _discovery_named_files() -> tuple[str, ...]:
@@ -177,8 +178,13 @@ def _discovery_named_files() -> tuple[str, ...]:
     return _walk()[1]
 
 
-def _directory_names() -> tuple[str, ...]:
-    """List every directory basename in the tree."""
+def _tree_entry_names() -> tuple[str, ...]:
+    """List every directory and file basename in the tree.
+
+    A ``norecursedirs`` glob is matched against a basename, and a linked
+    git worktree carries ``.git`` as a gitdir pointer file rather than a
+    directory, so a directory-only list has no subject for it.
+    """
     return _walk()[0]
 
 
@@ -273,20 +279,22 @@ def test_every_excusal_carries_a_reason() -> None:
 def test_pytest_exclusions_name_something_that_is_in_the_tree() -> None:
     """Every collection filter must have a subject.
 
-    ``norecursedirs`` entries are globs matched against a directory
-    BASENAME, so the subject is any directory of that name anywhere in
-    the tree. ``--ignore=`` and ``--ignore-glob=`` entries are paths.
+    ``norecursedirs`` entries are globs matched against a BASENAME, so
+    the subject is any tree entry of that name, directory or file.
+    ``--ignore=`` and ``--ignore-glob=`` entries are paths.
     pytest accepts all three for a subject that is not there, and says
     nothing, so a dead entry survives until something reads it.
     """
     ini = _ini()
-    names = _directory_names()
-    dead_dirs = [
+    names = _tree_entry_names()
+    dead_exclusions = [
         pattern
         for pattern in ini.get("norecursedirs", [])
         if not any(fnmatch(name, pattern) for name in names)
     ]
-    assert dead_dirs == [], f"norecursedirs entries matching no directory: {dead_dirs}"
+    assert (
+        dead_exclusions == []
+    ), f"norecursedirs entries matching nothing in the tree: {dead_exclusions}"
 
     addopts = ini.get("addopts", "")
     if isinstance(addopts, list):
