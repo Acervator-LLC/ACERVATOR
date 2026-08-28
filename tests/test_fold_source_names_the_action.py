@@ -71,7 +71,17 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-BOT_SOURCE = REPO / "src" / "trading" / "scrumming_bot.py"
+#: Every module the ScrummingBot engine is spread across. A scan of one
+#: of them alone would pass over code that moved to another.
+ENGINE_PATHS = tuple(
+    [REPO / "src" / "trading" / "scrumming_bot.py"]
+    + [
+        REPO / "src" / "trading" / "scrumming" / _n
+        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+    ]
+)
+ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
+BOT_SOURCE = ENGINE_PATHS[0]
 
 #: Frozen clock for the age column; the tab reads the wall clock.
 NOW = 1_800_000_000.0
@@ -421,7 +431,7 @@ class TestTheCellKeepsItsMeaningAndGainsItsExplanation:
 #    `src/trading/scrumming_bot.py` is READ here and never written.
 # ══════════════════════════════════════════════════════════════════════
 def _bot_tree() -> ast.Module:
-    return ast.parse(BOT_SOURCE.read_text(encoding="utf-8"))
+    return ast.parse(ENGINE_SRC)
 
 
 def _intent_map() -> dict:

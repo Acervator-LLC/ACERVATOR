@@ -82,9 +82,17 @@ PRICE = 0.5
 PARKED = 5.0
 MONEY_TOL_USD = 1e-9
 
-SCRUMMING_BOT_SRC = (REPO / "src" / "trading" / "scrumming_bot.py").read_text(
-    encoding="utf-8"
+#: Every module the ScrummingBot engine is spread across. A scan of one
+#: of them alone would pass over code that moved to another.
+ENGINE_PATHS = tuple(
+    [REPO / "src" / "trading" / "scrumming_bot.py"]
+    + [
+        REPO / "src" / "trading" / "scrumming" / _n
+        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+    ]
 )
+ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
+SCRUMMING_BOT_SRC = ENGINE_SRC
 
 
 # -- stubs -----------------------------------------------------------

@@ -46,6 +46,15 @@ AGG_SRC = (Path(bc.__file__).parent / "container" / "aggregation.py").read_text(
 )
 
 
+def _owning_source(owner, method_name: str) -> str:
+    """Source of the module that really defines ``method_name``."""
+    import inspect
+
+    path = inspect.getsourcefile(getattr(owner, method_name))
+    assert path is not None, method_name
+    return Path(path).read_text(encoding="utf-8")
+
+
 class _Stats:
     def __init__(self, pv, price, cash=0.0):
         self.position_value = pv
@@ -155,7 +164,7 @@ class TestTheOtherConsumersAlreadyAgree:
         re-open the display/engine split it exists to close."""
         import src.trading.scrumming_bot as sbm
 
-        src = Path(sbm.__file__).read_text(encoding="utf-8")
+        src = _owning_source(sbm.ScrummingBot, "_execute_manual_rebalance")
         fn = next(
             n
             for n in ast.walk(ast.parse(src))

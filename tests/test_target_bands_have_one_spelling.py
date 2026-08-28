@@ -50,10 +50,19 @@ from src.trading.target_bands import (  # noqa: E402
 TARGETS = (0.03, 0.11, 1.0, 8.0, 10.0, 47.13, 100.0, 12500.0)
 
 
+def _owning_source(owner, method_name: str) -> str:
+    """Source of the module that really defines ``method_name``."""
+    import inspect
+
+    path = inspect.getsourcefile(getattr(owner, method_name))
+    assert path is not None, method_name
+    return Path(path).read_text(encoding="utf-8")
+
+
 def _method_source(name: str) -> str:
     import src.trading.scrumming_bot as sb
 
-    text = Path(sb.__file__).read_text(encoding="utf-8")
+    text = _owning_source(sb.ScrummingBot, name)
     node = next(
         n
         for n in ast.walk(ast.parse(text))

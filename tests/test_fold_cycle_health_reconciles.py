@@ -77,6 +77,15 @@ from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
 SOURCE_PATH = REPO_ROOT / "src" / "trading" / "scrumming_bot.py"
 
+#: Every module holding part of the ScrummingBot engine. The counters
+#: swept below are written from all four.
+ENGINE_PATHS = (
+    SOURCE_PATH,
+    REPO_ROOT / "src" / "trading" / "scrumming" / "execution.py",
+    REPO_ROOT / "src" / "trading" / "scrumming" / "fold_tranches.py",
+    REPO_ROOT / "src" / "trading" / "scrumming" / "reconciliation.py",
+)
+
 DAY = 86400.0
 NOW = 1_756_000_000.0
 
@@ -412,10 +421,12 @@ class TestMergeMovesCreatedDown:
 # E. THE SOURCE RULE. A later edit must not re-open the hole.
 # ======================================================================
 def _functions_assigning(name: str) -> set[str]:
-    """Every function in the module that ASSIGNS `self.<name>`."""
-    tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))
+    """Every engine function that ASSIGNS `self.<name>`."""
+    nodes: list = []
+    for path in ENGINE_PATHS:
+        nodes.extend(ast.walk(ast.parse(path.read_text(encoding="utf-8"))))
     found: set[str] = set()
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         for inner in ast.walk(node):

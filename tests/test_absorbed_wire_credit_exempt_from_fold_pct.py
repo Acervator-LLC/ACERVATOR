@@ -90,9 +90,9 @@ if str(REPO) not in sys.path:
 
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
-SCRUMMING_BOT_SRC = (REPO / "src" / "trading" / "scrumming_bot.py").read_text(
-    encoding="utf-8"
-)
+SCRUMMING_BOT_SRC = (
+    REPO / "src" / "trading" / "scrumming" / "fold_tranches.py"
+).read_text(encoding="utf-8")
 
 # The defect signal this suite must be able to see is at its smallest when
 # the parked pool is smallest and the fold percentage is highest: at

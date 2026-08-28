@@ -232,10 +232,13 @@ class TestTheCallSitesUseIt:
         substrings and read 3 for 2 real calls -- the third was the word
         appearing in a comment. Same trap this codebase keeps setting."""
         import ast
+        import inspect
 
         import src.trading.scrumming_bot as m
 
-        src = Path(m.__file__).read_text(encoding="utf-8")
+        src = Path(
+            inspect.getsourcefile(m.ScrummingBot._execute_manual_rebalance)
+        ).read_text(encoding="utf-8")
         fn = next(
             n
             for n in ast.walk(ast.parse(src))
@@ -256,10 +259,13 @@ class TestTheCallSitesUseIt:
         """Asserted over the AST, not the source text: a comment
         explaining the removal names the removed thing."""
         import ast
+        import inspect
 
         import src.trading.scrumming_bot as m
 
-        src = Path(m.__file__).read_text(encoding="utf-8")
+        src = Path(
+            inspect.getsourcefile(m.ScrummingBot._execute_manual_rebalance)
+        ).read_text(encoding="utf-8")
         fn = next(
             n
             for n in ast.walk(ast.parse(src))

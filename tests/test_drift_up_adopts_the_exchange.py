@@ -249,7 +249,11 @@ def test_without_the_adopt_the_book_stayed_behind_the_wallet():
     """
     from pathlib import Path
 
-    src = Path(__file__).resolve().parents[1] / "src" / "trading" / "scrumming_bot.py"
+    import inspect
+
+    from src.trading.scrumming_bot import ScrummingBot
+
+    src = Path(inspect.getsourcefile(ScrummingBot._reconcile_holdings))
     text = src.read_text(encoding="utf-8")
     # Matched on a contiguous token. The operator-facing sentence is
     # split across f-string literals, so asserting the rendered phrase

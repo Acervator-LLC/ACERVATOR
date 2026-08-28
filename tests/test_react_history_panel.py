@@ -933,6 +933,9 @@ def test_injection_control_the_chart_shape_breaks_on_the_same_data(page) -> None
 
 _TRADING_STATE_FILES = (
     REPO / "src" / "trading" / "scrumming_bot.py",
+    REPO / "src" / "trading" / "scrumming" / "execution.py",
+    REPO / "src" / "trading" / "scrumming" / "fold_tranches.py",
+    REPO / "src" / "trading" / "scrumming" / "reconciliation.py",
     REPO / "src" / "exchange" / "history_read_contract.py",
     REPO / "src" / "gui" / "history_tab.py",
 )

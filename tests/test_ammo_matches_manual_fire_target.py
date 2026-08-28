@@ -64,7 +64,7 @@ def _owning_source(owner, method_name: str) -> str:
 
 
 GUI_SRC = _owning_source(mw.BotStatusTable, "update_bots")
-BOT_SRC = Path(sbm.__file__).read_text(encoding="utf-8")
+BOT_SRC = _owning_source(sbm.ScrummingBot, "_execute_manual_rebalance")
 
 
 def _target_val_line() -> str:

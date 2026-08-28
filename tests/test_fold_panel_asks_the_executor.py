@@ -511,6 +511,18 @@ class TestTheConfigReadIsAlsoSingleSourced:
         assert rows[0][COL_STATUS].startswith("Above ref")
 
 
+#: Every module the ScrummingBot engine is spread across. A scan of one
+#: of them alone would pass over code that moved to another.
+ENGINE_PATHS = tuple(
+    [REPO / "src" / "trading" / "scrumming_bot.py"]
+    + [
+        REPO / "src" / "trading" / "scrumming" / _n
+        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+    ]
+)
+ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
+
+
 class TestTheReaderMatchesTheExecutorsInlineRead:
     """The two statements of one default, held equal by measurement.
 
@@ -549,9 +561,7 @@ class TestTheReaderMatchesTheExecutorsInlineRead:
     def _executor_args():
         import ast
 
-        src = (REPO / "src" / "trading" / "scrumming_bot.py").read_text(
-            encoding="utf-8"
-        )
+        src = ENGINE_SRC
         found = []
         for node in ast.walk(ast.parse(src)):
             if isinstance(node, ast.Call) and getattr(node.func, "id", "") in (

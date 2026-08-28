@@ -222,7 +222,9 @@ def _manual_rebalance_settled_fill_calls() -> list[ast.Call]:
     rebalance, counted over the AST rather than over substrings: an
     earlier test in this codebase counted substrings and read 3 for 2
     real calls, because the third was the word inside a comment."""
-    source = Path(inspect.getfile(ScrummingBot)).read_text(encoding="utf-8")
+    source = Path(
+        inspect.getsourcefile(ScrummingBot._execute_manual_rebalance)
+    ).read_text(encoding="utf-8")
     method: Any = next(
         node
         for node in ast.walk(ast.parse(source))
