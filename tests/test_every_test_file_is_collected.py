@@ -188,6 +188,17 @@ def _tree_entry_names() -> tuple[str, ...]:
     return _walk()[0]
 
 
+def _dead_ignore_paths(addopts: str | list[str]) -> list[str]:
+    """``--ignore``/``--ignore-glob`` entries in addopts naming no path in the tree.
+
+    pytest takes addopts as a string or a list, and accepts both option
+    spellings with either a space or an equals sign.
+    """
+    joined = " ".join(addopts) if isinstance(addopts, list) else addopts
+    ignored = re.findall(r"--ignore(?:-glob)?[= ](\S+)", joined)
+    return [p for p in ignored if not (REPO_ROOT / p).exists()]
+
+
 def _testpath_roots() -> tuple[str, ...]:
     """Read the ``testpaths`` roots, without a trailing separator."""
     return tuple(p.strip("/") for p in _ini()["testpaths"])
@@ -284,6 +295,10 @@ def test_pytest_exclusions_name_something_that_is_in_the_tree() -> None:
     ``--ignore=`` and ``--ignore-glob=`` entries are paths.
     pytest accepts all three for a subject that is not there, and says
     nothing, so a dead entry survives until something reads it.
+
+    Issue #69 emptied ``addopts``, so the second half reads no entry
+    today. ``test_the_dead_ignore_scan_answers_both_ways`` is what keeps
+    that half from being a check with no demonstrated failure.
     """
     ini = _ini()
     names = _tree_entry_names()
@@ -296,11 +311,7 @@ def test_pytest_exclusions_name_something_that_is_in_the_tree() -> None:
         dead_exclusions == []
     ), f"norecursedirs entries matching nothing in the tree: {dead_exclusions}"
 
-    addopts = ini.get("addopts", "")
-    if isinstance(addopts, list):
-        addopts = " ".join(addopts)
-    ignored = re.findall(r"--ignore(?:-glob)?[= ](\S+)", addopts)
-    dead_paths = [p for p in ignored if not (REPO_ROOT / p).exists()]
+    dead_paths = _dead_ignore_paths(ini.get("addopts", ""))
     assert (
         dead_paths == []
     ), f"--ignore entries naming a path that is gone: {dead_paths}"
@@ -354,6 +365,22 @@ def test_the_exclusion_rule_has_entries_to_read() -> None:
     assert _ini().get(
         "norecursedirs"
     ), "norecursedirs is empty, so the exclusion rule reads nothing"
+
+
+def test_the_dead_ignore_scan_answers_both_ways() -> None:
+    """The ini sets no ``addopts``, so nothing else can show this scan reporting.
+
+    A sibling-style guard asserting the key is present would fail on
+    sight: issue #69 removed the entries deliberately. Driving the scan
+    over a synthetic option string proves it can still go red.
+    """
+    live = "tests"
+    dead = "tests/a_path_that_is_not_in_the_tree.py"
+    assert _dead_ignore_paths("") == []
+    assert _dead_ignore_paths(f"--ignore={live}") == []
+    assert _dead_ignore_paths(f"--ignore={dead}") == [dead]
+    assert _dead_ignore_paths(f"--ignore-glob {dead}") == [dead]
+    assert _dead_ignore_paths([f"--ignore={live}", f"--ignore={dead}"]) == [dead]
 
 
 @pytest.mark.parametrize(
