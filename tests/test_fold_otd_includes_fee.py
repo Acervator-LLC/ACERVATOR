@@ -121,13 +121,43 @@ class TestTheInstrumentWorks:
 
 
 def _tick() -> ast.AST:
-    ticks = [
-        n
-        for n in ast.walk(TREE)
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "tick"
-    ]
-    assert ticks, "no tick() found -- extractor broken, not the code"
-    return max(ticks, key=lambda n: (n.end_lineno or 0) - n.lineno)
+    """One tick pass: ``tick`` plus every ``_tick_*`` phase method.
+
+    The phases are separate methods on the class, so a scan of ``tick``
+    alone would pass over the code that runs inside them.
+    """
+    found: dict = {}
+    for tree in [TREE] + [ast.parse(s) for s in _phase_sources()]:
+        for n in ast.walk(tree):
+            if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if n.name != "tick" and not n.name.startswith("_tick_"):
+                continue
+            prev = found.get(n.name)
+            span = (n.end_lineno or 0) - n.lineno
+            if prev is None or span > (prev.end_lineno or 0) - prev.lineno:
+                found[n.name] = n
+    assert found, "no tick pass found -- extractor broken, not the code"
+    return ast.Module(body=list(found.values()), type_ignores=[])
+
+
+def _phase_sources() -> list[str]:
+    """Source of every module defining a ``_tick_*`` phase method."""
+    import inspect
+
+    from src.trading.scrumming_bot import ScrummingBot
+
+    paths = set()
+    for name in dir(ScrummingBot):
+        if not name.startswith("_tick_"):
+            continue
+        member = getattr(ScrummingBot, name, None)
+        if not callable(member):
+            continue
+        path = inspect.getsourcefile(member)
+        if path:
+            paths.add(path)
+    return [Path(p).read_text(encoding="utf-8") for p in sorted(paths)]
 
 
 def _method(name: str) -> ast.AST:

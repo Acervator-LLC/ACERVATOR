@@ -584,8 +584,11 @@ def _bound_calls(func):
 
 def test_all_three_build_loops_call_the_bound():
     """Red means a path can build tranches without answering the rule."""
-    assert len(_bound_calls(ScrummingBot.tick)) == 2, (
-        "tick builds fold tranches on two paths, the SCRUM sell and the "
+    autonomous = _bound_calls(ScrummingBot._tick_execute_scrum) + _bound_calls(
+        ScrummingBot._tick_distribute
+    )
+    assert len(autonomous) == 2, (
+        "the tick builds fold tranches on two paths, the SCRUM sell and the "
         "DIST re-fold, and both must answer the count rule"
     )
     assert _bound_calls(ScrummingBot._execute_manual_rebalance)

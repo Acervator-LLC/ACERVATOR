@@ -58,7 +58,7 @@ PRE_CHAIN_REFUSALS = {
     "manual fire pending": "self._manual_fire_pending",
     "wire-stack pending (MEM-257)": "_stack_pending > 0",
     "max-cartridge": "_cartridge_pct > 0 and self._target_balance > 0",
-    "detonation harvest": "getattr(self.config, 'detonation_enabled', False)",
+    "detonation harvest": "await self._tick_detonation(ticker)",
     "zero-balance acquisition": "current_value < self._target_balance * 0.01",
     "HARD circuit breaker": "self._cb_hard_tripped",
     "below scrumming interval": "below_interval and self._fold_queue_usd == 0 and "
@@ -74,6 +74,26 @@ PRE_CHAIN_REFUSALS = {
 
 def _read_source() -> str:
     return SOURCE_PATH.read_text(encoding="utf-8")
+
+
+def _phase_source() -> str:
+    """The module that owns the ``_tick_*`` phase methods."""
+    import inspect
+
+    from src.trading.scrumming_bot import ScrummingBot
+
+    path = inspect.getsourcefile(ScrummingBot._tick_detonation)
+    assert path is not None
+    return Path(path).read_text(encoding="utf-8")
+
+
+def _phase(name: str) -> ast.AST:
+    """One ``_tick_*`` phase method, from the module that owns it."""
+    return next(
+        n
+        for n in ast.walk(ast.parse(_phase_source()))
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
+    )
 
 
 def _tick(source: str) -> ast.AsyncFunctionDef:
@@ -297,6 +317,26 @@ class TestEveryPreChainRefusalPreventsTheFire:
         ), f"guard for {label!r} is no longer a condition in tick()"
 
 
+class TestTheDetonationRefusalStillReadsTheFlag:
+    def test_the_phase_reads_the_config_flag(self):
+        """The tick-level guard above is the phase CALL. Without this the
+        phase could ignore the operator's switch and nothing would say so."""
+        src = ast.unparse(_phase("_tick_detonation"))
+        assert (
+            "detonation_enabled" in src
+        ), "the detonation phase no longer reads config.detonation_enabled"
+
+    def test_the_phase_aborts_the_tick_when_it_fires(self):
+        """The phase returns True and tick returns on it. A phase that
+        never returns True cannot end the tick."""
+        returns = [
+            ast.unparse(n.value)
+            for n in ast.walk(_phase("_tick_detonation"))
+            if isinstance(n, ast.Return) and n.value is not None
+        ]
+        assert "True" in returns, returns
+
+
 class TestStageOneIsDeliberatelyUngated:
     def test_the_activation_call_is_at_tick_top_level(self):
         """Stage one is NOT gated, and must not be: it runs before the
@@ -314,16 +354,16 @@ class TestStageOneIsDeliberatelyUngated:
     def test_POSITIVE_CONTROL_the_same_walker_reports_a_gated_call(self):
         """An empty result must mean 'no conditions', not 'walker blind'.
         The same walker, same file, on the gated fold buy."""
-        source = _read_source()
-        tick = _tick(source)
+        fold = _phase("_tick_execute_fold")
         gated = [
             ln
-            for ln in _call_linenos(tick, "_execute_buy")
-            if _enclosing_tests(tick, ln)
+            for ln in _call_linenos(fold, "_execute_buy")
+            if _enclosing_tests(fold, ln)
         ]
         assert gated, (
             "the walker found no conditions on any _execute_buy call in "
-            "tick, so its empty verdict on the activation call is void"
+            "the fold phase, so its empty verdict on the activation call "
+            "is void"
         )
 
     def test_activation_places_nothing(self):
@@ -358,13 +398,21 @@ class TestFoldSideGatingUnchanged:
         assert ungated == [], f"unconditional _execute_buy at {ungated}"
 
     def test_the_fold_buy_is_under_the_fold_chain_verdict(self):
+        """The buy sits inside the fold phase, so the verdict gates the
+        phase CALL. Both halves are asserted: the phase buys, and every
+        call to it is under the verdict."""
         source = _read_source()
-        ungated = _ungated_calls(source, "_execute_buy", FOLD_VERDICT)
-        total = len(_call_linenos(_tick(source), "_execute_buy"))
-        assert total > 0, "tick no longer buys at all"
-        assert (
-            len(ungated) < total
-        ), "no _execute_buy in tick sits under the fold chain verdict"
+        assert _call_linenos(_phase("_tick_execute_fold"), "_execute_buy"), (
+            "the fold phase no longer calls _execute_buy; this pin is "
+            "reading the wrong method"
+        )
+        ungated = _ungated_calls(source, "_tick_execute_fold", FOLD_VERDICT)
+        total = len(_call_linenos(_tick(source), "_tick_execute_fold"))
+        assert total > 0, "tick no longer runs the fold phase at all"
+        assert ungated == [], (
+            f"the fold phase is called at line(s) {ungated} without "
+            f"{FOLD_VERDICT} among the conditions that had to hold"
+        )
 
     def test_POSITIVE_CONTROL_an_unconditional_fold_buy_is_caught(self):
         planted = _plant_ungated_fold_buy(_read_source())

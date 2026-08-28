@@ -77,7 +77,12 @@ ENGINE_PATHS = tuple(
     [REPO / "src" / "trading" / "scrumming_bot.py"]
     + [
         REPO / "src" / "trading" / "scrumming" / _n
-        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+        for _n in (
+            "execution.py",
+            "fold_tranches.py",
+            "reconciliation.py",
+            "tick_phases.py",
+        )
     ]
 )
 ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
@@ -514,7 +519,7 @@ class TestTheWriteSites:
         stamping the key, "auto scrum" stops naming anything."""
         silent = [s for s in _fold_append_keys() if "operator_initiated" not in s[2]]
         assert len(silent) == 2
-        assert {s[0] for s in silent} == {"tick"}
+        assert {s[0] for s in silent} == {"_tick_execute_scrum", "_tick_distribute"}
 
     def test_the_live_counts_are_recorded_and_add_up(self):
         """The sizing of the defect, kept where the labels are. Read

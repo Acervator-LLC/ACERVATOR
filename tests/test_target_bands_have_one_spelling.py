@@ -71,10 +71,30 @@ def _method_source(name: str) -> str:
     return ast.get_source_segment(text, node) or ""
 
 
+def _tick_pass_source() -> str:
+    """``tick`` and every ``_tick_*`` phase method it calls.
+
+    The phases are separate methods, so a scan of ``tick`` alone would
+    pass over a park-band literal re-introduced inside one of them.
+    """
+    import src.trading.scrumming_bot as sb
+
+    names = ["tick"] + [
+        n
+        for n in dir(sb.ScrummingBot)
+        if n.startswith("_tick_") and callable(getattr(sb.ScrummingBot, n, None))
+    ]
+    return "\n".join(_method_source(n) for n in sorted(names))
+
+
 def test_the_tick_calls_the_band_and_spells_none_of_its_own():
-    body = _method_source("tick")
-    assert "at_target_dust_band(self._target_balance)" in body
-    assert "* 0.001" not in body, "a park-band literal is back in tick()"
+    body = _tick_pass_source()
+    assert body.count("at_target_dust_band(self._target_balance)") == 2, (
+        "the tick pass reads the park band at two sites -- the boot "
+        "handshake and the park guard. A lost witness means the scan "
+        "below is reading less than it used to."
+    )
+    assert "* 0.001" not in body, "a park-band literal is back in the tick pass"
 
 
 def test_manual_fire_calls_the_band_and_spells_none_of_its_own():

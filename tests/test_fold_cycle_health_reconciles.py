@@ -84,6 +84,7 @@ ENGINE_PATHS = (
     REPO_ROOT / "src" / "trading" / "scrumming" / "execution.py",
     REPO_ROOT / "src" / "trading" / "scrumming" / "fold_tranches.py",
     REPO_ROOT / "src" / "trading" / "scrumming" / "reconciliation.py",
+    REPO_ROOT / "src" / "trading" / "scrumming" / "tick_phases.py",
 )
 
 DAY = 86400.0

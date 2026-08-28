@@ -74,7 +74,12 @@ ENGINE_PATHS = tuple(
     [REPO / "src" / "trading" / "scrumming_bot.py"]
     + [
         REPO / "src" / "trading" / "scrumming" / _n
-        for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+        for _n in (
+            "execution.py",
+            "fold_tranches.py",
+            "reconciliation.py",
+            "tick_phases.py",
+        )
     ]
 )
 ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
@@ -105,17 +110,18 @@ class StalePlant(RuntimeError):
 # they call. If all three texts are byte-identical, neither site can
 # have changed.
 # The three digests below were re-derived 2026-08-25 after the black
-# normal-form pass. Not a recalibration: each slice was proved AST-identical
-# to the slice its previous digest covered before the constant moved.
+# normal-form pass, and site 1's again when the two sites moved into the
+# tick phase methods. Not a recalibration: each slice was proved
+# AST-identical to the slice its previous digest covered before it moved.
 PRE_CHANGE_TOPUP_HELPER_SHA256 = (
     "0893eb9b72bb0132e385836b55b14e6a3a0466ba06f48d867eec77bb9da6a975"
 )
 PRE_CHANGE_TICK_TOPUP_CALLS_SHA256 = (
-    "b5c1ffccd3117f5b034c8a04a37837c7afb441d16b00720206cb594ebf3e96ad",
+    "c2f5b96335d93403cdac6c30538416d94ef7fd604f242a9cdc2a0e31b0e90479",
     "01efa42f2c96418bfd602b6c0987f7f5a9229bba55505058371bdac23bb13350",
 )
 PRE_CHANGE_TICK_FOLDPCT_CALLS_SHA256 = (
-    "f6160c8bf7a39c4577e106ecf31354f0f4e57833642809d75aabfccfdeb4eaec",
+    "44635b78ca492d721bc5d67eb5efd2bd19eca39548808e193ac85f3fced3cc74",
     "6c462421a2351716076343a212fd3108d5e91741e71d1fcd91892ad99e17c076",
 )
 
@@ -174,6 +180,23 @@ def _call_statement_texts(src: str, func_name: str, attr: str) -> list[str]:
             found.append((node.lineno, _segment(src, node)))
     found.sort()
     return [text for _, text in found]
+
+
+#: The tick-pass functions holding sites 1 and 2, in call order.
+TICK_PASS_SITES = ("_tick_execute_scrum", "_tick_distribute")
+
+
+def _tick_pass_calls(src: str, attr: str) -> list[str]:
+    """Every ``self.attr`` statement in the tick pass, in call order.
+
+    Sites 1 and 2 are the SCRUM and DIST tranche builds. They ran inside
+    ``tick`` and now run inside the phase methods it calls, so a scan of
+    ``tick`` alone finds neither.
+    """
+    out: list[str] = []
+    for name in TICK_PASS_SITES:
+        out += _call_statement_texts(src, name, attr)
+    return out
 
 
 def _is_self_call(node, attr) -> bool:
@@ -480,14 +503,14 @@ def _check_sites_one_and_two_are_unchanged(source: str) -> None:
             f"so a change here is a change to them."
         )
 
-    tops = tuple(_sha(t) for t in _call_statement_texts(source, "tick", TOPUP_CALL))
+    tops = tuple(_sha(t) for t in _tick_pass_calls(source, TOPUP_CALL))
     if tops != PRE_CHANGE_TICK_TOPUP_CALLS_SHA256:
         raise AssertionError(
             f"the merge calls inside tick changed: {tops} vs the "
             f"pre-change {PRE_CHANGE_TICK_TOPUP_CALLS_SHA256}"
         )
 
-    folds = tuple(_sha(t) for t in _call_statement_texts(source, "tick", FOLD_CALL))
+    folds = tuple(_sha(t) for t in _tick_pass_calls(source, FOLD_CALL))
     if folds != PRE_CHANGE_TICK_FOLDPCT_CALLS_SHA256:
         raise AssertionError(
             f"the fold-ratio calls inside tick changed: {folds} vs the "
@@ -507,15 +530,14 @@ def _plant_touch_the_shared_helper(source: str) -> str:
 
 def _plant_touch_site_one(source: str) -> str:
     anchor = (
-        "                self._top_up_remnant_fold_tranches(\n"
-        "                    _tranche_count_before,"
+        "            self._top_up_remnant_fold_tranches(\n"
+        "                _tranche_count_before,"
     )
     if anchor not in source:
         raise StalePlant("site 1's merge call moved")
     return source.replace(
         anchor,
-        "                self._top_up_remnant_fold_tranches(\n"
-        "                    0,",
+        "            self._top_up_remnant_fold_tranches(\n" "                0,",
         1,
     )
 
@@ -532,6 +554,25 @@ def _plant_touch_site_two(source: str) -> str:
         "                        self._apply_scrum_fold_pct(\n"
         "                            0,",
         1,
+    )
+
+
+def test_the_two_site_calls_are_unchanged():
+    """The call-statement digests, read on the shipping source.
+
+    Every other user of these digests is a plant control, which asserts
+    only that SOMETHING raised. A digest matching nothing would satisfy
+    all of them and pin nothing, so the pins are exercised here too.
+    """
+    tops = tuple(_sha(t) for t in _tick_pass_calls(SOURCE, TOPUP_CALL))
+    assert tops == PRE_CHANGE_TICK_TOPUP_CALLS_SHA256, (
+        f"the merge calls in the tick pass changed: {tops} vs the "
+        f"pre-change {PRE_CHANGE_TICK_TOPUP_CALLS_SHA256}"
+    )
+    folds = tuple(_sha(t) for t in _tick_pass_calls(SOURCE, FOLD_CALL))
+    assert folds == PRE_CHANGE_TICK_FOLDPCT_CALLS_SHA256, (
+        f"the fold-ratio calls in the tick pass changed: {folds} vs the "
+        f"pre-change {PRE_CHANGE_TICK_FOLDPCT_CALLS_SHA256}"
     )
 
 

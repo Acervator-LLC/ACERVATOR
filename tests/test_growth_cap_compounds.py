@@ -70,7 +70,12 @@ SB_SRC = (REPO_ROOT / "src" / "trading" / "scrumming_bot.py").read_text(
 # Every mixin carved out of the engine, for the same reason.
 SCRUMMING_MIXIN_SRC = {
     _n: (REPO_ROOT / "src" / "trading" / "scrumming" / _n).read_text(encoding="utf-8")
-    for _n in ("execution.py", "fold_tranches.py", "reconciliation.py")
+    for _n in (
+        "execution.py",
+        "fold_tranches.py",
+        "reconciliation.py",
+        "tick_phases.py",
+    )
 }
 BC_SRC = (REPO_ROOT / "src" / "trading" / "bot_container.py").read_text(
     encoding="utf-8"
@@ -493,19 +498,22 @@ class TestOneDefinitionOnly:
         )
 
     def test_the_four_sites_all_read_the_property(self):
-        tree = ast.parse(SB_SRC)
-        reads = [
-            n
-            for n in ast.walk(tree)
-            if isinstance(n, ast.Attribute)
-            and n.attr == "cycle_growth_cap_usd"
-            and isinstance(n.value, ast.Name)
-            and n.value.id == "self"
-        ]
+        reads = []
+        for name, src in [("scrumming_bot.py", SB_SRC)] + sorted(
+            SCRUMMING_MIXIN_SRC.items()
+        ):
+            reads += [
+                (name, n)
+                for n in ast.walk(ast.parse(src))
+                if isinstance(n, ast.Attribute)
+                and n.attr == "cycle_growth_cap_usd"
+                and isinstance(n.value, ast.Name)
+                and n.value.id == "self"
+            ]
         assert len(reads) == 4, (
-            f"expected exactly four `self.cycle_growth_cap_usd` reads in "
-            f"scrumming_bot.py -- the applier, the preview, the "
-            f"eligibility queue and the diagnostic -- found {len(reads)}"
+            f"expected exactly four `self.cycle_growth_cap_usd` reads across "
+            f"the engine -- the applier, the preview, the eligibility queue "
+            f"and the diagnostic -- found {len(reads)}: {[r[0] for r in reads]}"
         )
 
     def test_the_property_exists_and_is_a_property(self):

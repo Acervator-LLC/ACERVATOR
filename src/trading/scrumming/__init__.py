@@ -11,6 +11,7 @@ from .fold_tranches import FoldTrancheAccountingMixin
 from .reconciliation import ReconciliationEngineMixin
 from .snapshots import SnapshotEmitterMixin
 from .state_io import StateSerializerMixin
+from .tick_phases import TickPhaseMixin
 from .wire_routing import WireRoutingMixin
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "ReconciliationEngineMixin",
     "SnapshotEmitterMixin",
     "StateSerializerMixin",
+    "TickPhaseMixin",
     "WireRoutingMixin",
 ]

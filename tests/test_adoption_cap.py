@@ -36,6 +36,7 @@ no business claiming $500 because it happened to be there.
 
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 
@@ -44,6 +45,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
 SYM = "BICO/USDC"
 ASSET = "BICO"
@@ -135,9 +138,15 @@ class TestTheOperatorsSurplusIsWithheld:
         assert uncapped == pytest.approx(held)
 
 
+def _adoption_source() -> str:
+    """The module that owns the boot handshake, whichever file that is."""
+    path = inspect.getsourcefile(ScrummingBot._tick_initialise)
+    return Path(path).read_text(encoding="utf-8")
+
+
 class TestItIsWiredIntoAdoption:
     def test_the_adoption_site_applies_the_cap(self):
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        src = _adoption_source()
         assert "max_adoptable_usd" in src
         assert "ADOPTION CAPPED" in src
         assert "bot.01.003.postcondition.adoption_capped" in src
@@ -147,7 +156,7 @@ class TestItIsWiredIntoAdoption:
         record the uncapped position and then contradict it."""
         import re
 
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        src = _adoption_source()
         i_cap = src.index("_cap_usd = float(getattr(")
         # black may wrap `[{` across lines; match the dict-literal build, not `[]`.
         i_lot = re.search(r"self\._main_lots = \[\s*\{", src).start()
@@ -156,7 +165,7 @@ class TestItIsWiredIntoAdoption:
     def test_the_emitter_reports_what_was_withheld(self):
         """`expected` is what the exchange offered, `actual` what was
         taken, so ok=False marks every bot holding operator surplus."""
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        src = _adoption_source()
         blk = src[src.index("bot.01.003.postcondition.adoption_capped") :][:600]
         assert "withheld_units" in blk
         assert "cap_usd" in blk
@@ -166,7 +175,7 @@ class TestTheOperatorIsTold:
     def test_the_log_names_the_lever(self):
         """A cap the operator cannot find is a cap they will report as
         a bug."""
-        src = (REPO_ROOT / "src/trading/scrumming_bot.py").read_text(encoding="utf-8")
+        src = _adoption_source()
         blk = src[src.index("ADOPTION CAPPED") :][:900]
         assert "max_adoptable_usd" in blk
         assert "unmanaged" in blk
