@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:"
+    />
+    <title>Acervator</title>
+    <link rel="stylesheet" href="../../src/gui/web/history_panel.css" />
+  </head>
+  <body>
+    <div id="bridge-error" hidden></div>
+    <div id="root"></div>
+    <script src="../../src/gui/web/vendor/react.production.min.js"></script>
+    <script src="../../src/gui/web/vendor/react-dom.production.min.js"></script>
+    <script src="../../src/gui/web/history_panel.js"></script>
+    <script src="boot.js"></script>
+  </body>
+</html>

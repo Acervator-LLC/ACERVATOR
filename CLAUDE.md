@@ -26,6 +26,7 @@ software trades real money on real exchanges — correctness is not optional.**
 | `tools/`           | dev / build tooling |
 | `dev_harness/`     | the review archetypes (issue #84 moved them off the product path) |
 | `harness_fixtures/`| archetype calibration bodies — the known-good / known-bad pairs |
+| `desktop/`         | the Electron frontend — main process, preload, renderer. JavaScript only, no Python |
 | `docs/`            | human-written documentation ONLY — design, ADRs, audits, plans |
 | `deploy/kiosk/`    | deployment units — systemd, install scripts (use `__USER__` placeholders) |
 | `.github/`         | CI/CD, linting, templates — see [`.github/CLAUDE.md`](.github/CLAUDE.md) |
