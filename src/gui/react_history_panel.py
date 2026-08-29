@@ -54,12 +54,9 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
-from src.exchange import history_read_contract as hrc
+from src.web import history_view_model
 
 try:
     from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -100,22 +97,9 @@ class HistoryPanelAssetMissing(RuntimeError):
     """An asset the page cannot be drawn without is not on disk."""
 
 
-def asset_dir() -> Path:
-    """The directory holding the panel's JS and CSS.
-
-    Two candidates, in order. ``__file__`` covers running from source.
-    ``sys._MEIPASS`` covers the frozen build, where
-    ``tools/spec_common.py:datas_candidates`` ships the whole ``src``
-    directory to ``<bundle>/src``. NOT MEASURED against a real build --
-    no build was run for this unit.
-    """
-    beside_module = Path(__file__).resolve().parent / "web"
-    if beside_module.is_dir():
-        return beside_module
-    bundle = getattr(sys, "_MEIPASS", None)
-    if bundle:
-        return Path(bundle) / "src" / "gui" / "web"
-    return beside_module
+#: The panel's asset directory. A module-level name, so ``read_asset``
+#: below resolves it at call time.
+asset_dir = history_view_model.asset_dir
 
 
 def read_asset(name: str) -> str:
@@ -180,64 +164,13 @@ def panel_html(theme: str = "cyberpunk_dark") -> str:
 
 
 # --------------------------------------------------------------------- #
-# The view model -- pure, no Qt, no browser                              #
+# The view model -- it lives in src/web, which imports no Qt            #
 # --------------------------------------------------------------------- #
 
 
-def _date_text(ts: int) -> str:
-    """A filter bound as text. 0 means the bound is inactive."""
-    if ts <= 0:
-        return "(any)"
-    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
-
-
-def build_view_model(
-    trades: list,
-    filters: Any,
-    page: int = 0,
-    bot_manager: Any = None,
-    last_fetched_ts: float = 0.0,
-    now_ts: Optional[float] = None,
-    filtered: Optional[list] = None,
-    gate_index: Optional[dict] = None,
-    voting_index: Optional[dict] = None,
-    chrome: Optional[dict] = None,
-) -> dict:
-    """Everything the page draws, as one JSON-serialisable dict.
-
-    Every field is the contract's answer. This function chooses which of
-    the contract's functions to call and in what order; it decides no
-    value of its own.
-
-    ``filtered`` is the retained set when the caller has already applied
-    the filters and counted the result. Supplying it skips a second
-    filter pass over the same rows; the contract's own pass runs when it
-    is omitted.
-
-    ``gate_index`` and ``voting_index`` are the caller's per-page join
-    indexes. Supplying them keeps the log read to one per page.
-    """
-    retained = hrc.apply_filters(trades, filters) if filtered is None else filtered
-    rendered = hrc.build_page(retained, page, bot_manager, gate_index, voting_index)
-    return {
-        "columns": [
-            {
-                "index": c.index,
-                "key": c.key,
-                "header": c.header,
-                "header_tooltip": c.header_tooltip,
-            }
-            for c in hrc.COLUMNS
-        ],
-        "page": rendered.as_dict(),
-        "summary": hrc.summary_line(retained, len(trades), last_fetched_ts, now_ts),
-        "filters": filters.as_dict(),
-        "filter_options": hrc.filter_options(trades),
-        "loaded": len(trades),
-        "from_text": _date_text(filters.from_ts),
-        "to_text": _date_text(filters.to_ts),
-        "chrome": dict(chrome) if chrome else {},
-    }
+#: The payload builder. One implementation, shared with the HTTP host in
+#: ``src/web/history_server.py``, so the two hosts cannot disagree.
+build_view_model = history_view_model.build_view_model
 
 
 def state_push_script(payload: dict) -> str:
