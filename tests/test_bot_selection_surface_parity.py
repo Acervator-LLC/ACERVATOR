@@ -760,27 +760,41 @@ def test_the_pixel_check_reports_a_cleared_selection(table_name):
     assert image_digest(from_helper) != image_digest(from_cleared)
 
 
-def test_the_offscreen_host_paints_no_glyphs():
-    """The pixel check would be trusted to compare the text in a cell.
+def has_real_fonts():
+    """True when the platform exposes a font database.
 
-    This host has no font installed for the offscreen platform, so every
-    character paints the same missing-glyph box. Two cells of equal
-    length render identically whatever they say. Bot ids are compared as
-    exact strings in the trace above; the pixel check covers which row
-    carries the highlight.
+    Offscreen takes its database from the host: none under
+    QT_QPA_PLATFORM=offscreen on Windows, populated on a Linux host with
+    fontconfig. With none every family resolves to a box font advancing
+    one em per character.
     """
     from PySide6.QtGui import QFontDatabase
+
+    return len(QFontDatabase.families()) > 0
+
+
+def test_the_font_database_decides_what_the_pixel_check_can_read():
+    """The pixel check is trusted to compare the text in a cell.
+
+    Both halves are driven: with no font database two cells of equal
+    length render identically whatever they say, and with one they do
+    not. Bot ids are compared as exact strings in the trace above; the
+    pixel check covers which row carries the highlight.
+    """
     from PySide6.QtWidgets import QTableWidgetItem
 
     app()
-    assert QFontDatabase.families() == []
     plain = driven_table(PIXEL_SCRIPT, "scrumming", use_surface=False)
     renamed = driven_table(PIXEL_SCRIPT, "scrumming", use_surface=False)
     renamed.setItem(0, 0, QTableWidgetItem("r0c9"))
     assert plain.item(0, 0).text() != renamed.item(0, 0).text()
-    assert image_digest(render_offscreen(plain, PIXEL_SIZE)) == image_digest(
-        render_offscreen(renamed, PIXEL_SIZE)
-    )
+    assert len(plain.item(0, 0).text()) == len(renamed.item(0, 0).text())
+    plain_digest = image_digest(render_offscreen(plain, PIXEL_SIZE))
+    renamed_digest = image_digest(render_offscreen(renamed, PIXEL_SIZE))
+    if has_real_fonts():
+        assert plain_digest != renamed_digest
+    else:
+        assert plain_digest == renamed_digest
 
 
 HELPER_PATH = REPO_ROOT / "src/gui/widgets/bot_selection.py"

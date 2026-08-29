@@ -939,27 +939,41 @@ def test_the_two_sides_render_the_same_pixels():
     assert image_digest(from_panel) == image_digest(from_model)
 
 
-def test_the_offscreen_host_paints_no_glyphs():
-    """The pixel check would be trusted to compare the text in a cell.
+def has_real_fonts():
+    """True when the platform exposes a font database.
 
-    This host has no font installed for the offscreen platform, so every
-    character paints the same missing-glyph box. Two cells of equal
-    length render identically whatever they say. Cell text is compared as
-    exact strings in the trace above; the pixel check covers layout,
-    colour and how many characters a cell carries.
+    Offscreen takes its database from the host: none under
+    QT_QPA_PLATFORM=offscreen on Windows, populated on a Linux host with
+    fontconfig. With none every family resolves to a box font advancing
+    one em per character.
     """
     from PySide6.QtGui import QFontDatabase
 
+    return len(QFontDatabase.families()) > 0
+
+
+def test_the_font_database_decides_what_the_pixel_check_can_read():
+    """The pixel check is trusted to compare the text in a cell.
+
+    Both halves are driven: with no font database two cells of equal
+    length render identically whatever they say, and with one they do
+    not. Cell text is compared as exact strings in the trace above; the
+    pixel check covers layout, colour and how many characters a cell
+    carries.
+    """
     app()
-    assert QFontDatabase.families() == []
     same_length = model_payload()
     same_length["rows"][0][8] = "$-37.55"
     assert same_length["rows"][0][8] != model_payload()["rows"][0][8]
+    assert len(same_length["rows"][0][8]) == len(model_payload()["rows"][0][8])
     from_panel = render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE)
     from_same_length = render_offscreen(
         widget_painted_by_the_model(same_length), PIXEL_SIZE
     )
-    assert image_digest(from_panel) == image_digest(from_same_length)
+    if has_real_fonts():
+        assert image_digest(from_panel) != image_digest(from_same_length)
+    else:
+        assert image_digest(from_panel) == image_digest(from_same_length)
 
 
 def test_the_pixel_check_reports_a_cell_of_a_different_length():
