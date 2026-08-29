@@ -19,6 +19,10 @@ import pytest
 
 from src.core.privacy_mask_registry import get_privacy_mask_registry
 from src.gui.main_tabs import header_strip_surface as surface
+from tests.fixtures.surface_pictures import (
+    assert_pictures_differ,
+    assert_pictures_match,
+)
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -997,12 +1001,19 @@ def test_the_mode_skin_matches(built, revealed, mode):
     built._update_mode_btn_style()
     card = surface.mode_card(mode)
     assert card["style_sheet"] == built._mode_btn.styleSheet()
-    container = built._header_strip_container
-    container.setParent(None)
-    image = render_widget(container, size=RENDER_SIZE)
-    assert count_colour(image, card["color"]) > 0
     other = "stock" if mode == "crypto" else "crypto"
-    assert count_colour(image, surface.MODE_CARDS[other]["color"]) == 0
+    assert surface.MODE_CARDS[other]["color"] not in built._mode_btn.styleSheet()
+    assert card["color"] in built._mode_btn.styleSheet()
+    shipped = built._mode_btn
+    shipped.setParent(None)
+    assert_pictures_match(
+        old_side=render_widget(shipped, size=MODE_BUTTON_SIZE),
+        new_side=render_widget(
+            mode_button_painted_by_the_model(mode, surface.DEFAULT_MODE),
+            size=MODE_BUTTON_SIZE,
+        ),
+        note=mode,
+    )
 
 
 def test_the_mode_toggle_matches(window):
@@ -1012,7 +1023,20 @@ def test_the_mode_toggle_matches(window):
     seen = []
     for _ in range(2):
         window._toggle_trading_mode()
-        image = render_widget(window._mode_btn, size=(200, 40))
+        shipped = window._mode_btn
+        parent = shipped.parentWidget()
+        shipped.setParent(None)
+        try:
+            assert_pictures_match(
+                old_side=render_widget(shipped, size=MODE_BUTTON_SIZE),
+                new_side=render_widget(
+                    mode_button_painted_by_the_model(window._trading_mode),
+                    size=MODE_BUTTON_SIZE,
+                ),
+                note=window._trading_mode,
+            )
+        finally:
+            shipped.setParent(parent)
         seen.append(
             {
                 "mode": window._trading_mode,
@@ -1020,10 +1044,6 @@ def test_the_mode_toggle_matches(window):
                 "checked": window._mode_btn.isChecked(),
                 "style_sheet": window._mode_btn.styleSheet(),
                 "window_title": window.windowTitle(),
-                "painted": count_colour(
-                    image, surface.mode_card(window._trading_mode)["color"]
-                )
-                > 0,
             }
         )
     expected = [
@@ -1033,7 +1053,6 @@ def test_the_mode_toggle_matches(window):
             "checked": surface.mode_card(name)["checked"],
             "style_sheet": surface.mode_card(name)["style_sheet"],
             "window_title": surface.mode_card(name)["window_title"],
-            "painted": True,
         }
         for name in ("stock", "crypto")
     ]
@@ -1080,6 +1099,32 @@ def test_the_handler_reads_its_parameters():
 
 
 RENDER_SIZE = (1200, 90)
+MODE_BUTTON_SIZE = (200, 40)
+
+
+def mode_button_painted_by_the_model(mode, state_mode=None):
+    """A bare button filled only from the mode cards, never from the window.
+
+    `mode` supplies the skin. `state_mode` supplies the text and the
+    checked state; they part company only where the strip was built in
+    one wing and repainted for the other.
+    """
+    from PySide6.QtWidgets import QPushButton, QSizePolicy
+
+    skin = surface.mode_card(mode)
+    state = surface.mode_card(state_mode if state_mode is not None else mode)
+    button = QPushButton(state["text"])
+    button.setMinimumWidth(skin["minimum_width_px"])
+    button.setSizePolicy(
+        getattr(QSizePolicy.Policy, skin["horizontal_policy"]),
+        getattr(QSizePolicy.Policy, skin["vertical_policy"]),
+    )
+    button.setCheckable(skin["checkable"])
+    button.setChecked(state["checked"])
+    button.setToolTip(skin["tooltip"])
+    button.setStyleSheet(skin["style_sheet"])
+    return button
+
 
 PAINTED_COLOURS = (
     surface.SPENDABLE_LABEL_STYLE,
@@ -1099,36 +1144,64 @@ def declared_colour(style_sheet: str) -> str:
     return head.split(";", 1)[0].strip().lower()
 
 
-def count_colour(image, expected_hex: str) -> int:
-    from PySide6.QtGui import QColor
-
-    want = QColor(expected_hex).rgb()
-    return sum(
-        1
-        for y in range(image.height())
-        for x in range(image.width())
-        if image.pixelColor(x, y).rgb() == want
-    )
-
-
-@pytest.fixture
-def painted(built, revealed):
-    """The built strip rendered once, off the layout that would resize it."""
-    from tests.qt_pixel import render_widget
+def strip_style_sheets(built) -> str:
+    """Every style sheet the built strip's own widgets carry, joined."""
+    from PySide6.QtWidgets import QWidget
 
     container = built._header_strip_container
-    container.setParent(None)
-    yield render_widget(container, size=RENDER_SIZE)
+    sheets = [container.styleSheet()]
+    sheets.extend(widget.styleSheet() for widget in container.findChildren(QWidget))
+    return " ".join(sheets)
 
 
 @pytest.mark.parametrize("style_sheet", PAINTED_COLOURS)
-def test_every_declared_colour_reaches_a_pixel(painted, style_sheet):
-    """A colour the view model declares paints nowhere on the strip."""
-    assert count_colour(painted, declared_colour(style_sheet)) > 0
+def test_every_declared_colour_is_carried_by_the_strip(built, revealed, style_sheet):
+    """A colour the view model declares is on no widget of the strip.
+
+    A count of pixels would state how many pixels the host's fonts and
+    its platform style give a colour, which is a different number on
+    every machine. The declared colour is read off the strip's own
+    widgets instead, and the mode button's pixels are compared against
+    the surface's own.
+    """
+    from tests.qt_pixel import render_widget
+
+    assert declared_colour(style_sheet) in strip_style_sheets(built), style_sheet
+    shipped = built._mode_btn
+    shipped.setParent(None)
+    assert_pictures_match(
+        old_side=render_widget(shipped, size=MODE_BUTTON_SIZE),
+        new_side=render_widget(
+            mode_button_painted_by_the_model(surface.DEFAULT_MODE),
+            size=MODE_BUTTON_SIZE,
+        ),
+    )
 
 
-def test_the_pixel_reader_reports_an_absent_colour(painted):
-    """The pixel check passes whatever the strip painted."""
-    assert count_colour(painted, "#ff00ff") == 0
-    assert count_colour(painted, surface.MODE_CARDS["stock"]["color"]) == 0
-    assert count_colour(painted, surface.MODE_CARDS["crypto"]["color"]) > 0
+@pytest.mark.parametrize("mode", ["crypto", "stock"])
+def test_the_mode_button_pixel_check_reports_the_wrong_skin(built, revealed, mode):
+    """The image comparison passes whatever the mirror paints."""
+    from tests.qt_pixel import render_widget
+
+    built._trading_mode = mode
+    built._update_mode_btn_style()
+    other = "stock" if mode == "crypto" else "crypto"
+    shipped = built._mode_btn
+    shipped.setParent(None)
+    assert_pictures_differ(
+        old_side=render_widget(shipped, size=MODE_BUTTON_SIZE),
+        new_side=render_widget(
+            mode_button_painted_by_the_model(other, surface.DEFAULT_MODE),
+            size=MODE_BUTTON_SIZE,
+        ),
+        note=mode,
+    )
+
+
+def test_the_strip_carries_only_the_wing_it_was_built_in(built, revealed):
+    """The strip declares a colour of the wing it is not showing."""
+    carried = strip_style_sheets(built)
+    assert surface.MODE_CARDS["crypto"]["color"] in carried
+    assert surface.MODE_CARDS["stock"]["color"] not in carried
+    assert "#ff00ff" not in carried
+    assert surface.DEFAULT_MODE == "crypto"

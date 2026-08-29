@@ -24,6 +24,10 @@ pytest.importorskip("PySide6")
 
 from src.gui.main_tabs import capital_registry_surface as surface
 from src.gui.widgets.capital_registry_panel import CapitalRegistryPanel
+from tests.fixtures.surface_pictures import (
+    assert_pictures_differ,
+    assert_pictures_match,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -842,22 +846,6 @@ def test_rgb_matches_qcolor_on_every_token():
         )
 
 
-def image_digest(image):
-    return hashlib.sha256(bytes(image.constBits())).hexdigest()
-
-
-def colour_count(image, hex_colour):
-    from PySide6.QtGui import QColor
-
-    target = QColor(hex_colour).rgb()
-    return sum(
-        1
-        for y in range(image.height())
-        for x in range(image.width())
-        if image.pixel(x, y) == target
-    )
-
-
 def _full(bot_id, reserved_usd, reserved_base, rate):
     """Every field the panel reads, so both sides start from one input."""
     return {
@@ -931,38 +919,37 @@ def widget_painted_by_the_model(payload):
 def test_the_two_sides_render_the_same_pixels():
     """The page paints a value, a colour or a position the panel does not."""
     app()
-    from_panel = render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE)
-    from_model = render_offscreen(
-        widget_painted_by_the_model(model_payload()), PIXEL_SIZE
+    assert_pictures_match(
+        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
+        new_side=render_offscreen(
+            widget_painted_by_the_model(model_payload()), PIXEL_SIZE
+        ),
     )
-    assert from_panel.size() == from_model.size()
-    assert image_digest(from_panel) == image_digest(from_model)
 
 
-def test_the_font_database_decides_what_the_pixel_check_can_read():
-    """The pixel check is trusted to compare the text in a cell.
+def test_a_same_length_cell_is_compared_as_an_exact_string():
+    """A same-length cell swap was left to the render to report.
 
-    Both halves are driven: with no font database two cells of equal
-    length render identically whatever they say, and with one they do
-    not. Cell text is compared as exact strings in the trace above; the
-    pixel check covers layout, colour and how many characters a cell
-    carries.
+    Whether a swap of equal length moves a pixel depends on the fonts
+    the host installs, so no render carries this proof on every machine.
+    Every cell is read off the panel's own table and off the surface and
+    compared character for character.
     """
-    from tests.fixtures.host_fonts import has_real_fonts
-
     app()
-    same_length = model_payload()
-    same_length["rows"][0][8] = "$-37.55"
-    assert same_length["rows"][0][8] != model_payload()["rows"][0][8]
-    assert len(same_length["rows"][0][8]) == len(model_payload()["rows"][0][8])
-    from_panel = render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE)
-    from_same_length = render_offscreen(
-        widget_painted_by_the_model(same_length), PIXEL_SIZE
-    )
-    if has_real_fonts():
-        assert image_digest(from_panel) != image_digest(from_same_length)
-    else:
-        assert image_digest(from_panel) == image_digest(from_same_length)
+    panel = widget_painted_by_the_panel()
+    declared = model_payload()
+    assert panel.rowCount() == declared["row_count"] > 0
+    assert panel.columnCount() == len(declared["columns"]) > 0
+    for row in range(panel.rowCount()):
+        for col in range(panel.columnCount()):
+            painted = panel.item(row, col)
+            assert (painted is None) is (declared["rows"][row][col] is None), (row, col)
+            if painted is not None:
+                assert painted.text() == declared["rows"][row][col], (row, col)
+    original = declared["rows"][0][8]
+    disguised = "$-37.55"
+    assert len(disguised) == len(original)
+    assert disguised != original
 
 
 def test_the_pixel_check_reports_a_cell_of_a_different_length():
@@ -970,9 +957,10 @@ def test_the_pixel_check_reports_a_cell_of_a_different_length():
     app()
     payload = model_payload()
     payload["rows"][0][8] = "$+3.10"
-    from_panel = render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE)
-    from_altered = render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE)
-    assert image_digest(from_panel) != image_digest(from_altered)
+    assert_pictures_differ(
+        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
+        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
+    )
 
 
 def test_the_pixel_check_reports_an_empty_cell():
@@ -980,9 +968,10 @@ def test_the_pixel_check_reports_an_empty_cell():
     app()
     payload = model_payload()
     payload["rows"][1][3] = None
-    from_panel = render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE)
-    from_altered = render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE)
-    assert image_digest(from_panel) != image_digest(from_altered)
+    assert_pictures_differ(
+        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
+        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
+    )
 
 
 def test_the_pixel_check_reports_a_dropped_row():
@@ -991,9 +980,10 @@ def test_the_pixel_check_reports_a_dropped_row():
     payload = model_payload()
     payload["rows"] = payload["rows"][:2]
     payload["row_count"] = 2
-    from_panel = render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE)
-    from_altered = render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE)
-    assert image_digest(from_panel) != image_digest(from_altered)
+    assert_pictures_differ(
+        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
+        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
+    )
 
 
 def test_the_pixel_check_reports_two_swapped_headers():
@@ -1004,9 +994,10 @@ def test_the_pixel_check_reports_two_swapped_headers():
         payload["columns"][1],
         payload["columns"][0],
     )
-    from_panel = render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE)
-    from_altered = render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE)
-    assert image_digest(from_panel) != image_digest(from_altered)
+    assert_pictures_differ(
+        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
+        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
+    )
 
 
 def test_the_pixel_check_reports_two_swapped_rows():
@@ -1014,9 +1005,10 @@ def test_the_pixel_check_reports_two_swapped_rows():
     app()
     payload = model_payload()
     payload["rows"][0], payload["rows"][2] = payload["rows"][2], payload["rows"][0]
-    from_panel = render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE)
-    from_swapped = render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE)
-    assert image_digest(from_panel) != image_digest(from_swapped)
+    assert_pictures_differ(
+        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
+        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
+    )
 
 
 def test_the_pixel_check_reports_a_changed_header():
@@ -1024,9 +1016,10 @@ def test_the_pixel_check_reports_a_changed_header():
     app()
     payload = model_payload()
     payload["columns"][8] = "Profit"
-    from_panel = render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE)
-    from_altered = render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE)
-    assert image_digest(from_panel) != image_digest(from_altered)
+    assert_pictures_differ(
+        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
+        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
+    )
 
 
 def test_the_pixel_check_reports_the_alternating_rows_turned_off():
@@ -1034,9 +1027,10 @@ def test_the_pixel_check_reports_the_alternating_rows_turned_off():
     app()
     payload = model_payload()
     payload["widget"]["alternating_row_colors"] = False
-    from_panel = render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE)
-    from_altered = render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE)
-    assert image_digest(from_panel) != image_digest(from_altered)
+    assert_pictures_differ(
+        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
+        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
+    )
 
 
 def test_the_pixel_check_reports_the_row_numbers_coming_back():
@@ -1044,9 +1038,10 @@ def test_the_pixel_check_reports_the_row_numbers_coming_back():
     app()
     payload = model_payload()
     payload["widget"]["vertical_header_visible"] = True
-    from_panel = render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE)
-    from_altered = render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE)
-    assert image_digest(from_panel) != image_digest(from_altered)
+    assert_pictures_differ(
+        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
+        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
+    )
 
 
 def test_the_pixel_check_reports_the_last_column_no_longer_stretching():
@@ -1054,22 +1049,37 @@ def test_the_pixel_check_reports_the_last_column_no_longer_stretching():
     app()
     payload = model_payload()
     payload["widget"]["stretch_last_section"] = False
-    from_panel = render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE)
-    from_altered = render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE)
-    assert image_digest(from_panel) != image_digest(from_altered)
-
-
-def test_the_three_declared_colours_reach_the_panels_pixels():
-    """A declared colour is painted by neither side, or by only one."""
-    app()
-    from_panel = render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE)
-    from_model = render_offscreen(
-        widget_painted_by_the_model(model_payload()), PIXEL_SIZE
+    assert_pictures_differ(
+        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
+        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
     )
-    for token in (surface.ROW_COLOR, surface.ALT_ROW_COLOR, surface.TEXT_COLOR):
-        assert colour_count(from_panel, token) > 0, token
-        assert colour_count(from_model, token) == colour_count(from_panel, token)
-    assert colour_count(from_panel, "#ff00ff") == 0
+
+
+def test_the_three_declared_colours_are_the_panels_own():
+    """A declared colour is carried by neither side, or by only one.
+
+    The three tokens come off the panel's own palette, not off a count
+    of pixels: how many pixels a colour reaches depends on the fonts and
+    the platform style of the machine the test runs on.
+    """
+    from PySide6.QtGui import QPalette
+
+    from qt_pixel import render_widget
+
+    app()
+    panel = widget_painted_by_the_panel()
+    painted = panel.palette()
+    assert painted.color(QPalette.ColorRole.Base).name() == surface.ROW_COLOR
+    assert (
+        painted.color(QPalette.ColorRole.AlternateBase).name() == surface.ALT_ROW_COLOR
+    )
+    assert painted.color(QPalette.ColorRole.Text).name() == surface.TEXT_COLOR
+    assert_pictures_match(
+        old_side=render_widget(panel, PIXEL_SIZE),
+        new_side=render_widget(
+            widget_painted_by_the_model(model_payload()), PIXEL_SIZE
+        ),
+    )
     assert surface.ROW_COLOR != surface.ALT_ROW_COLOR != surface.TEXT_COLOR
 
 
