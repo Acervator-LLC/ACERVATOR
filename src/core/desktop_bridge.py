@@ -47,6 +47,7 @@ def build_registry() -> Dict[str, Handler]:
     from src.exchange import history_surface
     from src.gui.main_tabs import (
         bot_selection_surface,
+        buy_confirmation_surface,
         capital_registry_surface,
         console_log_surface,
         console_tab_surface,
@@ -68,6 +69,7 @@ def build_registry() -> Dict[str, Handler]:
         capital_registry_surface.METHOD: capital_registry_surface.view_model,
         bot_selection_surface.METHOD: bot_selection_surface.view_model,
         start_all_progress_surface.METHOD: start_all_progress_surface.view_model,
+        buy_confirmation_surface.METHOD: buy_confirmation_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
 
