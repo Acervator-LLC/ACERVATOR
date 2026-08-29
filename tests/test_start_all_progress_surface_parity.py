@@ -1406,28 +1406,31 @@ def test_the_stretch_the_pixel_check_cannot_see_is_compared_as_a_number(monkeypa
     assert surface.BUTTON_ROW["leading_stretch"] == 1
 
 
-def test_the_offscreen_host_paints_no_glyphs(monkeypatch):
-    """The pixel check would be trusted to compare the text of a line.
+def test_the_font_database_decides_what_the_pixel_check_can_read(monkeypatch):
+    """The pixel check is trusted to compare the text of a line.
 
-    This host has no font installed for the offscreen platform, so every
-    character paints the same missing-glyph box. Two lines of equal
-    length render identically whatever they say. Line text is compared
-    as exact strings in the trace above; the pixel check covers layout,
-    colour and how many characters a line carries.
+    Both halves are driven: with no font database two lines of equal
+    length render identically whatever they say, and with one they do
+    not. Line text is compared as exact strings in the trace above; the
+    pixel check covers layout, colour and how many characters a line
+    carries.
     """
-    from PySide6.QtGui import QFontDatabase
+    from tests.fixtures.host_fonts import has_real_fonts
 
     app()
-    assert QFontDatabase.families() == []
     script = PIXEL_SCRIPTS["finished"]
     same_length = model_payload(script)
     same_length["items"][0] = "X " + "y" * (len(same_length["items"][0]) - 2)
     assert same_length["items"][0] != model_payload(script)["items"][0]
+    assert len(same_length["items"][0]) == len(model_payload(script)["items"][0])
     shipped = render_offscreen(
         dialog_painted_by_the_dialog(script, monkeypatch), PIXEL_SIZE
     )
     disguised = render_offscreen(dialog_painted_by_the_model(same_length), PIXEL_SIZE)
-    assert image_digest(shipped) == image_digest(disguised)
+    if has_real_fonts():
+        assert image_digest(shipped) != image_digest(disguised)
+    else:
+        assert image_digest(shipped) == image_digest(disguised)
 
 
 def colour_count(image, hex_colour):

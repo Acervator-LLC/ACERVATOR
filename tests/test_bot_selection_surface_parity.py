@@ -760,19 +760,6 @@ def test_the_pixel_check_reports_a_cleared_selection(table_name):
     assert image_digest(from_helper) != image_digest(from_cleared)
 
 
-def has_real_fonts():
-    """True when the platform exposes a font database.
-
-    Offscreen takes its database from the host: none under
-    QT_QPA_PLATFORM=offscreen on Windows, populated on a Linux host with
-    fontconfig. With none every family resolves to a box font advancing
-    one em per character.
-    """
-    from PySide6.QtGui import QFontDatabase
-
-    return len(QFontDatabase.families()) > 0
-
-
 def test_the_font_database_decides_what_the_pixel_check_can_read():
     """The pixel check is trusted to compare the text in a cell.
 
@@ -782,6 +769,8 @@ def test_the_font_database_decides_what_the_pixel_check_can_read():
     pixel check covers which row carries the highlight.
     """
     from PySide6.QtWidgets import QTableWidgetItem
+
+    from tests.fixtures.host_fonts import has_real_fonts
 
     app()
     plain = driven_table(PIXEL_SCRIPT, "scrumming", use_surface=False)

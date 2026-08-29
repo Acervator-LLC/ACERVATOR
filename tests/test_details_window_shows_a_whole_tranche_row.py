@@ -31,15 +31,12 @@ case. Display headroom at 1536: 412px at the widest.
 A HOST WITHOUT A FONT DATABASE CANNOT DISCRIMINATE
 =================================================
 The offscreen platform takes its font database from the host, so it
-has one where the host does and none where it does not: measured
-2026-08-28, QFontDatabase.families() is empty under
-QT_QPA_PLATFORM=offscreen on Windows and populated on a Linux host
-with fontconfig. With none, every family resolves to a box font
-advancing one em per character. The Cycle Health block then inflates
-further than the table, its 1907px demand stays ahead of the row's
-1656px, and max() keeps the old number. Section E drives the
-arithmetic directly for that reason, and `_has_real_fonts` guards the
-checks that need a measured string.
+has one where the host does and none where it does not. With none,
+every family resolves to a box font advancing one em per character.
+The Cycle Health block then inflates further than the table, its
+1907px demand stays ahead of the row's 1656px, and max() keeps the old
+number. Section E drives the arithmetic directly for that reason, and
+`has_real_fonts` guards the checks that need a measured string.
 
 FALSIFICATION: wrong if (a) the row demand stops reading the columns,
 (b) the dialog opens narrower than a whole row on a display with room
@@ -64,6 +61,8 @@ if str(REPO) not in sys.path:
 TESTS_DIR = str(Path(__file__).resolve().parent)
 if TESTS_DIR not in sys.path:
     sys.path.insert(0, TESTS_DIR)
+
+from tests.fixtures.host_fonts import has_real_fonts
 
 #: The dialog's floor, set by MEM-240 and untouched by this unit.
 SHIPPED_MIN_W = 640
@@ -101,17 +100,6 @@ def _qt_or_skip():
     from PySide6.QtWidgets import QApplication
 
     return QApplication.instance() or QApplication([])
-
-
-def _has_real_fonts() -> bool:
-    """True when the platform exposes a font database.
-
-    Offscreen exposes none; every string then measures one em per
-    character.
-    """
-    from PySide6.QtGui import QFontDatabase
-
-    return len(QFontDatabase.families()) > 0
 
 
 class _Exchange:
@@ -411,7 +399,7 @@ class TestTheRowIsWhole:
 
         Red before the fix at 1536x960 with real fonts: 138px cut.
         """
-        if not _has_real_fonts():
+        if not has_real_fonts():
             pytest.skip(
                 "no font database: every string measures one em per "
                 "character and no row fits a real display"
@@ -614,14 +602,14 @@ class TestWhatStillDoesNotFit:
         panel = _build(themed, screen=(1024, 768))
         try:
             assert panel.dialog.width() <= 1024 - 32
-            if _has_real_fonts():
+            if has_real_fonts():
                 assert panel.row_cut_px() > 0
         finally:
             panel.destroy()
 
     def test_the_font_database_decides_what_a_string_measures(self, themed):
         """FAILURE MEANS: the box-font premise this module's guarded
-        checks rest on is stale, or `_has_real_fonts` no longer tells
+        checks rest on is stale, or `has_real_fonts` no longer tells
         the two hosts apart.
 
         Both halves are driven: a font database gives a proportional
@@ -633,7 +621,7 @@ class TestWhatStillDoesNotFit:
         metrics = QFontMetrics(themed.font())
         narrow = metrics.horizontalAdvance("iiiiiiii")
         wide = metrics.horizontalAdvance("WWWWWWWW")
-        if _has_real_fonts():
+        if has_real_fonts():
             assert narrow < wide, (narrow, wide)
         else:
             assert narrow == wide, (narrow, wide)

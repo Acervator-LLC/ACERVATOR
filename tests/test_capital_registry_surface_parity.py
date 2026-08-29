@@ -939,19 +939,6 @@ def test_the_two_sides_render_the_same_pixels():
     assert image_digest(from_panel) == image_digest(from_model)
 
 
-def has_real_fonts():
-    """True when the platform exposes a font database.
-
-    Offscreen takes its database from the host: none under
-    QT_QPA_PLATFORM=offscreen on Windows, populated on a Linux host with
-    fontconfig. With none every family resolves to a box font advancing
-    one em per character.
-    """
-    from PySide6.QtGui import QFontDatabase
-
-    return len(QFontDatabase.families()) > 0
-
-
 def test_the_font_database_decides_what_the_pixel_check_can_read():
     """The pixel check is trusted to compare the text in a cell.
 
@@ -961,6 +948,8 @@ def test_the_font_database_decides_what_the_pixel_check_can_read():
     pixel check covers layout, colour and how many characters a cell
     carries.
     """
+    from tests.fixtures.host_fonts import has_real_fonts
+
     app()
     same_length = model_payload()
     same_length["rows"][0][8] = "$-37.55"
