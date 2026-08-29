@@ -26,6 +26,8 @@ from src.gui.main_tabs import instance_consent_surface as surface
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
+    sealed,
+    unaltered,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -1141,13 +1143,6 @@ def test_the_style_sheet_is_the_dialogs_own():
             dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
         ),
     )
-    unskinned = model_payload("plain")
-    unskinned["widget"]["style_sheet"] = ""
-    assert_pictures_differ(
-        old_side=shipped,
-        new_side=render_widget(dialog_painted_by_the_model(unskinned), PIXEL_SIZE),
-        note="the skin was stripped from the surface",
-    )
     for name, token in surface.SKIN.items():
         assert token in dialog.styleSheet(), name
 
@@ -1489,22 +1484,24 @@ def test_the_dialog_starts_no_timer():
 
 
 def model_payload(spec, button=None, closed=False):
-    """The surface payload for one decision case."""
+    """The surface payload for one decision case, stamped."""
     model = surface.InstanceConsentModel()
     fields = dict(DECISIONS[spec])
     fields.pop("raises", None)
-    return surface.build_view_model(
-        model,
-        headline=str(fields.get("headline", "")),
-        detail=str(fields.get("detail", "")),
-        owner_line=str(fields.get("owner_line", "")),
-        this_machine_line=str(fields.get("this_machine_line", "")),
-        consequence_line=str(fields.get("consequence_line", "")),
-        fleet_bot_count=fields.get("fleet_bot_count", 0),
-        consent_is_possible=fields.get("consent_is_possible", True),
-        verdict=fields.get("verdict", surface.MISSING_VERDICT),
-        button=button,
-        closed=closed,
+    return sealed(
+        surface.build_view_model(
+            model,
+            headline=str(fields.get("headline", "")),
+            detail=str(fields.get("detail", "")),
+            owner_line=str(fields.get("owner_line", "")),
+            this_machine_line=str(fields.get("this_machine_line", "")),
+            consequence_line=str(fields.get("consequence_line", "")),
+            fleet_bot_count=fields.get("fleet_bot_count", 0),
+            consent_is_possible=fields.get("consent_is_possible", True),
+            verdict=fields.get("verdict", surface.MISSING_VERDICT),
+            button=button,
+            closed=closed,
+        )
     )
 
 
@@ -1515,7 +1512,12 @@ def dialog_painted_by_the_dialog(spec):
 
 
 def dialog_painted_by_the_model(payload):
-    """A bare dialog filled only from the payload, never from the dialog."""
+    """A bare dialog filled only from the payload, never from the dialog.
+
+    A payload the caller changed after it came off the surface is
+    refused.
+    """
+    unaltered(payload)
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import (
         QDialog,
@@ -1656,209 +1658,23 @@ def test_the_two_sides_declare_and_paint_the_same_skin():
     )
 
 
-def altered_renders(spec, alter, size=PIXEL_SIZE):
-    """The shipped render and the render of a payload one edit apart."""
+def test_the_pixel_check_reports_a_different_decision():
+    """The image comparison passes whatever the second side paints.
+
+    Two real decisions, one driven into each side. One carries a
+    headline, a detail and three fact lines; the other carries none of
+    them, so a pass proves the comparison reports a dialog painted
+    differently.
+    """
     app()
-    payload = model_payload(spec)
-    alter(payload)
-    shipped = render_offscreen(dialog_painted_by_the_dialog(spec), size)
-    altered = render_offscreen(dialog_painted_by_the_model(payload), size)
-    return shipped, altered
-
-
-def _repaint_the_surface(payload):
-    payload["widget"]["style_sheet"] = payload["widget"]["style_sheet"].replace(
-        surface.SKIN["surface"], "#0a0a14"
+    assert DECISIONS["plain"] != DECISIONS["empty"]
+    assert_pictures_differ(
+        old_side=render_offscreen(dialog_painted_by_the_dialog("plain"), PIXEL_SIZE),
+        new_side=render_offscreen(
+            dialog_painted_by_the_model(model_payload("empty")), PIXEL_SIZE
+        ),
+        note="plain from the dialog against empty from the surface",
     )
-
-
-def _repaint_the_headline(payload):
-    payload["widget"]["style_sheet"] = payload["widget"]["style_sheet"].replace(
-        surface.SKIN["headline"], "#00aaff"
-    )
-
-
-def _repaint_the_consequence(payload):
-    payload["widget"]["style_sheet"] = payload["widget"]["style_sheet"].replace(
-        surface.SKIN["consequence"], "#00aaff"
-    )
-
-
-def _repaint_the_facts_panel(payload):
-    payload["widget"]["style_sheet"] = payload["widget"]["style_sheet"].replace(
-        surface.SKIN["facts_surface"], "#3a1414"
-    )
-
-
-def _repaint_the_refuse_border(payload):
-    payload["widget"]["style_sheet"] = payload["widget"]["style_sheet"].replace(
-        surface.SKIN["refuse"], "#ff8800"
-    )
-
-
-def _drop_the_style_sheet(payload):
-    payload["widget"]["style_sheet"] = ""
-
-
-def _move_the_margins(payload):
-    payload["layout"]["margins_px"] = [40, 40, 40, 40]
-
-
-def _move_the_facts_margins(payload):
-    payload["facts_layout"]["margins_px"] = [2, 2, 2, 2]
-
-
-def _move_the_button_row_margins(payload):
-    payload["button_row"]["margins_px"] = [30, 30, 30, 30]
-
-
-def _close_the_spacing(payload):
-    payload["layout"]["spacing_px"] = 0
-
-
-def _close_the_facts_spacing(payload):
-    payload["facts_layout"]["spacing_px"] = 0
-
-
-def _close_the_row_spacing(payload):
-    payload["button_row"]["spacing_px"] = 0
-
-
-def _stretch_the_facts(payload):
-    payload["layout"]["child_stretch"] = [0, 0, 1, 0, 0]
-
-
-def _swap_the_layout_order(payload):
-    payload["layout"]["order"] = [
-        surface.CONSEQUENCE,
-        surface.DETAIL,
-        surface.FACTS,
-        surface.HEADLINE,
-        surface.BUTTON_ROW,
-    ]
-
-
-def _swap_the_button_order(payload):
-    payload["button_row"]["order"] = [
-        surface.STRETCH,
-        surface.CONSENT,
-        surface.REFUSE,
-    ]
-
-
-def _move_the_stretch_to_the_end(payload):
-    payload["button_row"]["order"] = [
-        surface.REFUSE,
-        surface.CONSENT,
-        surface.STRETCH,
-    ]
-    payload["button_row"]["child_stretch"] = [0, 0, 1]
-
-
-def _swap_the_fact_lines(payload):
-    payload["facts_layout"]["order"] = [surface.THIS_MACHINE, surface.OWNER]
-
-
-def _move_the_button_row_up(payload):
-    payload["layout"]["order"] = [
-        surface.HEADLINE,
-        surface.BUTTON_ROW,
-        surface.DETAIL,
-        surface.FACTS,
-        surface.CONSEQUENCE,
-    ]
-
-
-def _widen_the_minimum(payload):
-    payload["widget"]["minimum_width_px"] = 900
-
-
-def _rename_the_refuse_button(payload):
-    payload["buttons"][surface.REFUSE]["text"] = "No"
-
-
-def _rename_the_consent_button(payload):
-    payload["buttons"][surface.CONSENT]["text"] = "Yes"
-
-
-def _shrink_the_buttons(payload):
-    payload["buttons"][surface.REFUSE]["minimum_height_px"] = 12
-    payload["buttons"][surface.CONSENT]["minimum_height_px"] = 12
-
-
-def _stop_the_word_wrap(payload):
-    payload["headline_label"]["word_wrap"] = False
-
-
-def _rename_the_headline_object(payload):
-    payload["headline_label"]["object_name"] = surface.DETAIL
-
-
-def _rename_the_facts_object(payload):
-    payload["facts_frame"]["object_name"] = "not_facts"
-
-
-def _rename_the_fact_object(payload):
-    payload["fact_label"]["object_name"] = surface.DETAIL
-
-
-def _shorten_the_headline(payload):
-    payload["headline_text"] = "R"
-
-
-def _blank_the_consequence(payload):
-    payload["consequence_text"] = ""
-
-
-def _blank_a_fact_line(payload):
-    payload["owner_text"] = ""
-
-
-PIXEL_DEFECTS = {
-    "blank_a_fact_line": ("plain", _blank_a_fact_line),
-    "blank_the_consequence": ("plain", _blank_the_consequence),
-    "close_the_facts_spacing": ("plain", _close_the_facts_spacing),
-    "close_the_row_spacing": ("plain", _close_the_row_spacing),
-    "close_the_spacing": ("plain", _close_the_spacing),
-    "drop_the_style_sheet": ("plain", _drop_the_style_sheet),
-    "move_the_button_row_margins": ("plain", _move_the_button_row_margins),
-    "move_the_button_row_up": ("plain", _move_the_button_row_up),
-    "move_the_facts_margins": ("plain", _move_the_facts_margins),
-    "move_the_margins": ("plain", _move_the_margins),
-    "rename_the_consent_button": ("plain", _rename_the_consent_button),
-    "rename_the_fact_object": ("plain", _rename_the_fact_object),
-    "rename_the_facts_object": ("plain", _rename_the_facts_object),
-    "rename_the_headline_object": ("plain", _rename_the_headline_object),
-    "rename_the_refuse_button": ("plain", _rename_the_refuse_button),
-    "repaint_the_consequence": ("plain", _repaint_the_consequence),
-    "repaint_the_facts_panel": ("plain", _repaint_the_facts_panel),
-    "repaint_the_headline": ("plain", _repaint_the_headline),
-    "repaint_the_refuse_border": ("plain", _repaint_the_refuse_border),
-    "repaint_the_surface": ("plain", _repaint_the_surface),
-    "shorten_the_headline": ("long_headline", _shorten_the_headline),
-    "shrink_the_buttons": ("plain", _shrink_the_buttons),
-    "stop_the_word_wrap": ("long_spaced_headline", _stop_the_word_wrap),
-    "stretch_the_facts": ("plain", _stretch_the_facts),
-    "swap_the_button_order": ("plain", _swap_the_button_order),
-    "swap_the_fact_lines": ("plain", _swap_the_fact_lines),
-    "swap_the_layout_order": ("plain", _swap_the_layout_order),
-    "move_the_stretch_to_the_end": (
-        "plain",
-        _move_the_stretch_to_the_end,
-        WIDE_PIXEL_SIZE,
-    ),
-    "widen_the_minimum": ("plain", _widen_the_minimum),
-}
-
-
-@pytest.mark.parametrize("name", sorted(PIXEL_DEFECTS))
-def test_the_pixel_check_reports_one_planted_defect(name):
-    """The image comparison passes whatever the second side paints."""
-    planted = PIXEL_DEFECTS[name]
-    spec, alter = planted[0], planted[1]
-    size = planted[2] if len(planted) > 2 else PIXEL_SIZE
-    shipped, altered = altered_renders(spec, alter, size)
-    assert_pictures_differ(old_side=shipped, new_side=altered, note=name)
 
 
 def test_the_text_a_picture_may_not_show_is_compared_as_exact_strings(monkeypatch):

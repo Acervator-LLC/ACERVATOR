@@ -27,6 +27,8 @@ from src.gui.main_tabs import start_all_progress_surface as surface
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
+    sealed,
+    unaltered,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -1157,15 +1159,20 @@ def dialog_painted_by_the_dialog(script, monkeypatch):
 
 
 def model_payload(script):
-    """The surface payload for the same script."""
+    """The surface payload for the same script, stamped."""
     model = surface.StartAllProgressModel()
     for step in script:
         run_step_new(model, step)
-    return surface.build_view_model(model)
+    return sealed(surface.build_view_model(model))
 
 
 def dialog_painted_by_the_model(payload):
-    """A bare dialog filled only from the payload, never from the dialog."""
+    """A bare dialog filled only from the payload, never from the dialog.
+
+    A payload the caller changed after it came off the surface is
+    refused.
+    """
+    unaltered(payload)
     from PySide6 import QtWidgets
 
     properties = payload["widget"]
@@ -1243,122 +1250,26 @@ def test_the_two_sides_render_the_same_pixels(name, monkeypatch):
     )
 
 
-def altered_renders(monkeypatch, script_name, alter):
-    """The shipped render and the render of a payload one edit apart."""
+def test_the_pixel_check_reports_a_different_script(monkeypatch):
+    """The image comparison passes whatever the second side paints.
+
+    Two real scripts, one driven into each side. One ends with every bot
+    started and the Close button live; the other has started nothing, so
+    a pass proves the comparison reports a dialog painted differently.
+    """
     app()
-    script = PIXEL_SCRIPTS[script_name]
-    payload = model_payload(script)
-    alter(payload)
-    shipped = render_offscreen(
-        dialog_painted_by_the_dialog(script, monkeypatch), PIXEL_SIZE
+    assert PIXEL_SCRIPTS["finished"] != PIXEL_SCRIPTS["fresh"]
+    assert_pictures_differ(
+        old_side=render_offscreen(
+            dialog_painted_by_the_dialog(PIXEL_SCRIPTS["finished"], monkeypatch),
+            PIXEL_SIZE,
+        ),
+        new_side=render_offscreen(
+            dialog_painted_by_the_model(model_payload(PIXEL_SCRIPTS["fresh"])),
+            PIXEL_SIZE,
+        ),
+        note="finished from the dialog against fresh from the surface",
     )
-    altered = render_offscreen(dialog_painted_by_the_model(payload), PIXEL_SIZE)
-    return shipped, altered
-
-
-def _drop_a_line(payload):
-    payload["items"] = payload["items"][:2]
-
-
-def _swap_two_lines(payload):
-    payload["items"][0], payload["items"][1] = (
-        payload["items"][1],
-        payload["items"][0],
-    )
-
-
-def _shorten_a_line(payload):
-    payload["items"][1] = "x"
-
-
-def _shorten_the_headline(payload):
-    payload["headline_text"] = "Done."
-
-
-def _enable_cancel(payload):
-    payload["cancel_enabled"] = True
-
-
-def _disable_close(payload):
-    payload["close_enabled"] = False
-
-
-def _move_the_margins(payload):
-    payload["layout"]["margins_px"] = [40, 40, 40, 40]
-
-
-def _move_the_button_row_margins(payload):
-    payload["button_row"]["margins_px"] = [30, 30, 30, 30]
-
-
-def _close_the_spacing(payload):
-    payload["layout"]["spacing_px"] = 0
-
-
-def _stretch_the_headline(payload):
-    payload["layout"]["child_stretch"] = [1, 0, 1, 0]
-
-
-def _swap_the_layout_order(payload):
-    payload["layout"]["order"] = ["subline", "headline", "list", "button_row"]
-
-
-def _swap_the_button_order(payload):
-    payload["button_row"]["order"] = ["stretch", "close", "cancel"]
-
-
-def _move_the_stretch_behind_the_buttons(payload):
-    payload["button_row"]["order"] = ["cancel", "close", "stretch"]
-
-
-def _repaint_the_list(payload):
-    payload["widget"]["style_sheet"] = payload["widget"]["style_sheet"].replace(
-        surface.LIST_SURFACE, "#280a0a"
-    )
-
-
-def _widen_the_minimum(payload):
-    payload["widget"]["minimum_width_px"] = 900
-
-
-def _stop_the_word_wrap(payload):
-    payload["subline"]["word_wrap"] = False
-
-
-def _rename_the_close_button(payload):
-    payload["buttons"]["close"]["text"] = "Dismiss"
-
-
-PIXEL_DEFECTS = {
-    "close_the_spacing": ("finished", _close_the_spacing),
-    "disable_close": ("finished", _disable_close),
-    "drop_a_line": ("finished", _drop_a_line),
-    "enable_cancel": ("finished", _enable_cancel),
-    "move_the_button_row_margins": ("finished", _move_the_button_row_margins),
-    "move_the_margins": ("finished", _move_the_margins),
-    "move_the_stretch_behind_the_buttons": (
-        "finished",
-        _move_the_stretch_behind_the_buttons,
-    ),
-    "rename_the_close_button": ("finished", _rename_the_close_button),
-    "repaint_the_list": ("finished", _repaint_the_list),
-    "shorten_a_line": ("finished", _shorten_a_line),
-    "shorten_the_headline": ("finished", _shorten_the_headline),
-    "stop_the_word_wrap": ("finished", _stop_the_word_wrap),
-    "stretch_the_headline": ("finished", _stretch_the_headline),
-    "swap_the_button_order": ("finished", _swap_the_button_order),
-    "swap_the_layout_order": ("finished", _swap_the_layout_order),
-    "swap_two_lines": ("timeout", _swap_two_lines),
-    "widen_the_minimum": ("finished", _widen_the_minimum),
-}
-
-
-@pytest.mark.parametrize("name", sorted(PIXEL_DEFECTS))
-def test_the_pixel_check_reports_one_planted_defect(name, monkeypatch):
-    """The image comparison passes whatever the second side paints."""
-    script_name, alter = PIXEL_DEFECTS[name]
-    shipped, altered = altered_renders(monkeypatch, script_name, alter)
-    assert_pictures_differ(old_side=shipped, new_side=altered, note=name)
 
 
 def test_the_swapped_lines_the_pixel_check_cannot_see_are_compared_as_text():

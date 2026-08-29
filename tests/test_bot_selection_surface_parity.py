@@ -25,6 +25,8 @@ from src.gui.widgets import bot_selection
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
+    sealed,
+    unaltered,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -683,8 +685,17 @@ def driven_table(script, table_name, use_surface):
     return table
 
 
+def plan_from_the_surface(anchor, bot_ids, selected, filled):
+    """The reanchor plan the surface returns, stamped as it comes off."""
+    return sealed(surface.reanchor_plan(anchor, bot_ids, selected, filled))
+
+
 def table_with_plan(script, table_name, plan):
-    """The table left behind after the setup steps and one hand-made plan."""
+    """The table left behind after the setup steps and one surface plan.
+
+    A plan the caller changed after it came off the surface is refused.
+    """
+    unaltered(plan)
     app()
     table = traced_class(table_classes()[table_name])()
     for step in script:
@@ -716,41 +727,35 @@ def test_the_two_sides_render_the_same_pixels(table_name):
 
 
 @pytest.mark.parametrize("table_name", TABLE_NAMES)
-def test_the_pixel_check_reports_the_highlight_on_another_row(table_name):
-    """The image comparison cannot see the highlight move one row."""
-    moved = surface.reanchor_plan("bot-a", THREE_REORDERED, "", [0, 1, 2])
-    moved["calls"] = [
-        ["clearSelection"],
-        ["setCurrentCell", 1, 0],
-        ["selectRow", 1],
-    ]
+def test_the_pixel_check_reports_a_highlight_on_another_row(table_name):
+    """The image comparison cannot see the highlight sit on another row.
+
+    Two real anchors, one taken from each side. The table the widget
+    drives anchors on bot-a; the plan the surface returns for bot-b
+    anchors one row down.
+    """
     from_helper = render_offscreen(
         driven_table(PIXEL_SCRIPT, table_name, use_surface=False), PIXEL_SIZE
     )
-    from_moved = render_offscreen(
-        table_with_plan(PIXEL_SETUP, table_name, moved), PIXEL_SIZE
+    from_bot_b = render_offscreen(
+        table_with_plan(
+            PIXEL_SETUP,
+            table_name,
+            plan_from_the_surface("bot-b", THREE_REORDERED, "", [0, 1, 2]),
+        ),
+        PIXEL_SIZE,
     )
-    assert_pictures_differ(old_side=from_helper, new_side=from_moved, note=table_name)
-
-
-@pytest.mark.parametrize("table_name", TABLE_NAMES)
-def test_the_pixel_check_reports_a_plan_that_does_nothing(table_name):
-    """The image comparison cannot see the highlight fail to arrive."""
-    silent = surface.reanchor_plan("bot-a", THREE_REORDERED, "", [0, 1, 2])
-    silent["calls"] = []
-    from_helper = render_offscreen(
-        driven_table(PIXEL_SCRIPT, table_name, use_surface=False), PIXEL_SIZE
-    )
-    from_silent = render_offscreen(
-        table_with_plan(PIXEL_SETUP, table_name, silent), PIXEL_SIZE
-    )
-    assert_pictures_differ(old_side=from_helper, new_side=from_silent, note=table_name)
+    assert_pictures_differ(old_side=from_helper, new_side=from_bot_b, note=table_name)
 
 
 @pytest.mark.parametrize("table_name", TABLE_NAMES)
 def test_the_pixel_check_reports_a_cleared_selection(table_name):
-    """The image comparison cannot see the highlight disappear."""
-    cleared = surface.reanchor_plan("gone", THREE_REORDERED, "", [0, 1, 2])
+    """The image comparison cannot see the highlight disappear.
+
+    Two real anchors, one taken from each side. The plan the surface
+    returns for an anchor no longer in the table clears the selection.
+    """
+    cleared = plan_from_the_surface("gone", THREE_REORDERED, "", [0, 1, 2])
     from_helper = render_offscreen(
         driven_table(PIXEL_SCRIPT, table_name, use_surface=False), PIXEL_SIZE
     )
@@ -759,6 +764,25 @@ def test_the_pixel_check_reports_a_cleared_selection(table_name):
     )
     assert_pictures_differ(old_side=from_helper, new_side=from_cleared, note=table_name)
     assert cleared["calls"] == [["clearSelection"], ["setCurrentCell", -1, -1]]
+
+
+@pytest.mark.parametrize("table_name", TABLE_NAMES)
+def test_a_plan_that_makes_no_call_is_read_off_both_sides(table_name):
+    """A plan that leaves the highlight where it is was left to the render.
+
+    Whether a highlight that never moves paints the same picture depends
+    on the row the table already carries, so the plan is read as calls
+    on both sides instead.
+    """
+    held = surface.reanchor_plan("bot-a", THREE_REORDERED, "bot-a", [0, 1, 2])
+    assert held["calls"] == []
+    assert surface.reanchor_plan("", THREE_REORDERED, "", [0, 1, 2])["calls"] == []
+    from_widget = driven_table(PIXEL_SCRIPT, table_name, use_surface=False)
+    from_surface = driven_table(PIXEL_SCRIPT, table_name, use_surface=True)
+    anchored = list(THREE_REORDERED).index("bot-a")
+    assert from_widget.currentRow() == anchored
+    assert from_surface.currentRow() == from_widget.currentRow()
+    assert from_surface.rowCount() == from_widget.rowCount() == len(THREE_REORDERED)
 
 
 @pytest.mark.parametrize("table_name", TABLE_NAMES)
