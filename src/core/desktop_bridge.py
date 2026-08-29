@@ -49,6 +49,7 @@ def build_registry() -> Dict[str, Handler]:
         console_log_surface,
         console_tab_surface,
         header_strip_surface,
+        status_log_surface,
         trading_tab_surface,
     )
 
@@ -58,6 +59,7 @@ def build_registry() -> Dict[str, Handler]:
         console_tab_surface.METHOD: console_tab_surface.view_model,
         header_strip_surface.METHOD: header_strip_surface.view_model,
         trading_tab_surface.METHOD: trading_tab_surface.view_model,
+        status_log_surface.METHOD: status_log_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
 
