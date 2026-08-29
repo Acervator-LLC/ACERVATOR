@@ -22,6 +22,10 @@ pytest.importorskip("PySide6")
 
 from src.gui.main_tabs import bot_selection_surface as surface
 from src.gui.widgets import bot_selection
+from tests.fixtures.surface_pictures import (
+    assert_pictures_differ,
+    assert_pictures_match,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -46,10 +50,6 @@ def render_offscreen(widget, size):
     from qt_pixel import render_widget
 
     return render_widget(widget, size)
-
-
-def image_digest(image):
-    return hashlib.sha256(bytes(image.constBits())).hexdigest()
 
 
 def table_classes():
@@ -704,14 +704,15 @@ PIXEL_SCRIPT = PIXEL_SETUP + [(REANCHOR, "bot-a")]
 @pytest.mark.parametrize("table_name", TABLE_NAMES)
 def test_the_two_sides_render_the_same_pixels(table_name):
     """The table paints a different highlight than the helper leaves."""
-    from_helper = render_offscreen(
-        driven_table(PIXEL_SCRIPT, table_name, use_surface=False), PIXEL_SIZE
+    assert_pictures_match(
+        old_side=render_offscreen(
+            driven_table(PIXEL_SCRIPT, table_name, use_surface=False), PIXEL_SIZE
+        ),
+        new_side=render_offscreen(
+            driven_table(PIXEL_SCRIPT, table_name, use_surface=True), PIXEL_SIZE
+        ),
+        note=table_name,
     )
-    from_plan = render_offscreen(
-        driven_table(PIXEL_SCRIPT, table_name, use_surface=True), PIXEL_SIZE
-    )
-    assert from_helper.size() == from_plan.size()
-    assert image_digest(from_helper) == image_digest(from_plan)
 
 
 @pytest.mark.parametrize("table_name", TABLE_NAMES)
@@ -729,7 +730,7 @@ def test_the_pixel_check_reports_the_highlight_on_another_row(table_name):
     from_moved = render_offscreen(
         table_with_plan(PIXEL_SETUP, table_name, moved), PIXEL_SIZE
     )
-    assert image_digest(from_helper) != image_digest(from_moved)
+    assert_pictures_differ(old_side=from_helper, new_side=from_moved, note=table_name)
 
 
 @pytest.mark.parametrize("table_name", TABLE_NAMES)
@@ -743,7 +744,7 @@ def test_the_pixel_check_reports_a_plan_that_does_nothing(table_name):
     from_silent = render_offscreen(
         table_with_plan(PIXEL_SETUP, table_name, silent), PIXEL_SIZE
     )
-    assert image_digest(from_helper) != image_digest(from_silent)
+    assert_pictures_differ(old_side=from_helper, new_side=from_silent, note=table_name)
 
 
 @pytest.mark.parametrize("table_name", TABLE_NAMES)
@@ -756,34 +757,35 @@ def test_the_pixel_check_reports_a_cleared_selection(table_name):
     from_cleared = render_offscreen(
         table_with_plan(PIXEL_SETUP, table_name, cleared), PIXEL_SIZE
     )
+    assert_pictures_differ(old_side=from_helper, new_side=from_cleared, note=table_name)
     assert cleared["calls"] == [["clearSelection"], ["setCurrentCell", -1, -1]]
-    assert image_digest(from_helper) != image_digest(from_cleared)
 
 
-def test_the_font_database_decides_what_the_pixel_check_can_read():
-    """The pixel check is trusted to compare the text in a cell.
+@pytest.mark.parametrize("table_name", TABLE_NAMES)
+def test_a_same_length_cell_is_compared_as_an_exact_string(table_name):
+    """A same-length cell swap was left to the render to report.
 
-    Both halves are driven: with no font database two cells of equal
-    length render identically whatever they say, and with one they do
-    not. Bot ids are compared as exact strings in the trace above; the
-    pixel check covers which row carries the highlight.
+    Whether a swap of equal length moves a pixel depends on the fonts
+    the host installs, so no render carries this proof on every machine.
+    Every cell is read off the table the helper drives and off the table
+    the plan drives, and compared character for character.
     """
-    from PySide6.QtWidgets import QTableWidgetItem
-
-    from tests.fixtures.host_fonts import has_real_fonts
-
     app()
-    plain = driven_table(PIXEL_SCRIPT, "scrumming", use_surface=False)
-    renamed = driven_table(PIXEL_SCRIPT, "scrumming", use_surface=False)
-    renamed.setItem(0, 0, QTableWidgetItem("r0c9"))
-    assert plain.item(0, 0).text() != renamed.item(0, 0).text()
-    assert len(plain.item(0, 0).text()) == len(renamed.item(0, 0).text())
-    plain_digest = image_digest(render_offscreen(plain, PIXEL_SIZE))
-    renamed_digest = image_digest(render_offscreen(renamed, PIXEL_SIZE))
-    if has_real_fonts():
-        assert plain_digest != renamed_digest
-    else:
-        assert plain_digest == renamed_digest
+    from_helper = driven_table(PIXEL_SCRIPT, table_name, use_surface=False)
+    from_plan = driven_table(PIXEL_SCRIPT, table_name, use_surface=True)
+    assert from_helper.rowCount() == from_plan.rowCount() > 0
+    assert from_helper.columnCount() == from_plan.columnCount() > 0
+    for row in range(from_helper.rowCount()):
+        for col in range(from_helper.columnCount()):
+            helper_cell = from_helper.item(row, col)
+            plan_cell = from_plan.item(row, col)
+            assert (helper_cell is None) is (plan_cell is None), (row, col)
+            if helper_cell is not None:
+                assert helper_cell.text() == plan_cell.text(), (row, col)
+    original = from_helper.item(0, 0).text()
+    disguised = "r0c9"
+    assert len(disguised) == len(original)
+    assert disguised != original
 
 
 HELPER_PATH = REPO_ROOT / "src/gui/widgets/bot_selection.py"

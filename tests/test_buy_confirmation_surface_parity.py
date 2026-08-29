@@ -23,6 +23,10 @@ pytest.importorskip("PySide6")
 
 from src.gui import buy_confirmation_dialog as qt_dialog
 from src.gui.main_tabs import buy_confirmation_surface as surface
+from tests.fixtures.surface_pictures import (
+    assert_pictures_differ,
+    assert_pictures_match,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -46,41 +50,10 @@ def app():
     return ensure_app()
 
 
-def host_has_fonts() -> bool:
-    """Whether this host can paint a glyph at all.
-
-    Asked at run time, never asserted: a machine with no font installed
-    for the offscreen platform paints every character as the same empty
-    box, and a machine with fonts does not. The answer decides what the
-    render is allowed to prove, so the same test reports on both.
-    """
-    from PySide6.QtGui import QFontDatabase
-
-    app()
-    return bool(QFontDatabase.families())
-
-
 def render_offscreen(widget, size):
     from qt_pixel import render_widget
 
     return render_widget(widget, size)
-
-
-def colour_count(image, hex_colour):
-    """How many pixels of the render carry exactly this colour."""
-    from PySide6.QtGui import QColor
-
-    target = QColor(hex_colour).rgb()
-    return sum(
-        1
-        for y in range(image.height())
-        for x in range(image.width())
-        if image.pixel(x, y) == target
-    )
-
-
-def image_digest(image):
-    return hashlib.sha256(bytes(image.constBits())).hexdigest()
 
 
 def digest(trace):
@@ -776,11 +749,12 @@ def test_widget_properties_match_the_dialog():
     assert surface.STYLE_SHEET == ""
     from qt_pixel import render_widget
 
-    image = render_widget(dialog, PIXEL_SIZE)
-    mirror = render_widget(
-        dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+    assert_pictures_match(
+        old_side=render_widget(dialog, PIXEL_SIZE),
+        new_side=render_widget(
+            dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+        ),
     )
-    assert image_digest(mirror) == image_digest(image)
     bare = QDialog()
     assert bare.accessibleName() != surface.ACCESSIBLE_NAME
     assert bare.windowTitle() != surface.WINDOW_TITLE
@@ -863,11 +837,12 @@ def test_the_children_match_the_dialog(monkeypatch):
     }
     from qt_pixel import render_widget
 
-    image = render_widget(dialog, PIXEL_SIZE)
-    mirror = render_widget(
-        dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+    assert_pictures_match(
+        old_side=render_widget(dialog, PIXEL_SIZE),
+        new_side=render_widget(
+            dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+        ),
     )
-    assert image_digest(mirror) == image_digest(image)
     bare_label = QLabel("")
     assert bare_label.wordWrap() != surface.REASON_LABEL["word_wrap"]
     assert bare_label.styleSheet() != surface.REASON_LABEL["style_sheet"]
@@ -903,11 +878,12 @@ def test_the_buttons_match_the_dialog(monkeypatch):
     assert len({surface.YES_STYLE, surface.NO_STYLE, surface.SKIP_STYLE}) == 3
     from qt_pixel import render_widget
 
-    image = render_widget(dialog, PIXEL_SIZE)
-    mirror = render_widget(
-        dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+    assert_pictures_match(
+        old_side=render_widget(dialog, PIXEL_SIZE),
+        new_side=render_widget(
+            dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+        ),
     )
-    assert image_digest(mirror) == image_digest(image)
 
 
 COLOUR_TOKENS = (
@@ -977,14 +953,16 @@ def test_the_skins_are_the_dialogs_own(monkeypatch):
     assert surface.DETAILS_STYLE == "padding: 8px;"
     from qt_pixel import render_widget
 
-    image = render_widget(dialog, PIXEL_SIZE)
-    mirror = render_widget(
-        dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+    assert_pictures_match(
+        old_side=render_widget(dialog, PIXEL_SIZE),
+        new_side=render_widget(
+            dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+        ),
     )
-    assert image_digest(mirror) == image_digest(image)
     for token in (surface.YES_SURFACE, surface.NO_SURFACE, surface.REASON_COLOR):
-        assert colour_count(mirror, token) == colour_count(image, token), token
-    assert colour_count(image, "#ff00ff") == 0
+        assert token in dialog.styleSheet() + "".join(
+            widget.styleSheet() for widget in labels + buttons
+        ), token
 
 
 def test_the_shipped_strings_are_the_dialogs_own():
@@ -1603,22 +1581,23 @@ PIXEL_SPECS = ("plain", "empty", "zero_price", "negative", "unicode", "no_separa
 def test_the_two_sides_render_the_same_pixels(spec):
     """The page paints a value, a colour or a position the dialog does not."""
     app()
-    from_dialog = render_offscreen(dialog_painted_by_the_dialog(spec), PIXEL_SIZE)
-    from_model = render_offscreen(
-        dialog_painted_by_the_model(model_payload(spec)), PIXEL_SIZE
+    assert_pictures_match(
+        old_side=render_offscreen(dialog_painted_by_the_dialog(spec), PIXEL_SIZE),
+        new_side=render_offscreen(
+            dialog_painted_by_the_model(model_payload(spec)), PIXEL_SIZE
+        ),
+        note=spec,
     )
-    assert from_dialog.size() == from_model.size()
-    assert image_digest(from_dialog) == image_digest(from_model)
 
 
-def altered_digests(spec, alter):
+def altered_renders(spec, alter):
     """The shipped render and the render of a payload one edit apart."""
     app()
     payload = model_payload(spec)
     alter(payload)
     shipped = render_offscreen(dialog_painted_by_the_dialog(spec), PIXEL_SIZE)
     altered = render_offscreen(dialog_painted_by_the_model(payload), PIXEL_SIZE)
-    return image_digest(shipped), image_digest(altered)
+    return shipped, altered
 
 
 def _repaint_yes(payload):
@@ -1687,10 +1666,6 @@ def _stop_the_word_wrap(payload):
     payload["reason_label"]["word_wrap"] = False
 
 
-def _drop_the_bold(payload):
-    payload["reason_label"]["bold"] = False
-
-
 def _shrink_the_reason_font(payload):
     payload["reason_label"]["point_size"] = 8
 
@@ -1739,55 +1714,48 @@ PIXEL_DEFECTS = {
 def test_the_pixel_check_reports_one_planted_defect(name):
     """The image comparison passes whatever the second side paints."""
     spec, alter = PIXEL_DEFECTS[name]
-    shipped, altered = altered_digests(spec, alter)
-    assert shipped != altered
+    shipped, altered = altered_renders(spec, alter)
+    assert_pictures_differ(old_side=shipped, new_side=altered, note=name)
 
 
 SILENT_IN_THE_RENDER = ("bold", "point_size")
 
 
-def test_the_text_a_picture_may_not_show_is_compared_as_exact_strings():
-    """The render was trusted to tell two strings of one length apart.
+def test_the_text_a_picture_may_not_show_is_compared_as_exact_strings(monkeypatch):
+    """A same-length text swap was left to the render to report.
 
-    A host with no font installed for the offscreen platform paints
-    every character as the same empty box, so a same-length swap changes
-    no pixel there. The host is asked at run time rather than assumed,
-    and the string comparison reports the swap on every host either way.
+    Whether a swap of equal length moves a pixel depends on the fonts
+    the host installs, so the render cannot carry this proof anywhere.
+    Both painted strings are read off the dialog's own labels and off
+    the surface and compared character for character.
     """
     app()
-    spec = "plain"
-    shipped_payload = model_payload(spec)
-    disguised = model_payload(spec)
-    original = disguised["reason_text"]
-    disguised["reason_text"] = "Z" * len(original)
-    assert disguised["reason_text"] != original
-    assert len(disguised["reason_text"]) == len(original)
-    shipped = render_offscreen(dialog_painted_by_the_model(shipped_payload), PIXEL_SIZE)
-    swapped = render_offscreen(dialog_painted_by_the_model(disguised), PIXEL_SIZE)
-    if host_has_fonts():
-        assert image_digest(shipped) != image_digest(swapped)
-    else:
-        assert image_digest(shipped) == image_digest(swapped)
-    assert shipped_payload["reason_text"] != disguised["reason_text"]
+    CALLS.clear()
+    labels, buttons = trace_widgets(monkeypatch)
+    qt_dialog.BuyConfirmationDialog(**PARAMS["plain"])
+    payload = model_payload("plain")
+    assert payload["reason_text"] == labels[0].text()
+    assert payload["details_text"] == labels[1].text()
+    assert [payload["buttons"][name]["text"] for name in ("yes", "no", "skip")] == [
+        button.text() for button in buttons
+    ]
+    disguised = "Z" * len(payload["reason_text"])
+    assert len(disguised) == len(payload["reason_text"])
+    assert disguised != payload["reason_text"] != ""
+    assert disguised != labels[0].text()
 
 
 def test_the_font_a_picture_may_not_show_is_compared_as_numbers(monkeypatch):
-    """The banner's size and weight were left to the render to report.
+    """The banner's weight was left to the render to report.
 
-    A host with no glyphs paints a bold and a plain weight as the same
-    box, so only the point size, which changes the box, reaches the
-    render everywhere. The host is asked at run time rather than
-    assumed. Both values are compared against the dialog's own font in
-    ``test_the_children_match_the_dialog``.
+    A weight paints a heavier stem only where the host installs a bold
+    face, so no render carries this proof on every machine. The weight
+    is read off the dialog's own font and off the surface as a flag. The
+    point size changes the size of the box on every host and stays a
+    picture check, in ``test_the_pixel_check_reports_one_planted_defect``
+    under ``shrink_the_reason_font``.
     """
     app()
-    plain_bold, no_bold = altered_digests("plain", _drop_the_bold)
-    plain_size, smaller = altered_digests("plain", _shrink_the_reason_font)
-    if host_has_fonts():
-        assert plain_bold != no_bold
-    else:
-        assert plain_bold == no_bold
-    assert plain_size != smaller
     CALLS.clear()
     labels, _buttons = trace_widgets(monkeypatch)
     qt_dialog.BuyConfirmationDialog(**PARAMS["plain"])
@@ -1819,9 +1787,17 @@ def test_the_answer_a_picture_cannot_see_is_compared_as_a_string(monkeypatch):
     other = model_payload("plain", button=surface.SKIP)
     assert same["result_value"] != other["result_value"]
     assert same["details_text"] == other["details_text"]
-    assert image_digest(
-        render_offscreen(dialog_painted_by_the_model(same), PIXEL_SIZE)
-    ) == image_digest(render_offscreen(dialog_painted_by_the_model(other), PIXEL_SIZE))
+    assert same["reason_text"] == other["reason_text"]
+    assert same["buttons"] == other["buttons"]
+    assert same["widget"] == other["widget"]
+    painted_by_the_answer = [
+        key for key in same if key not in ("result_value", "accepted", "calls")
+    ]
+    assert [same[key] for key in painted_by_the_answer] == [
+        other[key] for key in painted_by_the_answer
+    ]
+    assert old[1]["details_text"] == old[2]["details_text"]
+    assert old[1]["reason_text"] == old[2]["reason_text"]
 
 
 BLIND_TO_THE_PICTURE = {
@@ -1837,42 +1813,52 @@ BLIND_TO_THE_PICTURE = {
 def test_everything_a_picture_cannot_see_is_named_and_covered(monkeypatch):
     """A value no render can report was left to the render to report.
 
-    Six values never reach a pixel comparison, and each is named here
-    with the check that does cover it. The window size is overwritten by
-    the render size before the grab. The button-row stretch changes
-    nothing because the three labels already fill the row. The answer is
-    painted nowhere. The banner's weight and size paint the same box on
-    a host with no glyphs. The declared colour is dimmed by the platform
-    style, so the exact token reaches no pixel on this host. Two strings
-    of one length paint the same boxes. The banner's point size is NOT
-    in this list: it changes the size of the box and the render reports
-    it on every host.
+    Six values are named here with the check that does cover each, and
+    every one of them is proved by reading the value off the dialog and
+    off the surface. None is proved by a picture: whether a value moves
+    a pixel depends on the host's fonts and on how the platform style
+    repaints a declared colour, so a picture answers the question
+    differently from one machine to the next. The one picture in this
+    test compares the dialog's pixels against the surface's pixels.
     """
     app()
+    CALLS.clear()
+    labels, buttons = trace_widgets(monkeypatch)
+    dialog = qt_dialog.BuyConfirmationDialog(**PARAMS["plain"])
     assert len(BLIND_TO_THE_PICTURE) == 6
     for covered_by in BLIND_TO_THE_PICTURE.values():
         assert covered_by in globals(), covered_by
         assert callable(globals()[covered_by]), covered_by
 
-    resized = model_payload("plain")
-    resized["widget"]["size_px"] = [520, 360]
-    shipped = render_offscreen(dialog_painted_by_the_dialog("plain"), PIXEL_SIZE)
-    assert image_digest(
-        render_offscreen(dialog_painted_by_the_model(resized), PIXEL_SIZE)
-    ) == image_digest(shipped)
-
-    stretched = model_payload("plain")
-    stretched["button_row"]["child_stretch"] = [1, 0, 0]
-    assert image_digest(
-        render_offscreen(dialog_painted_by_the_model(stretched), PIXEL_SIZE)
-    ) == image_digest(shipped)
-
-    assert colour_count(shipped, surface.YES_SURFACE) == 0
-    assert colour_count(shipped, surface.NO_SURFACE) == 0
-
-    dialog = qt_dialog.BuyConfirmationDialog(**PARAMS["plain"])
     assert list(surface.DEFAULT_SIZE_PX) == [dialog.width(), dialog.height()]
+    assert surface.WIDGET["size_px"] == [dialog.width(), dialog.height()]
+
+    row = dialog.layout().itemAt(3).layout()
+    assert surface.BUTTON_ROW_LAYOUT["child_stretch"] == [
+        row.stretch(index) for index in range(row.count())
+    ]
     assert surface.BUTTON_ROW_LAYOUT["child_stretch"] == [0, 0, 0]
+
+    assert surface.YES_STYLE == buttons[0].styleSheet()
+    assert surface.NO_STYLE == buttons[1].styleSheet()
+    assert surface.YES_SURFACE in buttons[0].styleSheet()
+    assert surface.NO_SURFACE in buttons[1].styleSheet()
+
+    assert surface.REASON_LABEL["bold"] == labels[0].font().bold()
+    assert surface.REASON_LABEL["point_size"] == labels[0].font().pointSize()
+    payload = model_payload("plain")
+    assert payload["reason_text"] == labels[0].text()
+    assert payload["details_text"] == labels[1].text()
+    assert payload["result_value"] == dialog.result_value
+
+    from qt_pixel import render_widget
+
+    assert_pictures_match(
+        old_side=render_widget(dialog, PIXEL_SIZE),
+        new_side=render_widget(
+            dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+        ),
+    )
 
 
 def test_view_model_is_json_serialisable():

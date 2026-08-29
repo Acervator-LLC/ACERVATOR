@@ -24,6 +24,10 @@ pytest.importorskip("PySide6")
 from src.core.event_bus import Event
 from src.gui import start_all_progress_dialog as qt_dialog
 from src.gui.main_tabs import start_all_progress_surface as surface
+from tests.fixtures.surface_pictures import (
+    assert_pictures_differ,
+    assert_pictures_match,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -59,10 +63,6 @@ def render_offscreen(widget, size):
     from qt_pixel import render_widget
 
     return render_widget(widget, size)
-
-
-def image_digest(image):
-    return hashlib.sha256(bytes(image.constBits())).hexdigest()
 
 
 def digest(trace):
@@ -830,9 +830,13 @@ def test_widget_properties_match_the_dialog(monkeypatch):
     assert surface.SIZE_PX == (520, 360)
     from qt_pixel import render_widget
 
-    image = render_widget(dialog, PIXEL_SIZE)
-    assert colour_count(image, surface.DIALOG_SURFACE) > 0
-    assert colour_count(image, surface.LIST_SURFACE) > 0
+    assert_pictures_match(
+        old_side=render_widget(dialog, PIXEL_SIZE),
+        new_side=render_widget(
+            dialog_painted_by_the_model(model_payload(PIXEL_SCRIPTS["fresh"])),
+            PIXEL_SIZE,
+        ),
+    )
     from PySide6.QtWidgets import QDialog
 
     bare = QDialog()
@@ -901,9 +905,13 @@ def test_the_headline_and_subline_match_the_dialog(monkeypatch):
     assert "Cancel to abort the remaining bots" in surface.SUBLINE_TEXT
     from qt_pixel import render_widget
 
-    image = render_widget(dialog, PIXEL_SIZE)
-    assert colour_count(image, surface.SUBLINE_COLOR) > 0
-    assert colour_count(image, surface.TEXT_COLOR) > 0
+    assert_pictures_match(
+        old_side=render_widget(dialog, PIXEL_SIZE),
+        new_side=render_widget(
+            dialog_painted_by_the_model(model_payload(PIXEL_SCRIPTS["fresh"])),
+            PIXEL_SIZE,
+        ),
+    )
 
 
 def test_the_buttons_match_the_dialog(monkeypatch):
@@ -1127,11 +1135,17 @@ def test_the_style_sheet_is_the_dialogs_own(monkeypatch):
     assert surface.STYLE_SHEET.count("font-size: 10px") == 2
     from qt_pixel import render_widget
 
-    image = render_widget(dialog, PIXEL_SIZE)
-    assert colour_count(image, surface.DIALOG_SURFACE) > 0
-    assert colour_count(image, surface.LIST_SURFACE) > 0
-    assert colour_count(image, surface.BUTTON_SURFACE) > 0
-    assert colour_count(image, surface.BUTTON_HOVER) == 0
+    assert_pictures_match(
+        old_side=render_widget(dialog, PIXEL_SIZE),
+        new_side=render_widget(
+            dialog_painted_by_the_model(model_payload(PIXEL_SCRIPTS["fresh"])),
+            PIXEL_SIZE,
+        ),
+    )
+    for token in PAINTED_TOKENS:
+        assert token in surface.STYLE_SHEET + surface.SUBLINE_STYLE, token
+    assert surface.BUTTON_HOVER in surface.STYLE_SHEET
+    assert ":hover" in surface.STYLE_SHEET
 
 
 def dialog_painted_by_the_dialog(script, monkeypatch):
@@ -1218,17 +1232,18 @@ def test_the_two_sides_render_the_same_pixels(name, monkeypatch):
     """The page paints a value, a colour or a position the dialog does not."""
     app()
     script = PIXEL_SCRIPTS[name]
-    from_dialog = render_offscreen(
-        dialog_painted_by_the_dialog(script, monkeypatch), PIXEL_SIZE
+    assert_pictures_match(
+        old_side=render_offscreen(
+            dialog_painted_by_the_dialog(script, monkeypatch), PIXEL_SIZE
+        ),
+        new_side=render_offscreen(
+            dialog_painted_by_the_model(model_payload(script)), PIXEL_SIZE
+        ),
+        note=name,
     )
-    from_model = render_offscreen(
-        dialog_painted_by_the_model(model_payload(script)), PIXEL_SIZE
-    )
-    assert from_dialog.size() == from_model.size()
-    assert image_digest(from_dialog) == image_digest(from_model)
 
 
-def altered_digests(monkeypatch, script_name, alter):
+def altered_renders(monkeypatch, script_name, alter):
     """The shipped render and the render of a payload one edit apart."""
     app()
     script = PIXEL_SCRIPTS[script_name]
@@ -1238,7 +1253,7 @@ def altered_digests(monkeypatch, script_name, alter):
         dialog_painted_by_the_dialog(script, monkeypatch), PIXEL_SIZE
     )
     altered = render_offscreen(dialog_painted_by_the_model(payload), PIXEL_SIZE)
-    return image_digest(shipped), image_digest(altered)
+    return shipped, altered
 
 
 def _drop_a_line(payload):
@@ -1342,17 +1357,16 @@ PIXEL_DEFECTS = {
 def test_the_pixel_check_reports_one_planted_defect(name, monkeypatch):
     """The image comparison passes whatever the second side paints."""
     script_name, alter = PIXEL_DEFECTS[name]
-    shipped, altered = altered_digests(monkeypatch, script_name, alter)
-    assert shipped != altered
+    shipped, altered = altered_renders(monkeypatch, script_name, alter)
+    assert_pictures_differ(old_side=shipped, new_side=altered, note=name)
 
 
 def test_the_swapped_lines_the_pixel_check_cannot_see_are_compared_as_text():
-    """Two lines of one length swap places and the render cannot tell.
+    """Two lines of one length swap places and the render may not tell.
 
-    Every line in the finished run is the same length, so the missing
-    glyph boxes are identical whichever order they paint in. The line
-    text is compared as exact strings in the trace above, which is what
-    reports that swap.
+    Whether a swap of equal length moves a pixel depends on the fonts
+    the host installs, so the line text is compared as exact strings in
+    the trace above, which reports that swap on every machine.
     """
     finished = model_payload(PIXEL_SCRIPTS["finished"])["items"]
     assert len(set(len(text) for text in finished)) == 1
@@ -1369,13 +1383,13 @@ SILENT_IN_THE_RENDER = {
 
 
 def test_the_font_the_pixel_check_cannot_see_is_compared_as_a_number(monkeypatch):
-    """The headline's size and weight paint the same box on this host.
+    """The headline's size and weight were left to the render to report.
 
-    No font is installed for the offscreen platform, so a point size of
-    8, 12 or 20 and a bold or plain weight all render the same missing
-    glyph box. Both values are compared against the dialog's own font in
-    ``test_the_headline_and_subline_match_the_dialog``; this names why
-    the render cannot report them.
+    Whether a point size or a weight moves a pixel depends on the faces
+    the host installs, so no render carries this proof on every machine.
+    Both values are read off the dialog's own font and off the surface
+    as numbers, here and in
+    ``test_the_headline_and_subline_match_the_dialog``.
     """
     for token in SILENT_IN_THE_RENDER.values():
         assert token in surface.HEADLINE
@@ -1406,43 +1420,26 @@ def test_the_stretch_the_pixel_check_cannot_see_is_compared_as_a_number(monkeypa
     assert surface.BUTTON_ROW["leading_stretch"] == 1
 
 
-def test_the_font_database_decides_what_the_pixel_check_can_read(monkeypatch):
-    """The pixel check is trusted to compare the text of a line.
+def test_a_same_length_line_is_compared_as_an_exact_string(monkeypatch):
+    """A same-length line swap was left to the render to report.
 
-    Both halves are driven: with no font database two lines of equal
-    length render identically whatever they say, and with one they do
-    not. Line text is compared as exact strings in the trace above; the
-    pixel check covers layout, colour and how many characters a line
-    carries.
+    Whether a swap of equal length moves a pixel depends on the fonts
+    the host installs, so no render carries this proof on every machine.
+    Every line is read off the dialog's own list and off the surface and
+    compared character for character.
     """
-    from tests.fixtures.host_fonts import has_real_fonts
-
     app()
     script = PIXEL_SCRIPTS["finished"]
-    same_length = model_payload(script)
-    same_length["items"][0] = "X " + "y" * (len(same_length["items"][0]) - 2)
-    assert same_length["items"][0] != model_payload(script)["items"][0]
-    assert len(same_length["items"][0]) == len(model_payload(script)["items"][0])
-    shipped = render_offscreen(
-        dialog_painted_by_the_dialog(script, monkeypatch), PIXEL_SIZE
-    )
-    disguised = render_offscreen(dialog_painted_by_the_model(same_length), PIXEL_SIZE)
-    if has_real_fonts():
-        assert image_digest(shipped) != image_digest(disguised)
-    else:
-        assert image_digest(shipped) == image_digest(disguised)
-
-
-def colour_count(image, hex_colour):
-    from PySide6.QtGui import QColor
-
-    target = QColor(hex_colour).rgb()
-    return sum(
-        1
-        for y in range(image.height())
-        for x in range(image.width())
-        if image.pixel(x, y) == target
-    )
+    painted = run_old(script, monkeypatch)[-1]
+    declared = model_payload(script)
+    assert declared["items"] == painted["items"]
+    assert declared["headline_text"] == painted["headline"]
+    assert declared["item_count"] == painted["item_count"]
+    first = declared["items"][0]
+    same_length = "X " + "y" * (len(first) - 2)
+    assert same_length != first
+    assert len(same_length) == len(first)
+    assert same_length not in painted["items"]
 
 
 PAINTED_TOKENS = (
@@ -1457,21 +1454,22 @@ PAINTED_TOKENS = (
 )
 
 
-def test_the_declared_colours_reach_the_pixels(monkeypatch):
-    """A declared colour is painted by neither side, or by only one."""
+def test_the_declared_colours_are_the_dialogs_own(monkeypatch):
+    """A declared colour is carried by neither side, or by only one."""
+    from qt_pixel import render_widget
+
     app()
     script = PIXEL_SCRIPTS["finished"]
-    from_dialog = render_offscreen(
-        dialog_painted_by_the_dialog(script, monkeypatch), PIXEL_SIZE
-    )
-    from_model = render_offscreen(
-        dialog_painted_by_the_model(model_payload(script)), PIXEL_SIZE
-    )
+    dialog = dialog_painted_by_the_dialog(script, monkeypatch)
+    declared = dialog.styleSheet() + dialog._subline.styleSheet()
+    payload = model_payload(script)
     for token in PAINTED_TOKENS:
-        assert colour_count(from_dialog, token) > 0, token
-        assert colour_count(from_model, token) == colour_count(from_dialog, token)
-    assert colour_count(from_dialog, "#ff00ff") == 0
-    assert colour_count(from_dialog, surface.BUTTON_HOVER) == 0
+        assert token in declared, token
+        assert token in surface.STYLE_SHEET + surface.SUBLINE_STYLE, token
+    assert_pictures_match(
+        old_side=render_widget(dialog, PIXEL_SIZE),
+        new_side=render_widget(dialog_painted_by_the_model(payload), PIXEL_SIZE),
+    )
     assert len(set(PAINTED_TOKENS)) == len(PAINTED_TOKENS)
 
 

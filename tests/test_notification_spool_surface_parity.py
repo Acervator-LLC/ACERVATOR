@@ -23,6 +23,10 @@ pytest.importorskip("PySide6")
 
 from src.gui import design_system as ds
 from src.gui.main_tabs import notification_spool_surface as surface
+from tests.fixtures.surface_pictures import (
+    assert_pictures_differ,
+    assert_pictures_match,
+)
 from src.gui.widgets.notification_spool import NotificationSpool
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -433,10 +437,6 @@ def test_neither_file_connects_a_signal():
     assert surface_text.count(".connect(") == 0
 
 
-def image_digest(image):
-    return hashlib.sha256(bytes(image.constBits())).hexdigest()
-
-
 PIXEL_MESSAGES = [
     ("market open 09:30", "info"),
     ("fold complete on BTC", "success"),
@@ -477,12 +477,12 @@ def widget_painted_by_the_model(lines):
 def test_the_two_sides_render_the_same_pixels():
     """The page paints a colour, a size or a position the pane does not."""
     app()
-    from_widget = render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE)
-    from_model = render_offscreen(
-        widget_painted_by_the_model(model_lines()), PIXEL_SIZE
+    assert_pictures_match(
+        old_side=render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE),
+        new_side=render_offscreen(
+            widget_painted_by_the_model(model_lines()), PIXEL_SIZE
+        ),
     )
-    assert from_widget.size() == from_model.size()
-    assert image_digest(from_widget) == image_digest(from_model)
 
 
 def test_the_pixel_check_reports_a_changed_message_colour():
@@ -491,9 +491,10 @@ def test_the_pixel_check_reports_a_changed_message_colour():
     lines = model_lines()
     altered = [line.replace(ds.SUCCESS, ds.ERROR) for line in lines]
     assert altered != lines
-    from_widget = render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE)
-    from_altered = render_offscreen(widget_painted_by_the_model(altered), PIXEL_SIZE)
-    assert image_digest(from_widget) != image_digest(from_altered)
+    assert_pictures_differ(
+        old_side=render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE),
+        new_side=render_offscreen(widget_painted_by_the_model(altered), PIXEL_SIZE),
+    )
 
 
 def test_the_pixel_check_reports_a_changed_timestamp_colour():
@@ -502,9 +503,10 @@ def test_the_pixel_check_reports_a_changed_timestamp_colour():
     lines = model_lines()
     altered = [line.replace(ds.TEXT_PLACEHOLDER, ds.TEXT_HIGH) for line in lines]
     assert altered != lines
-    from_widget = render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE)
-    from_altered = render_offscreen(widget_painted_by_the_model(altered), PIXEL_SIZE)
-    assert image_digest(from_widget) != image_digest(from_altered)
+    assert_pictures_differ(
+        old_side=render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE),
+        new_side=render_offscreen(widget_painted_by_the_model(altered), PIXEL_SIZE),
+    )
 
 
 def test_the_pixel_check_reports_a_changed_order():
@@ -514,9 +516,10 @@ def test_the_pixel_check_reports_a_changed_order():
     swapped = list(lines)
     swapped[0], swapped[1] = swapped[1], swapped[0]
     assert swapped != lines
-    from_widget = render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE)
-    from_swapped = render_offscreen(widget_painted_by_the_model(swapped), PIXEL_SIZE)
-    assert image_digest(from_widget) != image_digest(from_swapped)
+    assert_pictures_differ(
+        old_side=render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE),
+        new_side=render_offscreen(widget_painted_by_the_model(swapped), PIXEL_SIZE),
+    )
 
 
 def test_the_pixel_check_reports_a_dropped_space_after_the_stamp():
@@ -525,9 +528,10 @@ def test_the_pixel_check_reports_a_dropped_space_after_the_stamp():
     lines = model_lines()
     altered = [line.replace("</span> <span", "</span><span") for line in lines]
     assert altered != lines
-    from_widget = render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE)
-    from_altered = render_offscreen(widget_painted_by_the_model(altered), PIXEL_SIZE)
-    assert image_digest(from_widget) != image_digest(from_altered)
+    assert_pictures_differ(
+        old_side=render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE),
+        new_side=render_offscreen(widget_painted_by_the_model(altered), PIXEL_SIZE),
+    )
 
 
 def test_a_block_level_tag_in_a_message_splits_the_qt_document():

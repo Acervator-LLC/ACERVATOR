@@ -23,7 +23,10 @@ pytest.importorskip("PySide6")
 
 from src.gui import instance_consent_dialog as qt_dialog
 from src.gui.main_tabs import instance_consent_surface as surface
-from tests.fixtures.host_fonts import has_real_fonts
+from tests.fixtures.surface_pictures import (
+    assert_pictures_differ,
+    assert_pictures_match,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -60,39 +63,10 @@ def app():
     return ensure_app()
 
 
-def host_has_fonts() -> bool:
-    """Whether this host paints a real glyph, asked at run time.
-
-    ``tests.fixtures.host_fonts`` is the one helper that asks. A machine
-    with no font installed for the offscreen platform paints every
-    character as the same empty box, so the answer decides what a render
-    is allowed to prove, and both answers get a live branch below.
-    """
-    app()
-    return has_real_fonts()
-
-
 def render_offscreen(widget, size):
     from qt_pixel import render_widget
 
     return render_widget(widget, size)
-
-
-def colour_count(image, hex_colour):
-    """How many pixels of the render carry exactly this colour."""
-    from PySide6.QtGui import QColor
-
-    target = QColor(hex_colour).rgb()
-    return sum(
-        1
-        for y in range(image.height())
-        for x in range(image.width())
-        if image.pixel(x, y) == target
-    )
-
-
-def image_digest(image):
-    return hashlib.sha256(bytes(image.constBits())).hexdigest()
 
 
 def digest(trace):
@@ -939,13 +913,12 @@ def test_widget_properties_match_the_dialog():
     assert dialog.focusWidget().objectName() == surface.FOCUS_ON
     from qt_pixel import render_widget
 
-    shipped = render_widget(dialog, PIXEL_SIZE)
-    mirror = render_widget(
-        dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+    assert_pictures_match(
+        old_side=render_widget(dialog, PIXEL_SIZE),
+        new_side=render_widget(
+            dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+        ),
     )
-    assert image_digest(mirror) == image_digest(shipped)
-    for name, token in surface.SKIN.items():
-        assert colour_count(mirror, token) == colour_count(shipped, token), name
     bare = QDialog()
     assert bare.accessibleName() != surface.ACCESSIBLE_NAME
     assert bare.windowTitle() != surface.WINDOW_TITLE
@@ -1162,18 +1135,21 @@ def test_the_style_sheet_is_the_dialogs_own():
     from qt_pixel import render_widget
 
     shipped = render_widget(dialog, PIXEL_SIZE)
-    mirror = render_widget(
-        dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+    assert_pictures_match(
+        old_side=shipped,
+        new_side=render_widget(
+            dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+        ),
     )
-    assert image_digest(mirror) == image_digest(shipped)
-    for name, token in surface.SKIN.items():
-        assert colour_count(mirror, token) == colour_count(shipped, token), name
     unskinned = model_payload("plain")
     unskinned["widget"]["style_sheet"] = ""
-    assert image_digest(
-        render_widget(dialog_painted_by_the_model(unskinned), PIXEL_SIZE)
-    ) != image_digest(shipped)
-    assert colour_count(shipped, surface.SKIN["surface"]) > 0
+    assert_pictures_differ(
+        old_side=shipped,
+        new_side=render_widget(dialog_painted_by_the_model(unskinned), PIXEL_SIZE),
+        note="the skin was stripped from the surface",
+    )
+    for name, token in surface.SKIN.items():
+        assert token in dialog.styleSheet(), name
 
 
 SWAP_BLIND_TOKENS: tuple[str, ...] = ()
@@ -1648,47 +1624,46 @@ PIXEL_SPECS = (
 def test_the_two_sides_render_the_same_pixels(spec):
     """The page paints a value, a colour or a position the dialog does not."""
     app()
-    from_dialog = render_offscreen(dialog_painted_by_the_dialog(spec), PIXEL_SIZE)
-    from_model = render_offscreen(
-        dialog_painted_by_the_model(model_payload(spec)), PIXEL_SIZE
+    assert_pictures_match(
+        old_side=render_offscreen(dialog_painted_by_the_dialog(spec), PIXEL_SIZE),
+        new_side=render_offscreen(
+            dialog_painted_by_the_model(model_payload(spec)), PIXEL_SIZE
+        ),
+        note=spec,
     )
-    assert from_dialog.size() == from_model.size()
-    assert image_digest(from_dialog) == image_digest(from_model)
 
 
-def test_the_two_sides_paint_the_same_count_of_every_skin_colour():
+def test_the_two_sides_declare_and_paint_the_same_skin():
     """The two sides declared one colour and painted another.
 
-    The exact declared token is compared between the two sides, not
-    against a number this test carries. A window asking for one colour
-    can be painted a different one by the platform style, so a fixed
-    count would be a statement about the operating system rather than
-    about the product.
+    Both sides are read for the exact declared token, and their pixels
+    are compared against each other. No count is pinned to a number: a
+    window asking for one colour can be painted a different one by the
+    platform style, so a count would state what the operating system
+    does rather than what the product does.
     """
+    from qt_pixel import render_widget
+
     app()
-    from_dialog = render_offscreen(dialog_painted_by_the_dialog("plain"), PIXEL_SIZE)
-    from_model = render_offscreen(
-        dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
-    )
-    painted = 0
+    dialog = dialog_painted_by_the_dialog("plain")
+    payload = model_payload("plain")
     for name, token in surface.SKIN.items():
-        shipped = colour_count(from_dialog, token)
-        mirror = colour_count(from_model, token)
-        assert shipped == mirror, name
-        painted += 1 if shipped else 0
-    assert painted >= 1
-    assert colour_count(from_dialog, "#ff00ff") == colour_count(from_model, "#ff00ff")
-    assert colour_count(from_dialog, "#ff00ff") == 0
+        assert token in dialog.styleSheet(), name
+        assert token in payload["widget"]["style_sheet"], name
+    assert_pictures_match(
+        old_side=render_widget(dialog, PIXEL_SIZE),
+        new_side=render_widget(dialog_painted_by_the_model(payload), PIXEL_SIZE),
+    )
 
 
-def altered_digests(spec, alter, size=PIXEL_SIZE):
+def altered_renders(spec, alter, size=PIXEL_SIZE):
     """The shipped render and the render of a payload one edit apart."""
     app()
     payload = model_payload(spec)
     alter(payload)
     shipped = render_offscreen(dialog_painted_by_the_dialog(spec), size)
     altered = render_offscreen(dialog_painted_by_the_model(payload), size)
-    return image_digest(shipped), image_digest(altered)
+    return shipped, altered
 
 
 def _repaint_the_surface(payload):
@@ -1882,72 +1857,53 @@ def test_the_pixel_check_reports_one_planted_defect(name):
     planted = PIXEL_DEFECTS[name]
     spec, alter = planted[0], planted[1]
     size = planted[2] if len(planted) > 2 else PIXEL_SIZE
-    shipped, altered = altered_digests(spec, alter, size)
-    assert shipped != altered
+    shipped, altered = altered_renders(spec, alter, size)
+    assert_pictures_differ(old_side=shipped, new_side=altered, note=name)
 
 
-def test_the_wide_render_gives_the_button_row_room_to_move():
-    """The stretch defects were measured at a width with no slack.
+def test_the_text_a_picture_may_not_show_is_compared_as_exact_strings(monkeypatch):
+    """A same-length text swap was left to the render to report.
 
-    The two stretch checks above only mean something where the row has
-    free space to distribute. At the default width the two buttons fill
-    the row and no arrangement can differ; at the wide width the spacer
-    takes real pixels. Both widths are legal for this dialog, whose
-    minimum width is smaller than either.
+    Whether a swap of equal length and equal word shape moves a pixel
+    depends on the fonts the host installs, so no render carries this
+    proof on every machine. Every painted string is read off the
+    dialog's own labels and off the surface and compared character for
+    character.
     """
-    app()
-    for size, expected_slack in ((PIXEL_SIZE, False), (WIDE_PIXEL_SIZE, True)):
-        dialog = dialog_painted_by_the_dialog("plain")
-        render_offscreen(dialog, size)
-        row = dialog.layout().itemAt(4).layout()
-        assert (row.itemAt(0).geometry().width() > 0) is expected_slack, size
-        assert size[0] >= surface.MINIMUM_WIDTH_PX
+    painted = run_old([(BUILD, "plain")], monkeypatch)[1]
+    declared = run_new([(BUILD, "plain")])[1]
+    lines = [key for key in painted if key.endswith("_text")]
+    assert len(lines) == 7
+    for key in lines:
+        assert declared[key] == painted[key], key
+    original = painted["headline_text"]
+    disguised = "".join(" " if character == " " else "Z" for character in original)
+    assert disguised != original
+    assert len(disguised) == len(original)
+    assert disguised.count(" ") == original.count(" ")
 
 
-def test_the_text_a_picture_may_not_show_is_compared_as_exact_strings():
-    """The render was trusted to tell two strings of one length apart.
+def test_the_tool_tip_a_picture_cannot_see_is_compared_as_a_string(monkeypatch):
+    """The reason a blocked consent gives never reaches a pixel.
 
-    A host with no font installed for the offscreen platform paints
-    every character as the same empty box, so a same-length swap changes
-    no pixel there. The host is asked at run time rather than assumed,
-    and the string comparison reports the swap on every host either way.
+    A tool tip appears only while a pointer rests on the button, so it
+    is read off the real button and off the surface as an exact string.
     """
-    app()
-    shipped_payload = model_payload("plain")
-    disguised = model_payload("plain")
-    original = disguised["headline_text"]
-    disguised["headline_text"] = "".join(
-        " " if character == " " else "Z" for character in original
+    blocked = run_old([(BUILD, "consent_blocked")], monkeypatch)[1]
+    assert blocked["consent_tool_tip"] == surface.CONSENT_BLOCKED_TOOLTIP
+    assert run_new([(BUILD, "consent_blocked")])[1]["consent_tool_tip"] == (
+        blocked["consent_tool_tip"]
     )
-    assert disguised["headline_text"] != original
-    assert len(disguised["headline_text"]) == len(original)
-    assert disguised["headline_text"].count(" ") == original.count(" ")
-    shipped = render_offscreen(dialog_painted_by_the_model(shipped_payload), PIXEL_SIZE)
-    swapped = render_offscreen(dialog_painted_by_the_model(disguised), PIXEL_SIZE)
-    if host_has_fonts():
-        assert image_digest(shipped) != image_digest(swapped)
-    else:
-        assert image_digest(shipped) == image_digest(swapped)
-    assert shipped_payload["headline_text"] != disguised["headline_text"]
-
-
-def test_the_tool_tip_a_picture_cannot_see_is_compared_as_a_string():
-    """The reason a blocked consent gives never reaches a pixel."""
-    app()
-    blocked = model_payload("consent_blocked")
-    disguised = model_payload("consent_blocked")
-    disguised["buttons"][surface.CONSENT]["tool_tip"] = "different reason"
-    shipped = render_offscreen(dialog_painted_by_the_model(blocked), PIXEL_SIZE)
-    altered = render_offscreen(dialog_painted_by_the_model(disguised), PIXEL_SIZE)
-    assert image_digest(shipped) == image_digest(altered)
-    assert blocked["buttons"][surface.CONSENT]["tool_tip"] != (
-        disguised["buttons"][surface.CONSENT]["tool_tip"]
+    plain = run_old([(BUILD, "plain")], monkeypatch)[1]
+    assert plain["consent_tool_tip"] == surface.NO_TOOLTIP == ""
+    assert run_new([(BUILD, "plain")])[1]["consent_tool_tip"] == (
+        plain["consent_tool_tip"]
     )
-    assert (
-        blocked["buttons"][surface.CONSENT]["tool_tip"]
-        == surface.CONSENT_BLOCKED_TOOLTIP
+    assert blocked["refuse_tool_tip"] == plain["refuse_tool_tip"] == ""
+    assert surface.CONSENT_BLOCKED_TOOLTIP != surface.NO_TOOLTIP
+    assert model_payload("consent_blocked")["buttons"][surface.CONSENT]["tool_tip"] == (
+        surface.CONSENT_BLOCKED_TOOLTIP
     )
-    assert model_payload("plain")["buttons"][surface.CONSENT]["tool_tip"] == ""
 
 
 def test_the_answer_a_picture_cannot_see_is_compared_as_a_value(monkeypatch):
@@ -1970,10 +1926,13 @@ def test_the_answer_a_picture_cannot_see_is_compared_as_a_value(monkeypatch):
     same = model_payload("plain")
     other = model_payload("plain", button=surface.CONSENT)
     assert same["consented"] != other["consented"]
-    assert same["headline_text"] == other["headline_text"]
-    assert image_digest(
-        render_offscreen(dialog_painted_by_the_model(same), PIXEL_SIZE)
-    ) == image_digest(render_offscreen(dialog_painted_by_the_model(other), PIXEL_SIZE))
+    painted_by_the_answer = [
+        key for key in same if key not in ("consented", "calls", "closed")
+    ]
+    assert [same[key] for key in painted_by_the_answer] == [
+        other[key] for key in painted_by_the_answer
+    ]
+    assert old[1]["headline_text"] == old[2]["headline_text"]
 
 
 def test_the_default_button_a_picture_may_not_show_is_compared_as_a_flag():
@@ -1984,17 +1943,14 @@ def test_the_default_button_a_picture_may_not_show_is_compared_as_a_flag():
     assert row.itemAt(1).widget().isDefault() is surface.REFUSE_IS_DEFAULT
     assert row.itemAt(2).widget().isDefault() is surface.CONSENT_IS_DEFAULT
     assert surface.REFUSE_IS_DEFAULT is not surface.CONSENT_IS_DEFAULT
-    swapped = model_payload("plain")
-    swapped["buttons"][surface.REFUSE]["is_default"] = False
-    swapped["buttons"][surface.CONSENT]["is_default"] = True
-    shipped = render_offscreen(
-        dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
+    payload = model_payload("plain")
+    assert payload["buttons"][surface.REFUSE]["is_default"] is (
+        row.itemAt(1).widget().isDefault()
     )
-    altered = render_offscreen(dialog_painted_by_the_model(swapped), PIXEL_SIZE)
-    if host_has_fonts():
-        assert image_digest(shipped) == image_digest(altered)
-    else:
-        assert image_digest(shipped) == image_digest(altered)
+    assert payload["buttons"][surface.CONSENT]["is_default"] is (
+        row.itemAt(2).widget().isDefault()
+    )
+    assert row.itemAt(1).widget().autoDefault() is surface.REFUSE_IS_DEFAULT
 
 
 def test_the_button_state_a_picture_cannot_see_is_compared_as_a_flag():
@@ -2006,29 +1962,23 @@ def test_the_button_state_a_picture_cannot_see_is_compared_as_a_flag():
     step and against the real widget below.
     """
     app()
-    shipped = render_offscreen(
-        dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
-    )
-    disabled = model_payload("plain")
-    disabled["buttons"][surface.REFUSE]["enabled"] = False
-    assert image_digest(
-        render_offscreen(dialog_painted_by_the_model(disabled), PIXEL_SIZE)
-    ) == image_digest(shipped)
-
-    blocked_shipped = render_offscreen(
-        dialog_painted_by_the_model(model_payload("consent_blocked")), PIXEL_SIZE
-    )
-    unblocked = model_payload("consent_blocked")
-    unblocked["buttons"][surface.CONSENT]["enabled"] = True
-    assert image_digest(
-        render_offscreen(dialog_painted_by_the_model(unblocked), PIXEL_SIZE)
-    ) == image_digest(blocked_shipped)
     assert ":disabled" not in surface.STYLE_SHEET
 
     dialog = dialog_painted_by_the_dialog("consent_blocked")
     row = dialog.layout().itemAt(4).layout()
     assert row.itemAt(2).widget().isEnabled() is False
     assert row.itemAt(1).widget().isEnabled() is surface.REFUSE_ENABLED
+    blocked = model_payload("consent_blocked")
+    assert blocked["buttons"][surface.CONSENT]["enabled"] is (
+        row.itemAt(2).widget().isEnabled()
+    )
+    assert blocked["buttons"][surface.REFUSE]["enabled"] is (
+        row.itemAt(1).widget().isEnabled()
+    )
+    plain_dialog = dialog_painted_by_the_dialog("plain")
+    plain_row = plain_dialog.layout().itemAt(4).layout()
+    assert plain_row.itemAt(2).widget().isEnabled() is True
+    assert model_payload("plain")["buttons"][surface.CONSENT]["enabled"] is True
     model = surface.InstanceConsentModel()
     model.build(make_decision("consent_blocked"))
     assert model.consent_enabled is False
@@ -2046,15 +1996,6 @@ def test_the_stretch_weight_a_picture_cannot_see_is_compared_as_a_number():
     read off the real dialog as a number instead.
     """
     app()
-    for size in (PIXEL_SIZE, WIDE_PIXEL_SIZE):
-        shipped = render_offscreen(
-            dialog_painted_by_the_model(model_payload("plain")), size
-        )
-        flattened = model_payload("plain")
-        flattened["button_row"]["child_stretch"] = [0, 0, 0]
-        assert image_digest(
-            render_offscreen(dialog_painted_by_the_model(flattened), size)
-        ) == image_digest(shipped), size
     dialog = dialog_painted_by_the_dialog("plain")
     row = dialog.layout().itemAt(4).layout()
     assert [row.stretch(index) for index in range(row.count())] == [1, 0, 0]
@@ -2071,18 +2012,11 @@ def test_the_focus_a_picture_cannot_see_is_compared_as_a_name():
     the real dialog by name instead.
     """
     app()
-    shipped = render_offscreen(
-        dialog_painted_by_the_model(model_payload("plain")), PIXEL_SIZE
-    )
-    moved = model_payload("plain")
-    moved["focus_on"] = surface.CONSENT
-    assert image_digest(
-        render_offscreen(dialog_painted_by_the_model(moved), PIXEL_SIZE)
-    ) == image_digest(shipped)
     dialog = dialog_painted_by_the_dialog("plain")
     assert dialog.focusWidget().objectName() == surface.FOCUS_ON == surface.REFUSE
     assert dialog.focusWidget().objectName() != surface.CONSENT
-    assert colour_count(shipped, surface.SKIN["focus_ring"]) == 0
+    assert model_payload("plain")["focus_on"] == dialog.focusWidget().objectName()
+    assert dialog.isActiveWindow() is False
 
 
 BLIND_TO_THE_PICTURE = {
@@ -2129,22 +2063,18 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
         assert covered_by in globals(), covered_by
         assert callable(globals()[covered_by]), covered_by
 
-    shipped = render_offscreen(dialog_painted_by_the_dialog("plain"), PIXEL_SIZE)
-    resized = model_payload("plain")
-    resized["widget"]["size_px"] = [520, 360]
-    assert image_digest(
-        render_offscreen(dialog_painted_by_the_model(resized), PIXEL_SIZE)
-    ) == image_digest(shipped)
-
-    renamed = model_payload("plain")
-    renamed["widget"]["accessible_name"] = "Something Else"
-    renamed["widget"]["modal"] = False
-    assert image_digest(
-        render_offscreen(dialog_painted_by_the_model(renamed), PIXEL_SIZE)
-    ) == image_digest(shipped)
-
     dialog = qt_dialog.InstanceConsentDialog(make_decision("plain"))
+    payload = model_payload("plain")
     assert list(surface.DEFAULT_SIZE_PX) == [dialog.width(), dialog.height()]
+    assert payload["widget"]["size_px"] == [dialog.width(), dialog.height()]
+    assert payload["widget"]["accessible_name"] == dialog.accessibleName()
+    assert payload["widget"]["modal"] is dialog.isModal()
+    assert payload["widget"]["stays_on_top"] is surface.STAYS_ON_TOP
+
+    assert_pictures_match(
+        old_side=render_offscreen(dialog, PIXEL_SIZE),
+        new_side=render_offscreen(dialog_painted_by_the_model(payload), PIXEL_SIZE),
+    )
 
 
 def test_view_model_is_json_serialisable():
