@@ -52,6 +52,7 @@ def build_registry() -> Dict[str, Handler]:
         console_log_surface,
         console_tab_surface,
         header_strip_surface,
+        instance_consent_surface,
         notification_spool_surface,
         start_all_progress_surface,
         status_log_surface,
@@ -70,6 +71,7 @@ def build_registry() -> Dict[str, Handler]:
         bot_selection_surface.METHOD: bot_selection_surface.view_model,
         start_all_progress_surface.METHOD: start_all_progress_surface.view_model,
         buy_confirmation_surface.METHOD: buy_confirmation_surface.view_model,
+        instance_consent_surface.METHOD: instance_consent_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
 
