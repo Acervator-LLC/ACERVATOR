@@ -45,9 +45,11 @@ def build_registry() -> Dict[str, Handler]:
     one domain package.
     """
     from src.exchange import history_surface
+    from src.gui.main_tabs import console_log_surface
 
     return {
         history_surface.METHOD: history_surface.view_model,
+        console_log_surface.METHOD: console_log_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
 
