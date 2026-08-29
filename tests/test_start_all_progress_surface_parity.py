@@ -1,0 +1,1700 @@
+"""The Qt Start All dialog and the Qt-free surface, side by side.
+
+A failure means the view model writes a different headline, a different
+bot line, a different button state, a different auto-close delay or a
+different sequence of calls than ``StartAllProgressDialog`` does on the
+same progress events.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PySide6")
+
+from src.core.event_bus import Event
+from src.gui import start_all_progress_dialog as qt_dialog
+from src.gui.main_tabs import start_all_progress_surface as surface
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+LOGGER_NAME = "acervator.gui.start_all"
+
+PROGRESS = "progress"
+REPLACE = "replace"
+CANCEL = "cancel"
+CLOSE = "close"
+
+MANAGER_OK = "manager_ok"
+MANAGER_RAISES = "manager_raises"
+MANAGER_NO_METHOD = "manager_no_method"
+MANAGER_NONE = "manager_none"
+
+UNSUB_OK = "unsub_ok"
+UNSUB_RAISES = "unsub_raises"
+UNSUB_NONE = "unsub_none"
+UNSUB_NOT_CALLABLE = "unsub_not_callable"
+UNSUB_BOOL_RAISES = "unsub_bool_raises"
+
+PIXEL_SIZE = (520, 360)
+
+
+def app():
+    """The process application object every render and widget needs."""
+    from qt_pixel import ensure_app
+
+    return ensure_app()
+
+
+def render_offscreen(widget, size):
+    from qt_pixel import render_widget
+
+    return render_widget(widget, size)
+
+
+def image_digest(image):
+    return hashlib.sha256(bytes(image.constBits())).hexdigest()
+
+
+def digest(trace):
+    return hashlib.sha256(json.dumps(trace, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+class _Manager:
+    def __init__(self):
+        self.calls = 0
+
+    def cancel_start_all(self):
+        self.calls += 1
+
+
+class _RaisingManager:
+    def cancel_start_all(self):
+        raise RuntimeError("manager refused the cancel")
+
+
+def make_manager(spec):
+    """Build the manager one step drives, fresh, so no step reuses state."""
+    if spec == MANAGER_RAISES:
+        return _RaisingManager()
+    if spec == MANAGER_NO_METHOD:
+        return object()
+    if spec == MANAGER_NONE:
+        return None
+    return _Manager()
+
+
+class _BoolRaises:
+    def __bool__(self):
+        raise RuntimeError("truthiness refused")
+
+
+def make_unsubscriber(spec):
+    """Build the unsubscribe callable one step drives, fresh."""
+    if spec == UNSUB_RAISES:
+
+        def refuse():
+            raise RuntimeError("unsubscribe refused")
+
+        return refuse
+    if spec == UNSUB_NONE:
+        return None
+    if spec == UNSUB_NOT_CALLABLE:
+        return 5
+    if spec == UNSUB_BOOL_RAISES:
+        return _BoolRaises()
+
+    def drop():
+        return None
+
+    return drop
+
+
+class _ItemProxy:
+    """One list row, with the calls the dialog makes on it recorded."""
+
+    def __init__(self, item, row, calls):
+        self._item = item
+        self._row = row
+        self._calls = calls
+
+    def text(self):
+        return self._item.text()
+
+    def setText(self, text):
+        self._item.setText(text)
+        self._calls.append(["list.setItemText", self._row, text])
+
+
+def trace_dialog(dialog, monkeypatch):
+    """Record every call the dialog makes on its own widgets and timer.
+
+    The wrappers sit on the widget instances, so a snapshot reads the
+    same widgets through their classes and adds nothing to the trace.
+    """
+    from PySide6 import QtWidgets
+
+    calls: list[list] = []
+
+    headline = dialog._headline
+    listing = dialog._list
+    cancel_btn = dialog._cancel_btn
+    close_btn = dialog._close_btn
+
+    def set_headline(text):
+        QtWidgets.QLabel.setText(headline, text)
+        calls.append(["headline.setText", text])
+
+    def clear_items():
+        QtWidgets.QListWidget.clear(listing)
+        calls.append(["list.clear"])
+
+    def add_item(text):
+        QtWidgets.QListWidget.addItem(listing, text)
+        calls.append(["list.addItem", text])
+
+    def item_count():
+        calls.append(["list.count"])
+        return QtWidgets.QListWidget.count(listing)
+
+    def item_at(row):
+        calls.append(["list.item", row])
+        found = QtWidgets.QListWidget.item(listing, row)
+        return None if found is None else _ItemProxy(found, row, calls)
+
+    def scroll_to_bottom():
+        QtWidgets.QListWidget.scrollToBottom(listing)
+        calls.append(["list.scrollToBottom"])
+
+    def set_cancel_enabled(enabled):
+        QtWidgets.QPushButton.setEnabled(cancel_btn, enabled)
+        calls.append(["cancel.setEnabled", enabled])
+
+    def set_close_enabled(enabled):
+        QtWidgets.QPushButton.setEnabled(close_btn, enabled)
+        calls.append(["close.setEnabled", enabled])
+
+    def single_shot(delay_ms, _slot):
+        calls.append(["closeAfter", delay_ms])
+
+    headline.setText = set_headline
+    listing.clear = clear_items
+    listing.addItem = add_item
+    listing.count = item_count
+    listing.item = item_at
+    listing.scrollToBottom = scroll_to_bottom
+    cancel_btn.setEnabled = set_cancel_enabled
+    close_btn.setEnabled = set_close_enabled
+    monkeypatch.setattr(
+        qt_dialog,
+        "QtCore",
+        SimpleNamespace(QTimer=SimpleNamespace(singleShot=single_shot)),
+    )
+    return calls
+
+
+def snapshot_old(dialog, calls, error):
+    """Every output the Qt dialog carries after one step."""
+    from PySide6 import QtWidgets
+
+    rows = QtWidgets.QListWidget.count(dialog._list)
+    return {
+        "error": error,
+        "headline": dialog._headline.text(),
+        "items": [
+            QtWidgets.QListWidget.item(dialog._list, row).text() for row in range(rows)
+        ],
+        "item_count": rows,
+        "cancel_enabled": dialog._cancel_btn.isEnabled(),
+        "close_enabled": dialog._close_btn.isEnabled(),
+        "calls": [list(call) for call in calls],
+    }
+
+
+def snapshot_new(model, error):
+    """Every output the view model carries after the same step."""
+    return {
+        "error": error,
+        "headline": model.headline,
+        "items": list(model.items),
+        "item_count": len(model.items),
+        "cancel_enabled": model.cancel_enabled,
+        "close_enabled": model.close_enabled,
+        "calls": [list(call) for call in model.calls],
+    }
+
+
+def run_step_old(dialog, step):
+    if step[0] == PROGRESS:
+        dialog._handle_progress_main_thread(step[1], step[2], step[3], step[4])
+    elif step[0] == REPLACE:
+        dialog._replace_last_matching(step[1], step[2])
+    elif step[0] == CANCEL:
+        dialog._bot_manager = make_manager(step[1])
+        dialog._on_cancel()
+    elif step[0] == CLOSE:
+        from PySide6.QtGui import QCloseEvent
+
+        dialog._unsub = make_unsubscriber(step[1])
+        dialog.closeEvent(QCloseEvent())
+
+
+def run_step_new(model, step):
+    if step[0] == PROGRESS:
+        model.handle_progress(step[1], step[2], step[3], step[4])
+    elif step[0] == REPLACE:
+        model.replace_last_matching(step[1], step[2])
+    elif step[0] == CANCEL:
+        model.cancel(make_manager(step[1]))
+    elif step[0] == CLOSE:
+        surface.unsubscribe(make_unsubscriber(step[1]))
+
+
+def build_dialog(monkeypatch):
+    """A dialog whose bus handler is dropped as soon as it is built."""
+    app()
+    dialog = qt_dialog.StartAllProgressDialog(object())
+    if callable(dialog._unsub):
+        dialog._unsub()
+    dialog._unsub = None
+    return dialog, trace_dialog(dialog, monkeypatch)
+
+
+def run_old(script, monkeypatch):
+    """Drive ``StartAllProgressDialog`` through the script, step by step."""
+    dialog, calls = build_dialog(monkeypatch)
+    trace = [snapshot_old(dialog, calls, None)]
+    for step in script:
+        error = None
+        try:
+            run_step_old(dialog, step)
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+        trace.append(snapshot_old(dialog, calls, error))
+    return trace
+
+
+def run_new(script):
+    """Drive the view model through the same script, step by step."""
+    model = surface.StartAllProgressModel()
+    trace = [snapshot_new(model, None)]
+    for step in script:
+        error = None
+        try:
+            run_step_new(model, step)
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+        trace.append(snapshot_new(model, error))
+    return trace
+
+
+HAPPY_SCRIPT = [
+    (PROGRESS, "begin", 3, 0, ""),
+    (PROGRESS, "bot_starting", 3, 0, "bot-a"),
+    (PROGRESS, "bot_started", 3, 1, "bot-a"),
+    (PROGRESS, "bot_starting", 3, 1, "bot-b"),
+    (PROGRESS, "bot_started", 3, 2, "bot-b"),
+    (PROGRESS, "bot_starting", 3, 2, "bot-c"),
+    (PROGRESS, "bot_started", 3, 3, "bot-c"),
+    (PROGRESS, "done", 3, 3, ""),
+]
+
+NO_BOTS_SCRIPT = [
+    (PROGRESS, "begin", 0, 0, ""),
+    (PROGRESS, "done", 0, 0, ""),
+]
+
+TIMEOUT_SCRIPT = [
+    (PROGRESS, "begin", 2, 0, ""),
+    (PROGRESS, "bot_starting", 2, 0, "slow-bot"),
+    (PROGRESS, "bot_timeout", 2, 0, "slow-bot"),
+    (PROGRESS, "bot_starting", 2, 0, "fast-bot"),
+    (PROGRESS, "bot_started", 2, 1, "fast-bot"),
+    (PROGRESS, "done", 2, 1, ""),
+]
+
+CANCELLED_SCRIPT = [
+    (PROGRESS, "begin", 4, 0, ""),
+    (PROGRESS, "bot_starting", 4, 0, "bot-a"),
+    (PROGRESS, "bot_started", 4, 1, "bot-a"),
+    (CANCEL, MANAGER_OK),
+    (PROGRESS, "cancelled", 4, 1, ""),
+]
+
+CANCEL_REFUSED_SCRIPT = [
+    (PROGRESS, "begin", 2, 0, ""),
+    (CANCEL, MANAGER_RAISES),
+    (CANCEL, MANAGER_NO_METHOD),
+    (CANCEL, MANAGER_NONE),
+    (CANCEL, MANAGER_OK),
+]
+
+EMPTY_BOT_ID_SCRIPT = [
+    (PROGRESS, "begin", 2, 0, ""),
+    (PROGRESS, "bot_starting", 2, 0, ""),
+    (PROGRESS, "bot_started", 2, 1, ""),
+    (PROGRESS, "bot_timeout", 2, 1, ""),
+    (PROGRESS, "cancelled", 2, 1, ""),
+]
+
+NO_MATCH_SCRIPT = [
+    (PROGRESS, "begin", 2, 0, ""),
+    (PROGRESS, "bot_started", 2, 1, "never-listed"),
+    (PROGRESS, "bot_timeout", 2, 1, "also-never-listed"),
+]
+
+SUBSTRING_SCRIPT = [
+    (PROGRESS, "begin", 3, 0, ""),
+    (PROGRESS, "bot_starting", 3, 0, "bot-1"),
+    (PROGRESS, "bot_starting", 3, 0, "bot-10"),
+    (PROGRESS, "bot_started", 3, 1, "bot-1"),
+    (PROGRESS, "bot_started", 3, 2, "bot-10"),
+    (PROGRESS, "bot_timeout", 3, 2, "bot-1"),
+]
+
+EARLIER_ROW_SCRIPT = [
+    (PROGRESS, "begin", 3, 0, ""),
+    (PROGRESS, "bot_starting", 3, 0, "alpha"),
+    (PROGRESS, "bot_starting", 3, 0, "beta"),
+    (PROGRESS, "bot_starting", 3, 0, "gamma"),
+    (PROGRESS, "bot_started", 3, 1, "alpha"),
+    (PROGRESS, "bot_timeout", 3, 1, "beta"),
+]
+
+UNKNOWN_PHASE_SCRIPT = [
+    (PROGRESS, "begin", 2, 0, ""),
+    (PROGRESS, "", 2, 0, "bot-a"),
+    (PROGRESS, "started", 2, 0, "bot-a"),
+    (PROGRESS, "BEGIN", 2, 0, "bot-a"),
+    (PROGRESS, "bot_startin", 2, 0, "bot-a"),
+    (PROGRESS, "done ", 2, 0, ""),
+]
+
+REPLACE_DIRECT_SCRIPT = [
+    (PROGRESS, "begin", 2, 0, ""),
+    (REPLACE, "orphan", "first line"),
+    (REPLACE, "orphan", "second line"),
+    (REPLACE, "", "empty id claims the last line"),
+    (REPLACE, "line", "substring of an existing line"),
+]
+
+REPLACE_ON_EMPTY_SCRIPT = [
+    (REPLACE, "nothing-here", "appended to an empty list"),
+    (REPLACE, "nothing-here", "now it matches"),
+]
+
+RESTART_SCRIPT = [
+    (PROGRESS, "begin", 2, 0, ""),
+    (PROGRESS, "bot_starting", 2, 0, "bot-a"),
+    (PROGRESS, "bot_started", 2, 1, "bot-a"),
+    (PROGRESS, "begin", 5, 0, ""),
+    (PROGRESS, "bot_starting", 5, 0, "bot-z"),
+]
+
+NUMBERS_SCRIPT = [
+    (PROGRESS, "begin", -1, 0, ""),
+    (PROGRESS, "bot_started", -1, -3, "bot-a"),
+    (PROGRESS, "bot_starting", 1000000, 999999, "bot-b"),
+    (PROGRESS, "cancelled", 0, 0, ""),
+    (PROGRESS, "done", -1, -1, ""),
+]
+
+TEXT_SCRIPT = [
+    (PROGRESS, "begin", 3, 0, ""),
+    (PROGRESS, "bot_starting", 3, 0, "unicode-Δ→⚡"),
+    (PROGRESS, "bot_started", 3, 1, "unicode-Δ→⚡"),
+    (PROGRESS, "bot_starting", 3, 1, "x" * 200),
+    (PROGRESS, "bot_timeout", 3, 1, "x" * 200),
+    (PROGRESS, "bot_starting", 3, 1, "a b<c>&d"),
+    (PROGRESS, "bot_started", 3, 2, "a b<c>&d"),
+]
+
+GLYPH_COLLISION_SCRIPT = [
+    (PROGRESS, "begin", 2, 0, ""),
+    (PROGRESS, "bot_starting", 2, 0, "⏳"),
+    (PROGRESS, "bot_starting", 2, 0, "plain"),
+    (PROGRESS, "bot_started", 2, 1, "⏳"),
+]
+
+CLOSE_SCRIPT = [
+    (PROGRESS, "begin", 1, 0, ""),
+    (CLOSE, UNSUB_OK),
+    (CLOSE, UNSUB_RAISES),
+    (CLOSE, UNSUB_NONE),
+    (CLOSE, UNSUB_NOT_CALLABLE),
+    (CLOSE, UNSUB_BOOL_RAISES),
+]
+
+EMPTY_SCRIPT: list[tuple] = []
+
+SCRIPTS = {
+    "cancel_refused": CANCEL_REFUSED_SCRIPT,
+    "cancelled": CANCELLED_SCRIPT,
+    "close": CLOSE_SCRIPT,
+    "earlier_row": EARLIER_ROW_SCRIPT,
+    "empty": EMPTY_SCRIPT,
+    "empty_bot_id": EMPTY_BOT_ID_SCRIPT,
+    "glyph_collision": GLYPH_COLLISION_SCRIPT,
+    "happy": HAPPY_SCRIPT,
+    "no_bots": NO_BOTS_SCRIPT,
+    "no_match": NO_MATCH_SCRIPT,
+    "numbers": NUMBERS_SCRIPT,
+    "replace_direct": REPLACE_DIRECT_SCRIPT,
+    "replace_on_empty": REPLACE_ON_EMPTY_SCRIPT,
+    "restart": RESTART_SCRIPT,
+    "substring": SUBSTRING_SCRIPT,
+    "text": TEXT_SCRIPT,
+    "timeout": TIMEOUT_SCRIPT,
+    "unknown_phase": UNKNOWN_PHASE_SCRIPT,
+}
+
+
+@pytest.mark.parametrize("name", sorted(SCRIPTS))
+def test_old_and_new_traces_are_identical(name, monkeypatch):
+    """A step of the script leaves the two sides in a different state."""
+    old = run_old(SCRIPTS[name], monkeypatch)
+    new = run_new(SCRIPTS[name])
+    assert new == old
+    assert digest(new) == digest(old)
+
+
+@pytest.mark.parametrize("name", sorted(SCRIPTS))
+def test_the_trace_holds_the_whole_dialog(name, monkeypatch):
+    """The comparison passed by measuring nothing."""
+    old = run_old(SCRIPTS[name], monkeypatch)
+    assert len(old) == len(SCRIPTS[name]) + 1
+    first = old[0]
+    assert first["headline"] == "Preparing to auto-start bots..."
+    assert first["items"] == []
+    assert first["cancel_enabled"] is True
+    assert first["close_enabled"] is False
+    assert first["calls"] == []
+    for step in old:
+        assert step["item_count"] == len(step["items"])
+        assert isinstance(step["headline"], str)
+    if SCRIPTS[name]:
+        assert old[-1]["calls"] != []
+
+
+def test_the_scripts_reach_every_documented_state():
+    """A named state was never driven, so its parity was never compared."""
+    phases = {step[1] for script in SCRIPTS.values() for step in script}
+    for phase in surface.PHASES:
+        assert phase in phases, phase
+    reached = {
+        "empty_list": False,
+        "part_way": False,
+        "complete": False,
+        "cancelled": False,
+        "cancel_failed": False,
+        "no_bots": False,
+        "timeout_line": False,
+        "close_scheduled": False,
+    }
+    for script in SCRIPTS.values():
+        for step in run_new(script):
+            if not step["items"] and step["calls"]:
+                reached["empty_list"] = True
+            if step["items"] and step["cancel_enabled"]:
+                reached["part_way"] = True
+            if step["headline"].startswith("Done — "):
+                reached["complete"] = True
+            if step["headline"].startswith("Cancelled — "):
+                reached["cancelled"] = True
+            if step["headline"] == surface.HEADLINE_CANCEL_FAILED:
+                reached["cancel_failed"] = True
+            if step["headline"] == surface.HEADLINE_NO_BOTS:
+                reached["no_bots"] = True
+            if any("⚠" in text for text in step["items"]):
+                reached["timeout_line"] = True
+            if any(call[0] == "closeAfter" for call in step["calls"]):
+                reached["close_scheduled"] = True
+    assert all(reached.values()), reached
+
+
+def test_every_headline_the_dialog_can_write_is_reached(monkeypatch):
+    """A headline string was never produced, so it was never compared."""
+    written = set()
+    for name in SCRIPTS:
+        for step in run_old(SCRIPTS[name], monkeypatch):
+            for call in step["calls"]:
+                if call[0] == "headline.setText":
+                    written.add(call[1])
+    assert surface.HEADLINE_NO_BOTS in written
+    assert surface.HEADLINE_CANCELLING in written
+    assert surface.HEADLINE_CANCEL_FAILED in written
+    assert "Auto-starting 3 bots (0/3 verified)" in written
+    assert "Auto-starting 3 bots (1/3 verified)" in written
+    assert "Auto-starting 3 bots (0/3 verified, starting bot-a...)" in written
+    assert "Done — 3 bot(s) processed." in written
+    assert "Cancelled — 1/4 bots had started." in written
+
+
+def test_the_auto_close_delays_match(monkeypatch):
+    """An auto-close delay drifted from the dialog's own."""
+    old = run_old(NO_BOTS_SCRIPT, monkeypatch)
+    new = run_new(NO_BOTS_SCRIPT)
+    assert old[1]["calls"][-1] == ["closeAfter", 800]
+    assert old[2]["calls"][-1] == ["closeAfter", 2000]
+    assert new[1]["calls"] == old[1]["calls"]
+    assert new[2]["calls"] == old[2]["calls"]
+    assert surface.NO_BOTS_CLOSE_DELAY_MS == 800
+    assert surface.DONE_CLOSE_DELAY_MS == 2000
+    assert surface.NO_BOTS_CLOSE_DELAY_MS != surface.DONE_CLOSE_DELAY_MS
+
+
+def test_a_longer_bot_id_claims_the_line_of_a_shorter_one(monkeypatch):
+    """The substring match picked a different line on the two sides."""
+    old = run_old(SUBSTRING_SCRIPT, monkeypatch)
+    new = run_new(SUBSTRING_SCRIPT)
+    assert old[3]["items"] == [
+        "⏳ bot-1 (starting...)",
+        "⏳ bot-10 (starting...)",
+    ]
+    assert old[4]["items"] == ["⏳ bot-1 (starting...)", "✓ bot-1"]
+    assert old[5]["items"] == ["⏳ bot-1 (starting...)", "✓ bot-1", "✓ bot-10"]
+    assert old[6]["items"] == [
+        "⏳ bot-1 (starting...)",
+        "✓ bot-1",
+        "⚠ bot-1 (start verify timed out — may still come up)",
+    ]
+    assert [step["items"] for step in new] == [step["items"] for step in old]
+
+
+def test_a_bot_with_no_line_gains_one(monkeypatch):
+    """A bot the list never showed was lost instead of appended."""
+    old = run_old(NO_MATCH_SCRIPT, monkeypatch)
+    new = run_new(NO_MATCH_SCRIPT)
+    assert old[2]["items"] == ["✓ never-listed"]
+    assert old[3]["items"] == [
+        "✓ never-listed",
+        "⚠ also-never-listed (start verify timed out — may still come up)",
+    ]
+    assert new[2]["items"] == old[2]["items"]
+    assert new[3]["items"] == old[3]["items"]
+
+
+def test_begin_clears_the_list_and_bot_timeout_leaves_the_headline(monkeypatch):
+    """A restart kept old lines, or a timeout rewrote the headline."""
+    old = run_old(RESTART_SCRIPT, monkeypatch)
+    new = run_new(RESTART_SCRIPT)
+    assert old[3]["items"] == ["✓ bot-a"]
+    assert old[4]["items"] == []
+    assert old[4]["headline"] == "Auto-starting 5 bots (0/5 verified)"
+    assert new[4] == old[4]
+    timed_out = run_old(TIMEOUT_SCRIPT, monkeypatch)
+    assert timed_out[2]["headline"] == timed_out[3]["headline"]
+    assert timed_out[3]["items"] == [
+        "⚠ slow-bot (start verify timed out — may still come up)"
+    ]
+    assert run_new(TIMEOUT_SCRIPT)[3] == timed_out[3]
+
+
+def test_a_phase_the_dialog_does_not_name_changes_nothing(monkeypatch):
+    """An unnamed phase moved the dialog on one of the two sides."""
+    old = run_old(UNKNOWN_PHASE_SCRIPT, monkeypatch)
+    new = run_new(UNKNOWN_PHASE_SCRIPT)
+    for index in range(2, len(old)):
+        assert old[index] == old[1], index
+    assert new == old
+
+
+def test_a_refused_cancel_says_so(monkeypatch):
+    """A refused cancel left the dialog claiming it was cancelling."""
+    old = run_old(CANCEL_REFUSED_SCRIPT, monkeypatch)
+    new = run_new(CANCEL_REFUSED_SCRIPT)
+    for index in (2, 3, 4):
+        assert old[index]["headline"] == surface.HEADLINE_CANCEL_FAILED
+        assert old[index]["cancel_enabled"] is False
+    assert old[5]["headline"] == surface.HEADLINE_CANCELLING
+    assert old[5]["cancel_enabled"] is False
+    assert new == old
+
+
+DROPPED_EVENTS = {
+    "plain": {"phase": "begin", "total": 3, "started": 0, "bot_id": "bot-a"},
+    "missing_all": {},
+    "missing_bot_id": {"phase": "done", "total": 2, "started": 2},
+    "bot_id_none": {"phase": "bot_started", "total": 1, "started": 1, "bot_id": None},
+    "bot_id_zero": {"phase": "bot_started", "total": 1, "started": 1, "bot_id": 0},
+    "bot_id_number": {"phase": "bot_started", "total": 1, "started": 1, "bot_id": 77},
+    "numeric_strings": {"phase": "begin", "total": "5", "started": "2", "bot_id": ""},
+    "float_total": {"phase": "begin", "total": 3.7, "started": -2.9, "bot_id": ""},
+    "boolean_total": {"phase": "begin", "total": True, "started": False, "bot_id": ""},
+    "total_not_a_number": {"phase": "begin", "total": "not-a-number"},
+    "total_none": {"phase": "begin", "total": None},
+    "started_none": {"phase": "begin", "total": 1, "started": None},
+    "total_is_a_list": {"phase": "begin", "total": [1]},
+}
+
+
+class _NoGet:
+    pass
+
+
+class _GetRaisesValueError:
+    def get(self, _key, _default=None):
+        raise ValueError("payload refused the read")
+
+
+class _GetRaisesTypeError:
+    def get(self, _key, _default=None):
+        raise TypeError("payload refused the read")
+
+
+class _GetRaisesKeyError:
+    def get(self, _key, _default=None):
+        raise KeyError("payload refused the read")
+
+
+UNREADABLE_EVENTS = {
+    "no_get": _NoGet(),
+    "get_raises_value": _GetRaisesValueError(),
+    "get_raises_type": _GetRaisesTypeError(),
+}
+
+
+class _SignalRecorder:
+    """Stands in for the Qt signal so the read is compared, not the emit."""
+
+    def __init__(self):
+        self.emitted: list[tuple] = []
+
+    def emit(self, *args):
+        self.emitted.append(args)
+
+
+def read_old(payload, capture_log):
+    """Drive ``_on_progress_event`` on a duck-typed dialog."""
+    recorder = _SignalRecorder()
+    host = type("Host", (), {"_progress_signal": recorder})()
+    with capture_log(LOGGER_NAME) as records:
+        qt_dialog.StartAllProgressDialog._on_progress_event(
+            host, Event(topic=surface.TOPIC, data=payload)
+        )
+    return recorder.emitted, [record.getMessage() for record in records]
+
+
+def read_new(payload, capture_log):
+    """Drive ``progress_fields`` on the same payload."""
+    with capture_log(LOGGER_NAME) as records:
+        fields = surface.progress_fields(payload)
+    emitted = [] if fields is None else [fields]
+    return emitted, [record.getMessage() for record in records]
+
+
+@pytest.mark.parametrize("name", sorted(DROPPED_EVENTS))
+def test_the_two_sides_read_one_event_the_same_way(name, capture_log):
+    """The surface read a different value off the event than the dialog."""
+    payload = DROPPED_EVENTS[name]
+    old_fields, old_logs = read_old(payload, capture_log)
+    new_fields, new_logs = read_new(payload, capture_log)
+    assert new_fields == old_fields
+    assert new_logs == old_logs
+
+
+@pytest.mark.parametrize("name", sorted(UNREADABLE_EVENTS))
+def test_an_event_neither_side_can_read_is_logged_and_dropped(name, capture_log):
+    """An unreadable event raised, or was dropped without a trace."""
+    payload = UNREADABLE_EVENTS[name]
+    old_fields, old_logs = read_old(payload, capture_log)
+    new_fields, new_logs = read_new(payload, capture_log)
+    assert old_fields == []
+    assert new_fields == old_fields
+    assert new_logs == old_logs
+    assert len(new_logs) == 1
+    assert new_logs[0].startswith("Start All progress event dropped (")
+
+
+def test_a_key_error_reaches_the_caller_on_both_sides(capture_log):
+    """One side swallowed an exception the other let out."""
+    payload = _GetRaisesKeyError()
+    with pytest.raises(KeyError):
+        read_old(payload, capture_log)
+    with pytest.raises(KeyError):
+        read_new(payload, capture_log)
+
+
+def test_the_read_reaches_every_field_default(capture_log):
+    """A default was never exercised, so a drift in it would not show."""
+    fields, logs = read_new({}, capture_log)
+    assert fields == [("", 0, 0, "")]
+    assert logs == []
+    kept, _ = read_new(DROPPED_EVENTS["plain"], capture_log)
+    assert kept == [("begin", 3, 0, "bot-a")]
+    zero, _ = read_new(DROPPED_EVENTS["bot_id_zero"], capture_log)
+    assert zero == [("bot_started", 1, 1, "")]
+    number, _ = read_new(DROPPED_EVENTS["bot_id_number"], capture_log)
+    assert number == [("bot_started", 1, 1, "77")]
+    truncated, _ = read_new(DROPPED_EVENTS["float_total"], capture_log)
+    assert truncated == [("begin", 3, -2, "")]
+
+
+CLOSE_SPECS = (UNSUB_OK, UNSUB_RAISES, UNSUB_NONE, UNSUB_NOT_CALLABLE)
+
+
+@pytest.mark.parametrize("spec", CLOSE_SPECS + (UNSUB_BOOL_RAISES,))
+def test_closing_drops_the_handler_the_same_way(spec, capture_log, monkeypatch):
+    """A close leaked the handler on one side, or logged differently."""
+    from PySide6.QtGui import QCloseEvent
+
+    dialog, _ = build_dialog(monkeypatch)
+    ran: list[str] = []
+
+    def watched():
+        ran.append("old")
+
+    dialog._unsub = watched if spec == UNSUB_OK else make_unsubscriber(spec)
+    with capture_log(LOGGER_NAME) as old_records:
+        dialog.closeEvent(QCloseEvent())
+    old_logs = [record.getMessage() for record in old_records]
+
+    def watched_new():
+        ran.append("new")
+
+    with capture_log(LOGGER_NAME) as new_records:
+        surface.unsubscribe(
+            watched_new if spec == UNSUB_OK else make_unsubscriber(spec)
+        )
+    new_logs = [record.getMessage() for record in new_records]
+    assert new_logs == old_logs
+    if spec == UNSUB_OK:
+        assert ran == ["old", "new"]
+    else:
+        assert ran == []
+    if spec in (UNSUB_RAISES, UNSUB_BOOL_RAISES):
+        assert len(old_logs) == 1
+        assert old_logs[0].startswith(
+            "Start All progress unsubscribe failed, handler leaked: "
+        )
+    else:
+        assert old_logs == []
+
+
+@pytest.mark.parametrize("spec", (MANAGER_OK, MANAGER_RAISES, MANAGER_NO_METHOD))
+def test_cancelling_logs_the_same_way(spec, capture_log, monkeypatch):
+    """A refused cancel logged on one side and stayed silent on the other."""
+    dialog, _ = build_dialog(monkeypatch)
+    dialog._bot_manager = make_manager(spec)
+    with capture_log(LOGGER_NAME) as old_records:
+        dialog._on_cancel()
+    old_logs = [record.getMessage() for record in old_records]
+    model = surface.StartAllProgressModel()
+    with capture_log(LOGGER_NAME) as new_records:
+        model.cancel(make_manager(spec))
+    new_logs = [record.getMessage() for record in new_records]
+    assert new_logs == old_logs
+    if spec == MANAGER_OK:
+        assert old_logs == []
+    else:
+        assert len(old_logs) == 1
+        assert old_logs[0].startswith("cancel_start_all failed: ")
+
+
+def test_the_manager_is_asked_exactly_once(monkeypatch):
+    """The cancel reached the manager a different number of times."""
+    dialog, _ = build_dialog(monkeypatch)
+    old_manager = _Manager()
+    dialog._bot_manager = old_manager
+    dialog._on_cancel()
+    new_manager = _Manager()
+    surface.StartAllProgressModel().cancel(new_manager)
+    assert old_manager.calls == 1
+    assert new_manager.calls == old_manager.calls
+
+
+def test_widget_properties_match_the_dialog(monkeypatch):
+    """A dialog property drifted from the value the surface reports."""
+    dialog, _ = build_dialog(monkeypatch)
+    assert surface.WIDGET == {
+        "accessible_name": dialog.accessibleName(),
+        "window_title": dialog.windowTitle(),
+        "modal": dialog.isModal(),
+        "minimum_width_px": dialog.minimumWidth(),
+        "size_px": [dialog.width(), dialog.height()],
+        "style_sheet": dialog.styleSheet(),
+    }
+    assert surface.ACCESSIBLE_NAME == "Start All Progress Dialog"
+    assert surface.WINDOW_TITLE == "Auto-starting bots"
+    assert surface.MODAL is False
+    assert surface.MINIMUM_WIDTH_PX == 420
+    assert surface.SIZE_PX == (520, 360)
+    from qt_pixel import render_widget
+
+    image = render_widget(dialog, PIXEL_SIZE)
+    assert colour_count(image, surface.DIALOG_SURFACE) > 0
+    assert colour_count(image, surface.LIST_SURFACE) > 0
+    from PySide6.QtWidgets import QDialog
+
+    bare = QDialog()
+    assert bare.accessibleName() != surface.ACCESSIBLE_NAME
+    assert bare.windowTitle() != surface.WINDOW_TITLE
+    assert bare.isModal() is False
+    assert bare.minimumWidth() != surface.MINIMUM_WIDTH_PX
+    assert bare.styleSheet() != surface.STYLE_SHEET
+
+
+def test_layout_matches_the_dialog(monkeypatch):
+    """A margin, a spacing or a stretch drifted from the dialog's own."""
+    dialog, _ = build_dialog(monkeypatch)
+    layout = dialog.layout()
+    margins = layout.contentsMargins()
+    assert surface.LAYOUT["margins_px"] == [
+        margins.left(),
+        margins.top(),
+        margins.right(),
+        margins.bottom(),
+    ]
+    assert surface.LAYOUT["spacing_px"] == layout.spacing()
+    assert surface.LAYOUT["child_stretch"] == [
+        layout.stretch(index) for index in range(layout.count())
+    ]
+    assert len(surface.LAYOUT["order"]) == layout.count() == 4
+    row = layout.itemAt(3).layout()
+    assert surface.BUTTON_ROW["leading_stretch"] == row.stretch(0)
+    assert len(surface.BUTTON_ROW["order"]) == row.count() == 3
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    holder = QWidget()
+    bare = QVBoxLayout(holder)
+    bare_margins = bare.contentsMargins()
+    assert [
+        bare_margins.left(),
+        bare_margins.top(),
+        bare_margins.right(),
+        bare_margins.bottom(),
+    ] != surface.LAYOUT["margins_px"]
+    assert bare.spacing() != surface.LAYOUT["spacing_px"]
+
+
+def test_the_headline_and_subline_match_the_dialog(monkeypatch):
+    """A label's text, font or skin drifted from the dialog's own."""
+    dialog, _ = build_dialog(monkeypatch)
+    headline_font = dialog._headline.font()
+    assert surface.HEADLINE == {
+        "initial_text": dialog._headline.text(),
+        "point_size": headline_font.pointSize(),
+        "bold": headline_font.bold(),
+    }
+    assert surface.SUBLINE == {
+        "text": dialog._subline.text(),
+        "word_wrap": dialog._subline.wordWrap(),
+        "style_sheet": dialog._subline.styleSheet(),
+    }
+    from PySide6.QtWidgets import QLabel
+
+    bare = QLabel("")
+    assert bare.font().pointSize() != surface.HEADLINE["point_size"]
+    assert bare.font().bold() != surface.HEADLINE["bold"]
+    assert bare.wordWrap() != surface.SUBLINE["word_wrap"]
+    assert bare.styleSheet() != surface.SUBLINE["style_sheet"]
+    assert "~2.5-second" in surface.SUBLINE_TEXT
+    assert "Cancel to abort the remaining bots" in surface.SUBLINE_TEXT
+    from qt_pixel import render_widget
+
+    image = render_widget(dialog, PIXEL_SIZE)
+    assert colour_count(image, surface.SUBLINE_COLOR) > 0
+    assert colour_count(image, surface.TEXT_COLOR) > 0
+
+
+def test_the_buttons_match_the_dialog(monkeypatch):
+    """A button's text or its starting state drifted from the dialog."""
+    dialog, _ = build_dialog(monkeypatch)
+    assert surface.BUTTONS == {
+        "cancel": {
+            "text": dialog._cancel_btn.text(),
+            "enabled": dialog._cancel_btn.isEnabled(),
+        },
+        "close": {
+            "text": dialog._close_btn.text(),
+            "enabled": dialog._close_btn.isEnabled(),
+        },
+    }
+    assert surface.CANCEL_TEXT == "Cancel remaining"
+    assert surface.CLOSE_TEXT == "Close"
+    assert surface.CANCEL_ENABLED_AT_START is True
+    assert surface.CLOSE_ENABLED_AT_START is False
+
+
+DIALOG_PATH = REPO_ROOT / "src/gui/start_all_progress_dialog.py"
+SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/start_all_progress_surface.py"
+
+METHOD_MAP = {
+    "_on_progress_event": "progress_fields",
+    "_handle_progress_main_thread": "handle_progress",
+    "_replace_last_matching": "replace_last_matching",
+    "_on_cancel": "cancel",
+    "closeEvent": "unsubscribe",
+}
+
+
+CALL_NAMES = {
+    "HEADLINE_SET_TEXT": "headline.setText",
+    "LIST_CLEAR": "list.clear",
+    "LIST_ADD_ITEM": "list.addItem",
+    "LIST_COUNT": "list.count",
+    "LIST_ITEM": "list.item",
+    "LIST_SET_ITEM_TEXT": "list.setItemText",
+    "LIST_SCROLL_TO_BOTTOM": "list.scrollToBottom",
+    "CANCEL_SET_ENABLED": "cancel.setEnabled",
+    "CLOSE_SET_ENABLED": "close.setEnabled",
+    "CLOSE_AFTER": "closeAfter",
+}
+
+
+def test_the_call_names_are_the_ones_the_trace_writes():
+    """The trace and the surface stopped agreeing on what to call a call.
+
+    The Qt side of the trace writes these ten labels as literals, so a
+    label read out of the surface cannot make both sides agree by
+    definition.
+    """
+    for constant, literal in CALL_NAMES.items():
+        assert getattr(surface, constant) == literal, constant
+    assert len(set(CALL_NAMES.values())) == 10
+
+
+def test_every_dialog_method_has_a_counterpart():
+    """A method exists on one side and nowhere on the other."""
+    dialog_methods = {
+        name
+        for name, value in vars(qt_dialog.StartAllProgressDialog).items()
+        if callable(value) and name not in ("__init__", "_progress_signal")
+    }
+    assert dialog_methods == set(METHOD_MAP)
+    assert callable(surface.progress_fields)
+    assert callable(surface.unsubscribe)
+    for target in ("handle_progress", "replace_last_matching", "cancel"):
+        assert callable(getattr(surface.StartAllProgressModel, target))
+
+
+def test_the_connect_sites_match_the_actions():
+    """A signal wiring appeared on one side and not the other."""
+    dialog_text = DIALOG_PATH.read_text(encoding="utf-8")
+    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
+    assert dialog_text.count(".connect(") == 3
+    assert "self._cancel_btn.clicked.connect(self._on_cancel)" in dialog_text
+    assert "self._close_btn.clicked.connect(self.accept)" in dialog_text
+    assert (
+        "self._progress_signal.connect(self._handle_progress_main_thread)"
+        in dialog_text
+    )
+    assert surface_text.count(".connect(") == 0
+    assert set(surface.ACTIONS) == {
+        "cancel.clicked",
+        "close.clicked",
+        "progress.received",
+    }
+    assert len(surface.ACTIONS) == dialog_text.count(".connect(")
+    assert surface.ACTIONS["cancel.clicked"] == "cancel"
+    assert surface.ACTIONS["close.clicked"] == "accept"
+    assert surface.ACTIONS["progress.received"] == "handle_progress"
+
+
+def test_the_surface_names_the_topic_the_dialog_subscribes_to():
+    """The surface listens on a topic the engine never emits."""
+    dialog_text = DIALOG_PATH.read_text(encoding="utf-8")
+    engine_text = (REPO_ROOT / "src/trading/bot_container.py").read_text(
+        encoding="utf-8"
+    )
+    assert surface.TOPIC == "bot_manager.start_all_progress"
+    assert f'"{surface.TOPIC}"' in dialog_text
+    assert f'"{surface.TOPIC}"' in engine_text
+    for phase in ("begin", "bot_starting", "bot_started", "bot_timeout", "done"):
+        assert f'phase="{phase}"' in engine_text, phase
+
+
+def test_the_surface_loads_no_qt_module():
+    """The surface grew an import that pulls Qt into the backend."""
+    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
+    assert "PySide6" not in surface_text
+    assert "QtCore" not in surface_text
+    assert "QtWidgets" not in surface_text
+    assert "PySide6" in DIALOG_PATH.read_text(encoding="utf-8")
+
+
+def test_the_format_strings_agree_with_the_dialogs_f_strings():
+    """The surface's format constants drifted from the dialog's f-strings."""
+    for total, started, bot_id in (
+        (3, 1, "bot-a"),
+        (0, 0, ""),
+        (-1, -3, "Δ"),
+        (1000000, 999999, "x" * 40),
+    ):
+        assert surface.HEADLINE_BEGIN.format(total=total) == (
+            f"Auto-starting {total} bots (0/{total} verified)"
+        )
+        assert surface.HEADLINE_BOT_STARTING.format(
+            total=total, started=started, bot_id=bot_id
+        ) == (
+            f"Auto-starting {total} bots "
+            f"({started}/{total} verified, starting {bot_id}...)"
+        )
+        assert surface.HEADLINE_BOT_STARTED.format(total=total, started=started) == (
+            f"Auto-starting {total} bots ({started}/{total} verified)"
+        )
+        assert surface.HEADLINE_DONE.format(total=total) == (
+            f"Done — {total} bot(s) processed."
+        )
+        assert surface.HEADLINE_CANCELLED.format(started=started, total=total) == (
+            f"Cancelled — {started}/{total} bots had started."
+        )
+        assert surface.ITEM_BOT_STARTING.format(bot_id=bot_id) == (
+            f"⏳ {bot_id} (starting...)"
+        )
+        assert surface.ITEM_BOT_STARTED.format(bot_id=bot_id) == f"✓ {bot_id}"
+        assert surface.ITEM_BOT_TIMEOUT.format(bot_id=bot_id) == (
+            f"⚠ {bot_id} (start verify timed out — may still come up)"
+        )
+    assert surface.HEADLINE_BEGIN != surface.HEADLINE_BOT_STARTED
+    assert surface.ITEM_BOT_STARTED != surface.ITEM_BOT_TIMEOUT
+
+
+def test_the_shipped_strings_are_the_dialogs_own():
+    """A string the operator reads was retyped rather than carried over."""
+    dialog_text = DIALOG_PATH.read_text(encoding="utf-8")
+    for literal in (
+        surface.HEADLINE_INITIAL_TEXT,
+        surface.HEADLINE_NO_BOTS,
+        surface.HEADLINE_CANCELLING,
+        surface.HEADLINE_CANCEL_FAILED,
+        surface.CANCEL_TEXT,
+        surface.CLOSE_TEXT,
+        surface.WINDOW_TITLE,
+        surface.ACCESSIBLE_NAME,
+        surface.EVENT_DROPPED_LOG,
+        surface.CANCEL_FAILED_LOG,
+    ):
+        assert literal in dialog_text, literal
+    assert "handler leaked: " in dialog_text
+    assert surface.UNSUBSCRIBE_FAILED_LOG.endswith("handler leaked: %s")
+
+
+COLOUR_TOKENS = (
+    ("dialog_surface", surface.DIALOG_SURFACE, "#14141e"),
+    ("text_color", surface.TEXT_COLOR, "#c0c0c0"),
+    ("list_surface", surface.LIST_SURFACE, "#0a0a12"),
+    ("list_border", surface.LIST_BORDER, "#2a2a3a"),
+    ("button_surface", surface.BUTTON_SURFACE, "#1a1a26"),
+    ("button_border", surface.BUTTON_BORDER, "#3a3a4a"),
+    ("button_hover", surface.BUTTON_HOVER, "#22222e"),
+    ("disabled_text", surface.DISABLED_TEXT, "#555555"),
+    ("subline_color", surface.SUBLINE_COLOR, "#888"),
+)
+
+
+def test_rgb_matches_qcolor_on_every_token():
+    """The Qt-free colour split disagrees with QColor on a token."""
+    from PySide6.QtGui import QColor
+
+    assert surface.rgb("#123456") == (18, 52, 86)
+    assert surface.rgb("#abc") == (170, 187, 204)
+    assert surface.rgb("#ff8000") == (255, 128, 0)
+    assert surface.rgb("#ff8000") != surface.rgb("#0080ff")
+    for _name, token, expected in COLOUR_TOKENS:
+        assert token == expected, token
+        painted = QColor(token)
+        assert surface.rgb(token) == (
+            painted.red(),
+            painted.green(),
+            painted.blue(),
+        )
+
+
+def test_the_style_sheet_is_the_dialogs_own(monkeypatch):
+    """The surface ships a skin the dialog does not paint."""
+    dialog, _ = build_dialog(monkeypatch)
+    assert surface.STYLE_SHEET == dialog.styleSheet()
+    for _name, token, _expected in COLOUR_TOKENS:
+        if token == surface.SUBLINE_COLOR:
+            assert token in surface.SUBLINE_STYLE
+        else:
+            assert token in surface.STYLE_SHEET, token
+    assert surface.SUBLINE_STYLE == dialog._subline.styleSheet()
+    assert "font-family: Consolas" in surface.STYLE_SHEET
+    assert "padding: 6px 18px" in surface.STYLE_SHEET
+    assert "font-size: 11px" in surface.STYLE_SHEET
+    assert "font-size: 10px" in surface.STYLE_SHEET
+    assert surface.STYLE_SHEET.count("font-size: 10px") == 2
+    from qt_pixel import render_widget
+
+    image = render_widget(dialog, PIXEL_SIZE)
+    assert colour_count(image, surface.DIALOG_SURFACE) > 0
+    assert colour_count(image, surface.LIST_SURFACE) > 0
+    assert colour_count(image, surface.BUTTON_SURFACE) > 0
+    assert colour_count(image, surface.BUTTON_HOVER) == 0
+
+
+def dialog_painted_by_the_dialog(script, monkeypatch):
+    """The shipped dialog, driven through the script."""
+    dialog, _ = build_dialog(monkeypatch)
+    for step in script:
+        run_step_old(dialog, step)
+    return dialog
+
+
+def model_payload(script):
+    """The surface payload for the same script."""
+    model = surface.StartAllProgressModel()
+    for step in script:
+        run_step_new(model, step)
+    return surface.build_view_model(model)
+
+
+def dialog_painted_by_the_model(payload):
+    """A bare dialog filled only from the payload, never from the dialog."""
+    from PySide6 import QtWidgets
+
+    properties = payload["widget"]
+    dialog = QtWidgets.QDialog()
+    dialog.setAccessibleName(properties["accessible_name"])
+    dialog.setWindowTitle(properties["window_title"])
+    dialog.setModal(properties["modal"])
+    dialog.setMinimumWidth(properties["minimum_width_px"])
+    dialog.resize(properties["size_px"][0], properties["size_px"][1])
+    dialog.setStyleSheet(properties["style_sheet"])
+
+    layout = QtWidgets.QVBoxLayout(dialog)
+    layout.setContentsMargins(*payload["layout"]["margins_px"])
+    layout.setSpacing(payload["layout"]["spacing_px"])
+
+    headline = QtWidgets.QLabel(payload["headline_text"])
+    font = headline.font()
+    font.setPointSize(payload["headline"]["point_size"])
+    font.setBold(payload["headline"]["bold"])
+    headline.setFont(font)
+
+    subline = QtWidgets.QLabel(payload["subline"]["text"])
+    subline.setWordWrap(payload["subline"]["word_wrap"])
+    subline.setStyleSheet(payload["subline"]["style_sheet"])
+
+    listing = QtWidgets.QListWidget()
+    for text in payload["items"]:
+        listing.addItem(text)
+
+    row = QtWidgets.QHBoxLayout()
+    row.setContentsMargins(*payload["button_row"]["margins_px"])
+    labelled = {"headline": headline, "subline": subline, "list": listing}
+    for index, name in enumerate(payload["layout"]["order"]):
+        if name == "button_row":
+            layout.addLayout(row)
+        else:
+            layout.addWidget(labelled[name], payload["layout"]["child_stretch"][index])
+
+    cancel = QtWidgets.QPushButton(payload["buttons"]["cancel"]["text"])
+    cancel.setEnabled(payload["cancel_enabled"])
+    close = QtWidgets.QPushButton(payload["buttons"]["close"]["text"])
+    close.setEnabled(payload["close_enabled"])
+    pressable = {"cancel": cancel, "close": close}
+    for name in payload["button_row"]["order"]:
+        if name == "stretch":
+            row.addStretch(payload["button_row"]["leading_stretch"])
+        else:
+            row.addWidget(pressable[name])
+    return dialog
+
+
+PIXEL_SCRIPTS = {
+    "fresh": [],
+    "happy": HAPPY_SCRIPT[:-1],
+    "finished": HAPPY_SCRIPT,
+    "no_bots": NO_BOTS_SCRIPT[:1],
+    "cancelled": CANCELLED_SCRIPT,
+    "timeout": TIMEOUT_SCRIPT,
+}
+
+
+@pytest.mark.parametrize("name", sorted(PIXEL_SCRIPTS))
+def test_the_two_sides_render_the_same_pixels(name, monkeypatch):
+    """The page paints a value, a colour or a position the dialog does not."""
+    app()
+    script = PIXEL_SCRIPTS[name]
+    from_dialog = render_offscreen(
+        dialog_painted_by_the_dialog(script, monkeypatch), PIXEL_SIZE
+    )
+    from_model = render_offscreen(
+        dialog_painted_by_the_model(model_payload(script)), PIXEL_SIZE
+    )
+    assert from_dialog.size() == from_model.size()
+    assert image_digest(from_dialog) == image_digest(from_model)
+
+
+def altered_digests(monkeypatch, script_name, alter):
+    """The shipped render and the render of a payload one edit apart."""
+    app()
+    script = PIXEL_SCRIPTS[script_name]
+    payload = model_payload(script)
+    alter(payload)
+    shipped = render_offscreen(
+        dialog_painted_by_the_dialog(script, monkeypatch), PIXEL_SIZE
+    )
+    altered = render_offscreen(dialog_painted_by_the_model(payload), PIXEL_SIZE)
+    return image_digest(shipped), image_digest(altered)
+
+
+def _drop_a_line(payload):
+    payload["items"] = payload["items"][:2]
+
+
+def _swap_two_lines(payload):
+    payload["items"][0], payload["items"][1] = (
+        payload["items"][1],
+        payload["items"][0],
+    )
+
+
+def _shorten_a_line(payload):
+    payload["items"][1] = "x"
+
+
+def _shorten_the_headline(payload):
+    payload["headline_text"] = "Done."
+
+
+def _enable_cancel(payload):
+    payload["cancel_enabled"] = True
+
+
+def _disable_close(payload):
+    payload["close_enabled"] = False
+
+
+def _move_the_margins(payload):
+    payload["layout"]["margins_px"] = [40, 40, 40, 40]
+
+
+def _move_the_button_row_margins(payload):
+    payload["button_row"]["margins_px"] = [30, 30, 30, 30]
+
+
+def _close_the_spacing(payload):
+    payload["layout"]["spacing_px"] = 0
+
+
+def _stretch_the_headline(payload):
+    payload["layout"]["child_stretch"] = [1, 0, 1, 0]
+
+
+def _swap_the_layout_order(payload):
+    payload["layout"]["order"] = ["subline", "headline", "list", "button_row"]
+
+
+def _swap_the_button_order(payload):
+    payload["button_row"]["order"] = ["stretch", "close", "cancel"]
+
+
+def _move_the_stretch_behind_the_buttons(payload):
+    payload["button_row"]["order"] = ["cancel", "close", "stretch"]
+
+
+def _repaint_the_list(payload):
+    payload["widget"]["style_sheet"] = payload["widget"]["style_sheet"].replace(
+        surface.LIST_SURFACE, "#280a0a"
+    )
+
+
+def _widen_the_minimum(payload):
+    payload["widget"]["minimum_width_px"] = 900
+
+
+def _stop_the_word_wrap(payload):
+    payload["subline"]["word_wrap"] = False
+
+
+def _rename_the_close_button(payload):
+    payload["buttons"]["close"]["text"] = "Dismiss"
+
+
+PIXEL_DEFECTS = {
+    "close_the_spacing": ("finished", _close_the_spacing),
+    "disable_close": ("finished", _disable_close),
+    "drop_a_line": ("finished", _drop_a_line),
+    "enable_cancel": ("finished", _enable_cancel),
+    "move_the_button_row_margins": ("finished", _move_the_button_row_margins),
+    "move_the_margins": ("finished", _move_the_margins),
+    "move_the_stretch_behind_the_buttons": (
+        "finished",
+        _move_the_stretch_behind_the_buttons,
+    ),
+    "rename_the_close_button": ("finished", _rename_the_close_button),
+    "repaint_the_list": ("finished", _repaint_the_list),
+    "shorten_a_line": ("finished", _shorten_a_line),
+    "shorten_the_headline": ("finished", _shorten_the_headline),
+    "stop_the_word_wrap": ("finished", _stop_the_word_wrap),
+    "stretch_the_headline": ("finished", _stretch_the_headline),
+    "swap_the_button_order": ("finished", _swap_the_button_order),
+    "swap_the_layout_order": ("finished", _swap_the_layout_order),
+    "swap_two_lines": ("timeout", _swap_two_lines),
+    "widen_the_minimum": ("finished", _widen_the_minimum),
+}
+
+
+@pytest.mark.parametrize("name", sorted(PIXEL_DEFECTS))
+def test_the_pixel_check_reports_one_planted_defect(name, monkeypatch):
+    """The image comparison passes whatever the second side paints."""
+    script_name, alter = PIXEL_DEFECTS[name]
+    shipped, altered = altered_digests(monkeypatch, script_name, alter)
+    assert shipped != altered
+
+
+def test_the_swapped_lines_the_pixel_check_cannot_see_are_compared_as_text():
+    """Two lines of one length swap places and the render cannot tell.
+
+    Every line in the finished run is the same length, so the missing
+    glyph boxes are identical whichever order they paint in. The line
+    text is compared as exact strings in the trace above, which is what
+    reports that swap.
+    """
+    finished = model_payload(PIXEL_SCRIPTS["finished"])["items"]
+    assert len(set(len(text) for text in finished)) == 1
+    swapped = list(reversed(finished))
+    assert swapped != finished
+    timed_out = model_payload(PIXEL_SCRIPTS["timeout"])["items"]
+    assert len(set(len(text) for text in timed_out)) == len(timed_out)
+
+
+SILENT_IN_THE_RENDER = {
+    "headline_point_size": "point_size",
+    "headline_bold": "bold",
+}
+
+
+def test_the_font_the_pixel_check_cannot_see_is_compared_as_a_number(monkeypatch):
+    """The headline's size and weight paint the same box on this host.
+
+    No font is installed for the offscreen platform, so a point size of
+    8, 12 or 20 and a bold or plain weight all render the same missing
+    glyph box. Both values are compared against the dialog's own font in
+    ``test_the_headline_and_subline_match_the_dialog``; this names why
+    the render cannot report them.
+    """
+    for token in SILENT_IN_THE_RENDER.values():
+        assert token in surface.HEADLINE
+    dialog, _ = build_dialog(monkeypatch)
+    font = dialog._headline.font()
+    assert surface.HEADLINE["point_size"] == font.pointSize() == 12
+    assert surface.HEADLINE["bold"] == font.bold() is True
+    for size in (8, 20):
+        assert surface.HEADLINE["point_size"] != size
+
+
+def test_the_stretch_the_pixel_check_cannot_see_is_compared_as_a_number(monkeypatch):
+    """A stretch of 0 on the list paints the same as the shipped 1.
+
+    The list already expands on its own size policy, and the spacer in
+    the button row already absorbs the leftover width, so dropping
+    either stretch factor to 0 changes no pixel. Both factors are
+    compared against the dialog's own layout in
+    ``test_layout_matches_the_dialog``.
+    """
+    dialog, _ = build_dialog(monkeypatch)
+    layout = dialog.layout()
+    assert surface.LAYOUT["child_stretch"] == [
+        layout.stretch(index) for index in range(layout.count())
+    ]
+    assert surface.LAYOUT["child_stretch"][2] == 1
+    assert surface.BUTTON_ROW["leading_stretch"] == layout.itemAt(3).layout().stretch(0)
+    assert surface.BUTTON_ROW["leading_stretch"] == 1
+
+
+def test_the_offscreen_host_paints_no_glyphs(monkeypatch):
+    """The pixel check would be trusted to compare the text of a line.
+
+    This host has no font installed for the offscreen platform, so every
+    character paints the same missing-glyph box. Two lines of equal
+    length render identically whatever they say. Line text is compared
+    as exact strings in the trace above; the pixel check covers layout,
+    colour and how many characters a line carries.
+    """
+    from PySide6.QtGui import QFontDatabase
+
+    app()
+    assert QFontDatabase.families() == []
+    script = PIXEL_SCRIPTS["finished"]
+    same_length = model_payload(script)
+    same_length["items"][0] = "X " + "y" * (len(same_length["items"][0]) - 2)
+    assert same_length["items"][0] != model_payload(script)["items"][0]
+    shipped = render_offscreen(
+        dialog_painted_by_the_dialog(script, monkeypatch), PIXEL_SIZE
+    )
+    disguised = render_offscreen(dialog_painted_by_the_model(same_length), PIXEL_SIZE)
+    assert image_digest(shipped) == image_digest(disguised)
+
+
+def colour_count(image, hex_colour):
+    from PySide6.QtGui import QColor
+
+    target = QColor(hex_colour).rgb()
+    return sum(
+        1
+        for y in range(image.height())
+        for x in range(image.width())
+        if image.pixel(x, y) == target
+    )
+
+
+PAINTED_TOKENS = (
+    surface.DIALOG_SURFACE,
+    surface.TEXT_COLOR,
+    surface.LIST_SURFACE,
+    surface.LIST_BORDER,
+    surface.BUTTON_SURFACE,
+    surface.BUTTON_BORDER,
+    surface.DISABLED_TEXT,
+    surface.SUBLINE_COLOR,
+)
+
+
+def test_the_declared_colours_reach_the_pixels(monkeypatch):
+    """A declared colour is painted by neither side, or by only one."""
+    app()
+    script = PIXEL_SCRIPTS["finished"]
+    from_dialog = render_offscreen(
+        dialog_painted_by_the_dialog(script, monkeypatch), PIXEL_SIZE
+    )
+    from_model = render_offscreen(
+        dialog_painted_by_the_model(model_payload(script)), PIXEL_SIZE
+    )
+    for token in PAINTED_TOKENS:
+        assert colour_count(from_dialog, token) > 0, token
+        assert colour_count(from_model, token) == colour_count(from_dialog, token)
+    assert colour_count(from_dialog, "#ff00ff") == 0
+    assert colour_count(from_dialog, surface.BUTTON_HOVER) == 0
+    assert len(set(PAINTED_TOKENS)) == len(PAINTED_TOKENS)
+
+
+GREY_TOKENS = (surface.TEXT_COLOR, surface.DISABLED_TEXT, surface.SUBLINE_COLOR)
+
+
+def test_a_channel_swap_is_reported_on_every_colour_that_can_show_one():
+    """A colour check a swapped red and blue would pass proves nothing.
+
+    Three of the nine tokens are greys, so their channels are equal and
+    no swap can change them. They are named here rather than left to
+    look like coverage; the six that carry a hue are checked.
+    """
+    swappable = 0
+    for _name, token, _expected in COLOUR_TOKENS:
+        red, green, blue = surface.rgb(token)
+        if token in GREY_TOKENS:
+            assert red == green == blue, token
+            continue
+        assert (red, green, blue) != (blue, green, red), token
+        swappable += 1
+    assert swappable == 6
+    assert len(GREY_TOKENS) == 3
+    assert surface.rgb("#888") == surface.rgb("#888888")
+
+
+def test_view_model_is_json_serialisable():
+    """The bridge cannot encode what the surface returns."""
+    payload = model_payload(HAPPY_SCRIPT)
+    encoded = json.loads(json.dumps(payload))
+    assert encoded["headline_text"] == "Done — 3 bot(s) processed."
+    assert encoded["items"] == ["✓ bot-a", "✓ bot-b", "✓ bot-c"]
+    assert encoded["item_count"] == 3
+    assert encoded["cancel_enabled"] is False
+    assert encoded["close_enabled"] is True
+    assert encoded["calls"][-1] == ["closeAfter", 2000]
+    assert encoded["topic"] == "bot_manager.start_all_progress"
+    assert encoded["phases"] == [
+        "begin",
+        "bot_starting",
+        "bot_started",
+        "bot_timeout",
+        "done",
+        "cancelled",
+    ]
+    assert encoded["event_fields"] == ["phase", "total", "started", "bot_id"]
+    assert encoded["dialog_surface"] == [20, 20, 30]
+    assert encoded["text_color"] == [192, 192, 192]
+    assert encoded["list_surface"] == [10, 10, 18]
+    assert encoded["subline_color"] == [136, 136, 136]
+    assert encoded["widget"]["accessible_name"] == "Start All Progress Dialog"
+
+
+def test_view_model_matches_the_dialog_on_the_same_events(monkeypatch):
+    """The bridge payload disagrees with the dialog on the same run."""
+    from PySide6 import QtWidgets
+
+    dialog = dialog_painted_by_the_dialog(HAPPY_SCRIPT, monkeypatch)
+    payload = model_payload(HAPPY_SCRIPT)
+    rows = QtWidgets.QListWidget.count(dialog._list)
+    assert payload["headline_text"] == dialog._headline.text()
+    assert payload["items"] == [
+        QtWidgets.QListWidget.item(dialog._list, row).text() for row in range(rows)
+    ]
+    assert payload["item_count"] == rows
+    assert payload["cancel_enabled"] == dialog._cancel_btn.isEnabled()
+    assert payload["close_enabled"] == dialog._close_btn.isEnabled()
+
+
+def test_bridge_registers_the_start_all_method():
+    """The renderer cannot reach the Start All dialog through the bridge."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert surface.METHOD in registry
+    answer = desktop_bridge.handle_line(
+        json.dumps(
+            {
+                "id": 31,
+                "method": surface.METHOD,
+                "params": {
+                    "reset": True,
+                    "events": [
+                        {"phase": "begin", "total": 2, "started": 0, "bot_id": ""},
+                        {
+                            "phase": "bot_starting",
+                            "total": 2,
+                            "started": 0,
+                            "bot_id": "bridge-bot",
+                        },
+                        {
+                            "phase": "bot_started",
+                            "total": 2,
+                            "started": 1,
+                            "bot_id": "bridge-bot",
+                        },
+                    ],
+                },
+            }
+        ),
+        registry,
+    )
+    assert answer["ok"] is True
+    assert answer["result"]["items"] == ["✓ bridge-bot"]
+    assert answer["result"]["headline_text"] == "Auto-starting 2 bots (1/2 verified)"
+
+
+def test_the_bridge_carries_the_cancel_and_the_close():
+    """A Cancel press or a close over the bridge changed nothing."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+
+    def call(params):
+        return desktop_bridge.handle_line(
+            json.dumps({"id": 32, "method": surface.METHOD, "params": params}),
+            registry,
+        )["result"]
+
+    started = call({"reset": True, "events": [{"phase": "begin", "total": 2}]})
+    assert started["cancel_enabled"] is True
+    cancelled = call({"cancel": True})
+    assert cancelled["headline_text"] == surface.HEADLINE_CANCELLING
+    assert cancelled["cancel_enabled"] is False
+    refused = call({"reset": True, "cancel": True, "cancel_refused": True})
+    assert refused["headline_text"] == surface.HEADLINE_CANCEL_FAILED
+    assert call({"close": True})["headline_text"] == surface.HEADLINE_CANCEL_FAILED
+    assert call({"close": True, "unsubscribe_refused": True})["close_enabled"] is False
+    call({"reset": True})
+
+
+def test_the_bridge_keeps_the_state_until_a_reset():
+    """The dialog forgot its lines between two bridge calls."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+
+    def call(params):
+        return desktop_bridge.handle_line(
+            json.dumps({"id": 33, "method": surface.METHOD, "params": params}),
+            registry,
+        )["result"]
+
+    call({"reset": True, "events": [{"phase": "begin", "total": 2}]})
+    call({"events": [{"phase": "bot_starting", "total": 2, "bot_id": "kept"}]})
+    assert call({})["items"] == ["⏳ kept (starting...)"]
+    assert call({"reset": True})["items"] == []
+    assert call({})["headline_text"] == surface.HEADLINE_INITIAL_TEXT
+
+
+def test_a_bad_event_over_the_bridge_loses_only_itself(capture_log):
+    """One unreadable event took the whole batch down."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    with capture_log(LOGGER_NAME) as records:
+        answer = desktop_bridge.handle_line(
+            json.dumps(
+                {
+                    "id": 34,
+                    "method": surface.METHOD,
+                    "params": {
+                        "reset": True,
+                        "events": [
+                            {"phase": "begin", "total": 2},
+                            {"phase": "begin", "total": "not-a-number"},
+                            {
+                                "phase": "bot_starting",
+                                "total": 2,
+                                "bot_id": "survivor",
+                            },
+                        ],
+                    },
+                }
+            ),
+            registry,
+        )
+    assert answer["ok"] is True
+    assert answer["result"]["items"] == ["⏳ survivor (starting...)"]
+    assert len(records) == 1
+    desktop_bridge.handle_line(
+        json.dumps({"id": 35, "method": surface.METHOD, "params": {"reset": True}}),
+        registry,
+    )
+
+
+QT_PROBE = (
+    "import json, sys;"
+    "from src.core import desktop_bridge;"
+    "frame = desktop_bridge.handle_line("
+    "json.dumps({'id': 1, 'method': 'start_all_progress.state', 'params':"
+    " {'reset': True, 'events': [{'phase': 'begin', 'total': 2},"
+    " {'phase': 'bot_starting', 'total': 2, 'bot_id': 'probe-bot'}]}}),"
+    " desktop_bridge.build_registry());"
+    "print(json.dumps({'frame': frame, 'qt': 'PySide6' in sys.modules}))"
+)
+
+
+def run_probe(prelude):
+    done = subprocess.run(
+        [sys.executable, "-"],
+        input=(prelude + QT_PROBE).encode("utf-8"),
+        capture_output=True,
+        cwd=str(REPO_ROOT),
+        timeout=300,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr.decode()
+    return json.loads(done.stdout.decode().splitlines()[-1])
+
+
+def test_the_surface_answers_over_the_bridge_without_loading_qt():
+    """Reaching the Start All dialog pulled Qt into the backend process."""
+    answered = run_probe("")
+    assert answered["qt"] is False
+    assert answered["frame"]["ok"] is True
+    result = answered["frame"]["result"]
+    assert result["items"] == ["⏳ probe-bot (starting...)"]
+    assert result["headline_text"] == (
+        "Auto-starting 2 bots (0/2 verified, starting probe-bot...)"
+    )
+    assert result["widget"]["style_sheet"].startswith("QDialog { background: #14141e;")
+
+
+def test_the_qt_probe_can_report_qt():
+    """The Qt probe reports absent whatever the process loaded."""
+    loaded = run_probe("import PySide6.QtCore;")
+    assert loaded["qt"] is True
+    assert loaded["frame"]["ok"] is True
