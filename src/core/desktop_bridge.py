@@ -57,6 +57,7 @@ def build_registry() -> Dict[str, Handler]:
         preflight_check_surface,
         start_all_progress_surface,
         status_log_surface,
+        table_cells_surface,
         trading_tab_surface,
     )
 
@@ -74,6 +75,7 @@ def build_registry() -> Dict[str, Handler]:
         buy_confirmation_surface.METHOD: buy_confirmation_surface.view_model,
         instance_consent_surface.METHOD: instance_consent_surface.view_model,
         preflight_check_surface.METHOD: preflight_check_surface.view_model,
+        table_cells_surface.METHOD: table_cells_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
 
