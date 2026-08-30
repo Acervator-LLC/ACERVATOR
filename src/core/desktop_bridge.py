@@ -55,16 +55,19 @@ def build_registry() -> Dict[str, Handler]:
         console_tab_surface,
         design_system_surface,
         header_strip_surface,
+        init_wizard_surface,
         instance_consent_surface,
         journal_tab_surface,
         launcher_surface,
         notification_spool_surface,
         preflight_check_surface,
+        react_history_panel_surface,
         start_all_progress_surface,
         status_log_surface,
         table_cells_surface,
         theme_engine_surface,
         trading_tab_surface,
+        tradingview_chart_surface,
     )
 
     return {
@@ -86,8 +89,11 @@ def build_registry() -> Dict[str, Handler]:
         theme_engine_surface.METHOD: theme_engine_surface.view_model,
         alerts_tab_surface.METHOD: alerts_tab_surface.view_model,
         analytics_tab_surface.METHOD: analytics_tab_surface.view_model,
+        init_wizard_surface.METHOD: init_wizard_surface.view_model,
         journal_tab_surface.METHOD: journal_tab_surface.view_model,
         launcher_surface.METHOD: launcher_surface.view_model,
+        react_history_panel_surface.METHOD: react_history_panel_surface.view_model,
+        tradingview_chart_surface.METHOD: tradingview_chart_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
 
