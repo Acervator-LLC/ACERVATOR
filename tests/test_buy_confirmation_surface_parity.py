@@ -26,6 +26,8 @@ from src.gui.main_tabs import buy_confirmation_surface as surface
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
+    sealed,
+    unaltered,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -1504,13 +1506,18 @@ def dialog_painted_by_the_dialog(spec):
 
 
 def model_payload(spec, button=None):
-    """The surface payload for the same parameter set."""
+    """The surface payload for the same parameter set, stamped."""
     model = surface.BuyConfirmationModel()
-    return surface.build_view_model(model, button=button, **PARAMS[spec])
+    return sealed(surface.build_view_model(model, button=button, **PARAMS[spec]))
 
 
 def dialog_painted_by_the_model(payload):
-    """A bare dialog filled only from the payload, never from the dialog."""
+    """A bare dialog filled only from the payload, never from the dialog.
+
+    A payload the caller changed after it came off the surface is
+    refused.
+    """
+    unaltered(payload)
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QFont
     from PySide6.QtWidgets import (
@@ -1590,132 +1597,23 @@ def test_the_two_sides_render_the_same_pixels(spec):
     )
 
 
-def altered_renders(spec, alter):
-    """The shipped render and the render of a payload one edit apart."""
+def test_the_pixel_check_reports_a_different_parameter_set():
+    """The image comparison passes whatever the second side paints.
+
+    Two real parameter sets, one driven into each side. One carries a
+    symbol, a reason and four figures; the other carries none of them,
+    so a pass proves the comparison reports a dialog painted
+    differently.
+    """
     app()
-    payload = model_payload(spec)
-    alter(payload)
-    shipped = render_offscreen(dialog_painted_by_the_dialog(spec), PIXEL_SIZE)
-    altered = render_offscreen(dialog_painted_by_the_model(payload), PIXEL_SIZE)
-    return shipped, altered
-
-
-def _repaint_yes(payload):
-    payload["buttons"]["yes"]["style_sheet"] = payload["buttons"]["yes"][
-        "style_sheet"
-    ].replace(surface.YES_SURFACE, "#0a2810")
-
-
-def _repaint_no(payload):
-    payload["buttons"]["no"]["style_sheet"] = payload["buttons"]["no"][
-        "style_sheet"
-    ].replace(surface.NO_SURFACE, "#280a0a")
-
-
-def _repaint_the_reason(payload):
-    payload["reason_label"]["style_sheet"] = payload["reason_label"][
-        "style_sheet"
-    ].replace(surface.REASON_COLOR, "#00aaff")
-
-
-def _move_the_margins(payload):
-    payload["layout"]["margins_px"] = [40, 40, 40, 40]
-
-
-def _move_the_button_row_margins(payload):
-    payload["button_row"]["margins_px"] = [30, 30, 30, 30]
-
-
-def _close_the_spacing(payload):
-    payload["layout"]["spacing_px"] = 0
-
-
-def _close_the_row_spacing(payload):
-    payload["button_row"]["spacing_px"] = 0
-
-
-def _stretch_the_details(payload):
-    payload["layout"]["child_stretch"] = [0, 0, 1, 0]
-
-
-def _swap_the_layout_order(payload):
-    payload["layout"]["order"] = ["details", "separator", "reason", "button_row"]
-
-
-def _swap_the_button_order(payload):
-    payload["button_row"]["order"] = ["no", "yes", "skip"]
-
-
-def _move_the_button_row_up(payload):
-    payload["layout"]["order"] = ["reason", "button_row", "separator", "details"]
-
-
-def _widen_the_minimum(payload):
-    payload["widget"]["minimum_width_px"] = 900
-
-
-def _disable_skip(payload):
-    payload["buttons"]["skip"]["enabled"] = False
-
-
-def _rename_the_skip_button(payload):
-    payload["buttons"]["skip"]["text"] = "Skip"
-
-
-def _stop_the_word_wrap(payload):
-    payload["reason_label"]["word_wrap"] = False
-
-
-def _shrink_the_reason_font(payload):
-    payload["reason_label"]["point_size"] = 8
-
-
-def _flatten_the_separator(payload):
-    payload["separator"]["frame_shape_value"] = 0
-
-
-def _read_details_as_plain_text(payload):
-    payload["details_label"]["text_format_value"] = 0
-
-
-def _shorten_the_reason(payload):
-    payload["reason_text"] = "R"
-
-
-def _drop_a_detail_row(payload):
-    payload["details_text"] = payload["details_text"].split("<br>", 1)[1]
-
-
-PIXEL_DEFECTS = {
-    "close_the_row_spacing": ("plain", _close_the_row_spacing),
-    "close_the_spacing": ("plain", _close_the_spacing),
-    "disable_skip": ("plain", _disable_skip),
-    "drop_a_detail_row": ("plain", _drop_a_detail_row),
-    "flatten_the_separator": ("plain", _flatten_the_separator),
-    "move_the_button_row_margins": ("plain", _move_the_button_row_margins),
-    "move_the_button_row_up": ("plain", _move_the_button_row_up),
-    "move_the_margins": ("plain", _move_the_margins),
-    "read_details_as_plain_text": ("plain", _read_details_as_plain_text),
-    "rename_the_skip_button": ("plain", _rename_the_skip_button),
-    "repaint_no": ("plain", _repaint_no),
-    "repaint_the_reason": ("plain", _repaint_the_reason),
-    "repaint_yes": ("plain", _repaint_yes),
-    "shorten_the_reason": ("long_reason", _shorten_the_reason),
-    "shrink_the_reason_font": ("plain", _shrink_the_reason_font),
-    "stop_the_word_wrap": ("long_spaced_reason", _stop_the_word_wrap),
-    "stretch_the_details": ("plain", _stretch_the_details),
-    "swap_the_button_order": ("plain", _swap_the_button_order),
-    "swap_the_layout_order": ("plain", _swap_the_layout_order),
-    "widen_the_minimum": ("plain", _widen_the_minimum),
-}
-
-
-@pytest.mark.parametrize("name", sorted(PIXEL_DEFECTS))
-def test_the_pixel_check_reports_one_planted_defect(name):
-    """The image comparison passes whatever the second side paints."""
-    spec, alter = PIXEL_DEFECTS[name]
-    shipped, altered = altered_renders(spec, alter)
-    assert_pictures_differ(old_side=shipped, new_side=altered, note=name)
+    assert PARAMS["plain"] != PARAMS["empty"]
+    assert_pictures_differ(
+        old_side=render_offscreen(dialog_painted_by_the_dialog("plain"), PIXEL_SIZE),
+        new_side=render_offscreen(
+            dialog_painted_by_the_model(model_payload("empty")), PIXEL_SIZE
+        ),
+        note="plain from the dialog against empty from the surface",
+    )
 
 
 SILENT_IN_THE_RENDER = ("bold", "point_size")

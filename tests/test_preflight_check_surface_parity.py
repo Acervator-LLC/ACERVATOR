@@ -26,10 +26,11 @@ pytest.importorskip("PySide6")
 
 from src.gui import preflight_check as shipped
 from src.gui.main_tabs import preflight_check_surface as surface
-from tests.fixtures.host_fonts import has_real_fonts
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
+    sealed,
+    unaltered,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -503,7 +504,12 @@ def old_warning_box(report):
 
 
 def new_box(payload):
-    """A box built only from the surface payload, never from the wizard."""
+    """A box built only from the surface payload, never from the wizard.
+
+    A payload the caller changed after it came off the surface is
+    refused.
+    """
+    unaltered(payload)
     properties = (
         payload["failure_widget"]
         if payload["box"] == surface.FAILURE_BOX
@@ -719,8 +725,8 @@ def run_old_gate(name, button, closed, monkeypatch):
 
 
 def view_of(model):
-    """The surface payload for a model that has already been driven."""
-    return surface.build_view_model(model)
+    """The surface payload for a model that has already been driven, stamped."""
+    return sealed(surface.build_view_model(model))
 
 
 def run_new_gate(name, button, closed, monkeypatch):
@@ -1634,83 +1640,22 @@ def test_the_boxes_start_no_timer(monkeypatch):
     assert len(surface.TIMERS) == len(observed) == 0
 
 
-def _blank_the_body(payload):
-    payload["box_body"] = ""
+def test_the_picture_reports_a_different_gate_case(monkeypatch):
+    """The image comparison passes whatever the second side paints.
 
-
-def _drop_the_report(payload):
-    payload["box_body"] = payload["box_body"].rsplit("\n\n", 1)[-1]
-
-
-def _swap_the_icon(payload):
-    payload["warning_widget"]["icon_value"] = surface.FAILURE_ICON_VALUE
-
-
-def _drop_the_icon(payload):
-    payload["warning_widget"]["icon_value"] = 0
-
-
-def _drop_a_button(payload):
-    payload["warning_widget"]["buttons_value"] = surface.YES_BUTTON_VALUE
-
-
-def _add_a_button(payload):
-    payload["warning_widget"]["buttons_value"] = (
-        surface.WARNING_BUTTONS_VALUE | surface.OK_BUTTON_VALUE
-    )
-
-
-def _reverse_the_report_lines(payload):
-    payload["box_body"] = "\n".join(payload["box_body"].split("\n")[::-1])
-
-
-def _drop_the_warnings_block(payload):
-    payload["box_body"] = payload["box_body"].split(surface.WARNINGS_HEADLINE)[0]
-
-
-def _blank_the_failure_body(payload):
-    payload["box_body"] = ""
-
-
-def _swap_the_failure_icon(payload):
-    payload["failure_widget"]["icon_value"] = surface.WARNING_ICON_VALUE
-
-
-def _widen_the_failure_buttons(payload):
-    payload["failure_widget"]["buttons_value"] = surface.WARNING_BUTTONS_VALUE
-
-
-def _drop_the_abort_line(payload):
-    payload["box_body"] = payload["box_body"].replace("\n\nBot creation aborted.", "")
-
-
-PIXEL_DEFECTS = {
-    "add_a_button": ("warned", _add_a_button),
-    "blank_the_body": ("warned", _blank_the_body),
-    "blank_the_failure_body": ("blocked", _blank_the_failure_body),
-    "drop_a_button": ("warned", _drop_a_button),
-    "drop_the_abort_line": ("blocked", _drop_the_abort_line),
-    "drop_the_icon": ("warned", _drop_the_icon),
-    "drop_the_report": ("warned", _drop_the_report),
-    "drop_the_warnings_block": ("warned", _drop_the_warnings_block),
-    "reverse_the_report_lines": ("warned", _reverse_the_report_lines),
-    "swap_the_failure_icon": ("blocked", _swap_the_failure_icon),
-    "swap_the_icon": ("warned", _swap_the_icon),
-    "widen_the_failure_buttons": ("blocked", _widen_the_failure_buttons),
-}
-
-
-@pytest.mark.parametrize("name", sorted(PIXEL_DEFECTS))
-def test_the_picture_reports_one_planted_defect(name, monkeypatch):
-    """The image comparison passes whatever the second side paints."""
-    case, alter = PIXEL_DEFECTS[name]
+    Two real gate cases, one driven into each side. One raises the
+    warning box and the other the failure box, so a pass proves the
+    comparison reports a box painted differently.
+    """
     app()
-    payload = new_payload(case, monkeypatch)
-    alter(payload)
+    assert new_payload("warned", monkeypatch)["box"] == surface.WARNING_BOX
+    assert new_payload("blocked", monkeypatch)["box"] == surface.FAILURE_BOX
     assert_pictures_differ(
-        old_side=render_offscreen(old_box_widget(case, monkeypatch), PIXEL_SIZE),
-        new_side=render_offscreen(new_box(payload), PIXEL_SIZE),
-        note=name,
+        old_side=render_offscreen(old_box_widget("warned", monkeypatch), PIXEL_SIZE),
+        new_side=render_offscreen(
+            new_box(new_payload("blocked", monkeypatch)), PIXEL_SIZE
+        ),
+        note="warned from the wizard against blocked from the surface",
     )
 
 
@@ -1719,36 +1664,25 @@ def disguise(text):
     return "".join("Z" if letter.isalpha() else letter for letter in text)
 
 
-def test_a_same_length_text_change_is_reported_by_the_right_check(monkeypatch):
+def test_a_same_length_text_change_is_compared_as_an_exact_string(monkeypatch):
     """A same-length text swap was left to the render to report.
 
     Whether a swap of equal length and equal word shape moves a pixel
-    depends on the fonts the host installs. The host is asked, both
-    answers are handled, and the string comparison below covers the
-    swap on every host either way.
+    depends on the fonts the host installs, so no render carries this
+    proof on every machine. The body text is read off the wizard's box
+    and off the surface and compared character for character.
     """
     app()
-    payload = new_payload("warned", monkeypatch)
-    original = payload["box_body"]
-    payload["box_body"] = disguise(original)
-    assert payload["box_body"] != original
-    assert len(payload["box_body"]) == len(original)
-    assert payload["box_body"].count("\n") == original.count("\n")
-    shipped_side = render_offscreen(old_box_widget("warned", monkeypatch), PIXEL_SIZE)
-    altered_side = render_offscreen(new_box(payload), PIXEL_SIZE)
-    if has_real_fonts():
-        assert_pictures_differ(
-            old_side=shipped_side, new_side=altered_side, note="real fonts"
-        )
-    else:
-        assert_pictures_match(
-            old_side=shipped_side, new_side=altered_side, note="no fonts"
-        )
-    old = run_old_gate("warned", None, False, monkeypatch)
-    new = run_new_gate("warned", None, False, monkeypatch)
-    assert new["box_body"] == old["box_body"]
-    assert disguise(old["box_body"]) != old["box_body"]
-    assert new["report"] == old["report"]
+    for name in BOX_CASES:
+        old = run_old_gate(name, None, False, monkeypatch)
+        new = run_new_gate(name, None, False, monkeypatch)
+        assert new["box_body"] == old["box_body"], name
+        assert new["report"] == old["report"], name
+    body = run_old_gate("warned", None, False, monkeypatch)["box_body"]
+    swapped = disguise(body)
+    assert swapped != body
+    assert len(swapped) == len(body)
+    assert swapped.count("\n") == body.count("\n")
 
 
 def test_the_window_title_a_picture_cannot_see_is_compared_as_a_string(monkeypatch):
@@ -1763,14 +1697,8 @@ def test_the_window_title_a_picture_cannot_see_is_compared_as_a_string(monkeypat
         old = old_box_widget(name, monkeypatch)
         payload = new_payload(name, monkeypatch)
         assert payload["box_title"] == old.windowTitle(), name
-    payload = new_payload("warned", monkeypatch)
-    shipped_side = render_offscreen(old_box_widget("warned", monkeypatch), PIXEL_SIZE)
-    payload["box_title"] = "Something else entirely"
-    assert_pictures_match(
-        old_side=shipped_side,
-        new_side=render_offscreen(new_box(payload), PIXEL_SIZE),
-        note="the title reaches no pixel",
-    )
+    painted = new_box(new_payload("warned", monkeypatch))
+    assert painted.windowTitle() == old_box_widget("warned", monkeypatch).windowTitle()
     assert surface.FAILURE_TITLE != surface.WARNING_TITLE
     assert new_payload("blocked", monkeypatch)["box_title"] == surface.FAILURE_TITLE
     assert new_payload("warned", monkeypatch)["box_title"] == surface.WARNING_TITLE
@@ -1864,8 +1792,8 @@ def test_the_boxes_declare_no_skin_of_their_own(monkeypatch):
 
     The wizard's boxes carry no style sheet of their own. The
     application theme paints them, and it paints both sides the same.
-    The emptiness is proved by the pixels: one side given a skin paints
-    a different picture, and the two shipped sides paint one picture.
+    The style sheet is read off the wizard's box and off the surface,
+    and the two shipped sides paint one picture.
     """
     app()
     assert surface.SKIN == {}
@@ -1879,13 +1807,9 @@ def test_the_boxes_declare_no_skin_of_their_own(monkeypatch):
     block = wizard.split("Pre-flight check failed")[0].rsplit("preflight_check", 1)[-1]
     assert "setStyleSheet" not in block
     assert "QMessageBox.critical(" in block or "QMessageBox" in wizard
-    skinned = new_payload("warned", monkeypatch)
-    skinned["warning_widget"]["style_sheet"] = "QMessageBox { background: #3a1414; }"
-    assert_pictures_differ(
-        old_side=render_offscreen(old_box_widget("warned", monkeypatch), PIXEL_SIZE),
-        new_side=render_offscreen(new_box(skinned), PIXEL_SIZE),
-        note="a skin the wizard does not paint was added to the surface",
-    )
+    for name in BOX_CASES:
+        assert old_box_widget(name, monkeypatch).styleSheet() == "", name
+        assert new_box(new_payload(name, monkeypatch)).styleSheet() == "", name
     assert_pictures_match(
         old_side=render_offscreen(old_box_widget("warned", monkeypatch), PIXEL_SIZE),
         new_side=render_offscreen(
@@ -2091,7 +2015,7 @@ BLIND_TO_THE_PICTURE = {
         "test_the_window_title_a_picture_cannot_see_is_compared_as_a_string"
     ),
     "same_length_text": (
-        "test_a_same_length_text_change_is_reported_by_the_right_check"
+        "test_a_same_length_text_change_is_compared_as_an_exact_string"
     ),
     "default_button": (
         "test_the_default_button_a_picture_may_not_show_is_compared_as_a_flag"

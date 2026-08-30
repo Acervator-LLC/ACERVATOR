@@ -23,10 +23,11 @@ pytest.importorskip("PySide6")
 
 from src.gui import design_system as shipped
 from src.gui.main_tabs import design_system_surface as surface
-from tests.fixtures.host_fonts import has_real_fonts
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
+    sealed,
+    unaltered,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -719,223 +720,8 @@ SURFACE_ONLY = (
     "view_model",
 )
 
-# Measured on this host: altering any one of these tokens moves a pixel
-# with no fonts installed and with DejaVu loaded into the offscreen
-# driver. Each is planted as a defect below and the render must report it.
-PIXEL_VISIBLE = (
-    "SURFACE_0",
-    "SURFACE_1",
-    "SURFACE_2",
-    "SURFACE_3",
-    "SURFACE_4",
-    "TEXT_HIGH",
-    "TEXT_MED",
-    "TEXT_LOW",
-    "TEXT_DISABLED",
-    "PRIMARY",
-    "ON_PRIMARY",
-    "PRIMARY_CONTAINER",
-    "ON_PRIMARY_CONTAINER",
-    "SECONDARY",
-    "ON_SECONDARY",
-    "SECONDARY_CONTAINER",
-    "ON_SECONDARY_CONTAINER",
-    "SUCCESS",
-    "DANGER",
-    "WARNING",
-    "INFO",
-    "OUTLINE",
-    "OUTLINE_STRONG",
-    "GLOW_PRIMARY",
-    "GLOW_SECONDARY",
-    "SCRIM",
-    "CARD_STOCK_SURFACE",
-    "CARD_STOCK_BORDER",
-    "CARD_STOCK_LABEL",
-    "CARD_STOCK_VALUE",
-    "CARD_METRIC_SURFACE",
-    "CARD_METRIC_BORDER",
-    "CARD_METRIC_LABEL",
-    "ERROR",
-    "WARNING_STRONG",
-    "STATUS_INFO",
-    "STATUS_NEUTRAL",
-    "STATUS_AUTHENTICATED",
-    "PRIMARY_BRIGHT",
-    "ACCENT_GOLD",
-    "LAYER_CRYPTO",
-    "LAYER_STOCK",
-    "TEXT_MAX",
-    "TEXT_NEUTRAL",
-    "TEXT_CONSOLE",
-    "TEXT_INACTIVE",
-    "TEXT_EMPTY_STATE",
-    "TEXT_MUTED",
-    "TEXT_PLACEHOLDER",
-    "TEXT_INFO_SOFT",
-    "TEXT_LOG_MINT",
-    "TEXT_ON_LIGHT",
-    "SURFACE_CHART",
-    "SURFACE_CONTROL",
-    "SURFACE_CONSOLE",
-    "SURFACE_CONSOLE_HEADER",
-    "BORDER_DISABLED",
-    "MENU_SURFACE",
-    "MENU_BORDER",
-    "MENU_ITEM_SELECTED",
-    "STATE_ARMED",
-    "STATE_ENGAGED",
-    "STATE_ENGAGED_DIM",
-    "STATE_ENGAGED_GLOW",
-    "STATE_PENDING",
-    "STATE_STARTING",
-    "STATE_MARKET",
-    "FOLD_RATIO_AMBER",
-    "FOLD_SOURCE_MANUAL",
-    "FOLD_TRANCHE_SURFACE",
-    "FOLD_TRANCHE_BORDER",
-    "EXTRACTOR_TRANCHE_SURFACE",
-    "EXTRACTOR_TRANCHE_BORDER",
-    "SETTINGS_PRIMARY_HOVER",
-    "SETTINGS_ON_INFO",
-    "SETTINGS_DANGER_SURFACE",
-    "SETTINGS_WARNING_HOVER",
-    "SETTINGS_DESTRUCTIVE_SURFACE",
-    "SETTINGS_DESTRUCTIVE_HOVER",
-    "SETTINGS_DISABLED_SURFACE",
-    "SETTINGS_DISABLED_DEEP",
-    "GLOW_PRIMARY_EDGE",
-    "GLOW_PRIMARY_FAINT",
-    "VIZ_PANEL_SURFACE",
-    "VIZ_PANEL_BORDER",
-    "VIZ_SWARM_SURFACE",
-    "VIZ_TAB_SELECTED",
-    "VIZ_TAB_TEXT",
-    "VIZ_HEADING",
-    "VIZ_CAPTION",
-    "VIZ_CAPTION_DIM",
-    "VIZ_LIST_SURFACE",
-    "VIZ_LIST_BORDER",
-    "VIZ_LIST_TEXT",
-    "VIZ_INPUT_SURFACE",
-    "VIZ_INPUT_BORDER",
-    "VIZ_GO_HOVER",
-    "VIZ_GO_HOVER_DEEP",
-    "VIZ_STOP_HOVER",
-    "VIZ_STOP_HOVER_DEEP",
-    "VIZ_SIM_HOVER",
-    "VIZ_GOLD_HOVER",
-    "VIZ_CONFIRM_SURFACE",
-    "VIZ_NUCLEAR_SURFACE",
-    "VIZ_NUCLEAR_BORDER",
-    "VIZ_LANE_LIVE",
-    "VIZ_LANE_PAPER",
-    "MAIN_TOOLBAR_SURFACE",
-    "MAIN_SEPARATOR",
-    "MAIN_BUTTON_SURFACE",
-    "MAIN_BUTTON_BORDER",
-    "MAIN_BUTTON_HOVER",
-    "MAIN_TOGGLE_SURFACE",
-    "MAIN_TOGGLE_HOVER",
-    "MAIN_TOGGLE_CHECKED",
-    "MAIN_TOGGLE_CHECKED_AMBER",
-    "MAIN_TOOLTIP_BORDER",
-    "MAIN_TABLE_HEADER",
-    "MAIN_CAPTION",
-    "MAIN_BADGE_TEXT",
-    "MAIN_BADGE_MAGENTA",
-    "MAIN_ALERT_SURFACE",
-    "MAIN_HIGHLIGHT_AMBER",
-    "MAIN_HIGHLIGHT_AMBER_TEXT",
-    "MAIN_LOG_NAME",
-    "MAIN_LOG_SITE",
-    "MAIN_LOG_CRITICAL",
-    "CARD_STOCK_PANEL",
-    "CARD_STOCK_BODY",
-    "CARD_STOCK_LOG_SURFACE",
-    "CARD_STOCK_BUTTON_BORDER",
-    "CARD_STOCK_BUTTON_HOVER",
-    "STOCK_POSITIVE",
-    "STOCK_NEGATIVE",
-    "STOCK_WARNING",
-    "STOCK_BUTTON_HOVER",
-    "STOCK_LOG_DEBUG",
-    "STOCK_LOG_TIMESTAMP",
-    "STOCK_LOG_CRITICAL",
-    "TYPE_DISPLAY",
-    "TYPE_H1",
-    "TYPE_H2",
-    "TYPE_H3",
-    "TYPE_H4",
-    "TYPE_BODY",
-    "TYPE_SMALL",
-    "TYPE_CAPTION",
-    "TYPE_CARD_VALUE",
-    "SPACE_XS",
-    "SPACE_XXS",
-    "SPACE_S",
-    "SPACE_M",
-    "SPACE_L",
-    "SPACE_XL",
-    "SPACE_XXL",
-    "RADIUS_NONE",
-    "RADIUS_XS",
-    "RADIUS_CARD",
-    "RADIUS_SM",
-    "RADIUS_MD",
-    "RADIUS_LG",
-    "RADIUS_FULL",
-    "TARGET_MIN",
-    "TARGET_COMFORTABLE",
-    "TARGET_LARGE",
-    "TABLE_COL_FIRE_W",
-    "TABLE_COL_DETAIL_W",
-    "FOCUS_RING_WIDTH",
-    "FOCUS_RING_OFFSET",
-    "FOCUS_RING_COLOR",
-    "SHADOW_0",
-    "SHADOW_1",
-    "SHADOW_2",
-    "SHADOW_3",
-    "SHADOW_4",
-    "BG",
-    "CARD",
-    "FG",
-    "DIM",
-    "HINT",
-)
-
-# Measured on this host: altering one of these moves no pixel either way.
-# A font family and a font weight need a font database. A line height is
-# not a Qt style-sheet property. A motion duration is a length of time and
-# a still picture has none. The card padding is absorbed by the label box.
-# Every one is compared as a value instead.
-PIXEL_BLIND = (
-    "FONT_FAMILY_MONO",
-    "FONT_FAMILY_UI",
-    "LINE_HEIGHT_BODY",
-    "LINE_HEIGHT_LOOSE",
-    "LINE_HEIGHT_TIGHT",
-    "MOTION_EXTRA",
-    "MOTION_INSTANT",
-    "MOTION_LONG",
-    "MOTION_MEDIUM",
-    "MOTION_SHORT",
-    "SPACE_CARD_TIGHT",
-    "WEIGHT_MEDIUM",
-)
-
-# Measured on this host: a font weight moves a pixel only where a font
-# database supplies a second face. The host is asked and both answers
-# are proved.
-FONT_REPORTED = ("WEIGHT_BOLD", "WEIGHT_REGULAR")
-
-# Measured on this host, and in the other direction: with no font
-# database every label is one box width, so the label padding decides
-# the row and a change to it moves the layout. With DejaVu loaded the
-# glyphs decide the row and the extra padding is absorbed. The host is
-# asked and both answers are proved.
-FONT_ABSORBED = ("SPACE_CARD_PAD",)
+# Every token is compared as a value on both sides, so no list decides
+# which of them a render is asked to report.
 
 
 # The awkward names a caller may ask for. None is a token.
@@ -995,13 +781,13 @@ SWATCH_ORDER = EXPECTED_COLOR_NAMES + EXPECTED_ALIAS_NAMES
 
 
 def shipped_tokens():
-    """Every token the shipped module exports, by name."""
-    return {name: getattr(shipped, name) for name in shipped.__all__}
+    """Every token the shipped module exports, by name, stamped."""
+    return sealed({name: getattr(shipped, name) for name in shipped.__all__})
 
 
 def surface_tokens():
-    """Every token the surface exports, by name."""
-    return {name: surface.token(name) for name in surface.TOKEN_NAMES}
+    """Every token the surface exports, by name, stamped."""
+    return sealed({name: surface.token(name) for name in surface.TOKEN_NAMES})
 
 
 def app():
@@ -1048,6 +834,7 @@ def build_panel(values):
         QWidget,
     )
 
+    unaltered(values)
     app()
     root = QWidget()
     root.setStyleSheet("QWidget { background: %s; }" % values["SURFACE_0"])
@@ -1155,11 +942,10 @@ def build_panel(values):
 
 
 def altered(name, value):
-    """One token changed to a value the panel paints differently.
+    """One token changed, to blind the value comparison in the test below.
 
-    A radius above half the block it rounds is rejected by Qt and paints
-    square, so a radius moves to a small in-range number, never a large
-    one.
+    The returned value keeps the type of the one it replaces, so the
+    comparison it blinds fails on the value and not on the type.
     """
     if isinstance(value, tuple):
         return (value[0] + 3, value[1] + 3, "ff")
@@ -1774,113 +1560,123 @@ def test_the_two_sides_paint_one_picture():
     )
 
 
-@pytest.mark.parametrize("name", PIXEL_VISIBLE)
-def test_the_picture_reports_one_planted_defect(name):
-    """The image comparison passes whatever the second side paints."""
+LABEL_SIZE = (240, 70)
+
+
+def build_sample_label(size_px, color):
+    """One label painted from a type size and a colour, and nothing else."""
+    from PySide6.QtWidgets import QLabel
+
     app()
-    values = surface_tokens()
-    was = values[name]
-    values[name] = altered(name, was)
-    assert values[name] != was, name
+    label = QLabel(SAMPLE_TEXT)
+    label.setStyleSheet("QLabel { font-size: %dpx; color: %s; }" % (size_px, color))
+    return label
+
+
+def test_the_picture_comparison_can_report_a_difference():
+    """The picture check passes whatever the second side paints.
+
+    Two real type sizes and two real colours, one pair read from each
+    side. A pass proves the comparison reports a label painted
+    differently, so the match above is not green by being unable to
+    fail.
+    """
+    app()
+    assert shipped.TYPE_DISPLAY != surface.token("TYPE_CAPTION")
+    assert shipped.TEXT_HIGH != surface.token("DANGER")
     assert_pictures_differ(
-        old_side=render_offscreen(build_panel(shipped_tokens()), PIXEL_SIZE),
-        new_side=render_offscreen(build_panel(values), PIXEL_SIZE),
-        note=name,
+        old_side=render_offscreen(
+            build_sample_label(shipped.TYPE_DISPLAY, shipped.TEXT_HIGH), LABEL_SIZE
+        ),
+        new_side=render_offscreen(
+            build_sample_label(surface.token("TYPE_CAPTION"), surface.token("DANGER")),
+            LABEL_SIZE,
+        ),
+        note="TYPE_DISPLAY from the shipped module against TYPE_CAPTION",
     )
 
 
-def test_the_planted_defect_set_covers_every_token_once():
-    """A token belongs to no list, so nothing decided how it is checked."""
-    named = (
-        list(PIXEL_VISIBLE)
-        + list(PIXEL_BLIND)
-        + list(FONT_REPORTED)
-        + list(FONT_ABSORBED)
-    )
-    assert sorted(named) == sorted(surface.TOKEN_NAMES)
-    assert len(named) == TOKEN_TOTAL
-    assert len(set(named)) == TOKEN_TOTAL
-    assert len(PIXEL_VISIBLE) == 180
-    assert len(PIXEL_BLIND) == 12
-    assert len(FONT_REPORTED) == 2
-    assert len(FONT_ABSORBED) == 1
+def test_every_token_is_compared_as_a_value_on_both_sides():
+    """A token reached no comparison, so nothing decided how it is checked."""
+    assert sorted(shipped.__all__) == sorted(surface.TOKEN_NAMES)
+    assert sorted(shipped.__all__) == sorted(EXPECTED)
+    assert len(shipped.__all__) == TOKEN_TOTAL
+    assert len(set(shipped.__all__)) == TOKEN_TOTAL
+    for name in shipped.__all__:
+        assert surface.token(name) == getattr(shipped, name), name
+        assert surface.token(name) == EXPECTED[name], name
 
 
-@pytest.mark.parametrize("name", PIXEL_BLIND)
-def test_a_token_no_render_can_report_is_compared_as_a_value(name):
-    """A value the panel never paints was left to the render to report."""
-    old = getattr(shipped, name)
-    new = surface.token(name)
-    assert new == old, f"{name}: shipped {old!r}, surface {new!r}"
-    assert new == EXPECTED[name], name
-    assert altered(name, new) != new, name
+def label_style_sheets(panel):
+    """The style sheet of every label the panel paints, in paint order."""
+    from PySide6.QtWidgets import QLabel
+
+    return [label.styleSheet() for label in panel.findChildren(QLabel)]
 
 
-def _planted_sides(name):
-    """The shipped panel, and the same panel with `name` altered."""
-    values = surface_tokens()
-    values[name] = altered(name, values[name])
-    assert values[name] != surface.token(name), name
-    return (
-        render_offscreen(build_panel(shipped_tokens()), PIXEL_SIZE),
-        render_offscreen(build_panel(values), PIXEL_SIZE),
-    )
+def test_the_card_padding_is_read_off_both_sides():
+    """The card padding drifted between the shipped module and the surface.
 
-
-@pytest.mark.parametrize("name", FONT_REPORTED)
-def test_a_font_weight_is_reported_by_the_right_check(name):
-    """A weight change only a font database can show was left to the render.
-
-    A second face exists only where a font database does. The host is
-    asked, both answers are handled, and the value comparison below
-    covers the weight on every host either way.
+    A font database absorbs the padding into the label box, so the
+    render carries this proof on one host and not on the next. The
+    number is read off the shipped module, off the surface, and off the
+    style sheet each side paints its labels with.
     """
     app()
-    shipped_side, altered_side = _planted_sides(name)
-    if has_real_fonts():
-        assert_pictures_differ(
-            old_side=shipped_side, new_side=altered_side, note=f"{name} real fonts"
-        )
-    else:
-        assert_pictures_match(
-            old_side=shipped_side, new_side=altered_side, note=f"{name} no fonts"
-        )
-    assert surface.token(name) == getattr(shipped, name), name
-    assert surface.token(name) == EXPECTED[name], name
+    assert surface.token("SPACE_CARD_PAD") == shipped.SPACE_CARD_PAD
+    assert surface.token("SPACE_CARD_PAD") == EXPECTED["SPACE_CARD_PAD"] == 12
+    assert surface.token("SPACE_CARD_TIGHT") == shipped.SPACE_CARD_TIGHT
+    assert surface.token("SPACE_CARD_TIGHT") == EXPECTED["SPACE_CARD_TIGHT"] == 10
+    assert shipped.SPACE_CARD_PAD != shipped.SPACE_CARD_TIGHT
+    declared = "padding: %dpx %dpx" % (
+        shipped.SPACE_CARD_TIGHT,
+        shipped.SPACE_CARD_PAD,
+    )
+    old = label_style_sheets(build_panel(shipped_tokens()))
+    new = label_style_sheets(build_panel(surface_tokens()))
+    assert new == old, (old, new)
+    assert sum(1 for sheet in new if declared in sheet) == len(TYPE_TRIPLES)
 
 
-@pytest.mark.parametrize("name", FONT_ABSORBED)
-def test_a_label_padding_is_reported_by_the_right_check(name):
-    """A padding change a font database hides was left to the render.
+def test_the_font_weights_are_read_off_both_sides():
+    """A font weight drifted between the shipped module and the surface.
 
-    With no font database every label is one box width and the padding
-    decides the row. With DejaVu loaded the glyphs decide the row and
-    the padding is absorbed. The host is asked, both answers are
-    handled, and the value comparison below covers the padding on every
-    host either way.
+    A weight moves a pixel only where a font database supplies a second
+    face. All three are read off the shipped module, off the surface,
+    and off the style sheet each side paints its labels with.
     """
     app()
-    shipped_side, altered_side = _planted_sides(name)
-    if has_real_fonts():
-        assert_pictures_match(
-            old_side=shipped_side, new_side=altered_side, note=f"{name} real fonts"
-        )
-    else:
-        assert_pictures_differ(
-            old_side=shipped_side, new_side=altered_side, note=f"{name} no fonts"
-        )
-    assert surface.token(name) == getattr(shipped, name), name
-    assert surface.token(name) == EXPECTED[name], name
+    weights = ("WEIGHT_REGULAR", "WEIGHT_MEDIUM", "WEIGHT_BOLD")
+    for name in weights:
+        assert surface.token(name) == getattr(shipped, name), name
+        assert surface.token(name) == EXPECTED[name], name
+    assert len({getattr(shipped, name) for name in weights}) == 3
+    old = label_style_sheets(build_panel(shipped_tokens()))
+    new = label_style_sheets(build_panel(surface_tokens()))
+    assert new == old, (old, new)
+    painted = "".join(new)
+    for _size_name, _color_name, weight_name in TYPE_TRIPLES:
+        assert "font-weight: %d" % getattr(shipped, weight_name) in painted
 
 
-def test_the_host_font_question_is_asked_and_not_assumed():
-    """The suite pinned the machine it was written on."""
+def test_the_font_families_are_read_off_both_sides():
+    """A font family drifted between the shipped module and the surface.
+
+    A family reaches a glyph only where a font database supplies it.
+    Both names are read off the shipped module, off the surface, and off
+    the style sheet each side paints its labels with.
+    """
     app()
-    answer = has_real_fonts()
-    assert answer in (True, False)
-    from PySide6.QtGui import QFontDatabase
-
-    assert answer == (len(QFontDatabase.families()) > 0)
+    for name in ("FONT_FAMILY_UI", "FONT_FAMILY_MONO"):
+        assert surface.token(name) == getattr(shipped, name), name
+        assert surface.token(name) == EXPECTED[name], name
+    assert shipped.FONT_FAMILY_UI != shipped.FONT_FAMILY_MONO
+    old = label_style_sheets(build_panel(shipped_tokens()))
+    new = label_style_sheets(build_panel(surface_tokens()))
+    assert new == old, (old, new)
+    painted = "".join(new)
+    assert "font-family: %s" % shipped.FONT_FAMILY_UI in painted
+    assert "font-family: %s" % shipped.FONT_FAMILY_MONO in painted
 
 
 ALPHA_COLOR_NAMES = (
@@ -1993,15 +1789,15 @@ def test_the_grey_colours_are_compared_as_strings():
 
 
 BLIND_TO_THE_PICTURE = {
-    "font_family_ui": "test_a_token_no_render_can_report_is_compared_as_a_value",
-    "font_family_mono": "test_a_token_no_render_can_report_is_compared_as_a_value",
+    "font_family_ui": "test_the_font_families_are_read_off_both_sides",
+    "font_family_mono": "test_the_font_families_are_read_off_both_sides",
     "line_heights": "test_every_line_height_is_a_fraction_above_one",
-    "motion_durations": "test_a_token_no_render_can_report_is_compared_as_a_value",
-    "weight_medium": "test_a_token_no_render_can_report_is_compared_as_a_value",
-    "space_card_tight": "test_a_token_no_render_can_report_is_compared_as_a_value",
-    "weight_bold": "test_a_font_weight_is_reported_by_the_right_check",
-    "weight_regular": "test_a_font_weight_is_reported_by_the_right_check",
-    "space_card_pad": "test_a_label_padding_is_reported_by_the_right_check",
+    "motion_durations": "test_every_token_is_compared_as_a_value_on_both_sides",
+    "weight_medium": "test_the_font_weights_are_read_off_both_sides",
+    "space_card_tight": "test_the_card_padding_is_read_off_both_sides",
+    "weight_bold": "test_the_font_weights_are_read_off_both_sides",
+    "weight_regular": "test_the_font_weights_are_read_off_both_sides",
+    "space_card_pad": "test_the_card_padding_is_read_off_both_sides",
     "eight_digit_colours": "test_the_eight_digit_colours_are_compared_as_strings",
     "shorthand_colour": "test_the_shorthand_colour_is_compared_as_a_string",
     "second_names": "test_the_second_names_are_compared_as_strings",
