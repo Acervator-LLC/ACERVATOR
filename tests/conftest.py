@@ -39,6 +39,23 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+TEST_HOME_ENV = "ACERVATOR_TEST_HOME"
+"""Point the whole suite at a throwaway home directory.
+
+Unset, nothing changes. Set, every writer that resolves ``Path.home()``
+lands there instead of the operator's tree, the guard below watches that
+tree, and it keeps full strictness because a live Acervator cannot reach
+it.
+"""
+
+_TEST_HOME = os.environ.get(TEST_HOME_ENV)
+if _TEST_HOME:
+    Path(_TEST_HOME).mkdir(parents=True, exist_ok=True)
+    # Set before the first src import. A module that resolves Path.home()
+    # while it is being imported must already see the throwaway home.
+    os.environ["USERPROFILE"] = _TEST_HOME
+    os.environ["HOME"] = _TEST_HOME
+
 from src.trading.sim_run_log import SIM_LOG_ROOT_ENV  # noqa: E402
 
 # v3.24.xx — set at conftest IMPORT time, not in a fixture, and this is
@@ -96,6 +113,16 @@ def _stone_tablet_root() -> Path:
     """The immutable archive. Lives INSIDE ~/.acervator, so it is covered
     by the roots above, but it gets its own stricter rule."""
     return Path.home() / ".acervator" / "stone_tablets"
+
+
+def _home_is_redirected() -> bool:
+    """True when TEST_HOME_ENV points the suite at a throwaway home.
+
+    A live Acervator only ever writes the operator's real home, so a
+    change under a redirected home can only be the suite's. The guard
+    below therefore keeps full strictness in that case.
+    """
+    return bool(os.environ.get(TEST_HOME_ENV))
 
 
 def _live_app_running() -> bool:
@@ -458,6 +485,30 @@ def _redirect_writable_roots():
                 os.environ[k] = v
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_privacy_registry(_redirect_writable_roots):
+    """Hand the whole suite a privacy register that saves nothing.
+
+    A GUI surface builds its module-level model while it is imported and
+    that model reads the register, so the process-wide register exists
+    from COLLECTION, before SETTINGS_ROOT_ENV above is set. This one has
+    autosave off and a throwaway path; the collected one is put back at
+    the end.
+    """
+    from src.core import privacy_mask_registry as registry_module
+
+    throwaway = registry_module.PrivacyMaskRegistry(
+        settings_path=_redirect_writable_roots / "acervator" / "settings.json",
+        autosave=False,
+    )
+    collected = registry_module._SINGLETON
+    registry_module._SINGLETON = throwaway
+    try:
+        yield throwaway
+    finally:
+        registry_module._SINGLETON = collected
+
+
 def _classify(
     before: dict[str, tuple[int, int]],
     after: dict[str, tuple[int, int]],
@@ -530,7 +581,7 @@ def _assert_no_live_tree_writes(_redirect_sim_log_root):
     created, tablet_touched, modified = _classify(before, after, tablet_root)
 
     problems: list[str] = []
-    live_up = _live_app_running()
+    live_up = _live_app_running() and not _home_is_redirected()
 
     # v3.24.42 — created and modified are now treated SYMMETRICALLY with
     # respect to a running app.
