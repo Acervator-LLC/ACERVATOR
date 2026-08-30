@@ -29,6 +29,7 @@ pytest.importorskip("PySide6")
 
 from src.gui import tradingview_chart as shipped
 from src.gui.main_tabs import tradingview_chart_surface as surface
+from tests.fixtures.chart_theme_table import restore_chart_themes
 from tests.fixtures.host_fonts import has_real_fonts
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
@@ -407,14 +408,13 @@ def recording_web_view():
 def restore_shipped_theme_table():
     """The shipped chart writes the symbol into the theme table it reads.
 
-    A failure means one test left that table carrying another test's
-    symbol, so the run stopped being repeatable.
+    Restored before the test as well as after it. A test in another file
+    that builds a chart leaves the table carrying that chart's symbol, and
+    every test here reads the table.
     """
-    was = {name: dict(one) for name, one in shipped.CHART_THEMES.items()}
+    restore_chart_themes()
     yield
-    for name, one in shipped.CHART_THEMES.items():
-        one.clear()
-        one.update(was[name])
+    restore_chart_themes()
 
 
 def old_chart(symbol=EXPECTED_DEFAULT_SYMBOL, theme=EXPECTED_DEFAULT_THEME):
@@ -1231,6 +1231,60 @@ def test_the_shipped_chart_writes_the_symbol_into_its_theme_table():
     assert shipped.CHART_THEMES["cyberpunk_dark"]["symbol"] == "XRP/USD"
     assert "symbol" not in surface.CHART_THEMES["cyberpunk_dark"]
     assert surface.page_html("XRP/USD", "cyberpunk_dark") == page
+
+
+ORDER_PROBE_ENV = "ACERVATOR_CHART_ORDER_PROBE"
+PARITY_FILE = "tests/test_tradingview_chart_surface_parity.py"
+LEFTOVER_SYMBOL = "LEFT-BY-AN-EARLIER-TEST"
+
+ORDER_PROBE = """import os
+import sys
+
+import pytest
+
+os.environ["%s"] = "1"
+
+
+class Polluter:
+    def pytest_collection_finish(self, session):
+        from src.gui import tradingview_chart as t
+
+        t.CHART_THEMES["cyberpunk_dark"]["symbol"] = "%s"
+
+
+sys.exit(
+    pytest.main(["-q", "-p", "no:cacheprovider", "%s"], plugins=[Polluter()])
+)
+""" % (ORDER_PROBE_ENV, LEFTOVER_SYMBOL, PARITY_FILE)
+
+
+def run_pytest(source):
+    """Run a probe that runs pytest, and hand back its code and its output."""
+    done = subprocess.run(
+        [sys.executable, "-"],
+        input=source.encode("utf-8"),
+        capture_output=True,
+        cwd=str(REPO_ROOT),
+        timeout=300,
+        check=False,
+    )
+    return done.returncode, done.stdout.decode("utf-8", "replace")
+
+
+@pytest.mark.skipif(
+    bool(os.environ.get(ORDER_PROBE_ENV)),
+    reason="this run is the probe; running the file again would not end",
+)
+def test_this_file_passes_with_the_theme_table_left_dirty():
+    """A test that ran earlier left the shared theme table changed, and an
+    answer in this file moved with it.
+
+    The probe writes a symbol into the table the shipped chart shares,
+    then runs this whole file in that same process.
+    """
+    code, output = run_pytest(ORDER_PROBE)
+    assert " passed" in output, output[-4000:]
+    assert code == 0, output[-4000:]
 
 
 # ---------------------------------------------------------------------
