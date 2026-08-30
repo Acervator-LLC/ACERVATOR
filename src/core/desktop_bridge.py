@@ -69,6 +69,7 @@ def build_registry() -> Dict[str, Handler]:
         theme_engine_surface,
         trading_tab_surface,
         tradingview_chart_surface,
+        visualizer_themes_surface,
     )
 
     return {
@@ -96,6 +97,7 @@ def build_registry() -> Dict[str, Handler]:
         positions_held_surface.METHOD: positions_held_surface.view_model,
         react_history_panel_surface.METHOD: react_history_panel_surface.view_model,
         tradingview_chart_surface.METHOD: tradingview_chart_surface.view_model,
+        visualizer_themes_surface.METHOD: visualizer_themes_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
 
