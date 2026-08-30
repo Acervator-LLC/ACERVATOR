@@ -63,6 +63,7 @@ def build_registry() -> Dict[str, Handler]:
         positions_held_surface,
         preflight_check_surface,
         react_history_panel_surface,
+        spendable_profits_surface,
         start_all_progress_surface,
         status_log_surface,
         table_cells_surface,
@@ -95,6 +96,7 @@ def build_registry() -> Dict[str, Handler]:
         launcher_surface.METHOD: launcher_surface.view_model,
         positions_held_surface.METHOD: positions_held_surface.view_model,
         react_history_panel_surface.METHOD: react_history_panel_surface.view_model,
+        spendable_profits_surface.METHOD: spendable_profits_surface.view_model,
         tradingview_chart_surface.METHOD: tradingview_chart_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
