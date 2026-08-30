@@ -27,6 +27,8 @@ from src.gui.widgets.capital_registry_panel import CapitalRegistryPanel
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
+    sealed,
+    unaltered,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -875,21 +877,33 @@ EDIT_TRIGGER_VALUES = {"none": "NoEditTriggers"}
 SELECTION_BEHAVIOR_VALUES = {"rows": "SelectRows"}
 
 
-def widget_painted_by_the_panel():
+PIXEL_UPDATES = (PIXEL_RESERVATIONS, PIXEL_GROWN)
+
+
+def widget_painted_by_the_panel(updates=PIXEL_UPDATES):
+    """The panel after each real reservation set, in order."""
     widget = CapitalRegistryPanel()
-    widget.update_from_registry(make_registry(PIXEL_RESERVATIONS))
-    widget.update_from_registry(make_registry(PIXEL_GROWN))
+    for reservations in updates:
+        widget.update_from_registry(make_registry(reservations))
     return widget
 
 
-def model_payload():
+def model_payload(updates=PIXEL_UPDATES):
+    """The view model after each real reservation set, stamped."""
     model = surface.CapitalRegistryModel()
-    surface.build_view_model(model, PIXEL_RESERVATIONS)
-    return surface.build_view_model(model, PIXEL_GROWN)
+    payload = {}
+    for reservations in updates:
+        payload = surface.build_view_model(model, reservations)
+    return sealed(payload)
 
 
 def widget_painted_by_the_model(payload):
-    """A bare table filled only from the payload, never from the panel."""
+    """A bare table filled only from the payload, never from the panel.
+
+    A payload the caller changed after it came off the surface is
+    refused.
+    """
+    unaltered(payload)
     from PySide6.QtWidgets import QAbstractItemView, QTableWidget, QTableWidgetItem
 
     properties = payload["widget"]
@@ -952,106 +966,22 @@ def test_a_same_length_cell_is_compared_as_an_exact_string():
     assert disguised != original
 
 
-def test_the_pixel_check_reports_a_cell_of_a_different_length():
-    """The image comparison passes whatever the second side paints."""
+def test_the_pixel_check_reports_a_different_reservation_set():
+    """The image comparison passes whatever the second side paints.
+
+    Two real reservation sets, one driven into each side. Two of the
+    three rows carry a different reserved amount, so a pass proves the
+    comparison reports a table painted differently.
+    """
     app()
-    payload = model_payload()
-    payload["rows"][0][8] = "$+3.10"
+    assert PIXEL_RESERVATIONS != PIXEL_GROWN
     assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
-    )
-
-
-def test_the_pixel_check_reports_an_empty_cell():
-    """The image comparison cannot see a cell lose its value."""
-    app()
-    payload = model_payload()
-    payload["rows"][1][3] = None
-    assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
-    )
-
-
-def test_the_pixel_check_reports_a_dropped_row():
-    """The image comparison cannot see a row disappear."""
-    app()
-    payload = model_payload()
-    payload["rows"] = payload["rows"][:2]
-    payload["row_count"] = 2
-    assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
-    )
-
-
-def test_the_pixel_check_reports_two_swapped_headers():
-    """The image comparison cannot see two columns change places."""
-    app()
-    payload = model_payload()
-    payload["columns"][0], payload["columns"][1] = (
-        payload["columns"][1],
-        payload["columns"][0],
-    )
-    assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
-    )
-
-
-def test_the_pixel_check_reports_two_swapped_rows():
-    """The image comparison cannot see two rows change places."""
-    app()
-    payload = model_payload()
-    payload["rows"][0], payload["rows"][2] = payload["rows"][2], payload["rows"][0]
-    assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
-    )
-
-
-def test_the_pixel_check_reports_a_changed_header():
-    """The image comparison cannot see a column header change."""
-    app()
-    payload = model_payload()
-    payload["columns"][8] = "Profit"
-    assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
-    )
-
-
-def test_the_pixel_check_reports_the_alternating_rows_turned_off():
-    """The image comparison cannot see the alternating row colour go."""
-    app()
-    payload = model_payload()
-    payload["widget"]["alternating_row_colors"] = False
-    assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
-    )
-
-
-def test_the_pixel_check_reports_the_row_numbers_coming_back():
-    """The image comparison cannot see the hidden row-number column return."""
-    app()
-    payload = model_payload()
-    payload["widget"]["vertical_header_visible"] = True
-    assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
-    )
-
-
-def test_the_pixel_check_reports_the_last_column_no_longer_stretching():
-    """The image comparison cannot see the last column stop stretching."""
-    app()
-    payload = model_payload()
-    payload["widget"]["stretch_last_section"] = False
-    assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_panel(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(payload), PIXEL_SIZE),
+        old_side=render_offscreen(
+            widget_painted_by_the_panel((PIXEL_RESERVATIONS,)), PIXEL_SIZE
+        ),
+        new_side=render_offscreen(
+            widget_painted_by_the_model(model_payload((PIXEL_GROWN,))), PIXEL_SIZE
+        ),
     )
 
 

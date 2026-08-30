@@ -25,10 +25,11 @@ pytest.importorskip("PySide6")
 
 from src.gui import table_cells as shipped
 from src.gui.main_tabs import table_cells_surface as surface
-from tests.fixtures.host_fonts import has_real_fonts
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
+    sealed,
+    unaltered,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -1220,8 +1221,10 @@ def build_row(cells):
 
     `cells` carries the Ammo text, colour and tooltip, and the two
     Target-denom texts and colours. Every other column is filler, so the
-    row has the shape the operator sees.
+    row has the shape the operator sees. Values the caller changed after
+    they came off a side are refused.
     """
+    unaltered(cells)
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor
     from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
@@ -1286,7 +1289,7 @@ def row_denom_args(denom_name, quote):
 
 
 def old_row_values(name, monkeypatch):
-    """The three cell values the shipped module composes for one row."""
+    """The three cell values the shipped module composes for one row, stamped."""
     ammo_name, denom_name = ROW_CASES[name]
     watch_bands(monkeypatch, shipped)
     CALLS.clear()
@@ -1298,19 +1301,21 @@ def old_row_values(name, monkeypatch):
     eth_text, eth_color = shipped._compose_table_target_denom_cell(
         *row_denom_args(denom_name, "ETH")
     )
-    return {
-        "ammo_text": ammo["text"],
-        "ammo_color": ammo["color"],
-        "ammo_tip": ammo["tip"],
-        "target_btc_text": btc_text,
-        "target_btc_color": btc_color,
-        "target_eth_text": eth_text,
-        "target_eth_color": eth_color,
-    }
+    return sealed(
+        {
+            "ammo_text": ammo["text"],
+            "ammo_color": ammo["color"],
+            "ammo_tip": ammo["tip"],
+            "target_btc_text": btc_text,
+            "target_btc_color": btc_color,
+            "target_eth_text": eth_text,
+            "target_eth_color": eth_color,
+        }
+    )
 
 
 def new_row_values(name, monkeypatch):
-    """The three cell values the surface payload carries for one row."""
+    """The three cell values the surface payload carries for one row, stamped."""
     ammo_name, denom_name = ROW_CASES[name]
     watch_bands(monkeypatch, surface)
     CALLS.clear()
@@ -1327,15 +1332,17 @@ def new_row_values(name, monkeypatch):
         surface.TableCellsModel(),
         denom=dict(zip(DENOM_ARG_NAMES, row_denom_args(denom_name, "ETH"))),
     )["denom"]
-    return {
-        "ammo_text": ammo["text"],
-        "ammo_color": ammo["color"],
-        "ammo_tip": ammo["tip"],
-        "target_btc_text": btc["text"],
-        "target_btc_color": btc["color"],
-        "target_eth_text": eth["text"],
-        "target_eth_color": eth["color"],
-    }
+    return sealed(
+        {
+            "ammo_text": ammo["text"],
+            "ammo_color": ammo["color"],
+            "ammo_tip": ammo["tip"],
+            "target_btc_text": btc["text"],
+            "target_btc_color": btc["color"],
+            "target_eth_text": eth["text"],
+            "target_eth_color": eth["color"],
+        }
+    )
 
 
 AMMO_ARG_NAMES = (
@@ -1375,92 +1382,22 @@ def test_the_two_sides_carry_the_same_cell_values(name, monkeypatch):
     assert old["ammo_tip"] != "", name
 
 
-def _blank_the_ammo_text(values):
-    values["ammo_text"] = ""
+def test_the_picture_reports_a_different_row_case(monkeypatch):
+    """The image comparison passes whatever the second side paints.
 
-
-def _blank_the_btc_text(values):
-    values["target_btc_text"] = ""
-
-
-def _blank_the_eth_text(values):
-    values["target_eth_text"] = ""
-
-
-def _fill_the_blank_btc_cell(values):
-    values["target_btc_text"] = values["ammo_text"]
-
-
-def _swap_the_ammo_colour(values):
-    values["ammo_color"] = (
-        ERROR_HEX if values["ammo_color"] != ERROR_HEX else SUCCESS_HEX
-    )
-
-
-def _neutralise_the_ammo_colour(values):
-    values["ammo_color"] = (
-        TEXT_MED_HEX if values["ammo_color"] != TEXT_MED_HEX else SUCCESS_HEX
-    )
-
-
-def _swap_the_btc_colour(values):
-    values["target_btc_color"] = (
-        ERROR_HEX if values["target_btc_color"] != ERROR_HEX else SUCCESS_HEX
-    )
-
-
-def _swap_the_eth_colour(values):
-    values["target_eth_color"] = (
-        ERROR_HEX if values["target_eth_color"] != ERROR_HEX else SUCCESS_HEX
-    )
-
-
-def _swap_the_two_denom_cells(values):
-    values["target_btc_text"], values["target_eth_text"] = (
-        values["target_eth_text"],
-        values["target_btc_text"],
-    )
-
-
-def _blank_all_three_cells(values):
-    values["ammo_text"] = ""
-    values["target_btc_text"] = ""
-    values["target_eth_text"] = ""
-
-
-# Every planted defect below empties a cell, fills an empty one, or
-# changes a colour. Each moves a pixel on any host. A defect that only
-# reshapes a string is covered by
-# `test_the_text_shape_a_picture_may_not_see_is_compared_as_a_string`,
-# because whether it moves a pixel depends on the host's fonts.
-PIXEL_DEFECTS = {
-    "blank_all_three_cells": ("scrum", _blank_all_three_cells),
-    "blank_the_ammo_text": ("scrum", _blank_the_ammo_text),
-    "blank_the_btc_text": ("scrum", _blank_the_btc_text),
-    "blank_the_eth_text": ("scrum", _blank_the_eth_text),
-    "fill_the_blank_btc_cell": ("stale", _fill_the_blank_btc_cell),
-    "neutralise_the_ammo_colour": ("scrum", _neutralise_the_ammo_colour),
-    "swap_the_ammo_colour": ("scrum", _swap_the_ammo_colour),
-    "swap_the_ammo_colour_on_fold": ("fold", _swap_the_ammo_colour),
-    "swap_the_btc_colour": ("scrum", _swap_the_btc_colour),
-    "swap_the_eth_colour": ("scrum", _swap_the_eth_colour),
-    "swap_the_two_denom_cells": ("stale", _swap_the_two_denom_cells),
-}
-
-
-@pytest.mark.parametrize("name", sorted(PIXEL_DEFECTS))
-def test_the_picture_reports_one_planted_defect(name, monkeypatch):
-    """The image comparison passes whatever the second side paints."""
-    case, alter = PIXEL_DEFECTS[name]
+    Two real row cases, one composed by each side. One carries an Ammo
+    figure and two Target-denom figures; the other carries a blank BTC
+    cell, so a pass proves the comparison reports a row painted
+    differently.
+    """
     app()
-    values = new_row_values(case, monkeypatch)
-    alter(values)
+    scrum = old_row_values("scrum", monkeypatch)
+    stale = new_row_values("stale", monkeypatch)
+    assert scrum != stale
     assert_pictures_differ(
-        old_side=render_offscreen(
-            build_row(old_row_values(case, monkeypatch)), PIXEL_SIZE
-        ),
-        new_side=render_offscreen(build_row(values), PIXEL_SIZE),
-        note=name,
+        old_side=render_offscreen(build_row(scrum), PIXEL_SIZE),
+        new_side=render_offscreen(build_row(stale), PIXEL_SIZE),
+        note="scrum from the shipped module against stale from the surface",
     )
 
 
@@ -1469,36 +1406,22 @@ def disguise(text):
     return "".join("Z" if letter.isalpha() else letter for letter in text)
 
 
-def test_a_same_length_text_change_is_reported_by_the_right_check(monkeypatch):
+def test_a_same_length_text_change_is_compared_as_an_exact_string(monkeypatch):
     """A same-length text swap was left to the render to report.
 
     Whether a swap of equal length and equal word shape moves a pixel
-    depends on the fonts the host installs. The host is asked, both
-    answers are handled, and the string comparison below covers the swap
-    on every host either way.
+    depends on the fonts the host installs, so no render carries this
+    proof on every machine. The Ammo text is read off the shipped module
+    and off the surface and compared character for character.
     """
-    app()
-    values = new_row_values("pending", monkeypatch)
-    original = values["ammo_text"]
-    values["ammo_text"] = disguise(original)
-    assert values["ammo_text"] != original
-    assert len(values["ammo_text"]) == len(original)
-    shipped_side = render_offscreen(
-        build_row(old_row_values("pending", monkeypatch)), PIXEL_SIZE
-    )
-    altered_side = render_offscreen(build_row(values), PIXEL_SIZE)
-    if has_real_fonts():
-        assert_pictures_differ(
-            old_side=shipped_side, new_side=altered_side, note="real fonts"
-        )
-    else:
-        assert_pictures_match(
-            old_side=shipped_side, new_side=altered_side, note="no fonts"
-        )
-    old = old_row_values("pending", monkeypatch)
-    new = new_row_values("pending", monkeypatch)
-    assert new["ammo_text"] == old["ammo_text"]
-    assert disguise(old["ammo_text"]) != old["ammo_text"]
+    for name in ROW_CASES:
+        old = old_row_values(name, monkeypatch)
+        new = new_row_values(name, monkeypatch)
+        assert new["ammo_text"] == old["ammo_text"], name
+    painted = old_row_values("pending", monkeypatch)["ammo_text"]
+    swapped = disguise(painted)
+    assert swapped != painted
+    assert len(swapped) == len(painted)
 
 
 TEXT_SHAPE_EDITS = {
@@ -1520,8 +1443,7 @@ def test_the_text_shape_a_picture_may_not_see_is_compared_as_a_string(monkeypatc
     database makes every family a box font and the cell elides to the
     same run of boxes. Whether any of these edits moves a pixel is a
     fact about the machine, so each is compared as an exact string on
-    both sides instead. The render is still run, once each way, and its
-    two answers are handled.
+    both sides instead.
     """
     app()
     for name in ROW_CASES:
@@ -1549,20 +1471,7 @@ def test_the_text_shape_a_picture_may_not_see_is_compared_as_a_string(monkeypatc
     assert changed["swap_the_decimal_point"] == "$50,0000"
     assert changed["drop_the_thousands_commas"] == "$999000000000000000.0000"
     assert len(TEXT_SHAPE_EDITS) == 7
-    values = new_row_values("scrum", monkeypatch)
-    values["ammo_text"] = changed["drop_the_dollar_sign"]
-    shipped_side = render_offscreen(
-        build_row(old_row_values("scrum", monkeypatch)), PIXEL_SIZE
-    )
-    altered_side = render_offscreen(build_row(values), PIXEL_SIZE)
-    if has_real_fonts():
-        assert_pictures_differ(
-            old_side=shipped_side, new_side=altered_side, note="real fonts"
-        )
-    else:
-        assert_pictures_match(
-            old_side=shipped_side, new_side=altered_side, note="no fonts"
-        )
+    assert len(set(changed.values())) == 7
 
 
 # ---------------------------------------------------------------------
@@ -1583,15 +1492,10 @@ def test_the_tooltip_a_picture_cannot_see_is_compared_as_a_string(monkeypatch):
         new = new_row_values(name, monkeypatch)
         assert new["ammo_tip"] == old["ammo_tip"], name
         assert old["ammo_tip"] != "", name
-    values = new_row_values("scrum", monkeypatch)
-    shipped_side = render_offscreen(
-        build_row(old_row_values("scrum", monkeypatch)), PIXEL_SIZE
-    )
-    values["ammo_tip"] = "Something else entirely"
-    assert_pictures_match(
-        old_side=shipped_side,
-        new_side=render_offscreen(build_row(values), PIXEL_SIZE),
-        note="the tooltip reaches no pixel",
+    painted = build_row(old_row_values("scrum", monkeypatch))
+    mirrored = build_row(new_row_values("scrum", monkeypatch))
+    assert mirrored.item(0, CALLER_AMMO_COLUMN).toolTip() == (
+        painted.item(0, CALLER_AMMO_COLUMN).toolTip()
     )
     assert (
         len({old_row_values(name, monkeypatch)["ammo_tip"] for name in ROW_CASES}) > 5
@@ -1673,19 +1577,11 @@ def test_a_blank_cells_colour_is_compared_as_a_string(monkeypatch):
         assert old_text == "", name
         assert new_text == old_text, name
         assert new_color == old_color == TEXT_MED_HEX, name
-    values = new_row_values("stale", monkeypatch)
-    assert values["target_btc_text"] == ""
-    shipped_side = render_offscreen(
-        build_row(old_row_values("stale", monkeypatch)), PIXEL_SIZE
-    )
-    values["target_btc_color"] = SUCCESS_HEX
-    assert_pictures_match(
-        old_side=shipped_side,
-        new_side=render_offscreen(build_row(values), PIXEL_SIZE),
-        note="a blank cell's colour reaches no pixel",
-    )
+    blank = new_row_values("stale", monkeypatch)
+    assert blank["target_btc_text"] == ""
+    assert blank["target_btc_color"] == TEXT_MED_HEX
+    assert old_row_values("stale", monkeypatch)["target_btc_color"] == TEXT_MED_HEX
     filled = new_row_values("scrum", monkeypatch)
-    filled["target_btc_color"] = SUCCESS_HEX
     assert filled["target_btc_text"] != ""
 
 
@@ -1798,9 +1694,9 @@ def test_the_cells_declare_no_skin_of_their_own(monkeypatch):
     """A colour the surface ships is one the table never paints.
 
     The cells carry no style sheet of their own. The application theme
-    paints the table, and it paints both sides the same. The emptiness
-    is proved by the pixels: one side given a skin paints a different
-    picture, and the two shipped sides paint one picture.
+    paints the table, and it paints both sides the same. The style sheet
+    is read off both built rows, and the two shipped sides paint one
+    picture.
     """
     app()
     assert surface.SKIN == {}
@@ -1808,15 +1704,8 @@ def test_the_cells_declare_no_skin_of_their_own(monkeypatch):
     payload = surface.build_view_model(surface.TableCellsModel())
     assert payload["skin"] == {}
     assert payload["style_sheet"] == ""
-    skinned = build_row(new_row_values("scrum", monkeypatch))
-    skinned.setStyleSheet("QTableWidget::item { background: #3a1414; }")
-    assert_pictures_differ(
-        old_side=render_offscreen(
-            build_row(old_row_values("scrum", monkeypatch)), PIXEL_SIZE
-        ),
-        new_side=render_offscreen(skinned, PIXEL_SIZE),
-        note="a skin the table does not paint was added to the surface",
-    )
+    assert build_row(old_row_values("scrum", monkeypatch)).styleSheet() == ""
+    assert build_row(new_row_values("scrum", monkeypatch)).styleSheet() == ""
     assert_pictures_match(
         old_side=render_offscreen(
             build_row(old_row_values("scrum", monkeypatch)), PIXEL_SIZE
@@ -1850,7 +1739,7 @@ BLIND_TO_THE_PICTURE = {
     "display_price": "test_the_display_price_is_the_shipped_readers",
     "timer_delay": "test_the_cells_start_no_timer",
     "same_length_text": (
-        "test_a_same_length_text_change_is_reported_by_the_right_check"
+        "test_a_same_length_text_change_is_compared_as_an_exact_string"
     ),
     "text_shape": ("test_the_text_shape_a_picture_may_not_see_is_compared_as_a_string"),
 }

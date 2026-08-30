@@ -47,6 +47,7 @@ def build_registry() -> Dict[str, Handler]:
     from src.exchange import history_surface
     from src.gui.main_tabs import (
         alerts_tab_surface,
+        analytics_tab_surface,
         bot_selection_surface,
         buy_confirmation_surface,
         capital_registry_surface,
@@ -82,6 +83,7 @@ def build_registry() -> Dict[str, Handler]:
         design_system_surface.METHOD: design_system_surface.view_model,
         theme_engine_surface.METHOD: theme_engine_surface.view_model,
         alerts_tab_surface.METHOD: alerts_tab_surface.view_model,
+        analytics_tab_surface.METHOD: analytics_tab_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
 
