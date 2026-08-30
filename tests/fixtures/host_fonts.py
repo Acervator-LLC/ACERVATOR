@@ -51,6 +51,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 FONT_ENV = "ACERVATOR_TEST_FONTS"
 
+NARROW_TEXT = "iiii"
+WIDE_TEXT = "WWWW"
+"""One narrow and one wide string of equal length, for a test that must
+tell the two font states apart. Equal length, so a box font gives them one
+width and a proportional font gives them two. Every such test takes this
+pair rather than its own, so one answer cannot drift into two."""
+
 _loaded_families: list[str] = []
 
 
