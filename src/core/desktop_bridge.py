@@ -53,6 +53,7 @@ def build_registry() -> Dict[str, Handler]:
         capital_registry_surface,
         console_log_surface,
         console_tab_surface,
+        dashboard_stat_card_surface,
         design_system_surface,
         header_strip_surface,
         init_wizard_surface,
@@ -71,6 +72,8 @@ def build_registry() -> Dict[str, Handler]:
         theme_engine_surface,
         trading_tab_surface,
         tradingview_chart_surface,
+        visualizer_themes_surface,
+        wire_canvas_surface,
     )
 
     return {
@@ -92,6 +95,7 @@ def build_registry() -> Dict[str, Handler]:
         theme_engine_surface.METHOD: theme_engine_surface.view_model,
         alerts_tab_surface.METHOD: alerts_tab_surface.view_model,
         analytics_tab_surface.METHOD: analytics_tab_surface.view_model,
+        dashboard_stat_card_surface.METHOD: dashboard_stat_card_surface.view_model,
         init_wizard_surface.METHOD: init_wizard_surface.view_model,
         journal_tab_surface.METHOD: journal_tab_surface.view_model,
         launcher_surface.METHOD: launcher_surface.view_model,
@@ -100,6 +104,8 @@ def build_registry() -> Dict[str, Handler]:
         react_history_panel_surface.METHOD: react_history_panel_surface.view_model,
         spendable_profits_surface.METHOD: spendable_profits_surface.view_model,
         tradingview_chart_surface.METHOD: tradingview_chart_surface.view_model,
+        visualizer_themes_surface.METHOD: visualizer_themes_surface.view_model,
+        wire_canvas_surface.METHOD: wire_canvas_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
 

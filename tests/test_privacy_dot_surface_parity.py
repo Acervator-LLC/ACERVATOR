@@ -25,8 +25,8 @@ pytest.importorskip("PySide6")
 
 from src.gui.main_tabs import privacy_dot_surface as surface
 from tests.fixtures.host_fonts import (
-    NARROW_TEXT,
-    WIDE_TEXT,
+    NARROW_LABEL,
+    WIDE_LABEL,
     has_real_fonts,
     load_run_fonts,
     skip_unless_no_fonts,
@@ -1375,16 +1375,16 @@ def test_two_strings_of_one_length_measure_one_width():
     tells them apart.
     """
     app()
-    assert len(NARROW_TEXT) == len(WIDE_TEXT)
-    assert dot_width(NARROW_TEXT) == dot_width(WIDE_TEXT)
+    assert len(NARROW_LABEL) == len(WIDE_LABEL)
+    assert dot_width(NARROW_LABEL) == dot_width(WIDE_LABEL)
 
 
 @skip_unless_real_fonts
 def test_two_strings_of_one_length_measure_different_widths():
     """With a font database every glyph still advances one em."""
     app()
-    assert len(NARROW_TEXT) == len(WIDE_TEXT)
-    assert dot_width(NARROW_TEXT) != dot_width(WIDE_TEXT)
+    assert len(NARROW_LABEL) == len(WIDE_LABEL)
+    assert dot_width(NARROW_LABEL) != dot_width(WIDE_LABEL)
 
 
 # ---------------------------------------------------------------------
