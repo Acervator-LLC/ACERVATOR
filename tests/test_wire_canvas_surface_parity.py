@@ -24,6 +24,9 @@ pytest.importorskip("PySide6")
 
 from src.gui.main_tabs import wire_canvas_surface as surface
 from tests.fixtures.host_fonts import (
+    NARROW_LABEL,
+    WIDE_LABEL,
+    app_font_advance_px,
     has_real_fonts,
     skip_unless_no_fonts,
     skip_unless_real_fonts,
@@ -1978,18 +1981,18 @@ def test_a_payload_the_test_changed_never_reaches_a_render():
 def test_two_badge_labels_of_equal_length_measure_the_same_width():
     """The host reports no fonts and the glyphs still have their own widths."""
     app()
-    assert qt_advance(surface.label_text("iii")) == qt_advance(
-        surface.label_text("WWW")
-    )
+    narrow = app_font_advance_px(surface.label_text(NARROW_LABEL))
+    wide = app_font_advance_px(surface.label_text(WIDE_LABEL))
+    assert narrow == wide, (narrow, wide)
 
 
 @skip_unless_real_fonts
 def test_two_badge_labels_of_equal_length_measure_different_widths():
     """The host reports fonts and every glyph still has one width."""
     app()
-    assert qt_advance(surface.label_text("iii")) != qt_advance(
-        surface.label_text("WWW")
-    )
+    narrow = app_font_advance_px(surface.label_text(NARROW_LABEL))
+    wide = app_font_advance_px(surface.label_text(WIDE_LABEL))
+    assert narrow != wide, (narrow, wide)
 
 
 def test_the_badge_is_as_wide_as_the_label_the_font_engine_measured():
