@@ -16,11 +16,13 @@ from pathlib import Path
 
 import pytest
 
+from tests.fixtures.ci_lanes import SLOW_FILES
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tests.conftest import _SLOW_FILES, pytest_collection_modifyitems  # noqa: E402
+from tests.conftest import pytest_collection_modifyitems  # noqa: E402
 
 
 class _Item:
@@ -40,7 +42,7 @@ class _Item:
 
 def _mark(*paths: str) -> list[_Item]:
     items = [_Item(str(REPO_ROOT / "tests" / p)) for p in paths]
-    pytest_collection_modifyitems(None, items)
+    pytest_collection_modifyitems(items)
     return items
 
 
@@ -59,14 +61,14 @@ def test_the_double_records_what_it_is_given():
 
 class TestTheHookApplies:
     def test_the_slow_files_are_named_and_present(self):
-        assert _SLOW_FILES, "the slow lane would be empty"
-        for name in _SLOW_FILES:
+        assert SLOW_FILES, "the slow lane would be empty"
+        for name in SLOW_FILES:
             assert (REPO_ROOT / "tests" / name).is_file(), (
                 f"{name} is marked slow but is not in the tree, so the full "
                 f"lane runs less than this list claims"
             )
 
-    @pytest.mark.parametrize("name", sorted(_SLOW_FILES))
+    @pytest.mark.parametrize("name", sorted(SLOW_FILES))
     def test_a_slow_file_gets_the_slow_marker(self, name):
         assert _mark(name)[0].names == {"slow"}
 
@@ -91,13 +93,13 @@ class TestTheLanesPartition:
 def test_POSITIVE_CONTROL_a_blinded_hook_fails_this_file():
     """Prove the checks above can go red: mark nothing, and they must."""
 
-    def blinded(config: object, items: list) -> None:
+    def blinded(items: list) -> None:
         """The hook with its body removed: same signature, marks nothing."""
-        assert items is not None and config is None
+        assert items is not None
 
-    items = [_Item(str(REPO_ROOT / "tests" / sorted(_SLOW_FILES)[0]))]
-    blinded(None, items)
+    items = [_Item(str(REPO_ROOT / "tests" / sorted(SLOW_FILES)[0]))]
+    blinded(items)
     assert items[0].names == set(), "the blinded hook still marked something"
     # The real hook, on the same input, must differ. If it does not, every
     # assertion in this file is passing on a hook that does nothing.
-    assert _mark(sorted(_SLOW_FILES)[0])[0].names == {"slow"}
+    assert _mark(sorted(SLOW_FILES)[0])[0].names == {"slow"}
