@@ -97,11 +97,11 @@ ALL_FIELD_IDS = (
 )
 # v3.23.7: 18 canonical fields. v3.23.9: +1 bot_swarm.identifiers → 19.
 PRIVACY_FIELD_IDS = ALL_FIELD_IDS  # canonical alias used by v3.23.9 tests
-assert len(ALL_FIELD_IDS) == 19, (
-    "v3.23.9 spec pin: registry covers exactly 19 fields "
-    "(18 v3.23.7 + 1 bot_swarm.identifiers). "
-    "Update spec + tests before changing this count."
-)
+if len(ALL_FIELD_IDS) != 19:
+    raise RuntimeError(
+        "The registry covers exactly 19 fields. "
+        "Update the spec and the tests before changing this count."
+    )
 
 # TA columns — explicitly EXCLUDED. Listed here so the test suite can
 # pin the leak-guard contract (these field ids must NOT be in the
@@ -172,8 +172,20 @@ class PrivacyMaskRegistry:
     def __init__(self, settings_path: Optional[Path] = None, autosave: bool = True):
         self._lock = threading.RLock()
         self._mask_state: dict[str, bool] = {fid: False for fid in ALL_FIELD_IDS}
-        self._settings_path = settings_path or _default_settings_path()
+        self._path_override = Path(settings_path) if settings_path else None
         self._autosave = bool(autosave)
+
+    @property
+    def settings_path(self) -> Path:
+        """The file this registry reads and writes.
+
+        Resolved on every access when the caller named no path, so
+        SETTINGS_ROOT_ENV set AFTER the object exists still binds. A GUI
+        surface builds its module-level model while it is imported, and
+        that model reads the register, so the singleton exists before any
+        test fixture body runs.
+        """
+        return self._path_override or _default_settings_path()
 
     # ------------------------------------------------------------------
     # Public API
@@ -234,14 +246,15 @@ class PrivacyMaskRegistry:
                 fid: bool(self._mask_state.get(fid, False)) for fid in self._mask_state
             }
             payload["privacy_mask"] = namespace
-            atomic_write_json(self._settings_path, payload, indent=2, sort_keys=True)
+            atomic_write_json(self.settings_path, payload, indent=2, sort_keys=True)
         except Exception as exc:  # R28-OK: persistence best-effort
             logger.warning("PrivacyMaskRegistry: persist failed: %s", exc)
 
     def _load_existing_payload(self) -> dict:
         try:
-            if self._settings_path.exists():
-                raw = self._settings_path.read_text(encoding="utf-8")
+            path = self.settings_path
+            if path.exists():
+                raw = path.read_text(encoding="utf-8")
                 data = json.loads(raw) if raw.strip() else {}
                 if isinstance(data, dict):
                     return data
@@ -320,6 +333,6 @@ def mask_or(value, field_id: str, mask: str = "****") -> str:
         reg = get_privacy_mask_registry()
         if reg.is_masked(field_id):
             return mask
-    except Exception:  # R28-OK: never break a Qt repaint on registry error
-        pass
+    except Exception as exc:  # R28-OK: never break a Qt repaint on registry error
+        logger.warning("PrivacyMaskRegistry: mask lookup failed: %s", exc)
     return str(value)
