@@ -235,8 +235,12 @@ def app():
 @pytest.fixture
 def stock_window():
     """A StockMainWindow with its refresh timer stopped and its log handler
-    detached on teardown; the handler installs itself on the root logger."""
+    detached on teardown; the handler installs itself on the root logger.
+
+    The window builds a TradingViewChart, which writes its symbol into the
+    shared theme table, so the table is put back on teardown."""
     from src.gui.stock_main_window import StockMainWindow
+    from tests.fixtures.chart_theme_table import restore_chart_themes
 
     root = logging.getLogger()
     before = set(root.handlers)
@@ -246,6 +250,7 @@ def stock_window():
     assert len(added) == 1, added
     yield window, added[0]
     root.removeHandler(added[0])
+    restore_chart_themes()
 
 
 def test_drawdown_gauge_paints_each_severity_arc():
