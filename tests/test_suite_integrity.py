@@ -33,9 +33,13 @@ the commit, what coverage was given up and why.
 from __future__ import annotations
 
 import ast
+import json
 import os
+import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -253,3 +257,151 @@ class TestBootSmoke:
             w.close()
             w.deleteLater()
             app.processEvents()
+
+
+# The shortest run of words counted as a wording. Below this a match is
+# punctuation the platform and the product both use.
+SHORTEST_WORDING = 12
+
+QUOTED_RUN = re.compile(r"'[^']*'")
+
+# The misuses below hand these to the platform. Each is declared as an
+# open type so the mistake is made at run time, where the platform words
+# its own refusal, rather than being resolved before the run.
+WHOLE: Any = 1
+NONE_AT_ALL: Any = 0
+LETTER: Any = "a"
+NOTHING: Any = None
+NO_ITEMS: Any = []
+NO_FIELDS: Any = ()
+NO_KEYS: Any = {}
+DECIMAL: Any = 1.0
+NOT_A_NUMBER: Any = float("nan")
+INFINITY: Any = float("inf")
+
+
+def _wants_two(first, second):
+    """A call target for the misuses that hand a function wrong arguments."""
+    return first, second
+
+
+MISCALLED: Any = _wants_two
+
+# Misuses whose refusal the platform words, not the product. The wording
+# each one produces is read from the running interpreter, so this list
+# names the mistakes and never the sentences.
+PLATFORM_MISUSES: tuple[Callable[[], Any], ...] = (
+    lambda: WHOLE / NONE_AT_ALL,
+    lambda: DECIMAL / NONE_AT_ALL,
+    lambda: WHOLE % NONE_AT_ALL,
+    lambda: NO_ITEMS[0],
+    lambda: NO_FIELDS[3],
+    lambda: LETTER[9],
+    lambda: float("x"),
+    lambda: int("x"),
+    lambda: NOTHING.absent,
+    lambda: NO_ITEMS.get,
+    lambda: iter(WHOLE),
+    lambda: LETTER / WHOLE,
+    lambda: DECIMAL / LETTER,
+    lambda: len(WHOLE),
+    lambda: WHOLE + LETTER,
+    lambda: NO_KEYS[NO_ITEMS],
+    lambda: json.dumps({WHOLE, NONE_AT_ALL}),
+    lambda: int(NOT_A_NUMBER),
+    lambda: int(INFINITY),
+    lambda: MISCALLED(WHOLE),
+    lambda: MISCALLED(WHOLE, WHOLE, WHOLE),
+    lambda: MISCALLED(bad=WHOLE),
+    lambda: sorted(WHOLE),
+)
+
+
+def _without_quoted_values(text: str) -> str:
+    """One wording with the offending value taken out of it."""
+    return QUOTED_RUN.sub("'?'", text)
+
+
+def _refusal_wording(misuse) -> str:
+    """The wording one misuse produces, with the offending value out."""
+    try:
+        misuse()
+    except Exception as exc:
+        return _without_quoted_values(str(exc))
+    return ""
+
+
+def _platform_wordings() -> set[str]:
+    """Every refusal wording this build produces for the misuses above."""
+    said = {_refusal_wording(misuse) for misuse in PLATFORM_MISUSES}
+    return {one for one in said if len(one) >= SHORTEST_WORDING}
+
+
+def _is_platform_wording(text: str, said: set[str]) -> bool:
+    """Whether one written-down string is a wording the platform chose."""
+    plain = _without_quoted_values(text)
+    if len(plain) < SHORTEST_WORDING:
+        return False
+    return any(plain == one or plain in one or one in plain for one in said)
+
+
+def _compared_strings(source: str) -> list[tuple[int, str]]:
+    """Every string written into a comparison, with the line holding it."""
+    written = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Compare):
+            for side in [node.left, *node.comparators]:
+                if isinstance(side, ast.Constant) and isinstance(side.value, str):
+                    written.append((side.lineno, side.value))
+    return written
+
+
+def _typed_platform_wordings(source: str, said: set[str]) -> list[tuple[int, str]]:
+    """Every comparison in one file against a wording the platform chose."""
+    return [
+        (line, text)
+        for line, text in _compared_strings(source)
+        if _is_platform_wording(text, said)
+    ]
+
+
+class TestPlatformWordingIsNeverTyped:
+    """A refusal wording belongs to the build, so it is read, never typed.
+
+    One product behaviour is worded differently by operand type and by
+    Python release, so a test that writes a refusal down passes on one
+    machine and fails on another. Compare the refusal type instead, or
+    read the wording off the other side and drive both.
+    """
+
+    def test_the_suite_types_no_wording_the_platform_chose(self):
+        said = _platform_wordings()
+        typed = []
+        for path in _test_files():
+            try:
+                source = path.read_text(encoding="utf-8")
+            except (OSError, SyntaxError):
+                continue
+            for line, text in _typed_platform_wordings(source, said):
+                typed.append(f"{path.name}:{line} {text!r}")
+        assert not typed, (
+            "these comparisons write down a refusal the platform words, "
+            "so they state a fact about the build machine rather than "
+            "about the product:\n  " + "\n  ".join(typed)
+        )
+
+    def test_the_reader_reports_a_wording_that_is_typed(self):
+        """Positive control: the comparison that failed on the runner."""
+        said = _platform_wordings()
+        broken = 'assert refusal == "division by zero"\n'
+        assert _typed_platform_wordings(broken, said) == [(1, "division by zero")]
+
+    def test_the_reader_stays_quiet_on_a_wording_the_product_chose(self):
+        """Negative control: a message this repo writes is not reported."""
+        said = _platform_wordings()
+        ours = 'assert refusal == "a stat value must be text, not int"\n'
+        assert _typed_platform_wordings(ours, said) == []
+
+    def test_every_misuse_still_refuses(self):
+        """Positive control: a misuse that stopped refusing reads as clean."""
+        assert all(_refusal_wording(misuse) for misuse in PLATFORM_MISUSES)
