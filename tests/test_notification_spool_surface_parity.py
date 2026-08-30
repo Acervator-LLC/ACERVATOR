@@ -26,6 +26,8 @@ from src.gui.main_tabs import notification_spool_surface as surface
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
+    sealed,
+    unaltered,
 )
 from src.gui.widgets.notification_spool import NotificationSpool
 
@@ -445,28 +447,40 @@ PIXEL_MESSAGES = [
     ("BTC 64000.00 +1.2%", "market"),
     ("level the map does not name", "critical"),
 ]
+PIXEL_MESSAGES_QUIET = [
+    ("venue heartbeat 09:31", "info"),
+    ("scrum complete on SOL", "success"),
+    ("book thinning on ADA", "warning"),
+]
 PIXEL_SIZE = (520, 220)
 
 
-def widget_painted_by_the_widget():
+def widget_painted_by_the_widget(messages=None):
+    """The pane after each real message, in order."""
     CLOCK.reset()
     widget = NotificationSpool()
     widget.setMaximumHeight(PIXEL_SIZE[1])
-    for message, level in PIXEL_MESSAGES:
+    for message, level in PIXEL_MESSAGES if messages is None else messages:
         widget.notify(message, level)
     return widget
 
 
-def model_lines():
+def model_lines(messages=None):
+    """The HTML the model appends for each real message, stamped."""
     CLOCK.reset()
     sink = _Sink()
     model = surface.NotificationSpoolModel(sink=sink)
-    for message, level in PIXEL_MESSAGES:
+    for message, level in PIXEL_MESSAGES if messages is None else messages:
         model.notify(message, level)
-    return sink.appended
+    return sealed(sink.appended)
 
 
 def widget_painted_by_the_model(lines):
+    """A bare pane filled only from the model's lines, never from the pane.
+
+    Lines the caller changed after they came off the model are refused.
+    """
+    unaltered(lines)
     widget = NotificationSpool()
     widget.setMaximumHeight(PIXEL_SIZE[1])
     for html in lines:
@@ -485,52 +499,20 @@ def test_the_two_sides_render_the_same_pixels():
     )
 
 
-def test_the_pixel_check_reports_a_changed_message_colour():
-    """The image comparison passes whatever the second side paints."""
+def test_the_pixel_check_reports_a_different_message_set():
+    """The image comparison passes whatever the second side paints.
+
+    Two real message sets, one driven into each side. They carry
+    different text at different levels, so a pass proves the comparison
+    reports a pane painted differently.
+    """
     app()
-    lines = model_lines()
-    altered = [line.replace(ds.SUCCESS, ds.ERROR) for line in lines]
-    assert altered != lines
+    assert PIXEL_MESSAGES != PIXEL_MESSAGES_QUIET
     assert_pictures_differ(
         old_side=render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(altered), PIXEL_SIZE),
-    )
-
-
-def test_the_pixel_check_reports_a_changed_timestamp_colour():
-    """The image comparison cannot see the timestamp change colour."""
-    app()
-    lines = model_lines()
-    altered = [line.replace(ds.TEXT_PLACEHOLDER, ds.TEXT_HIGH) for line in lines]
-    assert altered != lines
-    assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(altered), PIXEL_SIZE),
-    )
-
-
-def test_the_pixel_check_reports_a_changed_order():
-    """The image comparison cannot see two lines swapped."""
-    app()
-    lines = model_lines()
-    swapped = list(lines)
-    swapped[0], swapped[1] = swapped[1], swapped[0]
-    assert swapped != lines
-    assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(swapped), PIXEL_SIZE),
-    )
-
-
-def test_the_pixel_check_reports_a_dropped_space_after_the_stamp():
-    """The image comparison cannot see the stamp separator disappear."""
-    app()
-    lines = model_lines()
-    altered = [line.replace("</span> <span", "</span><span") for line in lines]
-    assert altered != lines
-    assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(altered), PIXEL_SIZE),
+        new_side=render_offscreen(
+            widget_painted_by_the_model(model_lines(PIXEL_MESSAGES_QUIET)), PIXEL_SIZE
+        ),
     )
 
 

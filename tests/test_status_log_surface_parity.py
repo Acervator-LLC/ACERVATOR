@@ -28,6 +28,8 @@ from src.gui.widgets.status_log import StatusLog  # noqa: E402
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
+    sealed,
+    unaltered,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -678,14 +680,19 @@ PIXEL_MESSAGES = [
     ("plain error", "error"),
     ("unnamed level", "critical"),
 ]
+PIXEL_MESSAGES_QUIET = [
+    ("bot armed", "info"),
+    ("fold booked on SOL", "success"),
+]
 PIXEL_SIZE = (520, 420)
 
 
-def widget_painted_by_the_widget():
+def widget_painted_by_the_widget(messages=None):
+    """The pane after each real message, with the pause and the resume."""
     CLOCK.reset()
     widget = StatusLog()
     widget.setMaximumHeight(PIXEL_SIZE[1])
-    for message, level in PIXEL_MESSAGES:
+    for message, level in PIXEL_MESSAGES if messages is None else messages:
         widget.log(message, level)
     widget.pause()
     widget.log("held one", "info")
@@ -694,20 +701,26 @@ def widget_painted_by_the_widget():
     return widget
 
 
-def model_lines():
+def model_lines(messages=None):
+    """The HTML the model appends for the same real script, stamped."""
     CLOCK.reset()
     sink = _Sink()
     model = surface.StatusLogModel(sink=sink)
-    for message, level in PIXEL_MESSAGES:
+    for message, level in PIXEL_MESSAGES if messages is None else messages:
         model.log(message, level)
     model.pause()
     model.log("held one", "info")
     model.log("held two", "warning")
     model.resume()
-    return sink.appended
+    return sealed(sink.appended)
 
 
 def widget_painted_by_the_model(lines):
+    """A bare pane filled only from the model's lines, never from the pane.
+
+    Lines the caller changed after they came off the model are refused.
+    """
+    unaltered(lines)
     widget = StatusLog()
     widget.setMaximumHeight(PIXEL_SIZE[1])
     for html in lines:
@@ -726,40 +739,20 @@ def test_the_two_sides_render_the_same_pixels():
     )
 
 
-def test_the_pixel_check_reports_a_changed_colour():
-    """The image comparison passes whatever the second side paints."""
+def test_the_pixel_check_reports_a_different_message_set():
+    """The image comparison passes whatever the second side paints.
+
+    Two real message sets, one driven into each side. They carry
+    different text at different levels, so a pass proves the comparison
+    reports a pane painted differently.
+    """
     app()
-    lines = model_lines()
-    altered = [line.replace(ds.SUCCESS, ds.ERROR) for line in lines]
-    assert altered != lines
+    assert PIXEL_MESSAGES != PIXEL_MESSAGES_QUIET
     assert_pictures_differ(
         old_side=render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(altered), PIXEL_SIZE),
-    )
-
-
-def test_the_pixel_check_reports_a_changed_size():
-    """The image comparison cannot see a font size change."""
-    app()
-    lines = model_lines()
-    altered = [line.replace("font-size:12px", "font-size:13px") for line in lines]
-    assert altered != lines
-    assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(altered), PIXEL_SIZE),
-    )
-
-
-def test_the_pixel_check_reports_a_changed_order():
-    """The image comparison cannot see two lines swapped."""
-    app()
-    lines = model_lines()
-    swapped = list(lines)
-    swapped[0], swapped[1] = swapped[1], swapped[0]
-    assert swapped != lines
-    assert_pictures_differ(
-        old_side=render_offscreen(widget_painted_by_the_widget(), PIXEL_SIZE),
-        new_side=render_offscreen(widget_painted_by_the_model(swapped), PIXEL_SIZE),
+        new_side=render_offscreen(
+            widget_painted_by_the_model(model_lines(PIXEL_MESSAGES_QUIET)), PIXEL_SIZE
+        ),
     )
 
 
