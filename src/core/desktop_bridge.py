@@ -48,6 +48,7 @@ def build_registry() -> Dict[str, Handler]:
     from src.gui.main_tabs import (
         alerts_tab_surface,
         analytics_tab_surface,
+        bot_live_settings_surface,
         bot_selection_surface,
         bot_status_table_surface,
         buy_confirmation_surface,
@@ -115,6 +116,7 @@ def build_registry() -> Dict[str, Handler]:
         init_wizard_surface.METHOD: init_wizard_surface.view_model,
         journal_tab_surface.METHOD: journal_tab_surface.view_model,
         launcher_surface.METHOD: launcher_surface.view_model,
+        bot_live_settings_surface.METHOD: bot_live_settings_surface.view_model,
         live_status_tab_surface.METHOD: live_status_tab_surface.view_model,
         market_inspector_tab_surface.METHOD: market_inspector_tab_surface.view_model,
         positions_held_surface.METHOD: positions_held_surface.view_model,
