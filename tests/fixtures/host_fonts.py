@@ -21,6 +21,13 @@ on anything else is never needed.
 
     from tests.fixtures.host_fonts import skip_unless_no_fonts
 
+``NARROW_LABEL`` and ``WIDE_LABEL`` are the pair such a guard measures,
+four narrow letters against four wide ones, and
+``app_font_advance_px`` measures them in the application font. A font a
+surface names for itself may be fixed-width -- the wire badge asks for
+Consolas -- and under one no pair of equal-length strings separates,
+whatever the host's font database says.
+
 ``ACERVATOR_TEST_FONTS=1`` loads DejaVu Sans into the offscreen driver,
 so a host that ships no fonts runs the same file in both states. The
 file comes from matplotlib, which lives in the ``charts`` extra and is
@@ -34,7 +41,9 @@ cannot use, so a true answer no longer means a proportional advance,
 (b) ``load_run_fonts`` reaches no ``QApplication``, when Qt has not yet
 built the database and every guard reads no fonts, or (c) a guard is
 applied to a test whose claim in fact holds in both states, which no
-run would report because the guard only ever skips.
+run would report because the guard only ever skips, or (d) the
+application font is itself fixed-width, so ``NARROW_LABEL`` and
+``WIDE_LABEL`` measure alike on a run that holds fonts.
 """
 
 from __future__ import annotations
@@ -50,6 +59,9 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 FONT_ENV = "ACERVATOR_TEST_FONTS"
+
+NARROW_LABEL = "iiii"
+WIDE_LABEL = "WWWW"
 
 _loaded_families: list[str] = []
 
@@ -109,6 +121,21 @@ def has_real_fonts() -> bool:
     from PySide6.QtGui import QFontDatabase
 
     return len(QFontDatabase.families()) > 0
+
+
+def app_font_advance_px(text: str) -> int:
+    """The printed width of `text` in the application font.
+
+    The font a surface names for its own widgets may be fixed-width,
+    where every glyph carries one advance. The application font is the
+    proportional one, and the pair a font-state guard measures is
+    measured here.
+    """
+    from PySide6.QtGui import QFontMetrics
+    from PySide6.QtWidgets import QApplication
+
+    load_run_fonts()
+    return QFontMetrics(QApplication.font()).horizontalAdvance(text)
 
 
 def _guard(test, wanted: bool):
