@@ -56,6 +56,7 @@ def build_registry() -> Dict[str, Handler]:
         design_system_surface,
         header_strip_surface,
         instance_consent_surface,
+        journal_tab_surface,
         notification_spool_surface,
         preflight_check_surface,
         start_all_progress_surface,
@@ -84,6 +85,7 @@ def build_registry() -> Dict[str, Handler]:
         theme_engine_surface.METHOD: theme_engine_surface.view_model,
         alerts_tab_surface.METHOD: alerts_tab_surface.view_model,
         analytics_tab_surface.METHOD: analytics_tab_surface.view_model,
+        journal_tab_surface.METHOD: journal_tab_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
 
