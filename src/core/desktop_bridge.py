@@ -60,6 +60,7 @@ def build_registry() -> Dict[str, Handler]:
         journal_tab_surface,
         notification_spool_surface,
         preflight_check_surface,
+        spendable_profits_surface,
         start_all_progress_surface,
         status_log_surface,
         table_cells_surface,
@@ -89,6 +90,7 @@ def build_registry() -> Dict[str, Handler]:
         analytics_tab_surface.METHOD: analytics_tab_surface.view_model,
         init_wizard_surface.METHOD: init_wizard_surface.view_model,
         journal_tab_surface.METHOD: journal_tab_surface.view_model,
+        spendable_profits_surface.METHOD: spendable_profits_surface.view_model,
         tradingview_chart_surface.METHOD: tradingview_chart_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
