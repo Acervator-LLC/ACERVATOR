@@ -892,6 +892,8 @@ def test_the_difference_control_pair_really_ends_in_two_states(tmp_path):
     """The control pair ends alike, so it can show no comparison working."""
     plain = drive_old("built_only", tmp_path / "a")
     filled = drive_old("built_over_a_filled_chain", tmp_path / "b")
+    assert len(plain) == TRACE_KEY_TOTAL, sorted(plain)
+    assert sorted(plain) == sorted(new_trace(drive_new("built_only")))
     assert plain["chain"]["block_number"] == 0
     assert filled["chain"]["block_number"] == 1
     assert plain["chain"]["blocks"] != filled["chain"]["blocks"]
@@ -1609,6 +1611,8 @@ def test_the_method_reader_counts_no_signal_as_a_method():
     from src.gui.launcher import ModeCard
     from src.gui.shared_testnet import SharedTestnetBridge
 
+    assert SIGNAL_NEIGHBOUR.is_file(), SIGNAL_NEIGHBOUR
+    assert ModeCard.__module__.endswith(SIGNAL_NEIGHBOUR.stem)
     declared = vars(ModeCard)
     assert "clicked" in declared, sorted(declared)
     assert callable(declared["clicked"]), "the signal is not callable, so no proof"
