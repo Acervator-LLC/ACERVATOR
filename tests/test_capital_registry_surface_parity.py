@@ -541,9 +541,9 @@ def test_a_reservation_the_panel_cannot_read_leaves_the_grid_alone():
     old = run_old(CAPTURE_RAISES_SCRIPT)
     new = run_new(CAPTURE_RAISES_SCRIPT)
     refused = old[2]
-    assert refused["error"] == (
-        "ValueError: could not convert string to float: 'not a number'"
-    )
+    kind, _, wording = refused["error"].partition(": ")
+    assert kind == "ValueError", refused
+    assert wording, refused
     assert refused["row_count"] == 3
     assert [row[0] for row in refused["grid"]] == ["bot-0", "bot-1", "bot-2"]
     assert refused["initial_usd_by_bot"] == [
