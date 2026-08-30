@@ -1747,9 +1747,11 @@ def gauge_probe_source(name, record_path):
 def run_gauge_probe(name):
     """Drive one shipped gauge paint in its own process.
 
-    Returns how the process ended and every drawing call it made. A
-    reading the gauge cannot draw ends the process, so the calls are
-    read back from the file rather than from what the process printed.
+    Returns how the process ended, every drawing call it made, and the
+    refusal its own process reported. A reading the gauge cannot draw
+    ends the process, so the calls are read back from the file rather
+    than from what the process printed, and the refusal is read off the
+    last line the process wrote to its error stream.
     """
     with tempfile.TemporaryDirectory() as room:
         record_path = Path(room) / "drawn.jsonl"
@@ -1765,7 +1767,10 @@ def run_gauge_probe(name):
             record_path.read_text(encoding="utf-8") if record_path.exists() else ""
         )
     steps = [json.loads(line) for line in written.splitlines() if line]
-    return done.returncode, steps
+    spoken = [
+        line for line in done.stderr.decode("utf-8", "replace").splitlines() if line
+    ]
+    return done.returncode, steps, spoken[-1] if spoken else ""
 
 
 def old_gauge(name):
@@ -1777,8 +1782,13 @@ def old_gauge(name):
     one measured either way.
     """
     if name in GAUGE_REFUSING:
-        code, steps = run_gauge_probe(name)
-        return {"outcome": None, "returncode": code, "shapes": drawn_shape(steps)}
+        code, steps, refusal = run_gauge_probe(name)
+        return {
+            "outcome": None,
+            "returncode": code,
+            "shapes": drawn_shape(steps),
+            "refusal": refusal,
+        }
     app()
     value, max_pct = GAUGE_CASES[name]
     gauge = shipped.DrawdownGauge()
@@ -1787,7 +1797,12 @@ def old_gauge(name):
     gauge.set_value(value, max_pct)
     with gauge_drawing() as steps:
         outcome = guarded(gauge.grab)
-    return {"outcome": outcome, "returncode": 0, "shapes": drawn_shape(steps)}
+    return {
+        "outcome": outcome,
+        "returncode": 0,
+        "shapes": drawn_shape(steps),
+        "refusal": "",
+    }
 
 
 def new_gauge(name):
@@ -1901,22 +1916,22 @@ def test_a_reading_the_gauge_cannot_draw_ends_the_process():
     The shipped paint opens a painter and closes it only on the way out.
     A value it cannot draw leaves that painter open and the process does
     not survive the paint, so nothing downstream ever sees a refusal.
-    The surface answers with the refusal instead.
+    The surface answers with the refusal instead. The wording of a
+    refusal is the platform's, so it is read off the shipped process
+    and compared, never written down here.
     """
-    drawable, drawn = run_gauge_probe("safe")
+    drawable, drawn, quiet = run_gauge_probe("safe")
     assert drawable == 0
     assert len(drawn) == 11
-    ended, partial = run_gauge_probe("zero_max")
+    assert quiet == ""
+    ended, partial, spoken = run_gauge_probe("zero_max")
     assert ended != 0
     assert len(partial) == 3
-    model = surface.DrawdownGaugeModel()
-    model.set_value(*GAUGE_CASES["zero_max"])
-    refusal = ""
-    try:
-        model.paint(*GAUGE_PIXEL_SIZE)
-    except Exception as exc:
-        refusal = str(exc)
-    assert refusal == "division by zero"
+    refused = new_gauge("zero_max")["outcome"]
+    assert refused["error"] == "ZeroDivisionError"
+    assert refused["message"], refused
+    assert spoken.startswith(refused["error"] + ":"), spoken
+    assert spoken.endswith(refused["message"]), (spoken, refused)
     assert headline("two\nlines") == "two"
     assert headline("a: b") == "a: b"
 

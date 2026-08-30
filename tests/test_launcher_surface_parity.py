@@ -662,7 +662,8 @@ def test_the_feature_list_is_refused_with_the_same_wording_on_both_sides():
         old = old_card_outcome(FIELD_SPECS[name])
         new = new_card_outcome(FIELD_SPECS[name])
         assert (old["error"], old["message"]) == (new["error"], new["message"]), name
-        assert "is not iterable" in old["message"], name
+        assert old["error"] == "TypeError", (name, old)
+        assert old["message"], (name, old)
 
 
 def test_a_text_feature_list_is_read_letter_by_letter_on_both_sides():
@@ -1757,7 +1758,7 @@ def test_the_bridge_reports_a_press_the_screen_refuses():
     answer = bridge_answer({"reset": True, "presses": [[CARD_PRESS, 9]]})
     assert answer["ok"] is False
     assert answer["error"]["type"] == "IndexError"
-    assert answer["error"]["message"] == "list index out of range"
+    assert answer["error"]["message"], answer
 
 
 def test_the_bridge_answer_is_json_serialisable():

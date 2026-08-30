@@ -638,7 +638,8 @@ def test_the_refusal_wording_is_read_one_line_at_a_time():
     assert headline("") == ""
     spoken = old_outcome(BY_NAME["realised_is_text"])["message"]
     assert "\n" not in spoken
-    assert spoken == "could not convert string to float: 'lots'"
+    assert spoken
+    assert spoken == new_outcome(BY_NAME["realised_is_text"])["message"]
 
 
 DIFFERENT_INPUT_PAIR = ("happy", "no_stats_attribute")
