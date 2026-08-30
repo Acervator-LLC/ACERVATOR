@@ -36,7 +36,8 @@ every family resolves to a box font advancing one em per character.
 The Cycle Health block then inflates further than the table, its
 1907px demand stays ahead of the row's 1656px, and max() keeps the old
 number. Section E drives the arithmetic directly for that reason, and
-`has_real_fonts` guards the checks that need a measured string.
+`skip_unless_real_fonts` guards the checks that need a measured
+string, and `has_real_fonts` steers the ones that hold either way.
 
 FALSIFICATION: wrong if (a) the row demand stops reading the columns,
 (b) the dialog opens narrower than a whole row on a display with room
@@ -62,7 +63,7 @@ TESTS_DIR = str(Path(__file__).resolve().parent)
 if TESTS_DIR not in sys.path:
     sys.path.insert(0, TESTS_DIR)
 
-from tests.fixtures.host_fonts import has_real_fonts
+from tests.fixtures.host_fonts import has_real_fonts, skip_unless_real_fonts
 
 #: The dialog's floor, set by MEM-240 and untouched by this unit.
 SHIPPED_MIN_W = 640
@@ -393,17 +394,13 @@ def _assert_clamped_or_whole(app, screen, **kw) -> None:
 
 class TestTheRowIsWhole:
 
+    @skip_unless_real_fonts
     def test_the_row_is_whole_at_the_operators_display(self, themed):
         """FAILURE MEANS: the row's last column is off the tab viewport
         at the opening width, and the Fire button is unreachable.
 
         Red before the fix at 1536x960 with real fonts: 138px cut.
         """
-        if not has_real_fonts():
-            pytest.skip(
-                "no font database: every string measures one em per "
-                "character and no row fits a real display"
-            )
         panel = _build(themed, screen=OPERATOR_SCREEN)
         try:
             cut = panel.row_cut_px()

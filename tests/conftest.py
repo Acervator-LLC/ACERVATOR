@@ -896,16 +896,14 @@ def _assert_no_widget_leak(request: pytest.FixtureRequest) -> Iterator[None]:
 # Marking by file here (rather than a `pytestmark` in each module) keeps the   #
 # lane definition in one auditable place and covers files added later that     #
 # match the pattern.                                                           #
-_SLOW_FILES = {
-    "test_pin_observability.py",
-    "test_fleet_replay_controller.py",
-}
+#                                                                              #
+# `lane_marks` is the one definition. `tests/test_ci_fast_lane_packages.py`    #
+# reads the same function to decide which files the fast lane collects.        #
 
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(items):
+    from tests.fixtures.ci_lanes import lane_marks
+
     for item in items:
-        name = Path(str(item.fspath)).name
-        if name in _SLOW_FILES:
-            item.add_marker(pytest.mark.slow)
-        if "archetype" in name:
-            item.add_marker(pytest.mark.archetype)
+        for mark in lane_marks(Path(str(item.fspath)).name):
+            item.add_marker(getattr(pytest.mark, mark))
