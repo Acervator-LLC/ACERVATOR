@@ -62,6 +62,7 @@ def build_registry() -> Dict[str, Handler]:
         table_cells_surface,
         theme_engine_surface,
         trading_tab_surface,
+        tradingview_chart_surface,
     )
 
     return {
@@ -82,6 +83,7 @@ def build_registry() -> Dict[str, Handler]:
         design_system_surface.METHOD: design_system_surface.view_model,
         theme_engine_surface.METHOD: theme_engine_surface.view_model,
         analytics_tab_surface.METHOD: analytics_tab_surface.view_model,
+        tradingview_chart_surface.METHOD: tradingview_chart_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
 
