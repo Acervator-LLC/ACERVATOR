@@ -22,7 +22,10 @@ on anything else is never needed.
     from tests.fixtures.host_fonts import skip_unless_no_fonts
 
 ``ACERVATOR_TEST_FONTS=1`` loads DejaVu Sans into the offscreen driver,
-so a host that ships no fonts runs the same file in both states.
+so a host that ships no fonts runs the same file in both states. The
+file comes from matplotlib, which lives in the ``charts`` extra and is
+absent from the CI fast lane. Without it the loader lends nothing and
+the run keeps the fonts the host itself ships.
 
 FALSIFICATION
 =============
@@ -38,6 +41,7 @@ from __future__ import annotations
 
 import functools
 import os
+from pathlib import Path
 
 import pytest
 
@@ -50,29 +54,50 @@ FONT_ENV = "ACERVATOR_TEST_FONTS"
 _loaded_families: list[str] = []
 
 
-def load_run_fonts() -> None:
+def lendable_font_file() -> Path | None:
+    """The font file this host can lend, or None when it has none.
+
+    matplotlib ships DejaVu Sans and lives in the ``charts`` extra,
+    which the CI fast lane does not install. An absent package is a
+    None, never an error: lending is a convenience for a host with no
+    fonts of its own.
+    """
+    try:
+        import matplotlib
+    except ImportError:
+        return None
+    ttf = Path(matplotlib.get_data_path()) / "fonts" / "ttf" / "DejaVuSans.ttf"
+    return ttf if ttf.is_file() else None
+
+
+def load_run_fonts() -> bool:
     """Build the application object and apply this run's font choice.
 
     ``ACERVATOR_TEST_FONTS=1`` adds DejaVu Sans to the offscreen driver
-    and makes it the application font. Loads at most once per process,
-    and does nothing when the run did not ask, so a host that already
-    ships fonts keeps the ones it has.
+    and makes it the application font. Loads at most once per process.
+    True when this run holds a lent family. False when the run did not
+    ask, or when no font file was found -- the caller then keeps the
+    fonts the host itself ships.
     """
-    from pathlib import Path
-
-    import matplotlib
     from PySide6.QtGui import QFont, QFontDatabase
     from PySide6.QtWidgets import QApplication
 
     if QApplication.instance() is None:
         QApplication([])
-    if os.environ.get(FONT_ENV) != "1" or _loaded_families:
-        return
-    ttf = Path(matplotlib.get_data_path()) / "fonts" / "ttf" / "DejaVuSans.ttf"
+    if os.environ.get(FONT_ENV) != "1":
+        return False
+    if _loaded_families:
+        return True
+    ttf = lendable_font_file()
+    if ttf is None:
+        return False
     handle = QFontDatabase.addApplicationFont(str(ttf))
     families = QFontDatabase.applicationFontFamilies(handle)
+    if not families:
+        return False
     QApplication.setFont(QFont(families[0], 9))
     _loaded_families.extend(families)
+    return True
 
 
 def has_real_fonts() -> bool:
