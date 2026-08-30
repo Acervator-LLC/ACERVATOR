@@ -1311,11 +1311,11 @@ def test_a_privacy_press_with_one_mask_already_set_hides_the_rest():
 def test_a_register_that_cannot_be_read_leaves_the_button_alone():
     """A broken register relabelled the button over a hidden screen."""
     app()
-    from src.core import privacy_mask_registry as registry_module
 
     def refuse():
         raise RuntimeError("register gone")
 
+    before_register = registry()
     tab = old_tab()
     before = tab._privacy_mode_btn.text()
     model = new_model()
@@ -1333,7 +1333,7 @@ def test_a_register_that_cannot_be_read_leaves_the_button_alone():
     assert model.privacy_label_text == before
     assert model.pins == []
     assert surface.PRIVACY_UNREADABLE in [call[0] for call in model.calls]
-    assert registry_module._SINGLETON is not None
+    assert registry() is before_register
 
 
 def test_the_window_is_asked_to_repaint_after_a_privacy_press():
@@ -2777,11 +2777,9 @@ def test_the_shipped_screen_writes_to_the_process_wide_privacy_register():
     assert registry() is live
 
 
-def test_each_test_is_given_its_own_register():
+def test_each_test_is_given_its_own_register(own_privacy_registry):
     """Two tests share one register, so the order they run in decides both."""
-    from src.core import privacy_mask_registry as registry_module
-
-    assert registry() is registry_module._SINGLETON
+    assert registry() is own_privacy_registry
     assert registry().is_masked("bot_table.ammo") is False
     registry().set_masked("bot_table.ammo", True)
 
@@ -3015,30 +3013,61 @@ def test_the_surface_answers_over_the_bridge_without_loading_qt():
 
 SETTINGS_PROBE = """
 import json
-from src.core import privacy_mask_registry as register
+import os
+import shutil
+import tempfile
+from pathlib import Path
+
+root = Path(tempfile.mkdtemp(prefix='acervator-settings-probe-'))
+at_import = root / 'at-import'
+on_request = root / 'on-request'
+at_import.mkdir()
+on_request.mkdir()
+os.environ['ACERVATOR_SETTINGS_ROOT'] = str(at_import)
+
+from src.core.privacy_mask_registry import (
+    PRIVACY_FIELD_IDS,
+    get_privacy_mask_registry,
+)
+
+
+def write_masks(folder, masked):
+    body = {'privacy_mask': {field: masked for field in PRIVACY_FIELD_IDS}}
+    (folder / 'settings.json').write_text(json.dumps(body), encoding='utf-8')
+
+
+write_masks(at_import, False)
+write_masks(on_request, True)
+
 from src.gui.main_tabs import exchange_tab_surface as s
-before = {'built': register._SINGLETON is not None,
-          'screen': s.PANE_MODEL is not None}
-s.pane_model()
-after = {'built': register._SINGLETON is not None,
-         'screen': s.PANE_MODEL is not None,
-         'path': str(register._SINGLETON._settings_path)}
-print(json.dumps({'before': before, 'after': after}))
+
+built_at_import = s.PANE_MODEL is not None
+os.environ['ACERVATOR_SETTINGS_ROOT'] = str(on_request)
+answer = {'built_at_import': built_at_import,
+          'built_on_request': s.pane_model() is s.PANE_MODEL,
+          'label': s.PANE_MODEL.privacy_label_text,
+          'points_at': str(get_privacy_mask_registry().settings_path),
+          'on_request_file': str(on_request / 'settings.json'),
+          'fields': len(PRIVACY_FIELD_IDS)}
+shutil.rmtree(root, ignore_errors=True)
+print(json.dumps(answer))
 """
 
 
 def test_importing_the_surface_reads_no_settings_file():
     """Loading the surface read the operator's own settings file.
 
-    Asking the privacy register for the first time loads that file off
-    the operator's disk. The shared screen is therefore built on the
-    first request, never at import.
+    The register is aimed at one folder while the surface is imported
+    and at a second folder before the first request. The screen reports
+    the masks held in the second folder, so the file is read on the
+    request and not at import.
     """
     answered = run_script(SETTINGS_PROBE)
-    assert answered["before"] == {"built": False, "screen": False}
-    assert answered["after"]["built"] is True
-    assert answered["after"]["screen"] is True
-    assert answered["after"]["path"].endswith("settings.json")
+    assert answered["fields"] > 0, answered
+    assert answered["built_at_import"] is False, answered
+    assert answered["built_on_request"] is True, answered
+    assert answered["label"] == surface.PRIVACY_LABEL_ON, answered
+    assert answered["points_at"] == answered["on_request_file"], answered
 
 
 def test_the_qt_probe_can_report_qt():
