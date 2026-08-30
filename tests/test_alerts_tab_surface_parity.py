@@ -21,7 +21,12 @@ pytest.importorskip("PySide6")
 
 from src.gui import alerts_tab as shipped
 from src.gui.main_tabs import alerts_tab_surface as surface
-from tests.fixtures.host_fonts import has_real_fonts
+from tests.fixtures.host_fonts import (
+    has_real_fonts,
+    load_run_fonts,
+    skip_unless_no_fonts,
+    skip_unless_real_fonts,
+)
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
@@ -35,8 +40,6 @@ TIMER_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/history_tab.py"
 BUS_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/live_bot_window.py"
 
 PIXEL_SIZE = (900, 620)
-
-FONT_ENV = "ACERVATOR_TEST_FONTS"
 
 # The design-system colours these cells use, typed out here rather than
 # read from the surface, so a renamed or re-valued token cannot move both
@@ -534,31 +537,8 @@ def app():
     from qt_pixel import ensure_app
 
     found = ensure_app()
-    load_fonts()
+    load_run_fonts()
     return found
-
-
-FONTS_LOADED: list = []
-
-
-def load_fonts():
-    """Load DejaVu into the offscreen driver when the run asks for it.
-
-    The host decides whether a font database exists. This run is told
-    which way to go by an environment variable, so the same file is run
-    once each way rather than asserting what this machine has.
-    """
-    if os.environ.get(FONT_ENV) != "1" or FONTS_LOADED:
-        return
-    import matplotlib
-    from PySide6.QtGui import QFont, QFontDatabase
-    from PySide6.QtWidgets import QApplication
-
-    ttf = Path(matplotlib.get_data_path()) / "fonts" / "ttf" / "DejaVuSans.ttf"
-    handle = QFontDatabase.addApplicationFont(str(ttf))
-    families = QFontDatabase.applicationFontFamilies(handle)
-    QApplication.setFont(QFont(families[0], 9))
-    FONTS_LOADED.extend(families)
 
 
 def new_tab(manager):
@@ -1533,13 +1513,12 @@ def test_the_font_answer_changes_what_a_measurement_reads():
         assert wide == narrow
 
 
-@pytest.mark.skipif(
-    os.environ.get(FONT_ENV) == "1", reason="this run loads DejaVu on purpose"
-)
+@skip_unless_no_fonts
 def test_with_no_font_database_every_letter_advances_alike():
-    """The no-font run found fonts, so it measured the other run."""
+    """Two strings of equal length measured apart with no font
+    database, so the box-font premise the picture checks rest on is
+    stale."""
     app()
-    assert has_real_fonts() is False
     from PySide6.QtGui import QFontMetrics
     from PySide6.QtWidgets import QApplication
 
@@ -1547,14 +1526,11 @@ def test_with_no_font_database_every_letter_advances_alike():
     assert metrics.horizontalAdvance("ii") == metrics.horizontalAdvance("WW")
 
 
-@pytest.mark.skipif(
-    os.environ.get(FONT_ENV) != "1", reason="this run has no font database"
-)
-def test_with_dejavu_loaded_the_letters_advance_apart():
-    """The DejaVu run did not reach the font it loaded."""
+@skip_unless_real_fonts
+def test_with_a_font_database_the_letters_advance_apart():
+    """A run holding a font database measured every glyph the same
+    width, so no picture on it can report a changed string."""
     app()
-    assert has_real_fonts() is True
-    assert FONTS_LOADED != []
     from PySide6.QtGui import QFontMetrics
     from PySide6.QtWidgets import QApplication
 
