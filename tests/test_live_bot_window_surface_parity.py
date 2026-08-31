@@ -154,6 +154,34 @@ def hold(widget):
     return widget
 
 
+def destroy(widget):
+    """Destroy one top-level widget now, before the next one is built.
+
+    A `LiteLiveBotWindow` does not die from a dropped reference. The
+    lambdas `_wire_signals` connects capture the window, Qt owns the
+    connection, and Python's collector cannot see that side. Measured on
+    the offscreen driver: reference dropped, and close plus dropped,
+    both leave the window in `QApplication.topLevelWidgets()`. The
+    delivered `DeferredDelete` is what destroys it, so a test driving
+    several windows in turn calls this between them and holds one alive
+    at a time.
+    """
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    widget.close()
+    widget.deleteLater()
+    QCoreApplication.sendPostedEvents(widget, QEvent.Type.DeferredDelete)
+
+
+def module_values(module):
+    """Every module-level value a window could change, read as text."""
+    return {
+        name: str(value)
+        for name, value in vars(module).items()
+        if not name.startswith("__") and not callable(value)
+    }
+
+
 def holding_group_boxes(monkeypatch):
     """Keep every group box the next window builds alive.
 
@@ -3158,28 +3186,49 @@ def test_the_key_check_reports_a_key_backed_by_the_wrong_value():
 # ---------------------------------------------------------------------
 
 
+def drive_one_window(name):
+    """Build one real window, take one log case, destroy the window."""
+    window = shipped.LiteLiveBotWindow()
+    outcome = guarded(
+        lambda: window._on_bot_log(event(surface.LOG_TOPIC, LOG_CASES[name]))
+    )
+    destroy(window)
+    return outcome
+
+
 def test_the_shipped_module_changes_no_value_the_next_window_reads(monkeypatch):
     """One window left a changed value behind for the next one."""
     app()
     monkeypatch.setattr(shipped, "get_event_bus", lambda: RecordingBus())
-    before = {
-        name: str(value)
-        for name, value in vars(shipped).items()
-        if not name.startswith("__") and not callable(value)
-    }
+    before = module_values(shipped)
     for name in list(LOG_CASES)[:5]:
-        window = hold(shipped.LiteLiveBotWindow())
-        guarded(
-            lambda window=window, name=name: window._on_bot_log(
-                event(surface.LOG_TOPIC, LOG_CASES[name])
-            )
-        )
-    after = {
-        name: str(value)
-        for name, value in vars(shipped).items()
-        if not name.startswith("__") and not callable(value)
+        assert drive_one_window(name) == {"error": ""}
+    after = module_values(shipped)
+    assert after == before, {
+        name: (before.get(name), after.get(name))
+        for name in set(before) | set(after)
+        if before.get(name) != after.get(name)
     }
-    assert after == before
+
+
+def test_the_module_state_check_reports_a_value_a_window_changed(monkeypatch):
+    """The module-state check passes whatever a window leaves behind."""
+    app()
+    monkeypatch.setattr(shipped, "get_event_bus", lambda: RecordingBus())
+    monkeypatch.setattr(shipped, "DEFAULT_PAIRS", dict(shipped.DEFAULT_PAIRS))
+
+    def leaking_log(self, incoming):
+        shipped.DEFAULT_PAIRS["USD"] = ["a pair one window left behind"]
+        self.txt_console.appendPlainText(incoming.data.get("message", ""))
+
+    monkeypatch.setattr(shipped.LiteLiveBotWindow, "_on_bot_log", leaking_log)
+    before = module_values(shipped)
+    for name in list(LOG_CASES)[:5]:
+        assert drive_one_window(name) == {"error": ""}
+    after = module_values(shipped)
+    assert set(after) == set(before), sorted(set(after) ^ set(before))
+    assert after != before, "a window changed DEFAULT_PAIRS and no read value moved"
+    assert after["DEFAULT_PAIRS"] != before["DEFAULT_PAIRS"]
 
 
 def test_the_shipped_window_writes_to_the_process_wide_event_bus(monkeypatch):
