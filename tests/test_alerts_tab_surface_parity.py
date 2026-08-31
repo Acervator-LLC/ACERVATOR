@@ -30,6 +30,7 @@ from tests.fixtures.host_fonts import (
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
+    assert_same_skin,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -1994,23 +1995,14 @@ def test_the_tab_subscribes_to_no_bus_topic():
 
 def test_the_tab_declares_no_skin_of_its_own():
     """A colour the surface ships is one the tab never paints."""
-    from qt_pixel import render_widget
-
     app()
     assert surface.SKIN == {}
     assert surface.TAB_STYLE_SHEET == ""
-    tab = old_picture_tab("happy")
-    assert tab.styleSheet() == ""
-    skinned = new_picture_tab("happy")
-    skinned.setStyleSheet("QTableWidget { background: #3a1414; }")
-    assert_pictures_differ(
-        old_side=render_widget(old_picture_tab("happy"), PIXEL_SIZE),
-        new_side=render_widget(skinned, PIXEL_SIZE),
-        note="a skin the tab does not paint",
-    )
-    assert_pictures_match(
-        old_side=render_widget(old_picture_tab("happy"), PIXEL_SIZE),
-        new_side=render_widget(new_picture_tab("happy"), PIXEL_SIZE),
+    assert_same_skin(
+        build_old_side=lambda: old_picture_tab("happy"),
+        build_new_side=lambda: new_picture_tab("happy"),
+        size=PIXEL_SIZE,
+        control_rule="QTableWidget { background: #3a1414; }",
         note="neither side carries a skin of its own",
     )
 

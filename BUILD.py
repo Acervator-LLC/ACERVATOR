@@ -102,13 +102,11 @@ CONSUMER = "build"
 def check_python() -> bool:
     """Verify Python version meets minimum requirements.
 
-    The floor is 3.11 and not 3.10, because that is what pyproject.toml
-    states in `requires-python`. It is also what `tools/deps.py` needs:
-    it reads the one source with `tomllib`, which is stdlib from 3.11.
+    The floor repeats the `requires-python` lower bound in pyproject.toml.
     """
     print(f"  Python: {sys.version}")
-    if sys.version_info < (3, 11):
-        print("\n  ERROR: Python 3.11 or higher is required.")
+    if sys.version_info < (3, 14):
+        print("\n  ERROR: Python 3.14 or higher is required.")
         print("  Download from https://www.python.org/downloads/")
         return False
     print(f"  Path:   {sys.executable}")
