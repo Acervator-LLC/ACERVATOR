@@ -2673,9 +2673,8 @@ def test_the_pane_picture_comparison_can_report_a_difference():
     )
 
 
-# Rules NEITHER side sets. The gate row carries no style sheet at all;
-# the chart sets a background and no border; the table sets a background
-# and no grid line colour; the pane's root carries none.
+# Rules NEITHER side sets: no border, no grid line colour, and no skin
+# at all on the gate row or on the pane's root.
 CHART_CONTROL_RULE = "QWidget { border: 4px solid #ff00ff; }"
 VOTE_CONTROL_RULE = "QTableWidget { gridline-color: #ff00ff; }"
 PANEL_CONTROL_RULE = "QWidget { background: #ff00ff; }"
