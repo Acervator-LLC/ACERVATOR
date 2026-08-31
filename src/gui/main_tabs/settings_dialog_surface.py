@@ -1,0 +1,2691 @@
+"""settings_dialog_surface.py -- the Settings dialog, without Qt.
+
+Describes the window the operator opens from the Settings menu. Eleven
+tabs -- User, Exchanges, Trading, Profit Folding, TA Indicators, Phantom
+Bots, Theme, Logging, Sound, SMS and AI Monitor -- above one Cancel and
+one Save button.
+
+``SettingsDialogModel`` holds the dialog's state. ``build`` lays out
+every tab and then seeds every control from the settings store, which is
+the order the shipped dialog does it in. ``save`` runs the Save button
+and reports which groups persisted and which were discarded.
+``test_api_connection``, ``add_exchange`` and ``remove_exchange`` run the
+three Exchanges buttons. ``sfx_volume_changed``, ``test_sound``,
+``update_font_preview`` and ``test_ai_handshake`` run the rest.
+
+``SettingsSource``, ``StatusLogSink``, ``ValidatorSource``,
+``ValidationResult`` and ``SoundEngineSink`` are plain stand-ins for the
+settings store, the status line, the credential checker and the sound
+engine, so the dialog can be driven over the bridge from values alone.
+Nothing here reaches the operator's settings file: a ``SettingsSource``
+holds its values in memory and records every write.
+
+``src.core.desktop_bridge`` registers ``view_model`` as the handler for
+the ``settings_dialog.state`` method, which is how the Electron renderer
+reaches it. Every value below is written out here rather than read from
+``src.gui.settings_dialog``, so a value changed on one side alone is
+reported. Nothing here imports Qt, and nothing runs at import time that
+reads a clock, opens a file or reaches a network.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any, Optional
+
+METHOD = "settings_dialog.state"
+
+ACCESSIBLE_NAME = ""
+
+WINDOW_TITLE_FORMAT = "Settings — {wing} Wing"
+PLAIN_WINDOW_TITLE = "Settings"
+MINIMUM_SIZE = (700, 600)
+
+CRYPTO_WING = "crypto"
+STOCK_WING = "stock"
+KNOWN_WINGS = (CRYPTO_WING, STOCK_WING)
+DEFAULT_WING = CRYPTO_WING
+
+USER_TAB = "User"
+EXCHANGE_TAB = "Exchanges"
+TRADING_TAB = "Trading"
+FOLDING_TAB = "Profit Folding"
+TA_TAB = "TA Indicators"
+PHANTOM_TAB = "Phantom Bots"
+THEME_TAB = "Theme"
+LOGGING_TAB = "Logging"
+SOUND_TAB = "Sound"
+SMS_TAB = "SMS"
+AI_TAB = "AI Monitor"
+
+TAB_TITLES = (
+    USER_TAB,
+    EXCHANGE_TAB,
+    TRADING_TAB,
+    FOLDING_TAB,
+    TA_TAB,
+    PHANTOM_TAB,
+    THEME_TAB,
+    LOGGING_TAB,
+    SOUND_TAB,
+    SMS_TAB,
+    AI_TAB,
+)
+
+SCROLLING_TABS = (SMS_TAB, AI_TAB)
+
+CANCEL_BUTTON_TEXT = "Cancel"
+SAVE_BUTTON_TEXT = "Save"
+SAVE_BUTTON_STYLE = "font-weight: bold; padding: 6px 24px;"
+ACCENT_PROPERTY = "accent"
+DANGER_PROPERTY = "danger"
+
+EQUITY_EXCHANGE_IDS = frozenset(
+    {
+        "alpaca",
+        "ibkr",
+        "schwab",
+        "tdameritrade",
+        "webull",
+        "tastytrade",
+        "fidelity",
+        "etrade",
+        "interactivebrokers",
+    }
+)
+
+PASSPHRASE_EXCHANGE_IDS = frozenset({"bitget", "kucoin", "okx"})
+
+CRYPTO_EXCHANGE_ITEMS = (
+    ("Binance (blocked from US)", "binance"),
+    ("Bitfinex (untested)", "bitfinex"),
+    ("Bitget (untested, passphrase required)", "bitget"),
+    ("Bitstamp (untested)", "bitstamp"),
+    ("Bybit (blocked from US)", "bybit"),
+    ("Coinbase", "coinbase"),
+    ("Cryptocom (untested)", "cryptocom"),
+    ("Gateio (untested)", "gateio"),
+    ("Gemini (untested)", "gemini"),
+    ("Huobi (untested)", "huobi"),
+    ("Kraken (untested)", "kraken"),
+    ("Kucoin (untested, passphrase required)", "kucoin"),
+    ("Mexc (untested)", "mexc"),
+    ("Okx (untested, passphrase required)", "okx"),
+    ("Poloniex (untested)", "poloniex"),
+)
+
+EQUITY_ITEM_FORMAT = "{name} (planned, not yet live)"
+
+STOCK_BANNER_TEXT = (
+    "<b>Stock Wing:</b> equity-broker integration is "
+    "queued — no live brokers are wired up yet. The "
+    "list below shows the planned brokers; Add / Test "
+    "are disabled until the broker connectors ship. "
+    "Use the Crypto Wing for active trading today."
+)
+STOCK_BANNER_STYLE = (
+    "background: rgba(102, 153, 255, 30); "
+    "color: #6699ff; border: 1px solid #6699ff55; "
+    "padding: 8px; border-radius: 4px;"
+)
+STOCK_DISABLED_TIP = (
+    "Stock broker connector integration is queued; "
+    "no live brokers ship yet. Use the Crypto Wing "
+    "for active trading."
+)
+STOCK_DISABLED_CONTROLS = (
+    "test_btn",
+    "add_btn",
+    "new_api_key",
+    "new_api_secret",
+    "new_passphrase",
+    "pp_check",
+)
+
+CRYPTO_LIST_LABEL = "Configured Crypto Exchanges:"
+STOCK_LIST_LABEL = "Configured Stock Brokers:"
+CRYPTO_ADD_GROUP = "Add Crypto Exchange"
+STOCK_ADD_GROUP = "Add Stock Broker"
+REMOVE_BUTTON_TEXT = "Remove Selected"
+
+MODE_GROUP_TITLE = "Distribution Mode"
+FOLD_GROUP_TITLE = "Profit Folding Target"
+DIST_GROUP_TITLE = "Upward Distribution Target"
+LOCK_GROUP_TITLE = "Higher-TF Lock Settings"
+FONT_GROUP_TITLE = "Font Settings"
+SMS_PROVIDER_GROUP_TITLE = "SMS Provider"
+SMS_EVENTS_GROUP_TITLE = "Notification Events"
+SMS_RATE_GROUP_TITLE = "Rate Limiting"
+AI_API_GROUP_TITLE = "Claude API Connection"
+AI_HANDSHAKE_GROUP_TITLE = "Handshake Authentication"
+AI_BEHAVIOUR_GROUP_TITLE = "Monitor Behavior"
+AI_STATUS_GROUP_TITLE = "Connection Status"
+
+TA_HEADING = "Adjust indicator weights in the voting engine."
+PHANTOM_HEADING = "Default Phantom Timeframes:"
+THEME_HEADING = "Visual Theme:"
+ACCENT_HEADING = "Accent Color:"
+LOGGING_HEADING = "P/L Log Periodicity:"
+SOUND_EVENTS_HEADING = "Sound Events:"
+VOLUME_HEADING = "SFX Volume:"
+SMS_GATEWAY_HEADING = "Email Gateway Settings"
+SMS_GATEWAY_HEADING_STYLE = "color: #00cccc; font-weight: bold; margin-top: 6px;"
+
+AI_INFO_TEXT = (
+    "The connect phrase is embedded in the system prompt sent to Claude.\n"
+    "The confirm phrase is what Claude must respond with to prove identity.\n"
+    "Change both phrases together. Keep them secret."
+)
+AI_INFO_STYLE = "color: #888; font-size: 10px;"
+AI_INFO_WORD_WRAP = True
+
+TA_INDICATOR_WEIGHTS = (
+    ("bollinger_bands", 1.0),
+    ("vortex", 0.9),
+    ("macd", 1.2),
+    ("stochastic_rsi", 1.0),
+    ("ichimoku", 1.1),
+    ("volume", 0.8),
+    ("slingshot", 1.0),
+    ("adx", 1.0),
+    ("kaufman_er", 1.0),
+    ("supertrend", 1.0),
+    ("zscore", 0.9),
+    ("rsi", 0.8),
+)
+TA_LABEL_FORMAT = "{name}:"
+TA_VALUE_FORMAT = "{weight:.2f}"
+TA_SLIDER_RANGE = (0, 200)
+TA_SLIDER_SCALE = 100
+TA_LABEL_MIN_WIDTH = 140
+TA_VALUE_MIN_WIDTH = 40
+
+PHANTOM_TIMEFRAMES = (
+    "1m",
+    "5m",
+    "15m",
+    "30m",
+    "1h",
+    "2h",
+    "4h",
+    "6h",
+    "12h",
+    "1d",
+    "1w",
+)
+PHANTOM_TIMEFRAMES_ON = ("5m", "15m", "1h", "4h", "1d")
+
+THEME_ITEMS = (
+    ("Cyberpunk Dark", "cyberpunk_dark"),
+    ("Neon Light", "neon_light"),
+    ("Classic Terminal", "classic_terminal"),
+    ("Minimal Modern", "minimal_modern"),
+    ("Glass & Metal", "glass_metal"),
+)
+
+FONT_FAMILIES = (
+    "Segoe UI",
+    "Consolas",
+    "Cascadia Code",
+    "Courier New",
+    "Arial",
+    "Helvetica",
+    "Roboto",
+    "Fira Code",
+    "JetBrains Mono",
+    "Source Code Pro",
+    "Ubuntu",
+    "Verdana",
+)
+FONT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog"
+FONT_PREVIEW_STYLE = "padding: 8px; border: 1px solid #333;"
+FONT_PREVIEW_FORMAT = (
+    "font-family: '{family}'; font-size: {size}pt; "
+    "padding: 8px; border: 1px solid #333;"
+)
+
+CARRIER_NAMES = (
+    "AT&T",
+    "T-Mobile",
+    "Verizon",
+    "Sprint",
+    "US Cellular",
+    "Cricket",
+    "Boost",
+    "Metro PCS",
+    "Google Fi",
+    "Other (Manual)",
+)
+SMS_PROVIDERS = ("Email-to-SMS Gateway", "Twilio API")
+SMS_FORM_SPACING_PX = 6
+SMS_FORM_MARGINS = (8, 16, 8, 8)
+SMS_CONTENT_SPACING_PX = 8
+AI_CONTENT_SPACING_PX = 12
+SMS_CONTROL_MIN_HEIGHT = 28
+AI_TEST_BUTTON_MIN_HEIGHT = 32
+
+AI_STATUS_LABEL = "Not connected"
+AI_STATUS_STYLE = "color: #888; font-weight: bold;"
+AI_HASH_LABEL = "—"
+AI_HASH_STYLE = "color: #666; font-family: Consolas;"
+AI_CHECKS_LABEL = "0"
+AI_TEST_BUTTON_TEXT = "Test Handshake"
+AI_TEST_BUTTON_STYLE = (
+    "background: #1a3a4a; color: #00ddff; border: 1px solid #00aacc; "
+    "border-radius: 4px; font-weight: bold;"
+)
+AI_MISSING_CREDENTIAL_TEXT = "No API key entered"
+AI_MISSING_PHRASE_TEXT = "Phrases required"
+AI_SAVED_TEXT = "Settings saved — handshake runs on next bot cycle"
+AI_ERROR_STYLE = "color: #ff3366; font-weight: bold;"
+AI_OK_STYLE = "color: #00ddff; font-weight: bold;"
+
+FEEDBACK_COLORS = {
+    "info": "#00aaff",
+    "success": "#00ff88",
+    "warning": "#ffaa00",
+    "error": "#ff3366",
+}
+FEEDBACK_FALLBACK_COLOR = "#e0e0f0"
+FEEDBACK_STYLE_FORMAT = "color: {color};"
+INFO_LEVEL = "info"
+SUCCESS_LEVEL = "success"
+WARNING_LEVEL = "warning"
+ERROR_LEVEL = "error"
+
+MISSING_CREDENTIALS_FEEDBACK = "Enter API key and secret first."
+TESTING_FEEDBACK_FORMAT = "Testing connection to {name}..."
+BALANCES_FEEDBACK_FORMAT = "\nBalances: {details}"
+BALANCES_LOG_FORMAT = "Balances: {details}"
+DETAILS_FEEDBACK_FORMAT = "\n{details}"
+API_FAILED_LOG_FORMAT = "API failed ({eid}): {message}"
+TEST_FAILED_FEEDBACK_FORMAT = "Test failed: {error}"
+
+ADDED_WITH_CREDENTIALS = "with credentials (verified)"
+ADDED_WITHOUT_CREDENTIALS = "without credentials"
+ADDED_FEEDBACK_FORMAT = "{name} added {how}."
+ADDED_LOG_FORMAT = "Exchange added: {name} ({how})"
+ADDED_BOX_TITLE = "Exchange Added"
+ADDED_BOX_FORMAT = (
+    "{name} has been added {how}.\n" "The exchange tab will appear in the main window."
+)
+EXCHANGE_ITEM_FORMAT = "{name} ({eid})"
+CONFIGURED_ITEM_FORMAT = "{name} ({eid})"
+MASTER_FORMAT = "qat_{username}_vault"
+KEY_FIELD = "api_key_enc"
+SIGNING_FIELD = "api_secret_enc"
+PHRASE_FIELD = "passphrase_enc"
+EXCHANGE_CONFIG_FIELDS = (
+    "exchange_id",
+    "display_name",
+    KEY_FIELD,
+    SIGNING_FIELD,
+    PHRASE_FIELD,
+    "enabled",
+    "hardware_mode",
+    "hw_volume_serial",
+)
+TYPED_CREDENTIAL_CONTROLS = ("new_api_key", "new_api_secret", "new_passphrase")
+EMPTY_TEXT = ""
+EXCHANGE_CONFIG_DEFAULTS = (
+    EMPTY_TEXT,
+    EMPTY_TEXT,
+    EMPTY_TEXT,
+    EMPTY_TEXT,
+    EMPTY_TEXT,
+    True,
+    False,
+    EMPTY_TEXT,
+)
+UNNAMED_OPERATOR = "user"
+
+NO_SELECTION_FEEDBACK = "Select an exchange to remove."
+REMOVED_FEEDBACK_FORMAT = "{name} removed."
+REMOVED_LOG_FORMAT = "Exchange removed: {eid}"
+
+PROCESS_EVENTS_REASON = "legacy P4.1 site"
+
+VOLUME_LABEL_FORMAT = "{value}%"
+VOLUME_SCALE = 100.0
+VOLUME_RANGE = (0, 100)
+SOUND_NAMES = ("buy", "sell", "fire", "track", "profit", "drip")
+SOUND_TEST_BUTTONS = (
+    ("Test Buy", "buy", None),
+    ("Test Sell", "sell", None),
+    ("Test Fire", "fire", "Play the sniper rifle SFX."),
+    ("Test Track", "track", "Play one tracking beep."),
+    ("Test Profit", "profit", "Play the coins-in-bucket SFX."),
+    ("Test Drip", "drip", "Play the water-drip SFX."),
+)
+SOUND_CONFIG_FIELDS = (
+    ("enabled", "sound_enabled"),
+    ("buy_sound", "sound_buy"),
+    ("sell_sound", "sound_sell"),
+    ("error_sound", "sound_error"),
+    ("bot_state_sound", "sound_state"),
+    ("fire_sound", "sound_fire"),
+    ("track_sound", "sound_track"),
+    ("profit_sound", "sound_profit"),
+    ("drip_sound", "sound_drip"),
+)
+
+FOLD_ALL = "all_buy"
+FOLD_X = "x_buy"
+FOLD_RECENT = "most_recent_buy"
+DIST_ALL = "all_sell"
+DIST_X = "x_sell"
+DIST_RECENT = "most_recent_sell"
+EQUAL_MODE = "equal"
+LOG_MODE = "logarithmic"
+
+PERIOD_CONTROLS = (
+    ("log_24h", "24h"),
+    ("log_1w", "1_week"),
+    ("log_1m", "1_month"),
+    ("log_1y", "1_year"),
+)
+
+SAVE_PAIRS = (
+    ("username", "username"),
+    ("position_distance_pct", "pos_distance"),
+    ("increment_style", "increment_style"),
+    ("default_position_count", "default_positions"),
+    ("default_target_balance", "default_balance"),
+    ("bot_visibility", "visibility"),
+    ("aggressive_trading", "aggressive"),
+    ("theme", "theme_combo"),
+    ("accent_color", "accent_color"),
+    ("font_family", "font_family"),
+    ("font_size", "font_size"),
+    ("heading_font_size", "heading_size"),
+    ("log_font_size", "log_font_size"),
+)
+SAVE_GROUP_KEYS = ("profit_folding", "data_logging", "ai_monitor")
+
+SAVE_CALLED_PRINT = "[SETTINGS] _save called"
+NO_MANAGER_PRINT = "[SETTINGS] No settings manager, closing"
+SAVE_ERROR_PRINT_FORMAT = "[SETTINGS ERROR] {key}: {error}"
+SAVE_DONE_PRINT_FORMAT = "[SETTINGS] Saved {saved} groups, closing dialog"
+FAILED_ENTRY_FORMAT = "{key} ({error})"
+PARTIAL_LOG_FORMAT = "Settings PARTIALLY saved: {saved} ok, {count} FAILED — {names}"
+FAILED_JOIN = "; "
+CLEAN_LOG_FORMAT = "Settings saved ({saved} groups)."
+PARTIAL_BOX_TITLE = "Settings partially saved"
+PARTIAL_BOX_FORMAT = (
+    "{saved} setting group(s) saved, but "
+    "{count} FAILED and were discarded:\n\n{names}"
+    "\n\nThese values are NOT persisted and will "
+    "revert when the dialog is reopened."
+)
+PARTIAL_BOX_ENTRY_FORMAT = "  • {entry}"
+PARTIAL_BOX_JOIN = "\n"
+WARNING_ICON = "warning"
+INFORMATION_ICON = "information"
+
+SETTING_LOAD_KEYS = (
+    ("username", "", "username"),
+    ("position_distance_pct", 2.0, "pos_distance"),
+    ("default_position_count", 10, "default_positions"),
+    ("default_target_balance", 200.0, "default_balance"),
+    ("accent_color", "#00ffcc", "accent_color"),
+)
+AI_LOAD_KEYS = (
+    ("api_key", "", "ai_api_key"),
+    ("interval_hours", 4.0, "ai_interval"),
+    ("connect_phrase", "", "ai_connect_phrase"),
+    ("confirm_phrase", "", "ai_confirm_phrase"),
+    ("enabled", False, "ai_enabled"),
+    ("auto_handshake", True, "ai_auto_handshake"),
+    ("log_feedback", True, "ai_log_feedback"),
+)
+AI_GROUP_KEY = "ai_monitor"
+FOLDING_GROUP_KEY = "profit_folding"
+THEME_KEY = "theme"
+THEME_DEFAULT = "cyberpunk_dark"
+INCREMENT_KEY = "increment_style"
+INCREMENT_DEFAULT = "linear"
+FOLDING_ACTIVE_KEY = "active"
+FOLDING_ACTIVE_DEFAULT = True
+EXCHANGE_ID_KEY = "exchange_id"
+DISPLAY_NAME_KEY = "display_name"
+NO_MATCH_INDEX = -1
+FIRST_INDEX = 0
+
+LINE = "line"
+TEXT_AREA = "text_area"
+COMBO_TEXT = "combo_text"
+COMBO_DATA = "combo_data"
+CHECK = "check"
+RADIO = "radio"
+SPIN = "spin"
+DOUBLE_SPIN = "double_spin"
+SLIDER = "slider"
+LIST = "list"
+
+SIGNAL_FOR_KIND = {
+    LINE: "textChanged",
+    COMBO_TEXT: "currentIndexChanged",
+    COMBO_DATA: "currentIndexChanged",
+    CHECK: "toggled",
+    RADIO: "toggled",
+    SPIN: "valueChanged",
+    DOUBLE_SPIN: "valueChanged",
+    SLIDER: "valueChanged",
+}
+
+BUS_SUBSCRIBES: tuple = ()
+BUS_EMITS: tuple = ()
+QT_SIGNALS = ("settings_changed",)
+TIMERS_BUILT: tuple = ()
+TIMERS_STARTED: tuple = ()
+THREADS_BUILT: tuple = ()
+THREADS_STARTED: tuple = ()
+
+CONTROL_SPECS = (
+    {
+        "tab": USER_TAB,
+        "group": None,
+        "label": "Username:",
+        "name": "username",
+        "kind": LINE,
+    },
+    {
+        "tab": EXCHANGE_TAB,
+        "group": None,
+        "label": None,
+        "name": "exchange_list",
+        "kind": LIST,
+    },
+    {
+        "tab": EXCHANGE_TAB,
+        "group": CRYPTO_ADD_GROUP,
+        "label": "Exchange:",
+        "name": "new_exchange",
+        "kind": COMBO_DATA,
+    },
+    {
+        "tab": EXCHANGE_TAB,
+        "group": CRYPTO_ADD_GROUP,
+        "label": "API Key:",
+        "name": "new_api_key",
+        "kind": LINE,
+        "placeholder": "API Key or organizations/.../.../apiKeys/...",
+        "tooltip": (
+            "For Coinbase CDP keys, paste the full "
+            "organizations/.../apiKeys/... string"
+        ),
+    },
+    {
+        "tab": EXCHANGE_TAB,
+        "group": CRYPTO_ADD_GROUP,
+        "label": "API Secret:",
+        "name": "new_api_secret",
+        "kind": TEXT_AREA,
+        "max_height": 60,
+        "placeholder": "API Secret or EC Private Key (PEM format with \\n is OK)",
+        "tooltip": (
+            "For Coinbase CDP keys, paste the full PEM key including\n"
+            "-----BEGIN EC PRIVATE KEY----- and -----END EC PRIVATE KEY-----\n"
+            "Literal \\n characters will be auto-converted to newlines."
+        ),
+    },
+    {
+        "tab": EXCHANGE_TAB,
+        "group": CRYPTO_ADD_GROUP,
+        "label": None,
+        "name": "pp_check",
+        "kind": CHECK,
+        "text": "This exchange uses an API passphrase",
+        "checked": False,
+    },
+    {
+        "tab": EXCHANGE_TAB,
+        "group": CRYPTO_ADD_GROUP,
+        "label": "",
+        "name": "new_passphrase",
+        "kind": LINE,
+        "echo": "password",
+        "visible": False,
+        "placeholder": "Passphrase set when creating API key",
+    },
+    {
+        "tab": TRADING_TAB,
+        "group": None,
+        "label": "Position Distance:",
+        "name": "pos_distance",
+        "kind": DOUBLE_SPIN,
+        "range": (1.0, 50.0),
+        "suffix": "%",
+        "decimals": 1,
+    },
+    {
+        "tab": TRADING_TAB,
+        "group": None,
+        "label": "Increment Style:",
+        "name": "increment_style",
+        "kind": COMBO_TEXT,
+        "items": ("linear", "logarithmic"),
+    },
+    {
+        "tab": TRADING_TAB,
+        "group": None,
+        "label": "Default Positions:",
+        "name": "default_positions",
+        "kind": SPIN,
+        "range": (1, 100),
+    },
+    {
+        "tab": TRADING_TAB,
+        "group": None,
+        "label": "Default Target Balance:",
+        "name": "default_balance",
+        "kind": DOUBLE_SPIN,
+        "range": (1.0, 1000000.0),
+        "prefix": "$",
+        "decimals": 2,
+    },
+    {
+        "tab": TRADING_TAB,
+        "group": None,
+        "label": "Bot Visibility:",
+        "name": "visibility",
+        "kind": COMBO_TEXT,
+        "items": ("orderbook", "internal"),
+    },
+    {
+        "tab": TRADING_TAB,
+        "group": None,
+        "label": None,
+        "name": "aggressive",
+        "kind": CHECK,
+        "text": "Enable aggressive trading mode",
+        "checked": False,
+    },
+    {
+        "tab": FOLDING_TAB,
+        "group": None,
+        "label": None,
+        "name": "folding_active",
+        "kind": CHECK,
+        "text": "Profit Folding / Upward Distribution Active",
+        "checked": False,
+    },
+    {
+        "tab": FOLDING_TAB,
+        "group": MODE_GROUP_TITLE,
+        "label": None,
+        "name": "fold_equal",
+        "kind": RADIO,
+        "text": "Equal distribution",
+        "checked": True,
+    },
+    {
+        "tab": FOLDING_TAB,
+        "group": MODE_GROUP_TITLE,
+        "label": None,
+        "name": "fold_log",
+        "kind": RADIO,
+        "text": "Logarithmic distribution",
+        "checked": False,
+    },
+    {
+        "tab": FOLDING_TAB,
+        "group": FOLD_GROUP_TITLE,
+        "label": None,
+        "name": "fold_all",
+        "kind": RADIO,
+        "text": "Fold to ALL buy positions",
+        "checked": True,
+    },
+    {
+        "tab": FOLDING_TAB,
+        "group": FOLD_GROUP_TITLE,
+        "label": None,
+        "name": "fold_x",
+        "kind": RADIO,
+        "text": "Fold to X# of buy positions:",
+        "checked": False,
+    },
+    {
+        "tab": FOLDING_TAB,
+        "group": FOLD_GROUP_TITLE,
+        "label": None,
+        "name": "fold_x_count",
+        "kind": SPIN,
+        "range": (1, 100),
+        "value": 5,
+    },
+    {
+        "tab": FOLDING_TAB,
+        "group": FOLD_GROUP_TITLE,
+        "label": None,
+        "name": "fold_recent",
+        "kind": RADIO,
+        "text": "Fold to most recent buy positions",
+        "checked": False,
+    },
+    {
+        "tab": FOLDING_TAB,
+        "group": DIST_GROUP_TITLE,
+        "label": None,
+        "name": "dist_all",
+        "kind": RADIO,
+        "text": "Distribute to ALL sell positions",
+        "checked": True,
+    },
+    {
+        "tab": FOLDING_TAB,
+        "group": DIST_GROUP_TITLE,
+        "label": None,
+        "name": "dist_x",
+        "kind": RADIO,
+        "text": "Distribute to X# of sell positions:",
+        "checked": False,
+    },
+    {
+        "tab": FOLDING_TAB,
+        "group": DIST_GROUP_TITLE,
+        "label": None,
+        "name": "dist_x_count",
+        "kind": SPIN,
+        "range": (1, 100),
+        "value": 5,
+    },
+    {
+        "tab": FOLDING_TAB,
+        "group": DIST_GROUP_TITLE,
+        "label": None,
+        "name": "dist_recent",
+        "kind": RADIO,
+        "text": "Distribute to most recent sell positions",
+        "checked": False,
+    },
+    {
+        "tab": PHANTOM_TAB,
+        "group": None,
+        "label": None,
+        "name": "phantoms_enabled",
+        "kind": CHECK,
+        "text": "Enable Phantom Balance Bots for Scrumming",
+        "checked": True,
+    },
+    {
+        "tab": PHANTOM_TAB,
+        "group": LOCK_GROUP_TITLE,
+        "label": "Lock duration (candles):",
+        "name": "lock_candles",
+        "kind": SPIN,
+        "range": (1, 10),
+        "value": 2,
+    },
+    {
+        "tab": THEME_TAB,
+        "group": None,
+        "label": None,
+        "name": "theme_combo",
+        "kind": COMBO_DATA,
+        "items": THEME_ITEMS,
+    },
+    {
+        "tab": THEME_TAB,
+        "group": None,
+        "label": None,
+        "name": "accent_color",
+        "kind": LINE,
+        "placeholder": "#00ffcc",
+    },
+    {
+        "tab": THEME_TAB,
+        "group": FONT_GROUP_TITLE,
+        "label": "Font Family:",
+        "name": "font_family",
+        "kind": COMBO_TEXT,
+        "signal": "currentTextChanged",
+        "items": FONT_FAMILIES,
+        "editable": True,
+        "current_text": "Segoe UI",
+        "tooltip": "Font family for all application text",
+    },
+    {
+        "tab": THEME_TAB,
+        "group": FONT_GROUP_TITLE,
+        "label": "Base Font Size:",
+        "name": "font_size",
+        "kind": SPIN,
+        "range": (8, 24),
+        "value": 11,
+        "suffix": " pt",
+        "tooltip": "Base font size for all UI text",
+    },
+    {
+        "tab": THEME_TAB,
+        "group": FONT_GROUP_TITLE,
+        "label": "Heading Font Size:",
+        "name": "heading_size",
+        "kind": SPIN,
+        "range": (10, 32),
+        "value": 14,
+        "suffix": " pt",
+        "tooltip": "Font size for headings and stat card values",
+    },
+    {
+        "tab": THEME_TAB,
+        "group": FONT_GROUP_TITLE,
+        "label": "Log Font Size:",
+        "name": "log_font_size",
+        "kind": SPIN,
+        "range": (8, 18),
+        "value": 10,
+        "suffix": " pt",
+        "tooltip": "Font size for Activity Log and API Log panels",
+    },
+    {
+        "tab": LOGGING_TAB,
+        "group": None,
+        "label": None,
+        "name": "ta_logging",
+        "kind": CHECK,
+        "text": "Log TA signal samples with all values and timestamps",
+        "checked": True,
+    },
+    {
+        "tab": LOGGING_TAB,
+        "group": None,
+        "label": None,
+        "name": "highlight_trades",
+        "kind": CHECK,
+        "text": "Highlight entries near Scrumming Bot trades",
+        "checked": True,
+    },
+    {
+        "tab": LOGGING_TAB,
+        "group": None,
+        "label": None,
+        "name": "log_24h",
+        "kind": CHECK,
+        "text": "24 Hours",
+        "checked": True,
+    },
+    {
+        "tab": LOGGING_TAB,
+        "group": None,
+        "label": None,
+        "name": "log_1w",
+        "kind": CHECK,
+        "text": "1 Week",
+        "checked": True,
+    },
+    {
+        "tab": LOGGING_TAB,
+        "group": None,
+        "label": None,
+        "name": "log_1m",
+        "kind": CHECK,
+        "text": "1 Month",
+        "checked": False,
+    },
+    {
+        "tab": LOGGING_TAB,
+        "group": None,
+        "label": None,
+        "name": "log_1y",
+        "kind": CHECK,
+        "text": "1 Year",
+        "checked": False,
+    },
+    {
+        "tab": SOUND_TAB,
+        "group": None,
+        "label": None,
+        "name": "sound_enabled",
+        "kind": CHECK,
+        "text": "Enable sound notifications",
+        "checked": True,
+        "tooltip": "Master switch for all audio notifications",
+    },
+    {
+        "tab": SOUND_TAB,
+        "group": None,
+        "label": None,
+        "name": "sound_buy",
+        "kind": CHECK,
+        "text": "Buy order fills (blurb + squirt tone)",
+        "checked": True,
+        "tooltip": "Plays a low bubbly rising tone when a buy order is filled",
+    },
+    {
+        "tab": SOUND_TAB,
+        "group": None,
+        "label": None,
+        "name": "sound_sell",
+        "kind": CHECK,
+        "text": "Sell order fills (bell + jingle tone)",
+        "checked": True,
+        "tooltip": "Plays a high bright bell tone when a sell order is filled",
+    },
+    {
+        "tab": SOUND_TAB,
+        "group": None,
+        "label": None,
+        "name": "sound_error",
+        "kind": CHECK,
+        "text": "Errors (alert tone)",
+        "checked": True,
+    },
+    {
+        "tab": SOUND_TAB,
+        "group": None,
+        "label": None,
+        "name": "sound_state",
+        "kind": CHECK,
+        "text": "Bot state changes (subtle click)",
+        "checked": True,
+    },
+    {
+        "tab": SOUND_TAB,
+        "group": None,
+        "label": None,
+        "name": "sound_fire",
+        "kind": CHECK,
+        "text": "Scrum/Fold Fire (sniper rifle shot)",
+        "checked": True,
+        "tooltip": (
+            "Synthesized rifle shot plays when a scrum or fold\n"
+            "actually executes. Also plays on Manual Fire."
+        ),
+    },
+    {
+        "tab": SOUND_TAB,
+        "group": None,
+        "label": None,
+        "name": "sound_track",
+        "kind": CHECK,
+        "text": "Tracking beeps (speeds up as bot closes on fire)",
+        "checked": True,
+        "tooltip": (
+            "Short beep paced by scrum phase:\n"
+            "  SEARCH = silent\n"
+            "  TRACK  = slow beep (800ms)\n"
+            "  FIRE   = fast beep (200ms)"
+        ),
+    },
+    {
+        "tab": SOUND_TAB,
+        "group": None,
+        "label": None,
+        "name": "sound_profit",
+        "kind": CHECK,
+        "text": "P/L increase (coins dropping into bucket)",
+        "checked": True,
+        "tooltip": (
+            "Synthesized 3-coin bucket drop plays on any trade\n"
+            "event with realized profit > 0. Fires on grid and\n"
+            "scrumming bots alike."
+        ),
+    },
+    {
+        "tab": SOUND_TAB,
+        "group": None,
+        "label": None,
+        "name": "sound_drip",
+        "kind": CHECK,
+        "text": "Accumulation (water drip)",
+        "checked": True,
+        "tooltip": (
+            "Water drip plays on FOLD events — the canonical\n"
+            "Acervator accumulation moment (buying back more asset\n"
+            "than was sold). Does not fire on SCRUM or DIST."
+        ),
+    },
+    {
+        "tab": SOUND_TAB,
+        "group": None,
+        "label": None,
+        "name": "sound_volume",
+        "kind": SLIDER,
+        "range": VOLUME_RANGE,
+        "value": 70,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": None,
+        "label": None,
+        "name": "sms_enabled",
+        "kind": CHECK,
+        "text": "Enable SMS notifications",
+        "checked": False,
+        "tooltip": "Send text messages to your phone for trading events",
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Provider:",
+        "name": "sms_provider",
+        "kind": COMBO_TEXT,
+        "items": SMS_PROVIDERS,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Phone Number:",
+        "name": "sms_phone",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "placeholder": "+15551234567",
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Carrier:",
+        "name": "sms_carrier",
+        "kind": COMBO_TEXT,
+        "items": CARRIER_NAMES,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "Gateway Email:",
+        "name": "sms_gateway",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "placeholder": "5551234567@vtext.com",
+        "tooltip": "Full email address for carrier SMS gateway",
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "SMTP Username:",
+        "name": "sms_smtp_user",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "placeholder": "your.email@gmail.com",
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_PROVIDER_GROUP_TITLE,
+        "label": "SMTP Password:",
+        "name": "sms_smtp_pass",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "echo": "password",
+        "placeholder": "App password (not regular password)",
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_EVENTS_GROUP_TITLE,
+        "label": None,
+        "name": "sms_buy",
+        "kind": CHECK,
+        "text": "Buy fills",
+        "checked": True,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_EVENTS_GROUP_TITLE,
+        "label": None,
+        "name": "sms_sell",
+        "kind": CHECK,
+        "text": "Sell fills",
+        "checked": True,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_EVENTS_GROUP_TITLE,
+        "label": None,
+        "name": "sms_state",
+        "kind": CHECK,
+        "text": "Bot state changes (start/stop/error)",
+        "checked": True,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_EVENTS_GROUP_TITLE,
+        "label": None,
+        "name": "sms_errors",
+        "kind": CHECK,
+        "text": "API errors and failures",
+        "checked": True,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_EVENTS_GROUP_TITLE,
+        "label": None,
+        "name": "sms_pl",
+        "kind": CHECK,
+        "text": "P/L threshold alerts",
+        "checked": False,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_EVENTS_GROUP_TITLE,
+        "label": "P/L threshold:",
+        "name": "sms_pl_amount",
+        "kind": DOUBLE_SPIN,
+        "range": (1.0, 100000.0),
+        "value": 100,
+        "prefix": "$",
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_EVENTS_GROUP_TITLE,
+        "label": None,
+        "name": "sms_balance",
+        "kind": CHECK,
+        "text": "Low balance warnings",
+        "checked": False,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_EVENTS_GROUP_TITLE,
+        "label": None,
+        "name": "sms_connection",
+        "kind": CHECK,
+        "text": "Exchange connection status",
+        "checked": False,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_RATE_GROUP_TITLE,
+        "label": "Max messages per hour:",
+        "name": "sms_max_hour",
+        "kind": SPIN,
+        "range": (1, 100),
+        "value": 20,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+    },
+    {
+        "tab": SMS_TAB,
+        "group": SMS_RATE_GROUP_TITLE,
+        "label": "Min time between messages:",
+        "name": "sms_cooldown",
+        "kind": SPIN,
+        "range": (5, 300),
+        "value": 30,
+        "suffix": " sec",
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+    },
+    {
+        "tab": AI_TAB,
+        "group": AI_API_GROUP_TITLE,
+        "label": "Anthropic API Key:",
+        "name": "ai_api_key",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "echo": "password",
+        "placeholder": "sk-ant-api03-...",
+    },
+    {
+        "tab": AI_TAB,
+        "group": AI_API_GROUP_TITLE,
+        "label": "Check interval:",
+        "name": "ai_interval",
+        "kind": DOUBLE_SPIN,
+        "range": (0.5, 24.0),
+        "value": 4.0,
+        "suffix": " hours",
+        "decimals": 1,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+    },
+    {
+        "tab": AI_TAB,
+        "group": AI_HANDSHAKE_GROUP_TITLE,
+        "label": "Connect phrase:",
+        "name": "ai_connect_phrase",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "placeholder": "acervator-heapbuilder-live",
+    },
+    {
+        "tab": AI_TAB,
+        "group": AI_HANDSHAKE_GROUP_TITLE,
+        "label": "Confirm phrase:",
+        "name": "ai_confirm_phrase",
+        "kind": LINE,
+        "min_height": SMS_CONTROL_MIN_HEIGHT,
+        "placeholder": "the-heap-grows-by-accumulation",
+    },
+    {
+        "tab": AI_TAB,
+        "group": AI_BEHAVIOUR_GROUP_TITLE,
+        "label": None,
+        "name": "ai_enabled",
+        "kind": CHECK,
+        "text": "Enable AI Monitor feedback loop",
+        "checked": False,
+    },
+    {
+        "tab": AI_TAB,
+        "group": AI_BEHAVIOUR_GROUP_TITLE,
+        "label": None,
+        "name": "ai_auto_handshake",
+        "kind": CHECK,
+        "text": "Auto-handshake on first analysis",
+        "checked": True,
+    },
+    {
+        "tab": AI_TAB,
+        "group": AI_BEHAVIOUR_GROUP_TITLE,
+        "label": None,
+        "name": "ai_log_feedback",
+        "kind": CHECK,
+        "text": "Log AI feedback to trade journal",
+        "checked": True,
+    },
+)
+
+GROUPS = (
+    (EXCHANGE_TAB, CRYPTO_ADD_GROUP),
+    (FOLDING_TAB, MODE_GROUP_TITLE),
+    (FOLDING_TAB, FOLD_GROUP_TITLE),
+    (FOLDING_TAB, DIST_GROUP_TITLE),
+    (PHANTOM_TAB, LOCK_GROUP_TITLE),
+    (THEME_TAB, FONT_GROUP_TITLE),
+    (SMS_TAB, SMS_PROVIDER_GROUP_TITLE),
+    (SMS_TAB, SMS_EVENTS_GROUP_TITLE),
+    (SMS_TAB, SMS_RATE_GROUP_TITLE),
+    (AI_TAB, AI_API_GROUP_TITLE),
+    (AI_TAB, AI_HANDSHAKE_GROUP_TITLE),
+    (AI_TAB, AI_BEHAVIOUR_GROUP_TITLE),
+    (AI_TAB, AI_STATUS_GROUP_TITLE),
+)
+
+STATUS_ROWS = (
+    ("Status:", "ai_status", AI_STATUS_LABEL, AI_STATUS_STYLE),
+    ("Journal hash:", "ai_hash", AI_HASH_LABEL, AI_HASH_STYLE),
+    ("Checks completed:", "ai_checks", AI_CHECKS_LABEL, ""),
+)
+
+ACTION_HANDLERS = {
+    "cancel_btn.clicked": "reject",
+    "save_btn.clicked": "save",
+    "new_exchange.currentIndexChanged": "on_exchange_changed",
+    "pp_check.toggled": "show_passphrase",
+    "test_btn.clicked": "test_api_connection",
+    "add_btn.clicked": "add_exchange",
+    "remove_btn.clicked": "remove_exchange",
+    "font_family.currentTextChanged": "update_font_preview",
+    "font_size.valueChanged": "update_font_preview",
+    "sound_volume.valueChanged": "update_volume_label",
+    "sound_volume.valueChanged.2": "sfx_volume_changed",
+    "ai_test_btn.clicked": "test_ai_handshake",
+}
+TA_SLIDER_HANDLER = "update_weight_label"
+SOUND_BUTTON_HANDLER = "test_sound"
+
+
+HORIZONTAL_BAR_OFF_TABS = (SMS_TAB,)
+CONTENT_SPACING = {
+    SMS_TAB: SMS_CONTENT_SPACING_PX,
+    AI_TAB: AI_CONTENT_SPACING_PX,
+}
+AI_STATUS_FORM_SPACING_PX = 4
+GROUP_FORM_SPACING = {
+    SMS_PROVIDER_GROUP_TITLE: SMS_FORM_SPACING_PX,
+    SMS_EVENTS_GROUP_TITLE: SMS_FORM_SPACING_PX,
+    SMS_RATE_GROUP_TITLE: SMS_FORM_SPACING_PX,
+    AI_API_GROUP_TITLE: SMS_FORM_SPACING_PX,
+    AI_HANDSHAKE_GROUP_TITLE: SMS_FORM_SPACING_PX,
+    AI_BEHAVIOUR_GROUP_TITLE: SMS_FORM_SPACING_PX,
+    AI_STATUS_GROUP_TITLE: AI_STATUS_FORM_SPACING_PX,
+}
+GROUP_FORM_MARGINS = {title: SMS_FORM_MARGINS for title in GROUP_FORM_SPACING}
+
+COLUMN = "column"
+FORM = "form"
+ROW = "row"
+SCROLL = "scroll"
+GROUP = "group"
+
+CONTROL = "control"
+LABEL = "label"
+TEXT = "text"
+BUTTON = "button"
+STRETCH = "stretch"
+BANNER = "banner"
+TA_ROWS = "ta_rows"
+TF_ROW = "tf_row"
+SOUND_ROW = "sound_row"
+ADD_GROUP_BY_WING = "add_group"
+
+TEST_BUTTON_TEXT = "Test Connection"
+ADD_BUTTON_TEXT = "Test and Add Exchange"
+
+BUTTON_NAMES_BY_TEXT = {
+    TEST_BUTTON_TEXT: "test_btn",
+    ADD_BUTTON_TEXT: "add_btn",
+    REMOVE_BUTTON_TEXT: "remove_btn",
+    AI_TEST_BUTTON_TEXT: "ai_test_btn",
+    CANCEL_BUTTON_TEXT: "cancel_btn",
+    SAVE_BUTTON_TEXT: "save_btn",
+}
+
+LAYOUT = {
+    USER_TAB: (FORM, ((CONTROL, "username"),)),
+    EXCHANGE_TAB: (
+        COLUMN,
+        (
+            (BANNER,),
+            (TEXT, "list_label"),
+            (CONTROL, "exchange_list"),
+            (
+                GROUP,
+                ADD_GROUP_BY_WING,
+                (
+                    FORM,
+                    (
+                        (CONTROL, "new_exchange"),
+                        (CONTROL, "new_api_key"),
+                        (CONTROL, "new_api_secret"),
+                        (CONTROL, "pp_check"),
+                        (CONTROL, "new_passphrase"),
+                        (
+                            ROW,
+                            (
+                                (BUTTON, TEST_BUTTON_TEXT),
+                                (BUTTON, ADD_BUTTON_TEXT),
+                            ),
+                        ),
+                        (TEXT, "api_feedback"),
+                    ),
+                ),
+            ),
+            (BUTTON, REMOVE_BUTTON_TEXT),
+        ),
+    ),
+    TRADING_TAB: (
+        FORM,
+        (
+            (CONTROL, "pos_distance"),
+            (CONTROL, "increment_style"),
+            (CONTROL, "default_positions"),
+            (CONTROL, "default_balance"),
+            (CONTROL, "visibility"),
+            (CONTROL, "aggressive"),
+        ),
+    ),
+    FOLDING_TAB: (
+        COLUMN,
+        (
+            (CONTROL, "folding_active"),
+            (
+                GROUP,
+                MODE_GROUP_TITLE,
+                (COLUMN, ((CONTROL, "fold_equal"), (CONTROL, "fold_log"))),
+            ),
+            (
+                GROUP,
+                FOLD_GROUP_TITLE,
+                (
+                    COLUMN,
+                    (
+                        (CONTROL, "fold_all"),
+                        (ROW, ((CONTROL, "fold_x"), (CONTROL, "fold_x_count"))),
+                        (CONTROL, "fold_recent"),
+                    ),
+                ),
+            ),
+            (
+                GROUP,
+                DIST_GROUP_TITLE,
+                (
+                    COLUMN,
+                    (
+                        (CONTROL, "dist_all"),
+                        (ROW, ((CONTROL, "dist_x"), (CONTROL, "dist_x_count"))),
+                        (CONTROL, "dist_recent"),
+                    ),
+                ),
+            ),
+            (STRETCH,),
+        ),
+    ),
+    TA_TAB: (COLUMN, ((LABEL, TA_HEADING), (TA_ROWS,), (STRETCH,))),
+    PHANTOM_TAB: (
+        COLUMN,
+        (
+            (CONTROL, "phantoms_enabled"),
+            (LABEL, PHANTOM_HEADING),
+            (TF_ROW,),
+            (GROUP, LOCK_GROUP_TITLE, (FORM, ((CONTROL, "lock_candles"),))),
+            (STRETCH,),
+        ),
+    ),
+    THEME_TAB: (
+        COLUMN,
+        (
+            (LABEL, THEME_HEADING),
+            (CONTROL, "theme_combo"),
+            (LABEL, ACCENT_HEADING),
+            (CONTROL, "accent_color"),
+            (
+                GROUP,
+                FONT_GROUP_TITLE,
+                (
+                    FORM,
+                    (
+                        (CONTROL, "font_family"),
+                        (CONTROL, "font_size"),
+                        (CONTROL, "heading_size"),
+                        (CONTROL, "log_font_size"),
+                        (TEXT, "font_preview"),
+                    ),
+                ),
+            ),
+            (STRETCH,),
+        ),
+    ),
+    LOGGING_TAB: (
+        COLUMN,
+        (
+            (CONTROL, "ta_logging"),
+            (CONTROL, "highlight_trades"),
+            (LABEL, LOGGING_HEADING),
+            (CONTROL, "log_24h"),
+            (CONTROL, "log_1w"),
+            (CONTROL, "log_1m"),
+            (CONTROL, "log_1y"),
+            (STRETCH,),
+        ),
+    ),
+    SOUND_TAB: (
+        COLUMN,
+        (
+            (CONTROL, "sound_enabled"),
+            (LABEL, SOUND_EVENTS_HEADING),
+            (CONTROL, "sound_buy"),
+            (CONTROL, "sound_sell"),
+            (CONTROL, "sound_error"),
+            (CONTROL, "sound_state"),
+            (CONTROL, "sound_fire"),
+            (CONTROL, "sound_track"),
+            (CONTROL, "sound_profit"),
+            (CONTROL, "sound_drip"),
+            (
+                ROW,
+                (
+                    (LABEL, VOLUME_HEADING),
+                    (CONTROL, "sound_volume"),
+                    (TEXT, "vol_label"),
+                ),
+            ),
+            (SOUND_ROW,),
+            (STRETCH,),
+        ),
+    ),
+    SMS_TAB: (
+        SCROLL,
+        (
+            COLUMN,
+            (
+                (CONTROL, "sms_enabled"),
+                (
+                    GROUP,
+                    SMS_PROVIDER_GROUP_TITLE,
+                    (
+                        FORM,
+                        (
+                            (CONTROL, "sms_provider"),
+                            (CONTROL, "sms_phone"),
+                            (LABEL, SMS_GATEWAY_HEADING),
+                            (CONTROL, "sms_carrier"),
+                            (CONTROL, "sms_gateway"),
+                            (CONTROL, "sms_smtp_user"),
+                            (CONTROL, "sms_smtp_pass"),
+                        ),
+                    ),
+                ),
+                (
+                    GROUP,
+                    SMS_EVENTS_GROUP_TITLE,
+                    (
+                        FORM,
+                        (
+                            (CONTROL, "sms_buy"),
+                            (CONTROL, "sms_sell"),
+                            (CONTROL, "sms_state"),
+                            (CONTROL, "sms_errors"),
+                            (CONTROL, "sms_pl"),
+                            (CONTROL, "sms_pl_amount"),
+                            (CONTROL, "sms_balance"),
+                            (CONTROL, "sms_connection"),
+                        ),
+                    ),
+                ),
+                (
+                    GROUP,
+                    SMS_RATE_GROUP_TITLE,
+                    (FORM, ((CONTROL, "sms_max_hour"), (CONTROL, "sms_cooldown"))),
+                ),
+                (STRETCH,),
+            ),
+        ),
+    ),
+    AI_TAB: (
+        SCROLL,
+        (
+            COLUMN,
+            (
+                (
+                    GROUP,
+                    AI_API_GROUP_TITLE,
+                    (FORM, ((CONTROL, "ai_api_key"), (CONTROL, "ai_interval"))),
+                ),
+                (
+                    GROUP,
+                    AI_HANDSHAKE_GROUP_TITLE,
+                    (
+                        FORM,
+                        (
+                            (LABEL, AI_INFO_TEXT),
+                            (CONTROL, "ai_connect_phrase"),
+                            (CONTROL, "ai_confirm_phrase"),
+                        ),
+                    ),
+                ),
+                (
+                    GROUP,
+                    AI_BEHAVIOUR_GROUP_TITLE,
+                    (
+                        FORM,
+                        (
+                            (CONTROL, "ai_enabled"),
+                            (CONTROL, "ai_auto_handshake"),
+                            (CONTROL, "ai_log_feedback"),
+                        ),
+                    ),
+                ),
+                (
+                    GROUP,
+                    AI_STATUS_GROUP_TITLE,
+                    (
+                        FORM,
+                        (
+                            (TEXT, "ai_status"),
+                            (TEXT, "ai_hash"),
+                            (TEXT, "ai_checks"),
+                            (BUTTON, AI_TEST_BUTTON_TEXT),
+                        ),
+                    ),
+                ),
+                (STRETCH,),
+            ),
+        ),
+    ),
+}
+
+PAINTED_KIND = {
+    LINE: "line",
+    TEXT_AREA: "text_area",
+    COMBO_TEXT: "combo",
+    COMBO_DATA: "combo",
+    CHECK: "check",
+    RADIO: "radio",
+    SPIN: "spin",
+    DOUBLE_SPIN: "double_spin",
+    SLIDER: "slider",
+    LIST: "list",
+}
+SILENT_KINDS = ("spin", "double_spin", "slider", "list")
+
+TEXT_ROW_LABELS = {
+    "font_preview": "Preview:",
+    "ai_status": "Status:",
+    "ai_hash": "Journal hash:",
+    "ai_checks": "Checks completed:",
+}
+
+
+def title_for(wing: Any) -> str:
+    """The window title for one wing, plain where the wing is unknown."""
+    if wing in KNOWN_WINGS:
+        return WINDOW_TITLE_FORMAT.format(wing=wing.capitalize())
+    return PLAIN_WINDOW_TITLE
+
+
+def wing_or_default(wing: Any) -> str:
+    """`wing` when the dialog knows it, the crypto wing otherwise."""
+    return wing if wing in KNOWN_WINGS else DEFAULT_WING
+
+
+def exchange_items(wing: str) -> tuple:
+    """The Add-exchange dropdown items for one wing, as (text, id) pairs."""
+    if wing == STOCK_WING:
+        return tuple(
+            (EQUITY_ITEM_FORMAT.format(name=eid.capitalize()), eid)
+            for eid in sorted(EQUITY_EXCHANGE_IDS)
+        )
+    return CRYPTO_EXCHANGE_ITEMS
+
+
+def list_label_for(wing: str) -> str:
+    """The heading above the Configured-exchanges list."""
+    return STOCK_LIST_LABEL if wing == STOCK_WING else CRYPTO_LIST_LABEL
+
+
+def add_group_title(wing: str) -> str:
+    """The title of the box holding the Add-exchange form."""
+    return STOCK_ADD_GROUP if wing == STOCK_WING else CRYPTO_ADD_GROUP
+
+
+def feedback_style(level: Any) -> str:
+    """The one colour rule the feedback line carries for `level`."""
+    return FEEDBACK_STYLE_FORMAT.format(
+        color=FEEDBACK_COLORS.get(level, FEEDBACK_FALLBACK_COLOR)
+    )
+
+
+def ta_label(name: str) -> str:
+    """The printed name of one indicator weight row."""
+    return TA_LABEL_FORMAT.format(name=name.replace("_", " ").title())
+
+
+def ta_slider_value(weight: float) -> int:
+    """One indicator weight as its slider position."""
+    return int(weight * TA_SLIDER_SCALE)
+
+
+def ta_value_text(weight: float) -> str:
+    """One indicator weight as the figure printed beside its slider."""
+    return TA_VALUE_FORMAT.format(weight=weight)
+
+
+def ta_rows() -> tuple:
+    """Every indicator weight row: label, slider position and figure."""
+    return tuple(
+        (ta_label(name), ta_slider_value(weight), ta_value_text(weight))
+        for name, weight in TA_INDICATOR_WEIGHTS
+    )
+
+
+def slider_label_text(position: Any) -> str:
+    """The figure printed beside a slider at `position`."""
+    return TA_VALUE_FORMAT.format(weight=position / TA_SLIDER_SCALE)
+
+
+def volume_label_text(position: Any) -> str:
+    """The figure printed beside the volume slider."""
+    return VOLUME_LABEL_FORMAT.format(value=position)
+
+
+def font_preview_style(family: Any, size: Any) -> str:
+    """The preview label's rule after the family or the size moves."""
+    return FONT_PREVIEW_FORMAT.format(family=family, size=size)
+
+
+def index_of_data(items: Any, wanted: Any) -> int:
+    """Where `wanted` sits among the items' data values, -1 when absent."""
+    for at, pair in enumerate(items):
+        if pair[1] == wanted:
+            return at
+    return NO_MATCH_INDEX
+
+
+def index_of_text(texts: Any, wanted: Any) -> int:
+    """Where `wanted` sits among the items' printed texts, -1 when absent."""
+    for at, text in enumerate(texts):
+        if text == wanted:
+            return at
+    return NO_MATCH_INDEX
+
+
+INT32_MIN = -(2**31)
+INT32_MAX = 2**31 - 1
+INT64_MIN = -(2**63)
+INT64_MAX = 2**63 - 1
+FLOAT_LIMIT = 2**1024
+DEFAULT_DECIMALS = 2
+
+REFUSED_TYPE = "this control takes a number, not {found}"
+REFUSED_SIZE = "{found} is outside the range this control can hold"
+REFUSED_TEXT = "this control takes text, not {found}"
+REFUSED_FLAG = "this control takes a true or false value, not {found}"
+
+
+def _named(value: Any) -> str:
+    return type(value).__name__
+
+
+def seed_whole(raw: Any, low: int, high: int) -> int:
+    """The figure a whole-number control shows once it is given `raw`.
+
+    Reproduces what the shipped control does, refusal for refusal. Text
+    is refused. A value that is not a whole number is cut towards zero.
+    A figure outside the platform's whole-number range is refused rather
+    than wrapped. Anything left is held to the control's own range.
+    """
+    if type(raw) is bool:
+        number = int(raw)
+    elif type(raw) is float:
+        if not math.isfinite(raw):
+            raise OverflowError(REFUSED_SIZE.format(found=raw))
+        number = int(raw)
+    elif type(raw) is int:
+        number = raw
+    else:
+        raise TypeError(REFUSED_TYPE.format(found=_named(raw)))
+    if not INT32_MIN <= number <= INT32_MAX:
+        raise OverflowError(REFUSED_SIZE.format(found=number))
+    return min(high, max(low, number))
+
+
+def seed_decimal(raw: Any, low: float, high: float, decimals: int) -> float:
+    """The figure a decimal control shows once it is given `raw`.
+
+    Text is refused, and a whole number too large to become a decimal is
+    refused. Not-a-number and plus-infinity both print the top of the
+    range; minus-infinity prints the bottom. What is left is held to the
+    range and then cut to the control's decimal places.
+    """
+    if type(raw) is bool:
+        number = float(raw)
+    elif type(raw) is int:
+        if not -FLOAT_LIMIT < raw < FLOAT_LIMIT:
+            raise OverflowError(REFUSED_SIZE.format(found=_named(raw)))
+        number = float(raw)
+    elif type(raw) is float:
+        number = raw
+    else:
+        raise TypeError(REFUSED_TYPE.format(found=_named(raw)))
+    if math.isnan(number):
+        return float(high)
+    return float(round(min(high, max(low, number)), decimals))
+
+
+def seed_flag(raw: Any) -> bool:
+    """Whether a tick box is ticked once it is given `raw`."""
+    if type(raw) is bool:
+        return raw
+    if type(raw) is int:
+        if not INT32_MIN <= raw <= INT32_MAX:
+            raise OverflowError(REFUSED_SIZE.format(found=_named(raw)))
+        return bool(raw)
+    raise TypeError(REFUSED_FLAG.format(found=_named(raw)))
+
+
+def seed_text(raw: Any) -> str:
+    """The text a text field shows once it is given `raw`."""
+    if raw is None:
+        return EMPTY_TEXT
+    if type(raw) is str:
+        return raw
+    raise TypeError(REFUSED_TEXT.format(found=_named(raw)))
+
+
+def seed_index(raw: Any, count: int) -> int:
+    """Which item a list control shows once it is given `raw`.
+
+    Text is refused. A figure outside the platform's whole-number range
+    is refused. A figure outside the list shows no item at all.
+    """
+    if type(raw) is bool:
+        at = int(raw)
+    elif type(raw) is float:
+        if not math.isfinite(raw):
+            raise OverflowError(REFUSED_SIZE.format(found=raw))
+        at = int(raw)
+    elif type(raw) is int:
+        at = raw
+    else:
+        raise TypeError(REFUSED_TYPE.format(found=_named(raw)))
+    if not INT32_MIN <= at <= INT32_MAX:
+        raise OverflowError(REFUSED_SIZE.format(found=at))
+    return at if FIRST_INDEX <= at < count else NO_MATCH_INDEX
+
+
+def data_index(items: Any, wanted: Any) -> int:
+    """Where `wanted` sits among the items' data values, as the list finds it.
+
+    A whole number too large for the platform's data slot is refused
+    rather than reported absent.
+    """
+    if type(wanted) is int and not INT64_MIN <= wanted <= INT64_MAX:
+        raise OverflowError(REFUSED_SIZE.format(found=_named(wanted)))
+    return index_of_data(items, wanted)
+
+
+def text_index(texts: Any, wanted: Any) -> int:
+    """Where `wanted` sits among the items' printed texts, as the list finds it."""
+    if wanted is None:
+        return NO_MATCH_INDEX
+    if type(wanted) is not str:
+        raise TypeError(REFUSED_TEXT.format(found=_named(wanted)))
+    return index_of_text(texts, wanted)
+
+
+def signal_for(spec: dict) -> Optional[str]:
+    """The signal one control emits when the operator moves it."""
+    if "signal" in spec:
+        return spec["signal"]
+    return SIGNAL_FOR_KIND.get(spec["kind"])
+
+
+def spec_for(name: str) -> dict:
+    """The one control spec carrying `name`."""
+    for spec in CONTROL_SPECS:
+        if spec["name"] == name:
+            return spec
+    raise KeyError(name)
+
+
+def specs_on(tab: str) -> tuple:
+    """Every control spec belonging to one tab, in painted order."""
+    return tuple(spec for spec in CONTROL_SPECS if spec["tab"] == tab)
+
+
+def group_titles(tab: str, wing: str) -> tuple:
+    """Every boxed group title on one tab, in painted order."""
+    found = []
+    for owner, title in GROUPS:
+        if owner != tab:
+            continue
+        if owner == EXCHANGE_TAB and title == CRYPTO_ADD_GROUP:
+            found.append(add_group_title(wing))
+        else:
+            found.append(title)
+    return tuple(found)
+
+
+def actions() -> dict:
+    """Every signal the dialog connects, and what each one runs.
+
+    One entry is one connection a built dialog holds. The volume slider
+    carries two, and each indicator weight carries its own.
+    """
+    wired = dict(ACTION_HANDLERS)
+    for name, _weight in TA_INDICATOR_WEIGHTS:
+        wired[f"ta_slider[{name}].valueChanged"] = TA_SLIDER_HANDLER
+    for text, name, _tip in SOUND_TEST_BUTTONS:
+        wired[f"sound_test[{name}].clicked"] = SOUND_BUTTON_HANDLER
+    return wired
+
+
+def connection_counts() -> dict:
+    """How many connections a built dialog holds."""
+    return {"run_time": len(actions())}
+
+
+def read_mapping(value: Any, key: str, default: Any) -> Any:
+    """One value out of a stored group, refusing as the dialog refuses.
+
+    The shipped dialog calls ``.get`` on whatever the store returned for
+    the group, so a group stored as anything but a mapping raises
+    ``AttributeError`` there and here alike.
+    """
+    return value.get(key, default)
+
+
+class SettingsSource:
+    """The settings store the dialog reads and writes, from a mapping.
+
+    Holds its values in memory. ``set`` records every write and raises
+    ``KeyError`` for a name in ``refuses``, which is what the shipped
+    store does for a setting it does not carry.
+    """
+
+    def __init__(
+        self,
+        values: Optional[dict] = None,
+        exchanges: Any = None,
+        refuses: Any = (),
+    ) -> None:
+        self.values = dict(values or {})
+        self.exchanges = list(exchanges) if exchanges is not None else []
+        self.refuses = tuple(refuses)
+        self.written: list = []
+        self.removed: list = []
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.values.get(key, default)
+
+    def set(self, key: str, value: Any) -> None:
+        if key in self.refuses:
+            raise KeyError(f"Unknown setting: {key}")
+        self.values[key] = value
+        self.written.append([key, value])
+
+    def list_exchanges(self) -> list:
+        return list(self.exchanges)
+
+    def add_exchange(self, config: Any) -> None:
+        self.exchanges.append(config)
+
+    def remove_exchange(self, exchange_id: Any) -> None:
+        self.removed.append(exchange_id)
+
+
+class StatusLogSink:
+    """The status line, keeping every message it was handed."""
+
+    def __init__(self) -> None:
+        self.lines: list = []
+
+    def log(self, message: Any, level: Any = INFO_LEVEL) -> None:
+        self.lines.append([message, level])
+
+
+class ValidationResult:
+    """One answer from the credential checker."""
+
+    def __init__(self, success: Any, message: Any, details: Any = None) -> None:
+        self.success = success
+        self.message = message
+        self.details = details
+
+
+class ValidatorSource:
+    """The credential checker, answering from a value or an exception."""
+
+    def __init__(
+        self, result: Any = None, raises: Optional[BaseException] = None
+    ) -> None:
+        self.result = result
+        self.raises = raises
+        self.asked: list = []
+
+    def validate(self, exchange_id: Any, key: Any, secret: Any, phrase: Any) -> Any:
+        self.asked.append([exchange_id, key, secret, phrase])
+        if self.raises is not None:
+            raise self.raises
+        return self.result
+
+
+class SoundEngineSink:
+    """The sound engine, keeping the configs it was given and what it played."""
+
+    def __init__(self, raises: Optional[BaseException] = None) -> None:
+        self.raises = raises
+        self.configs: list = []
+        self.played: list = []
+        self._available = True
+        self._cache: dict = {"stale": 1}
+
+    def update_config(self, config: Any) -> None:
+        if self.raises is not None:
+            raise self.raises
+        self.configs.append(config)
+
+    def play(self, name: Any) -> None:
+        self.played.append(name)
+
+
+class SettingsDialogModel:
+    """The Settings dialog's state, filled by ``build``.
+
+    ``values`` carries one entry per named control. ``rows`` carries the
+    painted order of every labelled row. ``calls`` records every step the
+    dialog ran, in order, so a run that refused part way still reports
+    what it reached.
+    """
+
+    def __init__(
+        self,
+        settings: Any = None,
+        status_log: Any = None,
+        wing: Any = DEFAULT_WING,
+        validator: Any = None,
+        sound: Any = None,
+        encryptor: Any = None,
+    ) -> None:
+        self.settings = settings
+        self.status_log = status_log
+        self.wing = wing_or_default(wing)
+        self.validator = validator
+        self.sound = sound
+        self.encryptor = encryptor
+        self.window_title = title_for(wing)
+        self.minimum_size = MINIMUM_SIZE
+        self.last_validation: Any = None
+        self.values: dict = {}
+        self.texts: dict = {}
+        self.styles: dict = {}
+        self.enabled: dict = {}
+        self.visible: dict = {}
+        self.tooltips: dict = {}
+        self.rows: list = []
+        self.listed_exchanges: list = []
+        self.calls: list = []
+        self.processed_events: list = []
+        self.accepted = False
+        self.rejected = False
+        self.emitted: list = []
+        self.prints: list = []
+        self.message_boxes: list = []
+
+    def _record(self, name: str, *carried: Any) -> None:
+        self.calls.append([name, *carried])
+
+    def build(self) -> None:
+        """Lay out every tab, then seed every control from the store."""
+        self._record("build", self.wing)
+        self._setup()
+        self._load_current()
+
+    def _setup(self) -> None:
+        for spec in CONTROL_SPECS:
+            name = spec["name"]
+            self.enabled[name] = True
+            self.visible[name] = spec.get("visible", True)
+            if "tooltip" in spec:
+                self.tooltips[name] = spec["tooltip"]
+            self.values[name] = self._seed(spec)
+            if spec["label"]:
+                self.rows.append([spec["tab"], spec["group"], spec["label"], name])
+        for button in BUTTON_NAMES_BY_TEXT.values():
+            self.enabled[button] = True
+        self.values["new_exchange_items"] = list(exchange_items(self.wing))
+        self.values["ta_rows"] = [list(one) for one in ta_rows()]
+        self.values["phantom_timeframes"] = [
+            [tf, tf in PHANTOM_TIMEFRAMES_ON] for tf in PHANTOM_TIMEFRAMES
+        ]
+        self.texts["vol_label"] = volume_label_text(spec_for("sound_volume")["value"])
+        self.texts["api_feedback"] = ""
+        self.styles["api_feedback"] = ""
+        self.texts["font_preview"] = FONT_PREVIEW_TEXT
+        self.styles["font_preview"] = FONT_PREVIEW_STYLE
+        for label, name, text, style in STATUS_ROWS:
+            self.texts[name] = text
+            self.styles[name] = style
+            self.rows.append([AI_TAB, AI_STATUS_GROUP_TITLE, label, name])
+        self.texts["list_label"] = list_label_for(self.wing)
+        self.texts["add_group"] = add_group_title(self.wing)
+        self.texts["banner"] = STOCK_BANNER_TEXT if self.wing == STOCK_WING else ""
+        self.styles["banner"] = STOCK_BANNER_STYLE if self.wing == STOCK_WING else ""
+        if self.wing == STOCK_WING:
+            for name in STOCK_DISABLED_CONTROLS:
+                self.enabled[name] = False
+                self.tooltips[name] = STOCK_DISABLED_TIP
+        self.on_exchange_changed()
+
+    def _seed(self, spec: dict) -> Any:
+        kind = spec["kind"]
+        if kind in (CHECK, RADIO):
+            return spec["checked"]
+        if kind in (SPIN, SLIDER):
+            return seed_whole(spec.get("value", spec["range"][0]), *spec["range"])
+        if kind == DOUBLE_SPIN:
+            return self._decimal(spec, spec.get("value", spec["range"][0]))
+        if kind == COMBO_DATA:
+            return FIRST_INDEX
+        if kind == COMBO_TEXT:
+            if "current_text" in spec:
+                return index_of_text(spec["items"], spec["current_text"])
+            return FIRST_INDEX
+        if kind == LIST:
+            return []
+        return EMPTY_TEXT
+
+    def _decimal(self, spec: dict, raw: Any) -> float:
+        low, high = spec["range"]
+        return seed_decimal(raw, low, high, spec.get("decimals", DEFAULT_DECIMALS))
+
+    def _seed_control(self, name: str, raw: Any) -> Any:
+        """One stored value put into one control, refusing as it refuses."""
+        spec = spec_for(name)
+        kind = spec["kind"]
+        if kind in (LINE, TEXT_AREA):
+            return seed_text(raw)
+        if kind in (CHECK, RADIO):
+            return seed_flag(raw)
+        if kind in (SPIN, SLIDER):
+            return seed_whole(raw, *spec["range"])
+        if kind == DOUBLE_SPIN:
+            return self._decimal(spec, raw)
+        if kind in (COMBO_TEXT, COMBO_DATA):
+            return seed_index(raw, len(self._items_for(spec)))
+        raise KeyError(name)
+
+    def _items_for(self, spec: dict) -> Any:
+        if spec["name"] == "new_exchange":
+            return self.values["new_exchange_items"]
+        return spec["items"]
+
+    def _load_current(self) -> None:
+        if not self.settings:
+            self._record("load_skipped")
+            return
+        self._record("load_current")
+        for key, fallback, name in SETTING_LOAD_KEYS:
+            self.values[name] = self._seed_control(
+                name, self.settings.get(key, fallback)
+            )
+
+        stored_ai = self.settings.get(AI_GROUP_KEY, {})
+        for key, fallback, name in AI_LOAD_KEYS:
+            self.values[name] = self._seed_control(
+                name, read_mapping(stored_ai, key, fallback)
+            )
+
+        theme = self.settings.get(THEME_KEY, THEME_DEFAULT)
+        found = data_index(THEME_ITEMS, theme)
+        if found >= FIRST_INDEX:
+            self.values["theme_combo"] = found
+
+        style = self.settings.get(INCREMENT_KEY, INCREMENT_DEFAULT)
+        found = text_index(spec_for("increment_style")["items"], style)
+        if found >= FIRST_INDEX:
+            self.values["increment_style"] = found
+
+        stored_folding = self.settings.get(FOLDING_GROUP_KEY, {})
+        self.values["folding_active"] = self._seed_control(
+            "folding_active",
+            read_mapping(stored_folding, FOLDING_ACTIVE_KEY, FOLDING_ACTIVE_DEFAULT),
+        )
+
+        for entry in self.settings.list_exchanges():
+            eid = (entry.get(EXCHANGE_ID_KEY, "") or "").lower()
+            is_equity = eid in EQUITY_EXCHANGE_IDS
+            if self.wing == STOCK_WING and not is_equity:
+                continue
+            if self.wing == CRYPTO_WING and is_equity:
+                continue
+            self.listed_exchanges.append(
+                CONFIGURED_ITEM_FORMAT.format(
+                    name=entry.get(DISPLAY_NAME_KEY, ""),
+                    eid=entry.get(EXCHANGE_ID_KEY, ""),
+                )
+            )
+        self.values["exchange_list"] = list(self.listed_exchanges)
+
+    def current_exchange_id(self) -> Any:
+        """The id of the exchange the dropdown is showing."""
+        items = self.values["new_exchange_items"]
+        at = self.values["new_exchange"]
+        if not items or at < FIRST_INDEX or at >= len(items):
+            return None
+        return items[at][1]
+
+    def on_exchange_changed(self) -> None:
+        """Tick the passphrase box for an exchange that needs one."""
+        eid = self.current_exchange_id()
+        self.values["pp_check"] = eid in PASSPHRASE_EXCHANGE_IDS
+        self.texts["api_feedback"] = ""
+        self._record("on_exchange_changed", eid)
+
+    def show_passphrase(self, on: Any) -> None:
+        """Show or hide the passphrase field."""
+        self.visible["new_passphrase"] = on
+        self._record("show_passphrase", on)
+
+    def set_feedback(self, message: Any, level: Any = INFO_LEVEL) -> None:
+        """Print one line under the Add-exchange form, coloured by level."""
+        self.texts["api_feedback"] = message
+        self.styles["api_feedback"] = feedback_style(level)
+        self._record("set_feedback", level)
+
+    def _typed_credentials(self) -> tuple:
+        key = self.values["new_api_key"].strip()
+        secret = self.values["new_api_secret"].strip()
+        phrase = (
+            self.values["new_passphrase"].strip() if self.values["pp_check"] else ""
+        )
+        return key, secret, phrase
+
+    def _process_events(self) -> None:
+        self.processed_events.append(PROCESS_EVENTS_REASON)
+
+    def test_api_connection(self) -> Any:
+        """Check the typed credentials and report on the feedback line."""
+        self._record("test_api_connection")
+        eid = self.current_exchange_id()
+        key, secret, phrase = self._typed_credentials()
+
+        if not key or not secret:
+            self.set_feedback(MISSING_CREDENTIALS_FEEDBACK, ERROR_LEVEL)
+            return None
+
+        self.set_feedback(
+            TESTING_FEEDBACK_FORMAT.format(name=eid.capitalize()), INFO_LEVEL
+        )
+        self.enabled["test_btn"] = False
+        self.enabled["add_btn"] = False
+        self._process_events()
+
+        try:
+            result = self.validator.validate(eid, key, secret, phrase)
+            if result.success:
+                message = result.message
+                if result.details:
+                    message += BALANCES_FEEDBACK_FORMAT.format(details=result.details)
+                self.set_feedback(message, SUCCESS_LEVEL)
+                if self.status_log:
+                    self.status_log.log(result.message, SUCCESS_LEVEL)
+                    if result.details:
+                        self.status_log.log(
+                            BALANCES_LOG_FORMAT.format(details=result.details),
+                            INFO_LEVEL,
+                        )
+                self.last_validation = result
+                return result
+            message = result.message
+            if result.details:
+                message += DETAILS_FEEDBACK_FORMAT.format(details=result.details)
+            self.set_feedback(message, ERROR_LEVEL)
+            if self.status_log:
+                self.status_log.log(
+                    API_FAILED_LOG_FORMAT.format(eid=eid, message=result.message),
+                    ERROR_LEVEL,
+                )
+            self.last_validation = None
+            return None
+        except Exception as exc:
+            self.set_feedback(
+                TEST_FAILED_FEEDBACK_FORMAT.format(error=exc), ERROR_LEVEL
+            )
+            self.last_validation = None
+            return None
+        finally:
+            self.enabled["test_btn"] = True
+            self.enabled["add_btn"] = True
+
+    def _master_phrase(self) -> str:
+        return MASTER_FORMAT.format(
+            username=self.settings.get("username", UNNAMED_OPERATOR)
+        )
+
+    def add_exchange(self) -> None:
+        """Check the credentials, store the exchange and close the dialog."""
+        self._record("add_exchange")
+        self.enabled["add_btn"] = False
+        self.enabled["test_btn"] = False
+        self._process_events()
+
+        try:
+            eid = self.current_exchange_id()
+            key, secret, phrase = self._typed_credentials()
+
+            if key and secret:
+                result = self.test_api_connection()
+                if result is None or not result.success:
+                    return
+
+            config = dict(zip(EXCHANGE_CONFIG_FIELDS, EXCHANGE_CONFIG_DEFAULTS))
+            config[EXCHANGE_ID_KEY] = eid
+            config[DISPLAY_NAME_KEY] = eid.capitalize()
+
+            if key and secret:
+                master = self._master_phrase()
+                config[KEY_FIELD] = self.encryptor(key, master)
+                config[SIGNING_FIELD] = self.encryptor(secret, master)
+                if phrase:
+                    config[PHRASE_FIELD] = self.encryptor(phrase, master)
+
+            self.settings.add_exchange(config)
+            self.listed_exchanges.append(
+                EXCHANGE_ITEM_FORMAT.format(name=eid.capitalize(), eid=eid)
+            )
+            self.values["exchange_list"] = list(self.listed_exchanges)
+            for name in TYPED_CREDENTIAL_CONTROLS:
+                self.values[name] = EMPTY_TEXT
+
+            how = ADDED_WITH_CREDENTIALS if key else ADDED_WITHOUT_CREDENTIALS
+            self.set_feedback(
+                ADDED_FEEDBACK_FORMAT.format(name=eid.capitalize(), how=how),
+                SUCCESS_LEVEL,
+            )
+            if self.status_log:
+                self.status_log.log(
+                    ADDED_LOG_FORMAT.format(name=eid.capitalize(), how=how),
+                    SUCCESS_LEVEL,
+                )
+            self.message_boxes.append(
+                [
+                    INFORMATION_ICON,
+                    ADDED_BOX_TITLE,
+                    ADDED_BOX_FORMAT.format(name=eid.capitalize(), how=how),
+                ]
+            )
+            self.accepted = True
+        finally:
+            self.enabled["add_btn"] = True
+            self.enabled["test_btn"] = True
+
+    def remove_exchange(self, selected: Any = None) -> None:
+        """Drop the selected exchange from the store and the list."""
+        self._record("remove_exchange", selected)
+        if selected is None:
+            self.set_feedback(NO_SELECTION_FEEDBACK, WARNING_LEVEL)
+            return
+        eid = selected.split("(")[-1].rstrip(")")
+        self.settings.remove_exchange(eid)
+        if selected in self.listed_exchanges:
+            self.listed_exchanges.remove(selected)
+        self.values["exchange_list"] = list(self.listed_exchanges)
+        self.set_feedback(
+            REMOVED_FEEDBACK_FORMAT.format(name=eid.capitalize()), INFO_LEVEL
+        )
+        if self.status_log:
+            self.status_log.log(REMOVED_LOG_FORMAT.format(eid=eid), WARNING_LEVEL)
+
+    def update_font_preview(self) -> None:
+        """Repaint the preview line in the chosen family and size."""
+        family = self.values["font_family"]
+        if isinstance(family, int):
+            family = FONT_FAMILIES[family]
+        self.styles["font_preview"] = font_preview_style(
+            family, self.values["font_size"]
+        )
+        self._record("update_font_preview")
+
+    def update_volume_label(self, position: Any) -> None:
+        """Print the volume figure beside the slider."""
+        self.texts["vol_label"] = volume_label_text(position)
+        self._record("update_volume_label", position)
+
+    def sfx_volume_changed(self, position: Any) -> None:
+        """Hand the sound engine a fresh config and clear its cache.
+
+        Volume is baked into each sample when it is made, so the cache
+        must be dropped for the new volume to be heard.
+        """
+        self._record("sfx_volume_changed", position)
+        try:
+            config = {field: self.values[name] for field, name in SOUND_CONFIG_FIELDS}
+            config["volume"] = position / VOLUME_SCALE
+            self.sound.update_config(config)
+            self.sound._available = False
+            self.sound._cache = {}
+        except Exception as exc:
+            self._record("sfx_volume_failed", type(exc).__name__)
+
+    def test_sound(self, name: Any) -> None:
+        """Apply the current volume, then play one sound."""
+        self._record("test_sound", name)
+        self.sfx_volume_changed(self.values["sound_volume"])
+        self.sound.play(name)
+
+    def test_ai_handshake(self) -> None:
+        """Report whether the AI Monitor has what it needs to connect."""
+        self._record("test_ai_handshake")
+        key = self.values["ai_api_key"].strip()
+        connect = self.values["ai_connect_phrase"].strip()
+        confirm = self.values["ai_confirm_phrase"].strip()
+        if not key:
+            self.texts["ai_status"] = AI_MISSING_CREDENTIAL_TEXT
+            self.styles["ai_status"] = AI_ERROR_STYLE
+            return
+        if not connect or not confirm:
+            self.texts["ai_status"] = AI_MISSING_PHRASE_TEXT
+            self.styles["ai_status"] = AI_ERROR_STYLE
+            return
+        self.texts["ai_status"] = AI_SAVED_TEXT
+        self.styles["ai_status"] = AI_OK_STYLE
+
+    def _pair_value(self, name: str) -> Any:
+        spec = spec_for(name)
+        value = self.values[name]
+        if spec["kind"] == COMBO_TEXT:
+            return spec["items"][value]
+        if spec["kind"] == COMBO_DATA:
+            return spec["items"][value][1]
+        if spec["kind"] == LINE:
+            return value.strip()
+        return value
+
+    def _folding_group(self) -> dict:
+        fold_target = FOLD_ALL
+        if self.values["fold_x"]:
+            fold_target = FOLD_X
+        elif self.values["fold_recent"]:
+            fold_target = FOLD_RECENT
+        dist_target = DIST_ALL
+        if self.values["dist_x"]:
+            dist_target = DIST_X
+        elif self.values["dist_recent"]:
+            dist_target = DIST_RECENT
+        return {
+            "active": self.values["folding_active"],
+            "mode": LOG_MODE if self.values["fold_log"] else EQUAL_MODE,
+            "fold_target": fold_target,
+            "fold_target_count": self.values["fold_x_count"],
+            "distribute_target": dist_target,
+            "distribute_target_count": self.values["dist_x_count"],
+        }
+
+    def _logging_group(self) -> dict:
+        periods = [period for name, period in PERIOD_CONTROLS if self.values[name]]
+        return {
+            "ta_signal_logging": self.values["ta_logging"],
+            "highlight_trade_proximity": self.values["highlight_trades"],
+            "active_periodicities": periods,
+        }
+
+    def _ai_group(self) -> dict:
+        return {
+            "api_key": self.values["ai_api_key"].strip(),
+            "interval_hours": self.values["ai_interval"],
+            "connect_phrase": self.values["ai_connect_phrase"].strip(),
+            "confirm_phrase": self.values["ai_confirm_phrase"].strip(),
+            "enabled": self.values["ai_enabled"],
+            "auto_handshake": self.values["ai_auto_handshake"],
+            "log_feedback": self.values["ai_log_feedback"],
+        }
+
+    def save(self) -> dict:
+        """Write every setting, report what failed, and close the dialog.
+
+        The dialog always closes. A group the store refused is named on
+        the status line and in a warning box, and is not persisted.
+        """
+        self._record("save")
+        self.prints.append(SAVE_CALLED_PRINT)
+        if not self.settings:
+            self.prints.append(NO_MANAGER_PRINT)
+            self.accepted = True
+            return {"saved": 0, "failed": [], "closed": True}
+
+        saved = 0
+        failed: list = []
+        for key, name in SAVE_PAIRS:
+            try:
+                self.settings.set(key, self._pair_value(name))
+                saved += 1
+            except Exception as exc:
+                failed.append(FAILED_ENTRY_FORMAT.format(key=key, error=exc))
+                self.prints.append(SAVE_ERROR_PRINT_FORMAT.format(key=key, error=exc))
+
+        for key, builder in (
+            (SAVE_GROUP_KEYS[0], self._folding_group),
+            (SAVE_GROUP_KEYS[1], self._logging_group),
+            (SAVE_GROUP_KEYS[2], self._ai_group),
+        ):
+            try:
+                self.settings.set(key, builder())
+                saved += 1
+            except Exception as exc:
+                failed.append(FAILED_ENTRY_FORMAT.format(key=key, error=exc))
+                self.prints.append(SAVE_ERROR_PRINT_FORMAT.format(key=key, error=exc))
+
+        self.emitted.append(QT_SIGNALS[0])
+
+        if self.status_log:
+            if failed:
+                self.status_log.log(
+                    PARTIAL_LOG_FORMAT.format(
+                        saved=saved,
+                        count=len(failed),
+                        names=FAILED_JOIN.join(failed),
+                    ),
+                    ERROR_LEVEL,
+                )
+            else:
+                self.status_log.log(CLEAN_LOG_FORMAT.format(saved=saved), SUCCESS_LEVEL)
+
+        self.prints.append(SAVE_DONE_PRINT_FORMAT.format(saved=saved))
+
+        if failed:
+            self.message_boxes.append(
+                [
+                    WARNING_ICON,
+                    PARTIAL_BOX_TITLE,
+                    PARTIAL_BOX_FORMAT.format(
+                        saved=saved,
+                        count=len(failed),
+                        names=PARTIAL_BOX_JOIN.join(
+                            PARTIAL_BOX_ENTRY_FORMAT.format(entry=one) for one in failed
+                        ),
+                    ),
+                ]
+            )
+
+        self.accepted = True
+        return {"saved": saved, "failed": list(failed), "closed": True}
+
+    def cancel(self) -> None:
+        """Close the dialog, writing nothing."""
+        self._record("cancel")
+        self.rejected = True
+
+    def edit(self, name: str, value: Any) -> None:
+        """One operator edit, admitted as the control admits it.
+
+        The control takes the value the same way it takes a stored one,
+        and every action wired to that control then runs.
+        """
+        spec = spec_for(name)
+        self.values[name] = self._seed_control(name, value)
+        self._record("edit", name)
+        signal = signal_for(spec)
+        if signal is None:
+            return
+        for wired, handler in sorted(actions().items()):
+            head = wired.split(".")
+            if head[0] != name or head[1] != signal:
+                continue
+            getattr(self, handler)(*self._handler_arguments(handler, name))
+
+    def _handler_arguments(self, handler: str, name: str) -> tuple:
+        if handler in ("update_volume_label", "sfx_volume_changed"):
+            return (self.values[name],)
+        if handler == "show_passphrase":
+            return (self.values[name],)
+        return ()
+
+    def painted(self) -> dict:
+        """Every widget each tab paints, in painted order, as kind and text."""
+        found = {}
+        for tab in TAB_TITLES:
+            walker = _Walker(self)
+            walker.block(LAYOUT[tab])
+            found[tab] = [list(one) for one in walker.found]
+        return found
+
+
+def painted_kind(spec: dict) -> str:
+    """The painted kind one control spec is drawn as."""
+    return PAINTED_KIND[spec["kind"]]
+
+
+def _combo_text(spec: dict, at: Any) -> str:
+    items = spec["items"] if "items" in spec else ()
+    if not items or not isinstance(at, int) or at < FIRST_INDEX or at >= len(items):
+        return EMPTY_TEXT
+    one = items[at]
+    return one[0] if isinstance(one, tuple) else one
+
+
+def control_painted_text(spec: dict, values: dict) -> str:
+    """The text one control prints once it has been seeded."""
+    kind = painted_kind(spec)
+    if kind in SILENT_KINDS:
+        return EMPTY_TEXT
+    if kind in ("check", "radio"):
+        return spec["text"]
+    if kind == "combo":
+        if spec["kind"] == COMBO_DATA:
+            at = values[spec["name"]]
+            items = spec["items"] if "items" in spec else values["new_exchange_items"]
+            if not isinstance(at, int) or at < FIRST_INDEX or at >= len(items):
+                return EMPTY_TEXT
+            return items[at][0]
+        return _combo_text(spec, values[spec["name"]])
+    return values[spec["name"]]
+
+
+class _Walker:
+    """Turns one tab's layout tree into the widgets it paints, in order."""
+
+    def __init__(self, model: "SettingsDialogModel") -> None:
+        self.model = model
+        self.found: list = []
+
+    def emit(self, kind: str, printed: Any) -> None:
+        self.found.append([kind, printed])
+
+    def block(self, node: Any) -> None:
+        role = node[0]
+        if role == SCROLL:
+            self.block(node[1])
+            return
+        for item in node[1]:
+            self.item(item)
+
+    def item(self, item: Any) -> None:
+        role = item[0]
+        if role == STRETCH:
+            return
+        if role == BANNER:
+            if self.model.wing == STOCK_WING:
+                self.emit(LABEL, STOCK_BANNER_TEXT)
+            return
+        if role == LABEL:
+            self.emit(LABEL, item[1])
+            return
+        if role == BUTTON:
+            self.emit(BUTTON, item[1])
+            return
+        if role == TEXT:
+            named = item[1]
+            if named in TEXT_ROW_LABELS:
+                self.emit(LABEL, TEXT_ROW_LABELS[named])
+            self.emit(LABEL, self.model.texts[named])
+            return
+        if role == ROW:
+            for inner in item[1]:
+                self.item(inner)
+            return
+        if role == GROUP:
+            title = item[1]
+            if title == ADD_GROUP_BY_WING:
+                title = add_group_title(self.model.wing)
+            self.emit(GROUP, title)
+            self.block(item[2])
+            return
+        if role == TA_ROWS:
+            for label, _position, printed in ta_rows():
+                self.emit(LABEL, label)
+                self.emit("slider", EMPTY_TEXT)
+                self.emit(LABEL, printed)
+            return
+        if role == TF_ROW:
+            for timeframe in PHANTOM_TIMEFRAMES:
+                self.emit("check", timeframe)
+            return
+        if role == SOUND_ROW:
+            for printed, _name, _tip in SOUND_TEST_BUTTONS:
+                self.emit(BUTTON, printed)
+            return
+        spec = spec_for(item[1])
+        if spec["label"]:
+            self.emit(LABEL, spec["label"])
+        self.emit(painted_kind(spec), control_painted_text(spec, self.model.values))
+
+
+def _plain(node: Any) -> Any:
+    """`node` as nested lists, so the payload carries no tuples."""
+    if isinstance(node, tuple):
+        return [_plain(one) for one in node]
+    return node
+
+
+def build_view_model(model: SettingsDialogModel) -> dict:
+    """Everything the frontend needs to paint the dialog, as plain values."""
+    return {
+        "window_title": model.window_title,
+        "minimum_size": list(model.minimum_size),
+        "wing": model.wing,
+        "tabs": list(TAB_TITLES),
+        "scrolling_tabs": list(SCROLLING_TABS),
+        "groups": {tab: list(group_titles(tab, model.wing)) for tab in TAB_TITLES},
+        "painted": model.painted(),
+        "layout": {tab: _plain(LAYOUT[tab]) for tab in TAB_TITLES},
+        "rows": [list(one) for one in model.rows],
+        "values": dict(model.values),
+        "texts": dict(model.texts),
+        "styles": dict(model.styles),
+        "enabled": dict(model.enabled),
+        "visible": dict(model.visible),
+        "tooltips": dict(model.tooltips),
+        "control_specs": [dict(one) for one in CONTROL_SPECS],
+        "exchange_items": [list(one) for one in exchange_items(model.wing)],
+        "ta_rows": [list(one) for one in ta_rows()],
+        "phantom_timeframes": [
+            [tf, tf in PHANTOM_TIMEFRAMES_ON] for tf in PHANTOM_TIMEFRAMES
+        ],
+        "sound_test_buttons": [list(one) for one in SOUND_TEST_BUTTONS],
+        "spacing": {
+            "content": dict(CONTENT_SPACING),
+            "group_form": dict(GROUP_FORM_SPACING),
+            "group_margins": {
+                title: list(margins) for title, margins in GROUP_FORM_MARGINS.items()
+            },
+            "no_horizontal_bar": list(HORIZONTAL_BAR_OFF_TABS),
+        },
+        "buttons": {
+            "cancel": CANCEL_BUTTON_TEXT,
+            "save": SAVE_BUTTON_TEXT,
+            "save_style": SAVE_BUTTON_STYLE,
+            "remove": REMOVE_BUTTON_TEXT,
+            "test": "Test Connection",
+            "add": "Test and Add Exchange",
+            "ai_test": AI_TEST_BUTTON_TEXT,
+            "ai_test_style": AI_TEST_BUTTON_STYLE,
+        },
+        "headings": {
+            "ta": TA_HEADING,
+            "phantom": PHANTOM_HEADING,
+            "theme": THEME_HEADING,
+            "accent": ACCENT_HEADING,
+            "logging": LOGGING_HEADING,
+            "sound_events": SOUND_EVENTS_HEADING,
+            "volume": VOLUME_HEADING,
+            "sms_gateway": SMS_GATEWAY_HEADING,
+            "sms_gateway_style": SMS_GATEWAY_HEADING_STYLE,
+            "ai_info": AI_INFO_TEXT,
+            "ai_info_style": AI_INFO_STYLE,
+        },
+        "listed_exchanges": list(model.listed_exchanges),
+        "calls": [list(one) for one in model.calls],
+        "call_names": sorted(
+            {
+                "build",
+                "load_current",
+                "load_skipped",
+                "on_exchange_changed",
+                "show_passphrase",
+                "set_feedback",
+                "test_api_connection",
+                "add_exchange",
+                "remove_exchange",
+                "update_font_preview",
+                "update_volume_label",
+                "sfx_volume_changed",
+                "sfx_volume_failed",
+                "test_sound",
+                "test_ai_handshake",
+                "save",
+                "cancel",
+            }
+        ),
+        "actions": actions(),
+        "connections": connection_counts(),
+        "message_boxes": [list(one) for one in model.message_boxes],
+        "prints": list(model.prints),
+        "emitted": list(model.emitted),
+        "processed_events": list(model.processed_events),
+        "accepted": model.accepted,
+        "rejected": model.rejected,
+        "bus": {"subscribes": list(BUS_SUBSCRIBES), "emits": list(BUS_EMITS)},
+        "timers": {"built": list(TIMERS_BUILT), "started": list(TIMERS_STARTED)},
+        "threads": {"built": list(THREADS_BUILT), "started": list(THREADS_STARTED)},
+    }
+
+
+def view_model(params: dict) -> dict:
+    """Build the dialog from `params` and return what it paints.
+
+    ``params`` may carry ``wing``, ``settings`` (a mapping of stored
+    values) and ``exchanges`` (a list of stored exchange entries).
+    """
+    params = params or {}
+    model = SettingsDialogModel(
+        settings=SettingsSource(
+            params.get("settings") or {}, params.get("exchanges") or []
+        ),
+        status_log=StatusLogSink(),
+        wing=params.get("wing", DEFAULT_WING),
+    )
+    model.build()
+    return build_view_model(model)
