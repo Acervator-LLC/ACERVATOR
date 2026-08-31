@@ -108,6 +108,10 @@ TOOLS = REPO / "tools"
 # fails if the file returns undeclared.
 INVENTORY: tuple[tuple[str, bool], ...] = (
     ("build_release_zip", True),
+    # Counts comments by tokenising, and proves a comment cleanup left
+    # executable code unchanged by comparing parsed trees. Two
+    # subcommands, `count` and `prove`, so it is True.
+    ("comment_audit", True),
     # Reads the runtime trees read-only and writes one snapshot under
     # `_logs/`. Its parser carries a capture and a compare mode.
     ("capture_live_baseline", True),
