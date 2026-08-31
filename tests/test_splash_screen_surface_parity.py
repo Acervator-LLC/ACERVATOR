@@ -29,13 +29,13 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-import main  # noqa: E402
-from src.gui.main_tabs import splash_screen_surface as surface  # noqa: E402
-from tests.fixtures.host_fonts import (  # noqa: E402
+import main
+from src.gui.main_tabs import splash_screen_surface as surface
+from tests.fixtures.host_fonts import (
     has_real_fonts,
     load_run_fonts,
 )
-from tests.fixtures.surface_pictures import (  # noqa: E402
+from tests.fixtures.surface_pictures import (
     assert_cases_paint_differently,
     assert_picture_can_report,
     assert_pictures_match,
