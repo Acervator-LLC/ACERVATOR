@@ -36,7 +36,7 @@ try:
         QMessageBox,
     )
     from PySide6.QtCore import Qt, QTimer, Slot, Signal, QObject
-    from PySide6.QtGui import QColor, QFont  # v3.19.12 removed unused QAction, QIcon
+    from PySide6.QtGui import QColor, QFont
 
     from . import design_system as ds
     from .widgets import ColumnarTableWidget, ColumnSpec, STOCK_CARD, StatCard
@@ -48,18 +48,12 @@ except ImportError:
 
 if _HAS_QT:
 
-    # ---------------------------------------------------------------
-    # Stat Card (reused from crypto window)
-    # ---------------------------------------------------------------
     class StockStatCard(StatCard):
         """The stock window stat strip card. Skin: STOCK_CARD."""
 
         def __init__(self, label: str, value: str = "---", parent=None):
             super().__init__(label, value, parent=parent, style=STOCK_CARD)
 
-    # ---------------------------------------------------------------
-    # Stock Bot Table
-    # ---------------------------------------------------------------
     STOCK_COLUMNS = ColumnSpec(
         labels=(
             "Bot ID",
@@ -112,9 +106,6 @@ if _HAS_QT:
                         item.setForeground(color)
                     self.setItem(row, col, item)
 
-    # ---------------------------------------------------------------
-    # Stock Main Window
-    # ---------------------------------------------------------------
     class StockMainWindow(QMainWindow):
 
         def __init__(
@@ -141,7 +132,6 @@ if _HAS_QT:
             self._notif_manager = notification_manager
             self._journal = journal
 
-            # Market hours tracker
             from ..stocks.market_hours import MarketHours
 
             self._market_hours = MarketHours()
@@ -171,7 +161,6 @@ if _HAS_QT:
             main_layout.setContentsMargins(16, 12, 16, 12)
             main_layout.setSpacing(10)
 
-            # Market status bar
             market_bar = QHBoxLayout()
             self._market_status = QLabel("Market Status: Loading...")
             self._market_status.setStyleSheet(
@@ -189,7 +178,6 @@ if _HAS_QT:
             market_bar.addWidget(self._webhook_status)
             main_layout.addLayout(market_bar)
 
-            # Dashboard stat cards
             dashboard = QHBoxLayout()
             self._stat_pnl = StockStatCard("Total P/L")
             self._stat_trades = StockStatCard("Total Trades")
@@ -208,12 +196,10 @@ if _HAS_QT:
                 dashboard.addWidget(card)
             main_layout.addLayout(dashboard)
 
-            # Main tabs
             self._main_tabs = QTabWidget()
             self._main_tabs.setMovable(True)
             self._main_tabs.setDocumentMode(True)
 
-            # --- Tab 1: Trading Dashboard ---
             trading_tab = QWidget()
             trading_layout = QVBoxLayout(trading_tab)
 
@@ -221,12 +207,10 @@ if _HAS_QT:
             trading_split.setHandleWidth(5)
             trading_split.setChildrenCollapsible(False)
 
-            # Left: bot table + controls
             left_panel = QWidget()
             left_layout = QVBoxLayout(left_panel)
             left_layout.setContentsMargins(0, 0, 0, 0)
 
-            # Bot controls
             btn_row = QHBoxLayout()
             self._btn_new_bot = QPushButton("＋ New Accumulation Bot")
             self._btn_new_bot.setStyleSheet(
@@ -256,12 +240,10 @@ if _HAS_QT:
                 btn_row.addWidget(btn)
             left_layout.addLayout(btn_row)
 
-            # Bot table
             self._bot_table = StockBotTable()
             left_layout.addWidget(self._bot_table)
             trading_split.addWidget(left_panel)
 
-            # Right: TradingView chart
             right_panel = QWidget()
             right_layout = QVBoxLayout(right_panel)
             right_layout.setContentsMargins(0, 0, 0, 0)
@@ -285,7 +267,6 @@ if _HAS_QT:
                 )
             right_layout.addWidget(chart_group, stretch=3)
 
-            # Indicator Voting Panel (shared component)
             try:
                 from .indicator_panel import IndicatorVotingPanel
 
@@ -299,7 +280,6 @@ if _HAS_QT:
             trading_split.setSizes([500, 600])
             trading_layout.addWidget(trading_split)
 
-            # Activity log
             log_group = QGroupBox("Activity Log")
             log_group.setStyleSheet(
                 f"QGroupBox {{ background: {ds.CARD_STOCK_PANEL}; "
@@ -319,7 +299,6 @@ if _HAS_QT:
 
             self._main_tabs.addTab(trading_tab, "Trading")
 
-            # --- Tab 2: Webhook Manager ---
             webhook_tab = QWidget()
             wh_layout = QVBoxLayout(webhook_tab)
 
@@ -360,7 +339,6 @@ if _HAS_QT:
 
             wh_layout.addWidget(wh_config)
 
-            # Alert format guide
             guide = QGroupBox("TradingView Alert Format")
             guide.setStyleSheet(
                 f"QGroupBox {{ background: {ds.CARD_STOCK_PANEL}; "
@@ -392,7 +370,6 @@ if _HAS_QT:
             guide_layout.addWidget(guide_text)
             wh_layout.addWidget(guide)
 
-            # Alert history
             alerts_group = QGroupBox("Recent Alerts")
             alerts_group.setStyleSheet(
                 f"QGroupBox {{ background: {ds.CARD_STOCK_PANEL}; "
@@ -415,7 +392,6 @@ if _HAS_QT:
 
             self._main_tabs.addTab(webhook_tab, "Webhooks")
 
-            # --- Tab 3: Paper Trader (equities) ---
             try:
                 from .paper_trader_tab import PaperTraderTab
 
@@ -426,19 +402,15 @@ if _HAS_QT:
                     f"Paper Trader tab unavailable: {_e}"
                 )
 
-            # --- Analytics Dashboard — REMOVED per P1.7 / MEM-178 ---
+            # Never reassigned, so the three tab refreshes below never fire.
             self._analytics_tab = None
 
-            # --- Risk Management — REMOVED per P1.7 / MEM-178 ---
             self._risk_tab = None
 
-            # --- Trade Journal — REMOVED per P1.7 / MEM-178 ---
             self._journal_tab = None
 
-            # --- Alerts & Notifications — REMOVED per P1.7 / MEM-178 ---
             self._alerts_tab = None
 
-            # --- Tab 7: Console ---
             self._console = QTextEdit()
             self._console.setReadOnly(True)
             self._console.setFont(QFont("Consolas", 9))
@@ -449,9 +421,8 @@ if _HAS_QT:
             )
             self._console.setLineWrapMode(QTextEdit.NoWrap)
 
-            # MEM-221 — thread-safe log handler. See main_window.py
-            # for the full explanation. emit() runs on any thread;
-            # the widget update is queued to the main thread via Signal.
+            # emit() runs on any thread; the widget write is queued through
+            # _append_signal.
             class _StockLogHandler(QObject, logging.Handler):
                 COLORS = {
                     "DEBUG": ds.STOCK_LOG_DEBUG,
@@ -515,7 +486,6 @@ if _HAS_QT:
         @Slot()
         def _refresh_dashboard(self):
             try:
-                # Market status
                 status_str = self._market_hours.get_status_string()
                 session = self._market_hours.get_session()
                 from ..stocks.market_hours import MarketSession
@@ -533,7 +503,6 @@ if _HAS_QT:
                     f"border-radius: 4px; border: 1px solid {color}44;"
                 )
 
-                # Webhook status
                 if self._tv_bridge and self._tv_bridge.running:
                     summary = self._tv_bridge.get_summary()
                     self._webhook_status.setText(
@@ -544,7 +513,6 @@ if _HAS_QT:
                         f"color: {ds.STOCK_POSITIVE}; font-size: 11px;"
                     )
 
-                # Bot stats
                 if self._bot_manager:
                     agg = self._bot_manager.get_aggregate_stats()
                     pnl = agg.get("total_realised_pnl", 0)
@@ -558,7 +526,6 @@ if _HAS_QT:
                     statuses = self._bot_manager.list_bots()
                     self._bot_table.update_bots(statuses)
 
-                    # Open positions count
                     pos_count = sum(
                         1
                         for s in statuses
@@ -566,13 +533,11 @@ if _HAS_QT:
                     )
                     self._stat_positions.set_value(str(pos_count))
 
-                    # Signals today
                     total_signals = sum(
                         s.get("stats", {}).get("signals_received", 0) for s in statuses
                     )
                     self._stat_signals.set_value(str(total_signals))
 
-                    # Win rate
                     total_wins = sum(
                         s.get("stats", {}).get("winning_trades", 0) for s in statuses
                     )
@@ -580,15 +545,13 @@ if _HAS_QT:
                     wr = (total_wins / total_trades * 100) if total_trades > 0 else 0
                     self._stat_winrate.set_value(f"{wr:.1f}%")
 
-                    # Feed indicator panel with stock bot list
                     if self._indicator_panel:
                         try:
-                            # Convert stock statuses to format indicator panel expects
                             panel_statuses = [
                                 {
                                     **s,
                                     "mode": "scrumming",
-                                }  # Panel filters for scrumming
+                                }  # The panel shows only mode "scrumming".
                                 for s in statuses
                                 if s.get("mode") in ("swing", "signal")
                             ]
@@ -600,7 +563,6 @@ if _HAS_QT:
                                 _sf_exc,
                             )
 
-                # Refresh shared tabs (throttled)
                 if not hasattr(self, "_last_tab_refresh"):
                     self._last_tab_refresh = 0
                 if time.time() - self._last_tab_refresh >= 4:
@@ -612,7 +574,6 @@ if _HAS_QT:
                     if self._alerts_tab and self._notif_manager:
                         self._alerts_tab.refresh(self._notif_manager)
 
-                    # Update webhook alert table
                     if self._tv_bridge:
                         alerts = self._tv_bridge.alert_history[-50:]
                         self._alert_table.setRowCount(len(alerts))
@@ -679,8 +640,7 @@ if _HAS_QT:
                 )
                 bot = StockAccumulationBot(config)
                 if self._bot_manager:
-                    # v3.20.71 Phase B-2 — register() returns
-                    # (granted, reason); refused on over-allocation.
+                    # register() returns (granted, reason).
                     _reg_result = self._bot_manager.register(bot)
                     if isinstance(_reg_result, tuple) and not _reg_result[0]:
                         self._log(
@@ -736,7 +696,6 @@ if _HAS_QT:
         def _back_to_launcher(self):
             """Return to launcher."""
             self.hide()
-            # Signal parent to show launcher
             if hasattr(self, "_launcher_callback") and self._launcher_callback:
                 self._launcher_callback()
 
