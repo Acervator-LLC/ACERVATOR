@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 ccxt_connector.py — CCXT-based exchange connector
 ===================================================
 Implements :class:`ExchangeInterface` on top of the ``ccxt.async_support``

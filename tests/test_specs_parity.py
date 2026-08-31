@@ -123,17 +123,6 @@ class TestGracefulDatasHelper:
     def test_mac_calls_graceful_datas(self, mac_src):
         assert "_build_graceful_datas(PROJECT_ROOT)" in mac_src
 
-    def test_both_probe_raintsimbat(self, win_src, mac_src):
-        """RAIntSimBat parity — both specs must probe the sadp-relocated
-        path first then fall back to the root-level legacy path."""
-        for label, src in [("win", win_src), ("mac", mac_src)]:
-            assert (
-                "RAIntSimBat" in src
-            ), f"{label} spec must reference RAIntSimBat datas"
-            assert (
-                "sadp" in src
-            ), f"{label} spec must probe the sadp/ location before legacy"
-
 
 # ---------------------------------------------------------------------------
 # Hidden-imports parity (excluding the intentional platform difference)

@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 encryption.py — AES-256-GCM encryption for API credentials
 ===========================================================
 Provides encrypt-on-entry / decrypt-on-use semantics for API keys

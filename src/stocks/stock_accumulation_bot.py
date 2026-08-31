@@ -10,8 +10,6 @@ Adds equity-specific constraints:
   - Dividend awareness
   - Circuit breaker / halt detection
 
-Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator).
-All rights reserved. See LICENSE for details.
 """
 
 from __future__ import annotations

@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 design_system.py — GUI TOKEN SOURCE OF TRUTH (dark-theme Qt widgets)
 ====================================================================
 

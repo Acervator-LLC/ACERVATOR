@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 analytics_engine.py — Performance analytics for trading bots.
 
 Computes equity curves, win rates, Sharpe ratio, profit factor,

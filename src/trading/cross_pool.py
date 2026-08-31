@@ -28,8 +28,6 @@ MODELS PROVIDED
   CrossPoolBenchmark     – compares single-pool vs N-pool across many sims
   route_to_best_pool     – standalone routing function for live bots
 
-Copyright © 2025 Anthony L. Brown (Ekthelius the Accumulator).
-All rights reserved.
 """
 
 from __future__ import annotations

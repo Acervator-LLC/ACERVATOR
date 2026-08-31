@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 settings.py — Application settings with TOML persistence
 =========================================================
 Central configuration store for the Acervator.  Every setting

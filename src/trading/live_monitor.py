@@ -1,8 +1,6 @@
 """
 live_monitor.py — Real-Time AI Feedback Loop + Official Trade Reporting
 =======================================================================
-Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator).
-All rights reserved. See LICENSE for details.
 Acervator(TM) is a trademark of Anthony L. Brown.
 """
 
@@ -176,7 +174,6 @@ class ReportGenerator:
             "environment": env,
             "exchange": exchange,
             "operator": "Ekthelius the Accumulator",
-            "copyright": "Copyright (c) 2025 Anthony L. Brown. All rights reserved.",
             "portfolio": {
                 "starting": starting,
                 "current": portfolio,

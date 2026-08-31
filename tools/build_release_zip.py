@@ -152,12 +152,8 @@ ADDITIONAL_FILES_EXACT = {
     # tests/test_scrumming_scenarios.py, so neither is listed here.
     "cartoon_screen.py",
     "download_archive.py",
-    "generate_essay_ja.py",
-    "generate_essay_localized.py",
     "investor_screen.py",
-    # Cat 7 — low-coupling promo (trailer chain). KEEP
-    # generate_essay.py in PRIMARY — it builds the live product
-    # manual. The trailer chain (splash + render) is dormant.
+    # Cat 7 — low-coupling promo (trailer chain, dormant).
     "splash_screen.py",
     "render_trailer.py",
 }
@@ -230,34 +226,6 @@ def _is_older_manual(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
     return rel_path.name != latest_manual_name
 
 
-# v3.23.20 — sadp/RAIntSimBat/reports/ defensive zip exclusion.
-# Operator-approved 2026-06-16: route the reports archive to ADDITIONAL
-# bucket so it doesn't bloat the primary release zip, EXCEPT historical-
-# proof files cited verbatim by CHANGELOG / Chronicle / HOP. Those stay
-# in PRIMARY for chain-of-evidence integrity.
-_RAINTSIMBAT_REPORTS_REL = ("sadp", "RAIntSimBat", "reports")
-RAINTSIMBAT_REPORTS_PRIMARY_KEEP = frozenset(
-    {
-        "RAIntSimBat_20260421_055850.json",  # HOP4/HOP5 cited
-        "RAIntSimBat_RESULTS_20260427_183334.json",  # CHANGELOG + Chronicle cited
-        "RAIntSimBat_RESULTS_20260428_095359.json",  # CHANGELOG cited
-    }
-)
-
-
-def _is_raintsimbat_reports_archive(rel_path: Path) -> bool:
-    """True if path is inside sadp/RAIntSimBat/reports/ AND not a cited
-    historical-proof file."""
-    parts = rel_path.parts
-    if len(parts) < 4:
-        return False
-    if parts[:3] != _RAINTSIMBAT_REPORTS_REL:
-        return False
-    if rel_path.name in RAINTSIMBAT_REPORTS_PRIMARY_KEEP:
-        return False
-    return True
-
-
 def _is_additional(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
     """True if the path routes to the ADDITIONAL_ITEMS zip rather
     than the primary release zip. Junk filtering is checked BEFORE
@@ -273,9 +241,6 @@ def _is_additional(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
         return True
     # Historical product manual
     if _is_older_manual(rel_path, latest_manual_name):
-        return True
-    # v3.23.20 — RAIntSimBat reports archive (except cited historical-proof)
-    if _is_raintsimbat_reports_archive(rel_path):
         return True
     return False
 

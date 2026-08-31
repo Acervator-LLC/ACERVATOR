@@ -40,9 +40,9 @@ Any decision to use this software for live trading is made **entirely at your ow
 
 The authors expressly disclaim all liability for any financial loss or other harm arising from the use of or reliance on this software or its documentation.
 
-## Open Source Software — No Warranty
+## No Warranty
 
-Acervator is provided under the [Apache License 2.0](LICENSE). The software is provided on an **"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND**, either express or implied, including without limitation any warranties of merchantability, fitness for a particular purpose, or non-infringement.
+The software is provided on an **"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND**, either express or implied, including without limitation any warranties of merchantability, fitness for a particular purpose, or non-infringement.
 
 ---
 

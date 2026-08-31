@@ -1,46 +1,29 @@
 """
 src/gui/simulator_tab/nuclear_candle_source.py — Tape-based candle feed.
 
-v3.18.8 (Phase B revision) — REWRITTEN per operator directive 2026-05-20:
+Tapes are REAL historical OHLCV played forward and backward on a loop for
+Nuclear Mode stress runs.
 
-    "For Nuclear Mode, we can just use the Candle Tapes from
-    RAIntSimBat. They represent organic price action data in two year
-    chunks. We can just play the tape forward for the full length, flip
-    it, run the full length, flip it again, and so on until Nuclear
-    Mode is turned off. The injected, smoothed randomized data that is
-    used instead of this has always been a sticking point for me. We
-    also do not have to maintain ticker associations. We just have Tape
-    A, Tape B, and so on."
+SOURCE:
+  • The Stone Tablet archive (``src.trading.stone_tablets``) is the
+    primary source: real exchange OHLCV, selected fullest-first.
+  • An optional legacy tape cache (a directory of ``*.json`` files with
+    ``{"symbol", "year", "candles": [[ts, o, h, l, c, v], ...]}``) is
+    honoured when present and wins over the tablet archive, so an
+    operator with an existing cache keeps their tape ids.
 
-The v3.18.7 implementation used ``gen_from_anchors`` (smoothstep
-interpolation between 3 anchor points with gaussian noise) — that is
-the "injected, smoothed randomized data" the operator has flagged.
-Retired entirely.
-
-NEW MODEL:
-  • Scan ``sadp/RAIntSimBat/data/cache/*.json`` at construction.
-  • Each cache file = one TAPE of REAL historical OHLCV (fetched by
-    RAIntSimBat from CoinGecko for crypto + Yahoo Finance for equity).
-  • Cache file format (set by RAIntSimBat._save_cache):
-        {"symbol": "BTC", "year": "2023", "fetched": <ts>,
-         "candles": [[ts, o, h, l, c, v], ...]}
-  • Tapes assigned A, B, C, ... in scan order. Operator-facing label
-    includes the source: "Tape A — BTC 2023".
-  • Bot doesn't care about tickers. Internally the tapes are keyed by
-    letter; the NuclearSimExchange synthesizes "TAPEA/USD" style symbols
-    for the bot to trade against.
+  Tapes are assigned A, B, C, ... deterministically. The bot does not
+  care about tickers; the NuclearSimExchange synthesizes "TAPEA/USD"
+  style symbols for it to trade against.
 
 PLAYBACK:
   Play forward to the end, flip, play backward to the start, flip,
-  repeat indefinitely. Each direction-flip is a "wrap" event the
-  controller can count (Phase D may emit it on the perf log so the
-  operator sees how long the bot ran on each polarity).
+  repeat. Each direction-flip is a "wrap" event the controller can count.
 
-EMPTY-CACHE PATH:
-  If no cache files are found, NuclearCandleSource is constructable
-  (no crash) but has zero tapes. ``list_tapes()`` returns []. Callers
-  check this and surface an actionable message to the GUI ("Run the
-  RAIntSimBat battery once to populate the cache").
+EMPTY-SOURCE PATH:
+  When no source yields tapes, NuclearCandleSource is still constructable
+  (no crash) but has zero tapes; ``list_tapes()`` returns [] and callers
+  surface an actionable message to the GUI.
 """
 
 from __future__ import annotations
@@ -55,9 +38,9 @@ from typing import Optional
 logger = logging.getLogger("acervator.nuclear_sim")
 
 
-# Default location of RAIntSimBat's cache directory, relative to this
-# file. Resolved once at construction; can be overridden via the
-# constructor's ``cache_dir`` kwarg for tests.
+# Default location of the optional legacy tape cache. Resolved once at
+# construction; can be overridden via the constructor's ``cache_dir``
+# kwarg for tests.
 _NOISE_MIN_PCT = 0.10
 _NOISE_MAX_PCT = 0.25
 """Per-pass noise amplitude bounds, operator directive 2026-08-04:
@@ -91,10 +74,7 @@ limit has no reason to exist. Kept as a parameter so tests can bound it.
 
 
 def _default_cache_dir() -> Path:
-    here = Path(__file__).resolve()
-    # src/gui/simulator_tab/ → repo root is 3 parents up
-    repo_root = here.parents[3]
-    return repo_root / "sadp" / "RAIntSimBat" / "data" / "cache"
+    return Path.home() / ".acervator" / "nuclear_legacy_cache"
 
 
 @dataclass
@@ -271,7 +251,7 @@ def noised_series(
 
 
 class NuclearCandleSource:
-    """Pumps REAL historical candle data from RAIntSimBat's cache.
+    """Pumps REAL historical candle data from the tape source.
 
     Public API consumed by NuclearSimExchange + NuclearController:
         list_tapes() -> [tape_id, ...]            # alphabetic ids
@@ -323,26 +303,10 @@ class NuclearCandleSource:
         assignment is deterministic in both paths so a tape id means the
         same thing across runs.
 
-        v3.24.20 — SOURCE CHANGED. This used to scan only
-        ``sadp/RAIntSimBat/data/cache/*.json``. That directory does not
-        exist in this tree: SADP was deprecated as an authority and the
-        RAIntSimBat cache went with it. So ``list_tapes()`` returned []
-        on every call, the panel rendered its empty state, and Nuclear
-        Mode was inert — while telling the operator to "run an
-        RAIntSimBat battery", an instruction that could no longer be
-        followed.
-
-        The Stone Tablet archive is the correct source now: 406 assets /
-        7,230,993 real 5m candles at ``~/.acervator/stone_tablets``,
-        built this session. It is real exchange OHLCV, which is exactly
-        what the operator asked tapes to be:
-
-            "They represent organic price action data ... The injected,
-            smoothed randomized data that is used instead of this has
-            always been a sticking point for me."
-
-        The legacy cache is still honoured when present, so an operator
-        who restores that tree keeps their existing tape ids.
+        The Stone Tablet archive (``~/.acervator/stone_tablets``) is the
+        primary source. The optional legacy cache is honoured when
+        present and wins over the archive, so an operator with an existing
+        cache keeps their tape ids.
         """
         self._tapes.clear()
         if self._cache_dir.is_dir():
@@ -604,7 +568,7 @@ class NuclearCandleSource:
         """Operator-facing label: "Tape A — BTC 2023" or
         "Tape B — GLD (equity) 2024" etc.
         """
-        # EQ_XXX prefix means equity (from RAIntSimBat.fetch_ohlcv_yahoo)
+        # EQ_XXX prefix means equity
         if symbol.upper().startswith("EQ_"):
             symbol = symbol[3:] + " (equity)"
         return f"Tape {tape_id} — {symbol} {period}"

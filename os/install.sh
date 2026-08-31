@@ -222,7 +222,6 @@ rsync -a --delete \
     --exclude='dist/' \
     --exclude='build/' \
     --exclude='*.zip' \
-    --exclude='sadp/RAIntSimBat/reports/*.json' \
     --exclude='logs/real_market/*' \
     --exclude='logs/paper/*' \
     "${SOURCE_DIR}/" "${INSTALL_DIR}/src/" 2>/dev/null || \

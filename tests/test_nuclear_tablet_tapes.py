@@ -2,37 +2,17 @@
 # S311 (non-cryptographic RNG) is deliberate throughout: these tests seed
 # the market-structure noise generator to assert reproducibility. Nothing
 # here is security-relevant.
-"""v3.24.20 — pin tests for Nuclear Mode tape sourcing + noise injection.
+"""Pin tests for Nuclear Mode tape sourcing + noise injection.
 
-WHY THIS EXISTS
-===============
-Nuclear Mode was inert. ``NuclearCandleSource`` scanned only
-``sadp/RAIntSimBat/data/cache/*.json``, a directory that does not exist in
-this tree — SADP was deprecated as an authority and that cache went with
-it. So ``list_tapes()`` returned [] on every call, the panel rendered its
-empty state, and the panel's remedy text told the operator to "run an
-RAIntSimBat battery", an instruction that could no longer be followed.
+Tapes come from the Stone Tablet archive (real exchange OHLCV), with an
+optional legacy tape cache that wins when present. Playback runs each tape
+forward and backward with a 10–25% random noise injection to vary market
+structure, under the hard constraint that the injector must never edit or
+corrupt the underlying Stone Tablet files.
 
-Tapes now come from the Stone Tablet archive: 406 assets / 7,230,993 real
-5m candles. That matches what tapes were always supposed to be —
-
-    "They represent organic price action data ... The injected, smoothed
-    randomized data that is used instead of this has always been a
-    sticking point for me."   -- operator, 2026-05-20
-
-NOISE INJECTION (operator directive 2026-08-04)
-===============================================
-    "plays tapes forward and then backwards with a 10~25% random noise
-    injection to vary the market structure conditions"
-
-and the hard constraint that followed:
-
-    "the noise injector CANNOT cause permanent edits or corruption to the
-    Stone Tablets."
-
-The immutability tests below are the ones that matter most. They assert
-byte-level stability of the tablet files across a full noisy playback,
-not merely that the code "looks read-only".
+The immutability tests below are the ones that matter most: they assert
+byte-level stability of the tablet files across a full noisy playback, not
+merely that the code "looks read-only".
 """
 
 from __future__ import annotations
@@ -157,8 +137,8 @@ def test_max_tapes_is_respected(tablet_root):
 
 
 def test_legacy_cache_wins_when_present(tablet_root, tmp_path):
-    """An operator who restores the RAIntSimBat tree keeps their tape
-    ids; the tablet path is a fallback, not a takeover."""
+    """An operator with an existing legacy cache keeps their tape ids;
+    the tablet path is a fallback, not a takeover."""
     cache = tmp_path / "legacy"
     cache.mkdir()
     (cache / "aaa.json").write_text(

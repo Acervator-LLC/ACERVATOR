@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 data_pool.py — Shared Market Data Pool
 
 Centralises API data fetching so that all bots on the same symbol+timeframe

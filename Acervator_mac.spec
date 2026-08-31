@@ -45,7 +45,7 @@ def _read_acervator_version(project_root):
 ACERVATOR_VERSION = _read_acervator_version(PROJECT_ROOT)
 
 # ---------------------------------------------------------------------------
-# Graceful datas: skip missing optional paths; probe sadp/ then legacy location
+# Graceful datas: skip missing optional paths at build time.
 # ---------------------------------------------------------------------------
 def _build_graceful_datas(project_root):
     candidates = [
@@ -54,10 +54,6 @@ def _build_graceful_datas(project_root):
         # data/historical is populated by download_archive.py — optional at build time.
         # If missing, the app falls back to runtime cache + embedded ASSET_PERIODS anchors.
         (os.path.join(project_root, 'data', 'historical'), os.path.join('data', 'historical')),
-        # RAIntSimBat engine — Session 21+ location (sadp/) probed first, legacy root as fallback.
-        # sadp: R42 (battery engine is the source of truth — must ship whichever path exists)
-        (os.path.join(project_root, 'sadp', 'RAIntSimBat'), os.path.join('sadp', 'RAIntSimBat')),
-        (os.path.join(project_root, 'RAIntSimBat'), 'RAIntSimBat'),
     ]
     result = []
     for src_path, dest_path in candidates:
@@ -206,6 +202,5 @@ app = BUNDLE(
         'LSMinimumSystemVersion': '12.0',
         'NSRequiresAquaSystemAppearance': False,    # Supports dark mode
         'LSApplicationCategoryType': 'public.app-category.finance',
-        'NSHumanReadableCopyright': '(c) 2025 Anthony L. Brown',
     },
 )

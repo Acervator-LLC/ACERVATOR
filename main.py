@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 main.py — Acervator entry point
 ==========================================
 # ┌─────────────────────────────────────────────────────────────┐
@@ -15,9 +14,6 @@ main.py — Acervator entry point
 # │   - Stock mode: stock_main_window.py (Alpaca broker)        │
 # │                                                             │
 # │ BUILD: Use BUILD.py with PyInstaller, NOT this file.        │
-# │ TEST:  Use RAIntSimBat.py for the simulation battery.       │
-# │ DOCS:  Use generate_essay.py for the product manual PDF.    │
-# │ GUIDE: See AI_DEVELOPER_GUIDE.md for full architecture.     │
 # └─────────────────────────────────────────────────────────────┘
 
 Orchestrates application startup:

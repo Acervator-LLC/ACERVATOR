@@ -1,7 +1,6 @@
 """
 splash_screen.py -- Acervator Trailer / Splash Screen
 Reproduces trailer.html as closely as possible in QPainter.
-Copyright (c) 2026 Anthony L. Brown. All rights reserved.
 
 Visual reference: trailer.html
   Colors:  --cyan #00FFEE  --green #00FF88  --magenta #FF00AA

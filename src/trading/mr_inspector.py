@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 mr_inspector.py — Mean Reversion Inspector + Boosted Fold
 # ┌─────────────────────────────────────────────────────────────┐
 # │ AI DEVELOPER NOTE                                           │

@@ -1,11 +1,9 @@
 """
 src/trading/profit_fold.py — Canonical profit-fold helper (ADR-029 / MEM-247).
 
-Single source of truth for target-balance growth on successful folds. All three
-engines (live `scrumming_bot.py`, GUI `simulator.py`, battery `RAIntSimBat.py`)
-call this helper so that growth semantics stay bit-identical across them.
-Before this module existed (Session 25 cold read), the three engines carried
-three different formulas — see PLAN_MEM246_PARITY_AND_CAP.md.
+Single source of truth for target-balance growth on successful folds. The
+live (`scrumming_bot.py`) and GUI-simulator (`simulator.py`) engines call this
+helper so that growth semantics stay bit-identical across them.
 
 Pure function. No bot state, no exchange calls, no globals. Unit-testable
 without constructing a bot. Arguments are all scalar floats — each caller is

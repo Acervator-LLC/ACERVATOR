@@ -1,6 +1,5 @@
 # Acervator — Docker Compose
 # Runs: bot daemon + optional monitoring stack
-# Copyright (c) 2025 Anthony L. Brown. All rights reserved.
 #
 # Usage:
 #   docker compose up -d                  # Start everything

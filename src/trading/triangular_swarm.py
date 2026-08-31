@@ -34,8 +34,6 @@ Triangular arbitrage layer:
   MR Inspector detects when the triangle is mis-priced and signals a
   "triangle close" operation.
 
-Copyright © 2025 Anthony L. Brown (Ekthelius the Accumulator).
-All rights reserved.
 """
 
 from __future__ import annotations
@@ -941,7 +939,7 @@ EQUITY_SURROUNDINGS: dict[str, dict] = {
     },
 }
 
-# Equity arm pairs mapped to validated RAIntSimBat symbols
+# Equity arm pairs mapped to validated symbols
 # (for offline simulation using embedded anchor data)
 EQUITY_ARM_TO_SYMBOL: dict[str, str] = {
     "SPY": "SPY",

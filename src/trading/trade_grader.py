@@ -22,8 +22,7 @@ The grader is INTENTIONALLY:
   - Transparent (the rationale string explains the grade)
   - Read-only (grades NEVER feed back into trading decisions — that's
     a separate explicit operator decision; see MEM-424 lesson)
-  - Composable with both production trade journal AND RAIntSimBat
-    per-trade logs
+  - Composable with the production trade journal
 
 Mirrors institutional Transaction Cost Analysis (TCA) practice but
 adapted for the Acervator scrumming + extractor patterns: the
@@ -46,8 +45,8 @@ from typing import Optional
 
 @dataclass
 class TradeRecord:
-    """A single executed trade. Both Coinbase CSV and RAIntSimBat
-    per-trade logs normalize into this shape."""
+    """A single executed trade. Coinbase CSV per-trade logs normalize
+    into this shape."""
 
     trade_id: str
     timestamp: Optional[datetime]

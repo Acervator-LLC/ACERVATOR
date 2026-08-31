@@ -138,7 +138,7 @@ RULE_META = {
         "protection": "STANDARD",
     },
     "R16": {
-        "title": "Module loading order in RAIntSimBat",
+        "title": "Module loading order",
         "group": "A",
         "protection": "STANDARD",
     },

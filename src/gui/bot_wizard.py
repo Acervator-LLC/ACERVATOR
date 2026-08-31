@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 bot_wizard.py - Bot Creation Wizard v1.9.7
 ===========================================
 Feature split:

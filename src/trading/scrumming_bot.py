@@ -1,7 +1,5 @@
 """Accumulation Trading Bot — the live Scrum/Fold engine.
 
-Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All
-rights reserved.
 
 The core cycle:
   1. delta = (holdings × price) - target
@@ -16,8 +14,7 @@ bought back than was sold; do not change that condition.
 
 The simulator holds a mirrored copy of this logic in
 ``src/gui/simulator.py::_sim_scrumming_tick``; changes here must be
-mirrored there (known technical debt). See ARCHITECTURE.md for the full
-invariants list.
+mirrored there (known technical debt).
 
 Implements the strategy with a 7-indicator TA engine (confidence/voting),
 Phantom Balance multi-timeframe analysis, higher-timeframe

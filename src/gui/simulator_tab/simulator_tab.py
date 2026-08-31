@@ -61,11 +61,7 @@ try:
     from .fleet.fleet_replay_panel import FleetReplayPanel
 except Exception:  # noqa: BLE001 - GUI-import guard
     FleetReplayPanel = None
-# v3.23.79 — Basic Modes retired per operator directive 2026-07-31.
-# The RAIntSimBat-battery launcher was the last surviving piece of
-# the pre-v3.23.72 sim engine. The Fleet Replay + Nuclear (topology
-# stress) pair supersedes it. The panel file (basic_modes_panel.py)
-# is deleted in the same cascade.
+# The Fleet Replay + Nuclear (topology stress) pair is the sim engine.
 
 
 def _section_label(text: str) -> QLabel:

@@ -11,7 +11,6 @@ SCENE TIMELINE
  44.0 – 54.0   Cycle    — single annotated scrum-fold cycle
  54.0 – 60.0   Scoreboard
 
-Copyright (c) 2026 Anthony L. Brown. All rights reserved.
 """
 
 import math

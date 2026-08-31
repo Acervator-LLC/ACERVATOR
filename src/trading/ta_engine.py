@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 ta_engine.py — Technical Analysis Engine v1.1
 ==============================================
 # ┌─────────────────────────────────────────────────────────────┐

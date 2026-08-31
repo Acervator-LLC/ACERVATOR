@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 volume_guard.py — Volume-Aware Trade Execution Guard
 
 Prevents disproportionately large trades relative to current market

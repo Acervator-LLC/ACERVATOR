@@ -7,7 +7,6 @@ name = "quantum-auto-trader"
 version = "1.0.0"
 description = "Multi-exchange crypto auto-trading platform with Grid and Speculative Scrumming modes"
 readme = "README.md"
-license = {text = "Proprietary"}
 # Single supported interpreter, pinned in .python-version at the repo root.
 # Acervator targets one Python; there is no multi-version support or testing.
 requires-python = ">=3.13,<3.14"
@@ -78,7 +77,6 @@ quantum-trader = "main:main"
 [tool.black]
 line-length = 88
 target-version = ["py313"]
-extend-exclude = "tests/obsolete"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -86,10 +84,7 @@ where = ["."]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-# TD-022: legacy / no-longer-applicable regression tests live here; do not collect.
-# TD-021: test_swarm_row_parity reads source under default codec; ignore until encoding fix ships.
-norecursedirs = ["obsolete", "__pycache__", ".git"]
-addopts = "--ignore=tests/obsolete --ignore=tests/test_swarm_row_parity.py"
+norecursedirs = ["__pycache__", ".git"]
 # Lanes. `tests/conftest.py::pytest_collection_modifyitems` applies these by
 # file, so no per-file `pytestmark` is needed:
 #   slow      — end-to-end engine-replay suites (full FleetReplayController
@@ -103,31 +98,20 @@ markers = [
     "archetype: archetype-harness test needing the [dev] analyzer toolchain",
 ]
 
-# v3.19.7 — Coverage configuration. Coverage is NOT enabled by default
-# (would slow the 1533-test suite by ~3×). Operator runs coverage
-# explicitly via:
+# Coverage is not enabled by default (it slows the suite roughly 3×).
+# Operator runs it explicitly:
 #
-#     python -m pytest --cov=src --cov=sadp/RAIntSimBat \
-#                      --cov-report=term --cov-report=json
-#
-# The coverage-floor regression test (tests/test_coverage_floor.py)
-# does a focused per-module coverage check in-process and compares
-# to qa_baselines/coverage_baseline.json. Tighter focus = faster.
+#     python -m pytest --cov=src --cov-report=term --cov-report=json
 [tool.coverage.run]
 branch = true
-# v3.19.7 — Source paths. acervator_watchdog.py lives at repo root
-# (not under src/) because PyInstaller's entry point treats it as a
-# top-level launcher. We add it as a file-level source so coverage
-# can track it.
-source = ["src", "sadp/RAIntSimBat", "acervator_watchdog.py"]
+# acervator_watchdog.py lives at the repo root (not under src/) because
+# PyInstaller's entry point treats it as a top-level launcher. It is added
+# as a file-level source so coverage can track it.
+source = ["src", "acervator_watchdog.py"]
 omit = [
     "*/tests/*",
     "*/__pycache__/*",
     "*/.session*_backups/*",
-    "sadp/RAIntSimBat/run_all.py",
-    "sadp/RAIntSimBat/package_run.py",
-    "sadp/RAIntSimBat/reports_pdf.py",
-    "sadp/RAIntSimBat/ab_report.py",
     "src/gui/*",
 ]
 
@@ -142,44 +126,24 @@ show_missing = true
 skip_covered = false
 
 [tool.coverage.json]
-output = "qa_baselines/coverage_current.json"
+output = "coverage.json"
 show_contexts = false
 
-# v3.19.7 — Mutation testing configuration. mutmut runs against a
-# focused, money-critical target set (buy_safety.py first; expand as
-# the harness matures). Run on-demand:
-#
-#     python -m mutmut run
-#     python -m mutmut results
-#
-# Baseline + survivor list pinned in qa_baselines/mutation_baseline.json;
-# tests/test_mutation_baseline.py reads it and asserts the surviving-
-# mutation count for each target file has not grown.
-[tool.mutmut]
-paths_to_mutate = "src/trading/buy_safety.py"
-backup = false
-runner = "python -m pytest tests/test_verify_buy_safe_helper.py tests/test_mem228_buy_confirmation_gate.py -x -q"
-tests_dir = "tests/"
-
-# v3.19.14 — Vulture configuration. The four remaining findings after
-# v3.19.12's cleanup are all function/callback parameter signatures
-# vulture can't distinguish from genuine unused variables. The
-# --ignore-names list excludes them so the baseline can land at 0.
+# Vulture configuration. The ignored names are function/callback parameter
+# signatures vulture cannot distinguish from genuinely unused variables, so
+# the baseline can land at 0.
 #
 # To re-run vulture with this config:
-#   python -m vulture src sadp/RAIntSimBat acervator_watchdog.py \
-#     --min-confidence 70 \
-#     --ignore-names "fold_hold_in_downtrend,value_at_bar_end,prev_col,prev_row"
+#   python -m vulture src acervator_watchdog.py --min-confidence 70
 #
-# Pyproject [tool.vulture] is read by vulture 2.x via pyproject.toml
-# when invoked from a directory containing it.
+# [tool.vulture] is read by vulture 2.x from pyproject.toml when invoked
+# from a directory containing it.
 [tool.vulture]
 ignore_names = [
-    # v3.19.12 documented false-positives on API/callback parameters:
-    "fold_hold_in_downtrend",   # run_v3192 function param (public API)
-    "value_at_bar_end",          # bar_h chart helper param (public API)
-    "prev_col",                  # Qt QTableWidget.currentCellChanged slot
-    "prev_row",                  # Qt QTableWidget.currentCellChanged slot
+    "fold_hold_in_downtrend",
+    "value_at_bar_end",
+    "prev_col",
+    "prev_row",
 ]
-paths = ["src", "sadp/RAIntSimBat", "acervator_watchdog.py"]
+paths = ["src", "acervator_watchdog.py"]
 min_confidence = 70

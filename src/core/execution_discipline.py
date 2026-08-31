@@ -1,15 +1,9 @@
 """
-src/core/execution_discipline.py — R44 DRY: single source of truth for
-R55 VH (Verify Hit) and microstructure slippage across the live-path
-engines.
+src/core/execution_discipline.py — single source of truth for Verify Hit
+and microstructure slippage across the live-path engines.
 
-Prior to v3.9.15 this logic was duplicated across:
-  1. sadp/RAIntSimBat/RAIntSimBat.py::_verify_hit  (canonical sim)
-  2. (retired) nuclear_live.py::_live_verify_hit   (deleted v3.18.3)
-  3. (retired) gui/simulator.py::_sim_scrumming_tick (deleted prior)
-
-Multiple implementations with bitwise-identical semantics but
-textually distinct code — technical debt flagged as R44 DRY violation.
+Centralizes the slippage tolerances and fill-price model so every
+live-path engine classifies and slips identically.
 This module is the single source of truth for live-path VH. (1) stays
 self-contained because it uses a closure over `slip_pct_fn` with per-
 asset SPREADS dict — a different slippage-source architecture that
@@ -27,11 +21,8 @@ from __future__ import annotations
 import random
 from typing import Optional, Tuple
 
-# R55 VH — slippage tolerance constants
+# Verify Hit — slippage tolerance constants.
 # These are the canonical values used across all live-path engines.
-# Sim engine (RAIntSimBat) defines its own copies because its slippage
-# model is different (per-asset SPREADS + microstructure fn), but the
-# thresholds (MIN_PROFIT, DRIFT_PCT, MAX_SAMPLES) must match exactly.
 VERIFY_HIT_ENABLED: bool = True
 VERIFY_MAX_SAMPLES: int = 5  # ultra-sampling budget
 VERIFY_DRIFT_PCT: float = 0.005  # 0.5% compounding drift → cancel
@@ -56,10 +47,8 @@ VERIFY_MIN_PROFIT_BY_CLASS = {
 }
 VERIFY_MIN_PROFIT: float = VERIFY_MIN_PROFIT_BY_CLASS["default"]  # legacy
 
-# Asset-class classifier. Membership derived from RAIntSimBat SPREADS
-# groupings and A/B portfolio composition. Symbols not listed fall to
-# 'default' tolerance. Lives here (not in RAIntSimBat) because R57 EPM
-# requires all live-path engines to classify identically.
+# Asset-class classifier. Symbols not listed fall to 'default'
+# tolerance. Lives here so all live-path engines classify identically.
 _CRYPTO = {
     "BTC",
     "ETH",
@@ -141,8 +130,7 @@ def fill_price(
     intended_price: float, side: str, spread: float = LIVE_SPREAD_PCT
 ) -> float:
     """Half-normal ADVERSE slippage draw. Sells fill below ask, buys
-    fill above bid. Parity with RAIntSimBat's closure-based _fill_price
-    on equivalent slippage input.
+    fill above bid.
 
     v3.24.69 — this said "ZERO-MEAN half-normal", which is a
     contradiction: `abs()` of a zero-mean normal is a half-normal, whose

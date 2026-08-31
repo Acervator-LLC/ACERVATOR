@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 main_window.py - Primary application window v1.7
 """
 
@@ -4675,10 +4674,7 @@ if _HAS_QT:
             # Operator-approved 2026-05-19 design (see
             # docs/audits/2026-05-19_simulator_paper_trader_design.md).
             # Fully-isolated codebase at src/gui/simulator_tab/;
-            # near-identical chrome to Trading tab; Basic Modes panel
-            # launches RAIntSimBat batteries via subprocess; Nuclear
-            # Mode is placeholder until Phase B lands NuclearSimExchange
-            # + verification harness.
+            # near-identical chrome to Trading tab.
             #
             # Inserted at index 1 (immediately after Trading). When
             # Phase E adds Paper Trader at index 1, the Simulator tab

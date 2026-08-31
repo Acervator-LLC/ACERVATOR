@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 event_bus.py — Publish/subscribe event system
 ==============================================
 Decouples communication between bots, the GUI, and service layers.

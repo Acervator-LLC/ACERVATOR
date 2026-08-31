@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 theme_engine.py — Visual theme system
 ======================================
 Provides the cyberpunk dark mode default theme and alternate visual styles.

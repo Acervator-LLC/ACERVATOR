@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 bot_container.py — Isolated auto-trader container
 ===================================================
 Each Auto Trader Container runs as an independent asyncio task with its

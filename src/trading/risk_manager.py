@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 risk_manager.py — Portfolio-level risk management engine.
 
 Monitors drawdown, exposure, correlation, and enforces safety limits

@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 smart_wire.py — Cross-Compounding Bot Network
 # ┌─────────────────────────────────────────────────────────────┐
 # │ AI DEVELOPER NOTE                                           │

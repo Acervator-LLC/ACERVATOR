@@ -38,5 +38,4 @@ exclude =
     __pycache__,
     build,
     dist,
-    *.egg-info,
-    tests/obsolete
+    *.egg-info

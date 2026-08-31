@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 indicator_panel.py — Indicator Voting Window v1.1
 ===================================================
 Persistent GUI panel showing which indicators are signalling bullish or

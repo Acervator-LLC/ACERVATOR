@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 smart_orders.py — Intelligent order execution strategies.
 
 Provides execution wrappers that reduce slippage and improve fill quality:

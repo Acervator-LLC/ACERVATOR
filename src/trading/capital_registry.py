@@ -18,15 +18,6 @@ Operator-locked parameters from v3.20.69 design lock-in:
   • Q4 persistence: persisted to settings.json (survives crash)
   • (Q1 reconciliation cadence + Q2 rate-spike threshold consumed in
     Phases D + C respectively)
-
-R57 EPM binding: this module MUST be mirrored in
-sadp/RAIntSimBat/RAIntSimBat.py via a parallel
-`CapitalRegistryBattery` so the offline battery has matching semantics.
-The R6 cascade-gate check (v3.20.69, MEM-415) enforces that any cascade
-touching `src/trading/extractor_bot.py` or `scrumming_bot.py` must
-ALSO touch RAIntSimBat in the same cascade.
-
-MEM-416.
 """
 
 from __future__ import annotations

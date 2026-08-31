@@ -15,7 +15,6 @@ SCENE TIMELINE
  86.0 – 96.0   Opportunity — 7 patents, what's next
  96.0 –100.0   Credits  — close
 
-Copyright (c) 2026 Anthony L. Brown. All rights reserved.
 """
 
 import math

@@ -8,20 +8,10 @@ simulator MVP.
 Design philosophy (operator directive, 2026-05-19):
   "Simulate. Verify. Implement. Observe. Calibrate. Iterate. Repeat."
 
-The Simulator tab has two modes:
-
-  Basic Modes  ── existing RAIntSimBat batteries launched as subprocess.
-                  Preserves the 36/39-wins validation pipeline as-is.
-
-  Nuclear Mode ── (Phases B–D) real ``ScrummingBot`` + ``BotManager`` +
-                  ``SmartWireManager`` + ``MRInspector`` running against
-                  a ``NuclearSimExchange`` with speed-oscillating stress
-                  and a verification harness. The FULL platform exercised
-                  by simulated data — NOT a parallel mini-platform like
-                  the retired ``nuclear_live.py`` was.
-
-Phase A ship (v3.18.3): tab chrome + inline stat strip + Basic Modes
-panel + Nuclear Mode placeholder. No NuclearSimExchange yet.
+The Simulator tab pairs Fleet Replay with Nuclear Mode: real
+``ScrummingBot`` + ``BotManager`` + ``SmartWireManager`` + ``MRInspector``
+running against a ``NuclearSimExchange`` with speed-oscillating stress and
+a verification harness — the full platform exercised by simulated data.
 
 Isolation guarantee:
   - Own ``EventBus`` instance (not the global singleton)

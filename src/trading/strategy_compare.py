@@ -21,8 +21,6 @@ Risk metrics (annualised, hourly candles):
   Max DD   — peak-to-trough decline %
   Win Rate — % of completed trade pairs that were profitable
 
-Copyright © 2025 Anthony L. Brown (Ekthelius the Accumulator).
-All rights reserved.
 """
 
 from __future__ import annotations

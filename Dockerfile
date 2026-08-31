@@ -1,7 +1,6 @@
 # Acervator — Cloud Container
 # Base: Python 3.13 slim (no GUI dependencies).
 # Single supported interpreter — must match .python-version at the repo root.
-# Copyright (c) 2025 Anthony L. Brown. All rights reserved.
 
 FROM python:3.13-slim
 
@@ -27,7 +26,6 @@ RUN pip install --no-cache-dir -r requirements_cloud.txt
 # Explicitly exclude GUI (PySide6) dependencies
 COPY src/ ./src/
 COPY cloud/ ./cloud/
-COPY RAIntSimBat.py .
 
 # ── Runtime directories ────────────────────────────────────────
 RUN mkdir -p logs reports

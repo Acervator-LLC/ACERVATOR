@@ -1,5 +1,4 @@
 """
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
 native_chart.py — QPainter Candlestick Chart v2
 =================================================
 Pure Qt chart widget using QPainter.  No WebEngine dependency.
