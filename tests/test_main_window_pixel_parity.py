@@ -22,6 +22,20 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
+from tests.fixtures.quiet_news_ticker import install_quiet_ticker  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def quiet_ticker(monkeypatch):
+    """Render the tab with a news strip that opens no socket.
+
+    ``ExchangeTab`` starts the real strip, which fetches ten RSS feeds
+    on a parentless QThread. The teardown sweep then destroys the tab
+    and leaves that thread running into the tests that follow.
+    """
+    yield install_quiet_ticker(monkeypatch)
+
+
 AMMO_SCRUM = "#00ff88"
 AMMO_FOLD = "#ff3366"
 AMMO_NEUTRAL = "#a8a8c5"
