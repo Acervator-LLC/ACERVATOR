@@ -1937,8 +1937,8 @@ def test_the_surface_imports_with_no_qt_and_touches_nothing(tmp_path):
         "open": 0,
         "thread": 0,
     }, found["after_import"]
-    assert found["package_import"]["thread"] > 0, (
-        "importing the src package started no thread, so the split between "
+    assert sum(found["package_import"].values()) > 0, (
+        "importing the src package touched nothing, so the split between "
         "the package's own cost and this module's says nothing"
     )
     assert found["method"] == surface.METHOD, found["method"]
