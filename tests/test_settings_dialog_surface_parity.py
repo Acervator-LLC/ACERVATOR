@@ -923,62 +923,118 @@ def test_a_swapped_pair_of_values_changes_the_hash():
 # --- what the dialog wires -----------------------------------------------
 
 
-def connect_sites_in(path):
-    """Every line in `path` that connects a signal, read by parsing."""
-    found = []
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-        if not isinstance(node, ast.Call):
-            continue
-        if isinstance(node.func, ast.Attribute) and node.func.attr == "connect":
-            found.append(node.lineno)
+SIGNAL_SIGNATURES = {
+    "clicked": "2clicked()",
+    "toggled": "2toggled(bool)",
+    "currentIndexChanged": "2currentIndexChanged(int)",
+    "currentTextChanged": "2currentTextChanged(QString)",
+}
+WHOLE_NUMBER_CHANGE = "2valueChanged(int)"
+DECIMAL_CHANGE = "2valueChanged(double)"
+
+
+def signature_for(widget, signal):
+    """The Qt signature string one signal on one widget answers to."""
+    from PySide6.QtWidgets import QDoubleSpinBox
+
+    if signal in SIGNAL_SIGNATURES:
+        return SIGNAL_SIGNATURES[signal]
+    return (
+        DECIMAL_CHANGE if isinstance(widget, QDoubleSpinBox) else (WHOLE_NUMBER_CHANGE)
+    )
+
+
+def wired_widget(dialog, key):
+    """The widget one action key names, found on the built dialog."""
+    from PySide6.QtWidgets import QPushButton
+
+    if key.startswith("ta_slider["):
+        return dialog._ta_weight_sliders[key[len("ta_slider[") : -1]]
+    if key.startswith("sound_test["):
+        wanted = key[len("sound_test[") : -1]
+        for text, name, _tip in surface.SOUND_TEST_BUTTONS:
+            if name == wanted:
+                return [
+                    one
+                    for one in dialog.findChildren(QPushButton)
+                    if one.text() == text
+                ][0]
+        raise KeyError(key)
+    if key == "remove_btn":
+        return [
+            one
+            for one in dialog.findChildren(QPushButton)
+            if one.text() == surface.REMOVE_BUTTON_TEXT
+        ][0]
+    return getattr(dialog, "_" + key)
+
+
+def live_connections(dialog):
+    """How many connections the built dialog holds, per action key.
+
+    Read off Qt itself, never off the file: a connection made inside a
+    loop is counted once per pass, as the operator gets it.
+    """
+    wanted = {}
+    for key in surface.actions():
+        head = key.split(".")
+        widget = wired_widget(dialog, head[0])
+        wanted.setdefault((id(widget), head[0], head[1]), [widget, 0])[1] += 1
+    found = {}
+    for (_at, name, signal), (widget, expected) in wanted.items():
+        found[f"{name}.{signal}"] = [
+            widget.receivers(signature_for(widget, signal)),
+            expected,
+        ]
     return found
 
 
-def test_the_source_connect_sites_match_the_number_the_surface_names():
-    """The surface names a different number of connect lines than the file holds.
-
-    Counted from the parsed file, which cannot see a connect inside a
-    comment or a string.
-    """
-    found = connect_sites_in(SHIPPED)
-    named = surface.connection_counts()["source_sites"]
-    assert len(found) == named, (
-        f"the shipped file holds {len(found)} connect lines at {found}, "
-        f"and the surface names {named}"
-    )
-
-
-def test_the_connect_counter_reports_a_planted_line(tmp_path):
-    """The connect counter's number is a fact about the counter."""
-    planted = tmp_path / "planted.py"
-    planted.write_text(
-        "def sample(one):\n"
-        "    one.clicked.connect(one.run)\n"
-        "    # one.other.connect(one.run)\n"
-        '    text = "one.third.connect(one.run)"\n'
-        "    return text\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    assert connect_sites_in(planted) == [2], connect_sites_in(planted)
-
-
-def test_the_dialog_makes_more_connections_than_it_has_connect_lines(
+def test_the_built_dialog_holds_one_connection_for_every_action_named(
     monkeypatch, capsys
 ):
-    """One connect line inside a loop wires one connection per pass.
+    """The dialog wires a different number of actions than the surface names.
 
-    The two figures are counted on the built dialog, not read off the
-    surface, so a surface that names the wrong number is reported.
+    Counted on the built dialog through Qt's own connection count, so a
+    connect made inside a loop is counted once per pass.
     """
-    counts = surface.connection_counts()
-    weights = len(surface.TA_INDICATOR_WEIGHTS)
-    assert counts["run_time"] == counts["source_sites"] + weights - 1, counts
-
     dialog, _store, _log = shipped_dialog(monkeypatch, case())
     settings_lines(capsys)
+    found = live_connections(dialog)
+    wrong = {key: pair for key, pair in found.items() if pair[0] != pair[1]}
+    assert wrong == {}, f"held against named, per signal: {wrong}"
+    held = sum(pair[0] for pair in found.values())
+    assert held == surface.connection_counts()["run_time"], (
+        f"the dialog holds {held} connections and the surface names "
+        f"{surface.connection_counts()['run_time']}"
+    )
+
+
+def test_the_connection_counter_reports_one_more_connection(monkeypatch, capsys):
+    """The connection counter is blind to a connection nobody named."""
+    dialog, _store, _log = shipped_dialog(monkeypatch, case())
+    settings_lines(capsys)
+    before = live_connections(dialog)["cancel_btn.clicked"][0]
+    dialog._cancel_btn.clicked.connect(lambda: None)
+    after = live_connections(dialog)["cancel_btn.clicked"][0]
+    assert after == before + 1, (before, after)
+
+
+def test_one_connect_line_in_a_loop_wires_one_action_per_indicator(monkeypatch, capsys):
+    """The indicator sliders share one action, or wire none at all.
+
+    Twelve sliders each carry their own connection, which is why the
+    number of connections is larger than the number of lines that make
+    them.
+    """
+    dialog, _store, _log = shipped_dialog(monkeypatch, case())
+    settings_lines(capsys)
+    weights = len(surface.TA_INDICATOR_WEIGHTS)
     assert len(dialog._ta_weight_sliders) == weights, dialog._ta_weight_sliders
-    assert counts["run_time"] > counts["source_sites"], counts
+    for slider in dialog._ta_weight_sliders.values():
+        assert slider.receivers(WHOLE_NUMBER_CHANGE) == 1, slider
+    assert (
+        surface.connection_counts()["run_time"] > weights
+    ), surface.connection_counts()
 
 
 def test_the_surface_names_one_action_for_every_connection_it_counts():
@@ -1400,7 +1456,7 @@ COVERED_ELSEWHERE = {
     "buttons": "test_both_sides_paint_the_same_dialog",
     "call_names": "test_every_recorded_step_carries_a_name_the_surface_names",
     "calls": "test_every_recorded_step_carries_a_name_the_surface_names",
-    "connections": "test_the_source_connect_sites_match_the_number_the_surface_names",
+    "connections": "test_the_built_dialog_holds_one_connection_for_every_action_named",
     "control_specs": "test_both_sides_paint_the_same_dialog",
     "emitted": "test_the_dialog_declares_one_signal_and_emits_it_on_save",
     "exchange_items": "test_both_sides_paint_the_same_dialog",

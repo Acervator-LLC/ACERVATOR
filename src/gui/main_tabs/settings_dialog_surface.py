@@ -1791,25 +1791,20 @@ def group_titles(tab: str, wing: str) -> tuple:
 def actions() -> dict:
     """Every signal the dialog connects, and what each one runs.
 
-    The two figures differ on purpose: one source line inside a loop
-    wires one connection per pass. ``source_sites`` counts the lines,
-    ``run_time`` counts the connections a built dialog holds.
+    One entry is one connection a built dialog holds. The volume slider
+    carries two, and each indicator weight carries its own.
     """
     wired = dict(ACTION_HANDLERS)
-    for label, _slider, _text in ta_rows():
-        wired[f"ta_slider[{label}].valueChanged"] = TA_SLIDER_HANDLER
+    for name, _weight in TA_INDICATOR_WEIGHTS:
+        wired[f"ta_slider[{name}].valueChanged"] = TA_SLIDER_HANDLER
     for text, name, _tip in SOUND_TEST_BUTTONS:
         wired[f"sound_test[{name}].clicked"] = SOUND_BUTTON_HANDLER
     return wired
 
 
 def connection_counts() -> dict:
-    """How many connections the dialog makes, by source line and at run time."""
-    run_time = len(actions())
-    return {
-        "source_sites": run_time - len(TA_INDICATOR_WEIGHTS) + 1,
-        "run_time": run_time,
-    }
+    """How many connections a built dialog holds."""
+    return {"run_time": len(actions())}
 
 
 def read_mapping(value: Any, key: str, default: Any) -> Any:
