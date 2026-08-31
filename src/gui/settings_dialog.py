@@ -35,14 +35,11 @@ try:
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
-from src.gui.qt_safe_events import safe_process_events  # v3.15.99 P4.1
+from src.gui.qt_safe_events import safe_process_events
 
 if _HAS_QT:
 
-    # v3.16.20 — equity-broker IDs that route to the Stock wing.
-    # MUST stay in sync with main_window._equity_exchange_ids;
-    # both lists are the single source of truth for "this id
-    # belongs to the stock layer."
+    # Must match _equity_exchange_ids in main_tabs/trading_tab.py.
     EQUITY_EXCHANGE_IDS = {
         "alpaca",
         "ibkr",
@@ -123,7 +120,6 @@ if _HAS_QT:
             btn_row.addWidget(self._save_btn)
             layout.addLayout(btn_row)
 
-        # -- User tab ---
         def _create_user_tab(self) -> QWidget:
             w = QWidget()
             form = QFormLayout(w)
@@ -131,12 +127,10 @@ if _HAS_QT:
             form.addRow("Username:", self._username)
             return w
 
-        # -- Exchange tab ---
         def _create_exchange_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
 
-            # v3.16.20 — wing-aware banner + label
             if self._wing == "stock":
                 _banner = QLabel(
                     "<b>Stock Wing:</b> equity-broker integration is "
@@ -176,10 +170,6 @@ if _HAS_QT:
 
             self._passphrase_exchanges = PASSPHRASE_EXCHANGES
 
-            # v3.16.20 — populate the dropdown by wing.
-            # Stock wing: planned equity brokers (Alpaca, IBKR, etc.) —
-            #   listed for visibility, but Add/Test are disabled below.
-            # Crypto wing: CCXT-supported exchanges, current behaviour.
             if self._wing == "stock":
                 for eid in sorted(EQUITY_EXCHANGE_IDS):
                     self._new_exchange.addItem(
@@ -242,10 +232,6 @@ if _HAS_QT:
             self._api_feedback.setWordWrap(True)
             add_form.addRow(self._api_feedback)
 
-            # v3.16.20 — Stock wing: disable add/test affordances and
-            # surface the reason on hover. Inputs are disabled too so
-            # the operator doesn't waste effort typing creds for a
-            # broker connector that doesn't exist yet.
             if self._wing == "stock":
                 _disabled_tip = (
                     "Stock broker connector integration is queued; "
@@ -419,7 +405,6 @@ if _HAS_QT:
             if self._status_log:
                 self._status_log.log(f"Exchange removed: {eid}", "warning")
 
-        # -- Trading tab ---
         def _create_trading_tab(self) -> QWidget:
             w = QWidget()
             form = QFormLayout(w)
@@ -446,7 +431,6 @@ if _HAS_QT:
             form.addRow(self._aggressive)
             return w
 
-        # -- Profit Folding tab ---
         def _create_folding_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
@@ -500,7 +484,6 @@ if _HAS_QT:
             layout.addStretch()
             return w
 
-        # -- TA Indicator Weights tab ---
         def _create_ta_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
@@ -528,7 +511,6 @@ if _HAS_QT:
             layout.addStretch()
             return w
 
-        # -- Phantom Balance tab ---
         def _create_phantom_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
@@ -568,12 +550,10 @@ if _HAS_QT:
             layout.addStretch()
             return w
 
-        # -- Theme + Font tab ---
         def _create_theme_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
 
-            # Theme selection
             layout.addWidget(QLabel("Visual Theme:"))
             self._theme_combo = QComboBox()
             from src.gui.theme_engine import THEMES
@@ -587,13 +567,11 @@ if _HAS_QT:
             self._accent_color.setPlaceholderText("#00ffcc")
             layout.addWidget(self._accent_color)
 
-            # Font settings
             font_group = QGroupBox("Font Settings")
             font_form = QFormLayout(font_group)
 
             self._font_family = QComboBox()
             self._font_family.setEditable(True)
-            # Common monospace and UI fonts
             fonts = [
                 "Segoe UI",
                 "Consolas",
@@ -654,7 +632,6 @@ if _HAS_QT:
                 f"padding: 8px; border: 1px solid #333;"
             )
 
-        # -- Logging tab ---
         def _create_logging_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
@@ -682,7 +659,6 @@ if _HAS_QT:
             layout.addStretch()
             return w
 
-        # -- Sound tab ---
         def _create_sound_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
@@ -714,7 +690,6 @@ if _HAS_QT:
             self._sound_state.setChecked(True)
             layout.addWidget(self._sound_state)
 
-            # MEM-236 — Fire SFX (sniper rifle shot) + Tracking beep toggles
             self._sound_fire = QCheckBox("Scrum/Fold Fire (sniper rifle shot)")
             self._sound_fire.setChecked(True)
             self._sound_fire.setToolTip(
@@ -735,7 +710,6 @@ if _HAS_QT:
             )
             layout.addWidget(self._sound_track)
 
-            # MEM-238 — Profit + Drip SFX toggles
             self._sound_profit = QCheckBox("P/L increase (coins dropping into bucket)")
             self._sound_profit.setChecked(True)
             self._sound_profit.setToolTip(
@@ -764,11 +738,8 @@ if _HAS_QT:
             self._sound_volume.valueChanged.connect(
                 lambda v: self._vol_label.setText(f"{v}%")
             )
-            # MEM-236 — actually wire slider to sound engine. Prior
-            # implementation only updated the label; volume in
-            # SoundConfig stayed at its default 0.7 regardless of
-            # slider position. Must regenerate wav cache because
-            # volume is baked into the sample values at synth time.
+            # Volume is baked into each sample at synth time, so the
+            # cache is cleared here.
             self._sound_volume.valueChanged.connect(self._on_sfx_volume_changed)
             vol_row.addWidget(self._vol_label)
             layout.addLayout(vol_row)
@@ -780,7 +751,6 @@ if _HAS_QT:
             test_sell = QPushButton("Test Sell")
             test_sell.clicked.connect(lambda: self._test_sound("sell"))
             test_row.addWidget(test_sell)
-            # MEM-236 — Test Fire + Test Track buttons
             test_fire = QPushButton("Test Fire")
             test_fire.setToolTip("Play the sniper rifle SFX.")
             test_fire.clicked.connect(lambda: self._test_sound("fire"))
@@ -789,7 +759,6 @@ if _HAS_QT:
             test_track.setToolTip("Play one tracking beep.")
             test_track.clicked.connect(lambda: self._test_sound("track"))
             test_row.addWidget(test_track)
-            # MEM-238 — Test Profit + Test Drip buttons
             test_profit = QPushButton("Test Profit")
             test_profit.setToolTip("Play the coins-in-bucket SFX.")
             test_profit.clicked.connect(lambda: self._test_sound("profit"))
@@ -820,12 +789,11 @@ if _HAS_QT:
                     bot_state_sound=self._sound_state.isChecked(),
                     fire_sound=self._sound_fire.isChecked(),
                     track_sound=self._sound_track.isChecked(),
-                    profit_sound=self._sound_profit.isChecked(),  # MEM-238
-                    drip_sound=self._sound_drip.isChecked(),  # MEM-238
+                    profit_sound=self._sound_profit.isChecked(),
+                    drip_sound=self._sound_drip.isChecked(),
                     volume=v / 100.0,
                 )
                 se.update_config(new_cfg)
-                # Force regen on next play
                 se._available = False
                 se._cache = {}
             except Exception as _sf_exc:  # noqa: BLE001
@@ -837,16 +805,12 @@ if _HAS_QT:
         def _test_sound(self, name: str) -> None:
             from src.core.sound_engine import get_sound_engine
 
-            # Apply current UI state to the engine before playing so
-            # the operator hears the current slider volume.
             self._on_sfx_volume_changed(self._sound_volume.value())
             get_sound_engine().play(name)
 
-        # -- SMS tab ---
         def _create_sms_tab(self) -> QWidget:
             from PySide6.QtWidgets import QFormLayout as QFL, QScrollArea
 
-            # Scrollable container for all SMS settings
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -961,7 +925,6 @@ if _HAS_QT:
             scroll.setWidget(inner)
             return scroll
 
-        # -- AI Monitor tab ---
         def _create_ai_monitor_tab(self) -> QWidget:
             from PySide6.QtWidgets import QScrollArea
 
@@ -972,7 +935,6 @@ if _HAS_QT:
             layout = QVBoxLayout(inner)
             layout.setSpacing(12)
 
-            # API Key
             api_group = QGroupBox("Claude API Connection")
             af = QFL(api_group)
             af.setSpacing(6)
@@ -994,7 +956,6 @@ if _HAS_QT:
 
             layout.addWidget(api_group)
 
-            # Handshake Authentication
             hs_group = QGroupBox("Handshake Authentication")
             hf = QFL(hs_group)
             hf.setSpacing(6)
@@ -1021,7 +982,6 @@ if _HAS_QT:
 
             layout.addWidget(hs_group)
 
-            # Monitor behavior
             bh_group = QGroupBox("Monitor Behavior")
             bf = QFL(bh_group)
             bf.setSpacing(6)
@@ -1041,7 +1001,6 @@ if _HAS_QT:
 
             layout.addWidget(bh_group)
 
-            # Status (read-only)
             st_group = QGroupBox("Connection Status")
             sf = QFL(st_group)
             sf.setSpacing(4)
@@ -1058,7 +1017,6 @@ if _HAS_QT:
             self._ai_checks = QLabel("0")
             sf.addRow("Checks completed:", self._ai_checks)
 
-            # Test button
             self._ai_test_btn = QPushButton("Test Handshake")
             self._ai_test_btn.setMinimumHeight(32)
             self._ai_test_btn.setStyleSheet(
@@ -1090,7 +1048,6 @@ if _HAS_QT:
             self._ai_status.setText("Settings saved — handshake runs on next bot cycle")
             self._ai_status.setStyleSheet("color: #00ddff; font-weight: bold;")
 
-        # -- Load / Save ---
         def _load_current(self) -> None:
             if not self._sm:
                 return
@@ -1102,7 +1059,6 @@ if _HAS_QT:
             )
             self._accent_color.setText(self._sm.get("accent_color", "#00ffcc"))
 
-            # AI Monitor
             ai = self._sm.get("ai_monitor", {})
             self._ai_api_key.setText(ai.get("api_key", ""))
             self._ai_interval.setValue(ai.get("interval_hours", 4.0))
@@ -1121,11 +1077,6 @@ if _HAS_QT:
                 self._increment_style.setCurrentIndex(idx)
             pf = self._sm.get("profit_folding", {})
             self._folding_active.setChecked(pf.get("active", True))
-            # v3.16.20 — wing-filter the Configured Exchanges list so
-            # the Stock Wing only shows stock brokers (currently none)
-            # and the Crypto Wing only shows crypto exchanges. Single
-            # source of truth for the equity-id set is
-            # EQUITY_EXCHANGE_IDS (mirror of main_window's set).
             for exch in self._sm.list_exchanges():
                 _eid = (exch.get("exchange_id", "") or "").lower()
                 _is_equity = _eid in EQUITY_EXCHANGE_IDS
@@ -1152,7 +1103,7 @@ if _HAS_QT:
                 self.accept()
                 return
 
-            # Save each setting - errors printed to stderr but never block close
+            # A setting that fails to save never blocks the close.
             pairs = {
                 "username": lambda: self._username.text().strip(),
                 "position_distance_pct": lambda: self._pos_distance.value(),
@@ -1169,14 +1120,6 @@ if _HAS_QT:
                 "log_font_size": lambda: self._log_font_size.value(),
             }
             saved = 0
-            # v3.24.36 (C12) — collect failures instead of only printing
-            # them to stderr. Before this, a key that failed to save was
-            # reported nowhere the operator could see: stderr is not
-            # surfaced, and the status line below said
-            # "Settings saved (N groups)" at SUCCESS level regardless.
-            # Five keys failed on EVERY save (four font settings and
-            # ai_monitor, none of which existed as AppSettings fields),
-            # and the dialog closed looking like it had worked.
             failed: list[str] = []
             for key, getter in pairs.items():
                 try:
@@ -1186,7 +1129,6 @@ if _HAS_QT:
                     failed.append(f"{key} ({e})")
                     print(f"[SETTINGS ERROR] {key}: {e}", file=sys.stderr, flush=True)
 
-            # Profit folding
             try:
                 fold_target = "all_buy"
                 if self._fold_x.isChecked():
@@ -1218,7 +1160,6 @@ if _HAS_QT:
                     f"[SETTINGS ERROR] profit_folding: {e}", file=sys.stderr, flush=True
                 )
 
-            # Data logging
             try:
                 periods = []
                 if self._log_24h.isChecked():
@@ -1244,7 +1185,6 @@ if _HAS_QT:
                     f"[SETTINGS ERROR] data_logging: {e}", file=sys.stderr, flush=True
                 )
 
-            # AI Monitor
             try:
                 self._sm.set(
                     "ai_monitor",
@@ -1263,7 +1203,6 @@ if _HAS_QT:
                 failed.append(f"ai_monitor ({e})")
                 print(f"[SETTINGS ERROR] ai_monitor: {e}", file=sys.stderr, flush=True)
 
-            # Emit signal
             try:
                 self.settings_changed.emit()
             except Exception as _sf_exc:  # noqa: BLE001
@@ -1272,14 +1211,6 @@ if _HAS_QT:
                     _sf_exc,
                 )
 
-            # Log to status
-            #
-            # v3.24.36 (C12) — a partial save is no longer reported as a
-            # success. This line previously read "Settings saved (N
-            # groups)." at SUCCESS level whether or not anything failed,
-            # so five keys silently vanishing looked identical to a
-            # clean save; only the count differed, and nobody knows what
-            # the count should be.
             try:
                 if self._status_log:
                     if failed:
@@ -1304,15 +1235,8 @@ if _HAS_QT:
                 flush=True,
             )
 
-            # v3.24.36 (C12) — surface a partial save to the operator.
-            # The status line above scrolls; this does not. A setting
-            # that silently fails to persist is indistinguishable from
-            # one that saved, and the operator re-enters it every
-            # session wondering why it never sticks.
-            #
-            # Deliberately AFTER everything else and wrapped: the
-            # "ALWAYS close" guarantee below is load-bearing and a
-            # message box must not be able to strand the dialog open.
+            # Wrapped and last: a message box must not be able to
+            # strand the dialog open.
             if failed:
                 try:
                     QMessageBox.warning(
@@ -1327,5 +1251,4 @@ if _HAS_QT:
                 except Exception as _mb_exc:  # noqa: BLE001
                     logger.warning("could not show partial-save warning: %s", _mb_exc)
 
-            # ALWAYS close the dialog - this line must execute no matter what
             self.accept()

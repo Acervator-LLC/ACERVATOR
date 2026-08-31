@@ -79,6 +79,7 @@ def build_registry() -> Dict[str, Handler]:
         market_inspector_surface,
         market_inspector_tab_surface,
         market_inspector_topologies_surface,
+        native_chart_surface,
         notification_spool_surface,
         nuclear_mode_panel_surface,
         phantom_bots_tab_surface,
@@ -91,6 +92,7 @@ def build_registry() -> Dict[str, Handler]:
         react_history_panel_surface,
         risk_tab_surface,
         screen_recorder_surface,
+        settings_dialog_surface,
         shared_testnet_surface,
         sim_stat_strip_surface,
         simulator_tab_surface,
@@ -157,6 +159,7 @@ def build_registry() -> Dict[str, Handler]:
         market_inspector_topologies_surface.METHOD: (
             market_inspector_topologies_surface.view_model
         ),
+        native_chart_surface.METHOD: native_chart_surface.view_model,
         phantom_bots_tab_surface.METHOD: phantom_bots_tab_surface.view_model,
         positions_held_surface.METHOD: positions_held_surface.view_model,
         privacy_dot_surface.METHOD: privacy_dot_surface.view_model,
@@ -165,6 +168,7 @@ def build_registry() -> Dict[str, Handler]:
         react_history_panel_surface.METHOD: react_history_panel_surface.view_model,
         risk_tab_surface.METHOD: risk_tab_surface.view_model,
         screen_recorder_surface.METHOD: screen_recorder_surface.view_model,
+        settings_dialog_surface.METHOD: settings_dialog_surface.view_model,
         shared_testnet_surface.METHOD: shared_testnet_surface.view_model,
         sim_stat_strip_surface.METHOD: sim_stat_strip_surface.view_model,
         simulator_tab_surface.METHOD: simulator_tab_surface.view_model,

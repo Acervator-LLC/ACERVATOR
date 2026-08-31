@@ -24,7 +24,8 @@ It reached trading -- `confidence *= 0.7` fires only when squeezed, so
 the damping was being applied on the basis of price.
 
 The correct form already existed in this repo at
-`native_chart.py:1231-1236`, which averages bandwidth and compares
+`native_chart.py`'s `CandlestickChart.paintEvent`, which averages
+bandwidth and compares
 bandwidth. The chart drew squeezes the engine could not see.
 
 THE TEST IS SCALE INVARIANCE. That is the definitional property: a
