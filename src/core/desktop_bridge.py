@@ -79,6 +79,7 @@ def build_registry() -> Dict[str, Handler]:
         market_inspector_surface,
         market_inspector_tab_surface,
         market_inspector_topologies_surface,
+        native_chart_surface,
         notification_spool_surface,
         phantom_bots_tab_surface,
         positions_held_surface,
@@ -153,6 +154,7 @@ def build_registry() -> Dict[str, Handler]:
         market_inspector_topologies_surface.METHOD: (
             market_inspector_topologies_surface.view_model
         ),
+        native_chart_surface.METHOD: native_chart_surface.view_model,
         phantom_bots_tab_surface.METHOD: phantom_bots_tab_surface.view_model,
         positions_held_surface.METHOD: positions_held_surface.view_model,
         privacy_dot_surface.METHOD: privacy_dot_surface.view_model,
