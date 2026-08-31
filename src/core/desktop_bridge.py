@@ -86,6 +86,7 @@ def build_registry() -> Dict[str, Handler]:
         theme_engine_surface,
         trading_tab_surface,
         tradingview_chart_surface,
+        usb_auth_widget_surface,
         visualizer_themes_surface,
         wire_canvas_surface,
     )
@@ -134,6 +135,7 @@ def build_registry() -> Dict[str, Handler]:
         tradingview_chart_surface.METHOD: tradingview_chart_surface.view_model,
         visualizer_themes_surface.METHOD: visualizer_themes_surface.view_model,
         wire_canvas_surface.METHOD: wire_canvas_surface.view_model,
+        usb_auth_widget_surface.METHOD: usb_auth_widget_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
 
