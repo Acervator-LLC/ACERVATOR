@@ -46,14 +46,27 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from tests.fixtures.quiet_news_ticker import install_quiet_ticker  # noqa: E402
 
-@pytest.fixture(scope="module")
+
+@pytest.fixture(scope="module", autouse=True)
 def qapp():
     app = QApplication.instance() or QApplication(sys.argv)
     yield app
 
 
-def test_exchange_tab_boot_does_not_crash(qapp):
+@pytest.fixture(autouse=True)
+def quiet_ticker(monkeypatch):
+    """Build the tab with a news strip that opens no socket.
+
+    ``ExchangeTab`` starts the real strip, which fetches ten RSS feeds
+    on a parentless QThread. The teardown sweep then destroys the tab
+    and leaves that thread running into the tests that follow.
+    """
+    yield install_quiet_ticker(monkeypatch)
+
+
+def test_exchange_tab_boot_does_not_crash():
     """ExchangeTab must construct without raising."""
     from src.gui.main_window import ExchangeTab
 
@@ -65,7 +78,7 @@ def test_exchange_tab_boot_does_not_crash(qapp):
     tab.deleteLater()
 
 
-def test_pull_rate_label_method_exists_on_exchange_tab(qapp):
+def test_pull_rate_label_method_exists_on_exchange_tab():
     """v3.23.75 regression pin — the QTimer at ExchangeTab.__init__
     line ~2277 connects to self._update_pull_rate_label. That method
     MUST live on ExchangeTab (not MainWindow) or the timer fires
@@ -80,7 +93,7 @@ def test_pull_rate_label_method_exists_on_exchange_tab(qapp):
     )
 
 
-def test_pull_rate_label_updates_without_raising(qapp):
+def test_pull_rate_label_updates_without_raising():
     """Fire the label-update callback and confirm it survives an
     empty pool without raising."""
     from src.gui.main_window import ExchangeTab
