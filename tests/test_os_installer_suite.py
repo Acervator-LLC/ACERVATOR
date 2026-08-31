@@ -773,16 +773,21 @@ class TestTheViewerPortStaysShut:
 # ---------------------------------------------------------------------------
 
 
+def pyproject_python_floor() -> tuple[int, int]:
+    """The `requires-python` lower bound in pyproject.toml, as (major, minor)."""
+    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    declared = data["project"]["requires-python"]
+    match = re.search(r">=\s*(\d+)\.(\d+)", declared)
+    assert match is not None, f"pyproject.toml states no lower bound: {declared}"
+    return int(match.group(1)), int(match.group(2))
+
+
 class TestThePythonFloor:
     """The Python floor comes from `pyproject.toml` and nowhere else."""
 
     def test_the_library_repeats_the_pyproject_floor(self) -> None:
         """The shell floor and the TOML floor are the same number."""
-        data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        declared = data["project"]["requires-python"]
-        match = re.search(r">=\s*(\d+)\.(\d+)", declared)
-        assert match is not None, declared
-        expected = (int(match.group(1)), int(match.group(2)))
+        expected = pyproject_python_floor()
 
         text = COMMON_SH.read_text(encoding="utf-8")
         major = re.search(r"^ACERVATOR_PYTHON_MIN_MAJOR=(\d+)", text, re.MULTILINE)
@@ -839,7 +844,11 @@ class TestThePythonFloor:
 
     def test_the_finder_accepts_this_interpreter(self) -> None:
         """A positive control: the rule must accept a real, adequate Python."""
-        assert sys.version_info >= (3, 11)
+        floor = pyproject_python_floor()
+        assert sys.version_info[:2] >= floor, (
+            f"this interpreter is {sys.version_info[:2]} and pyproject.toml "
+            f"asks for {floor} or later"
+        )
         probe = subprocess.run(  # noqa: S603
             [
                 _bash(),

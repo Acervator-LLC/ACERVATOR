@@ -100,7 +100,7 @@ An earlier governance harness, SADP, was retired. Documents under `docs/engineer
 
 ## Installation
 
-**Requirements:** Python 3.13 (pinned in `.python-version`)
+**Requirements:** Python 3.14 (pinned in `.python-version`)
 
 ```bash
 git clone https://github.com/Acervator-LLC/ACERVATOR.git
