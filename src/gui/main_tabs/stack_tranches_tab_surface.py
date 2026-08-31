@@ -760,7 +760,7 @@ class StackTranchesTabModel:
             return self.state.refresh_status
         try:
             index = host.index_of()
-        except Exception as exc:  # noqa: BLE001 - display-only rebuild
+        except Exception as exc:
             self.state.refresh_status = TAB_NOT_LOCATED_FORMAT.format(
                 error=type(exc).__name__
             )
@@ -772,7 +772,7 @@ class StackTranchesTabModel:
         was_current = host.current_index() == index
         try:
             fresh = host.rebuild()
-        except Exception as exc:  # noqa: BLE001 - display-only rebuild
+        except Exception as exc:
             self.state.refresh_status = REBUILD_RAISED_FORMAT.format(
                 error=type(exc).__name__, detail=exc
             )
@@ -845,7 +845,7 @@ class StackTranchesTabModel:
 
         try:
             report = discard(reason=CLEAR_REASON)
-        except Exception as exc:  # noqa: BLE001 - operator surface
+        except Exception as exc:
             self._record(STEP_CALL_FAILED)
             self._box(
                 CRITICAL_ICON,
@@ -918,7 +918,7 @@ class StackTranchesTabModel:
 
         try:
             report = zero(reason=CLEAR_REASON)
-        except Exception as exc:  # noqa: BLE001 - operator surface
+        except Exception as exc:
             self._record(STEP_CALL_FAILED)
             self._box(
                 CRITICAL_ICON,
