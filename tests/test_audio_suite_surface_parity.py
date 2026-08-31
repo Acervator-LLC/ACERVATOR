@@ -453,14 +453,18 @@ def side_world(media, temp_dir, paths=()):
             setattr(shipped, name, value)
 
 
+def _class_name(value):
+    """The name of a swapped class, or nothing when the build machine has
+    no multimedia library and the shipped module left it unset."""
+    return "" if value is None else value.__name__
+
+
 def world_now():
     """What the world holds right now, for a test that watches a swap."""
     return {
         "media_flag": shipped._HAS_MEDIA,
-        "player": shipped.QMediaPlayer.__name__,
-        "output": (
-            shipped.QAudioOutput.__name__ if shipped.QAudioOutput is not None else ""
-        ),
+        "player": _class_name(shipped.QMediaPlayer),
+        "output": _class_name(shipped.QAudioOutput),
         "temp_dir": tempfile.gettempdir(),
         "event_loop": shipped.safe_process_events.__name__,
         "generator": shipped.ToneGenerator.__dict__["generate_wav"].__class__.__name__,
