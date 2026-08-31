@@ -73,6 +73,7 @@ def build_registry() -> Dict[str, Handler]:
         live_status_tab_surface,
         market_inspector_surface,
         market_inspector_tab_surface,
+        market_inspector_topologies_surface,
         notification_spool_surface,
         positions_held_surface,
         preflight_check_surface,
@@ -135,6 +136,9 @@ def build_registry() -> Dict[str, Handler]:
         live_status_tab_surface.METHOD: live_status_tab_surface.view_model,
         market_inspector_surface.METHOD: market_inspector_surface.view_model,
         market_inspector_tab_surface.METHOD: market_inspector_tab_surface.view_model,
+        market_inspector_topologies_surface.METHOD: (
+            market_inspector_topologies_surface.view_model
+        ),
         positions_held_surface.METHOD: positions_held_surface.view_model,
         privacy_dot_surface.METHOD: privacy_dot_surface.view_model,
         pulse_manager_surface.METHOD: pulse_manager_surface.view_model,
