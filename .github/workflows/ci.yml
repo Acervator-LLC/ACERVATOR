@@ -49,6 +49,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   # Lets the full lane be run on demand against any branch from the Actions tab.
   workflow_dispatch:
 
@@ -80,6 +81,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
           PUSH_AFTER: ${{ github.sha }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
         run: |
           set -euo pipefail
 
@@ -88,6 +90,14 @@ jobs:
           # matched here is treated as functional and runs the full suite, so the
           # list is deliberately conservative — add to it, don't broaden it.
           IGNORE='^\.claude/|^docs/|\.md$|^LICENSE$|^\.gitignore$|^\.gitattributes$|^\.editorconfig$'
+
+          # A draft pull request is not asking for a verdict, so the code lanes
+          # are skipped. Without this a long-lived draft re-runs the whole suite
+          # every time anything merges into its base branch.
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$PR_DRAFT" = "true" ]; then
+            echo "Draft pull request - skipping code lanes."
+            echo "code=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
 
           case "$EVENT_NAME" in
             pull_request) BASE="$PR_BASE_SHA"; HEAD="$PR_HEAD_SHA" ;;
