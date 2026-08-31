@@ -87,7 +87,7 @@ def _src_files() -> list[Path]:
 
 # Pre-existing on the unmodified tree and guarded by try/except at the call
 # site. No commit ever added `src/gui/paper_trader_tab.py`.
-KNOWN_UNRESOLVABLE = {"src/gui/stock_main_window.py:420 -> src.gui.paper_trader_tab"}
+KNOWN_UNRESOLVABLE = {"src/gui/stock_main_window.py -> src.gui.paper_trader_tab"}
 
 
 def test_every_import_under_src_resolves() -> None:
@@ -102,9 +102,7 @@ def test_every_import_under_src_resolves() -> None:
             except (ImportError, ModuleNotFoundError, ValueError):
                 spec = None
             if spec is None:
-                broken.add(
-                    f"{path.relative_to(REPO_ROOT).as_posix()}:{line} -> {module}"
-                )
+                broken.add(f"{path.relative_to(REPO_ROOT).as_posix()} -> {module}")
     assert broken - KNOWN_UNRESOLVABLE == set(), "unresolvable:\n  " + "\n  ".join(
         sorted(broken - KNOWN_UNRESOLVABLE)
     )
