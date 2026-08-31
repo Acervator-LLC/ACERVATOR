@@ -262,6 +262,28 @@ def test_no_root_file_wears_pytests_discovery_name() -> None:
     )
 
 
+def test_the_interpreter_pin_agrees_with_pyproject() -> None:
+    """`.python-version` and `requires-python` name the same interpreter.
+
+    A failure means CI installs one Python and the package metadata
+    declares another.
+    """
+    import re
+    import tomllib
+
+    pinned = _module_source(".python-version").strip()
+    declared = tomllib.loads(_module_source("pyproject.toml"))["project"][
+        "requires-python"
+    ]
+    bound = re.search(r">=\s*(\d+)\.(\d+)", declared)
+    assert bound is not None, f"pyproject.toml states no lower bound: {declared!r}"
+    assert pinned == f"{bound.group(1)}.{bound.group(2)}", (
+        f".python-version pins {pinned!r} and pyproject.toml asks for "
+        f"{declared!r}. actions/setup-python reads the first; pip reads "
+        f"the second"
+    )
+
+
 def test_main_py_is_still_the_declared_entry_point() -> None:
     """The reason main.py may not move, read from the tree."""
     import tomllib
