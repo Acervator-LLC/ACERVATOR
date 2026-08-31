@@ -886,3 +886,50 @@ def test_the_qt_probe_can_report_qt():
     loaded = run_probe("import PySide6.QtCore;")
     assert loaded["qt"] is True
     assert loaded["frame"]["ok"] is True
+
+
+PANE_PROBE = """
+import json
+
+from src.gui.main_tabs import status_log_surface as s
+
+built_at_import = s.PANE_MODEL is not None
+paused = s.view_model({'paused': True})
+model = s.pane_model()
+held = s.view_model({'messages': [{'message': 'held', 'level': 'info'}]})
+print(json.dumps({'built_at_import': built_at_import,
+                  'built_on_request': model is s.PANE_MODEL,
+                  'first_paused': paused['paused'],
+                  'still_paused': held['paused'],
+                  'held_lines': held['document']['lines'],
+                  'buffered': held['buffered']}))
+"""
+
+
+def run_script(source):
+    """Run one probe in a fresh process and return what it printed."""
+    done = subprocess.run(
+        [sys.executable, "-"],
+        input=source.encode("utf-8"),
+        capture_output=True,
+        cwd=str(REPO_ROOT),
+        timeout=300,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr.decode()
+    return json.loads(done.stdout.decode().splitlines()[-1])
+
+
+def test_importing_the_surface_builds_no_log():
+    """Loading the surface built the log, or the bridge lost it between calls.
+
+    The log is built on the first request and kept afterwards: a pause set
+    by one call still holds the next call's line.
+    """
+    answered = run_script(PANE_PROBE)
+    assert answered["built_at_import"] is False, answered
+    assert answered["built_on_request"] is True, answered
+    assert answered["first_paused"] is True, answered
+    assert answered["still_paused"] is True, answered
+    assert answered["held_lines"] == [], answered
+    assert answered["buffered"] == 1, answered
