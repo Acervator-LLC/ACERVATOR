@@ -239,6 +239,7 @@ class TestFixtureIsActuallyArmed:
         root.mkdir()
         f = root / "bot_state.json"
         f.write_text("{}", encoding="utf-8")
+        monkeypatch.delenv(cf.TEST_HOME_ENV, raising=False)
         monkeypatch.setattr(cf, "_live_roots", lambda: (root,))
         monkeypatch.setattr(cf, "_stone_tablet_root", lambda: tmp_path / "tablets")
         monkeypatch.setattr(cf, "_live_app_running", lambda: True)
@@ -249,6 +250,52 @@ class TestFixtureIsActuallyArmed:
             next(gen)  # must NOT raise
         except StopIteration:
             pass
+
+    def test_a_redirected_home_fails_a_modification_with_the_app_up(
+        self, monkeypatch, tmp_path
+    ):
+        """The same modification the test above excuses must fail here.
+
+        A live Acervator writes only the operator's real home, so under
+        ACERVATOR_TEST_HOME the suite is the only possible author.
+        """
+        root = tmp_path / "acervator"
+        root.mkdir()
+        f = root / "bot_state.json"
+        f.write_text("{}", encoding="utf-8")
+        monkeypatch.setenv(cf.TEST_HOME_ENV, str(tmp_path))
+        monkeypatch.setattr(cf, "_live_roots", lambda: (root,))
+        monkeypatch.setattr(cf, "_stone_tablet_root", lambda: tmp_path / "tablets")
+        monkeypatch.setattr(cf, "_live_app_running", lambda: True)
+        gen = _fixture_func(cf._assert_no_live_tree_writes)(None)
+        next(gen)
+        f.write_text('{"bots": {}}', encoding="utf-8")
+        with pytest.raises(AssertionError, match="modified"):
+            next(gen)
+
+
+# ── redirected home ─────────────────────────────────────────────────
+
+
+def test_the_redirect_reads_the_variable_on_every_call(monkeypatch, tmp_path):
+    """The guard bound the variable once instead of reading it live."""
+    monkeypatch.delenv(cf.TEST_HOME_ENV, raising=False)
+    assert cf._home_is_redirected() is False
+    monkeypatch.setenv(cf.TEST_HOME_ENV, str(tmp_path))
+    assert cf._home_is_redirected() is True
+
+
+def test_the_variable_moves_the_home_directory(monkeypatch, tmp_path):
+    """conftest read ACERVATOR_TEST_HOME and left Path.home() alone."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setenv("USERPROFILE", str(elsewhere))
+    monkeypatch.setenv("HOME", str(elsewhere))
+    assert Path.home() == elsewhere
+    throwaway = tmp_path / "throwaway"
+    monkeypatch.setenv(cf.TEST_HOME_ENV, str(throwaway))
+    _load_conftest()
+    assert Path.home() == throwaway
 
 
 def test_live_app_detection_never_raises(monkeypatch):
