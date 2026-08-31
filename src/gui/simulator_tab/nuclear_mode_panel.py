@@ -1,14 +1,12 @@
 """
 src/gui/simulator_tab/nuclear_mode_panel.py — Nuclear Mode controls.
 
-v3.24.78 — REPOINTED at NuclearFleetController (W3).
-
 This panel drove `NuclearController`, the Phase-B single-tape prototype
 that v2 was written to replace: the operator picked one tape and one
 scout bot walked it. W3 recorded the gap for months —"the tab labelled
 Nuclear Mode still drives the Phase-B single-tape prototype".
 
-Operator directive 2026-08-07: Nuclear "does not run on a single tape or
+Operator directive: Nuclear "does not run on a single tape or
 stone tablet. It runs stone tablets in a loop through the simulator
 bots. These loops are supposed to have varied market structure via an
 oscillator that injects noise to simulate varied market structures
@@ -62,17 +60,8 @@ logger = logging.getLogger("acervator.nuclear_panel")
 
 
 _STATUS_FIELDS: tuple[tuple[str, str], ...] = (
-    # v3.24.78 — v2's vocabulary. Every key here must exist in
-    # `NuclearFleetController.snapshot()`; a key it does not emit renders
-    # a permanently blank row, and the panel then looks wired while
-    # reporting nothing. Pinned in tests/test_nuclear_panel_drives_v2.py.
-    #
-    # The retired single-tape fields were: scout_state, scout_holdings,
-    # scout_target, tape_position, tape_direction, tape_wraps,
-    # world_clock_ticks, trade_count, scrum_fold, error_count,
-    # exception_count. Only `running` and `uptime_seconds` survived the
-    # move, because v2 does not scout a tape — it loops the fleet's own
-    # Stone Tablets under varying market structure and load.
+    # Every key must exist in `NuclearFleetController.snapshot()`. A key
+    # it does not emit renders a permanently blank row.
     ("Run state", "running"),
     ("Uptime (s)", "uptime_seconds"),
     ("Fleet size", "fleet_size"),
@@ -119,17 +108,12 @@ class NuclearModePanel(QWidget):
         self._activity_log_cb = activity_log_cb or (lambda _msg: None)
         self._perf_log_cb = perf_log_cb or (lambda _msg: None)
         self._async_loop_getter = async_loop_getter
-        # v3.24.77 — resolves the Simulator Swarm at Start. Set by
-        # SimulatorTab.set_swarm_getter after MainWindow mounts both
-        # tabs; None until then.
+        # Set by SimulatorTab.set_swarm_getter; None until then.
         self._swarm_getter = None
-        # v3.24.79 — resolves Market Inspector proposals at Start.
         # Set by SimulatorTab.set_topology_getter; None until then.
         self._topology_getter = None
         self._controller: Optional[NuclearFleetController] = None
-        # v3.24.28 — shared Simulator visual panels. Assigned by
-        # simulator_tab via set_visual_widgets(); None until then, and
-        # None is a supported state (the panel runs fine headless).
+        # Assigned by simulator_tab.set_visual_widgets(); None is supported.
         self._sim_price_chart = None
         self._sim_voting_readout = None
         self._sim_stat_strip = None
@@ -138,7 +122,6 @@ class NuclearModePanel(QWidget):
         outer.setContentsMargins(8, 8, 8, 8)
         outer.setSpacing(8)
 
-        # ─── Header ─────────────────────────────────────────────────
         header_card = QFrame()
         header_card.setStyleSheet(
             "QFrame{background:rgba(255,200,80,8);"
@@ -168,7 +151,6 @@ class NuclearModePanel(QWidget):
         header_lay.addWidget(sub)
         outer.addWidget(header_card)
 
-        # ─── Tape selector ──────────────────────────────────────────
         self._tape_card = QFrame()
         self._tape_card.setStyleSheet(
             "QFrame{background:#0a0a14;border:1px solid #2a2a44;" "border-radius:4px;}"
@@ -177,19 +159,13 @@ class NuclearModePanel(QWidget):
         tape_outer.setContentsMargins(8, 8, 8, 8)
         tape_outer.addWidget(_section_label("Fleet (from bot_state)"))
 
-        # The empty-state body is built but kept hidden when tapes exist
         self._empty_label = QLabel("")
         self._empty_label.setWordWrap(True)
         self._empty_label.setStyleSheet("color:#ff9966;border:none;font-size:11px;")
         self._empty_label.hide()
         tape_outer.addWidget(self._empty_label)
 
-        # v3.24.78 — a FLEET readout, not a tape selector.
-        #
-        # v1 let the operator pick one tape for one scout bot. v2 loops
-        # the whole bot_state fleet over its own Stone Tablets, so there
-        # is nothing to select — the fleet IS bot_state. What the
-        # operator needs here is confirmation of what Start will load.
+        # A readout, not a selector: the fleet IS bot_state.
         tape_form = QFormLayout()
         tape_form.setSpacing(6)
         self._fleet_detail = QLabel("—")
@@ -210,7 +186,6 @@ class NuclearModePanel(QWidget):
         tape_outer.addLayout(tape_form)
         outer.addWidget(self._tape_card)
 
-        # ─── Config ─────────────────────────────────────────────────
         cfg_card = QFrame()
         cfg_card.setStyleSheet(
             "QFrame{background:#0a0a14;border:1px solid #2a2a44;" "border-radius:4px;}"
@@ -219,12 +194,6 @@ class NuclearModePanel(QWidget):
         cfg_outer.setContentsMargins(8, 8, 8, 8)
         cfg_outer.addWidget(_section_label("Run configuration"))
 
-        # v3.24.78 — v2's controls. The retired ones (scout seed amount,
-        # world-clock cadence) configured the single-tape prototype: a
-        # lone scout bot walking one tape. v2 loops the WHOLE fleet from
-        # bot_state over its Stone Tablets, so there is no seed to set
-        # and no world clock to pace — the fleet's own capital and the
-        # tablets' own timestamps supply both.
         cfg_form = QFormLayout()
         cfg_form.setSpacing(6)
 
@@ -273,7 +242,6 @@ class NuclearModePanel(QWidget):
         cfg_outer.addLayout(cfg_form)
         outer.addWidget(cfg_card)
 
-        # ─── Start / Stop ───────────────────────────────────────────
         btn_row = QHBoxLayout()
         self._start_btn = QPushButton("Start Scout")
         self._start_btn.setStyleSheet(
@@ -302,7 +270,6 @@ class NuclearModePanel(QWidget):
         btn_row.addStretch()
         outer.addLayout(btn_row)
 
-        # ─── Live status ────────────────────────────────────────────
         status_card = QFrame()
         status_card.setStyleSheet(
             "QFrame{background:#0a0a14;border:1px solid #2a2a44;" "border-radius:4px;}"
@@ -311,21 +278,6 @@ class NuclearModePanel(QWidget):
         status_outer.setContentsMargins(8, 8, 8, 8)
         status_outer.addWidget(_section_label("Live status"))
 
-        # v3.24.28 — two column-pairs instead of one.
-        #
-        # Operator 2026-08-04, on the Nuclear Mode render: "Live status
-        # rows are currently cramped. Could be two columns given the
-        # amount of space of this specific panel."
-        #
-        # All 13 short fields previously stacked in a single (label,
-        # value) pair, so the card ran tall and narrow while the panel
-        # had horizontal room to spare. Splitting into two pairs halves
-        # the height and uses the width that was already there.
-        #
-        # "Last exception" is deliberately NOT in the columns: it holds
-        # arbitrary-length exception text, and inside a column it would
-        # stretch that column and re-introduce the crowding. It spans
-        # the full width on its own row instead.
         grid = QGridLayout()
         grid.setHorizontalSpacing(18)
         grid.setVerticalSpacing(5)
@@ -349,8 +301,6 @@ class NuclearModePanel(QWidget):
             grid.addWidget(lbl, row, col, alignment=Qt.AlignLeft)
             grid.addWidget(val, row, col + 1, alignment=Qt.AlignLeft)
 
-        # Value columns absorb the slack; label columns stay tight so the
-        # two halves read as two aligned pairs rather than drifting apart.
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(2, 0)
@@ -371,18 +321,15 @@ class NuclearModePanel(QWidget):
         self._refresh_timer.setInterval(500)
         self._refresh_timer.timeout.connect(self._refresh_status)
 
-        # Initial cache scan to populate the combo
         self._rescan_cache()
 
-    # ─── Tape combo population ──────────────────────────────────────────
-
     def _rescan_cache(self) -> None:
-        """Preview the FLEET this soak will load (v3.24.78).
+        """Preview the FLEET this soak will load.
 
         This used to populate a tape combo: the operator picked one tape
         and a single scout bot walked it. v2 does not work that way.
 
-        Operator directive 2026-08-07: the only bot source is "a fleet
+        Operator directive: the only bot source is "a fleet
         load that references bot_state and all pieces / functions of the
         fleet must import". So there is nothing to choose — the fleet IS
         bot_state — and the honest control is a preview of what Start
@@ -429,10 +376,8 @@ class NuclearModePanel(QWidget):
         )
         self._start_btn.setEnabled(True)
 
-    # ─── Slots ──────────────────────────────────────────────────────────
-
     def _on_start_clicked(self) -> None:
-        """Start a fleet soak (v3.24.78 — repointed at v2, per W3).
+        """Start a fleet soak.
 
         This drove `NuclearController`, the single-tape prototype: it
         required a tape cache and a selected tape id, and its
@@ -478,10 +423,8 @@ class NuclearModePanel(QWidget):
             self._controller = None
             return
 
-        # prepare() reads bot_state and the Stone Tablets, and returns
-        # False with an operator-readable reason rather than raising.
-        # Gate on it BEFORE scheduling anything: a soak whose fleet did
-        # not load cannot do anything except waste a cycle looking busy.
+        # prepare() returns False with a reason rather than raising.
+        # Gate on it before scheduling.
         try:
             ready = self._controller.prepare()
         except Exception as exc:  # noqa: BLE001 - loader guard
@@ -494,8 +437,7 @@ class NuclearModePanel(QWidget):
             self._controller = None
             return
 
-        # Hand over the Simulator Swarm before start, so cycle 0's rows
-        # are registered rather than the first cycle running blind.
+        # Set before start, so cycle 0's rows are registered.
         _reg, _upd, _stop = self._swarm_hooks()
         if _reg is None:
             self._activity_log_cb(
@@ -504,12 +446,8 @@ class NuclearModePanel(QWidget):
             )
         self._controller.set_swarm_hooks(register=_reg, update=_upd, stop=_stop)
 
-        # v3.24.79 — inject the Market Inspector's current proposals.
-        #
-        # Resolved HERE, not at wiring time, so a soak stresses what the
-        # operator has on screen when they press Start. With none, the
-        # fleet's own persisted bot_state topology stands — nothing is
-        # invented to fill the gap (see _topology_pairs).
+        # Resolved at Start, not at wiring time, so a soak stresses the
+        # proposals on screen. With none, bot_state's own topology stands.
         _topos = self._resolve_topologies()
         if _topos:
             self._controller.set_topologies(_topos)
@@ -547,24 +485,20 @@ class NuclearModePanel(QWidget):
         self._stop_btn.setEnabled(False)
         self._start_btn.setEnabled(True)
         self._refresh_btn.setEnabled(True)
-        # v3.24.78 — re-enable v2's controls. Must mirror the disable
-        # list in _on_start_clicked exactly: a control disabled at Start
-        # and not re-enabled here is dead for the rest of the session.
+        # Must mirror the disable list in _on_start_clicked exactly.
         self._cycle_candles_spin.setEnabled(True)
         self._max_cycles_spin.setEnabled(True)
         self._load_osc_check.setEnabled(True)
         self._noise_check.setEnabled(True)
-        # One last poll so the final counts land before the timer stops.
-        # Stop is cooperative — the controller drains its current cycle —
-        # so this shows the state at the moment Stop was asked, not the
-        # state after it completes.
+        # Stop is cooperative, so this shows the state when Stop was
+        # asked, not after the cycle drains.
         self._refresh_status()
         self._refresh_timer.stop()
 
     def set_swarm_getter(self, getter) -> None:
-        """v3.24.77 — the Simulator Swarm this mode drives.
+        """The Simulator Swarm this mode drives.
 
-        Operator directive 2026-08-07: "Nuclear Mode is expected to use
+        Operator directive: "Nuclear Mode is expected to use
         and abuse the Simulator Bot Swarm."
 
         Stored as a getter and resolved at Start, not bound here: the
@@ -581,14 +515,14 @@ class NuclearModePanel(QWidget):
         self._swarm_getter = getter
 
     def set_topology_getter(self, getter) -> None:
-        """v3.24.79 — Market Inspector TOPOLOGY injection.
+        """Market Inspector TOPOLOGY injection.
 
-        Operator, 2026-08-08: "Strategies = Topologies for Market
+        Operator: "Strategies = Topologies for Market
         Inspector … we should avoid term conflation." A Market Inspector
         proposal IS a topology; "strategy" in the directive below means
         the same object.
 
-        Operator directive 2026-08-07: Nuclear "is supposed to be able to
+        Operator directive: Nuclear "is supposed to be able to
         receive strategy injections from the Market Inspector to test the
         strategy propagation function and swarm topologies under cycling
         load."
@@ -596,7 +530,7 @@ class NuclearModePanel(QWidget):
         `NuclearFleetController.set_topologies` had ZERO callers, so the
         proposal branch of `_topology_pairs` never ran — which is exactly
         why the fabricated circular fallback beneath it survived unnoticed
-        until v3.24.76 deleted it. This is the caller it was missing.
+        until it was deleted. This is the caller it was missing.
 
         A getter resolved at Start, matching the swarm seam: proposals
         change as the operator refreshes the Market Inspector, and a soak
@@ -664,7 +598,7 @@ class NuclearModePanel(QWidget):
     ) -> None:
         """Attach the shared Simulator visual panels.
 
-        v3.24.28 — Nuclear Mode never received these. ``simulator_tab``
+        Nuclear Mode never received these. ``simulator_tab``
         called ``set_visual_widgets`` on the Fleet Replay panel ONLY, so
         the Indicator Voting Panel, the per-bot voting table and the
         price/VWAP chart could not populate while a scout ran — they had
@@ -684,8 +618,8 @@ class NuclearModePanel(QWidget):
 
         Runs on the Qt main thread — ``_refresh_timer`` is a QTimer, so
         this is already the correct thread for widget mutation. That is
-        deliberate: v3.24.19 had to undo exactly this being done from a
-        worker thread in Fleet Replay.
+        deliberate: doing it from a worker thread in Fleet Replay had
+        to be undone once already.
 
         Best-effort per widget: a missing or failing panel must not stop
         the scout, but it is logged rather than swallowed.
@@ -712,10 +646,8 @@ class NuclearModePanel(QWidget):
         summary = snap.get("voting_summary")
         if readout is not None and summary is not None:
             try:
-                # v3.24.81 — the REAL IndicatorVotingPanel's contract,
-                # identical to the Trading Tab's feed and to Fleet
-                # Replay's. `update_bot_row` was the sim-only summary
-                # table's API and no longer exists.
+                # The IndicatorVotingPanel contract, as the Trading Tab
+                # feeds it.
                 _tf = str(getattr(summary, "timeframe", "") or "5m")
                 readout.update_data(
                     {
@@ -746,9 +678,9 @@ class NuclearModePanel(QWidget):
     def _refresh_status(self) -> None:
         """Fill the live status rows from the controller snapshot.
 
-        v3.24.80 — REWRITTEN for v2's vocabulary.
+        Rewritten for v2's vocabulary.
 
-        The v3.24.78 repoint changed `_STATUS_FIELDS` (which builds the
+        The repoint changed `_STATUS_FIELDS` (which builds the
         LABELS) and left this function (which FILLS them) writing v1's
         keys: scout_state, tape_position, tape_wraps and nine more.
         Those labels no longer exist, so the third write raised
@@ -800,8 +732,7 @@ class NuclearModePanel(QWidget):
         if key == "uptime_seconds":
             return f"{float(val):.1f}"
         if key == "noise_pct":
-            # Amplitude is a fraction (0.10-0.25); the operator's
-            # directive is written in percent, so show percent.
+            # Amplitude is a fraction 0.10-0.25, shown as percent.
             return f"{float(val) * 100.0:.1f}%" if val else "-"
         if key == "load_multiplier":
             return f"{float(val):.2f}x"
