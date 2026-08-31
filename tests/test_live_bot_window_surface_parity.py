@@ -139,6 +139,22 @@ def quiet_modals(monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def bounded_holders():
+    """Drop the dead references the previous test left in the two holders.
+
+    The suite-wide teardown destroys every widget a test built, so an
+    entry from an earlier test names a destroyed object. Measured over
+    one whole run of this file: at all 224 test starts, 0 of the entries
+    in either list were still live, while `BOXES_HELD` had grown to 1675
+    entries and `WIDGETS_HELD` to 366. Clearing at the start of a test
+    bounds both to the widgets that test builds.
+    """
+    WIDGETS_HELD.clear()
+    BOXES_HELD.clear()
+    yield
+
+
 def app():
     """The process application object every widget needs."""
     from tests.qt_pixel import ensure_app
@@ -581,14 +597,20 @@ def event(topic, data):
 # ---------------------------------------------------------------------
 
 
-def old_window(monkeypatch, bus, warnings, threads):
-    """One real Lite Live Bot window, with its dropped group box held."""
+def old_window_and_boxes(monkeypatch, bus, warnings, threads):
+    """One real window, and every group box built while it was built."""
     app()
-    holding_group_boxes(monkeypatch)
+    boxes = holding_group_boxes(monkeypatch)
     monkeypatch.setattr(shipped, "get_event_bus", lambda: bus)
     monkeypatch.setattr(shipped, "QMessageBox", warnings)
     monkeypatch.setattr(shipped, "threading", threads)
-    return hold(shipped.LiteLiveBotWindow())
+    return hold(shipped.LiteLiveBotWindow()), boxes
+
+
+def old_window(monkeypatch, bus, warnings, threads):
+    """One real Lite Live Bot window, with its dropped group box held."""
+    window, _ = old_window_and_boxes(monkeypatch, bus, warnings, threads)
+    return window
 
 
 def new_model(bus, warnings, threads):
@@ -814,7 +836,9 @@ def drive(steps, monkeypatch):
     old_bus = RecordingBus()
     old_warnings = RecordingWarnings()
     old_threads = RecordingThreads()
-    window = old_window(monkeypatch, old_bus, old_warnings, old_threads)
+    window, boxes = old_window_and_boxes(
+        monkeypatch, old_bus, old_warnings, old_threads
+    )
     old_outcome = [guarded(step) for step in old_steps(window, steps)]
     old_state = read_old(window)
 
@@ -840,8 +864,26 @@ def drive(steps, monkeypatch):
         "new_threads": new_threads.started,
         "payload": payload,
         "window": window,
+        "boxes": boxes,
         "model": model,
     }
+
+
+def release(run):
+    """Destroy the widgets one drive built, once its values are read.
+
+    A drive reads both sides into plain values before it returns, so
+    nothing after it needs the window. A caller looping over a case
+    table calls this each turn and holds one drive's widgets instead of
+    every drive's. Measured on the offscreen driver: one drive leaves 5
+    live top-level widgets, and 0 after this call.
+    """
+    from shiboken6 import Shiboken
+
+    destroy(run["window"])
+    for box in run["boxes"]:
+        if Shiboken.isValid(box):
+            destroy(box)
 
 
 def both_sides_agree(run, note):
@@ -937,18 +979,17 @@ def test_a_step_sequence_is_the_shipped_windows(name, monkeypatch):
 def test_every_case_in_every_table_is_driven(monkeypatch):
     """A case sits in a table that nothing ever drives."""
     driven = {"log": set(), "fill": set(), "api": set(), "base": set()}
-    for name in LOG_CASES:
-        both_sides_agree(drive([["log", name]], monkeypatch), name)
-        driven["log"].add(name)
-    for name in FILL_CASES:
-        both_sides_agree(drive([["fill", name]], monkeypatch), name)
-        driven["fill"].add(name)
-    for name in API_CASES:
-        both_sides_agree(drive([["api", name]], monkeypatch), name)
-        driven["api"].add(name)
-    for base in BASE_CASES:
-        both_sides_agree(drive([["base", base]], monkeypatch), base)
-        driven["base"].add(base)
+    for kind, table in (
+        ("log", LOG_CASES),
+        ("fill", FILL_CASES),
+        ("api", API_CASES),
+        ("base", BASE_CASES),
+    ):
+        for name in table:
+            run = drive([[kind, name]], monkeypatch)
+            both_sides_agree(run, name)
+            release(run)
+            driven[kind].add(name)
     assert driven["log"] == set(LOG_CASES)
     assert driven["fill"] == set(FILL_CASES)
     assert driven["api"] == set(API_CASES)
@@ -961,6 +1002,20 @@ def test_every_case_in_every_table_is_driven(monkeypatch):
     assert set(LOG_REFUSING) <= set(LOG_CASES)
     assert set(FILL_REFUSING) <= set(FILL_CASES)
     assert API_REFUSING == ()
+
+
+def test_a_released_drive_leaves_no_top_level_widget(monkeypatch):
+    """A released drive left a window or a group box alive."""
+    from PySide6.QtWidgets import QApplication
+
+    app()
+    live = QApplication.instance().topLevelWidgets
+    base = len(live())
+    run = drive([["log", "buy"]], monkeypatch)
+    built = len(live()) - base
+    release(run)
+    assert built > 0, "the drive built no top-level widget this count can see"
+    assert len(live()) - base == 0, [type(w).__name__ for w in live()]
 
 
 def test_the_sample_hashes_are_reported(monkeypatch):
@@ -1036,14 +1091,11 @@ def refusals(outcome):
 def test_the_outcomes_hold_both_an_answer_and_a_refusal(monkeypatch):
     """Every case answered, or every case refused, so the set proves nothing."""
     found = {}
-    for name in sorted(LOG_CASES):
-        found["log:" + name] = refusals(
-            drive([["log", name]], monkeypatch)["old_outcome"]
-        )
-    for name in sorted(FILL_CASES):
-        found["fill:" + name] = refusals(
-            drive([["fill", name]], monkeypatch)["old_outcome"]
-        )
+    for kind, table in (("log", LOG_CASES), ("fill", FILL_CASES)):
+        for name in sorted(table):
+            run = drive([[kind, name]], monkeypatch)
+            found[kind + ":" + name] = refusals(run["old_outcome"])
+            release(run)
     answered = [name for name, done in found.items() if not done]
     refused = [name for name, done in found.items() if done]
     assert answered, found
