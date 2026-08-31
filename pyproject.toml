@@ -13,7 +13,7 @@ readme = "README.md"
 license = {text = "Proprietary"}
 # CI pins ONE interpreter, in .python-version at the repo root; this bound
 # and that file must agree.
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.14,<3.15"
 # Issue #94 - THIS IS THE ONE DEPENDENCY SOURCE.
 #
 # Before this issue the pip install list was hand-copied into eight
@@ -167,6 +167,8 @@ acervator = "main:main"
 # sync with it - line length 88, E203/W503 ignored because black owns them.
 [tool.black]
 line-length = 88
+# The syntax black may EMIT, not the interpreter pin. py314 rewrites 62 files
+# to PEP 758 unparenthesised `except`, which no earlier Python parses.
 target-version = ["py313"]
 extend-exclude = "tests/obsolete"
 
