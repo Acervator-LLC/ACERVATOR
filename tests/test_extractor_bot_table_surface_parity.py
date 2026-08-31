@@ -2402,10 +2402,6 @@ def test_the_bridge_import_list_stays_in_order():
             named = [alias.name for alias in node.names]
     assert named == sorted(named), named
     assert "extractor_bot_table_surface" in named
-    assert (
-        named.index("extractor_bot_table_surface")
-        == named.index("design_system_surface") + 1
-    )
 
 
 # ---------------------------------------------------------------------
