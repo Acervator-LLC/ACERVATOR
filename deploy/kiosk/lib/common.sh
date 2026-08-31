@@ -105,14 +105,14 @@ acervator_write_file() {
 # Issue #95 defect three. `deploy/kiosk/install.sh` demanded `python3.12` by
 # name. Debian 12 and Raspberry Pi OS Bookworm ship 3.11 and carry no
 # `python3.12` package, so the installer failed on two of the three
-# systems its own header named. `pyproject.toml` asks for `>=3.13`, so
+# systems its own header named. `pyproject.toml` asks for `>=3.14`, so
 # the hard-coded 3.12 was stricter than the application.
 #
 # The floor lives in `pyproject.toml`. These two constants repeat it,
 # because a shell script cannot read TOML.
 # `tests/test_os_installer_suite.py` fails when the two disagree.
 ACERVATOR_PYTHON_MIN_MAJOR=3
-ACERVATOR_PYTHON_MIN_MINOR=13
+ACERVATOR_PYTHON_MIN_MINOR=14
 
 # Print the path of the newest interpreter that meets the floor.
 # Return 1 and print nothing when no candidate meets it.
