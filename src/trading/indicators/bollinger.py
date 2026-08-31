@@ -138,8 +138,9 @@ class BollingerBands:
         # squeezed, so the damping was applied by asset price.
         #
         # The correct form already existed twenty feet away —
-        # `native_chart.py:1231-1236` averages bandwidth and compares
-        # bandwidth. The chart drew squeezes the engine could not see.
+        # `native_chart.py`'s `CandlestickChart.paintEvent` averages
+        # bandwidth and compares bandwidth. The chart drew squeezes the
+        # engine could not see.
         #
         # Numerator kept verbatim per the note above; only the
         # normalisation that `band_width` already had is added.
