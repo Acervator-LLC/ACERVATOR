@@ -49,6 +49,7 @@ def build_registry() -> Dict[str, Handler]:
         alerts_tab_surface,
         analytics_tab_surface,
         api_tester_tab_surface,
+        audio_suite_surface,
         bot_live_settings_surface,
         bot_selection_surface,
         bot_status_table_surface,
@@ -134,6 +135,7 @@ def build_registry() -> Dict[str, Handler]:
         tradingview_chart_surface.METHOD: tradingview_chart_surface.view_model,
         visualizer_themes_surface.METHOD: visualizer_themes_surface.view_model,
         wire_canvas_surface.METHOD: wire_canvas_surface.view_model,
+        audio_suite_surface.METHOD: audio_suite_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
 
