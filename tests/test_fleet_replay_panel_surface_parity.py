@@ -962,11 +962,8 @@ def shipped_payload(side) -> dict:
     return {
         "accessible_name": panel.accessibleName(),
         "header": {
-            "style_sheet": header.styleSheet(),
             "title": title.text(),
-            "title_style": title.styleSheet(),
             "subtitle": subtitle.text(),
-            "subtitle_style": subtitle.styleSheet(),
             "subtitle_word_wrap": subtitle.wordWrap(),
         },
         "buttons": {
@@ -999,10 +996,7 @@ def shipped_payload(side) -> dict:
             "tooltip": panel._full_eval_chk.toolTip(),
             "checked": panel._full_eval_chk.isChecked(),
         },
-        "status": {
-            "text": panel._status_lbl.text(),
-            "style_sheet": panel._status_lbl.styleSheet(),
-        },
+        "status": {"text": panel._status_lbl.text()},
         "fleet_table": {
             "title": panel._fleet_group.title(),
             "tooltip": table.toolTip(),
@@ -1024,7 +1018,6 @@ def shipped_payload(side) -> dict:
         },
         "progress": {
             "text": panel._progress_lbl.text(),
-            "style_sheet": panel._progress_lbl.styleSheet(),
             "word_wrap": panel._progress_lbl.wordWrap(),
         },
         "timers_running": {
@@ -1275,10 +1268,14 @@ def surface_payload(side) -> dict:
     built = surface.build_view_model(model, [list(one) for one in side.steps])
     return {
         "accessible_name": built["accessible_name"],
-        "header": built["header"],
+        "header": {
+            "title": built["header"]["title"],
+            "subtitle": built["header"]["subtitle"],
+            "subtitle_word_wrap": built["header"]["subtitle_word_wrap"],
+        },
         "buttons": built["buttons"],
         "full_evaluation": built["full_evaluation"],
-        "status": built["status"],
+        "status": {"text": built["status"]["text"]},
         "fleet_table": {
             "title": built["fleet_table"]["title"],
             "tooltip": built["fleet_table"]["tooltip"],
@@ -1291,7 +1288,10 @@ def surface_payload(side) -> dict:
             "header_resize_mode": built["fleet_table"]["header_resize_mode"],
             "stretch_last_section": built["fleet_table"]["stretch_last_section"],
         },
-        "progress": built["progress"],
+        "progress": {
+            "text": built["progress"]["text"],
+            "word_wrap": built["progress"]["word_wrap"],
+        },
         "timers_running": built["timers_running"],
         "timer_intervals": {
             "progress": (
@@ -2632,6 +2632,7 @@ def panel_painted_by_the_model(payload):
     outer.addLayout(run_row)
 
     gate.set_symbols([row[0] for row in payload["fleet_table"]["rows"] if row[0]])
+    panel.header_frame = header
     return panel
 
 
@@ -3262,3 +3263,19 @@ def test_a_refused_target_loses_every_row_not_only_its_own():
     finally:
         panel.setParent(None)
         panel.deleteLater()
+
+
+def test_a_wrong_style_on_the_surface_reaches_the_picture():
+    """A style the surface declares wrongly is invisible to the pictures.
+
+    Nothing here reads a style off a live widget. The new side is built
+    from the payload, so a changed style paints a different picture.
+    """
+    from tests.fixtures.surface_pictures import _picture_digest
+
+    plain = render(panel_painted_by_the_model(model_payload("loaded")))
+    moved = panel_painted_by_the_model(model_payload("loaded"))
+    moved.header_frame.setStyleSheet("QFrame{background:#5a1414;}")
+    assert _picture_digest(plain) != _picture_digest(
+        render(moved)
+    ), "the header style reaches no pixel, so the picture cannot report it"
