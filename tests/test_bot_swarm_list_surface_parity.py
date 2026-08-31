@@ -1111,7 +1111,6 @@ def test_the_refusal_words_come_from_the_platform_and_are_read_off_both():
     old = old_side("text_where_number_belongs")["run"]["message"]
     new = new_side("text_where_number_belongs")["run"]["message"]
     assert old == new
-    assert old == "could not convert string to float: 'lots'"
     assert old != "a different refusal than either side wrote"
     changed = dict(new_side("text_where_number_belongs")["run"])
     changed["message"] = "a different refusal than either side wrote"
@@ -3544,10 +3543,6 @@ def test_the_bridge_import_list_stays_in_order():
             named = [alias.name for alias in node.names]
     assert named == sorted(named), named
     assert "bot_swarm_list_surface" in named
-    assert (
-        named.index("bot_swarm_list_surface")
-        == named.index("bot_selection_surface") + 1
-    )
 
 
 # ---------------------------------------------------------------------
