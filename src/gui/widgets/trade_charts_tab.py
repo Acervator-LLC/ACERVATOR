@@ -18,9 +18,6 @@ except ImportError:
 
 if _HAS_QT:
 
-    # ---------------------------------------------------------------
-    # Trade Charts Tab - live candlestick charts with multi-source data
-    # ---------------------------------------------------------------
     class TradeChartsTab(QWidget):
         """
         Second main tab showing live candlestick charts for all active bots.
@@ -34,7 +31,6 @@ if _HAS_QT:
             layout.setContentsMargins(8, 8, 8, 8)
             layout.setSpacing(8)
 
-            # Scroll area for all charts
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -63,15 +59,13 @@ if _HAS_QT:
         ) -> None:
             """Create or update chart panels for each bot.
 
-            v3.20.31 — Extractor bots are multi-target (their symbol
-            looks like ``*/USDC``); the chart fetch path can't render
-            a wildcard symbol and the exchange rejects ``*/USDC`` as
-            an unknown market. Filter Extractor statuses out before
-            the chart-creation loop. Same pattern as the Trading-
-            tab mode-filter at line 1672 (v3.20.5)."""
+            Extractor bots are multi-target: their symbol looks like
+            ``*/USDC``, which the chart fetch path cannot render and
+            which the exchange rejects as an unknown market. Extractor
+            statuses are filtered out before the chart-creation loop.
+            """
             from ..native_chart import ChartPanel
 
-            # Pre-filter: Extractors don't get charts (multi-target).
             bot_statuses = [s for s in bot_statuses if s.get("mode", "") != "extractor"]
 
             seen = set()
@@ -80,8 +74,7 @@ if _HAS_QT:
                 symbol = status.get("symbol", "")
                 if not bot_id or not symbol:
                     continue
-                # Defense in depth — even if mode-filter is bypassed,
-                # reject wildcard symbols at the per-status check.
+                # A non-extractor status can also carry a wildcard symbol.
                 if "*" in symbol:
                     continue
                 seen.add(bot_id)
@@ -90,14 +83,8 @@ if _HAS_QT:
                     panel = ChartPanel(symbol)
                     panel.chart.set_timeframe("1h")
                     panel.setMinimumHeight(300)
-                    # v3.16.25 — DO NOT cap maximumHeight here. The
-                    # v3.16.23 drag-to-resize handle inside the chart
-                    # grows its own minimumHeight; the panel container
-                    # MUST be allowed to grow with it so siblings get
-                    # pushed down by the layout instead of the chart
-                    # overflowing behind the next chart in the stack
-                    # (operator-reported 2026-05-05). The QScrollArea
-                    # wrapper handles overflow by scrolling.
+                    # No maximumHeight: the chart's own drag handle raises its
+                    # minimumHeight, and the panel has to grow with it.
 
                     idx = self._scroll_layout.count() - 1
                     self._scroll_layout.insertWidget(idx, panel)
@@ -119,37 +106,8 @@ if _HAS_QT:
                 state = status.get("state", "idle")
                 panel = info["panel"]
 
-                # Issue #46 -- THE PANEL FOLLOWS THE BOT'S SYMBOL.
-                # `info["symbol"]` used to be written in the CREATE
-                # branch alone. `fetch_chart_data` reads THAT field
-                # and hands it to the exchange, so a bot whose pair
-                # changed kept a chart titled with the new pair over
-                # candles fetched for the old one -- silently, and for
-                # as long as the panel lived.
-                #
-                # RE-POINTING THE FETCH IS NECESSARY AND NOT
-                # SUFFICIENT. Five things on this panel belong to the
-                # old pair, so all five move together:
-                #   - the stored symbol, which IS the fetch target;
-                #   - `last_fetch`, or the 30 s throttle holds the old
-                #     pair's candles on screen for a whole window
-                #     after the title already says the new pair. The
-                #     same re-arm `_on_tf_changed` does for a
-                #     timeframe change;
-                #   - the header text, which the relabel below rewrites
-                #     only when a price is known;
-                #   - the candles, which are the old market's prices.
-                #     CLEARING THEM IS WHAT KEEPS AN UNKNOWN NEW PAIR
-                #     HONEST: an empty answer calls `set_error` and
-                #     leaves the candles standing, which would revive
-                #     this exact defect on the next pair;
-                #   - the trade markers, which are anchored to the old
-                #     market's prices. The block below replaces them
-                #     only when the new pair HAS trades, so on a fresh
-                #     pair the old pair's markers stayed drawn.
-                # THE PANEL IS RESET, NOT REBUILT. Rebuilding it would
-                # throw away the timeframe and the indicator toggles
-                # the operator chose on this chart.
+                # `info["symbol"]` is the fetch target. Reset, not rebuilt:
+                # a rebuild loses the timeframe and the indicator toggles.
                 if info["symbol"] != symbol:
                     logger.info(
                         "Asset Charts: panel for bot %s follows %s -> %s",
@@ -159,10 +117,8 @@ if _HAS_QT:
                     )
                     info["symbol"] = symbol
                     info["last_fetch"] = 0
-                    # The public setter, which repaints. The relabel
-                    # below still reaches for `_symbol` directly; that
-                    # line is older than this branch and is not this
-                    # issue's to move.
+                    # The setter repaints. The relabel below writes
+                    # `_symbol` directly and does not.
                     panel.chart.symbol = symbol
                     panel.chart.set_candles([])
                     panel.chart.set_trade_history_markers([])
@@ -174,24 +130,14 @@ if _HAS_QT:
                         f"{symbol}  \u2022  ${price:.8f}  \u2022  {state.upper()}"
                     )
 
-                # --- Feed active positions to chart ---
-                # v3.20.4 — grid_bot position-marker emission removed
-                # (grid_bot deleted v3.16.0; no live bot type has a
-                # `grid` attribute). Tactical SCRUM/FOLD markers below
-                # cover ScrummingBot; Extractor markers are handled
-                # elsewhere via the watch-list rendering path.
+                # Extractor markers are drawn on the watch-list path,
+                # not here.
                 if bot_manager:
                     bot = bot_manager.get_bot(bot_id)
 
-                    # --- P1f tactical markers: historical SCRUM/FOLD fills
-                    # + active tranche floors. Operator directive 2026-04-24:
-                    # "It should be a tactical aid showing where soldiers are
-                    # on the battlefield and where they have been fighting."
-                    # (Session 26 v3.15.45+ caller-side wiring.)
                     if bot:
-                        # Historical trade markers from this bot's log. Filter
-                        # to THIS bot's symbol so overlapping-symbol bots
-                        # don't cross-pollute markers.
+                        # Filtered on symbol as well as bot: the log holds
+                        # trades from a pair this bot has already left.
                         try:
                             trades_for_bot = [
                                 t
@@ -202,53 +148,10 @@ if _HAS_QT:
                             if trades_for_bot:
                                 panel.chart.set_trade_history_markers(trades_for_bot)
                         except Exception as _tm_exc:
-                            # Non-blocking — marker render is cosmetic
                             logger.debug("chart trade markers skipped: %s", _tm_exc)
 
-                        # v3.16.24 Wave 3 — Target Balance anchor +
-                        # ceiling lines on the price pane. Convert
-                        # the bot's USD-denominated anchor / ceiling
-                        # into price-axis values via current holdings:
-                        #   anchor_price = anchor_usd / current_holdings
-                        # When holdings are zero (no position yet), we
-                        # skip the lines (price-axis projection is
-                        # undefined).
-                        #
-                        # Issue #106 — THE DRAWN LINE AND THE ENFORCED
-                        # LINE WERE DIFFERENT LINES. The ceiling read
-                        # `anchor_px * (1 + cap_pct/100)`, so it was
-                        # drawn from the operator's input value; the bot
-                        # enforces against `_target_balance`, which fold
-                        # surplus grows. On IMU (anchor $50.00, target
-                        # $63.53) the chart drew $50.50 where the bot
-                        # enforced $64.17 — a chart and a bot telling
-                        # the operator different stories about the same
-                        # number. The ceiling is the highest target this
-                        # cycle can reach, from the SAME
-                        # `cycle_growth_cap_usd` property the four
-                        # enforcement sites read.
-                        #
-                        # issue #133 unit 10 - THE CONSUMPTION IS
-                        # SUBTRACTED. `cycle_growth_cap_usd` returns the
-                        # WHOLE cycle's cap and its base is the
-                        # cycle-open target, so `target + cap` counts
-                        # growth already applied twice: once inside
-                        # `_target_balance` and once as unspent cap. The
-                        # reachable target is
-                        # `cycle_open_target + cap`, and
-                        # `cycle_open_target` is
-                        # `_target_balance - _fold_cycle_cap_consumed`,
-                        # the same subtraction the four enforcement
-                        # sites make. Measured on the live fleet
-                        # 2026-08-26: CAP/USD target $55.4148, consumed
-                        # $0.5000, cap $0.549148 - the line was drawn at
-                        # $55.9639 where $55.4639 is reachable. Three of
-                        # 38 bots carried a non-zero consumption.
-                        #
-                        # The ANCHOR line is unchanged and still comes
-                        # from `_anchor_target_balance`. Its badge says
-                        # "TB-Anchor", so it is the one line here that
-                        # is supposed to show the frozen input.
+                        # `cycle_growth_cap_usd` is the whole cycle's cap from
+                        # the cycle-open target: the consumption comes off first.
                         try:
                             anchor_usd = float(
                                 getattr(
@@ -284,11 +187,8 @@ if _HAS_QT:
                         except Exception as _tb_exc:
                             logger.debug("chart TB lines skipped: %s", _tb_exc)
 
-                        # v3.16.24 Wave 3 — Fire-armed glow. Mirrors the
-                        # bot's _last_gate_state (added v3.16.16) so the
-                        # chart shows a green/red right-edge glow when
-                        # auto-fire would fire RIGHT NOW. Same data the
-                        # fire button reads.
+                        # The right-edge glow: whether auto-fire would fire
+                        # now. The same `_last_gate_state` the fire button reads.
                         try:
                             gs = getattr(bot, "_last_gate_state", None) or {}
                             panel.chart.set_fire_armed_state(
@@ -300,20 +200,16 @@ if _HAS_QT:
                         except Exception as _fa_exc:
                             logger.debug("chart fire-armed glow skipped: %s", _fa_exc)
 
-                        # Tranche floor lines from current _main_lots.
-                        # MEM-171 discipline: bot will NOT fold below these.
+                        # The bot will not fold below these prices.
                         try:
                             lots = getattr(bot, "_main_lots", [])
                             if lots:
-                                # Dedup by floor price (avoid stacked labels)
                                 floors_by_price: dict = {}
                                 for lot in lots:
                                     fp = float(lot.get("initial_buy_price", 0) or 0)
                                     if fp <= 0:
                                         continue
                                     units = float(lot.get("units", 0) or 0)
-                                    # Label carries both price + total units
-                                    # at that floor for operator context.
                                     prior = floors_by_price.get(fp, 0.0)
                                     floors_by_price[fp] = prior + units
                                 floors = [
@@ -332,33 +228,8 @@ if _HAS_QT:
                     info["panel"].setParent(None)
                     info["panel"].deleteLater()
 
-            # 10.6 -- charts.13.001 and charts.13.002. Both read the
-            # state the NEXT caller uses: the widgets the operator
-            # really sees, and the symbol `fetch_chart_data` really
-            # hands the exchange. Neither reads `bot_statuses` back
-            # out as though the argument were the result.
-            #
-            # THE IMPORTS ARE FUNCTION-LOCAL, like every other emitter
-            # site in this repo. `tests/test_safe_url_scheme_policy.py`
-            # pins two `safe_urlopen` call sites in this file BY LINE
-            # NUMBER, and a module-level import here would move them
-            # for a reason that has nothing to do with either call.
-            #
-            # NO DURATION ON EITHER. Both are a dict walk and a layout
-            # walk with no bounded operation behind them, so a number
-            # would be fabricated (E8).
-            #
-            # BOTH CARRY `every=30.0`, AND THAT IS THE DIFFERENCE FROM
-            # THE HISTORY AND TRADING TABS. Those two are toggle pins.
-            # THIS TAB IS DRIVEN ON A CADENCE: `_setup_refresh_timer`
-            # starts a 2000 ms QTimer on `_refresh_dashboard`, which
-            # calls `update_charts` on every tick that has at least one
-            # bot. Un-throttled that is 1800 records an hour from each
-            # of these two lines, which would push the rest of the
-            # network out of `RETAIN_ROWS` inside one session. 30 s is
-            # the panel fetch window below, so one admitted record
-            # stands for one window and `count` says how many passes it
-            # covers. A FAILING check is never suppressed.
+            # Throttled to the 30 s fetch window: `_setup_refresh_timer`
+            # runs this on a 2000 ms tick, 1800 records an hour per line.
             _mounted = 0
             for _slot in range(self._scroll_layout.count()):
                 _item = self._scroll_layout.itemAt(_slot)
@@ -403,19 +274,15 @@ if _HAS_QT:
         def _on_tf_changed(self, bot_id: str, tf: str):
             """Re-arm this panel's fetch after a timeframe change.
 
-            10.6 -- charts.13.003. THE PIN FIRES WHETHER OR NOT THE
-            BOT STILL HAS A PANEL, which is the whole point: the guard
-            below is a silent no-op for a signal arriving from a panel
-            this tab has already dropped, and `last_fetch` then stays
-            where it was while the chart relabels itself. The operator
-            reads a new timeframe over candles the fetch never asked
-            for. `ChartPanel.timeframe` is the combo `fetch_chart_data`
-            reads, so the check is against the widget rather than `tf`
-            going straight back out.
-
-            NO DURATION: a dict write follows no bounded operation
-            (E8). NO `every=`: this one is a toggle, driven by the
-            operator moving the timeframe combo and by nothing else.
+            `charts.13.003` fires whether or not the bot still has a
+            panel: a signal from a panel this tab has already dropped
+            re-arms nothing while the chart relabels itself, so the
+            operator would read a new timeframe over candles the fetch
+            never asked for. `ChartPanel.timeframe` is the combo
+            `fetch_chart_data` reads, so the check is against the widget
+            rather than against `tf` going straight back out. It is a
+            toggle, driven by the operator moving the combo, so it
+            carries no rate limit.
             """
             if bot_id in self._chart_panels:
                 self._chart_panels[bot_id]["last_fetch"] = 0
@@ -446,28 +313,19 @@ if _HAS_QT:
         async def fetch_chart_data(self, exchange_connectors: dict = None) -> None:
             """Fetch OHLCV data for all chart panels.
 
-            10.6 -- charts.13.004 and charts.13.005, the two halves of
-            one question: is what the operator is looking at the answer
-            THIS pass produced?
+            The fetch has three outcomes and two of them leave the old
+            candles on the chart: neither `set_error` path clears
+            `CandlestickChart._candles`, so a panel not fed for hours
+            renders exactly like one fed a second ago. `charts.13.004`
+            reads the candle count back off the chart and carries the
+            source and the outcome beside the verdict, so a cached
+            answer is told apart from a fresh one.
 
-            THE FETCH HAS THREE OUTCOMES AND TWO OF THEM LEAVE THE OLD
-            CANDLES ON THE CHART. An empty answer calls
-            `set_error(source)`; a raise calls `set_error(str(exc))`.
-            Neither clears `CandlestickChart._candles`, so a panel that
-            has not been fed for hours renders exactly like one fed a
-            second ago. `13-004` reads the candle count back OFF THE
-            CHART and declares the count this fetch returned, and it
-            carries the SOURCE ATTRIBUTION and the outcome name beside
-            the verdict so a cached answer is distinguishable from a
-            fresh one.
-
-            `13-005` covers what `13-004` cannot see. Every path
+            `charts.13.005` covers what that cannot see. Every path
             through the loop body sets `last_fetch`, so a panel that
-            stops refreshing is a panel the loop SKIPPED -- and a
-            skipped panel emits nothing, which reads exactly like a
-            healthy quiet one. `13-005` walks `last_fetch` back out of
-            the panel dict instead and counts the panels no pass has
-            touched.
+            stops refreshing is one the loop skipped, and a skipped
+            panel emits nothing at all. It walks `last_fetch` back out
+            of the panel dict and counts the panels no pass has touched.
             """
             import contextlib
             import time as _time
@@ -480,15 +338,8 @@ if _HAS_QT:
                     continue
 
                 symbol = info["symbol"]
-                # v3.20.31 — defense in depth: if a wildcard symbol
-                # ever lands in the panels dict (it shouldn't, since
-                # update_charts filters Extractors), don't try to
-                # fetch it from the exchange — coinbase rejects
-                # ``*/USDC`` with "does not have market symbol".
-                #
-                # 10.6 -- THIS IS THE ONE PATH OUT OF THE LOOP BODY
-                # THAT LEAVES `last_fetch` UNTOUCHED, which is why
-                # `13-005` exists at the bottom of this method.
+                # The one path out of this loop body that leaves
+                # `last_fetch` untouched, so such a panel is never refetched.
                 if "*" in symbol:
                     continue
                 tf = info["panel"].timeframe
@@ -498,13 +349,8 @@ if _HAS_QT:
                     eid = info.get("exchange_id", "")
                     exchange = exchange_connectors.get(eid)
 
-                # 10.6 -- THE DURATION BRACKET OPENS HERE AND CLOSES ON
-                # THE LINE AFTER THE AWAIT. It spans the network fetch
-                # and nothing else: not the Candle conversion, not
-                # `set_candles`, and not the emitter's own bookkeeping.
-                # The second reading, in the handler, is taken only if
-                # the await itself raised -- if it returned and a later
-                # line raised, the measurement already taken stands.
+                # The bracket spans the await and nothing else. The
+                # handler takes a second reading only when the await raised.
                 _t0 = _time.monotonic()
                 _elapsed = None
                 _outcome = "raised"
@@ -545,23 +391,8 @@ if _HAS_QT:
                     _src = type(exc).__name__
                     info["last_fetch"] = now
 
-                # 10.6 -- charts.13.004. `_shown` is the chart's own
-                # candle list, read after the widget was written; the
-                # declared expectation is what THIS fetch returned. On
-                # the empty and raised paths the two differ by exactly
-                # the candles left standing from an earlier pass, which
-                # is the failure the operator cannot see.
-                #
-                # NO `every=` HERE, DELIBERATELY. The synchroniser keys
-                # on (name, site) plus whatever `instance` the call
-                # site declares, and this single site serves every
-                # panel, so a throttle declaring no instance would
-                # admit one panel per window and drop the rest --
-                # hiding which panel went stale, which is the only
-                # thing this pin is for. It stays un-throttled rather
-                # than instanced because it is bounded already: the
-                # 30 s check at the top of the loop lets each panel
-                # past at most once per window.
+                # Un-throttled: one site serves every panel, so a window
+                # would admit one and drop the rest. The 30 s check bounds it.
                 _shown = len(getattr(info["panel"].chart, "_candles", None) or [])
                 with contextlib.suppress(Exception):
                     from src.core.signal_contract import emit as _ch_emit
@@ -581,16 +412,8 @@ if _HAS_QT:
                         },
                     )
 
-            # 10.6 -- charts.13.005. A panel is STALE when no pass has
-            # written its `last_fetch` for three throttle windows, and
-            # NEVER-FETCHED when no pass ever has. Three windows so a
-            # single throttled pass can never be counted; the age is
-            # reported beside the verdict rather than left to be
-            # inferred, because "the chart is old" and "the chart
-            # stopped" are different faults.
-            #
-            # NO DURATION: an invariant follows no operation (E8), and
-            # this one is a dict walk.
+            # Three throttle windows, so a single throttled pass can never
+            # count as stale.
             _stale_after = 90.0
             _stale = 0
             _never = 0
@@ -646,9 +469,6 @@ if _HAS_QT:
             candles directly via `panel.chart.set_candles`. No fetch,
             no network — Nuclear feeds bypass ChartDataFetcher because
             the data is synthetic-volatile per scenario.
-
-            sadp: R47 Board-directive (live Nuclear), R44 (reuses
-            existing ChartPanel/set_candles — no new chart machinery).
             """
             from ..native_chart import ChartPanel, Candle as NativeCandle
 
@@ -669,7 +489,6 @@ if _HAS_QT:
 
             info = self._chart_panels[bot_id]
             panel = info["panel"]
-            # Convert to native-chart Candle dataclass (dict → Candle ok too)
             native_candles = []
             for c in candles:
                 if hasattr(c, "open"):
@@ -683,7 +502,7 @@ if _HAS_QT:
                             volume=float(getattr(c, "volume", 0)),
                         )
                     )
-                else:  # dict
+                else:
                     native_candles.append(
                         NativeCandle(
                             time=int(c.get("time", 0)),
