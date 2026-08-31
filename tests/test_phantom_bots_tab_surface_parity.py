@@ -1988,27 +1988,38 @@ def test_the_surface_does_not_follow_a_value_moved_in_the_shipped_tab(monkeypatc
 
     A surface that read the shipped tab would follow it, and the whole
     comparison above would be one side read twice. The shipped tab's
-    tokens are moved and the surface must not move with them.
+    tokens are moved. That the shipped tab followed is proved by a
+    render, because a moved colour must move a pixel. That the surface
+    did not follow is proved by reading the surface's own values, which
+    are not a live Qt object.
     """
     app()
     from src.gui.live_settings import phantom_bots_tab as shipped
 
     first = shipped.ds
     one = BY_NAME["happy"]
-    before = qt_trace(drive_old(one))
+    before_picture = render_offscreen(widget_painted_by_the_tab(one), PIXEL_SIZE)
+    before_surface = surface_trace(drive_new(one))
     monkeypatch.setattr(shipped, "ds", MovedTokens)
-    moved = qt_trace(drive_old(one))
-    assert MovedTokens.CARD_METRIC_LABEL in moved["info_label"][1]
-    assert MovedTokens.SUCCESS in moved["summary_rows"][0][2]
-    assert MovedTokens.CARD_METRIC_LABEL not in before["info_label"][1]
-    new = surface_trace(drive_new(one))
-    assert MovedTokens.CARD_METRIC_LABEL not in new["info_label"][1]
-    assert MovedTokens.SUCCESS not in new["summary_rows"][0][2]
-    assert new["info_label"] == before["info_label"]
-    assert new["summary_rows"] == before["summary_rows"]
+    assert_pictures_differ(
+        old_side=before_picture,
+        new_side=render_offscreen(widget_painted_by_the_tab(one), PIXEL_SIZE),
+        note="the shipped tab before and after its token table moved",
+    )
+    after_surface = surface_trace(drive_new(one))
+    assert after_surface == before_surface
+    assert after_surface["info_label"][1] == surface.INFO_STYLE_FORMAT.format(
+        color_hex=surface.NOTE_COLOR
+    )
+    assert MovedTokens.CARD_METRIC_LABEL != surface.NOTE_COLOR
+    assert MovedTokens.SUCCESS != surface.ON_COLOR
     monkeypatch.undo()
     assert shipped.ds is first
-    assert qt_trace(drive_old(one))["info_label"] == before["info_label"]
+    assert_pictures_match(
+        old_side=render_offscreen(widget_painted_by_the_tab(one), PIXEL_SIZE),
+        new_side=before_picture,
+        note="the shipped tab after its token table was put back",
+    )
 
 
 def test_the_surface_does_not_follow_a_tab_that_builds_nothing(monkeypatch):
@@ -3227,12 +3238,17 @@ def test_the_swapped_token_table_is_watched_during_the_drive(monkeypatch):
     from src.gui.live_settings import phantom_bots_tab as shipped
 
     first = shipped.ds
+    plain = render_offscreen(widget_painted_by_the_tab(BY_NAME["happy"]), PIXEL_SIZE)
     monkeypatch.setattr(shipped, "ds", MovedTokens)
     during = shipped.ds
-    moved = qt_trace(drive_old(BY_NAME["happy"]))
+    moved = render_offscreen(widget_painted_by_the_tab(BY_NAME["happy"]), PIXEL_SIZE)
     assert during is MovedTokens
     assert shipped.ds is MovedTokens, "the swap did not hold for the whole drive"
-    assert MovedTokens.SUCCESS in moved["summary_rows"][0][2]
+    assert_pictures_differ(
+        old_side=plain,
+        new_side=moved,
+        note="the shipped tab painted while its token table was swapped",
+    )
     monkeypatch.undo()
     assert shipped.ds is first
 
@@ -3249,8 +3265,14 @@ def test_the_swapped_token_table_is_put_back_after_a_refusal(monkeypatch):
     assert shipped.ds is MovedTokens
     monkeypatch.undo()
     assert shipped.ds is first
-    assert qt_trace(drive_old(BY_NAME["happy"]))["summary_rows"][0][2] == (
-        surface.FLAG_STYLE_FORMAT.format(color_hex=surface.ON_COLOR)
+    assert_pictures_match(
+        old_side=render_offscreen(
+            widget_painted_by_the_tab(BY_NAME["happy"]), PIXEL_SIZE
+        ),
+        new_side=render_offscreen(
+            widget_painted_by_the_model(model_payload(BY_NAME["happy"])), PIXEL_SIZE
+        ),
+        note="the two sides after the swap was put back following a refusal",
     )
 
 
