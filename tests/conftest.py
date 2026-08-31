@@ -22,6 +22,7 @@ now resolves through ``ACERVATOR_SIM_STATE_ROOT``, set below.
 
 from __future__ import annotations
 
+import faulthandler
 import logging
 import os
 import sys
@@ -950,6 +951,85 @@ def _assert_no_widget_leak(request: pytest.FixtureRequest) -> Iterator[None]:
 #                                                                              #
 # `lane_marks` is the one definition. `tests/test_ci_fast_lane_packages.py`    #
 # reads the same function to decide which files the fast lane collects.        #
+
+
+# ── A crashed worker says what it was doing ──────────────────────────
+#
+# `pytest -n auto` reports a dead worker as one line -- "worker 'gw0'
+# crashed while running <nodeid>" -- and nothing else. The worker's own
+# stderr does not reach the master's log, so a SIGSEGV or a
+# std::terminate arrives as silence. Measured on CI runs 33338069499 and
+# 33341814352: both named the node id and printed no traceback.
+#
+# Each process holds one breadcrumb file. `logstart` writes the node id
+# into it and re-arms faulthandler to dump there; `logfinish` empties it.
+# A file still holding a node id at the end of the run names the test the
+# process died inside, and carries the native traceback after it.
+#
+# faulthandler is re-armed per test, not once per session, because
+# another test re-points it: tests/test_faulthandler_log_redirect.py
+# drives the real `main._setup_faulthandler` and restores it to the
+# handle main opened, not to this one.
+_BREADCRUMB_ENV = "ACERVATOR_TEST_BREADCRUMBS"
+os.environ.setdefault(
+    _BREADCRUMB_ENV, tempfile.mkdtemp(prefix="acervator-test-breadcrumb-")
+)
+_BREADCRUMB_DIR = Path(os.environ[_BREADCRUMB_ENV])
+_BREADCRUMB_HANDLE: list = []
+
+
+def _breadcrumb_write(text: str) -> None:
+    """Replace the breadcrumb with `text`, or empty it when `text` is empty."""
+    if not _BREADCRUMB_HANDLE:
+        return
+    handle = _BREADCRUMB_HANDLE[0]
+    try:
+        handle.seek(0)
+        handle.truncate()
+        if text:
+            handle.write(text + "\n")
+        handle.flush()
+    except (ValueError, OSError):  # pragma: no cover - handle already closed
+        return
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    worker = getattr(config, "workerinput", {}).get("workerid", "main")
+    _BREADCRUMB_DIR.mkdir(parents=True, exist_ok=True)
+    path = _BREADCRUMB_DIR / ("%s.txt" % worker)
+    try:
+        _BREADCRUMB_HANDLE.append(path.open("w", encoding="utf-8", newline="\n"))
+    except OSError:  # pragma: no cover - no writable temp dir
+        return
+
+
+def pytest_runtest_logstart(nodeid: str) -> None:
+    _breadcrumb_write(nodeid)
+    if _BREADCRUMB_HANDLE:
+        try:
+            faulthandler.enable(file=_BREADCRUMB_HANDLE[0], all_threads=True)
+        except (ValueError, OSError, RuntimeError):  # pragma: no cover
+            return
+
+
+def pytest_runtest_logfinish(nodeid: str) -> None:
+    _breadcrumb_write("")
+
+
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    """Print the breadcrumb of every process that died mid-test."""
+    if hasattr(session.config, "workerinput"):
+        return
+    died = []
+    for path in sorted(_BREADCRUMB_DIR.glob("*.txt")):
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except OSError:  # pragma: no cover
+            continue
+        if text:
+            died.append("%s died inside:\n%s" % (path.stem, text))
+    if died:
+        session.config.get_terminal_writer().line("\n" + "\n\n".join(died))
 
 
 def pytest_collection_modifyitems(items):
