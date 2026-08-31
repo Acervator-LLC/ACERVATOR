@@ -391,7 +391,19 @@ class StatusLogModel:
         return batch
 
 
-PANE_MODEL = StatusLogModel()
+PANE_MODEL: Optional[StatusLogModel] = None
+
+
+def pane_model() -> StatusLogModel:
+    """The one log the bridge keeps between calls.
+
+    Built on the first request, never at import: the constructor
+    stamps ``last_render_time`` from the clock.
+    """
+    global PANE_MODEL
+    if PANE_MODEL is None:
+        PANE_MODEL = StatusLogModel()
+    return PANE_MODEL
 
 
 def build_view_model(
@@ -458,7 +470,7 @@ def view_model(params: dict) -> dict:
     """
     paused = params.get("paused")
     return build_view_model(
-        PANE_MODEL,
+        pane_model(),
         params.get("messages") or [],
         paused=None if paused is None else bool(paused),
         toggle=bool(params.get("toggle", False)),
