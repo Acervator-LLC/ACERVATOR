@@ -19,6 +19,7 @@ import socket
 import subprocess
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -2185,13 +2186,14 @@ def strftime_patterns(spec):
 def test_the_alert_stamp_uses_the_format_the_surface_declares():
     """The alert table formatted its clock reading with another pattern.
 
-    Log records carry the same pattern, so the two alert rows are read as
-    the difference between a drive with alerts and one without.
+    Anything else in the process that formats a clock reading during the
+    drive is cancelled out by taking the difference between a drive with
+    alerts and one without, so the two alert rows are what is left.
     """
     with_alerts = strftime_patterns(BY_NAME["bridge_alerts"])
     without = strftime_patterns(BY_NAME["bridge_running"])
-    assert set(with_alerts) == {surface.ALERT_TIME_FORMAT}, set(with_alerts)
-    assert len(with_alerts) - len(without) == 2, (with_alerts, without)
+    added = Counter(with_alerts) - Counter(without)
+    assert added == Counter({surface.ALERT_TIME_FORMAT: 2}), (with_alerts, without)
 
 
 def test_the_activity_log_stamp_uses_the_format_the_surface_declares():
