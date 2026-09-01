@@ -1653,6 +1653,48 @@ def test_the_table_settings_are_compared_as_values():
     )
 
 
+def test_the_table_reading_rules_are_compared_as_values():
+    """A grid line, an elide or a selection rule drifted between the two sides."""
+    from PySide6.QtCore import Qt
+
+    app()
+    tab = old_picture_tab("happy")
+    for table in (tab._rules_table, tab._history_table):
+        assert table.showGrid() is surface.SHOW_GRID
+        assert table.wordWrap() is surface.TABLE_WORD_WRAP
+        assert table.textElideMode().name == surface.CELL_ELIDE
+        assert table.verticalScrollBarPolicy().name == surface.SCROLL_BAR_POLICY
+        assert table.horizontalScrollBarPolicy().name == surface.SCROLL_BAR_POLICY
+        assert table.selectionMode().name == surface.SELECTION_MODE
+        assert table.selectionBehavior().name == surface.SELECTION_BEHAVIOR
+        assert table.focusPolicy().name == surface.FOCUS_POLICY
+        assert int(table.focusPolicy().value) == surface.FOCUS_POLICY_VALUE
+        header = table.horizontalHeader()
+        assert int(header.defaultAlignment().value) == surface.HEADER_ALIGNMENT_VALUE
+    assert Qt.FocusPolicy(surface.FOCUS_POLICY_VALUE) == Qt.StrongFocus
+
+
+def test_the_label_reading_rules_are_compared_as_values():
+    """A label wrap, a selection rule or a form gap drifted between the sides."""
+    from PySide6.QtCore import Qt
+
+    app()
+    tab = old_picture_tab("happy")
+    selectable = (
+        Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+    ) & tab._lbl_status.textInteractionFlags()
+    assert bool(selectable) is surface.TEXT_SELECTABLE
+    for shown in (tab._lbl_status, tab._lbl_unread, tab._sms_status, tab._tg_status):
+        assert shown.wordWrap() is surface.LABEL_WORD_WRAP
+        assert shown.textFormat().name == surface.TEXT_FORMAT
+        assert int(shown.alignment().value) == surface.LABEL_ALIGNMENT_VALUE
+    assert Qt.TextFormat[surface.SAFE_TEXT_FORMAT] == Qt.PlainText
+    assert tab._lbl_status.parent().layout().spacing() == surface.PANE_SPACING
+    form = tab._tg_token.parent().layout()
+    assert form.horizontalSpacing() == form.verticalSpacing() == surface.FORM_SPACING
+    assert int(form.labelAlignment().value) == surface.FORM_LABEL_ALIGNMENT_VALUE
+
+
 def test_the_layout_numbers_are_compared_as_values():
     """A margin or a spacing drifted between the two sides."""
     app()
@@ -1731,6 +1773,13 @@ BLIND_TO_THE_PICTURE = {
     "header_resize_mode": "test_the_table_settings_are_compared_as_values",
     "vertical_header_visible": "test_the_table_settings_are_compared_as_values",
     "alternating_row_colors": "test_the_table_settings_are_compared_as_values",
+    "cell_elide": "test_the_table_reading_rules_are_compared_as_values",
+    "scroll_bar_policy": "test_the_table_reading_rules_are_compared_as_values",
+    "selection_mode": "test_the_table_reading_rules_are_compared_as_values",
+    "selection_behavior": "test_the_table_reading_rules_are_compared_as_values",
+    "focus_policy": "test_the_table_reading_rules_are_compared_as_values",
+    "text_format": "test_the_label_reading_rules_are_compared_as_values",
+    "text_selectable": "test_the_label_reading_rules_are_compared_as_values",
     "content_margins": "test_the_layout_numbers_are_compared_as_values",
     "content_spacing": "test_the_layout_numbers_are_compared_as_values",
     "button_enabled": (
@@ -1751,7 +1800,7 @@ BLIND_TO_THE_PICTURE = {
 def test_everything_a_picture_cannot_see_is_named_and_covered():
     """A value no render can report was left to the render to report."""
     app()
-    assert len(BLIND_TO_THE_PICTURE) == 20
+    assert len(BLIND_TO_THE_PICTURE) == 27
     for covered_by in BLIND_TO_THE_PICTURE.values():
         assert covered_by in globals(), covered_by
         assert callable(globals()[covered_by]), covered_by
@@ -2284,6 +2333,8 @@ PAYLOAD_KEY_SOURCES = {
     "content_margins": ("CONTENT_MARGINS",),
     "content_spacing": ("CONTENT_SPACING",),
     "pane_margins": ("PANE_MARGINS",),
+    "pane_spacing": ("PANE_SPACING",),
+    "form_spacing": ("FORM_SPACING",),
     "splitter_orientation": ("SPLITTER_ORIENTATION",),
     "splitter_orientation_value": ("SPLITTER_ORIENTATION_VALUE",),
     "splitter_handle_width": ("SPLITTER_HANDLE_WIDTH",),
@@ -2317,12 +2368,30 @@ PAYLOAD_KEY_SOURCES = {
     "header_resize_value": ("HEADER_RESIZE_VALUE",),
     "alternating_row_colors": ("ALTERNATING_ROW_COLORS",),
     "vertical_header_visible": ("VERTICAL_HEADER_VISIBLE",),
+    "show_grid": ("SHOW_GRID",),
+    "table_word_wrap": ("TABLE_WORD_WRAP",),
+    "cell_elide": ("CELL_ELIDE",),
+    "scroll_bar_policy": ("SCROLL_BAR_POLICY",),
+    "selection_mode": ("SELECTION_MODE",),
+    "selection_behavior": ("SELECTION_BEHAVIOR",),
+    "focus_policy": ("FOCUS_POLICY",),
+    "focus_policy_value": ("FOCUS_POLICY_VALUE",),
     "edit_triggers_default": ("EDIT_TRIGGERS_DEFAULT",),
     "edit_triggers_default_value": ("EDIT_TRIGGERS_DEFAULT_VALUE",),
     "edit_triggers_none": ("EDIT_TRIGGERS_NONE",),
     "edit_triggers_none_value": ("EDIT_TRIGGERS_NONE_VALUE",),
     "alignment": ("ALIGNMENT",),
     "alignment_value": ("ALIGNMENT_VALUE",),
+    "header_alignment": ("HEADER_ALIGNMENT",),
+    "header_alignment_value": ("HEADER_ALIGNMENT_VALUE",),
+    "form_label_alignment": ("FORM_LABEL_ALIGNMENT",),
+    "form_label_alignment_value": ("FORM_LABEL_ALIGNMENT_VALUE",),
+    "label_alignment": ("LABEL_ALIGNMENT",),
+    "label_alignment_value": ("LABEL_ALIGNMENT_VALUE",),
+    "text_format": ("TEXT_FORMAT",),
+    "safe_text_format": ("SAFE_TEXT_FORMAT",),
+    "text_selectable": ("TEXT_SELECTABLE",),
+    "label_word_wrap": ("LABEL_WORD_WRAP",),
     "styles": (
         "STATUS_STYLE",
         "UNREAD_WARNING_STYLE",
@@ -2441,7 +2510,7 @@ def test_no_snapshot_key_exists_that_no_value_backs():
     model = surface.AlertsTabModel(make_manager("happy"))
     payload = surface.build_view_model(model, action="refresh")
     assert set(payload) == set(PAYLOAD_KEY_SOURCES)
-    assert len(payload) == 84
+    assert len(payload) == 104
     for key, sources in PAYLOAD_KEY_SOURCES.items():
         for name in sources:
             if name.startswith("model."):

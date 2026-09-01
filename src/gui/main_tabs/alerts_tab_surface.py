@@ -38,6 +38,8 @@ ACCESSIBLE_NAME = "Notifications and Alerts tab"
 CONTENT_MARGINS = (8, 8, 8, 8)
 CONTENT_SPACING = 8
 PANE_MARGINS = (0, 0, 0, 0)
+PANE_SPACING = 6
+FORM_SPACING = 6
 
 SPLITTER_ORIENTATION = "Horizontal"
 SPLITTER_ORIENTATION_VALUE = 1
@@ -79,6 +81,13 @@ UNREAD_START_TEXT = "Unread: 0"
 SMS_STATUS_TEXT = "Not configured"
 TELEGRAM_STATUS_TEXT = ""
 EMPTY_STYLE = ""
+
+TEXT_FORMAT = "AutoText"
+SAFE_TEXT_FORMAT = "PlainText"
+TEXT_SELECTABLE = False
+LABEL_WORD_WRAP = False
+LABEL_ALIGNMENT = "AlignLeft|AlignVCenter"
+LABEL_ALIGNMENT_VALUE = 129
 
 STATUS_STYLE = f"color: {ds.PRIMARY}; font-size: 14px; font-weight: bold;"
 UNREAD_WARNING_STYLE = f"color: {ds.WARNING}; font-size: 12px;"
@@ -124,6 +133,14 @@ HEADER_RESIZE_MODE = "Stretch"
 HEADER_RESIZE_VALUE = 1
 ALTERNATING_ROW_COLORS = True
 VERTICAL_HEADER_VISIBLE = False
+SHOW_GRID = True
+TABLE_WORD_WRAP = True
+CELL_ELIDE = "ElideRight"
+SCROLL_BAR_POLICY = "ScrollBarAsNeeded"
+SELECTION_MODE = "ExtendedSelection"
+SELECTION_BEHAVIOR = "SelectItems"
+FOCUS_POLICY = "StrongFocus"
+FOCUS_POLICY_VALUE = 11
 
 EDIT_TRIGGERS_DEFAULT = ("DoubleClicked", "EditKeyPressed", "AnyKeyPressed")
 EDIT_TRIGGERS_DEFAULT_VALUE = 26
@@ -132,6 +149,10 @@ EDIT_TRIGGERS_NONE_VALUE = 0
 
 ALIGNMENT = "AlignCenter"
 ALIGNMENT_VALUE = 132
+HEADER_ALIGNMENT = ALIGNMENT
+HEADER_ALIGNMENT_VALUE = ALIGNMENT_VALUE
+FORM_LABEL_ALIGNMENT = "AlignLeft"
+FORM_LABEL_ALIGNMENT_VALUE = 1
 
 NO_COLOR = ""
 NO_ALIGNMENT = ""
@@ -820,6 +841,8 @@ def build_view_model(
         "content_margins": list(CONTENT_MARGINS),
         "content_spacing": CONTENT_SPACING,
         "pane_margins": list(PANE_MARGINS),
+        "pane_spacing": PANE_SPACING,
+        "form_spacing": FORM_SPACING,
         "splitter_orientation": SPLITTER_ORIENTATION,
         "splitter_orientation_value": SPLITTER_ORIENTATION_VALUE,
         "splitter_handle_width": SPLITTER_HANDLE_WIDTH,
@@ -844,12 +867,30 @@ def build_view_model(
         "header_resize_value": HEADER_RESIZE_VALUE,
         "alternating_row_colors": ALTERNATING_ROW_COLORS,
         "vertical_header_visible": VERTICAL_HEADER_VISIBLE,
+        "show_grid": SHOW_GRID,
+        "table_word_wrap": TABLE_WORD_WRAP,
+        "cell_elide": CELL_ELIDE,
+        "scroll_bar_policy": SCROLL_BAR_POLICY,
+        "selection_mode": SELECTION_MODE,
+        "selection_behavior": SELECTION_BEHAVIOR,
+        "focus_policy": FOCUS_POLICY,
+        "focus_policy_value": FOCUS_POLICY_VALUE,
         "edit_triggers_default": list(EDIT_TRIGGERS_DEFAULT),
         "edit_triggers_default_value": EDIT_TRIGGERS_DEFAULT_VALUE,
         "edit_triggers_none": list(EDIT_TRIGGERS_NONE),
         "edit_triggers_none_value": EDIT_TRIGGERS_NONE_VALUE,
         "alignment": ALIGNMENT,
         "alignment_value": ALIGNMENT_VALUE,
+        "header_alignment": HEADER_ALIGNMENT,
+        "header_alignment_value": HEADER_ALIGNMENT_VALUE,
+        "form_label_alignment": FORM_LABEL_ALIGNMENT,
+        "form_label_alignment_value": FORM_LABEL_ALIGNMENT_VALUE,
+        "label_alignment": LABEL_ALIGNMENT,
+        "label_alignment_value": LABEL_ALIGNMENT_VALUE,
+        "text_format": TEXT_FORMAT,
+        "safe_text_format": SAFE_TEXT_FORMAT,
+        "text_selectable": TEXT_SELECTABLE,
+        "label_word_wrap": LABEL_WORD_WRAP,
         "styles": {
             "status": STATUS_STYLE,
             "unread_warning": UNREAD_WARNING_STYLE,
