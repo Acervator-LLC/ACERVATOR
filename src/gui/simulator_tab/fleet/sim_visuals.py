@@ -1,24 +1,20 @@
 """sim_visuals.py — three Qt widgets that render sim state per tick.
 
-v3.24.3 delivers three operator-directed features from the
-scaffolding scan:
-    * GateLightsCell    (SC9-10) — per-bot double-stacked LED grid
-                                   for scrum/fold gate arm state.
-    * SimPriceVwapChart (SC7a-d) — upper half of the Indicator
-                                   Voting Panel bisection: stacked
-                                   per-bot price+VWAP polylines,
-                                   redrawn on each visual refresh
-                                   tick.
-    * PerBotVotingReadout (SC7)  — lower half of the bisection: per-
-                                   bot indicator voting summary
-                                   pulled from bot._last_summary.
+Three operator-directed features from the scaffolding scan:
+    * GateLightsCell      — per-bot double-stacked LED grid for
+                            scrum/fold gate arm state.
+    * SimPriceVwapChart   — upper half of the Indicator Voting
+                            Panel bisection: stacked per-bot
+                            price+VWAP polylines, redrawn on each
+                            visual refresh tick.
+    * PerBotVotingReadout — lower half of the bisection: per-bot
+                            indicator voting summary pulled from
+                            bot._last_summary.
 
 All three are pure Qt widgets — no direct exchange coupling, no
 async. The controller drives them via a visual-refresh callback
-that fires every N ticks (v3.24.3 controller default N=100 → ~200
-UI updates across a 19,680-tick replay).
-
-sadp: R28 SSS + R70 RCN
+that fires every N ticks (controller default N=100 → ~200 UI
+updates across a 19,680-tick replay).
 """
 
 from __future__ import annotations
@@ -52,7 +48,7 @@ except ImportError:  # pragma: no cover - import guard
 def _show_expanded(widget, title: str) -> None:
     """Open ``widget`` in a modeless dialog sized to the display.
 
-    Operator directive 2026-08-04: "an expand button so that the full
+    Operator directive: "an expand button so that the full
     chart can be viewed at maximum display width and half of the maximum
     height with the zoomed chart expanding into and locked to the center
     of the display."
@@ -71,17 +67,8 @@ def _show_expanded(widget, title: str) -> None:
     from PySide6.QtCore import Qt as _Qt
     from PySide6.QtWidgets import QDialog, QVBoxLayout as _VB
 
-    # v3.24.59 (C28 / SN-10) — RE-ENTRY GUARD, before anything else.
-    #
-    # `prior_parent` below is read from `widget.parentWidget()`. With a
-    # dialog already open that is the DIALOG's container, not the panel,
-    # so a second Expand records the dialog as "home" and hands the
-    # chart back into a widget the operator cannot see. The chart
-    # vanishes from the panel with no way to retrieve it.
-    #
-    # Raise the existing dialog instead of opening a second one: the
-    # operator clicked Expand because they want to see the chart, and
-    # silently doing nothing reads as a broken button.
+    # A second Expand would read the open dialog as the widget's home
+    # and strand the chart there. Raise the open one instead.
     _existing = getattr(widget, "_acv_expand_dlg", None)
     if _existing is not None:
         try:
@@ -89,9 +76,8 @@ def _show_expanded(widget, title: str) -> None:
             _existing.activateWindow()
             return
         except Exception as _stale_exc:
-            # The C++ dialog was destroyed while the Python handle
-            # survived (WA_DeleteOnClose does exactly that). Drop the
-            # stale handle and open a fresh dialog.
+            # WA_DeleteOnClose destroys the C++ dialog while the Python
+            # handle survives.
             logger.debug("expand: stale dialog handle discarded (%s)", _stale_exc)
             try:
                 delattr(widget, "_acv_expand_dlg")
@@ -102,8 +88,8 @@ def _show_expanded(widget, title: str) -> None:
     dlg = QDialog(parent)
     dlg.setWindowTitle(title)
     dlg.setStyleSheet("QDialog{background:#0a0a14;}")
-    # SN-36 — modeless and parented to the window, so without this the
-    # parent chain keeps every dialog alive and each Expand leaks one.
+    # Modeless and parented to the window: without this the parent
+    # chain keeps every dialog alive.
     dlg.setAttribute(_Qt.WA_DeleteOnClose, True)
 
     lay = _VB(dlg)
@@ -130,21 +116,17 @@ def _show_expanded(widget, title: str) -> None:
             avail.center().y() - avail.height() // 4,
         )
 
-    # Claim the widget for this dialog. Set AFTER the guard above, so a
-    # re-entrant call sees it and a first call does not trip on itself.
+    # Set after the guard, so a re-entrant call sees it and a first does not.
     widget._acv_expand_dlg = dlg
 
     def _restore() -> None:
-        # C28 — release the claim first, so Expand works again even if
-        # the reparent below raises. A guard that outlives its dialog
-        # would be a worse defect than the one being fixed: the button
-        # would go permanently dead.
+        # Release the claim first, so Expand still works if the reparent
+        # below raises.
         try:
             if getattr(widget, "_acv_expand_dlg", None) is dlg:
                 delattr(widget, "_acv_expand_dlg")
         except AttributeError:
             pass
-        # Hand the widget back to the panel it came from.
         if prior_parent is not None:
             lay.removeWidget(widget)
             widget.setMinimumHeight(prior_min_h)
@@ -158,13 +140,7 @@ def _show_expanded(widget, title: str) -> None:
     dlg.show()
 
 
-# --------------------------------------------------------------------- #
-# GateLightsCell — compact double-stacked LED grid                       #
-# --------------------------------------------------------------------- #
-
-# The gate labels, the blocker map and the light-state rules live in
-# src/trading/gate_vocabulary.py, which is Qt-free. The History table
-# renders the same nineteen lights from the same module.
+# The History table renders the same nineteen lights from this module.
 from src.trading.gate_vocabulary import (  # noqa: E402
     _GATE_ORDER_FOLD,
     _GATE_ORDER_SCRUM,
@@ -177,14 +153,14 @@ if _HAS_QT:
     class GateStatusPanel(QWidget):
         """Every bot's gate row, in one scrollable pane.
 
-        Operator task 2026-08-08 (screenshot area 2): "Migrate the gate
+        Operator task (screenshot area 2): "Migrate the gate
         status display to where the Simulator Performance Log currently
         lives."
 
         It was column 3 of the fleet table, one `GateLightsCell` per
         row. A ten-LED labelled row inside a table cell is bounded by
         the column width, which is why the labels stayed cramped even
-        after v3.24.18 measured the pitch from the widest label. Given
+        after the pitch was measured from the widest label. Given
         its own pane the row draws at its natural width.
 
         This is a MOVE, not a rewrite. The same `GateLightsCell` paints
@@ -258,7 +234,7 @@ if _HAS_QT:
     class GateLightsCell(QWidget):
         """One LINEAR labelled row of trading gates.
 
-        Operator directive 2026-08-03: "Want the bot logic gates in a
+        Operator directive: "Want the bot logic gates in a
         linear row and to be labeled. Want them illuminate in time
         with the tick / master clock and at each candle that has an
         expected trade action to be validated."
@@ -280,7 +256,7 @@ if _HAS_QT:
         _GAP = 4
         _LABEL_H = 10
         _PAD = 2
-        _GROUP_GAP = 12  # visual break between scrum and fold banks
+        _GROUP_GAP = 12  # between the scrum and fold banks
         _FONT_PT = 6
 
         def __init__(self, parent: Optional[QWidget] = None) -> None:
@@ -293,11 +269,8 @@ if _HAS_QT:
             self._fold_ls = False
             self._evaluated = False
 
-            # v3.24.18 — pitch is MEASURED from the widest label, not
-            # derived from the LED diameter. The prior code drew each
-            # label into an (LED + 6) = 15px box; "TRNCH" needs ~28px
-            # at 6pt, so labels overlapped their neighbours and the
-            # row was unreadable — the operator's "squished" report.
+            # Pitch comes from the widest label, not the LED: a five-letter
+            # label needs ~28px at 6pt and a 15px box overlapped its neighbour.
             f = self.font()
             f.setPointSize(self._FONT_PT)
             fm = QFontMetrics(f)
@@ -356,7 +329,7 @@ if _HAS_QT:
             fold_blockers: list,
             landing_strip_side: str = "",
         ) -> None:
-            """v3.24.18 — ``landing_strip_side`` is "upper" / "lower"
+            """``landing_strip_side`` is "upper" / "lower"
             / "" and drives the LS override light. It is NOT a
             blocker: a landing strip forces is_bullish/is_bearish
             True at scrumming_bot.py:6212-6215, so it can cause a
@@ -369,9 +342,8 @@ if _HAS_QT:
             _ls = str(landing_strip_side or "").lower()
             self._ls_scrum = _ls == "upper"
             self._fold_ls = _ls == "lower"
-            # Any call means this candle WAS evaluated — that is what
-            # separates "gate is off" from "we never looked", which
-            # matters in anchored mode where most candles are skipped.
+            # Any call means this candle was evaluated. Anchored mode skips
+            # most candles, so "gate off" must not read like "never looked".
             self._evaluated = True
             self.update()
 
@@ -381,10 +353,7 @@ if _HAS_QT:
             self._scrum_armed = self._fold_armed = False
             self._scrum_blocked = set()
             self._fold_blocked = set()
-            # v3.24.60 (C29 / NF-51) — LS is an OVERRIDE, not a blocker,
-            # and it was the one light this method did not reset. A
-            # cleared row went on claiming an active landing-strip
-            # override from the previous evaluation.
+            # LS is an override, not a blocker.
             self._ls_scrum = False
             self.update()
 
@@ -431,20 +400,15 @@ if _HAS_QT:
         ) -> int:
             """Draw one side's labels + LEDs. Returns the next x.
 
-            v3.24.18 — label sits ABOVE its light (operator directive:
+            Label sits ABOVE its light (operator directive:
             "legible on the top of each indicator light") and each
             gate occupies a measured pitch so nothing overlaps.
             """
             led_y = self._PAD + self._LABEL_H
             for label in gates:
-                # gate_light_color applies the shared state rules:
-                # LS paints cyan on an active landing strip, grey
-                # otherwise; every other label is pass, block or
-                # not-the-blocker.
                 color = QColor(
                     gate_light_color(label, self._evaluated, armed, blocked, ls_active)
                 )
-                # label above
                 painter.setPen(QColor("#9aa0b5"))
                 painter.drawText(
                     x,
@@ -454,14 +418,12 @@ if _HAS_QT:
                     Qt.AlignHCenter | Qt.AlignVCenter,
                     label,
                 )
-                # light below, centred in the pitch
                 painter.setPen(Qt.NoPen)
                 painter.setBrush(color)
                 led_x = x + ((self._pitch - self._GAP) - self._LED) // 2
                 painter.drawEllipse(led_x, led_y, self._LED, self._LED)
                 x += self._pitch
-            # side marker under the bank so S/F is unambiguous without
-            # stealing a whole gate's worth of horizontal space
+            # Side marker over the last gate's box, so S/F costs no width.
             painter.setPen(QColor("#6b7280"))
             painter.drawText(
                 x - self._pitch,
@@ -488,26 +450,16 @@ if _HAS_QT:
         """
 
         _BAND_HEIGHT = 36
-        # v3.24.14 — widened from 60. At 60px "AERO/USDC" and
-        # "LSETH/USDC" rendered clipped ("AERO/USI"), and the price
-        # polyline started at x=60 so it drew straight over the
-        # truncated text.
-        #
-        # 128px is MEASURED, not guessed: QFontMetrics over the
-        # operator's 35 live symbols gives "LSETH/USDC" as the widest
-        # at 120px, +6px clearance before the plot begins. An earlier
-        # 92px guess in this same cascade still clipped it — hence
-        # the measurement.
+        # Measured: "LSETH/USDC" is the widest of the 35 live symbols at
+        # 120px, plus 6px clearance before the plot begins.
         _BAND_LABEL_W = 128
         _MAX_POINTS = 500
         _VWAP_WINDOW = 30  # candles
-        # SN-37 — markers were unbounded. Capped well above what fits on
-        # screen so the visible history is never the thing discarded.
+        # Above what fits on screen, so visible history is never discarded.
         _MAX_MARKERS = 2000
         # Focused view: tall enough for a candle body to read at all.
         _FOCUS_MIN_H = 320
-        # Bars kept for the focused chart. Beyond this the oldest are
-        # dropped -- the operator watches the live end.
+        # Beyond this the oldest bars are dropped, keeping the live end.
         _MAX_CANDLES = 400
         _CANDLE_W = 5
         _CANDLE_GAP = 2
@@ -526,56 +478,25 @@ if _HAS_QT:
             self.setStyleSheet("background:#0a0a14;")
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             self._symbols: list[str] = []
-            # symbol -> (list[price], list[vwap])
             self._series: dict[str, tuple[list[float], list[float]]] = {}
-            # symbol -> rolling window of (price, volume) for VWAP
+            # symbol -> rolling (price, volume) window for the VWAP
             self._vwap_window: dict[str, list[tuple[float, float]]] = {}
-            # v3.24.60 (C29 / SN-16) — trade markers anchor on a
-            # monotonic ORDINAL, not a list position.
-            #
-            # The old scheme stored the index into the price series and
-            # remapped it `i // 2` on each halving. That is exact for
-            # even indices and wrong for odd ones, and the error
-            # compounds every time the series halves again. A position
-            # in a list that gets rewritten underneath it cannot be made
-            # correct by arithmetic — the anchor has to be an identity
-            # the decimation preserves.
-            #
-            # `_ordinals` runs parallel to the price series and is
-            # sliced by the SAME decimation, so an ordinal either
-            # survives (and can be located exactly) or its candle was
-            # discarded (and the marker is dropped rather than sliding
-            # onto a neighbour and asserting something false about it).
-            #
-            # The cascade plan says "anchor by timestamp"; the series
-            # carries none and `append_tick` never receives one. The
-            # ordinal is the same idea without changing the signature.
+            # Markers anchor on a monotonic ordinal, not a list position:
+            # the decimation rewrites positions and preserves ordinals.
             self._markers: dict[str, Any] = {}
             self._ordinals: dict[str, list[int]] = {}
             self._next_ordinal: dict[str, int] = {}
-            # v3.24.89 — Stone Tablet candles, one bar per tick.
-            #
-            # Operator task 2026-08-08 (screenshot area 4): "need to add
-            # stone tablet candle play back as well... display one bot's
-            # vwap, stone tablet".
-            #
-            # symbol -> list[(ts, o, h, l, c)]. Kept beside the close
-            # series rather than replacing it: the stacked band view
-            # still draws a polyline, and the focused view draws bars
-            # from the same feed.
+            # symbol -> list[(ts, o, h, l, c)]. Kept beside the close series:
+            # the band view draws a polyline, the focused view draws bars.
             self._candles: dict[str, list[tuple]] = {}
-            # When set, ONE symbol fills the whole widget as candles.
-            # When empty, every symbol gets a band, as before. The
-            # dropdown drives this.
+            # One symbol fills the widget as candles; empty gives each a band.
             self._focus: str = ""
-            # Timestamp of the first documented historical trade, per
-            # symbol. YTD overlay begins here and not before -- drawing
-            # it across the warm-up would assert coverage that does not
-            # exist.
+            # First documented historical trade per symbol. The overlay starts
+            # here: the warm-up candles predate any gate decision.
             self._ytd_from: dict[str, int] = {}
 
         def _new_marker_store(self):
-            """SN-37 — bounded. An unbounded list grew for the whole
+            """Bounded. An unbounded list grew for the whole
             replay; the operator is watching the live end, so the bound
             discards the OLDEST."""
             from collections import deque
@@ -626,7 +547,7 @@ if _HAS_QT:
         def set_focus_symbol(self, symbol: str) -> None:
             """Show ONE bot's candles + VWAP, or "" for all bands.
 
-            v3.24.89. Operator, 2026-08-08: "This needs to be changed to
+            Operator: "This needs to be changed to
             show one chart and have the others be displayed when their
             respective bot is selected from the... drop down menu."
 
@@ -668,7 +589,7 @@ if _HAS_QT:
                 red   = expected but not validated — a fire the
                         comparison could not match
 
-            v3.24.60 (C29) — the marker stores the ORDINAL of the candle
+            The marker stores the ORDINAL of the candle
             the trade fired on, not its index. See `_ordinals`: an index
             is a position in a list the decimation rewrites, an ordinal
             is an identity it preserves.
@@ -676,7 +597,7 @@ if _HAS_QT:
             MUST be called AFTER `append_tick` for this tick. It pins
             the candle currently at the end of the series; the panel
             used to call it first, which pinned the PREVIOUS drain's
-            candle every single time (SN-15).
+            candle every single time.
             """
             ords = self._ordinals.get(symbol)
             if not ords:
@@ -705,7 +626,7 @@ if _HAS_QT:
         ) -> None:
             """Called per visual refresh with the current-cursor bar.
 
-            v3.24.89 — OHLC arguments added, all optional so the
+            OHLC arguments added, all optional so the
             close-only callers still work. When the whole bar arrives it
             is stored for candle playback; when only a close does, the
             bar degenerates to a doji and the polyline view is
@@ -724,9 +645,6 @@ if _HAS_QT:
                 del _bars[: len(_bars) - self._MAX_CANDLES]
             prices, vwaps = self._series[symbol]
             prices.append(float(close_price))
-            # C29 — ordinal runs parallel to the price series and is
-            # decimated with it, so a marker's anchor is preserved
-            # exactly or discarded honestly, never slid.
             _o = self._next_ordinal.get(symbol, 0)
             self._ordinals.setdefault(symbol, []).append(_o)
             self._next_ordinal[symbol] = _o + 1
@@ -740,23 +658,9 @@ if _HAS_QT:
                 vwaps.append(sum(p * v for p, v in w) / _sv)
             else:
                 vwaps.append(float(close_price))
-            # Downsample when we exceed cap: keep every other point
             if len(prices) > self._MAX_POINTS:
-                # v3.24.60 (C29 / SN-16) — decimate, but NEVER discard a
-                # candle that carries a marker.
-                #
-                # Keeping every other point and remapping marker indices
-                # `i // 2` was exact for even indices and wrong for odd
-                # ones, compounding on each halving. Anchoring on an
-                # ordinal fixes the arithmetic but, on its own, means an
-                # odd-ordinal candle is simply deleted and its marker
-                # stops resolving — so a long replay quietly loses the
-                # operator's trades, which is a different way of being
-                # wrong.
-                #
-                # Marked candles are pinned through the decimation. They
-                # are bounded by _MAX_MARKERS, so this cannot defeat the
-                # point cap by more than that.
+                # Marked candles survive the decimation. They are bounded by
+                # _MAX_MARKERS, so this cannot defeat the point cap by more.
                 _ords = self._ordinals.get(symbol) or []
                 _marked = {o for o, _ok in (self._markers.get(symbol) or [])}
                 _keep = [
@@ -772,8 +676,6 @@ if _HAS_QT:
             for s in self._series:
                 self._series[s] = ([], [])
                 self._vwap_window[s] = []
-                # SN-30 — markers survived clear_data, so the previous
-                # run's trades were drawn against the new run's candles.
                 self._ordinals[s] = []
                 self._next_ordinal[s] = 0
                 self._markers[s] = self._new_marker_store()
@@ -782,7 +684,7 @@ if _HAS_QT:
         def _draw_focused(self, p, w: int, h: int) -> None:
             """One bot, panel BISECTED: VWAP above, candles below.
 
-            v3.24.96. Operator, 2026-08-09: "Bisect this panel
+            Operator: "Bisect this panel
             vertically. VWAP is on top. Stone Tablet candle display is
             on the bottom."
 
@@ -824,7 +726,6 @@ if _HAS_QT:
             p.setPen(QPen(QColor("#1a1a2a"), 1))
             p.drawLine(0, bot_y - gap // 2, w, bot_y - gap // 2)
 
-            # ── TOP: price vs position VWAP ──────────────────────────
             vs = list(vwaps[-len(shown) :]) if vwaps else []
             cl = [float(b[4]) for b in shown]
             tvals = cl + [v for v in vs if v]
@@ -856,7 +757,6 @@ if _HAS_QT:
                     p.setPen(QPen(QColor("#00ff88") if ok else QColor("#ffaa00"), 1))
                     p.drawEllipse(x - 2, y_top(cl[i]) - 2, 4, 4)
 
-            # ── BOTTOM: Stone Tablet candles ─────────────────────────
             lo = min(b[3] for b in shown)
             hi = max(b[2] for b in shown)
             y_bot = _band(bot_y, bot_h, lo, hi)
@@ -906,16 +806,13 @@ if _HAS_QT:
             try:
                 p.setRenderHint(QPainter.Antialiasing, True)
                 w = self.width()
-                # v3.24.89 — one bot, or all bands. The dropdown picks.
                 if self._focus:
                     self._draw_focused(p, w, self.height())
                     return
                 for i, sym in enumerate(self._symbols):
                     band_y = i * self._BAND_HEIGHT
-                    # Band separator
                     p.setPen(QPen(QColor("#1a1a2a"), 1))
                     p.drawLine(0, band_y, w, band_y)
-                    # Symbol label (left gutter)
                     p.setPen(QPen(QColor("#7fb3ff"), 1))
                     p.drawText(
                         QRectF(
@@ -927,7 +824,6 @@ if _HAS_QT:
                     prices, vwaps = self._series.get(sym, ([], []))
                     if len(prices) < 2:
                         continue
-                    # Normalize prices to band height
                     plot_x = self._BAND_LABEL_W
                     plot_w = max(1, w - plot_x - 4)
                     plot_h = self._BAND_HEIGHT - 6
@@ -943,14 +839,12 @@ if _HAS_QT:
                             y = top + height - int((v - mn) / span * height)
                             yield x, y
 
-                    # Draw price polyline (white)
                     p.setPen(QPen(QColor("#ccccdd"), 1))
                     prev = None
                     for x, y in _proj(prices, plot_h, plot_y, plot_x, plot_w, n):
                         if prev is not None:
                             p.drawLine(prev[0], prev[1], x, y)
                         prev = (x, y)
-                    # Draw VWAP polyline (cyan)
                     p.setPen(QPen(QColor("#00ffcc"), 1))
                     prev = None
                     for x, y in _proj(vwaps, plot_h, plot_y, plot_x, plot_w, n):
@@ -958,20 +852,14 @@ if _HAS_QT:
                             p.drawLine(prev[0], prev[1], x, y)
                         prev = (x, y)
 
-                    # v3.24.29 — plot boundary. Operator 2026-08-04:
-                    # "Would like boundaries around the line / VWAP
-                    # charts." Drawn AFTER the lines so the frame is
-                    # never overdrawn by a polyline touching the edge.
+                    # Drawn after the lines, so a polyline touching the edge
+                    # cannot overdraw the frame.
                     p.setPen(QPen(QColor("#2a2a44"), 1))
                     p.setBrush(Qt.NoBrush)
                     p.drawRect(plot_x - 1, plot_y - 1, plot_w + 1, plot_h + 1)
 
-                    # v3.24.29 — trade markers: tiny dots on the price
-                    # line. Green = validated against an expected
-                    # trade, red = expected but unvalidated.
-                    # C29 — resolve ordinals to CURRENT positions here,
-                    # at paint time, so a decimation between recording
-                    # and drawing cannot move a marker.
+                    # Ordinals resolve at paint time, so a decimation between
+                    # recording and drawing cannot move a marker.
                     marks = self.resolved_markers(sym)
                     if marks:
                         step = plot_w / max(n - 1, 1)
@@ -990,10 +878,6 @@ if _HAS_QT:
                             p.drawEllipse(QRectF(mx - 1.5, my - 1.5, 3.0, 3.0))
             finally:
                 p.end()
-
-    # ---------------------------------------------------------------- #
-    # PerBotVotingReadout — lower half of the bisection                #
-    # ---------------------------------------------------------------- #
 
     class PerBotVotingReadout(QTableWidget):
         """Compact table: one row per bot, columns = indicator vote
@@ -1030,16 +914,8 @@ if _HAS_QT:
                 "color:#00ffcc;padding:4px;border:none;}"
             )
             hdr = self.horizontalHeader()
-            # v3.24.29 — Stretch, was ResizeToContents.
-            #
-            # Operator 2026-08-04: "The table below the line charts can
-            # be widened to fully occupy its panel." ResizeToContents
-            # sizes each column to its text, so a 6-column table of
-            # short values (Net "+0.26", Conf "0.02", Bull "4") left the
-            # right ~40% of the panel empty.
-            #
-            # Symbol takes the slack it needs for the longest ticker;
-            # the five numeric columns divide the rest evenly.
+            # Stretch fills the panel; ResizeToContents left ~40% of it empty.
+            # Symbol keeps its width, the five numbers share the rest.
             hdr.setSectionResizeMode(QHeaderView.Stretch)
             hdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
             hdr.setStretchLastSection(True)
