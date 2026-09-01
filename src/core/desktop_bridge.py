@@ -78,6 +78,7 @@ def build_registry() -> Dict[str, Handler]:
         live_bot_window_surface,
         live_settings_tab_surface,
         live_status_tab_surface,
+        main_window_surface,
         market_inspector_surface,
         market_inspector_tab_surface,
         market_inspector_topologies_surface,
@@ -159,6 +160,7 @@ def build_registry() -> Dict[str, Handler]:
         live_bot_window_surface.METHOD: live_bot_window_surface.view_model,
         live_settings_tab_surface.METHOD: live_settings_tab_surface.view_model,
         live_status_tab_surface.METHOD: live_status_tab_surface.view_model,
+        main_window_surface.METHOD: main_window_surface.view_model,
         market_inspector_surface.METHOD: market_inspector_surface.view_model,
         market_inspector_tab_surface.METHOD: market_inspector_tab_surface.view_model,
         market_inspector_topologies_surface.METHOD: (
