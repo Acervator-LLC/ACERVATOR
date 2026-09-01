@@ -27,18 +27,18 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import (  # noqa: E402
+from PySide6.QtWidgets import (
     QApplication,
     QLabel,
     QMainWindow,
     QTabWidget,
 )
 
-import src.gui.main_window as mw  # noqa: E402
-from src.gui import design_system as ds  # noqa: E402
-from src.gui.main_tabs import main_window_surface as surface  # noqa: E402
-from tests.fixtures.host_fonts import load_run_fonts  # noqa: E402
-from tests.fixtures.surface_pictures import (  # noqa: E402
+import src.gui.main_window as mw
+from src.gui import design_system as ds
+from src.gui.main_tabs import main_window_surface as surface
+from tests.fixtures.host_fonts import load_run_fonts
+from tests.fixtures.surface_pictures import (
     assert_cases_paint_differently,
     assert_picture_can_report,
     assert_same_skin,
@@ -343,13 +343,13 @@ class LabelSink:
         self.styles: list = []
         self.tooltips: list = []
 
-    def setText(self, text):  # noqa: N802 - Qt's own name
+    def setText(self, text):
         self.texts.append(text)
 
-    def setStyleSheet(self, style):  # noqa: N802 - Qt's own name
+    def setStyleSheet(self, style):
         self.styles.append(style)
 
-    def setToolTip(self, text):  # noqa: N802 - Qt's own name
+    def setToolTip(self, text):
         self.tooltips.append(text)
 
     def latest_text(self):
@@ -464,7 +464,7 @@ class StyleSink:
     def __init__(self):
         self.sheets: list = []
 
-    def setStyleSheet(self, sheet):  # noqa: N802 - Qt's own name
+    def setStyleSheet(self, sheet):
         self.sheets.append(sheet)
 
 
@@ -475,10 +475,10 @@ class StatusBarSink:
         self.messages: list = []
         self.permanent: list = []
 
-    def showMessage(self, text):  # noqa: N802 - Qt's own name
+    def showMessage(self, text):
         self.messages.append(text)
 
-    def addPermanentWidget(self, widget):  # noqa: N802 - Qt's own name
+    def addPermanentWidget(self, widget):
         self.permanent.append(widget)
 
 
@@ -713,9 +713,9 @@ def test_the_other_direction_is_told_apart_too():
 
 def test_the_same_reading_twice_gives_one_answer():
     """The tick answer moved between two runs of one reading."""
-    assert digest(shipped_tick(AGGREGATE_CASES["happy"])) == digest(
-        shipped_tick(AGGREGATE_CASES["happy"])
-    )
+    first_drive = shipped_tick(AGGREGATE_CASES["happy"])
+    second_drive = shipped_tick(AGGREGATE_CASES["happy"])
+    assert digest(first_drive) == digest(second_drive)
 
 
 def test_a_whole_number_and_a_decimal_are_told_apart():
@@ -729,11 +729,17 @@ def test_a_whole_number_and_a_decimal_are_told_apart():
 
 
 def test_two_not_a_numbers_read_alike():
-    """Two not-a-numbers read as a difference that is not one."""
+    """Two not-a-numbers read as a difference that is not one.
+
+    A plain comparison of two not-a-numbers answers "different", so the
+    printed form is what the answer comparison reads.
+    """
     first = surface_tick(aggregate(total_scrummed_usd=float("nan")))
     second = surface_tick(aggregate(total_scrummed_usd=float("nan")))
     assert digest(first) == digest(second)
-    assert NOT_A_NUMBER != NOT_A_NUMBER
+    plain = [one == other for one, other in ((NOT_A_NUMBER, float("nan")),)]
+    assert plain == [False]
+    assert canonical(NOT_A_NUMBER) == canonical(float("nan"))
 
 
 def tick_error_records(reading):
@@ -963,7 +969,7 @@ class ContainerSink:
     def __init__(self):
         self.shown: list = []
 
-    def setVisible(self, visible):  # noqa: N802 - Qt's own name
+    def setVisible(self, visible):
         self.shown.append(visible)
 
 
@@ -1360,10 +1366,10 @@ def shipped_api_block(row):
         def __init__(self):
             self.blocks: list = []
 
-        def appendPlainText(self, text):  # noqa: N802 - Qt's own name
+        def appendPlainText(self, text):
             self.blocks.append(text)
 
-        def verticalScrollBar(self):  # noqa: N802 - Qt's own name
+        def verticalScrollBar(self):
             return self
 
         def value(self):
@@ -1372,7 +1378,7 @@ def shipped_api_block(row):
         def maximum(self):
             return 0
 
-        def setValue(self, value):  # noqa: N802 - Qt's own name
+        def setValue(self, value):
             return None
 
     view = ViewSink()
@@ -2131,13 +2137,13 @@ def test_the_two_sides_pulse_to_one_value(ticks):
             self.opacities: list = []
             self.blurs: list = []
 
-        def setOpacity(self, value):  # noqa: N802 - Qt's own name
+        def setOpacity(self, value):
             self.opacities.append(value)
 
-        def setBlurRadius(self, value):  # noqa: N802 - Qt's own name
+        def setBlurRadius(self, value):
             self.blurs.append(value)
 
-        def blurRadius(self):  # noqa: N802 - Qt's own name
+        def blurRadius(self):
             return 0.0
 
     effect = EffectSink()
