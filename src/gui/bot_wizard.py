@@ -35,16 +35,14 @@ try:
         QPushButton,
         QScrollArea,
         QWidget,
-    )  # v3.19.12 removed unused QToolTip; QApplication removed — never
-
-    # referenced in this module, and vulture graded the import a dead name.
+    )
     from PySide6.QtCore import Qt, QSize
     from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
 
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
-from src.gui.qt_safe_events import safe_process_events  # v3.15.99 P4.1
+from src.gui.qt_safe_events import safe_process_events
 from src.exchange.lazy_singleton import LazySingleton, ThrottledFault
 
 
@@ -61,8 +59,6 @@ _ASSET_MANAGER = LazySingleton(
     "Every asset row will show a lettered circle instead of its logo.",
 )
 
-# Separate record: one symbol's logo failing is not the manager failing,
-# and must not delay the manager's retry.
 _ICON_LOAD_FAULT = ThrottledFault(
     "coin icon loading",
     "Assets whose logo cannot be read will show a lettered circle.",
@@ -102,12 +98,10 @@ def _get_coin_icon(
                     )
         except Exception as _icon_exc:  # noqa: BLE001 - GUI fallback path
             _ICON_LOAD_FAULT.note_failure(_icon_exc)
-    # Fallback: colored circle with first letter
     px = QPixmap(size, size)
     px.fill(QColor(0, 0, 0, 0))
     p = QPainter(px)
     p.setRenderHint(QPainter.Antialiasing)
-    # Deterministic color from symbol
     h = sum(ord(c) for c in symbol) % 360
     p.setBrush(QColor.fromHsv(h, 120, 180))
     p.setPen(Qt.NoPen)
@@ -128,17 +122,8 @@ if _HAS_QT:
     PAGE_PARAMS = 2
     PAGE_FOLDING = 3
     PAGE_PHANTOM = 4
-    # v3.19.26 — Extractor branch page added per operator UX spec
-    # ("Bot creation flow. First screen should be after Scrumming Bot
-    # is selected. Existing Extractor options can follow Extractor
-    # Selection. Extractor options need to have a base currency
-    # selection and the exchange scanned for alts against which the
-    # selected base currency can be traded and accumulated.")
     PAGE_EXTRACTOR_POOL = 5
 
-    # ---------------------------------------------------------------
-    # Page 1: Asset Selection (both modes)
-    # ---------------------------------------------------------------
     class AssetSelectionPage(QWizardPage):
         def __init__(self, exchanges: list[dict], parent=None):
             super().__init__(parent)
@@ -267,10 +252,6 @@ if _HAS_QT:
                         if c > 0:
                             m["volatility"] = round((h - l) / c * 100, 2)
                 except Exception as _vol_exc:
-                    # v3.13.6 R28 FL + R61 CBF — was silent swallow.
-                    # If ticker fetch fails, user sees bot-wizard with
-                    # zero volatility everywhere and no diagnostic.
-                    # Log to module logger which is already set up.
                     logger.warning(
                         "bot_wizard: ticker/volatility enrichment "
                         "for %s failed (%s): %s — markets returned "
@@ -304,7 +285,7 @@ if _HAS_QT:
             markets = self._markets_cache.get(eid, [])
             self._target.clear()
             filtered = [m for m in markets if m["quote"] == base]
-            # Sort by cached volume — do NOT fetch from network here (freezes UI)
+            # Cached volume only. A network fetch here blocks the GUI thread.
             filtered.sort(key=lambda m: m.get("volume", 0), reverse=True)
             for m in filtered:
                 vol = m.get("volume", 0)
@@ -321,7 +302,7 @@ if _HAS_QT:
                 if m.get("volatility", 0) > 0:
                     parts.append(f"Volat: {m['volatility']:.1f}%")
                 label = m["base"] + (f"  ({', '.join(parts)})" if parts else "")
-                # Use cache-only icon (no network download on UI thread)
+                # Cache only: no network on the GUI thread.
                 icon = _get_coin_icon(m["base"], download=False)
                 if icon:
                     self._target.addItem(icon, label, m["base"])
@@ -367,9 +348,6 @@ if _HAS_QT:
                 "target_asset": self._target.currentData() or "",
             }
 
-    # ---------------------------------------------------------------
-    # Page 2: Mode Selection (Scrumming is the core architecture)
-    # ---------------------------------------------------------------
     class ModeSelectionPage(QWizardPage):
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -378,13 +356,6 @@ if _HAS_QT:
             layout = QVBoxLayout(self)
             self._scrumming = QRadioButton("Accumulation Trading (Scrumming)")
             self._scrumming.setChecked(True)
-            # v3.19.20 — wizard text doc-drift fix. Pre-v3.19.20 read
-            # "7-indicator TA voting" — was true for v3.19.0 era but the
-            # Trading-Discipline Arc (v3.19.16 ADX, v3.19.17 KaufmanER +
-            # Supertrend + ZScore, v3.19.18 RSI) bumped the count to 12.
-            # If a future ship adds another voter to VotingEngine, this
-            # text must update too (and tests/test_indicator_coverage.py
-            # will already catch the wiring drift).
             sd = QLabel(
                 "The core trading engine. Uses 12-indicator TA voting to optimize "
                 "scrum-fold cycles relative to a Target Balance. Supports multi-timeframe "
@@ -396,12 +367,6 @@ if _HAS_QT:
             layout.addWidget(self._scrumming)
             layout.addWidget(sd)
 
-            # v3.19.3 — Extractor mode fully wired. Selecting this radio
-            # routes the wizard to a TradingParamsPage configured with
-            # Extractor-specific widgets (chunk_size_usd, artillery_size_usd,
-            # pool_reserve_pct, exit_pct, max_compounding_tier, scan_top_n,
-            # scan_refresh_candles) and a get_config branch that produces
-            # BotConfig(mode=BotMode.EXTRACTOR, ...).
             self._extractor = QRadioButton("Base Currency Extractor (Multi-Target)")
             self._extractor.setToolTip(
                 "Grows a base-currency pool by harvesting volatility across "
@@ -433,20 +398,8 @@ if _HAS_QT:
             + get_config() to route the wizard properly."""
             return self._extractor.isChecked()
 
-    # ---------------------------------------------------------------
-    # v3.19.26 — Page 2b: Extractor Pool Selection (Extractor branch only)
-    # ---------------------------------------------------------------
-    # Operator UX spec (2026-05-22, two screenshots provided + 2026-05-23
-    # follow-up): when the operator selects Extractor on the Mode page,
-    # they need a base-currency picker (which asset the pool ACCUMULATES
-    # — note this is the INVERSE of SCRUM's "base" semantic) and an
-    # exchange-scanned list of */<base> alt pairs they can target.
-    # Selection is multi-select; empty selection means "auto — use
-    # extractor_scan_top_n to pick top-N at runtime."
     class ExtractorPoolPage(QWizardPage):
-        # Canonical Extractor pool base currencies per design doc §6/§6a
-        # (the asset the pool accumulates into; alts are the volatile
-        # counter-pairs that get hunted for arbitrage).
+        # The asset the pool accumulates into. Alts trade against it.
         _POOL_BASES = ["BTC", "ETH", "USDT", "USDC", "BNB"]
 
         def __init__(self, exchanges: list[dict], parent=None) -> None:
@@ -490,15 +443,12 @@ if _HAS_QT:
             self._status.setWordWrap(True)
             outer.addWidget(self._status)
 
-            # Scrollable multi-select grid for alt pairs scanned from
-            # the exchange. QListWidget with item-level checkable flags
-            # is the canonical Qt pattern.
             outer.addWidget(QLabel("Target alt pairs (multi-select):"))
             from PySide6.QtWidgets import QListWidget
 
             self._alt_list = QListWidget()
             self._alt_list.setSelectionMode(QListWidget.NoSelection)
-            # Compact display — operator usually sees 10-50 alt pairs.
+            # 10-50 alt pairs typical.
             self._alt_list.setMinimumHeight(280)
             self._alt_list.setAccessibleName("Target alt pairs")
             self._alt_list.setToolTip(
@@ -507,7 +457,6 @@ if _HAS_QT:
             )
             outer.addWidget(self._alt_list)
 
-            # Select-all / clear shortcuts
             btn_row = QHBoxLayout()
             self._btn_all = QPushButton("Select all")
             self._btn_all.clicked.connect(self._select_all)
@@ -601,8 +550,7 @@ if _HAS_QT:
             markets = self._markets_cache.get(eid, [])
             self._alt_list.clear()
             filtered = [m for m in markets if m.get("quote") == base]
-            # Sort by 24h volume descending so the most-liquid pairs
-            # appear first (matches the auto-scan top-N semantic).
+            # Descending volume matches the auto-scan top-N order.
             filtered.sort(key=lambda m: m.get("volume", 0.0), reverse=True)
             for m in filtered:
                 vol = m.get("volume", 0.0)
@@ -656,14 +604,6 @@ if _HAS_QT:
                     if sym:
                         checked.append(sym)
             base = self._base.currentText().strip().upper()
-            # v3.19.28 — target_asset is a pool indicator, not a single
-            # alt. Extractor is multi-pair by design; the symbol "ALT/BASE"
-            # convention doesn't fit. Use the canonical pool sigil "*"
-            # so downstream symbol-construction produces "*/{base}" —
-            # interpreted by the GUI + audit logs as "this Extractor
-            # hunts ANY alt against {base}." Pre-v3.19.28 used the first
-            # selected alt as target_asset which produced misleading
-            # "ETH/BTC" symbols for what is actually a multi-pair pool.
             return {
                 "exchange_id": self._exchange.currentData(),
                 "base_currency": base,
@@ -671,61 +611,11 @@ if _HAS_QT:
                 "extractor_alt_targets": checked,
             }
 
-    # ---------------------------------------------------------------
-    # Page 3: Trading Parameters (mode-aware)
-    # ---------------------------------------------------------------
     class TradingParamsPage(QWizardPage):
         def __init__(self, defaults: dict, parent=None):
             super().__init__(parent)
             self.setTitle("Trading Parameters")
-            # v3.23.21 — default flipped to False. BotMode.GRID was
-            # excised v3.20.4; ModeSelectionPage.is_grid() is now hard-
-            # coded False; and get_config()'s grid branch was removed.
-            # Leaving this True defaulted the wizard to producing dead
-            # grid-shape configs when set_mode() didn't run first.
             self._is_grid = False
-            # v3.15.76 — operator directive 2026-04-27:
-            #   "Make it wider with all settings clearly visible and
-            #    properly arranged. Have it open without me having to
-            #    resize it. This is the 3rd panel. The others have no
-            #    issues."
-            #
-            # Root cause: the scrumming form has ~25 fields. At the
-            # wizard's previous opening width of 700px, QFormLayout
-            # gave the QDoubleSpinBox/QComboBox fields their preferred
-            # width (~250–300px), squeezing labels (e.g. "Soft CB
-            # Cooldown (candles):" ~220px) below their natural width.
-            # Result: labels truncated.
-            #
-            # Fix has three parts:
-            #   1. Wizard now opens at 1100×750 (BotCreationWizard.resize)
-            #      so the dense scrumming form fits all label/field
-            #      rows on first open.
-            #   2. This page wraps its form in a QScrollArea so even on
-            #      smaller screens the user sees every field by
-            #      scrolling rather than being forced to enlarge the
-            #      window.
-            #   3. Labels are right-aligned and the form's field-growth
-            #      policy is set so fields stretch into available width
-            #      rather than dominating the label column.
-            # v3.23.34 — restructured to mirror Bot Details Settings
-            # tab. Operator directive 2026-07-26: "3rd panel (Trading
-            # Parameters) must have an identical option set and style
-            # to the bot details -> settings tab excluding the
-            # Self-Destruct function. It must also be divided into
-            # identical sub sections."
-            #
-            # Layout: eight QGroupBoxes stacked in a scroll area,
-            # matching the Bot Details Settings § 1–7 + two new §
-            # (Strategy Gate Flags + Profit Routing).
-            #
-            # Grid widgets removed (Grid mode dead since v3.23.21).
-            # Check Interval widget removed (backing field retired
-            # v3.23.25 audit — never had a runtime consumer).
-            # _scrum_profit_fold + _scrum_upward_dist widgets removed
-            # (retired; profit_folding_active is set via the dedicated
-            # ProfitFoldingPage and Bot Details § 2; upward_distribution
-            # was a dead config field).
             outer = QVBoxLayout(self)
             outer.setContentsMargins(0, 0, 0, 0)
             outer.setSpacing(0)
@@ -749,9 +639,6 @@ if _HAS_QT:
                 f.setVerticalSpacing(8)
                 return f
 
-            # ============================================================
-            # § 1 — Trading Parameters
-            # ============================================================
             self._mode_group = QGroupBox("Trading Parameters")
             mf = _mkform()
             self._mode_group.setLayout(mf)
@@ -778,8 +665,7 @@ if _HAS_QT:
             self._stack_mode = QCheckBox(
                 "Stack Mode (split SCRUM across upward tranches)"
             )
-            # The new-bot surface reads the one declaration, so the box
-            # and a config the wizard never touches cannot disagree.
+            # One declaration, so the box and the config cannot disagree.
             self._stack_mode.setChecked(STACK_MODE_DEFAULT)
             self._stack_mode.setToolTip(
                 "When ON, a SCRUM fires as N Stack Tranches at "
@@ -829,11 +715,6 @@ if _HAS_QT:
             )
             mf.addRow("Spacing:", self._stack_spacing)
 
-            # v3.23.42 — F65 operator hold-out. Target-asset units the
-            # bot keeps out of its own decision math AND augments the
-            # CapitalReservationRegistry reservation so sibling bots
-            # never touch this chunk. Use for a personal balance you
-            # want to hold on-exchange without any bot managing it.
             self._personal_hold_qty = QDoubleSpinBox()
             self._personal_hold_qty.setRange(0.0, 1_000_000_000.0)
             self._personal_hold_qty.setDecimals(10)
@@ -849,9 +730,6 @@ if _HAS_QT:
 
             groups.addWidget(self._mode_group)
 
-            # ============================================================
-            # § 2 — Scrumming Settings
-            # ============================================================
             self._scrum_group = QGroupBox("Scrumming Settings")
             sf = _mkform()
             self._scrum_group.setLayout(sf)
@@ -909,8 +787,6 @@ if _HAS_QT:
             )
             sf.addRow("Target Balance:", self._target_balance)
 
-            # v3.15.51 — operator-set entry-price bounds (Bot Details
-            # parity). 0 = no bound; Manual Fire bypasses these gates.
             self._max_entry_px = QDoubleSpinBox()
             self._max_entry_px.setRange(0.0, 10_000_000.0)
             self._max_entry_px.setDecimals(8)
@@ -935,7 +811,6 @@ if _HAS_QT:
             )
             sf.addRow("Min Entry Price:", self._min_entry_px)
 
-            # v3.15.52 — Trading fee tier (Bot Details parity).
             self._trading_fee = QDoubleSpinBox()
             self._trading_fee.setRange(0.0, 5.0)
             self._trading_fee.setSuffix(" %")
@@ -951,7 +826,6 @@ if _HAS_QT:
             )
             sf.addRow("Trading Fee %:", self._trading_fee)
 
-            # MEM-252 — Max Target Growth %.
             self._max_target_growth_pct = QDoubleSpinBox()
             self._max_target_growth_pct.setRange(0.0, 100.0)
             self._max_target_growth_pct.setSuffix(" %")
@@ -967,7 +841,6 @@ if _HAS_QT:
             )
             sf.addRow("Max Target Growth %:", self._max_target_growth_pct)
 
-            # MEM-234 — Scrum Fold Ratio.
             self._scrum_fold_pct = QSpinBox()
             self._scrum_fold_pct.setRange(1, 100)
             self._scrum_fold_pct.setValue(100)
@@ -982,11 +855,6 @@ if _HAS_QT:
 
             groups.addWidget(self._scrum_group)
 
-            # ============================================================
-            # § 3 — Advanced Scrumming (P1.9)
-            # ============================================================
-            # Defaults intentionally match simulator.py widget defaults
-            # so sim and real bot share the same out-of-the-box behavior.
             self._adv_group = QGroupBox("Advanced Scrumming (P1.9)")
             af = _mkform()
             self._adv_group.setLayout(af)
@@ -1054,7 +922,6 @@ if _HAS_QT:
             )
             af.addRow(self._bb_bullseye)
 
-            # v3.20.85 — wire_inflow_stack_pct (Bot Details parity).
             self._wire_inflow_stack_pct = QDoubleSpinBox()
             self._wire_inflow_stack_pct.setRange(0.0, 100.0)
             self._wire_inflow_stack_pct.setDecimals(2)
@@ -1070,9 +937,6 @@ if _HAS_QT:
 
             groups.addWidget(self._adv_group)
 
-            # ============================================================
-            # § 4 — Hedge Rebalance
-            # ============================================================
             self._hedge_group = QGroupBox("Hedge Rebalance")
             hf = _mkform()
             self._hedge_group.setLayout(hf)
@@ -1098,9 +962,6 @@ if _HAS_QT:
 
             groups.addWidget(self._hedge_group)
 
-            # ============================================================
-            # § 5 — Circuit Breakers (v3.15.58)
-            # ============================================================
             self._cb_group = QGroupBox("Circuit Breakers (v3.15.58)")
             cf = _mkform()
             self._cb_group.setLayout(cf)
@@ -1140,7 +1001,6 @@ if _HAS_QT:
             )
             cf.addRow("Soft CB Cooldown:", self._cb_cooldown)
 
-            # v3.15.63 — Maximum Cartridge Size.
             self._max_cartridge_pct = QDoubleSpinBox()
             self._max_cartridge_pct.setRange(0.0, 200.0)
             self._max_cartridge_pct.setDecimals(1)
@@ -1155,7 +1015,6 @@ if _HAS_QT:
             )
             cf.addRow("Max Cartridge Size:", self._max_cartridge_pct)
 
-            # v3.15.92 — Smart Cartridge calibration.
             self._cartridge_smart_chk = QCheckBox("Calibrate to BB range")
             self._cartridge_smart_chk.setChecked(False)
             self._cartridge_smart_chk.setToolTip(
@@ -1184,9 +1043,6 @@ if _HAS_QT:
 
             groups.addWidget(self._cb_group)
 
-            # ============================================================
-            # § 6 — Risk Controls (MEM-244)
-            # ============================================================
             self._risk_group = QGroupBox("Risk Controls (MEM-244)")
             rf = _mkform()
             self._risk_group.setLayout(rf)
@@ -1255,13 +1111,8 @@ if _HAS_QT:
 
             groups.addWidget(self._risk_group)
 
-            # ============================================================
-            # § 7 — Strategy Gate Flags (v3.16.15)
-            # ============================================================
-            # Operator picks Conservative (all ON, default) vs Lean
-            # (all OFF). A/B battery (39 sims × 2 profiles) shows
-            # both profiles ~94.9 % win rate; the choice is about
-            # WHICH scenarios you optimize for.
+            # Conservative = every gate ON (default), Lean = every gate OFF.
+            # 39 sims x 2 profiles measured ~94.9 % win rate for both.
             self._gates_group = QGroupBox("Strategy Gate Flags (v3.16.15)")
             gf = _mkform()
             self._gates_group.setLayout(gf)
@@ -1314,9 +1165,6 @@ if _HAS_QT:
 
             groups.addWidget(self._gates_group)
 
-            # ============================================================
-            # § 8 — Profit Routing (v3.20.85)
-            # ============================================================
             self._routing_group = QGroupBox("Profit Routing (v3.20.85)")
             pr = _mkform()
             self._routing_group.setLayout(pr)
@@ -1335,11 +1183,6 @@ if _HAS_QT:
             )
             pr.addRow("Route:", self._profit_route)
 
-            # profit_fold_pct intentionally omitted — schema field
-            # retired v3.23.3 (see bot_container.py:629 deprecated
-            # set); the corresponding Bot Details Profit Routing
-            # group also omits it.
-
             self._profit_route_bot_id = QLineEdit()
             self._profit_route_bot_id.setPlaceholderText(
                 "leave blank unless route = cross_bot"
@@ -1352,18 +1195,13 @@ if _HAS_QT:
 
             groups.addWidget(self._routing_group)
 
-            # ─── v3.19.3 — Extractor parameters (mode == EXTRACTOR) ──
-            # All Extractor-specific widgets live inside this single
-            # QGroupBox so visibility toggles as one unit when the
-            # operator selects Extractor on ModeSelectionPage. Hidden
-            # by default; set_mode(..., is_extractor=True) reveals it.
+            # One group, so every Extractor widget shows and hides together.
             self._extractor_group = QGroupBox("Extractor — Pool & Artillery")
             self._extractor_group.setVisible(False)
             eform = QFormLayout(self._extractor_group)
             eform.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
             eform.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
 
-            # Chunk size (USD) — operator-allocated base-currency reserve
             self._ext_chunk_size_usd = QDoubleSpinBox()
             self._ext_chunk_size_usd.setRange(10.0, 10_000_000.0)
             self._ext_chunk_size_usd.setPrefix("$")
@@ -1377,7 +1215,6 @@ if _HAS_QT:
             )
             eform.addRow("Chunk size (USD):", self._ext_chunk_size_usd)
 
-            # Artillery size (USD) — per-round cost
             self._ext_artillery_size_usd = QDoubleSpinBox()
             self._ext_artillery_size_usd.setRange(0.5, 100_000.0)
             self._ext_artillery_size_usd.setPrefix("$")
@@ -1390,7 +1227,6 @@ if _HAS_QT:
             )
             eform.addRow("Artillery size (USD):", self._ext_artillery_size_usd)
 
-            # Top-N pairs by volume
             self._ext_scan_top_n = QSpinBox()
             self._ext_scan_top_n.setRange(5, 10)
             self._ext_scan_top_n.setValue(8)
@@ -1401,7 +1237,6 @@ if _HAS_QT:
             )
             eform.addRow("Watch list top-N:", self._ext_scan_top_n)
 
-            # Watch list refresh cadence (candles)
             self._ext_scan_refresh = QSpinBox()
             self._ext_scan_refresh.setRange(10, 240)
             self._ext_scan_refresh.setValue(60)
@@ -1413,7 +1248,6 @@ if _HAS_QT:
             )
             eform.addRow("Watch list refresh:", self._ext_scan_refresh)
 
-            # Pool reserve %
             self._ext_pool_reserve = QDoubleSpinBox()
             self._ext_pool_reserve.setRange(0.0, 90.0)
             self._ext_pool_reserve.setSuffix("%")
@@ -1426,7 +1260,6 @@ if _HAS_QT:
             )
             eform.addRow("Pool reserve:", self._ext_pool_reserve)
 
-            # Exit %
             self._ext_exit_pct = QDoubleSpinBox()
             self._ext_exit_pct.setRange(10.0, 100.0)
             self._ext_exit_pct.setSuffix("%")
@@ -1439,7 +1272,6 @@ if _HAS_QT:
             )
             eform.addRow("Exit %:", self._ext_exit_pct)
 
-            # Max compounding tier
             self._ext_max_tier = QSpinBox()
             self._ext_max_tier.setRange(1, 10)
             self._ext_max_tier.setValue(3)
@@ -1451,7 +1283,6 @@ if _HAS_QT:
             )
             eform.addRow("Max compounding tier:", self._ext_max_tier)
 
-            # Cost-basis multiple ceiling (safety)
             self._ext_max_cost_basis = QDoubleSpinBox()
             self._ext_max_cost_basis.setRange(1.0, 10.0)
             self._ext_max_cost_basis.setDecimals(1)
@@ -1465,10 +1296,6 @@ if _HAS_QT:
             )
             eform.addRow("Max cost-basis multiple:", self._ext_max_cost_basis)
 
-            # ─── v3.20.84 — Inverted Extractor direction + standing ─
-            # MEM-430 / closes v3.20.74 backend → GUI parity gap
-            # (MEM-428 exemption ledger "extractor_direction" + paired
-            # "inverted_extractor_standing_alt_units" — both HIGH).
             self._ext_direction = QComboBox()
             self._ext_direction.addItem("Normal (base → alt: buy first)", "normal")
             self._ext_direction.addItem(
@@ -1486,7 +1313,6 @@ if _HAS_QT:
             )
             eform.addRow("Direction:", self._ext_direction)
 
-            # Standing alt units (only meaningful for Inverted)
             self._ext_standing_alt_units = QDoubleSpinBox()
             self._ext_standing_alt_units.setRange(0.0, 1_000_000_000.0)
             self._ext_standing_alt_units.setDecimals(8)
@@ -1500,13 +1326,6 @@ if _HAS_QT:
             )
             eform.addRow("Standing alt units (Inverted):", self._ext_standing_alt_units)
 
-            # ─── v3.20.84 — Extractor Settings tab expansion ────────
-            # MEM-430 / closes 4 of 13 wizard-parity exemptions queued
-            # at target v3.20.84:
-            # extractor_correction_skip_candles +
-            # extractor_drawdown_threshold_pct +
-            # extractor_hedge_budget_usd +
-            # extractor_trend_strength_threshold.
             self._ext_correction_skip = QSpinBox()
             self._ext_correction_skip.setRange(0, 100)
             self._ext_correction_skip.setValue(4)
@@ -1583,7 +1402,6 @@ if _HAS_QT:
             self._ta_timeframe.clear()
             for tf in allowed:
                 self._ta_timeframe.addItem(tf, tf)
-            # Restore selection if still allowed; else default to 1h or first.
             idx = self._ta_timeframe.findData(current)
             if idx < 0:
                 idx = self._ta_timeframe.findData("1h")
@@ -1622,8 +1440,6 @@ if _HAS_QT:
                     "and compounding-tier policy."
                 )
             elif is_grid:
-                # Grid mode is dead; keep the wizard reachable but
-                # empty so the operator understands why nothing shows.
                 self.setSubTitle(
                     "Grid mode is retired (v3.23.21); no configurable "
                     "fields on this page."
@@ -1647,8 +1463,6 @@ if _HAS_QT:
                 "visibility": self._visibility.currentData(),
                 "aggressive_trading": self._aggressive.isChecked(),
             }
-            # v3.19.3 — Extractor early-return; wizard's accept logic
-            # sets mode=BotMode.EXTRACTOR on the produced BotConfig.
             if getattr(self, "_is_extractor", False):
                 cfg.update(
                     {
@@ -1675,19 +1489,15 @@ if _HAS_QT:
                     }
                 )
                 return cfg
-            # Scrumming branch (Grid mode dead since v3.23.21).
             _max_ep = self._max_entry_px.value()
             _min_ep = self._min_entry_px.value()
             cfg.update(
                 {
-                    # § 1 Trading Parameters
                     "stack_mode": self._stack_mode.isChecked(),
                     "split_distance": self._split_distance.value(),
                     "stack_tranche_count_target": int(self._stack_count.value()),
                     "stack_spacing_mode": self._stack_spacing.currentData(),
-                    # v3.23.42 — interop
                     "personal_hold_qty": float(self._personal_hold_qty.value()),
-                    # § 2 Scrumming Settings
                     "scrumming_interval_pct": self._scrumming_interval.value(),
                     "bb_tolerance_pct": self._bb_tolerance.value(),
                     "bb_landing_strip_candles": self._ls_candles.value(),
@@ -1698,7 +1508,6 @@ if _HAS_QT:
                     "trading_fee_pct": self._trading_fee.value(),
                     "max_target_growth_pct": self._max_target_growth_pct.value(),
                     "scrum_fold_pct": self._scrum_fold_pct.value(),
-                    # § 3 Advanced Scrumming (P1.9)
                     "scrum_detect_pct": self._scrum_detect_pct.value(),
                     "scrum_fire_pct": self._scrum_fire_pct.value(),
                     "bb_midline_gate": self._bb_midline_gate.isChecked(),
@@ -1706,39 +1515,31 @@ if _HAS_QT:
                     "band_travel_pct": self._band_travel_pct.value(),
                     "bb_bullseye_check": self._bb_bullseye.isChecked(),
                     "wire_inflow_stack_pct": self._wire_inflow_stack_pct.value(),
-                    # § 4 Hedge Rebalance
                     "hedge_rebalance_active": self._hedge_rebalance.isChecked(),
                     "hedge_balance": self._hedge_amount.value(),
-                    # § 5 Circuit Breakers (v3.15.58)
                     "circuit_breaker_soft_pct": self._cb_soft_pct.value(),
                     "circuit_breaker_hard_pct": self._cb_hard_pct.value(),
                     "circuit_breaker_cooldown_candles": self._cb_cooldown.value(),
                     "max_cartridge_size_pct": self._max_cartridge_pct.value(),
                     "max_cartridge_smart": self._cartridge_smart_chk.isChecked(),
                     "max_cartridge_smart_ceiling_pct": self._cartridge_smart_ceiling.value(),
-                    # § 6 Risk Controls (MEM-244)
                     "position_ceiling_enabled": self._position_ceiling_enabled.isChecked(),
                     "position_ceiling_multiple": self._position_ceiling_multiple.value(),
                     "detonation_enabled": self._detonation_enabled.isChecked(),
                     "detonation_timeframe": self._detonation_timeframe.currentData(),
                     "detonation_confidence_min": self._detonation_confidence_min.value(),
-                    # § 7 Strategy Gate Flags (v3.16.15)
                     "scrum_require_ta_bullish": self._gate_scrum_ta_chk.isChecked(),
                     "scrum_hold_in_uptrend": self._gate_scrum_uptrend_chk.isChecked(),
                     "scrum_defer_to_htf": self._gate_scrum_htf_chk.isChecked(),
                     "fold_require_ta_bearish": self._gate_fold_ta_chk.isChecked(),
                     "fold_hold_in_downtrend": True,  # reserved, no gate
                     "fold_defer_to_htf": self._gate_fold_htf_chk.isChecked(),
-                    # § 8 Profit Routing (v3.20.85)
                     "profit_route": self._profit_route.currentData(),
                     "profit_route_bot_id": self._profit_route_bot_id.text().strip(),
                 }
             )
             return cfg
 
-    # ---------------------------------------------------------------
-    # Page 4: Profit Folding (Grid only)
-    # ---------------------------------------------------------------
     class ProfitFoldingPage(QWizardPage):
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -1820,9 +1621,6 @@ if _HAS_QT:
                 "distribute_target_count": self._dist_x_count.value(),
             }
 
-    # ---------------------------------------------------------------
-    # Page 5: Phantom Config (Scrumming only)
-    # ---------------------------------------------------------------
     class PhantomConfigPage(QWizardPage):
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -1833,11 +1631,6 @@ if _HAS_QT:
             self._exchange_id: str | None = None
             layout = QVBoxLayout(self)
             self._enable = QCheckBox("Enable Phantom Balance Bots")
-            # v3.23.39 — default OFF per operator directive 2026-07-27
-            # ("Phantom Bots should be deactivated by default during the
-            # bot creation process but currently have several active").
-            # Operator can still opt-in explicitly at creation, or toggle
-            # on later via the Bot Details Phantom Bots tab.
             self._enable.setChecked(False)
             layout.addWidget(self._enable)
             layout.addWidget(QLabel("Active Timeframes:"))
@@ -1857,9 +1650,6 @@ if _HAS_QT:
                 "1w",
             ]:
                 cb = QCheckBox(tf)
-                # v3.23.39 — no TF is pre-checked. Operator picks the
-                # phantom timeframes at the same time they opt-in to
-                # phantoms, so neither knob is a silent default.
                 cb.setChecked(False)
                 self._tf_checks[tf] = cb
                 tf_row.addWidget(cb)
@@ -1874,8 +1664,6 @@ if _HAS_QT:
             layout.addStretch()
 
         def get_config(self):
-            # v3.15.61 — only emit timeframes that are both checked AND
-            # supported by the selected exchange (defense in depth).
             checked = [
                 tf
                 for tf, cb in self._tf_checks.items()
@@ -1929,7 +1717,6 @@ if _HAS_QT:
                 return True
             ex_id = self._exchange_id or ""
             if not ex_id:
-                # No exchange context; skip the check silently.
                 return True
             try:
                 from src.exchange.api_load_monitor import get_load_monitor
@@ -1964,9 +1751,6 @@ if _HAS_QT:
             clicked = box.clickedButton()
             return clicked is not back_btn
 
-    # ---------------------------------------------------------------
-    # Wizard
-    # ---------------------------------------------------------------
     class BotCreationWizard(QWizard):
         def __init__(self, exchanges: list[dict], defaults: dict, parent=None):
             super().__init__(parent)
@@ -1976,12 +1760,6 @@ if _HAS_QT:
                 "Creates one bot. Pick the mode, then the pair or the "
                 "pool, then the trading parameters."
             )
-            # v3.15.76 — minimum size kept at 700×550 for safety on
-            # tiny screens, but the wizard now OPENS at 1100×750 so
-            # the dense Trading Parameters page (page 3) fits all
-            # label/field rows without needing the operator to
-            # manually drag the window wider on every bot creation.
-            # Operator directive 2026-04-27.
             self.setMinimumSize(700, 550)
             self.resize(1100, 750)
             self._asset_page = AssetSelectionPage(exchanges)
@@ -1996,32 +1774,22 @@ if _HAS_QT:
             self.setPage(PAGE_PARAMS, self._params_page)
             self.setPage(PAGE_FOLDING, self._folding_page)
             self.setPage(PAGE_PHANTOM, self._phantom_page)
-            # v3.19.26 — Mode selection comes FIRST per operator UX spec
-            # 2026-05-22 ("First screen should be after Scrumming Bot is
-            # selected. Second screenshot should be the first in the
-            # creation flow."). nextId() then branches to the appropriate
-            # Page 2 based on mode choice.
             self.setStartId(PAGE_MODE)
             self.currentIdChanged.connect(self._on_page_changed)
 
         def _on_page_changed(self, page_id):
             if page_id == PAGE_PARAMS:
-                # v3.19.3 — pass is_extractor so the params page can
-                # swap to the Extractor field set when that mode is
-                # selected on the ModeSelectionPage.
                 self._params_page.set_mode(
                     self._mode_page.is_grid(),
                     is_extractor=self._mode_page.is_extractor(),
                 )
-                # v3.15.61 — filter TA Timeframe combo to only show TFs
-                # the selected exchange supports (Coinbase has no 4h, etc.)
+                # Coinbase offers no 4h. The venue's list replaces the combo's.
                 try:
                     eid = self._asset_page._exchange.currentData()
                     self._params_page.set_exchange_id(eid)
                 except Exception as _tf_exc:  # noqa: BLE001 - TF-filter best-effort
                     logger.debug("params_page.set_exchange_id failed: %s", _tf_exc)
             elif page_id == PAGE_PHANTOM:
-                # v3.15.61 — filter phantom timeframe checkboxes too
                 try:
                     eid = self._asset_page._exchange.currentData()
                     self._phantom_page.set_exchange_id(eid)
@@ -2030,44 +1798,29 @@ if _HAS_QT:
 
         def nextId(self):
             current = self.currentId()
-            # v3.19.26 — Mode page is now Page 1; branch to the
-            # mode-appropriate Page 2 based on the operator's choice.
             if current == PAGE_MODE:
                 if self._mode_page.is_extractor():
                     return PAGE_EXTRACTOR_POOL
-                # Scrumming / Grid both use the original AssetSelectionPage
                 return PAGE_ASSET
             if current == PAGE_ASSET:
                 return PAGE_PARAMS
             if current == PAGE_EXTRACTOR_POOL:
                 return PAGE_PARAMS
             if current == PAGE_PARAMS:
-                # v3.19.3 — Extractor mode finishes here; no Profit
-                # Folding (anchor model is base-pool, not surplus
-                # routing) and no Phantom bots (operator directive
-                # 2026-05-20: Extractors do not use phantoms).
                 if self._mode_page.is_extractor():
                     return -1
+                # is_grid() returns False always; this branch is unreachable.
                 if self._mode_page.is_grid():
-                    return PAGE_FOLDING  # Grid -> Profit Folding
-                return PAGE_PHANTOM  # Scrumming -> Phantoms
+                    return PAGE_FOLDING
+                return PAGE_PHANTOM
             if current == PAGE_FOLDING:
-                return -1  # Grid: done after folding
+                return -1
             if current == PAGE_PHANTOM:
-                return -1  # Scrumming: done after phantoms
+                return -1
             return current + 1
 
         def get_bot_config(self):
             config = {}
-            # v3.19.26 — pull asset/exchange/base from the mode-appropriate
-            # Page 2. ExtractorPoolPage and AssetSelectionPage both
-            # expose get_config() returning {exchange_id, base_currency,
-            # target_asset}; ExtractorPool additionally includes
-            # extractor_alt_targets (operator's multi-select of alt pairs;
-            # empty list = use the runtime top-N auto-scan).
-            # v3.20.4 — grid branch removed (grid_bot deleted v3.16.0;
-            # is_grid() has returned False permanently since then —
-            # the elif branch was provably dead code).
             if self._mode_page.is_extractor():
                 config["mode"] = "extractor"
                 config.update(self._extractor_pool_page.get_config())
@@ -2076,9 +1829,6 @@ if _HAS_QT:
                 config.update(self._asset_page.get_config())
             config.update(self._params_page.get_config())
             if config["mode"] == "extractor":
-                # Extractor never uses phantoms (operator directive
-                # 2026-05-20) and never uses profit-folding (different
-                # anchor model — base-pool growth, not surplus routing).
                 config["enable_phantoms"] = False
                 config["profit_folding_active"] = False
             else:
