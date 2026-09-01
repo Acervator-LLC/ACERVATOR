@@ -103,6 +103,10 @@ class ScreenSweep:
     built: list[str] = field(default_factory=list)
     refused: dict[str, tuple[str, str]] = field(default_factory=dict)
     root_handlers_added: list[str] = field(default_factory=list)
+    root_handlers_before: list[str] = field(default_factory=list)
+    root_handlers_after: list[str] = field(default_factory=list)
+    root_level_before: int = -1
+    root_level_after: int = -1
 
     @property
     def modules(self) -> set[str]:
@@ -128,20 +132,37 @@ def _discover(sweep: ScreenSweep) -> None:
             sweep.classes[f"{name}.{obj.__name__}"] = obj
 
 
-def _build_each(sweep: ScreenSweep) -> None:
+def _restore_root(
+    sweep: ScreenSweep, handlers: list[logging.Handler], level: int
+) -> None:
+    """Put the root logger back to `handlers` and `level`, recording additions.
+
+    Restores unconditionally and by identity. One screen attaches two handlers
+    and drops the root level to DEBUG, and a second screen attaches a handler
+    of a class already present, so removing only what is recognised by class
+    name would leave the later instances behind.
+    """
+    root = logging.getLogger()
+    added = [type(h).__name__ for h in root.handlers if h not in handlers]
+    if added:
+        sweep.root_handlers_added.extend(added)
+    root.handlers[:] = handlers
+    root.setLevel(level)
+
+
+def _build_each(
+    sweep: ScreenSweep, handlers: list[logging.Handler], level: int
+) -> None:
     """Build every discovered class alone, destroying each before the next.
 
-    Restores the root logger after each screen. Two screens attach a log
-    handler bound to a widget they own; left attached, that handler writes
-    into a destroyed widget and every later log record in the process raises.
+    Restores the root logger after each screen. A handler a screen attaches is
+    bound to a widget that screen owns; left attached, it writes into a
+    destroyed widget and every later log record in the process raises.
 
     The refusal is stored as text. Keeping the exception would pin its
     traceback, and the traceback pins the frame that holds the widget.
     """
-    root = logging.getLogger()
     for key in sorted(sweep.classes):
-        handlers_before = list(root.handlers)
-        level_before = root.level
         try:
             widget = sweep.classes[key]()
         except BaseException as exc:  # noqa: BLE001 - the refusal is the finding
@@ -151,12 +172,7 @@ def _build_each(sweep: ScreenSweep) -> None:
             widget.close()
             del widget
             gc.collect()
-        added = [type(h).__name__ for h in root.handlers if h not in handlers_before]
-        if added:
-            sweep.root_handlers_added.extend(added)
-            root.handlers[:] = handlers_before
-        if root.level != level_before:
-            root.setLevel(level_before)
+        _restore_root(sweep, handlers, level)
 
 
 @pytest.fixture(scope="module")
@@ -171,15 +187,29 @@ def sweep(tmp_path_factory: pytest.TempPathFactory) -> ScreenSweep:
     The build pass runs from a temp directory. `CompetitionTab` defaults its
     `data_dir` to the relative path `competition_data`, so building it from
     the repo root writes `competition_data/bot_identity.json` into the tree.
+
+    The root logger baseline is taken BEFORE discovery. Importing a screen
+    module can attach a handler, and a baseline taken after the imports would
+    adopt that handler as normal instead of removing it. Both snapshots are
+    taken inside this fixture, so a handler another test file leaked onto the
+    root logger sits in both and cannot fail this file.
     """
     if QApplication.instance() is None:
         QApplication(sys.argv)
+    root = logging.getLogger()
+    baseline_handlers = list(root.handlers)
+    baseline_level = root.level
     result = ScreenSweep()
+    result.root_handlers_before = [type(h).__name__ for h in baseline_handlers]
+    result.root_level_before = baseline_level
     _discover(result)
+    _restore_root(result, baseline_handlers, baseline_level)
     with pytest.MonkeyPatch.context() as patch:
         patch.chdir(tmp_path_factory.mktemp("screen_sweep"))
         install_quiet_ticker(patch)
-        _build_each(result)
+        _build_each(result, baseline_handlers, baseline_level)
+    result.root_handlers_after = [type(h).__name__ for h in root.handlers]
+    result.root_level_after = root.level
     return result
 
 
@@ -258,17 +288,55 @@ def test_screens_needing_a_collaborator_are_still_importable(
         )
 
 
+def test_the_root_logger_restore_puts_back_handlers_and_level() -> None:
+    """The restore must undo a handler and a level change, or the sweep leaks."""
+    root = logging.getLogger()
+    baseline_handlers = list(root.handlers)
+    baseline_level = root.level
+    dirty_level = logging.ERROR if baseline_level == logging.DEBUG else logging.DEBUG
+
+    root.addHandler(logging.NullHandler())
+    root.addHandler(logging.NullHandler())
+    root.setLevel(dirty_level)
+    assert (
+        len(root.handlers) == len(baseline_handlers) + 2
+    ), "the plant did not attach two handlers, so this control proves nothing"
+    assert (
+        root.level == dirty_level
+    ), "the plant did not change the root level, so this control proves nothing"
+
+    probe = ScreenSweep()
+    _restore_root(probe, baseline_handlers, baseline_level)
+
+    assert root.handlers == baseline_handlers, (
+        "restore left the root handler list as "
+        f"{[type(h).__name__ for h in root.handlers]}, expected "
+        f"{[type(h).__name__ for h in baseline_handlers]}"
+    )
+    assert (
+        root.level == baseline_level
+    ), f"restore left the root level at {root.level}, expected {baseline_level}"
+    assert probe.root_handlers_added == ["NullHandler", "NullHandler"], (
+        f"restore recorded {probe.root_handlers_added}; both planted handlers "
+        "share a class, and a restore keyed on the class name records one"
+    )
+
+
 def test_the_sweep_leaves_the_root_logger_as_it_found_it(
     sweep: ScreenSweep,
 ) -> None:
     """A screen's log handler outliving its widget breaks every later record."""
-    live = [type(handler).__name__ for handler in logging.getLogger().handlers]
-    stranded = [name for name in sweep.root_handlers_added if name in live]
-    assert not stranded, (
-        "a screen attached a log handler to the root logger and the sweep "
-        f"left it there: added {sorted(set(sweep.root_handlers_added))}, "
-        f"still attached {live}. That handler writes into a destroyed widget, "
-        "so every later log record in this process raises."
+    assert sweep.root_handlers_after == sweep.root_handlers_before, (
+        "the sweep changed the root logger handler list from "
+        f"{sweep.root_handlers_before} to {sweep.root_handlers_after}. "
+        f"Screens attached {sorted(set(sweep.root_handlers_added))} while it "
+        "ran, and the restore did not put the list back. Such a handler "
+        "writes into a destroyed widget, so every later log record raises."
+    )
+    assert sweep.root_level_after == sweep.root_level_before, (
+        f"the sweep left the root logger level at {sweep.root_level_after}, "
+        f"expected {sweep.root_level_before}. One screen sets the root level "
+        "to DEBUG and never puts it back."
     )
 
 
@@ -277,7 +345,12 @@ def test_the_sweep_holds_no_screen_open(sweep: ScreenSweep) -> None:
     held = []
     for spec in dataclasses.fields(sweep):
         value = getattr(sweep, spec.name)
-        items = value.values() if isinstance(value, dict) else value
+        if isinstance(value, dict):
+            items = list(value.values())
+        elif isinstance(value, (list, tuple, set)):
+            items = list(value)
+        else:
+            continue
         held += [
             f"{spec.name} holds a live {type(item).__name__}"
             for item in items
