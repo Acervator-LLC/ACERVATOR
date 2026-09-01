@@ -1,17 +1,9 @@
-"""fleet_replay_panel.py — GUI panel for the Simulator's Fleet Replay
-mode.
+"""fleet_replay_panel.py -- the Simulator's Fleet Replay panel.
 
-v3.23.79 upgrade of v3.23.72 MVP:
-  * Bot row rendering is a real QTableWidget (was a bare list, which
-    the operator called "sloppy" 2026-07-31).
-  * Start Replay button ENABLED. Wires to FleetReplayController.
-  * Panel drives the controller with synthetic candles for now
-    (proves the whole pipeline plays real ScrummingBot.tick() against
-    FleetSimExchange). Real YTD candles lands v3.23.79-B once the
-    History Tab's Refresh signal is bridged.
-  * Progress row shows candles played, trades fired, exception count.
-
-sadp: R28 SSS + R70 RCN
+Loads every live bot config from bot_state.json and spawns one
+simulated ScrummingBot per config, then plays Stone Tablet candles
+through them. The loaded fleet is a table of one row per bot, and a
+progress row reports candles played, trades fired and tick failures.
 """
 
 from __future__ import annotations
@@ -26,10 +18,7 @@ from typing import Any, Callable, Optional
 logger = logging.getLogger("acervator.simulator.fleet.panel")
 
 
-# ── telemetry helpers (v3.24.8) ──────────────────────────────────
-# Module-level so the per-tick visual refresh can call them without
-# attribute lookup on self. Deliberately exception-swallowing:
-# telemetry is advisory and must never break the feature it watches.
+# Advisory: a telemetry failure never breaks the feature it watches.
 
 
 def _tel_call(name: str, count: int = 1) -> None:
@@ -90,8 +79,7 @@ def _synthesize_candles_for_symbol(
 
     Row shape [ts_ms, o, h, l, c, v] — same as ccxt.
     """
-    # Deterministic per-symbol seed so re-runs of the same fleet
-    # produce the same pattern (helps operator eyeball).
+    # Per-symbol seed, so one symbol always draws the same wave.
     seed = sum(ord(c) for c in symbol) or 1
     rows: list[list[float]] = []
     base_ts = 1_700_000_000_000
@@ -114,15 +102,10 @@ if _HAS_QT:
     class FleetReplayPanel(QWidget):
         """Left-column Simulator content for Fleet Replay mode.
 
-        v3.23.79 upgrade:
-          * Loaded-fleet is a QTableWidget with (Symbol, Target USD,
-            Sim Trades, Status) columns instead of the sloppy
-            single-string list rows.
-          * Start Replay is live: builds synthetic candles for each
-            loaded bot's symbol, boots a FleetReplayController, and
-            plays candles until Stop or exhaustion.
-          * Progress row updates on a 500 ms QTimer: candles played,
-            trades fired, exceptions.
+        Load reads the stored fleet into a table of one row per bot and
+        spawns a sim bot for each. Start Replay hands the run to the
+        application's loop; two timers then poll it, one for the progress
+        row and one for the visual refresh.
 
         Emits ``fleetLoaded(list)`` on Load, ``replayStarted()`` /
         ``replayStopped()`` for external listeners.
@@ -132,95 +115,55 @@ if _HAS_QT:
         replayStarted = Signal()
         replayStopped = Signal()
 
-        # v3.24.86 — 3 columns. The Gates column moved OUT to
-        # `GateStatusPanel`, which the Simulator tab hosts where the
-        # Performance Log used to sit (operator task 2026-08-08,
-        # screenshot area 2). A ten-LED labelled row was bounded by the
-        # column width here; in its own pane it draws at full size.
+        # Three columns. The gate row lives in GateStatusPanel, not here.
         COLUMNS = ("Symbol", "Target USD", "Sim Trades")
 
         def __init__(self, parent: Optional[QWidget] = None) -> None:
             super().__init__(parent)
             self.setAccessibleName("Fleet Replay Panel")
-            # v3.24.86 — the gate display lives here and is HOSTED by
-            # the Simulator tab, which reparents it into the pane the
-            # Performance Log used to occupy. Owned by this panel
-            # because this panel knows the fleet; positioned by the tab
-            # because the tab owns the layout.
             self._gate_host_kind = "panel"
             self._gate_panel = None
             try:
                 from .sim_visuals import GateStatusPanel as _gsp
 
-                # PARENTED TO THIS PANEL. Built without a parent it is
-                # a TOP-LEVEL WINDOW that only acquires an owner if a
-                # host reparents it into a layout. Any FleetReplayPanel
-                # constructed without one -- every headless test -- then
-                # leaked a top-level widget, and enough of them
-                # accumulating across a suite run segfaulted Qt (exit
-                # 139, no failure summary). Reparenting into the tab's
-                # layout afterwards is ordinary Qt and unaffected.
+                # Parented here. Built with no parent it is a top-level
+                # window, and enough leaked ones segfault Qt (exit 139).
                 self._gate_panel = _gsp(self)
             except Exception as _gsp_exc:  # noqa: BLE001 - GUI import guard
                 logger.debug("GateStatusPanel unavailable: %s", _gsp_exc)
                 self._gate_host_kind = "table"
             self._configs: list[dict] = []
-            # v3.24.72 (C20) — bot_state's top-level smart_wires,
-            # populated by Load alongside _configs.
+            # bot_state's top-level smart_wires, loaded beside the configs.
             self._smart_wires: list[dict] = []
             self._controller = None
             self._progress_timer: Optional[QTimer] = None
             self._async_loop_getter = None
-            # v3.23.84 — Load and Fetch YTD are INDEPENDENT.
-            # Load reads bot_state.json → self._configs.
-            # Fetch YTD calls fetch_all_history_chunked(bot_manager)
-            # → self._ytd_trades. Neither depends on the other's
-            # state. Operator directive 2026-07-31: "Why is it not
-            # just doing a matching YTD fetch like the History Tab!?
-            # You are merging bot loading (step 1) with YTD fetch
-            # (2) and making the 2nd depend on non-relevant states
-            # of the first?"
+            # Load and Fetch YTD are independent: neither reads the other's
+            # state.
             self._bot_manager = None
             self._connectors_getter = None  # retained shim; unused
-            # v3.24.1 — log-callback wiring. SimulatorTab calls
-            # set_log_callbacks(activity_cb, perf_cb) after mount so
-            # the fleet controller's per-event messages route to the
-            # on-screen Activity/Performance panels. Prior default
-            # (logger.info) meant the panels were unreachable.
+            # SimulatorTab calls set_log_callbacks after mount. With no
+            # callback the lines reach the console logger, which no panel reads.
             self._activity_log_cb: Optional[Callable[[str], None]] = None
             self._performance_log_cb: Optional[Callable[[str], None]] = None
-            # v3.24.19 — worker->GUI handoff. The replay worker writes
-            # a plain snapshot here; a QTimer on the Qt main thread
-            # drains it. Latest-wins: an un-drained frame is replaced
-            # rather than queued, because a stale frame has no value.
+            # The replay worker writes a snapshot here; a timer on the Qt
+            # thread drains it. An undrained frame is replaced, not queued.
             self._snapshot_lock = threading.Lock()
             self._pending_snapshot: Optional[dict] = None
             self._drain_timer: Optional[QTimer] = None
-            # v3.24.9 — stat strip handle. Set via set_visual_widgets.
             self._sim_stat_strip = None
-            # v3.24.3 — visual widgets wired by SimulatorTab after
-            # mount. Panel drives per-tick updates when Start Replay
-            # runs. Kept as attrs (not required at construction) so
-            # tests can construct the panel without Qt.
+            # Wired by SimulatorTab after mount, so the panel builds without them.
             self._sim_price_chart = None
             self._sim_voting_readout = None
-            # bot_id -> GateLightsCell widget (indexed at Load time)
+            # bot_id -> GateLightsCell, indexed at Load time.
             self._gate_cells: dict[str, Any] = {}
             self._ytd_trades: list[dict] = []
-            # v3.23.88 — restored after v3.23.83 rename purge that
-            # missed line 454's `_on_start_clicked` reference. The
-            # AttributeError there was swallowed by the Qt slot's
-            # implicit try/except, which made Start Replay silently
-            # do nothing — no status change, no log line, no error
-            # popup. Exactly the scaffolding/hallucination-adjacent
-            # bug pattern the operator flagged 2026-08-01.
             self._real_candles: dict[str, list[list[float]]] = {}
 
             outer = QVBoxLayout(self)
             outer.setContentsMargins(10, 10, 10, 10)
             outer.setSpacing(10)
 
-            # ── Header ────────────────────────────────────────────
             header = QFrame()
             header.setStyleSheet(
                 "QFrame{background:rgba(0,255,204,10);"
@@ -246,7 +189,6 @@ if _HAS_QT:
             hlay.addWidget(sub)
             outer.addWidget(header)
 
-            # ── Load bar ──────────────────────────────────────────
             load_row = QHBoxLayout()
             self._load_btn = QPushButton("Load live fleet")
             self._load_btn.setToolTip(
@@ -255,10 +197,6 @@ if _HAS_QT:
             )
             self._load_btn.clicked.connect(self._on_load_clicked)
             load_row.addWidget(self._load_btn)
-            # v3.23.80 — Fetch YTD button pulls real OHLCV per
-            # loaded-bot symbol from the connected exchange via
-            # MarketDataPool. When populated, Start Replay uses the
-            # real candles; otherwise it falls back to synthetic.
             self._fetch_ytd_btn = QPushButton("Fetch YTD")
             self._fetch_ytd_btn.setEnabled(False)
             self._fetch_ytd_btn.setToolTip(
@@ -277,19 +215,8 @@ if _HAS_QT:
             self._reset_btn.clicked.connect(self._on_reset_clicked)
             load_row.addWidget(self._reset_btn)
 
-            # v3.24.15 — evaluation-mode toggle. Operator directive
-            # 2026-08-03: "We want the simulated indicators to be
-            # valid signals but we do not need to check it when
-            # nothing happened historically. Its only necessary to
-            # check every candle when customizing strategies or
-            # implementing new ones."
-            #
-            # Unchecked (default) = validation run: the read head
-            # evaluates only candles carrying a historical trade,
-            # plus a warm-up window so the indicators are primed.
-            # Checked = strategy run: every candle evaluated, which
-            # is the only mode that can detect the sim FIRING where
-            # live did not.
+            # Unchecked: only candles carrying a historical trade, each with a
+            # warm-up. Checked: every candle, the only mode finding sim-only trades.
             self._full_eval_chk = QCheckBox("Full evaluation")
             self._full_eval_chk.setChecked(False)
             self._full_eval_chk.setToolTip(
@@ -309,7 +236,6 @@ if _HAS_QT:
             load_row.addWidget(self._status_lbl)
             outer.addLayout(load_row)
 
-            # ── Loaded fleet table (v3.23.79 replaces the list) ──
             self._fleet_group = QGroupBox("Loaded fleet")
             fg = QVBoxLayout(self._fleet_group)
             self._fleet_table = QTableWidget(0, len(self.COLUMNS), self._fleet_group)
@@ -326,7 +252,6 @@ if _HAS_QT:
             fg.addWidget(self._fleet_table)
             outer.addWidget(self._fleet_group, stretch=1)
 
-            # ── Progress row ──────────────────────────────────────
             self._progress_lbl = QLabel(
                 "Replay idle — load a fleet + press Start Replay."
             )
@@ -336,7 +261,6 @@ if _HAS_QT:
             self._progress_lbl.setWordWrap(True)
             outer.addWidget(self._progress_lbl)
 
-            # ── Start / stop ──────────────────────────────────────
             run_row = QHBoxLayout()
             run_row.addStretch()
             self._start_btn = QPushButton("Start Replay")
@@ -356,7 +280,6 @@ if _HAS_QT:
             run_row.addWidget(self._stop_btn)
             outer.addLayout(run_row)
 
-        # ── External wiring hooks ────────────────────────────────
         def set_async_loop_getter(self, getter) -> None:
             """Wire the app's asyncio loop so Start Replay can schedule
             the controller. MainWindow calls this after construction."""
@@ -368,15 +291,10 @@ if _HAS_QT:
             voting_readout=None,
             stat_strip=None,
         ) -> None:
-            """v3.24.3 — wire the Indicator Voting Panel widgets so
-            per-tick updates land in them. Called by SimulatorTab
-            after both this panel + the visuals are constructed.
-
-            v3.24.9 — stat_strip added. Telemetry proved
-            ``SimStatStrip.set()`` had ZERO call sites, which is why
-            the 10-field header showed dashes in every operator
-            screenshot. Passing the widget here gives the per-tick
-            refresh something to feed."""
+            """Wire the Indicator Voting Panel widgets so per-tick updates
+            land in them. Called by SimulatorTab after both this panel and
+            the visuals are constructed. Without ``stat_strip`` the ten-field
+            header has nothing to feed."""
             self._sim_price_chart = price_chart
             self._sim_voting_readout = voting_readout
             self._sim_stat_strip = stat_strip
@@ -386,38 +304,34 @@ if _HAS_QT:
             activity_cb: Optional[Callable[[str], None]],
             performance_cb: Optional[Callable[[str], None]],
         ) -> None:
-            """v3.24.1 — wire the on-screen Activity/Performance log
-            widgets so the fleet replay controller's messages actually
-            reach the operator. Prior default routed to logger.info
-            which meant the panels were unreachable (scaffolding scan
-            finding #1)."""
+            """Wire the on-screen Activity and Performance log widgets so the
+            fleet replay controller's messages reach the operator. With no
+            callback the lines reach the console logger, which no on-screen
+            panel reads."""
             self._activity_log_cb = activity_cb
             self._performance_log_cb = performance_cb
 
         def set_bot_manager(self, bot_manager) -> None:
-            """v3.23.84 — bot_manager is the SAME argument the History
-            Tab passes to fetch_all_history_chunked. Fetch YTD does
-            exactly what History Tab's Refresh does."""
+            """Wire the bot manager Fetch YTD passes to
+            ``fetch_all_history_chunked``, the same call the History tab's
+            Refresh makes."""
             self._bot_manager = bot_manager
             self._fetch_ytd_btn.setEnabled(bot_manager is not None)
 
         def set_connectors_getter(self, getter) -> None:
-            """v3.23.84 shim — retained so any MainWindow that only
-            knows the connectors-getter API still boots. Fetch YTD
-            no longer uses this path; it calls the same
-            fetch_all_history_chunked() as History Tab."""
+            """Accept and drop a connectors getter.
+
+            Retained so a MainWindow that only knows this API still boots.
+            Fetch YTD reads no connector.
+            """
             del getter
 
-        # ── H4 bridge slot (v3.23.88) ────────────────────────────
         def on_history_refreshed(self, trades) -> None:
-            """v3.23.88 — receive History Tab's ``history_refreshed``
-            signal. Operator directive 2026-07-31 (H4): History Tab
-            Refresh front-loads Simulator with current YTD data.
+            """Receive the History tab's ``history_refreshed`` signal.
 
-            History Tab's signal payload is a ``list[dict]`` matching
-            the same schema Fetch YTD produces — store it in
-            ``_ytd_trades`` so Start Replay uses it directly (no
-            need to click Fetch YTD after a History refresh).
+            The payload is a ``list[dict]`` in the same shape Fetch YTD
+            produces, so Start Replay can use it without a Fetch YTD click of
+            its own.
             """
             try:
                 self._ytd_trades = list(trades or [])
@@ -447,7 +361,6 @@ if _HAS_QT:
                     "History refresh emitted 0 trades " "(nothing to front-load)."
                 )
 
-        # ── Slots ────────────────────────────────────────────────
         def _on_load_clicked(self) -> None:
             try:
                 from src.simulator.fleet.bot_state_loader import (
@@ -457,11 +370,8 @@ if _HAS_QT:
                 )
 
                 self._configs = load_bot_configs_from_state()
-                # v3.24.72 (C20) — the fleet's persisted Smart Wires.
-                # Loaded alongside the configs because they join on the
-                # same key (`_src_bot_id`), and a replay without them
-                # runs with cross-bot compounding inert, which
-                # understates the accumulation curve against live.
+                # The wires join the configs on `_src_bot_id`; without them
+                # cross-bot compounding is inert.
                 self._smart_wires = load_smart_wires_from_state()
                 summary = summarize_loaded_configs(self._configs)
             except Exception as exc:  # noqa: BLE001 - loader surface
@@ -469,27 +379,8 @@ if _HAS_QT:
                 self._status_lbl.setText(f"Load failed: {type(exc).__name__}: {exc}")
                 return
             self._populate_fleet_table()
-            # v3.24.96 — LOAD SPAWNS THE FLEET.
-            #
-            # Operator, 2026-08-09: "a fully simulated instance of every
-            # live bot should be spawned when i click load... not
-            # partial...not sort of...not diet versions...fully
-            # simulated."
-            #
-            # Load used to fill a table and nothing else; real
-            # ScrummingBot instances appeared only on Start Replay. The
-            # table was therefore populated from bot_state DICTS, which
-            # is how it ended up showing live bot IDs on a simulator
-            # surface -- a Fire click there would resolve against the
-            # LIVE manager.
-            #
-            # Now Load builds the controller and calls `_build_sim`, so
-            # every row is backed by a constructed sim bot with a
-            # `simulated_` id, its scrumming_state imported, its wires
-            # attached and its capital registry isolated. Candles come
-            # from the Stone Tablet registry on disk -- the same
-            # `reg.get_candles` path Start Replay uses, not a second
-            # one.
+            # Load builds the controller and calls `_build_sim`, so every row
+            # is backed by a constructed sim bot with a `simulated_` id.
             _spawned = 0
             try:
                 _spawned = self._spawn_sim_fleet()
@@ -509,10 +400,6 @@ if _HAS_QT:
                 )
             )
             self._start_btn.setEnabled(len(self._configs) > 0)
-            # v3.23.84 — Fetch YTD is INDEPENDENT of Load. It only
-            # needs bot_manager (same as History Tab). Do NOT gate
-            # on _configs being loaded — the two buttons are
-            # independent workflows.
             try:
                 self.fleetLoaded.emit(list(self._configs))
             except Exception:  # noqa: S110 - signal best-effort
@@ -521,37 +408,19 @@ if _HAS_QT:
         def _spawn_sim_fleet(self) -> int:
             """Construct a real sim bot for every loaded config.
 
-            v3.24.96. Returns the number spawned.
+            Returns the number spawned. Reads the Stone Tablet registry
+            through the same call Start Replay uses, rather than adding a
+            second candle path.
 
-            Reuses the Stone Tablet registry read that Start Replay
-            performs, rather than adding a second candle path -- two
-            paths to the same data is how they end up disagreeing.
-
-            The controller is built but NOT started: the bots exist,
-            hold their imported state and can be inspected, and the
-            tape only advances when the operator presses Start Replay.
+            The controller is built but NOT started: the bots exist, hold
+            their imported state and can be inspected, and the tape only
+            advances when the operator presses Start Replay.
             """
             if not self._configs:
                 return 0
 
-            # 10.3 phase 2 — the spawn starts BELOW the two imports and
-            # after the empty-configs guard. `sim.06.007` carries
-            # `missing_tablets` in its context, so the operation it observes
-            # INCLUDES loading candles from the tablet registry, not just
-            # constructing the controller. That is still the boundary; only
-            # the imports moved out of it.
-            #
-            # WHY THE IMPORTS SIT OUTSIDE THE CLOCK. They are lazy, so the
-            # FIRST call in a process pays the whole interpreter cost of
-            # loading both modules and every call after it pays nothing,
-            # because Python serves them from `sys.modules`. Inside the
-            # bracket that made record 1 incomparable to record 2: item 17
-            # reads this field as latency, so the first spawn of every
-            # process would always look like the slow one. Loading a module
-            # is not spawn work and it never happens twice.
-            #
-            # BOTH EARLY RETURNS BELOW EMIT NOTHING (no configs, no candles),
-            # so neither needs a duration: there is no record to carry one.
+            # The two imports sit outside the timed span: sys.modules serves
+            # them after the first call, so the first spawn would look slow.
             from src.trading.stone_tablets.registry import get_registry
             from src.simulator.fleet.fleet_replay_controller import (
                 FleetReplayController,
@@ -584,9 +453,7 @@ if _HAS_QT:
                 else:
                     missing.append(sym)
             if missing:
-                # Named, not silently dropped: a bot with no tablet
-                # cannot be simulated, and the operator needs to know
-                # WHICH rather than discovering a short fleet.
+                # Named, not dropped: a bot with no tablet cannot be simulated.
                 _log_missing = self._activity_log_cb or (
                     lambda m: logger.info("[FleetReplay] %s", m)
                 )
@@ -597,8 +464,7 @@ if _HAS_QT:
             if not candles:
                 return 0
 
-            # The SAME callback resolution Start Replay uses
-            # (fleet_replay_panel.py:1272) rather than a second one.
+            # The same callback resolution Start Replay uses.
             _act_cb = self._activity_log_cb or (
                 lambda m: logger.info("[FleetReplay] %s", m)
             )
@@ -615,8 +481,8 @@ if _HAS_QT:
                 max_candles=None,
             )
             self._controller._build_sim()
-            # The bots exist; the spawn is over. Stop before the count and
-            # the emitter block, so instrumentation is not billed to it.
+            # Stop the clock before the count and the emitter, so neither is
+            # billed to the spawn.
             _dur_elapsed = time.monotonic() - _dur_t0
             n = len(list(getattr(self._controller, "_bots", []) or []))
             try:
@@ -639,24 +505,8 @@ if _HAS_QT:
                 f"({len(candles)} symbol(s) with tablets)."
             )
 
-            # v3.24.96 — PERSIST THE SIM FLEET'S OWN STATE, AND CHECK
-            # IT AGAINST bot_state.
-            #
-            # Operator, 2026-08-09: sim bots must "have their own
-            # configuration section under simulator_bot_state AFTER
-            # being correctly spawned the first time.
-            # simulator_bot_state parity checks against bot_state."
-            #
-            # Written to ~/.acervator/simulator_bot_state.json, BESIDE
-            # bot_state and never into it -- `save_sim_state` refuses
-            # the live path outright.
-            #
-            # The parity comparison is the point. Every sim bot records
-            # the `source_bot_id` it was cloned from and a field-by-field
-            # diff of its imported scrumming_state against that live
-            # entry, as canonical JSON so lot CONTENTS count rather than
-            # lot counts. Green here means the import was faithful;
-            # divergence later is the simulation doing its job.
+            # Written beside bot_state, never into it. The parity diff is
+            # canonical JSON, so lot CONTENTS count rather than lot counts.
             try:
                 from src.simulator.fleet.simulator_bot_state import (
                     build_sim_state,
@@ -677,11 +527,8 @@ if _HAS_QT:
                     if v.get("differing") or v.get("error")
                 }
                 _state["parity"] = _parity
-                # v3.24.99 — READ THE LAST SPAWN BEFORE OVERWRITING IT.
-                # `save_sim_state` clobbers the file on every Load, so
-                # this is the only moment the previous document exists.
-                # Without it the persisted state was write-only and the
-                # operator could not tell one Load from the next.
+                # `save_sim_state` clobbers the file on every Load, so this is the
+                # only moment the previous document exists.
                 _drift = diff_spawns(load_sim_state(), _state)
                 save_sim_state(_state)
                 _act_cb(
@@ -719,8 +566,8 @@ if _HAS_QT:
                             "mismatched": sorted(_bad)[:8],
                         },
                     )
-                    # Expected 0 changed: a repeat Load with the live
-                    # fleet at rest must reproduce the same sources.
+                    # Expected 0: a repeat Load with the live fleet at rest
+                    # reproduces the same sources.
                     _sbs_emit(
                         "sim.06.009.invariant.spawn_drift",
                         actual=len(_drift["changed"]),
@@ -743,10 +590,8 @@ if _HAS_QT:
         def _gate_cell_for(self, symbol: str):
             """The gate row widget for *symbol*, wherever it lives.
 
-            v3.24.86 - indirection added so moving the display out of
-            the fleet table changes the SOURCE of the widget, not every
-            call site that paints one. `_gate_panel` wins when present;
-            the table cells remain the fallback until it exists.
+            ``_gate_panel`` wins when present; the table cells are the
+            fallback when no panel is attached.
             """
             panel = getattr(self, "_gate_panel", None)
             if panel is not None:
@@ -754,25 +599,14 @@ if _HAS_QT:
             return self._gate_cells.get(symbol)
 
         def sim_bot_statuses(self) -> list:
-            """The fleet as `BotStatusTable.update_bots()` status dicts.
+            """The fleet as ``BotStatusTable.update_bots()`` status dicts.
 
-            v3.24.91. Operator task 2026-08-08 (screenshot area 5):
-            "Needs to be redesigned to match the Trading Tab's bot
-            area."
+            An ADAPTER, not a second table. ``BotStatusTable`` already draws
+            these columns with their header dots, state colouring and Ammo
+            arithmetic, so the sim gets the Trading tab's bot area because it
+            IS the Trading tab's bot area.
 
-            NOT A NEW TABLE. `BotStatusTable` already renders exactly
-            the columns the operator pointed at -- Bot ID, Symbol, Mode,
-            Trades, Target, Target BTC, Target ETH, Ammo, Fire, Detail
-            -- with the header dots, the state colouring and the Ammo
-            arithmetic. Rebuilding that here would be the
-            `FleetSimExchange` mistake again: a second implementation
-            of a thing that exists, guaranteed to drift.
-
-            So this is an ADAPTER. It produces the shape that table
-            already consumes, and the sim gets the Trading Tab's bot
-            area because it IS the Trading Tab's bot area.
-
-            The contract, read off `update_bots`:
+            The contract, read off ``update_bots``:
               status: bot_id, symbol, mode, state, exchange,
                       target_balance, live_target_balance,
                       current_holdings, quote_to_usd, stats
@@ -806,10 +640,8 @@ if _HAS_QT:
                                 or getattr(cfg, "mode", "")
                                 or "scrumming"
                             ),
-                            # The sim has no live state machine; a bot that
-                            # is being ticked is RUNNING. Saying IDLE would
-                            # colour every row grey and hide the one thing
-                            # the column exists to show.
+                            # A bot being ticked is RUNNING. IDLE would grey
+                            # every row and hide what the column exists to show.
                             "state": "RUNNING" if bots else "IDLE",
                             "exchange": str(
                                 getattr(cfg, "exchange_id", "") or "coinbase"
@@ -859,20 +691,17 @@ if _HAS_QT:
                 pass
 
         def _bot_status_table(self):
-            """The Trading Tab's `BotStatusTable`, or None.
+            """The Trading tab's ``BotStatusTable``, or None.
 
-            v3.24.91 — DEFERRED IMPORT, and the reason matters.
+            Deferred import. ``main_window`` imports ``simulator_tab``, so
+            importing ``main_window`` at module scope from here would be a
+            cycle. Inside the method it is safe: ``SimulatorTab`` is only ever
+            constructed by ``main_window``, so that module is fully loaded by
+            the time this runs.
 
-            `main_window` imports `simulator_tab` (main_window.py:3971),
-            so importing `main_window` at module scope from here would
-            be a cycle. Importing it inside the method is safe because
-            `SimulatorTab` is only ever CONSTRUCTED by `main_window`, so
-            by the time this runs that module is fully loaded.
-
-            Returns None rather than raising when it cannot be
-            resolved -- a headless test importing this panel alone is a
-            legitimate caller, and the fleet table falls back to its own
-            columns.
+            Returns None rather than raising when it cannot be resolved, so a
+            test importing this panel alone is a legitimate caller and the
+            fleet table falls back to its own columns.
             """
             cached = getattr(self, "_bst_cls", "unset")
             if cached != "unset":
@@ -888,10 +717,8 @@ if _HAS_QT:
 
         def _populate_fleet_table(self) -> None:
             self._fleet_table.setRowCount(len(self._configs))
-            # v3.24.86 — gate rows are built by `GateStatusPanel` now.
-            # `_gate_cells` stays as the fallback `_gate_cell_for`
-            # consults when no panel is attached (headless tests, and
-            # any future host that does not build one).
+            # Gate rows are built by `GateStatusPanel`; `_gate_cells` is the
+            # fallback when no panel is attached.
             self._gate_cells = {}
             _syms = []
             for r, cfg in enumerate(self._configs):
@@ -905,7 +732,7 @@ if _HAS_QT:
             panel = getattr(self, "_gate_panel", None)
             if panel is not None:
                 panel.set_symbols(_syms)
-            # v3.24.91 — feed the Trading-Tab table when one is mounted.
+            # Feed the Trading tab's table when one is mounted.
             _bst = getattr(self, "_bot_status_table_widget", None)
             if _bst is not None:
                 try:
@@ -915,14 +742,11 @@ if _HAS_QT:
                 except Exception as _bt_exc:  # noqa: BLE001
                     logger.debug("bot table update failed: %s", _bt_exc)
 
-        # ── C26 (v3.24.58) — operator-visible failure reporting ──────
-
         def _status_error(self, msg: str) -> None:
             """The single funnel for every operator-visible failure.
 
-            Exit-gate requirement: no failure path may leave the status
-            line empty. An empty reason is indistinguishable from "the
-            button did nothing", which is the complaint SN-31 records.
+            No failure path may leave the status line empty: an empty reason
+            reads on screen as "the button did nothing".
             """
             text = str(msg or "").strip()
             if not text:
@@ -931,32 +755,17 @@ if _HAS_QT:
             logger.warning("[FleetReplay] %s", text)
 
         def _run_in_flight(self) -> bool:
-            """True when a replay is live enough that Reset would
-            discard work the operator is waiting on.
+            """True when a replay is live enough that Reset would discard
+            work the operator is waiting on.
 
-            v3.25.1 — THIS BLOCKED START.
+            Asks the controller first: a live task is in flight. Falls back to
+            ``started_at_wall``, which is 0.0 until the run actually starts, so
+            "never started" does not read as "running". Reading
+            ``progress.finished`` alone reported a controller that had never
+            run as in flight, which refused Start after a Load.
 
-            It read `not progress.finished` alone. A fresh
-            `ReplayProgress` has `finished = False`, so a controller that
-            has never run reported in flight. That was harmless while the
-            controller was built by Start (line 1376) and `_controller`
-            stayed None until then. Load now builds one too (line 550),
-            so after Load the guard at `_on_start_clicked` saw
-            `_controller is not None and _run_in_flight()` and refused
-            with "A replay is already running." Load then Start was
-            dead: measured `finished=False`, `candles_played=0`,
-            `_run_in_flight()=True` on a fleet of 37 bots that had never
-            ticked.
-
-            The controller already owns the honest test — `self._task is
-            not None and not self._task.done()` at
-            `fleet_replay_controller.py:510`. Ask it first. Fall back to
-            `started_at_wall`, which is 0.0 until the run actually starts
-            (`fleet_replay_controller.py:554`), so "never started" stops
-            reading as "running".
-
-            Reset keeps its meaning: a live task is in flight, and so is
-            a started run whose task reference is gone.
+            A controller that cannot be read is treated as running, so Reset
+            never throws away a run it could not measure.
             """
             ctl = self._controller
             if ctl is None:
@@ -973,10 +782,10 @@ if _HAS_QT:
                 return True
 
         def _confirm_reset(self) -> bool:
-            """Ask before discarding a running replay (SN-35).
+            """Ask before discarding a running replay.
 
-            Overridden in tests so the state machine can be driven
-            without opening a modal.
+            Overridden in tests so the state machine can be driven without
+            opening a modal.
             """
             try:
                 from PySide6.QtWidgets import QMessageBox
@@ -999,9 +808,8 @@ if _HAS_QT:
                 return False
 
         def _on_reset_clicked(self) -> None:
-            # SN-35 — a long run must not be reset out from under the
-            # operator. Only asks when something is actually running:
-            # confirming every Reset trains them to click through it.
+            # Only asks when something is running: confirming every Reset
+            # trains the operator to click through it.
             if self._run_in_flight() and not self._confirm_reset():
                 return
 
@@ -1010,8 +818,7 @@ if _HAS_QT:
                 try:
                     self._controller.request_stop()
                 except Exception as exc:  # was `except: pass`
-                    # SN-31 — this swallow meant Reset could fail to
-                    # stop the run and still look like it worked.
+                    # A swallowed stop let Reset fail and still look like it worked.
                     _stop_failed = True
                     self._status_error(
                         f"Reset: could not stop the running replay "
@@ -1019,16 +826,8 @@ if _HAS_QT:
                         f"running — check the Simulator log."
                     )
 
-            # ⚠️ ORDER IS LOAD-BEARING (C26).
-            #
-            # The timers are stopped HERE, before `_controller` is
-            # nulled. They previously self-stopped via
-            # `_refresh_progress`, which returns early when
-            # `_controller is None` — so nulling first, as the cascade
-            # plan literally prescribes, means that branch is never
-            # reached and both timers run for the life of the process.
-            # Pinned by test_the_timers_are_stopped_before_the_
-            # controller_is_nulled.
+            # Stop the timers BEFORE nulling `_controller`. `_refresh_progress`
+            # returns early on a None controller, so nulling first never stops them.
             for _t in (
                 getattr(self, "_progress_timer", None),
                 getattr(self, "_drain_timer", None),
@@ -1046,23 +845,20 @@ if _HAS_QT:
             self._start_btn.setEnabled(False)
             self._stop_btn.setEnabled(False)
             if not _stop_failed:
-                # Don't overwrite the failure reason with a cheerful
-                # "cleared" — that is how the swallow read on screen.
+                # Do not overwrite the failure reason with "cleared".
                 self._status_lbl.setText("Fleet cleared — press Load live fleet.")
             self._progress_lbl.setText(
                 "Replay idle — load a fleet + press Start Replay."
             )
 
         def _on_fetch_ytd_clicked(self) -> None:
-            """v3.23.84 — CALL THE SAME FUNCTION HISTORY TAB CALLS.
+            """Call the same function the History tab calls.
 
-            History Tab's Refresh dispatches
-                fetch_all_history_chunked(bot_manager, since_ts)
-            at src/gui/history_tab.py:454-461. Same pattern here.
-
-            No custom enumeration. No exchange_id matching. No
-            connector-picking. Nothing. If History Tab returns N
-            trades, Fleet Replay returns the same N trades."""
+            The History tab's Refresh dispatches
+            ``fetch_all_history_chunked(bot_manager, since_ts)``. No custom
+            enumeration, no exchange matching, no connector picking: if the
+            History tab returns N trades, Fleet Replay returns the same N.
+            """
             if self._async_loop_getter is None:
                 self._status_lbl.setText("Cannot fetch: async loop not wired.")
                 return
@@ -1091,24 +887,8 @@ if _HAS_QT:
             bot_mgr = self._bot_manager
 
             async def _do_fetch():
-                # 10.3 -- THE BRACKET SPANS THE AWAITED FETCH ALONE.
-                #
-                # It opens one line above `fetch_all_history_chunked`
-                # and closes one line below it, so it holds the venue
-                # walk and neither the per-symbol tally below it nor the
-                # emitters' own bookkeeping. Measured on the operator's
-                # machine a 4040-trade walk takes longer than 15 s, so
-                # this is the slowest single operation the Fleet Replay
-                # panel performs and the one item 17 wants a number for.
-                #
-                # ONLY `10-002` CARRIES IT, AND THE RULE PICKS THE
-                # OWNER RATHER THAN A PREFERENCE. Three pins fire in
-                # this function. `10-001` and `10-003` are gauges, and a
-                # gauge samples a value at an instant -- rule E8 refuses
-                # a duration on one. `10-002` is the only postcondition
-                # here, so it is the sole eligible owner of the fetch
-                # and the double-count the classification warned about
-                # cannot arise.
+                # The span holds the awaited venue walk alone. Measured: a
+                # 4040-trade walk takes over 15 s, the slowest call this panel makes.
                 _fetch_t0 = time.monotonic()
                 trades = await fetch_all_history_chunked(bot_mgr, since_ts)
                 _fetch_s = time.monotonic() - _fetch_t0
@@ -1127,22 +907,8 @@ if _HAS_QT:
                     dict(sorted(by_symbol.items())),
                 )
 
-                # ── S1 EMITTERS — the YTD half ────────────────────
-                # S1 is "load isolated sim of all live bots via YTD +
-                # bot_state". Only the bot_state half emitted anything.
-                #
-                # YTD is the operator's REAL live trade history and it
-                # is the REFERENCE DATASET: S3 is defined as "feed the
-                # same tick sequence to sim and diff gate.log outputs",
-                # which is only checkable against these trades. It is
-                # also the defence against a self-consistent lie — an
-                # expectation derived from live cannot be quietly
-                # written to match a sim bug.
-                #
-                # Before this it was fetched into panel memory, used for
-                # anchors, and lost when the panel died, with a
-                # logger.info the only trace. A reference that is not
-                # recorded cannot re-check anything.
+                # The YTD trades are the reference dataset: an expectation derived
+                # from live cannot be quietly rewritten to match a sim bug.
                 try:
                     from src.core.signal_contract import emit as _emit
 
@@ -1156,9 +922,7 @@ if _HAS_QT:
                         actual=len(self._ytd_trades),
                         context={"since_ts": since_ts, "symbols": len(by_symbol)},
                     )
-                    # Coverage is judged: a fleet symbol with no YTD
-                    # trades has no reference to diff against, so S3
-                    # cannot speak for that bot.
+                    # A fleet symbol with no YTD trade has no live reference.
                     _covered = sorted(set(by_symbol) & _fleet_syms)
                     _emit(
                         "ytd.10.002.postcondition.fleet_symbol_coverage",
@@ -1174,15 +938,8 @@ if _HAS_QT:
                 except Exception as _emx:  # noqa: BLE001 - never break the fetch
                     logger.debug("ytd emit failed: %s", _emx)
 
-            # v3.23.85 — use future.add_done_callback so
-            # _on_fetch_ytd_done fires AFTER the fetch actually
-            # completes (not on a wall-clock timeout). Prior wall-clock 15s timer declared the
-            # fetch done before fetch_all_history_chunked finished
-            # (4040-trade walks take longer than 15s), so the panel
-            # read an empty _ytd_trades and reported "no trades"
-            # while the async fetch was still running in the
-            # background. History Tab's dispatch uses Qt slots
-            # bound to the future's completion — mirror that.
+            # add_done_callback fires when the fetch really finishes. A
+            # wall-clock timer declared it done early, on an empty `_ytd_trades`.
             try:
                 future = asyncio.run_coroutine_threadsafe(_do_fetch(), loop)
             except Exception as _sched_exc:  # noqa: BLE001
@@ -1190,18 +947,13 @@ if _HAS_QT:
                 self._fetch_ytd_btn.setEnabled(True)
                 return
 
-            # Marshal from the asyncio thread back onto the Qt
-            # main thread via QTimer.singleShot(0, ...) which is
-            # the standard idiom.
+            # Marshal from the asyncio thread back onto the Qt thread.
             def _bounce_to_qt(_fut):
                 QTimer.singleShot(0, self._on_fetch_ytd_done)
 
             future.add_done_callback(_bounce_to_qt)
 
         def _on_fetch_ytd_done(self) -> None:
-            # v3.23.84 — status reports trade count + symbol
-            # breakdown from fetch_all_history_chunked (same shape
-            # History Tab uses).
             trades = self._ytd_trades
             if not trades:
                 self._status_lbl.setText(
@@ -1222,14 +974,12 @@ if _HAS_QT:
             self._fetch_ytd_btn.setEnabled(True)
 
         def _live_trade_timestamps(self) -> list[float]:
-            """Historical trade times for anchoring + soft-start.
+            """Historical trade times for anchoring and soft-start.
 
-            Prefers ``_ytd_trades`` (front-loaded by History Refresh
-            or Fetch YTD). Falls back to reading the live trade log
-            directly, because v3.24.15 silently degraded to full
-            evaluation whenever the operator had not clicked Fetch
-            YTD in the current session — the anchor set came back
-            empty and nothing said why.
+            Prefers ``_ytd_trades``, front-loaded by a History refresh or by
+            Fetch YTD. Falls back to reading the live trade log directly:
+            without that fallback the anchor set came back empty whenever
+            Fetch YTD had not run this session, and nothing said why.
             """
             out: list[float] = []
             for t in self._ytd_trades or []:
@@ -1271,15 +1021,8 @@ if _HAS_QT:
             )
             from src.trading.live_log_reader import live_gate_decisions, live_trades
 
-            # v3.24.24 — build the trade list FIRST so the gate read can
-            # be bounded by it.
-            #
-            # This used to be `gates = list(live_gate_decisions())`,
-            # materialising the entire rotation chain before doing
-            # anything: 165,062 rows across 250.7 MB of NDJSON on the
-            # operator's disk, all held at once, synchronously on the Qt
-            # thread. `live_gate_decisions` has always been a generator
-            # and has always accepted `since` — nothing passed it.
+            # Build the trade list first so the gate read is bounded by it.
+            # Measured unbounded: 165,062 rows across 250.7 MB, on the Qt thread.
             norm: list[dict] = []
             for t in live_trades(validate=False):
                 d = t.get("data") or {}
@@ -1298,11 +1041,8 @@ if _HAS_QT:
             if not norm:
                 return None
 
-            # Cut off just before the earliest trade. Pairing only ever
-            # looks within DEFAULT_TOLERANCE_S of a trade, and LOG_GAP
-            # detection needs the entry immediately before the earliest
-            # one, so a generous margin keeps classification identical
-            # while still skipping everything older.
+            # Cut off just before the earliest trade. Pairing looks within
+            # DEFAULT_TOLERANCE_S, and LOG_GAP needs the entry before it.
             from datetime import timedelta, timezone as _tz
 
             from src.trading.gate_coverage import (
@@ -1314,8 +1054,8 @@ if _HAS_QT:
                 seconds=_GAP * 2
             )
 
-            # validate=False: _validate_gate_entry runs 9 field checks on
-            # every row for a computation that reads four of them.
+            # validate=False: the validator runs 9 field checks for a
+            # computation that reads four of them.
             cov = classify_trades(
                 norm, live_gate_decisions(since=_since, validate=False)
             )
@@ -1324,10 +1064,8 @@ if _HAS_QT:
             return compute_validation_window(cov, warmup_candles=100)
 
         def _on_start_clicked(self) -> None:
-            # C26 / SN-14 — re-entrancy. Without this, a second click
-            # builds a second FleetReplayController while the first
-            # run's timers and `_gate_cells` still point at the old one,
-            # orphaning them with nothing able to stop them.
+            # Without this a second click builds a second controller while the
+            # first run's timers still point at the old one.
             if self._controller is not None and self._run_in_flight():
                 self._status_error(
                     "A replay is already running. Press Stop or wait "
@@ -1335,14 +1073,12 @@ if _HAS_QT:
                 )
                 return
             if not self._configs:
-                # SN-31 — this was a bare `return`: Start did nothing
-                # and explained nothing.
                 self._status_error(
                     "Cannot start: no fleet loaded. Press " "'Load live fleet' first."
                 )
                 return
-            # SN-29 — record whether this run is comparable to live
-            # BEFORE the run's own status lines start arriving.
+            # Record whether this run is comparable to live before the run's
+            # own status lines arrive.
             self._note_parity_state()
             if self._async_loop_getter is None:
                 self._status_lbl.setText(
@@ -1357,17 +1093,8 @@ if _HAS_QT:
                 FleetReplayController,
             )
 
-            # v3.23.80 — prefer real YTD candles if the operator has
-            # fetched them; fall back to synthetic sine waves so the
-            # panel still runs when the sim is disconnected from an
-            # exchange.
-            # v3.24.1 — read candles from the Stone Tablets registry.
-            # Prior cascade read from self._real_candles (populated by
-            # the retired v3.23.80 OHLCV Fetch YTD path, empty since
-            # v3.23.84 switched Fetch YTD to trade-based). Operator
-            # directive 2026-08-01: "The Stone Tablet read should
-            # dictate the candle count." Full tablet coverage is now
-            # played (no more 200-candle cap).
+            # Candles come from the Stone Tablets registry. Full tablet
+            # coverage plays; there is no candle cap.
             from src.trading.stone_tablets import get_registry
             from src.trading.stone_tablets.fetcher import YTD_START_MS
 
@@ -1382,37 +1109,21 @@ if _HAS_QT:
             import time as _t
 
             now_ms = int(_t.time() * 1000)
-            # YTD window math (verified 2026-08-01):
-            #   YTD_START_MS = 2026-04-01T00:00Z
-            #   now_ms      = today
-            #   expected    = (now - YTD_START) / 5min == 288 * days
+            # expected per symbol = (now - YTD_START) / 5 min == 288 * days
             _ytd_days = (now_ms - YTD_START_MS) / 86_400_000
             _expected_per_sym = int(_ytd_days * 288)
             candles: dict[str, list[list[float]]] = {}
             from_tablet: list[tuple[str, int, int]] = []  # sym,got,short
             skipped_no_tablet: list[str] = []
-            # v3.24.3 W1 fix — route per-bot exchange_id instead of
-            # hardcoding "coinbase". Today all 35 bots are Coinbase
-            # (verified 2026-08-01), so the outcome is identical for
-            # now — but hardcoding was a silent hallucination-vector
-            # the moment multi-exchange lands.
+            # Route the per-bot exchange_id rather than hardcoding one venue.
             sym_to_exch = {}
             for cfg in self._configs:
                 _s = str(cfg.get("symbol", "") or "")
                 _e = str(cfg.get("exchange_id", "") or "coinbase")
                 if _s:
                     sym_to_exch.setdefault(_s, _e)
-            # v3.24.16 — apply the validation soft-start cap.
-            #
-            # Operator directive 2026-08-03: "the oldest trade with
-            # all validation data in the trade gate log should emit a
-            # soft start read date cap of which the user will be
-            # informed via the simulation log."
-            #
-            # v3.24.15 built compute_validation_window() but never
-            # called it, so the panel kept fetching from YTD_START_MS
-            # and replayed 35,282 candles — including 10 weeks that
-            # predate gate logging and can never be validated.
+            # Cap the read at the validation soft start, so weeks that predate
+            # gate logging are not replayed.
             _since_ms = YTD_START_MS
             self._validation_window = None
             try:
@@ -1452,18 +1163,8 @@ if _HAS_QT:
                 len(skipped_no_tablet),
                 (f" [{', '.join(skipped_no_tablet)}]" if skipped_no_tablet else ""),
             )
-            # v3.24.99 - GUARDED, like the other three bindings.
-            #
-            # `_activity_log_cb` defaults to None (line 170) and
-            # `set_log_callbacks` has ONE caller, behind a hasattr
-            # guard at simulator_tab.py:249. Any path that builds
-            # this panel without that call raised TypeError on
-            # Start Replay, which calls `_act` seven times.
-            #
-            # The same file already guards it at lines 535, 546
-            # and 1322; one binding of four was bare. pyright
-            # reported all seven call sites and no archetype ran
-            # pyright on this file until today.
+            # `_activity_log_cb` defaults to None and `set_log_callbacks` has
+            # one caller, so an unwired panel raised TypeError on Start Replay.
             _act = self._activity_log_cb or (
                 lambda m: logger.info("[FleetReplay] %s", m)
             )
@@ -1480,9 +1181,7 @@ if _HAS_QT:
                     "(gap between YTD expected and what tablets "
                     "actually cover)."
                 )
-                # Per-symbol shortfall table so operator can see which
-                # tablets are current vs which are stale. Ordered by
-                # shortfall descending.
+                # Per-symbol shortfall, worst first, so a stale tablet is visible.
                 _sorted = sorted(from_tablet, key=lambda t: t[2], reverse=True)
                 for sym, got, short in _sorted[:10]:
                     pct = 100.0 * got / _expected_per_sym if _expected_per_sym else 0.0
@@ -1506,12 +1205,8 @@ if _HAS_QT:
                         "button) or CLI `python -m "
                         "src.trading.stone_tablets.fetcher build-ytd`."
                     )
-                # v3.24.6 — per-tablet availability notices per
-                # operator directive 2026-08-01: 'This asset was
-                # listed on Coinbase mm/dd/yyyy and no prior data
-                # exists.' Emits only when status != full so the
-                # log stays quiet for the majority. Reads
-                # AvailabilityInfo + WindowStatus from the registry.
+                # Emits only when a tablet does not fully cover the window, so the
+                # log stays quiet for the majority.
                 try:
                     from src.trading.stone_tablets import (
                         WindowStatus,
@@ -1557,10 +1252,6 @@ if _HAS_QT:
                         "Cannot start: no bots have Stone Tablets. " "Aborting."
                     )
                 return
-            # v3.24.1 — route callbacks to the real Simulator tab
-            # widgets (scaffolding fix #1). Prior default was
-            # logger.info, so on-screen Activity/Performance panels
-            # could not display anything the controller emitted.
             _activity_cb = self._activity_log_cb or (
                 lambda m: logger.info("[FleetReplay] %s", m)
             )
@@ -1573,22 +1264,14 @@ if _HAS_QT:
                 activity_log_cb=_activity_cb,
                 performance_log_cb=_perf_cb,
                 tick_delay_s=0.0,
-                # v3.24.1 — no cap. Full tablet coverage plays.
-                # Operator can hit Stop at any time.
+                # No cap. Full tablet coverage plays; Stop ends it.
                 max_candles=None,
-                # v3.24.72 (C20) — cross-bot compounding. Without
-                # these the replay runs with Smart Wires inert and
-                # its accumulation curve understates live's.
+                # Without the wires the replay runs with cross-bot compounding inert.
                 smart_wires=self._smart_wires,
             )
 
-            # v3.24.15 — anchored read head (default). Evaluate only
-            # candles carrying a historical trade, each preceded by a
-            # warm-up window so indicators are valid at the moment we
-            # check them. "Full evaluation" opts out for strategy work.
-            # v3.24.16 — report the soft-start cap. Operator asked to
-            # be informed of it via the simulation log; v3.24.15
-            # computed it and told no one.
+            # Anchored by default: only candles carrying a historical trade,
+            # each preceded by a warm-up window.
             _win = getattr(self, "_validation_window", None)
             if _win is not None:
                 try:
@@ -1609,12 +1292,8 @@ if _HAS_QT:
 
             _full_eval = bool(self._full_eval_chk.isChecked())
             self._controller.progress.anchored = not _full_eval
-            # v3.24.29 — compute the expected-trade index set in BOTH
-            # modes. It drives chart marker colour (green = this fill
-            # landed where a historical trade exists). In full
-            # evaluation it is NOT used for skipping; without it every
-            # marker in an FE run would paint red for want of a
-            # reference set.
+            # Built in both modes: it drives marker colour, not skipping.
+            # Without it every marker in a full run paints red.
             try:
                 from src.simulator.fleet.fleet_replay_controller import (
                     build_anchor_indices as _bai,
@@ -1622,14 +1301,8 @@ if _HAS_QT:
                 )
 
                 _b0 = min(int(rows[0][0]) for rows in candles.values() if rows)
-                # v3.24.70 (C20 / NF-18) — the master clock's union IS
-                # the index space the run loop's cursor walks. Deriving
-                # it here rather than reading progress.total_candles,
-                # which is still 0 at this point: `start()` assigns it
-                # AFTER `_build_sim()`, and this runs before start is
-                # even scheduled. The `or max(len(...))` fallback below
-                # therefore fired on EVERY run, bounding anchors by the
-                # longest single series instead of the union.
+                # The master clock's union is the index space the run loop walks.
+                # `progress.total_candles` is still 0 here, so the fallback fired.
                 _clock = _cts(candles)
                 _nn = len(_clock) or (
                     self._controller.progress.total_candles
@@ -1658,18 +1331,14 @@ if _HAS_QT:
                     )
 
                     _base_ts = min(int(rows[0][0]) for rows in candles.values() if rows)
-                    # v3.24.70 (C20 / NF-18) — see the note on the
-                    # expected-index call above. Same union, same
-                    # reason.
+                    # Same union as the expected-index call above.
                     _clock_a = _cts_a(candles)
                     _n = len(_clock_a) or (
                         self._controller.progress.total_candles
                         or max(len(r) for r in candles.values())
                     )
-                    # v3.24.16 — resilient source. Was reading only
-                    # _ytd_trades, which is empty unless Fetch YTD
-                    # ran this session, so anchoring silently fell
-                    # back to full evaluation.
+                    # Reading only `_ytd_trades` made anchoring fall back to full
+                    # evaluation whenever Fetch YTD had not run this session.
                     _trade_ts = self._live_trade_timestamps()
                     _anchors = build_anchor_indices(
                         _trade_ts,
@@ -1711,25 +1380,8 @@ if _HAS_QT:
                         f"Evaluation mode: FULL (anchor build failed: "
                         f"{type(_anc_exc).__name__})"
                     )
-            # v3.24.3 — prime the visual widgets with the fleet's
-            # symbols so they can pre-allocate rows/bands, then wire
-            # the visual-refresh callback so the controller pings us
-            # every 100 ticks.
-            # v3.24.83 -- install a sink BEFORE the fleet load so the
-            # four loader emitters
-            # (fleet.03.001.postcondition.bots_loaded,
-            # fleet.03.002.invariant.bot_ids_mirror_live,
-            # fleet.03.003.invariant.sections_imported,
-            # fleet.03.004.postcondition.wires_loaded) are
-            # captured. They fire inside
-            # `load_bot_configs_from_state`, which runs on "Load live
-            # fleet" -- long before Start Replay builds a controller. A
-            # run-scoped sink can never see them, and they were missing
-            # from every signals.jsonl written so far.
-            #
-            # If the controller later installs its own, these records
-            # are already buffered in THIS sink; the controller's sink
-            # replaces it for the run and both flush to their own file.
+            # Install a sink before the fleet load: the four loader emitters
+            # fire inside `load_bot_configs_from_state`, before a controller.
             try:
                 from src.core.signal_contract import (
                     SignalSink as _SS,
@@ -1745,33 +1397,16 @@ if _HAS_QT:
             if self._sim_price_chart is not None:
                 self._sim_price_chart.clear_data()
                 self._sim_price_chart.set_symbols(_sim_syms)
-                # v3.24.89 - where the YTD overlay begins.
-                #
-                # `compute_validation_window` walks BACK from the oldest
-                # trade that has a gate decision by `warmup_candles`, so
-                # `replay_start_ms` is the start of the WARM-UP, not of
-                # validatable history. The overlay marks the latter:
-                # shading the warm-up would claim gate coverage for
-                # candles that predate any gate decision.
-                # UNITS. `gate_first_ts` and `trade_ts` are SECONDS --
-                # `compute_validation_window` converts with
-                # `soft_start_ms = int(oldest * 1000)`. Candles are int
-                # MILLISECONDS. Passing the seconds value straight
-                # through makes every candle satisfy `ts >= ytd_from`
-                # (1.78e12 >= 1.78e9) and shades the whole warm-up,
-                # which is the precise claim this overlay must not make.
+                # The overlay marks validatable history, not the warm-up.
+                # `soft_start_ms` is milliseconds; the two trade times are seconds.
                 _win = getattr(self, "_validation_window", None)
                 if _win is not None:
                     _ytd0 = getattr(_win, "soft_start_ms", None)
                     if _ytd0:
                         for _s in _sim_syms:
                             self._sim_price_chart.set_ytd_start(_s, int(_ytd0))
-                # v3.24.89 - repopulate the chart's bot picker.
-                #
-                # The picker lives on the Simulator tab and the roster
-                # is known here, at fleet load. Without this it stays
-                # on "All (bands)" with nothing to choose, and the
-                # focused candle view is unreachable.
+                # The picker lives on the Simulator tab and the roster is known
+                # here, at fleet load.
                 _tab = self.window()
                 _refresh = getattr(_tab, "refresh_chart_bot_roster", None)
                 if _refresh is None:
@@ -1785,25 +1420,14 @@ if _HAS_QT:
                     except Exception as _rr:  # noqa: BLE001 - advisory
                         logger.debug("chart roster refresh failed: %s", _rr)
             if self._sim_voting_readout is not None:
-                # v3.24.81 — the REAL IndicatorVotingPanel's contract.
-                # `set_bots` belonged to the sim-only summary table this
-                # replaced. `update_bot_list` filters on mode, so the
-                # entries must declare "scrumming" or they are dropped
-                # and the selector stays empty — which is what an empty
-                # panel looks like.
+                # `update_bot_list` filters on mode, so an entry must declare
+                # "scrumming" or it is dropped and the selector stays empty.
                 self._sim_voting_readout.update_bot_list(
                     [{"bot_id": s, "symbol": s, "mode": "scrumming"} for s in _sim_syms]
                 )
             self._controller.set_visual_refresh_cb(
-                # v3.24.14 — 100 -> 15. Operator directive
-                # 2026-08-03: "Line generation should be a live
-                # animation as the relevant sections of the Stone
-                # Tablets play." At the measured ~12.5 candles/s a
-                # 100-candle cadence redrew once every 8 seconds,
-                # which reads as a stalled chart that occasionally
-                # jumps. 15 gives roughly one repaint per second —
-                # continuous to the eye without flooding the event
-                # loop (repaint is batched across all symbols).
+                # 15 candles is about one repaint per second at the measured
+                # 12.5 candles/s. 100 redrew once every 8 s, which reads as stalled.
                 self._on_visual_refresh_tick,
                 every_n_candles=15,
             )
@@ -1816,19 +1440,13 @@ if _HAS_QT:
             self._stop_btn.setEnabled(True)
             self._progress_lbl.setText("Replay starting…")
             self.replayStarted.emit()
-            # Progress-poll timer
             if self._progress_timer is None:
                 self._progress_timer = QTimer(self)
                 self._progress_timer.setInterval(500)
                 self._progress_timer.timeout.connect(self._refresh_progress)
             self._progress_timer.start()
-            # v3.24.19 — snapshot drain on the Qt MAIN thread at a
-            # fixed wall-clock cadence. Paint cost can no longer feed
-            # back into replay throughput: the worker only ever writes
-            # a dict, and this timer decides how often the widgets
-            # actually repaint. 250 ms = 4 Hz, fast enough to read as
-            # live, slow enough that 35 gate cells + 35 chart bands +
-            # 35 table rows never dominate the frame.
+            # 250 ms drain on the Qt thread, so paint cost cannot feed back
+            # into replay throughput.
             if self._drain_timer is None:
                 self._drain_timer = QTimer(self)
                 self._drain_timer.setInterval(250)
@@ -1836,46 +1454,31 @@ if _HAS_QT:
             self._drain_timer.start()
 
         def _collect_stat_fields(self, bots: list, ledger) -> dict:
-            """v3.24.19 — worker-thread half of the stat strip feed:
-            pure arithmetic over bot + ledger state, returning
-            formatted strings. Touches no Qt. ``_apply_stat_fields``
-            pushes the result on the Qt main thread.
+            """The worker-thread half of the stat strip feed.
 
-            ISSUE #110 SWEEP -- ``ledger`` IS THE TAPE, NOT
-            ``ctl._exchange``. This was handed the controller's
-            exchange and read ``exchange._balances`` and
-            ``exchange._trades`` off it. Both belonged to
-            ``FleetSimExchange``; since v3.24.84 that object is a
-            ``CCXTConnector``, which carries neither, so both
-            ``getattr`` defaults fired on every refresh and the strip
-            reported **Spendable $0.00 and Trades 0 on every run that
-            traded**. Measured on a replay holding $99.40 and one
-            filled trade.
+            Pure arithmetic over bot and ledger state, returning formatted
+            strings. Touches no Qt. ``_apply_stat_fields`` pushes the result
+            on the Qt main thread.
 
-            ``TabletBackend.snapshot()`` is the ledger's own public
-            report and answers both questions in one call, so this
-            reads no private attribute and cannot silently default
-            again: a tape that cannot answer raises, and the handler
-            below records the failure through telemetry rather than
-            printing a zero.
+            ``ledger`` IS THE TAPE, not ``ctl._exchange``. The exchange is a
+            ``CCXTConnector`` and carries neither ``_balances`` nor
+            ``_trades``, so reading it made both ``getattr`` defaults fire and
+            the strip reported Spendable $0.00 and Trades 0 on a replay
+            holding $99.40 and one filled trade. ``TabletBackend.snapshot()``
+            answers both questions in one call, so a tape that cannot answer
+            raises rather than defaulting to a zero.
 
-            Telemetry (v3.24.8) proved ``SimStatStrip.set()`` had
-            ZERO call sites anywhere in the source tree, which is
-            why every operator screenshot showed dashes across the
-            whole strip. v3.24.9 added the feed; v3.24.19 split it
-            across the thread boundary.
-
-            Field semantics (sim-scoped, mirrors the live header):
-                Spendable — quote-currency cash left in the sim wallet
-                Realised  — sum of bot.stats.realised_pnl
-                Locked    — capital currently held as positions
-                Mature    — accumulated_fold across bots
-                Exch      — count of distinct exchanges (sim: 1)
-                Scrummed  — sum of stats.total_scrummed_usd
-                Folded    — sum of stats.total_folded_usd
-                Trades    — sim trades executed by the fake exchange
-                Bots      — instantiated sim bots
-                Errors    — tick exceptions recorded by the controller
+            Field semantics, sim-scoped, mirroring the live header:
+                Spendable - quote-currency cash left in the sim wallet
+                Realised  - sum of bot.stats.realised_pnl
+                Locked    - capital currently held as positions
+                Mature    - accumulated_fold across bots
+                Exch      - count of distinct exchanges (sim: 1)
+                Scrummed  - sum of stats.total_scrummed_usd
+                Folded    - sum of stats.total_folded_usd
+                Trades    - sim trades executed by the fake exchange
+                Bots      - instantiated sim bots
+                Errors    - tick exceptions recorded by the controller
             """
             try:
                 snap = ledger.snapshot() if ledger is not None else {}
@@ -1922,8 +1525,7 @@ if _HAS_QT:
                 return {}
 
         def _apply_stat_fields(self, fields: dict) -> None:
-            """v3.24.19 — Qt-main-thread half: push formatted strings
-            into the strip."""
+            """The Qt-main-thread half: push formatted strings into the strip."""
             strip = self._sim_stat_strip
             if strip is None:
                 _tel_skip("sim.stat_strip.feed", "no strip widget")
@@ -1937,36 +1539,24 @@ if _HAS_QT:
                 logger.debug("stat strip feed raised: %s", _ap_exc)
 
         def _on_visual_refresh_tick(self, candle_i: int) -> None:
-            """v3.24.19 — PRODUCER. Runs on the asyncio worker thread.
+            """The producer half, running on the asyncio worker thread.
 
-            Builds a plain-Python snapshot of sim state and stores it.
-            Touches NO Qt objects. ``_drain_visual_snapshot`` consumes
-            it on the Qt main thread via a QTimer.
+            Builds a plain-Python snapshot of sim state and stores it. Touches
+            NO Qt objects. ``_drain_visual_snapshot`` consumes it on the Qt
+            main thread through a QTimer.
 
-            Why this changed
-            ----------------
-            Until v3.24.19 this method called widget setters
-            (``update_gates``, ``append_tick``, ``update_bot_row``,
-            ``chart.update()``) directly from the worker thread, on
-            the strength of a docstring claiming "Qt marshals via
-            signal/slot for setter calls on paint widgets". That is
-            false — direct method calls are not marshalled, so this
-            was cross-thread widget access, which Qt does not define.
+            This method used to call widget setters straight from the worker
+            thread, which is cross-thread widget access and undefined in Qt.
+            Measured on the operator's own run logs, same 35 bots and same
+            machine:
 
-            Measured cost, from the operator's own persisted run logs
-            (~/.acervator_logs/sim/runs/*/meta.json), same 35 bots and
-            same machine on 2026-08-03/04:
-
-                GUI-launched   :  1.42 / 1.52 / 5.47 candles/s
+                GUI-launched    :  1.42 / 1.52 / 5.47 candles/s
                 harness-launched: 58.6 / 58.9 / 82.2 / 101.1 / 105.8
 
-            At matched trade density (17.7 vs 19.2 trades per 1000
-            candles) the gap is still 19x, so it is not explained by
-            the GUI runs simply doing more trading.
-
-            Decoupling makes replay throughput independent of GUI
-            cost by construction, rather than relying on the paint
-            path being cheap enough.
+            At matched trade density (17.7 against 19.2 trades per 1000
+            candles) the gap is still 19x, so it is not explained by the GUI
+            runs simply trading more. Decoupling makes replay throughput
+            independent of paint cost by construction.
             """
             del candle_i  # cadence-only; content is read live
             if self._controller is None:
@@ -1974,19 +1564,13 @@ if _HAS_QT:
             try:
                 snap = self._collect_visual_snapshot()
             except Exception as _snap_exc:  # noqa: BLE001
-                # A dropped frame must not kill the replay, but it must
-                # not be invisible either. Debug-only logging here would
-                # hide a total feed failure behind "the lights just
-                # aren't moving" — route it to telemetry so the zero-call
-                # report names it.
+                # Route a dropped frame to telemetry: debug-only logging hides a
+                # total feed failure.
                 _tel_exc("sim.visual_snapshot.collect", _snap_exc)
                 logger.warning("visual snapshot failed: %s", _snap_exc)
                 return
             with self._snapshot_lock:
-                # Keep only the newest: if the GUI cannot keep up we
-                # drop intermediate frames rather than queueing them.
-                # A stale frame has no value here — the operator wants
-                # current state, not a backlog.
+                # Keep only the newest frame. A stale frame has no value.
                 self._pending_snapshot = snap
 
         def _collect_visual_snapshot(self) -> dict:
@@ -1997,10 +1581,8 @@ if _HAS_QT:
             """
             ctl = self._controller
             exchange = getattr(ctl, "_exchange", None)
-            # ISSUE #110 SWEEP -- the LEDGER is the tape, and it is a
-            # different object from the connector the bots trade
-            # through. `exchange` stays for the legacy `_series` branch
-            # below, which is the only reader that still wants it.
+            # The ledger is the tape, a different object from the connector the
+            # bots trade through. `exchange` stays for the legacy branch below.
             ledger = getattr(ctl, "_tape", None)
             bots = list(getattr(ctl, "_bots", []) or [])
             per_symbol: dict = {}
@@ -2023,13 +1605,8 @@ if _HAS_QT:
                             or _ffx.get("landing_strip_side")
                             or ""
                         ),
-                        # v3.24.88 - OHLC, not just the close.
-                        #
-                        # The chart drew a close-only polyline because
-                        # a close is all it was ever given. Stone Tablet
-                        # candle playback (operator task 2026-08-08,
-                        # screenshot area 4) needs the whole bar, and
-                        # the tape has always had it.
+                        # The whole bar, not just the close: candle playback
+                        # needs it and the tape has always had it.
                         "ts": None,
                         "open": None,
                         "high": None,
@@ -2038,29 +1615,11 @@ if _HAS_QT:
                         "volume": None,
                         "summary": getattr(bot, "_last_summary", None),
                     }
-                    # v3.24.88 - READ THE TAPE, NOT `exchange._series`.
-                    #
-                    # REGRESSION REPAIRED. This read
-                    # `exchange._series[sym].get_current()`. When the
-                    # Simulator moved onto `CCXTConnector` +
-                    # `TabletBackend`, `_series` stopped existing on
-                    # either object, so `getattr(..., {})` returned an
-                    # empty dict, `close` stayed None, and the chart
-                    # silently drew nothing on every refresh. Nothing
-                    # raised; the only trace was a
-                    # `sim.price_chart.append` telemetry SKIP, which
-                    # counts skips without an expectation to compare
-                    # them against. That is precisely the failure the
-                    # emitter below now makes impossible to miss.
+                    # Read the tape. `exchange._series` stopped existing when the
+                    # Simulator moved onto `CCXTConnector`, and nothing raised.
                     _tape = getattr(ctl, "_tape", None)
-                    # 10.4 - THE CHART FEED'S EXPECTATION, TAKEN ON THE
-                    # THREAD THAT OWNS THE TAPE. `has_data` is the
-                    # tape's own answer to "can this symbol supply a
-                    # candle at the current master clock", and it is
-                    # asked through a DIFFERENT call from the one that
-                    # supplies the candle. It is read here, in the
-                    # worker, for the same reason every other field is:
-                    # the GUI thread does not own the tape.
+                    # `has_data` is the tape's own answer to whether this symbol can
+                    # supply a candle now, through a different call from the supplier.
                     _has_data = getattr(_tape, "has_data", None)
                     entry["tape_has_data"] = (
                         bool(_has_data(sym)) if callable(_has_data) else False
@@ -2082,12 +1641,8 @@ if _HAS_QT:
                         # Legacy path, kept for any host still handing
                         # in a series-shaped exchange.
                         series = getattr(exchange, "_series", {}).get(sym)
-                        # 10.4 - the expectation follows whichever
-                        # source fed this entry. Without this a legacy
-                        # host reports `tape_has_data` False for every
-                        # symbol, so `expected` is 0 against a non-zero
-                        # `actual` and the pin fails a healthy run -
-                        # the exact shape this repair removes.
+                        # The expectation follows whichever source fed this
+                        # entry, or a legacy host reports 0 against a non-zero actual.
                         entry["tape_has_data"] = series is not None
                         cur = series.get_current() if series is not None else None
                         if cur and len(cur) >= 6:
@@ -2116,11 +1671,11 @@ if _HAS_QT:
             }
 
         def _drain_visual_snapshot(self) -> None:
-            """v3.24.19 — CONSUMER. Runs on the Qt main thread.
+            """The consumer half, running on the Qt main thread.
 
-            Applies the most recent worker snapshot to the widgets at
-            a fixed wall-clock cadence, so paint cost can never feed
-            back into replay throughput.
+            Applies the most recent worker snapshot to the widgets at a fixed
+            wall-clock cadence, so paint cost can never feed back into replay
+            throughput.
             """
             with self._snapshot_lock:
                 snap = self._pending_snapshot
@@ -2130,21 +1685,8 @@ if _HAS_QT:
             fields = snap.get("stat_fields") or {}
             if fields:
                 self._apply_stat_fields(fields)
-            # v3.24.60 (C29 / SN-15) — trade markers used to be applied
-            # HERE, before the per-symbol loop below appends this
-            # tick's candle. `mark_trade` pins the candle at the end of
-            # the series, so marking first pinned the PREVIOUS drain's
-            # candle — every marker, every time, off by one. The block
-            # now runs after the appends; see below.
-            # v3.24.86 - GATE RENDER ACCOUNTING.
-            #
-            # Step 4 of the emitter-first workflow, added BEFORE the
-            # display moved out of the fleet table. Only
-            # `feature_telemetry` watched this path; it counts calls and
-            # skips and carries no expected-vs-actual, so "every bot
-            # with gate state still gets a rendered row" was not a
-            # checkable claim -- a migration that silently rendered
-            # FEWER rows would look identical to one that worked.
+            # `expected` is the number of bots reporting gate state, `actual`
+            # the number of rows painted, so a dropped row reports ok=False.
             _gate_expected = sum(
                 1
                 for _e in (snap.get("per_symbol") or {}).values()
@@ -2175,9 +1717,7 @@ if _HAS_QT:
                     elif e.get("close") is None:
                         _tel_skip("sim.price_chart.append", "no candle at cursor")
                     else:
-                        # v3.24.89 - the whole bar, for candle
-                        # playback. OHLC is optional on the signature,
-                        # so a close-only caller still works.
+                        # OHLC is optional, so a close-only caller still works.
                         self._sim_price_chart.append_tick(
                             sym,
                             close_price=e["close"],
@@ -2195,10 +1735,8 @@ if _HAS_QT:
                             "sim.voting_readout.update", "bot has no _last_summary"
                         )
                     else:
-                        # v3.24.81 — feed the SAME shape the Trading
-                        # Tab feeds (indicator_panel.py:958-973), built
-                        # from the bot's own VotingSummary. One panel,
-                        # one contract, so the two tabs cannot drift.
+                        # The same shape the Trading tab feeds its voting
+                        # panel, so the two cannot drift.
                         _sm = e["summary"]
                         _tf = str(getattr(_sm, "timeframe", "") or "5m")
                         self._sim_voting_readout.update_data(
@@ -2227,32 +1765,8 @@ if _HAS_QT:
                         _tel_call("sim.voting_readout.update")
                 except Exception as _d_exc:  # noqa: BLE001
                     logger.debug("snapshot drain skip (%s): %s", sym, _d_exc)
-            # Emitted once per visual refresh, after every symbol has
-            # had its chance to paint. `expected` is the number of bots
-            # reporting gate state, `actual` the number of rows painted,
-            # and `host` records WHERE they painted -- the property this
-            # task changes. `ok` is derived by equality, so a migration
-            # that drops rows reports ok=False on the next refresh.
-            # v3.24.88 - CHART FEED ACCOUNTING.
-            #
-            # `expected` is the number of symbols the tape can supply a
-            # candle for; `actual` is the number that arrived with one.
-            # The regression above -- a feed reading a field that no
-            # longer existed -- would have reported ok=False on the
-            # first refresh instead of going unnoticed.
-            #
-            # 10.4 - THE CODE NOW DOES WHAT THE PARAGRAPH ABOVE SAYS.
-            # It computed `len(per_symbol)`, which is the number of
-            # BOTS, not the number of symbols the tape can feed. A bot
-            # whose tablet begins after the master clock has no candle
-            # to give and was counted as a miss, so the pin read FAIL
-            # on 154 of 154 records: expected 37, actual 32. `expected`
-            # is now the tape's own `has_data` count. The regression
-            # this exists to catch - a feed reading a field that no
-            # longer exists - drives actual to 0 against an unchanged
-            # expected. `open` is NOT the expectation: it is written in
-            # the same block as `close`, so it can only ever equal
-            # `actual` and would make the verdict vacuous.
+            # `expected` is the tape's own `has_data` count, not `len(per_symbol)`:
+            # a bot whose tablet starts after the master clock has no candle to give.
             try:
                 from src.core.signal_contract import emit as _pc_emit
 
@@ -2288,9 +1802,8 @@ if _HAS_QT:
             except Exception:  # noqa: BLE001,S110 - instrumentation is advisory
                 pass
 
-            # v3.24.60 (C29 / SN-15) — markers AFTER the appends above.
-            # `mark_trade` pins the candle currently at the end of the
-            # series, so this must follow the tick it belongs to.
+            # `mark_trade` pins the candle at the end of the series, so this
+            # must follow the tick it belongs to.
             _chart = self._sim_price_chart
             if _chart is not None:
                 for _sym, _ok in snap.get("trade_markers") or []:
@@ -2306,9 +1819,6 @@ if _HAS_QT:
                 try:
                     self._controller.request_stop()
                 except Exception as exc:
-                    # C26 / SN-31 — this was `except: pass`. The
-                    # operator pressed Stop, the request was swallowed,
-                    # and nothing on screen changed.
                     self._status_error(
                         f"Stop: the replay did not accept the stop "
                         f"request ({type(exc).__name__}: {exc}). It may "
@@ -2317,11 +1827,11 @@ if _HAS_QT:
             self._stop_btn.setEnabled(False)
 
         def _note_parity_state(self) -> None:
-            """Say so when the run cannot be compared to live (SN-29).
+            """Say so when the run cannot be compared to live.
 
-            `_ytd_trades` being empty is the NORMAL condition, and the
-            panel said nothing about it — so a synthetic run looked
-            exactly like a parity run on screen.
+            ``_ytd_trades`` being empty is the NORMAL condition, and the panel
+            said nothing about it, so a synthetic run looked exactly like a
+            parity run on screen.
             """
             if self._ytd_trades:
                 self._status_lbl.setText(
@@ -2339,17 +1849,8 @@ if _HAS_QT:
             if self._controller is None:
                 return
             p = self._controller.progress
-            # v3.23.80 — surface exception diagnostics. When every
-            # tick fails the operator needs to see WHY, not just the
-            # count. Show up to 3 distinct exception signatures with
-            # their occurrence counts.
-            # v3.24.14 — rate + ETA. A 35,282-candle replay runs ~47
-            # minutes at the measured ~12.5 candles/s; with only a
-            # raw counter on screen that is indistinguishable from a
-            # hang, and the operator reasonably read it as frozen.
-            # Rate is computed over the whole run so far (not an
-            # instantaneous sample) so it stays readable rather than
-            # flickering between refreshes.
+            # Up to 3 exception signatures with their counts. Rate is over the
+            # whole run, so it stays readable rather than flickering.
             _rate = 0.0
             _eta_txt = ""
             try:
@@ -2386,12 +1887,6 @@ if _HAS_QT:
                 exc_str = "  |  ".join(f"{key} ×{count}" for key, count in top)
                 base += f"\n{exc_str}"
             self._progress_lbl.setText(base)
-            # v3.24.0 — actually update the per-row Sim Trades
-            # column. Prior refresh only touched the aggregate
-            # label; the column existed but was dead scaffolding
-            # per operator directive 2026-08-01: "It supposedly
-            # did 60 trades over 200 candles but none of the bot
-            # trade counters incremented. More scaffolding..."
             counts = getattr(p, "per_symbol_trade_count", {}) or {}
             try:
                 from PySide6.QtWidgets import QTableWidgetItem
@@ -2410,51 +1905,31 @@ if _HAS_QT:
             if p.finished:
                 if self._progress_timer:
                     self._progress_timer.stop()
-                # v3.24.19 — drain once more before stopping, so the
-                # final frame lands. Without this the visuals freeze
-                # on whatever the second-to-last tick produced.
+                # Drain once more before stopping, so the final frame lands.
                 self._drain_visual_snapshot()
                 if self._drain_timer:
                     self._drain_timer.stop()
                 self._start_btn.setEnabled(True)
                 self._stop_btn.setEnabled(False)
-                # v3.24.9 — run the parity comparison. Telemetry
-                # (v3.24.8) proved compare_trades() had ZERO callers:
-                # 12 green pin tests, never invoked. This is the
-                # "does sim reproduce live?" measurement the whole
-                # harness exists for.
+                # The sim-against-live measurement the harness exists for.
                 self._run_parity_comparison()
                 self.replayStopped.emit()
 
         def _run_parity_comparison(self) -> None:
-            """v3.24.9 — compare sim trades to the live YTD trades
-            already fetched into ``self._ytd_trades``, then dump the
-            report to the Performance Log.
+            """Compare sim trades with the live YTD trades already fetched
+            into ``self._ytd_trades``, then write the report to the
+            Performance log.
 
-            Sim trades carry master-clock timestamps (v3.24.5 fix),
-            so the ±tolerance match against live trade timestamps is
-            meaningful. Before that fix every sim trade was stamped
-            with wall-clock 'now' and parity was unmeasurable.
+            Sim trades carry master-clock timestamps, so the tolerance match
+            against live trade times is meaningful. Before that they were
+            stamped with wall-clock now and parity was unmeasurable.
 
-            THE TAPE, NOT THE CONNECTOR. This read
-            ``self._controller._exchange._trades``. ``_trades``
-            belonged to ``FleetSimExchange``; since v3.24.84
-            ``_exchange`` is a ``CCXTConnector`` and has no such
-            attribute, so the ``getattr`` default made ``sim_trades``
-            ``[]`` on EVERY run and this method always took the
-            "sim produced 0 trades — 0% reproduction" branch below.
-            The measurement the whole harness exists for has never run
-            on a real tape.
-
-            ``TabletBackend.fetch_my_trades()`` is the ledger's own
-            public ccxt accessor and returns copies. Its rows are
-            DICTS stamped in MILLISECONDS; ``compare_trades`` reads
-            that shape and that unit explicitly — see THE MILLISECOND
-            SEAM in ``parity_harness``. Pointing this line at the real
-            tape WITHOUT that reader in place would have been worse
-            than the empty list: the honest "0 trades" message would
-            have become a "0.0% match over N trades" report built from
-            empty symbols and 1970 timestamps."""
+            THE TAPE, NOT THE CONNECTOR. Reading ``_exchange._trades`` made
+            ``sim_trades`` empty on every run, so this always took the
+            "sim produced 0 trades" branch. ``fetch_my_trades()`` returns
+            copies as DICTS stamped in MILLISECONDS, which is the shape and
+            the unit ``compare_trades`` reads.
+            """
             perf = self._performance_log_cb
             if self._controller is None:
                 _tel_skip("sim.parity.compare_trades", "no controller")
