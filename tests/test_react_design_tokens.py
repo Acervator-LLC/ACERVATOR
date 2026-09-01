@@ -32,7 +32,6 @@ could not produce.
 from __future__ import annotations
 
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -44,13 +43,19 @@ if str(REPO_ROOT) not in sys.path:  # pragma: no cover
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.gui.main_tabs import design_system_surface as dss
+from tests.fixtures.web_js_modules import (
+    HEX_COLOUR,
+    JsEngine,
+    drain_events,
+    js_literals,
+    new_engine,
+)
 
 MODULE_PATH = REPO_ROOT / "src" / "gui" / "web" / "design_tokens.js"
 BOOT_PATH = REPO_ROOT / "desktop" / "renderer" / "boot.js"
 INDEX_HTML = REPO_ROOT / "desktop" / "renderer" / "index.html"
 
 JS_TIMEOUT_MS = 30_000
-EVENT_DRAIN_ROUNDS = 20
 
 #: Python type -> the JavaScript type the same value has after the
 #: bridge's ``json.dumps``. A value that changes shape in transit shows
@@ -63,8 +68,6 @@ JS_TYPE_OF = {
     "list": "object",
     "NoneType": "null",
 }
-
-HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}")
 
 
 # -- the surface, as the bridge serialises it --------------------------
@@ -93,53 +96,18 @@ def scalar_tokens(values: dict) -> dict:
 # -- the JavaScript engine ---------------------------------------------
 
 
-def drain_events() -> None:
-    """Let QJSEngine run its promise callbacks.
-
-    Promise continuations are queued as events; without an event loop
-    turn they never run and a load test reads its own starting value.
-    """
-    from PySide6.QtCore import QCoreApplication, QEventLoop
-
-    for _ in range(EVENT_DRAIN_ROUNDS):
-        QCoreApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents)
-
-
-class JsRuntime:
+class JsRuntime(JsEngine):
     """A QJSEngine holding ``design_tokens.js`` and a ``window`` global."""
 
-    def __init__(self, engine: Any, source: str) -> None:
-        self._engine = engine
-        engine.evaluate("var window = this;")
-        loaded = engine.evaluate(source, MODULE_PATH.name)
-        if loaded.isError():
-            raise AssertionError("design_tokens.js did not run: " + loaded.toString())
-
-    def run(self, script: str) -> Any:
-        result = self._engine.evaluate(script)
-        assert not result.isError(), script + " -> " + result.toString()
-        return result
-
-    def json(self, expression: str) -> Any:
-        """Evaluate ``expression`` and bring its value back as Python."""
-        text = self.run("JSON.stringify(" + expression + ")").toString()
-        return None if text == "undefined" else json.loads(text)
-
-    def bind_json(self, name: str, value: Any) -> None:
-        """Bind ``value`` as JSON TEXT. Every reader parses it back."""
-        self._engine.globalObject().setProperty(name, json.dumps(value))
-
-    def push(self, payload: Any) -> dict:
-        self.bind_json("PAYLOAD", payload)
-        return self.json("acervatorSetTokens(JSON.parse(PAYLOAD))")
+    module_path = MODULE_PATH
+    setter = "acervatorSetTokens"
 
 
 @pytest.fixture()
 def js(qapp) -> JsRuntime:
     """The module, loaded in a fresh engine."""
-    qtqml = pytest.importorskip("PySide6.QtQml")
     assert qapp is not None
-    return JsRuntime(qtqml.QJSEngine(), MODULE_PATH.read_text(encoding="utf-8"))
+    return JsRuntime(new_engine(), MODULE_PATH.read_text(encoding="utf-8"))
 
 
 @pytest.fixture()
@@ -204,61 +172,6 @@ def test_the_module_holds_every_group_the_surface_exports(loaded: JsRuntime):
 
 
 # -- 2. no token value is written in the JavaScript --------------------
-
-
-def js_literals(source: str) -> dict:
-    """Every string and number literal in ``source``, and every stray slash.
-
-    Walks the text once, tracking line comments, block comments and the
-    three quote styles. A regular-expression literal could hide a value
-    from a scan that does not parse it, so any ``/`` in code that opens
-    no comment is reported rather than parsed.
-    """
-    quotes = "'\"`"
-    digits = "0123456789"
-    ident = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$")
-    numeric = set(digits + ".xXoObBeE_abcdefABCDEF")
-    strings: list = []
-    numbers: list = []
-    slashes: list = []
-    index = 0
-    end = len(source)
-    while index < end:
-        char = source[index]
-        if char == "/" and source.startswith("//", index):
-            stop = source.find("\n", index)
-            index = end if stop < 0 else stop + 1
-            continue
-        if char == "/" and source.startswith("/*", index):
-            stop = source.find("*/", index + 2)
-            index = end if stop < 0 else stop + 2
-            continue
-        if char == "/":
-            slashes.append(source[max(index - 20, 0) : index + 20])
-            index += 1
-            continue
-        if char in quotes:
-            cursor = index + 1
-            body: list = []
-            while cursor < end and source[cursor] != char:
-                if source[cursor] == "\\":
-                    body.append(source[cursor : cursor + 2])
-                    cursor += 2
-                    continue
-                body.append(source[cursor])
-                cursor += 1
-            strings.append("".join(body))
-            index = cursor + 1
-            continue
-        if char in digits and (index == 0 or source[index - 1] not in ident):
-            cursor = index
-            while cursor < end and source[cursor] in numeric:
-                cursor += 1
-            numbers.append(source[index:cursor])
-            index = cursor
-            continue
-        index += 1
-    return {"strings": strings, "numbers": numbers, "slashes": slashes}
 
 
 @pytest.fixture(scope="module")
