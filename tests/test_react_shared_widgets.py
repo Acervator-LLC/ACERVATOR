@@ -52,6 +52,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:  # pragma: no cover
     sys.path.insert(0, str(REPO_ROOT))
 
+from src.gui import design_system as ds
 from src.gui.main_tabs import design_system_surface as dss
 from src.gui.main_tabs import theme_engine_surface as tes
 from src.gui.main_tabs import widgets_package_surface as wps
@@ -770,6 +771,34 @@ def test_the_module_reports_only_what_it_was_given(js: JsRuntime):
     )
     assert js.json("acervatorWidgets.skin()") == invented
     assert not set(js.json("acervatorWidgets.skin()").values()) & SKIN_VALUES
+
+
+def test_a_per_call_recolour_reaches_no_data_field_of_the_payload():
+    """A card whose amount is recoloured for one call publishes that
+    colour in its Qt style sheet and in no data field.
+
+    The React card paints from the skin, so it cannot follow a per-call
+    recolour. Reported here rather than repaired: the surface is not this
+    unit's file.
+    """
+    asked = ds.SUCCESS
+    payload = bridge_payload(
+        preset=SKINNED_PRESET, set_value=wps.DEFAULT_VALUE, set_colour=asked
+    )
+    card = payload["card"]
+    assert wps.VALUE_RECOLOURED in card["calls"]
+    assert asked in card["value"]["style_sheet"]
+    carried = sorted(field for field, value in card["skin"].items() if value == asked)
+    assert not carried, f"the skin does carry the recolour, in {carried}"
+
+
+def test_the_recolour_check_names_a_colour_a_data_field_does_carry():
+    """The control for the check above. A walk that found nothing
+    whatever the payload held would pass it on any card."""
+    payload = bridge_payload(preset=SKINNED_PRESET)
+    skin = payload["card"]["skin"]
+    carried = sorted(field for field, value in skin.items() if value == skin["surface"])
+    assert carried == ["surface"], f"the walk named {carried}"
 
 
 def test_the_card_calls_reach_the_module_unchanged(js: JsRuntime):
