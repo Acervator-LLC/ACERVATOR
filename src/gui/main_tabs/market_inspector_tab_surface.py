@@ -39,6 +39,10 @@ FALLBACK_HEADLINE = "<b>Market Inspector unavailable.</b><br><br>"
 FALLBACK_TEXT_FORMAT = (
     "<b>Market Inspector unavailable.</b><br><br>{error_type}: {error_text}"
 )
+FALLBACK_HEADLINE_TEXT = "Market Inspector unavailable."
+FALLBACK_HEADLINE_WEIGHT = "bold"
+FALLBACK_HEADLINE_BREAKS = 2
+FALLBACK_DETAIL_FORMAT = "{error_type}: {error_text}"
 FALLBACK_STYLE_FORMAT = "color: {color_hex}; padding: {padding_px}px;"
 FALLBACK_COLOR = ds.FOLD_RATIO_AMBER
 FALLBACK_PADDING_PX = 12
@@ -98,6 +102,11 @@ ERROR_TYPES = {
 def fallback_text(error_type: Any, error_text: Any) -> str:
     """The one line the tab shows when the per-bot view cannot be built."""
     return FALLBACK_TEXT_FORMAT.format(error_type=error_type, error_text=error_text)
+
+
+def fallback_detail(error_type: Any, error_text: Any) -> str:
+    """The error type and text alone, with no markup for a renderer to read."""
+    return FALLBACK_DETAIL_FORMAT.format(error_type=error_type, error_text=error_text)
 
 
 def fallback_style(
@@ -161,6 +170,9 @@ class MarketInspectorTabModel:
         self.delegated = False
         self.view = NO_VIEW
         self.message = NO_MESSAGE
+        self.error_type = NO_MESSAGE
+        self.error_text = NO_MESSAGE
+        self.detail = NO_MESSAGE
         self.style_sheet = NO_STYLE
         self.word_wrap = NO_WORD_WRAP
         self.order: list = []
@@ -178,6 +190,9 @@ class MarketInspectorTabModel:
         self.delegated = False
         self.view = NO_VIEW
         self.message = NO_MESSAGE
+        self.error_type = NO_MESSAGE
+        self.error_text = NO_MESSAGE
+        self.detail = NO_MESSAGE
         self.style_sheet = NO_STYLE
         self.word_wrap = NO_WORD_WRAP
         self.order = []
@@ -194,7 +209,10 @@ class MarketInspectorTabModel:
             self.calls.append([BUILD_FAILED, type(exc).__name__])
             self.warnings.append(warning_line(exc))
             self.calls.append([BUILD_WARNED])
-            self.message = fallback_text(type(exc).__name__, exc)
+            self.error_type = type(exc).__name__
+            self.error_text = str(exc)
+            self.message = fallback_text(self.error_type, exc)
+            self.detail = fallback_detail(self.error_type, exc)
             self.style_sheet = fallback_style()
             self.word_wrap = FALLBACK_WORD_WRAP
             self.calls.append([BUILD_MESSAGE])
@@ -223,11 +241,18 @@ def build_view_model(model: MarketInspectorTabModel, build_now: bool = False) ->
         "delegated": model.delegated,
         "view": model.view,
         "message": model.message,
+        "error_type": model.error_type,
+        "error_text": model.error_text,
+        "detail": model.detail,
         "style_sheet": model.style_sheet,
         "word_wrap": model.word_wrap,
         "order": list(model.order),
         "fallback": {
             "headline": FALLBACK_HEADLINE,
+            "headline_text": FALLBACK_HEADLINE_TEXT,
+            "headline_weight": FALLBACK_HEADLINE_WEIGHT,
+            "headline_breaks": FALLBACK_HEADLINE_BREAKS,
+            "detail_format": FALLBACK_DETAIL_FORMAT,
             "text_format": FALLBACK_TEXT_FORMAT,
             "style_format": FALLBACK_STYLE_FORMAT,
             "color": FALLBACK_COLOR,
