@@ -336,9 +336,14 @@ class QtSeams:
         self.previous_loop = None
         self.recorder = None
 
-    def appended_to(self, widget) -> list:
-        """Every line appended to one pane, in order."""
-        return [text for owner, text in self.appended if owner is widget]
+    def appended_to(self, widget, since: int = 0) -> list:
+        """Every line appended to one pane, in order, from `since` onward.
+
+        `since` is a length of ``appended`` read earlier in the drive. A
+        pane fed by a shared logger reads only the lines one step of the
+        test put there.
+        """
+        return [text for owner, text in self.appended[since:] if owner is widget]
 
     def __enter__(self):
         import src.gui.indicator_panel as panel_module
@@ -2284,12 +2289,19 @@ def test_the_webhook_button_hands_its_coroutine_to_the_loop_on_both_sides():
 
 
 def test_the_console_pane_colours_a_record_the_same_way_on_both_sides():
-    """A console line took a different colour for its level on one side."""
+    """A console line took a different colour for its level on one side.
+
+    The handler leaves the root logger first, so the pane holds only the
+    records this test feeds it. The attachment itself is pinned by
+    ``test_the_shipped_window_adds_one_handler_to_the_shared_root_logger``.
+    """
     root = logging.getLogger()
     before = list(root.handlers)
+    model = surface.StockMainWindowModel()
     with QtSeams() as seams:
         window = build_window(BY_NAME["no_manager"], seams)
         handler = [one for one in root.handlers if one not in before][0]
+        root.removeHandler(handler)
         for level in surface.HANDLER_LEVEL_COLORS:
             record = logging.LogRecord(
                 "acervator.probe",
@@ -2300,16 +2312,19 @@ def test_the_console_pane_colours_a_record_the_same_way_on_both_sides():
                 None,
                 None,
             )
+            appended_before = len(seams.appended)
             handler.emit(record)
-        lines = seams.appended_to(window._console)
-    model = surface.StockMainWindowModel()
-    for level in surface.HANDLER_LEVEL_COLORS:
-        model.append_to_console(level, f"a {level} line")
-    assert len(lines) == len(surface.HANDLER_LEVEL_COLORS), lines
-    for shipped, mine in zip(lines, model.console_lines):
-        colour = shipped.split("color:", 1)[1].split('"', 1)[0]
-        assert colour == mine.split("color:", 1)[1].split('"', 1)[0]
-        assert shipped.endswith(mine.split(">", 1)[1])
+            model.append_to_console(level, f"a {level} line")
+            pane_lines = seams.appended_to(window._console, appended_before)
+            assert len(pane_lines) == 1, (level, pane_lines)
+            shipped, mine = pane_lines[0], model.console_lines[-1]
+            colour = shipped.split("color:", 1)[1].split('"', 1)[0]
+            assert colour == mine.split("color:", 1)[1].split('"', 1)[0], (
+                shipped,
+                mine,
+            )
+            assert shipped.endswith(mine.split(">", 1)[1]), (shipped, mine)
+    assert len(model.console_lines) == len(surface.HANDLER_LEVEL_COLORS)
 
 
 def test_the_launcher_return_hides_the_window_on_both_sides():
