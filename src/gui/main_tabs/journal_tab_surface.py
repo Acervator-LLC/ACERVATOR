@@ -8,6 +8,9 @@ The screen carries a header strip with a running total and two drop
 lists, a ten-column trade table, a detail pane written as marked-up
 text, four recovery lines and two buttons.
 
+The detail pane is published twice, as the marked-up ``html`` Qt sets and
+as ``rows``, the same lines with label, value and colour apart.
+
 ``ComboBox`` is the drop-list behaviour the two filters need.
 ``JournalSource``, ``RecoverySource`` and ``ReconciliationSource``
 hand the model the three readings the screen takes.
@@ -145,18 +148,41 @@ DETAIL_STYLE = "QTextEdit { background: #0a0a12; color: #c0c0c0; border: none; }
 DETAIL_JOIN = "<br>"
 NO_DETAIL_HTML = ""
 
-DETAIL_TITLE = '<span style="color:#00ffcc; font-weight:bold">Trade Detail</span>'
-TA_CONTEXT_TITLE = '<span style="color:#00aaff; font-weight:bold">TA Context</span>'
-VOTES_TITLE = '<span style="color:#ffaa00; font-weight:bold">Indicator Votes</span>'
+COLOR_SPAN_FORMAT = '<span style="color:{color}">{text}</span>'
+TITLE_LINE_FORMAT = '<span style="color:{color}; font-weight:bold">{text}</span>'
+
+DETAIL_TITLE_TEXT = "Trade Detail"
+TA_CONTEXT_TITLE_TEXT = "TA Context"
+VOTES_TITLE_TEXT = "Indicator Votes"
+
+DETAIL_TITLE = TITLE_LINE_FORMAT.format(color=ACCENT_COLOR, text=DETAIL_TITLE_TEXT)
+TA_CONTEXT_TITLE = TITLE_LINE_FORMAT.format(
+    color=INFO_COLOR, text=TA_CONTEXT_TITLE_TEXT
+)
+VOTES_TITLE = TITLE_LINE_FORMAT.format(color=VOTES_COLOR, text=VOTES_TITLE_TEXT)
 BLANK_LINE = ""
 
-FIELD_LINE_FORMAT = '<span style="color:#888">{label}:</span> {value}'
-PNL_LINE_FORMAT = (
-    '<span style="color:#888">P/L:</span> '
-    '<span style="color:{color}">'
-    "{amount}</span>"
+PNL_LABEL = "P/L"
+DETAIL_LABEL_SUFFIX = ":"
+DETAIL_LABEL_GAP = " "
+VOTE_INDENT = "  "
+VOTE_JOIN = ": "
+TITLE_WEIGHT = True
+LINE_WEIGHT = False
+
+FIELD_LINE_FORMAT = (
+    COLOR_SPAN_FORMAT.format(color=MUTED_COLOR, text="{label}" + DETAIL_LABEL_SUFFIX)
+    + DETAIL_LABEL_GAP
+    + "{value}"
 )
-VOTE_LINE_FORMAT = '  <span style="color:{color}">{indicator}: {direction}</span>'
+PNL_LINE_FORMAT = (
+    COLOR_SPAN_FORMAT.format(color=MUTED_COLOR, text=PNL_LABEL + DETAIL_LABEL_SUFFIX)
+    + DETAIL_LABEL_GAP
+    + COLOR_SPAN_FORMAT.format(color="{color}", text="{amount}")
+)
+VOTE_LINE_FORMAT = VOTE_INDENT + COLOR_SPAN_FORMAT.format(
+    color="{color}", text="{indicator}" + VOTE_JOIN + "{direction}"
+)
 
 TIME_LABEL = "Time"
 BOT_LABEL = "Bot"
@@ -273,6 +299,12 @@ FORMATS = {
     "field_line": FIELD_LINE_FORMAT,
     "pnl_line": PNL_LINE_FORMAT,
     "vote_line": VOTE_LINE_FORMAT,
+    "color_span": COLOR_SPAN_FORMAT,
+    "title_line": TITLE_LINE_FORMAT,
+    "label_suffix": DETAIL_LABEL_SUFFIX,
+    "label_gap": DETAIL_LABEL_GAP,
+    "vote_indent": VOTE_INDENT,
+    "vote_join": VOTE_JOIN,
     "detail_price": DETAIL_PRICE_FORMAT,
     "detail_quantity": DETAIL_QUANTITY_FORMAT,
     "detail_cost": DETAIL_COST_FORMAT,
@@ -303,6 +335,9 @@ TITLES = {
     "ta_context": TA_CONTEXT_TITLE,
     "votes": VOTES_TITLE,
     "blank": BLANK_LINE,
+    "detail_text": DETAIL_TITLE_TEXT,
+    "ta_context_text": TA_CONTEXT_TITLE_TEXT,
+    "votes_text": VOTES_TITLE_TEXT,
 }
 
 LABELS = {
@@ -322,6 +357,7 @@ LABELS = {
     "strategy": STRATEGY_LABEL,
     "slippage": SLIPPAGE_LABEL,
     "reason": REASON_LABEL,
+    "pnl": PNL_LABEL,
     "bot_filter": BOT_LABEL_TEXT,
     "period_filter": PERIOD_LABEL_TEXT,
 }
@@ -444,11 +480,6 @@ def stats_text(stats: dict) -> str:
     )
 
 
-def field_line(label: str, value: Any) -> str:
-    """One labelled line of the detail pane."""
-    return FIELD_LINE_FORMAT.format(label=label, value=value)
-
-
 def pnl_color(pnl: Any) -> str:
     """Green at or above break-even, red below it."""
     return POSITIVE_COLOR if pnl >= 0 else NEGATIVE_COLOR
@@ -472,77 +503,137 @@ def vote_color(direction: Any) -> str:
     return MUTED_COLOR
 
 
-def detail_lines(entry: dict) -> list:
-    """Every line of the detail pane for one journal entry, in order."""
+def title_row(text: str, color: str) -> dict:
+    """One bold heading of the detail pane, as its text and its colour."""
+    return {
+        "indent": NO_TEXT,
+        "label": NO_TEXT,
+        "label_color": NO_CELL_COLOR,
+        "gap": NO_TEXT,
+        "value": text,
+        "value_color": color,
+        "bold": TITLE_WEIGHT,
+    }
+
+
+def field_row(label: str, value: Any, color: Optional[str] = NO_CELL_COLOR) -> dict:
+    """One labelled line of the detail pane, carrying text and no markup."""
+    return {
+        "indent": NO_TEXT,
+        "label": label + DETAIL_LABEL_SUFFIX,
+        "label_color": MUTED_COLOR,
+        "gap": DETAIL_LABEL_GAP,
+        "value": value,
+        "value_color": color,
+        "bold": LINE_WEIGHT,
+    }
+
+
+def vote_row(indicator: Any, direction: Any) -> dict:
+    """One indented indicator vote of the detail pane."""
+    return {
+        "indent": VOTE_INDENT,
+        "label": NO_TEXT,
+        "label_color": NO_CELL_COLOR,
+        "gap": NO_TEXT,
+        "value": str(indicator) + VOTE_JOIN + str(direction),
+        "value_color": vote_color(direction),
+        "bold": LINE_WEIGHT,
+    }
+
+
+def blank_row() -> dict:
+    """The empty line the detail pane separates its sections with."""
+    return {
+        "indent": NO_TEXT,
+        "label": NO_TEXT,
+        "label_color": NO_CELL_COLOR,
+        "gap": NO_TEXT,
+        "value": NO_TEXT,
+        "value_color": NO_CELL_COLOR,
+        "bold": LINE_WEIGHT,
+    }
+
+
+def line_html(row: dict) -> str:
+    """One detail row as the marked-up line the Qt pane is set from."""
+    if row["bold"]:
+        return TITLE_LINE_FORMAT.format(color=row["value_color"], text=row["value"])
+    if row["indent"]:
+        return row["indent"] + COLOR_SPAN_FORMAT.format(
+            color=row["value_color"], text=row["value"]
+        )
+    if not row["label"]:
+        return BLANK_LINE
+    painted = COLOR_SPAN_FORMAT.format(color=row["label_color"], text=row["label"])
+    if row["value_color"] is NO_CELL_COLOR:
+        return painted + row["gap"] + str(row["value"])
+    return (
+        painted
+        + row["gap"]
+        + COLOR_SPAN_FORMAT.format(color=row["value_color"], text=row["value"])
+    )
+
+
+def detail_rows(entry: dict) -> list:
+    """Every line of the detail pane for one entry, as text and colour."""
     pnl = entry.get("pnl", DEFAULT_PNL)
-    lines = [
-        DETAIL_TITLE,
-        field_line(TIME_LABEL, time.ctime(entry.get("timestamp", DEFAULT_TIMESTAMP))),
-        field_line(
-            BOT_LABEL, entry.get("bot_id", DEFAULT_BOT_ID)[:DETAIL_BOT_ID_SLICE]
-        ),
-        field_line(SYMBOL_LABEL, entry.get("symbol", DEFAULT_SYMBOL)),
-        field_line(ACTION_LABEL, entry.get("action", DEFAULT_ACTION)),
-        field_line(SIDE_LABEL, entry.get("side", DEFAULT_SIDE)),
-        field_line(
+    rows = [
+        title_row(DETAIL_TITLE_TEXT, ACCENT_COLOR),
+        field_row(TIME_LABEL, time.ctime(entry.get("timestamp", DEFAULT_TIMESTAMP))),
+        field_row(BOT_LABEL, entry.get("bot_id", DEFAULT_BOT_ID)[:DETAIL_BOT_ID_SLICE]),
+        field_row(SYMBOL_LABEL, entry.get("symbol", DEFAULT_SYMBOL)),
+        field_row(ACTION_LABEL, entry.get("action", DEFAULT_ACTION)),
+        field_row(SIDE_LABEL, entry.get("side", DEFAULT_SIDE)),
+        field_row(
             PRICE_LABEL,
             DETAIL_PRICE_FORMAT.format(price=entry.get("price", DEFAULT_PRICE)),
         ),
-        field_line(
+        field_row(
             QUANTITY_LABEL,
             DETAIL_QUANTITY_FORMAT.format(
                 quantity=entry.get("quantity", DEFAULT_QUANTITY)
             ),
         ),
-        field_line(
+        field_row(
             COST_LABEL, DETAIL_COST_FORMAT.format(cost=entry.get("cost", DEFAULT_COST))
         ),
-        PNL_LINE_FORMAT.format(
-            color=pnl_color(pnl), amount=DETAIL_PNL_FORMAT.format(pnl=pnl)
-        ),
-        BLANK_LINE,
-        TA_CONTEXT_TITLE,
-        field_line(
-            DIRECTION_LABEL, entry.get("ta_direction", DEFAULT_DIRECTION_DETAIL)
-        ),
-        field_line(
+        field_row(PNL_LABEL, DETAIL_PNL_FORMAT.format(pnl=pnl), color=pnl_color(pnl)),
+        blank_row(),
+        title_row(TA_CONTEXT_TITLE_TEXT, INFO_COLOR),
+        field_row(DIRECTION_LABEL, entry.get("ta_direction", DEFAULT_DIRECTION_DETAIL)),
+        field_row(
             CONFIDENCE_LABEL,
             DETAIL_CONFIDENCE_FORMAT.format(
                 confidence=entry.get("ta_confidence", DEFAULT_CONFIDENCE)
             ),
         ),
-        field_line(TIMEFRAME_LABEL, entry.get("ta_timeframe", DEFAULT_TIMEFRAME)),
+        field_row(TIMEFRAME_LABEL, entry.get("ta_timeframe", DEFAULT_TIMEFRAME)),
     ]
     signals = entry.get("ta_signals", {})
     if signals:
-        lines.append(BLANK_LINE)
-        lines.append(VOTES_TITLE)
+        rows.append(blank_row())
+        rows.append(title_row(VOTES_TITLE_TEXT, VOTES_COLOR))
         for indicator, direction in signals.items():
-            lines.append(
-                VOTE_LINE_FORMAT.format(
-                    color=vote_color(direction),
-                    indicator=indicator,
-                    direction=direction,
-                )
-            )
-    lines.extend(
+            rows.append(vote_row(indicator, direction))
+    rows.extend(
         [
-            BLANK_LINE,
-            field_line(EXCHANGE_LABEL, entry.get("exchange_id", DEFAULT_EXCHANGE_ID)),
-            field_line(ORDER_ID_LABEL, entry.get("order_id", DEFAULT_ORDER_ID)),
-            field_line(
+            blank_row(),
+            field_row(EXCHANGE_LABEL, entry.get("exchange_id", DEFAULT_EXCHANGE_ID)),
+            field_row(ORDER_ID_LABEL, entry.get("order_id", DEFAULT_ORDER_ID)),
+            field_row(
                 STRATEGY_LABEL, entry.get("execution_strategy", DEFAULT_STRATEGY)
             ),
-            field_line(
+            field_row(
                 SLIPPAGE_LABEL,
                 DETAIL_SLIPPAGE_FORMAT.format(
                     slippage_pct=entry.get("slippage_pct", DEFAULT_SLIPPAGE_PCT)
                 ),
             ),
-            field_line(REASON_LABEL, entry.get("reason", DEFAULT_REASON_DETAIL)),
+            field_row(REASON_LABEL, entry.get("reason", DEFAULT_REASON_DETAIL)),
         ]
     )
-    return lines
+    return rows
 
 
 def row_cells(entry: dict) -> list:
@@ -730,6 +821,7 @@ class JournalTabModel:
         self.row_colors: list = []
         self.current_entries: list = []
         self.detail_html = NO_DETAIL_HTML
+        self.detail_rows: list = []
         self.calls: list[ModelCall] = []
 
     def entry_selected(self, row: int, col: int, prev_row: int, prev_col: int) -> None:
@@ -739,7 +831,8 @@ class JournalTabModel:
             self.calls.append([DETAIL_SKIPPED, row])
             return None
         entry = self.current_entries[row]
-        lines = detail_lines(entry)
+        self.detail_rows = detail_rows(entry)
+        lines = [line_html(one) for one in self.detail_rows]
         self.calls.append([DETAIL_VOTES, len(entry.get("ta_signals", {}) or {})])
         self.detail_html = DETAIL_JOIN.join(lines)
         self.calls.append([DETAIL_SET, len(lines)])
@@ -921,6 +1014,18 @@ def build_view_model(
             "style_sheet": DETAIL_STYLE,
             "join": DETAIL_JOIN,
             "html": model.detail_html,
+            "title_weight": TITLE_WEIGHT,
+            "line_weight": LINE_WEIGHT,
+            "line_defaults": {
+                "indent": NO_TEXT,
+                "label": NO_TEXT,
+                "label_color": NO_CELL_COLOR,
+                "gap": NO_TEXT,
+                "value": NO_TEXT,
+                "value_color": NO_CELL_COLOR,
+                "bold": LINE_WEIGHT,
+            },
+            "rows": [dict(one) for one in model.detail_rows],
         },
         "snapshot_label": {
             "text": model.snapshot_text,
