@@ -5,7 +5,7 @@ Node is not installed and nothing in this repository adds a JavaScript
 test runner. ``QJSEngine`` from ``PySide6.QtQml`` runs a module as plain
 JavaScript and answers in JSON instead. ``JsEngine`` wraps one engine
 holding one module; a test file subclasses it, names the module file and
-the global the module publishes, and adds the readers that module has.
+the global the module publishes, and adds the methods that module answers.
 
     from tests.fixtures.web_js_modules import JsEngine, new_engine
 
@@ -127,12 +127,7 @@ def new_engine() -> Any:
 
 
 class JsEngine:
-    """A QJSEngine holding one ``src/gui/web`` module and a ``window`` global.
-
-    A subclass sets ``module_path`` to the module file and ``setter`` to
-    the global the module publishes for its payload, then adds the
-    readers that module answers.
-    """
+    """A QJSEngine holding one ``src/gui/web`` module and a ``window`` global."""
 
     module_path: Path
     setter: str
