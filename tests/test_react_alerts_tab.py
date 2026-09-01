@@ -1846,3 +1846,40 @@ def test_the_splitter_handle_is_as_wide_as_the_surface_published(browser: Browse
         " ['width'])"
     )
     assert drawn["width"] == expected["width"]
+
+
+def test_the_tab_draws_with_text_where_a_number_belongs(browser: Browser):
+    payload = painted_payload()
+    payload["content_spacing"] = str(payload["content_spacing"])
+    payload["splitter_handle_width"] = str(payload["splitter_handle_width"])
+    parts = draw_tab(browser, payload)
+    expected = probe(browser, "div", "gap:" + payload["content_spacing"] + "px")
+    assert part_for(parts, "tab", "tab")["style"]["rowGap"] == expected["rowGap"]
+
+
+def test_the_tab_draws_with_a_number_json_cannot_spell_in_a_length(browser: Browser):
+    payload = painted_payload()
+    before = draw_tab(browser, payload)
+    browser.js(
+        "(function () { var P = JSON.parse(window.PAYLOAD);"
+        " P.content_spacing = 0/0;"
+        " P.history_rows[0][1].text = 1/0;"
+        " acervatorSetAlerts(P);"
+        " acervatorAlerts.renderTab(window.HOST, P); })()"
+    )
+    parts = read_parts(browser)
+    assert parts_named(parts, "tab"), "the tab drew nothing at all"
+    kept = part_for(before, "tab", "tab")["style"]["rowGap"]
+    assert part_for(parts, "tab", "tab")["style"]["rowGap"] == kept
+    shown = [one["text"] for one in parts_named(parts, "cell")][
+        len(payload["rules_rows"]) * payload["rules_column_count"] + 1
+    ]
+    assert shown == "Infinity"
+
+
+def test_a_payload_missing_the_widget_tree_still_draws_a_tab(browser: Browser):
+    payload = painted_payload()
+    payload.pop("widgets")
+    parts = draw_tab(browser, payload)
+    assert parts_named(parts, "tab")
+    assert not parts_named(parts, "table")
