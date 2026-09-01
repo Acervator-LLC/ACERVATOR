@@ -22,6 +22,13 @@ if str(REPO_ROOT) not in sys.path:  # pragma: no cover
 from src.gui.main_tabs import design_system_surface as dss
 from src.gui.main_tabs import table_cells_surface as tcs
 from src.gui.main_tabs import theme_engine_surface as tes
+from tests.fixtures.web_js_modules import (
+    HEX_COLOUR,
+    JsEngine,
+    drain_events,
+    js_literals,
+    new_engine,
+)
 
 WEB = REPO_ROOT / "src" / "gui" / "web"
 MODULE_PATH = WEB / "table_cells.js"
@@ -30,7 +37,6 @@ THEMES_PATH = WEB / "theme_engine.js"
 INDEX_HTML = REPO_ROOT / "desktop" / "renderer" / "index.html"
 
 JS_TIMEOUT_MS = 30_000
-EVENT_DRAIN_ROUNDS = 20
 
 #: Python type name -> the typeof acervatorCells.types reports for it.
 JS_TYPE_OF = {
@@ -43,8 +49,6 @@ JS_TYPE_OF = {
     "dict": "object",
     "NoneType": "null",
 }
-
-HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}")
 
 #: Named for MODULE_PATH, so two worktrees do not wait on each other.
 LOCK_PATH = Path(tempfile.gettempdir()) / (
@@ -267,41 +271,11 @@ def denom_payload(name: str, monkeypatch) -> dict:
 # -- the JavaScript engine ---------------------------------------------
 
 
-def drain_events() -> None:
-    """Runs QCoreApplication.processEvents so QJSEngine promise callbacks run."""
-    from PySide6.QtCore import QCoreApplication, QEventLoop
-
-    for _ in range(EVENT_DRAIN_ROUNDS):
-        QCoreApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents)
-
-
-class JsRuntime:
+class JsRuntime(JsEngine):
     """A QJSEngine holding ``table_cells.js`` and a ``window`` global."""
 
-    def __init__(self, engine: Any, source: str) -> None:
-        self._engine = engine
-        engine.evaluate("var window = this;")
-        loaded = engine.evaluate(source, MODULE_PATH.name)
-        if loaded.isError():
-            raise AssertionError("table_cells.js did not run: " + loaded.toString())
-
-    def run(self, script: str) -> Any:
-        result = self._engine.evaluate(script)
-        assert not result.isError(), script[:120] + " -> " + result.toString()
-        return result
-
-    def json(self, expression: str) -> Any:
-        """Evaluate ``expression`` and bring its value back as Python."""
-        text = self.run("JSON.stringify(" + expression + ")").toString()
-        return None if text == "undefined" else json.loads(text)
-
-    def bind_json(self, name: str, value: Any) -> None:
-        """Sets name on the engine global to json.dumps(value)."""
-        self._engine.globalObject().setProperty(name, json.dumps(value))
-
-    def push(self, payload: Any) -> dict:
-        self.bind_json("PAYLOAD", payload)
-        return self.json("acervatorSetCells(JSON.parse(PAYLOAD))")
+    module_path = MODULE_PATH
+    setter = "acervatorSetCells"
 
     def load_tokens_and_themes(self) -> None:
         """Run unit 1's and unit 2's own modules, with the real payloads."""
@@ -320,9 +294,8 @@ class JsRuntime:
 @pytest.fixture()
 def js(qapp) -> JsRuntime:
     """The module, loaded in a fresh engine."""
-    qtqml = pytest.importorskip("PySide6.QtQml")
     assert qapp is not None
-    return JsRuntime(qtqml.QJSEngine(), module_text())
+    return JsRuntime(new_engine(), module_text())
 
 
 @pytest.fixture()
@@ -410,55 +383,6 @@ def test_a_short_payload_reads_as_fewer_held_than_declared(js: JsRuntime):
     counts = js.push(payload)
     assert counts["declared"]["fields"] == len(bridge_payload())
     assert counts["held"]["fields"] == counts["declared"]["fields"] - 2
-
-
-def js_literals(source: str) -> dict:
-    """Returns the strings, numbers and non-comment slashes in source."""
-    quotes = "'\"`"
-    digits = "0123456789"
-    ident = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$")
-    numeric = set(digits + ".xXoObBeE_abcdefABCDEF")
-    strings: list = []
-    numbers: list = []
-    slashes: list = []
-    index = 0
-    end = len(source)
-    while index < end:
-        char = source[index]
-        if char == "/" and source.startswith("//", index):
-            stop = source.find("\n", index)
-            index = end if stop < 0 else stop + 1
-            continue
-        if char == "/" and source.startswith("/*", index):
-            stop = source.find("*/", index + 2)
-            index = end if stop < 0 else stop + 2
-            continue
-        if char == "/":
-            slashes.append(source[max(index - 20, 0) : index + 20])
-            index += 1
-            continue
-        if char in quotes:
-            cursor = index + 1
-            body: list = []
-            while cursor < end and source[cursor] != char:
-                if source[cursor] == "\\":
-                    body.append(source[cursor : cursor + 2])
-                    cursor += 2
-                    continue
-                body.append(source[cursor])
-                cursor += 1
-            strings.append("".join(body))
-            index = cursor + 1
-            continue
-        if char in digits and (index == 0 or source[index - 1] not in ident):
-            cursor = index
-            while cursor < end and source[cursor] in numeric:
-                cursor += 1
-            numbers.append(source[index:cursor])
-            index = cursor
-            continue
-        index += 1
-    return {"strings": strings, "numbers": numbers, "slashes": slashes}
 
 
 #: tcs names table_cells.js may write: METHOD and the AMMO_CELL payload key.
