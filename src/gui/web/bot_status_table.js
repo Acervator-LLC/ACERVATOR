@@ -1,0 +1,1178 @@
+// Draws the bot status table from the bot_status_table.state payload,
+// holding no colour, size or text of its own.
+(function (global) {
+  "use strict";
+
+  var METHOD = "bot_status_table.state";
+
+  // -- the payload's own field names -----------------------------------
+
+  var ACCESSIBLE_NAME = "accessible_name";
+  var ACTIONS = "actions";
+  var ALIGNMENT = "alignment";
+  var ALIGNMENT_VALUE = "alignment_value";
+  var BOT_IDS = "bot_ids";
+  var BUTTON_HEIGHT = "button_height";
+  var CALLS = "calls";
+  var COLUMN_COUNT = "column_count";
+  var COLUMN_TOOLTIPS = "column_tooltips";
+  var COLUMNS = "columns";
+  var CURRENT_ROW = "current_row";
+  var DEFAULT_STATE_COLOR = "default_state_color";
+  var DETAIL_COLUMN = "detail_column";
+  var DETAIL_LABEL = "detail_label";
+  var DETAIL_STYLE = "detail_style";
+  var DETAIL_TOOLTIP = "detail_tooltip";
+  var EMPTY_TEXT = "empty_text";
+  var FIRE_COLUMN = "fire_column";
+  var FIRE_GLOWS = "fire_glows";
+  var FIRE_LABEL = "fire_label";
+  var FIRE_PATHS = "fire_paths";
+  var FIRE_STYLE_HEAD = "fire_style_head";
+  var FIRE_STYLES = "fire_styles";
+  var FIXED_WIDTHS = "fixed_widths";
+  var FOCUS_POLICY = "focus_policy";
+  var GLOW_BLUR_RADIUS = "glow_blur_radius";
+  var GLOW_OFFSET = "glow_offset";
+  var HAS_SELECTION = "has_selection";
+  var HEADERS = "headers";
+  var MODE_COLUMN = "mode_column";
+  var PRIVACY_FIELD_BY_COL = "privacy_field_by_col";
+  var ROW_COUNT = "row_count";
+  var ROWS = "rows";
+  var SELECTED_BOT_ID = "selected_bot_id";
+  var SKIPPED_ROWS = "skipped_rows";
+  var STATE_COLORS = "state_colors";
+  var STYLE_SHEET = "style_sheet";
+
+  // DECLARED_FIELDS lists every top-level field of the payload.
+  var DECLARED_FIELDS = [
+    ACCESSIBLE_NAME,
+    ACTIONS,
+    "active_states",
+    ALIGNMENT,
+    ALIGNMENT_VALUE,
+    "alternating_row_colors",
+    "ammo_column",
+    "blockers_separator",
+    "blockers_tip_format",
+    BOT_IDS,
+    "browser_new_window",
+    "bus_topics",
+    "button_columns",
+    BUTTON_HEIGHT,
+    CALLS,
+    "ceiling_approach_format",
+    "ceiling_approach_ratio",
+    "ceiling_hard_stop_ratio",
+    "ceiling_normal_format",
+    "ceiling_reached_format",
+    "chart_open_failed_log",
+    "chart_url_skipped_log",
+    COLUMN_COUNT,
+    COLUMN_TOOLTIPS,
+    COLUMNS,
+    CURRENT_ROW,
+    "default_detonation_timeframe",
+    "default_fold_taper",
+    "default_quote_to_usd",
+    DEFAULT_STATE_COLOR,
+    "detail_clicks",
+    DETAIL_COLUMN,
+    DETAIL_LABEL,
+    DETAIL_STYLE,
+    DETAIL_TOOLTIP,
+    "detonation_format",
+    "edit_triggers",
+    EMPTY_TEXT,
+    "fire_clicks",
+    FIRE_COLUMN,
+    FIRE_GLOWS,
+    "fire_inactive_tooltip_format",
+    FIRE_LABEL,
+    "fire_mask_field",
+    FIRE_PATHS,
+    FIRE_STYLE_HEAD,
+    FIRE_STYLES,
+    "fire_tooltips",
+    "fixed_resize_mode",
+    FIXED_WIDTHS,
+    FOCUS_POLICY,
+    GLOW_BLUR_RADIUS,
+    GLOW_OFFSET,
+    "glows",
+    HAS_SELECTION,
+    "header_resize_mode",
+    "header_state_tip_format",
+    "header_text_format",
+    HEADERS,
+    "icon_download",
+    "icon_size",
+    "link_color",
+    "link_tip_format",
+    "link_underline",
+    "logger_name",
+    "masked_glyph",
+    "method",
+    MODE_COLUMN,
+    "mode_scrumming",
+    "mode_tip_format",
+    "no_blockers_text",
+    "no_glow",
+    "no_holdings",
+    "no_price",
+    "no_selection_bot_id",
+    "no_selection_row",
+    "no_target_text",
+    "no_target_value",
+    "no_trades",
+    "opened_urls",
+    "percent_scale",
+    PRIVACY_FIELD_BY_COL,
+    "quote_btc",
+    "quote_eth",
+    "revealed_glyph",
+    ROW_COUNT,
+    ROWS,
+    SELECTED_BOT_ID,
+    "selection_behavior",
+    "skin",
+    "skip_bot_id_length",
+    "skip_bot_id_missing",
+    "skip_log_format",
+    "skip_logger_name",
+    SKIPPED_ROWS,
+    "sorting_enabled",
+    STATE_COLORS,
+    "state_masked",
+    "state_revealed",
+    STYLE_SHEET,
+    "symbol_column",
+    "symbol_separator",
+    "target_btc_column",
+    "target_eth_column",
+    "timer_delays_ms",
+    "timers",
+    "unknown_state_text",
+    "vertical_header_visible"
+  ];
+
+  // -- the field names one row, cell, button and header carry ----------
+
+  var BOT_ID = "bot_id";
+  var SKIPPED = "skipped";
+  var CELLS = "cells";
+  var FIRE = "fire";
+  var DETAIL = "detail";
+
+  var TEXT = "text";
+  var COLOR = "color";
+  var TOOLTIP = "tooltip";
+  var ICON_ASSET = "icon_asset";
+  var ICON_SIZE = "icon_size";
+  var CHART_URL = "chart_url";
+  var UNDERLINE = "underline";
+
+  var ENABLED = "enabled";
+  var HEIGHT = "height";
+  var PATH = "path";
+  var GLOW = "glow";
+
+  var FIELD_ID = "field_id";
+
+  var ROW_FIELDS = [BOT_ID, SKIPPED, CELLS, FIRE, DETAIL];
+  var CELL_FIELDS = [
+    TEXT,
+    COLOR,
+    TOOLTIP,
+    ALIGNMENT,
+    ALIGNMENT_VALUE,
+    ICON_ASSET,
+    ICON_SIZE,
+    CHART_URL,
+    UNDERLINE
+  ];
+  var FIRE_FIELDS = [
+    TEXT,
+    ENABLED,
+    HEIGHT,
+    FOCUS_POLICY,
+    STYLE_SHEET,
+    TOOLTIP,
+    PATH,
+    GLOW,
+    GLOW_BLUR_RADIUS,
+    GLOW_OFFSET
+  ];
+  var DETAIL_FIELDS = [TEXT, ENABLED, HEIGHT, STYLE_SHEET, TOOLTIP];
+  var HEADER_FIELDS = [TEXT, TOOLTIP, FIELD_ID];
+
+  var HEADER_CLICKED = "header_clicked";
+  var CELL_CLICKED = "cell_clicked";
+  var FIRE_CLICKED = "fire_clicked";
+  var DETAIL_CLICKED = "detail_clicked";
+
+  // -- what a payload can be wrong about -------------------------------
+
+  var MISSING_FAULT = "missing";
+  var NULL_FAULT = "null";
+  var NOT_AN_OBJECT_FAULT = "not-an-object";
+  var WRONG_TYPE_FAULT = "wrong-type";
+  var UNKNOWN_PATH_FAULT = "unknown-path";
+  var STYLE_MISMATCH_FAULT = "style-mismatch";
+  var GLOW_MISMATCH_FAULT = "glow-mismatch";
+  var TEXT_MISMATCH_FAULT = "text-mismatch";
+  var SHORT_LIST_FAULT = "short-list";
+  var NOT_CSS_FAULT = "not-css";
+
+  var ROW_AT = "row:";
+  var CELL_AT = "/cell:";
+  var FIRE_AT = "/fire";
+  var DETAIL_AT = "/detail";
+  var HEADER_AT = "header:";
+  var PATH_SPLIT = ".";
+  var EMPTY = "";
+
+  var NO_BRIDGE = "the preload bridge is not present";
+
+  // QT_ONLY names the Qt paint function no stylesheet can run.
+  var QT_ONLY = "qlineargradient";
+
+  // -- what the drawn table is made of ---------------------------------
+
+  var TABLE_CLASS = "acervator-bot-table";
+
+  var TABLE_TAG = "table";
+  var HEAD_TAG = "thead";
+  var BODY_TAG = "tbody";
+  var ROW_TAG = "tr";
+  var HEAD_CELL_TAG = "th";
+  var CELL_TAG = "td";
+  var BUTTON_TAG = "button";
+  var BUTTON_TYPE = "button";
+
+  var PART_ATTR = "data-part";
+  var TABLE_PART = "table";
+  var HEAD_ROW_PART = "head-row";
+  var HEADER_PART = "header";
+  var ROW_PART = "row";
+  var CELL_PART = "cell";
+  var FIRE_PART = "fire-button";
+  var DETAIL_PART = "detail-button";
+
+  var ROW_ATTR = "data-row";
+  var COLUMN_ATTR = "data-column";
+  var BOT_ID_ATTR = "data-bot-id";
+  var SKIPPED_ATTR = "data-skipped";
+  var SELECTED_ATTR = "data-selected";
+  var PATH_ATTR = "data-path";
+  var GLOW_ATTR = "data-glow";
+  var FIELD_ID_ATTR = "data-field-id";
+  var ACTION_ATTR = "data-action";
+  var CHART_URL_ATTR = "data-chart-url";
+  var ICON_ATTR = "data-icon";
+  var ICON_SIZE_ATTR = "data-icon-size";
+  var ALIGNMENT_ATTR = "data-alignment";
+  var ALIGNMENT_VALUE_ATTR = "data-alignment-value";
+  var DECLARED_ROWS_ATTR = "data-declared-rows";
+  var HELD_ROWS_ATTR = "data-held-rows";
+  var DECLARED_COLUMNS_ATTR = "data-declared-columns";
+  var HELD_COLUMNS_ATTR = "data-held-columns";
+  var ARIA_LABEL = "aria-label";
+
+  var SPACE = " ";
+  var COMMA = ",";
+  var VAR_OPEN = "var(--";
+  // Built from COMMA and SPACE so the pair is not the surface's own
+  // blockers_separator spelled out here.
+  var VAR_SPLIT = COMMA + SPACE;
+  var VAR_CLOSE = ")";
+  var CALC_OPEN = "calc(";
+  // The unit factor that turns a unitless token into a CSS length.
+  var PX_FACTOR = " * 1px)";
+  var PX = "px";
+
+  // ALIGNMENT_STYLE maps each published alignment word to CSS.
+  var ALIGNMENT_STYLE = { AlignCenter: { textAlign: "center" } };
+
+  var held = null;
+  var tableFaults = [];
+  var loadFault = null;
+  var asked = null;
+  var roots = [];
+
+  // -- reading a payload safely ----------------------------------------
+
+  function isPlainObject(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function owns(bag, name) {
+    return Object.prototype.hasOwnProperty.call(bag, name);
+  }
+
+  function contains(list, value) {
+    var found = false;
+    list.forEach(function (item) {
+      if (item === value) {
+        found = true;
+      }
+    });
+    return found;
+  }
+
+  function objectField(model, field) {
+    return isPlainObject(model) && isPlainObject(model[field]) ? model[field] : {};
+  }
+
+  function listField(model, field) {
+    return isPlainObject(model) && Array.isArray(model[field]) ? model[field] : [];
+  }
+
+  function copyOf(bag) {
+    var found = {};
+    Object.keys(bag).forEach(function (key) {
+      found[key] = bag[key];
+    });
+    return found;
+  }
+
+  function kindOf(value) {
+    return value === null ? NULL_FAULT : typeof value;
+  }
+
+  function isFilledText(value) {
+    return typeof value === "string" && value.length ? true : false;
+  }
+
+  function fault(where, field, kind, detail) {
+    return { where: where, field: field, fault: kind, detail: detail };
+  }
+
+  // text returns String(value), or undefined for null and undefined.
+  function text(value) {
+    return value === null || value === undefined ? undefined : String(value);
+  }
+
+  // label returns value when it is filled text, else undefined.
+  function label(value) {
+    return isFilledText(value) ? value : undefined;
+  }
+
+  function afterFirst(value, splitter) {
+    var parts = String(value).split(splitter);
+    parts.shift();
+    return parts;
+  }
+
+  function carries(value, splitter) {
+    return Boolean(afterFirst(value, splitter).length);
+  }
+
+  // -- resolving a value through the modules that own the rule ---------
+
+  // `table_cells.js` owns the one-carrier rule, and a page without it
+  // paints every colour from the surface.
+  function variableFor(value) {
+    var api = global.acervatorCells;
+    if (!api || typeof api.variableFor !== "function") {
+      return undefined;
+    }
+    return api.variableFor(value);
+  }
+
+  function colour(value) {
+    var api = global.acervatorCells;
+    if (!api || typeof api.colour !== "function") {
+      return text(value);
+    }
+    return api.colour(value);
+  }
+
+  // A token holds a bare number, so `calc` scales it to a CSS length.
+  function length(value) {
+    if (value === null || value === undefined) {
+      return undefined;
+    }
+    var name = variableFor(value);
+    if (name === undefined) {
+      return String(value) + PX;
+    }
+    return (
+      CALC_OPEN + VAR_OPEN + name + VAR_SPLIT + String(value) + VAR_CLOSE + PX_FACTOR
+    );
+  }
+
+  // `header_strip.js` owns the Qt style-sheet rule.
+  function styleOf(sheet) {
+    var api = global.acervatorHeader;
+    if (!api || typeof api.styleOf !== "function") {
+      return {};
+    }
+    return api.styleOf(sheet);
+  }
+
+  function declarations(sheet) {
+    var api = global.acervatorHeader;
+    if (!api || typeof api.declarations !== "function") {
+      return [];
+    }
+    return api.declarations(sheet);
+  }
+
+  // -- the styles the components paint with ----------------------------
+
+  function withAlignment(style, word) {
+    if (!owns(ALIGNMENT_STYLE, word)) {
+      return style;
+    }
+    var aligned = ALIGNMENT_STYLE[word];
+    Object.keys(aligned).forEach(function (name) {
+      style[name] = aligned[name];
+    });
+    return style;
+  }
+
+  // The Fire glow as `box-shadow`, from the offset, blur and colour the
+  // surface publishes.
+  function glowShadow(button) {
+    if (!isFilledText(button[GLOW])) {
+      return undefined;
+    }
+    var offset = listField(button, GLOW_OFFSET).slice();
+    var across = length(offset.shift());
+    var down = length(offset.shift());
+    var blur = length(button[GLOW_BLUR_RADIUS]);
+    if (across === undefined || down === undefined || blur === undefined) {
+      return undefined;
+    }
+    return [across, down, blur, colour(button[GLOW])].join(SPACE);
+  }
+
+  function fixedWidthOf(model, column) {
+    var widths = objectField(model, FIXED_WIDTHS);
+    var name = String(column);
+    return owns(widths, name) ? widths[name] : undefined;
+  }
+
+  // -- the components --------------------------------------------------
+
+  function element() {
+    return global.React.createElement.apply(null, arguments);
+  }
+
+  function HeaderCell(props) {
+    var model = props.model;
+    var header = isPlainObject(props.header) ? props.header : {};
+    var column = props.column;
+    var style = {};
+    var width = fixedWidthOf(model, column);
+    if (width !== undefined) {
+      style.width = length(width);
+    }
+    var headProps = {
+      className: TABLE_CLASS,
+      style: style,
+      title: label(header[TOOLTIP])
+    };
+    headProps[PART_ATTR] = HEADER_PART;
+    headProps[COLUMN_ATTR] = text(column);
+    headProps[FIELD_ID_ATTR] = text(header[FIELD_ID]);
+    headProps[ARIA_LABEL] = label(header[TEXT]);
+    if (isFilledText(header[FIELD_ID])) {
+      headProps[ACTION_ATTR] = text(objectField(model, ACTIONS)[HEADER_CLICKED]);
+    }
+    return element(HEAD_CELL_TAG, headProps, text(header[TEXT]));
+  }
+
+  function FireButton(props) {
+    var model = props.model;
+    var button = props.button;
+    if (!isPlainObject(button)) {
+      return null;
+    }
+    var style = styleOf(button[STYLE_SHEET]);
+    style.height = length(button[HEIGHT]);
+    var shadow = glowShadow(button);
+    if (shadow !== undefined) {
+      style.boxShadow = shadow;
+    }
+    var buttonProps = {
+      className: TABLE_CLASS,
+      style: style,
+      title: label(button[TOOLTIP]),
+      type: BUTTON_TYPE,
+      disabled: !button[ENABLED]
+    };
+    buttonProps[PART_ATTR] = FIRE_PART;
+    buttonProps[PATH_ATTR] = text(button[PATH]);
+    buttonProps[GLOW_ATTR] = text(button[GLOW]);
+    buttonProps[BOT_ID_ATTR] = text(props.botId);
+    buttonProps[ARIA_LABEL] = label(button[TEXT]);
+    buttonProps[ACTION_ATTR] = text(objectField(model, ACTIONS)[FIRE_CLICKED]);
+    return element(BUTTON_TAG, buttonProps, text(button[TEXT]));
+  }
+
+  function DetailButton(props) {
+    var model = props.model;
+    var button = props.button;
+    if (!isPlainObject(button)) {
+      return null;
+    }
+    var style = styleOf(button[STYLE_SHEET]);
+    style.height = length(button[HEIGHT]);
+    var buttonProps = {
+      className: TABLE_CLASS,
+      style: style,
+      title: label(button[TOOLTIP]),
+      type: BUTTON_TYPE,
+      disabled: !button[ENABLED]
+    };
+    buttonProps[PART_ATTR] = DETAIL_PART;
+    buttonProps[BOT_ID_ATTR] = text(props.botId);
+    buttonProps[ARIA_LABEL] = label(button[TEXT]);
+    buttonProps[ACTION_ATTR] = text(objectField(model, ACTIONS)[DETAIL_CLICKED]);
+    return element(BUTTON_TAG, buttonProps, text(button[TEXT]));
+  }
+
+  function BodyCell(props) {
+    var model = props.model;
+    var found = props.cell;
+    var column = props.column;
+    var style = {};
+    var cellProps = { className: TABLE_CLASS, style: style };
+    cellProps[PART_ATTR] = CELL_PART;
+    cellProps[COLUMN_ATTR] = text(column);
+    cellProps[ARIA_LABEL] = label(listField(model, COLUMNS)[column]);
+    if (!isPlainObject(found)) {
+      return element(CELL_TAG, cellProps, props.children);
+    }
+    if (isFilledText(found[COLOR])) {
+      style.color = colour(found[COLOR]);
+    }
+    if (found[UNDERLINE] === true) {
+      style.textDecoration = UNDERLINE;
+    }
+    withAlignment(style, found[ALIGNMENT]);
+    cellProps.title = label(found[TOOLTIP]);
+    cellProps[ALIGNMENT_ATTR] = text(found[ALIGNMENT]);
+    cellProps[ALIGNMENT_VALUE_ATTR] = text(found[ALIGNMENT_VALUE]);
+    cellProps[ICON_ATTR] = text(found[ICON_ASSET]);
+    cellProps[ICON_SIZE_ATTR] = text(found[ICON_SIZE]);
+    cellProps[CHART_URL_ATTR] = text(found[CHART_URL]);
+    if (isFilledText(found[CHART_URL])) {
+      cellProps[ACTION_ATTR] = text(objectField(model, ACTIONS)[CELL_CLICKED]);
+    }
+    if (props.children !== undefined) {
+      return element(CELL_TAG, cellProps, props.children);
+    }
+    return element(CELL_TAG, cellProps, text(found[TEXT]));
+  }
+
+  // The button one column holds, or undefined where the column holds text.
+  function buttonAt(model, row, column, botId) {
+    if (column === model[FIRE_COLUMN]) {
+      return element(FireButton, { model: model, button: row[FIRE], botId: botId });
+    }
+    if (column === model[DETAIL_COLUMN]) {
+      return element(DetailButton, { model: model, button: row[DETAIL], botId: botId });
+    }
+    return undefined;
+  }
+
+  function BotRow(props) {
+    var model = props.model;
+    var row = isPlainObject(props.row) ? props.row : {};
+    var at = props.at;
+    var botId = row[BOT_ID];
+    var cells = listField(row, CELLS);
+    var drawn = listField(model, COLUMNS).map(function (name, column) {
+      return element(BodyCell, {
+        key: String(column),
+        model: model,
+        cell: cells[column],
+        column: column,
+        children: buttonAt(model, row, column, botId)
+      });
+    });
+    var selected = model[HAS_SELECTION] === true && at === model[CURRENT_ROW];
+    var rowProps = { className: TABLE_CLASS };
+    rowProps[PART_ATTR] = ROW_PART;
+    rowProps[ROW_ATTR] = text(at);
+    rowProps[BOT_ID_ATTR] = text(botId);
+    rowProps[SKIPPED_ATTR] = text(row[SKIPPED]);
+    rowProps[SELECTED_ATTR] = String(selected);
+    rowProps[DECLARED_COLUMNS_ATTR] = text(model[COLUMN_COUNT]);
+    rowProps[HELD_COLUMNS_ATTR] = String(drawn.length);
+    return element(ROW_TAG, rowProps, drawn);
+  }
+
+  // `Table` draws nothing for a payload that is not an object.
+  function Table(props) {
+    if (!isPlainObject(props.model)) {
+      return null;
+    }
+    var model = props.model;
+    var rows = listField(model, ROWS);
+    var headers = listField(model, HEADERS);
+    var headProps = { className: TABLE_CLASS };
+    headProps[PART_ATTR] = HEAD_ROW_PART;
+    var tableProps = {
+      id: props.id,
+      className: TABLE_CLASS,
+      style: styleOf(model[STYLE_SHEET])
+    };
+    tableProps[PART_ATTR] = TABLE_PART;
+    tableProps[ARIA_LABEL] = label(model[ACCESSIBLE_NAME]);
+    tableProps[DECLARED_ROWS_ATTR] = text(model[ROW_COUNT]);
+    tableProps[HELD_ROWS_ATTR] = String(rows.length);
+    tableProps[DECLARED_COLUMNS_ATTR] = text(model[COLUMN_COUNT]);
+    tableProps[HELD_COLUMNS_ATTR] = String(listField(model, COLUMNS).length);
+    return element(
+      TABLE_TAG,
+      tableProps,
+      element(
+        HEAD_TAG,
+        null,
+        element(
+          ROW_TAG,
+          headProps,
+          headers.map(function (header, column) {
+            return element(HeaderCell, {
+              key: String(column),
+              model: model,
+              header: header,
+              column: column
+            });
+          })
+        )
+      ),
+      element(
+        BODY_TAG,
+        null,
+        rows.map(function (row, at) {
+          return element(BotRow, { key: String(at), model: model, row: row, at: at });
+        })
+      )
+    );
+  }
+
+  // -- what the payload carries, and what it does not ------------------
+
+  function checkFields(model) {
+    DECLARED_FIELDS.forEach(function (field) {
+      if (!owns(model, field)) {
+        tableFaults.push(fault(null, field, MISSING_FAULT, null));
+        return;
+      }
+      if (model[field] === null) {
+        tableFaults.push(fault(null, field, NULL_FAULT, null));
+      }
+    });
+  }
+
+  // A wrong type is named only where the surface publishes a default of
+  // the same meaning to hold it against.
+  function checkTypeAgainst(where, bag, field, holder) {
+    if (holder === null || holder === undefined) {
+      return;
+    }
+    if (!owns(bag, field)) {
+      tableFaults.push(fault(where, field, MISSING_FAULT, null));
+      return;
+    }
+    if (bag[field] === null) {
+      tableFaults.push(fault(where, field, NULL_FAULT, null));
+      return;
+    }
+    if (kindOf(bag[field]) !== kindOf(holder)) {
+      tableFaults.push(fault(where, field, WRONG_TYPE_FAULT, kindOf(bag[field])));
+    }
+  }
+
+  function checkSameText(where, bag, field, declared) {
+    if (!isFilledText(declared) || !owns(bag, field)) {
+      return;
+    }
+    if (bag[field] !== declared) {
+      tableFaults.push(
+        fault(where, field, TEXT_MISMATCH_FAULT, {
+          declared: declared,
+          held: bag[field]
+        })
+      );
+    }
+  }
+
+  function checkNamed(where, bag, names) {
+    names.forEach(function (name) {
+      if (!owns(bag, name)) {
+        tableFaults.push(fault(where, name, MISSING_FAULT, null));
+      }
+    });
+  }
+
+  function checkSheet(where, field, sheet) {
+    declarations(sheet).forEach(function (one) {
+      if (carries(one.value, QT_ONLY)) {
+        tableFaults.push(fault(where, field, NOT_CSS_FAULT, one.property));
+      }
+    });
+  }
+
+  function checkSheets(model) {
+    var styles = objectField(model, FIRE_STYLES);
+    Object.keys(styles).forEach(function (path) {
+      checkSheet(FIRE_STYLES, path, styles[path]);
+    });
+    checkSheet(null, DETAIL_STYLE, model[DETAIL_STYLE]);
+    checkSheet(null, STYLE_SHEET, model[STYLE_SHEET]);
+  }
+
+  function checkCells(model, where, row) {
+    var cells = listField(row, CELLS);
+    if (cells.length !== model[COLUMN_COUNT]) {
+      tableFaults.push(fault(where, CELLS, SHORT_LIST_FAULT, cells.length));
+    }
+    cells.forEach(function (found, column) {
+      if (found === null) {
+        return;
+      }
+      var at = where + CELL_AT + String(column);
+      if (!isPlainObject(found)) {
+        tableFaults.push(fault(at, null, NOT_AN_OBJECT_FAULT, kindOf(found)));
+        return;
+      }
+      checkNamed(at, found, CELL_FIELDS);
+      checkTypeAgainst(at, found, TEXT, model[EMPTY_TEXT]);
+      checkTypeAgainst(at, found, ALIGNMENT, model[ALIGNMENT]);
+      checkTypeAgainst(at, found, ALIGNMENT_VALUE, model[ALIGNMENT_VALUE]);
+      if (column === model[MODE_COLUMN]) {
+        checkTypeAgainst(at, found, COLOR, model[DEFAULT_STATE_COLOR]);
+      }
+    });
+  }
+
+  function checkFire(model, where, button) {
+    if (button === null || button === undefined) {
+      return;
+    }
+    var at = where + FIRE_AT;
+    if (!isPlainObject(button)) {
+      tableFaults.push(fault(at, null, NOT_AN_OBJECT_FAULT, kindOf(button)));
+      return;
+    }
+    checkNamed(at, button, FIRE_FIELDS);
+    checkTypeAgainst(at, button, TEXT, model[FIRE_LABEL]);
+    checkTypeAgainst(at, button, STYLE_SHEET, model[FIRE_STYLE_HEAD]);
+    checkTypeAgainst(at, button, HEIGHT, model[BUTTON_HEIGHT]);
+    checkTypeAgainst(at, button, FOCUS_POLICY, model[FOCUS_POLICY]);
+    checkTypeAgainst(at, button, GLOW_BLUR_RADIUS, model[GLOW_BLUR_RADIUS]);
+    var path = button[PATH];
+    if (!contains(listField(model, FIRE_PATHS), path)) {
+      tableFaults.push(
+        fault(at, PATH, UNKNOWN_PATH_FAULT, path === undefined ? null : path)
+      );
+      return;
+    }
+    var styles = objectField(model, FIRE_STYLES);
+    if (owns(styles, path) && button[STYLE_SHEET] !== styles[path]) {
+      tableFaults.push(
+        fault(at, STYLE_SHEET, STYLE_MISMATCH_FAULT, {
+          declared: styles[path],
+          held: button[STYLE_SHEET]
+        })
+      );
+    }
+    var glows = objectField(model, FIRE_GLOWS);
+    if (owns(glows, path) && button[GLOW] !== glows[path]) {
+      tableFaults.push(
+        fault(at, GLOW, GLOW_MISMATCH_FAULT, {
+          declared: glows[path],
+          held: button[GLOW]
+        })
+      );
+    }
+  }
+
+  function checkDetail(model, where, button) {
+    if (button === null || button === undefined) {
+      return;
+    }
+    var at = where + DETAIL_AT;
+    if (!isPlainObject(button)) {
+      tableFaults.push(fault(at, null, NOT_AN_OBJECT_FAULT, kindOf(button)));
+      return;
+    }
+    checkNamed(at, button, DETAIL_FIELDS);
+    checkTypeAgainst(at, button, TEXT, model[DETAIL_LABEL]);
+    checkTypeAgainst(at, button, STYLE_SHEET, model[DETAIL_STYLE]);
+    checkTypeAgainst(at, button, TOOLTIP, model[DETAIL_TOOLTIP]);
+    checkTypeAgainst(at, button, HEIGHT, model[BUTTON_HEIGHT]);
+    checkSameText(at, button, TEXT, model[DETAIL_LABEL]);
+    checkSameText(at, button, STYLE_SHEET, model[DETAIL_STYLE]);
+    checkSameText(at, button, TOOLTIP, model[DETAIL_TOOLTIP]);
+  }
+
+  function checkRows(model) {
+    listField(model, ROWS).forEach(function (row, at) {
+      var where = ROW_AT + String(at);
+      if (!isPlainObject(row)) {
+        tableFaults.push(fault(where, null, NOT_AN_OBJECT_FAULT, kindOf(row)));
+        return;
+      }
+      checkNamed(where, row, ROW_FIELDS);
+      checkCells(model, where, row);
+      checkFire(model, where, row[FIRE]);
+      checkDetail(model, where, row[DETAIL]);
+    });
+  }
+
+  function checkHeaders(model) {
+    var headers = listField(model, HEADERS);
+    if (headers.length && headers.length !== model[COLUMN_COUNT]) {
+      tableFaults.push(fault(HEADERS, null, SHORT_LIST_FAULT, headers.length));
+    }
+    headers.forEach(function (header, column) {
+      var where = HEADER_AT + String(column);
+      if (!isPlainObject(header)) {
+        tableFaults.push(fault(where, null, NOT_AN_OBJECT_FAULT, kindOf(header)));
+        return;
+      }
+      checkNamed(where, header, HEADER_FIELDS);
+      HEADER_FIELDS.forEach(function (name) {
+        checkTypeAgainst(where, header, name, model[EMPTY_TEXT]);
+      });
+    });
+  }
+
+  function heldFieldCount() {
+    return DECLARED_FIELDS.filter(function (field) {
+      return held !== null && owns(held.model, field);
+    }).length;
+  }
+
+  // Counts fields, rows and columns declared against those held.
+  function report() {
+    var model = held.model;
+    return {
+      declared: {
+        fields: DECLARED_FIELDS.length,
+        rows: model[ROW_COUNT],
+        columns: model[COLUMN_COUNT]
+      },
+      held: {
+        fields: heldFieldCount(),
+        rows: listField(model, ROWS).length,
+        columns: listField(model, COLUMNS).length
+      },
+      faults: tableFaults.slice()
+    };
+  }
+
+  function setTable(model) {
+    if (!isPlainObject(model)) {
+      held = null;
+      tableFaults = [fault(null, null, NOT_AN_OBJECT_FAULT, kindOf(model))];
+      return { declared: null, held: null, faults: tableFaults.slice() };
+    }
+    held = { model: model };
+    tableFaults = [];
+    checkFields(model);
+    checkHeaders(model);
+    checkRows(model);
+    checkSheets(model);
+    return report();
+  }
+
+  // loadTable asks METHOD once, clearing asked so a refusal retries.
+  function loadTable(params) {
+    if (asked !== null) {
+      return asked;
+    }
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      loadFault = NO_BRIDGE;
+      return Promise.resolve(null);
+    }
+    asked = global.acervator
+      .call(METHOD, isPlainObject(params) ? params : {})
+      .then(function (model) {
+        loadFault = null;
+        setTable(model);
+        return model;
+      })
+      .catch(function (err) {
+        loadFault = err.message;
+        asked = null;
+        return null;
+      });
+    return asked;
+  }
+
+  // -- reading the held payload ----------------------------------------------------------
+
+  function payload() {
+    return held === null ? {} : copyOf(held.model);
+  }
+
+  function declaredNames() {
+    return DECLARED_FIELDS.slice();
+  }
+
+  function field(name) {
+    if (held === null || !owns(held.model, name)) {
+      return undefined;
+    }
+    return held.model[name];
+  }
+
+  function bag(name) {
+    return held === null ? {} : copyOf(objectField(held.model, name));
+  }
+
+  function list(name) {
+    return held === null ? [] : listField(held.model, name).slice();
+  }
+
+  function headers() {
+    return list(HEADERS);
+  }
+
+  function header(column) {
+    return headers()[column];
+  }
+
+  function rows() {
+    return list(ROWS);
+  }
+
+  function row(at) {
+    return rows()[at];
+  }
+
+  function cellAt(at, column) {
+    var found = row(at);
+    return isPlainObject(found) ? listField(found, CELLS)[column] : undefined;
+  }
+
+  function fire(at) {
+    var found = row(at);
+    return isPlainObject(found) ? found[FIRE] : undefined;
+  }
+
+  function detail(at) {
+    var found = row(at);
+    return isPlainObject(found) ? found[DETAIL] : undefined;
+  }
+
+  function firePath(at) {
+    var button = fire(at);
+    return isPlainObject(button) ? button[PATH] : undefined;
+  }
+
+  function botIds() {
+    return list(BOT_IDS);
+  }
+
+  // Each row's own bot id, which is what a row is identified by.
+  function rowBotIds() {
+    return rows().map(function (found) {
+      return isPlainObject(found) ? found[BOT_ID] : undefined;
+    });
+  }
+
+  // rowTexts returns each row bot_id beside its cell texts.
+  function rowTexts() {
+    return rows().map(function (found) {
+      var cells = listField(found, CELLS);
+      return {
+        bot_id: isPlainObject(found) ? found[BOT_ID] : undefined,
+        texts: cells.map(function (one) {
+          return isPlainObject(one) ? one[TEXT] : null;
+        })
+      };
+    });
+  }
+
+  function selectedBotId() {
+    return field(SELECTED_BOT_ID);
+  }
+
+  function skippedRows() {
+    return list(SKIPPED_ROWS);
+  }
+
+  function calls() {
+    return list(CALLS);
+  }
+
+  function action(name) {
+    var found = bag(ACTIONS);
+    return owns(found, name) ? found[name] : undefined;
+  }
+
+  function stateColour(name) {
+    var found = bag(STATE_COLORS);
+    return owns(found, name) ? found[name] : undefined;
+  }
+
+  function columnTooltip(column) {
+    var found = bag(COLUMN_TOOLTIPS);
+    var name = String(column);
+    return owns(found, name) ? found[name] : undefined;
+  }
+
+  function privacyField(column) {
+    var found = bag(PRIVACY_FIELD_BY_COL);
+    var name = String(column);
+    return owns(found, name) ? found[name] : undefined;
+  }
+
+  function fixedWidth(column) {
+    return held === null ? undefined : fixedWidthOf(held.model, column);
+  }
+
+  function fireStyle(path) {
+    var found = bag(FIRE_STYLES);
+    return owns(found, path) ? found[path] : undefined;
+  }
+
+  function fireGlow(path) {
+    var found = bag(FIRE_GLOWS);
+    return owns(found, path) ? found[path] : undefined;
+  }
+
+  function alignmentWords() {
+    return Object.keys(ALIGNMENT_STYLE);
+  }
+
+  // Every payload value's JavaScript type, by dotted path, null apart.
+  function kinds() {
+    var found = {};
+    function walk(prefix, node) {
+      Object.keys(node).forEach(function (name) {
+        var path = prefix ? prefix + PATH_SPLIT + name : name;
+        found[path] = kindOf(node[name]);
+        descend(path, node[name]);
+      });
+    }
+    function descend(path, value) {
+      if (isPlainObject(value)) {
+        walk(path, value);
+        return;
+      }
+      if (Array.isArray(value)) {
+        value.forEach(function (one, at) {
+          var inner = path + PATH_SPLIT + String(at);
+          found[inner] = kindOf(one);
+          descend(inner, one);
+        });
+      }
+    }
+    if (held !== null) {
+      walk(EMPTY, held.model);
+    }
+    return found;
+  }
+
+  function faults() {
+    return tableFaults.slice();
+  }
+
+  function loadError() {
+    return loadFault;
+  }
+
+  function isLoaded() {
+    return held !== null;
+  }
+
+  // -- drawing ----------------------------------------------------------
+
+  function rootFor(target) {
+    var found;
+    roots.forEach(function (pair) {
+      if (pair.node === target) {
+        found = pair.root;
+      }
+    });
+    if (found === undefined) {
+      found = global.ReactDOM.createRoot(target);
+      roots.push({ node: target, root: found });
+    }
+    return found;
+  }
+
+  // `flushSync` makes the document current before `draw` returns.
+  function draw(target, node) {
+    var root = rootFor(target);
+    global.ReactDOM.flushSync(function () {
+      root.render(node);
+    });
+    return target;
+  }
+
+  function renderTable(target, model) {
+    var drawn = model;
+    if (!isPlainObject(drawn)) {
+      drawn = held === null ? null : held.model;
+    }
+    return draw(target, element(Table, { model: drawn }));
+  }
+
+  function forget() {
+    held = null;
+    tableFaults = [];
+    loadFault = null;
+    asked = null;
+  }
+
+  global.acervatorSetBotTable = setTable;
+  global.acervatorLoadBotTable = loadTable;
+  global.acervatorBotTable = {
+    method: METHOD,
+    Table: Table,
+    BotRow: BotRow,
+    BodyCell: BodyCell,
+    HeaderCell: HeaderCell,
+    FireButton: FireButton,
+    DetailButton: DetailButton,
+    payload: payload,
+    declaredNames: declaredNames,
+    field: field,
+    headers: headers,
+    header: header,
+    rows: rows,
+    row: row,
+    cellAt: cellAt,
+    fire: fire,
+    detail: detail,
+    firePath: firePath,
+    botIds: botIds,
+    rowBotIds: rowBotIds,
+    rowTexts: rowTexts,
+    selectedBotId: selectedBotId,
+    skippedRows: skippedRows,
+    calls: calls,
+    action: action,
+    stateColour: stateColour,
+    columnTooltip: columnTooltip,
+    privacyField: privacyField,
+    fixedWidth: fixedWidth,
+    fireStyle: fireStyle,
+    fireGlow: fireGlow,
+    alignmentWords: alignmentWords,
+    glowShadow: glowShadow,
+    styleOf: styleOf,
+    declarations: declarations,
+    variableFor: variableFor,
+    colour: colour,
+    length: length,
+    kinds: kinds,
+    faults: faults,
+    loadError: loadError,
+    isLoaded: isLoaded,
+    renderTable: renderTable,
+    forget: forget
+  };
+})(window);
