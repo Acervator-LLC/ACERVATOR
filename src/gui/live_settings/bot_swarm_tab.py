@@ -25,33 +25,17 @@ logger = logging.getLogger("acervator.gui")
 class BotSwarmTabMixin:
     """Smart Wire topology, per-bot ledgers and the event feed."""
 
-    # Supplied by BotLiveSettingsDialog at runtime; declared so a
-    # type checker can resolve them. Annotations only: no attribute
-    # is created and the runtime base stays `object`.
+    # Supplied by BotLiveSettingsDialog at runtime. Annotations only:
+    # no attribute is created and the runtime base stays `object`.
     _bot: Any
     _configure_form: Callable[..., Any]
     _format_age: Callable[..., Any]
 
-    # ---------------------------------------------------------------
-    # Tab 4: Bot Swarm (v3.16.44 P2-VIS, scrumming-only)
-    # ---------------------------------------------------------------
-    # Surfaces Smart Wire / Bot Swarm state per the operator's
-    # patent-flagged Invention #6 (cross-compounding network).
-    # Same pre-emptive pattern that Fold Tranches tab demonstrated:
-    # surface the state before issues accumulate; let the operator
-    # catch architectural problems via inspection rather than
-    # post-hoc forensics. Mirrors smart_wire.py:SmartWireManager
-    # internal data: _wires (topology), _ledgers (per-bot profit
-    # provenance), _transactions (chronological event feed). Plus
-    # the bot's own _pending_wire_credits / _pending_wire_ledger.
     def _create_bot_swarm_tab(self) -> QWidget:
         import time as _time
 
-        # The same admission rule the Fold Tranches, Stack Tranches
-        # and Manual Fire surfaces already read their ages through,
-        # imported the way this module imports every other trading
-        # symbol: locally, so building a tab never drags the trading
-        # package in at module import time.
+        # Imported inside the call, so building a tab drags no trading
+        # code in at module import time.
         from ...trading.bot_container import (
             as_finite_float as _as_finite_float,
         )
@@ -60,15 +44,11 @@ class BotSwarmTabMixin:
         layout = QVBoxLayout(w)
         layout.setSpacing(8)
 
-        # Pull the Smart Wire manager (set externally on the bot
-        # via set_smart_wire). May be None if Bot Swarm not enabled
-        # or bot not yet attached.
+        # Set on the bot by set_smart_wire; None until it is attached.
         mgr = getattr(self._bot, "_smart_wire_mgr", None)
         bot_id = getattr(self._bot, "bot_id", "")
         now_ts = _time.time()
 
-        # If Smart Wire manager not attached, show empty state
-        # explaining why and exit.
         if mgr is None:
             msg = QLabel(
                 "<b>Bot Swarm not active for this bot.</b><br><br>"
@@ -86,27 +66,21 @@ class BotSwarmTabMixin:
             layout.addStretch()
             return w
 
-        # --- Pull data from manager (defensive — internal dicts) ---
         wires_dict = getattr(mgr, "_wires", {}) or {}
         ledgers = getattr(mgr, "_ledgers", {}) or {}
         transactions = getattr(mgr, "_transactions", []) or []
         getattr(mgr, "_bot_refs", {}) or {}
 
         outbound = dict(wires_dict.get(bot_id, {}))  # {target_id: pct}
-        # Inbound: scan all sources for entries targeting this bot.
         inbound: dict = {}
         for src_id, targets in wires_dict.items():
             if isinstance(targets, dict) and bot_id in targets:
-                # THE KEY IS KEPT EVEN WHEN THE VALUE IS
-                # REFUSED. The wire EXISTS; only its
-                # percentage is unreadable. Dropping the
-                # entry would delete a real connection from
-                # the count above and from the table below.
+                # The key is kept when the value is refused: the wire
+                # exists and only its percentage is unreadable.
                 inbound[src_id] = _as_finite_float(targets[bot_id])
 
         ledger = ledgers.get(bot_id)
 
-        # --- Summary section ---
         summary = QGroupBox("Swarm Connections & Capital Flow")
         sf = QFormLayout(summary)
         self._configure_form(sf)
@@ -114,7 +88,6 @@ class BotSwarmTabMixin:
         sf.addRow("Outbound wires:", QLabel(f"{len(outbound)} target(s)"))
         sf.addRow("Inbound wires:", QLabel(f"{len(inbound)} source(s)"))
 
-        # Lifetime $ in/out from this bot's ledger
         wired_in = _as_finite_float(getattr(ledger, "wired_in", 0)) if ledger else 0.0
         wired_out = _as_finite_float(getattr(ledger, "wired_out", 0)) if ledger else 0.0
         in_lbl = QLabel("—" if wired_in is None else f"${wired_in:,.4f}")
@@ -139,11 +112,8 @@ class BotSwarmTabMixin:
         )
         sf.addRow("Lifetime wired-out (sent):", out_lbl)
 
-        # A DERIVED MONEY FIGURE INHERITS THE REFUSAL. If
-        # either side is unreadable the difference is
-        # unknowable, and printing it with the missing leg
-        # treated as zero would state a net flow the ledger
-        # never supported.
+        # Net flow inherits the refusal: with one leg unreadable the
+        # difference is unknowable.
         if wired_in is None or wired_out is None:
             net_lbl = QLabel("—")
             net_lbl.setStyleSheet(f"font-weight: bold; color: {ds.TEXT_INACTIVE};")
@@ -156,9 +126,6 @@ class BotSwarmTabMixin:
             )
         sf.addRow("Net flow (in − out):", net_lbl)
 
-        # Pending wire credits — currently parked, waiting for next
-        # tranche to absorb. v3.15.69 stacking semantics may also
-        # apply if at-entry conditions are met.
         pending_usd = _as_finite_float(getattr(self._bot, "_pending_wire_credits", 0))
         pending_lbl = QLabel("—" if pending_usd is None else f"${pending_usd:,.4f}")
         if pending_usd is not None and pending_usd > 0:
@@ -169,7 +136,6 @@ class BotSwarmTabMixin:
 
         layout.addWidget(summary)
 
-        # --- Provenance / Spawn section (if ledger has data) ---
         if ledger is not None:
             prov_group = QGroupBox("Provenance & Mature-Profit Spawn State")
             pf = QFormLayout(prov_group)
@@ -181,7 +147,6 @@ class BotSwarmTabMixin:
                 QLabel("—" if starting is None else f"${starting:,.4f}"),
             )
 
-            # Predominant funder (non-SEED bot that funded this most)
             pred_src = None
             try:
                 pred_src = ledger.predominant_source
@@ -192,7 +157,7 @@ class BotSwarmTabMixin:
             else:
                 pf.addRow("Predominant funder (PPS):", QLabel("— (SEED-funded only)"))
 
-            # Mature profit math (used for spawn gate)
+            # These three feed the spawn gate.
             try:
                 mature_total = float(ledger.mature_profit_total)
                 mature_avail = float(ledger.mature_profit_available)
@@ -200,9 +165,6 @@ class BotSwarmTabMixin:
             except Exception:  # R28-OK: defensive math probe
                 mature_total = mature_avail = mature_alloc = 0.0
 
-            # v3.23.36 — read the mature ratio from the ledger's
-            # class attribute so the label stays in sync with the
-            # runtime constant instead of hardcoding "70%".
             _mature_ratio_pct = 70
             try:
                 from ...trading.smart_wire import BotLedger
@@ -228,7 +190,6 @@ class BotSwarmTabMixin:
                 avail_lbl.setStyleSheet(f"color: {ds.TEXT_INACTIVE};")
             pf.addRow("Mature profit available (spawn-eligible):", avail_lbl)
 
-            # Provenance breakdown — which bots funded this one
             prov_dict = dict(getattr(ledger, "provenance", {}) or {})
             if prov_dict:
                 prov_str = ", ".join(
@@ -242,7 +203,6 @@ class BotSwarmTabMixin:
 
             layout.addWidget(prov_group)
 
-        # --- Outbound wires table ---
         if outbound:
             out_group = QGroupBox(f"Outbound Wires ({len(outbound)})")
             ol = QVBoxLayout(out_group)
@@ -260,11 +220,8 @@ class BotSwarmTabMixin:
             out_tbl.setAlternatingRowColors(True)
             out_tbl.setEditTriggers(QTableWidget.NoEditTriggers)
 
-            # Per-target lifetime $ derived from transactions feed.
-            # AN UNREADABLE LEG POISONS THE TOTAL RATHER THAN
-            # VANISHING FROM IT. Skipping the row would report
-            # a confident sum that is short by the amount it
-            # could not read, with nothing on screen saying so.
+            # An unreadable leg poisons the total rather than vanishing
+            # from it: a skipped row would print a sum that is short.
             out_lifetime: dict = {tgt: 0.0 for tgt in outbound}
             out_unreadable: set = set()
             for tx in transactions:
@@ -279,7 +236,6 @@ class BotSwarmTabMixin:
                         out_lifetime[tx.target_bot] += _amt
 
             for row, (tgt_id, pct) in enumerate(sorted(outbound.items())):
-                # Resolve target asset if the target bot is registered
                 tgt_asset = ""
                 tgt_ledger = ledgers.get(tgt_id)
                 if tgt_ledger:
@@ -299,7 +255,6 @@ class BotSwarmTabMixin:
             ol.addWidget(out_tbl)
             layout.addWidget(out_group)
 
-        # --- Inbound wires table ---
         if inbound:
             in_group = QGroupBox(f"Inbound Wires ({len(inbound)})")
             il = QVBoxLayout(in_group)
@@ -315,8 +270,6 @@ class BotSwarmTabMixin:
             in_tbl.setAlternatingRowColors(True)
             in_tbl.setEditTriggers(QTableWidget.NoEditTriggers)
 
-            # Per-source lifetime $ derived from transactions feed.
-            # Same rule as the outbound total above.
             in_lifetime: dict = {src: 0.0 for src in inbound}
             in_unreadable: set = set()
             for tx in transactions:
@@ -352,7 +305,6 @@ class BotSwarmTabMixin:
             il.addWidget(in_tbl)
             layout.addWidget(in_group)
 
-        # --- Pending wire credits ledger ---
         pending_ledger = list(getattr(self._bot, "_pending_wire_ledger", []) or [])
         if pending_ledger:
             pl_group = QGroupBox(f"Pending Wire Credits ({len(pending_ledger)})")
@@ -368,34 +320,8 @@ class BotSwarmTabMixin:
             pl_tbl.setEditTriggers(QTableWidget.NoEditTriggers)
 
             for row, credit in enumerate(pending_ledger):
-                # THE SAME ADMISSION THE FOLD AND STACK AGE CELLS
-                # USE, and the last dict-backed one in this file.
-                # `credit` is restored verbatim by
-                # `ScrummingBot._restore_state`, which keeps every
-                # entry as `dict(_e)` and coerces no key, so `ts`
-                # arrives exactly as `json.load` decoded it.
-                # `json.loads("NaN")` and `json.loads("Infinity")`
-                # both return real floats and JSON has no integer
-                # width limit, so a corrupted or hand-edited
-                # bot_state.json reaches this line.
-                #
-                # THE OLD SHAPE FILTERED THE WRONG HALF. Coercing
-                # first and comparing second let `nan` through the
-                # `float()` and then out at `> 0` (False), while
-                # `inf` passed BOTH and raised OverflowError inside
-                # `_format_age`'s `int()`. A truthy non-number —
-                # "abc", a list, a dict — raised at the `float()`
-                # itself, before any guard could run, and `10**400`
-                # raised there too because it exceeds float range.
-                # `True` was worse than a raise: it read as one
-                # second past the epoch and printed a confident
-                # "20833.3d" for a stored flag.
-                #
-                # No caller is inside a `try`: this loop sits in
-                # `_create_bot_swarm_tab`, called bare from
-                # `BotLiveSettingsDialog.__init__`, called bare
-                # from `MainWindow._on_bot_clicked`. A raise here
-                # means Bot Settings does not open for that bot.
+                # Restored verbatim as `dict(_e)` with no key coerced,
+                # so `ts` arrives as `json.load` decoded it.
                 cts = _as_finite_float(credit.get("ts"))
                 if cts is not None and cts > 0:
                     age_str = self._format_age(now_ts - cts)
@@ -403,10 +329,6 @@ class BotSwarmTabMixin:
                     age_str = "—"
                 pl_tbl.setItem(row, 0, QTableWidgetItem(age_str))
                 pl_tbl.setItem(row, 1, QTableWidgetItem(str(credit.get("source", "?"))))
-                # THE SAME ADMISSION THE AGE CELL ABOVE USES,
-                # on the same dict from the same restore. A
-                # row whose age is trustworthy and whose money
-                # is not must say so in the money column.
                 cusd = _as_finite_float(credit.get("usd"))
                 pl_tbl.setItem(
                     row,
@@ -416,18 +338,8 @@ class BotSwarmTabMixin:
                 pl_tbl.setItem(row, 3, QTableWidgetItem(str(credit.get("ref", ""))))
 
             pll.addWidget(pl_tbl)
-
-            # v3.23.36 — retired the mid-tab prose explainer per
-            # operator directive 2026-07-26 (same "hallucinatory
-            # descriptive text" pattern removed from Fold Tranches
-            # this session). The column headers + the row-level
-            # data are the authoritative source; the meta-prose
-            # made specific version claims (v3.15.69 stacking) that
-            # would drift out of sync.
-
             layout.addWidget(pl_group)
 
-        # --- Recent wire transactions (last 20 involving this bot) ---
         recent_tx = [
             tx
             for tx in reversed(transactions)
@@ -452,35 +364,8 @@ class BotSwarmTabMixin:
             tx_tbl.setEditTriggers(QTableWidget.NoEditTriggers)
 
             for row, tx in enumerate(recent_tx):
-                # LATENT, NOT ACTIVE — and guarded anyway, because
-                # the two Age columns in this one tab must not
-                # disagree about what an unreadable timestamp
-                # means.
-                #
-                # This reads an OBJECT, not a dict, and the
-                # difference is the whole reachability story.
-                # `tx` comes from `SmartWireManager._transactions`,
-                # which has NO assignment anywhere in src/ or
-                # tests/ — only `.append()` and `.extend()`. There
-                # is no deserialisation path, so unlike the pending
-                # ledger above nothing here round-trips through
-                # bot_state.json. Both reachable constructors pass
-                # a real int: `smart_wire.py` builds
-                # `WireTransaction(timestamp=int(_t.time()), ...)`
-                # and `scrumming_bot.py` does the same at its
-                # scrum-route audit hop. The two constructors that
-                # forward a caller-supplied `timestamp`
-                # (`execute_spawn_wire`, `process_wires`) have no
-                # callers at all.
-                #
-                # So no hostile value reaches this line TODAY. It
-                # is guarded because `getattr` is duck-typed —
-                # `_transactions` is a plain public-by-convention
-                # list any future writer can append to — and
-                # because a `WireTransaction` is a `@dataclass`,
-                # which annotates `timestamp: int` without
-                # enforcing it. The guard costs one call and
-                # removes the class rather than the instance.
+                # Nothing restores `_transactions` from saved state, and
+                # `WireTransaction` does not enforce its own types.
                 cts = _as_finite_float(getattr(tx, "timestamp", None))
                 if cts is not None and cts > 0:
                     age_str = self._format_age(now_ts - cts)
@@ -503,11 +388,6 @@ class BotSwarmTabMixin:
                 tx_tbl.setItem(row, 1, di)
 
                 tx_tbl.setItem(row, 2, QTableWidgetItem(str(other)))
-                # LATENT for the same reason the Age cell one
-                # column over is: `_transactions` is only ever
-                # appended to. Guarded so the two money
-                # columns fed by this feed cannot disagree
-                # about what an unreadable amount means.
                 tamt = _as_finite_float(getattr(tx, "amount", None))
                 tx_tbl.setItem(
                     row,
@@ -523,8 +403,6 @@ class BotSwarmTabMixin:
             tl.addWidget(tx_tbl)
             layout.addWidget(tx_group)
 
-        # If bot has zero wires, zero pending, zero ledger activity:
-        # show explanation so the empty tab isn't confusing.
         if (
             not outbound
             and not inbound
