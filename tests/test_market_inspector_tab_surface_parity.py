@@ -59,8 +59,8 @@ SHIPPED_LAYOUT_TOTAL = 1
 SHIPPED_CLASS_TOTAL = 1
 SHIPPED_METHOD_TOTAL = 1
 SHIPPED_FUNCTION_TOTAL = 1
-PAYLOAD_KEY_TOTAL = 20
-CONSTANT_TOTAL = 39
+PAYLOAD_KEY_TOTAL = 23
+CONSTANT_TOTAL = 43
 
 MISSING = object()
 
@@ -1083,6 +1083,10 @@ PAYLOAD_KEYS = {
     "ERROR_SEPARATOR": "fallback.error_separator",
     "ERROR_TYPES": "error_types",
     "FALLBACK_COLOR": "fallback.color",
+    "FALLBACK_DETAIL_FORMAT": "fallback.detail_format",
+    "FALLBACK_HEADLINE_BREAKS": "fallback.headline_breaks",
+    "FALLBACK_HEADLINE_TEXT": "fallback.headline_text",
+    "FALLBACK_HEADLINE_WEIGHT": "fallback.headline_weight",
     "FALLBACK_HEADLINE": "fallback.headline",
     "FALLBACK_LABEL_CLASS": "fallback.label_class",
     "FALLBACK_MARGINS_SET": "fallback.margins_set",
@@ -1127,6 +1131,9 @@ STATE_ONLY_KEYS = {
     "delegated",
     "view",
     "message",
+    "error_type",
+    "error_text",
+    "detail",
     "style_sheet",
     "word_wrap",
     "order",
@@ -1194,7 +1201,7 @@ def test_every_value_the_surface_exports_reaches_the_snapshot():
         else:
             unaccounted.append(name)
     assert unaccounted == [], unaccounted
-    assert len(PAYLOAD_KEYS) == 28
+    assert len(PAYLOAD_KEYS) == 32
     assert len(CALL_CONSTANTS) == 9
     assert len(NOT_IN_THE_SNAPSHOT) == 2
 
