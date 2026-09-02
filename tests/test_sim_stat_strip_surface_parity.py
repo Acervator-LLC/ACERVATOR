@@ -50,7 +50,7 @@ PIXEL_SIZE = (1400, 60)
 CONNECT_TOTAL = 0
 SHIPPED_CLASS_TOTAL = 2
 SHIPPED_METHOD_TOTAL = 5
-PAYLOAD_KEY_TOTAL = 11
+PAYLOAD_KEY_TOTAL = 12
 CONSTANT_TOTAL = 29
 TRACE_KEY_TOTAL = 4
 OUTER_ITEM_TOTAL = 11
@@ -787,7 +787,7 @@ PAYLOAD_KEYS = {
     "FIELDS": "built:order",
     "LABEL_STYLE": "built:cells.0.label_style",
     "METHOD": "built:method",
-    "PLACEHOLDER_TEXT": "built:cells.0.text",
+    "PLACEHOLDER_TEXT": "built:placeholder",
     "STRIP_ACCESSIBLE_NAME": "built:widget.accessible_name",
     "STRIP_MARGINS_PX": "built:layout.margins_px",
     "STRIP_OBJECT_NAME": "built:widget.object_name",

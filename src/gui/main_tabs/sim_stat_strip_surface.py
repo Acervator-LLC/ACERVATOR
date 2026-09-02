@@ -166,6 +166,7 @@ def build_view_model(model: Optional[SimStatStripModel] = None) -> dict:
         "items": layout_items(),
         "order": list(FIELDS),
         "cells": [state.cells[field] for field in FIELDS],
+        "placeholder": PLACEHOLDER_TEXT,
         "actions": dict(ACTIONS),
         "timers": dict(TIMERS),
         "timer_delays_ms": list(TIMER_DELAYS_MS),

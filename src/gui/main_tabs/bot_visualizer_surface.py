@@ -1635,6 +1635,154 @@ def hydration_shortfall(painted: int, seen: int, rejected: int) -> Optional[list
     ]
 
 
+OUTER_MARGINS = (4, 4, 4, 4)
+OUTER_SPACING = 0
+VIZ_MARGINS = (4, 4, 4, 4)
+VIZ_SPACING = 4
+INNER_SPACING = 0
+LAYER_MARGINS = (8, 8, 8, 8)
+LAYER_SPACING = 6
+LAYER_LIST_MARGINS = (4, 4, 4, 4)
+LAYER_LIST_SPACING = 4
+SUMMARY_SPACING = 12
+QT_UNSET_SPACING = 6
+QT_GROUP_BOX_MARGIN = 9
+NESTED_MARGINS = (0, 0, 0, 0)
+HEADER_SPACING = QT_UNSET_SPACING
+LAYER_HEADER_SPACING = QT_UNSET_SPACING
+SUMMARY_MARGINS = (
+    QT_GROUP_BOX_MARGIN,
+    QT_GROUP_BOX_MARGIN,
+    QT_GROUP_BOX_MARGIN,
+    QT_GROUP_BOX_MARGIN,
+)
+
+LABEL_WORD_WRAP = False
+DESCRIPTION_WORD_WRAP = True
+DOT_CURSOR = "PointingHandCursor"
+
+EXCHANGE_CAPTION = "Exchange:"
+THEME_CAPTION = "Theme:"
+VIEW_CAPTION = "View:"
+WIRES_CAPTION = "Wires:"
+VIEW_LABELS = ("List", "Grid")
+
+EXCHANGE_TOOLTIP = (
+    "Filter Bot Swarm visualizer + Quick Routing scope by exchange "
+    "(Q4 (c)). Default: All."
+)
+VIEW_TOOLTIP = (
+    "List: dense row-per-bot table with vertical-lane wires "
+    "(default v3.23.61).\nGrid: locust-avatar swarm view (legacy fallback)."
+)
+OPACITY_TOOLTIP = (
+    "Wire opacity 0–100 %. Lower for more contrast on underlying "
+    "readouts; 100 = fully opaque."
+)
+
+SIM_HEADING_TEXT = "SIMULATOR SWARM"
+PAPER_HEADING_TEXT = "PAPER TRADER SWARM"
+SIM_DESCRIPTION_TEXT = (
+    "Run multiple simultaneous simulators. Each bot runs independently "
+    "on its own asset/timeframe. Results aggregate in the summary row."
+)
+PAPER_DESCRIPTION_TEXT = (
+    "Run multiple live paper trading bots simultaneously. Each bot trades "
+    "a different asset with virtual capital against real market data. "
+    "Source: CoinGecko (crypto) or Yahoo Finance (equities). No geographic "
+    "restrictions."
+)
+
+SIM_ADD_TEXT = "+ Add Sim Bot"
+SIM_RUN_ALL_TEXT = "▶ Run All"
+SIM_STOP_ALL_TEXT = "■ Stop All"
+PAPER_ADD_TEXT = "+ Add Paper Bot"
+PAPER_START_ALL_TEXT = "▶ Start All"
+PAPER_STOP_ALL_TEXT = "■ Stop All"
+
+SIM_SUMMARY_ORDER = ("wins", "pnl", "trades")
+PAPER_SUMMARY_ORDER = ("total", "pnl", "active")
+
+
+def heading_style_sheet(color: str) -> str:
+    """The rule one layer's heading is painted with."""
+    return f"color:{color};font-weight:bold;font-size:10px;font-family:Consolas;"
+
+
+DESCRIPTION_STYLE_SHEET = f"color:{VIZ_CAPTION_COLOR};font-size:8px;"
+
+
+def layer_button_style_sheet(color: str, hover: str) -> str:
+    """The rule one of a layer's three header buttons is painted with."""
+    return (
+        f"QPushButton{{background:{VIZ_PANEL_SURFACE_COLOR};color:{color};"
+        f"border:1px solid {color};"
+        "border-radius:3px;padding:3px 10px;font-size:9px;font-weight:bold;}"
+        f"QPushButton:hover{{background:{hover};}}"
+    )
+
+
+SCROLL_STYLE_SHEET = (
+    f"QScrollArea{{border:1px solid {VIZ_PANEL_BORDER_COLOR};"
+    f"background:{VIZ_SWARM_SURFACE_COLOR};}}"
+)
+
+SWARM_LIST_STYLE_SHEET = f"background:{VIZ_SWARM_SURFACE_COLOR};"
+
+
+def summary_box_style_sheet(color: str) -> str:
+    """The rule the box under one layer's rows is painted with."""
+    return (
+        f"QGroupBox{{border:1px solid {VIZ_PANEL_BORDER_COLOR};color:{color};"
+        "font-size:8px;font-weight:bold;margin-top:6px;padding-top:6px;}"
+        "QGroupBox::title{subcontrol-origin:margin;left:8px;}"
+    )
+
+
+SUMMARY_LABEL_STYLE_SHEET = (
+    f"color:{VIZ_HEADING_COLOR};font-size:9px;font-family:Consolas;" "font-weight:bold;"
+)
+
+
+def layer_button(text: str, color: str, hover: str) -> dict:
+    """One header button of a layer: its word and its paint rule."""
+    return {
+        "kind": BUTTON_KIND,
+        "text": text,
+        "style_sheet": layer_button_style_sheet(color, hover),
+    }
+
+
+LAYER_CHROME = {
+    SIM_KIND: {
+        "heading_text": SIM_HEADING_TEXT,
+        "heading_style_sheet": heading_style_sheet(PRIMARY_BRIGHT_COLOR),
+        "description_text": SIM_DESCRIPTION_TEXT,
+        "summary_title": SIM_SUMMARY_TITLE,
+        "summary_style_sheet": summary_box_style_sheet(PRIMARY_BRIGHT_COLOR),
+        "summary_order": list(SIM_SUMMARY_ORDER),
+        "buttons": [
+            layer_button(SIM_ADD_TEXT, SUCCESS_COLOR, VIZ_GO_HOVER_COLOR),
+            layer_button(SIM_RUN_ALL_TEXT, PRIMARY_BRIGHT_COLOR, VIZ_SIM_HOVER_COLOR),
+            layer_button(SIM_STOP_ALL_TEXT, ERROR_COLOR, VIZ_STOP_HOVER_COLOR),
+        ],
+    },
+    PAPER_KIND: {
+        "heading_text": PAPER_HEADING_TEXT,
+        "heading_style_sheet": heading_style_sheet(ACCENT_GOLD_COLOR),
+        "description_text": PAPER_DESCRIPTION_TEXT,
+        "summary_title": PAPER_SUMMARY_TITLE,
+        "summary_style_sheet": summary_box_style_sheet(ACCENT_GOLD_COLOR),
+        "summary_order": list(PAPER_SUMMARY_ORDER),
+        "buttons": [
+            layer_button(PAPER_ADD_TEXT, ACCENT_GOLD_COLOR, VIZ_GOLD_HOVER_COLOR),
+            layer_button(PAPER_START_ALL_TEXT, SUCCESS_COLOR, VIZ_GO_HOVER_COLOR),
+            layer_button(PAPER_STOP_ALL_TEXT, ERROR_COLOR, VIZ_STOP_HOVER_COLOR),
+        ],
+    },
+}
+
+
 # ---------------------------------------------------------------------
 # The whole screen
 # ---------------------------------------------------------------------
@@ -2003,6 +2151,47 @@ def build_payload(model: BotVisualizerModel) -> dict:
         "hydration_failed_error": HYDRATION_FAILED_ERROR,
         "list_refresh_debug": LIST_REFRESH_DEBUG,
         "state_write_failed_error": STATE_WRITE_FAILED_ERROR,
+        "outer_margins": list(OUTER_MARGINS),
+        "outer_spacing": OUTER_SPACING,
+        "viz_margins": list(VIZ_MARGINS),
+        "viz_spacing": VIZ_SPACING,
+        "inner_spacing": INNER_SPACING,
+        "layer_margins": list(LAYER_MARGINS),
+        "layer_spacing": LAYER_SPACING,
+        "layer_list_margins": list(LAYER_LIST_MARGINS),
+        "layer_list_spacing": LAYER_LIST_SPACING,
+        "summary_spacing": SUMMARY_SPACING,
+        "qt_unset_spacing": QT_UNSET_SPACING,
+        "nested_margins": list(NESTED_MARGINS),
+        "header_spacing": HEADER_SPACING,
+        "layer_header_spacing": LAYER_HEADER_SPACING,
+        "summary_margins": list(SUMMARY_MARGINS),
+        "label_word_wrap": LABEL_WORD_WRAP,
+        "description_word_wrap": DESCRIPTION_WORD_WRAP,
+        "dot_cursor": DOT_CURSOR,
+        "exchange_caption": EXCHANGE_CAPTION,
+        "theme_caption": THEME_CAPTION,
+        "view_caption": VIEW_CAPTION,
+        "wires_caption": WIRES_CAPTION,
+        "view_labels": list(VIEW_LABELS),
+        "exchange_tooltip": EXCHANGE_TOOLTIP,
+        "view_tooltip": VIEW_TOOLTIP,
+        "opacity_tooltip": OPACITY_TOOLTIP,
+        "description_style_sheet": DESCRIPTION_STYLE_SHEET,
+        "scroll_style_sheet": SCROLL_STYLE_SHEET,
+        "swarm_list_style_sheet": SWARM_LIST_STYLE_SHEET,
+        "summary_label_style_sheet": SUMMARY_LABEL_STYLE_SHEET,
+        "layer_chrome": {
+            one: {
+                name: (
+                    [dict(each) for each in found]
+                    if isinstance(found, list) and name == "buttons"
+                    else (list(found) if isinstance(found, list) else found)
+                )
+                for name, found in chrome.items()
+            }
+            for one, chrome in LAYER_CHROME.items()
+        },
         "actions": dict(ACTIONS),
         "signals": list(SIGNALS),
         "threads": list(THREADS),
@@ -2038,6 +2227,9 @@ def build_payload(model: BotVisualizerModel) -> dict:
         "live_rows": {one: dict(found) for one, found in model.live.rows.items()},
         "sim_rows": {one: dict(found) for one, found in model.sim.rows.items()},
         "paper_rows": {one: dict(found) for one, found in model.paper.rows.items()},
+        "live_row_order": list(model.live.order),
+        "sim_row_order": list(model.sim.order),
+        "paper_row_order": list(model.paper.order),
         "layer_signals": {
             LIVE_KIND: [dict(one) for one in model.live.signals],
             SIM_KIND: [dict(one) for one in model.sim.signals],
