@@ -27,6 +27,7 @@ from tests.fixtures.web_js_modules import (
     drain_events,
     js_literals,
     new_engine,
+    swap_module,
 )
 
 WEB = REPO_ROOT / "src" / "gui" / "web"
@@ -36,13 +37,9 @@ WIDGETS_PATH = WEB / "shared_widgets.js"
 HEADER_PATH = WEB / "header_strip.js"
 INDEX_HTML = REPO_ROOT / "desktop" / "renderer" / "index.html"
 
-#: The spare file every swap below moves over the module.
-SPARE_PATH = MODULE_PATH.with_name(f"bot_visualizer.scan_swap.{os.getpid()}.js")
 #: One lock for the whole run, so no worker reads a swapped module.
 LOCK_PATH = Path(tempfile.gettempdir()) / "acervator_bot_visualizer_swap.lock"
 LOCK_ATTEMPTS = 400_000
-#: How many replace attempts one module swap makes on Windows.
-SWAP_ATTEMPTS = 2000
 
 
 @contextlib.contextmanager
@@ -650,24 +647,6 @@ def test_the_literal_scan_reads_past_a_comment_holding_a_colour():
     assert not found["numbers"]
 
 
-def swap_module(content: bytes, attempts: int = SWAP_ATTEMPTS) -> None:
-    """Puts content over the module through one atomic replace."""
-    for _ in range(attempts):
-        try:
-            SPARE_PATH.write_bytes(content)
-            os.replace(SPARE_PATH, MODULE_PATH)
-            return
-        except PermissionError:
-            continue
-        except OSError:
-            continue
-    raise AssertionError(
-        "another worker held "
-        + MODULE_PATH.name
-        + f" open for all {attempts} attempts, so it was left as it was"
-    )
-
-
 def test_the_module_swap_leaves_the_file_whole_whether_or_not_it_is_held_open():
     """Windows denies a replace over an open file where Linux allows it."""
     with module_held():
@@ -675,11 +654,10 @@ def test_the_module_swap_leaves_the_file_whole_whether_or_not_it_is_held_open():
         with MODULE_PATH.open("rb") as busy:
             assert busy.read(1), "the module file is empty"
             try:
-                swap_module(original, attempts=3)
+                swap_module(MODULE_PATH, original, attempts=3)
                 denied = False
             except AssertionError:
                 denied = True
-        SPARE_PATH.unlink(missing_ok=True)
         assert MODULE_PATH.read_bytes() == original, f"denied {denied}"
 
 
@@ -687,8 +665,7 @@ def test_the_module_swap_reports_when_every_attempt_is_used_up():
     with module_held():
         original = MODULE_PATH.read_bytes()
         with pytest.raises(AssertionError) as raised:
-            swap_module(original, attempts=0)
-        SPARE_PATH.unlink(missing_ok=True)
+            swap_module(MODULE_PATH, original, attempts=0)
         assert MODULE_PATH.name in str(raised.value)
         assert MODULE_PATH.read_bytes() == original
 
@@ -710,14 +687,13 @@ def scan_each_written_value() -> tuple:
     caught_each = {}
     try:
         for kind in sorted(WRITTEN_LINES):
-            swap_module(original + WRITTEN_LINES[kind].encode("utf-8"))
+            swap_module(MODULE_PATH, original + WRITTEN_LINES[kind].encode("utf-8"))
             caught_each[kind] = caught_by_scan(MODULE_PATH.read_text(encoding="utf-8"))
-            swap_module(original)
+            swap_module(MODULE_PATH, original)
             after = hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest()
             assert after == before, f"the file was not restored after {kind}"
     finally:
-        swap_module(original)
-        SPARE_PATH.unlink(missing_ok=True)
+        swap_module(MODULE_PATH, original)
     return caught_each, before
 
 
