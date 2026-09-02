@@ -24,7 +24,10 @@ emitted signal.
 ``trade_charts_tab.state`` method, which is how the Electron renderer
 reaches it. Every value below is written out here rather than read from
 ``src.gui.widgets.trade_charts_tab``, so a value changed on one side alone
-is reported. Nothing here imports Qt, and nothing runs at import time.
+is reported. The one exception is the timeframe list the per-panel combo
+offers: ``ChartPanel`` owns it, so it is imported from
+``native_chart_surface`` rather than written twice. Nothing here imports
+Qt, and nothing runs at import time.
 """
 
 from __future__ import annotations
@@ -32,6 +35,8 @@ from __future__ import annotations
 import time
 from datetime import datetime
 from typing import Any, Optional
+
+from .native_chart_surface import TIMEFRAMES as PANEL_TIMEFRAME_OPTIONS
 
 METHOD = "trade_charts_tab.state"
 
@@ -1131,6 +1136,7 @@ def build_view_model(
         "panel_defaults": {
             "timeframe": PANEL_TIMEFRAME,
             "combo_timeframe": COMBO_TIMEFRAME,
+            "timeframe_options": list(PANEL_TIMEFRAME_OPTIONS),
             "minimum_height_px": PANEL_MINIMUM_HEIGHT_PX,
             "maximum_height_px": PANEL_MAXIMUM_HEIGHT_PX,
         },
