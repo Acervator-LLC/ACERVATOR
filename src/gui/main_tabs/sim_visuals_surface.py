@@ -31,6 +31,7 @@ from typing import Any, Optional
 from src.trading.gate_vocabulary import (
     _GATE_ORDER_FOLD,
     _GATE_ORDER_SCRUM,
+    LIGHT_COLORS,
     _blocked_labels,
     gate_light_color,
     gate_light_state,
@@ -170,6 +171,7 @@ LANDING_STRIP_FOLD = "lower"
 
 GATE_LABEL_COLOUR = "#9aa0b5"
 GATE_MARKER_COLOUR = "#6b7280"
+LIGHT_COLOURS_BY_STATE = dict(LIGHT_COLORS)
 
 GATE_TOOLTIP = (
     "Trading gates. Left bank = SCRUM (sell-high), "
@@ -1139,6 +1141,10 @@ VOTE_STYLE = (
     "color:#00ffcc;padding:4px;border:none;}"
 )
 
+VOTE_ALTERNATE_ROW_COLOUR = "#181822"
+VOTE_ROW_HEIGHT_PX = 30
+VOTE_HEADER_HEIGHT_PX = 32
+
 VOTE_EDIT_TRIGGERS = "NoEditTriggers"
 VOTE_SELECTION_BEHAVIOUR = "SelectRows"
 VOTE_ALTERNATING_ROWS = True
@@ -1322,6 +1328,7 @@ def build_view_model(
             "banks": {name: list(GATE_ORDER[name]) for name in GATE_BANKS},
             "label_colour": GATE_LABEL_COLOUR,
             "marker_colour": GATE_MARKER_COLOUR,
+            "light_colours": dict(LIGHT_COLOURS_BY_STATE),
             "rows": {
                 row.symbol: {
                     "lights": row.lights.lights(),
@@ -1359,6 +1366,9 @@ def build_view_model(
             "edit_triggers": VOTE_EDIT_TRIGGERS,
             "selection_behaviour": VOTE_SELECTION_BEHAVIOUR,
             "alternating_rows": VOTE_ALTERNATING_ROWS,
+            "alternate_row_colour": VOTE_ALTERNATE_ROW_COLOUR,
+            "row_height_px": VOTE_ROW_HEIGHT_PX,
+            "header_height_px": VOTE_HEADER_HEIGHT_PX,
             "row_header_visible": VOTE_ROW_HEADER_VISIBLE,
             "column_mode": VOTE_COLUMN_MODE,
             "symbol_column_mode": VOTE_SYMBOL_COLUMN_MODE,
