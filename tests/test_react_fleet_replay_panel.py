@@ -140,6 +140,46 @@ def started_model() -> Any:
     return model
 
 
+class VoteReading:
+    """One indicator's vote, as the readout reads it off a live summary."""
+
+    def __init__(self, name: str) -> None:
+        self.indicator = name
+        self.direction = type("Way", (), {"name": "BULLISH"})()
+        self.confidence = 0.75
+
+
+class VoteSummary:
+    """One bot's live indicator summary, kept as an object and never encoded."""
+
+    def __init__(self) -> None:
+        self.timeframe = "5m"
+        self.bullish_count = 3
+        self.bearish_count = 1
+        self.neutral_count = 0
+        self.net_score = 2.5
+        self.consensus_confidence = 0.8
+        self.consensus_direction = type("Way", (), {"name": "BULLISH"})()
+        self.signals = [VoteReading("rsi"), VoteReading("macd")]
+
+
+def wired_model() -> Any:
+    """One panel whose readout and chart are wired, so a live vote is read."""
+    model = fresh_model()
+    model.readout_wired = True
+    model.chart_wired = True
+    model.controller_factory = voting_controller
+    return model
+
+
+def voting_controller(configs: list, candles_by_symbol: dict, smart_wires: Any) -> Any:
+    """The same controller, its bots each holding a live vote summary."""
+    built = spawned_controller(configs, candles_by_symbol, smart_wires)
+    for bot in built._bots:
+        bot._last_summary = VoteSummary()
+    return built
+
+
 def state_model(name: str) -> Any:
     """The panel in one named state, driven through its own steps."""
     if name == "idle":
@@ -744,6 +784,21 @@ def test_an_endless_number_never_reaches_the_module_at_all(js: JsRuntime, kind: 
     ).toString()
     assert refused == "SyntaxError", (kind, refused)
     assert json.dumps(ENDLESS_VALUES[kind]) in ("NaN", "Infinity", "-Infinity")
+
+
+def test_a_live_vote_object_behind_a_wired_readout_still_leaves_a_plain_payload(
+    js: JsRuntime,
+):
+    model = wired_model()
+    model.load()
+    model.start(now_ms=frp.MS_PER_DAY, ytd_start_ms=0)
+    model.visual_refresh_tick()
+    model.drain()
+    payload = frp.build_view_model(model)
+    assert payload["voting_rows"], "no vote reached the payload, so nothing was walked"
+    json.dumps(payload)
+    report = pushed(js, payload)
+    assert "not-plain-data" not in fault_kinds(report), report["faults"]
 
 
 def test_the_panel_publishes_no_bot_object_and_no_tape(js: JsRuntime):
