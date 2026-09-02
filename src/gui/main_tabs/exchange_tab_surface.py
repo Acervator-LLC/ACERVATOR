@@ -62,6 +62,8 @@ PRIVACY_STYLE_OFF = (
     "}"
 )
 PRIVACY_FOCUS_POLICY = "NoFocus"
+# NoFocus is a word with no meaning outside Qt, so PRIVACY_FOCUSABLE answers it.
+PRIVACY_FOCUSABLE = False
 
 NEWS_TICKER_STRETCH = 1
 NEWS_TICKER_FAILED_LOG = "news ticker failed to initialise: %s"
@@ -151,6 +153,19 @@ STYLE_SHEET = ""
 TIMERS = {"pull_rate": PULL_RATE_INTERVAL_MS}
 TIMER_DELAYS_MS = (PULL_RATE_INTERVAL_MS,)
 BUS_TOPICS: tuple = ()
+
+# One PARAM for each request field ``view_model`` reads off one call.
+RESET_PARAM = "reset"
+EXCHANGE_ID_PARAM = "exchange_id"
+EXCHANGE_NAME_PARAM = "exchange_name"
+STATUSES_PARAM = "statuses"
+SELECT_SCRUM_PARAM = "select_scrum"
+SELECT_EXTRACTOR_PARAM = "select_extractor"
+POOL_SUMMARY_PARAM = "pool_summary"
+PULL_RATE_PARAM = "pull_rate"
+COMMAND_PARAM = "command"
+NEW_BOT_PARAM = "new_bot"
+PRIVACY_PARAM = "privacy"
 
 ACTIONS = {
     "privacy_clicked": "on_global_privacy_clicked",
@@ -822,6 +837,7 @@ def build_view_model(model: ExchangeTabModel) -> dict:
         "privacy_style_on": PRIVACY_STYLE_ON,
         "privacy_style_off": PRIVACY_STYLE_OFF,
         "privacy_focus_policy": PRIVACY_FOCUS_POLICY,
+        "privacy_focusable": PRIVACY_FOCUSABLE,
         "news_ticker_stretch": NEWS_TICKER_STRETCH,
         "news_ticker_failed_log": NEWS_TICKER_FAILED_LOG,
         "news_ticker_built": model.news_ticker is not None,
@@ -895,40 +911,48 @@ def build_view_model(model: ExchangeTabModel) -> dict:
         "timer_delays_ms": list(TIMER_DELAYS_MS),
         "bus_topics": list(BUS_TOPICS),
         "actions": dict(ACTIONS),
+        "reset_param": RESET_PARAM,
+        "exchange_id_param": EXCHANGE_ID_PARAM,
+        "exchange_name_param": EXCHANGE_NAME_PARAM,
+        "statuses_param": STATUSES_PARAM,
+        "pool_summary_param": POOL_SUMMARY_PARAM,
+        "select_scrum_param": SELECT_SCRUM_PARAM,
+        "select_extractor_param": SELECT_EXTRACTOR_PARAM,
+        "pull_rate_param": PULL_RATE_PARAM,
+        "command_param": COMMAND_PARAM,
+        "new_bot_param": NEW_BOT_PARAM,
+        "privacy_param": PRIVACY_PARAM,
         "logger_name": LOGGER_NAME,
         "calls": [list(call) for call in model.calls],
     }
 
 
 def view_model(params: dict) -> dict:
-    """Bridge handler for ``exchange_tab.state``.
-
-    Reads ``reset``, ``exchange_id``, ``exchange_name``, ``statuses``,
-    ``select_scrum``, ``select_extractor``, ``command``, ``privacy`` and
-    ``pool_summary`` from the request parameters. The screen keeps its
-    rows and its highlight between calls because the shipped screen does;
-    ``reset`` is what a fresh paint sends.
-    """
+    """Bridge handler reading each request field a ``*_PARAM`` constant names."""
     global PANE_MODEL
-    if params.get("reset", False):
+    if params.get(RESET_PARAM, False):
         PANE_MODEL = ExchangeTabModel(
-            params.get("exchange_id", DEFAULT_EXCHANGE_ID),
-            params.get("exchange_name", DEFAULT_EXCHANGE_NAME),
+            params.get(EXCHANGE_ID_PARAM, DEFAULT_EXCHANGE_ID),
+            params.get(EXCHANGE_NAME_PARAM, DEFAULT_EXCHANGE_NAME),
         )
     model = pane_model()
-    statuses = params.get("statuses")
+    statuses = params.get(STATUSES_PARAM)
     if statuses is not None:
         model.update_bots(statuses)
-    if params.get("select_scrum") is not None:
-        model.select_scrum_row(params["select_scrum"])
-    if params.get("select_extractor") is not None:
-        model.select_extractor_row(params["select_extractor"])
-    if params.get("pool_summary") is not None:
-        summary = params["pool_summary"]
+    if params.get(SELECT_SCRUM_PARAM) is not None:
+        model.select_scrum_row(params[SELECT_SCRUM_PARAM])
+    if params.get(SELECT_EXTRACTOR_PARAM) is not None:
+        model.select_extractor_row(params[SELECT_EXTRACTOR_PARAM])
+    if params.get(POOL_SUMMARY_PARAM) is not None:
+        summary = params[POOL_SUMMARY_PARAM]
         model.pool_reader = lambda: summary
         model.update_pull_rate_label()
-    if params.get("command") is not None:
-        model.cmd(params["command"])
-    if params.get("privacy", False):
+    if params.get(PULL_RATE_PARAM, False):
+        model.update_pull_rate_label()
+    if params.get(COMMAND_PARAM) is not None:
+        model.cmd(params[COMMAND_PARAM])
+    if params.get(NEW_BOT_PARAM, False):
+        model.on_new_bot_clicked()
+    if params.get(PRIVACY_PARAM, False):
         model.on_global_privacy_clicked()
     return build_view_model(model)
