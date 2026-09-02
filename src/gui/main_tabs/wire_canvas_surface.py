@@ -53,6 +53,8 @@ OPACITY_SCALE = 100.0
 THEME_FALLBACK_KEY = "quantum"
 THEME_COLOR_NAMES = ("accent", "accent2", "success", "warning", "error")
 OPAQUE_ALPHA = 255
+ALPHA_SCALE = float(OPAQUE_ALPHA)
+ALPHA_UNIT = 1.0 / ALPHA_SCALE
 
 THEME_COLORS = {
     "nebula": {
@@ -759,9 +761,11 @@ class CanvasTabState:
         self.record(TAB_SHOW_DISCONNECT_MENU, list(pos), wire_key(wire))
 
     def state(self) -> dict:
-        """Every value this tab holds, as one dict."""
+        """Every value this tab holds, as one dict, with the two bag orders repeated as lists."""
         return {
             "wires": [dict(one) for one in self.wires],
+            "bot_center_order": list(self.bot_centers),
+            "wire_order": [wire_key(one) for one in self.wires],
             "bot_centers": {
                 name: list(point) if point is not None else None
                 for name, point in self.bot_centers.items()
@@ -824,6 +828,8 @@ def build_view_model(
             "keys": list(THEME_KEYS),
             "color_names": list(THEME_COLOR_NAMES),
             "opaque_alpha": OPAQUE_ALPHA,
+            "alpha_scale": ALPHA_SCALE,
+            "alpha_unit": ALPHA_UNIT,
             "table": {
                 name: {color: list(value) for color, value in sorted(colors.items())}
                 for name, colors in THEME_COLORS.items()
