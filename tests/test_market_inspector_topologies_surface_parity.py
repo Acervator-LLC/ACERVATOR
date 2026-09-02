@@ -2016,6 +2016,7 @@ PAYLOAD_KEYS = {
     "CARD_SPACING": "card.spacing",
     "CARD_STYLE": "card.style",
     "CARD_TITLE_FORMAT": "card.title_format",
+    "CARD_TITLE_MARK": "marks.card_title_mark",
     "CARD_TITLE_WORD_WRAP": "card.title_word_wrap",
     "CONFIRM_BUTTONS": "confirm.buttons",
     "CONFIRM_DEFAULT_BUTTON": "confirm.default_button",
@@ -2023,6 +2024,12 @@ PAYLOAD_KEYS = {
     "CONFIRM_TITLE": "confirm.title",
     "CONFIRM_YES": "confirm.yes",
     "DEFAULT_ERROR_TYPE": "defaults.error_type",
+    "EMPHASIS_CLOSE": "marks.emphasis_close",
+    "EMPHASIS_OPEN": "marks.emphasis_open",
+    "EMPHASIS_SLANT": "marks.emphasis_slant",
+    "STRONG_CLOSE": "marks.strong_close",
+    "STRONG_OPEN": "marks.strong_open",
+    "STRONG_WEIGHT": "marks.strong_weight",
     "DIALOG_BODY_SPACING": "dialog.body_spacing",
     "DIALOG_MARGINS": "dialog.margins",
     "DIALOG_MIN_HEIGHT": "dialog.min_height",
@@ -2080,7 +2087,7 @@ PAYLOAD_KEYS = {
     "STATUS_READY": "pane.status_ready",
     "STATUS_STYLE": "pane.status_style",
     "STATUS_UNWIRED": "pane.status_unwired",
-    "STRETCH": "pane.stretch",
+    "STRETCH": "pane.stretch_name",
     "SUMMARY_FORMAT": "dialog.summary_format",
     "SUMMARY_STYLE": "dialog.summary_style",
     "TIMERS": "timers",
@@ -2900,7 +2907,7 @@ def pane_painted_by_the_model(payload):
     body_layout.setSpacing(skin["scroll_spacing"])
     cards = list(payload["cards"])
     for element in payload["screen"]:
-        if element == skin["stretch"]:
+        if element == skin["stretch_name"]:
             body_layout.addStretch()
         elif element == payload["card"]["class_name"]:
             body_layout.addWidget(card_painted_by_the_model(cards.pop(0), payload))

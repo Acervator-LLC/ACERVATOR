@@ -55,7 +55,7 @@ SHIPPED_CLASS_TOTAL = 1
 SHIPPED_METHOD_TOTAL = 6
 SURFACE_CLASS_TOTAL = 2
 PAYLOAD_KEY_TOTAL = 33
-CONSTANT_TOTAL = 128
+CONSTANT_TOTAL = 130
 WIRE_CALL_TOTAL = 19
 
 
@@ -1359,6 +1359,8 @@ PAYLOAD_KEYS = {
     "OPACITY_MIN_PCT": "opacity.min_pct",
     "OPACITY_SCALE": "opacity.scale",
     "OPAQUE_ALPHA": "theme.opaque_alpha",
+    "ALPHA_SCALE": "theme.alpha_scale",
+    "ALPHA_UNIT": "theme.alpha_unit",
     "ORIGIN_POINT": "defaults.origin_point",
     "PAINT_BRANCHES": "paint_branch_names",
     "POINTING_HAND_CURSOR_VALUE": "cursors.PointingHandCursor",
@@ -1508,7 +1510,7 @@ def test_every_value_the_surface_exports_reaches_the_snapshot():
         else:
             unaccounted.append(name)
     assert unaccounted == [], unaccounted
-    assert len(PAYLOAD_KEYS) == 83
+    assert len(PAYLOAD_KEYS) == 85
     assert len(LIST_MEMBERS) == 37
     assert len(KEY_MEMBERS) == 6
     assert len(NOT_IN_THE_SNAPSHOT) == 2
