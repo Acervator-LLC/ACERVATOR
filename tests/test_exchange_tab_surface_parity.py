@@ -2158,6 +2158,16 @@ def test_the_button_focus_policy_is_compared_as_a_value():
     assert surface.PRIVACY_FOCUS_POLICY == "NoFocus"
 
 
+def test_the_focus_answer_says_what_the_policy_word_means():
+    """The renderer reads a word it cannot resolve without the answer."""
+    from PySide6.QtCore import Qt
+
+    app()
+    button = old_tab()._privacy_mode_btn
+    assert surface.PRIVACY_FOCUSABLE is (button.focusPolicy() != Qt.NoFocus)
+    assert surface.PRIVACY_FOCUSABLE is False
+
+
 def test_the_danger_mark_is_compared_as_a_value():
     """The Delete button lost the mark that colours it as dangerous."""
     app()
@@ -2608,6 +2618,7 @@ PAYLOAD_KEY_SOURCES = {
     "privacy_style_on": ("PRIVACY_STYLE_ON",),
     "privacy_style_off": ("PRIVACY_STYLE_OFF",),
     "privacy_focus_policy": ("PRIVACY_FOCUS_POLICY",),
+    "privacy_focusable": ("PRIVACY_FOCUSABLE",),
     "news_ticker_stretch": ("NEWS_TICKER_STRETCH",),
     "news_ticker_failed_log": ("NEWS_TICKER_FAILED_LOG",),
     "news_ticker_built": ("model.news_ticker",),
@@ -2679,6 +2690,17 @@ PAYLOAD_KEY_SOURCES = {
     "timer_delays_ms": ("TIMER_DELAYS_MS",),
     "bus_topics": ("BUS_TOPICS",),
     "actions": ("ACTIONS",),
+    "reset_param": ("RESET_PARAM",),
+    "exchange_id_param": ("EXCHANGE_ID_PARAM",),
+    "exchange_name_param": ("EXCHANGE_NAME_PARAM",),
+    "statuses_param": ("STATUSES_PARAM",),
+    "pool_summary_param": ("POOL_SUMMARY_PARAM",),
+    "select_scrum_param": ("SELECT_SCRUM_PARAM",),
+    "select_extractor_param": ("SELECT_EXTRACTOR_PARAM",),
+    "pull_rate_param": ("PULL_RATE_PARAM",),
+    "command_param": ("COMMAND_PARAM",),
+    "new_bot_param": ("NEW_BOT_PARAM",),
+    "privacy_param": ("PRIVACY_PARAM",),
     "logger_name": ("LOGGER_NAME",),
     "calls": ("model.calls",),
 }
@@ -2921,6 +2943,58 @@ def test_the_bridge_drives_every_step_the_screen_takes():
     hidden = ask({"privacy": True})
     assert hidden["privacy_label"] == surface.PRIVACY_LABEL_ON
     ask({"reset": True})
+
+
+def test_every_control_is_driven_by_the_field_name_the_payload_publishes():
+    """A request field the renderer can name but view_model never reads."""
+    from src.core import desktop_bridge
+
+    registered = desktop_bridge.build_registry()
+
+    def ask(params):
+        return desktop_bridge.handle_line(
+            json.dumps({"id": 9, "method": surface.METHOD, "params": params}),
+            registered,
+        )["result"]
+
+    published = ask({surface.RESET_PARAM: True})
+    named = {
+        published["select_scrum_param"]: 0,
+        published["select_extractor_param"]: 0,
+        published["command_param"]: "start",
+        published["new_bot_param"]: True,
+        published["pull_rate_param"]: True,
+        published["privacy_param"]: True,
+    }
+    ask({surface.STATUSES_PARAM: CASES["both_kinds"]})
+    for name, value in named.items():
+        found = ask({name: value})
+        assert isinstance(found, dict), name
+    assert ask({})["last_clicked_table"] == "extractor"
+    assert ask({})["privacy_label"] == surface.PRIVACY_LABEL_ON
+    assert ask({})["commands_sent"] == []
+    ask({surface.RESET_PARAM: True})
+
+
+def test_the_control_check_names_a_field_the_handler_never_reads():
+    """The check above passes any name, so one the handler ignores is named."""
+    from src.core import desktop_bridge
+
+    registered = desktop_bridge.build_registry()
+
+    def ask(params):
+        return desktop_bridge.handle_line(
+            json.dumps({"id": 10, "method": surface.METHOD, "params": params}),
+            registered,
+        )["result"]
+
+    ask({surface.RESET_PARAM: True})
+    ask({surface.STATUSES_PARAM: CASES["both_kinds"]})
+    ask({"select_the_extractor": 0})
+    assert ask({})["last_clicked_table"] == surface.DEFAULT_TABLE
+    ask({surface.SELECT_EXTRACTOR_PARAM: 0})
+    assert ask({})["last_clicked_table"] == surface.TABLE_EXTRACTOR
+    ask({surface.RESET_PARAM: True})
 
 
 # ---------------------------------------------------------------------
