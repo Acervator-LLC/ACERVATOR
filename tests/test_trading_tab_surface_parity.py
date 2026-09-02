@@ -264,9 +264,17 @@ def layer_trace(host, index) -> dict:
             "align": align_name(outer.itemAt(0).alignment()),
             "spacing_px": card_layout.spacing(),
             "order": card_order(card_layout),
+            "outer_layout": {
+                "margins_px": margins(outer),
+                "spacing_px": outer.spacing(),
+            },
             "card": {
                 "minimum_size_px": [card.minimumWidth(), card.minimumHeight()],
                 "style_sheet": card.styleSheet(),
+                "layout": {
+                    "margins_px": margins(card_layout),
+                    "spacing_px": card_layout.spacing(),
+                },
             },
             "title": {
                 "text": title.text(),
@@ -336,6 +344,10 @@ def qt_trace(host, tabs) -> dict:
                 "spacing_px": activity_layout.spacing(),
                 "children": ["header_row", "status_log"],
             },
+            "header_row": {
+                "margins_px": margins(activity_header),
+                "spacing_px": activity_header.spacing(),
+            },
             "header_row_order": header_order(activity_header),
             "label": {
                 "text": activity_label.text(),
@@ -360,6 +372,10 @@ def qt_trace(host, tabs) -> dict:
                 "spacing_px": api_layout.spacing(),
                 "children": ["header_row", "log_view"],
             },
+            "header_row": {
+                "margins_px": margins(api_header),
+                "spacing_px": api_header.spacing(),
+            },
             "header_row_order": header_order(api_header),
             "label": {
                 "text": api_label.text(),
@@ -380,6 +396,7 @@ def qt_trace(host, tabs) -> dict:
             },
             "log_view": {
                 "read_only": view.isReadOnly(),
+                "tab_index": tab_index(view),
                 "placeholder": view.placeholderText(),
                 "tooltip": view.toolTip(),
                 "wrap": view.lineWrapMode().name != "NoWrap",
@@ -407,6 +424,18 @@ def qt_trace(host, tabs) -> dict:
 
 
 HEADER_SLOT = {"QLabel": "label", "QPushButton": "pause_button"}
+
+TAB_ORDER_INDEX = 0
+NO_TAB_ORDER_INDEX = -1
+
+
+def tab_index(view) -> int:
+    """The tab-order place a focusable Qt view takes on a page."""
+    from PySide6.QtCore import Qt
+
+    if view.focusPolicy() == Qt.FocusPolicy.NoFocus:
+        return NO_TAB_ORDER_INDEX
+    return TAB_ORDER_INDEX
 
 
 def api_listener_name(host) -> str:
