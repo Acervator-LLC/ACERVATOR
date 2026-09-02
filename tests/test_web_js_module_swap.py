@@ -31,25 +31,27 @@ ORIGINAL = b"(function (w) {\n  w.acervatorThing = 1;\n})(window);\n"
 CHANGED = ORIGINAL + b"var written = 12;\n"
 OTHER = b"var not_what_was_written = 1;\n"
 
-#: Every React test file this helper replaced a local copy in.
-CALL_SITE_MODULES = (
-    "test_react_bot_status_table",
-    "test_react_bot_visualizer",
-    "test_react_console_log",
-    "test_react_console_tab",
-    "test_react_dashboard_stat_card",
-    "test_react_header_strip",
-    "test_react_journal_tab",
-    "test_react_live_status_tab",
-    "test_react_market_inspector_tab",
+TESTS_DIR = Path(__file__).resolve().parent
+REACT_TEST_GLOB = "test_react_*.py"
+
+#: Named files discovery must keep finding, so a changed glob cannot pass.
+SEED_MODULES = (
     "test_react_notification_spool",
-    "test_react_privacy_dot",
-    "test_react_sim_stat_strip",
-    "test_react_simulator_tab",
     "test_react_status_log",
-    "test_react_trade_charts_tab",
     "test_react_trading_tab",
 )
+
+#: Measured floors, so a glob that matches nothing cannot pass in silence.
+REACT_TEST_FLOOR = 22
+SWAP_BINDING_FLOOR = 16
+
+
+def react_test_modules() -> tuple:
+    """Every ``test_react_*.py`` in this directory, by module name."""
+    return tuple(sorted(path.stem for path in TESTS_DIR.glob(REACT_TEST_GLOB)))
+
+
+CALL_SITE_MODULES = react_test_modules()
 
 
 @pytest.fixture()
@@ -177,9 +179,29 @@ def test_a_spare_left_by_a_used_up_swap_is_taken_away(
     assert left == ["thing.js"], f"the used-up swap left these files behind: {left}"
 
 
+def test_the_discovery_finds_every_react_test_file_and_loses_none():
+    found = react_test_modules()
+    on_disk = sorted(path.stem for path in TESTS_DIR.glob(REACT_TEST_GLOB))
+    assert list(found) == on_disk, "the parameters and the directory disagree"
+    assert len(found) >= REACT_TEST_FLOOR, f"discovery found only {len(found)} files"
+    missing = sorted(set(SEED_MODULES) - set(found))
+    assert not missing, f"discovery no longer finds these known files: {missing}"
+
+
+def test_enough_react_test_files_bind_the_shared_swap_to_mean_something():
+    binding = sorted(
+        name
+        for name in react_test_modules()
+        if getattr(importlib.import_module(name), "swap_module", None) is not None
+    )
+    assert len(binding) >= SWAP_BINDING_FLOOR, f"only these bind a swap: {binding}"
+
+
 @pytest.mark.parametrize("name", CALL_SITE_MODULES)
 def test_no_react_test_file_binds_a_swap_module_of_its_own(name: str):
     module = importlib.import_module(name)
+    if getattr(module, "swap_module", None) is None:
+        pytest.skip(f"{name} swaps no module")
     assert uses_the_shared_swap(
         module
     ), f"{name} binds {getattr(module, 'swap_module', None)}, not the shared one"
