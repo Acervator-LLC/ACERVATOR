@@ -1,17 +1,19 @@
 """The desktop shell's boundary: the stdio protocol and the History surface.
 
-Two properties carry this file. The protocol must survive a bad request
-and must not be corrupted by anything else the backend writes to stdout,
-and the payload the surface produces must satisfy the key list the
-renderer itself enforces. The second is read out of
-``src/gui/web/history_panel.js`` rather than restated here, so the two
-halves cannot drift apart without this failing.
+Three properties carry this file. The protocol must survive a bad request
+and must not be corrupted by anything else the backend writes to stdout;
+every frame must be one the frontend's own ``JSON.parse`` reads, which is
+checked by running that parser rather than Python's; and the payload the
+surface produces must satisfy the key list the renderer itself enforces.
+The last is read out of ``src/gui/web/history_panel.js`` rather than
+restated here, so the two halves cannot drift apart without this failing.
 """
 
 from __future__ import annotations
 
 import io
 import json
+import math
 import re
 import subprocess
 import sys
@@ -23,6 +25,7 @@ import pytest
 from src.core import desktop_bridge as db
 from src.exchange import history_read_contract as hrc
 from src.exchange import history_surface
+from tests.fixtures.web_js_modules import new_engine
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PANEL_JS = REPO_ROOT / "src" / "gui" / "web" / "history_panel.js"
@@ -125,6 +128,169 @@ def test_a_frame_escapes_the_javascript_line_terminators():
     assert LINE_SEPARATOR.encode("utf-8") not in raw
     assert PARAGRAPH_SEPARATOR.encode("utf-8") not in raw
     assert json.loads(raw)["result"]["t"] == payload
+
+
+NON_FINITE = {"nan": float("nan"), "inf": float("inf"), "minus_inf": float("-inf")}
+
+
+def placed(value):
+    """One result per position a number can sit in, each holding ``value``."""
+    return {
+        "on_its_own": value,
+        "in_a_list": [1.0, value, 3.0],
+        "in_a_bag": {"before": 1.0, "value": value},
+        "two_deep": {"rows": [{"cells": [value, "text"]}]},
+    }
+
+
+PLACES = sorted(placed(None))
+
+
+@pytest.fixture()
+def reads_a_frame(qapp):
+    """Reads a frame with the same ``JSON.parse`` the desktop shell uses.
+
+    Python's ``json`` accepts ``NaN`` and ``Infinity``, so it cannot tell
+    a readable frame from the one this issue is about. QJSEngine runs the
+    real parser. The answer is ``{"read": ...}`` or ``{"refused": name}``.
+    """
+    assert qapp is not None
+    engine = new_engine()
+
+    def read(raw: bytes) -> dict:
+        engine.globalObject().setProperty("FRAME", raw.decode("utf-8"))
+        answer = engine.evaluate(
+            "(function () {"
+            '  try { return JSON.stringify({"read": JSON.parse(FRAME)}); }'
+            '  catch (err) { return JSON.stringify({"refused": err.name}); }'
+            "})()"
+        )
+        assert not answer.isError(), answer.toString()
+        return json.loads(answer.toString())
+
+    return read
+
+
+def test_the_frame_reader_reports_a_frame_it_cannot_read(reads_a_frame):
+    """Proves the fixture above reports a refusal, so its silence means something."""
+    assert reads_a_frame(b"{not json\n") == {"refused": "SyntaxError"}
+    assert reads_a_frame(b'{"id": 1}\n') == {"read": {"id": 1}}
+
+
+@pytest.mark.parametrize("place", PLACES)
+@pytest.mark.parametrize("number", sorted(NON_FINITE))
+def test_a_number_javascript_cannot_read_still_leaves_a_readable_frame(
+    reads_a_frame, place, number
+):
+    frame = db.encode_frame(
+        {"id": 1, "ok": True, "result": placed(NON_FINITE[number])[place]}
+    )
+    found = reads_a_frame(frame)
+    assert found == {
+        "read": {"id": 1, "ok": True, "result": placed(None)[place]}
+    }, f"{number} {place} was written as {frame!r}"
+
+
+@pytest.mark.parametrize("place", PLACES)
+@pytest.mark.parametrize("number", sorted(NON_FINITE))
+def test_control_the_frame_written_with_allow_nan_is_refused_whole(
+    reads_a_frame, place, number
+):
+    """The blinded twin of the test above.
+
+    ``json.dumps`` leaves ``allow_nan`` on, which is what ``encode_frame``
+    did. The same values written that way lose the whole frame, not the
+    one field, which is what makes the test above evidence.
+    """
+    response = {"id": 1, "ok": True, "result": placed(NON_FINITE[number])[place]}
+    was = json.dumps(response, ensure_ascii=True).encode("utf-8") + b"\n"
+    assert reads_a_frame(was) == {"refused": "SyntaxError"}, was
+
+
+def test_a_non_finite_name_is_written_as_a_name_the_frontend_can_read(reads_a_frame):
+    frame = db.encode_frame({"id": 1, "ok": True, "result": {float("inf"): 2}})
+    assert reads_a_frame(frame)["read"]["result"] == {"null": 2}
+
+
+def test_a_substituted_frame_keeps_the_escaping_and_the_single_newline(reads_a_frame):
+    payload = {
+        "t": "a" + LINE_SEPARATOR + "b" + PARAGRAPH_SEPARATOR + "c",
+        "x": float("nan"),
+    }
+    raw = db.encode_frame({"id": 1, "ok": True, "result": payload})
+    assert raw.endswith(b"\n")
+    assert raw.count(b"\n") == 1
+    assert b"\r" not in raw
+    assert LINE_SEPARATOR.encode("utf-8") not in raw
+    assert PARAGRAPH_SEPARATOR.encode("utf-8") not in raw
+    found = reads_a_frame(raw)
+    assert found["read"]["result"] == {"t": payload["t"], "x": None}
+
+
+EVERY_JSON_TYPE: dict = {
+    "int": 3,
+    "float": 1.5,
+    "true": True,
+    "false": False,
+    "none": None,
+    "text": "wide — é",
+    "empty_list": [],
+    "empty_bag": {},
+    "nested": [{"a": [1, {"b": 2.25}]}],
+}
+
+
+def test_a_finite_frame_is_byte_identical_to_the_frame_written_before():
+    """This encoder serves every panel, so a normal reply must not move a byte."""
+    response = {"id": 1, "ok": True, "result": EVERY_JSON_TYPE}
+    was = json.dumps(response, ensure_ascii=True).encode("utf-8") + b"\n"
+    assert db.encode_frame(response) == was
+
+
+def test_a_finite_history_reply_is_byte_identical_to_the_frame_written_before(registry):
+    request = json.dumps(
+        {"id": 4, "method": history_surface.METHOD, "params": {"now_ts": NOW}}
+    )
+    response = db.handle_line(request, registry)
+    was = json.dumps(response, ensure_ascii=True).encode("utf-8") + b"\n"
+    assert db.encode_frame(response) == was
+
+
+def test_a_handler_answering_with_a_non_finite_number_does_not_end_the_session():
+    """One bad number must cost one field, not the pipe every panel reads."""
+    requests = b"".join(
+        json.dumps({"id": i, "method": name}).encode() + b"\n"
+        for i, name in ((1, "sour"), (2, "sweet"))
+    )
+    out = io.BytesIO()
+    answered = db.serve(
+        io.BytesIO(requests),
+        out,
+        {"sour": lambda _p: {"x": float("nan")}, "sweet": lambda _p: {"x": 1}},
+    )
+    assert answered == 2
+    frames = [json.loads(line) for line in out.getvalue().splitlines()]
+    assert frames[0] == {"id": 1, "ok": True, "result": {"x": None}}
+    assert frames[1] == {"id": 2, "ok": True, "result": {"x": 1}}
+
+
+def test_a_request_carrying_a_bare_nan_is_answered_under_its_own_id(reads_a_frame):
+    """Measured: the decoder accepts ``NaN``, and the reply keeps the id.
+
+    A decoder refusing the token would raise before the id was read, so the
+    frame would carry no id and the shell would never settle that call.
+    ``test_malformed_json_is_an_error_frame`` above shows the id is lost
+    whenever the decode raises.
+    """
+    line = '{"id": 9, "method": "echo", "params": {"x": NaN, "y": Infinity}}'
+    reply = db.handle_line(line, {"echo": lambda params: params})
+    assert reply["id"] == 9
+    assert reply["ok"] is True
+    assert math.isnan(reply["result"]["x"])
+    assert reply["result"]["y"] == float("inf")
+    assert reads_a_frame(db.encode_frame(reply)) == {
+        "read": {"id": 9, "ok": True, "result": {"x": None, "y": None}}
+    }
 
 
 def test_serve_answers_every_request_in_order(registry):
