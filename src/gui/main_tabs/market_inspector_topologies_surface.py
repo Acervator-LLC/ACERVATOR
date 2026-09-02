@@ -56,7 +56,15 @@ DIALOG_MARGINS = (12, 12, 12, 12)
 DIALOG_SPACING = 10
 DIALOG_BODY_SPACING = 12
 
-HEADER_TITLE_FORMAT = "<b>{title}</b>"
+STRONG_OPEN = "<b>"
+STRONG_CLOSE = "</b>"
+STRONG_WEIGHT = "bold"
+EMPHASIS_OPEN = "<i>"
+EMPHASIS_CLOSE = "</i>"
+EMPHASIS_SLANT = "italic"
+CARD_TITLE_MARK = "▸ "
+
+HEADER_TITLE_FORMAT = STRONG_OPEN + "{title}" + STRONG_CLOSE
 HEADER_TITLE_STYLE = "font-size: 14px;"
 HEADER_BADGE_FORMAT = " {label}  ·  score {score} "
 HEADER_BADGE_STYLE_FORMAT = (
@@ -90,7 +98,11 @@ TREE_ROOT_IS_DECORATED = False
 TREE_ALTERNATING_ROW_COLORS = True
 TREE_RESIZE_MODE = "ResizeToContents"
 
-SUMMARY_FORMAT = "<i>New bots to create: {new_bots}  ·  target capital: ${budget}</i>"
+SUMMARY_FORMAT = (
+    EMPHASIS_OPEN
+    + "New bots to create: {new_bots}  ·  target capital: ${budget}"
+    + EMPHASIS_CLOSE
+)
 SUMMARY_STYLE = "color: #ccc;"
 NOTE_FORMAT = "  • {note}"
 NOTE_STYLE = "color: #aaa; font-size: 11px;"
@@ -116,7 +128,7 @@ CARD_STYLE = (
 CARD_SIZE_POLICY = ("Expanding", "Preferred")
 CARD_MARGINS = (8, 6, 8, 6)
 CARD_SPACING = 4
-CARD_TITLE_FORMAT = "<b>▸ {title}</b>"
+CARD_TITLE_FORMAT = STRONG_OPEN + CARD_TITLE_MARK + "{title}" + STRONG_CLOSE
 CARD_TITLE_WORD_WRAP = True
 CARD_BADGE_FORMAT = " {score} "
 CARD_BADGE_STYLE_FORMAT = (
@@ -329,6 +341,14 @@ def header_badge(archetype: Any, score: Any) -> str:
     return HEADER_BADGE_FORMAT.format(
         label=archetype_label(archetype), score=whole(score)
     )
+
+
+def marked_pieces(marked: Any, opener: Any, closer: Any) -> list:
+    """The text before, inside and after one label's outer tag."""
+    printed = str(marked)
+    head, _, rest = printed.partition(opener)
+    body, _, tail = rest.rpartition(closer)
+    return [head, body, tail]
 
 
 def badge_style(color_hex: Any) -> str:
@@ -826,6 +846,11 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "ttl_seconds": DISMISS_TTL_SECONDS,
             "settings_key": DISMISS_SETTINGS_KEY,
             "held": {str(key): value for key, value in model.dismissed.items()},
+            "order": [str(key) for key in model.dismissed],
+            "persisted_order": [
+                [str(key) for key in one[1]]
+                for one in getattr(model.dismiss_store, "wrote", [])
+            ],
         },
         "score": {
             "high": SCORE_HIGH,
@@ -835,6 +860,27 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "low_color": SCORE_LOW_COLOR,
         },
         "archetypes": dict(ARCHETYPE_LABELS),
+        "marks": {
+            "strong_open": STRONG_OPEN,
+            "strong_close": STRONG_CLOSE,
+            "strong_weight": STRONG_WEIGHT,
+            "emphasis_open": EMPHASIS_OPEN,
+            "emphasis_close": EMPHASIS_CLOSE,
+            "emphasis_slant": EMPHASIS_SLANT,
+            "card_title_mark": CARD_TITLE_MARK,
+            "card_titles": [
+                marked_pieces(card.title_text, STRONG_OPEN, STRONG_CLOSE)
+                for card in model.cards
+            ],
+            "preview_titles": [
+                marked_pieces(preview.title_text, STRONG_OPEN, STRONG_CLOSE)
+                for preview in model.previews
+            ],
+            "preview_summaries": [
+                marked_pieces(preview.summary_text, EMPHASIS_OPEN, EMPHASIS_CLOSE)
+                for preview in model.previews
+            ],
+        },
         "logger": {
             "name": LOGGER_NAME,
             "refresh_failed_format": REFRESH_FAILED_FORMAT,
@@ -922,7 +968,7 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "empty_style": EMPTY_STYLE,
             "empty_word_wrap": EMPTY_WORD_WRAP,
             "label_class": LABEL_CLASS,
-            "stretch": STRETCH,
+            "stretch_name": STRETCH,
         },
         "confirm": {
             "title": CONFIRM_TITLE,

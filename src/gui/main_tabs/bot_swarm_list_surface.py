@@ -81,6 +81,14 @@ SIZE_POLICY = "Expanding"
 ALTERNATING_ROW_COLORS = False
 VERTICAL_HEADER_VISIBLE = False
 
+TEXT_ELIDE_MODE = "ElideRight"
+FOCUS_POLICY = "StrongFocus"
+FOCUS_POLICY_VALUE = 11
+WORD_WRAP = True
+SHOW_GRID = True
+CELL_TEXT_SELECTABLE = False
+CANVAS_TRANSPARENT_FOR_MOUSE = True
+
 CENTRED_ALIGNMENT = "AlignCenter"
 CENTRED_ALIGNMENT_VALUE = 132
 LANE_ALIGNMENT_VALUE = 0
@@ -127,6 +135,8 @@ OPACITY_MIN_PCT = 0
 OPACITY_MAX_PCT = 100
 OPACITY_FULL_PCT = 100
 OPACITY_SCALE = 100.0
+ALPHA_SCALE = 255.0
+ALPHA_UNIT = 1.0 / ALPHA_SCALE
 
 BASE_START_COLOR = [0, 255, 238, 70]
 BASE_END_COLOR = [0, 255, 136, 70]
@@ -518,6 +528,10 @@ class LaneWireModel:
         """How many wires the sheet was given."""
         return len(self._wires)
 
+    def wire_order(self) -> list:
+        """Every wire name in the order the sheet was given them."""
+        return [wire_id(wire) for wire in self._wires]
+
     def undrawable_wire_count(self) -> int:
         """How many wires the last paint could not draw.
 
@@ -681,6 +695,13 @@ def build_payload(model: BotSwarmListModel) -> dict:
         "size_policy": SIZE_POLICY,
         "alternating_row_colors": ALTERNATING_ROW_COLORS,
         "vertical_header_visible": VERTICAL_HEADER_VISIBLE,
+        "text_elide_mode": TEXT_ELIDE_MODE,
+        "focus_policy": FOCUS_POLICY,
+        "focus_policy_value": FOCUS_POLICY_VALUE,
+        "word_wrap": WORD_WRAP,
+        "show_grid": SHOW_GRID,
+        "cell_text_selectable": CELL_TEXT_SELECTABLE,
+        "canvas_transparent_for_mouse": CANVAS_TRANSPARENT_FOR_MOUSE,
         "centred_alignment": CENTRED_ALIGNMENT,
         "centred_alignment_value": CENTRED_ALIGNMENT_VALUE,
         "lane_alignment_value": LANE_ALIGNMENT_VALUE,
@@ -716,6 +737,8 @@ def build_payload(model: BotSwarmListModel) -> dict:
         "opacity_max_pct": OPACITY_MAX_PCT,
         "opacity_full_pct": OPACITY_FULL_PCT,
         "opacity_scale": OPACITY_SCALE,
+        "alpha_scale": ALPHA_SCALE,
+        "alpha_unit": ALPHA_UNIT,
         "base_start_color": list(BASE_START_COLOR),
         "base_end_color": list(BASE_END_COLOR),
         "pulse_color": list(PULSE_COLOR),
@@ -771,6 +794,7 @@ def build_payload(model: BotSwarmListModel) -> dict:
             bot_list.row_y_center(row) for row in range(bot_list.row_count)
         ],
         "wire_count": canvas.wire_count,
+        "wire_order": canvas.wire_order(),
         "lane_assignments": canvas.lane_assignments,
         "opacity_pct": canvas.opacity_pct,
         "undrawable": [list(found) for found in canvas.undrawable_wires()],

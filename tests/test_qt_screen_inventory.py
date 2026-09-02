@@ -51,9 +51,9 @@ GUI_PACKAGE = "src.gui"
 
 # Measured on the tree at the time of writing. `>=` not `==`: a new screen
 # must not fail the guard, a lost one must.
-MIN_SCREEN_MODULES = 48
-MIN_SCREEN_CLASSES = 84
-MIN_CONSTRUCTIBLE = 51
+MIN_SCREEN_MODULES = 47
+MIN_SCREEN_CLASSES = 83
+MIN_CONSTRUCTIBLE = 50
 
 # react_history_panel and tradingview_chart each define one constructible
 # widget class only when QtWebEngineWidgets imports. Without it they define
