@@ -289,6 +289,8 @@ TIME_LABEL_CLOCK = "%H:%M"
 TIME_LABEL_OFFSET_PX = 16
 TIME_LABEL_BASELINE_PX = 12
 
+PRICE_LABEL_INSET_PX = 6
+PRICE_LABEL_BASELINE_PX = 4
 PRICE_BADGE_PAD_PX = 10
 PRICE_BADGE_HEIGHT_PX = 18
 PRICE_BADGE_LIFT_PX = 9
@@ -368,6 +370,29 @@ INDICATOR_DEFAULTS = {
     "slingshot": False,
     "bbullseye": False,
 }
+
+ALPHA_BYTE_TOP = 255
+CSS_ALPHA_PLACES = 4
+CSS_COLOR_FORMAT = "rgba({red}, {green}, {blue}, {alpha})"
+BACKGROUND_FORMAT = "linear-gradient(to bottom, {top}, {bottom})"
+SKIN_LENGTH_KEYS = ("panel_margins", "toolbar_margins")
+
+CANDLE_BORDER_WIDTH_PX = 1
+WICK_WIDTH_PX = 1
+GRID_LINE_WIDTH_PX = 1
+PRICE_LINE_WIDTH_PX = 1
+GRID_LINE_STYLE = "dotted"
+PRICE_LINE_STYLE = "dashed"
+SOLID_LINE_STYLE = "solid"
+# CSS carries no dash-dot border, so the position line takes the nearest.
+POSITION_LINE_STYLE = "dashed"
+
+LINE_KIND_LAST_PRICE = "last_price"
+LINE_KIND_TB_ANCHOR = "tb_anchor"
+LINE_KIND_TB_CEILING = "tb_ceiling"
+LINE_KIND_TRANCHE_FLOOR = "tranche_floor"
+LINE_KIND_POSITION = "position"
+TB_LABEL_FORMAT = "{label} {price}"
 
 SKIN = {
     "bg_top": BG_TOP,
@@ -570,6 +595,8 @@ METRICS = {
     "time_label_clock": TIME_LABEL_CLOCK,
     "time_label_offset_px": TIME_LABEL_OFFSET_PX,
     "time_label_baseline_px": TIME_LABEL_BASELINE_PX,
+    "price_label_inset_px": PRICE_LABEL_INSET_PX,
+    "price_label_baseline_px": PRICE_LABEL_BASELINE_PX,
     "price_badge_pad_px": PRICE_BADGE_PAD_PX,
     "price_badge_height_px": PRICE_BADGE_HEIGHT_PX,
     "price_badge_lift_px": PRICE_BADGE_LIFT_PX,
@@ -621,6 +648,25 @@ METRICS = {
     "panel_source_style": PANEL_SOURCE_STYLE,
     "indicator_style_format": INDICATOR_STYLE_FORMAT,
     "indicator_toggles": INDICATOR_TOGGLES,
+    "candle_border_width_px": CANDLE_BORDER_WIDTH_PX,
+    "wick_width_px": WICK_WIDTH_PX,
+    "grid_line_width_px": GRID_LINE_WIDTH_PX,
+    "price_line_width_px": PRICE_LINE_WIDTH_PX,
+    "grid_line_style": GRID_LINE_STYLE,
+    "price_line_style": PRICE_LINE_STYLE,
+    "solid_line_style": SOLID_LINE_STYLE,
+    "position_line_style": POSITION_LINE_STYLE,
+    "tb_label_format": TB_LABEL_FORMAT,
+    "alpha_byte_top": ALPHA_BYTE_TOP,
+    "css_alpha_places": CSS_ALPHA_PLACES,
+    "css_color_format": CSS_COLOR_FORMAT,
+    "background_format": BACKGROUND_FORMAT,
+    "skin_length_keys": SKIN_LENGTH_KEYS,
+    "line_kind_last_price": LINE_KIND_LAST_PRICE,
+    "line_kind_tb_anchor": LINE_KIND_TB_ANCHOR,
+    "line_kind_tb_ceiling": LINE_KIND_TB_CEILING,
+    "line_kind_tranche_floor": LINE_KIND_TRANCHE_FLOOR,
+    "line_kind_position": LINE_KIND_POSITION,
 }
 
 
@@ -640,6 +686,68 @@ STEP_NAMES = (
     "pan",
     "reset_view",
 )
+
+
+def css_color(color: Color) -> str:
+    """One skin colour as CSS text, its Qt alpha byte divided into a fraction."""
+    red, green, blue, alpha = color
+    return CSS_COLOR_FORMAT.format(
+        red=red,
+        green=green,
+        blue=blue,
+        alpha=round(alpha / ALPHA_BYTE_TOP, CSS_ALPHA_PLACES),
+    )
+
+
+def with_alpha(color: Color, alpha: int) -> Color:
+    """One skin colour under a different alpha byte."""
+    red, green, blue, _ = color
+    return (red, green, blue, alpha)
+
+
+def skin_css() -> dict:
+    """Every skin colour as CSS text, under its skin name."""
+    return {
+        name: css_color(value)
+        for name, value in SKIN.items()
+        if name not in SKIN_LENGTH_KEYS
+    }
+
+
+def background_css() -> str:
+    """The chart's ground, a top-to-bottom gradient between two skin colours."""
+    return BACKGROUND_FORMAT.format(top=css_color(BG_TOP), bottom=css_color(BG_BOT))
+
+
+def body_pixels(
+    open_price: float,
+    close_price: float,
+    price_top_px: float,
+    price_height_px: float,
+    low: float,
+    span: float,
+) -> dict:
+    """Top and height of one candle body, never thinner than the floor."""
+    top = price_to_y(open_price, price_top_px, price_height_px, low, span)
+    bottom = price_to_y(close_price, price_top_px, price_height_px, low, span)
+    return {
+        "y_px": min(top, bottom),
+        "height_px": max(abs(top - bottom), CANDLE_BODY_FLOOR_PX),
+    }
+
+
+def wick_pixels(
+    high_price: float,
+    low_price: float,
+    price_top_px: float,
+    price_height_px: float,
+    low: float,
+    span: float,
+) -> dict:
+    """Top and height of one candle wick."""
+    top = price_to_y(high_price, price_top_px, price_height_px, low, span)
+    bottom = price_to_y(low_price, price_top_px, price_height_px, low, span)
+    return {"y_px": top, "height_px": bottom - top}
 
 
 def fmt_price(price: float) -> str:
@@ -788,6 +896,10 @@ def layout(
         "left_margin_px": LEFT_MARGIN_PX,
         "right_margin_px": RIGHT_MARGIN_PX,
         "chart_width_px": width - LEFT_MARGIN_PX - RIGHT_MARGIN_PX,
+        "chart_right_px": width - RIGHT_MARGIN_PX,
+        "width_px": width,
+        "height_px": height,
+        "centre_px": width / 2,
         "ohlc_top_px": ohlc_top,
         "price_top_px": price_top,
         "price_bottom_px": price_bottom,
@@ -1586,11 +1698,208 @@ class ChartModel:
         return window
 
 
+def candle_row(
+    index: int, body: tuple, panes: dict, axis: dict, geometry: dict, top_volume: float
+) -> dict:
+    """One candle's prices, colours and pixel boxes, ready to draw."""
+    is_up = body[3] >= body[0]
+    colors = candle_colors(is_up=is_up)
+    volume_paint = volume_colors(is_up=is_up)
+    left = index_to_x(index, LEFT_MARGIN_PX, geometry["column_px"])
+    box = body_pixels(
+        body[0],
+        body[3],
+        panes["price_top_px"],
+        panes["price_height_px"],
+        axis["low"],
+        axis["span"],
+    )
+    wick = wick_pixels(
+        body[1],
+        body[2],
+        panes["price_top_px"],
+        panes["price_height_px"],
+        axis["low"],
+        axis["span"],
+    )
+    bar_height = volume_bar_height(body[4], top_volume, panes["volume_height_px"])
+    return {
+        "index": index,
+        "open": body[0],
+        "high": body[1],
+        "low": body[2],
+        "close": body[3],
+        "volume": body[4],
+        "up": is_up,
+        "x_px": left,
+        "colors": colors,
+        "volume_colors": volume_paint,
+        "volume_height_px": bar_height,
+        "body_x_px": left + geometry["gap_px"] / 2,
+        "body_y_px": box["y_px"],
+        "body_width_px": geometry["body_px"],
+        "body_height_px": box["height_px"],
+        "wick_x_px": left + geometry["column_px"] / 2,
+        "wick_y_px": wick["y_px"],
+        "wick_height_px": wick["height_px"],
+        "volume_y_px": panes["volume_bottom_px"] - bar_height,
+        "colors_css": {name: css_color(one) for name, one in colors.items()},
+        "volume_colors_css": {
+            name: css_color(one) for name, one in volume_paint.items()
+        },
+    }
+
+
+def grid_rows(ticks: Sequence[dict], panes: dict, axis: dict) -> list:
+    """Each price tick with its row down the pane, and whether it lands on it."""
+    rows = []
+    for tick in ticks:
+        y = price_to_y(
+            tick["price"],
+            panes["price_top_px"],
+            panes["price_height_px"],
+            axis["low"],
+            axis["span"],
+        )
+        rows.append(
+            dict(
+                tick,
+                y_px=y,
+                on_pane=panes["price_top_px"] <= int(y) <= panes["price_bottom_px"],
+                color_css=css_color(GRID_MAJOR if tick["major"] else GRID_MINOR),
+            )
+        )
+    return rows
+
+
+def time_rows(ticks: Sequence[dict], panes: dict, geometry: dict) -> list:
+    """Each time tick with its column across the pane, and whether it lands."""
+    rows = []
+    for tick in ticks:
+        x = (
+            index_to_x(tick["index"], panes["left_margin_px"], geometry["column_px"])
+            + geometry["column_px"] / 2
+        )
+        rows.append(
+            dict(
+                tick,
+                x_px=x,
+                on_pane=panes["left_margin_px"] <= int(x) <= panes["chart_right_px"],
+            )
+        )
+    return rows
+
+
+def price_line_row(
+    kind: str,
+    price: float,
+    label: str,
+    color: Color,
+    width_px: float,
+    style: str,
+    panes: dict,
+    axis: dict,
+) -> dict:
+    """One horizontal price line, with its row down the pane."""
+    y = price_to_y(
+        price,
+        panes["price_top_px"],
+        panes["price_height_px"],
+        axis["low"],
+        axis["span"],
+    )
+    return {
+        "kind": kind,
+        "price": price,
+        "label": label,
+        "y_px": y,
+        "color_css": css_color(color),
+        "width_px": width_px,
+        "style": style,
+        "on_pane": panes["price_top_px"] <= y <= panes["price_bottom_px"],
+    }
+
+
+def target_balance_rows(model: ChartModel, panes: dict, axis: dict) -> list:
+    """The Target Balance anchor and ceiling lines the chart draws."""
+    rows = []
+    wanted = (
+        (LINE_KIND_TB_ANCHOR, model.tb_anchor_price, TB_ANCHOR_LABEL, TB_ANCHOR_COLOR),
+        (
+            LINE_KIND_TB_CEILING,
+            model.tb_ceiling_price,
+            TB_CEILING_LABEL,
+            TB_CEILING_COLOR,
+        ),
+    )
+    for kind, price, label, color in wanted:
+        if price is None:
+            continue
+        rows.append(
+            price_line_row(
+                kind,
+                price,
+                TB_LABEL_FORMAT.format(label=label, price=fmt_price(price)),
+                color,
+                TB_LINE_WIDTH_PX,
+                PRICE_LINE_STYLE,
+                panes,
+                axis,
+            )
+        )
+    return rows
+
+
+def tranche_floor_rows(model: ChartModel, panes: dict, axis: dict) -> list:
+    """The tranche minimum-target lines the chart draws."""
+    rows = []
+    for floor in model.tranche_floors:
+        price, label = floor[0], floor[1]
+        rows.append(
+            price_line_row(
+                LINE_KIND_TRANCHE_FLOOR,
+                price,
+                TRANCHE_FLOOR_LABEL_FORMAT.format(label=label),
+                TRANCHE_FLOOR_COLOR,
+                GRID_LINE_WIDTH_PX,
+                PRICE_LINE_STYLE,
+                panes,
+                axis,
+            )
+        )
+    return rows
+
+
+def position_rows(model: ChartModel, panes: dict, axis: dict) -> list:
+    """The open-position lines the chart draws on the price axis."""
+    rows = []
+    for one in model.positions:
+        invisible = one.visibility == POSITION_INVISIBLE_KEY
+        base = BUY_POS_COLOR if one.side == SIDE_BUY else SELL_POS_COLOR
+        row = price_line_row(
+            LINE_KIND_POSITION,
+            one.price,
+            position_label(
+                one.side, one.level, filled=one.filled, is_invisible=invisible
+            ),
+            with_alpha(base, POSITION_LINE_ALPHA),
+            GRID_LINE_WIDTH_PX,
+            POSITION_LINE_STYLE,
+            panes,
+            axis,
+        )
+        row["label_color_css"] = css_color(with_alpha(base, POSITION_LABEL_ALPHA))
+        row["icon_color_css"] = css_color(INVISIBLE_ICON if invisible else VISIBLE_ICON)
+        rows.append(row)
+    return rows
+
+
 def empty_view(model: ChartModel) -> dict:
     """What the chart shows with no candles: one centred line and a header."""
     return {
         "message": model.error_text or model.status_text,
         "color": TEXT_DIM,
+        "color_css": css_color(TEXT_DIM),
         "centered": True,
     }
 
@@ -1648,6 +1957,14 @@ def build_view_model(model: ChartModel, width: int = 0, height: int = 0) -> dict
                     if one.visibility == POSITION_INVISIBLE_KEY
                     else VISIBLE_ICON
                 ),
+                "line_color_css": css_color(
+                    BUY_POS_COLOR if one.side == SIDE_BUY else SELL_POS_COLOR
+                ),
+                "icon_color_css": css_color(
+                    INVISIBLE_ICON
+                    if one.visibility == POSITION_INVISIBLE_KEY
+                    else VISIBLE_ICON
+                ),
             }
             for one in model.positions
         ],
@@ -1658,6 +1975,9 @@ def build_view_model(model: ChartModel, width: int = 0, height: int = 0) -> dict
                 "price": one.price,
                 "label": one.label,
                 "color": marker_color(one.label, is_buy=one.side == SIDE_BUY),
+                "color_css": css_color(
+                    marker_color(one.label, is_buy=one.side == SIDE_BUY)
+                ),
             }
             for one in model.markers
         ],
@@ -1671,6 +1991,8 @@ def build_view_model(model: ChartModel, width: int = 0, height: int = 0) -> dict
         },
         "fire_armed_state": dict(model.fire_armed_state),
         "skin": dict(SKIN),
+        "skin_css": skin_css(),
+        "background_css": background_css(),
         "metrics": dict(METRICS),
         "actions": dict(ACTIONS),
         "signals": list(SIGNALS),
@@ -1685,11 +2007,16 @@ def build_view_model(model: ChartModel, width: int = 0, height: int = 0) -> dict
         "candles": None,
         "time_axis": None,
         "ohlc_row": None,
+        "ohlc_row_css": None,
+        "price_lines": None,
     }
     if not model.candles:
         payload["empty"] = empty_view(model)
         return payload
     payload["ohlc_row"] = ohlc_row(model.candles[-1])
+    payload["ohlc_row_css"] = [
+        [label, value, css_color(tone)] for label, value, tone in payload["ohlc_row"]
+    ]
     if width <= 0 or height <= 0:
         return payload
     panes = layout(
@@ -1704,40 +2031,49 @@ def build_view_model(model: ChartModel, width: int = 0, height: int = 0) -> dict
     window = model.visible_candles()
     axis = price_range(window, model.y_zoom_pct)
     geometry = candle_geometry(panes["chart_width_px"], len(window))
+    grid = price_grid(axis["low"], axis["high"])
+    grid["ticks"] = grid_rows(grid["ticks"], panes, axis)
+    last_price = model.candles[-1].close
     payload["price_axis"] = {
         "low": axis["low"],
         "high": axis["high"],
         "span": axis["span"],
         "pad": axis["pad"],
-        "grid": price_grid(axis["low"], axis["high"]),
-        "last_price": model.candles[-1].close,
-        "last_price_label": fmt_price(model.candles[-1].close),
+        "grid": grid,
+        "last_price": last_price,
+        "last_price_label": fmt_price(last_price),
     }
+    payload["price_lines"] = (
+        [
+            price_line_row(
+                LINE_KIND_LAST_PRICE,
+                last_price,
+                fmt_price(last_price),
+                PRICE_LINE_COLOR,
+                PRICE_LINE_WIDTH_PX,
+                PRICE_LINE_STYLE,
+                panes,
+                axis,
+            )
+        ]
+        + target_balance_rows(model, panes, axis)
+        + tranche_floor_rows(model, panes, axis)
+        + position_rows(model, panes, axis)
+    )
     top_volume = max_volume(window)
     payload["candles"] = {
         "geometry": geometry,
         "max_volume": top_volume,
         "volume_label": fmt_volume(top_volume),
+        "volume_axis_label": VOLUME_AXIS_FORMAT.format(value=fmt_volume(top_volume)),
         "bodies": [
-            {
-                "index": index,
-                "open": body[0],
-                "high": body[1],
-                "low": body[2],
-                "close": body[3],
-                "volume": body[4],
-                "up": body[3] >= body[0],
-                "x_px": index_to_x(index, LEFT_MARGIN_PX, geometry["column_px"]),
-                "colors": candle_colors(is_up=body[3] >= body[0]),
-                "volume_colors": volume_colors(is_up=body[3] >= body[0]),
-                "volume_height_px": volume_bar_height(
-                    body[4], top_volume, panes["volume_height_px"]
-                ),
-            }
+            candle_row(index, body, panes, axis, geometry, top_volume)
             for index, body in enumerate(heikin_ashi(window))
         ],
     }
-    payload["time_axis"] = time_ticks(window)
+    time_axis = time_ticks(window)
+    time_axis["ticks"] = time_rows(time_axis["ticks"], panes, geometry)
+    payload["time_axis"] = time_axis
     return payload
 
 
