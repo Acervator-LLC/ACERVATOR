@@ -44,7 +44,7 @@ CONNECT_TOTAL = 3
 SHIPPED_CLASS_TOTAL = 1
 SHIPPED_METHOD_TOTAL = 5
 PAYLOAD_KEY_TOTAL = 50
-CONSTANT_TOTAL = 181
+CONSTANT_TOTAL = 193
 
 
 def app():
@@ -1115,6 +1115,7 @@ PAYLOAD_KEYS = {
     "CELL_ALIGNMENT": "journal_table.cell_alignment",
     "CELL_ALIGNMENT_VALUE": "journal_table.cell_alignment_value",
     "COLORS": "colors",
+    "COLOR_SPAN_FORMAT": "formats.color_span",
     "COLUMNS": "journal_table.columns",
     "COLUMN_COUNT": "journal_table.column_count",
     "CONFIDENCE_LABEL": "labels.confidence",
@@ -1159,6 +1160,8 @@ PAYLOAD_KEYS = {
     "DETAIL_FONT_POINT_SIZE": "detail_view.font_point_size",
     "DETAIL_GROUP_TITLE": "detail_group.title",
     "DETAIL_JOIN": "detail_view.join",
+    "DETAIL_LABEL_GAP": "formats.label_gap",
+    "DETAIL_LABEL_SUFFIX": "formats.label_suffix",
     "DETAIL_PNL_FORMAT": "formats.detail_pnl",
     "DETAIL_PRICE_FORMAT": "formats.detail_price",
     "DETAIL_QUANTITY_FORMAT": "formats.detail_quantity",
@@ -1166,6 +1169,7 @@ PAYLOAD_KEYS = {
     "DETAIL_SLIPPAGE_FORMAT": "formats.detail_slippage",
     "DETAIL_STYLE": "detail_view.style_sheet",
     "DETAIL_TITLE": "titles.detail",
+    "DETAIL_TITLE_TEXT": "titles.detail_text",
     "DIRECTION_COLUMN": "journal_table.direction_column",
     "DIRECTION_LABEL": "labels.direction",
     "EDIT_TRIGGERS": "journal_table.edit_triggers",
@@ -1181,6 +1185,7 @@ PAYLOAD_KEYS = {
     "JOURNAL_FILES_LABEL_TEXT": "default_texts.journal_files",
     "JOURNAL_GROUP_TITLE": "journal_group.title",
     "LABELS": "labels",
+    "LINE_WEIGHT": "detail_view.line_weight",
     "MUTED_COLOR": "colors.muted",
     "NEGATIVE_COLOR": "colors.negative",
     "NO_CELL_COLOR": "no_cell_color",
@@ -1197,6 +1202,7 @@ PAYLOAD_KEYS = {
     "PERIOD_ITEMS": "period_items",
     "PERIOD_LABEL_TEXT": "period_label.text",
     "PNL_COLUMN": "journal_table.pnl_column",
+    "PNL_LABEL": "labels.pnl",
     "PNL_LINE_FORMAT": "formats.pnl_line",
     "POSITIVE_COLOR": "colors.positive",
     "PRICE_LABEL": "labels.price",
@@ -1238,14 +1244,20 @@ PAYLOAD_KEYS = {
     "STRATEGY_LABEL": "labels.strategy",
     "SYMBOL_LABEL": "labels.symbol",
     "TA_CONTEXT_TITLE": "titles.ta_context",
+    "TA_CONTEXT_TITLE_TEXT": "titles.ta_context_text",
     "TIMEFRAME_LABEL": "labels.timeframe",
     "TIMERS": "timers",
     "TIMER_DELAYS_MS": "timer_delays_ms",
     "TIME_LABEL": "labels.time",
     "TITLES": "titles",
+    "TITLE_LINE_FORMAT": "formats.title_line",
+    "TITLE_WEIGHT": "detail_view.title_weight",
     "VERTICAL_HEADER_VISIBLE": "journal_table.vertical_header_visible",
     "VOTES_COLOR": "colors.votes",
     "VOTES_TITLE": "titles.votes",
+    "VOTES_TITLE_TEXT": "titles.votes_text",
+    "VOTE_INDENT": "formats.vote_indent",
+    "VOTE_JOIN": "formats.vote_join",
     "VOTE_LINE_FORMAT": "formats.vote_line",
 }
 
@@ -1353,7 +1365,7 @@ def test_every_value_the_surface_exports_reaches_the_snapshot():
         else:
             unaccounted.append(name)
     assert unaccounted == [], unaccounted
-    assert len(PAYLOAD_KEYS) == 154
+    assert len(PAYLOAD_KEYS) == 166
     assert len(CALL_CONSTANTS) == 22
     assert len(LIST_MEMBERS) == 2
     assert len(NOT_IN_THE_SNAPSHOT) == 3

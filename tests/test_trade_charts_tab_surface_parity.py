@@ -64,7 +64,7 @@ SHIPPED_THREAD_BUILT_TOTAL = 0
 SHIPPED_THREAD_STARTED_TOTAL = 0
 
 PAYLOAD_KEY_TOTAL = 33
-CONSTANT_TOTAL = 153
+CONSTANT_TOTAL = 154
 CALL_CONSTANT_TOTAL = 42
 
 
@@ -1615,6 +1615,7 @@ PAYLOAD_PATHS = {
     "STRETCH_SLOTS": "content.stretch_slots",
     "PANEL_TIMEFRAME": "panel_defaults.timeframe",
     "COMBO_TIMEFRAME": "panel_defaults.combo_timeframe",
+    "PANEL_TIMEFRAME_OPTIONS": "panel_defaults.timeframe_options",
     "PANEL_MINIMUM_HEIGHT_PX": "panel_defaults.minimum_height_px",
     "PANEL_MAXIMUM_HEIGHT_PX": "panel_defaults.maximum_height_px",
     "NUCLEAR_TIMEFRAME": "nuclear_defaults.timeframe",

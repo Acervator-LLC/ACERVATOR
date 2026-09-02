@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 if TYPE_CHECKING:  # pragma: no cover
-    from PySide6.QtWidgets import QWidget
+    from PySide6.QtWidgets import QApplication, QWidget
 
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
@@ -732,6 +732,29 @@ _WIDGET_TEARDOWN_WAIT_MS = 2000
 # wait.
 _SPARED_WIDGETS: dict[int, str] = {}
 
+# Non-widget entries `QApplication.topLevelWidgets()` returned, by C++
+# address and type name.
+_ALIASED_ENTRIES: dict[int, str] = {}
+
+
+def _top_level_windows(app: QApplication) -> list[QWidget]:
+    """Return the widgets in `app.topLevelWidgets()`, recording every entry that is not one."""
+    from PySide6.QtWidgets import QWidget as _QWidget
+    from shiboken6 import Shiboken
+
+    windows: list[QWidget] = []
+    for entry in list(app.topLevelWidgets()):
+        try:
+            if not Shiboken.isValid(entry):
+                continue
+            if isinstance(entry, _QWidget):
+                windows.append(entry)
+                continue
+            _ALIASED_ENTRIES[Shiboken.getCppPointer(entry)[0]] = type(entry).__name__
+        except (RuntimeError, AttributeError):  # pragma: no cover
+            continue  # destroyed mid-walk
+    return windows
+
 
 def _live_top_level_widgets() -> dict[int, str]:
     """Map every live top-level widget to its type name, by C++ address.
@@ -751,10 +774,8 @@ def _live_top_level_widgets() -> dict[int, str]:
     if app is None:
         return {}
     live: dict[int, str] = {}
-    for w in list(app.topLevelWidgets()):
+    for w in _top_level_windows(app):
         try:
-            if not Shiboken.isValid(w):
-                continue
             live[Shiboken.getCppPointer(w)[0]] = type(w).__name__
         except (RuntimeError, AttributeError):  # pragma: no cover
             continue  # destroyed mid-walk
@@ -806,7 +827,7 @@ def _destroy_qt_widgets() -> Iterator[None]:
 
     for _pass in range(_MAX_TEARDOWN_PASSES):
         doomed = []
-        for w in list(app.topLevelWidgets()):
+        for w in _top_level_windows(app):
             try:
                 if not Shiboken.isValid(w):
                     continue
@@ -836,7 +857,7 @@ def _destroy_qt_widgets() -> Iterator[None]:
         try:
             if not [
                 w
-                for w in app.topLevelWidgets()
+                for w in _top_level_windows(app)
                 if Shiboken.getCppPointer(w)[0] not in _SPARED_WIDGETS
             ]:
                 break  # the list is empty; no second look
@@ -879,8 +900,10 @@ def _destroy_qt_widgets() -> Iterator[None]:
 def _assert_no_widget_leak(request: pytest.FixtureRequest) -> Iterator[None]:
     """Fail the FILE that left a top-level Qt widget alive."""
     before = _live_top_level_widgets()
+    aliased_before = set(_ALIASED_ENTRIES)
     yield
     after = _live_top_level_widgets()
+    aliased = {a: n for a, n in _ALIASED_ENTRIES.items() if a not in aliased_before}
     new = {a: n for a, n in after.items() if a not in before}
     spared = {a: n for a, n in new.items() if a in _SPARED_WIDGETS}
     leaked = {a: n for a, n in new.items() if a not in _SPARED_WIDGETS}
@@ -899,6 +922,16 @@ def _assert_no_widget_leak(request: pytest.FixtureRequest) -> Iterator[None]:
             + ". Each still owned a running QThread after "
             f"{_WIDGET_TEARDOWN_WAIT_MS} ms, and destroying a running "
             "QThread aborts the process."
+        )
+    if aliased:
+        print(
+            f"\n[widget teardown] {where} read "
+            f"{len(aliased)} entry(ies) from "
+            "`QApplication.topLevelWidgets()` that are not widgets: "
+            + ", ".join(f"{n} at {a:#x}" for a, n in sorted(aliased.items()))
+            + ". That address was read back through a wrapper of the "
+            "wrong type, so the entry was left alone rather than hidden "
+            "or destroyed."
         )
     if not leaked:
         return
