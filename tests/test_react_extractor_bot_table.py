@@ -46,7 +46,6 @@ PAGE_ATTEMPTS = 3
 
 HOST_WIDTH_PX = 900
 HOST_HEIGHT_PX = 400
-PICTURE_SIZE = (240, 40)
 
 JS_TYPE_OF = {
     "str": "string",
@@ -1160,82 +1159,65 @@ def test_the_bridge_handler_serves_the_same_fields_as_the_module_names(js: JsRun
         surface.view_model({"reset": True})
 
 
-def picture_of(widget) -> Any:
-    """One render of ``widget`` at PICTURE_SIZE, as a QImage."""
-    from PySide6.QtCore import QSize
-    from PySide6.QtGui import QImage
-
-    widget.resize(*PICTURE_SIZE)
-    image = QImage(QSize(*PICTURE_SIZE), QImage.Format.Format_ARGB32)
-    image.fill(0)
-    widget.render(image)
-    return image
-
-
-def picture_digest(widget) -> str:
-    image = picture_of(widget)
-    return hashlib.sha256(bytes(image.constBits())).hexdigest()
-
-
-def a_label(text: str) -> Any:
+def label_width(text: str) -> int:
+    """The width a QLabel lays one text out in."""
     from PySide6.QtWidgets import QLabel
 
-    return QLabel(text)
+    widget = QLabel(text)
+    return widget.sizeHint().width()
 
 
-def a_button(text: str) -> Any:
+def button_width(text: str) -> int:
     from PySide6.QtWidgets import QPushButton
 
-    return QPushButton(text)
+    widget = QPushButton(text)
+    return widget.sizeHint().width()
 
 
-def a_cell(text: str) -> Any:
+def cell_width(text: str) -> int:
     from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
 
     table = QTableWidget(1, 1)
     table.setItem(0, 0, QTableWidgetItem(text))
-    table.horizontalHeader().hide()
-    table.verticalHeader().hide()
-    return table
+    return table.sizeHintForColumn(0)
 
 
-def a_header(text: str) -> Any:
+def header_width(text: str) -> int:
     from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
 
     table = QTableWidget(1, 1)
     table.setHorizontalHeaderItem(0, QTableWidgetItem(text))
-    table.verticalHeader().hide()
-    return table
+    return table.horizontalHeader().sectionSizeHint(0)
 
 
 SCREEN_WIDGETS = {
-    "QTableWidgetItem": a_cell,
-    "QPushButton": a_button,
-    "QHeaderView": a_header,
+    "QTableWidgetItem": cell_width,
+    "QPushButton": button_width,
+    "QHeaderView": header_width,
 }
 
 
 @pytest.mark.parametrize("kind", sorted(SCREEN_WIDGETS))
 def test_no_widget_this_screen_uses_reads_its_caller_text_as_markup(qapp, kind: str):
-    """An empty tag pair the widget paints proves the text stayed characters."""
+    """A widget that lays the whole MARKUP_PROBE out never read its tags."""
     assert qapp is not None
-    make = SCREEN_WIDGETS[kind]
-    assert picture_digest(make(MARKUP_PROBE)) != picture_digest(
-        make(PLAIN_PROBE)
-    ), f"{kind} painted one picture for both, so it swallowed the tags"
+    measure = SCREEN_WIDGETS[kind]
+    wide = measure(MARKUP_PROBE)
+    short = measure(PLAIN_PROBE)
+    assert wide > short, f"{kind} laid the markup out at {wide} against {short}"
 
 
 def test_the_markup_measurement_reads_a_label_as_a_widget_that_does(qapp):
-    """QLabel swallows the tag pair, so the measurement can report a markup widget."""
+    """QLabel lays MARKUP_PROBE out at the width of PLAIN_PROBE, so its tags cost
+    nothing."""
     assert qapp is not None
-    assert picture_digest(a_label(MARKUP_PROBE)) == picture_digest(a_label(PLAIN_PROBE))
+    assert label_width(MARKUP_PROBE) == label_width(PLAIN_PROBE)
 
 
-def test_the_markup_measurement_refuses_a_render_that_paints_one_colour(qapp):
-    from tests.fixtures.surface_pictures import colour_count
-
+def test_the_markup_measurement_reads_a_longer_text_as_wider(qapp):
+    """A width that never moved would read every widget as one that reads markup."""
     assert qapp is not None
-    assert colour_count(picture_of(a_cell(PLAIN_PROBE))) > 1
+    assert cell_width(PLAIN_PROBE * 8) > cell_width(PLAIN_PROBE)
 
 
 def test_the_published_column_widths_clear_the_least_a_column_can_be(qapp):
