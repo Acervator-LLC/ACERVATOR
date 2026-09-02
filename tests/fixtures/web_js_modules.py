@@ -28,6 +28,11 @@ regular-expression literal could hide a value the scan never reads.
 ``drain_events`` turns the event loop ``EVENT_DRAIN_ROUNDS`` times so a
 promise continuation queued by the module runs before the test reads.
 
+``swap_module`` is how a test puts a changed copy of a shipped module on
+disk and puts the original back. It is shared because the module it
+writes over is shipped source: a restore that fails quietly leaves the
+change in the product, which happened once under ``-n auto``.
+
 FALSIFICATION
 =============
 Wrong if (a) ``PySide6.QtQml`` is absent, when ``new_engine`` skips and
@@ -35,14 +40,18 @@ no runtime check runs at all, (b) a module writes a value inside a
 template-literal substitution, which ``js_literals`` reports as one
 string and no surface value matches, (c) a subclass declares no
 ``module_path`` or ``setter``, when construction raises
-``AttributeError`` rather than reporting, or (d) ``QJSEngine`` gains a
+``AttributeError`` rather than reporting, (d) ``QJSEngine`` gains a
 parser its ``evaluate`` accepts and ``js_literals`` does not, when a
-literal reaches the module unreported.
+literal reaches the module unreported, or (e) ``os.replace`` stops
+raising ``PermissionError`` for a held file on Windows, when
+``swap_module`` retries nothing and its bound is never reached.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -52,6 +61,47 @@ import pytest
 HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}")
 
 EVENT_DRAIN_ROUNDS = 20
+
+#: Windows denies os.replace for as long as another worker reads the module.
+SWAP_ATTEMPTS = 2000
+
+
+def swap_module(
+    module_path: Path, content: bytes, attempts: int = SWAP_ATTEMPTS
+) -> None:
+    """Put ``content`` over ``module_path`` in one atomic ``os.replace``.
+
+    A test appends a value to a shipped ``src/gui/web`` module, scans the
+    file back, then calls this again with the original bytes. The write
+    goes through a spare file named for this process, so a test in
+    another xdist worker reading the module sees either whole file and
+    never a half-written one. That open file still denies the replace on
+    Windows, so the write is retried up to ``attempts`` times, and the
+    bytes that landed are read back and compared. Raises
+    ``AssertionError`` naming the module when the attempts run out or
+    when the file does not hold ``content`` — a restore that fails
+    quietly is what leaves a shipped module edited.
+    """
+    spare = module_path.with_name(f"{module_path.stem}.swap.{os.getpid()}.tmp")
+    for _ in range(attempts):
+        try:
+            spare.write_bytes(content)
+            os.replace(spare, module_path)
+            break
+        except PermissionError:
+            continue
+    else:
+        spare.unlink(missing_ok=True)
+        raise AssertionError(
+            f"{module_path.name} was held open for all {attempts} attempts,"
+            " so it was left as it was"
+        )
+    landed = module_path.read_bytes()
+    if hashlib.sha256(landed).hexdigest() != hashlib.sha256(content).hexdigest():
+        raise AssertionError(
+            f"{module_path.name} does not hold the bytes written to it:"
+            f" {len(landed)} bytes on disk against {len(content)} written"
+        )
 
 
 def js_literals(source: str) -> dict:
