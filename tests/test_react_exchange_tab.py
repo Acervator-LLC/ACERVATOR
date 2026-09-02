@@ -1314,15 +1314,51 @@ def test_the_freshness_sheet_writes_the_property_count_measured_on_this_host(
     ), f"the freshness sheet writes {len(written)} properties here: {written}"
 
 
-def test_a_token_that_carries_no_screen_colour_is_left_unresolved(browser: Browser):
-    """A colour with no single token keeps the surface's own value."""
-    draw_tab(browser, state_payload(FULL_STATE))
-    resolved = browser.parsed(
-        "acervatorExchangeTab.variableFor("
-        + json.dumps(dss.MAIN_BADGE_TEXT)
-        + ") || null"
+#: SCREEN_COLOURS is every colour a sheet on this screen paints with.
+SCREEN_COLOURS = {
+    "STATE_ENGAGED": dss.STATE_ENGAGED,
+    "TEXT_MAX": dss.TEXT_MAX,
+    "STATE_ARMED": dss.STATE_ARMED,
+    "TEXT_MED": dss.TEXT_MED,
+    "TEXT_PLACEHOLDER": dss.TEXT_PLACEHOLDER,
+    "MAIN_BADGE_TEXT": dss.MAIN_BADGE_TEXT,
+}
+
+#: RESOLVED_COLOURS is the count read off this host, not one assumed.
+RESOLVED_COLOURS = 6
+
+#: A colour no design token holds, so the screen keeps the value itself.
+UNCARRIED_COLOUR = "#0b1d2e"
+
+
+def named_tokens(browser: Browser, values: dict) -> dict:
+    browser.js("window.VALUES = " + json.dumps(json.dumps(values)))
+    return browser.parsed(
+        "(function () { var found = {}; var sent = JSON.parse(window.VALUES);"
+        "  Object.keys(sent).forEach(function (one) {"
+        "    var name = acervatorExchangeTab.variableFor(sent[one]);"
+        "    found[one] = name === undefined ? null : name; });"
+        "  return found; })()"
     )
-    assert resolved is None or isinstance(resolved, str)
+
+
+def test_every_colour_this_screen_paints_reaches_its_own_token(browser: Browser):
+    """A colour paints through a token only where exactly one token holds it."""
+    draw_tab(browser, state_payload(FULL_STATE))
+    named = named_tokens(browser, SCREEN_COLOURS)
+    resolved = {one: name for one, name in named.items() if name is not None}
+    assert (
+        len(resolved) == RESOLVED_COLOURS
+    ), f"{len(resolved)} of {len(named)} screen colours resolve here: {named}"
+    assert resolved == {one: one for one in resolved}, named
+
+
+def test_the_token_check_would_see_a_colour_no_token_carries(browser: Browser):
+    """A colour with no carrier resolves to nothing, so a six above means six."""
+    draw_tab(browser, state_payload(FULL_STATE))
+    named = named_tokens(browser, {"UNCARRIED": UNCARRIED_COLOUR})
+    assert named == {"UNCARRIED": None}, named
+    assert UNCARRIED_COLOUR not in set(dss.TOKENS.values())
 
 
 def test_a_two_hundred_character_line_does_not_widen_the_screen(browser: Browser):
