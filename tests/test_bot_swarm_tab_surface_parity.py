@@ -85,6 +85,7 @@ MODEL_STATE_FIELDS = (
     "pending_shown",
     "pending_title",
     "predominant_refused",
+    "provenance_breakdown",
     "provenance_rows",
     "provenance_shown",
     "provenance_styles",
@@ -619,6 +620,22 @@ SCENARIOS = [
 ]
 
 REFUSING_SCENARIOS = [
+    scenario("a_parked_credit_that_is_not_a_record", pending_ledger=["not a record"]),
+    scenario(
+        "a_second_parked_credit_that_is_not_a_record",
+        pending_ledger=[credit_row(usd=5.0), "not a record"],
+    ),
+]
+
+EXPECTED_REFUSALS = {
+    "a_parked_credit_that_is_not_a_record": (AttributeError, surface.STEP_PENDING),
+    "a_second_parked_credit_that_is_not_a_record": (
+        AttributeError,
+        surface.STEP_PENDING,
+    ),
+}
+
+UNREADABLE_SCENARIOS = [
     scenario(
         "a_provenance_amount_that_is_text",
         fleet=mine_with(asset="BTC", provenance={"BOT-D": "100.5"}),
@@ -633,27 +650,23 @@ REFUSING_SCENARIOS = [
         "an_outbound_percent_outside_the_float_range",
         fleet=outbound_pct(HUGE_INT_DECIMAL),
     ),
-    scenario("a_parked_credit_that_is_not_a_record", pending_ledger=["not a record"]),
 ]
 
-EXPECTED_REFUSALS = {
-    "a_provenance_amount_that_is_text": (TypeError, surface.STEP_PROVENANCE_BREAKDOWN),
-    "a_provenance_amount_outside_the_float_range": (
-        OverflowError,
-        surface.STEP_PROVENANCE_BREAKDOWN,
-    ),
-    "an_outbound_percent_that_is_text": (ValueError, surface.STEP_OUTBOUND),
-    "an_outbound_percent_that_is_missing": (TypeError, surface.STEP_OUTBOUND),
-    "an_outbound_percent_outside_the_float_range": (
-        OverflowError,
-        surface.STEP_OUTBOUND,
-    ),
-    "a_parked_credit_that_is_not_a_record": (AttributeError, surface.STEP_PENDING),
+#: The cell each stored value no reading admits has to reach.
+UNREADABLE_READERS = {
+    "a_provenance_amount_that_is_text": "provenance_amount",
+    "a_provenance_amount_outside_the_float_range": "provenance_amount",
+    "an_outbound_percent_that_is_text": "outbound_percent",
+    "an_outbound_percent_that_is_missing": "outbound_percent",
+    "an_outbound_percent_outside_the_float_range": "outbound_percent",
 }
 
-BY_NAME = {spec["name"]: spec for spec in SCENARIOS + REFUSING_SCENARIOS}
+BY_NAME = {
+    spec["name"]: spec for spec in SCENARIOS + REFUSING_SCENARIOS + UNREADABLE_SCENARIOS
+}
 SCENARIO_NAMES = [spec["name"] for spec in SCENARIOS]
 REFUSING_NAMES = [spec["name"] for spec in REFUSING_SCENARIOS]
+UNREADABLE_NAMES = [spec["name"] for spec in UNREADABLE_SCENARIOS]
 
 
 # ---------------------------------------------------------------------
@@ -1072,20 +1085,24 @@ def test_two_not_a_numbers_are_compared_as_the_text_they_print(monkeypatch):
     first = float("nan")
     second = float("nan")
     assert first != second
-    spec = BY_NAME["an_outbound_percent_that_is_not_a_number"]
+    spec = AUDIT_SITES["mature_profit_total"](float("nan"))
     old = traced_qt(spec, monkeypatch)
     new = surface_trace(build_surface(spec))
-    printed = [row[1] for row in old["outbound"]["cells"]]
-    assert "nan%" in printed, printed
-    assert new["outbound"]["cells"] == old["outbound"]["cells"]
+    printed = [row[1] for row in old["provenance"]["rows"]]
+    assert "$nan" in printed, printed
+    assert new["provenance"]["rows"] == old["provenance"]["rows"]
 
 
 def test_every_scenario_name_is_driven():
     """A scenario sits in the table and no test drives it."""
     assert len(SCENARIO_NAMES) == len(set(SCENARIO_NAMES))
     assert len(REFUSING_NAMES) == len(set(REFUSING_NAMES))
-    assert set(BY_NAME) == set(SCENARIO_NAMES) | set(REFUSING_NAMES)
+    assert len(UNREADABLE_NAMES) == len(set(UNREADABLE_NAMES))
+    assert set(BY_NAME) == (
+        set(SCENARIO_NAMES) | set(REFUSING_NAMES) | set(UNREADABLE_NAMES)
+    )
     assert set(EXPECTED_REFUSALS) == set(REFUSING_NAMES)
+    assert set(UNREADABLE_READERS) == set(UNREADABLE_NAMES)
 
 
 # ---------------------------------------------------------------------
@@ -1123,7 +1140,7 @@ def test_both_sides_refuse_the_same_way(name, monkeypatch, record_property):
 
 def test_a_refusal_keeps_every_step_recorded_before_it():
     """A refused build lost the steps it had already run."""
-    spec = BY_NAME["an_outbound_percent_that_is_text"]
+    spec = BY_NAME["a_parked_credit_that_is_not_a_record"]
     model = surface.BotSwarmTabModel(
         surface.BotSource(
             bot_id=spec["bot_id"],
@@ -1136,7 +1153,7 @@ def test_a_refusal_keeps_every_step_recorded_before_it():
             pending_ledger=spec["pending_ledger"],
         )
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(AttributeError):
         model.build(spec["now_ts"])
     assert model.state.calls == [
         surface.STEP_READ_BOT,
@@ -1145,10 +1162,12 @@ def test_a_refusal_keeps_every_step_recorded_before_it():
         surface.STEP_PROVENANCE,
         surface.STEP_PROVENANCE_BREAKDOWN,
         surface.STEP_OUTBOUND,
+        surface.STEP_INBOUND,
+        surface.STEP_PENDING,
     ], model.state.calls
     assert len(model.state.summary_rows) == 6
     assert len(model.state.provenance_rows) == 6
-    assert model.state.outbound_rows == []
+    assert len(model.state.outbound_rows) == 2
     assert model.state.pending_rows == []
 
 
@@ -1175,11 +1194,11 @@ def test_a_run_that_does_not_refuse_records_every_step():
 def test_a_surviving_row_matches_the_row_the_clean_build_printed():
     """A refused build left a row carrying a new label over old numbers."""
     readable = scenario(
-        "readable_provenance", fleet=mine_with(asset="BTC", provenance={"BOT-D": 100.5})
+        "readable_credits", pending_ledger=[credit_row(usd=5.0), credit_row(usd=6.0)]
     )
     clean = build_surface(readable)
-    kept_rows = [list(row) for row in clean.state.provenance_rows]
-    spec = BY_NAME["a_provenance_amount_outside_the_float_range"]
+    kept_rows = [list(row) for row in clean.state.pending_rows]
+    spec = BY_NAME["a_second_parked_credit_that_is_not_a_record"]
     model = surface.BotSwarmTabModel(
         surface.BotSource(
             bot_id=spec["bot_id"],
@@ -1192,13 +1211,13 @@ def test_a_surviving_row_matches_the_row_the_clean_build_printed():
             pending_ledger=spec["pending_ledger"],
         )
     )
-    with pytest.raises(OverflowError):
+    with pytest.raises(AttributeError):
         model.build(spec["now_ts"])
-    survived = [list(row) for row in model.state.provenance_rows]
+    survived = [list(row) for row in model.state.pending_rows]
     assert len(survived) < len(kept_rows), (survived, kept_rows)
     for index, row in enumerate(survived):
         assert row == kept_rows[index], (index, row, kept_rows[index])
-    assert kept_rows[len(survived)][0] == surface.PROVENANCE_ROW_LABEL
+    assert kept_rows[len(survived)][2] == surface.MONEY_FORMAT.format(value=6.0)
 
 
 def test_a_second_build_inherits_nothing_from_the_first():
@@ -1403,19 +1422,41 @@ def test_the_audit_reader_reports_a_printed_value_and_a_refusal(monkeypatch):
     printed = audit_reading(AUDIT_SITES["wired_in"](12.7), monkeypatch)
     assert printed["raised"] is None
     assert printed["printed"]["summary"]["rows"][2][1] == "$12.7000"
-    refused = audit_reading(AUDIT_SITES["outbound_percent"]("12.5"), monkeypatch)
-    assert refused["raised"] == "ValueError"
+    refused = audit_reading(
+        BY_NAME["a_parked_credit_that_is_not_a_record"], monkeypatch
+    )
+    assert refused["raised"] == "AttributeError"
     assert refused["printed"] is None
 
 
-def test_the_two_percent_columns_do_not_read_alike(monkeypatch):
+def test_the_two_percent_columns_read_alike(monkeypatch):
     """Both percent columns guard their stored value the same way."""
     outbound = audit_reading(AUDIT_SITES["outbound_percent"]("12.5"), monkeypatch)
     inbound = audit_reading(AUDIT_SITES["inbound_percent"]("3.5"), monkeypatch)
-    assert outbound["raised"] == "ValueError"
+    assert outbound["raised"] is None
     assert inbound["raised"] is None
-    printed = [row[1] for row in inbound["printed"]["inbound"]["cells"]]
-    assert surface.NO_VALUE in printed, printed
+    assert AUDIT_READERS["outbound_percent"](outbound["printed"]) == surface.NO_VALUE
+    assert AUDIT_READERS["inbound_percent"](inbound["printed"]) == surface.NO_VALUE
+
+
+@pytest.mark.parametrize("name", UNREADABLE_NAMES)
+def test_both_sides_draw_the_unreadable_mark_rather_than_stopping(name, monkeypatch):
+    """A stored value no reading admits stopped the whole tab."""
+    spec = BY_NAME[name]
+    read = AUDIT_READERS[UNREADABLE_READERS[name]]
+    from_qt = read(traced_qt(spec, monkeypatch))
+    from_surface = read(surface_trace(build_surface(spec)))
+    assert from_qt == from_surface, (name, from_qt, from_surface)
+    assert surface.NO_VALUE in from_qt, (name, from_qt)
+
+
+@pytest.mark.parametrize("site", sorted(set(UNREADABLE_READERS.values())))
+def test_the_unreadable_mark_check_reads_a_cell_a_real_number_reaches(
+    site, monkeypatch
+):
+    """The cell holds the mark because the reader looks at nothing."""
+    printed = AUDIT_READERS[site](traced_qt(AUDIT_SITES[site](12.5), monkeypatch))
+    assert surface.NO_VALUE not in printed, (site, printed)
 
 
 def test_one_unreadable_mature_profit_empties_all_three_rows(monkeypatch):
@@ -1931,6 +1972,7 @@ PAYLOAD_KEYS = {
     "LEDGER_WIRED_IN_FIELD": "fields.ledger_wired_in",
     "LEDGER_WIRED_OUT_FIELD": "fields.ledger_wired_out",
     "LEDGERS_ATTRIBUTE": "attributes.ledgers",
+    "LINE_BREAK_TAG": "marks.line_break",
     "MATURE_ALLOCATED_ROW_LABEL": "labels.mature_allocated",
     "MATURE_AVAILABLE_COLOUR": "colours.mature_available",
     "MATURE_AVAILABLE_ROW_LABEL": "labels.mature_available",
@@ -1942,7 +1984,11 @@ PAYLOAD_KEYS = {
     "NET_FLOW_ROW_LABEL": "labels.net_flow",
     "NET_NEGATIVE_COLOUR": "colours.net_negative",
     "NET_POSITIVE_COLOUR": "colours.net_positive",
+    "NOT_ACTIVE_BREAKS": "not_active_label.breaks",
+    "NOT_ACTIVE_LEAD": "not_active_label.lead",
+    "NOT_ACTIVE_STRONG": "not_active_label.strong",
     "NOT_ACTIVE_STYLE": "not_active_label.style_sheet",
+    "NOT_ACTIVE_TAIL": "not_active_label.tail",
     "NOT_ACTIVE_TEXT": "not_active_label.text",
     "NOT_ACTIVE_WORD_WRAP": "not_active_label.word_wrap",
     "NO_PREDOMINANT_TEXT": "texts.no_predominant",
@@ -1964,6 +2010,7 @@ PAYLOAD_KEYS = {
     "PROVENANCE_GROUP_TITLE": "titles.provenance",
     "PROVENANCE_JOIN": "texts.provenance_join",
     "PROVENANCE_MONEY_FORMAT": "formats.provenance_money",
+    "PROVENANCE_REFUSED_FORMAT": "formats.provenance_refused",
     "PROVENANCE_ROW_LABEL": "labels.provenance",
     "PROVENANCE_STYLE": "styles.provenance",
     "PROVENANCE_WORD_WRAP": "provenance_group.word_wrap_when_shown",
@@ -1983,6 +2030,9 @@ PAYLOAD_KEYS = {
     "STORED_TOTAL_PROFIT_KEY": "keys.stored_total_profit",
     "STORED_WIRED_IN_KEY": "keys.stored_wired_in",
     "STORED_WIRED_OUT_KEY": "keys.stored_wired_out",
+    "STRONG_CLOSE_TAG": "marks.strong_close",
+    "STRONG_OPEN_TAG": "marks.strong_open",
+    "STRONG_WEIGHT": "marks.strong_weight",
     "SUMMARY_GROUP_TITLE": "titles.summary",
     "TAB_LABEL": "tab_label",
     "TABLE_ALTERNATING_ROWS": "tables.alternating_rows",
@@ -2315,8 +2365,8 @@ def test_the_shipped_tab_writes_to_no_shared_table(monkeypatch):
     before_module = sorted(vars(shipped))
     traced_qt(BY_NAME["happy"], monkeypatch)
     traced_qt(BY_NAME["an_empty_fleet"], monkeypatch)
-    with pytest.raises(ValueError):
-        traced_qt(BY_NAME["an_outbound_percent_that_is_text"], monkeypatch)
+    with pytest.raises(AttributeError):
+        traced_qt(BY_NAME["a_parked_credit_that_is_not_a_record"], monkeypatch)
     assert {name: getattr(design_system, name) for name in watched} == before_tokens
     assert sorted(vars(shipped)) == before_module
     assert shipped.ds is design_system
@@ -2344,9 +2394,9 @@ def test_the_moved_table_is_seen_during_a_drive_and_gone_after_it(monkeypatch):
     assert shipped.ds is design_system
 
     monkeypatch.setattr(shipped, "ds", MovedTokens)
-    with pytest.raises(ValueError):
+    with pytest.raises(AttributeError):
         Watcher(
-            QtBot(BY_NAME["an_outbound_percent_that_is_text"])
+            QtBot(BY_NAME["a_parked_credit_that_is_not_a_record"])
         )._create_bot_swarm_tab()
     monkeypatch.undo()
     assert shipped.ds is design_system
@@ -3117,6 +3167,9 @@ def test_no_driven_case_writes_a_file_under_a_throwaway_home(tmp_path, monkeypat
     monkeypatch.setenv("USERPROFILE", str(home))
     monkeypatch.setenv("ACERVATOR_TEST_HOME", str(home))
     for spec in SCENARIOS:
+        traced_qt(spec, monkeypatch)
+        build_surface(spec)
+    for spec in UNREADABLE_SCENARIOS:
         traced_qt(spec, monkeypatch)
         build_surface(spec)
     for spec in REFUSING_SCENARIOS:
