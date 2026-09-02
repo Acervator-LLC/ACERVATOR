@@ -386,6 +386,22 @@ def test_the_level_check_reads_a_different_colour_for_a_different_level(js: JsRu
     assert js.named("levelHexOf", "no such level") is None
 
 
+def test_the_level_order_reaches_the_module_as_the_surface_wrote_it(js: JsRuntime):
+    """Issue 276: a list keeps its order across the bridge where a bag may not."""
+    payload = bridge_payload()
+    js.push(payload)
+    assert js.json("acervatorConsoleLog.levelOrder()") == list(surface.LEVEL_COLORS)
+    assert list(js.json("acervatorConsoleLog.levelColors()")) == payload["level_order"]
+    assert list(js.json("acervatorConsoleLog.levelHex()")) == payload["level_order"]
+
+
+def test_the_level_order_check_names_a_reordered_list(js: JsRuntime):
+    payload = bridge_payload()
+    payload["level_order"].reverse()
+    js.push(payload)
+    assert js.json("acervatorConsoleLog.levelOrder()") != list(surface.LEVEL_COLORS)
+
+
 def test_a_line_painted_off_its_own_rule_is_named(js: JsRuntime):
     payload = state_payload("levels")
     payload["document"]["lines"][0]["color"] = surface.LEVEL_COLORS["ERROR"]
