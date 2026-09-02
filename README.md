@@ -119,7 +119,6 @@ named in that file and nowhere else:
 
 ```bash
 pip install -e ".[report]"    # PDF sweep report (reportlab)
-pip install -e ".[video]"     # screen recorder (opencv-python, Pillow)
 pip install -e ".[charts]"    # chart and PDF tokens (matplotlib)
 pip install -e ".[monitor]"   # live monitor HTTP client (httpx)
 pip install -e ".[display]"   # AcervatorOS mini panels (Raspberry Pi)
@@ -133,13 +132,6 @@ dependency, so `pip install -e .` above already installs all of them.
 `psutil` is one: Nuclear Mode uses it for `SystemLoadMR` CPU sampling,
 and without it `_make_oscillator` caps the load multiplier instead of
 reporting zero load (R28 FL / R61 CBF compliance).
-
-**Video recording options (best to worst):**
-```bash
-pip install -e ".[video]"      # direct MP4 via opencv-python, no temp files
-# OR install system ffmpeg     # 30s rolling MP4 chunks, auto-purge
-# OR the Pillow in that extra   # animated GIF fallback
-```
 
 **Where the package names live.** `pyproject.toml` is the only place.
 `build_windows.ps1`, `build_mac.sh`, `BUILD.py`, `deploy/kiosk/install.sh` and
@@ -239,7 +231,7 @@ acervator/
 │       ├── bot_visualizer.py · bot_wizard.py
 │       ├── market_inspector.py · indicator_panel.py
 │       ├── history_tab.py · journal_tab.py
-│       └── screen_recorder.py · audio_suite.py
+│       └── audio_suite.py
 │
 ├── tests/                                    # 7382 tests
 └── tools/                                    # Repo utilities

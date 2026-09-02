@@ -56,10 +56,6 @@ dependencies = [
 #   report   src/core/version_sweep.py:1046-1051 imports reportlab
 #            inside `try:` and `except ImportError: return None`. The
 #            sweep runs and answers None instead of a PDF path.
-#   video    src/gui/screen_recorder.py:74-79 `_has_pillow()` and
-#            :57-62 `_has_cv2()` are capability probes that return
-#            False on ImportError; `_best_engine()` then picks another
-#            recorder. opencv-python is never installed by any script.
 #   charts   src/design_system.py:48-51 imports matplotlib at module
 #            level with NO guard. It is an extra and not a core
 #            dependency for a different reason: no module in `src/`,
@@ -118,7 +114,6 @@ test = [
     "pytest-xdist>=3.8.0",
 ]
 report = ["reportlab>=4.0.0"]
-video = ["opencv-python>=4.9.0", "pillow>=10.0.0"]
 charts = ["matplotlib>=3.8.0"]
 monitor = ["httpx>=0.27.0"]
 contracts = ["web3", "eth-account", "py-solc-x"]
