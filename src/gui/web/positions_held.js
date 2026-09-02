@@ -23,6 +23,9 @@
   var ICONS = "icons";
   var KEYS = "keys";
   var LABELS = "labels";
+  var MARKS = "marks";
+  var PIECES = "pieces";
+  var PIECE_KINDS = "piece_kinds";
   var NO_CELL_COLOR = "no_cell_color";
   var NO_OUTCOME = "no_outcome";
   var OUTCOMES = "outcomes";
@@ -42,6 +45,8 @@
   var TIMERS = "timers";
   var TIMER_DELAYS_MS = "timer_delays_ms";
   var TITLES = "titles";
+  var UNREADABLE = "unreadable";
+  var WRAP_KINDS = "wrap_kinds";
 
   // Every top-level name the positions_held_tab.state payload carries.
   var DECLARED_FIELDS = [
@@ -64,9 +69,12 @@
     ICONS,
     KEYS,
     LABELS,
+    MARKS,
     NO_CELL_COLOR,
     NO_OUTCOME,
     OUTCOMES,
+    PIECES,
+    PIECE_KINDS,
     POOL_COLOR,
     POOL_COLOR_HEX,
     POOL_COLOR_MAP,
@@ -82,7 +90,9 @@
     TEXTS,
     TIMERS,
     TIMER_DELAYS_MS,
-    TITLES
+    TITLES,
+    UNREADABLE,
+    WRAP_KINDS
   ];
 
   var DECLARED_BAGS = [
@@ -99,6 +109,8 @@
     ICONS,
     KEYS,
     LABELS,
+    MARKS,
+    PIECES,
     POOL_COLOR_MAP,
     POOL_LABEL,
     POSITIONS_TABLE,
@@ -106,7 +118,8 @@
     SUMMARY_GROUP,
     TEXTS,
     TIMERS,
-    TITLES
+    TITLES,
+    UNREADABLE
   ];
 
   var DECLARED_LISTS = [
@@ -115,10 +128,12 @@
     CALLS,
     CALL_NAMES,
     OUTCOMES,
+    PIECE_KINDS,
     POOL_NAMES,
     STATE_NAMES,
     SUMMARY_ROWS,
-    TIMER_DELAYS_MS
+    TIMER_DELAYS_MS,
+    WRAP_KINDS
   ];
 
   // Three fields the surface leaves empty until a position is closed.
@@ -139,6 +154,7 @@
   var CELL_COLUMN_COUNT = "cell_column_count";
   var ROWS = "rows";
   var ROW_COLORS = "row_colors";
+  var ROW_UNREADABLE = "row_unreadable";
   var ROW_COUNT = "row_count";
   var STATE_COLUMN = "state_column";
   var DELTA_COLUMN = "delta_column";
@@ -152,13 +168,34 @@
 
   var FIXED_HEIGHT_PX = "fixed_height_px";
   var PAIRS = "pairs";
+  var IDENTITIES = "identities";
 
   var BOX_ICON = "icon";
   var BOX_TITLE = "title";
   var BOX_TEXT = "text";
   var BUTTONS_VALUE = "buttons_value";
   var DEFAULT_BUTTON_VALUE = "default_button_value";
-  var BOX_FIELDS = [BOX_ICON, BOX_TITLE, BOX_TEXT, BUTTONS_VALUE, DEFAULT_BUTTON_VALUE];
+  var BOX_FIELDS = [
+    BOX_ICON,
+    BOX_TITLE,
+    BOX_TEXT,
+    BUTTONS_VALUE,
+    DEFAULT_BUTTON_VALUE
+  ];
+
+  // The three piece kinds and the one wrap the surface names its marks by.
+  var PLAIN_KIND = "plain";
+  var STRONG_KIND = "strong";
+  var BREAK_KIND = "break";
+  var ITALIC_WRAP = "italic";
+  var STRONG_OPEN = "strong_open";
+  var STRONG_CLOSE = "strong_close";
+  var ITALIC_OPEN = "italic_open";
+  var ITALIC_CLOSE = "italic_close";
+  var BREAK_MARK = "break_tag";
+  var STRONG_WEIGHT = "strong_weight";
+  var ITALIC_STYLE = "italic_style";
+  var WRAP_FIELD = "wrap";
 
   // The three answers a box offers, as a list, so a bag key order is never asked.
   var YES_NAME = "yes";
@@ -191,10 +228,13 @@
   var UNNAMED_ROW_FAULT = "unnamed-row";
   var DUPLICATE_NAME_FAULT = "duplicate-name";
   var NOT_CSS_FAULT = "not-css";
+  var MARK_MISMATCH_FAULT = "mark-mismatch";
+  var UNKNOWN_KIND_FAULT = "unknown-kind";
 
   var ROW_AT = "row:";
   var BOX_AT = "box:";
   var SUMMARY_AT = "summary:";
+  var LINE_AT = "line:";
   var PATH_SPLIT = ".";
   var EMPTY = "";
   var BRACE_OPEN = "{";
@@ -229,6 +269,7 @@
   var AUTO = "auto";
   var PRE = "pre";
   var PRE_WRAP = "pre-wrap";
+  var NEWLINE = "\n";
   var NOWRAP = "nowrap";
   var COLLAPSE = "collapse";
   var CENTER = "center";
@@ -237,6 +278,8 @@
 
   var DIV_TAG = "div";
   var SPAN_TAG = "span";
+  var STRONG_TAG = "strong";
+  var EM_TAG = "em";
   var BUTTON_TAG = "button";
   var BUTTON_TYPE = "button";
   var TABLE_TAG = "table";
@@ -265,6 +308,9 @@
   var MESSAGE_BOX_PART = "message-box";
   var BOX_TITLE_PART = "box-title";
   var BOX_TEXT_PART = "box-text";
+  var MARK_PLAIN_PART = "mark-plain";
+  var MARK_STRONG_PART = "mark-strong";
+  var MARK_BREAK_PART = "mark-break";
   var BOX_BUTTON_PART = "box-button";
   var OUTCOME_PART = "outcome";
 
@@ -285,6 +331,9 @@
   var WRAP_ATTR = "data-word-wrap";
   var STYLED_ATTR = "data-styled";
   var PAINTED_ATTR = "data-painted";
+  var KIND_ATTR = "data-kind";
+  var MARKED_ATTR = "data-marked";
+  var UNREADABLE_ATTR = "data-unreadable";
   var HOST_ATTR = "data-configured-by-host";
   var MATCHED_ATTR = "data-matched";
   var MARGINS_ATTR = "data-margins-set";
@@ -608,10 +657,91 @@
     return listField(fireBag(), PAIRS);
   }
 
-  // Every drawn table row named by the pair it closes, never by its own place.
+  function fireIdentities() {
+    return listField(fireBag(), IDENTITIES);
+  }
+
+  function markTags() {
+    return objectField(model(), MARKS);
+  }
+
+  var PIECE_KIND_NAMES = [PLAIN_KIND, STRONG_KIND, BREAK_KIND];
+
+  // repeated answers one body written count times, and nothing below one.
+  function repeated(body, count) {
+    var found = EMPTY;
+    var times = typeof count === "number" ? count : ZERO;
+    var at = ZERO;
+    while (at < times) {
+      found += String(body);
+      at += STEP;
+    }
+    return found;
+  }
+
+  function pieceKind(one) {
+    return Array.isArray(one) && one.length ? one[ZERO] : undefined;
+  }
+
+  function pieceBody(one) {
+    return Array.isArray(one) && one.length > STEP ? one[STEP] : EMPTY;
+  }
+
+  // The Qt rich text one wrapped list of pieces builds back.
+  function rebuiltText(wrap, pieces) {
+    var tags = markTags();
+    var body = EMPTY;
+    (Array.isArray(pieces) ? pieces : []).forEach(function (one) {
+      var kind = pieceKind(one);
+      if (kind === STRONG_KIND) {
+        body +=
+          String(tags[STRONG_OPEN]) +
+          String(pieceBody(one)) +
+          String(tags[STRONG_CLOSE]);
+        return;
+      }
+      if (kind === BREAK_KIND) {
+        body += repeated(tags[BREAK_MARK], pieceBody(one));
+        return;
+      }
+      body += String(pieceBody(one));
+    });
+    if (wrap === ITALIC_WRAP) {
+      return String(tags[ITALIC_OPEN]) + body + String(tags[ITALIC_CLOSE]);
+    }
+    return body;
+  }
+
+  function markedLines() {
+    return [POOL_LABEL, EMPTY_LABEL, FOOTER_LABEL];
+  }
+
+  function poolRowLabel() {
+    var bag = objectField(model(), LABELS);
+    return owns(bag, POOL_ROW_LABEL) ? bag[POOL_ROW_LABEL] : undefined;
+  }
+
+  function rowUnreadableColumns(at) {
+    var found = listField(tableBag(), ROW_UNREADABLE)[at];
+    return Array.isArray(found) ? found : [];
+  }
+
+  // One whole identity written as a single key, so two rows stay apart.
+  function identityKey(identity) {
+    return Array.isArray(identity)
+      ? identity.map(String).join(PATH_SPLIT)
+      : String(identity);
+  }
+
   function rowIdentities() {
     return tableRows().map(function (cells, at) {
-      return { at: at, name: firePairs()[at] };
+      var identity = fireIdentities()[at];
+      return {
+        at: at,
+        name: firePairs()[at],
+        identity: identity,
+        key: identity === undefined ? undefined : identityKey(identity)
+      };
     });
   }
 
@@ -777,8 +907,12 @@
     if (drawn.length !== table[ROW_COUNT]) {
       tabFaults.push(fault(null, ROW_COUNT, DISAGREES_FAULT, table[ROW_COUNT]));
     }
-    if (listField(objectField(found, FIRE_BUTTON), PAIRS).length !== drawn.length) {
+    var fire = objectField(found, FIRE_BUTTON);
+    if (listField(fire, PAIRS).length !== drawn.length) {
       tabFaults.push(fault(null, PAIRS, SHORT_LIST_FAULT, drawn.length));
+    }
+    if (listField(fire, IDENTITIES).length !== drawn.length) {
+      tabFaults.push(fault(null, IDENTITIES, SHORT_LIST_FAULT, drawn.length));
     }
     if (listField(table, ROW_COLORS).length !== drawn.length) {
       tabFaults.push(fault(null, ROW_COLORS, SHORT_LIST_FAULT, drawn.length));
@@ -820,16 +954,18 @@
   function checkRowNames() {
     var seen = [];
     rowIdentities().forEach(function (one) {
-      if (one.name === undefined) {
-        tabFaults.push(fault(ROW_AT + String(one.at), PAIRS, MISSING_FAULT, null));
+      if (one.key === undefined) {
+        tabFaults.push(
+          fault(ROW_AT + String(one.at), IDENTITIES, MISSING_FAULT, null)
+        );
         return;
       }
-      if (seen.indexOf(one.name) >= ZERO) {
+      if (seen.indexOf(one.key) >= ZERO) {
         tabFaults.push(
-          fault(ROW_AT + String(one.at), PAIRS, DUPLICATE_NAME_FAULT, one.name)
+          fault(ROW_AT + String(one.at), IDENTITIES, DUPLICATE_NAME_FAULT, one.key)
         );
       }
-      seen.push(one.name);
+      seen.push(one.key);
     });
   }
 
@@ -868,6 +1004,44 @@
         }
       });
     });
+  }
+
+  // A line drawn from pieces that build another text draws the wrong words.
+  function checkMarkedLine(where, field, line) {
+    if (!isPlainObject(line)) {
+      return;
+    }
+    var pieces = Array.isArray(line[PIECES]) ? line[PIECES] : [];
+    pieces.forEach(function (one) {
+      if (PIECE_KIND_NAMES.indexOf(pieceKind(one)) < ZERO) {
+        tabFaults.push(
+          fault(where, field, UNKNOWN_KIND_FAULT, pieceKind(one))
+        );
+      }
+    });
+    if (rebuiltText(line[WRAP_FIELD], pieces) !== line[TEXT_FIELD]) {
+      tabFaults.push(
+        fault(where, field, MARK_MISMATCH_FAULT, line[TEXT_FIELD])
+      );
+    }
+  }
+
+  function checkMarks(found) {
+    markedLines().forEach(function (field) {
+      checkMarkedLine(LINE_AT + field, field, objectField(found, field));
+    });
+    listField(found, BOXES).forEach(function (box, at) {
+      checkMarkedLine(BOX_AT + String(at), BOXES, box);
+    });
+    var kinds = listField(found, PIECE_KINDS);
+    PIECE_KIND_NAMES.forEach(function (name) {
+      if (kinds.indexOf(name) < ZERO) {
+        tabFaults.push(fault(null, PIECE_KINDS, MISSING_FAULT, name));
+      }
+    });
+    if (listField(found, WRAP_KINDS).indexOf(ITALIC_WRAP) < ZERO) {
+      tabFaults.push(fault(null, WRAP_KINDS, MISSING_FAULT, ITALIC_WRAP));
+    }
   }
 
   function checkBagOrder(found) {
@@ -937,6 +1111,58 @@
     return declarations(sheet).length ? styleOf(sheet) : {};
   }
 
+  // markedNodes draws one line's pieces, its emphasis as a real element.
+  function markedNodes(pieces) {
+    var tags = markTags();
+    return (Array.isArray(pieces) ? pieces : []).map(function (one, at) {
+      var kind = pieceKind(one);
+      var body = pieceBody(one);
+      if (kind === STRONG_KIND) {
+        var strongProps = {
+          key: MARK_STRONG_PART + String(at),
+          style: { fontWeight: text(tags[STRONG_WEIGHT]) }
+        };
+        strongProps[PART_ATTR] = MARK_STRONG_PART;
+        strongProps[INDEX_ATTR] = text(at);
+        strongProps[KIND_ATTR] = text(kind);
+        return element(STRONG_TAG, strongProps, text(body));
+      }
+      if (kind === BREAK_KIND) {
+        var breakProps = {
+          key: MARK_BREAK_PART + String(at),
+          style: { whiteSpace: PRE_WRAP }
+        };
+        breakProps[PART_ATTR] = MARK_BREAK_PART;
+        breakProps[INDEX_ATTR] = text(at);
+        breakProps[KIND_ATTR] = text(kind);
+        breakProps[COUNT_ATTR] = text(body);
+        return element(SPAN_TAG, breakProps, repeated(NEWLINE, body));
+      }
+      var plainProps = { key: MARK_PLAIN_PART + String(at) };
+      plainProps[PART_ATTR] = MARK_PLAIN_PART;
+      plainProps[INDEX_ATTR] = text(at);
+      plainProps[KIND_ATTR] = text(kind);
+      return element(SPAN_TAG, plainProps, text(body));
+    });
+  }
+
+  // A wrap the surface names italic is drawn as the style it publishes.
+  function withWrap(style, wrap) {
+    if (wrap === ITALIC_WRAP) {
+      style.fontStyle = text(markTags()[ITALIC_STYLE]);
+    }
+    return style;
+  }
+
+  function hasPieces(line) {
+    return isPlainObject(line) && Array.isArray(line[PIECES]) && line[PIECES].length > ZERO;
+  }
+
+  // A marked line draws its pieces; anything else draws its words as characters.
+  function lineBody(line) {
+    return hasPieces(line) ? markedNodes(line[PIECES]) : text(line[TEXT_FIELD]);
+  }
+
   function SummaryRow(props) {
     var row = Array.isArray(props.row) ? props.row : [];
     var name = row.length ? row[ZERO] : undefined;
@@ -949,17 +1175,26 @@
     var labelProps = { className: TAB_CLASS };
     labelProps[PART_ATTR] = SUMMARY_LABEL_PART;
     labelProps[KEY_ATTR] = text(name);
+    var marked = name === poolRowLabel() ? objectField(model(), POOL_LABEL) : null;
     var style = paintedStyle(sheet);
     style.whiteSpace = PRE;
+    if (marked !== null) {
+      withWrap(style, marked[WRAP_FIELD]);
+    }
     var valueProps = { className: TAB_CLASS, style: style };
     valueProps[PART_ATTR] = SUMMARY_VALUE_PART;
     valueProps[KEY_ATTR] = text(name);
     valueProps[STYLED_ATTR] = String(Boolean(declarations(sheet).length));
+    valueProps[MARKED_ATTR] = String(marked !== null && hasPieces(marked));
+    var body =
+      marked !== null && hasPieces(marked)
+        ? markedNodes(marked[PIECES])
+        : text(row.length > STEP ? row[STEP] : undefined);
     return element(
       DIV_TAG,
       rowProps,
       element(SPAN_TAG, labelProps, text(name)),
-      element(SPAN_TAG, valueProps, text(row.length > STEP ? row[STEP] : undefined))
+      element(SPAN_TAG, valueProps, body)
     );
   }
 
@@ -989,6 +1224,7 @@
     var note = objectField(props.model, props.field);
     var style = styleOf(note[STYLE_SHEET]);
     style.whiteSpace = note[WORD_WRAP] === true ? PRE_WRAP : PRE;
+    withWrap(style, note[WRAP_FIELD]);
     var noteProps = {
       className: TAB_CLASS,
       style: style,
@@ -997,7 +1233,8 @@
     noteProps[PART_ATTR] = props.part;
     noteProps[SHOWN_ATTR] = text(note[SHOWN]);
     noteProps[WRAP_ATTR] = text(note[WORD_WRAP]);
-    return element(DIV_TAG, noteProps, text(note[TEXT_FIELD]));
+    noteProps[MARKED_ATTR] = String(hasPieces(note));
+    return element(DIV_TAG, noteProps, lineBody(note));
   }
 
   function HeadCell(props) {
@@ -1021,14 +1258,15 @@
       style: style,
       type: BUTTON_TYPE,
       onClick: function () {
-        press(FIRE_CLICKED, props.pair);
+        press(FIRE_CLICKED, props.identity);
         if (typeof props.onFire === "function") {
-          props.onFire(props.pair);
+          props.onFire(props.identity);
         }
       }
     };
     buttonProps[PART_ATTR] = FIRE_BUTTON_PART;
     buttonProps[NAME_ATTR] = text(props.pair);
+    buttonProps[KEY_ATTR] = text(identityKey(props.identity));
     buttonProps[INDEX_ATTR] = text(props.at);
     buttonProps[ACTION_ATTR] = label(action(FIRE_CLICKED));
     buttonProps[ARIA_LABEL] = label(fire[TEXT_FIELD]);
@@ -1041,6 +1279,7 @@
       return element(FireButton, {
         at: props.at,
         pair: firePairs()[props.at],
+        identity: fireIdentities()[props.at],
         onFire: props.onFire
       });
     }
@@ -1059,6 +1298,9 @@
     cellProps[KEY_ATTR] = text(columnNamed(props.column));
     cellProps[VALUE_ATTR] = text(painted);
     cellProps[PAINTED_ATTR] = String(painted !== undefined);
+    cellProps[UNREADABLE_ATTR] = String(
+      rowUnreadableColumns(props.at).indexOf(props.column) >= ZERO
+    );
     return element(CELL_TAG, cellProps, cellChild(props));
   }
 
@@ -1076,6 +1318,10 @@
     rowProps[INDEX_ATTR] = text(props.at);
     rowProps[NAME_ATTR] = text(firePairs()[props.at]);
     rowProps[COUNT_ATTR] = text(rowCells(props.at).length);
+    rowProps[KEY_ATTR] = text(identityKey(fireIdentities()[props.at]));
+    rowProps[UNREADABLE_ATTR] = String(
+      rowUnreadableColumns(props.at).length > ZERO
+    );
     return element(ROW_TAG, rowProps, drawn);
   }
 
@@ -1163,8 +1409,12 @@
     boxProps[COUNT_ATTR] = text(offered.length);
     var titleProps = { className: TAB_CLASS };
     titleProps[PART_ATTR] = BOX_TITLE_PART;
-    var textProps = { className: TAB_CLASS, style: { whiteSpace: PRE_WRAP } };
+    var textProps = {
+      className: TAB_CLASS,
+      style: withWrap({ whiteSpace: PRE_WRAP }, box[WRAP_FIELD])
+    };
     textProps[PART_ATTR] = BOX_TEXT_PART;
+    textProps[MARKED_ATTR] = String(hasPieces(box));
     var drawn = offered.map(function (name) {
       return element(BoxButton, {
         key: name,
@@ -1177,7 +1427,7 @@
       DIV_TAG,
       boxProps,
       element(SPAN_TAG, titleProps, text(box[BOX_TITLE])),
-      element(DIV_TAG, textProps, text(box[BOX_TEXT])),
+      element(DIV_TAG, textProps, lineBody(box)),
       drawn
     );
   }
@@ -1310,6 +1560,7 @@
     checkColours(found);
     checkBagOrder(found);
     checkBoxes(found);
+    checkMarks(found);
     checkPool(found);
     checkOutcome(found);
     return report();
@@ -1545,6 +1796,15 @@
     rowIdentities: rowIdentities,
     rowNamed: rowNamed,
     firePairs: firePairs,
+    fireIdentities: fireIdentities,
+    identityKey: identityKey,
+    rowUnreadableColumns: rowUnreadableColumns,
+    markTags: markTags,
+    rebuiltText: rebuiltText,
+    markedLines: markedLines,
+    poolRowLabel: poolRowLabel,
+    hasPieces: hasPieces,
+    repeated: repeated,
     noCellColour: noCellColour,
     action: action,
     buttonValue: buttonValue,

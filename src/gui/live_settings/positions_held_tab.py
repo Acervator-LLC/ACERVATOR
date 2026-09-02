@@ -23,25 +23,22 @@ class PositionsHeldTabMixin:
     _configure_form: Callable[..., Any]
 
     def _create_positions_held_tab(self) -> QWidget:
-        """v3.19.3 — Positions Held tab for Extractor bots.
+        """Positions Held tab for Extractor bots.
 
-        Renders one row per open ExtractorPosition with the columns
-        from design doc §10: Pair | State | Tier | Alt units |
-        Entry (USD) | Current (USD) | Δ% (USD) | Corrections |
-        Manual Fire (button).
+        Draws one row per open ExtractorPosition with the columns Pair,
+        State, Tier, Alt units, Entry (USD), Current (USD), Δ% (USD),
+        Corrections and a per-position Manual Fire button.
 
-        Per operator decision #7, the Manual Fire button is
-        per-position only — NO global fire on the bot row. Clicking
-        a row's button immediately closes that specific position at
-        market via ``ExtractorBot.manual_fire_position(pair)``.
+        Per operator decision #7 the Manual Fire button is per-position
+        only. Its handler is bound to the position's pair and opening
+        stamp, so two rows on one pair stay apart, and it closes that
+        position at market via ``ExtractorBot.manual_fire_position``.
 
-        Position values reported here use the position's stored
-        avg-buy price as a fallback; live ticker refresh happens
-        asynchronously by the bot's tick loop. Operator can re-open
-        the dialog (or rely on the bot table's pool color) for
-        up-to-date status.
-
-        sadp: R28 R55  # manual override per-position + non-blocking dispatch
+        A reading the position does not carry, and one that cannot be
+        read, are both drawn as an em dash in the warning colour. No
+        number is invented here: the bot applies its own average-buy
+        fallback when it builds the row. One unreadable position costs
+        no other row.
         """
         from PySide6.QtWidgets import (
             QGroupBox,
@@ -54,13 +51,13 @@ class PositionsHeldTabMixin:
             QMessageBox,
         )
         from PySide6.QtCore import Qt
+        from PySide6.QtGui import QColor
         import asyncio as _asyncio
 
         w = QWidget()
         layout = QVBoxLayout(w)
         layout.setSpacing(8)
 
-        # --- Summary section ---
         summary = QGroupBox("Extractor Pool Status")
         sf = QFormLayout(summary)
         self._configure_form(sf)
@@ -73,14 +70,15 @@ class PositionsHeldTabMixin:
         base_currency = self._bot.config.base_currency
         try:
             pool_color = self._bot.pool_color()
-        except Exception:  # R28-OK: snapshot read; UI doesn't crash on bot lookup
+        except Exception:
             pool_color = "green"
+        pool_name = str(pool_color).upper()
         color_hex = {
             "green": ds.SUCCESS,
             "yellow": ds.WARNING,
             "red": ds.ERROR,
         }.get(pool_color, ds.TEXT_MED)
-        pool_lbl = QLabel(f"<b>{pool_color.upper()}</b>")
+        pool_lbl = QLabel(f"<b>{pool_name}</b>")
         pool_lbl.setStyleSheet(f"color: {color_hex}; font-size: 14px;")
         sf.addRow("Pool color:", pool_lbl)
         sf.addRow(
@@ -94,18 +92,28 @@ class PositionsHeldTabMixin:
         )
         layout.addWidget(summary)
 
-        # --- Positions table ---
+        read_failed = False
         try:
             positions = self._bot.positions_for_gui()
-        except Exception:  # R28-OK: snapshot read; UI doesn't crash
+        except Exception:
             positions = []
+            read_failed = True
 
         if not positions:
-            empty_lbl = QLabel(
-                "<i>No open positions. Bot is watching its top-N "
-                "watch list for bearish signals. Pool color is "
-                "<b>GREEN</b> (fully in base currency).</i>"
-            )
+            if read_failed:
+                empty_text = (
+                    "<i>Could not read the open positions from the bot. "
+                    "This tab shows <b>no position data</b> and makes no "
+                    "claim about the pool. Re-open the dialog to read "
+                    "again.</i>"
+                )
+            else:
+                empty_text = (
+                    "<i>No open positions. Bot is watching its top-N "
+                    "watch list for bearish signals. Pool color is "
+                    f"<b>{pool_name}</b> (fully in base currency).</i>"
+                )
+            empty_lbl = QLabel(empty_text)
             empty_lbl.setWordWrap(True)
             empty_lbl.setStyleSheet(f"color: {ds.TEXT_EMPTY_STATE}; padding: 16px;")
             layout.addWidget(empty_lbl)
@@ -133,26 +141,55 @@ class PositionsHeldTabMixin:
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setAlternatingRowColors(True)
 
+        # The column each reading fills, matching the map the surface holds.
+        unreadable_columns = {
+            "tier": 2,
+            "alt_units": 3,
+            "entry_usd": 4,
+            "current_usd": 5,
+            "delta_pct": 6,
+            "corrections": 7,
+        }
+        number_plan = (
+            ("tier", "tier", 1, True),
+            ("alt_units", "alt_units", 0.0, False),
+            ("entry_usd", "entry_usd", 0.0, False),
+            ("current_usd", "current_usd_approx", 0.0, False),
+            ("delta_pct", "delta_pct_usd_approx", 0.0, False),
+            ("corrections", "corrections_fired", 0, True),
+        )
+
         for row, p in enumerate(positions):
             pair = str(p.get("pair", ""))
             state = str(p.get("state", ""))
-            tier = int(p.get("tier", 1))
-            alt_units = float(p.get("alt_units", 0.0))
-            entry_usd = float(p.get("entry_usd", 0.0))
-            current_usd = float(p.get("current_usd_approx", 0.0))
-            delta_pct = float(p.get("delta_pct_usd_approx", 0.0))
-            corrections = int(p.get("corrections_fired", 0))
+            opened_at = str(p.get("opened_at", ""))
+            read: dict = {}
+            unreadable = []
+            for name, key, fallback, whole in number_plan:
+                if key not in p:
+                    read[name] = fallback
+                    unreadable.append(name)
+                    continue
+                try:
+                    read[name] = int(p[key]) if whole else float(p[key])
+                except (TypeError, ValueError, OverflowError):
+                    read[name] = fallback
+                    unreadable.append(name)
 
             cells = [
                 pair,
                 state.upper(),
-                str(tier),
-                f"{alt_units:.6f}",
-                f"${entry_usd:,.4f}",
-                f"${current_usd:,.4f}",
-                f"{delta_pct:+.2f}%",
-                str(corrections),
+                str(read["tier"]),
+                f"{read['alt_units']:.6f}",
+                f"${read['entry_usd']:,.4f}",
+                f"${read['current_usd']:,.4f}",
+                f"{read['delta_pct']:+.2f}%",
+                str(read["corrections"]),
             ]
+            painted = sorted(unreadable_columns[name] for name in unreadable)
+            for col in painted:
+                cells[col] = "—"
+
             for col, txt in enumerate(cells):
                 item = QTableWidgetItem(txt)
                 item.setTextAlignment(Qt.AlignCenter)
@@ -167,13 +204,16 @@ class PositionsHeldTabMixin:
                         item.setForeground(Qt.green)
                 # Δ% color: green if positive, red if negative
                 if col == 6:
-                    if delta_pct > 0:
+                    if read["delta_pct"] > 0:
                         item.setForeground(Qt.green)
-                    elif delta_pct < 0:
+                    elif read["delta_pct"] < 0:
                         item.setForeground(Qt.red)
+                # A reading nobody could take is drawn in the warning
+                # colour, over whatever the two rules above painted.
+                if col in painted:
+                    item.setForeground(QColor(ds.WARNING))
                 table.setItem(row, col, item)
 
-            # Manual Fire button — operator decision #7
             fire_btn = QPushButton("Fire")
             fire_btn.setFixedHeight(24)
             fire_btn.setStyleSheet(
@@ -183,8 +223,9 @@ class PositionsHeldTabMixin:
                 f"QPushButton:hover {{ background: {ds.SETTINGS_WARNING_HOVER}; }}"
             )
 
-            def _make_fire_handler(pair_to_fire: str):
+            def _make_fire_handler(identity: list):
                 def _on_fire():
+                    pair_to_fire = identity[0]
                     # Confirmation dialog — operator-initiated
                     # release is irreversible at the exchange.
                     confirm = QMessageBox.question(
@@ -227,11 +268,9 @@ class PositionsHeldTabMixin:
                         )
                         return
 
-                    # Non-blocking dispatch — same pattern as
-                    # manual_fire_tranche (v3.16.55). The bot.log
-                    # event subscription on the main window surfaces
-                    # the outcome via "EXTRACTOR MANUAL FIRE COMPLETE"
-                    # / refusal log lines.
+                    # Non-blocking dispatch. The bot.log subscription on
+                    # the main window surfaces the completion or the
+                    # refusal line.
                     QMessageBox.information(
                         self,
                         "Manual Fire dispatched",
@@ -243,12 +282,13 @@ class PositionsHeldTabMixin:
 
                 return _on_fire
 
-            fire_btn.clicked.connect(_make_fire_handler(pair))
+            fire_btn.clicked.connect(_make_fire_handler([pair, opened_at]))
             table.setCellWidget(row, 8, fire_btn)
 
         layout.addWidget(table, stretch=1)
 
-        # --- Footer explainer ---
+        # The footer explains the per-row Fire button, so the branch
+        # that draws no button leaves it out.
         footer = QLabel(
             "<b>Per-position Manual Fire</b> (operator decision #7): "
             "each button closes ITS position at current market "

@@ -45,8 +45,38 @@ CHUNK_SIZE_ROW_FORMAT = "Chunk size ({base_currency} / USD):"
 CHUNK_FREE_ROW_FORMAT = "Chunk free ({base_currency}):"
 EXTRACTED_ROW_FORMAT = "Lifetime extracted ({base_currency}):"
 
-POOL_TEXT_FORMAT = "<b>{pool_color}</b>"
+STRONG_OPEN = "<b>"
+STRONG_CLOSE = "</b>"
+ITALIC_OPEN = "<i>"
+ITALIC_CLOSE = "</i>"
+BREAK_TAG = "<br>"
+STRONG_WEIGHT = "bold"
+ITALIC_STYLE = "italic"
+NO_PIECE = ""
+
+PLAIN_PIECE = "plain"
+STRONG_PIECE = "strong"
+BREAK_PIECE = "break"
+PIECE_KINDS = (PLAIN_PIECE, STRONG_PIECE, BREAK_PIECE)
+
+NO_WRAP = ""
+ITALIC_WRAP = "italic"
+WRAP_KINDS = (NO_WRAP, ITALIC_WRAP)
+
+MARK_TAGS = {
+    "strong_open": STRONG_OPEN,
+    "strong_close": STRONG_CLOSE,
+    "italic_open": ITALIC_OPEN,
+    "italic_close": ITALIC_CLOSE,
+    "break_tag": BREAK_TAG,
+    "strong_weight": STRONG_WEIGHT,
+    "italic_style": ITALIC_STYLE,
+    "no_piece": NO_PIECE,
+}
+
+POOL_TEXT_FORMAT = STRONG_OPEN + "{pool_color}" + STRONG_CLOSE
 POOL_STYLE_FORMAT = "color: {color_hex}; font-size: 14px;"
+POOL_WRAP = NO_WRAP
 CHUNK_SIZE_VALUE_FORMAT = "{chunk_size_base:.8f} / ${chunk_size_usd:,.2f}"
 CHUNK_FREE_VALUE_FORMAT = "{chunk_free_base:.8f}"
 EXTRACTED_VALUE_FORMAT = "{extracted_total:+.8f}"
@@ -63,16 +93,24 @@ POOL_COLOR_HEX = {
 }
 POOL_UNKNOWN_HEX = ds.TEXT_MED
 
-EMPTY_TEXT = (
-    "<i>No open positions. Bot is watching its top-N "
+EMPTY_LEAD = (
+    "No open positions. Bot is watching its top-N "
     "watch list for bearish signals. Pool color is "
-    "<b>GREEN</b> (fully in base currency).</i>"
 )
+EMPTY_TAIL = " (fully in base currency)."
+EMPTY_WRAP = ITALIC_WRAP
 EMPTY_STYLE = f"color: {ds.TEXT_EMPTY_STATE}; padding: 16px;"
 EMPTY_WORD_WRAP = True
 
-FOOTER_TEXT = (
-    "<b>Per-position Manual Fire</b> (operator decision #7): "
+READ_FAILED_LEAD = "Could not read the open positions from the bot. This tab shows "
+READ_FAILED_STRONG = "no position data"
+READ_FAILED_TAIL = (
+    " and makes no claim about the pool. Re-open the dialog to read again."
+)
+
+FOOTER_STRONG = "Per-position Manual Fire"
+FOOTER_TAIL = (
+    " (operator decision #7): "
     "each button closes ITS position at current market "
     "price. Bypasses the auto path's base-unit-profitability "
     "gate per operator-sovereignty invariant (v3.18.15). "
@@ -80,6 +118,7 @@ FOOTER_TEXT = (
     "bot subsequently initiates (artillery, correction) on "
     "behalf of the pool."
 )
+FOOTER_WRAP = NO_WRAP
 FOOTER_STYLE = f"color: {ds.TEXT_EMPTY_STATE}; padding: 8px; font-size: 11px;"
 FOOTER_WORD_WRAP = True
 
@@ -117,7 +156,18 @@ BULLISH_EXIT_COLOR = "#ffff00"
 OPEN_STATE_COLOR = "#00ff00"
 DELTA_UP_COLOR = OPEN_STATE_COLOR
 DELTA_DOWN_COLOR = DRAWDOWN_COLOR
+UNREADABLE_COLOR = ds.WARNING
 NO_CELL_COLOR: Optional[str] = None
+
+UNREADABLE_TEXT = "—"
+UNREADABLE_COLUMNS = {
+    "tier": 2,
+    "alt_units": 3,
+    "entry_usd": 4,
+    "current_usd": 5,
+    "delta_pct": 6,
+    "corrections": 7,
+}
 
 PAIR_FORMAT = "{pair}"
 TIER_FORMAT = "{tier}"
@@ -137,16 +187,18 @@ FIRE_BUTTON_STYLE = (
 )
 
 CONFIRM_TITLE = "Manual Fire — confirm position close"
-CONFIRM_TEXT_FORMAT = (
-    "Close position on <b>{pair}</b> "
-    "at current market price?<br><br>"
+CONFIRM_LEAD = "Close position on "
+CONFIRM_TAIL_ONE = " at current market price?"
+CONFIRM_TAIL_TWO = (
     "This will fire a 100% market SELL on the "
     "alt units, returning base currency to the "
     "pool. Bypasses the auto path's "
     "base-unit-profitability gate per "
-    "operator-sovereignty (v3.18.15 invariant).<br>"
-    "<br>MEM-257 fail-closed still applies."
+    "operator-sovereignty (v3.18.15 invariant)."
 )
+CONFIRM_TAIL_THREE = "MEM-257 fail-closed still applies."
+CONFIRM_BREAKS = 2
+CONFIRM_WRAP = NO_WRAP
 
 NO_LOOP_TITLE = "Async loop unavailable"
 NO_LOOP_TEXT = (
@@ -157,12 +209,13 @@ SCHEDULE_FAILED_TITLE = "Schedule failed"
 SCHEDULE_FAILED_TEXT_FORMAT = "Could not schedule the close:\n\n{error}: {message}"
 
 DISPATCHED_TITLE = "Manual Fire dispatched"
-DISPATCHED_TEXT_FORMAT = (
-    "Close dispatched for <b>{pair}</b>. "
-    "Watch the Activity Log for the completion "
+DISPATCHED_LEAD = "Close dispatched for "
+DISPATCHED_TAIL = (
+    ". Watch the Activity Log for the completion "
     "line. Re-open this dialog after the order "
     "settles to see updated state."
 )
+DISPATCHED_WRAP = NO_WRAP
 
 QUESTION_ICON = "question"
 WARNING_ICON = "warning"
@@ -192,6 +245,7 @@ DEFAULT_ENTRY_USD = 0.0
 DEFAULT_CURRENT_USD = 0.0
 DEFAULT_DELTA_PCT = 0.0
 DEFAULT_CORRECTIONS = 0
+DEFAULT_OPENED_AT = ""
 
 PAIR_KEY = "pair"
 STATE_KEY = "state"
@@ -201,6 +255,7 @@ ENTRY_KEY = "entry_usd"
 CURRENT_KEY = "current_usd_approx"
 DELTA_KEY = "delta_pct_usd_approx"
 CORRECTIONS_KEY = "corrections_fired"
+OPENED_AT_KEY = "opened_at"
 
 OUTCOME_DECLINED = "declined"
 OUTCOME_NO_LOOP = "no_loop"
@@ -267,12 +322,87 @@ def pool_color_hex(pool_color: Any) -> str:
     return POOL_COLOR_HEX.get(pool_color, POOL_UNKNOWN_HEX)
 
 
-def pool_text(pool_color: Any) -> str:
-    """The pool line, in capitals and in bold.
+def marked_text(wrap: Any, pieces: list) -> str:
+    """The Qt rich text one wrapped list of pieces builds."""
+    body = NO_PIECE
+    for kind, piece in pieces:
+        if kind == STRONG_PIECE:
+            body += STRONG_OPEN + str(piece) + STRONG_CLOSE
+        elif kind == BREAK_PIECE:
+            body += BREAK_TAG * int(piece)
+        else:
+            body += str(piece)
+    if wrap == ITALIC_WRAP:
+        return ITALIC_OPEN + body + ITALIC_CLOSE
+    return body
 
-    A pool colour that is not text has no capitals, and raises here.
-    """
-    return POOL_TEXT_FORMAT.format(pool_color=pool_color.upper())
+
+def pool_name(pool_color: Any) -> str:
+    """The pool colour in capitals, whatever kind of value it arrived as."""
+    return str(pool_color).upper()
+
+
+def pool_pieces(pool_color: Any) -> list:
+    """The one emphasised piece the pool line is built from."""
+    return [[STRONG_PIECE, pool_name(pool_color)]]
+
+
+def pool_text(pool_color: Any) -> str:
+    """The pool line, in capitals and emphasised."""
+    return marked_text(POOL_WRAP, pool_pieces(pool_color))
+
+
+def empty_pieces(pool_color: Any) -> list:
+    """The pieces the no-positions line is built from."""
+    return [
+        [PLAIN_PIECE, EMPTY_LEAD],
+        [STRONG_PIECE, pool_name(pool_color)],
+        [PLAIN_PIECE, EMPTY_TAIL],
+    ]
+
+
+def empty_text(pool_color: Any) -> str:
+    """The no-positions line, naming the pool colour that was measured."""
+    return marked_text(EMPTY_WRAP, empty_pieces(pool_color))
+
+
+READ_FAILED_PIECES = [
+    [PLAIN_PIECE, READ_FAILED_LEAD],
+    [STRONG_PIECE, READ_FAILED_STRONG],
+    [PLAIN_PIECE, READ_FAILED_TAIL],
+]
+READ_FAILED_TEXT = marked_text(EMPTY_WRAP, READ_FAILED_PIECES)
+
+FOOTER_PIECES = [[STRONG_PIECE, FOOTER_STRONG], [PLAIN_PIECE, FOOTER_TAIL]]
+FOOTER_TEXT = marked_text(FOOTER_WRAP, FOOTER_PIECES)
+
+EMPTY_TEXT = empty_text(POOL_FALLBACK)
+
+
+def confirm_pieces(pair: Any) -> list:
+    """The pieces the confirm question is built from."""
+    return [
+        [PLAIN_PIECE, CONFIRM_LEAD],
+        [STRONG_PIECE, pair],
+        [PLAIN_PIECE, CONFIRM_TAIL_ONE],
+        [BREAK_PIECE, CONFIRM_BREAKS],
+        [PLAIN_PIECE, CONFIRM_TAIL_TWO],
+        [BREAK_PIECE, CONFIRM_BREAKS],
+        [PLAIN_PIECE, CONFIRM_TAIL_THREE],
+    ]
+
+
+def dispatched_pieces(pair: Any) -> list:
+    """The pieces the dispatched line is built from."""
+    return [
+        [PLAIN_PIECE, DISPATCHED_LEAD],
+        [STRONG_PIECE, pair],
+        [PLAIN_PIECE, DISPATCHED_TAIL],
+    ]
+
+
+CONFIRM_TEXT_FORMAT = marked_text(CONFIRM_WRAP, confirm_pieces("{pair}"))
+DISPATCHED_TEXT_FORMAT = marked_text(DISPATCHED_WRAP, dispatched_pieces("{pair}"))
 
 
 def state_color(state: Any) -> str:
@@ -293,24 +423,67 @@ def delta_color(delta_pct: Any) -> Optional[str]:
     return NO_CELL_COLOR
 
 
+def read_whole(raw: Any, fallback: Any) -> list:
+    """One whole-number reading, beside whether it could be read at all."""
+    try:
+        return [int(raw), True]
+    except (TypeError, ValueError, OverflowError):
+        return [fallback, False]
+
+
+def read_amount(raw: Any, fallback: Any) -> list:
+    """One amount reading, beside whether it could be read at all."""
+    try:
+        return [float(raw), True]
+    except (TypeError, ValueError, OverflowError):
+        return [fallback, False]
+
+
+_NUMBER_PLAN = (
+    ("tier", TIER_KEY, DEFAULT_TIER, True),
+    ("alt_units", ALT_UNITS_KEY, DEFAULT_ALT_UNITS, False),
+    ("entry_usd", ENTRY_KEY, DEFAULT_ENTRY_USD, False),
+    ("current_usd", CURRENT_KEY, DEFAULT_CURRENT_USD, False),
+    ("delta_pct", DELTA_KEY, DEFAULT_DELTA_PCT, False),
+    ("corrections", CORRECTIONS_KEY, DEFAULT_CORRECTIONS, True),
+)
+
+
 def position_values(position: dict) -> dict:
-    """The eight readings one open position hands the table row."""
-    return {
+    """The nine readings one open position hands the table row.
+
+    A number the position does not carry, and one that cannot be read,
+    are both named in ``unreadable`` so no row prints an invented value.
+    """
+    read = {
         "pair": str(position.get(PAIR_KEY, DEFAULT_PAIR)),
         "state": str(position.get(STATE_KEY, DEFAULT_STATE)),
-        "tier": int(position.get(TIER_KEY, DEFAULT_TIER)),
-        "alt_units": float(position.get(ALT_UNITS_KEY, DEFAULT_ALT_UNITS)),
-        "entry_usd": float(position.get(ENTRY_KEY, DEFAULT_ENTRY_USD)),
-        "current_usd": float(position.get(CURRENT_KEY, DEFAULT_CURRENT_USD)),
-        "delta_pct": float(position.get(DELTA_KEY, DEFAULT_DELTA_PCT)),
-        "corrections": int(position.get(CORRECTIONS_KEY, DEFAULT_CORRECTIONS)),
+        "opened_at": str(position.get(OPENED_AT_KEY, DEFAULT_OPENED_AT)),
     }
+    unreadable = []
+    for name, key, fallback, whole in _NUMBER_PLAN:
+        if key not in position:
+            read[name] = fallback
+            unreadable.append(name)
+            continue
+        value, taken = (read_whole if whole else read_amount)(position[key], fallback)
+        read[name] = value
+        if not taken:
+            unreadable.append(name)
+    read["unreadable"] = unreadable
+    return read
+
+
+def position_identity(position: dict) -> list:
+    """The pair and the opening stamp one position is told apart by."""
+    read = position_values(position)
+    return [read["pair"], read["opened_at"]]
 
 
 def row_cells(position: dict) -> list:
     """The eight cell texts one open position fills a table row with."""
     read = position_values(position)
-    return [
+    cells = [
         PAIR_FORMAT.format(pair=read["pair"]),
         read["state"].upper(),
         TIER_FORMAT.format(tier=read["tier"]),
@@ -320,6 +493,9 @@ def row_cells(position: dict) -> list:
         DELTA_FORMAT.format(delta_pct=read["delta_pct"]),
         CORRECTIONS_FORMAT.format(corrections=read["corrections"]),
     ]
+    for name in read["unreadable"]:
+        cells[UNREADABLE_COLUMNS[name]] = UNREADABLE_TEXT
+    return cells
 
 
 def row_colors(position: dict) -> list:
@@ -328,7 +504,15 @@ def row_colors(position: dict) -> list:
     colors: list = [NO_CELL_COLOR] * CELL_COLUMN_COUNT
     colors[STATE_COLUMN] = state_color(read["state"])
     colors[DELTA_COLUMN] = delta_color(read["delta_pct"])
+    for name in read["unreadable"]:
+        colors[UNREADABLE_COLUMNS[name]] = UNREADABLE_COLOR
     return colors
+
+
+def row_unreadable(position: dict) -> list:
+    """The columns of one row carrying no value the position could be read for."""
+    read = position_values(position)
+    return sorted(UNREADABLE_COLUMNS[name] for name in read["unreadable"])
 
 
 def summary_rows(base_currency: Any, chunk: dict) -> list:
@@ -354,12 +538,12 @@ def summary_rows(base_currency: Any, chunk: dict) -> list:
 
 def confirm_text(pair: Any) -> str:
     """The question the operator answers before a position is closed."""
-    return CONFIRM_TEXT_FORMAT.format(pair=pair)
+    return marked_text(CONFIRM_WRAP, confirm_pieces(pair))
 
 
 def dispatched_text(pair: Any) -> str:
     """The line shown once the close is handed to the bot manager's loop."""
-    return DISPATCHED_TEXT_FORMAT.format(pair=pair)
+    return marked_text(DISPATCHED_WRAP, dispatched_pieces(pair))
 
 
 def schedule_failed_text(error: Any, message: Any) -> str:
@@ -368,13 +552,20 @@ def schedule_failed_text(error: Any, message: Any) -> str:
 
 
 def message_box(
-    icon: str, title: str, text: str, buttons_value: int, default_button_value: int
+    icon: str,
+    title: str,
+    wrap: str,
+    pieces: list,
+    buttons_value: int,
+    default_button_value: int,
 ) -> dict:
-    """One message box the tab raises, as plain values."""
+    """One message box the tab raises, its text beside the pieces building it."""
     return {
         "icon": icon,
         "title": title,
-        "text": text,
+        "text": marked_text(wrap, pieces),
+        "wrap": wrap,
+        "pieces": [list(piece) for piece in pieces],
         "buttons_value": buttons_value,
         "default_button_value": default_button_value,
     }
@@ -385,7 +576,8 @@ def confirm_box(pair: Any) -> dict:
     return message_box(
         QUESTION_ICON,
         CONFIRM_TITLE,
-        confirm_text(pair),
+        CONFIRM_WRAP,
+        confirm_pieces(pair),
         CONFIRM_BUTTONS_VALUE,
         CONFIRM_DEFAULT_BUTTON_VALUE,
     )
@@ -396,7 +588,8 @@ def no_loop_box() -> dict:
     return message_box(
         WARNING_ICON,
         NO_LOOP_TITLE,
-        NO_LOOP_TEXT,
+        NO_WRAP,
+        [[PLAIN_PIECE, NO_LOOP_TEXT]],
         OK_BUTTON_VALUE,
         NO_DEFAULT_BUTTON_VALUE,
     )
@@ -407,7 +600,8 @@ def schedule_failed_box(error: Any, message: Any) -> dict:
     return message_box(
         WARNING_ICON,
         SCHEDULE_FAILED_TITLE,
-        schedule_failed_text(error, message),
+        NO_WRAP,
+        [[PLAIN_PIECE, schedule_failed_text(error, message)]],
         OK_BUTTON_VALUE,
         NO_DEFAULT_BUTTON_VALUE,
     )
@@ -418,7 +612,8 @@ def dispatched_box(pair: Any) -> dict:
     return message_box(
         INFORMATION_ICON,
         DISPATCHED_TITLE,
-        dispatched_text(pair),
+        DISPATCHED_WRAP,
+        dispatched_pieces(pair),
         OK_BUTTON_VALUE,
         NO_DEFAULT_BUTTON_VALUE,
     )
@@ -527,15 +722,21 @@ class PositionsHeldTabModel:
         self.form_configured = False
         self.pool_color = POOL_FALLBACK
         self.pool_text = pool_text(POOL_FALLBACK)
+        self.pool_pieces = pool_pieces(POOL_FALLBACK)
         self.pool_style = POOL_STYLE_FORMAT.format(
             color_hex=pool_color_hex(POOL_FALLBACK)
         )
         self.summary_rows: list = []
         self.rows: list = []
         self.row_colors: list = []
+        self.row_unreadable: list = []
         self.fire_pairs: list = []
+        self.fire_identities: list = []
         self.table_shown = False
         self.empty_shown = False
+        self.positions_read_failed = False
+        self.empty_text = EMPTY_TEXT
+        self.empty_pieces = empty_pieces(POOL_FALLBACK)
         self.footer_shown = False
         self.boxes: list = []
         self.outcome: Optional[str] = NO_OUTCOME
@@ -576,6 +777,7 @@ class PositionsHeldTabModel:
             self.pool_color = POOL_FALLBACK
             self.calls.append([BUILD_POOL_FAILED])
         self.pool_text = pool_text(self.pool_color)
+        self.pool_pieces = pool_pieces(self.pool_color)
         self.pool_style = POOL_STYLE_FORMAT.format(
             color_hex=pool_color_hex(self.pool_color)
         )
@@ -589,10 +791,16 @@ class PositionsHeldTabModel:
             self.calls.append([BUILD_POSITIONS, len(positions)])
         except Exception:
             positions = []
+            self.positions_read_failed = True
             self.calls.append([BUILD_POSITIONS_FAILED])
 
         if not positions:
             self.empty_shown = True
+            if self.positions_read_failed:
+                self.empty_pieces = [list(one) for one in READ_FAILED_PIECES]
+            else:
+                self.empty_pieces = empty_pieces(self.pool_color)
+            self.empty_text = marked_text(EMPTY_WRAP, self.empty_pieces)
             self.calls.append([BUILD_EMPTY])
             self.calls.append([BUILD_RETURN, 0])
             return None
@@ -602,8 +810,11 @@ class PositionsHeldTabModel:
         for index, position in enumerate(positions):
             self.rows.append(row_cells(position))
             self.row_colors.append(row_colors(position))
-            pair = str(position.get(PAIR_KEY, DEFAULT_PAIR))
+            self.row_unreadable.append(row_unreadable(position))
+            identity = position_identity(position)
+            pair = identity[0]
             self.fire_pairs.append(pair)
+            self.fire_identities.append(identity)
             self.calls.append([BUILD_ROW, index, pair])
             self.calls.append([BUILD_FIRE_CONNECTED, index, pair])
         self.footer_shown = True
@@ -611,21 +822,23 @@ class PositionsHeldTabModel:
         self.calls.append([BUILD_RETURN, len(self.rows)])
         return None
 
-    def fire_handler(self, pair: str):
+    def fire_handler(self, identity: Any):
         """The callable one Fire button runs, bound to its own position."""
 
         def run(answer: Any) -> Optional[str]:
-            return self.fire(pair, answer)
+            return self.fire(identity, answer)
 
         return run
 
-    def fire(self, pair: str, answer: Any) -> Optional[str]:
-        """Close one position, and report which of the four paths it took.
+    def fire(self, identity: Any, answer: Any) -> Optional[str]:
+        """Close the position ``identity`` names, and report the path taken.
 
-        An answer other than Yes leaves the position open. A missing
-        async loop and a hand-off that raises each raise their own
-        warning box and stop.
+        ``identity`` is the pair and the opening stamp, so two rows on
+        one pair stay apart. An answer other than Yes leaves the position
+        open. A missing async loop and a hand-off that raises each raise
+        their own warning box and stop.
         """
+        pair = identity_pair(identity)
         self.calls.append([FIRE_START, pair])
         self.boxes.append(confirm_box(pair))
         self.calls.append([FIRE_CONFIRM, pair])
@@ -660,21 +873,28 @@ class PositionsHeldTabModel:
         return self.outcome
 
 
+def identity_pair(identity: Any) -> str:
+    """The pair one identity names, whichever shape the identity arrived in."""
+    if isinstance(identity, (list, tuple)) and identity:
+        return str(identity[0])
+    return str(identity)
+
+
 def build_view_model(
     model: PositionsHeldTabModel,
     build_now: bool = False,
-    fire_pair: Optional[str] = None,
+    fire_identity: Any = None,
     fire_answer: Any = None,
 ) -> dict:
     """Return every value the Positions Held tab holds as one dict.
 
     `build_now` reads the bot and fills the summary and the table.
-    `fire_pair` runs that row's Fire button with `fire_answer`.
+    `fire_identity` runs that row's Fire button with `fire_answer`.
     """
     if build_now:
         model.build()
-    if fire_pair is not None:
-        model.fire_handler(fire_pair)(fire_answer)
+    if fire_identity is not None:
+        model.fire_handler(fire_identity)(fire_answer)
     return {
         "accessible_name": model.accessible_name,
         "container": {
@@ -686,15 +906,23 @@ def build_view_model(
             "configured_by_host": SUMMARY_FORM_CONFIGURED_BY_HOST,
             "configured": model.form_configured,
         },
-        "pool_label": {"text": model.pool_text, "style_sheet": model.pool_style},
+        "pool_label": {
+            "text": model.pool_text,
+            "style_sheet": model.pool_style,
+            "wrap": POOL_WRAP,
+            "pieces": [list(one) for one in model.pool_pieces],
+        },
         "pool_color": model.pool_color,
         "pool_color_hex": pool_color_hex(model.pool_color),
         "summary_rows": [list(row) for row in model.summary_rows],
         "empty_label": {
-            "text": EMPTY_TEXT,
+            "text": model.empty_text,
             "style_sheet": EMPTY_STYLE,
             "word_wrap": EMPTY_WORD_WRAP,
             "shown": model.empty_shown,
+            "wrap": EMPTY_WRAP,
+            "pieces": [list(one) for one in model.empty_pieces],
+            "read_failed": model.positions_read_failed,
         },
         "positions_table": {
             "columns": list(COLUMNS),
@@ -714,6 +942,10 @@ def build_view_model(
             "row_count": len(model.rows),
             "rows": [list(row) for row in model.rows],
             "row_colors": [list(row) for row in model.row_colors],
+            "row_unreadable": [list(row) for row in model.row_unreadable],
+            "unreadable_rows": [
+                at for at, row in enumerate(model.row_unreadable) if row
+            ],
             "shown": model.table_shown,
         },
         "fire_button": {
@@ -721,12 +953,15 @@ def build_view_model(
             "fixed_height_px": FIRE_BUTTON_HEIGHT_PX,
             "style_sheet": FIRE_BUTTON_STYLE,
             "pairs": list(model.fire_pairs),
+            "identities": [list(one) for one in model.fire_identities],
         },
         "footer_label": {
             "text": FOOTER_TEXT,
             "style_sheet": FOOTER_STYLE,
             "word_wrap": FOOTER_WORD_WRAP,
             "shown": model.footer_shown,
+            "wrap": FOOTER_WRAP,
+            "pieces": [list(one) for one in FOOTER_PIECES],
         },
         "boxes": [dict(one) for one in model.boxes],
         "fire_outcome": model.outcome,
@@ -741,6 +976,7 @@ def build_view_model(
             "open_state": OPEN_STATE_COLOR,
             "delta_up": DELTA_UP_COLOR,
             "delta_down": DELTA_DOWN_COLOR,
+            "unreadable": UNREADABLE_COLOR,
         },
         "no_cell_color": NO_CELL_COLOR,
         "no_outcome": NO_OUTCOME,
@@ -769,7 +1005,33 @@ def build_view_model(
             "schedule_failed": SCHEDULE_FAILED_TITLE,
             "dispatched": DISPATCHED_TITLE,
         },
-        "texts": {"no_loop": NO_LOOP_TEXT},
+        "marks": dict(MARK_TAGS),
+        "piece_kinds": list(PIECE_KINDS),
+        "wrap_kinds": list(WRAP_KINDS),
+        "pieces": {
+            "empty_lead": EMPTY_LEAD,
+            "empty_tail": EMPTY_TAIL,
+            "read_failed_lead": READ_FAILED_LEAD,
+            "read_failed_strong": READ_FAILED_STRONG,
+            "read_failed_tail": READ_FAILED_TAIL,
+            "read_failed": [list(one) for one in READ_FAILED_PIECES],
+            "footer_strong": FOOTER_STRONG,
+            "footer_tail": FOOTER_TAIL,
+            "confirm_lead": CONFIRM_LEAD,
+            "confirm_tail_one": CONFIRM_TAIL_ONE,
+            "confirm_tail_two": CONFIRM_TAIL_TWO,
+            "confirm_tail_three": CONFIRM_TAIL_THREE,
+            "confirm_breaks": CONFIRM_BREAKS,
+            "confirm_wrap": CONFIRM_WRAP,
+            "dispatched_lead": DISPATCHED_LEAD,
+            "dispatched_tail": DISPATCHED_TAIL,
+            "dispatched_wrap": DISPATCHED_WRAP,
+        },
+        "unreadable": {
+            "text": UNREADABLE_TEXT,
+            "columns": dict(UNREADABLE_COLUMNS),
+        },
+        "texts": {"no_loop": NO_LOOP_TEXT, "read_failed": READ_FAILED_TEXT},
         "formats": {
             "pool_text": POOL_TEXT_FORMAT,
             "pool_style": POOL_STYLE_FORMAT,
@@ -800,6 +1062,7 @@ def build_view_model(
             "current": CURRENT_KEY,
             "delta": DELTA_KEY,
             "corrections": CORRECTIONS_KEY,
+            "opened_at": OPENED_AT_KEY,
         },
         "attributes": {
             "chunk_size_usd": CHUNK_SIZE_USD_ATTRIBUTE,
@@ -819,6 +1082,7 @@ def build_view_model(
             "current_usd": DEFAULT_CURRENT_USD,
             "delta_pct": DEFAULT_DELTA_PCT,
             "corrections": DEFAULT_CORRECTIONS,
+            "opened_at": DEFAULT_OPENED_AT,
         },
         "actions": dict(ACTIONS),
         "timers": dict(TIMERS),
@@ -835,14 +1099,18 @@ PANE_MODEL = PositionsHeldTabModel()
 def view_model(params: dict) -> dict:
     """Bridge handler for ``positions_held_tab.state``.
 
-    Reads ``reset``, ``bot``, ``manager``, ``build``, ``fire_pair`` and
-    ``fire_answer`` from the request parameters. The tab's last state
-    persists between calls because the tab does; ``reset`` is what a
-    fresh paint sends.
+    Reads ``reset``, ``bot``, ``manager``, ``schedule_error``, ``build``,
+    ``fire_identity`` and ``fire_answer`` from the request parameters.
+    ``schedule_error`` is what makes the loop hand-off refuse, which is
+    the fourth fire path. The tab's last state persists between calls
+    because the tab does; ``reset`` is what a fresh paint sends.
     """
     global PANE_MODEL
     if params.get("reset", False):
         PANE_MODEL = PositionsHeldTabModel()
+    schedule_error = params.get("schedule_error")
+    if schedule_error is not None:
+        PANE_MODEL.schedule = ScheduleSink(RuntimeError(str(schedule_error)))
     bot = params.get("bot")
     if bot is not None:
         PANE_MODEL.bot = BotSource(
@@ -860,6 +1128,6 @@ def view_model(params: dict) -> dict:
     return build_view_model(
         PANE_MODEL,
         params.get("build", bot is not None),
-        params.get("fire_pair"),
+        params.get("fire_identity"),
         params.get("fire_answer"),
     )

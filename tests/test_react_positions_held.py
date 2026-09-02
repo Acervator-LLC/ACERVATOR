@@ -114,8 +114,17 @@ def bot(positions: Any = None, **rest: Any) -> dict:
 
 LOADED = {"reset": True, "bot": bot(THREE_POSITIONS)}
 WITH_LOOP = dict(LOADED, manager={"async_loop": LOOP_NAME})
-FIRE_YES = {"fire_pair": "ADA-BTC", "fire_answer": surface.YES_BUTTON_VALUE}
-FIRE_NO = {"fire_pair": "ADA-BTC", "fire_answer": surface.NO_BUTTON_VALUE}
+#: The identity of the second row: its pair beside its opening stamp.
+ADA_IDENTITY = ["ADA-BTC", surface.DEFAULT_OPENED_AT]
+FIRE_YES = {
+    "fire_identity": ADA_IDENTITY,
+    "fire_answer": surface.YES_BUTTON_VALUE,
+}
+FIRE_NO = {
+    "fire_identity": ADA_IDENTITY,
+    "fire_answer": surface.NO_BUTTON_VALUE,
+}
+SCHEDULE_FAILS = dict(FIRE_YES, schedule_error="loop is closed")
 
 STATES: dict = {
     "fresh": [{"reset": True}],
@@ -125,10 +134,34 @@ STATES: dict = {
     "declined": [LOADED, FIRE_NO],
     "no_loop": [LOADED, FIRE_YES],
     "dispatched": [WITH_LOOP, FIRE_YES],
+    "schedule_failed": [WITH_LOOP, SCHEDULE_FAILS],
+    "bad_row": [
+        {
+            "reset": True,
+            "bot": bot(
+                [
+                    THREE_POSITIONS[0],
+                    position("BAD-BTC", IN_FLIGHT, -1.0, alt_units="cheap"),
+                    THREE_POSITIONS[2],
+                ]
+            ),
+        }
+    ],
 }
 STATE_NAMES = tuple(STATES)
-DRAWN_STATES = ("empty", "loaded", "unknown_pool", "dispatched")
-BOX_STATES = ("declined", "no_loop", "dispatched")
+DRAWN_STATES = ("empty", "loaded", "unknown_pool", "dispatched", "bad_row")
+BOX_STATES = ("declined", "no_loop", "dispatched", "schedule_failed")
+
+
+def drawn_words(line: dict) -> str:
+    """The characters one line's pieces put on screen, its tags left out."""
+    found = ""
+    for kind, piece in line["pieces"]:
+        if kind == surface.BREAK_PIECE:
+            found += "\n" * int(piece)
+        else:
+            found += str(piece)
+    return found
 
 
 def as_json(value: Any) -> Any:
@@ -154,20 +187,16 @@ def state_payload(name: str) -> dict:
     return build(STATES[name])
 
 
-def schedule_failed_payload() -> dict:
-    """The fourth fire path, which the bridge handler offers no parameter for."""
+def read_failed_payload() -> dict:
+    """The payload a bot whose position read raised leaves behind."""
     model = surface.PositionsHeldTabModel(
         bot=surface.BotSource(
             base_currency=BASE_CURRENCY,
             pool_color_name=surface.POOL_YELLOW,
-            positions=THREE_POSITIONS,
-        ),
-        manager=surface.ManagerSource(LOOP_NAME),
-        schedule=surface.ScheduleSink(raises=RuntimeError("no room on the loop")),
+            positions_raise=RuntimeError("bot is gone"),
+        )
     )
-    return as_json(
-        surface.build_view_model(model, True, "ADA-BTC", surface.YES_BUTTON_VALUE)
-    )
+    return as_json(surface.build_view_model(model, True))
 
 
 def token_payload() -> dict:
@@ -235,12 +264,22 @@ def test_every_field_the_surface_publishes_reaches_the_module(
     )
 
 
-def test_the_fourth_fire_path_reaches_the_module_the_same_way(js: JsRuntime):
-    """A hand-off that raises is a state only the surface classes can drive."""
-    payload = schedule_failed_payload()
+def test_the_fourth_fire_path_reaches_the_module_over_the_bridge(js: JsRuntime):
+    """A hand-off that raises is the path the renderer could not ask for."""
+    payload = state_payload("schedule_failed")
     report = js.push(payload)
     assert payload["fire_outcome"] == surface.OUTCOME_SCHEDULE_FAILED
     assert sorted(set(payload) - set(declared_fields(js))) == []
+    assert report["faults"] == []
+
+
+def test_a_failed_position_read_draws_a_line_claiming_no_pool_colour(js: JsRuntime):
+    """The no-positions line named a pool colour after the read had failed."""
+    payload = read_failed_payload()
+    report = js.push(payload)
+    assert payload["empty_label"]["read_failed"] is True
+    assert payload["empty_label"]["text"] == payload["texts"]["read_failed"]
+    assert payload["empty_label"]["pieces"] == payload["pieces"]["read_failed"]
     assert report["faults"] == []
 
 
@@ -486,7 +525,15 @@ def shown_values() -> set:
         found |= {payload["fire_button"]["text"]}
         found |= set(payload["fire_button"]["pairs"])
         found |= {one for one in [payload["fire_outcome"]] if isinstance(one, str)}
-        for bag in ("labels", "texts", "titles", "formats", "colors", "pool_color_map"):
+        for bag in (
+            "labels",
+            "texts",
+            "titles",
+            "formats",
+            "colors",
+            "pool_color_map",
+            "pieces",
+        ):
             found |= {one for one in payload[bag].values() if isinstance(one, str)}
         found |= set(payload["pool_names"]) | set(payload["state_names"])
         found |= {payload["pool_color"], payload["pool_color_hex"]}
@@ -546,6 +593,11 @@ NAMED_WORDS = sorted(
     | set(BARE["summary_form"])
     | set(BARE["summary_group"])
     | set(WITH_BOX["boxes"][0])
+    | set(BARE["marks"])
+    | set(BARE["unreadable"])
+    | set(BARE["piece_kinds"])
+    | set(BARE["wrap_kinds"])
+    | set(BARE["positions_table"])
     | {surface.METHOD}
 )
 
@@ -601,6 +653,10 @@ WRITTEN_LINES: dict = {
     "footer_note": 'var written = "' + surface.FOOTER_TEXT + '";',
     "button_words": 'var written = "' + surface.FIRE_BUTTON_TEXT + '";',
     "column_words": 'var written = "' + surface.COLUMNS[0] + '";',
+    "empty_lead": 'var written = "' + surface.EMPTY_LEAD + '";',
+    "footer_strong": 'var written = "' + surface.FOOTER_STRONG + '";',
+    "confirm_lead": 'var written = "' + surface.CONFIRM_LEAD + '";',
+    "unreadable_mark": 'var written = "' + surface.UNREADABLE_TEXT + '";',
     "pool_name": 'var written = "' + surface.POOL_GREEN + '";',
     "confirm_title": 'var written = "' + surface.CONFIRM_TITLE + '";',
     "yes_value": "var written = " + str(surface.YES_BUTTON_VALUE) + ";",
@@ -661,7 +717,8 @@ def payload_sheets(payload: dict) -> list:
 
 def payload_bare_colours(payload: dict) -> list:
     """Every bare colour the payload carries, cell by cell and name by name."""
-    found = list(payload["colors"].values()) + list(payload["pool_color_map"].values())
+    found = list(payload["colors"].values())
+    found += list(payload["pool_color_map"].values())
     found += [payload["pool_color_hex"], payload["pool_unknown_hex"]]
     for row in payload["positions_table"]["row_colors"]:
         found += [one for one in row if one is not None]
@@ -690,6 +747,7 @@ SWEPT_BARE = {
     "the drawdown red": ("colors", "drawdown"),
     "the bullish exit amber": ("colors", "bullish_exit"),
     "the open green": ("colors", "open_state"),
+    "the unreadable amber": ("colors", "unreadable"),
     "the pool green": ("pool_color_map", surface.POOL_GREEN),
     "the pool amber": ("pool_color_map", surface.POOL_YELLOW),
     "the pool red": ("pool_color_map", surface.POOL_RED),
@@ -961,8 +1019,27 @@ def test_a_position_keeps_its_own_pair_when_the_rows_arrive_reordered(js: JsRunt
     assert [one["name"] for one in first] != [one["name"] for one in second]
 
 
-def test_the_identity_check_names_two_rows_holding_one_pair(js: JsRuntime):
+def test_two_rows_on_one_pair_stay_apart_by_their_own_stamps(js: JsRuntime):
+    """One pair on two rows was told apart by nothing before the stamp."""
+    held = [
+        dict(THREE_POSITIONS[0], opened_at=1.0),
+        dict(THREE_POSITIONS[0], opened_at=2.0),
+    ]
+    payload = build([{"reset": True, "bot": bot(held)}])
+    report = js.push(payload)
+    pairs = payload["fire_button"]["pairs"]
+    assert pairs[0] == pairs[1]
+    assert payload["fire_button"]["identities"][0] != (
+        payload["fire_button"]["identities"][1]
+    )
+    assert report["faults"] == []
+    named = js.json(API + "rowIdentities()")
+    assert named[0]["key"] != named[1]["key"]
+
+
+def test_the_identity_check_names_two_rows_holding_one_identity(js: JsRuntime):
     payload = state_payload("loaded")
+    payload["fire_button"]["identities"][1] = payload["fire_button"]["identities"][0]
     payload["fire_button"]["pairs"][1] = payload["fire_button"]["pairs"][0]
     report = js.push(payload)
     duplicate = [one for one in report["faults"] if one["fault"] == "duplicate-name"]
@@ -1333,22 +1410,30 @@ def test_a_position_missing_one_reading_draws_the_default_the_surface_publishes(
 
 #: The six readings the shipped surface reads as numbers, and the two as words.
 NUMBER_READINGS = (
-    surface.TIER_KEY,
-    surface.ALT_UNITS_KEY,
-    surface.ENTRY_KEY,
-    surface.CURRENT_KEY,
-    surface.DELTA_KEY,
-    surface.CORRECTIONS_KEY,
+    ("tier", surface.TIER_KEY),
+    ("alt_units", surface.ALT_UNITS_KEY),
+    ("entry_usd", surface.ENTRY_KEY),
+    ("current_usd", surface.CURRENT_KEY),
+    ("delta_pct", surface.DELTA_KEY),
+    ("corrections", surface.CORRECTIONS_KEY),
 )
 WORD_READINGS = (surface.PAIR_KEY, surface.STATE_KEY)
 
 
-@pytest.mark.parametrize("name", NUMBER_READINGS)
-def test_a_null_number_reading_stops_the_shipped_surface_before_any_row(name: str):
-    """A null where a number belongs raises in the surface, and is not repaired."""
-    held = [dict(THREE_POSITIONS[0], **{name: None})]
-    with pytest.raises(TypeError):
-        build([{"reset": True, "bot": bot(held)}])
+@pytest.mark.parametrize("reading,name", NUMBER_READINGS)
+def test_a_null_number_reading_draws_the_em_dash_and_costs_no_other_row(
+    js: JsRuntime, reading: str, name: str
+):
+    """A null where a number belongs used to stop the whole tab building."""
+    held = [dict(THREE_POSITIONS[0], **{name: None}), THREE_POSITIONS[2]]
+    payload = build([{"reset": True, "bot": bot(held)}])
+    report = js.push(payload)
+    table = payload["positions_table"]
+    column = payload["unreadable"]["columns"][reading]
+    assert table["row_count"] == 2, name
+    assert table["rows"][0][column] == payload["unreadable"]["text"], name
+    assert table["rows"][1] == surface.row_cells(THREE_POSITIONS[2]), name
+    assert report["faults"] == [], name
 
 
 @pytest.mark.parametrize("name", WORD_READINGS)
@@ -1411,6 +1496,128 @@ def test_the_count_reading_would_see_a_row_count_left_at_zero(js: JsRuntime):
     assert [
         one["field"] for one in report["faults"] if one["fault"] == "disagrees"
     ] == ["row_count"]
+
+
+MARKED_LINES = ("pool_label", "empty_label", "footer_label")
+
+
+@pytest.mark.parametrize("state", STATE_NAMES)
+def test_every_marked_line_is_rebuilt_by_the_pieces_it_publishes(
+    js: JsRuntime, state: str
+):
+    """A line whose pieces build another text draws one thing and checks another."""
+    payload = state_payload(state)
+    js.push(payload)
+    for field in MARKED_LINES:
+        line = payload[field]
+        assert (
+            js.called_two("rebuiltText", line["wrap"], line["pieces"]) == line["text"]
+        ), f"{state} {field}"
+    for at, box in enumerate(payload["boxes"]):
+        assert (
+            js.called_two("rebuiltText", box["wrap"], box["pieces"]) == box["text"]
+        ), f"{state} box {at}"
+    assert [
+        one for one in js.json(API + "faults()") if one["fault"] == "mark-mismatch"
+    ] == []
+
+
+@pytest.mark.parametrize("field", MARKED_LINES)
+def test_the_rebuild_check_names_one_line_whose_pieces_changed(
+    js: JsRuntime, field: str
+):
+    payload = state_payload("loaded")
+    payload[field]["pieces"][0][1] = LONG_NAME
+    report = js.push(payload)
+    named = [one for one in report["faults"] if one["fault"] == "mark-mismatch"]
+    assert [one["where"] for one in named] == ["line:" + field]
+
+
+def test_the_rebuild_check_names_a_box_whose_pieces_changed(js: JsRuntime):
+    payload = state_payload("declined")
+    payload["boxes"][0]["pieces"][0][1] = LONG_NAME
+    report = js.push(payload)
+    named = [one for one in report["faults"] if one["fault"] == "mark-mismatch"]
+    assert [one["where"] for one in named] == ["box:0"]
+
+
+def test_the_piece_check_names_a_kind_the_surface_never_published(js: JsRuntime):
+    payload = state_payload("loaded")
+    payload["footer_label"]["pieces"][0][0] = LONG_NAME
+    report = js.push(payload)
+    named = [one for one in report["faults"] if one["fault"] == "unknown-kind"]
+    assert [one["detail"] for one in named] == [LONG_NAME]
+
+
+def test_the_marked_line_check_reads_a_break_piece_as_the_breaks_it_stands_for(
+    js: JsRuntime,
+):
+    """The confirm question carries two break pieces, each worth two line breaks."""
+    payload = state_payload("declined")
+    js.push(payload)
+    box = payload["boxes"][0]
+    breaks = [one for one in box["pieces"] if one[0] == surface.BREAK_PIECE]
+    assert breaks, "the confirm question carries no break piece"
+    assert [one[1] for one in breaks] == [payload["pieces"]["confirm_breaks"]] * len(
+        breaks
+    )
+    assert js.called_two(
+        "repeated", payload["marks"]["break_tag"], breaks[0][1]
+    ) == payload["marks"]["break_tag"] * int(breaks[0][1])
+
+
+def test_a_row_nobody_could_read_is_drawn_beside_the_rows_that_are_whole(
+    js: JsRuntime,
+):
+    """One unreadable reading blanked every row before it was guarded."""
+    payload = state_payload("bad_row")
+    report = js.push(payload)
+    table = payload["positions_table"]
+    assert table["row_count"] == 3
+    assert table["unreadable_rows"] == [1]
+    assert table["row_unreadable"] == [[], [3], []]
+    assert table["rows"][1][3] == payload["unreadable"]["text"]
+    assert table["row_colors"][1][3] == payload["colors"]["unreadable"]
+    assert table["rows"][0] == state_payload("loaded")["positions_table"]["rows"][0]
+    assert report["faults"] == []
+    assert js.called("rowUnreadableColumns", 1) == [3]
+
+
+def test_the_unreadable_row_reading_reads_a_table_that_is_whole(js: JsRuntime):
+    payload = state_payload("loaded")
+    js.push(payload)
+    assert payload["positions_table"]["unreadable_rows"] == []
+    assert payload["positions_table"]["row_unreadable"] == [[], [], []]
+    assert js.called("rowUnreadableColumns", 1) == []
+
+
+def test_the_unreadable_cell_is_drawn_and_marked_on_the_page(browser: Browser):
+    """A reading nobody could take must read as unreadable, never as a number."""
+    payload = state_payload("bad_row")
+    table = payload["positions_table"]
+    parts = draw_tab(browser, payload)
+    cells = with_part(parts, "position-cell")
+    marked = [one for one in cells if one["attrs"]["data-unreadable"] == "true"]
+    assert [one["text"] for one in marked] == [payload["unreadable"]["text"]]
+    assert [one["attrs"]["data-column"] for one in marked] == ["3"]
+    probe = probe_for(browser, {"color": payload["colors"]["unreadable"]})
+    assert marked[0]["style"]["color"] == probe["color"]
+    rows = with_part(parts, "position-row")
+    assert [one["attrs"]["data-unreadable"] for one in rows] == [
+        "false",
+        "true",
+        "false",
+    ]
+    assert len(rows) == table["row_count"]
+
+
+def test_the_unreadable_mark_check_reads_a_page_with_no_bad_row(browser: Browser):
+    parts = draw_tab(browser, state_payload("loaded"))
+    assert [
+        one
+        for one in with_part(parts, "position-cell")
+        if one["attrs"]["data-unreadable"] == "true"
+    ] == []
 
 
 #: An empty tag pair a rich-text widget swallows and a plain one lays out.
@@ -1588,6 +1795,7 @@ STYLE_NAMES = [
     "borderTopLeftRadius",
     "paddingTop",
     "fontWeight",
+    "fontStyle",
     "fontSize",
     "fontFamily",
     "whiteSpace",
@@ -1729,8 +1937,14 @@ def test_each_summary_row_draws_the_label_and_value_the_surface_carries(
     labels = {
         one["attrs"]["data-key"]: one for one in with_part(parts, "summary-label")
     }
+    pool_row = payload["labels"]["pool_row"]
     for name, value in payload["summary_rows"]:
-        assert by_label[name]["text"] == value, f"{state} row {name}"
+        if name == pool_row:
+            assert by_label[name]["whole"] == drawn_words(
+                payload["pool_label"]
+            ), f"{state} pool row"
+        else:
+            assert by_label[name]["text"] == value, f"{state} row {name}"
         assert labels[name]["text"] == name
 
 
@@ -1900,13 +2114,14 @@ def test_the_fire_button_asks_for_the_height_and_the_sheet_the_surface_publishes
 
 
 @pytest.mark.parametrize("at", (0, 1, 2))
-def test_pressing_one_fire_button_runs_the_handler_with_that_row_s_own_pair(
+def test_pressing_one_fire_button_runs_the_handler_with_that_row_s_own_identity(
     browser: Browser, at: int
 ):
-    """The argument must be the pair, never the row's place in the list."""
+    """The argument is the whole identity, never the row's place in the list."""
     payload = state_payload("loaded")
     draw_tab(browser, payload)
-    wanted = payload["fire_button"]["pairs"][at]
+    wanted = payload["fire_button"]["identities"][at]
+    assert wanted[0] == payload["fire_button"]["pairs"][at]
     browser.js("window.partsNamed('fire-button')[" + str(at) + "].click();")
     assert browser.parsed("window.PRESSED") == [["fire", wanted]]
     assert browser.parsed(API + "pressed()")["argument"] == wanted
@@ -1941,7 +2156,7 @@ def test_each_message_box_draws_its_title_text_and_the_answers_it_offers(
         assert drawn[at]["attrs"]["data-icon"] == box["icon"]
         assert drawn[at]["attrs"]["data-key"] == box["title"]
         assert drawn[at]["attrs"]["data-default"] == str(box["default_button_value"])
-    assert with_part(parts, "box-text")[0]["text"] == payload["boxes"][0]["text"]
+    assert with_part(parts, "box-text")[0]["whole"] == drawn_words(payload["boxes"][0])
 
 
 def test_the_confirm_box_marks_no_as_the_answer_qt_opened_it_on(browser: Browser):
@@ -1987,21 +2202,77 @@ def test_the_empty_note_the_table_and_the_footer_show_where_the_surface_shows_th
     assert with_part(loaded, "empty-note")[0]["hidden"] is True
     assert with_part(loaded, "positions-table")[0]["hidden"] is False
     assert with_part(loaded, "footer-note")[0]["hidden"] is False
-    assert (
-        with_part(empty, "empty-note")[0]["text"]
-        == state_payload("empty")["empty_label"]["text"]
+    assert with_part(empty, "empty-note")[0]["whole"] == drawn_words(
+        state_payload("empty")["empty_label"]
     )
 
 
-def test_the_tab_refuses_the_markup_the_pool_line_carries(browser: Browser):
-    """Qt paints the pool name in bold, and React writes the tags as characters."""
+def test_the_pool_line_draws_its_emphasis_as_an_element_and_no_tag(
+    browser: Browser,
+):
+    """Qt paints the pool name in bold, and React draws it as a real element."""
     payload = state_payload("loaded")
     parts = draw_tab(browser, payload)
     name = payload["labels"]["pool_row"]
     drawn = {one["attrs"]["data-key"]: one for one in with_part(parts, "summary-value")}
-    assert drawn[name]["text"] == payload["pool_label"]["text"]
-    assert "<b>" not in drawn[name]["html"]
-    assert browser.parsed("window.HOST.querySelectorAll('b').length") == 0
+    assert drawn[name]["whole"] == drawn_words(payload["pool_label"])
+    assert payload["marks"]["strong_open"] not in drawn[name]["whole"]
+    assert payload["marks"]["strong_open"] not in drawn[name]["html"]
+    assert drawn[name]["attrs"]["data-marked"] == "true"
+    strong = with_part(parts, "mark-strong")
+    own = [one for one in parts if one["path"].endswith("summary-value/mark-strong")]
+    assert [one["text"] for one in own] == [
+        piece
+        for kind, piece in payload["pool_label"]["pieces"]
+        if kind == surface.STRONG_PIECE
+    ]
+    assert browser.parsed("window.HOST.querySelectorAll('strong').length") == len(
+        strong
+    )
+
+
+def test_each_emphasised_piece_is_drawn_at_the_weight_the_surface_publishes(
+    browser: Browser,
+):
+    """A probe built from the published weight is what the emphasis is read against."""
+    payload = state_payload("loaded")
+    parts = draw_tab(browser, payload)
+    probe = probe_for(browser, {"fontWeight": payload["marks"]["strong_weight"]})
+    plain = probe_for(browser, {})
+    drawn = with_part(parts, "mark-strong")
+    assert len(drawn) == 3, "the three marked lines drew no emphasis between them"
+    for one in drawn:
+        assert one["style"]["fontWeight"] == probe["fontWeight"]
+    assert probe["fontWeight"] != plain["fontWeight"]
+
+
+def test_the_empty_line_is_drawn_in_the_style_its_own_wrap_names(browser: Browser):
+    """The whole no-positions line is italic in Qt, and the wrap says so."""
+    payload = state_payload("empty")
+    parts = draw_tab(browser, payload)
+    note = with_part(parts, "empty-note")[0]
+    probe = probe_for(browser, {"fontStyle": payload["marks"]["italic_style"]})
+    plain = probe_for(browser, {})
+    assert payload["empty_label"]["wrap"] == payload["wrap_kinds"][1]
+    assert note["style"]["fontStyle"] == probe["fontStyle"]
+    assert probe["fontStyle"] != plain["fontStyle"]
+    assert note["whole"] == drawn_words(payload["empty_label"])
+
+
+def test_a_caller_value_carrying_a_tag_is_still_drawn_as_characters(
+    browser: Browser,
+):
+    """A pool colour the bot named with a tag must reach no element at all."""
+    payload = build(
+        [{"reset": True, "bot": bot(THREE_POSITIONS, pool_color=MARKUP_NAME)}]
+    )
+    parts = draw_tab(browser, payload)
+    name = payload["labels"]["pool_row"]
+    drawn = {one["attrs"]["data-key"]: one for one in with_part(parts, "summary-value")}
+    assert drawn[name]["whole"] == drawn_words(payload["pool_label"])
+    assert MARKUP_NAME.upper() in drawn[name]["whole"]
+    assert browser.parsed("window.HOST.querySelectorAll('img').length") == 0
+    assert with_part(parts, "mark-strong")[0]["text"] == MARKUP_NAME.upper()
 
 
 def test_the_tab_refuses_markup_a_hostile_cell_carries(browser: Browser):
