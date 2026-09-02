@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -24,6 +23,7 @@ from tests.fixtures.web_js_modules import (  # noqa: E402
     JsEngine,
     js_literals,
     new_engine,
+    swap_module,
 )
 
 WEB = REPO_ROOT / "src" / "gui" / "web"
@@ -34,8 +34,6 @@ MODULE_TAIL = "})(window);"
 
 MODULE_READ_ATTEMPTS = 200
 MODULE_READ_PAUSE_S = 0.01
-SWAP_ATTEMPTS = 100
-SWAP_PAUSE_S = 0.01
 
 
 def read_module() -> str:
@@ -658,23 +656,6 @@ def test_the_literal_scan_reads_past_a_comment_holding_a_colour():
     assert not found["numbers"]
 
 
-#: The file the swap below moves over the module, named for this unit.
-SPARE_PATH = MODULE_PATH.with_name("trade_charts_tab.charts_scan_swap.js")
-
-
-def swap_module(content: bytes) -> None:
-    """Replace MODULE_PATH with ``content``, retrying on PermissionError."""
-    SPARE_PATH.write_bytes(content)
-    for attempt in range(SWAP_ATTEMPTS):
-        try:
-            os.replace(SPARE_PATH, MODULE_PATH)
-            return
-        except PermissionError:
-            if attempt + 1 == SWAP_ATTEMPTS:
-                raise
-            time.sleep(SWAP_PAUSE_S)
-
-
 def test_each_spelled_out_value_is_caught_in_the_module_file_itself():
     original = read_module().encode("utf-8")
     before = hashlib.sha256(original).hexdigest()
@@ -682,15 +663,12 @@ def test_each_spelled_out_value_is_caught_in_the_module_file_itself():
     hashes = {}
     try:
         for kind in sorted(SPELLED_OUT_LINES):
-            swap_module(original + SPELLED_OUT_LINES[kind].encode("utf-8"))
+            swap_module(MODULE_PATH, original + SPELLED_OUT_LINES[kind].encode("utf-8"))
             caught_each[kind] = caught_by_scan(MODULE_PATH.read_text(encoding="utf-8"))
-            swap_module(original)
+            swap_module(MODULE_PATH, original)
             hashes[kind] = hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest()
     finally:
-        try:
-            swap_module(original)
-        finally:
-            SPARE_PATH.unlink(missing_ok=True)
+        swap_module(MODULE_PATH, original)
     unrestored = sorted(kind for kind, found in hashes.items() if found != before)
     assert not unrestored, "the file was not restored after: " + str(unrestored)
     unseen = sorted(kind for kind, caught in caught_each.items() if not caught)

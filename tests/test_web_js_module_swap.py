@@ -31,14 +31,24 @@ ORIGINAL = b"(function (w) {\n  w.acervatorThing = 1;\n})(window);\n"
 CHANGED = ORIGINAL + b"var written = 12;\n"
 OTHER = b"var not_what_was_written = 1;\n"
 
-#: The six React test files this helper replaced a local copy in.
+#: Every React test file this helper replaced a local copy in.
 CALL_SITE_MODULES = (
     "test_react_bot_status_table",
+    "test_react_bot_visualizer",
+    "test_react_console_log",
+    "test_react_console_tab",
     "test_react_dashboard_stat_card",
     "test_react_header_strip",
+    "test_react_journal_tab",
+    "test_react_live_status_tab",
+    "test_react_market_inspector_tab",
     "test_react_notification_spool",
     "test_react_privacy_dot",
+    "test_react_sim_stat_strip",
+    "test_react_simulator_tab",
     "test_react_status_log",
+    "test_react_trade_charts_tab",
+    "test_react_trading_tab",
 )
 
 
