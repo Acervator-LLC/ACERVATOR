@@ -390,6 +390,9 @@ SOLID_PEN_STYLE = "SolidLine"
 NO_PEN_STYLE = "NoPen"
 NO_PEN_WIDTH_PX = 0
 NO_BRUSH = "NoBrush"
+# PEN_HALF_WIDTH_RATIO is what a pen adds each side of its line and past each end.
+PEN_CAP_STYLE = "SquareCap"
+PEN_HALF_WIDTH_RATIO = 0.5
 
 SET_RENDER_HINT = "set_render_hint"
 FILL_RECT = "fill_rect"
@@ -1628,6 +1631,8 @@ def build_view_model(
             "no_pen_style": NO_PEN_STYLE,
             "no_pen_width_px": NO_PEN_WIDTH_PX,
             "no_brush": NO_BRUSH,
+            "cap_style": PEN_CAP_STYLE,
+            "half_width_ratio": PEN_HALF_WIDTH_RATIO,
         },
         "alignment": {"name": ALIGN_CENTER, "value": ALIGN_CENTER_VALUE},
         "scale_divisor": SCALE_DIVISOR,
