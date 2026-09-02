@@ -56,7 +56,7 @@ SHIPPED_CLASS_TOTAL = 1
 SHIPPED_METHOD_TOTAL = 1
 SHIPPED_FUNCTION_TOTAL = 1
 PAYLOAD_KEY_TOTAL = 23
-CONSTANT_TOTAL = 104
+CONSTANT_TOTAL = 109
 
 FIXED_NOW = 1_700_000_000.0
 
@@ -1016,6 +1016,11 @@ PAYLOAD_KEYS = {
     "FEES_ATTRIBUTE": "attributes.fees",
     "FEES_ROW_LABEL": "labels.fees",
     "FEES_SHOWN_ABOVE": "thresholds.fees_shown_above",
+    "FORM_FIELD_GROWS": "stats_form.field_grows",
+    "FORM_HORIZONTAL_SPACING_PX": "stats_form.horizontal_spacing_px",
+    "FORM_MARGINS_PX": "stats_form.margins_px",
+    "FORM_ROWS_WRAP": "stats_form.rows_wrap",
+    "FORM_VERTICAL_SPACING_PX": "stats_form.vertical_spacing_px",
     "FEES_VALUE_FORMAT": "formats.fees_value",
     "FRESH_TS_ATTRIBUTE": "attributes.fresh_ts",
     "FRESH_TS_SHOWN_ABOVE": "thresholds.fresh_ts_shown_above",
@@ -1154,7 +1159,7 @@ def test_every_value_the_surface_exports_reaches_the_snapshot():
         else:
             unaccounted.append(name)
     assert unaccounted == [], unaccounted
-    assert len(PAYLOAD_KEYS) == 75
+    assert len(PAYLOAD_KEYS) == 80
     assert len(CALL_CONSTANTS) == 27
     assert len(NOT_IN_THE_SNAPSHOT) == 2
 
@@ -1642,6 +1647,48 @@ def test_the_accessible_name_and_the_form_call_are_read_off_both_sides():
     assert new["accessible_name"] == old["accessible_name"] == surface.ACCESSIBLE_NAME
     assert new["stats_form"] == old["stats_form"] == {"configured": True}
     assert surface.STATS_FORM_CONFIGURED_BY_HOST is True
+
+
+def configured_form():
+    """A QFormLayout the shipped dialog's own `_configure_form` has set."""
+    from PySide6.QtWidgets import QFormLayout
+
+    from src.gui.bot_live_settings import BotLiveSettingsDialog
+
+    form = QFormLayout()
+    BotLiveSettingsDialog._configure_form(None, form)
+    return form
+
+
+def test_the_form_geometry_the_surface_publishes_is_what_the_host_sets():
+    from PySide6.QtWidgets import QFormLayout
+
+    app()
+    form = configured_form()
+    margins = form.contentsMargins()
+    assert (
+        margins.left(),
+        margins.top(),
+        margins.right(),
+        margins.bottom(),
+    ) == surface.FORM_MARGINS_PX
+    assert form.horizontalSpacing() == surface.FORM_HORIZONTAL_SPACING_PX
+    assert form.verticalSpacing() == surface.FORM_VERTICAL_SPACING_PX
+    grows = form.fieldGrowthPolicy() == QFormLayout.AllNonFixedFieldsGrow
+    assert grows is surface.FORM_FIELD_GROWS
+    wraps = form.rowWrapPolicy() != QFormLayout.DontWrapRows
+    assert wraps is surface.FORM_ROWS_WRAP
+
+
+def test_the_form_geometry_check_reads_an_unconfigured_form_apart():
+    """The host's own numbers, against a form it never touched."""
+    from PySide6.QtWidgets import QFormLayout
+
+    app()
+    bare = QFormLayout()
+    configured = configured_form()
+    assert bare.horizontalSpacing() != configured.horizontalSpacing()
+    assert bare.verticalSpacing() != configured.verticalSpacing()
 
 
 def test_the_word_wrap_is_read_off_both_sides():
