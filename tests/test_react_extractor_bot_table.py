@@ -1172,7 +1172,8 @@ def picture_of(widget) -> Any:
 
 
 def picture_digest(widget) -> str:
-    return hashlib.sha256(bytes(picture_of(widget).constBits())).hexdigest()
+    image = picture_of(widget)
+    return hashlib.sha256(bytes(image.constBits())).hexdigest()
 
 
 def a_label(text: str) -> Any:
