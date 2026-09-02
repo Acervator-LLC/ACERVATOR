@@ -79,6 +79,11 @@ LEFT_SPACING_PX = 6
 TOP_ROW_SPACING_PX = 8
 PER_BOT_SPACING_PX = 8
 
+TOP_ROW_MARGINS_PX = (0, 0, 0, 0)
+PER_BOT_MARGINS_PX = (11, 11, 11, 11)
+GROUP_MARGINS_PX = (11, 11, 11, 11)
+GROUP_SPACING_PX = 6
+
 SIGNAL_ENTRY_LONG_HIGH = "ENTRY_LONG_HIGH"
 SIGNAL_ENTRY_LONG = "ENTRY_LONG"
 SIGNAL_ENTRY_SHORT_HIGH = "ENTRY_SHORT_HIGH"
@@ -156,14 +161,31 @@ ERROR_META_AGE_S = 0.0
 ERROR_META_COUNT = 0
 
 PER_BOT_UNAVAILABLE_TEXT = "Market Inspector analyzer unavailable."
-NO_SCAN_TEXT = (
-    "<b>No Market Inspector scan yet.</b><br><br>"
+
+STRONG_OPEN = "<b>"
+STRONG_CLOSE = "</b>"
+BREAK_TAG = "<br>"
+STRONG_WEIGHT = "bold"
+NO_BREAKS = 0
+NO_PIECE = ""
+
+NO_SCAN_HEADLINE = "No Market Inspector scan yet."
+NO_SCAN_BREAKS = 2
+NO_SCAN_BODY = (
     "Open the Market Inspector top-level tab and press "
     "Refresh to populate. The scan runs across the top-50 "
     "CoinGecko markets on daily and weekly candles; results "
     "are shared between the top-level tab and this per-bot "
     "view."
 )
+
+
+def marked_text(lead: str, strong: str, breaks: int, tail: str) -> str:
+    """One label's text with its emphasis and line breaks as Qt markup."""
+    return lead + STRONG_OPEN + strong + STRONG_CLOSE + BREAK_TAG * breaks + tail
+
+
+NO_SCAN_TEXT = marked_text(NO_PIECE, NO_SCAN_HEADLINE, NO_SCAN_BREAKS, NO_SCAN_BODY)
 NO_SCAN_STYLE = "color: #aaa; padding: 12px;"
 NO_SCAN_WORD_WRAP = True
 
@@ -175,8 +197,11 @@ NO_SIGNAL_FORMAT = (
     "scan. The universe covers CoinGecko top-50; markets "
     "outside that set are not tracked."
 )
-SIGNAL_LINE_FORMAT = (
-    "Signal: <b>{signal}</b>  |  " "Score: {score:.2f}  |  " "Direction: {direction}"
+SIGNAL_LINE_LEAD = "Signal: "
+SIGNAL_LINE_MARK = "{signal}"
+SIGNAL_LINE_TAIL_FORMAT = "  |  Score: {score:.2f}  |  Direction: {direction}"
+SIGNAL_LINE_FORMAT = marked_text(
+    SIGNAL_LINE_LEAD, SIGNAL_LINE_MARK, NO_BREAKS, SIGNAL_LINE_TAIL_FORMAT
 )
 SIGNAL_LINE_STYLE_FORMAT = "color: {color}; font-size: 13px;"
 NO_DIRECTION_MARK = "—"
@@ -801,6 +826,13 @@ class PerBotViewModel:
         self.asset = NO_ASSET
         self.spacing_px = PER_BOT_SPACING_PX
         self.order: list = []
+        self.marks: list = []
+
+    def mark(self, lead: str, strong: str, breaks: int, tail: str) -> None:
+        """Record one label's pieces beside the marked-up text they build."""
+        self.marks.append(
+            [marked_text(lead, strong, breaks, tail), lead, strong, breaks, tail]
+        )
 
     def inspector(self) -> Any:
         """The analyzer this screen reads, injected or process-wide."""
@@ -813,6 +845,7 @@ class PerBotViewModel:
     def build(self) -> list:
         """Fill ``order`` with every element the per-bot screen carries."""
         self.order = []
+        self.marks = []
         try:
             inspector = self.inspector()
         except Exception:
@@ -827,6 +860,7 @@ class PerBotViewModel:
             self.order.append(
                 [LABEL_ELEMENT, NO_SCAN_TEXT, NO_SCAN_STYLE, NO_SCAN_WORD_WRAP]
             )
+            self.mark(NO_PIECE, NO_SCAN_HEADLINE, NO_SCAN_BREAKS, NO_SCAN_BODY)
             self.order.append([STRETCH_ELEMENT])
             return self.order
         own = inspector.get_signal(self.asset)
@@ -871,6 +905,10 @@ class PerBotViewModel:
                     NO_WORD_WRAP,
                 ]
             ]
+        tail = SIGNAL_LINE_TAIL_FORMAT.format(
+            score=own.score, direction=own.direction or NO_DIRECTION_MARK
+        )
+        self.mark(SIGNAL_LINE_LEAD, own.signal, NO_BREAKS, tail)
         found = [
             [
                 LABEL_ELEMENT,
@@ -951,16 +989,43 @@ def build_model(
     return model
 
 
+class SymbolOnlyBot:
+    """One bot as the per-bot screen reads it: a config naming a symbol.
+
+    The renderer reaches this surface over the bridge, where a running
+    bot cannot travel, so the request names the symbol and this stands
+    in for the bot ``build_per_bot_model`` reads the base asset from.
+    """
+
+    class Config:
+        """The one config field ``asset_of`` reads."""
+
+        def __init__(self, symbol: str) -> None:
+            self.symbol = symbol
+
+    def __init__(self, symbol: str) -> None:
+        self.config = self.Config(symbol)
+
+
 def per_bot_view(model: PerBotViewModel) -> dict:
     """One per-bot screen as the compared snapshot reads it."""
     return {
         "asset": model.asset,
         "spacing_px": model.spacing_px,
+        "margins_px": list(PER_BOT_MARGINS_PX),
         "order": model.order,
+        "marks": [list(one) for one in model.marks],
     }
 
 
-def build_view_model(model: MarketInspectorScreenModel) -> dict:
+def empty_per_bot_view() -> dict:
+    """The per-bot screen a request naming no bot publishes."""
+    return per_bot_view(PerBotViewModel())
+
+
+def build_view_model(
+    model: MarketInspectorScreenModel, per_bot: Optional[dict] = None
+) -> dict:
     """Return the whole surface state as one serialisable dict."""
     return {
         "method": METHOD,
@@ -999,7 +1064,12 @@ def build_view_model(model: MarketInspectorScreenModel) -> dict:
         "left_margins_px": list(LEFT_MARGINS_PX),
         "left_spacing_px": LEFT_SPACING_PX,
         "top_row_spacing_px": TOP_ROW_SPACING_PX,
+        "top_row_margins_px": list(TOP_ROW_MARGINS_PX),
         "per_bot_spacing_px": PER_BOT_SPACING_PX,
+        "per_bot_margins_px": list(PER_BOT_MARGINS_PX),
+        "group_margins_px": list(GROUP_MARGINS_PX),
+        "group_spacing_px": GROUP_SPACING_PX,
+        "per_bot_view": empty_per_bot_view() if per_bot is None else per_bot,
         "active_symbols": sorted(model.active_symbols),
         "last_meta": dict(model.last_meta),
         "pending_refresh": model.pending_refresh,
@@ -1097,7 +1167,13 @@ def build_view_model(model: MarketInspectorScreenModel) -> dict:
             "unknown_asset_mark": UNKNOWN_ASSET_MARK,
             "this_asset_text": THIS_ASSET_TEXT,
             "no_signal_format": NO_SIGNAL_FORMAT,
+            "no_scan_headline": NO_SCAN_HEADLINE,
+            "no_scan_breaks": NO_SCAN_BREAKS,
+            "no_scan_body": NO_SCAN_BODY,
             "signal_line_format": SIGNAL_LINE_FORMAT,
+            "signal_line_lead": SIGNAL_LINE_LEAD,
+            "signal_line_mark": SIGNAL_LINE_MARK,
+            "signal_line_tail_format": SIGNAL_LINE_TAIL_FORMAT,
             "signal_line_style_format": SIGNAL_LINE_STYLE_FORMAT,
             "no_direction_mark": NO_DIRECTION_MARK,
             "higher_group_title": HIGHER_GROUP_TITLE,
@@ -1116,6 +1192,14 @@ def build_view_model(model: MarketInspectorScreenModel) -> dict:
             "stretch": STRETCH_ELEMENT,
             "no_style": NO_STYLE,
             "no_word_wrap": NO_WORD_WRAP,
+        },
+        "marks": {
+            "strong_open": STRONG_OPEN,
+            "strong_close": STRONG_CLOSE,
+            "break_tag": BREAK_TAG,
+            "strong_weight": STRONG_WEIGHT,
+            "no_breaks": NO_BREAKS,
+            "no_piece": NO_PIECE,
         },
         "symbols": {
             "separator": SYMBOL_SEPARATOR,
@@ -1153,9 +1237,11 @@ def view_model(params: dict) -> dict:
     """Bridge handler for ``market_inspector.state``.
 
     Reads ``reset``, ``proposals``, ``meta``, ``show_active``,
-    ``bot_statuses``, ``render``, ``refresh`` and ``force`` from the
-    request parameters. The screen keeps its rows between calls because the
-    shipped screen does; ``reset`` is what a fresh paint sends.
+    ``bot_statuses``, ``render``, ``refresh``, ``force`` and
+    ``bot_symbol`` from the request parameters. The screen keeps its rows
+    between calls because the shipped screen does; ``reset`` is what a
+    fresh paint sends. ``bot_symbol`` is what the per-bot view is built
+    for; a request naming none publishes an empty one.
     """
     global PANE_MODEL
     if params.get("reset", False):
@@ -1173,4 +1259,8 @@ def view_model(params: dict) -> dict:
         model.render_signals()
     if params.get("refresh", False):
         model.start_fetch(force=params.get("force", False))
-    return build_view_model(model)
+    symbol = params.get("bot_symbol")
+    if symbol is None:
+        return build_view_model(model)
+    per_bot = build_per_bot_model(SymbolOnlyBot(symbol), model.inspector_source)
+    return build_view_model(model, per_bot_view(per_bot))

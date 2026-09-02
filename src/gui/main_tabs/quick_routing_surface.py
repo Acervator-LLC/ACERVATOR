@@ -191,6 +191,11 @@ SOURCE_COLUMN = "source"
 DEST_COLUMN = "destination"
 COLUMN_NAMES = (SOURCE_COLUMN, DEST_COLUMN)
 
+# The request fields view_model reads; CHECKED_PARAMS pairs with COLUMN_NAMES.
+RATE_PARAM = "rate"
+STEPS_PARAM = "steps"
+CHECKED_PARAMS = ("checked_sources", "checked_destinations")
+
 TAB_WIDGET_SYMBOL = "tab.widget_symbol"
 TAB_STATE_SYMBOL = "tab.state_symbol"
 TAB_APPLY_ROUTES = "tab.apply_routes"
@@ -244,6 +249,10 @@ DISCONNECT_STEP = "disconnect"
 DISCONNECT_ALL_STEP = "disconnect_all"
 REBUILD_STEP = "rebuild"
 STEP_NAMES = (CONNECT_STEP, DISCONNECT_STEP, DISCONNECT_ALL_STEP, REBUILD_STEP)
+
+# BUTTON_KEYS names the three buttons left to right, and ACTION_ORDER their signals.
+BUTTON_KEYS = (CONNECT_STEP, DISCONNECT_STEP, DISCONNECT_ALL_STEP)
+ACTION_ORDER = tuple(ACTIONS)
 
 STEP_REFUSAL = "a step is one of {names}, not {step}"
 
@@ -419,10 +428,12 @@ class RoutingTabState:
         return bool(reply)
 
     def state(self) -> dict:
-        """Every value this tab holds, as one dict."""
+        """Every value this tab holds, as one dict, both symbol orders repeated as lists."""
         return {
             "widget_symbols": dict(self.widget_symbols),
             "state_symbols": dict(self.state_symbols),
+            "widget_symbol_order": list(self.widget_symbols),
+            "state_symbol_order": list(self.state_symbols),
             "cleared_pairs": [list(one) for one in self.cleared_pairs],
             "answers": list(self.answers),
             "default_answer": self.default_answer,
@@ -879,6 +890,8 @@ def build_view_model(
         },
         "wiring": {
             "actions": dict(ACTIONS),
+            "action_order": list(ACTION_ORDER),
+            "button_keys": list(BUTTON_KEYS),
             "signals": list(SIGNALS),
             "timers": dict(TIMERS),
             "timer_delays_ms": list(TIMER_DELAYS_MS),
@@ -891,6 +904,9 @@ def build_view_model(
             "source_column": SOURCE_COLUMN,
             "dest_column": DEST_COLUMN,
             "routes": list(ROUTE_NAMES),
+            "rate_param": RATE_PARAM,
+            "steps_param": STEPS_PARAM,
+            "checked_params": list(CHECKED_PARAMS),
             "panel_calls": list(PANEL_CALL_NAMES),
             "branches": list(BRANCH_NAMES),
             "steps": list(STEP_NAMES),
@@ -945,15 +961,16 @@ def view_model(params: dict) -> dict:
     elif params.get("reset", False):
         MODEL = QuickRoutingModel(RoutingTabState())
     model = active_model()
-    if "rate" in params:
-        model.rate_text = params["rate"]
+    if RATE_PARAM in params:
+        model.rate_text = params[RATE_PARAM]
     if "source_scroll" in params:
         model.source_scroll = params["source_scroll"]
     if "dest_scroll" in params:
         model.dest_scroll = params["dest_scroll"]
+    sources_param, dests_param = CHECKED_PARAMS
     return build_view_model(
         model,
-        params.get("steps"),
-        params.get("checked_sources"),
-        params.get("checked_destinations"),
+        params.get(STEPS_PARAM),
+        params.get(sources_param),
+        params.get(dests_param),
     )
