@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import re
 import sys
 from pathlib import Path
@@ -20,6 +19,7 @@ if str(REPO_ROOT) not in sys.path:  # pragma: no cover
 from src.gui.main_tabs import console_tab_surface as surface
 from src.gui.main_tabs import design_system_surface as dss
 from src.gui.main_tabs import theme_engine_surface as tes
+from tests.fixtures.web_js_modules import swap_module
 
 WEB = REPO_ROOT / "src" / "gui" / "web"
 MODULE_PATH = WEB / "console_tab.js"
@@ -724,16 +724,6 @@ def test_the_literal_scan_reads_past_a_comment_holding_a_colour():
     assert not found["numbers"]
 
 
-#: The file the swap below moves over the module, named for this unit.
-SPARE_PATH = MODULE_PATH.with_name("console_tab.literal_scan.js")
-
-
-def swap_module(content: bytes) -> None:
-    """C80: os.replace swaps the module file in one step, so no worker reads half."""
-    SPARE_PATH.write_bytes(content)
-    os.replace(SPARE_PATH, MODULE_PATH)
-
-
 def test_each_planted_literal_is_caught_in_the_module_file_itself():
     original = MODULE_PATH.read_bytes()
     before = hashlib.sha256(original).hexdigest()
@@ -741,14 +731,13 @@ def test_each_planted_literal_is_caught_in_the_module_file_itself():
     caught_each = {}
     try:
         for kind in sorted(PLANTED_LINES):
-            swap_module(original + PLANTED_LINES[kind].encode("utf-8"))
+            swap_module(MODULE_PATH, original + PLANTED_LINES[kind].encode("utf-8"))
             caught_each[kind] = caught_by_scan(MODULE_PATH.read_text(encoding="utf-8"))
-            swap_module(original)
+            swap_module(MODULE_PATH, original)
             after = hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest()
             assert after == before, f"the file was not restored after the {kind} plant"
     finally:
-        swap_module(original)
-        SPARE_PATH.unlink(missing_ok=True)
+        swap_module(MODULE_PATH, original)
     quiet = sorted(kind for kind, caught in caught_each.items() if not caught)
     assert not quiet, f"the scan reported nothing on these plants in the file: {quiet}"
     assert hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest() == before

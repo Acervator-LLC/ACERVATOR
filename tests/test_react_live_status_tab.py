@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import os
 import re
 import sys
 from pathlib import Path
@@ -21,6 +20,7 @@ from src.gui import design_system as ds
 from src.gui.main_tabs import design_system_surface as dss
 from src.gui.main_tabs import live_status_tab_surface as lst
 from src.gui.main_tabs import theme_engine_surface as tes
+from tests.fixtures.web_js_modules import swap_module
 
 MODULE_PATH = REPO_ROOT / "src" / "gui" / "web" / "live_status_tab.js"
 TOKENS_PATH = REPO_ROOT / "src" / "gui" / "web" / "design_tokens.js"
@@ -652,34 +652,6 @@ def test_the_literal_scan_reads_past_a_comment_holding_a_colour():
     assert not found["numbers"]
 
 
-#: The file the swap below moves over the module, named for this unit.
-SPARE_PATH = MODULE_PATH.with_name("live_status_tab.plant_scan.js")
-
-
-#: Attempts allowed before a swap gives up on a Chromium file share.
-SWAP_ATTEMPTS = 2000
-
-#: How many attempts each swap of this run actually needed.
-SWAP_TRIES: list = []
-
-
-def swap_module(content: bytes) -> None:
-    """Move content over MODULE_PATH with os.replace, retrying while Chromium
-    holds it."""
-    SPARE_PATH.write_bytes(content)
-    for attempt in range(SWAP_ATTEMPTS):
-        try:
-            os.replace(SPARE_PATH, MODULE_PATH)
-        except PermissionError:
-            continue
-        SWAP_TRIES.append(attempt + 1)
-        return
-    raise AssertionError(
-        f"the module could not be swapped in {SWAP_ATTEMPTS} attempts; "
-        f"{SPARE_PATH.name} is still on disk"
-    )
-
-
 def test_each_planted_literal_is_caught_in_the_module_file_itself():
     original = MODULE_PATH.read_bytes()
     before = hashlib.sha256(original).hexdigest()
@@ -687,14 +659,13 @@ def test_each_planted_literal_is_caught_in_the_module_file_itself():
     caught_each = {}
     try:
         for kind in sorted(PLANTED_LINES):
-            swap_module(original + PLANTED_LINES[kind].encode("utf-8"))
+            swap_module(MODULE_PATH, original + PLANTED_LINES[kind].encode("utf-8"))
             caught_each[kind] = caught_by_scan(MODULE_PATH.read_text(encoding="utf-8"))
-            swap_module(original)
+            swap_module(MODULE_PATH, original)
             after = hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest()
             assert after == before, f"the file was not restored after the {kind} plant"
     finally:
-        swap_module(original)
-        SPARE_PATH.unlink(missing_ok=True)
+        swap_module(MODULE_PATH, original)
     blind = sorted(kind for kind, caught in caught_each.items() if not caught)
     assert not blind, f"the scan reported nothing on these plants in the file: {blind}"
     assert hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest() == before
