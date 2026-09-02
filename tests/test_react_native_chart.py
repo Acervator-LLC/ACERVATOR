@@ -621,6 +621,27 @@ def test_the_identity_check_is_quiet_on_a_series_nothing_moved(js: JsRuntime):
     assert js.json("acervatorChart.barIdentity()") == first
 
 
+def test_the_surface_publishes_its_bars_as_a_list_and_not_as_a_bag(js: JsRuntime):
+    """Issue #276: a bag keyed by a number is re-sorted crossing the bridge,
+    so the bars travel as a list."""
+    payload = bridge_payload()
+    assert isinstance(payload["candles"]["bodies"], list)
+    js.push(payload)
+    assert js.json("acervatorChart.barOrder()") == [
+        one["index"] for one in payload["candles"]["bodies"]
+    ]
+
+
+def test_a_bag_keyed_by_a_number_loses_the_order_it_was_written_in(js: JsRuntime):
+    """The same bars in a bag come back sorted, whatever order they left in."""
+    bodies = bridge_payload()["candles"]["bodies"]
+    written = list(reversed(range(len(bodies))))
+    js.bind_json("BAG", {str(at): at for at in written})
+    read_back = js.json("Object.keys(JSON.parse(BAG)).map(Number)")
+    assert read_back != written
+    assert read_back == sorted(written)
+
+
 def test_the_bar_order_check_is_quiet_on_a_published_series(js: JsRuntime):
     report = js.push(bridge_payload())
     assert [one for one in report["faults"] if one["fault"] == "out-of-order"] == []
