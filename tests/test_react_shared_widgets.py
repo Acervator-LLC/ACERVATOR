@@ -61,6 +61,7 @@ from tests.fixtures.web_js_modules import (
     drain_events,
     js_literals,
     new_engine,
+    swap_module,
 )
 
 MODULE_PATH = REPO_ROOT / "src" / "gui" / "web" / "shared_widgets.js"
@@ -72,6 +73,9 @@ INDEX_HTML = REPO_ROOT / "desktop" / "renderer" / "index.html"
 MODULE_SOURCE = MODULE_PATH.read_text(encoding="utf-8")
 
 JS_TIMEOUT_MS = 30_000
+READY_ROUNDS = 100
+READY_STEP_MS = 100
+PAGE_ATTEMPTS = 2
 SETTLE_MS = 500
 NETWORK_SETTLE_MS = 1500
 
@@ -568,13 +572,13 @@ def test_each_planted_literal_is_caught_in_the_module_file_itself():
     caught_each = {}
     try:
         for kind in sorted(PLANTED_LINES):
-            MODULE_PATH.write_bytes(original + PLANTED_LINES[kind].encode("utf-8"))
+            swap_module(MODULE_PATH, original + PLANTED_LINES[kind].encode("utf-8"))
             caught_each[kind] = caught_by_scan(MODULE_PATH.read_text(encoding="utf-8"))
-            MODULE_PATH.write_bytes(original)
+            swap_module(MODULE_PATH, original)
             after = hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest()
             assert after == before, f"the file was not restored after the {kind} plant"
     finally:
-        MODULE_PATH.write_bytes(original)
+        swap_module(MODULE_PATH, original)
     blind = sorted(kind for kind, caught in caught_each.items() if not caught)
     assert not blind, f"the scan reported nothing on these plants in the file: {blind}"
     assert hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest() == before
@@ -1078,10 +1082,16 @@ class Browser:
     """The real renderer page, loaded from disk in a Chromium view."""
 
     def __init__(self) -> None:
-        from PySide6.QtCore import QEventLoop, QTimer, QUrl
         from PySide6.QtWebEngineWidgets import QWebEngineView
 
         self._view = QWebEngineView()
+        self.open_page()
+        self.wait_for_module()
+
+    def open_page(self) -> None:
+        """Loads the renderer page and waits until its load finishes."""
+        from PySide6.QtCore import QEventLoop, QTimer, QUrl
+
         loop = QEventLoop()
         box: dict = {}
 
@@ -1089,11 +1099,30 @@ class Browser:
             box.setdefault("ok", ok)
             loop.quit()
 
-        self._view.loadFinished.connect(_loaded)
+        connection = self._view.loadFinished.connect(_loaded)
         self._view.load(QUrl.fromLocalFile(str(INDEX_HTML)))
         QTimer.singleShot(JS_TIMEOUT_MS, loop.quit)
         loop.exec()
+        self._view.loadFinished.disconnect(connection)
         assert box.get("ok") is True, f"{INDEX_HTML.name} did not load: {box}"
+
+    def wait_for_module(self) -> None:
+        """Opens the page again while the module global stays absent."""
+        for attempt in range(PAGE_ATTEMPTS):
+            if attempt:
+                self.open_page()
+            for _ in range(READY_ROUNDS):
+                if self.js("typeof window.acervatorWidgets") == "object":
+                    return
+                self.settle(READY_STEP_MS)
+        raise AssertionError(
+            "the page never defined acervatorWidgets: readyState "
+            + str(self.js("document.readyState"))
+            + ", scripts "
+            + str(self.js("document.scripts.length"))
+            + ", tokens "
+            + str(self.js("typeof window.acervatorTokens"))
+        )
 
     def js(self, script: str) -> Any:
         from PySide6.QtCore import QEventLoop, QTimer
