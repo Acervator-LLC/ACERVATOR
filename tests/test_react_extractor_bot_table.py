@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.gui.main_tabs import design_system_surface as dss
+from src.gui.main_tabs import exchange_tab_surface as parent
 from src.gui.main_tabs import extractor_bot_table_surface as surface
 from tests.fixtures.web_js_modules import (
     HEX_COLOUR,
@@ -1935,29 +1936,86 @@ def test_a_hostile_payload_still_draws_a_table(browser: Browser):
     assert cell_at(parts, 0, 0)["text"] == "7"
 
 
+SPACE_PART = "extractor-table"
+SPACE_QUERY = "window.HOST.querySelector('[data-part=\"" + SPACE_PART + "\"]')"
+
+
+def parent_payload(bots: list) -> dict:
+    """The exchange screen state built from bots, each one marked with MODE_TEXT."""
+    try:
+        parent.view_model({"reset": True})
+        served = parent.view_model(
+            {"statuses": [dict(one, mode=surface.MODE_TEXT) for one in bots]}
+        )
+        return json.loads(json.dumps(served, ensure_ascii=True))
+    finally:
+        parent.view_model({"reset": True})
+
+
+def draw_parent(browser: Browser, bots: list) -> dict:
+    """Draws the exchange screen and returns the attributes of its empty space."""
+    browser.js(PAGE_HELPERS)
+    give_tokens(browser)
+    browser.js("window.PARENT = " + json.dumps(json.dumps(parent_payload(bots))) + ";")
+    browser.js(
+        "acervatorSetExchangeTab(JSON.parse(window.PARENT));"
+        "acervatorExchangeTab.renderTab(window.HOST);"
+    )
+    return browser.parsed(
+        "(function () {"
+        "  var found = {};"
+        "  Array.prototype.slice.call(" + SPACE_QUERY + ".attributes).forEach("
+        "    function (one) { found[one.name] = one.value; });"
+        "  return found; })()"
+    )
+
+
 def test_the_table_fills_the_named_empty_space_the_exchange_screen_leaves(
     browser: Browser,
 ):
-    """The exchange screen draws an empty space and the table draws inside it."""
-    browser.js(PAGE_HELPERS)
-    browser.js("window.STYLE_NAMES = " + json.dumps(json.dumps(STYLE_NAMES)) + ";")
-    give_tokens(browser)
+    """The exchange screen draws one empty space and the table draws inside it."""
+    named = draw_parent(browser, THREE_BOTS)
+    assert named["data-part"] == SPACE_PART
+    assert named["data-rows"] == str(len(THREE_BOTS))
     browser.js(
-        "window.SPACE = document.createElement('div');"
-        "window.SPACE.setAttribute('data-part', " + json.dumps("extractor-table") + ");"
-        "window.HOST.appendChild(window.SPACE);"
-    )
-    browser.js(
-        "window.PAYLOAD = " + json.dumps(json.dumps(state_payload("many"))) + ";"
+        "window.PAYLOAD = " + json.dumps(json.dumps(state_payload("selected"))) + ";"
     )
     filled = browser.js(
         "(function () {" + SETTER + "(JSON.parse(window.PAYLOAD));"
-        "  return " + API + "fill(window.HOST) === window.SPACE; })()"
+        "  return " + API + "fill(window.HOST) === " + SPACE_QUERY + "; })()"
     )
     assert filled is True
-    assert (
-        browser.js("window.SPACE.querySelectorAll('[data-part=\"row\"]').length") == 3
+    drawn = browser.parsed(
+        "(function () { var s = " + SPACE_QUERY + "; return {"
+        "  rows: s.querySelectorAll('[data-part=\"row\"]').length,"
+        "  cells: s.querySelectorAll('[data-part=\"cell\"]').length,"
+        "  buttons: s.querySelectorAll('button').length,"
+        "  kind: s.querySelector('[data-part=\"table\"]').getAttribute('data-kind'),"
+        "  rowsAttr: s.querySelector('[data-part=\"table\"]')"
+        "    .getAttribute('data-rows'),"
+        "  bot: s.querySelector('[data-part=\"table\"]').getAttribute('data-selected'),"
+        "  spaces: document.querySelectorAll("
+        "    '[data-part=\"" + SPACE_PART + "\"]').length }; })()"
     )
+    payload = state_payload("selected")
+    assert drawn["rows"] == len(payload["rows"])
+    assert drawn["cells"] == len(payload["rows"]) * surface.COLUMN_COUNT
+    assert drawn["buttons"] == len(payload["rows"]) * len(payload["button_columns"])
+    assert drawn["kind"] == payload["table_kind"]
+    assert drawn["rowsAttr"] == named["data-rows"]
+    assert drawn["bot"] == payload["selected_bot_id"]
+    assert drawn["spaces"] == 1, "the fill left a second space behind"
+
+
+def test_the_parent_space_names_its_own_slot_where_the_table_names_its_widget(
+    browser: Browser,
+):
+    """Both sides count the same rows, and each names the kind its surface owns."""
+    named = draw_parent(browser, THREE_BOTS)
+    payload = state_payload("many")
+    assert named["data-rows"] == str(payload["row_count"])
+    assert named["data-kind"] == surface.MODE_TEXT
+    assert payload["table_kind"] != surface.MODE_TEXT
 
 
 def test_the_space_check_reads_a_page_with_no_such_space_as_unfilled(browser: Browser):
