@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import sys
 from typing import Any, BinaryIO, Callable, Dict
 
@@ -243,6 +244,23 @@ def handle_line(line: str, registry: Dict[str, Handler]) -> dict:
     return {"id": request_id, "ok": True, "result": result}
 
 
+def json_writable(payload: Any) -> Any:
+    """Return ``payload`` with every number JSON cannot write set to null.
+
+    ``nan``, ``inf`` and ``-inf`` have no JSON spelling, so a frame
+    carrying one is refused whole by the frontend's parser. Names are
+    replaced as well as values, because a non-finite key is refused the
+    same way.
+    """
+    if isinstance(payload, dict):
+        return {json_writable(k): json_writable(v) for k, v in payload.items()}
+    if isinstance(payload, (list, tuple)):
+        return [json_writable(one) for one in payload]
+    if isinstance(payload, float) and not math.isfinite(payload):
+        return None
+    return payload
+
+
 def encode_frame(response: dict) -> bytes:
     """Encode one response as the bytes of a single protocol line.
 
@@ -250,8 +268,17 @@ def encode_frame(response: dict) -> bytes:
     JSON string and terminate a line for the reader on the other side.
     The newline is written as one byte so that the platform's text-mode
     translation cannot put a carriage return inside the frame.
+
+    ``allow_nan`` is off so that no frame carries a bare ``NaN`` or
+    ``Infinity``. A response holding one is written again through
+    ``json_writable``, which costs a walk only on that response and
+    leaves every other field for the frontend to draw.
     """
-    return json.dumps(response, ensure_ascii=True).encode("utf-8") + b"\n"
+    try:
+        text = json.dumps(response, ensure_ascii=True, allow_nan=False)
+    except ValueError:
+        text = json.dumps(json_writable(response), ensure_ascii=True, allow_nan=False)
+    return text.encode("utf-8") + b"\n"
 
 
 def serve(reader: BinaryIO, writer: BinaryIO, registry: Dict[str, Handler]) -> int:
