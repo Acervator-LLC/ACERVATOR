@@ -41,6 +41,7 @@ JS_TIMEOUT_MS = 30_000
 SETTLE_MS = 500
 READY_ROUNDS = 100
 READY_STEP_MS = 100
+PAGE_ATTEMPTS = 3
 
 HOST_WIDTH_PX = 900
 HOST_HEIGHT_PX = 400
@@ -1251,10 +1252,26 @@ class Browser:
     """A Browser drives the real renderer page in a Chromium view."""
 
     def __init__(self) -> None:
-        from PySide6.QtCore import QEventLoop, QTimer, QUrl
         from PySide6.QtWebEngineWidgets import QWebEngineView
 
         self._view = QWebEngineView()
+        for _ in range(PAGE_ATTEMPTS):
+            self.open_page()
+            if self.module_ready():
+                return
+        raise AssertionError(
+            "the page never defined the extractor table module in "
+            + str(PAGE_ATTEMPTS)
+            + " loads: readyState "
+            + str(self.js("document.readyState"))
+            + ", scripts "
+            + str(self.js("document.scripts.length"))
+        )
+
+    def open_page(self) -> None:
+        """Loads the renderer page and waits until its load finishes."""
+        from PySide6.QtCore import QEventLoop, QTimer, QUrl
+
         loop = QEventLoop()
         box: dict = {}
 
@@ -1262,22 +1279,20 @@ class Browser:
             box.setdefault("ok", ok)
             loop.quit()
 
-        self._view.loadFinished.connect(_loaded)
+        link = self._view.loadFinished.connect(_loaded)
         self._view.load(QUrl.fromLocalFile(str(INDEX_HTML)))
         QTimer.singleShot(JS_TIMEOUT_MS, loop.quit)
         loop.exec()
+        self._view.loadFinished.disconnect(link)
         assert box.get("ok") is True, f"{INDEX_HTML.name} did not load: {box}"
-        self.wait_for_module()
 
-    def wait_for_module(self) -> None:
+    def module_ready(self) -> bool:
+        """Whether the page defined the module setter inside its own budget."""
         for _ in range(READY_ROUNDS):
             if self.js("typeof window." + SETTER) == "function":
-                return
+                return True
             self.settle(READY_STEP_MS)
-        raise AssertionError(
-            "the page never defined the extractor table module: readyState "
-            + str(self.js("document.readyState"))
-        )
+        return False
 
     def js(self, script: str) -> Any:
         from PySide6.QtCore import QEventLoop, QTimer
