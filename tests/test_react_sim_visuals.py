@@ -1557,6 +1557,54 @@ def test_a_wrong_type_is_not_named_where_the_surface_names_no_default(js: JsRunt
     assert named == []
 
 
+INHERITED_NAMES = ("constructor", "toString", "hasOwnProperty", "__proto__")
+
+
+@pytest.mark.parametrize("name", INHERITED_NAMES)
+def test_a_symbol_named_after_a_javascript_member_is_refused(js: JsRuntime, name: str):
+    payload = state_payload("loaded")
+    payload["gate_panel"]["items"][1]["symbol"] = name
+    found = js.push(payload)
+    named = [one for one in found["faults"] if one["fault"] == "unknown-symbol"]
+    assert [one["detail"] for one in named] == [name], found["faults"]
+    assert js.json(f"acervatorSimVisuals.lampsFor({json.dumps(name)})") == []
+    assert js.json(f"acervatorSimVisuals.programFor({json.dumps(name)})") == []
+
+
+@pytest.mark.parametrize("name", INHERITED_NAMES)
+def test_a_row_named_after_a_javascript_member_draws_no_light(
+    browser: Browser, name: str
+):
+    payload = state_payload("loaded")
+    payload["gate_panel"]["items"][1]["symbol"] = name
+    parts = draw_screen(browser, payload)
+    borrowed = [
+        one for one in by_part(parts, "lamp-row") if one["attrs"]["data-symbol"] == name
+    ]
+    assert len(borrowed) == 1
+    assert borrowed[0]["attrs"]["data-lamps"] == "0"
+
+
+def test_an_align_word_named_after_a_javascript_member_paints_nothing(
+    browser: Browser,
+):
+    payload = state_payload("scrum_armed")
+    program = payload["gate_row"]["rows"][SYMBOLS[0]]["program"]
+    captioned = next(one for one in program if one["op"] == svs.TEXT)
+    captioned["align"] = "constructor"
+    parts = draw_screen(browser, payload)
+    drawn = by_part(parts, "lamp-label")[0]
+    assert drawn["style"]["justifyContent"] == "normal", drawn["style"]
+    assert drawn["text"] == captioned["text"]
+
+
+def test_the_align_check_still_sees_the_word_the_surface_publishes(browser: Browser):
+    """The alignment map is empty, so the check above proves nothing."""
+    parts = draw_screen(browser, state_payload("scrum_armed"))
+    assert by_part(parts, "lamp-label")[0]["style"]["justifyContent"] == "center"
+    assert by_part(parts, "bank-marker")[0]["style"]["justifyContent"] == "flex-end"
+
+
 def cells_of_first_row(parts: list) -> list:
     """The cells drawn under the first voting row, in document order."""
     found: list = []
