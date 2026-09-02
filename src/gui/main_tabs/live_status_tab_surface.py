@@ -36,6 +36,12 @@ CONTENT_MARGINS_SET = False
 STATS_GROUP_TITLE = "Statistics"
 STATS_FORM_CONFIGURED_BY_HOST = True
 
+FORM_MARGINS_PX = (8, 8, 8, 8)
+FORM_HORIZONTAL_SPACING_PX = 12
+FORM_VERTICAL_SPACING_PX = 8
+FORM_FIELD_GROWS = True
+FORM_ROWS_WRAP = False
+
 REALISED_ROW_LABEL = "Realised P/L:"
 UNREALISED_ROW_LABEL = "Unrealised P/L:"
 AVG_ENTRY_ROW_LABEL = "Avg Entry (exchange):"
@@ -492,6 +498,11 @@ def build_view_model(model: LiveStatusTabModel, build_now: bool = False) -> dict
         "stats_form": {
             "configured_by_host": STATS_FORM_CONFIGURED_BY_HOST,
             "configured": model.form_configured,
+            "margins_px": list(FORM_MARGINS_PX),
+            "horizontal_spacing_px": FORM_HORIZONTAL_SPACING_PX,
+            "vertical_spacing_px": FORM_VERTICAL_SPACING_PX,
+            "field_grows": FORM_FIELD_GROWS,
+            "rows_wrap": FORM_ROWS_WRAP,
         },
         "rows": [list(one) for one in model.rows],
         "row_count": len(model.rows),
