@@ -28,6 +28,7 @@ from tests.fixtures.web_js_modules import (
     drain_events,
     js_literals,
     new_engine,
+    swap_module,
 )
 
 WEB = REPO_ROOT / "src" / "gui" / "web"
@@ -37,6 +38,9 @@ THEMES_PATH = WEB / "theme_engine.js"
 INDEX_HTML = REPO_ROOT / "desktop" / "renderer" / "index.html"
 
 JS_TIMEOUT_MS = 30_000
+READY_ROUNDS = 100
+READY_STEP_MS = 100
+PAGE_ATTEMPTS = 2
 
 #: Python type name -> the typeof acervatorCells.types reports for it.
 JS_TYPE_OF = {
@@ -518,7 +522,7 @@ def test_the_literal_scan_names_a_value_appended_to_the_module_file(kind: str):
         before_digest = hashlib.sha256(before).hexdigest()
         appended = before + ("\n" + APPENDED_LINES[kind] + "\n").encode("utf-8")
         try:
-            MODULE_PATH.write_bytes(appended)
+            swap_module(MODULE_PATH, appended)
             assert digest_of(MODULE_PATH) != before_digest
             found = literal_findings(MODULE_PATH.read_text(encoding="utf-8"))
             named = {name for name in APPENDED_KINDS[kind] if found[name]}
@@ -527,7 +531,7 @@ def test_the_literal_scan_names_a_value_appended_to_the_module_file(kind: str):
                 APPENDED_KINDS[kind]
             ), f"literal_findings did not name the added {kind}: {reported}"
         finally:
-            MODULE_PATH.write_bytes(before)
+            swap_module(MODULE_PATH, before)
         assert MODULE_PATH.read_bytes() == before, f"{MODULE_PATH} was not restored"
         assert digest_of(MODULE_PATH) == before_digest, (
             f"{MODULE_PATH} changed: " f"{before_digest} -> {digest_of(MODULE_PATH)}"
@@ -1000,10 +1004,16 @@ class Browser:
     """The real renderer page, loaded from disk in a Chromium view."""
 
     def __init__(self) -> None:
-        from PySide6.QtCore import QEventLoop, QTimer, QUrl
         from PySide6.QtWebEngineWidgets import QWebEngineView
 
         self._view = QWebEngineView()
+        self.open_page()
+        self.wait_for_module()
+
+    def open_page(self) -> None:
+        """Loads the renderer page and waits until its load finishes."""
+        from PySide6.QtCore import QEventLoop, QTimer, QUrl
+
         loop = QEventLoop()
         box: dict = {}
 
@@ -1011,11 +1021,30 @@ class Browser:
             box.setdefault("ok", ok)
             loop.quit()
 
-        self._view.loadFinished.connect(_loaded)
+        connection = self._view.loadFinished.connect(_loaded)
         self._view.load(QUrl.fromLocalFile(str(INDEX_HTML)))
         QTimer.singleShot(JS_TIMEOUT_MS, loop.quit)
         loop.exec()
+        self._view.loadFinished.disconnect(connection)
         assert box.get("ok") is True, f"{INDEX_HTML.name} did not load: {box}"
+
+    def wait_for_module(self) -> None:
+        """Opens the page again while the module global stays absent."""
+        for attempt in range(PAGE_ATTEMPTS):
+            if attempt:
+                self.open_page()
+            for _ in range(READY_ROUNDS):
+                if self.js("typeof window.acervatorCells") == "object":
+                    return
+                self.settle(READY_STEP_MS)
+        raise AssertionError(
+            "the page never defined acervatorCells: readyState "
+            + str(self.js("document.readyState"))
+            + ", scripts "
+            + str(self.js("document.scripts.length"))
+            + ", tokens "
+            + str(self.js("typeof window.acervatorTokens"))
+        )
 
     def js(self, script: str) -> Any:
         from PySide6.QtCore import QEventLoop, QTimer

@@ -43,6 +43,7 @@ MODULE_SOURCE = MODULE_PATH.read_text(encoding="utf-8")
 JS_TIMEOUT_MS = 30_000
 READY_ROUNDS = 100
 READY_STEP_MS = 100
+PAGE_ATTEMPTS = 2
 
 #: Python type -> the JavaScript type the same value has after the
 #: bridge's ``json.dumps``.
@@ -699,10 +700,16 @@ class Browser:
     """The real renderer page, loaded from disk in a Chromium view."""
 
     def __init__(self) -> None:
-        from PySide6.QtCore import QEventLoop, QTimer, QUrl
         from PySide6.QtWebEngineWidgets import QWebEngineView
 
         self._view = QWebEngineView()
+        self.open_page()
+        self.wait_for_module()
+
+    def open_page(self) -> None:
+        """Loads the renderer page and waits until its load finishes."""
+        from PySide6.QtCore import QEventLoop, QTimer, QUrl
+
         loop = QEventLoop()
         box: dict = {}
 
@@ -710,18 +717,21 @@ class Browser:
             box.setdefault("ok", ok)
             loop.quit()
 
-        self._view.loadFinished.connect(_loaded)
+        connection = self._view.loadFinished.connect(_loaded)
         self._view.load(QUrl.fromLocalFile(str(INDEX_HTML)))
         QTimer.singleShot(JS_TIMEOUT_MS, loop.quit)
         loop.exec()
+        self._view.loadFinished.disconnect(connection)
         assert box.get("ok") is True, f"{INDEX_HTML.name} did not load: {box}"
-        self.wait_for_module()
 
     def wait_for_module(self) -> None:
-        for _ in range(READY_ROUNDS):
-            if self.js("typeof window.acervatorSetDot") == "function":
-                return
-            self.settle(READY_STEP_MS)
+        for attempt in range(PAGE_ATTEMPTS):
+            if attempt:
+                self.open_page()
+            for _ in range(READY_ROUNDS):
+                if self.js("typeof window.acervatorSetDot") == "function":
+                    return
+                self.settle(READY_STEP_MS)
         raise AssertionError(
             "the page never defined the dot module: readyState "
             + str(self.js("document.readyState"))
