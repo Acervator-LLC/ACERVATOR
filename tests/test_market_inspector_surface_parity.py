@@ -2071,6 +2071,7 @@ SCREEN_MODEL_MEMBERS = {
 
 PER_BOT_MODEL_MEMBERS = {
     "__init__",
+    "mark",
     "inspector",
     "build",
     "own_card_rows",
@@ -3127,7 +3128,12 @@ PAYLOAD_KEY_SOURCES = {
     "left_margins_px": "LEFT_MARGINS_PX",
     "left_spacing_px": "LEFT_SPACING_PX",
     "top_row_spacing_px": "TOP_ROW_SPACING_PX",
+    "top_row_margins_px": "TOP_ROW_MARGINS_PX",
     "per_bot_spacing_px": "PER_BOT_SPACING_PX",
+    "per_bot_margins_px": "PER_BOT_MARGINS_PX",
+    "group_margins_px": "GROUP_MARGINS_PX",
+    "group_spacing_px": "GROUP_SPACING_PX",
+    "per_bot_view": "PER_BOT_MARGINS_PX",
     "active_symbols": "model.active_symbols",
     "last_meta": "model.last_meta",
     "pending_refresh": "model.pending_refresh",
@@ -3145,6 +3151,7 @@ PAYLOAD_KEY_SOURCES = {
     "error_meta": "ERROR_META_SOURCE",
     "per_bot": "HIGHER_GROUP_TITLE",
     "elements": "LABEL_ELEMENT",
+    "marks": "STRONG_OPEN",
     "symbols": "SYMBOL_SEPARATOR",
     "adopt_signal_name": "MarketInspectorScreenModel.ADOPT_SIGNAL_NAME",
     "timers": "TIMERS",
@@ -3172,6 +3179,8 @@ GROUP_KEYS = {
     "per_bot",
     "elements",
     "symbols",
+    "marks",
+    "per_bot_view",
 }
 
 DERIVED_KEYS = {"active_symbols", "exchange_source_wired"}
