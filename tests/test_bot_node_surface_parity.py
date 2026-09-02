@@ -1465,6 +1465,8 @@ PAYLOAD_KEYS = {
     "MODE_KEY": "data_keys.mode",
     "NO_BOT_ID": "defaults.bot_id",
     "NO_BRUSH": "pens.no_brush",
+    "PEN_CAP_STYLE": "pens.cap_style",
+    "PEN_HALF_WIDTH_RATIO": "pens.half_width_ratio",
     "NO_PEN_STYLE": "pens.no_pen_style",
     "NO_PEN_WIDTH_PX": "pens.no_pen_width_px",
     "OPAQUE_ALPHA": "theme.opaque_alpha",
@@ -1662,7 +1664,7 @@ def surface_constants() -> dict:
     }
 
 
-CONSTANT_TOTAL = 242
+CONSTANT_TOTAL = 244
 PAYLOAD_KEY_TOTAL = 44
 
 
@@ -1690,7 +1692,7 @@ def test_every_value_the_surface_exports_reaches_the_snapshot():
         else:
             unaccounted.append(name)
     assert unaccounted == [], unaccounted
-    assert len(PAYLOAD_KEYS) == 194
+    assert len(PAYLOAD_KEYS) == 196
     assert len(LIST_MEMBERS) == 45
     assert len(NOT_IN_THE_SNAPSHOT) == 4
 
