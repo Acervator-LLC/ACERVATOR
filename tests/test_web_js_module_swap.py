@@ -42,8 +42,8 @@ SEED_MODULES = (
 )
 
 #: Measured floors, so a glob that matches nothing cannot pass in silence.
-REACT_TEST_FLOOR = 22
-SWAP_BINDING_FLOOR = 16
+REACT_TEST_FLOOR = 23
+SWAP_BINDING_FLOOR = 17
 
 
 def react_test_modules() -> tuple:
