@@ -42,6 +42,9 @@ CLICK = "click"
 
 PIXEL_SIZE = (640, 480)
 
+# Above 256 seconds the stamp loses a millisecond in any trip back through seconds.
+LOOP_TIME = 256.0015
+
 CALLS: list[list] = []
 
 
@@ -135,10 +138,17 @@ class _Loop:
 
 
 class _LoopProxy:
-    """The real running loop, with ``create_future`` recorded."""
+    """The real running loop, with ``create_future`` recorded and ``time`` fixed.
+
+    The broker stamps its request id from ``time``, so a fixed reading
+    gives every run of the same request the same stamp.
+    """
 
     def __init__(self, loop):
         self._loop = loop
+
+    def time(self):
+        return LOOP_TIME
 
     def create_future(self):
         CALLS.append([surface.FUTURE_CREATE])
@@ -1338,8 +1348,8 @@ def run_request_old(bot_id, answer, timeout_sec, monkeypatch):
     return result, [list(call) for call in CALLS], emitted, sorted(host._pending)
 
 
-def run_request_new(bot_id, answer, timeout_sec, millis):
-    """Drive the view model's request path with the same clock reading."""
+def run_request_new(bot_id, answer, timeout_sec, loop_time):
+    """Drive the view model's request path with the loop reading the broker had."""
     model = surface.BuyConfirmationModel()
     payload = model.request(
         bot_id=bot_id,
@@ -1350,7 +1360,7 @@ def run_request_new(bot_id, answer, timeout_sec, millis):
         amount_asset=3.0,
         holdings_before=4.0,
         target_balance=5.0,
-        loop_time=millis / surface.REQUEST_ID_MILLIS_SCALE,
+        loop_time=loop_time,
         timeout_sec=timeout_sec,
     )
     if answer is None:
@@ -1392,10 +1402,9 @@ def test_the_request_path_matches_the_broker(name, monkeypatch, capture_log):
         )
     old_logs = [record.getMessage() for record in old_records]
     key = emitted[0][0]
-    millis = int(key.rsplit("_", 1)[1])
     with capture_log(LOGGER_NAME) as new_records:
         new_result, new_calls, payload, new_pending = run_request_new(
-            bot_id, answer, timeout_sec, millis
+            bot_id, answer, timeout_sec, LOOP_TIME
         )
     new_logs = [record.getMessage() for record in new_records]
     assert payload["request_id"] == key
@@ -1463,10 +1472,8 @@ def test_a_timeout_logs_and_refuses(monkeypatch, capture_log):
     assert old_logs == ["Buy confirmation timed out after 0s for bot bot-a"]
     assert old_calls[-1] == [surface.PENDING_POP, emitted[0][0]]
     assert old_pending == []
-    key = emitted[0][0]
-    millis = int(key.rsplit("_", 1)[1])
     _new_result, _new_calls, _payload, new_pending = run_request_new(
-        "bot-a", None, 0, millis
+        "bot-a", None, 0, LOOP_TIME
     )
     assert new_pending == old_pending
     with capture_log(LOGGER_NAME) as answered_records:
