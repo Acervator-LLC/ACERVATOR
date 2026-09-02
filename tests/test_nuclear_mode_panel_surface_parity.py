@@ -57,7 +57,6 @@ SURFACE_SOURCE = (
 
 WIRING_NEIGHBOUR = REPO_ROOT / "src" / "gui" / "widgets" / "privacy_dot.py"
 SIGNAL_NEIGHBOUR = REPO_ROOT / "src" / "gui" / "launcher.py"
-TIMER_BUILT_NEIGHBOUR = REPO_ROOT / "src" / "gui" / "screen_recorder.py"
 TIMER_SAME_NAME_A = REPO_ROOT / "src" / "gui" / "history_tab.py"
 TIMER_SAME_NAME_B = REPO_ROOT / "src" / "gui" / "main_tabs" / "history_tab.py"
 TIMER_UNBUILT_NEIGHBOUR = REPO_ROOT / "src" / "gui" / "indicator_panel.py"
@@ -68,8 +67,6 @@ THREAD_NEIGHBOUR = REPO_ROOT / "src" / "gui" / "live_bot_window.py"
 
 WIRING_NEIGHBOUR_CONNECT_TOTAL = 1
 SIGNAL_NEIGHBOUR_SIGNAL_TOTAL = 3
-TIMER_NEIGHBOUR_BUILD_TOTAL = 2
-TIMER_NEIGHBOUR_START_TOTAL = 2
 TIMER_SAME_NAME_A_BUILD_TOTAL = 1
 TIMER_NEIGHBOUR_UNBUILT_TOTAL = 5
 BUS_NEIGHBOUR_SUBSCRIBE_TOTAL = 2
@@ -1503,8 +1500,6 @@ def test_the_panel_builds_one_timer_starts_one_and_runs_none_unbuilt():
     assert timers_run_without_building(SHIPPED_SOURCE) == []
     named = SHIPPED_SOURCE.read_text(encoding="utf-8").count("QTimer")
     assert named > len(built), (named, built)
-    assert len(timers_built(TIMER_BUILT_NEIGHBOUR)) == TIMER_NEIGHBOUR_BUILD_TOTAL
-    assert len(timers_started(TIMER_BUILT_NEIGHBOUR)) == TIMER_NEIGHBOUR_START_TOTAL
     assert len(timers_built(TIMER_SAME_NAME_A)) == TIMER_SAME_NAME_A_BUILD_TOTAL
     assert timers_built(TIMER_SAME_NAME_B) == []
     assert TIMER_SAME_NAME_A.name == TIMER_SAME_NAME_B.name
@@ -1601,12 +1596,11 @@ def test_the_element_counter_never_counts_a_name_inside_prose():
     assert made == ["QLabel"], made
 
 
-def test_the_neighbouring_controls_are_nine_different_files():
+def test_the_neighbouring_controls_are_eight_different_files():
     """Two controls read one file, so one of the two was never measured."""
     named = [
         WIRING_NEIGHBOUR,
         SIGNAL_NEIGHBOUR,
-        TIMER_BUILT_NEIGHBOUR,
         TIMER_UNBUILT_NEIGHBOUR,
         BUS_NEIGHBOUR,
         ELEMENT_NEIGHBOUR,
