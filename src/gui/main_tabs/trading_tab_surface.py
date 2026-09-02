@@ -102,6 +102,9 @@ PLACEHOLDER_HINT_STYLE = f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; border
 
 PLACEHOLDER_ORDER = ["title", "add_button", "hint"]
 
+PLACEHOLDER_OUTER_LAYOUT = {"margins_px": [9, 9, 9, 9], "spacing_px": 6}
+PLACEHOLDER_CARD_LAYOUT = {"margins_px": [9, 9, 9, 9], "spacing_px": 12}
+
 ALIAS_LAYER = "crypto"
 
 CHART_PRESENT = False
@@ -118,6 +121,8 @@ API_PANE_LAYOUT = {
 }
 
 HEADER_ROW_ORDER = ["label", "stretch", "pause_button"]
+
+HEADER_ROW_LAYOUT = {"margins_px": [0, 0, 0, 0], "spacing_px": 2}
 
 PANE_LABEL_STYLE = f"color: {ds.PRIMARY}; font-weight: bold;"
 
@@ -161,6 +166,7 @@ STATUS_LOG_MAX_HEIGHT_PX = 16777215
 API_LOG_PLACEHOLDER = "API calls, responses, timing, data usage..."
 API_LOG_TOOLTIP = "Every API call: endpoint, reason, result, timing, data usage"
 API_LOG_MAX_BLOCKS = 2000
+API_LOG_TAB_INDEX = 0
 API_PAUSE_BUFFER_CAP = 2000
 
 RESUME_MARKER_FORMAT = "--- (resumed; {count} buffered line(s) above) ---"
@@ -250,9 +256,11 @@ def layer_card(key: Any) -> dict:
             "align": "center",
             "spacing_px": PLACEHOLDER_SPACING_PX,
             "order": list(PLACEHOLDER_ORDER),
+            "outer_layout": dict(PLACEHOLDER_OUTER_LAYOUT),
             "card": {
                 "minimum_size_px": list(PLACEHOLDER_CARD_MIN_SIZE_PX),
                 "style_sheet": placeholder_card_style(accent),
+                "layout": dict(PLACEHOLDER_CARD_LAYOUT),
             },
             "title": {
                 "text": placeholder_title_text(label),
@@ -561,6 +569,7 @@ STATUS_LOG = {
 
 API_LOG_VIEW = {
     "read_only": True,
+    "tab_index": API_LOG_TAB_INDEX,
     "placeholder": API_LOG_PLACEHOLDER,
     "tooltip": API_LOG_TOOLTIP,
     "wrap": False,
@@ -601,6 +610,7 @@ def build_view_model(
         "chart_present": CHART_PRESENT,
         "activity_pane": {
             "layout": dict(ACTIVITY_PANE_LAYOUT),
+            "header_row": dict(HEADER_ROW_LAYOUT),
             "header_row_order": list(HEADER_ROW_ORDER),
             "label": {"text": ACTIVITY_LABEL_TEXT, "style_sheet": PANE_LABEL_STYLE},
             "pause_button": activity_pause_button(activity_paused),
@@ -608,6 +618,7 @@ def build_view_model(
         },
         "api_pane": {
             "layout": dict(API_PANE_LAYOUT),
+            "header_row": dict(HEADER_ROW_LAYOUT),
             "header_row_order": list(HEADER_ROW_ORDER),
             "label": {"text": API_LABEL_TEXT, "style_sheet": PANE_LABEL_STYLE},
             "pause_button": api_pause_button(buffer.paused),
