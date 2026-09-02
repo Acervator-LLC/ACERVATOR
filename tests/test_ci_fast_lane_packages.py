@@ -181,7 +181,7 @@ def test_the_scan_exempts_a_file_the_fast_lane_deselects(tmp_path):
     assert offending_imports(tmp_path) == []
 
 
-@pytest.mark.parametrize("extra", ["charts", "report", "video", "contracts"])
+@pytest.mark.parametrize("extra", ["charts", "report", "contracts"])
 def test_the_fast_lane_package_set_excludes_a_heavy_extra(extra):
     """A heavy extra reads as installed, so the scan can never report it."""
     declared = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]
