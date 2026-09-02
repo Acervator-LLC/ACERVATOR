@@ -170,7 +170,14 @@ def run_new(script, buffer_max=surface.BUFFER_MAX):
         for line in lines:
             one = surface.ConsoleDocument()
             one.append(
-                surface.ConsoleLine(line["text"], line["r"], line["g"], line["b"])
+                surface.ConsoleLine(
+                    line["text"],
+                    line["level"],
+                    line["color"],
+                    line["r"],
+                    line["g"],
+                    line["b"],
+                )
             )
             pane_text += one.insert_text(pane_text == "")
             if surface.follows_tail(scroll_value, scroll_max):
@@ -341,6 +348,18 @@ def test_drop_notice_paints_the_warning_token():
     assert surface.rgb(ds.WARNING) == (255, 170, 0)
 
 
+def test_the_drop_notice_level_and_the_drop_notice_token_name_one_colour():
+    """The notice level and the notice token drifted apart."""
+    assert surface.LEVEL_COLORS[surface.DROP_NOTICE_LEVEL] == surface.DROP_NOTICE_COLOR
+    buffer = surface.ConsoleLogBuffer(1)
+    buffer.set_paused(True)
+    buffer.accept(surface.build_line("INFO", "held"))
+    buffer.accept(surface.build_line("INFO", "dropped"))
+    notice = buffer.set_paused(False)[-1]
+    assert notice.level == surface.DROP_NOTICE_LEVEL
+    assert notice.color == surface.DROP_NOTICE_COLOR
+
+
 def test_rgb_matches_qcolor_on_every_token():
     """The Qt-free colour split disagrees with QColor on a token."""
     from PySide6.QtGui import QColor
@@ -495,6 +514,8 @@ def test_the_surface_answers_over_the_bridge_without_loading_qt():
     assert answered["frame"]["ok"] is True
     assert answered["frame"]["result"]["document"]["lines"][0] == {
         "text": "child line",
+        "level": "CRITICAL",
+        "color": "#ff0044",
         "r": 255,
         "g": 0,
         "b": 68,

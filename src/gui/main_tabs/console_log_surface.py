@@ -37,7 +37,9 @@ LEVEL_COLORS = {
     "ERROR": ds.ERROR,
     "CRITICAL": ds.MAIN_LOG_CRITICAL,
 }
+DEFAULT_LEVEL = "INFO"
 HIGHLIGHT_COLOR = ds.PRIMARY
+DROP_NOTICE_LEVEL = "WARNING"
 DROP_NOTICE_COLOR = ds.WARNING
 
 
@@ -51,36 +53,48 @@ def rgb(hex_color: str) -> tuple[int, int, int]:
     )
 
 
-def line_color(levelname: str, text: str) -> tuple[int, int, int]:
-    """Pick the colour one console line paints in.
-
-    The indicator-panel marker wins over the record's level, and a level
-    the map does not name paints as INFO.
-    """
+def line_token(levelname: str, text: str) -> str:
+    """The token a line paints in: the marker beats the level, and an
+    unknown level takes the default."""
     if HIGHLIGHT_MARKER in text:
-        return rgb(HIGHLIGHT_COLOR)
-    return rgb(LEVEL_COLORS.get(levelname, LEVEL_COLORS["INFO"]))
+        return HIGHLIGHT_COLOR
+    return LEVEL_COLORS.get(levelname, LEVEL_COLORS[DEFAULT_LEVEL])
+
+
+def line_color(levelname: str, text: str) -> tuple[int, int, int]:
+    """The three channels one console line paints in."""
+    return rgb(line_token(levelname, text))
 
 
 @dataclass(frozen=True)
 class ConsoleLine:
-    """One console line and the colour it paints in."""
+    """One console line, the level it came in at, and the colour it paints in."""
 
     text: str
+    level: str
+    color: str
     r: int
     g: int
     b: int
 
     def as_dict(self) -> dict:
-        return {"text": self.text, "r": self.r, "g": self.g, "b": self.b}
+        return {
+            "text": self.text,
+            "level": self.level,
+            "color": self.color,
+            "r": self.r,
+            "g": self.g,
+            "b": self.b,
+        }
 
 
 def build_line(levelname: Any, text: Any) -> ConsoleLine:
-    """Colour one formatted line. A missing level paints as INFO."""
+    """Colour one formatted line; a missing level paints as the default level."""
     body = "" if text is None else str(text)
-    label = str(levelname) if levelname else "INFO"
-    red, green, blue = line_color(label, body)
-    return ConsoleLine(body, red, green, blue)
+    label = str(levelname) if levelname else DEFAULT_LEVEL
+    token = line_token(label, body)
+    red, green, blue = rgb(token)
+    return ConsoleLine(body, label, token, red, green, blue)
 
 
 class ConsoleLogBuffer:
@@ -131,6 +145,8 @@ class ConsoleLogBuffer:
         return ConsoleLine(
             f"[CONSOLE PAUSE] {self._dropped_count} "
             f"messages dropped (buffer cap={self.buffer_max})",
+            DROP_NOTICE_LEVEL,
+            DROP_NOTICE_COLOR,
             red,
             green,
             blue,
@@ -231,7 +247,11 @@ def build_view_model(
         "level_colors": {
             name: list(rgb(value)) for name, value in LEVEL_COLORS.items()
         },
+        "level_hex": dict(LEVEL_COLORS),
+        "level_order": list(LEVEL_COLORS),
+        "default_level": DEFAULT_LEVEL,
         "highlight_color": list(rgb(HIGHLIGHT_COLOR)),
+        "highlight_hex": HIGHLIGHT_COLOR,
         "highlight_marker": HIGHLIGHT_MARKER,
     }
 

@@ -57,17 +57,24 @@ TELEMETRY_ACTIVITY_WRITE = "sim.activity_log.write"
 TELEMETRY_PERFORMANCE_WRITE = "sim.performance_log.write"
 TELEMETRY_PAUSED_REASON = "paused"
 
+QT_UNSET_SPACING = 6
+QT_NESTED_MARGINS = (0, 0, 0, 0)
+SPLITTER_MINIMUM = 1
+
 MAIN_SPLITTER_HANDLE_WIDTH = 5
 MAIN_SPLITTER_COLLAPSIBLE = False
 MAIN_SPLITTER_SIZES = (500, 350)
+MAIN_SPLITTER_ORIENTATION = "vertical"
 
 TOP_SPLITTER_HANDLE_WIDTH = 5
 TOP_SPLITTER_COLLAPSIBLE = False
 TOP_SPLITTER_SIZES = (600, 500)
+TOP_SPLITTER_ORIENTATION = "horizontal"
 
 LOG_SPLITTER_HANDLE_WIDTH = 5
 LOG_SPLITTER_COLLAPSIBLE = False
 LOG_SPLITTER_SIZES = (500, 500)
+LOG_SPLITTER_ORIENTATION = "horizontal"
 
 CONTENT_MARGINS = (0, 0, 0, 0)
 CONTENT_SPACING = 0
@@ -124,6 +131,54 @@ NUCLEAR_PAGE_INDEX = 1
 STACK_PAGE_TOTAL = 2
 PAGE_FLEET = "fleet"
 PAGE_NUCLEAR = "nuclear"
+
+STACK_STRETCH = 1
+FLEET_PANEL_STRETCH = 1
+INDICATOR_CONTAINER_STRETCH = 1
+SCROLL_STRETCH = 1
+
+LABEL_WORD_WRAP = False
+LABEL_SELECTABLE = False
+LOG_SELECTABLE = True
+LOG_WRAPS_AT_WIDTH = True
+
+FOCUS_STRONG = "StrongFocus"
+FOCUS_WHEEL = "WheelFocus"
+FOCUS_POLICIES = {
+    "mode_selector": FOCUS_WHEEL,
+    "active_bot_picker": FOCUS_WHEEL,
+    "chart_expand_button": FOCUS_STRONG,
+    "chart_bot_picker": FOCUS_WHEEL,
+    "voting_expand_button": FOCUS_STRONG,
+    "activity_pause_button": FOCUS_STRONG,
+    "log_pane": FOCUS_STRONG,
+}
+FOCUS_ORDER = (
+    "mode_selector",
+    "active_bot_picker",
+    "chart_expand_button",
+    "chart_bot_picker",
+    "voting_expand_button",
+    "activity_pause_button",
+    "log_pane",
+)
+
+MOUNT_STAT_STRIP = "sim-stat-strip"
+MOUNT_BOT_TABLE = "bot-status-table"
+MOUNT_FLEET_REPLAY = "fleet-replay"
+MOUNT_NUCLEAR = "nuclear-mode"
+MOUNT_PRICE_CHART = "sim-price-chart"
+MOUNT_VOTING_PANEL = "indicator-voting-panel"
+MOUNT_GATE_PANEL = "gate-status-panel"
+MOUNTS = (
+    MOUNT_STAT_STRIP,
+    MOUNT_BOT_TABLE,
+    MOUNT_FLEET_REPLAY,
+    MOUNT_NUCLEAR,
+    MOUNT_PRICE_CHART,
+    MOUNT_VOTING_PANEL,
+    MOUNT_GATE_PANEL,
+)
 
 BOT_AREA_MARGINS = (0, 0, 0, 0)
 BOT_AREA_SPACING = 2
@@ -199,6 +254,7 @@ INDICATOR_SPLITTER_HANDLE_WIDTH = 4
 INDICATOR_SPLITTER_COLLAPSIBLE = False
 INDICATOR_SPLITTER_STRETCH = (1, 1)
 INDICATOR_SPLITTER_SIZES = (10000, 10000)
+INDICATOR_SPLITTER_ORIENTATION = "vertical"
 VISUALS_UNAVAILABLE_FORMAT = "sim visuals unavailable: %s"
 
 ACTIVITY_WRAP_MARGINS = (2, 2, 2, 2)
@@ -1215,15 +1271,25 @@ def build_view_model(model: SimulatorTabModel) -> dict:
         "chrome": {
             "outer_margins": list(OUTER_MARGINS),
             "outer_spacing": OUTER_SPACING,
+            "qt_unset_spacing": QT_UNSET_SPACING,
+            "qt_nested_margins": list(QT_NESTED_MARGINS),
+            "splitter_minimum": SPLITTER_MINIMUM,
+            "stack_stretch": STACK_STRETCH,
+            "fleet_panel_stretch": FLEET_PANEL_STRETCH,
+            "indicator_container_stretch": INDICATOR_CONTAINER_STRETCH,
+            "scroll_stretch": SCROLL_STRETCH,
             "main_splitter_handle_width": MAIN_SPLITTER_HANDLE_WIDTH,
             "main_splitter_collapsible": MAIN_SPLITTER_COLLAPSIBLE,
             "main_splitter_sizes": list(MAIN_SPLITTER_SIZES),
+            "main_splitter_orientation": MAIN_SPLITTER_ORIENTATION,
             "top_splitter_handle_width": TOP_SPLITTER_HANDLE_WIDTH,
             "top_splitter_collapsible": TOP_SPLITTER_COLLAPSIBLE,
             "top_splitter_sizes": list(TOP_SPLITTER_SIZES),
+            "top_splitter_orientation": TOP_SPLITTER_ORIENTATION,
             "log_splitter_handle_width": LOG_SPLITTER_HANDLE_WIDTH,
             "log_splitter_collapsible": LOG_SPLITTER_COLLAPSIBLE,
             "log_splitter_sizes": list(LOG_SPLITTER_SIZES),
+            "log_splitter_orientation": LOG_SPLITTER_ORIENTATION,
             "content_margins": list(CONTENT_MARGINS),
             "content_spacing": CONTENT_SPACING,
             "fleet_page_margins": list(FLEET_PAGE_MARGINS),
@@ -1237,6 +1303,7 @@ def build_view_model(model: SimulatorTabModel) -> dict:
             "indicator_splitter_collapsible": INDICATOR_SPLITTER_COLLAPSIBLE,
             "indicator_splitter_stretch": list(INDICATOR_SPLITTER_STRETCH),
             "indicator_splitter_sizes": list(INDICATOR_SPLITTER_SIZES),
+            "indicator_splitter_orientation": INDICATOR_SPLITTER_ORIENTATION,
             "scroll_widget_resizable": SCROLL_WIDGET_RESIZABLE,
             "scroll_frame_shape": SCROLL_FRAME_SHAPE,
             "scroll_horizontal_policy": SCROLL_HORIZONTAL_POLICY,
@@ -1287,6 +1354,10 @@ def build_view_model(model: SimulatorTabModel) -> dict:
             "log_read_only": LOG_READ_ONLY,
             "log_maximum_block_count": LOG_MAXIMUM_BLOCK_COUNT,
             "log_style": LOG_STYLE,
+            "label_word_wrap": LABEL_WORD_WRAP,
+            "label_selectable": LABEL_SELECTABLE,
+            "log_selectable": LOG_SELECTABLE,
+            "log_wraps_at_width": LOG_WRAPS_AT_WIDTH,
             "performance_prefix": PERFORMANCE_PREFIX,
             "gate_title": GATE_TITLE,
             "gate_unavailable": GATE_UNAVAILABLE_TEXT,
@@ -1369,6 +1440,8 @@ def build_view_model(model: SimulatorTabModel) -> dict:
             "telemetry_activity_write": TELEMETRY_ACTIVITY_WRITE,
             "telemetry_performance_write": TELEMETRY_PERFORMANCE_WRITE,
             "visuals_unavailable_format": VISUALS_UNAVAILABLE_FORMAT,
+            "fleet_panel_set": panel is not None,
+            "nuclear_panel_set": model.nuclear_panel is not None,
             "log_callbacks_set": getattr(panel, "log_callbacks", None) is not None,
             "async_loop_getter_set": getattr(panel, "async_loop_getter", None)
             is not None,
@@ -1391,6 +1464,11 @@ def build_view_model(model: SimulatorTabModel) -> dict:
             "panel_connectors_getter_set": getattr(panel, "connectors_getter", None)
             is not None,
         },
+        "focus": {
+            "policies": dict(FOCUS_POLICIES),
+            "order": list(FOCUS_ORDER),
+        },
+        "mounts": list(MOUNTS),
         "state_keys": {
             "scrumming_state": STATE_KEY,
             "stats": STATS_KEY,
@@ -1472,6 +1550,7 @@ def view_model(params: dict) -> dict:
                     controller=SimController(
                         [SimBot(one) for one in spec.get("bots", [])]
                     ),
+                    gate_panel=object() if spec.get("gate", False) else None,
                     statuses_raises=(
                         error_from(error.get("type"), error.get("text"))
                         if error
