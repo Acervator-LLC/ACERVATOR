@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import math
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -34,6 +36,34 @@ NEIGHBOURS = ("design_tokens.js", "shared_widgets.js", "header_strip.js")
 MODULE_TAIL = "})(window);"
 MODULE_READ_ATTEMPTS = 200
 MODULE_READ_PAUSE_S = 0.01
+
+LOCK_PATH = Path(tempfile.gettempdir()) / (
+    "acervator_topologies_js_"
+    + hashlib.sha256(str(MODULE_PATH).encode("utf-8")).hexdigest()[:16]
+    + ".lock"
+)
+LOCK_WAIT_S = 120.0
+LOCK_POLL_S = 0.02
+
+
+@contextlib.contextmanager
+def module_file_held():
+    """Blocks while LOCK_PATH exists, so only one caller writes MODULE_PATH."""
+    start = time.monotonic()
+    while True:
+        try:
+            LOCK_PATH.mkdir()
+            break
+        except (FileExistsError, PermissionError):
+            # Windows raises PermissionError for a directory mid-delete.
+            waited = time.monotonic() - start
+            assert waited < LOCK_WAIT_S, f"{LOCK_PATH} was never released"
+            time.sleep(LOCK_POLL_S)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            LOCK_PATH.rmdir()
 
 
 def read_module() -> str:
@@ -201,7 +231,8 @@ class JsRuntime(JsEngine):
 def module_bodies() -> str:
     """The neighbour modules and this one, as one script."""
     parts = [(WEB / name).read_text(encoding="utf-8") for name in NEIGHBOURS]
-    parts.append(read_module())
+    with module_file_held():
+        parts.append(read_module())
     return "\n".join(parts)
 
 
@@ -353,17 +384,18 @@ PLANTED_KINDS = {
 
 @pytest.mark.parametrize("kind", sorted(PLANTED_LINES))
 def test_the_literal_scan_names_a_value_written_into_the_module_file(kind: str):
-    before = MODULE_BYTES
-    digest = hashlib.sha256(before).hexdigest()
-    written = before + ("\n" + PLANTED_LINES[kind] + "\n").encode("utf-8")
-    try:
-        swap_module(MODULE_PATH, written)
-        found = literal_findings(MODULE_PATH.read_text(encoding="utf-8"))
-        named = {one for one in PLANTED_KINDS[kind] if found[one]}
-        assert named == set(PLANTED_KINDS[kind]), f"the scan missed {kind}: {found}"
-    finally:
-        swap_module(MODULE_PATH, before)
-    assert hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest() == digest
+    with module_file_held():
+        before = MODULE_BYTES
+        digest = hashlib.sha256(before).hexdigest()
+        written = before + ("\n" + PLANTED_LINES[kind] + "\n").encode("utf-8")
+        try:
+            swap_module(MODULE_PATH, written)
+            found = literal_findings(MODULE_PATH.read_text(encoding="utf-8"))
+            named = {one for one in PLANTED_KINDS[kind] if found[one]}
+            assert named == set(PLANTED_KINDS[kind]), f"the scan missed {kind}: {found}"
+        finally:
+            swap_module(MODULE_PATH, before)
+        assert hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest() == digest
 
 
 # --- order and identity by name ---------------------------------------
@@ -1256,38 +1288,48 @@ def test_the_summary_takes_the_slant_the_surface_named(browser: Browser):
     assert body == wanted["fontStyle"]
 
 
-#: The painter operations each drawn state asks for, counted on this host.
-PAINT_COUNTS: dict = {}
+def paint_counts(browser: Browser, name: str) -> dict:
+    """What one drawn state asks the page to paint, counted on this host."""
+    which = "renderPreview" if name in ("preview", "adopted") else "renderPane"
+    parts = draw(browser, state_payload(name), which)
+    return {
+        "parts": len(parts),
+        "fills": len(
+            [
+                one
+                for one in parts
+                if one["style"]["backgroundColor"] != "rgba(0, 0, 0, 0)"
+            ]
+        ),
+        "axis_lines": len(
+            [one for one in parts if one["style"]["borderTopWidth"] != "0px"]
+        ),
+        "corner_arcs": len(
+            [
+                one
+                for one in parts
+                if one["style"]["borderTopLeftRadius"] not in ("0px", "")
+            ]
+        ),
+        "texts": len([one for one in parts if one["text"]]),
+        "canvas": browser.js("window.HOST.querySelectorAll('canvas').length"),
+        "svg": browser.js("window.HOST.querySelectorAll('svg').length"),
+    }
 
 
 @pytest.mark.parametrize("name", STATES)
 def test_every_state_draws_only_what_a_css_box_can_draw(name: str, browser: Browser):
-    which = "renderPreview" if name in ("preview", "adopted") else "renderPane"
-    parts = draw(browser, state_payload(name), which)
-    fills = [
-        one for one in parts if one["style"]["backgroundColor"] != "rgba(0, 0, 0, 0)"
-    ]
-    lines = [one for one in parts if one["style"]["borderTopWidth"] != "0px"]
-    texts = [one for one in parts if one["text"]]
-    curves = [
-        one for one in parts if one["style"]["borderTopLeftRadius"] not in ("0px", "")
-    ]
-    PAINT_COUNTS[name] = {
-        "parts": len(parts),
-        "fills": len(fills),
-        "axis_lines": len(lines),
-        "corner_arcs": len(curves),
-        "texts": len(texts),
-    }
-    assert len(parts) > 0, PAINT_COUNTS[name]
-    assert browser.js("window.HOST.querySelectorAll('canvas').length") == 0
-    assert browser.js("window.HOST.querySelectorAll('svg').length") == 0
+    counted = paint_counts(browser, name)
+    assert counted["parts"] > 0, counted
+    assert counted["canvas"] == 0, counted
+    assert counted["svg"] == 0, counted
 
 
-def test_the_paint_count_reads_a_state_that_draws_more_than_another():
-    assert PAINT_COUNTS, "no state was counted, so the counts prove nothing"
-    if "listed" in PAINT_COUNTS and "empty" in PAINT_COUNTS:
-        assert PAINT_COUNTS["listed"]["parts"] > PAINT_COUNTS["empty"]["parts"]
+def test_the_paint_count_reads_a_state_that_draws_more_than_another(browser: Browser):
+    listed = paint_counts(browser, "listed")
+    empty = paint_counts(browser, "empty")
+    assert listed["parts"] > empty["parts"], (listed, empty)
+    assert listed["fills"] > empty["fills"], (listed, empty)
 
 
 def test_the_bridge_load_reports_when_no_preload_is_present(browser: Browser):
