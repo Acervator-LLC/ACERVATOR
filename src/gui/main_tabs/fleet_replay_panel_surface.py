@@ -41,7 +41,8 @@ OUTER_SPACING_PX = 10
 
 HEADER_STYLE = (
     "QFrame{background:rgba(0,255,204,10);"
-    "border:1px solid #00cccc44;border-radius:6px;}"
+    "border:1px solid rgba(0,204,204,68);"
+    "border-radius:6px;}"
 )
 TITLE_TEXT = "Fleet Replay — sim the live fleet against YTD data"
 TITLE_STYLE = "color:#00ffcc;font-size:15px;font-weight:bold;border:none;"

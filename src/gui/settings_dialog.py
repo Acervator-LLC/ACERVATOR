@@ -6,7 +6,12 @@ from __future__ import annotations
 
 import logging
 
+from .color_alpha import rgba
+
 logger = logging.getLogger("acervator.gui")
+
+STOCK_BANNER_COLOR = "#6699ff"
+STOCK_BANNER_BORDER_ALPHA = 85
 
 try:
     from PySide6.QtWidgets import (
@@ -142,7 +147,9 @@ if _HAS_QT:
                 _banner.setWordWrap(True)
                 _banner.setStyleSheet(
                     "background: rgba(102, 153, 255, 30); "
-                    "color: #6699ff; border: 1px solid #6699ff55; "
+                    f"color: {STOCK_BANNER_COLOR}; "
+                    "border: 1px solid "
+                    f"{rgba(STOCK_BANNER_COLOR, STOCK_BANNER_BORDER_ALPHA)}; "
                     "padding: 8px; border-radius: 4px;"
                 )
                 layout.addWidget(_banner)

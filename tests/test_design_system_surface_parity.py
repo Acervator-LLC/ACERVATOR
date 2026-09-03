@@ -73,9 +73,9 @@ EXPECTED = {
     "INFO": "#4fc3ff",
     "OUTLINE": "#7a7a9c",
     "OUTLINE_STRONG": "#a0a0c0",
-    "GLOW_PRIMARY": "#00ffcc33",
-    "GLOW_SECONDARY": "#ff00aa33",
-    "SCRIM": "#00000088",
+    "GLOW_PRIMARY": "rgba(0,255,204,51)",
+    "GLOW_SECONDARY": "rgba(255,0,170,51)",
+    "SCRIM": "rgba(0,0,0,136)",
     "CARD_STOCK_SURFACE": "#0e1428",
     "CARD_STOCK_BORDER": "#1a2a4f",
     "CARD_STOCK_LABEL": "#6688aa",
@@ -131,8 +131,8 @@ EXPECTED = {
     "SETTINGS_DESTRUCTIVE_HOVER": "#660022",
     "SETTINGS_DISABLED_SURFACE": "#1a1a1a",
     "SETTINGS_DISABLED_DEEP": "#333333",
-    "GLOW_PRIMARY_EDGE": "#00ffcc55",
-    "GLOW_PRIMARY_FAINT": "#00ffcc22",
+    "GLOW_PRIMARY_EDGE": "rgba(0,255,204,85)",
+    "GLOW_PRIMARY_FAINT": "rgba(0,255,204,34)",
     "VIZ_PANEL_SURFACE": "#0c0c1a",
     "VIZ_PANEL_BORDER": "#1a1a3f",
     "VIZ_SWARM_SURFACE": "#070710",
@@ -1125,13 +1125,29 @@ def test_the_type_counts_are_the_shipped_modules_own():
     assert counts == old
 
 
-def test_every_colour_is_a_hash_and_every_size_is_a_whole_number():
-    """A colour lost its hash, or a size gained a fraction."""
+def rgba_channels(value):
+    """The four numbers of an `rgba(r, g, b, a)` value, or None."""
+    if not value.startswith("rgba(") or not value.endswith(")"):
+        return None
+    fields = value[len("rgba(") : -1].split(",")
+    if len(fields) != 4:
+        return None
+    return [int(one) for one in fields]
+
+
+def test_every_colour_is_an_opaque_hash_or_an_rgba_and_every_size_is_whole():
+    """A colour lost its hash, took eight digits, or a size gained a fraction."""
     for name in EXPECTED_COLOR_NAMES + EXPECTED_ALIAS_NAMES:
         value = surface.token(name)
-        assert isinstance(value, str) and value.startswith("#"), (name, value)
-        assert len(value) in (4, 7, 9), (name, value)
+        assert isinstance(value, str), (name, value)
         assert value == value.lower(), (name, value)
+        if value.startswith("#"):
+            assert len(value) in (4, 7), (name, value)
+            assert all(one in "0123456789abcdef" for one in value[1:]), (name, value)
+            continue
+        channels = rgba_channels(value)
+        assert channels is not None, (name, value)
+        assert all(0 <= one <= 255 for one in channels), (name, value)
     for group in (
         EXPECTED_TYPE_NAMES,
         EXPECTED_WEIGHT_NAMES,
@@ -1688,25 +1704,20 @@ ALPHA_COLOR_NAMES = (
 )
 
 
-def test_the_eight_digit_colours_are_compared_as_strings():
-    """An eight-digit colour changed and no render could report it.
-
-    Qt reads an eight-digit colour as alpha first, so the four whose
-    leading pair is 00 paint nothing at all and a change inside the
-    remaining six digits reaches no pixel. Every one is read off both
-    sides instead.
-    """
+def test_the_see_through_colours_are_compared_as_strings():
+    """A see-through colour changed and no render could report it."""
     for name in ALPHA_COLOR_NAMES:
         old = getattr(shipped, name)
         new = surface.token(name)
         assert new == old, f"{name}: shipped {old!r}, surface {new!r}"
         assert new == EXPECTED[name], name
-        assert len(new) == 9, (name, new)
-    assert surface.token("GLOW_PRIMARY") == "#00ffcc33"
-    assert surface.token("GLOW_PRIMARY_EDGE") == "#00ffcc55"
-    assert surface.token("GLOW_PRIMARY_FAINT") == "#00ffcc22"
-    assert surface.token("GLOW_SECONDARY") == "#ff00aa33"
-    assert surface.token("SCRIM") == "#00000088"
+        assert new.startswith("rgba(") and new.endswith(")"), (name, new)
+        assert len(new[len("rgba(") : -1].split(",")) == 4, (name, new)
+    assert surface.token("GLOW_PRIMARY") == "rgba(0,255,204,51)"
+    assert surface.token("GLOW_PRIMARY_EDGE") == "rgba(0,255,204,85)"
+    assert surface.token("GLOW_PRIMARY_FAINT") == "rgba(0,255,204,34)"
+    assert surface.token("GLOW_SECONDARY") == "rgba(255,0,170,51)"
+    assert surface.token("SCRIM") == "rgba(0,0,0,136)"
     assert len({surface.token(n) for n in ALPHA_COLOR_NAMES}) == 5
 
 
@@ -1767,19 +1778,18 @@ def test_the_numbers_two_tokens_share_are_compared_by_name():
 
 
 def test_the_grey_colours_are_compared_as_strings():
-    """A colour whose channels match had two of them swapped.
-
-    Sixty of the colours carry two or three equal channels, so a swap
-    between channels paints the same pixel. Each is read as text.
-    """
+    """A colour whose channels match had two of them swapped."""
     equal_channel = []
     for name in EXPECTED_COLOR_NAMES + EXPECTED_ALIAS_NAMES:
-        value = surface.token(name).lstrip("#")
+        written = surface.token(name)
+        if not written.startswith("#"):
+            continue
+        value = written.lstrip("#")
         if len(value) == 3:
             value = "".join(letter * 2 for letter in value)
         if len({value[0:2], value[2:4], value[4:6]}) < 3:
             equal_channel.append(name)
-    assert len(equal_channel) == 60, len(equal_channel)
+    assert len(equal_channel) == 59, len(equal_channel)
     for name in equal_channel:
         assert surface.token(name) == getattr(shipped, name), name
         assert surface.token(name) == EXPECTED[name], name
@@ -1798,7 +1808,7 @@ BLIND_TO_THE_PICTURE = {
     "weight_bold": "test_the_font_weights_are_read_off_both_sides",
     "weight_regular": "test_the_font_weights_are_read_off_both_sides",
     "space_card_pad": "test_the_card_padding_is_read_off_both_sides",
-    "eight_digit_colours": "test_the_eight_digit_colours_are_compared_as_strings",
+    "see_through_colours": "test_the_see_through_colours_are_compared_as_strings",
     "shorthand_colour": "test_the_shorthand_colour_is_compared_as_a_string",
     "second_names": "test_the_second_names_are_compared_as_strings",
     "shared_numbers": "test_the_numbers_two_tokens_share_are_compared_by_name",
@@ -1811,20 +1821,7 @@ BLIND_TO_THE_PICTURE = {
 
 
 def test_everything_a_picture_cannot_see_is_named_and_covered():
-    """A value no render can report was left to the render to report.
-
-    Eighteen things never reach a pixel comparison, each named here with
-    the check that does cover it. A font family and two of the three
-    weights need a font database. A line height is not a style-sheet
-    setting. A motion duration is a length of time. Four of the five
-    eight-digit colours paint nothing because Qt reads the leading pair
-    as transparency. The three-digit colour is the same colour as its
-    six-digit twin. Six second names share a value with the token they
-    copy, and ten numbers are carried by more than one name, so a swap
-    between any pair paints one picture. Sixty colours carry equal
-    channels. The order of the names, the group each belongs to, the
-    type of each value and a shadow's transparency are read, not drawn.
-    """
+    """Eighteen values never reach a pixel comparison, each named here with its check."""
     app()
     assert len(BLIND_TO_THE_PICTURE) == 18
     for covered_by in BLIND_TO_THE_PICTURE.values():

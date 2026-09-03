@@ -69,9 +69,9 @@ OUTLINE = "#7a7a9c"
 OUTLINE_STRONG = "#a0a0c0"
 
 # ---- Glow and scrim ----------------------------------------------------
-GLOW_PRIMARY = "#00ffcc33"
-GLOW_SECONDARY = "#ff00aa33"
-SCRIM = "#00000088"
+GLOW_PRIMARY = "rgba(0,255,204,51)"
+GLOW_SECONDARY = "rgba(255,0,170,51)"
+SCRIM = "rgba(0,0,0,136)"
 
 # ---- Stat-card skins ---------------------------------------------------
 CARD_STOCK_SURFACE = "#0e1428"
@@ -143,8 +143,8 @@ SETTINGS_DESTRUCTIVE_SURFACE = "#440011"
 SETTINGS_DESTRUCTIVE_HOVER = "#660022"
 SETTINGS_DISABLED_SURFACE = "#1a1a1a"
 SETTINGS_DISABLED_DEEP = "#333333"
-GLOW_PRIMARY_EDGE = "#00ffcc55"
-GLOW_PRIMARY_FAINT = "#00ffcc22"
+GLOW_PRIMARY_EDGE = "rgba(0,255,204,85)"
+GLOW_PRIMARY_FAINT = "rgba(0,255,204,34)"
 
 # ---- Bot visualizer ----------------------------------------------------
 VIZ_PANEL_SURFACE = "#0c0c1a"
