@@ -157,6 +157,7 @@ class _Run:
         self.ledger = [dict(t) for t in getattr(ctl._tape, "_trades", [])]
         self.markers = list(ctl._pending_markers)
         self.counts = dict(ctl.progress.per_symbol_trade_count)
+        self.bot_counts = dict(ctl.progress.per_bot_trade_count)
         self.spendable = ctl._spendable_now()
         self.wallet = ctl._tape.balances()
         self.rows = _trade_rows(ctl)
@@ -265,6 +266,47 @@ class TestTheFillReachesTheProgressCounters:
             f"ledger of {expected}. A fill that the counter cannot name "
             "leaves the Sim Trades column and topology_stress reading "
             "an empty dict"
+        )
+
+    def test_per_bot_trade_count_carries_the_fills_of_each_bot(
+        self, run: _Run
+    ) -> None:
+        """The counter was seeded with zeros and never written.
+
+        `start()` builds `per_bot_trade_count` with a key per bot and a
+        value of 0. Nothing incremented it, so every replay reported
+        every bot silent while the tape held fills. The expected
+        mapping here is built from the fleet and the tape ledger, both
+        produced on a different path from the counter under test.
+        """
+        expected = {str(b.bot_id): 0 for b in run.ctl._bots}
+        assert expected, "the run built no bots, so this check is vacuous"
+        for row in run.ledger:
+            bot_id = run.ctl._bot_id_for_symbol[str(row["symbol"])]
+            expected[bot_id] += 1
+        assert max(expected.values()) > 0, (
+            f"no ledger fill joined to a bot; ledger={len(run.ledger)} "
+            f"rows, join map={run.ctl._bot_id_for_symbol}"
+        )
+        assert run.bot_counts == expected, (
+            f"the per-bot counter holds {run.bot_counts} against a tape "
+            f"ledger of {expected}. A bot whose fills the counter cannot "
+            "name reports as silent for the whole replay"
+        )
+
+    def test_the_counter_is_keyed_by_the_sim_bot_id(self, run: _Run) -> None:
+        """Not the live id: `_build_sim` sets `simulated_<live id>`.
+
+        The join back to bot_state is by stripping that prefix, so a
+        consumer that reads these keys as live ids resolves nothing.
+        """
+        assert run.bot_counts, "no per-bot keys to check"
+        unprefixed = sorted(
+            k for k in run.bot_counts if not k.startswith("simulated_")
+        )
+        assert not unprefixed, (
+            f"{unprefixed} carry no `simulated_` prefix, so they are "
+            f"indistinguishable from live bot ids: {sorted(run.bot_counts)}"
         )
 
     def test_a_chart_marker_is_queued_for_every_fill(self, run: _Run) -> None:
