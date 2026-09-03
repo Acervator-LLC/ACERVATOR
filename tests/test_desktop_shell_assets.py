@@ -17,15 +17,22 @@ from pathlib import Path
 
 import pytest
 
+from tools import sync_renderer_modules as renderer_modules
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DESKTOP = REPO_ROOT / "desktop"
 RENDERER = DESKTOP / "renderer"
 INDEX_HTML = RENDERER / "index.html"
+MANIFEST_JS = RENDERER / "module_manifest.js"
+WEB_PREFIX = "../../src/gui/web/"
 
 SHELL_SCRIPTS = (
     DESKTOP / "main.js",
     DESKTOP / "preload.js",
     RENDERER / "boot.js",
+    RENDERER / "module_errors.js",
+    RENDERER / "module_manifest.js",
+    RENDERER / "module_loader.js",
 )
 
 WRAPPER_HEAD = "(function(require, module, exports, process, window, document){"
@@ -122,3 +129,88 @@ def test_the_shell_declares_no_http_listener():
         source = path.read_text(encoding="utf-8")
         for banned in ("http.createServer", 'require("http")', "listen(", "fetch("):
             assert banned not in source, path.name + " contains " + banned
+
+
+def manifest_names() -> list:
+    """The module file names ``module_manifest.js`` declares, in order."""
+    return renderer_modules.manifest_entries(MANIFEST_JS.read_text(encoding="utf-8"))
+
+
+def not_loaded(names: list) -> list:
+    """Every module in ``src/gui/web`` that the given list leaves out."""
+    return sorted(set(renderer_modules.modules_on_disk()) - set(names))
+
+
+def twice(names: list) -> list:
+    """Every name the given list carries more than once."""
+    return sorted({name for name in names if names.count(name) > 1})
+
+
+def page_script_srcs() -> list:
+    """Every ``src`` the page names, in document order."""
+    return re.findall(r'src="([^"]+)"', INDEX_HTML.read_text(encoding="utf-8"))
+
+
+def errors_first_and_loader_last(refs: list) -> bool:
+    """True when the fault record precedes, and the loader follows, every
+    ``src/gui/web`` module the given list names."""
+    web = [at for at, ref in enumerate(refs) if ref.startswith(WEB_PREFIX)]
+    if not web or "module_errors.js" not in refs or "module_loader.js" not in refs:
+        return False
+    return refs.index("module_errors.js") < min(web) and max(web) < refs.index(
+        "module_loader.js"
+    )
+
+
+def test_the_manifest_parser_reports_the_names_it_is_given():
+    """The control for the checks below: a parser answering nothing would
+    report every manifest as agreeing with any directory."""
+    text = 'window.ACERVATOR_MODULES = [\n  "a.js",\n  "b.js",\n];\n'
+    assert renderer_modules.manifest_entries(text) == ["a.js", "b.js"]
+    assert renderer_modules.manifest_entries("window.ACERVATOR_MODULES = [];") == []
+
+
+def test_the_page_loads_every_web_module_on_disk():
+    absent = not_loaded(manifest_names())
+    assert not absent, (
+        "run python -m tools.sync_renderer_modules; the page loads none of "
+        + ", ".join(absent)
+    )
+
+
+def test_a_module_the_manifest_leaves_out_is_named():
+    """The control for the check above, run against a manifest one short."""
+    short = [name for name in manifest_names() if name != "design_tokens.js"]
+    assert not_loaded(short) == ["design_tokens.js"]
+
+
+def test_the_manifest_names_nothing_that_is_not_on_disk():
+    on_disk = set(renderer_modules.modules_on_disk())
+    strays = sorted(set(manifest_names()) - on_disk)
+    assert not strays, "the manifest names " + ", ".join(strays)
+
+
+def test_the_manifest_names_no_module_twice():
+    """A union merge of two branches that both add the same module would
+    leave the name twice, and the page would run that module twice."""
+    assert not twice(manifest_names()), twice(manifest_names())
+
+
+def test_the_repeated_name_check_can_report():
+    """The control for the check above."""
+    assert twice(["a.js", "b.js", "a.js"]) == ["a.js"]
+    assert twice(["a.js", "b.js"]) == []
+
+
+def test_the_page_records_a_fault_for_every_module_it_names():
+    assert errors_first_and_loader_last(page_script_srcs()), page_script_srcs()[:3]
+
+
+def test_the_load_order_check_can_report():
+    """The control for the check above, run against both orders."""
+    module = WEB_PREFIX + "design_tokens.js"
+    assert not errors_first_and_loader_last(["module_loader.js", module, "x.js"])
+    assert not errors_first_and_loader_last(["module_errors.js", module])
+    assert errors_first_and_loader_last(
+        ["module_errors.js", module, "module_loader.js"]
+    )

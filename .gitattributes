@@ -88,3 +88,7 @@
 *.qm   binary
 *.wav  binary
 *.mp3  binary
+
+# The renderer module list: one file a line, so a merge of two branches that
+# each add a module keeps both lines instead of conflicting.
+desktop/renderer/module_manifest.js merge=union
