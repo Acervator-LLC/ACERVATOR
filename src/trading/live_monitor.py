@@ -75,11 +75,13 @@ class TradeJournal:
                 self._seq = r.get("seq", self._seq) + 1
                 self._s["trades"] += 1
 
+    @staticmethod
+    def _chain_link(prev_hash: str, record_hash: str) -> str:
+        return hashlib.sha256(f"{prev_hash}:{record_hash}".encode()).hexdigest()
+
     def record(self, trade: TradeRecord) -> str:
         # Builds the next chain link and appends it; the journal is never rewritten.
-        ch = hashlib.sha256(
-            f"{self._last_hash}:{trade.record_hash}".encode()
-        ).hexdigest()
+        ch = self._chain_link(self._last_hash, trade.record_hash)
         e = asdict(trade)
         e["chain_hash"] = ch
         e["seq"] = self._seq
@@ -110,12 +112,22 @@ class TradeJournal:
         return ch
 
     def verify(self) -> tuple[bool, int]:
-        # Counts journal lines only; does not recompute or check the hash chain.
+        """Recomputes the chain from GENESIS via TradeRecord.record_hash and
+        _chain_link, and confirms it against each entry's stored chain_hash."""
         if not self._path.exists():
             return True, 0
         n = 0
+        last_hash = "GENESIS"
         with open(self._path) as f:
-            for _ in f:
+            for line in f:
+                r = json.loads(line.strip())
+                stored = r.get("chain_hash")
+                fields = {k: v for k, v in r.items() if k not in ("chain_hash", "seq")}
+                trade = TradeRecord(**fields)
+                expected = self._chain_link(last_hash, trade.record_hash)
+                if expected != stored:
+                    return False, n
+                last_hash = expected
                 n += 1
         return True, n
 
