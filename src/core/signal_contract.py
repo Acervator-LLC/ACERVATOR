@@ -1,74 +1,10 @@
-"""signal_contract.py — emitters that carry their own expectation.
+"""signal_contract.py -- the emitter contract for the platform's signal network.
 
-Operator directive 2026-08-08:
-
-    "All emitters going forward must be able to generate a standardized
-    output format that you can read i.e. name, location, expected
-    result, actual result, etc."
-    "Emitter data is not allowed to be mutated after retrieval."
-    "I do not want to over do it."
-
-WHY THIS EXISTS
-===============
-The static gates (ruff/mypy/vulture/bandit + the archetype linters) read
-SOURCE. They cannot catch a false claim about RUNTIME. "Per-candle TA
-ran", "the tablets were processed", "the swarm was driven" were all
-asserted and all wrong, and no gate could have known.
-
-Measured example of the gap: Nuclear Mode computes TA on ~2-5% of ticks
-(read-rate throttle at scrumming_bot.py:5046), and NOTHING in the run
-artifacts recorded that. `bots_ticked` counts tick ENTRIES, so the ~91%
-that return early are indistinguishable from the ~5% that compute. The
-run could not falsify the claim.
-
-EMIT ON THE SUCCESS PATH. THIS IS THE WHOLE POINT.
-==================================================
-Research (2026-08-08) surveyed Design by Contract, the Linux kernel
-Runtime Verification subsystem, JavaMOP and icontract. Every one is
-FAILURE-TRIGGERED: it emits nothing when the expectation holds. That is
-fatal here, because silence is then indistinguishable from
-never-executed — which is exactly the class of false claim this module
-exists to make impossible. So a satisfied expectation is recorded too.
-
-The record shape is not invented. Great Expectations'
-`ExpectationValidationResult` binds declared-expectation + verdict +
-observation in one persisted JSON record. This is that triple, with one
-deliberate departure: GX lets the observed half be suppressed by a
-result-format tier. Here `actual` is MANDATORY. A record that can drop
-its observation degrades to a pass/fail bit, and a pass/fail bit is what
-we already had.
-
-DESIGN CONSTRAINTS, taken from THIS codebase (not from a paper)
-===============================================================
-1. NO I/O ON THE EMIT PATH. `EventBus.emit` calls subscribers
-   "synchronously on the caller's thread", and the sim tick loop runs on
-   the asyncio loop `main.py` pumps from the Qt GUI thread. A
-   disk-touching emitter would block the GUI on every signal. So `emit`
-   appends to an in-memory buffer and returns; disk cost is amortised
-   over `flush_every`, mirroring `SimRunLog`.
-2. NOT ROUTED THROUGH `EventBus`. Two reasons. `Event.data` is a dict
-   handed by reference to every subscriber, so any subscriber can mutate
-   it — which violates the no-mutation rule outright. And a bus hop adds
-   a synchronous callback chain to a hot path that runs per tick.
-3. IMMUTABLE BY CONSTRUCTION. `Signal` is a frozen dataclass. Retrieval
-   returns a tuple of frozen records, so a consumer cannot alter what was
-   captured. Append-only JSONL on disk; no record is ever rewritten.
-4. TIME IS MEASURED HERE, NOT AT THE CALL SITE. Queue item 10.3. Two
-   different durations exist and only one of them is the sink's to know.
-   How long an OBSERVED OPERATION took is knowable only by the caller
-   that wrapped it, and would need all 40 call sites changed. The
-   INTERVAL BETWEEN EMISSIONS of one pin, and how long since a pin was
-   last seen, are computable by the sink alone from what already passes
-   through it. This module implements the second and does not pretend to
-   the first: a pin that still fires on cadence while each individual
-   operation inside it takes twice as long is INVISIBLE here.
-
-WHAT THIS IS NOT
-================
-Not a test framework and not an assertion: a failed expectation NEVER
-raises. This instruments a live trading platform, where an exception
-thrown to report a schema nit would be a worse defect than the nit. It
-records; something else decides.
+Defines `Signal`, the frozen record `emit()` produces, and `SignalSink`,
+the buffered sink that stores and rotates them under
+`~/.acervator_logs/signals/`. A satisfied expectation is recorded the
+same as a violated one, so a call site that never ran and one that
+always passed are both visible.
 """
 
 from __future__ import annotations
@@ -85,413 +21,77 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-if TYPE_CHECKING:  # import used only by annotations
+if TYPE_CHECKING:
     from collections.abc import Iterable
 
 DEFAULT_FLUSH_EVERY = 200
-"""Rows buffered before a disk write. Matches SimRunLog's default so the
-two sinks have the same amortisation behaviour under the same load."""
+"""Rows buffered in memory before `flush()` writes them to disk."""
 
 RETAIN_ROWS = 350_000
-"""Records kept IN MEMORY. Replaces the old ``MAX_ROWS`` row cap.
-
-WHAT ``MAX_ROWS`` WAS AND WHY IT IS GONE
-----------------------------------------
-``MAX_ROWS = 2_000_000`` was a hard stop in ``emit``: at the two
-millionth record the sink set ``_capped``, counted a drop, and returned
-None for the rest of the process. Its stated reason was "so a runaway
-soak cannot fill the disk".
-
-That reason is spent. ``MAX_FILE_BYTES`` and ``FILE_BACKUP_COUNT``
-below bound the disk directly, at 6 x 50 MB, and they do it without
-switching the instrument off. What was left of the row cap was
-silence — in the network the operator is scaling to "a thousand eyes",
-which is the worst place on the platform for it.
-
-MEASURED 2026-08-13 on the operator's own ``session.jsonl``: of four
-process runs in the file, TWO ended at exactly 2,000,000 rows — run 0
-after 13.10 hours, run 2 after 12.99 hours. The cap was not a
-theoretical ceiling. It was reached on ordinary sessions, and the
-emitter network then ran blind for however many hours were left.
-
-THE SECOND, UNSTATED REASON — WHICH IS REAL, SO THE BOUND STAYS
----------------------------------------------------------------
-The cap was also the ONLY bound on ``_all``, the in-memory record list.
-Removing it outright would have traded a blind instrument for an
-unbounded one, inside the process that owns the Qt GUI thread.
-
-MEASURED on 20,000 real records read from the operator's file, deep
-retained size with each object counted once:
-
-    per record, distinct labels   818.1 bytes   (conservative)
-    per record, labels shared     733.0 bytes   (the live shape)
-    control: half the records ->  0.497 of the memory
-
-Projected at the measured rate of 4,942,000 records in 32.16 active
-hours = 153,669 records/hour:
-
-     1 h ->    153,669 records ->     119.9 MB
-    13 h ->  1,997,699 records ->   1,558.6 MB   <- where the cap bit
-    24 h ->  3,688,060 records ->   2,877.4 MB
-    48 h ->  7,376,119 records ->   5,754.8 MB
-
-So the row cap was quietly a 1,560 MB memory ceiling, and lifting it
-without replacement would have put 2.9 GB of Signal objects in the GUI
-process after a day.
-
-The bound therefore stays — but as a RETENTION window on the buffer,
-never as a stop on the emitter. Emission is unbounded; memory is not.
-
-WHY 350,000
------------
-Anchored to the bound this module already has rather than invented:
-the file ladder occupies 6 x 50 MB = 300 MB on disk, so the sink is
-not allowed to cost more in RAM than it already costs on disk.
-350,000 x 818.1 bytes = 273.1 MB, which stays under it with headroom
-at the CONSERVATIVE per-record figure.
-
-That is 2.28 hours of live history in memory against the ladder's
-~4.1 hours on disk. The asymmetry is real and is not a defect: a
-record costs 818 bytes resident and about 495 bytes on disk
-(2,445,435,093 / 4,942,000, measured), so equal bytes buy fewer rows
-in RAM. The FILE is the complete record; memory is a window onto it.
-
-It is a constructor argument for the same reason ``max_bytes`` and
-``backup_count`` are: a caller that needs a longer window can ask.
+"""Signal records kept in memory at once; older ones are evicted from memory but remain
+in the file on disk.
 """
 
 MAX_FILE_BYTES = 50 * 1024 * 1024
-"""Rotation threshold for the sink's file.
-
-The same 50 MB ``NDJSONWriter`` has used for trade.log, gate.log,
-diagnostics.log and voting.log since v3.23.5, measured holding on the
-operator's disk at 52,428,9xx bytes per backup.
-"""
+"""Byte size at which the sink's file rotates to `.1`."""
 
 FILE_BACKUP_COUNT = 5
-"""Backups kept beside the sink's file.
-
-Five, matching ``NDJSONWriter``, so the footprint is bounded at
-6 x 50 MB = 300 MB.
-
-MEASURED on the operator's ``signals/session.jsonl`` 2026-08-13:
-2,445,435,093 bytes, 4,942,000 records, 26 distinct signal names over
-32.2 hours of active process time — 72.5 MB/h. So 300 MB holds roughly
-4.1 hours of live history at today's emitter count, and the file stops
-being 2.4 GB and climbing. Raise ``backup_count`` if a longer window is
-wanted; the number is a constructor argument for exactly that reason.
-"""
+"""Backup files kept when the sink's file rotates."""
 
 
 # ---------------------------------------------------------------------------
-# The DIGEST ladder — a second, per-identity-fair file beside the main one
+# The digest ladder
 # ---------------------------------------------------------------------------
-#
-# WHAT THE MAIN LADDER CANNOT DO, MEASURED
-# ----------------------------------------
-# The main ladder above is bounded by BYTES and evicted by AGE, one whole
-# file at a time. Nothing in it decides what is worth keeping, so the
-# emitters that write most decide how far back every OTHER emitter can be
-# read. That is not a theory. READ-ONLY off the operator's own disk,
-# 2026-08-24, all six generations of ``signals/session.jsonl``:
-#
-#     488,000 records      267.4 MB      125.4 MB per hour
-#     span of the WHOLE 300 MB ladder: 2.13 hours
-#     distinct emitters present: 28, against 77 pins in the tree
-#     top 5 emitters: 44.0% of the bytes
-#     top 8 emitters: 62.9% of the bytes
-#
-# So 49 of the platform's 77 pins are not in the retained window at all,
-# and the window is barely two hours wide. A pin that fires once a shift
-# is unreadable by the time anybody looks. An emitter whose output is
-# evicted before it is read is an emitter that does not exist.
-#
-# WHAT THE DIGEST IS
-# ------------------
-# A SECOND ladder, written by the same flush, in which every emitter
-# identity is rate-limited to at most one record per
-# ``DIGEST_MIN_INTERVAL`` seconds. The suppressed records are not
-# discarded and are not silent: each admitted line carries ``folded``,
-# the number of observations it stands for, so ``sum(folded)`` over a
-# digest file equals the number of records that happened. The main
-# ladder is UNCHANGED and still holds every record verbatim.
-#
-# The fairness is by CONSTRUCTION, not by today's traffic mix. One
-# identity's contribution to the digest is bounded by the clock, so the
-# fill rate has a ceiling of ``pins / DIGEST_MIN_INTERVAL`` records per
-# second no matter how loud any single emitter becomes. A noisy emitter
-# cannot evict a quiet one because it cannot outspend it.
-#
-# WHAT WAS REJECTED, AND WHY
-# --------------------------
-# * A PER-EMITTER RECORD BUDGET PER FILE. Fair, but the budgets reset on
-#   rotation, so a loud emitter still sets the rotation rate and still
-#   sets everyone's window. It also drops records outright. The time
-#   rule bounds the RATE, which is the quantity that decides the window.
-# * QUIETENING THE LOUD EMITTERS AT THEIR CALL SITES with ``every=``.
-#   That reduces what is observed. The emitters are load-bearing and the
-#   main ladder must keep being complete. See the FINDING below.
-# * KEEPING EVERY ``ok=False`` RECORD REGARDLESS OF RATE. This is the
-#   obvious "keep by interest" rule and the measurement kills it:
-#   ``bot.01.001.postcondition.capital_reservation`` emitted 53,558
-#   records in the 2.13-hour window and EVERY ONE of them is
-#   ``ok=False``. A verdict carve-out would hand that one identity the
-#   digest and reproduce the eviction defect inside the fix. Interest is
-#   not a licence to outspend; the rule is per-identity time, with no
-#   exception any single identity can exploit.
-# * SHRINKING THE MAIN LADDER to pay for the digest. The main ladder is
-#   the complete record. Trading its completeness for the digest's reach
-#   would lose the thing the digest is not trying to replace.
-#
-# FINDING, STILL NOT FIXED (the emitter sites are not this unit's to
-# change either): the fifteen ``ta.07.*`` and ``tick.08.*`` pins each
-# emit at 3.6-4.0 records per second, sustained, on a live loop, and
-# none of them passes ``every=``. That is measured, and it is what a
-# throttle is for.
-#
-# #14 has now categorised them and did NOT quieten them. ALL FIFTEEN
-# are ``always_on``: thirteen are the `ta.07.004.postcondition.raw.*`
-# family off one call site, and the other two are `tick.08.001` and
-# `tick.08.002`, the two arms of the tick loop. So they are exactly the
-# pins whose silence a cadence check must be able to read, and a
-# throttle is a decision about what is OBSERVED rather than about what
-# is expected. Categorising is not throttling, and putting an
-# ``every=`` on any of them is the operator's call, not this unit's.
+# A second log beside the main one, admitting one record per
+# DIGEST_MIN_INTERVAL seconds per identity.
+# Suppressed records fold into the next admitted line's `folded` count.
 
 DIGEST_MIN_INTERVAL = 10.0
-"""Seconds an emitter identity must wait for its next DIGEST line.
-
-CALIBRATED, not chosen. The 488,000 real records above were replayed
-through this exact rule at several intervals. ``admitted + folded``
-equalled the records read on every run, an interval of 0 admitted
-100.0% (the rule is a no-op, so the replay was really running it) and
-an unbounded interval admitted exactly 28 records, one per identity
-(so the rule really bites):
-
-    interval    admitted     folded    digest MB/h    hours in 96 MB
-           0     488,000          0         127.98              0.75
-           2      54,262    433,738          13.86               6.9
-           5      27,925    460,075           7.02              13.7
-          10      15,201    472,799           3.73              25.7
-          30       6,476    481,524           1.50              64.0
-          60       3,358    484,642           0.77             124.7
-
-Ten seconds is where the two requirements meet. EVERY quiet emitter in
-the measured window keeps 100% of its records at 10 s -- eight
-identities cut by exactly 0.0%, including ``charts.13.001``,
-``exchange.15.002``, ``exchange.15.003``, ``console.14.002`` and
-``bot.01.002`` -- while the fifteen loud ones are cut 96.9% to 98.6%.
-The digest therefore costs a quiet channel NOTHING and still buys it a
-day of history. A shorter interval buys the loud emitters resolution
-nobody asked for at the quiet ones' expense; a longer one starts
-folding the quiet channels too, which is the defect wearing a
-different hat.
-"""
+"""Seconds an identity must wait before its next digest-log line is admitted."""
 
 DIGEST_FILE_BYTES = 16 * 1024 * 1024
-"""Rotation threshold for the digest file.
-
-Sized from the measured digest rate against a stated requirement,
-rather than copied from the 50 MB the main ladder uses. The
-requirement is ONE FULL DAY: an operator asking what happened
-overnight needs the whole night in the window. At the measured
-3.73 MB/h, 24 hours is 89.5 MB, so a ladder of 6 x 16 MB = 96 MB
-holds 25.7 hours -- a day with headroom.
-
-WORST CASE, stated because the measured case is not a bound: if every
-one of the 78 pins in the tree went maximally loud at once, the rule
-admits 78 / 10 s = 7.8 records per second. At the measured 600 bytes
-per digest line that is 16.2 MB/h, and 96 MB still holds 5.9 hours --
-still 2.8x the 2.13 hours the whole 300 MB main ladder holds today.
-The ceiling is set by the PIN COUNT and the interval, never by any
-emitter's volume, which is the property the main ladder lacks.
-
-The added footprint is 96 MB against the 1,990 MB measured in
-``~/.acervator_logs`` on 2026-08-24 -- 4.8% more disk to take the
-readable window on every channel from 2.1 hours to 25.7.
-"""
+"""Byte size at which the digest file rotates to `.1`."""
 
 DIGEST_BACKUP_COUNT = 5
-"""Backups kept beside the digest file. Five, matching every other
-ladder on the platform, so the footprint is 6 x 16 MB = 96 MB.
-
-THE HONEST LIMIT: this is still a ladder, so the oldest digest file is
-still discarded whole when the sixth rolls off. The digest does not
-claim to keep everything for ever. It claims that WITHIN its window no
-emitter can be evicted by another emitter's volume, and that the
-window is a day rather than two hours.
-"""
+"""Backup files kept when the digest file rotates."""
 
 
 FRESH_WITHIN = 0.5
-"""Age below which a pin reads as JUST FIRED, in seconds.
-
-Queue item 10.3. Anchored to the reader rather than invented: the
-Console drains this sink on a 500 ms timer -- `main_window.py:5497`,
-`self._signal_timer.setInterval(500)`. A record younger than one drain
-interval arrived since the operator last saw the pane, which is what
-"just fired" means to the only human reading it.
-"""
+"""Age below which a pin reads as just fired, in seconds."""
 
 STALE_AFTER = 660.0
-"""Age above which a pin reads as STALE, in seconds.
-
-MEASURED read-only 2026-08-15 on the operator's own history: 598,500
-records across six generations of `signals/session.jsonl`, one process
-run, 17 distinct `(name, site)` identities. Gap between consecutive
-emissions of the SAME identity, in seconds:
-
-    identity                            n       p50       p99       max
-    bot.capital_reservation        75,001     0.051     1.965     2.824
-    ta.raw.* (13 names, ONE site)  34,459     0.091     2.814     4.715
-    tick.throttled                 38,026     0.146     2.303     3.359
-    tick.worked                    36,974     0.096     2.709     4.736
-    tick.exit_dust_band               510     5.346   309.655   605.696
-
-The widest gap a HEALTHY pin produced was 605.696 s. 660.0 is the next
-whole minute above it, so nothing the operator's machine has ever
-emitted would be called stale by this default.
-
-THIS DEFAULT IS THE WHOLE-NETWORK NUMBER, AND THE TABLE ABOVE IS WHY.
-The p99 spread runs 1.965 s to 309.655 s, a factor of 158. One global
-threshold loose enough not to slander the slowest pin cannot notice the
-fastest pin going quiet for five minutes.
-
-THE NOTE THAT USED TO SIT HERE CALLED FOR "A PER-PIN EXPECTED CADENCE",
-which implied one measured threshold per emitter. Superseded by the
-operator's ruling of 2026-08-19, recorded on issue #14:
-
-    "emitters need to be categorized as 'always on' or 'toggle' with
-    only the former needing timers probably because they are
-    monitoring live loops or data streams"
-
-That is cheaper and sharper: ONE BINARY CATEGORY PER EMITTER, then one
-budget for the always-on class. Categorisation, not calibration. The
-emitter that forced 660 s -- `tick.exit_dust_band`, 605.696 s at its
-worst -- is itself a toggle, and taking the toggles out of the
-population drops the always-on budget to `ALWAYS_ON_STALE_AFTER`, which
-is 10 s. See that constant and `cadence_verdict`.
-
-`STALE_AFTER` KEEPS ITS VALUE AND ITS MEANING. It is the age axis, and
-it answers "when did this identity last emit" for ANY identity,
-including one nobody has categorised. It is not the cadence verdict and
-never was; `SignalSink.cadence_report` is.
-"""
+"""Age above which any pin reads as stale via `pin_state`/`timing`, in seconds."""
 
 MAX_IDENTITIES = 10_000
-"""Distinct `(name, site)` pairs the last-seen map will track.
-
-The map grows per IDENTITY, never per record. That is not the same as
-bounded, and an unbounded dict inside the process that owns the Qt GUI
-thread is the exact failure `RETAIN_ROWS` exists to close.
-
-MEASURED TWICE 2026-08-15, deep retained size with each object counted
-once. The second measurement is the one the ceiling is derived from,
-and the gap between them is why the first alone was not enough.
-
-MODELLED, a 53-character name (the widest in
-`docs/EMITTER_IDENTIFICATION.md`), a `file.py:NNNN` site and one
-ISO-8601 timestamp:
-
-        40 identities ->        13,945 bytes   (0.013 MB)
-     1,000 identities ->       354,049 bytes   (0.338 MB)
-    10,000 identities ->     3,466,089 bytes   (3.306 MB)
-    50,000 identities ->    18,512,625 bytes   (17.655 MB)
-    control: half the identities -> 0.500 of the memory
-    -> 348.6 bytes per identity
-
-LIVE, a real `SignalSink` after 100,000 emits over 5 identities:
-
-     2,294 bytes for 5 entries -> 458.8 bytes per identity
-
-The model was 32% light, because it shared ONE timestamp string across
-every entry and a real sink gives each entry its own. The live figure
-is the one that counts:
-
-        40 identities ->        18,352 bytes   (0.017 MB)
-     1,000 identities ->       458,800 bytes   (0.438 MB)
-    10,000 identities ->     4,588,000 bytes   (4.375 MB)
-
-40 is today's network. 1,000 is the operator's stated target. 10,000 is
-this ceiling: ten times that target, costing 4.38 MB, which is 1.5% of
-the 300 MB the file ladder already occupies -- the same budget
-`RETAIN_ROWS` is anchored to.
-
-Reaching the ceiling does NOT stop the emitter and does not stop timing
-the identities already known. It stops ADDING new ones, and counts
-every refusal in `health()['identity_overflow']`, because a bound that
-goes quiet is the silence this module exists to remove.
+"""Distinct `(name, site)` identities the last-seen map tracks; further identities are
+recorded but not timed.
 """
 
 PIN_NEVER = "never"
-"""No record with this identity has ever entered this sink.
-
-DISTINCT FROM STALE, and keeping them apart is the point. A pin that
-never fired and a pin that fired and stopped have different causes and
-different fixes, and a reader shown one message for both cannot tell
-which it is looking at. That disjunction -- one message covering two
-causes -- is the defect class this project keeps paying for.
+"""No record with this identity has ever entered this sink; distinct from `PIN_STALE`,
+which requires a prior emission.
 """
 
 PIN_FRESH = "fresh"
-"""This identity emitted within `fresh_within` seconds. Just fired."""
+"""This identity emitted within `fresh_within` seconds."""
 
 PIN_CURRENT = "current"
-"""This identity emitted between `fresh_within` and `stale_after` ago.
-
-Firing, and not recently enough to be called "just now". The ordinary
-state of a healthy pin between two Console drains.
-"""
+"""This identity emitted between `fresh_within` and `stale_after` seconds ago."""
 
 PIN_STALE = "stale"
-"""This identity last emitted more than `stale_after` seconds ago.
-
-A HANG HAS NO RECORD. This is the state that exists so the ABSENCE of a
-record is readable, and it is reachable only through `pin_state` or
-`timing`, never by waiting for a record that is not coming.
-"""
+"""This identity last emitted more than `stale_after` seconds ago."""
 
 PIN_STATES = (PIN_NEVER, PIN_FRESH, PIN_CURRENT, PIN_STALE)
-"""The four states, in increasing order of having-recently-happened.
-
-Four, not three. `PIN_NEVER` is not a degree of staleness; it is the
-absence of any measurement at all, and it carries `age=None` and `n=0`
-where the other three always carry a float and a positive integer.
+"""The four pin states. `PIN_NEVER` carries `age=None` and `n=0`; the others carry a
+float age and a positive count.
 """
 
 
 # ---------------------------------------------------------------------------
-# The CADENCE CATEGORY -- issue #14
+# The cadence category
 # ---------------------------------------------------------------------------
-#
-# THE CRITERION, STATED BEFORE IT IS APPLIED
-# ------------------------------------------
-# An emitter is `always_on` when a self-driven loop, timer or stream
-# reaches it -- or reaches one of the mutually exclusive arms it belongs
-# to -- on every pass, so it fires with no operator and no external
-# event. Every other emitter is a `toggle`: firing needs a discrete
-# trigger the subsystem does not produce on its own, which is an
-# operator action, a lifecycle one-shot, or a branch taken only when the
-# condition it watches occurs.
-#
-# THE CATEGORY IS READ AT THE CALL SITE, NEVER FROM TODAY'S RATE.
-# Inference from observed rates classifies a quiet day as a toggle, and
-# it classifies a defect as a loop: measured 2026-08-24,
-# `bot.01.001.postcondition.capital_reservation` wrote 53,558 records in
-# a 2.13-hour window, every one `ok=False`. That pin sits on an `except`
-# arm. It is a toggle whose trigger has become the normal case, and a
-# rate-derived category would have called it a live loop and hidden the
-# very fact worth reporting.
-#
-# WHAT THE CATEGORY IS FOR
-# ------------------------
-# Only an `always_on` emitter can be late. A toggle that has not fired
-# is not stale, it is untriggered, and there is no interval at which a
-# healthy toggle must be seen. Measured 2026-08-24 across the whole
-# retained ladder: 28 distinct emitters appeared and 49 of the 77 pins
-# did not appear at all. Under one global threshold those 49 are
-# indistinguishable from 49 stopped emitters, so the alarm carries no
-# information and gets switched off.
+# always_on pins are reached by a loop, timer or stream every pass;
+# toggle pins need a discrete trigger.
 
 CADENCE_ALWAYS_ON = "always_on"
 """A self-driven loop, timer or stream reaches this pin on every pass."""
@@ -503,141 +103,47 @@ CADENCE_CATEGORIES = (CADENCE_ALWAYS_ON, CADENCE_TOGGLE)
 """The closed vocabulary. Two terms, declared per pin, never inferred."""
 
 ALWAYS_ON_WORST_HEALTHY_GAP = 4.736
-"""The widest gap any measured ALWAYS-ON identity produced, in seconds.
-
-From the 2026-08-15 read-only measurement recorded under `STALE_AFTER`:
-598,500 records, one process run, gap between consecutive emissions of
-the same identity.
-
-    identity                       n       p50       p99       max
-    bot.capital_reservation   75,001     0.051     1.965     2.824
-    ta.raw.* (one site)       34,459     0.091     2.814     4.715
-    tick.throttled            38,026     0.146     2.303     3.359
-    tick.worked               36,974     0.096     2.709     4.736
-
-`tick.worked` owns the maximum. The one TOGGLE in that measurement,
-`tick.exit_dust_band`, produced 605.696 s -- 128 times wider -- and it
-is the sole reason `STALE_AFTER` sits at 660.
+"""Widest gap, in seconds, any measured always-on identity produced; the basis for
+`ALWAYS_ON_STALE_AFTER`.
 """
 
 ALWAYS_ON_STALE_AFTER = 10.0
-"""Age above which an UNTHROTTLED always-on pin is late, in seconds.
-
-DERIVED FROM `ALWAYS_ON_WORST_HEALTHY_GAP`, not chosen: it is the next
-whole ten seconds above 4.736, which is 2.11 times the widest gap a
-healthy always-on identity has ever produced on the operator's disk.
-Excluding the one toggle from the population takes the threshold from
-660 s to 10 s, 66 times tighter. A live loop that goes quiet for
-fifteen seconds is now visible; under 660 it stayed invisible for
-eleven minutes.
-
-THE IDLE HAZARD IS NOT CLOSED BY THIS NUMBER, and it is named here so
-it is not discovered late. An always-on pin also goes quiet when the
-thing it watches is legitimately stopped -- no bots running, no replay
-started, the app idle overnight. That is IDLE, not HUNG, and under any
-threshold it reads late. The always-on class needs a "is this subsystem
-supposed to be running right now" declaration, which is item 17's
-design and is deliberately not invented here.
+"""Age above which an untimed always-on pin reads as late in `cadence_verdict`, in
+seconds.
 """
 
 ALWAYS_ON_SLACK = ALWAYS_ON_STALE_AFTER / ALWAYS_ON_WORST_HEALTHY_GAP
-"""The headroom above a pin's own floor, as a ratio. 2.111.
-
-A THROTTLED PIN CANNOT BE HELD TO THE UNTHROTTLED NUMBER, and this is
-the correction that stops the tighter threshold slandering half the
-always-on class. `emit(every=N)` admits at most one record per N
-seconds per identity, so N is that pin's floor by construction: six of
-the sixteen always-on pins declare `every=30.0` and one declares
-`every=60.0`, and a flat 10 s budget would call every one of them late
-on every look.
-
-So the budget is the same MARGIN applied to whatever floor the pin
-has, rather than a second invented number. See `always_on_stale_after`.
+"""Ratio applied to a throttled pin's own `every=` window to get its stale budget; see
+`always_on_stale_after`.
 """
 
 MISCATEGORY_MEAN_INTERVAL = 2.814
-"""Mean interval at or below which an identity is emitting like a loop.
-
-THIS IS THE FALSIFIER FOR THE CATEGORY ITSELF. A staleness check that
-looks only at always-on pins goes green the moment something is
-mis-declared a toggle, so the declaration has to be refutable by the
-data or the whole change is a way to quieten a real alarm.
-
-2.814 s is the widest p99 gap any measured ALWAYS-ON identity produced
-(`ta.raw.*`, table above). The one measured TOGGLE has a p50 of
-5.346 s -- already 1.9 times wider than this line -- and its mean is
-strictly wider than its p50 given a p99 of 309.655 s. So the measured
-toggle sits on the correct side of the separator with margin, and
-nothing measured as always-on sits on the wrong side.
-
-THE INTERVALS ARE PER IDENTITY AS THE SINK SEES THEM, aggregated over
-however many live objects share the call site. That is the same basis
-the table above was measured on, so the comparison is like for like.
-Multiplicity only makes an identity look FASTER, so it can only make
-this detector fire more readily -- never less.
+"""Mean interval, in seconds, at or below which a declared `toggle` reads as
+`CADENCE_TOGGLE_AT_LOOP_RATE`.
 """
 
 MISCATEGORY_MIN_SAMPLES = 100
-"""Emissions required before a mean interval is read as a rate.
-
-A toggle may legitimately arrive in a burst, and a handful of records
-close together is a burst rather than a loop. 100 is two orders of
-magnitude above the burst sizes in the register's own toggles and two
-orders BELOW the 34,459-75,001 records the measured always-on
-identities produced, so it separates the two without sitting near
-either.
+"""Emissions required before a toggle's mean interval is compared against
+`MISCATEGORY_MEAN_INTERVAL`.
 """
 
 CADENCE_ON_TIME = "on_time"
 """An always-on pin emitted inside its own budget."""
 
 CADENCE_STALE = "stale"
-"""An always-on pin has not emitted inside its own budget.
-
-The string is deliberately the same as `PIN_STALE`: it is one fact,
-and a second word for it would make one condition read as two. The two
-live on different axes and never appear together -- a cadence row
-carries no `state` key, so this word is never printed beside a toggle.
-"""
+"""An always-on pin has not emitted inside its own budget."""
 
 CADENCE_NEVER_FIRED = "never_fired"
-"""An always-on pin the sink has no record of at all.
-
-DISTINCT FROM `CADENCE_STALE` for the reason `PIN_NEVER` is distinct
-from `PIN_STALE`: never started and stopped after starting have
-different causes and different fixes.
-"""
+"""An always-on pin the sink has no record of at all."""
 
 CADENCE_NOT_APPLICABLE = "not_applicable"
-"""This pin is a toggle, so no cadence is expected of it.
-
-The issue's requirement, verbatim: a toggle "must not appear in a
-health verdict as anything but 'not applicable'".
-"""
+"""A toggle pin, for which no cadence is expected."""
 
 CADENCE_TOGGLE_AT_LOOP_RATE = "toggle_at_loop_rate"
-"""A pin declared `toggle` is emitting at always-on rate.
-
-NAMED FOR THE OBSERVATION, NOT FOR A CAUSE, because two different
-causes produce it and a single message covering both would be the
-disjunction defect this module exists to remove:
-
-  * the declaration is wrong, and this is a live loop; or
-  * the declaration is right, and the exceptional branch it watches
-    has become the normal path.
-
-`bot.01.001.postcondition.capital_reservation` is the second today --
-53,558 records, all `ok=False`. Both are worth reporting and neither is
-"stale".
-"""
+"""A pin declared `toggle` that is emitting at always-on rate."""
 
 CADENCE_UNDECLARED = "undeclared"
-"""No category is on record for this identity.
-
-A pin the register does not know. `tools.emitter_registry_check` fails
-the tree for this, so at runtime it means an identity emitted under a
-name no row carries.
-"""
+"""No cadence category is declared for this pin name."""
 
 CADENCE_VERDICTS = (
     CADENCE_ON_TIME,
@@ -667,13 +173,8 @@ _ALWAYS_ON_PINS: tuple[str, ...] = (
     "exchange.15.002.invariant.every_bot_reaches_a_table",
     "exchange.15.003.invariant.selection_survives_refresh",
 )
-"""The sixteen pins a loop or a timer reaches without being asked.
-
-Every one of them, and the reason for each, is recorded in the cadence
-table of `docs/EMITTER_IDENTIFICATION.md`. That table and this tuple
-are held equal by `tools.emitter_registry_check` (E14, E15), so the
-register a human reads and the roster this module acts on cannot drift
-apart.
+"""The sixteen pins a loop or a timer reaches on every pass, categorised
+`CADENCE_ALWAYS_ON`.
 """
 
 _TOGGLE_PINS: tuple[str, ...] = (
@@ -751,22 +252,15 @@ CADENCE_BY_NAME = MappingProxyType(
 """Every pin's declared category, by current name. 78 entries."""
 
 _NAME_TEMPLATE = "{}"
-"""How a register row spells a leaf built at run time.
-
-`ta.07.004.postcondition.raw.{}` is one call site whose last field is
-the indicator. The register files it under the template because the
-subsystem is decidable from the source and the leaf is not, so the
-roster has to match the same way or every indicator would read as an
-undeclared pin.
+"""How a templated pin name is written; the trailing `{}` stands for a leaf built at run
+time.
 """
 
 
 def _template_matches(pattern: str, name: str) -> bool:
-    """Say whether `name` is one instance of a templated pin name.
+    """Return whether `name` matches templated `pattern`.
 
-    Only a pattern with exactly one `{}` is matched, and the leaf it
-    stands for must be non-empty: a template is a family of real
-    identities, never a wildcard that swallows the prefix itself.
+    Requires exactly one `{}` in `pattern`, and a non-empty leaf.
     """
     if pattern.count(_NAME_TEMPLATE) != 1:
         return False
@@ -779,14 +273,7 @@ def _template_matches(pattern: str, name: str) -> bool:
 
 
 def cadence_of(name: str) -> Optional[str]:
-    """Return this pin's declared category, or None if none is on record.
-
-    Exact match first, then the templated names. None is a real answer
-    and is reported as `CADENCE_UNDECLARED` rather than assumed to be a
-    toggle -- assuming toggle would make every unregistered emitter
-    exempt from the cadence check, which is the failure this whole
-    categorisation is guarding against.
-    """
+    """Return this pin's declared cadence category, or None when undeclared."""
     got = CADENCE_BY_NAME.get(name)
     if got is not None:
         return got
@@ -797,12 +284,9 @@ def cadence_of(name: str) -> Optional[str]:
 
 
 def always_on_stale_after(throttle: float = 0.0) -> float:
-    """The budget one always-on pin gets, in seconds.
+    """Return the stale budget for an always-on pin, in seconds.
 
-    `throttle` is the `every=` window the call site declares, which is
-    that pin's floor: it cannot emit more often than once per window.
-    Zero means no throttle. See `ALWAYS_ON_SLACK` for why the margin is
-    a ratio rather than a second number.
+    `throttle` is the pin's declared `every=` window, or 0.0 for none.
     """
     if throttle and throttle > 0.0:
         return max(ALWAYS_ON_STALE_AFTER, ALWAYS_ON_SLACK * float(throttle))
@@ -816,18 +300,10 @@ def cadence_verdict(
     mean_interval: Optional[float],
     stale_after: float,
 ) -> str:
-    """One identity's cadence verdict. A pure function of its arguments.
+    """Return a cadence verdict from `declared`, `age`, `n` and `mean_interval`.
 
-    Pure so it can be driven with numbers rather than with a clock: a
-    control that has to wait eleven minutes to prove a threshold is a
-    control nobody runs.
-
-    STALENESS IS EVALUATED FOR `always_on` ONLY. A toggle returns
-    `CADENCE_NOT_APPLICABLE` whatever its age, which is the issue's
-    requirement and is what makes the tighter always-on threshold
-    affordable. The one thing that CAN be said about a toggle is said:
-    if it is emitting at loop rate, that is reported -- see
-    `CADENCE_TOGGLE_AT_LOOP_RATE`.
+    A `toggle` always returns `CADENCE_NOT_APPLICABLE` unless it is
+    emitting at loop rate; see `CADENCE_TOGGLE_AT_LOOP_RATE`.
     """
     if declared is None:
         return CADENCE_UNDECLARED
@@ -847,14 +323,7 @@ def cadence_verdict(
 def _mean_interval(
     first_mono: Optional[float], last_mono: float, count: int
 ) -> Optional[float]:
-    """Mean seconds between emissions of one identity, or None.
-
-    None when fewer than two emissions have happened: one record
-    measures no interval, and returning 0.0 would claim a rate nobody
-    observed. Computed from the first and last MONOTONIC stamps, so it
-    costs one subtraction per identity rather than a scan of the
-    records.
-    """
+    """Return the mean seconds between emissions, else None if under two occurred."""
     if first_mono is None or count < 2:
         return None
     return (last_mono - first_mono) / (count - 1)
@@ -868,14 +337,7 @@ def _cadence_row(
     now: float,
     stale_after: Optional[float],
 ) -> dict:
-    """Build one cadence row: the declaration, the prediction, the value.
-
-    THE PREDICTION RIDES BESIDE THE OBSERVATION, which is the operator's
-    standing rule for a pin. `predicted` is what the declared category
-    promises -- a maximum interval for an always-on pin, a minimum mean
-    for a toggle -- and `observed` is what the sink measured. A reader
-    can recompute the verdict from the two without trusting it.
-    """
+    """Build one cadence row: category, predicted band, observed values, verdict."""
     last_mono, count, last_ts, last_dt = snapshot
     first_mono, throttle = aux
     declared = cadence_of(name)
@@ -907,18 +369,7 @@ def _cadence_row(
 
 
 def _never_fired_rows(seen_names: set) -> dict:
-    """A row for every always-on pin the sink has no record of.
-
-    `timing()` cannot report this and says so: an identity that never
-    emitted is not in the map, so nothing there knows it should exist.
-    The roster does know, which is the whole reason it is in this
-    module and not only in the markdown.
-
-    A TEMPLATED NAME IS SKIPPED. `ta.07.004.postcondition.raw.{}` is a
-    family, and which leaves should exist is a property of the
-    indicator configuration rather than of this roster. Claiming a
-    specific missing indicator here would be invention.
-    """
+    """Return a row for every always-on pin absent from `seen_names`."""
     rows: dict = {}
     for pin, category in CADENCE_BY_NAME.items():
         if category != CADENCE_ALWAYS_ON or pin in seen_names:
@@ -962,28 +413,11 @@ def _json_default(o: Any) -> Any:
 
 
 def freeze(value: Any) -> Any:
-    """Return an immutable snapshot of `value`.
+    """Return an immutable, recursive snapshot of `value`.
 
-    v3.24.81 — CLOSES A HOLE IN THIS MODULE'S OWN CONTRACT.
-
-    `context` was copied on the way in but `actual` was stored BY
-    REFERENCE, so a caller that mutated the object after emitting
-    rewrote the record retroactively. Demonstrated:
-
-        d = {"BTC/USD": 10}
-        sink.emit("x", actual=d)
-        d["BTC/USD"] = 999
-        sink.records("x")[0].actual  ->  {"BTC/USD": 999}
-
-    That is precisely what "emitter data is not allowed to be mutated
-    after retrieval" forbids, and the module claiming to enforce it was
-    the thing violating it.
-
-    dict -> read-only view over a copy (subscripting still works, and it
-    compares equal to a plain dict). list/set -> tuple/frozenset.
-    Recursive, so nesting is covered too. Scalars pass through
-    untouched, which is the overwhelmingly common case and costs
-    nothing.
+    A dict becomes a read-only view; a list or tuple becomes a tuple;
+    a set or frozenset becomes a frozenset. Other values pass through
+    unchanged.
     """
     if isinstance(value, dict):
         return MappingProxyType({k: freeze(v) for k, v in value.items()})
@@ -995,13 +429,7 @@ def freeze(value: Any) -> Any:
 
 
 def render(value: Any) -> str:
-    """Human-readable form of a frozen payload.
-
-    v3.24.81 — `freeze()` turns dicts into `mappingproxy` and lists into
-    tuples, and `repr()` of those leaks the implementation into the
-    operator's view: `mappingproxy({'BTC/USD': 10})`. Display code uses
-    this instead so the reader sees the data, not the mechanism.
-    """
+    """Return a human-readable form of a value `freeze()` produced."""
     if isinstance(value, MappingProxyType):
         inner = ", ".join(f"{k!r}: {render(v)}" for k, v in value.items())
         return "{" + inner + "}"
@@ -1013,12 +441,7 @@ def render(value: Any) -> str:
 
 
 def _caller_site(depth: int = 2) -> str:
-    """`file:line` of the emitting code.
-
-    Operator asked for "location". Captured automatically rather than
-    passed by hand: a hand-written location is one more thing that can
-    be wrong, and it silently rots when code moves.
-    """
+    """Return `file:line` of the calling frame at the given stack `depth`."""
     try:
         f = sys._getframe(depth)
         return f"{Path(f.f_code.co_filename).name}:{f.f_lineno}"
@@ -1027,19 +450,7 @@ def _caller_site(depth: int = 2) -> str:
 
 
 def _caller_module(depth: int = 2) -> str:
-    """Module name of the emitting code.
-
-    v3.24.90. Operator, 2026-08-08: "module not being a field is
-    something we can fix and should in order to establish the emitter
-    message standard."
-
-    `site` carries `file:line`, so the module was implied but not
-    QUERYABLE -- grouping by module meant string-parsing a field whose
-    line number changes on every edit. It is a first-class field now.
-
-    Captured from the frame, like `site`, for the same reason: a
-    hand-passed module is one more thing that can be wrong.
-    """
+    """Return the calling frame's module name at stack `depth`."""
     try:
         f = sys._getframe(depth)
         mod = f.f_globals.get("__name__")
@@ -1051,21 +462,8 @@ def _caller_module(depth: int = 2) -> str:
 
 
 NAME_COLUMN = 53
-"""Width of the name column in `Signal.message`.
-
-Queue item 10.2. It was 28, chosen when the longest name in the tree
-ran to 32 characters, so the column already overflowed and every
-following field on a long line sat one step right of the field above
-it. The naming convention makes the names longer still: the longest
-name in `docs/EMITTER_IDENTIFICATION.md` is
-`fleet.03.007.postcondition.positions_seeded_from_lots`, 53 characters.
-
-53 is the widest name the register holds, not a ceiling the convention
-imposes — the slug is free text. So the field is padded and NEVER
-truncated: a name longer than this pushes the rest of its own line
-right, exactly as before, while an ID stays readable. Truncating would
-cut the slug off the end and leave two different emitters printing the
-same line.
+"""Width of the padded name column in `Signal.message`; names longer than this are never
+truncated.
 """
 
 
@@ -1073,31 +471,18 @@ same line.
 class Signal:
     """One observation, with the expectation it was judged against.
 
-    FROZEN. The operator's rule is that emitter data may not be mutated
-    after retrieval, and the cheapest way to guarantee that is to make
-    mutation raise.
-
-    Every field earns its place:
-      name      — what was observed. The join key for analysis.
-      site      — file:line. Answers "which emitter", auto-captured.
-      expected  — the DECLARED expectation, in the emitter's own terms.
-                  None means "recording an observation, asserting
-                  nothing" — legitimate and distinct from a passing
-                  check.
-      actual    — the observation. MANDATORY, and the departure from
-                  Great Expectations, which allows suppressing it.
-      ok        — the verdict. None when `expected` is None; there is
-                  nothing to judge.
-      seq       — monotonic per run. Gives total order independent of
-                  clock resolution, so two records in the same
-                  millisecond are still ordered.
-      ts        — wall clock, for correlating with the trade/gate logs.
-      context   — the dimensions needed to slice: bot_id, symbol, candle
-                  index. Kept as a plain dict and frozen on the way in.
-      dt        — seconds since the previous emission of the SAME
-                  (name, site). None when no interval was measured.
-      nth       — which emission of that identity this is, 1-based.
-                  0 means the field was never measured.
+    Frozen; retrieval returns tuples of these so a caller cannot mutate
+    what was captured. `expected` is None for a bare observation; `ok`
+    is the verdict, None when nothing was judged. `actual` is always
+    recorded. `site` and `module` are auto-captured from the caller's
+    frame. `kind` is `"check"` when judged against an expectation,
+    `"sample"` otherwise. `count` is how many observations this record
+    stands for when a throttle has folded several into one line. `dt`
+    is the interval since the previous emission of this `(name, site)`,
+    None when none was measured. `nth` is the 1-based ordinal of this
+    emission for its identity, 0 when never measured. `duration` is how
+    long the observed operation took, supplied by the caller; None when
+    not measured, never 0.0 for "not measured".
     """
 
     name: str
@@ -1108,99 +493,18 @@ class Signal:
     seq: int = 0
     ts: str = ""
     context: Optional[dict] = None
-    # v3.24.90 — module, so records can be GROUPED without parsing
-    # `site`. Auto-captured.
     module: str = ""
-    # v3.24.90 — CHECK or SAMPLE, declared rather than inferred.
-    #
-    # Operator, 2026-08-08: "expected=none is functionally useless as
-    # designed." It was: `expected=None` meant BOTH "this is a raw
-    # observation with nothing to assert" and "somebody forgot to
-    # declare an expectation", and no reader could tell which. 92.8% of
-    # records carried it, so most of the network could not fail and
-    # nobody could tell whether that was by design.
-    #
-    # A SAMPLE is now a deliberate declaration. A CHECK without an
-    # expectation is a defect the contract can point at.
     kind: str = "check"
-    # v3.24.90 — how many identical observations this record stands for
-    # when the synchroniser has folded a loop's worth into one line.
-    #
-    # WHOSE OBSERVATIONS: the ones that share this record's throttle
-    # key, which is `(name, site)` plus the `instance` the call site
-    # declared. A pin that declares none pools every observation from
-    # that line, which is what this number has always meant on a loop.
-    # A pin that declares one — one `ExchangeTab` per configured
-    # exchange — counts THAT instance's own passes and nobody
-    # else's. Before `instance` existed the number pooled every live
-    # object running the line, so a green named one exchange and
-    # counted the others; it no longer does.
     count: int = 1
-    # 10.3 — seconds since the previous emission of the SAME
-    # (name, site) identity, taken from `time.monotonic()`.
-    #
-    # THE IDENTITY IS THE PAIR, NOT THE NAME. `_throttle_admit` already
-    # keys its rate limit on (name, site) and states the reason: the
-    # same signal emitted from two places is two different things to a
-    # reader. `stats()` keys on the name alone, so it merges them. This
-    # does not.
-    #
-    # None means NO INTERVAL WAS MEASURED, and `nth` says which of the
-    # two reasons applies. Zero is never used for that: zero reads as
-    # "instantaneous", which is a measurement, and there was none.
-    #
-    # ON A RATE-LIMITED PIN (`emit(..., every=N)`) THIS IS THE INTERVAL
-    # BETWEEN ADMITTED RECORDS, NOT BETWEEN OBSERVATIONS. `count` says
-    # how many observations the record stands for. Dividing one by the
-    # other assumes the fold was uniform, and nothing guarantees that.
     dt: Optional[float] = None
-    # 10.3 — 1-based ordinal of this record within its (name, site)
-    # identity, for this sink.
-    #
-    #    0  never measured. Every one of the 598,500 records on the
-    #       operator's disk reads back this way: they were written
-    #       before this field existed. It is also what an identity gets
-    #       once `MAX_IDENTITIES` is reached.
-    #    1  the FIRST emission of this identity. `dt` is None because
-    #       there is genuinely no previous one, not because nobody
-    #       looked.
-    #   >1  `dt` is a real measured interval.
     nth: int = 0
-    # 10.3 phase 2 — HOW LONG THE OBSERVED OPERATION TOOK, in seconds,
-    # from `time.monotonic()`. Supplied BY THE CALL SITE, because only
-    # the call site knows when the operation began; the sink sees the
-    # emit moment and nothing before it.
-    #
-    # THIS IS NOT `dt`, AND THE DIFFERENCE IS THE WHOLE POINT.
-    #   dt        the gap BETWEEN successive emissions — cadence.
-    #             Answers item 17's "on time" and "hangs".
-    #   duration  how long the work being observed took — latency.
-    #             Answers item 17's "slow downs".
-    # A record can honestly carry one, both, or neither.
-    #
-    # None means NO DURATION WAS MEASURED, and it is never 0.0. Zero
-    # reads as "instantaneous", which is a measurement; there was none.
-    # Measured 2026-08-19: 23 of the 40 emitters are instantaneous
-    # observations where a duration would be FABRICATED, and a
-    # fabricated duration is worse than a missing one because item 17
-    # computes health from it. For those, None is the correct answer
-    # and no call site should pass anything. See
-    # docs/engineering-notes/2026-08-19_emitter_duration_classification.md.
     duration: Optional[float] = None
 
     def to_json(self, extra: Optional[dict] = None) -> str:
-        """Serialise this record. `extra` appends fields, never edits.
+        """Return this record as a JSON line.
 
-        The digest ladder needs one field the record itself does not
-        own -- ``folded``, how many observations that line stands for
-        -- and the record is frozen for a reason. `extra` is appended
-        AFTER the declared fields, so a reader sees the record exactly
-        as the main ladder wrote it plus whatever the writer added,
-        and no caller can overwrite an observation through this door
-        without naming the field it is overwriting.
-
-        Default is None, so every existing caller serialises byte for
-        byte what it serialised before.
+        `extra` appends fields after the declared ones; it cannot
+        overwrite them.
         """
         payload = {
             "ts": self.ts,
@@ -1223,29 +527,12 @@ class Signal:
         return json.dumps(payload, default=_json_default, separators=(",", ":"))
 
     def message(self) -> str:
-        """The operator-facing line. THE emitter message standard.
+        """Return the operator-facing text line for this record.
 
-        v3.24.90. Operator, 2026-08-08: "render() issue will require
-        translation to the standard emitter message format. we only need
-        to know or retrieve or present data that can help troubleshoot
-        issues... after release, more traditional coders are going to
-        need these."
-
-        `render()` was a debug repr -- it dumped the whole dataclass,
-        `mappingproxy` and all, which is unreadable in a console and
-        useless pasted into a bug report.
-
-        Fixed column order so a wall of these scans vertically:
-
-            HH:MM:SS  module            name  VERDICT  detail
-
-        The name column is `NAME_COLUMN` wide and is never truncated.
-
-        VERDICT is PASS / FAIL / ---- (a sample asserts nothing). FAIL
-        lines carry expected and actual; PASS lines do not, because a
-        passing check's numbers are noise when you are hunting a
-        failure. Context always trails, because that is what says WHICH
-        bot and WHICH candle.
+        Columns: `HH:MM:SS  module  name  VERDICT  detail`, name padded
+        to `NAME_COLUMN` and never truncated. `VERDICT` is `PASS`,
+        `FAIL`, or `----` for an unjudged sample. A `FAIL` line carries
+        `expected` and `actual`; a `sample` line carries `actual` alone.
         """
         t = (self.ts or "")[11:19] or "--:--:--"
         mod = (self.module or "?").rsplit(".", 1)[-1][:18]
@@ -1266,56 +553,7 @@ class Signal:
 
 
 def _as_float(value: Any) -> Optional[float]:
-    """Return `value` as a float, or None when it is not one.
-
-    10.3. A line read back off disk is untrusted input. `read_records`
-    already skips a line it cannot decode, so a FIELD it cannot coerce
-    has to be survivable too -- otherwise one malformed number aborts
-    the read of a 50 MB file and the caller gets an empty tuple with no
-    error. Measured: the operator's live history is 598,500 records in
-    six files, and losing a whole generation to one bad float is not a
-    trade this module gets to make.
-
-    EXACT TYPES, NOT `isinstance`. `bool` is a subclass of `int` and
-    `float(True)` is 1.0, so an isinstance guard turns a boolean into a
-    one-second interval -- the class of coercion defect this repo has
-    already paid for once. `coding_archetype`'s numeric_guard NG001
-    refuses the isinstance form for that reason and refused this
-    function's first draft, which rejected `bool` by name and still
-    left a bare `float(value)` fallback behind it.
-
-    There is no fallback now. The only input that reaches here is a
-    JSON value read off disk, where exact `int` and `float` cover every
-    legitimate case; a string, a list or a bool is not a mis-typed
-    interval, it is no interval, and None says so.
-
-    IT NEVER RAISES FOR ANY INPUT, AND HERE THAT MATTERS MORE THAN IT
-    DOES AT THE INGRESS. `emit` wraps its guard in a blanket handler,
-    so a raise there cost ONE record. `read_records` has no blanket
-    handler: its inner `except json.JSONDecodeError` sits around
-    `json.loads` ALONE, and its outer handler catches `OSError` ONLY.
-    This function runs after the decode, inside the `Signal(...)`
-    construction, where neither one reaches it. An OverflowError raised
-    here therefore left `read_records` entirely, so one bad line cost
-    the WHOLE FILE and took the caller down with it -- measured on this
-    branch over a three-line file, where zero of the three came back.
-
-    THE INT BRANCH IS BOUNDED FOR THAT REASON. `float(10 ** 400)`
-    raises OverflowError, which no type check can see, because the type
-    is a perfectly ordinary `int`. The bound is an int compared against
-    a float, which CPython evaluates EXACTLY, without converting either
-    side, so the test cannot itself raise; anything inside the bound is
-    representable, so neither can the conversion under it.
-
-    IT IS ONLY THE TOTALITY THAT IS SHARED WITH THE INGRESS GUARD, NOT
-    THE RULES. `_as_measured_duration` refuses a negative, a NaN and an
-    infinity, and rounds what it keeps, because it judges a number
-    arriving from a CALL SITE where those shapes mean a defect. This
-    function reads a number back off DISK, and a value a previous
-    generation really did write must read back as the value that is
-    there, or the reader is editing history. A wide int is refused
-    because no float can HOLD it, which is a different statement.
-    """
+    """Return `value` as a float when it is exactly `int` or `float`, else None."""
     if type(value) is float:
         return value
     if type(value) is int:
@@ -1326,99 +564,18 @@ def _as_float(value: Any) -> Optional[float]:
 
 
 def _as_ordinal(value: Any) -> int:
-    """Return `value` as a positive int, or 0 when it is not one.
-
-    10.3. Exact-typed for the same reason as `_as_float`: `True` would
-    otherwise read back as ordinal 1, which is this module's spelling
-    of "the first emission of this identity". 0 is "never measured", so
-    anything uncoercible degrades to unknown rather than to a
-    fabricated position in the sequence.
-    """
+    """Return `value` as a positive int when it is exactly `int` and > 0, else 0."""
     if type(value) is int and value > 0:
         return value
     return 0
 
 
 def _as_measured_duration(value: Any) -> Optional[float]:
-    """Return `value` as a REAL measured duration, or None when it is not.
-
-    10.3 phase 2 -- THE INGRESS GUARD, and the counterpart to
-    `_as_float` above. That one refuses a bad number arriving from
-    DISK. Nothing refused a bad number arriving from a CALL SITE, and
-    `emit` wrote `float(duration)` verbatim, which had four holes with
-    one consequence.
-
-      `float(True)` is 1.0. A caller that passes a FLAG by mistake --
-      `duration=is_slow` -- wrote a one-second latency that is
-      indistinguishable on disk from a measured one. This is the exact
-      coercion `_as_float` names as "the class of coercion defect this
-      repo has already paid for once"; the way in from a call site had
-      no such refusal.
-
-      A NEGATIVE duration says time ran backwards. `time.monotonic()`
-      cannot produce one, so it can only come from a reversed
-      subtraction or a wall-clock difference taken across an NTP step.
-      It was stored verbatim.
-
-      Anything `float()` REFUSES -- a string, an object, None-like
-      sentinels -- raised TypeError inside `emit`, where the blanket
-      handler swallowed it and returned None. The bad argument did not
-      just lose its duration, it destroyed THE WHOLE RECORD, silently.
-
-      AN INT TOO WIDE FOR A FLOAT does the same thing by another
-      route. `float(10**400)` raises OverflowError, not TypeError, so
-      a guard that only judged the TYPE and then converted still fed
-      the blanket handler and still lost the record. No measurement
-      off `time.monotonic()` is 1e308 seconds, so a value that large
-      is not a slow operation, it is not a duration at all.
-
-    Every one of those writes a number item 17 reads as LATENCY. The
-    module's position is already stated on the field itself: A
-    FABRICATED DURATION IS WORSE THAN A MISSING ONE. So a value that
-    fails any check here degrades to None -- "no duration was
-    measured", which is the truth -- the record survives intact, and
-    the sink counts the refusal in `health()['duration_rejected']` so a
-    developer sees it without a debugger.
-
-    IT NEVER RAISES FOR ANY INPUT, AND THAT IS THE POINT. Not "for
-    every shape seen so far" -- TOTAL: every branch that could throw
-    is guarded before it is taken, which is why the int bound is
-    checked instead of the conversion being tried. `emit` runs on the
-    live trading and GUI paths. The module docstring already forbids an
-    exception thrown to report a schema nit, and a rejected argument is
-    a schema nit.
-
-    EXACT TYPES, NOT `isinstance`, for the reason `_as_float` gives:
-    `bool` is a subclass of `int`, so an isinstance guard is precisely
-    what lets `True` through as 1.0. `type(True) is int` is False, so a
-    bool needs no branch of its own -- it falls to the refusal below.
-
-    ZERO IS ACCEPTED AND IS NOT THE SAME AS None, exactly as for `dt`:
-    an operation faster than the clock can resolve is a real
-    measurement that rounds to 0.0, and None is reserved for the 23
-    emitters that measured nothing at all.
-
-    ROUNDED TO THE CLOCK'S OWN RESOLUTION, 1e-07, the same treatment
-    `dt` gets in `emit` for the same reason. Both fields come off the
-    same `time.monotonic()`, whose resolution on the operator's machine
-    is 1e-07, so the eighth decimal onward is float representation
-    noise -- written to disk on every record that carries a duration.
-    """
+    """Return `value` as a rounded, non-negative, finite float, or None."""
     if value is None:
         return None
     if type(value) is int:
-        # AN INT TOO WIDE FOR A FLOAT IS NOT A MEASUREMENT, AND THE
-        # CONVERSION MUST NOT BE ATTEMPTED. `float(10**400)` raises
-        # OverflowError, which left this guard, reached `emit`, and was
-        # swallowed by the same blanket handler that swallowed
-        # `float(object())` -- destroying THE WHOLE RECORD by the
-        # fourth route rather than the third.
-        #
-        # The bound is an int compared against a float, which CPython
-        # evaluates EXACTLY, without converting either side, so the
-        # test cannot itself raise. Anything inside the bound is
-        # representable, so neither can the conversion under it. That
-        # is what makes this function total.
+        # Comparing avoids the `OverflowError` `float()` raises on a very large int.
         if not -sys.float_info.max <= value <= sys.float_info.max:
             return None
         value = float(value)
@@ -1439,30 +596,11 @@ def _classify(
     fresh_within: float,
     stale_after: float,
 ) -> dict:
-    """Return one identity's timing view. FOUR STATES, NEVER THREE.
+    """Return one of the four `PIN_STATES` for this identity's timing view.
 
-    `snapshot` is None when the identity has never been seen, and that
-    case returns `PIN_NEVER` with `age=None` and `n=0`. It is the only
-    state that can do so: the other three always carry a float age and
-    a positive ordinal, so no reader can confuse "nothing ever
-    happened" with "it happened and stopped".
-
-    The remaining three partition the age axis at two thresholds and
-    are therefore disjoint by construction:
-
-        age <= fresh_within                    PIN_FRESH
-        fresh_within < age <= stale_after      PIN_CURRENT
-        age > stale_after                      PIN_STALE
-
-    `stale_after` is raised to `fresh_within` if a caller passes them
-    inverted, because an inverted pair makes PIN_FRESH unreachable and
-    silently reclassifies every fresh pin as stale. Passing them EQUAL
-    is legal and makes PIN_CURRENT empty; that is a caller's choice of
-    thresholds, not a defect in the partition.
-
-    THE AGE COMES FROM THE MONOTONIC CLOCK. `last_ts` is the wall clock
-    of the same emission, carried alongside so a human can correlate it
-    with trade.log and gate.log, and it is never differenced.
+    `snapshot` is None when the identity has never been seen.
+    `stale_after` is raised to `fresh_within` when passed smaller, so
+    the fresh band is never unreachable.
     """
     if snapshot is None:
         return {
@@ -1495,32 +633,11 @@ def _classify(
 
 
 class SignalSink:
-    """Buffered, append-only sink for `Signal` records.
+    """Buffered, append-only, thread-safe sink for `Signal` records.
 
-    Thread-safe because the sim ticks on the asyncio loop pumped from the
-    Qt GUI thread while other producers may be elsewhere; the lock is
-    held only for a list append, never across I/O.
-
-    v3.24.9x — TWO locks, and the split is the point. `_lock` still
-    guards nothing but the buffer, so `emit` is never delayed by a
-    disk write. `_io_lock` guards the file: rotation plus the append
-    that follows it are one critical section, because `flush` is
-    reachable from every producer thread and a rename racing an append
-    is how a rotation loses records. `_lock` is never taken while
-    `_io_lock` is held, so the two cannot deadlock.
-
-    v3.24.9x — THE EMITTER NEVER STOPS; THE MEMORY IS BOUNDED INSTEAD.
-    Both collections are `deque`s with a `maxlen`, so a session of any
-    length costs a fixed amount of RAM. See `RETAIN_ROWS` for the
-    measurement the window is sized from, and for why the row cap that
-    used to switch `emit` off is gone.
-
-    10.3 — IT ALSO KEEPS A LAST-SEEN MAP, AND THAT MAP IS THE ONLY WAY
-    A HANG IS READABLE. Every other retrieval on this class answers a
-    question about records that ARRIVED. A pin that stopped emits
-    nothing, so no record-shaped query can ever mention it. `_seen`
-    holds one small entry per `(name, site)` identity -- never per
-    record -- and `pin_state` reads it without waiting for anything.
+    Holds a bounded in-memory window of records plus a bounded
+    last-seen map by identity, flushes to a rotating JSONL file, and
+    answers timing and cadence queries about pins that stopped emitting.
     """
 
     def __init__(
@@ -1539,61 +656,20 @@ class SignalSink:
         self.path = path
         self.flush_every = max(1, int(flush_every))
         self.enabled = enabled
-        # max_bytes <= 0 disables rotation. backup_count is clamped to at
-        # least one, because a "rotation" with nowhere to rotate to would
-        # be a delete, and this sink does not delete evidence.
+        # `max_bytes <= 0` disables rotation; `backup_count` is clamped to at least one.
         self._max_bytes = max(0, int(max_bytes))
         self._backup_count = max(1, int(backup_count))
-        # retain_rows is clamped to at least one for the same reason
-        # backup_count is: a window of zero would be a sink that keeps
-        # nothing, which is the silence this module exists to remove.
+        # `retain_rows` is clamped to at least one.
         self._retain = max(1, int(retain_rows))
-        # BOTH are bounded, and both bounds are load-bearing.
-        #
-        # `_all` is the obvious one. `_buf` is not, and it was the trap:
-        # `flush` deliberately does NOT drain the buffer while `path` is
-        # None (v3.24.83 — draining with nowhere to write destroyed 200
-        # records every flush). A sink installed before its run
-        # directory exists therefore accumulates in `_buf` with nothing
-        # to stop it. The old row cap stopped it by accident, because
-        # `emit` returned before appending anywhere. Removing that cap
-        # without bounding `_buf` would have re-opened an unbounded
-        # growth path AND pinned every record `_all` had already
-        # evicted, since the two hold the same objects.
+        # `_buf` and `_all` are bounded deques, so memory is capped regardless of
+        # session length.
         self._buf: deque = deque(maxlen=self._retain)
         self._all: deque = deque(maxlen=self._retain)
         self._lock = threading.Lock()
         self._io_lock = threading.Lock()
-        # 10.3 — LAST SEEN, PER IDENTITY, NOT PER RECORD.
-        #
-        #     {(name, site): [last_monotonic, emissions, last_ts,
-        #                     last_dt]}
-        #
-        # A plain list rather than a tuple or a dataclass because it is
-        # written in place on every single emit: rebuilding a tuple
-        # there would allocate once per record, on the Qt GUI thread,
-        # which is the one place this module is not allowed to be
-        # careless. Guarded by `_lock`, the same lock the buffer uses,
-        # so no second lock and no new deadlock ordering.
+        # `_seen` maps (name, site) to [last_monotonic, count, last_ts, last_dt].
         self._seen: dict = {}
-        # #14 -- THE TWO FACTS A CADENCE VERDICT NEEDS AND `_seen` DOES
-        # NOT HOLD: the monotonic stamp of the FIRST emission, and the
-        # `every=` window the call site declares.
-        #
-        # `[first_mono, throttle]` per identity, written at exactly the
-        # points `_seen` is written and bounded by the same admission
-        # test, so the two maps cannot hold different identity sets.
-        #
-        # A SEPARATE MAP RATHER THAN TWO MORE SLOTS ON `_seen`. `_seen`
-        # is mutated in place on every single emit and its four slots
-        # are read by `_classify` by position; widening it would put a
-        # cadence concern on the hot path's own row and change an
-        # unpack that has one meaning today.
-        #
-        # The mean interval is `(last - first) / (n - 1)`, which is one
-        # subtraction per identity at query time rather than a scan of
-        # the retained records. A scan is what this module may not do:
-        # every coroutine here runs on the Qt GUI thread.
+        # `_cadence` maps identity to [first_monotonic, throttle], set beside `_seen`.
         self._cadence: dict = {}
         self._max_identities = max(1, int(max_identities))
         self._identity_overflow = 0
@@ -1601,33 +677,17 @@ class SignalSink:
         self._dropped = 0
         self._evicted = 0
         self._rotate_failures = 0
-        # 10.3 phase 2 -- how many call sites handed `emit` a
-        # duration it refused; see `_as_measured_duration`. A
-        # non-zero value means a caller is passing something that
-        # is not a measurement, and the records it produced carry
-        # None rather than a fabricated latency. Counted rather
-        # than logged because nothing on this path is allowed to
-        # touch I/O.
+        # Counts a `duration` `emit` refused; see `_as_measured_duration`.
         self._duration_rejected = 0
-        # ── the digest ladder ────────────────────────────────────────
-        #
-        # `digest_interval <= 0` switches the second ladder off
-        # entirely, the same way `max_bytes <= 0` switches rotation
-        # off: a caller that wants only the verbatim file can have it,
-        # and the tests that drive the eviction reproduction need
-        # exactly that switch to show the failure direction.
+        # `digest_interval <= 0` disables the digest ladder entirely.
         self._digest_interval = max(0.0, float(digest_interval))
         self._digest_max_bytes = max(0, int(digest_max_bytes))
         self._digest_backup_count = max(1, int(digest_backup_count))
-        # {(name, site): seconds accumulated since that identity's last
-        # ADMITTED digest line}. Advanced by each record's own `dt`,
-        # which the sink already measured on the monotonic clock at
-        # emit time -- so the decision is exact even when `flush`
-        # writes two hundred records at once, and `flush` never reads a
-        # clock of its own.
+        # `_digest_since` maps identity to seconds accumulated since its last admitted
+        # digest line.
         self._digest_since: dict = {}
-        # {(name, site): observations folded since that identity's last
-        # admitted line}. Becomes the `folded` field on the next one.
+        # `_digest_pending` maps identity to observations folded since its last admitted
+        # line.
         self._digest_pending: dict = {}
         self._digest_admitted = 0
         self._digest_folded = 0
@@ -1648,119 +708,57 @@ class SignalSink:
         duration: Optional[float] = None,
         every: float = 0.0,
     ) -> Optional[Signal]:
-        """Record one observation. NEVER raises, NEVER blocks on I/O.
+        """Record one observation; never raises, never blocks on I/O.
 
-        Fires on BOTH the satisfied and violated paths — see the module
-        docstring. `ok` is derived by equality when an expectation is
-        given and no verdict is supplied, which keeps the common call
-        site to two arguments.
-
-        v3.24.9x — NEVER REFUSES. This method used to compare `_seq`
-        against a 2,000,000-row cap and return None for the rest of the
-        process once it was reached, which measurably happened after
-        about 13 hours on the operator's machine. There is no row at
-        which the instrument switches itself off any more. What is
-        bounded is how much is kept resident; see `RETAIN_ROWS`.
+        Returns None when the sink is disabled. `ok` is derived by
+        equality when `expected` is given and no verdict is supplied.
         """
         if not self.enabled:
             return None
         try:
             if ok is None and expected is not None:
                 ok = bool(actual == expected)
-            # 10.3 — the frame walk moved OUT of the lock. `site` and
-            # `module` are pure functions of this thread's own call
-            # stack, which cannot change while this frame runs, so
-            # holding the buffer lock across two `sys._getframe` walks
-            # bought nothing. The depth is unchanged: frame 2 is still
-            # the caller of `emit`, wherever inside `emit` it is read.
-            # The identity has to exist before the record does, because
-            # the record carries an interval that is keyed on it.
+            # `site` and `module` are read from the stack before the lock is taken.
             _name = str(name)
             _site = site or _caller_site(2)
             _mod = module or _caller_module(2)
-            # 10.3 phase 2 -- THE DURATION IS JUDGED BEFORE THE
-            # LOCK. `_as_measured_duration` is a pure function of
-            # its argument, so holding the buffer lock across it
-            # would buy nothing, for the same reason the frame
-            # walk above sits outside. The REFUSAL is counted
-            # inside, with every other counter.
+            # `_as_measured_duration` runs before the lock; it is a pure function of
+            # `duration`.
             _dur = _as_measured_duration(duration)
             _dur_refused = duration is not None and _dur is None
             with self._lock:
                 self._seq += 1
                 if _dur_refused:
                     self._duration_rejected += 1
-                # 10.3 — BOTH CLOCKS, READ ADJACENT, INSIDE THE LOCK.
-                #
-                # `_now` is MONOTONIC and is the only thing ever
-                # subtracted. `_ts` is the wall clock and is the only
-                # thing ever shown to a human. The operator's machine
-                # sleeps and its clock is stepped by NTP; a wall-clock
-                # difference across either is wrong, and can be
-                # NEGATIVE, which would read as a pin that fired before
-                # it fired. Reading them one line apart under the lock
-                # keeps the pair describing the same instant, and keeps
-                # `ts` ordered with `seq` the way it already was.
+                # `_now` (monotonic) and `_ts` (wall clock) are read one line apart,
+                # inside the lock.
                 _now = time.monotonic()
                 _ts = _utc_iso()
                 _prev = self._seen.get((_name, _site))
                 if _prev is None:
-                    # FIRST EMISSION. `dt` stays None -- there is no
-                    # previous, and saying 0.0 would claim a
-                    # measurement nobody took.
+                    # First emission of this identity: `dt` stays None, nothing to
+                    # compare.
                     _dt = None
                     _nth = 1
                     if len(self._seen) < self._max_identities:
                         self._seen[(_name, _site)] = [_now, 1, _ts, None]
                         self._cadence[(_name, _site)] = [_now, float(every or 0.0)]
                     else:
-                        # The ceiling. Recording continues; only the
-                        # TIMING of this new identity is refused, and
-                        # `nth=0` says so rather than claiming a first
-                        # emission that will never get a second.
+                        # Past `MAX_IDENTITIES`, the record is kept but `nth=0`: not
+                        # timed.
                         _nth = 0
                         self._identity_overflow += 1
                 else:
-                    # ROUNDED TO THE CLOCK'S OWN RESOLUTION, 1e-07.
-                    #
-                    # Not a tolerance and not a tidy-up: nothing is
-                    # discarded that was ever measured.
-                    # `time.get_clock_info("monotonic")` on the
-                    # operator's machine reports
-                    # `QueryPerformanceCounter()` with resolution
-                    # 1e-07, so the eighth decimal onward is float
-                    # representation noise the clock did not produce.
-                    #
-                    # It is worth doing because those digits are
-                    # written to disk on EVERY record. Measured: an
-                    # unrounded interval serialised as
-                    # `3.199998172931373e-05`, 21 characters, against
-                    # `3.2e-05` at 7. Over the operator's real
-                    # 495-byte average record that is the difference
-                    # between costing his 300 MB ladder 7.9% of its
-                    # retained history and costing it 5.9%.
-                    #
-                    # A sub-microsecond gap rounds to 0.0, and 0.0 is
-                    # honest there: it is a real interval too short for
-                    # the clock to resolve. It is still not confusable
-                    # with "no previous", because that case carries
-                    # `dt=None` and `nth=1`.
+                    # `_dt` rounds to 1e-07, the clock's own resolution; a sub-
+                    # resolution gap rounds to 0.0.
                     _dt = round(_now - _prev[0], 7)
                     _nth = _prev[1] + 1
                     _prev[0] = _now
                     _prev[1] = _nth
                     _prev[2] = _ts
                     _prev[3] = _dt
-                    # THE WIDEST WINDOW WINS, and the reason is that
-                    # the window is the pin's FLOOR. Two call sites
-                    # sharing a name with different `every=` values
-                    # would otherwise give this identity whichever
-                    # window emitted last, and a budget derived from
-                    # the narrower one would call the identity late
-                    # while the wider site is still inside its own
-                    # throttle. `_cadence` may be absent only for an
-                    # identity refused by the ceiling, which carries
-                    # `nth=0` and is never timed.
+                    # The widest `every=` window across call sites sharing an identity
+                    # sets its budget.
                     _aux = self._cadence.get((_name, _site))
                     if _aux is not None and float(every or 0.0) > _aux[1]:
                         _aux[1] = float(every or 0.0)
@@ -1780,19 +778,8 @@ class SignalSink:
                     duration=_dur,
                     context=freeze(context) if context else None,
                 )
-                # EVICTION IS COUNTED, AND THE TWO EVICTIONS MEAN
-                # DIFFERENT THINGS.
-                #
-                # Falling out of `_all` is not a loss: the record was
-                # written to the file and the file is what the record
-                # set IS. It only means `records()` is a window, which
-                # `health()['evicted']` says out loud so no reader can
-                # mistake the window for the whole run.
-                #
-                # Falling out of `_buf` IS a loss, because that record
-                # never reached disk. It can only happen when there is
-                # nowhere to write yet, and it is counted in `_dropped`
-                # beside every other real loss.
+                # `_evicted` (from `_all`) is not a loss, already on disk; `_dropped`
+                # (from `_buf`) is.
                 if len(self._all) == self._retain:
                     self._evicted += 1
                 if len(self._buf) == self._retain:
@@ -1807,44 +794,19 @@ class SignalSink:
             return None
 
     def _rotate_if_needed(self) -> None:
-        """Roll the file to ``<name>.1`` once it reaches `max_bytes`.
+        """Roll the sink's file to `<name>.1` once it reaches `max_bytes`.
 
-        v3.24.9x — THE FILE HAD NO BOUND AT ALL. `flush` appended and
-        nothing ever checked the size, and because `install_process_sink`
-        stamps a CONSTANT name, every process appended to the same file
-        for ever. Measured on the operator's disk 2026-08-13:
-        ``~/.acervator_logs/signals/session.jsonl`` at 2,445,435,093
-        bytes, 4,942,000 records, still growing at 72.5 MB per active
-        hour. Its neighbours in ``trade/`` were all capped at 50 MB x 5
-        by ``NDJSONWriter``; this one writer was not.
-
-        Deliberately the SAME shape as
-        ``NDJSONWriter._rotate_if_needed``, down to the primitive.
-        ``Path.replace`` rather than ``Path.rename`` because rename
-        raises WinError 183 on Windows when the destination exists, and
-        this repo has already paid for that once: 350,470
-        'gate.log.4 -> gate.log.5' warnings and a writer stalled for
-        three days. One module, one rotation idiom.
-
-        Called with `_io_lock` held, so a rename can never interleave
-        with another thread's append.
+        Called with `_io_lock` held, so a rename cannot interleave with
+        another thread's append.
         """
         self._roll(self.path, self._max_bytes, self._backup_count)
 
     @staticmethod
     def _roll(path: Optional[Path], max_bytes: int, backup_count: int) -> None:
-        """Shift one ladder by one place, if it has reached its cap.
+        """Shift one file ladder by one place if it has reached `max_bytes`.
 
-        Lifted verbatim out of `_rotate_if_needed` when the digest
-        ladder arrived, because two ladders in one class using two
-        copies of the same loop is exactly how the v3.23.5 WinError 183
-        lesson gets un-learned in one of them. ONE module, ONE rotation
-        idiom -- and now one implementation of it, so a fix to the
-        primitive cannot reach one ladder and miss the other.
-
-        `Path.replace` rather than `Path.rename` for the reason
-        `_rotate_if_needed` records: rename raises WinError 183 on
-        Windows when the destination exists.
+        Uses `Path.replace`, which succeeds on Windows even when the
+        destination already exists.
         """
         if path is None or max_bytes <= 0:
             return
@@ -1861,20 +823,9 @@ class SignalSink:
 
     @property
     def digest_path(self) -> Optional[Path]:
-        """Where the digest ladder lives — beside the main file.
+        """Return the digest ladder's path beside the main file, or None.
 
-        DERIVED rather than stored, because `path` is assigned AFTER
-        construction by both `install_process_sink` and the sim run
-        log. A stored digest path would be computed from a `path` of
-        None at construction and stay None for the life of the
-        process, so the second ladder would exist in the constructor
-        and nowhere else. Deriving it means it follows `path` wherever
-        `path` goes, including a replay that repoints the sink at its
-        own run directory.
-
-        ``session.jsonl`` -> ``session.digest.jsonl``. The suffix is
-        inserted before the extension so the two ladders sort together
-        and a reader looking for one finds the other.
+        `session.jsonl` becomes `session.digest.jsonl`.
         """
         if self.path is None:
             return None
@@ -1882,36 +833,11 @@ class SignalSink:
         return p.with_name(f"{p.stem}.digest{p.suffix}")
 
     def _digest_rows(self, rows: Iterable[Signal]) -> list:
-        """Choose the digest's share of `rows`, and what each line means.
+        """Return `(record, folded)` pairs: the digest ladder's share of `rows`.
 
-        Returns a list of ``(record, folded)`` pairs. ACCOUNTING RULE,
-        and the reason this is worth testing: every record in `rows` is
-        either admitted or folded into a later admitted line of the
-        SAME identity, so across a run
-
-            sum(folded over the digest) + still-pending == records emitted
-
-        A folded record is not a dropped record. It is on the main
-        ladder verbatim, and it is counted here. Nothing on this path
-        is allowed to discard an observation without leaving the count
-        where a reader can see it -- `health()['digest_folded']`.
-
-        THE CLOCK IS THE RECORD'S OWN `dt`. The sink measured it on the
-        monotonic clock at emit time, per `(name, site)`, so
-        accumulating it gives the exact time since that identity's last
-        admitted line. `flush` therefore reads no clock, which also
-        means a batch of two hundred buffered records is thinned as if
-        it had been thinned live.
-
-        `dt` is None on a first emission (`nth == 1`) and on an
-        identity past the `MAX_IDENTITIES` ceiling (`nth == 0`). A
-        first emission is admitted -- a pin that has just started
-        firing is the most interesting record it will ever produce. An
-        untimed one contributes 0.0 to the accumulator, so it folds:
-        the sink refused to measure that identity's interval, and the
-        digest will not invent one. Its volume is still visible,
-        because it arrives as the `folded` count on that identity's
-        one admitted line.
+        A record is admitted at most once per `DIGEST_MIN_INTERVAL`
+        seconds per identity; suppressed records are folded into the
+        next admitted line's `folded` count.
         """
         if self._digest_interval <= 0.0:
             return []
@@ -1920,14 +846,8 @@ class SignalSink:
             key = (r.name, r.site)
             prev = self._digest_since.get(key)
             if prev is None:
-                # NEW IDENTITY. Admitted, and the ceiling that bounds
-                # `_seen` bounds this map for the same reason: an
-                # unbounded key space in a dict nothing prunes. Past
-                # the ceiling the record is still admitted -- an
-                # identity nobody has room to track is by definition
-                # rare, and refusing it would be this issue's defect
-                # rebuilt inside its fix -- but no entry is kept, so
-                # the map cannot grow. The count says it happened.
+                # Past `MAX_IDENTITIES`, a new identity is still admitted but no entry
+                # is kept.
                 if len(self._digest_since) < self._max_identities:
                     self._digest_since[key] = 0.0
                 else:
@@ -1947,17 +867,10 @@ class SignalSink:
         return out
 
     def _write_digest(self, rows: Iterable[Signal]) -> None:
-        """Append the digest lines for `rows`. Called with `_io_lock`.
+        """Append the digest ladder's admitted lines for `rows`.
 
-        Opens nothing when nothing was admitted, which is the common
-        case: at the measured traffic the rule admits about 3% of
-        records, so most flushes have no digest write at all and the
-        second ladder costs the GUI thread no extra file handle.
-
-        A failure here is counted in `_digest_dropped` and is NOT a
-        record loss -- those records are on the main ladder. It is
-        counted anyway, because a digest that has quietly stopped being
-        written looks exactly like a platform that has gone quiet.
+        Called with `_io_lock` held. Writes nothing when nothing was
+        admitted.
         """
         admitted = self._digest_rows(rows)
         if not admitted:
@@ -1978,33 +891,10 @@ class SignalSink:
             self._digest_dropped += len(admitted)
 
     def flush(self) -> None:
-        """Append the buffer to disk. Append-only: never rewrites.
+        """Append the buffered records to disk; append-only, never rewrites.
 
-        v3.24.83 — DOES NOT DRAIN THE BUFFER WHEN THERE IS NOWHERE TO
-        WRITE. The previous version popped `_buf` and THEN returned if
-        `path` was None, so every flush silently destroyed 200 records.
-        Measured: a run emitted 2,240 signals and wrote a file with
-        none of them, reporting `buffered: 0, dropped: 0` — the sink
-        built to stop data vanishing was vanishing data, and its own
-        health said everything was fine.
-
-        A sink with no path yet is the NORMAL state early in a run: it
-        is installed before `_build_sim` so the fleet emitters are
-        captured, and the run directory does not exist until SimRunLog
-        opens it. Those records must survive until the path arrives.
-
-        v3.24.9x — rotation happens HERE, before the append and inside
-        the same `_io_lock`, so the rows that trigger a rollover land in
-        the NEW file rather than in a handle that has just been renamed
-        out from under them. A rotation that fails is counted and the
-        rows are still written: missing the bound for one cycle is a
-        recoverable cost, losing the records is not.
-
-        v3.24.9x — the replacement buffer is a bounded `deque`, not a
-        plain list. Swapping in a list here would silently undo the
-        bound `__init__` set: the sink would run bounded until its
-        first flush and unbounded for ever after, which is the worst of
-        both because it would test clean.
+        Returns without draining the buffer when `path` is None, so
+        records survive until a run directory is assigned.
         """
         if self.path is None:
             return
@@ -2016,9 +906,7 @@ class SignalSink:
             try:
                 self._rotate_if_needed()
             except OSError:
-                # Surfaced through `health()`. A cap that silently stops
-                # being enforced is the same failure as a sink that
-                # silently stops recording.
+                # `rotate_failures` surfaces a rotation that could not run.
                 self._rotate_failures += 1
             try:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -2026,33 +914,18 @@ class SignalSink:
                     for r in rows:
                         fh.write(r.to_json() + "\n")
             except OSError:
-                # Losing instrumentation must not take the run down. The
-                # loss is counted so a reader can see the record set is
-                # partial.
+                # `_dropped` counts records that could not be written.
                 self._dropped += len(rows)
-            # THE DIGEST IS WRITTEN AFTER THE VERBATIM FILE, ALWAYS.
-            #
-            # The main ladder is the complete record and nothing is
-            # allowed to come between the rows and it. The digest is a
-            # second view of rows that are already on disk, so it runs
-            # second and its own failure is counted separately -- see
-            # `_write_digest`. Inside the same `_io_lock` so a rotation
-            # of either ladder cannot interleave with an append to it.
+            # The digest is written after the main file, inside the same `_io_lock`.
             self._write_digest(rows)
 
-    # ── retrieval ────────────────────────────────────────────────────
-    #
-    # Returns TUPLES of FROZEN records. A caller cannot append to, remove
-    # from, or edit what was captured. "Emitter data is not allowed to be
-    # mutated after retrieval."
+    # Returns tuples of frozen records; a caller cannot mutate what was captured.
 
     def records(self, name: Optional[str] = None) -> tuple:
-        """Every record STILL RETAINED, newest last.
+        """Every record still retained in memory, newest last.
 
-        This is a window, not the run. Records older than `RETAIN_ROWS`
-        have been evicted from memory; they are still on disk, and
-        `health()['evicted']` says how many, so a caller counting from
-        here can tell an empty result from a trimmed one.
+        Older records were evicted from memory but remain on disk; see
+        `health()['evicted']`.
         """
         with self._lock:
             rows = tuple(self._all)
@@ -2061,33 +934,11 @@ class SignalSink:
         return tuple(r for r in rows if r.name == name)
 
     def since(self, seq: int) -> tuple:
-        """Records with `seq` greater than the given watermark.
+        """Records with `seq` greater than the given watermark, newest last.
 
-        v3.24.81 — for incremental consumers. The Console polls this on a
-        timer rather than being pushed to, for two reasons: `emit` must
-        stay free of I/O and of callbacks (it runs on the tick path), and
-        a push would arrive on whatever thread emitted — which for a Qt
-        widget is a cross-thread touch. Polling sidesteps both and
-        batches naturally.
-
-        v3.24.9x — WALKS BACK FROM THE NEWEST AND STOPS. The previous
-        body was ``tuple(r for r in self._all if r.seq > seq)``, a scan
-        of every retained record on every call. Its own docstring said
-        "the cost is proportional to what arrived, not to the run",
-        and that was not true of the code underneath it.
-
-        It matters because of WHO calls it: `MainWindow._drain_signals`,
-        on a 500 ms QTimer, on the Qt GUI thread — the thread that must
-        not run unbounded loops. At the old 2,000,000-row cap that was
-        up to two million comparisons twice a second, on the thread
-        that also paints 37 bots.
-
-        `_all` is append-only under `_lock` and `seq` is assigned under
-        the same lock, so it is strictly increasing left to right. The
-        first record at or below the watermark therefore means every
-        record before it is too, and the walk can stop there. That makes
-        the cost what the docstring always claimed: proportional to what
-        arrived since the last poll.
+        Walks backward from the newest record and stops at the first
+        `seq` at or below the watermark, since `seq` increases
+        monotonically under `_lock`.
         """
         with self._lock:
             newest_first = []
@@ -2108,22 +959,9 @@ class SignalSink:
         return tuple(sorted({r.name for r in self.records()}))
 
     def by_subsystem(self, subsystem: Optional[str] = None) -> dict:
-        """What has been recorded, grouped by subsystem.
+        """Return records grouped by subsystem, the part of `name` before the first dot.
 
-        v3.24.91. Operator's model, 2026-08-10: the test pins are "all
-        wired out to the same message handler that parses the messages
-        by application subsystem". This is that parse. The sink already
-        held every record; nothing could ask it for one subsystem's
-        worth without walking the whole set by hand.
-
-        The subsystem is the part of the name before the first dot:
-        `sim.06.004.counter.trades_fired` belongs to `sim`. A name
-        with no dot is its
-        own subsystem, so no record can fall out of the grouping.
-
-        Returns {subsystem: tuple of records}. Records stay in the order
-        they were emitted. Pass `subsystem` to get just that one bucket,
-        so a reader can take one subsystem at a time.
+        Pass `subsystem` to return only that bucket.
         """
         buckets: dict = {}
         for r in self.records():
@@ -2149,28 +987,11 @@ class SignalSink:
                 s["unjudged"] += 1
         return out
 
-    # ── timing ───────────────────────────────────────────────────────
-    #
-    # 10.3. Everything above answers a question about records that
-    # ARRIVED. A HANG HAS NO RECORD, so none of it can mention a pin
-    # that stopped. These three read the last-seen map instead, and
-    # need nothing to arrive.
+    # These three answer questions about a pin that stopped, without waiting for a
+    # record.
 
     def identities(self) -> tuple:
-        """Every `(name, site)` pair this sink has recorded, sorted.
-
-        THE IDENTITY IS THE PAIR. `_throttle_admit` keys its rate limit
-        on it and says why: the same signal from two places is two
-        different things to a reader. `stats()` keys on the name alone
-        and therefore merges them into one row; this does not, and
-        neither does `timing()`.
-
-        THE THROTTLE ALSO KEYS ON AN `instance` A CALL SITE MAY
-        DECLARE, AND THIS MAP DOES NOT. Two live objects on one line
-        hold two fold windows and one identity here: the pair is what
-        this sink can see, and the id that tells the objects apart is
-        on the record's context rather than in `site`.
-        """
+        """Every `(name, site)` identity this sink has recorded, sorted."""
         with self._lock:
             return tuple(sorted(self._seen))
 
@@ -2181,52 +1002,14 @@ class SignalSink:
         fresh_within: float = FRESH_WITHIN,
         stale_after: float = STALE_AFTER,
     ) -> dict:
-        """How one identity is doing RIGHT NOW, with nothing arriving.
+        """Return one identity's current timing state, without waiting for a new record.
 
-        THIS IS THE HANG QUERY. Ask it about a pin at any moment and it
-        answers from what it already holds; it never waits for a
-        record, because the record is exactly what a hung pin is not
-        going to send.
-
-        An identity this sink has never seen returns `PIN_NEVER` --
-        not an empty dict, not None, and not a raised KeyError. A pin
-        that never fired is a real, reportable state, and returning
-        nothing for it would make it indistinguishable from a caller
-        that forgot to ask.
-
-        Returns `{name, site, state, age, n, last_ts, last_dt}`:
-
-            state    one of `PIN_STATES`
-            age      seconds since the last emission, monotonic.
-                     None only for `PIN_NEVER`
-            n        emissions of this identity in this sink.
-                     0 only for `PIN_NEVER`
-            last_ts  wall clock of the last emission, for a human
-            last_dt  the interval the last record carried. None when
-                     that record was the first
+        Returns `{name, site, state, age, n, last_ts, last_dt}`. `state`
+        is one of `PIN_STATES`; `age` and `last_dt` are None only for
+        `PIN_NEVER`.
         """
-        # THE CLOCK IS READ INSIDE THE LOCK, AND THAT ORDER IS THE
-        # WHOLE POINT.
-        #
-        # Sampling `now` first and then blocking on a contended lock
-        # compares an OLD clock reading against a last-seen stamp that
-        # `emit` wrote WHILE this call was waiting. `age` then comes out
-        # NEGATIVE -- a pin that fired in the future -- and because a
-        # negative age is below every threshold it classifies as
-        # PIN_FRESH, so the wrong number arrives wearing the healthiest
-        # label it has.
-        #
-        # MEASURED on this class before the order was fixed: 20,000
-        # queries against 4 concurrent emitters produced 6 negative
-        # ages, worst -0.0314865 s; `timing()` produced 9 in 5,000
-        # surveys. Rare is not never, and this is the query the health
-        # panel will poll for the life of the process.
-        #
-        # Taking both readings under one lock makes the comparison
-        # ordered by construction: nothing can move `_seen` between the
-        # snapshot and the clock, so `age` cannot be negative. The cost
-        # is one `time.monotonic()` inside the lock -- measured 0.0175
-        # us -- on a query, not on `emit`.
+        # `now` is read inside the lock so `age` cannot go negative against a concurrent
+        # `emit`.
         with self._lock:
             prev = self._seen.get((name, site))
             snapshot = None if prev is None else tuple(prev)
@@ -2239,30 +1022,12 @@ class SignalSink:
         fresh_within: float = FRESH_WITHIN,
         stale_after: float = STALE_AFTER,
     ) -> dict:
-        """`{(name, site): pin_state}` for every identity SEEN so far.
+        """`{(name, site): pin_state}` for every identity seen so far.
 
-        Pass `name` to take one name's identities, which is how the two
-        sites of a shared name are read apart.
-
-        THIS CANNOT REPORT `PIN_NEVER`, and the reason is structural
-        rather than an omission: an identity that never emitted is not
-        in the map, so nothing here knows it should exist. A roster of
-        expected pins lives in `docs/EMITTER_IDENTIFICATION.md`, not in
-        the sink. To ask about a specific pin that may never have
-        fired, name it to `pin_state`.
+        Pass `name` to restrict to that name's identities. Never reports
+        `PIN_NEVER`: an identity that never emitted is absent from the map.
         """
-        # ONE CLOCK READING, INSIDE THE LOCK, FOR THE WHOLE SURVEY.
-        #
-        # Inside for the reason `pin_state` gives at length: a reading
-        # taken before a contended lock goes stale against stamps
-        # `emit` writes while this call waits, and every age computed
-        # from it can be negative.
-        #
-        # ONE reading rather than one per identity, because a survey
-        # whose rows are aged against different instants cannot be
-        # compared row to row -- which is the only thing a survey is
-        # for. `_classify` then runs OUTSIDE the lock, so the work that
-        # scales with the identity count is not work `emit` waits on.
+        # One clock reading, inside the lock, ages every row against the same instant.
         with self._lock:
             snap = {
                 key: tuple(value)
@@ -2278,41 +1043,14 @@ class SignalSink:
     def cadence_report(
         self, stale_after: Optional[float] = None, *, include_never: bool = True
     ) -> dict:
-        """`{(name, site): row}` -- is each pin keeping the cadence it
-        declared? Issue #14.
+        """`{(name, site): row}`: each pin's declared cadence verdict.
 
-        THIS IS THE QUERY THE CATEGORY EXISTS FOR, and the whole point
-        of it is what it does NOT ask. Staleness is evaluated for
-        `always_on` identities only. A `toggle` returns
-        `CADENCE_NOT_APPLICABLE` at any age, because "has not fired" is
-        its normal state and an alarm that fires on normal is an alarm
-        the operator learns to ignore.
-
-        EVERY ROW CARRIES ITS PREDICTION BESIDE ITS OBSERVATION.
-        `declared` is the category, `predicted` is the interval band
-        that category promises, and `observed` is what this sink
-        measured. A reader can recompute `verdict` from the two, so the
-        verdict is checkable rather than trusted.
-
-        `stale_after` OVERRIDES THE PER-PIN BUDGET, and it is here for
-        the controls. Left None, each always-on pin is held to
-        `always_on_stale_after(its own throttle window)`. Passed a
-        number, every always-on pin is held to that -- which is how a
-        control shows the check firing without waiting out a real
-        threshold, and how it shows a toggle staying not-applicable
-        even at zero.
-
-        `include_never` adds a row for every always-on pin in
-        `CADENCE_BY_NAME` this sink has no record of, keyed
-        `(name, "")`. `timing()` structurally cannot report those; the
-        roster is what knows they should exist.
+        A `toggle` returns `CADENCE_NOT_APPLICABLE` unless it is emitting
+        at loop rate. `stale_after` overrides the per-pin budget when
+        given. `include_never` adds a row for every recorded always-on
+        pin this sink has no record of.
         """
-        # ONE CLOCK READING, INSIDE THE LOCK, FOR THE WHOLE REPORT --
-        # for the reason written out at length in `pin_state`. A
-        # reading taken before a contended lock goes stale against
-        # stamps `emit` writes while this call waits, and an age
-        # computed from it can come out negative and classify as the
-        # healthiest state it has.
+        # One clock reading, inside the lock, for the whole report; see `pin_state`.
         with self._lock:
             snap = {
                 key: (tuple(value), tuple(self._cadence.get(key, (None, 0.0))))
@@ -2328,28 +1066,10 @@ class SignalSink:
         return rows
 
     def health(self) -> dict:
-        """Sink integrity — reported so a partial record set announces
-        itself instead of reading as a complete one.
+        """Sink integrity counters, so a partial record set is visible.
 
-        v3.24.9x — ``capped`` IS GONE, and was not replaced by a
-        permanently-False field. It meant "the emitter has stopped
-        recording", and there is no longer any row at which that
-        happens, so keeping the key would have been a promise the sink
-        could never make good on and a reader could never falsify.
-
-        In its place, the two facts that ARE now true and were not
-        reported before:
-
-          retained — how many records are still in memory. `records()`
-                     returns this many, so a caller can tell a window
-                     from a whole run without guessing.
-          evicted  — how many aged out of that window. NOT a loss: they
-                     are on disk. A non-zero value says "count from the
-                     file, not from me".
-
-        `dropped` keeps its meaning exactly — records that never
-        reached disk — and now also carries buffer evictions, which are
-        the one eviction that IS a loss.
+        `retained` and `evicted` describe the in-memory window;
+        `dropped` counts records that never reached disk.
         """
         return {
             "emitted": self._seq,
@@ -2357,40 +1077,17 @@ class SignalSink:
             "retained": len(self._all),
             "evicted": self._evicted,
             "dropped": self._dropped,
-            # v3.24.9x — a rotation that could not run. Nothing was lost
-            # when this is non-zero, but the file is over its cap and
-            # somebody should know that without reading the disk.
+            # `rotate_failures`: a rotation that could not run; nothing was lost.
             "rotate_failures": self._rotate_failures,
-            # 10.3 phase 2 -- a duration `emit` refused. Nothing
-            # was lost when this is non-zero: the record was kept
-            # and only its duration reads as "not measured". It is
-            # here because a caller passing a flag or a negative
-            # interval is a defect at the CALL SITE, and this is
-            # the only place the sink can say so.
+            # `duration_rejected`: a `duration` `emit` refused; the record itself was
+            # kept.
             "duration_rejected": self._duration_rejected,
-            # 10.3 — the last-seen map's size, so its growth is visible
-            # without a debugger, and its ceiling announces itself
-            # rather than quietly stopping.
+            # `identities`: the last-seen map's current size.
             "identities": len(self._seen),
             "identity_overflow": self._identity_overflow,
             "path": str(self.path) if self.path else None,
-            # ── the digest ladder ────────────────────────────────────
-            #
-            # `digest_folded` is the one number that has to be here.
-            # The digest thins the loud emitters by 97% and a reader
-            # who cannot see that is reading a thinned file as a
-            # complete one -- which is the mistake this whole module
-            # exists to make impossible. Every record the digest did
-            # not write verbatim is in this count AND is carried on the
-            # next admitted line of its own identity as `folded`, so
-            # the thinning is visible from the health dict and from the
-            # file itself, independently.
-            #
-            # None of these is a record loss. `digest_dropped` is the
-            # closest thing to one and it is not: those records are on
-            # the main ladder, and the count is here because a digest
-            # that has silently stopped being written is
-            # indistinguishable from a platform that has gone quiet.
+            # `digest_folded` counts records the digest thinned; each survives verbatim
+            # on the main file.
             "digest_admitted": self._digest_admitted,
             "digest_folded": self._digest_folded,
             "digest_dropped": self._digest_dropped,
@@ -2412,34 +1109,10 @@ _THROTTLE: dict = {}
 def _throttle_admit(name: str, site: str, every: float, instance: Optional[str] = None):
     """Admit this observation, or fold it into the next one.
 
-    Returns the number of observations the admitted record stands for
-    (>= 1), or None when this one is suppressed.
-
-    Keyed by (name, site) rather than name alone: the same signal
-    emitted from two places is two different things to a reader, and
-    collapsing them would hide which one is firing.
-
-    `instance` IS THAT SAME RULE WHERE THE TWO THINGS SHARE ONE LINE.
-    Two objects of one class run the same `file:line`, so the pair
-    alone keys them together. Measured on two real `ExchangeTab`
-    objects, three refresh passes each: one record, naming one
-    exchange, `count` 1 -- and the identical record when the SECOND
-    tab's emitter was dead. A green stood for passes it had not seen
-    and a stopped instance was invisible. A pin with more than one live
-    instance now declares what makes its own distinct, and that value
-    joins the key.
-
-    IT IS AN EXPLICIT DECLARATION, NEVER OBJECT IDENTITY. `id(self)`
-    changes on every restart, so no window would survive one, and it
-    would leave a dead entry behind for every widget Qt destroys --
-    an unbounded key space in a dict nothing prunes. A CONFIGURED id
-    (an exchange id, a bot id) is stable across both, so the entry
-    count is bounded by the configuration and not by uptime. The
-    emitter already holds that id: `exchange.15.002` puts it in its
-    context for exactly this reason.
-
-    A pin that leaves `instance` at None keys as it always did, which
-    is why the pins with one live instance are untouched.
+    Returns the count of observations the admitted record stands for,
+    or None when suppressed. Keyed by `(name, site, instance)`; two
+    live objects sharing one call site must declare distinct `instance`
+    values to be counted separately.
     """
     now = time.monotonic()
     with _THROTTLE_LOCK:
@@ -2481,20 +1154,12 @@ def emit(
     module: Optional[str] = None,
     duration: Optional[float] = None,
 ) -> Optional[Signal]:
-    """Module-level emit — the universal connection point.
+    """Module-level emit; the connection point every call site uses.
 
-    Deliberately a plain function, not a bus subscription: a call site
-    should not need a reference to anything. With no sink installed this
-    is a dict lookup and a return, so instrumentation can live on a hot
-    path and cost nothing when nobody is collecting.
-
-    `instance` NAMES WHICH OBJECT THIS OBSERVATION CAME FROM, and it
-    means something ONLY beside `every`. A rate-limited line run by
-    several live objects folds their passes together without it — see
-    `_throttle_admit`. It is not written to the record: the emitter
-    that knows the id already carries it in `context`, where a reader
-    can see it. Nothing else in this function reads it, so a pin
-    without `every` is unaffected whether it declares one or not.
+    A plain function, not a bus subscription, so no sink reference is
+    needed at the call site. With no sink installed this is a dict
+    lookup and a return. `instance` distinguishes live objects sharing
+    one `every=` throttle window; it has no effect without `every`.
     """
     sink = get_sink()
     if sink is None:
@@ -2502,25 +1167,8 @@ def emit(
     _site = _caller_site(2)
     _mod = module or _caller_module(2)
     if every and every > 0:
-        # v3.24.90 — SYNCHRONISER. Operator, 2026-08-08: "I am
-        # concerned that because programs are constantly looping that
-        # some emitters (maybe most) will be spamming I/O messages."
-        #
-        # Correct concern: a per-candle emitter on a 35-bot fleet fires
-        # tens of thousands of times a run, and at that rate the file
-        # is a cost rather than evidence. `every=N` admits one record
-        # per N seconds per (name, site, instance) and folds the
-        # suppressed ones into the next record's `count`, so nothing is
-        # silently dropped -- the line says how many it stands for.
-        #
-        # `instance` IS WHAT THE CALL SITE DECLARES ITS OBJECT BY, and
-        # a pin that omits it keys on the pair exactly as before. Two
-        # live objects on one line shared one window until this
-        # existed, so a green named one of them and stood for all.
-        #
-        # A FAILING check is NEVER suppressed. Rate-limiting the thing
-        # you built the network to catch is how a spam control becomes
-        # a blindfold.
+        # `every=N` admits one record per N seconds per identity; a failing check is
+        # never suppressed.
         _judged = (
             ok
             if ok is not None
@@ -2559,57 +1207,18 @@ def install_process_sink(
     log_dir: Optional[Path] = None,
     flush_every: int = 500,
 ) -> Optional["SignalSink"]:
-    """Install the sink the whole process emits into.
+    """Install the sink the whole process emits into; call once from `main()`.
 
-    v3.24.88. Operator, 2026-08-08: "Emitters don't work unless program
-    is running or a debug is performed."
-
-    That was accurate. `set_sink` had exactly one caller -- the Fleet
-    Replay controller, at the start of a replay -- so during ordinary
-    live operation nothing was collecting and every `emit()` in the
-    platform returned immediately. An instrument that only records
-    while someone is watching it cannot report the thing nobody was
-    watching for, which is the only kind of failure worth instrumenting.
-
-    Called once from `main()`. A replay still installs its own sink for
-    the duration of the run so its records land in that run's
-    directory; it now RESTORES this one afterwards instead of clearing
-    to None, so live collection resumes when the replay ends.
-
-    THIS is the sink the row cap used to switch off. It runs for the
-    life of the process, so it was the one that reached 2,000,000 rows
-    after about 13 hours and then recorded nothing more. It no longer
-    stops. Its file is bounded by rotation and its memory by
-    `RETAIN_ROWS`; neither bound touches whether `emit` records.
-
-    Buffered -- `flush_every` is higher than a replay's because this
-    runs for the life of the process and the write should be rarer.
-
-    Returns the sink, or None if the log directory cannot be opened;
-    collection is never allowed to prevent startup.
+    Writes to `<log_dir or ~/.acervator_logs/signals>/session.jsonl`,
+    bounded by rotation and by `RETAIN_ROWS`. Returns None, never
+    raising, if the log directory cannot be opened.
     """
     try:
         base = (
             Path(log_dir) if log_dir else (Path.home() / ".acervator_logs" / "signals")
         )
         base.mkdir(parents=True, exist_ok=True)
-        # ONE FILE, SHARED BY EVERY PROCESS AND EVERY LAUNCH.
-        #
-        # v3.24.9x — the previous comment here said "one file per
-        # process", and that was wrong in effect. The name is a
-        # CONSTANT, so process 2 opens the same file process 1 wrote
-        # and appends to it, for ever. Measured 2026-08-13: four
-        # separate runs, distinguishable only by `seq` restarting,
-        # sharing one 2,445,435,093-byte file.
-        #
-        # The name STAYS constant. Stamping a pid or a clock into it
-        # would trade one unbounded thing for another — an unbounded
-        # COUNT of files, which is the failure
-        # `acervator_watchdog.prune_postmortem_bundles` already exists
-        # to clean up after. The file is bounded by rotation instead:
-        # 50 MB x 5 backups, the same as every writer in
-        # `logging_engine`, so a reader always knows the one path to
-        # look at and the disk footprint has a ceiling.
+        # The filename is constant; every process appends to and rotates the same file.
         sink = SignalSink(flush_every=flush_every)
         sink.path = base / "session.jsonl"
         set_sink(sink)
@@ -2619,41 +1228,10 @@ def install_process_sink(
 
 
 def read_records(path: Path) -> tuple:
-    """Read a captured JSONL back as frozen records.
+    """Read a captured JSONL file back as frozen `Signal` records.
 
-    v3.24.91 — READS BACK EVERY FIELD IT WROTE.
-
-    10.3 — AND STILL READS EVERY FIELD IT NEVER WROTE. The two timing
-    keys are absent from all 598,500 records in the operator's live
-    history, measured read-only 2026-08-15 with zero decode failures
-    across six generations. Their absence restores as "not measured",
-    which is what it is.
-
-    `to_json` writes `module`, `kind` and `count`; this reader dropped
-    all three, so the record that came off disk was not the record that
-    went on. A `sample` read back as a `check`, which flipped the
-    verdict column in `message()` from "----" to a judgement. `module`
-    read back as the empty string and displayed as "?". A folded record
-    that stood for 300 observations read back as 1, so a reader counting
-    from the file undercounted.
-
-    Payloads are re-frozen on the way in for the same reason: `emit`
-    stores a list as a tuple, and a plain list read back would not
-    compare equal to the record that was written.
-
-    The operator's standing rule is that emitter data may not change
-    after it is read back. The reader was the thing changing it.
-
-    A FIELD IT CANNOT USE COSTS THE FIELD, NEVER THE FILE. Two things
-    are skipped here and they are not the same thing. A line that will
-    not DECODE is not a record at all, and `continue` drops it. A line
-    that decodes cleanly and carries one unusable number IS a record:
-    its name, site, verdict and sequence are all readable, and the
-    coercion helpers return None for the number so the rest survives.
-    Dropping the whole record would delete a real emission from the
-    census to punish a field no consumer has to read, and an emission
-    missing from the census is the exact silent absence a monitor
-    exists to notice.
+    Skips a line that fails to decode; a field that fails to coerce
+    restores its "not measured" default rather than dropping the record.
     """
     out: list[Signal] = []
     try:
@@ -2680,22 +1258,12 @@ def read_records(path: Path) -> tuple:
                         module=d.get("module") or "",
                         kind=d.get("kind") or "check",
                         count=int(d.get("count") or 1),
-                        # 10.3 — ABSENT IS NOT ZERO. Every one of the
-                        # 598,500 records already on the operator's disk
-                        # was written before these two keys existed, and
-                        # each one must still read back as a valid record.
-                        # A missing `dt` restores as None ("no interval was
-                        # measured"), never as 0.0, and a missing `nth`
-                        # restores as 0 ("never measured"), never as 1 --
-                        # which would claim every legacy record was the
-                        # first emission of its identity.
+                        # A missing `dt` restores None, not 0.0; a missing `nth`
+                        # restores 0, not 1.
                         dt=_as_float(d.get("dt")),
                         nth=_as_ordinal(d.get("nth")),
-                        # 10.3 phase 2 — ABSENT IS NOT ZERO, for the same
-                        # reason as `dt` above. Every record written before
-                        # this key existed restores with duration None, "no
-                        # duration was measured", never 0.0, which would
-                        # claim every legacy operation was instantaneous.
+                        # A missing `duration` restores None, not 0.0, which would claim
+                        # a measured instant.
                         duration=_as_float(d.get("duration")),
                     )
                 )
