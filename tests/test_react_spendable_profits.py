@@ -25,6 +25,7 @@ from tests.fixtures.web_js_modules import (
     JsEngine,
     js_literals,
     load_order,
+    module_lock as shared_module_lock,
     new_engine,
     runs_after,
     swap_module,
@@ -720,9 +721,7 @@ def test_the_literal_scan_reads_past_a_comment_holding_a_colour():
 
 def module_lock():
     """A lock file every worker must take before it writes the module."""
-    from filelock import FileLock
-
-    return FileLock(str(MODULE_PATH) + ".lock")
+    return shared_module_lock(MODULE_PATH)
 
 
 def test_each_written_value_is_caught_in_the_module_file_itself():

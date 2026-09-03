@@ -34,6 +34,7 @@ from tests.fixtures.host_fonts import (
     skip_unless_no_fonts,
     skip_unless_real_fonts,
 )
+from tests.fixtures.repo_tree import named
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
@@ -1958,9 +1959,7 @@ def test_the_readers_match_a_whole_path_and_not_a_name():
         GUI_READER_NEIGHBOUR.name,
         TRADING_READER_NEIGHBOUR.name,
     )
-    assert [
-        path for path in REPO_ROOT.rglob(PANE_SOURCE.name) if ".git" not in path.parts
-    ] == [PANE_SOURCE]
+    assert named(PANE_SOURCE.name) == [PANE_SOURCE]
 
 
 def test_the_neighbouring_controls_are_seven_different_files():

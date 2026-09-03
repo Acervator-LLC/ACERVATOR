@@ -23,6 +23,7 @@ from tests.fixtures.host_fonts import (
     skip_unless_no_fonts,
     skip_unless_real_fonts,
 )
+from tests.fixtures.repo_tree import named
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
@@ -983,7 +984,7 @@ def test_no_string_the_strip_shows_names_a_file_that_is_not_there():
     missing = []
     for text in shown_strings():
         for name in named_files(text):
-            if not list(REPO_ROOT.rglob(name)):
+            if not named(name):
                 missing.append((name, text[:60]))
     assert missing == [], missing
 
@@ -993,9 +994,9 @@ def test_the_file_name_scan_reads_a_name_out_of_a_tooltip():
     assert named_files("see P0a in NEXT_SESSION_ORDERS.md.") == [
         "NEXT_SESSION_ORDERS.md"
     ]
-    assert not list(REPO_ROOT.rglob("NEXT_SESSION_ORDERS.md"))
+    assert not named("NEXT_SESSION_ORDERS.md")
     assert named_files("see the file main.py now") == ["main.py"]
-    assert list(REPO_ROOT.rglob("main.py"))
+    assert named("main.py")
 
 
 def test_the_surface_does_not_follow_a_value_moved_in_the_shipped_strip(monkeypatch):

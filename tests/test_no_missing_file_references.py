@@ -121,6 +121,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.fixtures.repo_tree import source_files
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Files that ship to a user or drive a build. The same line issue #68
@@ -197,13 +199,7 @@ def _file_names() -> set[str]:
     a file of that name is anywhere in the tree. A name that carries a
     separator must resolve exactly.
     """
-    names: set[str] = set()
-    for path in REPO_ROOT.rglob("*"):
-        if "__pycache__" in path.parts or ".git" in path.parts:
-            continue
-        if path.is_file():
-            names.add(path.name)
-    return names
+    return {path.name for path in source_files()}
 
 
 def _resolves(token: str, names: set[str]) -> bool:

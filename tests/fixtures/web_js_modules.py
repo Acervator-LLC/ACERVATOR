@@ -49,10 +49,12 @@ raising ``PermissionError`` for a held file on Windows, when
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -88,6 +90,35 @@ def load_order() -> list:
     return tags[:at] + injected + tags[at:]
 
 
+#: Attempts before the lock is called stuck.
+LOCK_ATTEMPTS = 400_000
+
+
+@contextlib.contextmanager
+def module_lock(path: Path, attempts: int = LOCK_ATTEMPTS):
+    """Hold a lock file beside `path` so one worker at a time writes it.
+
+    Built on `os.open` with `O_CREAT | O_EXCL`, which the fast lane's
+    package set covers. Raises rather than yielding if `attempts` run out.
+    """
+    lock = Path(tempfile.gettempdir()) / (path.name + ".acervator.lock")
+    handle = None
+    for _ in range(attempts):
+        # Windows answers a file pending deletion with a permission error.
+        try:
+            handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_RDWR)
+            break
+        except (FileExistsError, PermissionError):
+            continue
+    if handle is None:
+        raise AssertionError(f"{lock} stayed taken for all {attempts} attempts")
+    try:
+        yield
+    finally:
+        os.close(handle)
+        lock.unlink(missing_ok=True)
+
+
 def runs_after(order: list, name: str, *needed: str) -> bool:
     """Whether `order` runs `name`, and runs every `needed` name before it.
 
@@ -97,6 +128,7 @@ def runs_after(order: list, name: str, *needed: str) -> bool:
         return False
     at = order.index(name)
     return all(one in order and order.index(one) < at for one in needed)
+
 
 EVENT_DRAIN_ROUNDS = 20
 
