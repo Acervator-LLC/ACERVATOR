@@ -75,7 +75,8 @@ def _fresh_display_price(pool, exchange_id: str, symbol: str, fallback_price: fl
 
     WHY THIS EXISTS (corrects a wrong fix shipped 2026-08-06)
     The dashboard reads ``stats.current_price``, whose only recurring
-    writer is ``scrumming_bot.py:5136`` -- downstream of the read-rate
+    writer is ``ScrummingBot.tick`` (``src/trading/scrumming_bot.py``)
+    -- downstream of the read-rate
     gate. Measured 2026-08-06: that field refreshes no faster than every
     60s on 29 bots and every 300s on 6, while the cell repaints every
     2s. The bulk ticker refresher was shipped believing it fixed this;

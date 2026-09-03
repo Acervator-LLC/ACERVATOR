@@ -166,11 +166,13 @@ class MarketDataPool:
         self._ticker_batch_symbols = 0
         self._ticker_batch_races = 0
         # v3.23.74 — mirror of ticker locks for OHLCV slot fetches.
-        # Prior to v3.23.74, ScrummingBot bypassed the pool for OHLCV
-        # (scrumming_bot.py:5254 + 5433 called self.exchange.get_ohlcv
-        # directly on every action tick), so 35 bots × 2 hot sites =
+        # Prior to v3.23.74, ScrummingBot bypassed the pool for OHLCV,
+        # calling self.exchange.get_ohlcv directly at two hot sites on
+        # every action tick, so 35 bots × 2 hot sites =
         # ~70 raw OHLCV calls / TRACK-mode 30s cycle — the biggest
         # contributor to the operator-observed 500/600 CPM saturation.
+        # Those two direct call sites no longer exist; both routed
+        # through the ScrummingBot._get_ohlcv wrapper below instead.
         # v3.23.74 adds get_or_fetch_ohlcv (this pool method) + a
         # ScrummingBot._get_ohlcv wrapper that routes through it, so
         # N bots on the same (exchange, symbol, TF) share ONE fetch
@@ -432,9 +434,10 @@ class MarketDataPool:
         WHAT THIS DOES **NOT** FIX, corrected 2026-08-07
         An earlier version of this docstring claimed worst-case display
         staleness drops from 300s to 5s. That was wrong. The dashboard
-        reads ``stats.current_price`` (``main_window.py:1621``), whose
-        only recurring writer is ``scrumming_bot.py:5136`` -- downstream
-        of the gate. Warming this cache does not write that field, so
+        reads ``stats.current_price`` (``BotStatusTable.update_bots`` in
+        ``src/gui/widgets/bot_status_table.py``), whose only recurring
+        writer is ``ScrummingBot.tick`` in ``src/trading/scrumming_bot.py``
+        -- downstream of the gate. Warming this cache does not write that field, so
         the READOUT is exactly as stale as before. What does improve is
         the price a bot sees when it does fetch, and the fleet's API
         volume. Display freshness requires a reader that consults this

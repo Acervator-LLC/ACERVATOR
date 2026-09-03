@@ -427,7 +427,9 @@ class FleetAggregationMixin:
             # position by $35.46 against $3,317.16.
             #
             # C10 fixed this for the per-bot Ammo and
-            # scrumming_bot.py:9246 was already correct for manual fire.
+            # `ExecutionEngineMixin._execute_manual_rebalance`
+            # (`src/trading/scrumming/execution.py`) was already correct
+            # for manual fire.
             # This was the last consumer still summing the stale value,
             # and it is the one the headline portfolio figure is built
             # from.

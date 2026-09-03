@@ -915,9 +915,11 @@ if _HAS_QT:
         def _save_fleet_state_now(self, what: str) -> tuple[bool, str]:
             """Persist the fleet in this click. Return (saved, reason).
 
-            issue #98 defect 3. `clear_fold_tranches` and
-            `clear_pending_wire_credits` both write memory only
-            (`scrumming_bot.py:13273` and `:13350`) and rely on the
+            issue #98 defect 3. `FoldTrancheAccountingMixin.clear_fold_tranches`
+            (`src/trading/scrumming/fold_tranches.py`) and
+            `WireRoutingMixin.clear_pending_wire_credits`
+            (`src/trading/scrumming/wire_routing.py`) both write memory
+            only and rely on the
             60-second rolling save. Clear, then close inside that
             window, and everything the operator destroyed comes back.
 

@@ -284,9 +284,10 @@ class ExtractorBot(BotContainer):
         # no phantom logic; the flag is state, not a switch.
         #
         # NO BEHAVIOUR CHANGE: the parameter defaults to False and both
-        # construction sites pass False explicitly — main_window.py:7545
-        # and bot_container.py:3557 — so the stored value is False on
-        # every path that exists today, exactly what the parent set.
+        # construction sites pass False explicitly — `MainWindow._create_bot`
+        # in `src/gui/main_window.py` and `StateRestoreMixin.restore_bots_from_state`
+        # in `src/trading/container/restore.py` — so the stored value is
+        # False on every path that exists today, exactly what the parent set.
         self._phantoms_enabled = bool(enable_phantoms)
 
         # ── Chunk-based balance (operator directive decision #8) ────

@@ -609,14 +609,16 @@ class FoldTranchesTabMixin:
     #
     # and neither clear reached disk. Both bot methods mutate memory
     # and leave the write to the 60-second rolling save
-    # (`main.py:1343`), so a clear followed by a close inside that
+    # (`periodic_save`, nested inside `main()` in `main.py`), so a
+    # clear followed by a close inside that
     # window restored every record the operator had just destroyed.
     #
     # NEITHER REPAIR TOUCHES `scrumming_bot.py`. The clear itself is
     # correct and is not changed. The refresh is this dialog's own
     # widget tree, and the save is a call the CALLER can make - the
     # precedent is Reset-all-errors, which calls `save_all_state()`
-    # inside its click at `main_window.py:8259` and states the same
+    # inside its click in `MainWindow._reset_all_errors`
+    # (`src/gui/main_window.py`) and states the same
     # reason.
     FOLD_TRANCHES_TAB_LABEL = "Fold Tranches"
 
@@ -1369,7 +1371,9 @@ class FoldTranchesTabMixin:
             # DECIDES. This read was
             #     float(getattr(cfg, 'scrumming_interval_pct', 0) or 0)
             # — the scrumming interval ALONE. The executor's
-            # per-tranche fold filter (`scrumming_bot.py:9857`) uses
+            # per-tranche fold filter
+            # (`ExecutionEngineMixin._execute_manual_rebalance` in
+            # `src/trading/scrumming/execution.py`) uses
             # the Minimum Opposing Trade Distance, which is
             # interval + TRADING FEE, defined in `otd_math`.
             #

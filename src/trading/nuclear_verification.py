@@ -247,10 +247,11 @@ class SwarmFeatureVerifier:
         payload = getattr(event, "data", None) or {}
         inner = payload.get("data")
         data = inner if isinstance(inner, dict) else payload
-        # The bus payload names this field "type", not "action":
-        #   scrumming_bot.py:5773  side="buy",  type="ENTRY"
-        #   scrumming_bot.py:7271  side="sell", type="SCRUM"
-        #   scrumming_bot.py:8308  side="buy",  type="FOLD"
+        # The bus payload names this field "type", not "action". In
+        # src/trading/scrumming/tick_phases.py, TickPhaseMixin:
+        #   _tick_initial_entry  side="buy",  type="ENTRY"
+        #   _tick_execute_scrum  side="sell", type="SCRUM"
+        #   _tick_execute_fold   side="buy",  type="FOLD"
         # "action" is the name used by the LOG schema, not the bus.
         # Reading the wrong one records zero for every trade and the
         # coverage report shows 0% while the run looks healthy — which

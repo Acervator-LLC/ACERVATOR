@@ -148,10 +148,10 @@ ARBITER_NOT_APPLICABLE = "—"
 # ── The Source column (issue #98 defect 5) ───────────────────────────
 # WHAT THE COLUMN USED TO SAY, AND WHY IT WAS WRONG.
 # The cell read `"manual fire" if t.get("operator_initiated") else
-# "auto scrum"`. `operator_initiated` is written at ONE site,
-# `scrumming_bot.py:12398`, inside the SCRUM (sell) branch of
-# `_execute_manual_rebalance`, and its value comes from that method's
-# intent map at `scrumming_bot.py:12153`:
+# "auto scrum"`. `operator_initiated` is written at ONE site, inside
+# the SCRUM (sell) branch of `ExecutionEngineMixin._execute_manual_rebalance`
+# (`src/trading/scrumming/execution.py`), and its value comes from that
+# same method's own intent map:
 #
 #     "manual_button": ("MANUAL_SCRUM", "MANUAL_FOLD", True)
 #     "wire_stack":    ("WIRE_STACK_SCRUM", "WIRE_STACK_FOLD", False)
@@ -159,15 +159,19 @@ ARBITER_NOT_APPLICABLE = "—"
 #
 # So the flag means MANUAL SCRUM: an operator-pressed SELL that CREATED
 # this tranche. A manual FIRE is the opposite operation. It is a BUY,
-# and it REMOVES a tranche (`scrumming_bot.py:3548`). A tranche created
+# and it REMOVES a tranche (in the same `_execute_manual_rebalance`).
+# A tranche created
 # by a manual fire cannot exist, so the old label named an action that
 # could not have produced the row it sat on.
 #
 # THREE PROVENANCES, NOT TWO, AND THE THIRD IS THE KEY'S ABSENCE.
-# The two autonomous append sites -- the SCRUM cycle at
-# `scrumming_bot.py:9112` and the DIST re-fold at `:10721` -- write no
-# `operator_initiated` key at all. `_restore_state` copies each stored
-# tranche dict verbatim (`scrumming_bot.py:5211`) and stamps nothing,
+# The two autonomous append sites -- the SCRUM cycle in
+# `TickPhaseMixin._tick_execute_scrum` and the DIST re-fold in
+# `TickPhaseMixin._tick_distribute` (both
+# `src/trading/scrumming/tick_phases.py`) -- write no
+# `operator_initiated` key at all. `StateSerializerMixin.import_scrumming_state`
+# (`src/trading/scrumming/state_io.py`) copies each stored
+# tranche dict verbatim and stamps nothing,
 # so the absence survives a save and a reload and is readable here.
 # That splits the old false branch in two:
 #
@@ -185,9 +189,10 @@ ARBITER_NOT_APPLICABLE = "—"
 # that come from two different mechanisms.
 #
 # THE MERGE CAVEAT, CARRIED OVER RATHER THAN INVENTED HERE.
-# `_top_up_remnant_fold_tranches` keeps the OLDER record, so a manual
-# scrum merged into an autonomous remnant is displayed thereafter as
-# the remnant's provenance. `scrumming_bot.py:12453` states that; this
+# `FoldTrancheAccountingMixin._top_up_remnant_fold_tranches`
+# (`src/trading/scrumming/fold_tranches.py`) keeps the OLDER record, so
+# a manual scrum merged into an autonomous remnant is displayed
+# thereafter as the remnant's provenance. That method states this; this
 # column is its only consumer and no gate, order or amount reads the
 # field.
 FOLD_SOURCE_MANUAL_SCRUM = "manual scrum"
@@ -353,8 +358,11 @@ def fold_table_natural_width_px(table: QTableWidget) -> int:
 
 # ── The row order the operator chooses (issue #98 defect 7) ──────────
 # EVERY ORDER READS A FIELD THAT IS ALREADY STORED ON THE TRANCHE.
-# `created_ts` is written at all three creation sites
-# (`scrumming_bot.py:9110`, `:10726`, `:12397`) and was present on
+# `created_ts` is written at all three creation sites --
+# `TickPhaseMixin._tick_execute_scrum`, `TickPhaseMixin._tick_distribute`
+# (both `src/trading/scrumming/tick_phases.py`), and
+# `ExecutionEngineMixin._execute_manual_rebalance`
+# (`src/trading/scrumming/execution.py`) -- and was present on
 # 1,701 of 1,701 live tranches when the panel was evaluated; `usd` is
 # the parked cash the "USD parked" column already prints. No order
 # derives a quantity, and none invents one.
@@ -543,8 +551,10 @@ def install_health_row(
 # condition was invisible on the one surface that owns the ledger.
 #
 # `_current_holdings` IS THE FIELD, NOT A DERIVED QUANTITY. The bot
-# keeps it as the units it holds (`bot_container.py:482`), exports it
-# as `current_holdings` (`bot_container.py:1869`) and maintains the
+# keeps it as the units it holds (`ScrummingBot.__init__` in
+# `src/trading/scrumming_bot.py`), exports it
+# as `current_holdings` (`BotContainer.get_status` in
+# `src/trading/bot_container.py`) and maintains the
 # invariant `sum(lot["units"]) == _current_holdings`. The evaluation
 # used `position_value / current_price` only because it was reading a
 # state file; the panel has the bot and reads the field.

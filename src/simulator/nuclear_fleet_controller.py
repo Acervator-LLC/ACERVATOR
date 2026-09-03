@@ -883,7 +883,9 @@ class NuclearFleetController:
         could not pass no matter how long a soak ran. The verifier was
         reporting the truth: 9 tranches created, 0 fed.
 
-        The bot already routes on its own — ``scrumming_bot.py:8259``
+        The bot already routes on its own —
+        ``TickPhaseMixin._tick_execute_fold`` in
+        ``src/trading/scrumming/tick_phases.py``
         calls ``mgr.distribute_fold_profit`` whenever
         ``self._smart_wire_mgr`` is set. So this does not hook events or
         reimplement routing; it supplies the manager the bot is already

@@ -187,8 +187,10 @@ def load_bot_configs_from_state(
         # initiating state, which the directive forbids.
         #
         # ScrummingBot already has the importer for this:
-        # `import_scrumming_state` (scrumming_bot.py:3786), which LIVE
-        # calls at bot_container.py:3217. The sim simply never fed it.
+        # `StateSerializerMixin.import_scrumming_state`
+        # (`src/trading/scrumming/state_io.py`), which LIVE
+        # calls from `StateRestoreMixin.restore_bots_from_state`
+        # (`src/trading/container/restore.py`). The sim simply never fed it.
         # Carried under underscore keys so the BotConfig field filter in
         # `_instantiate_bot` ignores them; `_build_sim` reads them back
         # off the dict after the bot is constructed.

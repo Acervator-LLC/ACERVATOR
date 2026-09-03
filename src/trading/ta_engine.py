@@ -572,7 +572,8 @@ class VotingEngine:
         #    100 bars   0.06% mean   25.64% worst tablet     3/406 hit
         #    200 bars   0.06% mean   25.64% worst tablet     3/406 hit
         #    400 bars   0.14% mean   41.03% worst tablet     6/406 hit
-        # The live fetch is 100 candles (`scrumming_bot.py:7500`), where
+        # The live fetch is 100 candles (`ScrummingBot.tick` in
+        # `src/trading/scrumming_bot.py`), where
         # only a degenerate book abstains -- but a bot that has just
         # spawned holds the short tape, and there the dilution is a
         # third of the denominator on every symbol measured.

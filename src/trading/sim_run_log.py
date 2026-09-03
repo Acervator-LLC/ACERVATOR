@@ -442,7 +442,8 @@ class SimRunLog:
 
         A class NOT in that tuple propagates, deliberately. The
         caller already holds the outer guarantee --
-        ``fleet_replay_controller.py:2192`` wraps this whole
+        ``FleetReplayController._run`` in
+        ``src/simulator/fleet/fleet_replay_controller.py`` wraps this whole
         ``finish_run`` in its own handler -- so the replay is safe
         either way, and swallowing an unknown exception class here
         would only hide a bug that nothing else is looking for.

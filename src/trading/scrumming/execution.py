@@ -258,7 +258,8 @@ class ExecutionEngineMixin:
         DIST, and `_settled_fill`, which serves the manual paths. It
         reads `order.fee` and `order.fee_currency` only. The connector
         fills both from the venue's own `fee.cost` / `fee.currency`
-        (`ccxt_connector.py:1661`), so nothing here is computed.
+        (`CCXTConnector._parse_order` in `src/exchange/ccxt_connector.py`),
+        so nothing here is computed.
 
         A BUY clears the record instead of writing it. Sale proceeds
         are the only consumer and a buy fee is not a sale fee.

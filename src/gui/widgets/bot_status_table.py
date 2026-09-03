@@ -296,7 +296,8 @@ if _HAS_QT:
                 holdings = float(status.get("current_holdings", 0.0))
                 # v3.24.xx — prefer the shared pool's ticker for DISPLAY.
                 # stats.current_price only refreshes on an ungated tick
-                # (scrumming_bot.py:5136), measured at 60s on 29 bots and
+                # (``ScrummingBot.tick``, ``src/trading/scrumming_bot.py``),
+                # measured at 60s on 29 bots and
                 # 300s on 6, while this cell repaints every 2s. The bulk
                 # refresher keeps the pool warm at ~5s. Display only --
                 # the trading path still reads stats.current_price.

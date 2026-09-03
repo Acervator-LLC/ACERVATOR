@@ -40,7 +40,8 @@ _GATE_ORDER_FOLD: tuple[str, ...] = (
 )
 
 # LS is an override, not a pass/fail gate. A detected landing strip forces
-# is_bullish/is_bearish True at scrumming_bot.py:6212-6215, so it can
+# is_bullish/is_bearish True in ``ScrummingBot.tick``
+# (``src/trading/scrumming_bot.py``), so it can
 # produce a fire the TA gate alone refuses. It never appears in a blocker
 # list and is painted from its own field.
 _GATE_OVERRIDE = "LS"

@@ -263,8 +263,8 @@ class NuclearController:
         # 2. Isolated bus + manager.
         #
         # v3.24.61 (C17 / SWARM-4.23) — INJECTED, not overwritten after
-        # the fact. `BotManager.__init__` subscribes three handlers
-        # (bot_container.py:1598/1602/1603) before this line could run,
+        # the fact. `BotManager.__init__` (`src/trading/bot_container.py`)
+        # subscribes three handlers before this line could run,
         # so rebinding `._bus` afterwards left three bound methods of a
         # SIM manager permanently attached to the process-wide bus,
         # firing on LIVE events, three more per replay, never retracted.

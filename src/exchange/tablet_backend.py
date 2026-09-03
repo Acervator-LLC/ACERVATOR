@@ -153,9 +153,11 @@ class TabletBackend:
         # currencies the caller passed.
         #
         # WHAT THAT COST. `CCXTConnector.get_balance` marks a currency
-        # the response OMITS as `absent=True` (ccxt_connector.py:1212),
-        # and `ScrummingBot.tick` refuses to set `_initialised` on an
-        # absent read (scrumming_bot.py:6664-6678). The refusal is
+        # the response OMITS as `absent=True` (see
+        # `CCXTConnector.get_balance` in `src/exchange/ccxt_connector.py`),
+        # and `TickPhaseMixin._tick_initialise` in
+        # `src/trading/scrumming/tick_phases.py` refuses to set
+        # `_initialised` on an absent read. The refusal is
         # correct - two deterministic lies from the same filter still
         # agree - but here the read was not a lie, it was a currency the
         # backend simply never listed. So EVERY sim bot re-ran the init
@@ -163,7 +165,8 @@ class TabletBackend:
         # initialised since v3.24.84.
         #
         # The handshake is two balance reads with `await
-        # asyncio.sleep(0.25)` between them (scrumming_bot.py:6623).
+        # asyncio.sleep(0.25)` between them, in the same
+        # `TickPhaseMixin._tick_initialise`.
         # Measured on a 50-candle 2-bot replay: 100 refusals, 25.73 s of
         # the run's 26.03 s spent in that sleep - 98.8%.
         #
@@ -515,28 +518,33 @@ class TabletBackend:
             #
             # Issue #111 defect 2. `_settle` marked an unfundable order
             # `rejected` and this method returned it like any other
-            # order. `CCXTConnector.place_order` (ccxt_connector.py:1333)
+            # order. `CCXTConnector.place_order` in
+            # `src/exchange/ccxt_connector.py`
             # only re-raises what `create_order` raises, so the bot
             # received an ordinary `Order` carrying `filled=0`,
-            # `average=None`. `ScrummingBot._settled_fill`
-            # (scrumming_bot.py:12460) reads exactly those two fields,
-            # finds neither, and books the REQUESTED size at the TICK
-            # price as an estimate — a position the wallet never bought.
+            # `average=None`. `ExecutionEngineMixin._settled_fill`
+            # in `src/trading/scrumming/execution.py` reads exactly those
+            # two fields, finds neither, and books the REQUESTED size at
+            # the TICK price as an estimate — a position the wallet
+            # never bought.
             #
             # MEASURED on a 400-candle 1-symbol tape before this line
             # existed: the bot booked 101.05331875 CHIP into `_main_lots`
             # while `TabletBackend` held 0.0 CHIP and its USD was
             # untouched at 100.0. Every autonomous fire afterwards was
-            # refused by the MEM-257 position check
-            # (scrumming_bot.py:12723) — "internal 0.93737127 vs
-            # exchange 0.00000000" in the operator's own console — so the
-            # bot traded nothing for the rest of the run.
+            # refused by the MEM-257 position check —
+            # `ExecutionEngineMixin._verify_buy_safe_or_refuse` in
+            # `src/trading/scrumming/execution.py` — "internal
+            # 0.93737127 vs exchange 0.00000000" in the operator's own
+            # console — so the bot traded nothing for the rest of the run.
             #
             # LIVE CANNOT REACH THAT STATE. `ccxt` raises
             # `InsufficientFunds` out of `coinbase.create_order`, so the
             # bot never gets an order object to mis-book; the call site
-            # catches it and says so (scrumming_bot.py:7272 wire stack,
-            # :7543 max cartridge). `_settled_fill`'s docstring states
+            # catches it and says so (`TickPhaseMixin._tick_wire_stack_fire`
+            # for the wire stack path, `_tick_cartridge_fire` for max
+            # cartridge, both in `src/trading/scrumming/tick_phases.py`).
+            # `_settled_fill`'s docstring states
             # that premise out loud — "the order DID execute and refusing
             # to book it would be worse". It is true of a venue that
             # raises and false of one that does not.
