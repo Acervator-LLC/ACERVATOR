@@ -24,8 +24,9 @@ and never touches `bot_state.json`.
 THE DISTINCTION IT IS BUILT TO DRAW
 -----------------------------------
 The same machine resuming its own fleet after a crash or a reboot is a
-FEATURE. `bot_container.py:4044` records `_was_running` for exactly that
-reason. A repair that makes the operator hand-start 37 bots after every
+FEATURE. `StateRestoreMixin.restore_bots_from_state` in
+`src/trading/container/restore.py` records `_was_running` for exactly
+that reason. A repair that makes the operator hand-start 37 bots after every
 crash is a worse product than the defect.
 
 A DIFFERENT machine adopting that fleet is the hazard. So the guard has

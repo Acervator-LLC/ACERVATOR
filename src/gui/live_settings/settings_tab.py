@@ -845,7 +845,8 @@ class SettingsTabMixin:
         # issue #103 — THE DEFAULT STAYS 0, and that is a measured
         # decision rather than an omission. All 38 live bots store
         # `tranche_despawn_days` EXPLICITLY as 0, and the loader
-        # reads the stored value (`bot_container.py:3687`), so
+        # reads the stored value (`StateRestoreMixin.restore_bots_from_state`
+        # in `src/trading/container/restore.py`), so
         # changing the dataclass default would not reach one bot on
         # this fleet. It would only arm the timer on bots created
         # afterwards, silently, on records their operator never

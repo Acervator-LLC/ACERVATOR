@@ -124,7 +124,8 @@ class FleetSimExchange(ExchangeInterface):
         #
         # UNIT TRAP: values here are FRACTIONS (0.016), while
         # BotConfig.trading_fee_pct is a PERCENT (1.6) consumed as
-        # `_eff_pct / 100.0` at scrumming_bot.py:10021. The caller
+        # `_eff_pct / 100.0` inside `ScrummingBot.tick`
+        # (`src/trading/scrumming_bot.py`). The caller
         # converts; passing a percent straight in would charge 160%.
         self._fee_pct_by_symbol: dict[str, float] = {
             str(k): float(v) for k, v in (fee_pct_by_symbol or {}).items()
@@ -405,8 +406,8 @@ class FleetSimExchange(ExchangeInterface):
         # Live never honours `limit`. `CCXTConnector.get_ohlcv` passes it
         # into ccxt's `since` slot, so the exchange returns its own
         # default page size — 300 on Coinbase — for every live call.
-        # `ScrummingBot` asks for 100 at scrumming_bot.py:6223 and
-        # receives 300.
+        # `ScrummingBot.tick` (`src/trading/scrumming_bot.py`) asks for
+        # 100 and receives 300.
         #
         # Honouring `limit` here made the Simulator feed TA 100 candles
         # where live feeds 300. That is not a smaller sample of the same

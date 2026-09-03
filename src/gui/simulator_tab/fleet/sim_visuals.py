@@ -332,7 +332,8 @@ if _HAS_QT:
             """``landing_strip_side`` is "upper" / "lower"
             / "" and drives the LS override light. It is NOT a
             blocker: a landing strip forces is_bullish/is_bearish
-            True at scrumming_bot.py:6212-6215, so it can cause a
+            True in ``ScrummingBot.tick`` (``src/trading/scrumming_bot.py``),
+            so it can cause a
             trade the TA gate alone would have refused. Rendering it
             is the only way that influence is visible."""
             self._scrum_armed = bool(scrum_armed)

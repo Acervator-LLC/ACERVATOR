@@ -16,8 +16,10 @@ it is designed to catch:
 
 The Nuclear feature verifier read ``data["action"]`` from
 ``trade.filled``. The bot writes that field as ``data["type"]``
-(``scrumming_bot.py:5773 / :7271 / :8308``); ``"action"`` is the LOG
-schema's name, not the bus's. Nothing failed. No exception, no warning.
+(``TickPhaseMixin._tick_initial_entry`` / ``_tick_execute_scrum`` /
+``_tick_execute_fold`` in ``src/trading/scrumming/tick_phases.py``);
+``"action"`` is the LOG schema's name, not the bus's. Nothing failed.
+No exception, no warning.
 The verifier recorded zero for every trade and reported "coverage
 0/17" while 665 trades flowed past it.
 

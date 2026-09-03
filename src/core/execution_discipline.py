@@ -155,8 +155,10 @@ def fill_price(
     aggregate. It does not and cannot. Over N fills the expected cost is
     N * price * spread * sqrt(2/pi), not zero.
 
-    NOTE FOR ANYONE TRACING LIMIT-ORDER BEHAVIOUR HERE. Callers place
-    LIMIT orders AT this returned price (see scrumming_bot.py:10929),
+    NOTE FOR ANYONE TRACING LIMIT-ORDER BEHAVIOUR HERE. `verify_hit`
+    below samples this function and callers place LIMIT orders AT the
+    returned price (see `ExecutionEngineMixin._execute_sell` /
+    `_execute_buy` in `src/trading/scrumming/execution.py`),
     which makes those limits marketable by construction — a sell lands
     below the bid, a buy above the ask. That is intentional ("-0.1%
     drift for fast fill") and `verify_hit` is the cap that cancels when
