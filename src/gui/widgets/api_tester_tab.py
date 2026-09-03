@@ -295,21 +295,30 @@ if _HAS_QT:
                 conn.sync_connect(key, secret, pp)
                 elapsed = (_t.monotonic() - start) * 1000
                 _call_s = elapsed / 1000.0
-                mcount = (
-                    len(conn._ccxt.markets) if conn._ccxt and conn._ccxt.markets else 0
-                )
+                try:
+                    mcount = (
+                        len(conn._ccxt.markets)
+                        if conn._ccxt and conn._ccxt.markets
+                        else 0
+                    )
+                except Exception:
+                    mcount = None
+                # A count nothing read shows the mark, never a measured zero.
+                shown = "?" if mcount is None else str(mcount)
 
                 self._connector = conn
                 self._connected = True
                 self._connect_btn.setEnabled(False)
                 self._disconnect_btn.setEnabled(True)
                 self._conn_status.setText(
-                    f"Connected: {eid.capitalize()} ({mcount} markets)"
+                    f"Connected: {eid.capitalize()} ({shown} markets)"
                 )
                 self._conn_status.setStyleSheet(f"color: {ds.SUCCESS};")
                 self._log(
                     f"CONNECTED to {eid.capitalize()}",
-                    f"Markets: {mcount}\nAuth: OK\nThis connection is isolated from bots.",
+                    f"Markets: {shown}\n"
+                    f"Auth: not checked - press Fetch Balances\n"
+                    f"This connection is isolated from bots.",
                     elapsed,
                     "success",
                 )
@@ -473,7 +482,15 @@ if _HAS_QT:
             self._disconnect_btn.setEnabled(False)
             self._conn_status.setText("Disconnected")
             self._conn_status.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL};")
-            self._log("DISCONNECTED", "Connection closed", level="info")
+            # A close that never ran must not report a closed connection.
+            if _held:
+                self._log("DISCONNECTED", "Connection closed", level="info")
+            else:
+                self._log(
+                    "NOTHING TO CLOSE",
+                    "No session was open, so no close was attempted.",
+                    level="info",
+                )
             # 10.9 -- apitest.16.002, AND IT IS THE ONE THAT MATTERS
             # MOST IN THIS TAB. The label two lines above reads
             # "Disconnected" whatever happened and the connector
@@ -554,10 +571,14 @@ if _HAS_QT:
             try:
                 if test == "fetch_markets":
                     m = c.markets
-                    syms = sorted(m.keys())[:50]
+                    syms = sorted(str(k) for k in m)[:50]
                     result = {
                         "total": len(m),
-                        "spot": sum(1 for v in m.values() if v.get("type") == "spot"),
+                        "spot": sum(
+                            1
+                            for v in m.values()
+                            if isinstance(v, dict) and v.get("type") == "spot"
+                        ),
                         "first_50": syms,
                     }
                 elif test == "fetch_ticker":
@@ -568,10 +589,20 @@ if _HAS_QT:
                     result = c.fetch_order_book(sym, limit=20)
                 elif test == "fetch_ohlcv":
                     d = c.fetch_ohlcv(sym, "1h", limit=50)
+
+                    def _close(rows, at):
+                        """One end candle's close, or the mark when it has none."""
+                        if not rows:
+                            return 0
+                        row = rows[at]
+                        if isinstance(row, (list, tuple)) and len(row) > 4:
+                            return row[4]
+                        return "?"
+
                     result = {
                         "candles": len(d),
-                        "latest_close": d[-1][4] if d else 0,
-                        "oldest_close": d[0][4] if d else 0,
+                        "latest_close": _close(d, -1),
+                        "oldest_close": _close(d, 0),
                     }
                 elif test == "fetch_open_orders":
                     result = c.fetch_open_orders(sym)
@@ -582,25 +613,25 @@ if _HAS_QT:
 
                 elapsed = (_t.monotonic() - start) * 1000
 
+                def _positive(section):
+                    """One balance section: zero dropped, unreadable marked."""
+                    found = {}
+                    for k, v in section.items():
+                        if not v:
+                            continue
+                        try:
+                            reading = float(v)
+                        except (TypeError, ValueError):
+                            found[k] = "?"
+                            continue
+                        if reading > 0:
+                            found[k] = v
+                    return found
+
                 if isinstance(result, dict):
-                    if "free" in result and isinstance(result["free"], dict):
-                        result["free"] = {
-                            k: v
-                            for k, v in result["free"].items()
-                            if v and float(v or 0) > 0
-                        }
-                    if "used" in result and isinstance(result["used"], dict):
-                        result["used"] = {
-                            k: v
-                            for k, v in result["used"].items()
-                            if v and float(v or 0) > 0
-                        }
-                    if "total" in result and isinstance(result["total"], dict):
-                        result["total"] = {
-                            k: v
-                            for k, v in result["total"].items()
-                            if v and float(v or 0) > 0
-                        }
+                    for _name in ("free", "used", "total"):
+                        if _name in result and isinstance(result[_name], dict):
+                            result[_name] = _positive(result[_name])
                     display = json.dumps(result, indent=2, default=str)
                     if len(display) > 3000:
                         display = display[:3000] + "\n... (truncated)"
@@ -612,7 +643,16 @@ if _HAS_QT:
                         display += f"\n... and {len(result) - 5} more"
                 else:
                     display = str(result)
-                self._log(f"{test} OK", display, elapsed, "success")
+                # A name no arm answered never reached the venue, so it
+                # reports NOT RUN rather than a green OK headline.
+                if result is _nothing:
+                    display = (
+                        "This screen has no call by that name, "
+                        "so the venue was never asked."
+                    )
+                    self._log(f"{test} NOT RUN", display, elapsed, "warning")
+                else:
+                    self._log(f"{test} OK", display, elapsed, "success")
                 # 10.9 -- apitest.16.003. A GREEN HEADLINE OVER A CALL
                 # THAT NEVER RAN is the failure shape this tab has:
                 # the chain above answers an unrecognised name with an
@@ -862,7 +902,13 @@ if _HAS_QT:
                         elapsed = (_t.monotonic() - start) * 1000
                         status = resp.status
                         headers = dict(resp.headers)
-                        body = resp.read().decode("utf-8", errors="replace")
+                        read_back = resp.read()
+                        if isinstance(read_back, (bytes, bytearray)):
+                            body = read_back.decode("utf-8", errors="replace")
+                        elif isinstance(read_back, str):
+                            body = read_back
+                        else:
+                            body = f"[body is {type(read_back).__name__}, not text]"
 
                         # Truncate body for display
                         if len(body) > 1000:
@@ -884,15 +930,29 @@ if _HAS_QT:
                         except json.JSONDecodeError:
                             pass
 
+                        # A status nothing read shows the mark, and the
+                        # line must not paint like a measured pass.
+                        unread = status is None
+                        shown = "?" if unread else str(status)
                         detail = (
                             f"Endpoint: {desc}\n"
                             f"URL: {url}\n"
-                            f"HTTP Status: {status}\n"
+                            f"HTTP Status: {shown}\n"
                             f"Content-Type: {headers.get('Content-Type', 'unknown')}\n"
                             f"Content-Length: {headers.get('Content-Length', 'unknown')}\n"
                             f"Response:\n{body_display}"
                         )
-                        self._log(f"HTTP {status} - {desc}", detail, elapsed, "success")
+                        if unread:
+                            detail += (
+                                "\nNo HTTP status came back, so nothing here"
+                                " says the request succeeded."
+                            )
+                        self._log(
+                            f"HTTP {shown} - {desc}",
+                            detail,
+                            elapsed,
+                            "warning" if unread else "success",
+                        )
                         _green += 1
                         _statuses.append(status)
                         if body:
@@ -1026,20 +1086,33 @@ if _HAS_QT:
                 req.add_header("Accept", "application/json")
                 with safe_urlopen(req, timeout=10) as resp:
                     elapsed = (_t.monotonic() - start) * 1000
-                    body = resp.read().decode("utf-8", errors="replace")
+                    read_back = resp.read()
+                    if isinstance(read_back, (bytes, bytearray)):
+                        body = read_back.decode("utf-8", errors="replace")
+                    elif isinstance(read_back, str):
+                        body = read_back
+                    else:
+                        body = f"[body is {type(read_back).__name__}, not text]"
                     data = json.loads(body)
 
-                    if "status" in data:
-                        s = data["status"]
+                    if isinstance(data, dict) and "status" in data:
+                        s = data["status"] if isinstance(data["status"], dict) else {}
                         indicator = s.get("indicator", "unknown")
                         desc = s.get("description", "unknown")
                         detail = (
                             f"Exchange: {eid.capitalize()}\n"
-                            f"Status: {indicator.upper()}\n"
+                            f"Status: {str(indicator).upper()}\n"
                             f"Description: {desc}\n"
                             f"Raw: {json.dumps(data, indent=2)[:500]}"
                         )
-                        level = "success" if indicator in ("none", "minor") else "error"
+                        # A word this screen has no mapping for was
+                        # never read as an outage, so it paints amber.
+                        if indicator in ("none", "minor"):
+                            level = "success"
+                        elif indicator in _mappable:
+                            level = "error"
+                        else:
+                            level = "warning"
                         self._log(f"STATUS: {desc}", detail, elapsed, level)
                         # 10.9 -- apitest.16.005. THE VERDICT IS
                         # DERIVED FROM A WORD THE TAB MAY NOT KNOW.

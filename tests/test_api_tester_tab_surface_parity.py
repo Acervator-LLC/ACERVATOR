@@ -1768,6 +1768,12 @@ HELPER_MAP = {
     "the probe host": "probe_host",
     "the probe address table": "probe_endpoints",
     "the balance filter": "positive_only",
+    "one holding as a number": "reading_of",
+    "one answer read as a mapping": "mapping_or_none",
+    "one response body as text": "body_text",
+    "one http status as shown": "status_text_of",
+    "the market count as shown": "market_count_text",
+    "one end candle close": "close_of",
     "the markets answer": "markets_summary",
     "the candles answer": "ohlcv_summary",
     "one answer as text": "result_display",
@@ -1809,6 +1815,9 @@ MODEL_MEMBERS = {
     "_is_cert_error",
     "_probe_certifi",
     "_probe_endpoints",
+    "_endpoint_of",
+    "_log_answer",
+    "_log_unreadable_answer",
     "_log_request_failure",
     "_request_failure_kind",
     "_error_body",
@@ -2624,8 +2633,17 @@ PAYLOAD_KEY_SOURCES = {
     "headline_format": ("HEADLINE_FORMAT",),
     "entries": ("model.entries",),
     "entry_count": ("model.entries",),
+    "entries_logged": ("model.entries_logged",),
+    "entry_limit": ("ENTRY_LIMIT",),
+    "call_limit": ("CALL_LIMIT",),
     "entry_html_format": ("ENTRY_HTML_FORMAT",),
+    "credentials_hidden": ("CREDENTIALS_HIDDEN",),
+    "entry_marks": ("ENTRY_MARKS",),
+    "entry_mark_order": ("ENTRY_MARKS",),
+    "entry_slots": ("ENTRY_SLOTS",),
+    "entry_slot_order": ("ENTRY_SLOTS",),
     "level_colors": ("LEVEL_COLORS",),
+    "level_color_order": ("LEVEL_COLORS",),
     "default_level_color": ("DEFAULT_LEVEL_COLOR",),
     "timestamp_color": ("TIMESTAMP_COLOR",),
     "detail_color": ("DETAIL_COLOR",),
@@ -2664,6 +2682,8 @@ PAYLOAD_KEY_SOURCES = {
     "disconnect_failed_format": ("DISCONNECT_FAILED_FORMAT",),
     "disconnected_title": ("DISCONNECTED_TITLE",),
     "disconnected_detail": ("DISCONNECTED_DETAIL",),
+    "nothing_open_title": ("NOTHING_OPEN_TITLE",),
+    "nothing_open_detail": ("NOTHING_OPEN_DETAIL",),
     "history_callback_log": ("HISTORY_CALLBACK_LOG",),
     "not_connected_title": ("NOT_CONNECTED_TITLE",),
     "not_connected_detail": ("NOT_CONNECTED_DETAIL",),
@@ -2671,6 +2691,8 @@ PAYLOAD_KEY_SOURCES = {
     "running_detail_format": ("RUNNING_DETAIL_FORMAT",),
     "test_ok_format": ("TEST_OK_FORMAT",),
     "test_failed_format": ("TEST_FAILED_FORMAT",),
+    "test_unknown_format": ("TEST_UNKNOWN_FORMAT",),
+    "test_unknown_detail": ("TEST_UNKNOWN_DETAIL",),
     "markets_sample_limit": ("MARKETS_SAMPLE_LIMIT",),
     "spot_type": ("SPOT_TYPE",),
     "orderbook_limit": ("ORDERBOOK_LIMIT",),
@@ -2680,6 +2702,8 @@ PAYLOAD_KEY_SOURCES = {
     "close_index": ("CLOSE_INDEX",),
     "no_close": ("NO_CLOSE",),
     "balance_sections": ("BALANCE_SECTIONS",),
+    "no_holding": ("NO_HOLDING",),
+    "unreadable_mark": ("UNREADABLE_MARK",),
     "json_indent": ("JSON_INDENT",),
     "display_limit": ("DISPLAY_LIMIT",),
     "truncated_suffix": ("TRUNCATED_SUFFIX",),
@@ -2694,12 +2718,14 @@ PAYLOAD_KEY_SOURCES = {
     "test_open_orders": ("TEST_OPEN_ORDERS",),
     "test_trades": ("TEST_TRADES",),
     "probe_hosts": ("PROBE_HOSTS",),
+    "probe_host_order": ("PROBE_HOSTS",),
     "probe_host": ("model.exchange_id",),
     "default_host_format": ("DEFAULT_HOST_FORMAT",),
     "probe_port": ("PROBE_PORT",),
     "probe_timeout_s": ("PROBE_TIMEOUT_S",),
     "probe_endpoints": ("model.exchange_id",),
     "probe_endpoint_table": ("PROBE_ENDPOINTS",),
+    "probe_endpoint_table_order": ("PROBE_ENDPOINTS",),
     "default_endpoint_method": ("DEFAULT_ENDPOINT_METHOD",),
     "default_endpoint_url_format": ("DEFAULT_ENDPOINT_URL_FORMAT",),
     "default_endpoint_desc": ("DEFAULT_ENDPOINT_DESC",),
@@ -2744,11 +2770,17 @@ PAYLOAD_KEY_SOURCES = {
     "unreachable_detail_format": ("UNREACHABLE_DETAIL_FORMAT",),
     "probe_error_title_format": ("PROBE_ERROR_TITLE_FORMAT",),
     "probe_error_detail_format": ("PROBE_ERROR_DETAIL_FORMAT",),
+    "http_unread_title_format": ("HTTP_UNREAD_TITLE_FORMAT",),
+    "unreadable_answer_title_format": ("UNREADABLE_ANSWER_TITLE_FORMAT",),
+    "unreadable_answer_detail_format": ("UNREADABLE_ANSWER_DETAIL_FORMAT",),
+    "unread_status_note": ("UNREAD_STATUS_NOTE",),
+    "unreadable_body_format": ("UNREADABLE_BODY_FORMAT",),
     "no_body": ("NO_BODY",),
     "failure_http": ("FAILURE_HTTP",),
     "failure_url": ("FAILURE_URL",),
     "failure_other": ("FAILURE_OTHER",),
     "status_page_urls": ("STATUS_PAGE_URLS",),
+    "status_page_order": ("STATUS_PAGE_URLS",),
     "status_page_url": ("model.exchange_id",),
     "mappable_indicators": ("MAPPABLE_INDICATORS",),
     "green_indicators": ("GREEN_INDICATORS",),
@@ -2774,9 +2806,12 @@ PAYLOAD_KEY_SOURCES = {
     "timer_delays_ms": ("TIMER_DELAYS_MS",),
     "bus_topics": ("BUS_TOPICS",),
     "actions": ("ACTIONS",),
+    "actions_order": ("ACTIONS",),
     "no_caller_message": ("NO_CALLER_MESSAGE",),
     "logger_name": ("LOGGER_NAME",),
     "calls": ("model.calls",),
+    "call_count": ("model.calls",),
+    "call_names": ("CALL_NAMES",),
 }
 
 DERIVED_KEYS = {
@@ -2792,6 +2827,14 @@ DERIVED_KEYS = {
     "probe_endpoints",
     "status_page_url",
     "test_buttons",
+    "call_count",
+    "entry_mark_order",
+    "entry_slot_order",
+    "level_color_order",
+    "probe_host_order",
+    "probe_endpoint_table_order",
+    "status_page_order",
+    "actions_order",
 }
 
 
@@ -2859,6 +2902,24 @@ def test_the_derived_keys_are_each_covered_by_a_named_test():
         "probe_endpoints": "test_the_probe_host_and_addresses_are_the_shipped_screens",
         "status_page_url": "test_the_status_addresses_are_the_shipped_screens",
         "test_buttons": "test_the_button_tooltips_are_compared_as_strings",
+        "call_count": "test_every_published_bag_carries_its_key_order_as_a_list",
+        "entry_mark_order": (
+            "test_every_published_bag_carries_its_key_order_as_a_list"
+        ),
+        "entry_slot_order": (
+            "test_every_published_bag_carries_its_key_order_as_a_list"
+        ),
+        "level_color_order": (
+            "test_every_published_bag_carries_its_key_order_as_a_list"
+        ),
+        "probe_host_order": "test_every_published_bag_carries_its_key_order_as_a_list",
+        "probe_endpoint_table_order": (
+            "test_every_published_bag_carries_its_key_order_as_a_list"
+        ),
+        "status_page_order": (
+            "test_every_published_bag_carries_its_key_order_as_a_list"
+        ),
+        "actions_order": "test_every_published_bag_carries_its_key_order_as_a_list",
     }
     assert set(covered) == DERIVED_KEYS, sorted(set(covered) ^ DERIVED_KEYS)
     for name in covered.values():
@@ -2979,13 +3040,65 @@ def test_the_status_addresses_are_the_shipped_screens():
 
 
 def test_the_status_colour_rule_paints_a_maintenance_window_red():
-    """The status rule stopped painting every word outside two of them red."""
+    """A word the venue really sent for an outage still paints red."""
     assert surface.status_level("none") == surface.LEVEL_SUCCESS
     assert surface.status_level("minor") == surface.LEVEL_SUCCESS
-    for word in ("major", "critical", "maintenance", "hibernating", "NONE", ""):
+    for word in ("major", "critical", "maintenance"):
         assert surface.status_level(word) == surface.LEVEL_ERROR, word
     assert "maintenance" in surface.MAPPABLE_INDICATORS
     assert "maintenance" not in surface.GREEN_INDICATORS
+
+
+def test_a_status_word_the_screen_cannot_map_never_paints_an_outage():
+    """A word with no mapping was never read as an outage, so it is amber."""
+    for word in ("hibernating", "NONE", "", "unknown", 5, None):
+        found = surface.status_level(word)
+        assert found == surface.LEVEL_WARNING, f"{word!r} painted {found}"
+        assert found != surface.LEVEL_ERROR, word
+        assert found != surface.LEVEL_SUCCESS, word
+
+
+def test_the_status_colour_rule_still_tells_the_three_verdicts_apart():
+    """A rule answering one level for everything would pass no check above."""
+    every = {
+        surface.status_level(word)
+        for word in ("none", "major", "hibernating", "unknown")
+    }
+    assert every == {
+        surface.LEVEL_SUCCESS,
+        surface.LEVEL_ERROR,
+        surface.LEVEL_WARNING,
+    }, sorted(every)
+
+
+def published_bags():
+    """Each published bag beside the list that carries its key order."""
+    return (
+        ("entry_marks", "entry_mark_order"),
+        ("entry_slots", "entry_slot_order"),
+        ("level_colors", "level_color_order"),
+        ("probe_hosts", "probe_host_order"),
+        ("probe_endpoint_table", "probe_endpoint_table_order"),
+        ("status_page_urls", "status_page_order"),
+        ("actions", "actions_order"),
+    )
+
+
+def test_every_published_bag_carries_its_key_order_as_a_list():
+    """A bag alone loses its order, so each ships its keys as a list."""
+    payload = surface.build_view_model(surface.ApiTesterModel(exchange_ids=["kraken"]))
+    for bag, order in published_bags():
+        assert payload[order] == list(payload[bag]), bag
+        assert len(payload[order]) == len(payload[bag]), bag
+    assert payload["call_count"] == len(payload["calls"])
+    assert payload["entry_count"] == len(payload["entries"])
+
+
+def test_the_bag_order_check_would_see_an_order_that_lost_a_key():
+    """An order list short of its bag is what the check has to catch."""
+    payload = surface.build_view_model(surface.ApiTesterModel(exchange_ids=["kraken"]))
+    for bag, order in published_bags():
+        assert payload[order][1:] != list(payload[bag]), bag
 
 
 def test_a_bare_surface_reaches_nothing():

@@ -43,6 +43,8 @@ USE_STORED_DEFAULT = True
 # the row lays them out.
 CREDENTIAL_PLACEHOLDERS = ("API Key", "API Secret", "Passphrase (if needed)")
 ECHO_MODE = "Password"
+# Whether the credentials are hidden inside the three boxes.
+CREDENTIALS_HIDDEN = ECHO_MODE == "Password"
 
 CONNECT_LABEL = "Connect"
 CONNECT_TIP = "Establish isolated connection to exchange API"
@@ -143,15 +145,75 @@ TIMING_FORMAT = " ({elapsed:.0f}ms)"
 NO_TIMING = ""
 TIMESTAMP_FORMAT = "%H:%M:%S"
 
+# The response log ships whole on every bridge call, so it is bounded.
+ENTRY_LIMIT = 200
+CALL_LIMIT = 600
+
 HEADLINE_FORMAT = "{title}{timing}"
 HEADLINE_STYLE_FORMAT = "color: {color}; font-weight: bold;"
 
-ENTRY_HTML_FORMAT = (
-    '<span style="color:{stamp_color}">[{stamp}]</span> '
-    '<span style="color:{color}"><b>{title}</b>{timing}</span><br>'
-    '<pre style="color:{detail_color}; margin:0; '
-    'white-space:pre-wrap;">{detail}</pre><br>'
-)
+# The tags the response-log line is written from, drawn as elements.
+ENTRY_MARKS = {
+    "span_open": '<span style="color:',
+    "attr_close": '">',
+    "span_close": "</span>",
+    "strong_open": "<b>",
+    "strong_close": "</b>",
+    "line_break": "<br>",
+    "pre_open": '<pre style="color:',
+    "pre_attrs": '; margin:0; white-space:pre-wrap;">',
+    "pre_close": "</pre>",
+    "stamp_open": "[",
+    "stamp_close": "]",
+    "join": " ",
+    "strong_weight": "bold",
+    "detail_wrap": "pre-wrap",
+}
+
+# The entry slots the response-log line leaves for its values.
+ENTRY_SLOTS = {
+    "stamp_color": "{stamp_color}",
+    "stamp": "{stamp}",
+    "color": "{color}",
+    "title": "{title}",
+    "timing": "{timing}",
+    "detail_color": "{detail_color}",
+    "detail": "{detail}",
+}
+
+
+def entry_line_format() -> str:
+    """The response-log line, built from the marks and slots published."""
+    mark = ENTRY_MARKS
+    slot = ENTRY_SLOTS
+    return (
+        mark["span_open"]
+        + slot["stamp_color"]
+        + mark["attr_close"]
+        + mark["stamp_open"]
+        + slot["stamp"]
+        + mark["stamp_close"]
+        + mark["span_close"]
+        + mark["join"]
+        + mark["span_open"]
+        + slot["color"]
+        + mark["attr_close"]
+        + mark["strong_open"]
+        + slot["title"]
+        + mark["strong_close"]
+        + slot["timing"]
+        + mark["span_close"]
+        + mark["line_break"]
+        + mark["pre_open"]
+        + slot["detail_color"]
+        + mark["pre_attrs"]
+        + slot["detail"]
+        + mark["pre_close"]
+        + mark["line_break"]
+    )
+
+
+ENTRY_HTML_FORMAT = entry_line_format()
 
 NO_SETTINGS_TITLE = "ERROR"
 NO_SETTINGS_DETAIL = "Settings not available"
@@ -165,10 +227,15 @@ NO_MANUAL_TITLE = "ERROR"
 NO_MANUAL_DETAIL = "Enter API key and secret"
 CONNECTED_TITLE_FORMAT = "CONNECTED to {exchange}"
 CONNECTED_DETAIL_FORMAT = (
-    "Markets: {markets}\nAuth: OK\nThis connection is isolated from bots."
+    "Markets: {markets}\n"
+    "Auth: not checked - press Fetch Balances\n"
+    "This connection is isolated from bots."
 )
 CONNECT_FAILED_TITLE = "CONNECTION FAILED"
 NO_MARKETS = 0
+
+# The mark shown wherever this screen took no reading at all.
+UNREADABLE_MARK = "?"
 
 DISCONNECT_FAILED_TITLE = "DISCONNECT FAILED"
 DISCONNECT_FAILED_FORMAT = (
@@ -179,6 +246,8 @@ DISCONNECT_FAILED_FORMAT = (
 )
 DISCONNECTED_TITLE = "DISCONNECTED"
 DISCONNECTED_DETAIL = "Connection closed"
+NOTHING_OPEN_TITLE = "NOTHING TO CLOSE"
+NOTHING_OPEN_DETAIL = "No session was open, so no close was attempted."
 
 HISTORY_CALLBACK_LOG = "History callback registration: %s"
 
@@ -188,6 +257,10 @@ RUNNING_TITLE_FORMAT = "Running {test}..."
 RUNNING_DETAIL_FORMAT = "Symbol: {symbol}"
 TEST_OK_FORMAT = "{test} OK"
 TEST_FAILED_FORMAT = "{test} FAILED"
+TEST_UNKNOWN_FORMAT = "{test} NOT RUN"
+TEST_UNKNOWN_DETAIL = (
+    "This screen has no call by that name, so the venue was never asked."
+)
 
 MARKETS_SAMPLE_LIMIT = 50
 SPOT_TYPE = "spot"
@@ -199,6 +272,7 @@ CLOSE_INDEX = 4
 NO_CLOSE = 0
 
 BALANCE_SECTIONS = ("free", "used", "total")
+NO_HOLDING = 0
 JSON_INDENT = 2
 DISPLAY_LIMIT = 3000
 TRUNCATED_SUFFIX = "\n... (truncated)"
@@ -331,6 +405,19 @@ PROBE_ERROR_TITLE_FORMAT = "ERROR - {desc}"
 PROBE_ERROR_DETAIL_FORMAT = "URL: {url}\n{error}: {message}"
 NO_BODY = ""
 
+HTTP_UNREAD_TITLE_FORMAT = "HTTP {status} - {desc}"
+UNREADABLE_ANSWER_TITLE_FORMAT = "UNREADABLE ANSWER - {desc}"
+UNREADABLE_ANSWER_DETAIL_FORMAT = (
+    "Endpoint: {desc}\n"
+    "URL: {url}\n"
+    "The request answered with {kind}, which this screen cannot read.\n"
+    "Nothing here says the endpoint is healthy or unhealthy."
+)
+UNREAD_STATUS_NOTE = (
+    "\nNo HTTP status came back, so nothing here says the request succeeded."
+)
+UNREADABLE_BODY_FORMAT = "[body is {kind}, not text]"
+
 FAILURE_HTTP = "http"
 FAILURE_URL = "url"
 FAILURE_OTHER = "other"
@@ -395,18 +482,49 @@ HISTORY_WIRED = "history.wired"
 HISTORY_SKIPPED = "history.skipped"
 DISCONNECT_CLOSED = "disconnect.closed"
 DISCONNECT_FAILED = "disconnect.failed"
+DISCONNECT_NOTHING_OPEN = "disconnect.nothing_open"
 TEST_REFUSED = "test.refused"
 TEST_RAN = "test.ran"
 TEST_UNKNOWN = "test.unknown"
 TEST_FAILED = "test.failed"
 PROBE_TCP = "probe.tcp"
 PROBE_HANDSHAKE = "probe.handshake"
+PROBE_HANDSHAKE_UNREAD = "probe.handshake_unread"
 PROBE_CERTIFI = "probe.certifi"
 PROBE_REQUESTED = "probe.requested"
 PROBE_GREEN = "probe.green"
+PROBE_UNREAD = "probe.unread"
 STATUS_REQUESTED = "status.requested"
 STATUS_READ = "status.read"
 STATUS_UNMAPPED = "status.unmapped"
+
+# Every step name a call row can open with, in the order they are declared.
+CALL_NAMES = (
+    ENTRY_LOGGED,
+    CONNECT_STARTED,
+    CONNECT_REFUSED,
+    CONNECT_OPENED,
+    CONNECT_FAILED,
+    HISTORY_WIRED,
+    HISTORY_SKIPPED,
+    DISCONNECT_CLOSED,
+    DISCONNECT_FAILED,
+    DISCONNECT_NOTHING_OPEN,
+    TEST_REFUSED,
+    TEST_RAN,
+    TEST_UNKNOWN,
+    TEST_FAILED,
+    PROBE_TCP,
+    PROBE_HANDSHAKE,
+    PROBE_HANDSHAKE_UNREAD,
+    PROBE_CERTIFI,
+    PROBE_REQUESTED,
+    PROBE_GREEN,
+    PROBE_UNREAD,
+    STATUS_REQUESTED,
+    STATUS_READ,
+    STATUS_UNMAPPED,
+)
 
 Call = list
 
@@ -475,28 +593,79 @@ def probe_endpoints(exchange_id: Any) -> list:
     ]
 
 
+def reading_of(value: Any) -> Optional[float]:
+    """One holding as a number, or None when no reading admits it."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def positive_only(section: Any) -> dict:
-    """One balance section with every zero and empty holding dropped."""
-    return {
-        key: value for key, value in section.items() if value and float(value or 0) > 0
-    }
+    """One balance section: zero and empty dropped, unreadable marked."""
+    found = {}
+    for key, value in section.items():
+        if not value:
+            continue
+        reading = reading_of(value)
+        if reading is None:
+            found[key] = UNREADABLE_MARK
+        elif reading > NO_HOLDING:
+            found[key] = value
+    return found
+
+
+def mapping_or_none(found: Any) -> Optional[dict]:
+    """One answer read as a mapping, or None when it is not one."""
+    return found if isinstance(found, dict) else None
+
+
+def body_text(found: Any) -> str:
+    """One response body as text, or a mark naming what came back instead."""
+    if isinstance(found, str):
+        return found
+    return UNREADABLE_BODY_FORMAT.format(kind=type(found).__name__)
+
+
+def status_text_of(status: Any) -> str:
+    """One HTTP status as the headline shows it, or the mark when unread."""
+    return UNREADABLE_MARK if status is None else str(status)
+
+
+def market_count_text(count: Any) -> str:
+    """One market count as the status line shows it, or the mark when unread."""
+    return UNREADABLE_MARK if count is None else str(count)
 
 
 def markets_summary(markets: dict) -> dict:
     """The Fetch Markets answer: how many pairs, how many spot, the first 50."""
     return {
         "total": len(markets),
-        "spot": sum(1 for row in markets.values() if row.get("type") == SPOT_TYPE),
-        "first_50": sorted(markets.keys())[:MARKETS_SAMPLE_LIMIT],
+        "spot": sum(
+            1
+            for row in markets.values()
+            if isinstance(row, dict) and row.get("type") == SPOT_TYPE
+        ),
+        "first_50": sorted(str(key) for key in markets)[:MARKETS_SAMPLE_LIMIT],
     }
+
+
+def close_of(candles: list, at: int) -> Any:
+    """One end candle's close, or the mark when that row carries none."""
+    if not candles:
+        return NO_CLOSE
+    row = candles[at]
+    if isinstance(row, (list, tuple)) and len(row) > CLOSE_INDEX:
+        return row[CLOSE_INDEX]
+    return UNREADABLE_MARK
 
 
 def ohlcv_summary(candles: list) -> dict:
     """The Fetch OHLCV answer: how many candles, and the two end closes."""
     return {
         "candles": len(candles),
-        "latest_close": candles[-1][CLOSE_INDEX] if candles else NO_CLOSE,
-        "oldest_close": candles[0][CLOSE_INDEX] if candles else NO_CLOSE,
+        "latest_close": close_of(candles, -1),
+        "oldest_close": close_of(candles, 0),
     }
 
 
@@ -551,8 +720,12 @@ def body_display(body: str) -> str:
 
 
 def status_level(indicator: Any) -> str:
-    """Green when the venue reports none or minor, red for every other word."""
-    return LEVEL_SUCCESS if indicator in GREEN_INDICATORS else LEVEL_ERROR
+    """Green for a green indicator, red for a mapped one, amber for the rest."""
+    if indicator in GREEN_INDICATORS:
+        return LEVEL_SUCCESS
+    if indicator in MAPPABLE_INDICATORS:
+        return LEVEL_ERROR
+    return LEVEL_WARNING
 
 
 def exchange_error_text(exc: BaseException) -> str:
@@ -619,6 +792,7 @@ class ApiTesterModel:
         self.headline_color = EMPTY_TEXT
         self.entries: list = []
         self.calls: list = []
+        self.entries_logged = 0
 
     def set_exchange(self, exchange_id: Any) -> None:
         """Pick the venue every button on this screen acts against."""
@@ -662,7 +836,10 @@ class ApiTesterModel:
             "html": entry_html(stamp, title, timing, color, detail),
         }
         self.entries.append(entry)
+        self.entries_logged += 1
+        del self.entries[:-ENTRY_LIMIT]
         self.calls.append([ENTRY_LOGGED, title, level])
+        del self.calls[:-CALL_LIMIT]
         return entry
 
     def _ask(self, step: str, *args):
@@ -724,17 +901,18 @@ class ApiTesterModel:
             session = self._ask("connect", self.exchange_id, key, secret, passphrase)
             elapsed = self._elapsed_ms(started)
             markets = self._market_count(session)
+            shown = market_count_text(markets)
             self.connector = session
             self.connected = True
             self.connect_enabled = False
             self.disconnect_enabled = True
             self._set_status(
-                STATUS_CONNECTED_FORMAT.format(exchange=exchange, markets=markets),
+                STATUS_CONNECTED_FORMAT.format(exchange=exchange, markets=shown),
                 STATUS_CONNECTED_COLOR,
             )
             self.log(
                 CONNECTED_TITLE_FORMAT.format(exchange=exchange),
-                CONNECTED_DETAIL_FORMAT.format(markets=markets),
+                CONNECTED_DETAIL_FORMAT.format(markets=shown),
                 elapsed,
                 LEVEL_SUCCESS,
             )
@@ -772,12 +950,12 @@ class ApiTesterModel:
             found.get("passphrase", EMPTY_TEXT),
         )
 
-    def _market_count(self, session: Any) -> int:
-        """How many pairs the fresh session loaded."""
+    def _market_count(self, session: Any) -> Optional[int]:
+        """How many pairs the fresh session loaded, None when nothing read it."""
         try:
             return int(self._ask("market_count", session))
         except Exception:
-            return NO_MARKETS
+            return None
 
     def _wire_history(self, session: Any) -> None:
         """Hand the fresh session to the trade-history screen, if it is up."""
@@ -789,9 +967,10 @@ class ApiTesterModel:
             self.calls.append([HISTORY_SKIPPED, type(exc).__name__])
 
     def do_disconnect(self) -> None:
-        """Close the session, and say so whether or not the close worked."""
+        """Close the session, and say so whether or not a close was attempted."""
+        attempted = self.connector is not None
         failure = None
-        if self.connector is not None:
+        if attempted:
             started = self._started()
             try:
                 self._ask("disconnect", self.connector)
@@ -812,6 +991,10 @@ class ApiTesterModel:
         self.connect_enabled = True
         self.disconnect_enabled = False
         self._set_status(STATUS_DISCONNECTED_TEXT, STATUS_DISCONNECTED_COLOR)
+        if not attempted:
+            self.log(NOTHING_OPEN_TITLE, NOTHING_OPEN_DETAIL, level=LEVEL_INFO)
+            self.calls.append([DISCONNECT_NOTHING_OPEN])
+            return
         self.log(DISCONNECTED_TITLE, DISCONNECTED_DETAIL, level=LEVEL_INFO)
         self.calls.append([DISCONNECT_CLOSED, failure is None])
 
@@ -832,11 +1015,18 @@ class ApiTesterModel:
         try:
             result = self._call_test(test, symbol, nothing)
             elapsed = self._elapsed_ms(started)
+            if result is nothing:
+                self.log(
+                    TEST_UNKNOWN_FORMAT.format(test=test),
+                    TEST_UNKNOWN_DETAIL,
+                    elapsed,
+                    LEVEL_WARNING,
+                )
+                self.calls.append([TEST_UNKNOWN, test])
+                return
             display = result_display(result)
             self.log(TEST_OK_FORMAT.format(test=test), display, elapsed, LEVEL_SUCCESS)
-            self.calls.append(
-                [TEST_RAN if result is not nothing else TEST_UNKNOWN, test]
-            )
+            self.calls.append([TEST_RAN, test])
         except Exception as exc:
             elapsed = self._elapsed_ms(started)
             self.log(
@@ -928,17 +1118,21 @@ class ApiTesterModel:
             self.calls.append([PROBE_HANDSHAKE, False])
             return
         elapsed = self._elapsed_ms(started)
+        read = mapping_or_none(found)
         self.log(
             SSL_OK_FORMAT.format(elapsed=elapsed),
             SSL_OK_DETAIL_FORMAT.format(
-                protocol=found.get("protocol", CERT_UNKNOWN),
-                cipher=found.get("cipher", CERT_UNKNOWN),
-                common_name=found.get("common_name", CERT_UNKNOWN),
-                issuer=found.get("issuer", CERT_UNKNOWN),
-                not_after=found.get("not_after", CERT_UNKNOWN),
+                protocol=(read or {}).get("protocol", CERT_UNKNOWN),
+                cipher=(read or {}).get("cipher", CERT_UNKNOWN),
+                common_name=(read or {}).get("common_name", CERT_UNKNOWN),
+                issuer=(read or {}).get("issuer", CERT_UNKNOWN),
+                not_after=(read or {}).get("not_after", CERT_UNKNOWN),
             ),
             level=LEVEL_SUCCESS,
         )
+        if read is None:
+            self.calls.append([PROBE_HANDSHAKE_UNREAD, type(found).__name__])
+            return
         self.calls.append([PROBE_HANDSHAKE, True])
 
     def _is_cert_error(self, exc: BaseException) -> bool:
@@ -971,7 +1165,8 @@ class ApiTesterModel:
         self.log(
             CERTIFI_OK_FORMAT.format(elapsed=elapsed),
             CERTIFI_OK_DETAIL_FORMAT.format(
-                bundle=bundle, protocol=found.get("protocol", CERT_UNKNOWN)
+                bundle=bundle,
+                protocol=(mapping_or_none(found) or {}).get("protocol", CERT_UNKNOWN),
             ),
             level=LEVEL_SUCCESS,
         )
@@ -987,7 +1182,8 @@ class ApiTesterModel:
         )
         green = 0
         green_with_body = 0
-        for _method, url, desc in endpoints:
+        for row in endpoints:
+            url, desc = self._endpoint_of(row)
             started = self._started()
             self.calls.append([PROBE_REQUESTED, url])
             try:
@@ -996,26 +1192,70 @@ class ApiTesterModel:
                 self._log_request_failure(exc, url, desc, self._elapsed_ms(started))
                 continue
             elapsed = self._elapsed_ms(started)
-            headers = answer.get("headers", {})
-            body = answer.get("body", NO_BODY)
-            status = answer.get("status")
-            self.log(
-                HTTP_OK_TITLE_FORMAT.format(status=status, desc=desc),
-                HTTP_OK_DETAIL_FORMAT.format(
-                    desc=desc,
-                    url=url,
-                    status=status,
-                    content_type=headers.get(CONTENT_TYPE_HEADER, UNKNOWN_HEADER),
-                    content_length=headers.get(CONTENT_LENGTH_HEADER, UNKNOWN_HEADER),
-                    body=body_display(body),
-                ),
-                elapsed,
-                LEVEL_SUCCESS,
-            )
+            read = mapping_or_none(answer)
+            if read is None:
+                self._log_unreadable_answer(answer, url, desc, elapsed)
+                continue
+            headers = mapping_or_none(read.get("headers")) or {}
+            body = body_text(read.get("body", NO_BODY))
+            status = read.get("status")
+            self._log_answer(read.get("status"), desc, url, headers, body, elapsed)
             green += 1
             if body:
                 green_with_body += 1
+            if status is None:
+                self.calls.append([PROBE_UNREAD, url])
         self.calls.append([PROBE_GREEN, green, green_with_body])
+
+    def _endpoint_of(self, row: Any) -> tuple:
+        """The address and wording of one endpoint row, however wide it is."""
+        found = list(row) if isinstance(row, (list, tuple)) else []
+        url = found[1] if len(found) > 1 else EMPTY_TEXT
+        desc = found[2] if len(found) > 2 else DEFAULT_ENDPOINT_DESC
+        return url, desc
+
+    def _log_answer(
+        self,
+        status: Any,
+        desc: str,
+        url: str,
+        headers: dict,
+        body: str,
+        elapsed: float,
+    ) -> None:
+        """Report one answered request, marked unread when no status came back."""
+        unread = status is None
+        shown = status_text_of(status)
+        detail = HTTP_OK_DETAIL_FORMAT.format(
+            desc=desc,
+            url=url,
+            status=shown,
+            content_type=headers.get(CONTENT_TYPE_HEADER, UNKNOWN_HEADER),
+            content_length=headers.get(CONTENT_LENGTH_HEADER, UNKNOWN_HEADER),
+            body=body_display(body),
+        )
+        self.log(
+            (HTTP_UNREAD_TITLE_FORMAT if unread else HTTP_OK_TITLE_FORMAT).format(
+                status=shown, desc=desc
+            ),
+            detail + UNREAD_STATUS_NOTE if unread else detail,
+            elapsed,
+            LEVEL_WARNING if unread else LEVEL_SUCCESS,
+        )
+
+    def _log_unreadable_answer(
+        self, answer: Any, url: str, desc: str, elapsed: float
+    ) -> None:
+        """Report a request whose answer is not a mapping this screen reads."""
+        self.log(
+            UNREADABLE_ANSWER_TITLE_FORMAT.format(desc=desc),
+            UNREADABLE_ANSWER_DETAIL_FORMAT.format(
+                desc=desc, url=url, kind=type(answer).__name__
+            ),
+            elapsed,
+            LEVEL_WARNING,
+        )
+        self.calls.append([PROBE_UNREAD, url])
 
     def _log_request_failure(
         self, exc: BaseException, url: str, desc: str, elapsed: float
@@ -1090,10 +1330,10 @@ class ApiTesterModel:
         self.calls.append([STATUS_REQUESTED, url])
         try:
             answer = self._ask("http", url, PROBE_TIMEOUT_S, list(STATUS_HEADERS))
-            body = answer.get("body", NO_BODY)
+            body = body_text((mapping_or_none(answer) or {}).get("body", NO_BODY))
             data = json.loads(body)
             elapsed = self._elapsed_ms(started)
-            if STATUS_KEY in data:
+            if isinstance(data, dict) and STATUS_KEY in data:
                 self._log_indicator(exchange, data, elapsed)
             else:
                 self.log(
@@ -1111,7 +1351,7 @@ class ApiTesterModel:
 
     def _log_indicator(self, exchange: str, data: dict, elapsed: float) -> None:
         """Report the word the status document carried, and paint it."""
-        section = data[STATUS_KEY]
+        section = mapping_or_none(data[STATUS_KEY]) or {}
         indicator = section.get(INDICATOR_KEY, UNKNOWN_INDICATOR)
         description = section.get(DESCRIPTION_KEY, UNKNOWN_INDICATOR)
         level = status_level(indicator)
@@ -1119,7 +1359,7 @@ class ApiTesterModel:
             STATUS_TITLE_FORMAT.format(description=description),
             STATUS_DETAIL_FORMAT.format(
                 exchange=exchange,
-                indicator=indicator.upper(),
+                indicator=str(indicator).upper(),
                 description=description,
                 raw=json.dumps(data, indent=JSON_INDENT)[:STATUS_RAW_LIMIT],
             ),
@@ -1169,6 +1409,7 @@ def build_view_model(model: ApiTesterModel) -> dict:
         "manual_visible": model.manual_visible,
         "credential_placeholders": list(CREDENTIAL_PLACEHOLDERS),
         "echo_mode": ECHO_MODE,
+        "credentials_hidden": CREDENTIALS_HIDDEN,
         "credentials_filled": credentials_filled(model),
         "connect_label": CONNECT_LABEL,
         "connect_tooltip": CONNECT_TIP,
@@ -1217,8 +1458,16 @@ def build_view_model(model: ApiTesterModel) -> dict:
         "headline_format": HEADLINE_FORMAT,
         "entries": [dict(found) for found in model.entries],
         "entry_count": len(model.entries),
+        "entries_logged": model.entries_logged,
+        "entry_limit": ENTRY_LIMIT,
+        "call_limit": CALL_LIMIT,
         "entry_html_format": ENTRY_HTML_FORMAT,
+        "entry_marks": dict(ENTRY_MARKS),
+        "entry_mark_order": list(ENTRY_MARKS),
+        "entry_slots": dict(ENTRY_SLOTS),
+        "entry_slot_order": list(ENTRY_SLOTS),
         "level_colors": dict(LEVEL_COLORS),
+        "level_color_order": list(LEVEL_COLORS),
         "default_level_color": DEFAULT_LEVEL_COLOR,
         "timestamp_color": TIMESTAMP_COLOR,
         "detail_color": DETAIL_COLOR,
@@ -1257,6 +1506,8 @@ def build_view_model(model: ApiTesterModel) -> dict:
         "disconnect_failed_format": DISCONNECT_FAILED_FORMAT,
         "disconnected_title": DISCONNECTED_TITLE,
         "disconnected_detail": DISCONNECTED_DETAIL,
+        "nothing_open_title": NOTHING_OPEN_TITLE,
+        "nothing_open_detail": NOTHING_OPEN_DETAIL,
         "history_callback_log": HISTORY_CALLBACK_LOG,
         "not_connected_title": NOT_CONNECTED_TITLE,
         "not_connected_detail": NOT_CONNECTED_DETAIL,
@@ -1264,6 +1515,8 @@ def build_view_model(model: ApiTesterModel) -> dict:
         "running_detail_format": RUNNING_DETAIL_FORMAT,
         "test_ok_format": TEST_OK_FORMAT,
         "test_failed_format": TEST_FAILED_FORMAT,
+        "test_unknown_format": TEST_UNKNOWN_FORMAT,
+        "test_unknown_detail": TEST_UNKNOWN_DETAIL,
         "markets_sample_limit": MARKETS_SAMPLE_LIMIT,
         "spot_type": SPOT_TYPE,
         "orderbook_limit": ORDERBOOK_LIMIT,
@@ -1273,6 +1526,8 @@ def build_view_model(model: ApiTesterModel) -> dict:
         "close_index": CLOSE_INDEX,
         "no_close": NO_CLOSE,
         "balance_sections": list(BALANCE_SECTIONS),
+        "no_holding": NO_HOLDING,
+        "unreadable_mark": UNREADABLE_MARK,
         "json_indent": JSON_INDENT,
         "display_limit": DISPLAY_LIMIT,
         "truncated_suffix": TRUNCATED_SUFFIX,
@@ -1287,6 +1542,7 @@ def build_view_model(model: ApiTesterModel) -> dict:
         "test_open_orders": TEST_OPEN_ORDERS,
         "test_trades": TEST_TRADES,
         "probe_hosts": dict(PROBE_HOSTS),
+        "probe_host_order": list(PROBE_HOSTS),
         "probe_host": probe_host(model.exchange_id),
         "default_host_format": DEFAULT_HOST_FORMAT,
         "probe_port": PROBE_PORT,
@@ -1295,6 +1551,7 @@ def build_view_model(model: ApiTesterModel) -> dict:
         "probe_endpoint_table": {
             key: [list(row) for row in rows] for key, rows in PROBE_ENDPOINTS.items()
         },
+        "probe_endpoint_table_order": list(PROBE_ENDPOINTS),
         "default_endpoint_method": DEFAULT_ENDPOINT_METHOD,
         "default_endpoint_url_format": DEFAULT_ENDPOINT_URL_FORMAT,
         "default_endpoint_desc": DEFAULT_ENDPOINT_DESC,
@@ -1339,11 +1596,17 @@ def build_view_model(model: ApiTesterModel) -> dict:
         "unreachable_detail_format": UNREACHABLE_DETAIL_FORMAT,
         "probe_error_title_format": PROBE_ERROR_TITLE_FORMAT,
         "probe_error_detail_format": PROBE_ERROR_DETAIL_FORMAT,
+        "http_unread_title_format": HTTP_UNREAD_TITLE_FORMAT,
+        "unreadable_answer_title_format": UNREADABLE_ANSWER_TITLE_FORMAT,
+        "unreadable_answer_detail_format": UNREADABLE_ANSWER_DETAIL_FORMAT,
+        "unread_status_note": UNREAD_STATUS_NOTE,
+        "unreadable_body_format": UNREADABLE_BODY_FORMAT,
         "no_body": NO_BODY,
         "failure_http": FAILURE_HTTP,
         "failure_url": FAILURE_URL,
         "failure_other": FAILURE_OTHER,
         "status_page_urls": dict(STATUS_PAGE_URLS),
+        "status_page_order": list(STATUS_PAGE_URLS),
         "status_page_url": STATUS_PAGE_URLS.get(model.exchange_id, EMPTY_TEXT),
         "mappable_indicators": list(MAPPABLE_INDICATORS),
         "green_indicators": list(GREEN_INDICATORS),
@@ -1369,9 +1632,12 @@ def build_view_model(model: ApiTesterModel) -> dict:
         "timer_delays_ms": list(TIMER_DELAYS_MS),
         "bus_topics": list(BUS_TOPICS),
         "actions": dict(ACTIONS),
+        "actions_order": list(ACTIONS),
         "no_caller_message": NO_CALLER_MESSAGE,
         "logger_name": LOGGER_NAME,
         "calls": [list(call) for call in model.calls],
+        "call_count": len(model.calls),
+        "call_names": list(CALL_NAMES),
     }
 
 
